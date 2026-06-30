@@ -10,9 +10,49 @@
   filter: invert(1);
 }
 
+.theme-dark .inkline-image.inkline-no-invert {
+  filter: none;
+}
+
 .inkline-name-modal-controls {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
   margin-top: 16px;
+}
+
+.inkline-editor-modal {
+  width: min(960px, 90vw);
+}
+
+.inkline-editor-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.inkline-size-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.inkline-canvas-wrap {
+  max-height: min(65vh, 720px);
+  overflow: auto;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  padding: 12px;
+}
+
+.inkline-editor-canvas {
+  display: block;
+  width: min(100%, 768px);
+  height: auto;
+  margin: 0 auto;
+  background: #ffffff;
+  touch-action: none;
+  cursor: crosshair;
 }

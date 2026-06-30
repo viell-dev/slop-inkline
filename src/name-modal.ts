@@ -54,8 +54,8 @@ export class InkNameModal extends Modal {
 
   private submit(): void {
     const name = this.inputEl.value.trim() || this.defaultName;
-    this.close();
     this.onSubmit(name);
+    this.close();
   }
 }
 

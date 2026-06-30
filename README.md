@@ -14,6 +14,12 @@ Early development. The initial scope is deliberately narrow:
 - Small fixed canvas presets.
 - Human-readable names with incrementing defaults.
 
+## Usage
+
+Run **Insert inline ink** from the command palette while editing a Markdown note. Inkline prompts for a name, creates a PNG attachment, inserts a Markdown image embed, and opens the editor.
+
+Click an Inkline image in rendered Markdown to reopen it.
+
 ## Development
 
 ```bash
@@ -28,4 +34,3 @@ For manual testing, copy or symlink this repository into an Obsidian vault under
 ```
 
 Then build and enable the plugin in Obsidian.
-

@@ -1,16 +1,27 @@
-import { Editor, MarkdownFileInfo, Notice, Plugin } from "obsidian";
+import { Editor, MarkdownFileInfo, Notice, Plugin, TFile } from "obsidian";
+import { InkEditorModal } from "./ink-editor-modal";
 import { createMarkdownImage, InkFileService } from "./ink-file";
 import { promptForInkName } from "./name-modal";
+import { RenderEnhancer } from "./render-enhancer";
 import { DEFAULT_SETTINGS, InklineSettings, InklineSettingTab } from "./settings";
 
 export default class InklinePlugin extends Plugin {
   settings!: InklineSettings;
   inkFiles!: InkFileService;
+  renderEnhancer!: RenderEnhancer;
 
   async onload(): Promise<void> {
     await this.loadSettings();
 
     this.inkFiles = new InkFileService(this.app, () => this.settings);
+    this.renderEnhancer = new RenderEnhancer(
+      this,
+      this.inkFiles,
+      () => this.settings,
+      (file) => this.openEditor(file),
+    );
+    this.renderEnhancer.register();
+
     this.addSettingTab(new InklineSettingTab(this.app, this));
 
     this.addCommand({
@@ -38,7 +49,21 @@ export default class InklinePlugin extends Plugin {
     );
 
     editor.replaceSelection(createMarkdownImage(created.name, created.path));
+
+    if (this.settings.openEditorAfterInsert) {
+      this.openEditor(created.file);
+    }
+
     new Notice(`Created inline ink: ${created.name}`);
+  }
+
+  openEditor(file: TFile): void {
+    new InkEditorModal(
+      this.app,
+      this.inkFiles,
+      file,
+      (savedFile) => this.renderEnhancer.refreshFile(savedFile),
+    ).open();
   }
 
   async loadSettings(): Promise<void> {

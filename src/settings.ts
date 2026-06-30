@@ -1,5 +1,5 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
-import InklinePlugin from "./main";
+import type InklinePlugin from "./main";
 import { CanvasPresetId, CANVAS_PRESETS } from "./ink-file";
 
 export interface InklineSettings {
@@ -96,4 +96,3 @@ export class InklineSettingTab extends PluginSettingTab {
       });
   }
 }
-
