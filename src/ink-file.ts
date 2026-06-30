@@ -72,7 +72,8 @@ export class InkFileService {
     const folderPath = await this.getInkFolderPath(sourcePath);
     await this.ensureFolder(folderPath);
 
-    const stem = this.slugify(name) || await this.getNextAutoName(sourcePath);
+    const displayName = name.trim();
+    const stem = this.slugify(displayName) || await this.getNextAutoName(sourcePath);
     const finalStem = this.findAvailableStem(folderPath, stem);
     const path = normalizePath(`${folderPath}/${finalStem}.png`);
     const data = await this.createBlankPng(preset.width, preset.height);
@@ -80,7 +81,7 @@ export class InkFileService {
 
     return {
       file,
-      name: finalStem,
+      name: finalStem === stem ? displayName || finalStem : finalStem,
       path,
       width: preset.width,
       height: preset.height,
@@ -199,9 +200,24 @@ export class InkFileService {
   }
 }
 
+export function createMarkdownImage(name: string, path: string): string {
+  return `![${escapeAltText(name)}](${formatMarkdownDestination(path)})`;
+}
+
 function dirname(path: string): string {
   const normalizedPath = normalizePath(path);
   const index = normalizedPath.lastIndexOf("/");
   return index === -1 ? "" : normalizedPath.slice(0, index);
 }
 
+function escapeAltText(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/\]/g, "\\]");
+}
+
+function formatMarkdownDestination(path: string): string {
+  if (!/[\s()<>]/.test(path)) {
+    return path;
+  }
+
+  return `<${path.replace(/>/g, "%3E")}>`;
+}

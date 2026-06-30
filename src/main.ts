@@ -1,5 +1,6 @@
-import { Notice, Plugin } from "obsidian";
-import { InkFileService } from "./ink-file";
+import { Editor, MarkdownFileInfo, Notice, Plugin } from "obsidian";
+import { createMarkdownImage, InkFileService } from "./ink-file";
+import { promptForInkName } from "./name-modal";
 import { DEFAULT_SETTINGS, InklineSettings, InklineSettingTab } from "./settings";
 
 export default class InklinePlugin extends Plugin {
@@ -15,10 +16,29 @@ export default class InklinePlugin extends Plugin {
     this.addCommand({
       id: "insert-inline-ink",
       name: "Insert inline ink",
-      callback: () => {
-        new Notice("Inkline is installed. Drawing tools are coming next.");
+      editorCallback: (editor, ctx) => {
+        void this.insertInlineInk(editor, ctx);
       },
     });
+  }
+
+  async insertInlineInk(editor: Editor, ctx: MarkdownFileInfo): Promise<void> {
+    const sourcePath = ctx.file?.path ?? "";
+    const defaultName = await this.inkFiles.getNextAutoName(sourcePath);
+    const name = await promptForInkName(this.app, defaultName);
+
+    if (!name) {
+      return;
+    }
+
+    const created = await this.inkFiles.createBlankInkFile(
+      name,
+      this.settings.defaultPreset,
+      sourcePath,
+    );
+
+    editor.replaceSelection(createMarkdownImage(created.name, created.path));
+    new Notice(`Created inline ink: ${created.name}`);
   }
 
   async loadSettings(): Promise<void> {
