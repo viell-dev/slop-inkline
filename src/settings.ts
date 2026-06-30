@@ -13,7 +13,7 @@ export interface InklineSettings {
 export const DEFAULT_SETTINGS: InklineSettings = {
   attachmentSubfolder: "inkline",
   defaultPreset: "symbol",
-  displayHeight: "1.25em",
+  displayHeight: "1.5em",
   darkModeInvert: true,
   openEditorAfterInsert: true,
 };
@@ -64,7 +64,7 @@ export class InklineSettingTab extends PluginSettingTab {
       .setDesc("CSS height for rendered inline ink images.")
       .addText((text) => {
         text
-          .setPlaceholder("1.25em")
+          .setPlaceholder("1.5em")
           .setValue(this.plugin.settings.displayHeight)
           .onChange(async (value) => {
             this.plugin.settings.displayHeight = value.trim() || DEFAULT_SETTINGS.displayHeight;

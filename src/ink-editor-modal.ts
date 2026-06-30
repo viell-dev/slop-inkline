@@ -12,7 +12,7 @@ export class InkEditorModal extends Modal {
   private canvasEl!: HTMLCanvasElement;
   private ctx!: CanvasRenderingContext2D;
   private tool: InkTool = "pen";
-  private size = 8;
+  private size = 24;
   private drawing = false;
   private lastPoint: Point | null = null;
   private undoStack: ImageData[] = [];
@@ -44,7 +44,7 @@ export class InkEditorModal extends Modal {
       attr: {
         type: "range",
         min: "1",
-        max: "48",
+        max: "96",
         value: this.size.toString(),
       },
     });

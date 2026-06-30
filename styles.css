@@ -1,16 +1,22 @@
-.inkline-embed {
+.inkline-embed,
+.markdown-source-view .image-embed:has(img[src*="/inkline/"]),
+.markdown-reading-view .image-embed:has(img[src*="/inkline/"]),
+.markdown-preview-view .image-embed:has(img[src*="/inkline/"]) {
   display: inline-flex !important;
   align-items: baseline;
   width: auto !important;
-  height: var(--inkline-display-height, 1.25em) !important;
+  height: var(--inkline-display-height, 1.5em) !important;
   max-width: none !important;
   line-height: 1;
   vertical-align: -0.2em;
 }
 
-.inkline-image {
+.inkline-image,
+.markdown-source-view .image-embed img[src*="/inkline/"],
+.markdown-reading-view .image-embed img[src*="/inkline/"],
+.markdown-preview-view .image-embed img[src*="/inkline/"] {
   display: block;
-  height: var(--inkline-display-height, 1.25em) !important;
+  height: var(--inkline-display-height, 1.5em) !important;
   width: auto !important;
   max-width: none !important;
   max-height: none !important;
@@ -19,7 +25,10 @@
   object-fit: contain;
 }
 
-.theme-dark .inkline-image {
+.theme-dark .inkline-image,
+.theme-dark .markdown-source-view .image-embed img[src*="/inkline/"],
+.theme-dark .markdown-reading-view .image-embed img[src*="/inkline/"],
+.theme-dark .markdown-preview-view .image-embed img[src*="/inkline/"] {
   filter: invert(1);
 }
 
