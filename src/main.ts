@@ -40,7 +40,7 @@ export default class InklinePlugin extends Plugin {
       this.settings.defaultPreset,
       sourcePath,
     );
-    const markdown = createMarkdownImage(created.name, created.path);
+    const markdown = createMarkdownImage(created.path);
     const insertStart = editor.getCursor("from");
 
     editor.replaceSelection(markdown);

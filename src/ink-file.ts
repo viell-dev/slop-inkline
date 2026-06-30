@@ -242,18 +242,14 @@ export class InkFileService {
   }
 }
 
-export function createMarkdownImage(name: string, path: string): string {
-  return `![${escapeAltText(name)}](${formatMarkdownDestination(path)})`;
+export function createMarkdownImage(path: string): string {
+  return `![](${formatMarkdownDestination(path)})`;
 }
 
 function dirname(path: string): string {
   const normalizedPath = normalizePath(path);
   const index = normalizedPath.lastIndexOf("/");
   return index === -1 ? "" : normalizedPath.slice(0, index);
-}
-
-function escapeAltText(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/\]/g, "\\]");
 }
 
 function formatMarkdownDestination(path: string): string {
