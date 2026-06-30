@@ -96,6 +96,26 @@ export class InkFileService {
     await this.app.vault.modifyBinary(file, data);
   }
 
+  async renameInkFile(file: TFile, name: string): Promise<TFile> {
+    const folderPath = file.parent?.path ?? "";
+    const stem = this.slugify(name) || file.basename;
+    const finalStem = this.findAvailableStem(folderPath, stem, file.path);
+    const newPath = normalizePath(folderPath ? `${folderPath}/${finalStem}.png` : `${finalStem}.png`);
+
+    if (newPath === file.path) {
+      return file;
+    }
+
+    await this.app.fileManager.renameFile(file, newPath);
+
+    const renamedFile = this.app.vault.getFileByPath(newPath);
+    if (!renamedFile) {
+      throw new Error(`Could not find renamed ink file: ${newPath}`);
+    }
+
+    return renamedFile;
+  }
+
   isInkFile(file: TFile): boolean {
     const subfolder = this.normalizedSubfolder();
     const parentPath = file.parent?.path ?? "";
@@ -132,16 +152,25 @@ export class InkFileService {
     return normalizePath(attachmentFolderPath ? `${attachmentFolderPath}/${subfolder}` : subfolder);
   }
 
-  private findAvailableStem(folderPath: string, stem: string): string {
+  private findAvailableStem(folderPath: string, stem: string, currentPath?: string): string {
     let suffix = 1;
     let candidate = stem;
 
-    while (this.app.vault.getAbstractFileByPath(normalizePath(`${folderPath}/${candidate}.png`))) {
+    while (
+      this.pathExists(
+        normalizePath(folderPath ? `${folderPath}/${candidate}.png` : `${candidate}.png`),
+        currentPath,
+      )
+    ) {
       suffix += 1;
       candidate = `${stem}-${suffix}`;
     }
 
     return candidate;
+  }
+
+  private pathExists(path: string, exceptPath?: string): boolean {
+    return path !== exceptPath && this.app.vault.getAbstractFileByPath(path) !== null;
   }
 
   private isPngInFolder(file: TFile, folderPath: string): boolean {

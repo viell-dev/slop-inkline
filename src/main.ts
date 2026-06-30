@@ -1,7 +1,6 @@
 import { Editor, MarkdownFileInfo, Notice, Plugin, TFile } from "obsidian";
 import { InkEditorModal } from "./ink-editor-modal";
 import { createMarkdownImage, InkFileService } from "./ink-file";
-import { promptForInkName } from "./name-modal";
 import { RenderEnhancer } from "./render-enhancer";
 import { DEFAULT_SETTINGS, InklineSettings, InklineSettingTab } from "./settings";
 
@@ -35,13 +34,7 @@ export default class InklinePlugin extends Plugin {
 
   async insertInlineInk(editor: Editor, ctx: MarkdownFileInfo): Promise<void> {
     const sourcePath = ctx.file?.path ?? "";
-    const defaultName = await this.inkFiles.getNextAutoName(sourcePath);
-    const name = await promptForInkName(this.app, defaultName);
-
-    if (!name) {
-      return;
-    }
-
+    const name = await this.inkFiles.getNextAutoName(sourcePath);
     const created = await this.inkFiles.createBlankInkFile(
       name,
       this.settings.defaultPreset,

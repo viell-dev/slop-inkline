@@ -36,21 +36,31 @@
   filter: none;
 }
 
-.inkline-name-modal-controls {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 16px;
-}
-
 .modal.inkline-editor-modal-frame {
-  width: min(960px, calc(100vw - 48px));
+  width: fit-content;
   max-width: calc(100vw - 48px);
 }
 
 .inkline-editor-modal {
-  width: 100%;
+  width: auto;
+  max-width: calc(100vw - 96px);
   box-sizing: border-box;
+}
+
+.inkline-editor-header {
+  margin-bottom: 12px;
+}
+
+.inkline-name-input {
+  width: min(320px, 100%);
+  max-width: 100%;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: var(--font-ui-large);
+  font-weight: 600;
+  padding: 6px 8px;
 }
 
 .inkline-editor-toolbar {
@@ -68,7 +78,8 @@
 }
 
 .inkline-canvas-wrap {
-  width: 100%;
+  width: fit-content;
+  max-width: 100%;
   max-height: min(62vh, 640px);
   overflow-x: hidden;
   overflow-y: auto;

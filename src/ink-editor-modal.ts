@@ -9,8 +9,10 @@ interface Point {
 }
 
 export class InkEditorModal extends Modal {
+  private nameInputEl!: HTMLInputElement;
   private canvasEl!: HTMLCanvasElement;
   private ctx!: CanvasRenderingContext2D;
+  private file: TFile;
   private tool: InkTool = "pen";
   private size = 8;
   private drawing = false;
@@ -21,10 +23,11 @@ export class InkEditorModal extends Modal {
   constructor(
     app: App,
     private readonly fileService: InkFileService,
-    private readonly file: TFile,
+    file: TFile,
     private readonly onSave?: (file: TFile) => void,
   ) {
     super(app);
+    this.file = file;
   }
 
   onOpen(): void {
@@ -33,7 +36,24 @@ export class InkEditorModal extends Modal {
     this.modalEl.addClass("inkline-editor-modal-frame");
     contentEl.addClass("inkline-editor-modal");
 
-    contentEl.createEl("h2", { text: this.file.basename });
+    const headerEl = contentEl.createDiv({ cls: "inkline-editor-header" });
+    this.nameInputEl = headerEl.createEl("input", {
+      cls: "inkline-name-input",
+      attr: {
+        type: "text",
+        value: this.file.basename,
+        "aria-label": "Ink name",
+      },
+    });
+    this.nameInputEl.addEventListener("blur", () => {
+      void this.renameFromInput();
+    });
+    this.nameInputEl.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        this.nameInputEl.blur();
+      }
+    });
 
     const toolbarEl = contentEl.createDiv({ cls: "inkline-editor-toolbar" });
     this.createToolButton(toolbarEl, "Pen", "pen");
@@ -70,6 +90,12 @@ export class InkEditorModal extends Modal {
       .setCta()
       .onClick(() => {
         void this.save();
+      });
+
+    new ButtonComponent(toolbarEl)
+      .setButtonText("Save and Close")
+      .onClick(() => {
+        void this.saveAndClose();
       });
 
     const canvasWrapEl = contentEl.createDiv({ cls: "inkline-canvas-wrap" });
@@ -227,11 +253,28 @@ export class InkEditorModal extends Modal {
     this.ctx.fillRect(0, 0, this.canvasEl.width, this.canvasEl.height);
   }
 
+  private async renameFromInput(): Promise<void> {
+    if (!this.nameInputEl) {
+      return;
+    }
+
+    const nextName = this.nameInputEl.value.trim();
+    if (!nextName || nextName === this.file.basename) {
+      this.nameInputEl.value = this.file.basename;
+      return;
+    }
+
+    this.file = await this.fileService.renameInkFile(this.file, nextName);
+    this.nameInputEl.value = this.file.basename;
+    this.onSave?.(this.file);
+  }
+
   private async save(): Promise<void> {
     if (!this.ctx) {
       return;
     }
 
+    await this.renameFromInput();
     this.forceGrayscaleOpaque();
     const blob = await new Promise<Blob>((resolve, reject) => {
       this.canvasEl.toBlob((result) => {
@@ -246,6 +289,11 @@ export class InkEditorModal extends Modal {
     await this.fileService.writeBinary(this.file, await blob.arrayBuffer());
     this.onSave?.(this.file);
     new Notice(`Saved inline ink: ${this.file.basename}`);
+  }
+
+  private async saveAndClose(): Promise<void> {
+    await this.save();
+    this.close();
   }
 
   private forceGrayscaleOpaque(): void {
