@@ -1,16 +1,13 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
 import type InklinePlugin from "./main";
-import { CanvasPresetId, CANVAS_PRESETS } from "./ink-file";
 
 export interface InklineSettings {
-  defaultPreset: CanvasPresetId;
   displayHeight: string;
   darkModeInvert: boolean;
   openEditorAfterInsert: boolean;
 }
 
 export const DEFAULT_SETTINGS: InklineSettings = {
-  defaultPreset: "symbol",
   displayHeight: "1.5em",
   darkModeInvert: true,
   openEditorAfterInsert: true,
@@ -27,22 +24,6 @@ export class InklineSettingTab extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
-
-    new Setting(containerEl)
-      .setName("Default canvas")
-      .setDesc("Canvas size used for new inline ink.")
-      .addDropdown((dropdown) => {
-        for (const preset of Object.values(CANVAS_PRESETS)) {
-          dropdown.addOption(preset.id, `${preset.name} (${preset.width} x ${preset.height})`);
-        }
-
-        dropdown
-          .setValue(this.plugin.settings.defaultPreset)
-          .onChange(async (value) => {
-            this.plugin.settings.defaultPreset = value as CanvasPresetId;
-            await this.plugin.saveSettings();
-          });
-      });
 
     new Setting(containerEl)
       .setName("Display height")

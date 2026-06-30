@@ -90,16 +90,92 @@
   overflow-y: auto;
   border: 1px solid var(--background-modifier-border);
   background: var(--background-secondary);
-  padding: 12px;
+  padding: 20px 12px;
   box-sizing: border-box;
+}
+
+.inkline-canvas-stage {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto;
 }
 
 .inkline-editor-canvas {
   display: block;
   max-width: 100% !important;
   height: auto !important;
-  margin: 0 auto;
   background: #ffffff;
   touch-action: none;
   cursor: crosshair;
+}
+
+.inkline-crop-guides {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.inkline-crop-mark {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  pointer-events: auto;
+  border: 0 solid var(--text-muted);
+}
+
+.inkline-crop-mark-tl,
+.inkline-crop-mark-bl {
+  right: calc(100% - var(--inkline-crop-left));
+}
+
+.inkline-crop-mark-tr,
+.inkline-crop-mark-br {
+  left: var(--inkline-crop-right);
+}
+
+.inkline-crop-mark-tl {
+  bottom: calc(100% + 3px);
+  border-right-width: 2px;
+  border-bottom-width: 2px;
+}
+
+.inkline-crop-mark-tr {
+  bottom: calc(100% + 3px);
+  border-left-width: 2px;
+  border-bottom-width: 2px;
+}
+
+.inkline-crop-mark-bl {
+  top: calc(100% + 3px);
+  border-right-width: 2px;
+  border-top-width: 2px;
+}
+
+.inkline-crop-mark-br {
+  top: calc(100% + 3px);
+  border-left-width: 2px;
+  border-top-width: 2px;
+}
+
+.inkline-crop-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px dashed var(--text-muted);
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+
+.inkline-crop-line-left {
+  left: var(--inkline-crop-left);
+}
+
+.inkline-crop-line-right {
+  left: var(--inkline-crop-right);
+}
+
+.inkline-crop-mark:hover ~ .inkline-crop-line {
+  opacity: 1;
 }

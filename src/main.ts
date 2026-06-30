@@ -44,11 +44,7 @@ export default class InklinePlugin extends Plugin {
   async insertInlineInk(editor: Editor, ctx: MarkdownFileInfo): Promise<void> {
     const sourcePath = ctx.file?.path ?? "";
     const name = await this.inkFiles.getNextAutoName(sourcePath);
-    const created = await this.inkFiles.createBlankInkFile(
-      name,
-      this.settings.defaultPreset,
-      sourcePath,
-    );
+    const created = await this.inkFiles.createBlankInkFile(name, sourcePath);
     const markdown = createMarkdownImage(created.path);
     const insertStart = editor.getCursor("from");
 

@@ -9,7 +9,7 @@ Keep private planning, investigation notes, and local reference material outside
 Source lives in `src/`, with each module holding one responsibility:
 
 - `main.ts` — plugin entry point: registers commands, the settings tab, and the render enhancer, and orchestrates insert/edit/discard flows.
-- `ink-file.ts` — `InkFileService`: all vault file IO, `.ink.png` naming and slugging, canvas presets, and blank PNG creation.
+- `ink-file.ts` — `InkFileService`: all vault file IO, `.ink.png` naming and slugging, the square/narrow-band canvas geometry constants, and blank PNG creation.
 - `ink-editor-modal.ts` — `InkEditorModal`: the pen/eraser drawing canvas with undo/redo, rename, and grayscale-flatten on save.
 - `render-enhancer.ts` — `RenderEnhancer`: tags rendered ink `<img>` elements, applies display CSS variables, handles click-to-edit, and refreshes previews after a save.
 - `markdown-image.ts` — pure helpers for parsing Markdown/wiki image links and building embed Markdown. No Obsidian state beyond the `Editor` cursor.

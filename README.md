@@ -13,7 +13,7 @@ Early development. The initial scope is deliberately narrow:
 - Inline Markdown image embeds.
 - Black ink on an opaque white background.
 - Pen and eraser tools.
-- Small fixed canvas presets.
+- A square drawing canvas that exports at a narrower width when the drawing stays inside the centered band, with on-canvas crop guides.
 - Human-readable names with incrementing defaults.
 
 ## Usage
@@ -51,7 +51,7 @@ Then enable the plugin in Obsidian.
 ```text
 src/
   main.ts             Plugin entry: commands, settings, and editor wiring.
-  ink-file.ts         InkFileService: vault IO, naming, presets, blank PNGs.
+  ink-file.ts         InkFileService: vault IO, naming, canvas geometry, blank PNGs.
   ink-editor-modal.ts InkEditorModal: pen/eraser canvas, undo/redo, save.
   render-enhancer.ts  RenderEnhancer: tags and refreshes rendered ink embeds.
   markdown-image.ts   Markdown/wiki image link parsing and embed helpers.

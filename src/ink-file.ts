@@ -4,14 +4,11 @@ import { InklineSettings } from "./settings";
 
 const INK_EXTENSION = ".ink.png";
 
-export type CanvasPresetId = "symbol" | "wide-symbol" | "short-word";
-
-export interface CanvasPreset {
-  id: CanvasPresetId;
-  name: string;
-  width: number;
-  height: number;
-}
+// The editor always works on a square canvas. A drawing that stays within the
+// centered narrow band is exported at NARROW_WIDTH; anything wider is exported
+// as the full square. See ink-editor-modal.ts for the crop guides and detection.
+export const CANVAS_SIZE = 300;
+export const NARROW_WIDTH = 180;
 
 export interface CreatedInkFile {
   file: TFile;
@@ -20,27 +17,6 @@ export interface CreatedInkFile {
   width: number;
   height: number;
 }
-
-export const CANVAS_PRESETS: Record<CanvasPresetId, CanvasPreset> = {
-  symbol: {
-    id: "symbol",
-    name: "Symbol",
-    width: 256,
-    height: 256,
-  },
-  "wide-symbol": {
-    id: "wide-symbol",
-    name: "Wide symbol",
-    width: 512,
-    height: 256,
-  },
-  "short-word": {
-    id: "short-word",
-    name: "Short word",
-    width: 1024,
-    height: 256,
-  },
-};
 
 export class InkFileService {
   constructor(
@@ -68,10 +44,8 @@ export class InkFileService {
 
   async createBlankInkFile(
     name: string,
-    presetId: CanvasPresetId,
     sourcePath: string,
   ): Promise<CreatedInkFile> {
-    const preset = CANVAS_PRESETS[presetId];
     const folderPath = await this.getInkFolderPath(sourcePath);
     await this.ensureFolder(folderPath);
 
@@ -79,15 +53,15 @@ export class InkFileService {
     const stem = this.slugify(displayName) || await this.getNextAutoName(sourcePath);
     const finalStem = this.findAvailableStem(folderPath, stem);
     const path = this.buildInkPath(folderPath, finalStem);
-    const data = await this.createBlankPng(preset.width, preset.height);
+    const data = await this.createBlankPng(CANVAS_SIZE, CANVAS_SIZE);
     const file = await this.app.vault.createBinary(path, data);
 
     return {
       file,
       name: finalStem === stem ? displayName || finalStem : finalStem,
       path,
-      width: preset.width,
-      height: preset.height,
+      width: CANVAS_SIZE,
+      height: CANVAS_SIZE,
     };
   }
 

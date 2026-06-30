@@ -1,6 +1,6 @@
 import { App, ButtonComponent, Modal, Notice, TFile } from "obsidian";
 import { canvasToPngArrayBuffer, loadImage } from "./canvas";
-import { InkFileService } from "./ink-file";
+import { CANVAS_SIZE, InkFileService, NARROW_WIDTH } from "./ink-file";
 
 type InkTool = "pen" | "eraser";
 
@@ -13,6 +13,11 @@ const BRUSH_SIZES = [10, 20, 30, 40];
 const DEFAULT_PEN_SIZE = BRUSH_SIZES[0];
 const MAX_UNDO_STEPS = 50;
 const MAX_CANVAS_DISPLAY_WIDTH = 768;
+
+// Empty horizontal margin on each side of the centered narrow band.
+const BAND_MARGIN = (CANVAS_SIZE - NARROW_WIDTH) / 2;
+// Pixels darker than this (grayscale, on white) count as ink for band detection.
+const INK_THRESHOLD = 250;
 
 interface InkEditorModalOptions {
   isNew?: boolean;
@@ -103,7 +108,9 @@ export class InkEditorModal extends Modal {
       });
 
     const canvasWrapEl = contentEl.createDiv({ cls: "inkline-canvas-wrap" });
-    this.canvasEl = canvasWrapEl.createEl("canvas", { cls: "inkline-editor-canvas" });
+    const stageEl = canvasWrapEl.createDiv({ cls: "inkline-canvas-stage" });
+    this.canvasEl = stageEl.createEl("canvas", { cls: "inkline-editor-canvas" });
+    this.buildCropGuides(stageEl);
     this.canvasEl.addEventListener("pointerdown", (event) => this.startStroke(event));
     this.canvasEl.addEventListener("pointermove", (event) => this.continueStroke(event));
     this.canvasEl.addEventListener("pointerup", (event) => this.endStroke(event));
@@ -179,6 +186,25 @@ export class InkEditorModal extends Modal {
     this.canvasEl.style.cursor = brushCursor(diameter, this.tool);
   }
 
+  /**
+   * Corner crop-marks sitting just outside the canvas mark the narrow-band
+   * cutoff (their inner edge is the cut line). Hovering a mark reveals the full
+   * dashed cutoff lines. These are DOM only and never touch the exported PNG.
+   */
+  private buildCropGuides(stageEl: HTMLElement): void {
+    const leftPercent = (BAND_MARGIN / CANVAS_SIZE) * 100;
+    const guidesEl = stageEl.createDiv({ cls: "inkline-crop-guides" });
+    guidesEl.style.setProperty("--inkline-crop-left", `${leftPercent}%`);
+    guidesEl.style.setProperty("--inkline-crop-right", `${100 - leftPercent}%`);
+
+    for (const corner of ["tl", "tr", "bl", "br"]) {
+      guidesEl.createDiv({ cls: `inkline-crop-mark inkline-crop-mark-${corner}` });
+    }
+
+    guidesEl.createDiv({ cls: "inkline-crop-line inkline-crop-line-left" });
+    guidesEl.createDiv({ cls: "inkline-crop-line inkline-crop-line-right" });
+  }
+
   private async loadImage(): Promise<void> {
     const data = await this.fileService.readBinary(this.file);
     const blob = new Blob([data], { type: "image/png" });
@@ -186,9 +212,9 @@ export class InkEditorModal extends Modal {
 
     try {
       const image = await loadImage(url);
-      this.canvasEl.width = image.naturalWidth || image.width;
-      this.canvasEl.height = image.naturalHeight || image.height;
-      this.canvasEl.style.width = `${Math.min(this.canvasEl.width, MAX_CANVAS_DISPLAY_WIDTH)}px`;
+      this.canvasEl.width = CANVAS_SIZE;
+      this.canvasEl.height = CANVAS_SIZE;
+      this.canvasEl.style.width = `${Math.min(CANVAS_SIZE, MAX_CANVAS_DISPLAY_WIDTH)}px`;
 
       const ctx = this.canvasEl.getContext("2d", { willReadFrequently: true });
       if (!ctx) {
@@ -197,8 +223,18 @@ export class InkEditorModal extends Modal {
 
       this.ctx = ctx;
       this.ctx.fillStyle = "#ffffff";
-      this.ctx.fillRect(0, 0, this.canvasEl.width, this.canvasEl.height);
-      this.ctx.drawImage(image, 0, 0, this.canvasEl.width, this.canvasEl.height);
+      this.ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+
+      // Always edit on the square. A previously cropped (narrow) file is scaled
+      // to the canvas height and re-centered into the band so editing continues.
+      const sourceWidth = image.naturalWidth || image.width;
+      const sourceHeight = image.naturalHeight || image.height;
+      if (sourceWidth > 0 && sourceHeight > 0) {
+        const drawWidth = Math.min((sourceWidth / sourceHeight) * CANVAS_SIZE, CANVAS_SIZE);
+        const offsetX = Math.round((CANVAS_SIZE - drawWidth) / 2);
+        this.ctx.drawImage(image, offsetX, 0, drawWidth, CANVAS_SIZE);
+      }
+
       this.updateBrushCursorStyle();
     } finally {
       URL.revokeObjectURL(url);
@@ -336,11 +372,49 @@ export class InkEditorModal extends Modal {
     await this.renameFromInput();
     this.forceGrayscaleOpaque();
 
-    const data = await canvasToPngArrayBuffer(this.canvasEl);
+    const data = await canvasToPngArrayBuffer(this.exportCanvas());
     await this.fileService.writeBinary(this.file, data);
     this.hasSaved = true;
     this.options.onSave?.(this.file);
     new Notice(`Saved inline ink: ${this.file.basename}`);
+  }
+
+  /**
+   * Export the full square, or just the centered narrow band when all ink stays
+   * inside it. Run after forceGrayscaleOpaque so the margins are flat white.
+   */
+  private exportCanvas(): HTMLCanvasElement {
+    const bandEnd = CANVAS_SIZE - BAND_MARGIN;
+    if (this.hasInkInColumns(0, BAND_MARGIN) || this.hasInkInColumns(bandEnd, CANVAS_SIZE)) {
+      return this.canvasEl;
+    }
+
+    const cropped = document.createElement("canvas");
+    cropped.width = NARROW_WIDTH;
+    cropped.height = CANVAS_SIZE;
+
+    const ctx = cropped.getContext("2d");
+    if (!ctx) {
+      return this.canvasEl;
+    }
+
+    ctx.drawImage(this.canvasEl, BAND_MARGIN, 0, NARROW_WIDTH, CANVAS_SIZE, 0, 0, NARROW_WIDTH, CANVAS_SIZE);
+    return cropped;
+  }
+
+  private hasInkInColumns(startX: number, endX: number): boolean {
+    if (endX <= startX) {
+      return false;
+    }
+
+    const { data } = this.ctx.getImageData(startX, 0, endX - startX, CANVAS_SIZE);
+    for (let index = 0; index < data.length; index += 4) {
+      if (data[index] < INK_THRESHOLD) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   private async saveAndClose(): Promise<void> {
