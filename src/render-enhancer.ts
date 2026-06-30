@@ -73,17 +73,22 @@ export class RenderEnhancer {
   }
 
   private enhanceImage(imageEl: HTMLImageElement, file: TFile): void {
+    const embedEl = imageEl.closest<HTMLElement>(".image-embed, .internal-embed");
+    if (!embedEl) {
+      // Only inline embeds get shrunk to glyph size. A standalone image view
+      // (opening the .ink.png directly) has no embed wrapper and must stay full
+      // size; refreshFile still updates its src so the content stays current.
+      return;
+    }
+
     imageEl.addClass("inkline-image");
     imageEl.dataset.inklinePath = file.path;
     imageEl.toggleClass("inkline-no-invert", !this.getSettings().darkModeInvert);
     imageEl.style.setProperty("--inkline-display-height", this.getSettings().displayHeight);
 
-    const embedEl = imageEl.closest<HTMLElement>(".image-embed, .internal-embed");
-    if (embedEl) {
-      embedEl.addClass("inkline-embed");
-      embedEl.dataset.inklinePath = file.path;
-      embedEl.style.setProperty("--inkline-display-height", this.getSettings().displayHeight);
-    }
+    embedEl.addClass("inkline-embed");
+    embedEl.dataset.inklinePath = file.path;
+    embedEl.style.setProperty("--inkline-display-height", this.getSettings().displayHeight);
   }
 
   private handleClick(event: MouseEvent): void {
