@@ -96,6 +96,10 @@ export class InkFileService {
     await this.app.vault.modifyBinary(file, data);
   }
 
+  async deleteInkFile(file: TFile): Promise<void> {
+    await this.app.vault.delete(file);
+  }
+
   async renameInkFile(file: TFile, name: string): Promise<TFile> {
     const folderPath = file.parent?.path ?? "";
     const stem = this.slugify(name) || file.basename;

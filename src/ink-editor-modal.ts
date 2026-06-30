@@ -8,6 +8,12 @@ interface Point {
   y: number;
 }
 
+interface InkEditorModalOptions {
+  isNew?: boolean;
+  onSave?: (file: TFile) => void;
+  onDiscard?: (file: TFile) => void | Promise<void>;
+}
+
 export class InkEditorModal extends Modal {
   private nameInputEl!: HTMLInputElement;
   private canvasEl!: HTMLCanvasElement;
@@ -16,6 +22,7 @@ export class InkEditorModal extends Modal {
   private tool: InkTool = "pen";
   private size = 8;
   private drawing = false;
+  private hasSaved = false;
   private lastPoint: Point | null = null;
   private undoStack: ImageData[] = [];
   private redoStack: ImageData[] = [];
@@ -24,7 +31,7 @@ export class InkEditorModal extends Modal {
     app: App,
     private readonly fileService: InkFileService,
     file: TFile,
-    private readonly onSave?: (file: TFile) => void,
+    private readonly options: InkEditorModalOptions = {},
   ) {
     super(app);
     this.file = file;
@@ -45,13 +52,10 @@ export class InkEditorModal extends Modal {
         "aria-label": "Ink name",
       },
     });
-    this.nameInputEl.addEventListener("blur", () => {
-      void this.renameFromInput();
-    });
     this.nameInputEl.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
         event.preventDefault();
-        this.nameInputEl.blur();
+        void this.save();
       }
     });
 
@@ -111,6 +115,10 @@ export class InkEditorModal extends Modal {
   onClose(): void {
     this.modalEl.removeClass("inkline-editor-modal-frame");
     this.contentEl.empty();
+
+    if (this.options.isNew && !this.hasSaved) {
+      void this.options.onDiscard?.(this.file);
+    }
   }
 
   private createToolButton(parentEl: HTMLElement, label: string, tool: InkTool): void {
@@ -266,7 +274,7 @@ export class InkEditorModal extends Modal {
 
     this.file = await this.fileService.renameInkFile(this.file, nextName);
     this.nameInputEl.value = this.file.basename;
-    this.onSave?.(this.file);
+    this.options.onSave?.(this.file);
   }
 
   private async save(): Promise<void> {
@@ -287,7 +295,8 @@ export class InkEditorModal extends Modal {
     });
 
     await this.fileService.writeBinary(this.file, await blob.arrayBuffer());
-    this.onSave?.(this.file);
+    this.hasSaved = true;
+    this.options.onSave?.(this.file);
     new Notice(`Saved inline ink: ${this.file.basename}`);
   }
 
