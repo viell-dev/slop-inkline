@@ -94,38 +94,12 @@
   box-sizing: border-box;
 }
 
-.inkline-canvas-stage {
-  position: relative;
-  width: fit-content;
-  max-width: 100%;
-  margin: 0 auto;
-}
-
 .inkline-editor-canvas {
   display: block;
   max-width: 100% !important;
   height: auto !important;
+  margin: 0 auto;
   background: #ffffff;
   touch-action: none;
   cursor: crosshair;
-}
-
-.inkline-brush-cursor {
-  position: absolute;
-  top: 0;
-  left: 0;
-  display: none;
-  box-sizing: border-box;
-  border: 1px solid rgba(0, 0, 0, 0.55);
-  border-radius: 50%;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-}
-
-.inkline-brush-cursor.is-visible {
-  display: block;
-}
-
-.inkline-brush-cursor-eraser {
-  border-style: dashed;
 }

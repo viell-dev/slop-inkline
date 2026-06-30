@@ -23,7 +23,6 @@ interface InkEditorModalOptions {
 export class InkEditorModal extends Modal {
   private nameInputEl!: HTMLInputElement;
   private canvasEl!: HTMLCanvasElement;
-  private brushCursorEl!: HTMLElement;
   private ctx!: CanvasRenderingContext2D;
   private file: TFile;
   private tool: InkTool = "pen";
@@ -31,7 +30,6 @@ export class InkEditorModal extends Modal {
   private drawing = false;
   private hasSaved = false;
   private lastPoint: Point | null = null;
-  private lastClientPoint: Point | null = null;
   private undoStack: ImageData[] = [];
   private redoStack: ImageData[] = [];
   private readonly toolButtons = new Map<InkTool, ButtonComponent>();
@@ -105,16 +103,11 @@ export class InkEditorModal extends Modal {
       });
 
     const canvasWrapEl = contentEl.createDiv({ cls: "inkline-canvas-wrap" });
-    const stageEl = canvasWrapEl.createDiv({ cls: "inkline-canvas-stage" });
-    this.canvasEl = stageEl.createEl("canvas", { cls: "inkline-editor-canvas" });
-    this.brushCursorEl = stageEl.createDiv({ cls: "inkline-brush-cursor" });
+    this.canvasEl = canvasWrapEl.createEl("canvas", { cls: "inkline-editor-canvas" });
     this.canvasEl.addEventListener("pointerdown", (event) => this.startStroke(event));
     this.canvasEl.addEventListener("pointermove", (event) => this.continueStroke(event));
     this.canvasEl.addEventListener("pointerup", (event) => this.endStroke(event));
     this.canvasEl.addEventListener("pointercancel", (event) => this.endStroke(event));
-    this.canvasEl.addEventListener("pointerenter", () => this.showBrushCursor());
-    this.canvasEl.addEventListener("pointerleave", () => this.hideBrushCursor());
-    this.canvasEl.addEventListener("pointermove", (event) => this.moveBrushCursor(event));
 
     this.updateToolState();
     this.updateSizeState();
@@ -149,19 +142,19 @@ export class InkEditorModal extends Modal {
   private setTool(tool: InkTool): void {
     this.tool = tool;
     this.updateToolState();
+    this.updateBrushCursorStyle();
   }
 
   private setSize(size: number): void {
     this.size = size;
     this.updateSizeState();
-    this.refreshBrushCursor();
+    this.updateBrushCursorStyle();
   }
 
   private updateToolState(): void {
     for (const [tool, button] of this.toolButtons) {
       button.buttonEl.toggleClass("inkline-active", tool === this.tool);
     }
-    this.brushCursorEl?.toggleClass("inkline-brush-cursor-eraser", this.tool === "eraser");
   }
 
   private updateSizeState(): void {
@@ -170,33 +163,20 @@ export class InkEditorModal extends Modal {
     }
   }
 
-  private showBrushCursor(): void {
-    this.brushCursorEl.toggleClass("is-visible", true);
-    this.refreshBrushCursor();
-  }
-
-  private hideBrushCursor(): void {
-    this.brushCursorEl.toggleClass("is-visible", false);
-  }
-
-  private moveBrushCursor(event: PointerEvent): void {
-    this.lastClientPoint = { x: event.clientX, y: event.clientY };
-    this.refreshBrushCursor();
-  }
-
-  private refreshBrushCursor(): void {
-    if (!this.lastClientPoint) {
+  /**
+   * Render the brush footprint as the real canvas cursor (an SVG data URI),
+   * scaled to the on-screen canvas size. Using the native cursor avoids the
+   * jitter of a DOM element chasing pointer events.
+   */
+  private updateBrushCursorStyle(): void {
+    if (!this.canvasEl) {
       return;
     }
 
     const rect = this.canvasEl.getBoundingClientRect();
-    const scale = this.canvasEl.width ? rect.width / this.canvasEl.width : 1;
-    const diameter = this.size * scale;
-
-    this.brushCursorEl.style.width = `${diameter}px`;
-    this.brushCursorEl.style.height = `${diameter}px`;
-    this.brushCursorEl.style.left = `${this.lastClientPoint.x - rect.left}px`;
-    this.brushCursorEl.style.top = `${this.lastClientPoint.y - rect.top}px`;
+    const scale = this.canvasEl.width && rect.width ? rect.width / this.canvasEl.width : 1;
+    const diameter = Math.max(this.size * scale, 1);
+    this.canvasEl.style.cursor = brushCursor(diameter, this.tool);
   }
 
   private async loadImage(): Promise<void> {
@@ -219,6 +199,7 @@ export class InkEditorModal extends Modal {
       this.ctx.fillStyle = "#ffffff";
       this.ctx.fillRect(0, 0, this.canvasEl.width, this.canvasEl.height);
       this.ctx.drawImage(image, 0, 0, this.canvasEl.width, this.canvasEl.height);
+      this.updateBrushCursorStyle();
     } finally {
       URL.revokeObjectURL(url);
     }
@@ -386,4 +367,18 @@ export class InkEditorModal extends Modal {
 
     this.ctx.putImageData(imageData, 0, 0);
   }
+}
+
+function brushCursor(diameter: number, tool: InkTool): string {
+  const padding = 2;
+  const size = Math.ceil(diameter) + padding * 2;
+  const center = size / 2;
+  const hotspot = Math.round(center);
+  const dash = tool === "eraser" ? ` stroke-dasharray="3 3"` : "";
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">` +
+    `<circle cx="${center}" cy="${center}" r="${diameter / 2}" fill="none" stroke="black" stroke-opacity="0.6" stroke-width="1"${dash}/>` +
+    `</svg>`;
+
+  return `url('data:image/svg+xml,${encodeURIComponent(svg)}') ${hotspot} ${hotspot}, crosshair`;
 }
