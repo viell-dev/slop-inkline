@@ -48,7 +48,7 @@ export class InkEditorModal extends Modal {
       cls: "inkline-name-input",
       attr: {
         type: "text",
-        value: this.file.basename,
+        value: this.fileService.getDisplayName(this.file),
         "aria-label": "Ink name",
       },
     });
@@ -267,13 +267,13 @@ export class InkEditorModal extends Modal {
     }
 
     const nextName = this.nameInputEl.value.trim();
-    if (!nextName || nextName === this.file.basename) {
-      this.nameInputEl.value = this.file.basename;
+    if (!nextName || nextName === this.fileService.getDisplayName(this.file)) {
+      this.nameInputEl.value = this.fileService.getDisplayName(this.file);
       return;
     }
 
     this.file = await this.fileService.renameInkFile(this.file, nextName);
-    this.nameInputEl.value = this.file.basename;
+    this.nameInputEl.value = this.fileService.getDisplayName(this.file);
     this.options.onSave?.(this.file);
   }
 

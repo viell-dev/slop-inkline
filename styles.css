@@ -1,7 +1,7 @@
 .inkline-embed,
-.markdown-source-view .image-embed:has(img[src*="/inkline/"]),
-.markdown-reading-view .image-embed:has(img[src*="/inkline/"]),
-.markdown-preview-view .image-embed:has(img[src*="/inkline/"]) {
+.markdown-source-view .image-embed:has(img[src*=".ink.png"]),
+.markdown-reading-view .image-embed:has(img[src*=".ink.png"]),
+.markdown-preview-view .image-embed:has(img[src*=".ink.png"]) {
   display: inline-flex !important;
   align-items: baseline;
   width: auto !important;
@@ -12,9 +12,9 @@
 }
 
 .inkline-image,
-.markdown-source-view .image-embed img[src*="/inkline/"],
-.markdown-reading-view .image-embed img[src*="/inkline/"],
-.markdown-preview-view .image-embed img[src*="/inkline/"] {
+.markdown-source-view .image-embed img[src*=".ink.png"],
+.markdown-reading-view .image-embed img[src*=".ink.png"],
+.markdown-preview-view .image-embed img[src*=".ink.png"] {
   display: block;
   height: var(--inkline-display-height, 1.5em) !important;
   width: auto !important;
@@ -26,9 +26,9 @@
 }
 
 .theme-dark .inkline-image,
-.theme-dark .markdown-source-view .image-embed img[src*="/inkline/"],
-.theme-dark .markdown-reading-view .image-embed img[src*="/inkline/"],
-.theme-dark .markdown-preview-view .image-embed img[src*="/inkline/"] {
+.theme-dark .markdown-source-view .image-embed img[src*=".ink.png"],
+.theme-dark .markdown-reading-view .image-embed img[src*=".ink.png"],
+.theme-dark .markdown-preview-view .image-embed img[src*=".ink.png"] {
   filter: invert(1);
 }
 

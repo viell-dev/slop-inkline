@@ -3,7 +3,6 @@ import type InklinePlugin from "./main";
 import { CanvasPresetId, CANVAS_PRESETS } from "./ink-file";
 
 export interface InklineSettings {
-  attachmentSubfolder: string;
   defaultPreset: CanvasPresetId;
   displayHeight: string;
   darkModeInvert: boolean;
@@ -11,7 +10,6 @@ export interface InklineSettings {
 }
 
 export const DEFAULT_SETTINGS: InklineSettings = {
-  attachmentSubfolder: "inkline",
   defaultPreset: "symbol",
   displayHeight: "1.5em",
   darkModeInvert: true,
@@ -29,19 +27,6 @@ export class InklineSettingTab extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
-
-    new Setting(containerEl)
-      .setName("Attachment subfolder")
-      .setDesc("Folder name used inside Obsidian's configured attachment location.")
-      .addText((text) => {
-        text
-          .setPlaceholder("inkline")
-          .setValue(this.plugin.settings.attachmentSubfolder)
-          .onChange(async (value) => {
-            this.plugin.settings.attachmentSubfolder = value.trim() || DEFAULT_SETTINGS.attachmentSubfolder;
-            await this.plugin.saveSettings();
-          });
-      });
 
     new Setting(containerEl)
       .setName("Default canvas")

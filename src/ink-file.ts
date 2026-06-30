@@ -1,6 +1,9 @@
 import { App, normalizePath, TFile, TFolder } from "obsidian";
 import { InklineSettings } from "./settings";
 
+const INK_EXTENSION = ".ink.png";
+const DEFAULT_ROOT_FOLDER = "inkline";
+
 export type CanvasPresetId = "symbol" | "wide-symbol" | "short-word";
 
 export interface CanvasPreset {
@@ -51,7 +54,7 @@ export class InkFileService {
       this.app.vault
         .getFiles()
         .filter((file) => this.isPngInFolder(file, folderPath))
-        .map((file) => file.basename)
+        .map((file) => this.getDisplayName(file))
         .filter((basename) => /^\d+$/.test(basename)),
     );
 
@@ -75,7 +78,7 @@ export class InkFileService {
     const displayName = name.trim();
     const stem = this.slugify(displayName) || await this.getNextAutoName(sourcePath);
     const finalStem = this.findAvailableStem(folderPath, stem);
-    const path = normalizePath(`${folderPath}/${finalStem}.png`);
+    const path = this.buildInkPath(folderPath, finalStem);
     const data = await this.createBlankPng(preset.width, preset.height);
     const file = await this.app.vault.createBinary(path, data);
 
@@ -104,7 +107,7 @@ export class InkFileService {
     const folderPath = file.parent?.path ?? "";
     const stem = this.slugify(name) || file.basename;
     const finalStem = this.findAvailableStem(folderPath, stem, file.path);
-    const newPath = normalizePath(folderPath ? `${folderPath}/${finalStem}.png` : `${finalStem}.png`);
+    const newPath = this.buildInkPath(folderPath, finalStem);
 
     if (newPath === file.path) {
       return file;
@@ -121,23 +124,14 @@ export class InkFileService {
   }
 
   isInkFile(file: TFile): boolean {
-    const subfolder = this.normalizedSubfolder();
-    const parentPath = file.parent?.path ?? "";
-
-    return (
-      file.extension.toLowerCase() === "png" &&
-      (
-        parentPath === subfolder ||
-        parentPath.endsWith(`/${subfolder}`) ||
-        this.isLegacyRootAutoFile(file, parentPath)
-      )
-    );
+    return file.path.toLowerCase().endsWith(INK_EXTENSION);
   }
 
   slugify(value: string): string {
     return value
       .trim()
       .toLowerCase()
+      .replace(/\.ink\.png$/i, "")
       .replace(/\.png$/i, "")
       .normalize("NFKD")
       .replace(/[\u0300-\u036f]/g, "")
@@ -145,15 +139,18 @@ export class InkFileService {
       .replace(/^-+|-+$/g, "");
   }
 
+  getDisplayName(file: TFile): string {
+    return this.slugify(file.name) || file.basename;
+  }
+
   private async getInkFolderPath(sourcePath: string): Promise<string> {
-    const subfolder = this.normalizedSubfolder();
     const probePath = await this.app.fileManager.getAvailablePathForAttachment(
       ".inkline-probe",
       sourcePath,
     );
     const attachmentFolderPath = dirname(probePath);
 
-    return normalizePath(attachmentFolderPath ? `${attachmentFolderPath}/${subfolder}` : subfolder);
+    return normalizePath(attachmentFolderPath || DEFAULT_ROOT_FOLDER);
   }
 
   private findAvailableStem(folderPath: string, stem: string, currentPath?: string): string {
@@ -162,7 +159,7 @@ export class InkFileService {
 
     while (
       this.pathExists(
-        normalizePath(folderPath ? `${folderPath}/${candidate}.png` : `${candidate}.png`),
+        this.buildInkPath(folderPath, candidate),
         currentPath,
       )
     ) {
@@ -178,20 +175,15 @@ export class InkFileService {
   }
 
   private isPngInFolder(file: TFile, folderPath: string): boolean {
-    return file.extension.toLowerCase() === "png" && file.parent?.path === folderPath;
-  }
-
-  private isLegacyRootAutoFile(file: TFile, parentPath: string): boolean {
-    return parentPath === "" && /^\d+$/.test(file.basename);
+    return this.isInkFile(file) && file.parent?.path === folderPath;
   }
 
   private formatAutoName(value: number): string {
     return value.toString().padStart(3, "0");
   }
 
-  private normalizedSubfolder(): string {
-    const subfolder = normalizePath(this.getSettings().attachmentSubfolder.trim());
-    return subfolder || "inkline";
+  private buildInkPath(folderPath: string, stem: string): string {
+    return normalizePath(folderPath ? `${folderPath}/${stem}${INK_EXTENSION}` : `${stem}${INK_EXTENSION}`);
   }
 
   private async ensureFolder(folderPath: string): Promise<void> {

@@ -4,6 +4,8 @@ Inkline is an Obsidian plugin for small inline grayscale ink images: symbols, pu
 
 The plugin stores each drawing as a normal PNG file in the vault and inserts it with standard Markdown image syntax, so notes remain readable if the plugin is disabled.
 
+Inkline marks editable images with the `.ink.png` filename suffix. New files follow Obsidian's attachment-location setting; if that would place attachments at the vault root, Inkline creates them under `inkline/` to avoid clutter.
+
 ## Status
 
 Early development. The initial scope is deliberately narrow:
@@ -16,9 +18,9 @@ Early development. The initial scope is deliberately narrow:
 
 ## Usage
 
-Run **Insert inline ink** from the command palette while editing a Markdown note. Inkline prompts for a name, creates a PNG attachment, inserts a Markdown image embed, and opens the editor.
+Run **Insert inline ink** from the command palette while editing a Markdown note. Inkline creates a PNG attachment, inserts a Markdown image embed, and opens the editor.
 
-Click an Inkline image in rendered Markdown to reopen it.
+Place the cursor on an Inkline image link, or select a rendered Inkline image in Live Preview, then run **Edit inline ink at cursor** to reopen it.
 
 ## Development
 
