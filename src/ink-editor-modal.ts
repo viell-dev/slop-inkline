@@ -30,6 +30,7 @@ export class InkEditorModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.empty();
+    this.modalEl.addClass("inkline-editor-modal-frame");
     contentEl.addClass("inkline-editor-modal");
 
     contentEl.createEl("h2", { text: this.file.basename });
@@ -82,6 +83,7 @@ export class InkEditorModal extends Modal {
   }
 
   onClose(): void {
+    this.modalEl.removeClass("inkline-editor-modal-frame");
     this.contentEl.empty();
   }
 

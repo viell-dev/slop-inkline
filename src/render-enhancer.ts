@@ -22,10 +22,13 @@ export class RenderEnhancer {
 
   refreshFile(file: TFile): void {
     const resourcePath = this.plugin.app.vault.getResourcePath(file);
+    const nextSrc = `${resourcePath}?inkline=${Date.now()}`;
 
-    for (const imageEl of Array.from(activeDocument.querySelectorAll<HTMLImageElement>("img.inkline-image"))) {
-      if (imageEl.dataset.inklinePath === file.path) {
-        imageEl.src = `${resourcePath}?inkline=${Date.now()}`;
+    for (const imageEl of Array.from(activeDocument.querySelectorAll<HTMLImageElement>("img"))) {
+      const resolvedFile = this.resolveImageFile(imageEl);
+      if (resolvedFile?.path === file.path) {
+        imageEl.src = nextSrc;
+        this.enhanceImage(imageEl, file);
       }
     }
   }
@@ -37,17 +40,21 @@ export class RenderEnhancer {
         continue;
       }
 
-      imageEl.addClass("inkline-image");
-      imageEl.dataset.inklinePath = file.path;
-      imageEl.toggleClass("inkline-no-invert", !this.getSettings().darkModeInvert);
-      imageEl.style.setProperty("--inkline-display-height", this.getSettings().displayHeight);
+      this.enhanceImage(imageEl, file);
+    }
+  }
 
-      const embedEl = imageEl.closest<HTMLElement>(".image-embed, .internal-embed");
-      if (embedEl) {
-        embedEl.addClass("inkline-embed");
-        embedEl.dataset.inklinePath = file.path;
-        embedEl.style.setProperty("--inkline-display-height", this.getSettings().displayHeight);
-      }
+  private enhanceImage(imageEl: HTMLImageElement, file: TFile): void {
+    imageEl.addClass("inkline-image");
+    imageEl.dataset.inklinePath = file.path;
+    imageEl.toggleClass("inkline-no-invert", !this.getSettings().darkModeInvert);
+    imageEl.style.setProperty("--inkline-display-height", this.getSettings().displayHeight);
+
+    const embedEl = imageEl.closest<HTMLElement>(".image-embed, .internal-embed");
+    if (embedEl) {
+      embedEl.addClass("inkline-embed");
+      embedEl.dataset.inklinePath = file.path;
+      embedEl.style.setProperty("--inkline-display-height", this.getSettings().displayHeight);
     }
   }
 

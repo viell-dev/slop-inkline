@@ -43,7 +43,7 @@
   margin-top: 16px;
 }
 
-.modal:has(.inkline-editor-modal) {
+.modal.inkline-editor-modal-frame {
   width: min(960px, calc(100vw - 48px));
   max-width: calc(100vw - 48px);
 }
@@ -80,9 +80,9 @@
 
 .inkline-editor-canvas {
   display: block;
-  width: 80%;
-  max-width: 614px;
-  height: auto;
+  width: 80% !important;
+  max-width: 614px !important;
+  height: auto !important;
   margin: 0 auto;
   background: #ffffff;
   touch-action: none;
