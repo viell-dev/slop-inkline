@@ -1,0 +1,12 @@
+.inkline-image {
+  display: inline-block;
+  height: 1.25em;
+  width: auto;
+  vertical-align: -0.2em;
+  image-rendering: auto;
+}
+
+.theme-dark .inkline-image {
+  filter: invert(1);
+}
+

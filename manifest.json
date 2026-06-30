@@ -1,0 +1,10 @@
+{
+  "id": "inkline",
+  "name": "Inkline",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.7",
+  "description": "Draw small inline grayscale symbols and handwriting fragments as editable PNG images.",
+  "author": "Viell",
+  "isDesktopOnly": false
+}
+
