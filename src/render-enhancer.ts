@@ -33,6 +33,16 @@ export class RenderEnhancer {
     }
   }
 
+  openSelectedInkImage(): boolean {
+    const file = this.findSelectedInkFile();
+    if (!file) {
+      return false;
+    }
+
+    this.openEditor(file);
+    return true;
+  }
+
   private enhance(el: HTMLElement): void {
     for (const imageEl of Array.from(el.querySelectorAll<HTMLImageElement>("img"))) {
       const file = this.resolveImageFile(imageEl);
@@ -82,6 +92,48 @@ export class RenderEnhancer {
     event.preventDefault();
     event.stopPropagation();
     this.openEditor(file);
+  }
+
+  private findSelectedInkFile(): TFile | null {
+    for (const imageEl of this.getSelectedImageElements()) {
+      const file = this.resolveImageFile(imageEl);
+      if (file) {
+        return file;
+      }
+    }
+
+    return null;
+  }
+
+  private getSelectedImageElements(): HTMLImageElement[] {
+    const selectors = [
+      ".inkline-embed.is-selected img",
+      ".inkline-embed.is-focused img",
+      ".inkline-embed.mod-active img",
+      ".image-embed.is-selected img",
+      ".image-embed.is-focused img",
+      ".image-embed.mod-active img",
+      ".image-embed[aria-selected='true'] img",
+      ".internal-embed.is-selected img",
+      ".internal-embed.is-focused img",
+      ".internal-embed.mod-active img",
+      ".internal-embed[aria-selected='true'] img",
+      "img.is-selected",
+      "img.is-focused",
+      "img.mod-active",
+      "img[aria-selected='true']",
+    ];
+    const images = Array.from(activeDocument.querySelectorAll<HTMLImageElement>(selectors.join(",")));
+    const activeElement = activeDocument.activeElement;
+
+    if (activeElement instanceof HTMLElement) {
+      const activeImage = activeElement.closest(".image-embed, .internal-embed, .inkline-embed")?.querySelector("img");
+      if (activeImage instanceof HTMLImageElement) {
+        images.push(activeImage);
+      }
+    }
+
+    return [...new Set(images)];
   }
 
   private fileFromPath(path: string): TFile | null {

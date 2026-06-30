@@ -72,12 +72,20 @@ export default class InklinePlugin extends Plugin {
     const token = findImageTokenAtCursor(editor);
 
     if (!token) {
+      if (this.renderEnhancer.openSelectedInkImage()) {
+        return;
+      }
+
       new Notice("No image link at cursor.");
       return;
     }
 
     const file = this.app.metadataCache.getFirstLinkpathDest(token.path, sourcePath);
     if (!file || !this.inkFiles.isInkFile(file)) {
+      if (this.renderEnhancer.openSelectedInkImage()) {
+        return;
+      }
+
       new Notice("No Inkline image at cursor.");
       return;
     }
