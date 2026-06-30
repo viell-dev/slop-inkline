@@ -39,8 +39,15 @@ export class RenderEnhancer {
 
       imageEl.addClass("inkline-image");
       imageEl.dataset.inklinePath = file.path;
-      imageEl.style.height = this.getSettings().displayHeight;
       imageEl.toggleClass("inkline-no-invert", !this.getSettings().darkModeInvert);
+      imageEl.style.setProperty("--inkline-display-height", this.getSettings().displayHeight);
+
+      const embedEl = imageEl.closest<HTMLElement>(".image-embed, .internal-embed");
+      if (embedEl) {
+        embedEl.addClass("inkline-embed");
+        embedEl.dataset.inklinePath = file.path;
+        embedEl.style.setProperty("--inkline-display-height", this.getSettings().displayHeight);
+      }
     }
   }
 
@@ -50,12 +57,17 @@ export class RenderEnhancer {
       return;
     }
 
+    const embedEl = target.closest<HTMLElement>(".inkline-embed");
     const imageEl = target.closest("img");
-    if (!(imageEl instanceof HTMLImageElement)) {
+    if (!embedEl && !(imageEl instanceof HTMLImageElement)) {
       return;
     }
 
-    const file = this.resolveImageFile(imageEl);
+    const file = embedEl?.dataset.inklinePath
+      ? this.fileFromPath(embedEl.dataset.inklinePath)
+      : imageEl instanceof HTMLImageElement
+        ? this.resolveImageFile(imageEl)
+        : null;
     if (!file) {
       return;
     }
@@ -65,11 +77,20 @@ export class RenderEnhancer {
     this.openEditor(file);
   }
 
+  private fileFromPath(path: string): TFile | null {
+    const file = this.plugin.app.vault.getFileByPath(path);
+    if (file && this.fileService.isInkFile(file)) {
+      return file;
+    }
+
+    return null;
+  }
+
   private resolveImageFile(imageEl: HTMLImageElement): TFile | null {
     const dataPath = imageEl.dataset.inklinePath;
     if (dataPath) {
-      const file = this.plugin.app.vault.getFileByPath(dataPath);
-      if (file && this.fileService.isInkFile(file)) {
+      const file = this.fileFromPath(dataPath);
+      if (file) {
         return file;
       }
     }

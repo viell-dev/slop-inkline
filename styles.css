@@ -1,9 +1,22 @@
+.inkline-embed {
+  display: inline-flex !important;
+  align-items: baseline;
+  width: auto !important;
+  height: var(--inkline-display-height, 1.25em) !important;
+  max-width: none !important;
+  line-height: 1;
+  vertical-align: -0.2em;
+}
+
 .inkline-image {
-  display: inline-block;
-  height: 1.25em;
-  width: auto;
+  display: block;
+  height: var(--inkline-display-height, 1.25em) !important;
+  width: auto !important;
+  max-width: none !important;
+  max-height: none !important;
   vertical-align: -0.2em;
   image-rendering: auto;
+  object-fit: contain;
 }
 
 .theme-dark .inkline-image {

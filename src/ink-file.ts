@@ -102,7 +102,11 @@ export class InkFileService {
 
     return (
       file.extension.toLowerCase() === "png" &&
-      (parentPath === subfolder || parentPath.endsWith(`/${subfolder}`))
+      (
+        parentPath === subfolder ||
+        parentPath.endsWith(`/${subfolder}`) ||
+        this.isLegacyRootAutoFile(file, parentPath)
+      )
     );
   }
 
@@ -120,11 +124,12 @@ export class InkFileService {
   private async getInkFolderPath(sourcePath: string): Promise<string> {
     const subfolder = this.normalizedSubfolder();
     const probePath = await this.app.fileManager.getAvailablePathForAttachment(
-      normalizePath(`${subfolder}/.inkline-probe`),
+      ".inkline-probe",
       sourcePath,
     );
+    const attachmentFolderPath = dirname(probePath);
 
-    return normalizePath(dirname(probePath));
+    return normalizePath(attachmentFolderPath ? `${attachmentFolderPath}/${subfolder}` : subfolder);
   }
 
   private findAvailableStem(folderPath: string, stem: string): string {
@@ -141,6 +146,10 @@ export class InkFileService {
 
   private isPngInFolder(file: TFile, folderPath: string): boolean {
     return file.extension.toLowerCase() === "png" && file.parent?.path === folderPath;
+  }
+
+  private isLegacyRootAutoFile(file: TFile, parentPath: string): boolean {
+    return parentPath === "" && /^\d+$/.test(file.basename);
   }
 
   private formatAutoName(value: number): string {
