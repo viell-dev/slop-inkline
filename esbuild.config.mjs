@@ -1,6 +1,7 @@
+import builtins from "builtin-modules";
+import fs from "fs/promises";
 import esbuild from "esbuild";
 import process from "process";
-import builtins from "builtin-modules";
 
 const banner =
 `/*
@@ -38,14 +39,22 @@ const context = await esbuild.context({
   logLevel: "info",
   sourcemap: prod ? false : "inline",
   treeShaking: true,
-  outfile: "main.js",
+  outfile: "dist/main.js",
   minify: prod,
 });
 
 if (prod) {
   await context.rebuild();
+  await copyReleaseFiles();
   process.exit(0);
 }
 
 await context.watch();
 
+async function copyReleaseFiles() {
+  await fs.mkdir("dist", { recursive: true });
+  await Promise.all([
+    fs.copyFile("manifest.json", "dist/manifest.json"),
+    fs.copyFile("styles.css", "dist/styles.css"),
+  ]);
+}

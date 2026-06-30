@@ -27,10 +27,19 @@ npm install
 npm run build
 ```
 
-For manual testing, copy or symlink this repository into an Obsidian vault under:
+`npm run build` type-checks the TypeScript source, bundles the plugin, and writes a local test/release payload to:
+
+```text
+dist/
+  manifest.json
+  main.js
+  styles.css
+```
+
+For manual testing, copy or symlink `dist/` into an Obsidian vault under:
 
 ```text
 .obsidian/plugins/inkline/
 ```
 
-Then build and enable the plugin in Obsidian.
+Then enable the plugin in Obsidian.
