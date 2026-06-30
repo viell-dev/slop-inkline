@@ -43,8 +43,14 @@
   margin-top: 16px;
 }
 
+.modal:has(.inkline-editor-modal) {
+  width: min(960px, calc(100vw - 48px));
+  max-width: calc(100vw - 48px);
+}
+
 .inkline-editor-modal {
-  width: min(960px, 90vw);
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .inkline-editor-toolbar {
@@ -62,16 +68,20 @@
 }
 
 .inkline-canvas-wrap {
-  max-height: min(65vh, 720px);
-  overflow: auto;
+  width: 100%;
+  max-height: min(70vh, 720px);
+  overflow-x: hidden;
+  overflow-y: auto;
   border: 1px solid var(--background-modifier-border);
   background: var(--background-secondary);
   padding: 12px;
+  box-sizing: border-box;
 }
 
 .inkline-editor-canvas {
   display: block;
-  width: min(100%, 768px);
+  width: 100%;
+  max-width: 768px;
   height: auto;
   margin: 0 auto;
   background: #ffffff;
