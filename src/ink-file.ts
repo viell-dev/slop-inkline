@@ -1,4 +1,5 @@
 import { App, normalizePath, TFile, TFolder } from "obsidian";
+import { canvasToPngArrayBuffer } from "./canvas";
 import { InklineSettings } from "./settings";
 
 const INK_EXTENSION = ".ink.png";
@@ -219,34 +220,12 @@ export class InkFileService {
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, width, height);
 
-    const blob = await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob((result) => {
-        if (result) {
-          resolve(result);
-        } else {
-          reject(new Error("Could not export blank PNG."));
-        }
-      }, "image/png");
-    });
-
-    return blob.arrayBuffer();
+    return canvasToPngArrayBuffer(canvas);
   }
-}
-
-export function createMarkdownImage(path: string): string {
-  return `![](${formatMarkdownDestination(path)})`;
 }
 
 function dirname(path: string): string {
   const normalizedPath = normalizePath(path);
   const index = normalizedPath.lastIndexOf("/");
   return index === -1 ? "" : normalizedPath.slice(0, index);
-}
-
-function formatMarkdownDestination(path: string): string {
-  if (!/[\s()<>]/.test(path)) {
-    return path;
-  }
-
-  return `<${path.replace(/>/g, "%3E")}>`;
 }

@@ -2,6 +2,24 @@ import { Plugin, TFile } from "obsidian";
 import { InkFileService } from "./ink-file";
 import { InklineSettings } from "./settings";
 
+const SELECTED_IMAGE_SELECTORS = [
+  ".inkline-embed.is-selected img",
+  ".inkline-embed.is-focused img",
+  ".inkline-embed.mod-active img",
+  ".image-embed.is-selected img",
+  ".image-embed.is-focused img",
+  ".image-embed.mod-active img",
+  ".image-embed[aria-selected='true'] img",
+  ".internal-embed.is-selected img",
+  ".internal-embed.is-focused img",
+  ".internal-embed.mod-active img",
+  ".internal-embed[aria-selected='true'] img",
+  "img.is-selected",
+  "img.is-focused",
+  "img.mod-active",
+  "img[aria-selected='true']",
+].join(",");
+
 export class RenderEnhancer {
   constructor(
     private readonly plugin: Plugin,
@@ -106,24 +124,7 @@ export class RenderEnhancer {
   }
 
   private getSelectedImageElements(): HTMLImageElement[] {
-    const selectors = [
-      ".inkline-embed.is-selected img",
-      ".inkline-embed.is-focused img",
-      ".inkline-embed.mod-active img",
-      ".image-embed.is-selected img",
-      ".image-embed.is-focused img",
-      ".image-embed.mod-active img",
-      ".image-embed[aria-selected='true'] img",
-      ".internal-embed.is-selected img",
-      ".internal-embed.is-focused img",
-      ".internal-embed.mod-active img",
-      ".internal-embed[aria-selected='true'] img",
-      "img.is-selected",
-      "img.is-focused",
-      "img.mod-active",
-      "img[aria-selected='true']",
-    ];
-    const images = Array.from(activeDocument.querySelectorAll<HTMLImageElement>(selectors.join(",")));
+    const images = Array.from(activeDocument.querySelectorAll<HTMLImageElement>(SELECTED_IMAGE_SELECTORS));
     const activeElement = activeDocument.activeElement;
 
     if (activeElement instanceof HTMLElement) {

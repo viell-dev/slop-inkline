@@ -45,3 +45,16 @@ For manual testing, copy or symlink `dist/` into an Obsidian vault under:
 ```
 
 Then enable the plugin in Obsidian.
+
+### Source layout
+
+```text
+src/
+  main.ts             Plugin entry: commands, settings, and editor wiring.
+  ink-file.ts         InkFileService: vault IO, naming, presets, blank PNGs.
+  ink-editor-modal.ts InkEditorModal: pen/eraser canvas, undo/redo, save.
+  render-enhancer.ts  RenderEnhancer: tags and refreshes rendered ink embeds.
+  markdown-image.ts   Markdown/wiki image link parsing and embed helpers.
+  canvas.ts           Shared canvas helpers (load image, export PNG).
+  settings.ts         Settings schema and settings tab.
+```

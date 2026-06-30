@@ -1,4 +1,5 @@
 import { App, ButtonComponent, Modal, Notice, TFile } from "obsidian";
+import { canvasToPngArrayBuffer, loadImage } from "./canvas";
 import { InkFileService } from "./ink-file";
 
 type InkTool = "pen" | "eraser";
@@ -7,6 +8,10 @@ interface Point {
   x: number;
   y: number;
 }
+
+const DEFAULT_PEN_SIZE = 8;
+const MAX_UNDO_STEPS = 50;
+const MAX_CANVAS_DISPLAY_WIDTH = 768;
 
 interface InkEditorModalOptions {
   isNew?: boolean;
@@ -20,7 +25,7 @@ export class InkEditorModal extends Modal {
   private ctx!: CanvasRenderingContext2D;
   private file: TFile;
   private tool: InkTool = "pen";
-  private size = 8;
+  private size = DEFAULT_PEN_SIZE;
   private drawing = false;
   private hasSaved = false;
   private lastPoint: Point | null = null;
@@ -138,7 +143,7 @@ export class InkEditorModal extends Modal {
       const image = await loadImage(url);
       this.canvasEl.width = image.naturalWidth || image.width;
       this.canvasEl.height = image.naturalHeight || image.height;
-      this.canvasEl.style.width = `${Math.min(this.canvasEl.width, 768)}px`;
+      this.canvasEl.style.width = `${Math.min(this.canvasEl.width, MAX_CANVAS_DISPLAY_WIDTH)}px`;
 
       const ctx = this.canvasEl.getContext("2d", { willReadFrequently: true });
       if (!ctx) {
@@ -217,7 +222,7 @@ export class InkEditorModal extends Modal {
   private pushUndo(): void {
     this.undoStack.push(this.ctx.getImageData(0, 0, this.canvasEl.width, this.canvasEl.height));
 
-    if (this.undoStack.length > 50) {
+    if (this.undoStack.length > MAX_UNDO_STEPS) {
       this.undoStack.shift();
     }
   }
@@ -284,17 +289,9 @@ export class InkEditorModal extends Modal {
 
     await this.renameFromInput();
     this.forceGrayscaleOpaque();
-    const blob = await new Promise<Blob>((resolve, reject) => {
-      this.canvasEl.toBlob((result) => {
-        if (result) {
-          resolve(result);
-        } else {
-          reject(new Error("Could not export PNG."));
-        }
-      }, "image/png");
-    });
 
-    await this.fileService.writeBinary(this.file, await blob.arrayBuffer());
+    const data = await canvasToPngArrayBuffer(this.canvasEl);
+    await this.fileService.writeBinary(this.file, data);
     this.hasSaved = true;
     this.options.onSave?.(this.file);
     new Notice(`Saved inline ink: ${this.file.basename}`);
@@ -324,13 +321,4 @@ export class InkEditorModal extends Modal {
 
     this.ctx.putImageData(imageData, 0, 0);
   }
-}
-
-function loadImage(url: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("Could not load ink image."));
-    image.src = url;
-  });
 }
