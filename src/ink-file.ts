@@ -2,7 +2,6 @@ import { App, normalizePath, TFile, TFolder } from "obsidian";
 import { InklineSettings } from "./settings";
 
 const INK_EXTENSION = ".ink.png";
-const DEFAULT_ROOT_FOLDER = "inkline";
 
 export type CanvasPresetId = "symbol" | "wide-symbol" | "short-word";
 
@@ -150,7 +149,7 @@ export class InkFileService {
     );
     const attachmentFolderPath = dirname(probePath);
 
-    return normalizePath(attachmentFolderPath || DEFAULT_ROOT_FOLDER);
+    return normalizePath(attachmentFolderPath);
   }
 
   private findAvailableStem(folderPath: string, stem: string, currentPath?: string): string {

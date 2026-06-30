@@ -4,7 +4,7 @@ Inkline is an Obsidian plugin for small inline grayscale ink images: symbols, pu
 
 The plugin stores each drawing as a normal PNG file in the vault and inserts it with standard Markdown image syntax, so notes remain readable if the plugin is disabled.
 
-Inkline marks editable images with the `.ink.png` filename suffix. New files follow Obsidian's attachment-location setting; if that would place attachments at the vault root, Inkline creates them under `inkline/` to avoid clutter.
+Inkline marks editable images with the `.ink.png` filename suffix. New files follow Obsidian's attachment-location setting exactly, and you can move them anywhere in the vault.
 
 ## Status
 
