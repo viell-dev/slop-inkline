@@ -80,8 +80,7 @@
 
 .inkline-editor-canvas {
   display: block;
-  width: 80% !important;
-  max-width: 614px !important;
+  max-width: 100% !important;
   height: auto !important;
   margin: 0 auto;
   background: #ffffff;

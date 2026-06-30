@@ -12,7 +12,7 @@ export class InkEditorModal extends Modal {
   private canvasEl!: HTMLCanvasElement;
   private ctx!: CanvasRenderingContext2D;
   private tool: InkTool = "pen";
-  private size = 24;
+  private size = 8;
   private drawing = false;
   private lastPoint: Point | null = null;
   private undoStack: ImageData[] = [];
@@ -45,7 +45,7 @@ export class InkEditorModal extends Modal {
       attr: {
         type: "range",
         min: "1",
-        max: "96",
+        max: "48",
         value: this.size.toString(),
       },
     });
@@ -104,6 +104,7 @@ export class InkEditorModal extends Modal {
       const image = await loadImage(url);
       this.canvasEl.width = image.naturalWidth || image.width;
       this.canvasEl.height = image.naturalHeight || image.height;
+      this.canvasEl.style.width = `${Math.min(this.canvasEl.width, 768)}px`;
 
       const ctx = this.canvasEl.getContext("2d", { willReadFrequently: true });
       if (!ctx) {
