@@ -9,7 +9,8 @@ interface Point {
   y: number;
 }
 
-const DEFAULT_PEN_SIZE = 8;
+const BRUSH_SIZES = [10, 20, 30, 40];
+const DEFAULT_PEN_SIZE = BRUSH_SIZES[0];
 const MAX_UNDO_STEPS = 50;
 const MAX_CANVAS_DISPLAY_WIDTH = 768;
 
@@ -22,6 +23,7 @@ interface InkEditorModalOptions {
 export class InkEditorModal extends Modal {
   private nameInputEl!: HTMLInputElement;
   private canvasEl!: HTMLCanvasElement;
+  private brushCursorEl!: HTMLElement;
   private ctx!: CanvasRenderingContext2D;
   private file: TFile;
   private tool: InkTool = "pen";
@@ -29,8 +31,11 @@ export class InkEditorModal extends Modal {
   private drawing = false;
   private hasSaved = false;
   private lastPoint: Point | null = null;
+  private lastClientPoint: Point | null = null;
   private undoStack: ImageData[] = [];
   private redoStack: ImageData[] = [];
+  private readonly toolButtons = new Map<InkTool, ButtonComponent>();
+  private readonly sizeButtons = new Map<number, ButtonComponent>();
 
   constructor(
     app: App,
@@ -68,19 +73,11 @@ export class InkEditorModal extends Modal {
     this.createToolButton(toolbarEl, "Pen", "pen");
     this.createToolButton(toolbarEl, "Eraser", "eraser");
 
-    const sizeLabelEl = toolbarEl.createEl("label", { cls: "inkline-size-control" });
-    sizeLabelEl.createSpan({ text: "Size" });
-    const sizeInputEl = sizeLabelEl.createEl("input", {
-      attr: {
-        type: "range",
-        min: "1",
-        max: "48",
-        value: this.size.toString(),
-      },
-    });
-    sizeInputEl.addEventListener("input", () => {
-      this.size = Number(sizeInputEl.value);
-    });
+    const sizeGroupEl = toolbarEl.createDiv({ cls: "inkline-size-control" });
+    sizeGroupEl.createSpan({ text: "Size" });
+    for (const size of BRUSH_SIZES) {
+      this.createSizeButton(sizeGroupEl, size);
+    }
 
     new ButtonComponent(toolbarEl)
       .setButtonText("Undo")
@@ -108,11 +105,19 @@ export class InkEditorModal extends Modal {
       });
 
     const canvasWrapEl = contentEl.createDiv({ cls: "inkline-canvas-wrap" });
-    this.canvasEl = canvasWrapEl.createEl("canvas", { cls: "inkline-editor-canvas" });
+    const stageEl = canvasWrapEl.createDiv({ cls: "inkline-canvas-stage" });
+    this.canvasEl = stageEl.createEl("canvas", { cls: "inkline-editor-canvas" });
+    this.brushCursorEl = stageEl.createDiv({ cls: "inkline-brush-cursor" });
     this.canvasEl.addEventListener("pointerdown", (event) => this.startStroke(event));
     this.canvasEl.addEventListener("pointermove", (event) => this.continueStroke(event));
     this.canvasEl.addEventListener("pointerup", (event) => this.endStroke(event));
     this.canvasEl.addEventListener("pointercancel", (event) => this.endStroke(event));
+    this.canvasEl.addEventListener("pointerenter", () => this.showBrushCursor());
+    this.canvasEl.addEventListener("pointerleave", () => this.hideBrushCursor());
+    this.canvasEl.addEventListener("pointermove", (event) => this.moveBrushCursor(event));
+
+    this.updateToolState();
+    this.updateSizeState();
 
     void this.loadImage();
   }
@@ -127,11 +132,71 @@ export class InkEditorModal extends Modal {
   }
 
   private createToolButton(parentEl: HTMLElement, label: string, tool: InkTool): void {
-    new ButtonComponent(parentEl)
+    const button = new ButtonComponent(parentEl)
       .setButtonText(label)
-      .onClick(() => {
-        this.tool = tool;
-      });
+      .onClick(() => this.setTool(tool));
+    this.toolButtons.set(tool, button);
+  }
+
+  private createSizeButton(parentEl: HTMLElement, size: number): void {
+    const button = new ButtonComponent(parentEl)
+      .setButtonText(`${size}`)
+      .setTooltip(`Brush size ${size}px`)
+      .onClick(() => this.setSize(size));
+    this.sizeButtons.set(size, button);
+  }
+
+  private setTool(tool: InkTool): void {
+    this.tool = tool;
+    this.updateToolState();
+  }
+
+  private setSize(size: number): void {
+    this.size = size;
+    this.updateSizeState();
+    this.refreshBrushCursor();
+  }
+
+  private updateToolState(): void {
+    for (const [tool, button] of this.toolButtons) {
+      button.buttonEl.toggleClass("inkline-active", tool === this.tool);
+    }
+    this.brushCursorEl?.toggleClass("inkline-brush-cursor-eraser", this.tool === "eraser");
+  }
+
+  private updateSizeState(): void {
+    for (const [size, button] of this.sizeButtons) {
+      button.buttonEl.toggleClass("inkline-active", size === this.size);
+    }
+  }
+
+  private showBrushCursor(): void {
+    this.brushCursorEl.toggleClass("is-visible", true);
+    this.refreshBrushCursor();
+  }
+
+  private hideBrushCursor(): void {
+    this.brushCursorEl.toggleClass("is-visible", false);
+  }
+
+  private moveBrushCursor(event: PointerEvent): void {
+    this.lastClientPoint = { x: event.clientX, y: event.clientY };
+    this.refreshBrushCursor();
+  }
+
+  private refreshBrushCursor(): void {
+    if (!this.lastClientPoint) {
+      return;
+    }
+
+    const rect = this.canvasEl.getBoundingClientRect();
+    const scale = this.canvasEl.width ? rect.width / this.canvasEl.width : 1;
+    const diameter = this.size * scale;
+
+    this.brushCursorEl.style.width = `${diameter}px`;
+    this.brushCursorEl.style.height = `${diameter}px`;
+    this.brushCursorEl.style.left = `${this.lastClientPoint.x - rect.left}px`;
+    this.brushCursorEl.style.top = `${this.lastClientPoint.y - rect.top}px`;
   }
 
   private async loadImage(): Promise<void> {
