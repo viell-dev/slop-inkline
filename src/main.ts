@@ -30,6 +30,14 @@ export default class InklinePlugin extends Plugin {
         void this.insertInlineInk(editor, ctx);
       },
     });
+
+    this.addCommand({
+      id: "edit-inline-ink-at-cursor",
+      name: "Edit inline ink at cursor",
+      editorCallback: (editor, ctx) => {
+        this.editInlineInkAtCursor(editor, ctx);
+      },
+    });
   }
 
   async insertInlineInk(editor: Editor, ctx: MarkdownFileInfo): Promise<void> {
@@ -57,6 +65,24 @@ export default class InklinePlugin extends Plugin {
     }
 
     new Notice(`Created inline ink: ${created.name}`);
+  }
+
+  editInlineInkAtCursor(editor: Editor, ctx: MarkdownFileInfo): void {
+    const sourcePath = ctx.file?.path ?? "";
+    const token = findImageTokenAtCursor(editor);
+
+    if (!token) {
+      new Notice("No image link at cursor.");
+      return;
+    }
+
+    const file = this.app.metadataCache.getFirstLinkpathDest(token.path, sourcePath);
+    if (!file || !this.inkFiles.isInkFile(file)) {
+      new Notice("No Inkline image at cursor.");
+      return;
+    }
+
+    this.openEditor(file);
   }
 
   openEditor(
@@ -140,4 +166,64 @@ function matchMarkdownImageAt(documentText: string, offset: number): string | nu
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+interface ImageToken {
+  path: string;
+  from: number;
+  to: number;
+}
+
+function findImageTokenAtCursor(editor: Editor): ImageToken | null {
+  const cursor = editor.getCursor();
+  const line = editor.getLine(cursor.line);
+  const cursorCh = cursor.ch;
+  const tokens = [
+    ...findMarkdownImageTokens(line),
+    ...findWikiImageTokens(line),
+  ];
+
+  return tokens.find((token) => token.from <= cursorCh && cursorCh <= token.to) ?? null;
+}
+
+function findMarkdownImageTokens(line: string): ImageToken[] {
+  const tokens: ImageToken[] = [];
+  const pattern = /!\[[^\]]*\]\((<[^>]+>|[^)\s]+)\)/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(line)) !== null) {
+    const destination = match[1];
+    tokens.push({
+      path: cleanMarkdownDestination(destination),
+      from: match.index,
+      to: match.index + match[0].length,
+    });
+  }
+
+  return tokens;
+}
+
+function findWikiImageTokens(line: string): ImageToken[] {
+  const tokens: ImageToken[] = [];
+  const pattern = /!\[\[([^\]]+)\]\]/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(line)) !== null) {
+    tokens.push({
+      path: match[1].split("|", 1)[0].split("#", 1)[0].trim(),
+      from: match.index,
+      to: match.index + match[0].length,
+    });
+  }
+
+  return tokens;
+}
+
+function cleanMarkdownDestination(destination: string): string {
+  const trimmed = destination.trim();
+  const unwrapped = trimmed.startsWith("<") && trimmed.endsWith(">")
+    ? trimmed.slice(1, -1)
+    : trimmed;
+
+  return decodeURI(unwrapped.split("#", 1)[0]);
 }
