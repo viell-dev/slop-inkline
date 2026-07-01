@@ -39,9 +39,36 @@ export default class InklinePlugin extends Plugin {
         this.editInlineInkAtCursor(editor, ctx);
       },
     });
+
+    this.registerEvent(
+      this.app.workspace.on("editor-menu", (menu, editor, ctx) => {
+        menu.addItem((item) =>
+          item
+            .setTitle("Insert ink")
+            .setIcon("pen-tool")
+            .onClick(() => {
+              void this.insertInlineInk(editor, ctx);
+            }),
+        );
+
+        const file = this.inkFileAtCursor(editor, ctx);
+        if (file) {
+          menu.addItem((item) =>
+            item
+              .setTitle("Edit ink")
+              .setIcon("pencil")
+              .onClick(() => {
+                this.openEditor(file);
+              }),
+          );
+        }
+      }),
+    );
   }
 
   async insertInlineInk(editor: Editor, ctx: MarkdownFileInfo): Promise<void> {
+    this.moveCursorPastEnclosingImage(editor);
+
     const sourcePath = ctx.file?.path ?? "";
     const name = await this.inkFiles.getNextAutoName(sourcePath);
     const created = await this.inkFiles.createBlankInkFile(name, sourcePath);
@@ -65,29 +92,49 @@ export default class InklinePlugin extends Plugin {
   }
 
   editInlineInkAtCursor(editor: Editor, ctx: MarkdownFileInfo): void {
-    const sourcePath = ctx.file?.path ?? "";
+    const file = this.inkFileAtCursor(editor, ctx);
+    if (file) {
+      this.openEditor(file);
+      return;
+    }
+
+    if (this.renderEnhancer.openSelectedInkImage()) {
+      return;
+    }
+
+    new Notice("No Inkline image at cursor.");
+  }
+
+  /**
+   * If the cursor sits strictly inside an existing image link, move it to the
+   * end of that link so inserting a new ink appends after it instead of
+   * splitting the `![](...)` in two. Boundary positions (just before or after
+   * the link) and active selections are left untouched.
+   */
+  private moveCursorPastEnclosingImage(editor: Editor): void {
+    if (editor.somethingSelected()) {
+      return;
+    }
+
+    const cursor = editor.getCursor();
     const token = findImageTokenAtCursor(editor);
+    if (token && cursor.ch > token.from && cursor.ch < token.to) {
+      editor.setCursor({ line: cursor.line, ch: token.to });
+    }
+  }
 
+  private inkFileAtCursor(editor: Editor, ctx: MarkdownFileInfo): TFile | null {
+    const token = findImageTokenAtCursor(editor);
     if (!token) {
-      if (this.renderEnhancer.openSelectedInkImage()) {
-        return;
-      }
-
-      new Notice("No image link at cursor.");
-      return;
+      return null;
     }
 
-    const file = this.app.metadataCache.getFirstLinkpathDest(token.path, sourcePath);
+    const file = this.app.metadataCache.getFirstLinkpathDest(token.path, ctx.file?.path ?? "");
     if (!file || !this.inkFiles.isInkFile(file)) {
-      if (this.renderEnhancer.openSelectedInkImage()) {
-        return;
-      }
-
-      new Notice("No Inkline image at cursor.");
-      return;
+      return null;
     }
 
-    this.openEditor(file);
+    return file;
   }
 
   openEditor(

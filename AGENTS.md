@@ -8,16 +8,30 @@ Keep private planning, investigation notes, and local reference material outside
 
 Source lives in `src/`, with each module holding one responsibility:
 
-- `main.ts` — plugin entry point: registers commands, the settings tab, and the render enhancer, and orchestrates insert/edit/discard flows.
+- `main.ts` — plugin entry point: registers commands, the `editor-menu` context items (Insert ink / Edit ink), the settings tab, and the render enhancer, and orchestrates insert/edit/discard flows.
 - `ink-file.ts` — `InkFileService`: all vault file IO, `.ink.png` naming and slugging, the square/narrow-band canvas geometry constants, and blank PNG creation.
 - `ink-editor-modal.ts` — `InkEditorModal`: the pen/eraser drawing canvas with undo/redo, rename, and grayscale-flatten on save.
-- `render-enhancer.ts` — `RenderEnhancer`: tags rendered ink `<img>` elements, applies display CSS variables, handles click-to-edit, and refreshes previews after a save.
+- `render-enhancer.ts` — `RenderEnhancer`: tags rendered ink `<img>` elements, applies display CSS variables, resolves the selected ink image (for the edit command), and refreshes previews after a save.
 - `markdown-image.ts` — pure helpers for parsing Markdown/wiki image links and building embed Markdown. No Obsidian state beyond the `Editor` cursor.
 - `canvas.ts` — shared canvas helpers (`loadImage`, `canvasToPngArrayBuffer`).
 - `layout.ts` — shared vertical-layout math: measures the default text font's cap height and computes the baseline/cap-line positions and inline `vertical-align`. Used by both the editor guides and the render enhancer so they stay in sync.
 - `settings.ts` — settings schema, defaults, and the settings tab.
 
 Keep DOM/canvas helpers in `canvas.ts`, link parsing in `markdown-image.ts`, and vertical-layout math in `layout.ts` rather than re-inlining them in feature modules.
+
+## Conventions
+
+- Only use documented, public Obsidian API surface. Do not reach into
+  undocumented internals (e.g. `MenuItem.setSubmenu`, `Menu.items`, or private
+  DOM of core UI like the editor's Insert submenu or the `</>` edit-block
+  button). If a nicer integration is only reachable through internals, prefer
+  the supported top-level equivalent instead.
+- Obsidian's native image right-click menu ("Copy image", "Swap file", "Reset
+  size", …) has no documented event to append to, and it stops propagation on
+  the image, so a capture-phase listener could only *replace* it. Replacing the
+  native menu is not acceptable, so there is intentionally no "Edit ink" item on
+  the image right-click. Ink editing is reached via the `editor-menu` items and
+  the `edit-inline-ink-at-cursor` command instead.
 
 ## Deferred / to consider
 

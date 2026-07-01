@@ -35,10 +35,6 @@ export class RenderEnhancer {
     this.plugin.registerMarkdownPostProcessor((el, _ctx) => {
       this.enhance(el);
     });
-
-    this.plugin.registerDomEvent(activeDocument, "click", (event) => {
-      this.handleClick(event);
-    });
   }
 
   /**
@@ -111,32 +107,6 @@ export class RenderEnhancer {
     embedEl.dataset.inklinePath = file.path;
     embedEl.style.setProperty("--inkline-display-height", displayHeight);
     embedEl.style.setProperty("--inkline-valign", valign);
-  }
-
-  private handleClick(event: MouseEvent): void {
-    const target = event.target;
-    if (!(target instanceof HTMLElement)) {
-      return;
-    }
-
-    const embedEl = target.closest<HTMLElement>(".inkline-embed");
-    const imageEl = target.closest("img");
-    if (!embedEl && !(imageEl instanceof HTMLImageElement)) {
-      return;
-    }
-
-    const file = embedEl?.dataset.inklinePath
-      ? this.fileFromPath(embedEl.dataset.inklinePath)
-      : imageEl instanceof HTMLImageElement
-        ? this.resolveImageFile(imageEl)
-        : null;
-    if (!file) {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-    this.openEditor(file);
   }
 
   private findSelectedInkFile(): TFile | null {
