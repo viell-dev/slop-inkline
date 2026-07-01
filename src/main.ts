@@ -103,6 +103,7 @@ export default class InklinePlugin extends Plugin {
       file,
       {
         isNew: options.isNew,
+        displayHeight: this.settings.displayHeight,
         onDiscard: options.onDiscard,
         onSave: (savedFile) => this.renderEnhancer.refreshFile(savedFile),
       },

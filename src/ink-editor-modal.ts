@@ -1,6 +1,7 @@
 import { App, ButtonComponent, Modal, Notice, TFile } from "obsidian";
 import { canvasToPngArrayBuffer, loadImage } from "./canvas";
 import { CANVAS_SIZE, InkFileService, NARROW_WIDTH } from "./ink-file";
+import { computeInkLineLayout, InkLineLayout, parseDisplayHeightEm } from "./layout";
 
 type InkTool = "pen" | "eraser";
 
@@ -21,6 +22,7 @@ const INK_THRESHOLD = 250;
 
 interface InkEditorModalOptions {
   isNew?: boolean;
+  displayHeight?: string;
   onSave?: (file: TFile) => void;
   onDiscard?: (file: TFile) => void | Promise<void>;
 }
@@ -111,6 +113,7 @@ export class InkEditorModal extends Modal {
     const stageEl = canvasWrapEl.createDiv({ cls: "inkline-canvas-stage" });
     this.canvasEl = stageEl.createEl("canvas", { cls: "inkline-editor-canvas" });
     this.buildCropGuides(stageEl);
+    this.buildBaselineGuides(stageEl);
     this.canvasEl.addEventListener("pointerdown", (event) => this.startStroke(event));
     this.canvasEl.addEventListener("pointermove", (event) => this.continueStroke(event));
     this.canvasEl.addEventListener("pointerup", (event) => this.endStroke(event));
@@ -203,6 +206,33 @@ export class InkEditorModal extends Modal {
 
     guidesEl.createDiv({ cls: "inkline-crop-line inkline-crop-line-left" });
     guidesEl.createDiv({ cls: "inkline-crop-line inkline-crop-line-right" });
+  }
+
+  /**
+   * Horizontal baseline and cap-line references on the left/right edges, with
+   * the ascender/descender regions shaded on hover. Positions come from the
+   * shared layout so they match how the image renders inline. DOM only.
+   */
+  private buildBaselineGuides(stageEl: HTMLElement): void {
+    const layout = this.lineLayout();
+    const guidesEl = stageEl.createDiv({ cls: "inkline-baseline-guides" });
+    guidesEl.style.setProperty("--inkline-capline", `${(layout.capLineY / CANVAS_SIZE) * 100}%`);
+    guidesEl.style.setProperty("--inkline-baseline", `${(layout.baselineY / CANVAS_SIZE) * 100}%`);
+
+    for (const side of ["left", "right"]) {
+      for (const line of ["cap", "base"]) {
+        guidesEl.createDiv({ cls: `inkline-htick inkline-htick-${side} inkline-htick-${line}` });
+      }
+    }
+
+    guidesEl.createDiv({ cls: "inkline-hline inkline-hline-cap" });
+    guidesEl.createDiv({ cls: "inkline-hline inkline-hline-base" });
+    guidesEl.createDiv({ cls: "inkline-band inkline-band-ascender" });
+    guidesEl.createDiv({ cls: "inkline-band inkline-band-descender" });
+  }
+
+  private lineLayout(): InkLineLayout {
+    return computeInkLineLayout(parseDisplayHeightEm(this.options.displayHeight ?? "1.5em"));
   }
 
   private async loadImage(): Promise<void> {

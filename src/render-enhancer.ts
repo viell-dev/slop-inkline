@@ -1,5 +1,6 @@
 import { Plugin, TFile } from "obsidian";
 import { InkFileService } from "./ink-file";
+import { computeInkLineLayout, parseDisplayHeightEm } from "./layout";
 import { InklineSettings } from "./settings";
 
 const SELECTED_IMAGE_SELECTORS = [
@@ -81,14 +82,19 @@ export class RenderEnhancer {
       return;
     }
 
+    const displayHeight = this.getSettings().displayHeight;
+    const valign = `${computeInkLineLayout(parseDisplayHeightEm(displayHeight)).verticalAlignEm}em`;
+
     imageEl.addClass("inkline-image");
     imageEl.dataset.inklinePath = file.path;
     imageEl.toggleClass("inkline-no-invert", !this.getSettings().darkModeInvert);
-    imageEl.style.setProperty("--inkline-display-height", this.getSettings().displayHeight);
+    imageEl.style.setProperty("--inkline-display-height", displayHeight);
+    imageEl.style.setProperty("--inkline-valign", valign);
 
     embedEl.addClass("inkline-embed");
     embedEl.dataset.inklinePath = file.path;
-    embedEl.style.setProperty("--inkline-display-height", this.getSettings().displayHeight);
+    embedEl.style.setProperty("--inkline-display-height", displayHeight);
+    embedEl.style.setProperty("--inkline-valign", valign);
   }
 
   private handleClick(event: MouseEvent): void {

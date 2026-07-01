@@ -14,7 +14,20 @@ Source lives in `src/`, with each module holding one responsibility:
 - `render-enhancer.ts` — `RenderEnhancer`: tags rendered ink `<img>` elements, applies display CSS variables, handles click-to-edit, and refreshes previews after a save.
 - `markdown-image.ts` — pure helpers for parsing Markdown/wiki image links and building embed Markdown. No Obsidian state beyond the `Editor` cursor.
 - `canvas.ts` — shared canvas helpers (`loadImage`, `canvasToPngArrayBuffer`).
+- `layout.ts` — shared vertical-layout math: measures the default text font's cap height and computes the baseline/cap-line positions and inline `vertical-align`. Used by both the editor guides and the render enhancer so they stay in sync.
 - `settings.ts` — settings schema, defaults, and the settings tab.
 
-Keep DOM/canvas helpers in `canvas.ts` and link parsing in `markdown-image.ts` rather than re-inlining them in feature modules.
+Keep DOM/canvas helpers in `canvas.ts`, link parsing in `markdown-image.ts`, and vertical-layout math in `layout.ts` rather than re-inlining them in feature modules.
+
+## Deferred / to consider
+
+Ideas discussed but intentionally not built yet. Revisit these before reworking
+the canvas, background, or alignment:
+
+- **Height trimming.** Only width is trimmed (to the centered narrow band); height is always the full square, so the ascender/descender regions are reserved even when empty. Trimming height is harder than width because vertical position is baseline-relative — a height-trimmed image would need a stored baseline offset to re-anchor inline, unlike the width crop which needs no metadata.
+- **Transparent background.** The pipeline currently stores opaque white and inverts the whole image in dark mode. A transparent background would blend better on off-white light themes and stop antialiased edges from haloing, and would make the reserved ascender/descender regions invisible. Cost: the eraser must become a `destination-out` composite (erase to transparent) instead of painting white, and `forceGrayscaleOpaque` must drop the force-opaque step while keeping alpha. Dark mode still needs the invert rule.
+- **Alpha-mask + `currentColor` rendering.** The theme-proof endgame: store ink as an alpha mask and render it in the surrounding text color via CSS `mask-image`, so it matches any theme with no invert hack. More work than a plain `<img>` embed; a later milestone.
+- **Custom-font alignment.** `layout.ts` measures only the default text font. Aligning to a note's custom font would need per-font metrics and probably a setting.
+- **Alignment assumptions.** Cap height is measured once and nominal-fallback; guides are approximate. `displayHeight` must stay em-based for the `vertical-align = -(displayHeight - capHeight)/2` math to hold.
+- **Guide overlay UI.** Crop and baseline guides currently reveal on hover only. A pin/toggle button for persistent guides was deferred until the toolbar UI is revisited.
 
