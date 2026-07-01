@@ -30,6 +30,8 @@ export class RenderEnhancer {
   ) {}
 
   register(): void {
+    this.applyRootVariables();
+
     this.plugin.registerMarkdownPostProcessor((el, _ctx) => {
       this.enhance(el);
     });
@@ -37,6 +39,20 @@ export class RenderEnhancer {
     this.plugin.registerDomEvent(activeDocument, "click", (event) => {
       this.handleClick(event);
     });
+  }
+
+  /**
+   * Publish the display height and inline vertical-align as inherited variables
+   * on the document root. The size and vertical-align CSS is keyed on the
+   * `.ink.png` src, so this keeps every ink image aligned even when the per-image
+   * post-processor has not run yet (lazily loaded embeds, re-renders).
+   */
+  applyRootVariables(): void {
+    const displayHeight = this.getSettings().displayHeight;
+    const valign = `${computeInkLineLayout(parseDisplayHeightEm(displayHeight)).verticalAlignEm}em`;
+
+    activeDocument.body.style.setProperty("--inkline-display-height", displayHeight);
+    activeDocument.body.style.setProperty("--inkline-valign", valign);
   }
 
   refreshFile(file: TFile): void {

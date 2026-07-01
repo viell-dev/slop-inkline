@@ -145,5 +145,6 @@ export default class InklinePlugin extends Plugin {
 
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
+    this.renderEnhancer.applyRootVariables();
   }
 }
