@@ -78,15 +78,13 @@ export default class InklinePlugin extends Plugin {
     editor.replaceSelection(markdown);
     const insertEnd = editor.getCursor();
 
-    if (this.settings.openEditorAfterInsert) {
-      this.openEditor(created.file, {
-        isNew: true,
-        onDiscard: async (file) => {
-          this.removeInsertedMarkdown(editor, insertStart, insertEnd, markdown, file.path);
-          await this.inkFiles.deleteInkFile(file);
-        },
-      });
-    }
+    this.openEditor(created.file, {
+      isNew: true,
+      onDiscard: async (file) => {
+        this.removeInsertedMarkdown(editor, insertStart, insertEnd, markdown, file.path);
+        await this.inkFiles.deleteInkFile(file);
+      },
+    });
 
     new Notice(`Created inline ink: ${created.name}`);
   }

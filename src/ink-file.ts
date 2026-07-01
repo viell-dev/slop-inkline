@@ -4,11 +4,32 @@ import { InklineSettings } from "./settings";
 
 const INK_EXTENSION = ".ink.png";
 
-// The editor always works on a square canvas. A drawing that stays within the
-// centered narrow band is exported at NARROW_WIDTH; anything wider is exported
-// as the full square. See ink-editor-modal.ts for the crop guides and detection.
-export const CANVAS_SIZE = 300;
-export const NARROW_WIDTH = 180;
+// Exported/stored resolution of an ink. The whole square maps to the inline
+// display height, so this is the source the browser downsamples to glyph size;
+// it is kept small on purpose because detail finer than the inline size is
+// invisible anyway. The editor draws on a larger surface and downsamples to
+// this on save (see SURFACE_SIZE in ink-editor-modal.ts).
+export const IMAGE_SIZE = 192;
+// The stored resolution is configurable (an advanced setting). Clamp to a sane
+// range: too small loses all detail, and the upper bound must not exceed the
+// editor's SURFACE_SIZE (ink-editor-modal.ts) so exporting is always a
+// downsample, never an upscale.
+export const MIN_IMAGE_SIZE = 96;
+export const MAX_IMAGE_SIZE = 576;
+
+export function clampImageSize(value: number): number {
+  if (!Number.isFinite(value)) {
+    return IMAGE_SIZE;
+  }
+
+  return Math.min(Math.max(Math.round(value), MIN_IMAGE_SIZE), MAX_IMAGE_SIZE);
+}
+
+// Fraction of the square kept when a drawing stays inside the centered band. A
+// band-only drawing is exported at this fraction of its width; anything wider is
+// exported as the full square. The editor derives the crop guides, band
+// detection, and per-file export width from this ratio.
+export const NARROW_RATIO = 0.6;
 
 export interface CreatedInkFile {
   file: TFile;
@@ -53,15 +74,16 @@ export class InkFileService {
     const stem = this.slugify(displayName) || await this.getNextAutoName(sourcePath);
     const finalStem = this.findAvailableStem(folderPath, stem);
     const path = this.buildInkPath(folderPath, finalStem);
-    const data = await this.createBlankPng(CANVAS_SIZE, CANVAS_SIZE);
+    const size = clampImageSize(this.getSettings().imageSize);
+    const data = await this.createBlankPng(size, size);
     const file = await this.app.vault.createBinary(path, data);
 
     return {
       file,
       name: finalStem === stem ? displayName || finalStem : finalStem,
       path,
-      width: CANVAS_SIZE,
-      height: CANVAS_SIZE,
+      width: size,
+      height: size,
     };
   }
 

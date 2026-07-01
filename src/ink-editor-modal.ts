@@ -1,6 +1,6 @@
 import { App, ButtonComponent, Modal, Notice, TFile } from "obsidian";
 import { canvasToPngArrayBuffer, loadImage } from "./canvas";
-import { CANVAS_SIZE, InkFileService, NARROW_WIDTH } from "./ink-file";
+import { clampImageSize, IMAGE_SIZE, InkFileService, NARROW_RATIO } from "./ink-file";
 import { computeInkLineLayout, InkLineLayout, parseDisplayHeightEm } from "./layout";
 
 type InkTool = "pen" | "eraser";
@@ -10,15 +10,57 @@ interface Point {
   y: number;
 }
 
-const BRUSH_SIZES = [10, 20, 30, 40];
-const DEFAULT_PEN_SIZE = BRUSH_SIZES[0];
-const MAX_UNDO_STEPS = 50;
-const MAX_CANVAS_DISPLAY_WIDTH = 768;
+interface BrushSize {
+  label: string;
+  // How many CSS pixels the stroke occupies inline at the reference height.
+  inlinePx: number;
+}
 
-// Empty horizontal margin on each side of the centered narrow band.
-const BAND_MARGIN = (CANVAS_SIZE - NARROW_WIDTH) / 2;
+// Fixed backing resolution the editor draws on, independent of any file's
+// stored size. Strokes are downsampled to the file's export size on save, so
+// this must be >= the largest export size (kept in sync with MAX_IMAGE_SIZE in
+// ink-file.ts) for exporting to always be a downsample, never an upscale.
+// DISPLAY_WIDTH is only the on-screen size and is independent of the backing.
+const SURFACE_SIZE = 576;
+const DISPLAY_WIDTH = 512;
+
+// Brushes are sized by how many CSS pixels they occupy inline at the reference
+// display height (1.5em on a 16px font, i.e. the whole square shown at 24px).
+// The fixed surface plus downsample-on-export makes a stroke render at the same
+// inline px whatever the file's export resolution, so no hard-coded pixels.
+const REFERENCE_INLINE_PX = 24;
+const BRUSH_SIZES: BrushSize[] = [
+  { label: "S", inlinePx: 1 },
+  { label: "M", inlinePx: 2 },
+  { label: "L", inlinePx: 3 },
+  { label: "XL", inlinePx: 4 },
+];
+const DEFAULT_BRUSH = BRUSH_SIZES[1]; // M
+const MAX_UNDO_STEPS = 50;
+
+// Empty margin, as a fraction of the square, on each side of the centered band.
+const BAND_MARGIN_RATIO = (1 - NARROW_RATIO) / 2;
 // Pixels darker than this (grayscale, on white) count as ink for band detection.
 const INK_THRESHOLD = 250;
+
+// Surface-pixel line width for a brush from its inline appearance. Independent
+// of the file's stored size: the fixed surface plus downsample-on-export makes
+// a stroke render at the same inline px whatever the export resolution.
+function surfaceLineWidth(inlinePx: number): number {
+  return (inlinePx * SURFACE_SIZE) / REFERENCE_INLINE_PX;
+}
+
+// The export resolution for a loaded ink: keep the file's own size (so inks are
+// never shrunk or grown on save), clamped to the shared valid range. The
+// configured image size only applies to newly created inks (see
+// InkFileService.createBlankInkFile), which then load at that size here.
+function resolveExportSize(loadedHeight: number): number {
+  if (!Number.isFinite(loadedHeight) || loadedHeight <= 0) {
+    return IMAGE_SIZE;
+  }
+
+  return clampImageSize(loadedHeight);
+}
 
 interface InkEditorModalOptions {
   isNew?: boolean;
@@ -33,7 +75,8 @@ export class InkEditorModal extends Modal {
   private ctx!: CanvasRenderingContext2D;
   private file: TFile;
   private tool: InkTool = "pen";
-  private size = DEFAULT_PEN_SIZE;
+  private brushInlinePx = DEFAULT_BRUSH.inlinePx;
+  private exportSize = IMAGE_SIZE;
   private drawing = false;
   private hasSaved = false;
   private lastPoint: Point | null = null;
@@ -80,8 +123,8 @@ export class InkEditorModal extends Modal {
 
     const sizeGroupEl = toolbarEl.createDiv({ cls: "inkline-size-control" });
     sizeGroupEl.createSpan({ text: "Size" });
-    for (const size of BRUSH_SIZES) {
-      this.createSizeButton(sizeGroupEl, size);
+    for (const brush of BRUSH_SIZES) {
+      this.createSizeButton(sizeGroupEl, brush);
     }
 
     new ButtonComponent(toolbarEl)
@@ -141,12 +184,12 @@ export class InkEditorModal extends Modal {
     this.toolButtons.set(tool, button);
   }
 
-  private createSizeButton(parentEl: HTMLElement, size: number): void {
+  private createSizeButton(parentEl: HTMLElement, brush: BrushSize): void {
     const button = new ButtonComponent(parentEl)
-      .setButtonText(`${size}`)
-      .setTooltip(`Brush size ${size}px`)
-      .onClick(() => this.setSize(size));
-    this.sizeButtons.set(size, button);
+      .setButtonText(brush.label)
+      .setTooltip(`Brush size ${brush.label} (~${brush.inlinePx}px inline)`)
+      .onClick(() => this.setBrush(brush.inlinePx));
+    this.sizeButtons.set(brush.inlinePx, button);
   }
 
   private setTool(tool: InkTool): void {
@@ -155,8 +198,8 @@ export class InkEditorModal extends Modal {
     this.updateBrushCursorStyle();
   }
 
-  private setSize(size: number): void {
-    this.size = size;
+  private setBrush(inlinePx: number): void {
+    this.brushInlinePx = inlinePx;
     this.updateSizeState();
     this.updateBrushCursorStyle();
   }
@@ -168,8 +211,8 @@ export class InkEditorModal extends Modal {
   }
 
   private updateSizeState(): void {
-    for (const [size, button] of this.sizeButtons) {
-      button.buttonEl.toggleClass("inkline-active", size === this.size);
+    for (const [inlinePx, button] of this.sizeButtons) {
+      button.buttonEl.toggleClass("inkline-active", inlinePx === this.brushInlinePx);
     }
   }
 
@@ -185,7 +228,7 @@ export class InkEditorModal extends Modal {
 
     const rect = this.canvasEl.getBoundingClientRect();
     const scale = this.canvasEl.width && rect.width ? rect.width / this.canvasEl.width : 1;
-    const diameter = Math.max(this.size * scale, 1);
+    const diameter = Math.max(surfaceLineWidth(this.brushInlinePx) * scale, 1);
     this.canvasEl.style.cursor = brushCursor(diameter, this.tool);
   }
 
@@ -195,7 +238,7 @@ export class InkEditorModal extends Modal {
    * dashed cutoff lines. These are DOM only and never touch the exported PNG.
    */
   private buildCropGuides(stageEl: HTMLElement): void {
-    const leftPercent = (BAND_MARGIN / CANVAS_SIZE) * 100;
+    const leftPercent = BAND_MARGIN_RATIO * 100;
     const guidesEl = stageEl.createDiv({ cls: "inkline-crop-guides" });
     guidesEl.style.setProperty("--inkline-crop-left", `${leftPercent}%`);
     guidesEl.style.setProperty("--inkline-crop-right", `${100 - leftPercent}%`);
@@ -216,8 +259,8 @@ export class InkEditorModal extends Modal {
   private buildBaselineGuides(stageEl: HTMLElement): void {
     const layout = this.lineLayout();
     const guidesEl = stageEl.createDiv({ cls: "inkline-baseline-guides" });
-    guidesEl.style.setProperty("--inkline-capline", `${(layout.capLineY / CANVAS_SIZE) * 100}%`);
-    guidesEl.style.setProperty("--inkline-baseline", `${(layout.baselineY / CANVAS_SIZE) * 100}%`);
+    guidesEl.style.setProperty("--inkline-capline", `${(layout.capLineY / IMAGE_SIZE) * 100}%`);
+    guidesEl.style.setProperty("--inkline-baseline", `${(layout.baselineY / IMAGE_SIZE) * 100}%`);
 
     for (const side of ["left", "right"]) {
       for (const line of ["cap", "base"]) {
@@ -242,9 +285,9 @@ export class InkEditorModal extends Modal {
 
     try {
       const image = await loadImage(url);
-      this.canvasEl.width = CANVAS_SIZE;
-      this.canvasEl.height = CANVAS_SIZE;
-      this.canvasEl.style.width = `${Math.min(CANVAS_SIZE, MAX_CANVAS_DISPLAY_WIDTH)}px`;
+      this.canvasEl.width = SURFACE_SIZE;
+      this.canvasEl.height = SURFACE_SIZE;
+      this.canvasEl.style.width = `${DISPLAY_WIDTH}px`;
 
       const ctx = this.canvasEl.getContext("2d", { willReadFrequently: true });
       if (!ctx) {
@@ -253,16 +296,17 @@ export class InkEditorModal extends Modal {
 
       this.ctx = ctx;
       this.ctx.fillStyle = "#ffffff";
-      this.ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+      this.ctx.fillRect(0, 0, SURFACE_SIZE, SURFACE_SIZE);
 
       // Always edit on the square. A previously cropped (narrow) file is scaled
-      // to the canvas height and re-centered into the band so editing continues.
+      // to the surface height and re-centered into the band so editing continues.
       const sourceWidth = image.naturalWidth || image.width;
       const sourceHeight = image.naturalHeight || image.height;
       if (sourceWidth > 0 && sourceHeight > 0) {
-        const drawWidth = Math.min((sourceWidth / sourceHeight) * CANVAS_SIZE, CANVAS_SIZE);
-        const offsetX = Math.round((CANVAS_SIZE - drawWidth) / 2);
-        this.ctx.drawImage(image, offsetX, 0, drawWidth, CANVAS_SIZE);
+        this.exportSize = resolveExportSize(sourceHeight);
+        const drawWidth = Math.min((sourceWidth / sourceHeight) * SURFACE_SIZE, SURFACE_SIZE);
+        const offsetX = Math.round((SURFACE_SIZE - drawWidth) / 2);
+        this.ctx.drawImage(image, offsetX, 0, drawWidth, SURFACE_SIZE);
       }
 
       this.updateBrushCursorStyle();
@@ -313,7 +357,7 @@ export class InkEditorModal extends Modal {
   private drawLine(from: Point, to: Point): void {
     this.ctx.save();
     this.ctx.strokeStyle = this.tool === "pen" ? "#000000" : "#ffffff";
-    this.ctx.lineWidth = this.size;
+    this.ctx.lineWidth = surfaceLineWidth(this.brushInlinePx);
     this.ctx.lineCap = "round";
     this.ctx.lineJoin = "round";
     this.ctx.beginPath();
@@ -410,26 +454,37 @@ export class InkEditorModal extends Modal {
   }
 
   /**
-   * Export the full square, or just the centered narrow band when all ink stays
-   * inside it. Run after forceGrayscaleOpaque so the margins are flat white.
+   * Downsample the drawing surface to the file's export size (see
+   * resolveExportSize): the full square, or just the centered narrow band when
+   * all ink stays inside it. Run after forceGrayscaleOpaque so the margins are
+   * flat white.
    */
   private exportCanvas(): HTMLCanvasElement {
-    const bandEnd = CANVAS_SIZE - BAND_MARGIN;
-    if (this.hasInkInColumns(0, BAND_MARGIN) || this.hasInkInColumns(bandEnd, CANVAS_SIZE)) {
-      return this.canvasEl;
-    }
+    const margin = Math.round(SURFACE_SIZE * BAND_MARGIN_RATIO);
+    const wide =
+      this.hasInkInColumns(0, margin) ||
+      this.hasInkInColumns(SURFACE_SIZE - margin, SURFACE_SIZE);
 
-    const cropped = document.createElement("canvas");
-    cropped.width = NARROW_WIDTH;
-    cropped.height = CANVAS_SIZE;
-
-    const ctx = cropped.getContext("2d");
+    const out = document.createElement("canvas");
+    const ctx = out.getContext("2d");
     if (!ctx) {
       return this.canvasEl;
     }
 
-    ctx.drawImage(this.canvasEl, BAND_MARGIN, 0, NARROW_WIDTH, CANVAS_SIZE, 0, 0, NARROW_WIDTH, CANVAS_SIZE);
-    return cropped;
+    const size = this.exportSize;
+    if (wide) {
+      out.width = size;
+      out.height = size;
+      ctx.drawImage(this.canvasEl, 0, 0, SURFACE_SIZE, SURFACE_SIZE, 0, 0, size, size);
+    } else {
+      const narrowWidth = Math.round(size * NARROW_RATIO);
+      out.width = narrowWidth;
+      out.height = size;
+      const bandWidth = SURFACE_SIZE - margin * 2;
+      ctx.drawImage(this.canvasEl, margin, 0, bandWidth, SURFACE_SIZE, 0, 0, narrowWidth, size);
+    }
+
+    return out;
   }
 
   private hasInkInColumns(startX: number, endX: number): boolean {
@@ -437,7 +492,7 @@ export class InkEditorModal extends Modal {
       return false;
     }
 
-    const { data } = this.ctx.getImageData(startX, 0, endX - startX, CANVAS_SIZE);
+    const { data } = this.ctx.getImageData(startX, 0, endX - startX, SURFACE_SIZE);
     for (let index = 0; index < data.length; index += 4) {
       if (data[index] < INK_THRESHOLD) {
         return true;

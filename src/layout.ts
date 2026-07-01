@@ -1,4 +1,4 @@
-import { CANVAS_SIZE } from "./ink-file";
+import { IMAGE_SIZE } from "./ink-file";
 
 // Cap height as a fraction of the text em. Measured from the default text font
 // once; falls back to a nominal value. Custom-font alignment is out of scope.
@@ -8,7 +8,7 @@ const DEFAULT_DISPLAY_HEIGHT_EM = 1.5;
 let capRatioCache: number | null = null;
 
 export interface InkLineLayout {
-  // Canvas-pixel positions (0..CANVAS_SIZE) of the cap-line and baseline.
+  // Canvas-pixel positions (0..IMAGE_SIZE) of the cap-line and baseline.
   capLineY: number;
   baselineY: number;
   // Inline vertical-align (em, negative) that centers the cap band on the line.
@@ -39,8 +39,8 @@ export function computeInkLineLayout(displayHeightEm: number): InkLineLayout {
   const baseFraction = Math.min(1, 0.5 + halfBand);
 
   return {
-    capLineY: capFraction * CANVAS_SIZE,
-    baselineY: baseFraction * CANVAS_SIZE,
+    capLineY: capFraction * IMAGE_SIZE,
+    baselineY: baseFraction * IMAGE_SIZE,
     verticalAlignEm: -(displayHeightEm - cap) / 2,
   };
 }
