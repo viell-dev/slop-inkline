@@ -1,7 +1,7 @@
 {
   "name": "inkline",
   "version": "0.1.0",
-  "description": "Small inline grayscale ink images for Obsidian.",
+  "description": "Small inline grayscale ink symbols for Obsidian.",
   "main": "main.js",
   "type": "module",
   "scripts": {
@@ -13,7 +13,7 @@
     "obsidian",
     "obsidian-plugin",
     "ink",
-    "handwriting"
+    "symbol"
   ],
   "license": "MIT",
   "devDependencies": {

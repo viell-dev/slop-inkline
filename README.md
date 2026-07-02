@@ -1,6 +1,6 @@
 # Inkline
 
-Inkline is an Obsidian plugin for small inline grayscale ink images: symbols, puzzle marks, conlang glyphs, compact notation, and short handwritten fragments that sit inside prose like a word.
+Inkline is an Obsidian plugin for small inline grayscale ink images: symbols, puzzle marks, conlang glyphs, and compact handwritten notation that sit inside prose like a single character.
 
 The plugin stores each drawing as a normal PNG file in the vault and inserts it with standard Markdown image syntax, so notes remain readable if the plugin is disabled.
 
