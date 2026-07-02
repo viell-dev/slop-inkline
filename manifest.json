@@ -5,6 +5,5 @@
   "minAppVersion": "1.5.7",
   "description": "Draw small inline grayscale symbols as editable PNG images.",
   "author": "Viell",
-  "isDesktopOnly": false
+  "isDesktopOnly": true
 }
-
