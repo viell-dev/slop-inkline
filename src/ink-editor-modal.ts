@@ -88,8 +88,6 @@ interface InkEditorModalOptions {
 
 export class InkEditorModal extends Modal {
   private nameInputEl!: HTMLInputElement;
-  private namePreviewEl!: HTMLElement;
-  private namePreviewToken = 0;
   private canvasEl!: HTMLCanvasElement;
   private ctx!: CanvasRenderingContext2D;
   private file: TFile | null;
@@ -136,67 +134,70 @@ export class InkEditorModal extends Modal {
     contentEl.addClass("inkline-editor-modal");
 
     const headerEl = contentEl.createDiv({ cls: "inkline-editor-header" });
-    this.nameInputEl = headerEl.createEl("input", {
+    headerEl.createEl("label", {
+      cls: "inkline-name-label",
+      text: "Name:",
+      attr: { for: "inkline-name-input" },
+    });
+    const nameFieldEl = headerEl.createDiv({ cls: "inkline-name-field" });
+    this.nameInputEl = nameFieldEl.createEl("input", {
       cls: "inkline-name-input",
       attr: {
+        id: "inkline-name-input",
         type: "text",
         value: this.getDisplayName(),
         "aria-label": "Ink name",
       },
     });
+    nameFieldEl.createSpan({ cls: "inkline-name-suffix", text: ".ink.png" });
     this.nameInputEl.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
         event.preventDefault();
         void this.save();
       }
     });
-    this.namePreviewEl = headerEl.createDiv({ cls: "inkline-name-preview" });
-    this.nameInputEl.addEventListener("input", () => {
-      void this.updateNamePreview();
-    });
-    void this.updateNamePreview();
 
     const toolbarEl = contentEl.createDiv({ cls: "inkline-editor-toolbar" });
-    this.createToolButton(toolbarEl, "Pen", "pen");
-    this.createToolButton(toolbarEl, "Eraser", "eraser");
 
-    const sizeGroupEl = toolbarEl.createDiv({ cls: "inkline-size-control" });
-    sizeGroupEl.createSpan({ text: "Size" });
-    for (const brush of BRUSH_SIZES) {
-      this.createSizeButton(sizeGroupEl, brush);
-    }
+    const toolsRowEl = toolbarEl.createDiv({ cls: "inkline-toolbar-row" });
+    this.createToolButton(toolsRowEl, "Pen", "pen");
+    this.createToolButton(toolsRowEl, "Eraser", "eraser");
 
-    new ButtonComponent(toolbarEl)
+    new ButtonComponent(toolsRowEl)
       .setButtonText("Undo")
       .onClick(() => this.undo());
 
-    new ButtonComponent(toolbarEl)
+    new ButtonComponent(toolsRowEl)
       .setButtonText("Redo")
       .onClick(() => this.redo());
 
-    new ButtonComponent(toolbarEl)
+    new ButtonComponent(toolsRowEl)
       .setButtonText("Clear")
       .onClick(() => this.clear());
 
-    this.pinButton = new ButtonComponent(toolbarEl)
+    const sizeRowEl = toolbarEl.createDiv({ cls: "inkline-toolbar-row" });
+    sizeRowEl.createSpan({ text: "Size" });
+    for (const brush of BRUSH_SIZES) {
+      this.createSizeButton(sizeRowEl, brush);
+    }
+
+    const actionsRowEl = toolbarEl.createDiv({ cls: "inkline-toolbar-row" });
+    this.pinButton = new ButtonComponent(actionsRowEl)
       .setButtonText("Pin guides")
       .setTooltip("Keep the crop and baseline guides always visible")
       .onClick(() => {
         void this.togglePinGuides();
       });
 
-    new ButtonComponent(toolbarEl)
-      .setButtonText("Save")
-      .setCta()
-      .onClick(() => {
-        void this.save();
-      });
-
-    new ButtonComponent(toolbarEl)
+    new ButtonComponent(actionsRowEl)
       .setButtonText("Save and Close")
+      .setClass("inkline-save-close")
+      .setCta()
       .onClick(() => {
         void this.saveAndClose();
       });
+
+    this.blockBackdropClose();
 
     const canvasWrapEl = contentEl.createDiv({ cls: "inkline-canvas-wrap" });
     this.stageEl = canvasWrapEl.createDiv({ cls: "inkline-canvas-stage" });
@@ -610,32 +611,28 @@ export class InkEditorModal extends Modal {
   }
 
   /**
-   * Live preview of the filename the current input would save as, updated
-   * per keystroke (the lookup is a cheap in-memory scan). Best-effort for a
-   * new ink whose attachment folder differs from the new-file parent; see
-   * InkFileService.previewNewInkStem.
+   * Obsidian closes a modal when its backdrop is clicked; a stray click just
+   * past the canvas edge must not throw away unsaved strokes, so swallow
+   * backdrop clicks before the core handler sees them. Esc and the close
+   * button still close the modal (without saving).
    */
-  private async updateNamePreview(): Promise<void> {
-    const token = ++this.namePreviewToken;
-    const stem = await this.previewNameStem();
-    if (token !== this.namePreviewToken) {
+  private blockBackdropClose(): void {
+    const bgEl = this.containerEl.querySelector(".modal-bg");
+    if (!bgEl) {
       return;
     }
 
-    this.namePreviewEl.setText(stem ? `Saves as ${stem}.ink.png` : "");
-  }
-
-  private async previewNameStem(): Promise<string> {
-    if (this.file) {
-      return this.fileService.previewRenameStem(this.file, this.nameInputEl.value);
+    for (const type of ["pointerdown", "mousedown", "click"] as const) {
+      this.containerEl.addEventListener(
+        type,
+        (event) => {
+          if (event.target === bgEl) {
+            event.stopImmediatePropagation();
+          }
+        },
+        { capture: true },
+      );
     }
-
-    const newInk = this.options.newInk;
-    if (!newInk) {
-      return "";
-    }
-
-    return this.fileService.previewNewInkStem(this.nameInputEl.value, newInk.sourcePath);
   }
 
   private async renameFromInput(): Promise<void> {
@@ -650,7 +647,6 @@ export class InkEditorModal extends Modal {
     const nextName = this.nameInputEl.value.trim();
     if (!nextName || nextName === this.fileService.getDisplayName(this.file)) {
       this.nameInputEl.value = this.fileService.getDisplayName(this.file);
-      void this.updateNamePreview();
       return;
     }
 
@@ -661,12 +657,10 @@ export class InkEditorModal extends Modal {
       // rename visible instead of silently aborting the whole save.
       new Notice(`Could not rename ink: ${errorMessage(error)}`);
       this.nameInputEl.value = this.fileService.getDisplayName(this.file);
-      void this.updateNamePreview();
       return;
     }
 
     this.nameInputEl.value = this.fileService.getDisplayName(this.file);
-    void this.updateNamePreview();
     this.options.onSave?.(this.file);
   }
 
@@ -725,7 +719,6 @@ export class InkEditorModal extends Modal {
 
     this.file = created.file;
     this.nameInputEl.value = this.fileService.getDisplayName(created.file);
-    void this.updateNamePreview();
     newInk.onCreate?.(created);
 
     return created.file;

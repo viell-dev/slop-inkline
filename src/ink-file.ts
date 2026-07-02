@@ -177,19 +177,6 @@ export class InkFileService {
     return this.findAvailableStem(folderPath, stem, file.path);
   }
 
-  /**
-   * The filename stem a new ink would get if created with `name` right now,
-   * including the collision suffix. Uses the non-creating new-file-parent
-   * folder resolution, so it is best-effort when the vault stores
-   * attachments in a dedicated folder: getAvailablePathForAttachment would
-   * create that folder as a side effect, which a preview must never do.
-   */
-  async previewNewInkStem(name: string, sourcePath: string): Promise<string> {
-    const folderPath = this.getInkFolderPath(sourcePath);
-    const stem = this.slugify(name) || (await this.getNextAutoName(sourcePath));
-    return this.findAvailableStem(folderPath, stem);
-  }
-
   isInkFile(file: TFile): boolean {
     return file.path.toLowerCase().endsWith(INK_EXTENSION);
   }
