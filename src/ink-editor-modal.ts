@@ -88,6 +88,8 @@ interface InkEditorModalOptions {
 
 export class InkEditorModal extends Modal {
   private nameInputEl!: HTMLInputElement;
+  private namePreviewEl!: HTMLElement;
+  private namePreviewToken = 0;
   private canvasEl!: HTMLCanvasElement;
   private ctx!: CanvasRenderingContext2D;
   private file: TFile | null;
@@ -148,6 +150,11 @@ export class InkEditorModal extends Modal {
         void this.save();
       }
     });
+    this.namePreviewEl = headerEl.createDiv({ cls: "inkline-name-preview" });
+    this.nameInputEl.addEventListener("input", () => {
+      void this.updateNamePreview();
+    });
+    void this.updateNamePreview();
 
     const toolbarEl = contentEl.createDiv({ cls: "inkline-editor-toolbar" });
     this.createToolButton(toolbarEl, "Pen", "pen");
@@ -602,6 +609,35 @@ export class InkEditorModal extends Modal {
     this.refreshWidthStep();
   }
 
+  /**
+   * Live preview of the filename the current input would save as, updated
+   * per keystroke (the lookup is a cheap in-memory scan). Best-effort for a
+   * new ink whose attachment folder differs from the new-file parent; see
+   * InkFileService.previewNewInkStem.
+   */
+  private async updateNamePreview(): Promise<void> {
+    const token = ++this.namePreviewToken;
+    const stem = await this.previewNameStem();
+    if (token !== this.namePreviewToken) {
+      return;
+    }
+
+    this.namePreviewEl.setText(stem ? `Saves as ${stem}.ink.png` : "");
+  }
+
+  private async previewNameStem(): Promise<string> {
+    if (this.file) {
+      return this.fileService.previewRenameStem(this.file, this.nameInputEl.value);
+    }
+
+    const newInk = this.options.newInk;
+    if (!newInk) {
+      return "";
+    }
+
+    return this.fileService.previewNewInkStem(this.nameInputEl.value, newInk.sourcePath);
+  }
+
   private async renameFromInput(): Promise<void> {
     if (!this.nameInputEl) {
       return;
@@ -614,11 +650,23 @@ export class InkEditorModal extends Modal {
     const nextName = this.nameInputEl.value.trim();
     if (!nextName || nextName === this.fileService.getDisplayName(this.file)) {
       this.nameInputEl.value = this.fileService.getDisplayName(this.file);
+      void this.updateNamePreview();
       return;
     }
 
-    this.file = await this.fileService.renameInkFile(this.file, nextName);
+    try {
+      this.file = await this.fileService.renameInkFile(this.file, nextName);
+    } catch (error) {
+      // Keep the drawing save going under the old name, but make the failed
+      // rename visible instead of silently aborting the whole save.
+      new Notice(`Could not rename ink: ${errorMessage(error)}`);
+      this.nameInputEl.value = this.fileService.getDisplayName(this.file);
+      void this.updateNamePreview();
+      return;
+    }
+
     this.nameInputEl.value = this.fileService.getDisplayName(this.file);
+    void this.updateNamePreview();
     this.options.onSave?.(this.file);
   }
 
@@ -677,6 +725,7 @@ export class InkEditorModal extends Modal {
 
     this.file = created.file;
     this.nameInputEl.value = this.fileService.getDisplayName(created.file);
+    void this.updateNamePreview();
     newInk.onCreate?.(created);
 
     return created.file;
@@ -787,6 +836,10 @@ export class InkEditorModal extends Modal {
 
     this.ctx.putImageData(imageData, 0, 0);
   }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function brushCursor(diameter: number, tool: InkTool): string {

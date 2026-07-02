@@ -149,10 +149,7 @@ export class InkFileService {
   }
 
   async renameInkFile(file: TFile, name: string): Promise<TFile> {
-    const folderPath = file.parent?.path ?? "";
-    const stem = this.slugify(name) || file.basename;
-    const finalStem = this.findAvailableStem(folderPath, stem, file.path);
-    const newPath = this.buildInkPath(folderPath, finalStem);
+    const newPath = this.renameTargetPath(file, name);
 
     if (newPath === file.path) {
       return file;
@@ -166,6 +163,31 @@ export class InkFileService {
     }
 
     return renamedFile;
+  }
+
+  /**
+   * The filename stem an existing ink would get if renamed to `name` right
+   * now: slugified, keeping the current display name when the slug is empty,
+   * with the collision suffix it would receive in its folder. Pure lookup,
+   * no vault IO; renameInkFile resolves its target the same way.
+   */
+  previewRenameStem(file: TFile, name: string): string {
+    const folderPath = file.parent?.path ?? "";
+    const stem = this.slugify(name) || this.getDisplayName(file);
+    return this.findAvailableStem(folderPath, stem, file.path);
+  }
+
+  /**
+   * The filename stem a new ink would get if created with `name` right now,
+   * including the collision suffix. Uses the non-creating new-file-parent
+   * folder resolution, so it is best-effort when the vault stores
+   * attachments in a dedicated folder: getAvailablePathForAttachment would
+   * create that folder as a side effect, which a preview must never do.
+   */
+  async previewNewInkStem(name: string, sourcePath: string): Promise<string> {
+    const folderPath = this.getInkFolderPath(sourcePath);
+    const stem = this.slugify(name) || (await this.getNextAutoName(sourcePath));
+    return this.findAvailableStem(folderPath, stem);
   }
 
   isInkFile(file: TFile): boolean {
@@ -186,6 +208,11 @@ export class InkFileService {
 
   getDisplayName(file: TFile): string {
     return this.slugify(file.name) || file.basename;
+  }
+
+  private renameTargetPath(file: TFile, name: string): string {
+    const folderPath = file.parent?.path ?? "";
+    return this.buildInkPath(folderPath, this.previewRenameStem(file, name));
   }
 
   private getInkFolderPath(sourcePath: string): string {

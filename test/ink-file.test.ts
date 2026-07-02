@@ -103,6 +103,37 @@ describe("InkFileService slugify", () => {
   });
 });
 
+describe("InkFileService name previews", () => {
+  it("previews rename stems with collision suffixes, excluding the file itself", () => {
+    const folder = new TFolder("ink", "ink");
+    const files = [
+      inkFile(folder, "cafe.ink.png"),
+      inkFile(folder, "taken.ink.png"),
+    ];
+    const service = new InkFileService(
+      createMockApp({ attachmentFolder: "ink", files }),
+    );
+
+    expect(service.previewRenameStem(files[0], "Café")).toBe("cafe");
+    expect(service.previewRenameStem(files[0], "Taken")).toBe("taken-2");
+    expect(service.previewRenameStem(files[0], "!!!")).toBe("cafe");
+  });
+
+  it("previews new ink stems in the new-file parent folder", async () => {
+    const folder = new TFolder("ink", "ink");
+    const files = [
+      inkFile(folder, "sketch.ink.png"),
+      inkFile(folder, "001.ink.png"),
+    ];
+    const service = new InkFileService(
+      createMockApp({ attachmentFolder: "ink", files }),
+    );
+
+    await expect(service.previewNewInkStem("Sketch!", "note.md")).resolves.toBe("sketch-2");
+    await expect(service.previewNewInkStem("   ", "note.md")).resolves.toBe("002");
+  });
+});
+
 describe("InkFileService auto naming", () => {
   it("returns the first zero-padded number when no ink files exist", async () => {
     const service = new InkFileService(
