@@ -49,6 +49,7 @@ export interface Vault {
 }
 
 export interface FileManager {
+  getNewFileParent(sourcePath: string, newFilePath?: string): TFolder;
   getAvailablePathForAttachment(filename: string, sourcePath: string): Promise<string>;
   renameFile(file: TFile, newPath: string): Promise<void>;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  createMarkdownImage,
+  createImageEmbed,
   findImageTokenAtCursor,
   locateInsertedImage,
 } from "../src/markdown-image";
@@ -13,14 +13,28 @@ function editorAt(line: string, ch: number): Editor {
   };
 }
 
-describe("createMarkdownImage", () => {
-  it("leaves simple destinations unwrapped", () => {
-    expect(createMarkdownImage("ink/001.ink.png")).toBe("![](ink/001.ink.png)");
+describe("createImageEmbed", () => {
+  it("prepends the embed marker and strips markdown alt text", () => {
+    expect(createImageEmbed("[001](ink/001.ink.png)")).toBe(
+      "![](ink/001.ink.png)",
+    );
   });
 
-  it("wraps destinations with spaces and escapes closing angle brackets", () => {
-    expect(createMarkdownImage("ink/my > symbol.ink.png")).toBe(
-      "![](<ink/my %3E symbol.ink.png>)",
+  it("keeps an existing embed marker", () => {
+    expect(createImageEmbed("![](ink/001.ink.png)")).toBe(
+      "![](ink/001.ink.png)",
+    );
+  });
+
+  it("strips wiki aliases", () => {
+    expect(createImageEmbed("[[ink/001.ink.png|001]]")).toBe(
+      "![[ink/001.ink.png]]",
+    );
+  });
+
+  it("passes plain wiki embeds through unchanged", () => {
+    expect(createImageEmbed("![[ink/001.ink.png]]")).toBe(
+      "![[ink/001.ink.png]]",
     );
   });
 });
