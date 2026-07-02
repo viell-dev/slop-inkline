@@ -44,24 +44,47 @@ export class RenderEnhancer {
       this.enhance(el);
     });
 
-    const { vault } = this.plugin.app;
+    const { vault, workspace } = this.plugin.app;
     this.plugin.registerEvent(vault.on("create", () => this.invalidateInkResourcePathCache()));
     this.plugin.registerEvent(vault.on("delete", () => this.invalidateInkResourcePathCache()));
     this.plugin.registerEvent(vault.on("rename", () => this.invalidateInkResourcePathCache()));
+
+    this.plugin.registerEvent(
+      workspace.on("window-open", (win) => {
+        this.applyVariablesToDocument(win.doc);
+      }),
+    );
   }
 
   /**
    * Publish the display height and inline vertical-align as inherited variables
-   * on the document root. The size and vertical-align CSS is keyed on the
-   * `.ink.png` src, so this keeps every ink image aligned even when the per-image
-   * post-processor has not run yet (lazily loaded embeds, re-renders).
+   * on the document root of every open window. The size and vertical-align CSS
+   * is keyed on the `.ink.png` src, so this keeps every ink image aligned even
+   * when the per-image post-processor has not run yet (lazily loaded embeds,
+   * re-renders). Popouts opened later are covered by the `window-open` handler
+   * in `register`.
    */
   applyRootVariables(): void {
+    for (const doc of this.getAllDocuments()) {
+      this.applyVariablesToDocument(doc);
+    }
+  }
+
+  private applyVariablesToDocument(doc: Document): void {
     const displayHeight = this.getSettings().displayHeight;
     const valign = `${computeInkLineLayout(parseDisplayHeightEm(displayHeight)).verticalAlignEm}em`;
 
-    activeDocument.body.style.setProperty("--inkline-display-height", displayHeight);
-    activeDocument.body.style.setProperty("--inkline-valign", valign);
+    doc.body.style.setProperty("--inkline-display-height", displayHeight);
+    doc.body.style.setProperty("--inkline-valign", valign);
+  }
+
+  private getAllDocuments(): Set<Document> {
+    const documents = new Set<Document>([document]);
+    this.plugin.app.workspace.iterateAllLeaves((leaf) => {
+      documents.add(leaf.view.containerEl.ownerDocument);
+    });
+
+    return documents;
   }
 
   refreshFile(file: TFile): void {
