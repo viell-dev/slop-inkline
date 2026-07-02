@@ -7,8 +7,11 @@ export function loadImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
-export async function canvasToPngArrayBuffer(canvas: HTMLCanvasElement): Promise<ArrayBuffer> {
-  const blob = await new Promise<Blob>((resolve, reject) => {
+// The canvas bitmap is copied synchronously when toBlob is invoked, so the
+// returned promise always resolves to the pixels as they were at call time,
+// even if the canvas keeps changing while the PNG encodes in the background.
+export function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((result) => {
       if (result) {
         resolve(result);
@@ -17,6 +20,9 @@ export async function canvasToPngArrayBuffer(canvas: HTMLCanvasElement): Promise
       }
     }, "image/png");
   });
+}
 
+export async function canvasToPngArrayBuffer(canvas: HTMLCanvasElement): Promise<ArrayBuffer> {
+  const blob = await canvasToPngBlob(canvas);
   return blob.arrayBuffer();
 }

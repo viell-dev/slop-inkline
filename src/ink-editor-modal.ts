@@ -1,5 +1,5 @@
 import { App, ButtonComponent, type KeymapEventListener, Modal, Notice, TFile } from "obsidian";
-import { canvasToPngArrayBuffer, loadImage } from "./canvas";
+import { canvasToPngArrayBuffer, canvasToPngBlob, loadImage } from "./canvas";
 import {
   clampImageSize,
   CreatedInkFile,
@@ -103,8 +103,15 @@ export class InkEditorModal extends Modal {
   private drawing = false;
   private hasSaved = false;
   private lastPoint: Point | null = null;
-  private undoStack: ImageData[] = [];
-  private redoStack: ImageData[] = [];
+  // History entries are compressed PNG snapshots instead of raw ImageData
+  // (~66 MB for 50 full-surface frames). Each entry is the pending encode of
+  // the surface as it was when the entry was pushed; canvasToPngBlob copies
+  // the bitmap synchronously, so stack order alone defines history order and
+  // restores only have to await the encode before decoding.
+  private readonly undoStack: Promise<Blob>[] = [];
+  private readonly redoStack: Promise<Blob>[] = [];
+  private historyChain: Promise<void> = Promise.resolve();
+  private pendingHistoryTasks = 0;
   private readonly toolButtons = new Map<InkTool, ButtonComponent>();
   private readonly sizeButtons = new Map<number, ButtonComponent>();
   private readonly cropLinesByStep = new Map<WidthStep, HTMLElement[]>();
@@ -452,14 +459,18 @@ export class InkEditorModal extends Modal {
   }
 
   private startStroke(event: PointerEvent): void {
-    if (!this.ctx) {
+    // Ignore strokes while an undo/redo restore is still decoding: the
+    // pending restore would immediately overwrite whatever gets drawn, and
+    // the undo snapshot pushed here would capture the pre-restore bitmap.
+    // Restores take a few milliseconds, so this is imperceptible.
+    if (!this.ctx || this.pendingHistoryTasks > 0) {
       return;
     }
 
     event.preventDefault();
     this.canvasEl.setPointerCapture(event.pointerId);
     this.pushUndo();
-    this.redoStack = [];
+    this.redoStack.length = 0;
     this.contentModified = true;
     this.drawing = true;
     this.lastPoint = this.getCanvasPoint(event);
@@ -515,7 +526,7 @@ export class InkEditorModal extends Modal {
   }
 
   private pushUndo(): void {
-    this.undoStack.push(this.ctx.getImageData(0, 0, this.canvasEl.width, this.canvasEl.height));
+    this.undoStack.push(canvasToPngBlob(this.canvasEl));
 
     if (this.undoStack.length > MAX_UNDO_STEPS) {
       this.undoStack.shift();
@@ -523,47 +534,71 @@ export class InkEditorModal extends Modal {
   }
 
   private undo(): void {
-    if (!this.ctx) {
-      return;
-    }
-
-    const imageData = this.undoStack.pop();
-    if (!imageData) {
-      return;
-    }
-
-    this.redoStack.push(this.ctx.getImageData(0, 0, this.canvasEl.width, this.canvasEl.height));
-    this.ctx.putImageData(imageData, 0, 0);
-    this.contentModified = true;
-    this.refreshWidthStep();
+    this.queueHistoryTask(() => this.restoreLatest(this.undoStack, this.redoStack));
   }
 
   private redo(): void {
-    if (!this.ctx) {
-      return;
-    }
-
-    const imageData = this.redoStack.pop();
-    if (!imageData) {
-      return;
-    }
-
-    this.undoStack.push(this.ctx.getImageData(0, 0, this.canvasEl.width, this.canvasEl.height));
-    this.ctx.putImageData(imageData, 0, 0);
-    this.contentModified = true;
-    this.refreshWidthStep();
+    this.queueHistoryTask(() => this.restoreLatest(this.redoStack, this.undoStack));
   }
 
   private clear(): void {
+    this.queueHistoryTask(() => {
+      this.pushUndo();
+      this.redoStack.length = 0;
+      this.contentModified = true;
+      this.ctx.fillStyle = "#ffffff";
+      this.ctx.fillRect(0, 0, this.canvasEl.width, this.canvasEl.height);
+      this.refreshWidthStep();
+    });
+  }
+
+  /**
+   * Serialize operations whose restore step is asynchronous (awaiting the
+   * PNG encode, then decoding it back onto the surface). Tasks run strictly
+   * in the order they were requested, and stroke input is ignored while any
+   * task is pending (see startStroke), so a fast stroke/undo/redo burst can
+   * never interleave into a wrong restore.
+   */
+  private queueHistoryTask(task: () => void | Promise<void>): void {
     if (!this.ctx) {
       return;
     }
 
-    this.pushUndo();
-    this.redoStack = [];
+    this.pendingHistoryTasks += 1;
+    this.historyChain = this.historyChain
+      .then(task)
+      .catch((error: unknown) => {
+        console.error("Inkline: canvas history operation failed", error);
+      })
+      .then(() => {
+        this.pendingHistoryTasks -= 1;
+      });
+  }
+
+  private async restoreLatest(
+    source: Promise<Blob>[],
+    target: Promise<Blob>[],
+  ): Promise<void> {
+    const snapshot = source.pop();
+    if (!snapshot) {
+      return;
+    }
+
+    // Snapshot the current state onto the opposite stack before restoring.
+    // All earlier tasks in the chain have completed and strokes are blocked
+    // while this task is pending, so the surface is the true current state.
+    target.push(canvasToPngBlob(this.canvasEl));
+
+    const bitmap = await createImageBitmap(await snapshot);
+    try {
+      // Snapshots are opaque full-surface PNGs, so drawing fully replaces
+      // the previous state without clearing first.
+      this.ctx.drawImage(bitmap, 0, 0);
+    } finally {
+      bitmap.close();
+    }
+
     this.contentModified = true;
-    this.ctx.fillStyle = "#ffffff";
-    this.ctx.fillRect(0, 0, this.canvasEl.width, this.canvasEl.height);
     this.refreshWidthStep();
   }
 
@@ -591,6 +626,10 @@ export class InkEditorModal extends Modal {
     if (!this.ctx) {
       return;
     }
+
+    // Let any queued undo/redo restore finish so the flatten and export
+    // below read the surface the user actually sees.
+    await this.historyChain;
 
     await this.renameFromInput();
     this.forceGrayscaleOpaque();
