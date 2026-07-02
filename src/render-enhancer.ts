@@ -22,6 +22,14 @@ const SELECTED_IMAGE_SELECTORS = [
 ].join(",");
 
 export class RenderEnhancer {
+  /**
+   * Lazily built map from an ink file's resource path (query and hash
+   * stripped, since `getResourcePath` appends cache-busting params) to its
+   * `TFile`. Lets `resolveImageFile` avoid an O(vault size) scan per image.
+   * Invalidated wholesale on any vault create/delete/rename.
+   */
+  private inkResourcePathCache: Map<string, TFile> | null = null;
+
   constructor(
     private readonly plugin: Plugin,
     private readonly fileService: InkFileService,
@@ -35,6 +43,11 @@ export class RenderEnhancer {
     this.plugin.registerMarkdownPostProcessor((el, _ctx) => {
       this.enhance(el);
     });
+
+    const { vault } = this.plugin.app;
+    this.plugin.registerEvent(vault.on("create", () => this.invalidateInkResourcePathCache()));
+    this.plugin.registerEvent(vault.on("delete", () => this.invalidateInkResourcePathCache()));
+    this.plugin.registerEvent(vault.on("rename", () => this.invalidateInkResourcePathCache()));
   }
 
   /**
@@ -153,23 +166,39 @@ export class RenderEnhancer {
     }
 
     const source = stripQueryAndHash(imageEl.currentSrc || imageEl.src || imageEl.getAttribute("src") || "");
+    const cache = this.getInkResourcePathCache();
 
-    for (const file of this.plugin.app.vault.getFiles()) {
-      if (!this.fileService.isInkFile(file)) {
-        continue;
-      }
+    const exactMatch = cache.get(source);
+    if (exactMatch) {
+      return exactMatch;
+    }
 
-      const resourcePath = stripQueryAndHash(this.plugin.app.vault.getResourcePath(file));
-      if (
-        source === resourcePath ||
-        source.includes(encodeURI(file.path)) ||
-        source.includes(file.path)
-      ) {
+    for (const file of cache.values()) {
+      if (source.includes(encodeURI(file.path)) || source.includes(file.path)) {
         return file;
       }
     }
 
     return null;
+  }
+
+  private getInkResourcePathCache(): Map<string, TFile> {
+    if (!this.inkResourcePathCache) {
+      const cache = new Map<string, TFile>();
+      for (const file of this.plugin.app.vault.getFiles()) {
+        if (this.fileService.isInkFile(file)) {
+          cache.set(stripQueryAndHash(this.plugin.app.vault.getResourcePath(file)), file);
+        }
+      }
+
+      this.inkResourcePathCache = cache;
+    }
+
+    return this.inkResourcePathCache;
+  }
+
+  private invalidateInkResourcePathCache(): void {
+    this.inkResourcePathCache = null;
   }
 }
 
