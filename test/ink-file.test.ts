@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { InkFileService, clampImageSize, IMAGE_SIZE } from "../src/ink-file";
 import { TFile, TFolder } from "obsidian";
 import type { App, TAbstractFile } from "obsidian";
+import { IMAGE_SIZE } from "../src/constants";
+import { clampImageSize } from "../src/ink/clamp-image-size";
+import { getInkDisplayName } from "../src/ink-files/get-ink-display-name";
+import { getNextAutoName } from "../src/ink-files/get-next-auto-name";
+import { previewRenameStem } from "../src/ink-files/preview-rename-stem";
+import { slugifyInkName } from "../src/ink-files/slugify-ink-name";
 
 interface MockAppOptions {
   attachmentFolder: string;
@@ -82,71 +87,58 @@ describe("clampImageSize", () => {
   });
 });
 
-describe("InkFileService slugify", () => {
+describe("slugifyInkName", () => {
   it("normalizes display names into ink filename stems", () => {
-    const service = new InkFileService(
-      createMockApp({ attachmentFolder: "ink", files: [] }),
-    );
-
-    expect(service.slugify("  Café sketch.ink.png  ")).toBe("cafe-sketch");
-    expect(service.slugify("Symbols & arrows.png")).toBe("symbols-arrows");
-    expect(service.slugify("!!!")).toBe("");
+    expect(slugifyInkName("  Café sketch.ink.png  ")).toBe("cafe-sketch");
+    expect(slugifyInkName("Symbols & arrows.png")).toBe("symbols-arrows");
+    expect(slugifyInkName("!!!")).toBe("");
   });
 
   it("uses the slugified filename as the display name fallback", () => {
     const folder = new TFolder("ink", "ink");
-    const service = new InkFileService(
-      createMockApp({ attachmentFolder: "ink", files: [] }),
-    );
 
-    expect(service.getDisplayName(inkFile(folder, "Café Symbol.ink.png"))).toBe(
+    expect(getInkDisplayName(inkFile(folder, "Café Symbol.ink.png"))).toBe(
       "cafe-symbol",
     );
   });
 });
 
-describe("InkFileService name previews", () => {
+describe("previewRenameStem", () => {
   it("previews rename stems with collision suffixes, excluding the file itself", () => {
     const folder = new TFolder("ink", "ink");
     const files = [
       inkFile(folder, "cafe.ink.png"),
       inkFile(folder, "taken.ink.png"),
     ];
-    const service = new InkFileService(
-      createMockApp({ attachmentFolder: "ink", files }),
-    );
+    const app = createMockApp({ attachmentFolder: "ink", files });
 
-    expect(service.previewRenameStem(files[0], "Café")).toBe("cafe");
-    expect(service.previewRenameStem(files[0], "Taken")).toBe("taken-2");
-    expect(service.previewRenameStem(files[0], "!!!")).toBe("cafe");
+    expect(previewRenameStem(app, files[0], "Café")).toBe("cafe");
+    expect(previewRenameStem(app, files[0], "Taken")).toBe("taken-2");
+    expect(previewRenameStem(app, files[0], "!!!")).toBe("cafe");
   });
 });
 
-describe("InkFileService auto naming", () => {
+describe("getNextAutoName", () => {
   it("returns the first zero-padded number when no ink files exist", async () => {
-    const service = new InkFileService(
-      createMockApp({ attachmentFolder: "attachments", files: [] }),
-    );
+    const app = createMockApp({ attachmentFolder: "attachments", files: [] });
 
-    await expect(service.getNextAutoName("note.md")).resolves.toBe("001");
+    await expect(getNextAutoName(app, "note.md")).resolves.toBe("001");
   });
 
   it("skips used numeric stems in the attachment folder only", async () => {
     const folder = new TFolder("attachments", "attachments");
     const otherFolder = new TFolder("other", "other");
-    const service = new InkFileService(
-      createMockApp({
-        attachmentFolder: "attachments",
-        files: [
-          inkFile(folder, "001.ink.png"),
-          inkFile(folder, "002.ink.png"),
-          inkFile(folder, "not-number.ink.png"),
-          inkFile(folder, "004.png"),
-          inkFile(otherFolder, "003.ink.png"),
-        ],
-      }),
-    );
+    const app = createMockApp({
+      attachmentFolder: "attachments",
+      files: [
+        inkFile(folder, "001.ink.png"),
+        inkFile(folder, "002.ink.png"),
+        inkFile(folder, "not-number.ink.png"),
+        inkFile(folder, "004.png"),
+        inkFile(otherFolder, "003.ink.png"),
+      ],
+    });
 
-    await expect(service.getNextAutoName("note.md")).resolves.toBe("003");
+    await expect(getNextAutoName(app, "note.md")).resolves.toBe("003");
   });
 });

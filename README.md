@@ -67,13 +67,22 @@ Then enable the plugin in Obsidian.
 
 ### Source layout
 
+The code is written in a functional style (one exported function or type per
+file); classes appear only as thin Obsidian interop shells.
+
 ```text
 src/
-  main.ts             Plugin entry: commands, settings, and editor wiring.
-  ink-file.ts         InkFileService: vault IO, naming, canvas geometry.
-  ink-editor-modal.ts InkEditorModal: pen/eraser canvas, undo/redo, save.
-  render-enhancer.ts  RenderEnhancer: tags and refreshes rendered ink embeds.
-  markdown-image.ts   Markdown/wiki image link parsing and embed helpers.
-  canvas.ts           Shared canvas helpers (load image, export PNG).
-  settings.ts         Settings schema and settings tab.
+  main.ts        Plugin subclass: command, menu, and settings wiring.
+  constants.ts   All tunable constants (future settings candidates).
+  commands/      Insert/edit command flows.
+  editor/        Drawing editor: modal assembly, UI builders, strokes,
+                 undo/redo history, load and save.
+  ink/           Pure width-step and image-size math.
+  ink-files/     Vault file IO and .ink.png naming.
+  markdown/      Markdown/wiki image link parsing and embed helpers.
+  canvas/        Shared canvas helpers (load, PNG export, flatten).
+  layout/        Baseline/cap-height layout math shared by editor and
+                 renderer.
+  render/        Tags, sizes, and refreshes rendered ink embeds.
+  settings/      Settings schema, defaults, and settings tab.
 ```

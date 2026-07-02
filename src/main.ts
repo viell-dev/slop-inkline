@@ -1,27 +1,34 @@
-import { Editor, EditorPosition, MarkdownFileInfo, Notice, Plugin, TFile } from "obsidian";
-import { InkEditorModal } from "./ink-editor-modal";
-import { CreatedInkFile, InkFileService } from "./ink-file";
-import { invalidateCapHeightCache } from "./layout";
-import { createImageEmbed, findImageTokenAtCursor, locateInsertedImage } from "./markdown-image";
-import { RenderEnhancer } from "./render-enhancer";
-import { DEFAULT_SETTINGS, InklineSettings, InklineSettingTab } from "./settings";
+import { Option } from "effect";
+import { Plugin, TFile } from "obsidian";
+import type { Editor, MarkdownFileInfo } from "obsidian";
+import { editInkAtCursor } from "./commands/edit-ink-at-cursor";
+import { inkFileAtCursor } from "./commands/ink-file-at-cursor";
+import { insertInlineInk } from "./commands/insert-inline-ink";
+import { openInkEditor } from "./editor/open-ink-editor";
+import { invalidateCapHeightCache } from "./layout/cap-height-ratio";
+import { createRenderEnhancer } from "./render/create-render-enhancer";
+import type { RenderEnhancer } from "./render/render-enhancer";
+import { DEFAULT_SETTINGS } from "./settings/default-settings";
+import { InklineSettingTab } from "./settings/inkline-setting-tab";
+import type { InklineSettings } from "./settings/inkline-settings";
 
+/**
+ * Obsidian interop shell: the Plugin subclass exists because Obsidian
+ * requires one. It only wires events, commands, and settings to the
+ * functional modules.
+ */
 export default class InklinePlugin extends Plugin {
   settings!: InklineSettings;
-  inkFiles!: InkFileService;
   renderEnhancer!: RenderEnhancer;
 
   async onload(): Promise<void> {
     await this.loadSettings();
 
-    this.inkFiles = new InkFileService(this.app);
-    this.renderEnhancer = new RenderEnhancer(
-      this,
-      this.inkFiles,
-      () => this.settings,
-      (file) => this.openEditor(file),
-    );
-    this.renderEnhancer.register();
+    this.renderEnhancer = createRenderEnhancer({
+      plugin: this,
+      getSettings: () => this.settings,
+      openEditor: (file) => this.openEditor(file),
+    });
 
     this.registerEvent(
       this.app.workspace.on("css-change", () => {
@@ -36,7 +43,7 @@ export default class InklinePlugin extends Plugin {
       id: "insert-inline-ink",
       name: "Insert inline ink",
       editorCallback: (editor, ctx) => {
-        void this.insertInlineInk(editor, ctx);
+        void this.insertInk(editor, ctx);
       },
     });
 
@@ -44,7 +51,7 @@ export default class InklinePlugin extends Plugin {
       id: "edit-inline-ink-at-cursor",
       name: "Edit inline ink at cursor",
       editorCallback: (editor, ctx) => {
-        this.editInlineInkAtCursor(editor, ctx);
+        this.editInk(editor, ctx);
       },
     });
 
@@ -55,11 +62,13 @@ export default class InklinePlugin extends Plugin {
             .setTitle("Insert ink")
             .setIcon("pen-tool")
             .onClick(() => {
-              void this.insertInlineInk(editor, ctx);
+              void this.insertInk(editor, ctx);
             }),
         );
 
-        const file = this.inkFileAtCursor(editor, ctx);
+        const file = Option.getOrNull(
+          inkFileAtCursor(this.app, editor, ctx.file?.path ?? ""),
+        );
         if (file) {
           menu.addItem((item) =>
             item
@@ -74,148 +83,49 @@ export default class InklinePlugin extends Plugin {
     );
   }
 
-  async insertInlineInk(editor: Editor, ctx: MarkdownFileInfo): Promise<void> {
-    this.moveCursorPastEnclosingImage(editor);
-
-    const sourcePath = ctx.file?.path ?? "";
-    const name = await this.inkFiles.getNextAutoName(sourcePath);
-    const insertStart = editor.getCursor("from");
-    const insertEnd = editor.getCursor("to");
-
-    this.openNewEditor(name, sourcePath, (created) => {
-      const markdown = createImageEmbed(
-        this.app.fileManager.generateMarkdownLink(created.file, sourcePath),
-      );
-      editor.replaceRange(markdown, insertStart, insertEnd);
-      new Notice(`Created inline ink: ${created.name}`);
-    });
-  }
-
-  editInlineInkAtCursor(editor: Editor, ctx: MarkdownFileInfo): void {
-    const file = this.inkFileAtCursor(editor, ctx);
-    if (file) {
-      this.openEditor(file);
-      return;
-    }
-
-    if (this.renderEnhancer.openSelectedInkImage()) {
-      return;
-    }
-
-    new Notice("No Inkline image at cursor.");
-  }
-
-  /**
-   * If the cursor sits strictly inside an existing image link, move it to the
-   * end of that link so inserting a new ink appends after it instead of
-   * splitting the `![](...)` in two. Boundary positions (just before or after
-   * the link) and active selections are left untouched.
-   */
-  private moveCursorPastEnclosingImage(editor: Editor): void {
-    if (editor.somethingSelected()) {
-      return;
-    }
-
-    const cursor = editor.getCursor();
-    const token = findImageTokenAtCursor(editor);
-    if (token && cursor.ch > token.from && cursor.ch < token.to) {
-      editor.setCursor({ line: cursor.line, ch: token.to });
-    }
-  }
-
-  private inkFileAtCursor(editor: Editor, ctx: MarkdownFileInfo): TFile | null {
-    const token = findImageTokenAtCursor(editor);
-    if (!token) {
-      return null;
-    }
-
-    const file = this.app.metadataCache.getFirstLinkpathDest(token.path, ctx.file?.path ?? "");
-    if (!file || !this.inkFiles.isInkFile(file)) {
-      return null;
-    }
-
-    return file;
-  }
-
-  openEditor(
-    file: TFile,
-    options: {
-      isNew?: boolean;
-      onDiscard?: (file: TFile) => void | Promise<void>;
-    } = {},
-  ): void {
-    new InkEditorModal(
-      this.app,
-      this.inkFiles,
-      file,
+  private insertInk(editor: Editor, ctx: MarkdownFileInfo): Promise<void> {
+    return insertInlineInk(
       {
-        isNew: options.isNew,
+        app: this.app,
+        imageSize: this.settings.imageSize,
         displayHeight: this.settings.displayHeight,
-        pinGuides: this.settings.pinGuides,
-        onPinGuidesChange: async (pinned) => {
-          this.settings.pinGuides = pinned;
-          await this.saveSettings();
-        },
-        onDiscard: options.onDiscard,
-        onSave: (savedFile) => this.renderEnhancer.refreshFile(savedFile),
+        onSaved: (file) => this.renderEnhancer.refreshFile(file),
       },
-    ).open();
-  }
-
-  private openNewEditor(
-    name: string,
-    sourcePath: string,
-    onCreate: (created: CreatedInkFile) => void,
-  ): void {
-    new InkEditorModal(
-      this.app,
-      this.inkFiles,
-      null,
-      {
-        isNew: true,
-        newInk: {
-          name,
-          sourcePath,
-          imageSize: this.settings.imageSize,
-          onCreate,
-        },
-        displayHeight: this.settings.displayHeight,
-        onSave: (savedFile) => this.renderEnhancer.refreshFile(savedFile),
-      },
-    ).open();
-  }
-
-  private removeInsertedMarkdown(
-    editor: Editor,
-    insertStart: EditorPosition,
-    insertEnd: EditorPosition,
-    insertedMarkdown: string,
-    currentPath: string,
-  ): void {
-    if (editor.getRange(insertStart, insertEnd) === insertedMarkdown) {
-      editor.replaceRange("", insertStart, insertEnd);
-      return;
-    }
-
-    const documentEnd = {
-      line: editor.lastLine(),
-      ch: editor.getLine(editor.lastLine()).length,
-    };
-    const documentText = editor.getRange({ line: 0, ch: 0 }, documentEnd);
-    const match = locateInsertedImage(documentText, insertedMarkdown, currentPath);
-    if (!match) {
-      return;
-    }
-
-    editor.replaceRange(
-      "",
-      editor.offsetToPos(match.offset),
-      editor.offsetToPos(match.offset + match.length),
+      editor,
+      ctx,
     );
   }
 
+  private editInk(editor: Editor, ctx: MarkdownFileInfo): void {
+    editInkAtCursor(
+      {
+        app: this.app,
+        openEditor: (file) => this.openEditor(file),
+        openSelectedInkImage: () => this.renderEnhancer.openSelectedInkImage(),
+      },
+      editor,
+      ctx,
+    );
+  }
+
+  private openEditor(file: TFile): void {
+    openInkEditor(this.app, file, {
+      displayHeight: this.settings.displayHeight,
+      pinGuides: this.settings.pinGuides,
+      onPinGuidesChange: async (pinned) => {
+        this.settings.pinGuides = pinned;
+        await this.saveSettings();
+      },
+      onSave: (savedFile) => this.renderEnhancer.refreshFile(savedFile),
+    });
+  }
+
   async loadSettings(): Promise<void> {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const data: unknown = await this.loadData();
+    this.settings = {
+      ...DEFAULT_SETTINGS,
+      ...(typeof data === "object" && data !== null ? data : {}),
+    };
   }
 
   async saveSettings(): Promise<void> {

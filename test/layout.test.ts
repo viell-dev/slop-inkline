@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  computeInkLineLayoutWithCapHeightRatio,
-  parseDisplayHeightEm,
-} from "../src/layout";
+import { computeInkLineLayout } from "../src/layout/compute-ink-line-layout";
+import { parseDisplayHeightEm } from "../src/layout/parse-display-height-em";
 
 describe("parseDisplayHeightEm", () => {
   it("parses positive em values", () => {
@@ -22,9 +20,9 @@ describe("parseDisplayHeightEm", () => {
   });
 });
 
-describe("computeInkLineLayoutWithCapHeightRatio", () => {
+describe("computeInkLineLayout", () => {
   it("centers the cap-height band in the stored square", () => {
-    const layout = computeInkLineLayoutWithCapHeightRatio(1.5, 0.7);
+    const layout = computeInkLineLayout(1.5, 0.7);
 
     expect(layout.capLineY).toBeCloseTo(51.2);
     expect(layout.baselineY).toBeCloseTo(140.8);
@@ -32,7 +30,7 @@ describe("computeInkLineLayoutWithCapHeightRatio", () => {
   });
 
   it("clamps guide positions when the cap ratio exceeds the display height", () => {
-    expect(computeInkLineLayoutWithCapHeightRatio(0.35, 0.7)).toEqual({
+    expect(computeInkLineLayout(0.35, 0.7)).toEqual({
       capLineY: 0,
       baselineY: 192,
       verticalAlignEm: 0.175,

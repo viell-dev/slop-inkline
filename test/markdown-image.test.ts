@@ -1,16 +1,19 @@
+import { Option } from "effect";
 import { describe, expect, it } from "vitest";
-import {
-  createImageEmbed,
-  findImageTokenAtCursor,
-  locateInsertedImage,
-} from "../src/markdown-image";
 import type { Editor } from "obsidian";
+import { createImageEmbed } from "../src/markdown/create-image-embed";
+import { findImageTokenAtCursor } from "../src/markdown/find-image-token-at-cursor";
+import type { ImageToken } from "../src/markdown/image-token";
 
 function editorAt(line: string, ch: number): Editor {
   return {
     getCursor: () => ({ line: 0, ch }),
     getLine: () => line,
   };
+}
+
+function tokenAt(line: string, ch: number): ImageToken | null {
+  return Option.getOrNull(findImageTokenAtCursor(editorAt(line, ch)));
 }
 
 describe("createImageEmbed", () => {
@@ -43,7 +46,7 @@ describe("findImageTokenAtCursor", () => {
   it("finds a markdown image when the cursor is inside it", () => {
     const line = "before ![ink](symbols/alpha.ink.png) after";
 
-    expect(findImageTokenAtCursor(editorAt(line, 12))).toEqual({
+    expect(tokenAt(line, 12)).toEqual({
       path: "symbols/alpha.ink.png",
       from: 7,
       to: 36,
@@ -53,34 +56,34 @@ describe("findImageTokenAtCursor", () => {
   it("treats the start and exclusive end offset as inside the token", () => {
     const line = "x ![](alpha.ink.png) y";
 
-    expect(findImageTokenAtCursor(editorAt(line, 2))).toEqual({
+    expect(tokenAt(line, 2)).toEqual({
       path: "alpha.ink.png",
       from: 2,
       to: 20,
     });
-    expect(findImageTokenAtCursor(editorAt(line, 20))).toEqual({
+    expect(tokenAt(line, 20)).toEqual({
       path: "alpha.ink.png",
       from: 2,
       to: 20,
     });
   });
 
-  it("returns null outside markdown image boundaries", () => {
+  it("returns none outside markdown image boundaries", () => {
     const line = "x ![](alpha.ink.png) y";
 
-    expect(findImageTokenAtCursor(editorAt(line, 1))).toBeNull();
-    expect(findImageTokenAtCursor(editorAt(line, 21))).toBeNull();
+    expect(tokenAt(line, 1)).toBeNull();
+    expect(tokenAt(line, 21)).toBeNull();
   });
 
   it("selects the token under the cursor when multiple embeds share a line", () => {
     const line = "![](one.ink.png) text ![two](two.ink.png)";
 
-    expect(findImageTokenAtCursor(editorAt(line, 4))).toEqual({
+    expect(tokenAt(line, 4)).toEqual({
       path: "one.ink.png",
       from: 0,
       to: 16,
     });
-    expect(findImageTokenAtCursor(editorAt(line, 29))).toEqual({
+    expect(tokenAt(line, 29)).toEqual({
       path: "two.ink.png",
       from: 22,
       to: 41,
@@ -90,7 +93,7 @@ describe("findImageTokenAtCursor", () => {
   it("selects the second token when identical paths appear on one line", () => {
     const line = "![](same.ink.png) ![again](same.ink.png)";
 
-    expect(findImageTokenAtCursor(editorAt(line, 28))).toEqual({
+    expect(tokenAt(line, 28)).toEqual({
       path: "same.ink.png",
       from: 18,
       to: 40,
@@ -100,38 +103,16 @@ describe("findImageTokenAtCursor", () => {
   it("does not parse markdown images with escaped closing brackets in alt text", () => {
     const line = String.raw`![escaped \] bracket](escaped.ink.png)`;
 
-    expect(findImageTokenAtCursor(editorAt(line, 10))).toBeNull();
+    expect(tokenAt(line, 10)).toBeNull();
   });
 
   it("finds wiki image embeds and strips aliases and headings from the path", () => {
     const line = "start ![[Folder/Ink.ink.png#heading|display]] end";
 
-    expect(findImageTokenAtCursor(editorAt(line, 12))).toEqual({
+    expect(tokenAt(line, 12)).toEqual({
       path: "Folder/Ink.ink.png",
       from: 6,
       to: 45,
     });
-  });
-});
-
-describe("locateInsertedImage", () => {
-  it("prefers the exact inserted markdown when present", () => {
-    expect(
-      locateInsertedImage(
-        "before ![](alpha.ink.png) after",
-        "![](alpha.ink.png)",
-        "alpha.ink.png",
-      ),
-    ).toEqual({ offset: 7, length: 18 });
-  });
-
-  it("falls back to another markdown image with the same path", () => {
-    expect(
-      locateInsertedImage(
-        "before ![renamed](alpha.ink.png) after",
-        "![](alpha.ink.png)",
-        "alpha.ink.png",
-      ),
-    ).toEqual({ offset: 7, length: 25 });
   });
 });

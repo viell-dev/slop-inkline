@@ -6,36 +6,63 @@ surface, read [README.md](README.md).
 Keep private planning, investigation notes, and local reference material outside
 this repository in the parent project container.
 
+## Code style
+
+The codebase is functional, not class-based. Rules that keep it that way:
+
+- One exported function, type, or object per file, named after its export in
+  kebab-case. Private helpers that are only useful to that export stay in the
+  same file. Return-type interfaces co-locate with their creator function.
+- Classes exist only as thin Obsidian interop shells, built as a final step:
+  `InklinePlugin` (`main.ts`), `InklineSettingTab`. The editor uses a plain
+  `new Modal(app)` configured in `editor/open-ink-editor.ts` instead of a
+  subclass. Everything else is functions, closures, and plain records.
+- Every tunable constant lives in `src/constants.ts`; many are candidates for
+  future settings, so promoting one should only touch that file plus the call
+  sites that switch to a settings read. Structural literals (CSS classes, DOM
+  selectors) stay with the code that owns them.
+- `effect` is used lightly: `Option` for nullable lookups (token at cursor,
+  image-file resolution). No Effect runtime, generators, or wrapped async —
+  plain `async`/`await` stays. Do not expand effect usage without need.
+- No `as any`, avoid `any` entirely; prefer `unknown` and narrowing.
+
 ## Module map
 
-Source lives in `src/`, with each module holding one responsibility:
+Source lives in `src/`, grouped by feature, one export per file:
 
-- `main.ts` — plugin entry point: registers commands, the `editor-menu` context
-  items (Insert ink / Edit ink), the settings tab, and the render enhancer, and
-  orchestrates insert/edit/discard flows.
-- `ink-file.ts` — `InkFileService`: all vault file IO, `.ink.png` naming and
-  slugging, the square canvas geometry and the export width-step ladder
-  (`WIDTH_STEPS`: 0.4/0.6/0.8/1.0 of the square, with the snap helpers and
-  round-trip epsilon), and blank PNG creation.
-- `ink-editor-modal.ts` — `InkEditorModal`: the pen/eraser drawing canvas with
-  undo/redo, rename, live width-step detection with pinnable crop/baseline
-  guides, and grayscale-flatten on save. Exports crop to the smallest width
-  step whose centered band contains all ink; width is recovered from the PNG
-  aspect ratio alone (no metadata).
-- `render-enhancer.ts` — `RenderEnhancer`: tags rendered ink `<img>` elements,
-  applies display CSS variables, resolves the selected ink image (for the edit
-  command), and refreshes previews after a save.
-- `markdown-image.ts` — pure helpers for parsing Markdown/wiki image links and
-  building embed Markdown. No Obsidian state beyond the `Editor` cursor.
-- `canvas.ts` — shared canvas helpers (`loadImage`, `canvasToPngArrayBuffer`).
-- `layout.ts` — shared vertical-layout math: measures the default text font's
+- `main.ts` — `InklinePlugin`: the required Obsidian Plugin subclass. Only
+  wires commands, the `editor-menu` context items (Insert ink / Edit ink),
+  the settings tab, the render enhancer, and settings load/save.
+- `constants.ts` — every tunable constant, documented, including the export
+  width-step ladder (`WIDTH_STEPS`: 0.4/0.6/0.8/1.0 of the square with its
+  round-trip epsilon), image/surface sizes, zoom range, and brush table.
+- `commands/` — the insert/edit command flows and the cursor→ink-file lookup.
+- `editor/` — the drawing editor: `open-ink-editor.ts` (Modal interop entry),
+  `build-ink-editor.ts` (orchestrator owning the editor state closures), one
+  `create-*.ts` per UI piece (name field, toolbar, zoom, crop/baseline
+  guides, history), plus stroke handling, shortcuts, load, and save. Exports
+  crop to the smallest width step whose centered band contains all ink;
+  width is recovered from the PNG aspect ratio alone (no metadata).
+- `ink/` — pure width-step and image-size math (`snap-width-step`,
+  `snap-aspect-to-width-step`, `clamp-image-size`, the `WidthStep` type).
+- `ink-files/` — vault file IO and naming: `.ink.png` slugging, display
+  names, auto-numbering, create/rename, collision-free stems.
+- `markdown/` — pure Markdown/wiki image-link parsing and embed building. No
+  Obsidian state beyond the `Editor` cursor.
+- `canvas/` — shared canvas helpers: load image, PNG export, grayscale
+  flatten, ink-extent measurement.
+- `layout/` — shared vertical-layout math: measures the default text font's
   cap height and computes the baseline/cap-line positions and inline
-  `vertical-align`. Used by both the editor guides and the render enhancer so
-  they stay in sync.
-- `settings.ts` — settings schema, defaults, and the settings tab.
+  `vertical-align`. Used by both the editor guides and the render enhancer
+  so they stay in sync.
+- `render/` — the render enhancer: tags rendered ink `<img>` elements,
+  applies display CSS variables, resolves the selected ink image (for the
+  edit command), and refreshes previews after a save.
+- `settings/` — settings schema, defaults, tab renderer, and the
+  `InklineSettingTab` interop shell.
 
-Keep DOM/canvas helpers in `canvas.ts`, link parsing in `markdown-image.ts`, and
-vertical-layout math in `layout.ts` rather than re-inlining them in feature
+Keep DOM/canvas helpers in `canvas/`, link parsing in `markdown/`, and
+vertical-layout math in `layout/` rather than re-inlining them in feature
 modules.
 
 ## Conventions
@@ -68,13 +95,13 @@ the canvas, background, or alignment:
   better on off-white light themes and stop antialiased edges from haloing, and
   would make the reserved ascender/descender regions invisible. Cost: the eraser
   must become a `destination-out` composite (erase to transparent) instead of
-  painting white, and `forceGrayscaleOpaque` must drop the force-opaque step
-  while keeping alpha. Dark mode still needs the invert rule.
+  painting white, and `flattenCanvasToGrayscale` must drop the force-opaque
+  step while keeping alpha. Dark mode still needs the invert rule.
 - **Alpha-mask + `currentColor` rendering.** The theme-proof endgame: store ink
   as an alpha mask and render it in the surrounding text color via CSS
   `mask-image`, so it matches any theme with no invert hack. More work than a
   plain `<img>` embed; a later milestone.
-- **Custom-font alignment.** `layout.ts` measures only the default text font.
+- **Custom-font alignment.** `layout/` measures only the default text font.
   Aligning to a note's custom font would need per-font metrics and probably a
   setting.
 - **Alignment assumptions.** Cap height is measured once and nominal-fallback;
