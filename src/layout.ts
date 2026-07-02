@@ -43,7 +43,13 @@ export function parseDisplayHeightEm(displayHeight: string): number {
  * ascender/diacritic region above and a descender region below the baseline.
  */
 export function computeInkLineLayout(displayHeightEm: number): InkLineLayout {
-  const cap = capHeightRatio();
+  return computeInkLineLayoutWithCapHeightRatio(displayHeightEm, capHeightRatio());
+}
+
+export function computeInkLineLayoutWithCapHeightRatio(
+  displayHeightEm: number,
+  cap: number,
+): InkLineLayout {
   const halfBand = cap / 2 / displayHeightEm;
   const capFraction = Math.max(0, 0.5 - halfBand);
   const baseFraction = Math.min(1, 0.5 + halfBand);

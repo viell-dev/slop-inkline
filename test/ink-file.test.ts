@@ -1,0 +1,134 @@
+import { describe, expect, it } from "vitest";
+import { InkFileService, clampImageSize, IMAGE_SIZE } from "../src/ink-file";
+import { TFile, TFolder } from "obsidian";
+import type { App, TAbstractFile } from "obsidian";
+
+interface MockAppOptions {
+  attachmentFolder: string;
+  files: TFile[];
+  folders?: TFolder[];
+}
+
+function createMockApp(options: MockAppOptions): App {
+  const abstractFiles = new Map<string, TAbstractFile>();
+  for (const folder of options.folders ?? []) {
+    abstractFiles.set(folder.path, folder);
+  }
+  for (const file of options.files) {
+    abstractFiles.set(file.path, file);
+  }
+
+  return {
+    vault: {
+      getFiles: () => options.files,
+      getAbstractFileByPath: (path) => abstractFiles.get(path) ?? null,
+      getFolderByPath: (path) => {
+        const file = abstractFiles.get(path);
+        return file instanceof TFolder ? file : null;
+      },
+      getFileByPath: (path) => {
+        const file = abstractFiles.get(path);
+        return file instanceof TFile ? file : null;
+      },
+      createBinary: async (path) => {
+        const name = path.split("/").pop() ?? path;
+        const file = new TFile(path, name, null);
+        options.files.push(file);
+        abstractFiles.set(path, file);
+        return file;
+      },
+      readBinary: async () => new ArrayBuffer(0),
+      modifyBinary: async () => undefined,
+      delete: async (file) => {
+        abstractFiles.delete(file.path);
+      },
+      createFolder: async (path) => {
+        const folder = new TFolder(path, path.split("/").pop() ?? path);
+        abstractFiles.set(path, folder);
+        return folder;
+      },
+    },
+    fileManager: {
+      getAvailablePathForAttachment: async (filename) => (
+        options.attachmentFolder
+          ? `${options.attachmentFolder}/${filename}`
+          : filename
+      ),
+      renameFile: async (file, newPath) => {
+        abstractFiles.delete(file.path);
+        file.path = newPath;
+        file.name = newPath.split("/").pop() ?? newPath;
+        abstractFiles.set(newPath, file);
+      },
+    },
+  };
+}
+
+function inkFile(folder: TFolder, name: string): TFile {
+  return new TFile(`${folder.path}/${name}`, name, folder);
+}
+
+describe("clampImageSize", () => {
+  it("rounds finite values and clamps to the supported range", () => {
+    expect(clampImageSize(128.6)).toBe(129);
+    expect(clampImageSize(12)).toBe(96);
+    expect(clampImageSize(1000)).toBe(576);
+    expect(clampImageSize(Number.NaN)).toBe(IMAGE_SIZE);
+  });
+});
+
+describe("InkFileService slugify", () => {
+  it("normalizes display names into ink filename stems", () => {
+    const service = new InkFileService(
+      createMockApp({ attachmentFolder: "ink", files: [] }),
+      () => ({ imageSize: IMAGE_SIZE, displayHeight: "1.5em" }),
+    );
+
+    expect(service.slugify("  Café sketch.ink.png  ")).toBe("cafe-sketch");
+    expect(service.slugify("Symbols & arrows.png")).toBe("symbols-arrows");
+    expect(service.slugify("!!!")).toBe("");
+  });
+
+  it("uses the slugified filename as the display name fallback", () => {
+    const folder = new TFolder("ink", "ink");
+    const service = new InkFileService(
+      createMockApp({ attachmentFolder: "ink", files: [] }),
+      () => ({ imageSize: IMAGE_SIZE, displayHeight: "1.5em" }),
+    );
+
+    expect(service.getDisplayName(inkFile(folder, "Café Symbol.ink.png"))).toBe(
+      "cafe-symbol",
+    );
+  });
+});
+
+describe("InkFileService auto naming", () => {
+  it("returns the first zero-padded number when no ink files exist", async () => {
+    const service = new InkFileService(
+      createMockApp({ attachmentFolder: "attachments", files: [] }),
+      () => ({ imageSize: IMAGE_SIZE, displayHeight: "1.5em" }),
+    );
+
+    await expect(service.getNextAutoName("note.md")).resolves.toBe("001");
+  });
+
+  it("skips used numeric stems in the attachment folder only", async () => {
+    const folder = new TFolder("attachments", "attachments");
+    const otherFolder = new TFolder("other", "other");
+    const service = new InkFileService(
+      createMockApp({
+        attachmentFolder: "attachments",
+        files: [
+          inkFile(folder, "001.ink.png"),
+          inkFile(folder, "002.ink.png"),
+          inkFile(folder, "not-number.ink.png"),
+          inkFile(folder, "004.png"),
+          inkFile(otherFolder, "003.ink.png"),
+        ],
+      }),
+      () => ({ imageSize: IMAGE_SIZE, displayHeight: "1.5em" }),
+    );
+
+    await expect(service.getNextAutoName("note.md")).resolves.toBe("003");
+  });
+});
