@@ -11,8 +11,19 @@ export interface InsertedImageMatch {
   length: number;
 }
 
-export function createMarkdownImage(path: string): string {
-  return `![](${formatMarkdownDestination(path)})`;
+export function createImageEmbed(markdownLink: string): string {
+  const embed = markdownLink.startsWith("!") ? markdownLink : `!${markdownLink}`;
+  const markdownImage = /^!\[[^\]]*\]\((.*)\)$/.exec(embed);
+  if (markdownImage) {
+    return `![](${markdownImage[1]})`;
+  }
+
+  const wikiImage = /^!\[\[([^|\]]+)\|[^\]]*\]\]$/.exec(embed);
+  if (wikiImage) {
+    return `![[${wikiImage[1]}]]`;
+  }
+
+  return embed;
 }
 
 export function findImageTokenAtCursor(editor: Editor): ImageToken | null {
@@ -29,8 +40,8 @@ export function findImageTokenAtCursor(editor: Editor): ImageToken | null {
 
 /**
  * Locate the embed inserted for `path` so it can be removed when a new ink is
- * discarded. Prefers the verbatim inserted Markdown, then any Markdown image
- * that points at the same path in case the editor reflowed it.
+ * discarded. Prefers the verbatim inserted Markdown, then any image embed that
+ * points at the same path in case the editor reflowed it.
  */
 export function locateInsertedImage(
   documentText: string,
@@ -42,21 +53,13 @@ export function locateInsertedImage(
     return { offset: literalOffset, length: insertedMarkdown.length };
   }
 
-  const pathOffset = findMarkdownImageOffset(documentText, path);
+  const pathOffset = findImageOffset(documentText, path);
   if (pathOffset < 0) {
     return null;
   }
 
-  const markdown = matchMarkdownImageAt(documentText, pathOffset) ?? insertedMarkdown;
-  return { offset: pathOffset, length: markdown.length };
-}
-
-function formatMarkdownDestination(path: string): string {
-  if (!/[\s()<>]/.test(path)) {
-    return path;
-  }
-
-  return `<${path.replace(/>/g, "%3E")}>`;
+  const image = matchImageAt(documentText, pathOffset) ?? insertedMarkdown;
+  return { offset: pathOffset, length: image.length };
 }
 
 function findMarkdownImageTokens(line: string): ImageToken[] {
@@ -107,9 +110,21 @@ function findMarkdownImageOffset(documentText: string, path: string): number {
   return match?.index ?? -1;
 }
 
-function matchMarkdownImageAt(documentText: string, offset: number): string | null {
+function findWikiImageOffset(documentText: string, path: string): number {
+  const escapedPath = escapeRegExp(path);
+  const pattern = new RegExp(`!\\[\\[${escapedPath}(?:#[^|\\]]*)?(?:\\|[^\\]]*)?\\]\\]`);
+  const match = pattern.exec(documentText);
+  return match?.index ?? -1;
+}
+
+function findImageOffset(documentText: string, path: string): number {
+  const markdownOffset = findMarkdownImageOffset(documentText, path);
+  return markdownOffset >= 0 ? markdownOffset : findWikiImageOffset(documentText, path);
+}
+
+function matchImageAt(documentText: string, offset: number): string | null {
   const match = /^!\[[^\]]*\]\((?:<)?[^)>]+(?:>)?\)/.exec(documentText.slice(offset));
-  return match?.[0] ?? null;
+  return match?.[0] ?? /^!\[\[[^\]]+\]\]/.exec(documentText.slice(offset))?.[0] ?? null;
 }
 
 function escapeRegExp(value: string): string {

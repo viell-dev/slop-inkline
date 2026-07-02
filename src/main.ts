@@ -1,7 +1,7 @@
 import { Editor, EditorPosition, MarkdownFileInfo, Notice, Plugin, TFile } from "obsidian";
 import { InkEditorModal } from "./ink-editor-modal";
 import { CreatedInkFile, InkFileService } from "./ink-file";
-import { createMarkdownImage, findImageTokenAtCursor, locateInsertedImage } from "./markdown-image";
+import { createImageEmbed, findImageTokenAtCursor, locateInsertedImage } from "./markdown-image";
 import { RenderEnhancer } from "./render-enhancer";
 import { DEFAULT_SETTINGS, InklineSettings, InklineSettingTab } from "./settings";
 
@@ -75,7 +75,9 @@ export default class InklinePlugin extends Plugin {
     const insertEnd = editor.getCursor("to");
 
     this.openNewEditor(name, sourcePath, (created) => {
-      const markdown = createMarkdownImage(created.path);
+      const markdown = createImageEmbed(
+        this.app.fileManager.generateMarkdownLink(created.file, sourcePath),
+      );
       editor.replaceRange(markdown, insertStart, insertEnd);
       new Notice(`Created inline ink: ${created.name}`);
     });
