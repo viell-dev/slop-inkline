@@ -149,6 +149,11 @@ export default class InklinePlugin extends Plugin {
       {
         isNew: options.isNew,
         displayHeight: this.settings.displayHeight,
+        pinGuides: this.settings.pinGuides,
+        onPinGuidesChange: async (pinned) => {
+          this.settings.pinGuides = pinned;
+          await this.saveSettings();
+        },
         onDiscard: options.onDiscard,
         onSave: (savedFile) => this.renderEnhancer.refreshFile(savedFile),
       },

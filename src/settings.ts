@@ -6,12 +6,16 @@ export interface InklineSettings {
   displayHeight: string;
   darkModeInvert: boolean;
   imageSize: number;
+  // Keep the editor's crop and baseline guides always visible. Toggled from
+  // the editor toolbar rather than the settings tab.
+  pinGuides: boolean;
 }
 
 export const DEFAULT_SETTINGS: InklineSettings = {
   displayHeight: "1.5em",
   darkModeInvert: true,
   imageSize: IMAGE_SIZE,
+  pinGuides: false,
 };
 
 export class InklineSettingTab extends PluginSettingTab {

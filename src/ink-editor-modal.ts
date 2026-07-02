@@ -73,6 +73,8 @@ function resolveExportSize(loadedHeight: number): number {
 interface InkEditorModalOptions {
   isNew?: boolean;
   displayHeight?: string;
+  pinGuides?: boolean;
+  onPinGuidesChange?: (pinned: boolean) => void | Promise<void>;
   onSave?: (file: TFile) => void;
   onDiscard?: (file: TFile) => void | Promise<void>;
 }
@@ -87,7 +89,10 @@ export class InkEditorModal extends Modal {
   private exportSize = IMAGE_SIZE;
   private loadedStep: WidthStep | null = null;
   private contentModified = false;
+  private stageEl!: HTMLElement;
   private cropGuidesEl!: HTMLElement;
+  private pinButton!: ButtonComponent;
+  private guidesPinned: boolean;
   private drawing = false;
   private hasSaved = false;
   private lastPoint: Point | null = null;
@@ -95,6 +100,7 @@ export class InkEditorModal extends Modal {
   private redoStack: ImageData[] = [];
   private readonly toolButtons = new Map<InkTool, ButtonComponent>();
   private readonly sizeButtons = new Map<number, ButtonComponent>();
+  private readonly cropLinesByStep = new Map<WidthStep, HTMLElement[]>();
 
   constructor(
     app: App,
@@ -104,6 +110,7 @@ export class InkEditorModal extends Modal {
   ) {
     super(app);
     this.file = file;
+    this.guidesPinned = options.pinGuides ?? false;
   }
 
   onOpen(): void {
@@ -150,6 +157,13 @@ export class InkEditorModal extends Modal {
       .setButtonText("Clear")
       .onClick(() => this.clear());
 
+    this.pinButton = new ButtonComponent(toolbarEl)
+      .setButtonText("Pin guides")
+      .setTooltip("Keep the crop and baseline guides always visible")
+      .onClick(() => {
+        void this.togglePinGuides();
+      });
+
     new ButtonComponent(toolbarEl)
       .setButtonText("Save")
       .setCta()
@@ -164,10 +178,11 @@ export class InkEditorModal extends Modal {
       });
 
     const canvasWrapEl = contentEl.createDiv({ cls: "inkline-canvas-wrap" });
-    const stageEl = canvasWrapEl.createDiv({ cls: "inkline-canvas-stage" });
-    this.canvasEl = stageEl.createEl("canvas", { cls: "inkline-editor-canvas" });
-    this.buildCropGuides(stageEl);
-    this.buildBaselineGuides(stageEl);
+    this.stageEl = canvasWrapEl.createDiv({ cls: "inkline-canvas-stage" });
+    this.canvasEl = this.stageEl.createEl("canvas", { cls: "inkline-editor-canvas" });
+    this.buildCropGuides(this.stageEl);
+    this.buildBaselineGuides(this.stageEl);
+    this.applyGuidePinState();
     this.canvasEl.addEventListener("pointerdown", (event) => this.startStroke(event));
     this.canvasEl.addEventListener("pointermove", (event) => this.continueStroke(event));
     this.canvasEl.addEventListener("pointerup", (event) => this.endStroke(event));
@@ -244,10 +259,12 @@ export class InkEditorModal extends Modal {
   }
 
   /**
-   * Corner crop-marks sitting just outside the canvas mark the width-step
-   * cutoff the drawing currently snaps to (their inner edge is the cut line),
-   * and follow the drawing live. Hovering a mark reveals the full dashed
-   * cutoff lines. These are DOM only and never touch the exported PNG.
+   * Red dashed cut lines at every width-step boundary (the 1.0 pair sits on
+   * the canvas edges), with the pair for the currently detected step
+   * emphasized and following the drawing live. Corner crop-marks just outside
+   * the canvas track the detected step too (their inner edge is the cut
+   * line); hovering a mark reveals all lines, and the pin toggle keeps them
+   * visible. These are DOM only and never touch the exported PNG.
    */
   private buildCropGuides(stageEl: HTMLElement): void {
     this.cropGuidesEl = stageEl.createDiv({ cls: "inkline-crop-guides" });
@@ -256,8 +273,17 @@ export class InkEditorModal extends Modal {
       this.cropGuidesEl.createDiv({ cls: `inkline-crop-mark inkline-crop-mark-${corner}` });
     }
 
-    this.cropGuidesEl.createDiv({ cls: "inkline-crop-line inkline-crop-line-left" });
-    this.cropGuidesEl.createDiv({ cls: "inkline-crop-line inkline-crop-line-right" });
+    this.cropLinesByStep.clear();
+    for (const step of WIDTH_STEPS) {
+      const leftPercent = ((1 - step) / 2) * 100;
+      const lines: HTMLElement[] = [];
+      for (const linePercent of [leftPercent, 100 - leftPercent]) {
+        const lineEl = this.cropGuidesEl.createDiv({ cls: "inkline-crop-line" });
+        lineEl.style.left = `${linePercent}%`;
+        lines.push(lineEl);
+      }
+      this.cropLinesByStep.set(step, lines);
+    }
 
     this.updateCropGuides(WIDTH_STEPS[0]);
   }
@@ -266,6 +292,23 @@ export class InkEditorModal extends Modal {
     const leftPercent = ((1 - step) / 2) * 100;
     this.cropGuidesEl.style.setProperty("--inkline-crop-left", `${leftPercent}%`);
     this.cropGuidesEl.style.setProperty("--inkline-crop-right", `${100 - leftPercent}%`);
+
+    for (const [lineStep, lines] of this.cropLinesByStep) {
+      for (const lineEl of lines) {
+        lineEl.toggleClass("inkline-crop-line-active", lineStep === step);
+      }
+    }
+  }
+
+  private async togglePinGuides(): Promise<void> {
+    this.guidesPinned = !this.guidesPinned;
+    this.applyGuidePinState();
+    await this.options.onPinGuidesChange?.(this.guidesPinned);
+  }
+
+  private applyGuidePinState(): void {
+    this.stageEl.toggleClass("inkline-guides-pinned", this.guidesPinned);
+    this.pinButton.buttonEl.toggleClass("inkline-active", this.guidesPinned);
   }
 
   /** Re-detect the export width step and move the crop guides to match. */
@@ -278,9 +321,10 @@ export class InkEditorModal extends Modal {
   }
 
   /**
-   * Horizontal baseline and cap-line references on the left/right edges, with
-   * the ascender/descender regions shaded on hover. Positions come from the
-   * shared layout so they match how the image renders inline. DOM only.
+   * Cyan dashed baseline and cap-height lines, with tick marks on the
+   * left/right edges as hover targets. Positions come from the shared layout
+   * so they match how the image renders inline. Hovering a tick reveals the
+   * lines; the pin toggle keeps them visible. DOM only.
    */
   private buildBaselineGuides(stageEl: HTMLElement): void {
     const layout = this.lineLayout();
@@ -296,8 +340,6 @@ export class InkEditorModal extends Modal {
 
     guidesEl.createDiv({ cls: "inkline-hline inkline-hline-cap" });
     guidesEl.createDiv({ cls: "inkline-hline inkline-hline-base" });
-    guidesEl.createDiv({ cls: "inkline-band inkline-band-ascender" });
-    guidesEl.createDiv({ cls: "inkline-band inkline-band-descender" });
   }
 
   private lineLayout(): InkLineLayout {
