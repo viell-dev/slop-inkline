@@ -29,9 +29,25 @@ interface BrushSize {
 // stored size. Strokes are downsampled to the file's export size on save, so
 // this must be >= the largest export size (kept in sync with MAX_IMAGE_SIZE in
 // ink-file.ts) for exporting to always be a downsample, never an upscale.
-// DISPLAY_WIDTH is only the on-screen size and is independent of the backing.
+// DISPLAY_WIDTH is only used as the reference for the default zoom level (see
+// DEFAULT_ZOOM below) and the modal header's fixed width in styles.css; the
+// canvas's actual on-screen size is driven by zoom instead (applyDisplaySize).
 const SURFACE_SIZE = 576;
 const DISPLAY_WIDTH = 512;
+
+// The drawing area is shown at `zoomLevel` CSS pixels per stored image pixel,
+// independent of the fixed backing surface above. Range is deliberately a
+// couple of named constants so it is trivial to widen later.
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 6;
+
+function clampZoom(value: number): number {
+  return Math.min(Math.max(Math.round(value), MIN_ZOOM), MAX_ZOOM);
+}
+
+// The zoom level that reproduces the old fixed DISPLAY_WIDTH canvas for an
+// ink at the default stored image size.
+const DEFAULT_ZOOM = clampZoom(DISPLAY_WIDTH / IMAGE_SIZE);
 
 // Brushes are sized by how many CSS pixels they occupy inline at the reference
 // display height (1.5em on a 16px font, i.e. the whole square shown at 24px).
@@ -94,6 +110,7 @@ export class InkEditorModal extends Modal {
   private file: TFile | null;
   private tool: InkTool = "pen";
   private brushInlinePx = DEFAULT_BRUSH.inlinePx;
+  private zoomLevel = DEFAULT_ZOOM;
   private exportSize = IMAGE_SIZE;
   private loadedStep: WidthStep | null = null;
   private contentModified = false;
@@ -116,6 +133,9 @@ export class InkEditorModal extends Modal {
   private readonly toolButtons = new Map<InkTool, ButtonComponent>();
   private readonly sizeButtons = new Map<number, ButtonComponent>();
   private readonly cropLinesByStep = new Map<WidthStep, HTMLElement[]>();
+  private zoomLevelEl!: HTMLElement;
+  private zoomOutButton!: ButtonComponent;
+  private zoomInButton!: ButtonComponent;
 
   constructor(
     app: App,
@@ -182,6 +202,7 @@ export class InkEditorModal extends Modal {
     for (const brush of BRUSH_SIZES) {
       this.createSizeButton(sizeRowEl, brush);
     }
+    this.buildZoomControls(sizeRowEl);
 
     const actionsRowEl = toolbarEl.createDiv({ cls: "inkline-toolbar-row" });
     this.pinButton = new ButtonComponent(actionsRowEl)
@@ -213,6 +234,7 @@ export class InkEditorModal extends Modal {
 
     this.updateToolState();
     this.updateSizeState();
+    this.updateZoomState();
     this.registerShortcuts();
 
     void this.loadImage();
@@ -308,6 +330,51 @@ export class InkEditorModal extends Modal {
     for (const [inlinePx, button] of this.sizeButtons) {
       button.buttonEl.toggleClass("inkline-active", inlinePx === this.brushInlinePx);
     }
+  }
+
+  private buildZoomControls(parentEl: HTMLElement): void {
+    parentEl.createSpan({ text: "Zoom" });
+    this.zoomOutButton = new ButtonComponent(parentEl)
+      .setButtonText("-")
+      .setTooltip("Zoom out")
+      .onClick(() => this.stepZoom(-1));
+    this.zoomLevelEl = parentEl.createSpan({ cls: "inkline-zoom-level" });
+    this.zoomInButton = new ButtonComponent(parentEl)
+      .setButtonText("+")
+      .setTooltip("Zoom in")
+      .onClick(() => this.stepZoom(1));
+  }
+
+  private stepZoom(direction: -1 | 1): void {
+    this.setZoom(this.zoomLevel + direction);
+  }
+
+  private setZoom(level: number): void {
+    this.zoomLevel = clampZoom(level);
+    this.updateZoomState();
+    this.applyDisplaySize();
+    this.updateBrushCursorStyle();
+  }
+
+  private updateZoomState(): void {
+    this.zoomLevelEl.setText(`${this.zoomLevel}x`);
+    this.zoomOutButton.setDisabled(this.zoomLevel <= MIN_ZOOM);
+    this.zoomInButton.setDisabled(this.zoomLevel >= MAX_ZOOM);
+  }
+
+  /**
+   * CSS display size of the drawing surface: the file's stored export size
+   * scaled by the zoom level, so one zoom step is one display pixel per
+   * stored pixel. The fixed backing surface (SURFACE_SIZE) never changes;
+   * only the on-screen box does. Guide symbols (crop marks, baseline ticks)
+   * sit just outside this box at a static size and are not part of it.
+   */
+  private applyDisplaySize(): void {
+    if (!this.canvasEl) {
+      return;
+    }
+
+    this.canvasEl.style.width = `${this.exportSize * this.zoomLevel}px`;
   }
 
   /**
@@ -438,6 +505,8 @@ export class InkEditorModal extends Modal {
       const sourceHeight = image.naturalHeight || image.height;
       if (sourceWidth > 0 && sourceHeight > 0) {
         this.exportSize = resolveExportSize(sourceHeight);
+        this.applyDisplaySize();
+        this.updateBrushCursorStyle();
         this.loadedStep = snapAspectToWidthStep(sourceWidth / sourceHeight);
         const drawWidth = SURFACE_SIZE * this.loadedStep;
         const offsetX = (SURFACE_SIZE - drawWidth) / 2;
@@ -453,8 +522,8 @@ export class InkEditorModal extends Modal {
   private initializeBlankCanvas(exportSize: number): void {
     this.canvasEl.width = SURFACE_SIZE;
     this.canvasEl.height = SURFACE_SIZE;
-    this.canvasEl.style.width = `${DISPLAY_WIDTH}px`;
     this.exportSize = clampImageSize(exportSize);
+    this.applyDisplaySize();
 
     const ctx = this.canvasEl.getContext("2d", { willReadFrequently: true });
     if (!ctx) {

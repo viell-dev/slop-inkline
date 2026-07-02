@@ -36,10 +36,15 @@
   filter: none;
 }
 
+/* Obsidian caps every modal at --dialog-max-height (85vh by default); this
+   editor wants to use most of the window once zoom pushes the drawing area
+   past that, so it raises its own cap instead, still leaving room for the
+   mobile status bar / notch via --safe-area-inset-top. */
 .modal.inkline-editor-modal-frame {
   position: relative;
   width: fit-content;
   max-width: calc(100vw - 48px);
+  --dialog-max-height: calc(100vh - var(--safe-area-inset-top, 0px) - 24px);
 }
 
 .inkline-editor-modal {
@@ -175,12 +180,21 @@
   color: var(--text-on-accent);
 }
 
+.inkline-zoom-level {
+  min-width: 2em;
+  text-align: center;
+  color: var(--text-normal);
+  font-variant-numeric: tabular-nums;
+}
+
+/* No vertical size cap here on purpose: the drawing area grows to whatever
+   size zoom asks for, and Obsidian's own modal scrolls if that no longer
+   fits the window. A cap here would just move the scrollbar from a place
+   the user can see the whole toolbar to one where they can't. */
 .inkline-canvas-wrap {
   width: fit-content;
   max-width: 100%;
-  max-height: min(62vh, 640px);
   overflow-x: hidden;
-  overflow-y: auto;
   border: 1px solid var(--background-modifier-border);
   background: var(--background-secondary);
   padding: 20px;
