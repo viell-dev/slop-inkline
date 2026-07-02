@@ -2,10 +2,16 @@ import { IMAGE_SIZE } from "../constants";
 import type { InkLineLayout } from "../layout/inkLineLayout";
 
 /**
- * Cyan dashed baseline and cap-height lines, with tick marks on the
- * left/right edges as hover targets. Positions come from the shared layout
- * so they match how the image renders inline. Hovering a tick reveals the
- * lines; the pin toggle keeps them visible. DOM only.
+ * Create the baseline guides: cyan dashed baseline and cap-height lines,
+ * with tick marks on the left/right edges as hover targets.
+ *
+ * @remarks
+ * Positions come from the shared layout so they match how the image
+ * renders inline. Hovering a tick reveals the lines; the pin toggle keeps
+ * them visible. DOM only — the guides never touch the exported PNG.
+ *
+ * @param stageEl - The canvas stage element the guides overlay.
+ * @param layout - The line positions to place the guides at.
  */
 export function createBaselineGuides(
   stageEl: HTMLElement,

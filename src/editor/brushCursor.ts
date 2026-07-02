@@ -1,9 +1,18 @@
 import type { InkTool } from "./inkTool";
 
 /**
- * CSS cursor value showing the brush footprint as an SVG data URI. A white
- * halo under a thin black line keeps the outline readable on any canvas
- * color, since a static cursor image cannot invert the pixels below.
+ * Build a CSS cursor value showing the brush footprint as an SVG data URI.
+ *
+ * @remarks
+ * A white halo under a thin black line keeps the outline readable on any
+ * canvas color, since a static cursor image cannot invert the pixels
+ * below. The eraser's outline is dashed. Falls back to `crosshair` when
+ * the browser rejects the image.
+ *
+ * @param diameter - The brush footprint's on-screen diameter, in CSS
+ *   pixels.
+ * @param tool - The active tool, selecting the outline style.
+ * @returns The `cursor` property value.
  */
 export function brushCursor(diameter: number, tool: InkTool): string {
   const padding = 3;

@@ -4,11 +4,19 @@ import { snapWidthStep } from "../ink/snapWidthStep";
 import type { WidthStep } from "../ink/widthStep";
 
 /**
- * The width step the canvas would export at right now. While the drawing is
- * untouched since the last load or save, the step implied by the file's own
- * aspect ratio is kept as-is, so a plain reopen-and-save can never move a
- * borderline drawing to a neighboring step; once the user draws, erases, or
- * clears, the step is re-detected from the ink extent.
+ * The width step the canvas would export at right now.
+ *
+ * @remarks
+ * While the drawing is untouched since the last load or save, the step
+ * implied by the file's own aspect ratio is kept as-is, so a plain
+ * reopen-and-save can never move a borderline drawing to a neighboring
+ * step; once the user draws, erases, or clears, the step is re-detected
+ * from the ink extent.
+ *
+ * @param ctx - The 2D context of the drawing surface.
+ * @param state - Whether the drawing was modified and the step the loaded
+ *   file implied (`null` for a new ink).
+ * @returns The step an export would crop to.
  */
 export function currentWidthStep(
   ctx: CanvasRenderingContext2D,

@@ -2,38 +2,74 @@ import { MAX_UNDO_STEPS } from "../constants";
 import { canvasToPngBlob } from "../canvas/canvasToPngBlob";
 
 /**
- * Undo/redo for the drawing surface. History entries are compressed PNG
- * snapshots instead of raw ImageData (~66 MB for 50 full-surface frames).
- * Each entry is the pending encode of the surface as it was when the entry
- * was pushed; canvasToPngBlob copies the bitmap synchronously, so stack
- * order alone defines history order and restores only have to await the
- * encode before decoding.
+ * Undo/redo for the drawing surface.
+ *
+ * @remarks
+ * History entries are compressed PNG snapshots. Each entry is the pending
+ * encode of the surface as it was when the entry was pushed;
+ * `canvasToPngBlob` copies the bitmap synchronously, so stack order alone
+ * defines history order and restores only have to await the encode before
+ * decoding.
+ *
+ * @privateRemarks
+ * PNG snapshots instead of raw ImageData: 50 full-surface raw frames would
+ * be ~66 MB.
  */
 export interface EditorHistory {
-  /** True while a queued restore is still pending; block strokes then. */
+  /**
+   * Whether a queued restore or task is still pending; block strokes then.
+   *
+   * @returns True while any queued task has not finished.
+   */
   isBusy(): boolean;
   /** Snapshot the surface as a new undo point and drop the redo stack. */
   record(): void;
+  /** Restore the previous snapshot, pushing the current state to redo. */
   undo(): void;
+  /** Restore the next snapshot, pushing the current state back to undo. */
   redo(): void;
   /**
-   * Serialize a task with the restore queue. Tasks run strictly in the
-   * order they were requested, and stroke input is ignored while any task
-   * is pending (see isBusy), so a fast stroke/undo/redo burst can never
-   * interleave into a wrong restore.
+   * Serialize a task with the restore queue.
+   *
+   * @remarks
+   * Tasks run strictly in the order they were requested, and stroke input
+   * is ignored while any task is pending (see
+   * {@link EditorHistory.isBusy}), so a fast stroke/undo/redo burst can
+   * never interleave into a wrong restore.
+   *
+   * @param task - The task to queue; errors are logged, not rethrown.
    */
   run(task: () => void | Promise<void>): void;
-  /** Resolves once every queued task so far has finished. */
+  /**
+   * Wait for the queue to drain.
+   *
+   * @returns A promise that resolves once every task queued so far has
+   *   finished.
+   */
   settled(): Promise<void>;
 }
 
+/** Dependencies of {@link createHistory}. */
 export interface EditorHistoryDeps {
+  /** The drawing canvas snapshots are taken from. */
   canvasEl: HTMLCanvasElement;
+  /** The 2D context restores are drawn through. */
   ctx: CanvasRenderingContext2D;
   /** Called after a restore lands on the surface. */
   onRestore(): void;
 }
 
+/**
+ * Create the editor's undo/redo history over a drawing surface.
+ *
+ * @remarks
+ * The undo stack holds at most {@link MAX_UNDO_STEPS} snapshots; recording
+ * beyond that drops the oldest. Recording also clears the redo stack, like
+ * any linear-history editor.
+ *
+ * @param deps - The canvas, context, and restore callback.
+ * @returns The history surface.
+ */
 export function createHistory(deps: EditorHistoryDeps): EditorHistory {
   const { canvasEl, ctx } = deps;
   const undoStack: Promise<Blob>[] = [];

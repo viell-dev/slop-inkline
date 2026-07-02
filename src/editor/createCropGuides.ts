@@ -1,18 +1,29 @@
 import { WIDTH_STEPS } from "../constants";
 import type { WidthStep } from "../ink/widthStep";
 
+/** The crop guides' surface for reflecting the detected width step. */
 export interface CropGuides {
-  /** Emphasize the line pair for `step` and move the corner crop-marks. */
+  /**
+   * Emphasize the line pair for `step` and move the corner crop-marks.
+   *
+   * @param step - The currently detected width step.
+   */
   update(step: WidthStep): void;
 }
 
 /**
- * Red dashed cut lines at every width-step boundary (the 1.0 pair sits on
- * the canvas edges), with the pair for the currently detected step
- * emphasized and following the drawing live. Corner crop-marks just outside
- * the canvas track the detected step too (their inner edge is the cut
- * line); hovering a mark reveals all lines, and the pin toggle keeps them
- * visible. These are DOM only and never touch the exported PNG.
+ * Create the crop guides: red dashed cut lines at every width-step
+ * boundary (the 1.0 pair sits on the canvas edges), with the pair for the
+ * currently detected step emphasized and following the drawing live.
+ *
+ * @remarks
+ * Corner crop-marks just outside the canvas track the detected step too
+ * (their inner edge is the cut line); hovering a mark reveals all lines,
+ * and the pin toggle keeps them visible. DOM only — the guides never touch
+ * the exported PNG.
+ *
+ * @param stageEl - The canvas stage element the guides overlay.
+ * @returns The guides' update surface, initialized to the smallest step.
  */
 export function createCropGuides(stageEl: HTMLElement): CropGuides {
   const guidesEl = stageEl.createDiv({ cls: "inkline-crop-guides" });

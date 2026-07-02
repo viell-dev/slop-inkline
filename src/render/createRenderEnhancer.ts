@@ -10,15 +10,32 @@ import { refreshInkFile } from "./refreshInkFile";
 import type { RenderEnhancer } from "./renderEnhancer";
 import { resolveImageFile } from "./resolveImageFile";
 
+/** Dependencies of {@link createRenderEnhancer}. */
 export interface RenderEnhancerDeps {
+  /** The plugin, used to register events and the post-processor. */
   plugin: Plugin;
+  /** Read the current settings; called on every enhancement pass. */
   getSettings: () => InklineSettings;
+  /**
+   * Open the ink editor for a resolved ink file.
+   *
+   * @param file - The `.ink.png` vault file to edit.
+   */
   openEditor: (file: TFile) => void;
 }
 
 /**
  * Wire the markdown post-processor, vault cache invalidation, and window
  * variable publication, and return the enhancer surface the plugin uses.
+ *
+ * @remarks
+ * Registration goes through the plugin, so everything wired here is
+ * unloaded with it. The post-processor styles every rendered ink image;
+ * vault create/delete/rename events invalidate the resource cache; and
+ * newly opened popout windows receive the display variables.
+ *
+ * @param deps - The enhancer's dependencies.
+ * @returns The enhancer surface.
  */
 export function createRenderEnhancer(deps: RenderEnhancerDeps): RenderEnhancer {
   const { plugin, getSettings, openEditor } = deps;

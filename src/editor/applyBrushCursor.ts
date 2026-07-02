@@ -4,8 +4,16 @@ import { surfaceLineWidth } from "./surfaceLineWidth";
 
 /**
  * Render the brush footprint as the real canvas cursor, scaled to the
- * on-screen canvas size. Using the native cursor avoids the jitter of a DOM
- * element chasing pointer events.
+ * on-screen canvas size.
+ *
+ * @remarks
+ * Using the native cursor avoids the jitter of a DOM element chasing
+ * pointer events. Call again whenever the tool, brush, zoom, or canvas
+ * size changes.
+ *
+ * @param canvasEl - The drawing canvas whose cursor is replaced.
+ * @param tool - The active tool; the eraser gets a dashed outline.
+ * @param brushInlinePx - The active brush's inline size, in CSS pixels.
  */
 export function applyBrushCursor(
   canvasEl: HTMLCanvasElement,

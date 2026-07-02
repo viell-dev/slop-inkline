@@ -4,6 +4,18 @@ import { clampImageSize } from "../ink/clampImageSize";
 import { DEFAULT_SETTINGS } from "./defaultSettings";
 import type { SettingsHost } from "./settingsHost";
 
+/**
+ * Render the plugin's settings controls: display height, dark-mode invert,
+ * and the advanced image-resolution slider.
+ *
+ * @remarks
+ * Clears the container first, so it is safe to call on every
+ * `PluginSettingTab.display`. Every control persists through
+ * `host.saveSettings` as it changes.
+ *
+ * @param containerEl - The settings tab's container element.
+ * @param host - The plugin's settings and persistence surface.
+ */
 export function renderSettingsTab(
   containerEl: HTMLElement,
   host: SettingsHost,

@@ -2,11 +2,19 @@ import { IMAGE_SIZE } from "../constants";
 import type { InkLineLayout } from "./inkLineLayout";
 
 /**
- * Center a capital-height band vertically on the text line: the cap band sits
- * in the middle of the square, so the leftover leading splits evenly into an
- * ascender/diacritic region above and a descender region below the baseline.
- * Pass the current cap-height ratio (see capHeightRatio) so callers stay in
- * sync with the measured text font.
+ * Compute where the cap line and baseline sit on the ink square and the
+ * inline vertical-align that anchors it to the text line.
+ *
+ * @remarks
+ * Centers a capital-height band vertically on the text line: the cap band
+ * sits in the middle of the square, so the leftover leading splits evenly
+ * into an ascender/diacritic region above and a descender region below the
+ * baseline. Pass the current cap-height ratio (see `capHeightRatio`) so
+ * callers stay in sync with the measured text font.
+ *
+ * @param displayHeightEm - The inline display height of the square, in em.
+ * @param capHeightRatio - Cap height as a fraction of the em.
+ * @returns The line positions and vertical-align for that geometry.
  */
 export function computeInkLineLayout(
   displayHeightEm: number,

@@ -2,10 +2,16 @@ import { FULL_WIDTH_STEP, WIDTH_STEPS } from "../constants";
 import type { WidthStep } from "./widthStep";
 
 /**
- * The width step a stored PNG was exported at, recovered from its aspect
- * ratio. Export widths round to whole pixels, so the ratio deviates from the
- * step by at most half a pixel of the stored height; snapping to the nearest
+ * Recover the width step a stored PNG was exported at from its aspect
+ * ratio.
+ *
+ * @remarks
+ * Export widths round to whole pixels, so the ratio deviates from the step
+ * by at most half a pixel of the stored height; snapping to the nearest
  * step removes that error before the image is re-centered onto the square.
+ *
+ * @param aspectRatio - The stored image's width divided by its height.
+ * @returns The width step nearest to the aspect ratio.
  */
 export function snapAspectToWidthStep(aspectRatio: number): WidthStep {
   let best: WidthStep = FULL_WIDTH_STEP;

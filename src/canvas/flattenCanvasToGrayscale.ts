@@ -1,7 +1,12 @@
 /**
  * Composite every pixel over white, convert it to grayscale, and force full
- * opacity, in place. Run before exporting so the stored PNG is always an
- * opaque grayscale image regardless of how the strokes were composited.
+ * opacity, in place.
+ *
+ * @remarks
+ * Run before exporting so the stored PNG is always an opaque grayscale
+ * image regardless of how the strokes were composited.
+ *
+ * @param ctx - The 2D context of the canvas to flatten.
  */
 export function flattenCanvasToGrayscale(ctx: CanvasRenderingContext2D): void {
   const { width, height } = ctx.canvas;

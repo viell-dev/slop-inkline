@@ -1,8 +1,17 @@
 import { INK_EXTENSION } from "../constants";
 
 /**
- * The header row with the name label, input, and joined `.ink.png` suffix.
- * Enter in the input triggers `onSubmit` (a save) instead of anything modal.
+ * Create the header row with the name label, input, and joined `.ink.png`
+ * suffix.
+ *
+ * @remarks
+ * Enter in the input triggers `onSubmit` (a save) instead of anything
+ * modal.
+ *
+ * @param parent - The modal content element the header is appended to.
+ * @param initialName - The display name the input starts with.
+ * @param onSubmit - Called when Enter is pressed in the input.
+ * @returns The name input element, for reading and updating the name.
  */
 export function createNameField(
   parent: HTMLElement,

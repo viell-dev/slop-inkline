@@ -1,10 +1,20 @@
 import { INK_THRESHOLD } from "../constants";
 
 /**
- * The maximum horizontal distance of any ink pixel from the square surface's
- * vertical center line, as a fraction of the square's width; 0 when blank.
- * Each pixel is composited over white exactly like flattenCanvasToGrayscale
- * so detection matches before and after flattening.
+ * Measure how far the ink extends from the square surface's vertical
+ * center line.
+ *
+ * @remarks
+ * Each pixel is composited over white exactly like
+ * `flattenCanvasToGrayscale`, so detection matches before and after
+ * flattening. A pixel counts as ink when its flattened grayscale value is
+ * darker than {@link INK_THRESHOLD}.
+ *
+ * @param ctx - The 2D context of the square drawing surface.
+ * @param size - The surface's side length, in pixels.
+ * @returns The maximum horizontal distance of any ink pixel from the
+ *   vertical center line, as a fraction of the square's width; 0 when the
+ *   surface is blank.
  */
 export function measureInkHalfWidthFraction(
   ctx: CanvasRenderingContext2D,

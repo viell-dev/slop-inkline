@@ -2,16 +2,25 @@ import type { EditorHistory } from "./createHistory";
 import type { InkTool } from "./inkTool";
 import { surfaceLineWidth } from "./surfaceLineWidth";
 
+/** A point in surface (canvas backing) coordinates. */
 interface Point {
+  /** Horizontal surface coordinate, in pixels. */
   x: number;
+  /** Vertical surface coordinate, in pixels. */
   y: number;
 }
 
+/** Dependencies of {@link attachStrokeHandlers}. */
 export interface StrokeHandlerDeps {
+  /** The drawing canvas the pointer events are attached to. */
   canvasEl: HTMLCanvasElement;
+  /** The 2D context strokes are drawn through. */
   ctx: CanvasRenderingContext2D;
+  /** The editor history; every stroke records an undo point. */
   history: EditorHistory;
+  /** Read the active tool; sampled per stroke segment. */
   getTool(): InkTool;
+  /** Read the active brush's inline size; sampled per stroke segment. */
   getBrushInlinePx(): number;
   /** Called when a stroke starts mutating the drawing. */
   onInkChanged(): void;
@@ -19,7 +28,17 @@ export interface StrokeHandlerDeps {
   onStrokeEnd(): void;
 }
 
-/** Wire pen/eraser pointer drawing onto the canvas. */
+/**
+ * Wire pen/eraser pointer drawing onto the canvas.
+ *
+ * @remarks
+ * A stroke starts on pointerdown (capturing the pointer, recording an undo
+ * point), draws round-capped line segments while the pointer moves, and
+ * ends on pointerup/pointercancel. The pen draws black, the eraser paints
+ * white. Strokes are ignored while the history is busy restoring.
+ *
+ * @param deps - The handlers' dependencies and callbacks.
+ */
 export function attachStrokeHandlers(deps: StrokeHandlerDeps): void {
   const { canvasEl, ctx, history } = deps;
   let drawing = false;

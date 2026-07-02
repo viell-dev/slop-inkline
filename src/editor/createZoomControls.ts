@@ -1,11 +1,23 @@
 import { ButtonComponent } from "obsidian";
 import { MAX_ZOOM, MIN_ZOOM } from "../constants";
 
+/** The zoom widget's surface for reflecting state changes. */
 export interface ZoomControls {
-  /** Reflect a new zoom level in the label and button disabled states. */
+  /**
+   * Reflect a new zoom level in the label and button disabled states.
+   *
+   * @param level - The current zoom level.
+   */
   update(level: number): void;
 }
 
+/**
+ * Create the zoom widget: a label, a level readout, and -/+ step buttons.
+ *
+ * @param parent - The toolbar row the widget is appended to.
+ * @param onStep - Called with -1/+1 when a step button is clicked.
+ * @returns The widget's update surface.
+ */
 export function createZoomControls(
   parent: HTMLElement,
   onStep: (direction: -1 | 1) => void,

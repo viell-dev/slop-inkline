@@ -15,7 +15,8 @@ The codebase is functional, not class-based. Rules that keep it that way:
   export stay in the same file. Return-type interfaces co-locate with their
   creator function.
 - Classes exist only as thin Obsidian interop shells, built as a final step:
-  `InklinePlugin` (`main.ts`), `InklineSettingTab`. The editor uses a plain
+  `InklinePlugin` (`inklinePlugin.ts`), `InklineSettingTab`. The editor uses a
+  plain
   `new Modal(app)` configured in `editor/openInkEditor.ts` instead of a
   subclass. Everything else is functions, closures, and plain records.
 - Every tunable constant lives in `src/constants.ts`; many are candidates for
@@ -27,13 +28,37 @@ The codebase is functional, not class-based. Rules that keep it that way:
   plain `async`/`await` stays. Do not expand effect usage without need.
 - No `as any`, avoid `any` entirely; prefer `unknown` and narrowing.
 
+## Documentation
+
+Everything in `src/` carries a TSDoc docblock: every exported function, type,
+interface, class, and constant, and also file-private helpers, interface and
+type members, class members, and function-typed properties. Use the standard
+TSDoc tags where they apply — `@param` (with the `name - description` hyphen
+form, no types), `@returns`, `@typeParam`, `@remarks`, `@defaultValue` — and
+keep the first sentence a standalone summary.
+
+- Docblocks are documentation, nothing else: what the thing is, what it does,
+  how to use it, and the contracts callers can rely on (inputs, outputs,
+  side effects, error behavior, invariants).
+- Docblocks must not contain private notes: no decision rationale, no
+  rejected alternatives, no history, no "done this way because…". When a dev
+  note is worth keeping and has no better home, put it in a normal `//`
+  comment next to the code it concerns, or under a `@privateRemarks` tag at
+  the end of the docblock.
+- Docblocks must be kept up to date and relevant. A change that alters
+  behavior, a signature, or a contract updates the affected docblocks in the
+  same change; a stale or misleading docblock is a bug.
+
 ## Module map
 
 Source lives in `src/`, grouped by feature, one export per file:
 
-- `main.ts` — `InklinePlugin`: the required Obsidian Plugin subclass. Only
-  wires commands, the `editor-menu` context items (Insert ink / Edit ink),
-  the settings tab, the render enhancer, and settings load/save.
+- `main.ts` — bootstrap only: re-exports `InklinePlugin` as the default
+  export Obsidian loads. Keep it minimal.
+- `inklinePlugin.ts` — `InklinePlugin`: the required Obsidian Plugin
+  subclass. Only wires commands, the `editor-menu` context items (Insert ink
+  / Edit ink), the settings tab, the render enhancer, and settings
+  load/save.
 - `constants.ts` — every tunable constant, documented, including the export
   width-step ladder (`WIDTH_STEPS`: 0.4/0.6/0.8/1.0 of the square with its
   round-trip epsilon), image/surface sizes, zoom range, and brush table.

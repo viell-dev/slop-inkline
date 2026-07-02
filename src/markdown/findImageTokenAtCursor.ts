@@ -3,8 +3,14 @@ import type { Editor } from "obsidian";
 import type { ImageToken } from "./imageToken";
 
 /**
- * The Markdown or wiki image embed under the editor cursor, if any. Both the
- * start offset and the exclusive end offset count as inside the token.
+ * Find the Markdown or wiki image embed under the editor cursor.
+ *
+ * @remarks
+ * Both the start offset and the exclusive end offset count as inside the
+ * token, so a cursor sitting at either boundary still matches.
+ *
+ * @param editor - The editor whose cursor line is scanned.
+ * @returns The token containing the cursor, or none.
  */
 export function findImageTokenAtCursor(
   editor: Editor,
@@ -22,6 +28,12 @@ export function findImageTokenAtCursor(
   );
 }
 
+/**
+ * Collect every Markdown image embed (`![alt](path)`) on a line.
+ *
+ * @param line - The line text to scan.
+ * @returns The tokens in source order, with cleaned destinations.
+ */
 function findMarkdownImageTokens(line: string): ImageToken[] {
   const tokens: ImageToken[] = [];
   const pattern = /!\[[^\]]*\]\((<[^>]+>|[^)\s]+)\)/g;
@@ -38,6 +50,13 @@ function findMarkdownImageTokens(line: string): ImageToken[] {
   return tokens;
 }
 
+/**
+ * Collect every wiki image embed (`![[path]]`) on a line.
+ *
+ * @param line - The line text to scan.
+ * @returns The tokens in source order, with alias and hash parts stripped
+ *   from the paths.
+ */
 function findWikiImageTokens(line: string): ImageToken[] {
   const tokens: ImageToken[] = [];
   const pattern = /!\[\[([^\]]+)\]\]/g;
@@ -54,6 +73,13 @@ function findWikiImageTokens(line: string): ImageToken[] {
   return tokens;
 }
 
+/**
+ * Normalize a Markdown link destination into a plain path.
+ *
+ * @param destination - The raw destination, possibly `<angle-wrapped>`,
+ *   URI-encoded, or carrying a `#hash`.
+ * @returns The decoded path without angle brackets or hash.
+ */
 function cleanMarkdownDestination(destination: string): string {
   const trimmed = destination.trim();
   const unwrapped =

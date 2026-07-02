@@ -3,16 +3,38 @@ import type { App, TFile } from "obsidian";
 import { isInkFile } from "../inkFiles/isInkFile";
 
 /**
- * Lazily built map from an ink file's resource path (query and hash
- * stripped, since `getResourcePath` appends cache-busting params) to its
- * `TFile`. Lets image resolution avoid an O(vault size) scan per image.
- * Invalidate wholesale on any vault create/delete/rename.
+ * Lazily built map from an ink file's resource path to its `TFile`, letting
+ * image resolution avoid an O(vault size) scan per image.
+ *
+ * @remarks
+ * Keys have query and hash stripped, since `getResourcePath` appends
+ * cache-busting params. Invalidate wholesale on any vault
+ * create/delete/rename.
  */
 export interface InkResourceCache {
+  /**
+   * Resolve an image src to the ink file it serves.
+   *
+   * @param source - The image's src or currentSrc.
+   * @returns The matching ink file, or none.
+   */
   lookup(source: string): Option.Option<TFile>;
+  /** Drop the cached map; the next lookup rebuilds it from the vault. */
   invalidate(): void;
 }
 
+/**
+ * Create an ink resource cache over the given app's vault.
+ *
+ * @remarks
+ * The map is built on first lookup and reused until
+ * {@link InkResourceCache.invalidate} is called. Lookup tries an exact
+ * resource-path match first, then falls back to substring matching on the
+ * (possibly URI-encoded) vault path.
+ *
+ * @param app - The Obsidian app whose vault is indexed.
+ * @returns The cache surface.
+ */
 export function createInkResourceCache(app: App): InkResourceCache {
   let cache: Map<string, TFile> | null = null;
 
@@ -56,6 +78,12 @@ export function createInkResourceCache(app: App): InkResourceCache {
   };
 }
 
+/**
+ * Strip the query and hash parts from a URL-like string.
+ *
+ * @param value - The string to strip.
+ * @returns Everything before the first `#` or `?`.
+ */
 function stripQueryAndHash(value: string): string {
   return value.split("#", 1)[0].split("?", 1)[0];
 }

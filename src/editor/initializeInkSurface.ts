@@ -1,8 +1,11 @@
 import { SURFACE_SIZE } from "../constants";
 
 /**
- * Size the canvas to the fixed drawing surface and fill it white. Returns
- * the 2D context every other editor piece draws through.
+ * Size the canvas to the fixed drawing surface and fill it white.
+ *
+ * @param canvasEl - The canvas element to initialize.
+ * @returns The 2D context every other editor piece draws through; throws
+ *   when the browser cannot create one.
  */
 export function initializeInkSurface(
   canvasEl: HTMLCanvasElement,

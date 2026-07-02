@@ -3,11 +3,19 @@ import type { InklineSettings } from "../settings/inklineSettings";
 import { applyDisplayVariables } from "./applyDisplayVariables";
 
 /**
- * Tag a rendered ink `<img>` and its embed wrapper with the inkline classes,
- * path marker, and display CSS variables. Only inline embeds get shrunk to
- * glyph size: a standalone image view (opening the .ink.png directly) has no
- * embed wrapper and must stay full size; refreshInkFile still updates its
- * src so the content stays current.
+ * Tag a rendered ink `<img>` and its embed wrapper with the inkline
+ * classes, path marker, and display CSS variables.
+ *
+ * @remarks
+ * Only inline embeds get shrunk to glyph size: a standalone image view
+ * (opening the `.ink.png` directly) has no embed wrapper and must stay
+ * full size, so it is left untouched here; `refreshInkFile` still updates
+ * its src so the content stays current.
+ *
+ * @param imageEl - The rendered `<img>` element to style.
+ * @param file - The ink file the image shows; recorded as the path marker.
+ * @param settings - The current settings, driving invert and display
+ *   variables.
  */
 export function applyInkStyles(
   imageEl: HTMLImageElement,

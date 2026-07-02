@@ -5,8 +5,15 @@ import type { InklineSettings } from "../settings/inklineSettings";
 
 /**
  * Set the display-height and inline vertical-align CSS variables on an
- * element. Used on document roots and on individual embeds so the size CSS
- * keyed on the `.ink.png` src always has values to inherit.
+ * element.
+ *
+ * @remarks
+ * Used on document roots and on individual embeds so the size CSS keyed on
+ * the `.ink.png` src always has values to inherit.
+ *
+ * @param el - The element to set `--inkline-display-height` and
+ *   `--inkline-valign` on.
+ * @param settings - The settings the variable values are derived from.
  */
 export function applyDisplayVariables(
   el: HTMLElement,

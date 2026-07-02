@@ -6,8 +6,14 @@ import type { InkResourceCache } from "./inkResourceCache";
 import { resolveImageFile } from "./resolveImageFile";
 
 /**
- * Point every rendered `<img>` of `file` at a cache-busted src and re-apply
- * the ink styles, so a just-saved drawing shows up without a re-render.
+ * Point every rendered `<img>` of `file` at a cache-busted src and
+ * re-apply the ink styles, so a just-saved drawing shows up without a
+ * re-render.
+ *
+ * @param app - The Obsidian app, used to build the resource path.
+ * @param cache - The resource cache used to resolve rendered images.
+ * @param settings - The current settings to re-apply.
+ * @param file - The ink file that was just saved.
  */
 export function refreshInkFile(
   app: App,

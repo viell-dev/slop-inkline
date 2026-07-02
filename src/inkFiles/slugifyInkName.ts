@@ -1,7 +1,13 @@
 /**
- * Normalize a display name into an ink filename stem: lowercase ASCII with
- * hyphen separators, ink/png extensions stripped. Returns "" when nothing
- * usable remains.
+ * Normalize a display name into an ink filename stem.
+ *
+ * @remarks
+ * Strips `.ink.png`/`.png` extensions, lowercases, folds accented letters
+ * to ASCII, and collapses every other character run into single hyphens.
+ *
+ * @param value - The display name to slugify.
+ * @returns The lowercase ASCII stem with hyphen separators, or "" when
+ *   nothing usable remains.
  */
 export function slugifyInkName(value: string): string {
   return value

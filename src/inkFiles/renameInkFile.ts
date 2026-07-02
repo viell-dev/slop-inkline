@@ -3,8 +3,17 @@ import { buildInkPath } from "./buildInkPath";
 import { previewRenameStem } from "./previewRenameStem";
 
 /**
- * Rename an ink to the stem `name` slugs to (see previewRenameStem) and
- * return the renamed file. Renaming to the current path is a no-op.
+ * Rename an ink to the stem `name` slugs to (see `previewRenameStem`).
+ *
+ * @remarks
+ * Renaming to the current path is a no-op. The rename goes through
+ * Obsidian's file manager, so links to the ink are updated.
+ *
+ * @param app - The Obsidian app performing the rename.
+ * @param file - The ink file to rename.
+ * @param name - The requested display name.
+ * @returns The renamed file; throws when the renamed file cannot be found
+ *   afterwards.
  */
 export async function renameInkFile(
   app: App,

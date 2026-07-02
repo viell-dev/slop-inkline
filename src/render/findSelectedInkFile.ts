@@ -3,6 +3,10 @@ import type { App, TFile } from "obsidian";
 import type { InkResourceCache } from "./inkResourceCache";
 import { resolveImageFile } from "./resolveImageFile";
 
+/**
+ * Selector matching the images inside every embed/image element state
+ * Obsidian uses to mark a selection or focus.
+ */
 const SELECTED_IMAGE_SELECTORS = [
   ".inkline-embed.is-selected img",
   ".inkline-embed.is-focused img",
@@ -21,7 +25,14 @@ const SELECTED_IMAGE_SELECTORS = [
   "img[aria-selected='true']",
 ].join(",");
 
-/** The ink file behind the currently selected/focused rendered image. */
+/**
+ * Find the ink file behind the currently selected or focused rendered
+ * image.
+ *
+ * @param app - The Obsidian app, used to resolve images to files.
+ * @param cache - The resource cache used for src lookups.
+ * @returns The first selected image that resolves to an ink file, or none.
+ */
 export function findSelectedInkFile(
   app: App,
   cache: InkResourceCache,
@@ -36,6 +47,13 @@ export function findSelectedInkFile(
   return Option.none();
 }
 
+/**
+ * Collect the images that currently count as selected: every match of the
+ * selection selectors, plus the image inside the embed that contains the
+ * active (focused) element.
+ *
+ * @returns The deduplicated image elements, selector matches first.
+ */
 function getSelectedImageElements(): HTMLImageElement[] {
   const images = Array.from(
     activeDocument.querySelectorAll<HTMLImageElement>(
