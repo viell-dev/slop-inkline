@@ -25,11 +25,65 @@ export function clampImageSize(value: number): number {
   return Math.min(Math.max(Math.round(value), MIN_IMAGE_SIZE), MAX_IMAGE_SIZE);
 }
 
-// Fraction of the square kept when a drawing stays inside the centered band. A
-// band-only drawing is exported at this fraction of its width; anything wider is
-// exported as the full square. The editor derives the crop guides, band
-// detection, and per-file export width from this ratio.
-export const NARROW_RATIO = 0.6;
+// Width steps a drawing can export at, as fractions of the square. A drawing
+// is cropped to the centered band of the smallest step that contains all of
+// its ink; the last step is the full square. The editor derives the crop
+// guides, ink-extent detection, and per-file export width from this table.
+// Width is recovered purely from the PNG aspect ratio (no metadata), so the
+// steps must stay distinguishable after export rounding — see
+// snapAspectToWidthStep and WIDTH_STEP_EPSILON_RATIO.
+export const WIDTH_STEPS = [0.4, 0.6, 0.8, 1] as const;
+export type WidthStep = (typeof WIDTH_STEPS)[number];
+export const FULL_WIDTH_STEP: WidthStep = WIDTH_STEPS[WIDTH_STEPS.length - 1];
+
+// Containment tolerance for snapping ink to a width step, as a fraction of the
+// square. It absorbs the geometry noise of a save/reload cycle so a drawing
+// saved at step w always re-detects as step w:
+// - detection scans whole pixel columns, so a band edge at a fractional
+//   x-position can mark the partially covered boundary column as ink
+//   (up to 1 px per side);
+// - resampling on export/reload can bleed antialiased ink about 1 px past the
+//   original extent (never past the drawn band).
+// That totals about 2 px per side on the drawing surface; 0.008 of the 576 px
+// surface is ~4.6 px, leaving headroom without visibly clipping ink that gets
+// snapped inward.
+export const WIDTH_STEP_EPSILON_RATIO = 0.008;
+
+/**
+ * Snap outward to the smallest width step whose centered band contains all
+ * ink, given the maximum horizontal distance of any ink from the vertical
+ * center line as a fraction of the square's width.
+ */
+export function snapWidthStep(inkHalfWidthFraction: number): WidthStep {
+  for (const step of WIDTH_STEPS) {
+    if (inkHalfWidthFraction <= step / 2 + WIDTH_STEP_EPSILON_RATIO) {
+      return step;
+    }
+  }
+
+  return FULL_WIDTH_STEP;
+}
+
+/**
+ * The width step a stored PNG was exported at, recovered from its aspect
+ * ratio. Export widths round to whole pixels, so the ratio deviates from the
+ * step by at most half a pixel of the stored height; snapping to the nearest
+ * step removes that error before the image is re-centered onto the square.
+ */
+export function snapAspectToWidthStep(aspectRatio: number): WidthStep {
+  let best = FULL_WIDTH_STEP;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (const step of WIDTH_STEPS) {
+    const distance = Math.abs(aspectRatio - step);
+    if (distance < bestDistance) {
+      best = step;
+      bestDistance = distance;
+    }
+  }
+
+  return best;
+}
 
 export interface CreatedInkFile {
   file: TFile;

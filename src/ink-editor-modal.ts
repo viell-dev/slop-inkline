@@ -1,6 +1,14 @@
 import { App, ButtonComponent, Modal, Notice, TFile } from "obsidian";
 import { canvasToPngArrayBuffer, loadImage } from "./canvas";
-import { clampImageSize, IMAGE_SIZE, InkFileService, NARROW_RATIO } from "./ink-file";
+import {
+  clampImageSize,
+  IMAGE_SIZE,
+  InkFileService,
+  snapAspectToWidthStep,
+  snapWidthStep,
+  WidthStep,
+  WIDTH_STEPS,
+} from "./ink-file";
 import { computeInkLineLayout, InkLineLayout, parseDisplayHeightEm } from "./layout";
 
 type InkTool = "pen" | "eraser";
@@ -38,9 +46,9 @@ const BRUSH_SIZES: BrushSize[] = [
 const DEFAULT_BRUSH = BRUSH_SIZES[1]; // M
 const MAX_UNDO_STEPS = 50;
 
-// Empty margin, as a fraction of the square, on each side of the centered band.
-const BAND_MARGIN_RATIO = (1 - NARROW_RATIO) / 2;
-// Pixels darker than this (grayscale, on white) count as ink for band detection.
+// Pixels darker than this (grayscale, composited on white) count as ink for
+// width-step detection. Must match how forceGrayscaleOpaque flattens pixels so
+// live detection and post-flatten detection agree.
 const INK_THRESHOLD = 250;
 
 // Surface-pixel line width for a brush from its inline appearance. Independent
@@ -77,6 +85,9 @@ export class InkEditorModal extends Modal {
   private tool: InkTool = "pen";
   private brushInlinePx = DEFAULT_BRUSH.inlinePx;
   private exportSize = IMAGE_SIZE;
+  private loadedStep: WidthStep | null = null;
+  private contentModified = false;
+  private cropGuidesEl!: HTMLElement;
   private drawing = false;
   private hasSaved = false;
   private lastPoint: Point | null = null;
@@ -233,22 +244,37 @@ export class InkEditorModal extends Modal {
   }
 
   /**
-   * Corner crop-marks sitting just outside the canvas mark the narrow-band
-   * cutoff (their inner edge is the cut line). Hovering a mark reveals the full
-   * dashed cutoff lines. These are DOM only and never touch the exported PNG.
+   * Corner crop-marks sitting just outside the canvas mark the width-step
+   * cutoff the drawing currently snaps to (their inner edge is the cut line),
+   * and follow the drawing live. Hovering a mark reveals the full dashed
+   * cutoff lines. These are DOM only and never touch the exported PNG.
    */
   private buildCropGuides(stageEl: HTMLElement): void {
-    const leftPercent = BAND_MARGIN_RATIO * 100;
-    const guidesEl = stageEl.createDiv({ cls: "inkline-crop-guides" });
-    guidesEl.style.setProperty("--inkline-crop-left", `${leftPercent}%`);
-    guidesEl.style.setProperty("--inkline-crop-right", `${100 - leftPercent}%`);
+    this.cropGuidesEl = stageEl.createDiv({ cls: "inkline-crop-guides" });
 
     for (const corner of ["tl", "tr", "bl", "br"]) {
-      guidesEl.createDiv({ cls: `inkline-crop-mark inkline-crop-mark-${corner}` });
+      this.cropGuidesEl.createDiv({ cls: `inkline-crop-mark inkline-crop-mark-${corner}` });
     }
 
-    guidesEl.createDiv({ cls: "inkline-crop-line inkline-crop-line-left" });
-    guidesEl.createDiv({ cls: "inkline-crop-line inkline-crop-line-right" });
+    this.cropGuidesEl.createDiv({ cls: "inkline-crop-line inkline-crop-line-left" });
+    this.cropGuidesEl.createDiv({ cls: "inkline-crop-line inkline-crop-line-right" });
+
+    this.updateCropGuides(WIDTH_STEPS[0]);
+  }
+
+  private updateCropGuides(step: WidthStep): void {
+    const leftPercent = ((1 - step) / 2) * 100;
+    this.cropGuidesEl.style.setProperty("--inkline-crop-left", `${leftPercent}%`);
+    this.cropGuidesEl.style.setProperty("--inkline-crop-right", `${100 - leftPercent}%`);
+  }
+
+  /** Re-detect the export width step and move the crop guides to match. */
+  private refreshWidthStep(): void {
+    if (!this.ctx) {
+      return;
+    }
+
+    this.updateCropGuides(this.currentWidthStep());
   }
 
   /**
@@ -298,17 +324,22 @@ export class InkEditorModal extends Modal {
       this.ctx.fillStyle = "#ffffff";
       this.ctx.fillRect(0, 0, SURFACE_SIZE, SURFACE_SIZE);
 
-      // Always edit on the square. A previously cropped (narrow) file is scaled
-      // to the surface height and re-centered into the band so editing continues.
+      // Always edit on the square. A previously cropped file is scaled to the
+      // surface height and re-centered into its width-step band so editing
+      // continues. The aspect ratio snaps to the exact step so the band lands
+      // on the same (fractional) surface coordinates the export cropped from,
+      // making save/reload cycles geometrically drift-free.
       const sourceWidth = image.naturalWidth || image.width;
       const sourceHeight = image.naturalHeight || image.height;
       if (sourceWidth > 0 && sourceHeight > 0) {
         this.exportSize = resolveExportSize(sourceHeight);
-        const drawWidth = Math.min((sourceWidth / sourceHeight) * SURFACE_SIZE, SURFACE_SIZE);
-        const offsetX = Math.round((SURFACE_SIZE - drawWidth) / 2);
+        this.loadedStep = snapAspectToWidthStep(sourceWidth / sourceHeight);
+        const drawWidth = SURFACE_SIZE * this.loadedStep;
+        const offsetX = (SURFACE_SIZE - drawWidth) / 2;
         this.ctx.drawImage(image, offsetX, 0, drawWidth, SURFACE_SIZE);
       }
 
+      this.refreshWidthStep();
       this.updateBrushCursorStyle();
     } finally {
       URL.revokeObjectURL(url);
@@ -324,6 +355,7 @@ export class InkEditorModal extends Modal {
     this.canvasEl.setPointerCapture(event.pointerId);
     this.pushUndo();
     this.redoStack = [];
+    this.contentModified = true;
     this.drawing = true;
     this.lastPoint = this.getCanvasPoint(event);
     this.drawLine(this.lastPoint, this.lastPoint);
@@ -352,6 +384,8 @@ export class InkEditorModal extends Modal {
     if (this.canvasEl.hasPointerCapture(event.pointerId)) {
       this.canvasEl.releasePointerCapture(event.pointerId);
     }
+
+    this.refreshWidthStep();
   }
 
   private drawLine(from: Point, to: Point): void {
@@ -395,6 +429,8 @@ export class InkEditorModal extends Modal {
 
     this.redoStack.push(this.ctx.getImageData(0, 0, this.canvasEl.width, this.canvasEl.height));
     this.ctx.putImageData(imageData, 0, 0);
+    this.contentModified = true;
+    this.refreshWidthStep();
   }
 
   private redo(): void {
@@ -409,6 +445,8 @@ export class InkEditorModal extends Modal {
 
     this.undoStack.push(this.ctx.getImageData(0, 0, this.canvasEl.width, this.canvasEl.height));
     this.ctx.putImageData(imageData, 0, 0);
+    this.contentModified = true;
+    this.refreshWidthStep();
   }
 
   private clear(): void {
@@ -418,8 +456,10 @@ export class InkEditorModal extends Modal {
 
     this.pushUndo();
     this.redoStack = [];
+    this.contentModified = true;
     this.ctx.fillStyle = "#ffffff";
     this.ctx.fillRect(0, 0, this.canvasEl.width, this.canvasEl.height);
+    this.refreshWidthStep();
   }
 
   private async renameFromInput(): Promise<void> {
@@ -446,8 +486,11 @@ export class InkEditorModal extends Modal {
     await this.renameFromInput();
     this.forceGrayscaleOpaque();
 
-    const data = await canvasToPngArrayBuffer(this.exportCanvas());
+    const step = this.currentWidthStep();
+    const data = await canvasToPngArrayBuffer(this.exportCanvas(step));
     await this.fileService.writeBinary(this.file, data);
+    this.loadedStep = step;
+    this.contentModified = false;
     this.hasSaved = true;
     this.options.onSave?.(this.file);
     new Notice(`Saved inline ink: ${this.file.basename}`);
@@ -455,16 +498,12 @@ export class InkEditorModal extends Modal {
 
   /**
    * Downsample the drawing surface to the file's export size (see
-   * resolveExportSize): the full square, or just the centered narrow band when
-   * all ink stays inside it. Run after forceGrayscaleOpaque so the margins are
-   * flat white.
+   * resolveExportSize), cropped to the centered band of the given width step.
+   * The source band uses exact fractional coordinates so it matches where
+   * loadImage re-centers the file. Run after forceGrayscaleOpaque so the
+   * margins are flat white.
    */
-  private exportCanvas(): HTMLCanvasElement {
-    const margin = Math.round(SURFACE_SIZE * BAND_MARGIN_RATIO);
-    const wide =
-      this.hasInkInColumns(0, margin) ||
-      this.hasInkInColumns(SURFACE_SIZE - margin, SURFACE_SIZE);
-
+  private exportCanvas(step: WidthStep): HTMLCanvasElement {
     const out = document.createElement("canvas");
     const ctx = out.getContext("2d");
     if (!ctx) {
@@ -472,34 +511,64 @@ export class InkEditorModal extends Modal {
     }
 
     const size = this.exportSize;
-    if (wide) {
-      out.width = size;
-      out.height = size;
-      ctx.drawImage(this.canvasEl, 0, 0, SURFACE_SIZE, SURFACE_SIZE, 0, 0, size, size);
-    } else {
-      const narrowWidth = Math.round(size * NARROW_RATIO);
-      out.width = narrowWidth;
-      out.height = size;
-      const bandWidth = SURFACE_SIZE - margin * 2;
-      ctx.drawImage(this.canvasEl, margin, 0, bandWidth, SURFACE_SIZE, 0, 0, narrowWidth, size);
-    }
+    const sourceWidth = SURFACE_SIZE * step;
+    const sourceX = (SURFACE_SIZE - sourceWidth) / 2;
+    out.width = Math.round(size * step);
+    out.height = size;
+    ctx.drawImage(this.canvasEl, sourceX, 0, sourceWidth, SURFACE_SIZE, 0, 0, out.width, size);
 
     return out;
   }
 
-  private hasInkInColumns(startX: number, endX: number): boolean {
-    if (endX <= startX) {
-      return false;
+  /**
+   * The width step the canvas would export at right now. While the drawing is
+   * untouched since the last load or save, the step implied by the file's own
+   * aspect ratio is kept as-is, so a plain reopen-and-save can never move a
+   * borderline drawing to a neighboring step; once the user draws, erases, or
+   * clears, the step is re-detected from the ink extent.
+   */
+  private currentWidthStep(): WidthStep {
+    if (!this.contentModified && this.loadedStep !== null) {
+      return this.loadedStep;
     }
 
-    const { data } = this.ctx.getImageData(startX, 0, endX - startX, SURFACE_SIZE);
+    return snapWidthStep(this.measureInkHalfWidthFraction());
+  }
+
+  /**
+   * The maximum horizontal distance of any ink pixel from the surface's
+   * vertical center line, as a fraction of the square's width; 0 when blank.
+   * Each pixel is composited over white exactly like forceGrayscaleOpaque so
+   * detection matches before and after flattening.
+   */
+  private measureInkHalfWidthFraction(): number {
+    const { data } = this.ctx.getImageData(0, 0, SURFACE_SIZE, SURFACE_SIZE);
+    const center = SURFACE_SIZE / 2;
+    let left = SURFACE_SIZE;
+    let right = -1;
+
     for (let index = 0; index < data.length; index += 4) {
-      if (data[index] < INK_THRESHOLD) {
-        return true;
+      const alpha = data[index + 3] / 255;
+      const gray =
+        ((data[index] + data[index + 1] + data[index + 2]) / 3) * alpha + 255 * (1 - alpha);
+      if (gray >= INK_THRESHOLD) {
+        continue;
+      }
+
+      const x = (index / 4) % SURFACE_SIZE;
+      if (x < left) {
+        left = x;
+      }
+      if (x > right) {
+        right = x;
       }
     }
 
-    return false;
+    if (right < 0) {
+      return 0;
+    }
+
+    return Math.max(center - left, right + 1 - center) / SURFACE_SIZE;
   }
 
   private async saveAndClose(): Promise<void> {
