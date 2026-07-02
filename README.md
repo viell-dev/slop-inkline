@@ -13,7 +13,9 @@ Early development. The initial scope is deliberately narrow:
 - Inline Markdown image embeds.
 - Black ink on an opaque white background.
 - Pen and eraser tools.
-- A square drawing canvas that exports at a narrower width when the drawing stays inside the centered band, with on-canvas crop guides.
+- A square drawing canvas that exports at one of four widths (0.4, 0.6, 0.8,
+  or 1.0 of the square), snapped to the smallest centered band that contains
+  the drawing, with on-canvas crop and baseline guides that can be pinned.
 - Human-readable names with incrementing defaults.
 
 ## Usage
