@@ -60,9 +60,10 @@
   font-size: var(--font-ui-medium);
 }
 
-/* The input and the static .ink.png suffix render as one field: two joined
-   segments sharing a single seam. The input's right corners and the suffix's
-   left corners are squared, and only the suffix carries the seam border. */
+/* The name input and the static .ink.png suffix render as one field made of
+   two joined segments sharing a single seam. Obsidian's global input rules
+   (radius, --input-height) would fight a styled <input>, so the wrapper div
+   carries the left segment's look and the <input> is reset to bare text. */
 .inkline-name-field {
   display: inline-flex;
   align-items: stretch;
@@ -70,21 +71,29 @@
   max-width: 100%;
 }
 
-.inkline-name-input,
-.inkline-name-input:focus,
-.inkline-name-input:focus-visible {
+.inkline-name-input-wrap {
   flex: 1 1 auto;
   min-width: 0;
+  display: flex;
+  align-items: center;
   border: 1px solid var(--background-modifier-border);
   border-right: none;
   border-radius: 4px 0 0 4px;
-  outline: none;
-  box-shadow: none;
   background: var(--background-primary);
+  padding: 6px 8px;
+}
+
+.inkline-name-field input.inkline-name-input,
+.inkline-name-field input.inkline-name-input:focus,
+.inkline-name-field input.inkline-name-input:focus-visible {
+  all: unset;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  cursor: text;
   color: var(--text-normal);
   font-size: var(--font-ui-large);
   font-weight: 600;
-  padding: 6px 8px;
 }
 
 .inkline-name-suffix {
@@ -100,7 +109,7 @@
   user-select: none;
 }
 
-.inkline-name-field:focus-within .inkline-name-input,
+.inkline-name-field:focus-within .inkline-name-input-wrap,
 .inkline-name-field:focus-within .inkline-name-suffix {
   border-color: var(--interactive-accent);
 }

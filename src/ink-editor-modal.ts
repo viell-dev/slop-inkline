@@ -141,7 +141,8 @@ export class InkEditorModal extends Modal {
       attr: { for: "inkline-name-input" },
     });
     const nameFieldEl = headerEl.createDiv({ cls: "inkline-name-field" });
-    this.nameInputEl = nameFieldEl.createEl("input", {
+    const nameInputWrapEl = nameFieldEl.createDiv({ cls: "inkline-name-input-wrap" });
+    this.nameInputEl = nameInputWrapEl.createEl("input", {
       cls: "inkline-name-input",
       attr: {
         id: "inkline-name-input",
