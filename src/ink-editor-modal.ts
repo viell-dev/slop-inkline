@@ -1,4 +1,4 @@
-import { App, ButtonComponent, Modal, Notice, TFile } from "obsidian";
+import { App, ButtonComponent, type KeymapEventListener, Modal, Notice, TFile } from "obsidian";
 import { canvasToPngArrayBuffer, loadImage } from "./canvas";
 import {
   clampImageSize,
@@ -197,6 +197,7 @@ export class InkEditorModal extends Modal {
 
     this.updateToolState();
     this.updateSizeState();
+    this.registerShortcuts();
 
     void this.loadImage();
   }
@@ -208,6 +209,50 @@ export class InkEditorModal extends Modal {
     if (this.options.isNew && !this.hasSaved && this.file) {
       void this.options.onDiscard?.(this.file);
     }
+  }
+
+  /**
+   * Editor shortcuts on the modal's own scope, so they only live while the
+   * modal is open and never become global hotkeys. Every handler yields while
+   * the name input has focus: native text editing (including the input's own
+   * Ctrl+Z) must win, and typing digits or letters must not switch tools.
+   * Enter in the name field keeps its own listener and is not registered here.
+   */
+  private registerShortcuts(): void {
+    const shortcut = (action: () => void): KeymapEventListener => {
+      return () => {
+        if (this.isNameInputFocused()) {
+          return;
+        }
+
+        action();
+        return false;
+      };
+    };
+
+    this.scope.register(["Mod"], "Z", shortcut(() => this.undo()));
+    this.scope.register(["Mod", "Shift"], "Z", shortcut(() => this.redo()));
+    this.scope.register(["Mod"], "Y", shortcut(() => this.redo()));
+    this.scope.register([], "E", shortcut(() => this.toggleTool()));
+    this.scope.register([], "[", shortcut(() => this.stepBrush(-1)));
+    this.scope.register([], "]", shortcut(() => this.stepBrush(1)));
+    BRUSH_SIZES.forEach((brush, index) => {
+      this.scope.register([], `${index + 1}`, shortcut(() => this.setBrush(brush.inlinePx)));
+    });
+  }
+
+  private isNameInputFocused(): boolean {
+    return this.nameInputEl.ownerDocument.activeElement === this.nameInputEl;
+  }
+
+  private toggleTool(): void {
+    this.setTool(this.tool === "pen" ? "eraser" : "pen");
+  }
+
+  private stepBrush(direction: -1 | 1): void {
+    const index = BRUSH_SIZES.findIndex((brush) => brush.inlinePx === this.brushInlinePx);
+    const nextIndex = Math.min(Math.max(index + direction, 0), BRUSH_SIZES.length - 1);
+    this.setBrush(BRUSH_SIZES[nextIndex].inlinePx);
   }
 
   private createToolButton(parentEl: HTMLElement, label: string, tool: InkTool): void {
