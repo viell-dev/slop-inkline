@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { computeInkLineLayout } from "../src/layout/compute-ink-line-layout";
-import { parseDisplayHeightEm } from "../src/layout/parse-display-height-em";
+import { computeInkLineLayout } from "../src/layout/computeInkLineLayout";
+import { parseDisplayHeightEm } from "../src/layout/parseDisplayHeightEm";
 
 describe("parseDisplayHeightEm", () => {
   it("parses positive em values", () => {

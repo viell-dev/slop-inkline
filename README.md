@@ -78,7 +78,7 @@ src/
   editor/        Drawing editor: modal assembly, UI builders, strokes,
                  undo/redo history, load and save.
   ink/           Pure width-step and image-size math.
-  ink-files/     Vault file IO and .ink.png naming.
+  inkFiles/      Vault file IO and .ink.png naming.
   markdown/      Markdown/wiki image link parsing and embed helpers.
   canvas/        Shared canvas helpers (load, PNG export, flatten).
   layout/        Baseline/cap-height layout math shared by editor and

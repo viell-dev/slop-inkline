@@ -11,11 +11,12 @@ this repository in the parent project container.
 The codebase is functional, not class-based. Rules that keep it that way:
 
 - One exported function, type, or object per file, named after its export in
-  kebab-case. Private helpers that are only useful to that export stay in the
-  same file. Return-type interfaces co-locate with their creator function.
+  camelCase (directories too). Private helpers that are only useful to that
+  export stay in the same file. Return-type interfaces co-locate with their
+  creator function.
 - Classes exist only as thin Obsidian interop shells, built as a final step:
   `InklinePlugin` (`main.ts`), `InklineSettingTab`. The editor uses a plain
-  `new Modal(app)` configured in `editor/open-ink-editor.ts` instead of a
+  `new Modal(app)` configured in `editor/openInkEditor.ts` instead of a
   subclass. Everything else is functions, closures, and plain records.
 - Every tunable constant lives in `src/constants.ts`; many are candidates for
   future settings, so promoting one should only touch that file plus the call
@@ -37,15 +38,15 @@ Source lives in `src/`, grouped by feature, one export per file:
   width-step ladder (`WIDTH_STEPS`: 0.4/0.6/0.8/1.0 of the square with its
   round-trip epsilon), image/surface sizes, zoom range, and brush table.
 - `commands/` — the insert/edit command flows and the cursor→ink-file lookup.
-- `editor/` — the drawing editor: `open-ink-editor.ts` (Modal interop entry),
-  `build-ink-editor.ts` (orchestrator owning the editor state closures), one
-  `create-*.ts` per UI piece (name field, toolbar, zoom, crop/baseline
+- `editor/` — the drawing editor: `openInkEditor.ts` (Modal interop entry),
+  `buildInkEditor.ts` (orchestrator owning the editor state closures), one
+  `create*.ts` per UI piece (name field, toolbar, zoom, crop/baseline
   guides, history), plus stroke handling, shortcuts, load, and save. Exports
   crop to the smallest width step whose centered band contains all ink;
   width is recovered from the PNG aspect ratio alone (no metadata).
-- `ink/` — pure width-step and image-size math (`snap-width-step`,
-  `snap-aspect-to-width-step`, `clamp-image-size`, the `WidthStep` type).
-- `ink-files/` — vault file IO and naming: `.ink.png` slugging, display
+- `ink/` — pure width-step and image-size math (`snapWidthStep`,
+  `snapAspectToWidthStep`, `clampImageSize`, the `WidthStep` type).
+- `inkFiles/` — vault file IO and naming: `.ink.png` slugging, display
   names, auto-numbering, create/rename, collision-free stems.
 - `markdown/` — pure Markdown/wiki image-link parsing and embed building. No
   Obsidian state beyond the `Editor` cursor.

@@ -1,16 +1,16 @@
 import { Option } from "effect";
 import { Plugin, TFile } from "obsidian";
 import type { Editor, MarkdownFileInfo } from "obsidian";
-import { editInkAtCursor } from "./commands/edit-ink-at-cursor";
-import { inkFileAtCursor } from "./commands/ink-file-at-cursor";
-import { insertInlineInk } from "./commands/insert-inline-ink";
-import { openInkEditor } from "./editor/open-ink-editor";
-import { invalidateCapHeightCache } from "./layout/cap-height-ratio";
-import { createRenderEnhancer } from "./render/create-render-enhancer";
-import type { RenderEnhancer } from "./render/render-enhancer";
-import { DEFAULT_SETTINGS } from "./settings/default-settings";
-import { InklineSettingTab } from "./settings/inkline-setting-tab";
-import type { InklineSettings } from "./settings/inkline-settings";
+import { editInkAtCursor } from "./commands/editInkAtCursor";
+import { inkFileAtCursor } from "./commands/inkFileAtCursor";
+import { insertInlineInk } from "./commands/insertInlineInk";
+import { openInkEditor } from "./editor/openInkEditor";
+import { invalidateCapHeightCache } from "./layout/capHeightRatio";
+import { createRenderEnhancer } from "./render/createRenderEnhancer";
+import type { RenderEnhancer } from "./render/renderEnhancer";
+import { DEFAULT_SETTINGS } from "./settings/defaultSettings";
+import { InklineSettingTab } from "./settings/inklineSettingTab";
+import type { InklineSettings } from "./settings/inklineSettings";
 
 /**
  * Obsidian interop shell: the Plugin subclass exists because Obsidian
