@@ -48,10 +48,16 @@
   box-sizing: border-box;
 }
 
+/* Fixed to the unzoomed drawing-area display width (DISPLAY_WIDTH in
+   ink-editor-modal.ts): the name row spans the canvas today, but a future
+   zoom that widens the modal must not stretch the field with it. The field
+   flexes to fill whatever the label leaves over. */
 .inkline-editor-header {
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 512px;
+  max-width: 100%;
   margin-bottom: 12px;
 }
 
@@ -67,8 +73,8 @@
 .inkline-name-field {
   display: inline-flex;
   align-items: stretch;
-  width: min(320px, 100%);
-  max-width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .inkline-name-input-wrap {
@@ -92,8 +98,7 @@
   width: 100%;
   cursor: text;
   color: var(--text-normal);
-  font-size: var(--font-ui-large);
-  font-weight: 600;
+  font-size: var(--font-ui-medium);
 }
 
 .inkline-name-suffix {
