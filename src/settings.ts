@@ -65,15 +65,16 @@ export class InklineSettingTab extends PluginSettingTab {
           `sharpness. Existing inks keep their own size. Most people should leave this at ` +
           `${IMAGE_SIZE}. Range ${MIN_IMAGE_SIZE}–${MAX_IMAGE_SIZE}.`,
       )
-      .addText((text) => {
-        text
-          .setPlaceholder(String(IMAGE_SIZE))
-          .setValue(String(this.plugin.settings.imageSize))
+      .addSlider((slider) => {
+        const value = clampImageSize(this.plugin.settings.imageSize);
+        this.plugin.settings.imageSize = value;
+
+        slider
+          .setLimits(MIN_IMAGE_SIZE, MAX_IMAGE_SIZE, 1)
+          .setValue(value)
+          .setDynamicTooltip()
           .onChange(async (value) => {
-            const parsed = Number.parseInt(value, 10);
-            this.plugin.settings.imageSize = Number.isFinite(parsed)
-              ? clampImageSize(parsed)
-              : DEFAULT_SETTINGS.imageSize;
+            this.plugin.settings.imageSize = value;
             await this.plugin.saveSettings();
           });
       });
