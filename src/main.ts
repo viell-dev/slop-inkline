@@ -1,6 +1,7 @@
 import { Editor, EditorPosition, MarkdownFileInfo, Notice, Plugin, TFile } from "obsidian";
 import { InkEditorModal } from "./ink-editor-modal";
 import { CreatedInkFile, InkFileService } from "./ink-file";
+import { invalidateCapHeightCache } from "./layout";
 import { createImageEmbed, findImageTokenAtCursor, locateInsertedImage } from "./markdown-image";
 import { RenderEnhancer } from "./render-enhancer";
 import { DEFAULT_SETTINGS, InklineSettings, InklineSettingTab } from "./settings";
@@ -21,6 +22,13 @@ export default class InklinePlugin extends Plugin {
       (file) => this.openEditor(file),
     );
     this.renderEnhancer.register();
+
+    this.registerEvent(
+      this.app.workspace.on("css-change", () => {
+        invalidateCapHeightCache();
+        this.renderEnhancer.applyRootVariables();
+      }),
+    );
 
     this.addSettingTab(new InklineSettingTab(this.app, this));
 

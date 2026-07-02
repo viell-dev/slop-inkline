@@ -7,6 +7,16 @@ const DEFAULT_DISPLAY_HEIGHT_EM = 1.5;
 
 let capRatioCache: number | null = null;
 
+/**
+ * Drop the measured cap-height ratio so the next layout computation re-measures
+ * the current text font. Call on the workspace `css-change` event: a theme or
+ * font change alters `--font-text`, and the stale ratio would otherwise keep
+ * misaligning inks until app restart.
+ */
+export function invalidateCapHeightCache(): void {
+  capRatioCache = null;
+}
+
 export interface InkLineLayout {
   // Canvas-pixel positions (0..IMAGE_SIZE) of the cap-line and baseline.
   capLineY: number;
