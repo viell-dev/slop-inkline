@@ -37,6 +37,7 @@
 }
 
 .modal.inkline-editor-modal-frame {
+  position: relative;
   width: fit-content;
   max-width: calc(100vw - 48px);
 }
@@ -59,21 +60,14 @@
   font-size: var(--font-ui-medium);
 }
 
-/* The input and the static .ink.png suffix render as one field: the wrapper
-   carries the border/background, the input inside is chromeless. */
+/* The input and the static .ink.png suffix render as one field: two joined
+   segments sharing a single seam. The input's right corners and the suffix's
+   left corners are squared, and only the suffix carries the seam border. */
 .inkline-name-field {
   display: inline-flex;
-  align-items: baseline;
+  align-items: stretch;
   width: min(320px, 100%);
   max-width: 100%;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 4px;
-  background: var(--background-primary);
-  padding: 6px 8px;
-}
-
-.inkline-name-field:focus-within {
-  border-color: var(--interactive-accent);
 }
 
 .inkline-name-input,
@@ -81,22 +75,34 @@
 .inkline-name-input:focus-visible {
   flex: 1 1 auto;
   min-width: 0;
-  border: none;
+  border: 1px solid var(--background-modifier-border);
+  border-right: none;
+  border-radius: 4px 0 0 4px;
   outline: none;
   box-shadow: none;
-  background: transparent;
+  background: var(--background-primary);
   color: var(--text-normal);
   font-size: var(--font-ui-large);
   font-weight: 600;
-  padding: 0;
+  padding: 6px 8px;
 }
 
 .inkline-name-suffix {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 0 4px 4px 0;
+  background: var(--background-secondary);
   color: var(--text-muted);
-  font-size: var(--font-ui-large);
-  font-weight: 600;
+  font-size: var(--font-ui-medium);
+  padding: 6px 8px;
   white-space: nowrap;
   user-select: none;
+}
+
+.inkline-name-field:focus-within .inkline-name-input,
+.inkline-name-field:focus-within .inkline-name-suffix {
+  border-color: var(--interactive-accent);
 }
 
 .inkline-editor-toolbar {
@@ -113,9 +119,41 @@
   gap: 8px;
 }
 
-/* Keep primary action pinned right; new buttons slot in on the left. */
-.inkline-save-close {
-  margin-left: auto;
+.inkline-unsaved-toast {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  padding: 6px 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+  text-align: center;
+  box-shadow: var(--shadow-s);
+  pointer-events: none;
+  z-index: 1;
+  animation: inkline-toast-fade 2.2s ease forwards;
+}
+
+@keyframes inkline-toast-fade {
+  0% {
+    opacity: 0;
+  }
+
+  10% {
+    opacity: 1;
+  }
+
+  80% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
 }
 
 .inkline-editor-toolbar button.inkline-active {

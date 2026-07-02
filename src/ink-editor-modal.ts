@@ -88,6 +88,7 @@ interface InkEditorModalOptions {
 
 export class InkEditorModal extends Modal {
   private nameInputEl!: HTMLInputElement;
+  private unsavedToastEl: HTMLElement | null = null;
   private canvasEl!: HTMLCanvasElement;
   private ctx!: CanvasRenderingContext2D;
   private file: TFile | null;
@@ -191,7 +192,6 @@ export class InkEditorModal extends Modal {
 
     new ButtonComponent(actionsRowEl)
       .setButtonText("Save and Close")
-      .setClass("inkline-save-close")
       .setCta()
       .onClick(() => {
         void this.saveAndClose();
@@ -614,7 +614,8 @@ export class InkEditorModal extends Modal {
    * Obsidian closes a modal when its backdrop is clicked; a stray click just
    * past the canvas edge must not throw away unsaved strokes, so swallow
    * backdrop clicks before the core handler sees them. Esc and the close
-   * button still close the modal (without saving).
+   * button still close the modal (without saving); a blocked click with
+   * unsaved changes shows a short toast pointing at those exits.
    */
   private blockBackdropClose(): void {
     const bgEl = this.containerEl.querySelector(".modal-bg");
@@ -626,13 +627,46 @@ export class InkEditorModal extends Modal {
       this.containerEl.addEventListener(
         type,
         (event) => {
-          if (event.target === bgEl) {
-            event.stopImmediatePropagation();
+          if (event.target !== bgEl) {
+            return;
+          }
+
+          event.stopImmediatePropagation();
+          // Only the final click event raises the toast, so one blocked
+          // click cannot stack three of them.
+          if (type === "click" && this.hasUnsavedChanges()) {
+            this.showUnsavedChangesToast();
           }
         },
         { capture: true },
       );
     }
+  }
+
+  private hasUnsavedChanges(): boolean {
+    return (
+      this.contentModified ||
+      this.nameInputEl.value.trim() !== this.getDisplayName()
+    );
+  }
+
+  private showUnsavedChangesToast(): void {
+    this.unsavedToastEl?.remove();
+
+    const toastEl = this.modalEl.createDiv({
+      cls: "inkline-unsaved-toast",
+      text:
+        "Unsaved changes: use Save and Close to keep them, " +
+        "or discard with Esc or the close button.",
+    });
+    toastEl.addEventListener("animationend", () => {
+      toastEl.remove();
+      if (this.unsavedToastEl === toastEl) {
+        this.unsavedToastEl = null;
+      }
+    });
+
+    this.unsavedToastEl = toastEl;
   }
 
   private async renameFromInput(): Promise<void> {
