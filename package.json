@@ -22,7 +22,7 @@
     "builtin-modules": "^5.0.0",
     "esbuild": "0.25.5",
     "obsidian": "1.13.1",
-    "typescript": "^5.8.3",
+    "typescript": "^7.0.1-rc",
     "vitest": "^4.1.9"
   },
   "dependencies": {
