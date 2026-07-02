@@ -1,6 +1,6 @@
 import { Editor, EditorPosition, MarkdownFileInfo, Notice, Plugin, TFile } from "obsidian";
 import { InkEditorModal } from "./ink-editor-modal";
-import { InkFileService } from "./ink-file";
+import { CreatedInkFile, InkFileService } from "./ink-file";
 import { createMarkdownImage, findImageTokenAtCursor, locateInsertedImage } from "./markdown-image";
 import { RenderEnhancer } from "./render-enhancer";
 import { DEFAULT_SETTINGS, InklineSettings, InklineSettingTab } from "./settings";
@@ -13,7 +13,7 @@ export default class InklinePlugin extends Plugin {
   async onload(): Promise<void> {
     await this.loadSettings();
 
-    this.inkFiles = new InkFileService(this.app, () => this.settings);
+    this.inkFiles = new InkFileService(this.app);
     this.renderEnhancer = new RenderEnhancer(
       this,
       this.inkFiles,
@@ -71,22 +71,14 @@ export default class InklinePlugin extends Plugin {
 
     const sourcePath = ctx.file?.path ?? "";
     const name = await this.inkFiles.getNextAutoName(sourcePath);
-    const created = await this.inkFiles.createBlankInkFile(name, sourcePath);
-    const markdown = createMarkdownImage(created.path);
     const insertStart = editor.getCursor("from");
+    const insertEnd = editor.getCursor("to");
 
-    editor.replaceSelection(markdown);
-    const insertEnd = editor.getCursor();
-
-    this.openEditor(created.file, {
-      isNew: true,
-      onDiscard: async (file) => {
-        this.removeInsertedMarkdown(editor, insertStart, insertEnd, markdown, file.path);
-        await this.inkFiles.deleteInkFile(file);
-      },
+    this.openNewEditor(name, sourcePath, (created) => {
+      const markdown = createMarkdownImage(created.path);
+      editor.replaceRange(markdown, insertStart, insertEnd);
+      new Notice(`Created inline ink: ${created.name}`);
     });
-
-    new Notice(`Created inline ink: ${created.name}`);
   }
 
   editInlineInkAtCursor(editor: Editor, ctx: MarkdownFileInfo): void {
@@ -155,6 +147,29 @@ export default class InklinePlugin extends Plugin {
           await this.saveSettings();
         },
         onDiscard: options.onDiscard,
+        onSave: (savedFile) => this.renderEnhancer.refreshFile(savedFile),
+      },
+    ).open();
+  }
+
+  private openNewEditor(
+    name: string,
+    sourcePath: string,
+    onCreate: (created: CreatedInkFile) => void,
+  ): void {
+    new InkEditorModal(
+      this.app,
+      this.inkFiles,
+      null,
+      {
+        isNew: true,
+        newInk: {
+          name,
+          sourcePath,
+          imageSize: this.settings.imageSize,
+          onCreate,
+        },
+        displayHeight: this.settings.displayHeight,
         onSave: (savedFile) => this.renderEnhancer.refreshFile(savedFile),
       },
     ).open();

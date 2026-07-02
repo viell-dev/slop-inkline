@@ -2,6 +2,7 @@ import { App, ButtonComponent, Modal, Notice, TFile } from "obsidian";
 import { canvasToPngArrayBuffer, loadImage } from "./canvas";
 import {
   clampImageSize,
+  CreatedInkFile,
   IMAGE_SIZE,
   InkFileService,
   snapAspectToWidthStep,
@@ -60,8 +61,8 @@ function surfaceLineWidth(inlinePx: number): number {
 
 // The export resolution for a loaded ink: keep the file's own size (so inks are
 // never shrunk or grown on save), clamped to the shared valid range. The
-// configured image size only applies to newly created inks (see
-// InkFileService.createBlankInkFile), which then load at that size here.
+// configured image size only applies to newly created inks, which start from a
+// blank in-memory canvas at that size.
 function resolveExportSize(loadedHeight: number): number {
   if (!Number.isFinite(loadedHeight) || loadedHeight <= 0) {
     return IMAGE_SIZE;
@@ -72,6 +73,12 @@ function resolveExportSize(loadedHeight: number): number {
 
 interface InkEditorModalOptions {
   isNew?: boolean;
+  newInk?: {
+    name: string;
+    sourcePath: string;
+    imageSize: number;
+    onCreate?: (created: CreatedInkFile) => void;
+  };
   displayHeight?: string;
   pinGuides?: boolean;
   onPinGuidesChange?: (pinned: boolean) => void | Promise<void>;
@@ -83,7 +90,7 @@ export class InkEditorModal extends Modal {
   private nameInputEl!: HTMLInputElement;
   private canvasEl!: HTMLCanvasElement;
   private ctx!: CanvasRenderingContext2D;
-  private file: TFile;
+  private file: TFile | null;
   private tool: InkTool = "pen";
   private brushInlinePx = DEFAULT_BRUSH.inlinePx;
   private exportSize = IMAGE_SIZE;
@@ -105,7 +112,7 @@ export class InkEditorModal extends Modal {
   constructor(
     app: App,
     private readonly fileService: InkFileService,
-    file: TFile,
+    file: TFile | null,
     private readonly options: InkEditorModalOptions = {},
   ) {
     super(app);
@@ -124,7 +131,7 @@ export class InkEditorModal extends Modal {
       cls: "inkline-name-input",
       attr: {
         type: "text",
-        value: this.fileService.getDisplayName(this.file),
+        value: this.getDisplayName(),
         "aria-label": "Ink name",
       },
     });
@@ -198,7 +205,7 @@ export class InkEditorModal extends Modal {
     this.modalEl.removeClass("inkline-editor-modal-frame");
     this.contentEl.empty();
 
-    if (this.options.isNew && !this.hasSaved) {
+    if (this.options.isNew && !this.hasSaved && this.file) {
       void this.options.onDiscard?.(this.file);
     }
   }
@@ -347,24 +354,19 @@ export class InkEditorModal extends Modal {
   }
 
   private async loadImage(): Promise<void> {
+    if (!this.file) {
+      this.initializeBlankCanvas(clampImageSize(this.options.newInk?.imageSize ?? IMAGE_SIZE));
+      this.refreshWidthStep();
+      return;
+    }
+
     const data = await this.fileService.readBinary(this.file);
     const blob = new Blob([data], { type: "image/png" });
     const url = URL.createObjectURL(blob);
 
     try {
       const image = await loadImage(url);
-      this.canvasEl.width = SURFACE_SIZE;
-      this.canvasEl.height = SURFACE_SIZE;
-      this.canvasEl.style.width = `${DISPLAY_WIDTH}px`;
-
-      const ctx = this.canvasEl.getContext("2d", { willReadFrequently: true });
-      if (!ctx) {
-        throw new Error("Could not create a canvas rendering context.");
-      }
-
-      this.ctx = ctx;
-      this.ctx.fillStyle = "#ffffff";
-      this.ctx.fillRect(0, 0, SURFACE_SIZE, SURFACE_SIZE);
+      this.initializeBlankCanvas(IMAGE_SIZE);
 
       // Always edit on the square. A previously cropped file is scaled to the
       // surface height and re-centered into its width-step band so editing
@@ -382,10 +384,26 @@ export class InkEditorModal extends Modal {
       }
 
       this.refreshWidthStep();
-      this.updateBrushCursorStyle();
     } finally {
       URL.revokeObjectURL(url);
     }
+  }
+
+  private initializeBlankCanvas(exportSize: number): void {
+    this.canvasEl.width = SURFACE_SIZE;
+    this.canvasEl.height = SURFACE_SIZE;
+    this.canvasEl.style.width = `${DISPLAY_WIDTH}px`;
+    this.exportSize = clampImageSize(exportSize);
+
+    const ctx = this.canvasEl.getContext("2d", { willReadFrequently: true });
+    if (!ctx) {
+      throw new Error("Could not create a canvas rendering context.");
+    }
+
+    this.ctx = ctx;
+    this.ctx.fillStyle = "#ffffff";
+    this.ctx.fillRect(0, 0, SURFACE_SIZE, SURFACE_SIZE);
+    this.updateBrushCursorStyle();
   }
 
   private startStroke(event: PointerEvent): void {
@@ -509,6 +527,10 @@ export class InkEditorModal extends Modal {
       return;
     }
 
+    if (!this.file) {
+      return;
+    }
+
     const nextName = this.nameInputEl.value.trim();
     if (!nextName || nextName === this.fileService.getDisplayName(this.file)) {
       this.nameInputEl.value = this.fileService.getDisplayName(this.file);
@@ -529,13 +551,51 @@ export class InkEditorModal extends Modal {
     this.forceGrayscaleOpaque();
 
     const step = this.currentWidthStep();
-    const data = await canvasToPngArrayBuffer(this.exportCanvas(step));
-    await this.fileService.writeBinary(this.file, data);
+    const exportedCanvas = this.exportCanvas(step);
+    const data = await canvasToPngArrayBuffer(exportedCanvas);
+    const savedFile = this.file
+      ? await this.writeExistingInk(data)
+      : await this.createNewInk(data, exportedCanvas.width, exportedCanvas.height);
+
     this.loadedStep = step;
     this.contentModified = false;
     this.hasSaved = true;
-    this.options.onSave?.(this.file);
-    new Notice(`Saved inline ink: ${this.file.basename}`);
+    this.options.onSave?.(savedFile);
+    new Notice(`Saved inline ink: ${savedFile.basename}`);
+  }
+
+  private async writeExistingInk(data: ArrayBuffer): Promise<TFile> {
+    if (!this.file) {
+      throw new Error("No ink file is open.");
+    }
+
+    await this.fileService.writeBinary(this.file, data);
+    return this.file;
+  }
+
+  private async createNewInk(
+    data: ArrayBuffer,
+    width: number,
+    height: number,
+  ): Promise<TFile> {
+    const newInk = this.options.newInk;
+    if (!newInk) {
+      throw new Error("Missing new ink target.");
+    }
+
+    const created = await this.fileService.createInkFile(
+      this.nameInputEl.value,
+      newInk.sourcePath,
+      data,
+      width,
+      height,
+    );
+
+    this.file = created.file;
+    this.nameInputEl.value = this.fileService.getDisplayName(created.file);
+    newInk.onCreate?.(created);
+
+    return created.file;
   }
 
   /**
@@ -611,6 +671,12 @@ export class InkEditorModal extends Modal {
     }
 
     return Math.max(center - left, right + 1 - center) / SURFACE_SIZE;
+  }
+
+  private getDisplayName(): string {
+    return this.file
+      ? this.fileService.getDisplayName(this.file)
+      : this.options.newInk?.name ?? "";
   }
 
   private async saveAndClose(): Promise<void> {

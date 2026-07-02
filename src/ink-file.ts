@@ -1,6 +1,4 @@
-import { App, normalizePath, TFile, TFolder } from "obsidian";
-import { canvasToPngArrayBuffer } from "./canvas";
-import { InklineSettings } from "./settings";
+import { App, normalizePath, TFile } from "obsidian";
 
 const INK_EXTENSION = ".ink.png";
 
@@ -94,10 +92,7 @@ export interface CreatedInkFile {
 }
 
 export class InkFileService {
-  constructor(
-    private readonly app: App,
-    private readonly getSettings: () => InklineSettings,
-  ) {}
+  constructor(private readonly app: App) {}
 
   async getNextAutoName(sourcePath: string): Promise<string> {
     const folderPath = await this.getInkFolderPath(sourcePath);
@@ -117,27 +112,27 @@ export class InkFileService {
     return this.formatAutoName(next);
   }
 
-  async createBlankInkFile(
+  async createInkFile(
     name: string,
     sourcePath: string,
+    data: ArrayBuffer,
+    width: number,
+    height: number,
   ): Promise<CreatedInkFile> {
-    const folderPath = await this.getInkFolderPath(sourcePath);
-    await this.ensureFolder(folderPath);
+    const folderPath = await this.getInkFolderPathForSave(sourcePath);
 
     const displayName = name.trim();
     const stem = this.slugify(displayName) || await this.getNextAutoName(sourcePath);
     const finalStem = this.findAvailableStem(folderPath, stem);
     const path = this.buildInkPath(folderPath, finalStem);
-    const size = clampImageSize(this.getSettings().imageSize);
-    const data = await this.createBlankPng(size, size);
     const file = await this.app.vault.createBinary(path, data);
 
     return {
       file,
       name: finalStem === stem ? displayName || finalStem : finalStem,
       path,
-      width: size,
-      height: size,
+      width,
+      height,
     };
   }
 
@@ -193,7 +188,16 @@ export class InkFileService {
     return this.slugify(file.name) || file.basename;
   }
 
-  private async getInkFolderPath(sourcePath: string): Promise<string> {
+  private getInkFolderPath(sourcePath: string): string {
+    const folder = this.app.fileManager.getNewFileParent(
+      sourcePath,
+      ".inkline-probe",
+    );
+
+    return normalizePath(folder.path);
+  }
+
+  private async getInkFolderPathForSave(sourcePath: string): Promise<string> {
     const probePath = await this.app.fileManager.getAvailablePathForAttachment(
       ".inkline-probe",
       sourcePath,
@@ -236,42 +240,6 @@ export class InkFileService {
     return normalizePath(folderPath ? `${folderPath}/${stem}${INK_EXTENSION}` : `${stem}${INK_EXTENSION}`);
   }
 
-  private async ensureFolder(folderPath: string): Promise<void> {
-    const normalizedPath = normalizePath(folderPath);
-    if (!normalizedPath || this.app.vault.getFolderByPath(normalizedPath)) {
-      return;
-    }
-
-    const segments = normalizedPath.split("/");
-    let current = "";
-
-    for (const segment of segments) {
-      current = current ? `${current}/${segment}` : segment;
-      const existing = this.app.vault.getAbstractFileByPath(current);
-
-      if (existing instanceof TFolder) {
-        continue;
-      }
-
-      await this.app.vault.createFolder(current);
-    }
-  }
-
-  private async createBlankPng(width: number, height: number): Promise<ArrayBuffer> {
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      throw new Error("Could not create a canvas rendering context.");
-    }
-
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, width, height);
-
-    return canvasToPngArrayBuffer(canvas);
-  }
 }
 
 function dirname(path: string): string {
