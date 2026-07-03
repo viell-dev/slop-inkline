@@ -21,7 +21,7 @@
     "@types/node": "^22.15.17",
     "builtin-modules": "^5.0.0",
     "esbuild": "0.25.5",
-    "obsidian": "1.13.1",
+    "obsidian": "~1.12.3",
     "typescript": "^7.0.1-rc",
     "vitest": "^4.1.9"
   },
