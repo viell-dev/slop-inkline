@@ -30,6 +30,10 @@ Run **Insert inline ink** from the command palette while editing a Markdown
 note. Inkline creates a PNG attachment, inserts an image embed, and opens the
 editor.
 
+Inserting never replaces note content: with text selected, the embed is added
+after the selection, and it will not split an existing link or image embed —
+the insertion point moves past them instead.
+
 Place the cursor on an Inkline image link, or select a rendered Inkline image in
 Live Preview, then run **Edit inline ink at cursor** to reopen it.
 
@@ -72,8 +76,9 @@ file); classes appear only as thin Obsidian interop shells.
 
 ```text
 src/
-  main.ts        Plugin subclass: command, menu, and settings wiring.
+  main.ts        Bootstrap: re-exports the plugin class Obsidian loads.
   constants.ts   All tunable constants (future settings candidates).
+  obsidian/      Interop shells: the Plugin subclass and settings tab.
   commands/      Insert/edit command flows.
   editor/        Drawing editor: modal assembly, UI builders, strokes,
                  undo/redo history, load and save.

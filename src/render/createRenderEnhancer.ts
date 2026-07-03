@@ -69,11 +69,8 @@ export function createRenderEnhancer(deps: RenderEnhancerDeps): RenderEnhancer {
   );
 
   return {
-    applyRootVariables() {
-      applyRootVariables(app, getSettings());
-    },
     refreshFile(file) {
-      refreshInkFile(app, cache, getSettings(), file);
+      refreshInkFile(app, getSettings(), file);
     },
     openSelectedInkImage() {
       return Option.match(findSelectedInkFile(app, cache), {

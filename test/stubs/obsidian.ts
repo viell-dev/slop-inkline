@@ -13,7 +13,10 @@ export class TAbstractFile {
     public path: string,
     public name: string,
     public parent: TFolder | null = null,
-  ) {}
+  ) {
+    // Obsidian's vault tree keeps parent and children linked; mirror that.
+    parent?.children.push(this);
+  }
 }
 
 export class TFile extends TAbstractFile {

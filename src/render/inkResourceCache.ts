@@ -1,6 +1,8 @@
 import { Option } from "effect";
 import type { App, TFile } from "obsidian";
+import { INK_EXTENSION } from "../constants";
 import { isInkFile } from "../inkFiles/isInkFile";
+import { stripQueryAndHash } from "./stripQueryAndHash";
 
 /**
  * Lazily built map from an ink file's resource path to its `TFile`, letting
@@ -30,7 +32,8 @@ export interface InkResourceCache {
  * The map is built on first lookup and reused until
  * {@link InkResourceCache.invalidate} is called. Lookup tries an exact
  * resource-path match first, then falls back to substring matching on the
- * (possibly URI-encoded) vault path.
+ * (possibly URI-encoded) vault path; sources without the ink extension
+ * skip the fallback entirely.
  *
  * @param app - The Obsidian app whose vault is indexed.
  * @returns The cache surface.
@@ -61,6 +64,12 @@ export function createInkResourceCache(app: App): InkResourceCache {
         return Option.some(exactMatch);
       }
 
+      // Every ink resource path ends with the ink filename, so anything
+      // else can never match the substring scan below.
+      if (!stripped.toLowerCase().endsWith(INK_EXTENSION)) {
+        return Option.none();
+      }
+
       for (const file of map.values()) {
         if (
           stripped.includes(encodeURI(file.path)) ||
@@ -76,14 +85,4 @@ export function createInkResourceCache(app: App): InkResourceCache {
       cache = null;
     },
   };
-}
-
-/**
- * Strip the query and hash parts from a URL-like string.
- *
- * @param value - The string to strip.
- * @returns Everything before the first `#` or `?`.
- */
-function stripQueryAndHash(value: string): string {
-  return value.split("#", 1)[0].split("?", 1)[0];
 }

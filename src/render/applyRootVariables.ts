@@ -1,6 +1,7 @@
 import type { App } from "obsidian";
 import type { InklineSettings } from "../settings/inklineSettings";
 import { applyDisplayVariables } from "./applyDisplayVariables";
+import { getAllDocuments } from "./getAllDocuments";
 
 /**
  * Publish the display height and inline vertical-align as inherited
@@ -19,20 +20,4 @@ export function applyRootVariables(app: App, settings: InklineSettings): void {
   for (const doc of getAllDocuments(app)) {
     applyDisplayVariables(doc.body, settings);
   }
-}
-
-/**
- * Collect the documents of the main window and every popout that hosts a
- * workspace leaf.
- *
- * @param app - The Obsidian app whose leaves are iterated.
- * @returns The deduplicated set of documents.
- */
-function getAllDocuments(app: App): Set<Document> {
-  const documents = new Set<Document>([document]);
-  app.workspace.iterateAllLeaves((leaf) => {
-    documents.add(leaf.view.containerEl.ownerDocument);
-  });
-
-  return documents;
 }

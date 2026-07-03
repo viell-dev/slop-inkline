@@ -2,6 +2,7 @@ import { Option } from "effect";
 import { describe, expect, it } from "vitest";
 import type { Editor } from "obsidian";
 import { createImageEmbed } from "../src/markdown/createImageEmbed";
+import { findAtomicRangesOnLine } from "../src/markdown/findAtomicRangesOnLine";
 import { findImageTokenAtCursor } from "../src/markdown/findImageTokenAtCursor";
 import type { ImageToken } from "../src/markdown/imageToken";
 
@@ -114,5 +115,50 @@ describe("findImageTokenAtCursor", () => {
       from: 6,
       to: 45,
     });
+  });
+});
+
+describe("findAtomicRangesOnLine", () => {
+  it("treats image embeds of both styles as atomic", () => {
+    const line = "a ![](one.ink.png) b ![[two.ink.png]] c";
+
+    // The markdown image is reported twice: as a whole token and as its
+    // own `](...)` tail. Overlap is documented and harmless.
+    expect(findAtomicRangesOnLine(line)).toEqual([
+      { from: 2, to: 18 },
+      { from: 21, to: 37 },
+      { from: 4, to: 18 },
+    ]);
+  });
+
+  it("treats wiki links as atomic but leaves embeds to the image scanner", () => {
+    const line = "see [[Page]] and ![[embed.ink.png]]";
+
+    expect(findAtomicRangesOnLine(line)).toEqual([
+      { from: 17, to: 35 },
+      { from: 4, to: 12 },
+    ]);
+  });
+
+  it("treats a whole markdown link as atomic, tail included", () => {
+    const line = "[body](https://x.y)";
+
+    expect(findAtomicRangesOnLine(line)).toEqual([
+      { from: 0, to: 19 },
+      { from: 5, to: 19 },
+    ]);
+  });
+
+  it("still protects the tail when a link body contains an embed", () => {
+    const line = "[![[ink.ink.png]]](https://x.y)";
+
+    expect(findAtomicRangesOnLine(line)).toEqual([
+      { from: 1, to: 17 },
+      { from: 17, to: 31 },
+    ]);
+  });
+
+  it("returns nothing for plain text", () => {
+    expect(findAtomicRangesOnLine("just some words")).toEqual([]);
   });
 });

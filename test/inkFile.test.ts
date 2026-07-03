@@ -21,6 +21,9 @@ function createMockApp(options: MockAppOptions): App {
   }
   for (const file of options.files) {
     abstractFiles.set(file.path, file);
+    if (file.parent) {
+      abstractFiles.set(file.parent.path, file.parent);
+    }
   }
 
   return {
@@ -54,11 +57,12 @@ function createMockApp(options: MockAppOptions): App {
       },
     },
     fileManager: {
-      getNewFileParent: () =>
-        new TFolder(
-          options.attachmentFolder ?? "",
-          options.attachmentFolder ?? "",
-        ),
+      getNewFileParent: () => {
+        const existing = abstractFiles.get(options.attachmentFolder);
+        return existing instanceof TFolder
+          ? existing
+          : new TFolder(options.attachmentFolder, options.attachmentFolder);
+      },
       getAvailablePathForAttachment: async (filename) => (
         options.attachmentFolder
           ? `${options.attachmentFolder}/${filename}`

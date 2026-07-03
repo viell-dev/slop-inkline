@@ -1,10 +1,16 @@
-import { Option } from "effect";
 import { Notice } from "obsidian";
-import type { App, Editor, MarkdownFileInfo, TFile } from "obsidian";
+import type {
+  App,
+  Editor,
+  EditorPosition,
+  MarkdownFileInfo,
+  TFile,
+} from "obsidian";
 import { openInkEditor } from "../editor/openInkEditor";
 import { getNextAutoName } from "../inkFiles/getNextAutoName";
 import { createImageEmbed } from "../markdown/createImageEmbed";
-import { findImageTokenAtCursor } from "../markdown/findImageTokenAtCursor";
+import { findAtomicRangesOnLine } from "../markdown/findAtomicRangesOnLine";
+import type { AtomicRange } from "../markdown/findAtomicRangesOnLine";
 
 /** Dependencies of {@link insertInlineInk}. */
 export interface InsertInlineInkDeps {
@@ -24,13 +30,16 @@ export interface InsertInlineInkDeps {
 
 /**
  * The "Insert inline ink" command: open the editor for a new auto-named ink
- * and insert its embed at the (captured) cursor once it is first saved.
+ * and insert its embed at the (captured) insertion point once it is first
+ * saved.
  *
  * @remarks
- * The insertion range is captured before the editor opens, so the embed
- * lands where the command was invoked even if the cursor moves while the
- * editor is open. Nothing is inserted when the editor is closed without
- * saving.
+ * Inserting never replaces note content: the embed lands at the selection
+ * end (or the cursor), slid past any atomic span — image embeds, wiki
+ * links, Markdown links — so existing markup is never split. The
+ * position is captured before the editor opens, so the embed lands where
+ * the command was invoked even if the cursor moves while the editor is
+ * open. Nothing is inserted when the editor is closed without saving.
  *
  * @param deps - The command's dependencies.
  * @param editor - The active Markdown editor the embed is inserted into.
@@ -43,12 +52,9 @@ export async function insertInlineInk(
   editor: Editor,
   ctx: MarkdownFileInfo,
 ): Promise<void> {
-  moveCursorPastEnclosingImage(editor);
-
   const sourcePath = ctx.file?.path ?? "";
   const name = await getNextAutoName(deps.app, sourcePath);
-  const insertStart = editor.getCursor("from");
-  const insertEnd = editor.getCursor("to");
+  const insertAt = resolveInsertionPosition(editor);
 
   openInkEditor(deps.app, null, {
     newInk: {
@@ -59,7 +65,7 @@ export async function insertInlineInk(
         const markdown = createImageEmbed(
           deps.app.fileManager.generateMarkdownLink(created.file, sourcePath),
         );
-        editor.replaceRange(markdown, insertStart, insertEnd);
+        editor.replaceRange(markdown, insertAt, insertAt);
         new Notice(`Created inline ink: ${created.name}`);
       },
     },
@@ -69,24 +75,25 @@ export async function insertInlineInk(
 }
 
 /**
- * If the cursor sits strictly inside an existing image link, move it to the
- * end of that link so inserting a new ink appends after it instead of
- * splitting the `![](...)` in two.
+ * Resolve where the new embed is inserted: the selection end (or the
+ * cursor), slid to the end of any atomic span it falls strictly inside so
+ * the insertion never splits an existing embed or link.
  *
- * @remarks
- * Boundary positions (just before or after the link) and active selections
- * are left untouched.
- *
- * @param editor - The editor whose cursor may be moved.
+ * @param editor - The editor whose selection end is resolved.
+ * @returns The insertion position.
  */
-function moveCursorPastEnclosingImage(editor: Editor): void {
-  if (editor.somethingSelected()) {
-    return;
+function resolveInsertionPosition(editor: Editor): EditorPosition {
+  const end = editor.getCursor("to");
+  const ranges = findAtomicRangesOnLine(editor.getLine(end.line));
+
+  let ch = end.ch;
+  let enclosing: AtomicRange | undefined;
+  while (
+    (enclosing = ranges.find((range) => range.from < ch && ch < range.to)) !==
+    undefined
+  ) {
+    ch = enclosing.to;
   }
 
-  const cursor = editor.getCursor();
-  const token = Option.getOrNull(findImageTokenAtCursor(editor));
-  if (token && cursor.ch > token.from && cursor.ch < token.to) {
-    editor.setCursor({ line: cursor.line, ch: token.to });
-  }
+  return { line: end.line, ch };
 }

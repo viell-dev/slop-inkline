@@ -14,11 +14,11 @@ The codebase is functional, not class-based. Rules that keep it that way:
   camelCase (directories too). Private helpers that are only useful to that
   export stay in the same file. Return-type interfaces co-locate with their
   creator function.
-- Classes exist only as thin Obsidian interop shells, built as a final step:
-  `InklinePlugin` (`inklinePlugin.ts`), `InklineSettingTab`. The editor uses a
-  plain
-  `new Modal(app)` configured in `editor/openInkEditor.ts` instead of a
-  subclass. Everything else is functions, closures, and plain records.
+- Classes exist only as thin Obsidian interop shells, built as a final step
+  and collected in `src/obsidian/`: `InklinePlugin`, `InklineSettingTab`. The
+  editor uses a plain `new Modal(app)` configured in
+  `editor/openInkEditor.ts` instead of a subclass. Everything else is
+  functions, closures, and plain records.
 - Every tunable constant lives in `src/constants.ts`; many are candidates for
   future settings, so promoting one should only touch that file plus the call
   sites that switch to a settings read. Structural literals (CSS classes, DOM
@@ -55,10 +55,10 @@ Source lives in `src/`, grouped by feature, one export per file:
 
 - `main.ts` — bootstrap only: re-exports `InklinePlugin` as the default
   export Obsidian loads. Keep it minimal.
-- `inklinePlugin.ts` — `InklinePlugin`: the required Obsidian Plugin
-  subclass. Only wires commands, the `editor-menu` context items (Insert ink
-  / Edit ink), the settings tab, the render enhancer, and settings
-  load/save.
+- `obsidian/` — the Obsidian interop shells. `inklinePlugin.ts` is the
+  required Plugin subclass: it only wires commands, the `editor-menu`
+  context items (Insert ink / Edit ink), the settings tab
+  (`inklineSettingTab.ts`), the render enhancer, and settings load/save.
 - `constants.ts` — every tunable constant, documented, including the export
   width-step ladder (`WIDTH_STEPS`: 0.4/0.6/0.8/1.0 of the square with its
   round-trip epsilon), image/surface sizes, zoom range, and brush table.
@@ -73,19 +73,22 @@ Source lives in `src/`, grouped by feature, one export per file:
   `snapAspectToWidthStep`, `clampImageSize`, the `WidthStep` type).
 - `inkFiles/` — vault file IO and naming: `.ink.png` slugging, display
   names, auto-numbering, create/rename, collision-free stems.
-- `markdown/` — pure Markdown/wiki image-link parsing and embed building. No
-  Obsidian state beyond the `Editor` cursor.
+- `markdown/` — pure Markdown/wiki image-link parsing, embed building, and
+  the atomic-range line scanner that keeps insertions from splitting
+  existing links and embeds. No Obsidian state beyond the `Editor` cursor.
 - `canvas/` — shared canvas helpers: load image, PNG export, grayscale
   flatten, ink-extent measurement.
 - `layout/` — shared vertical-layout math: measures the default text font's
   cap height and computes the baseline/cap-line positions and inline
   `vertical-align`. Used by both the editor guides and the render enhancer
   so they stay in sync.
-- `render/` — the render enhancer: tags rendered ink `<img>` elements,
-  applies display CSS variables, resolves the selected ink image (for the
-  edit command), and refreshes previews after a save.
-- `settings/` — settings schema, defaults, tab renderer, and the
-  `InklineSettingTab` interop shell.
+- `render/` — the render enhancer: tags rendered ink `<img>` elements
+  (reading view only), applies display CSS variables, resolves the focused
+  ink image (for the edit command), and refreshes rendered inks after a
+  save across every open window.
+- `settings/` — settings schema (user-visible `inklineSettings.ts` plus
+  hidden persisted state in `inklineHiddenSettings.ts`), defaults, the tab
+  renderer, and one field creator per control under `fields/`.
 
 Keep DOM/canvas helpers in `canvas/`, link parsing in `markdown/`, and
 vertical-layout math in `layout/` rather than re-inlining them in feature
@@ -104,6 +107,23 @@ modules.
   native menu is not acceptable, so there is intentionally no "Edit ink" item on
   the image right-click. Ink editing is reached via the `editor-menu` items and
   the `edit-inline-ink-at-cursor` command instead.
+- Inserting an ink never replaces note content. The embed lands at the
+  selection end (or cursor), slid past any atomic span — image embeds of
+  both styles, wiki links, whole Markdown links — so existing markup is
+  never split (`markdown/findAtomicRangesOnLine.ts`). Whole Markdown links
+  are atomic because Obsidian does not render a wiki embed inside a link
+  body; an HTML anchor is the workaround for linked inks. Do not "fix"
+  insertion back to replace-selection semantics.
+- Live preview embeds are built by the editor, not the markdown
+  post-processor, so they never carry the `inkline-embed` class or
+  `data-inkline-path` marker. Live preview styling works through the
+  `img[src*=".ink.png"]` attribute selectors in `styles.css`, and
+  `refreshInkFile` matches images by comparing src against the file's
+  resource path instead of relying on tags.
+- A clicked embed gets no CSS state class (no `is-selected`/`is-focused`);
+  the embed element (`tabindex="-1"`) simply receives DOM focus. Resolving
+  "the selected ink" therefore starts from `activeElement`
+  (`render/findSelectedInkFile.ts`), not from selection selectors.
 
 ## Deferred / to consider
 
@@ -143,3 +163,12 @@ the canvas, background, or alignment:
   settings host must override both to use the plugin's `data.json`.
   Deferred because insider builds are Catalyst-gated with no standalone
   Linux download, so 1.13 is untestable here until stable.
+- **`REFERENCE_INLINE_PX` is a fixed assumption, not a measurement.**
+  Brushes are calibrated against "the square at 1.5em on a 16px font," but
+  that's just the default `displayHeight` setting composed with Obsidian's
+  default `font-size`. Change either — a custom `displayHeight`, or
+  Obsidian's font size setting — and brush strokes no longer occupy the
+  inline pixel width they were sized for. Fixing this for real means
+  deriving the reference from the live `displayHeight` setting and the
+  note's actual computed font size (similar to how `layout/` measures cap
+  height), not a hardcoded constant.

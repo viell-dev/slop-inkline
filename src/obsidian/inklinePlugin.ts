@@ -1,16 +1,18 @@
 import { Option } from "effect";
-import { Plugin, TFile } from "obsidian";
 import type { Editor, MarkdownFileInfo } from "obsidian";
-import { editInkAtCursor } from "./commands/editInkAtCursor";
-import { inkFileAtCursor } from "./commands/inkFileAtCursor";
-import { insertInlineInk } from "./commands/insertInlineInk";
-import { openInkEditor } from "./editor/openInkEditor";
-import { invalidateCapHeightCache } from "./layout/capHeightRatio";
-import { createRenderEnhancer } from "./render/createRenderEnhancer";
-import type { RenderEnhancer } from "./render/renderEnhancer";
-import { DEFAULT_SETTINGS } from "./settings/defaultSettings";
-import { InklineSettingTab } from "./settings/inklineSettingTab";
-import type { InklineSettings } from "./settings/inklineSettings";
+import { Plugin, TFile } from "obsidian";
+import { editInkAtCursor } from "../commands/editInkAtCursor";
+import { inkFileAtCursor } from "../commands/inkFileAtCursor";
+import { insertInlineInk } from "../commands/insertInlineInk";
+import { openInkEditor } from "../editor/openInkEditor";
+import { invalidateCapHeightCache } from "../layout/capHeightRatio";
+import { applyRootVariables } from "../render/applyRootVariables";
+import { createRenderEnhancer } from "../render/createRenderEnhancer";
+import type { RenderEnhancer } from "../render/renderEnhancer";
+import { DEFAULT_SETTINGS } from "../settings/defaultSettings";
+import type { InklineHiddenSettings } from "../settings/inklineHiddenSettings";
+import type { InklineSettings } from "../settings/inklineSettings";
+import { InklineSettingTab } from "./inklineSettingTab";
 
 /**
  * The Obsidian `Plugin` subclass that hosts Inkline.
@@ -32,11 +34,11 @@ export class InklinePlugin extends Plugin {
    * it. Mutated in place (by the settings tab and the editor's pin toggle)
    * and persisted through {@link InklinePlugin.saveSettings}.
    */
-  settings!: InklineSettings;
+  settings!: InklineSettings & InklineHiddenSettings;
 
   /**
-   * The rendered-embed surface: publishes display variables, refreshes
-   * saved inks, and resolves the currently selected ink image.
+   * The rendered-embed surface: refreshes saved inks and resolves the
+   * currently selected ink image.
    *
    * @remarks
    * Created during {@link InklinePlugin.onload}.
@@ -61,7 +63,7 @@ export class InklinePlugin extends Plugin {
     this.registerEvent(
       this.app.workspace.on("css-change", () => {
         invalidateCapHeightCache();
-        this.renderEnhancer.applyRootVariables();
+        applyRootVariables(this.app, this.settings);
       }),
     );
 
@@ -176,11 +178,13 @@ export class InklinePlugin extends Plugin {
    * install and corrupt data both yield a complete settings object.
    */
   async loadSettings(): Promise<void> {
-    const data: unknown = await this.loadData();
-    this.settings = {
-      ...DEFAULT_SETTINGS,
-      ...(typeof data === "object" && data !== null ? data : {}),
-    };
+    // Load and appropriately type settings.
+    const maybeData: unknown = await this.loadData();
+    const data = (
+      typeof maybeData === "object" && maybeData !== null ? maybeData : {}
+    ) as Partial<typeof this.settings>;
+
+    this.settings = { ...DEFAULT_SETTINGS, ...data };
   }
 
   /**
@@ -189,6 +193,6 @@ export class InklinePlugin extends Plugin {
    */
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
-    this.renderEnhancer.applyRootVariables();
+    applyRootVariables(this.app, this.settings);
   }
 }
