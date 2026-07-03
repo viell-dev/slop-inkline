@@ -133,3 +133,13 @@ the canvas, background, or alignment:
 - **Alignment assumptions.** Cap height is measured once and nominal-fallback;
   guides are approximate. `displayHeight` must stay em-based for the
   `vertical-align = -(displayHeight - capHeight)/2` math to hold.
+- **1.13 declarative settings API.** Obsidian 1.13 (insider as of July 2026)
+  replaces the imperative `PluginSettingTab.display()` with declarative
+  `getSettingDefinitions()`; `display()` remains as the legacy fallback. If
+  1.13 goes stable before this plugin releases, migrate `renderSettingsTab`
+  to setting definitions, drop `display()`, and raise `minAppVersion` to
+  `1.13.0` — do not maintain both paths. Note: the default
+  `getControlValue`/`setControlValue` persist via `vault.setConfig`, so the
+  settings host must override both to use the plugin's `data.json`.
+  Deferred because insider builds are Catalyst-gated with no standalone
+  Linux download, so 1.13 is untestable here until stable.
