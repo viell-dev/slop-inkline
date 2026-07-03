@@ -2,7 +2,7 @@
   "id": "inkline",
   "name": "Inkline",
   "version": "0.1.0",
-  "minAppVersion": "1.5.7",
+  "minAppVersion": "1.12.7",
   "description": "Draw small inline grayscale symbols as editable PNG images.",
   "author": "Viell",
   "isDesktopOnly": true
