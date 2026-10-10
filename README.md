@@ -14,7 +14,8 @@ anywhere in the vault.
 
 ## Status
 
-Early development. The initial scope is deliberately narrow:
+Early development. This repository is for development only; the plugin is not
+released or distributed. The initial scope is deliberately narrow:
 
 - Inline image embeds.
 - Black ink on an opaque white background.
@@ -52,7 +53,7 @@ npm run build
 ```
 
 `npm run build` type-checks the TypeScript source, bundles the plugin, and
-writes a local test/release payload to:
+writes a local test payload to:
 
 ```text
 dist/
