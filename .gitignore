@@ -1,0 +1,15 @@
+# Dependencies and caches
+node_modules/
+.npm-cache/
+.obsidian-cache/
+
+# Build and test output
+/dist/
+/main.js
+/test-results/
+/coverage/
+*.map
+
+# Local tooling
+.env
+.vscode/settings.json
