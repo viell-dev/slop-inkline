@@ -110,6 +110,8 @@ export interface EditableInk {
     "record" | "none" | "invalid" | "stale" | "undecodable-base" | "unworkable";
   /** The file's chunks to keep when it is saved again: text and the like. */
   readonly carried: readonly CarriedChunk[];
+  /** How wide the symbol shows in the line box, in pixels, from 0. */
+  readonly width: number;
 }
 
 /** A file that a later version of Inkline wrote, which must not be edited. */
@@ -196,6 +198,7 @@ async function fromPixels(
     base: drawable,
     from,
     carried,
+    width: Math.round(drawable.width * drawable.scale),
   };
 }
 
@@ -218,8 +221,10 @@ export async function openInk(
   }
   const document = documentFromRecord(source.record);
   if (document === undefined) return fromPixels(bytes, "unworkable", carried);
+  const { box } = source.record;
+  const width = Math.round((box.width * lineBox.pxPerEm) / box.pxPerEm);
   if (document.base === undefined) {
-    return { kind: "editable", document, from: "record", carried };
+    return { kind: "editable", document, from: "record", carried, width };
   }
   let base: DrawableBase;
   try {
@@ -227,7 +232,7 @@ export async function openInk(
   } catch {
     return fromPixels(bytes, "undecodable-base", carried);
   }
-  return { kind: "editable", document, base, from: "record", carried };
+  return { kind: "editable", document, base, from: "record", carried, width };
 }
 
 /** The decoded base layer placed where a record's base layer is. */
