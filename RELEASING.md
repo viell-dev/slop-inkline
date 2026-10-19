@@ -18,17 +18,21 @@ agents publish only a release the owner has authorized.
 
 ## Prepare the release pull request
 
-If the release needs a newer Obsidian, raise `minAppVersion` in `manifest.json`
-first, in its own pull request. Then, on a branch from `main`:
+On a branch from `main`:
 
-1. Run `npm version <version> --no-git-tag-version`. It sets the version in
+1. If the release needs a newer Obsidian, raise `minAppVersion` in
+   `manifest.json`. Do it here, not in a pull request of its own: until the
+   release, `manifest.json` describes the published version, and the unit tests
+   refuse a minimum that `versions.json` does not record for it.
+2. Run `npm version <version> --no-git-tag-version`. It sets the version in
    `package.json` and `package-lock.json`, then `scripts/release.ts sync` copies
    it to `manifest.json` and maps it to the manifest's `minAppVersion` in
-   `versions.json`, which Obsidian reads to offer older versions to older apps.
-2. Rename `## Unreleased` in `CHANGELOG.md` to `## <version> - <YYYY-MM-DD>`,
+   `versions.json`, which Obsidian reads to offer older versions to older apps,
+   and stages both files. Earlier releases keep their entries.
+3. Rename `## Unreleased` in `CHANGELOG.md` to `## <version> - <YYYY-MM-DD>`,
    with the planned release date, and add an empty `## Unreleased` above it. The
    section becomes the release notes, so write it for users.
-3. Run `node scripts/release.ts check <version>`, which the workflow runs too:
+4. Run `node scripts/release.ts check <version>`, which the workflow runs too:
    it checks that the metadata files agree and that the changelog section
    exists.
 
