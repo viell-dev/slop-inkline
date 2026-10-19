@@ -32,7 +32,8 @@ Report vulnerabilities privately, as [SECURITY.md](SECURITY.md) describes.
 
 ## Set up
 
-Development needs Node.js 24 or newer, with the npm it ships.
+Development needs Node.js 24 or newer, with the npm it ships. [.nvmrc](.nvmrc)
+names the version line that CI uses, so `nvm use` or `fnm use` picks it.
 
 ```sh
 git clone https://github.com/viell-dev/slop-inkline.git
