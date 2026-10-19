@@ -197,6 +197,12 @@ export class DrawingSession {
     this.#push({ strokes: [] });
   }
 
+  /** Replaces the document as one undoable step, as when restoring a draft. */
+  replace(document: InkDocument): void {
+    if (this.#active !== undefined) return;
+    this.#push(document);
+  }
+
   /** Records `document` as saved, so that it is no longer dirty. */
   markSaved(document: InkDocument): void {
     this.#saved = document;

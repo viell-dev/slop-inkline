@@ -127,6 +127,18 @@ describe("DrawingSession", () => {
     expect(session.dirty).toBe(true);
   });
 
+  it("replaces the document as one undoable change", () => {
+    const session = new DrawingSession(emptyDocument);
+    const restored = {
+      strokes: [{ tool: "pen", size: 16, pressure: false, points: [0, 0] }],
+    } as const;
+    session.replace(restored);
+    expect(session.document).toBe(restored);
+    expect(session.dirty).toBe(true);
+    expect(session.undo()).toBe(true);
+    expect(session.document).toBe(emptyDocument);
+  });
+
   it("does not record clearing an empty drawing", () => {
     const session = new DrawingSession(emptyDocument);
     session.clear();

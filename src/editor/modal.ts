@@ -1,6 +1,6 @@
 // The editor: a modal around a drawing session and its surface, with the
-// tools, keyboard shortcuts, saving, and the question before unsaved work is
-// closed.
+// tools, keyboard shortcuts, saving, drafts, and the question before unsaved
+// work is closed.
 
 import {
   ButtonComponent,
@@ -14,6 +14,12 @@ import type { InkRecord } from "../format/record.ts";
 import { saveInk } from "../ink/canvas.ts";
 import type { InkDocument } from "../ink/document.ts";
 import type { DrawableBase } from "../ink/render.ts";
+import {
+  decodeDraft,
+  encodeDraft,
+  restoreDraft,
+  type DraftStore,
+} from "./drafts.ts";
 import { PointerGate, reportsPressure } from "./pointer.ts";
 import { brushSizes, DrawingSession, type InputPoint } from "./session.ts";
 import { InkView } from "./view.ts";
@@ -27,10 +33,17 @@ export interface EditorOptions {
   readonly center: number;
   /**
    * Writes a saved symbol: the first save of a new symbol creates its file
-   * and inserts it. Rejects when the file cannot be written, which keeps the
-   * editor open with the drawing.
+   * and inserts it. Rejects when anything could not be done, which keeps the
+   * editor open with the drawing, so that the next save tries again.
    */
   readonly write: (bytes: Uint8Array, record: InkRecord) => Promise<void>;
+  /** Where unsaved strokes are kept, and under which key. */
+  readonly draft?: { readonly store: DraftStore; readonly key: string };
+  /** Told when the editor opens and closes, so that its owner can track it. */
+  readonly lifecycle?: {
+    opened(editor: InkEditorModal): void;
+    closed(editor: InkEditorModal): void;
+  };
 }
 
 export class InkEditorModal extends Modal {
@@ -40,6 +53,7 @@ export class InkEditorModal extends Modal {
   #view: InkView | undefined;
   #saving: Promise<boolean> | undefined;
   #closing = false;
+  #disposed = false;
   #frame: number | undefined;
   #resize: ResizeObserver | undefined;
   #status: HTMLElement | undefined;
@@ -120,10 +134,12 @@ export class InkEditorModal extends Modal {
     view.resize(canvas.clientWidth, canvas.win.devicePixelRatio);
     this.#updateButtons();
     this.#render();
+    this.#options.lifecycle?.opened(this);
     // Obsidian moves the focus once the modal is open; take it back after.
     canvas.win.requestAnimationFrame(() => {
       canvas.focus();
     });
+    this.#offerDraft();
   }
 
   override onClose(): void {
@@ -132,6 +148,7 @@ export class InkEditorModal extends Modal {
       this.#view?.canvas.win.cancelAnimationFrame(this.#frame);
     }
     this.contentEl.empty();
+    this.#options.lifecycle?.closed(this);
   }
 
   /**
@@ -149,6 +166,7 @@ export class InkEditorModal extends Modal {
       return;
     }
     if (!this.#session.dirty) {
+      this.#forgetDraft();
       this.#finish();
       return;
     }
@@ -171,11 +189,23 @@ export class InkEditorModal extends Modal {
         .setButtonText("Discard")
         .setDestructive()
         .onClick(() => {
+          this.#forgetDraft();
           this.#finish();
         }),
     );
     confirm.addCancelButton("Keep drawing");
     confirm.open();
+  }
+
+  /**
+   * Closes the editor without asking, as when the plugin unloads: unsaved
+   * strokes are kept as a draft, and nothing more is written.
+   */
+  dispose(): void {
+    this.#disposed = true;
+    this.#session.end();
+    this.#keepDraft();
+    this.#finish();
   }
 
   #finish(): void {
@@ -245,6 +275,12 @@ export class InkEditorModal extends Modal {
         ? { x, y, pressure: event.pressure }
         : { x, y };
     };
+    const finish = (event: PointerEvent): void => {
+      if (!this.#gate.release(event)) return;
+      if (event.type === "pointercancel") this.#session.cancel();
+      else this.#session.end();
+      this.#changed();
+    };
     canvas.addEventListener("pointerdown", (event) => {
       const tool = this.#gate.down(event);
       if (tool === undefined) return;
@@ -258,6 +294,11 @@ export class InkEditorModal extends Modal {
     });
     canvas.addEventListener("pointermove", (event) => {
       if (!this.#gate.owns(event)) return;
+      // Releasing the drawing button while another is held is a move.
+      if (!this.#gate.holds(event)) {
+        finish(event);
+        return;
+      }
       const events =
         typeof event.getCoalescedEvents === "function"
           ? event.getCoalescedEvents()
@@ -265,13 +306,6 @@ export class InkEditorModal extends Modal {
       this.#session.extend((events.length > 0 ? events : [event]).map(point));
       this.#render();
     });
-    const finish = (event: PointerEvent): void => {
-      if (!this.#gate.release(event)) return;
-      if (event.type === "pointercancel") this.#session.cancel();
-      else this.#session.end();
-      this.#updateButtons();
-      this.#render();
-    };
     canvas.addEventListener("pointerup", finish);
     canvas.addEventListener("pointercancel", finish);
     canvas.addEventListener("lostpointercapture", finish);
@@ -317,9 +351,11 @@ export class InkEditorModal extends Modal {
     this.#changed();
   }
 
+  /** After a committed change: update the controls, the surface, the draft. */
   #changed(): void {
     this.#updateButtons();
     this.#render();
+    this.#keepDraft();
   }
 
   #updateButtons(): void {
@@ -342,17 +378,86 @@ export class InkEditorModal extends Modal {
     this.#status?.setText(text);
   }
 
-  async #saveAndClose(): Promise<void> {
-    if (await this.#save()) this.#finish();
+  /** Keeps the unsaved drawing as a draft, or forgets it once saved. */
+  #keepDraft(): void {
+    const draft = this.#options.draft;
+    if (draft === undefined) return;
+    if (!this.#session.dirty) {
+      this.#forgetDraft();
+      return;
+    }
+    draft.store.saveLocalStorage(
+      draft.key,
+      encodeDraft(this.#session.document, Date.now()),
+    );
+  }
+
+  #forgetDraft(): void {
+    const draft = this.#options.draft;
+    if (draft !== undefined) draft.store.saveLocalStorage(draft.key, null);
+  }
+
+  /** Offers back a draft left by an editor that closed without saving. */
+  #offerDraft(): void {
+    const options = this.#options.draft;
+    if (options === undefined) return;
+    const draft = decodeDraft(options.store.loadLocalStorage(options.key));
+    if (draft === undefined) {
+      this.#forgetDraft();
+      return;
+    }
+    const confirm = new ConfirmationModal(this.app);
+    confirm.setTitle("Restore the unsaved drawing?");
+    confirm.setContent(
+      `This symbol has unsaved changes from ${new Date(draft.savedAt).toLocaleString()}.`,
+    );
+    confirm.addButton((button) =>
+      button
+        .setButtonText("Restore")
+        .setCta()
+        .setInitialFocus()
+        .onClick(() => {
+          this.#session.replace(restoreDraft(this.#options.document, draft));
+          this.#changed();
+        }),
+    );
+    confirm.addButton((button) =>
+      button
+        .setButtonText("Discard")
+        .setDestructive()
+        .onClick(() => {
+          this.#forgetDraft();
+        }),
+    );
+    confirm.open();
   }
 
   /**
-   * Saves the drawing as it is now. Only one save runs at a time; strokes
-   * drawn meanwhile stay unsaved. A failed save says why and keeps the
-   * editor open. Returns whether the drawing was saved.
+   * Saves, then closes if nothing changed during the save. Strokes drawn
+   * while it ran keep the editor open, since they are not saved yet.
+   */
+  async #saveAndClose(): Promise<void> {
+    if (!(await this.#save())) return;
+    if (this.#session.dirty) {
+      this.#announce("Saved, except for the strokes drawn while saving");
+      return;
+    }
+    this.#finish();
+  }
+
+  /**
+   * Saves the drawing as it is now, with a stroke still being drawn ended
+   * first. Only one save runs at a time; strokes drawn meanwhile stay
+   * unsaved. A failed save says why and keeps the editor open. Returns
+   * whether the drawing was saved.
    */
   #save(): Promise<boolean> {
     if (this.#saving !== undefined) return this.#saving;
+    if (this.#disposed) return Promise.resolve(false);
+    if (this.#session.drawing) {
+      this.#session.end();
+      this.#changed();
+    }
     const document = this.#session.document;
     const base = this.#base;
     this.#announce("Saving…");
@@ -363,6 +468,7 @@ export class InkEditorModal extends Modal {
           base,
           this.#options.carried ?? [],
         );
+        if (this.#disposed) throw new Error("Inkline was disabled");
         await this.#options.write(bytes, record);
         this.#session.markSaved(document);
         this.#announce("Saved");
@@ -375,6 +481,7 @@ export class InkEditorModal extends Modal {
       } finally {
         this.#saving = undefined;
         this.#updateButtons();
+        this.#keepDraft();
       }
     })();
     this.#updateButtons();
