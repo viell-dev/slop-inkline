@@ -8,6 +8,7 @@ import {
   Modal,
   Notice,
   type App,
+  type EventRef,
 } from "obsidian";
 import type { CarriedChunk } from "../format/ink-file.ts";
 import type { BaseLayer, InkRecord } from "../format/record.ts";
@@ -25,7 +26,7 @@ import {
 } from "./drafts.ts";
 import { PointerGate, reportsPressure } from "./pointer.ts";
 import { brushSizes, DrawingSession, type InputPoint } from "./session.ts";
-import { cropSpan, fontGuides, joinSpans, type Guide } from "./guides.ts";
+import { fontGuides, type Guide } from "./guides.ts";
 import { InkView, measureFont, surfaceWidth } from "./view.ts";
 
 export interface EditorOptions {
@@ -97,13 +98,8 @@ export class InkEditorModal extends Modal {
   #fontGuides: readonly Guide[] = [];
   #previewLine: HTMLElement | undefined;
   #preview: HTMLCanvasElement | undefined;
-  #spanOf:
-    | {
-        document: InkDocument;
-        baseWidth: number | undefined;
-        span: { left: number; right: number } | undefined;
-      }
-    | undefined;
+  #fonts: FontFaceSet | undefined;
+  #cssChange: EventRef | undefined;
   /**
    * The draft this editor restored, until its own draft or a save takes its
    * place: storage may refuse the editor's own at first.
@@ -187,24 +183,23 @@ export class InkEditorModal extends Modal {
         "aria-label": "Drawing area",
       },
     });
-    // A line in the note's font, with the symbol at its size there. Its
-    // font gives the guides.
+    // A line in the vault's text font and size, with the symbol at its size
+    // there. Its font gives the guides.
     const line = this.contentEl.createDiv({
-      cls: "inkline-preview markdown-rendered",
+      cls: "inkline-preview",
       attr: { "aria-hidden": "true" },
     });
     line.createSpan({ text: "A line of text with " });
     this.#preview = line.createEl("canvas", { cls: "inkline-preview-ink" });
     line.createSpan({ text: " in it." });
     this.#previewLine = line;
-    const font = getComputedStyle(line);
-    this.#fontGuides = fontGuides(
-      measureFont({
-        style: font.fontStyle,
-        weight: font.fontWeight,
-        family: font.fontFamily,
-      }),
-    );
+    this.#measure();
+    // The font can arrive later, as a theme's web font, or change with the
+    // theme or a CSS snippet; then the guides are measured again.
+    line.doc.fonts.addEventListener("loadingdone", this.#remeasure);
+    this.#fonts = line.doc.fonts;
+    void line.doc.fonts.ready.then(this.#remeasure);
+    this.#cssChange = this.app.workspace.on("css-change", this.#remeasure);
     this.#status = this.contentEl.createDiv({
       cls: "inkline-status",
       attr: { "aria-live": "polite" },
@@ -234,6 +229,10 @@ export class InkEditorModal extends Modal {
 
   override onClose(): void {
     this.#resize?.disconnect();
+    this.#fonts?.removeEventListener("loadingdone", this.#remeasure);
+    if (this.#cssChange !== undefined) {
+      this.app.workspace.offref(this.#cssChange);
+    }
     if (this.#frame !== undefined) {
       this.#view?.canvas.win.cancelAnimationFrame(this.#frame);
     }
@@ -474,43 +473,42 @@ export class InkEditorModal extends Modal {
     // The surface's own window, which differs from the main one in a popout.
     this.#frame = view.canvas.win.requestAnimationFrame(() => {
       this.#frame = undefined;
-      const { document } = this.#session;
-      const active = this.#session.activeStroke;
-      const image = cropSpan(
-        joinSpans(
-          this.#span(document),
-          active === undefined
-            ? undefined
-            : documentSpan({ strokes: [active] }),
-        ),
+      view.lines = this.#guidesShown ? this.#fontGuides : undefined;
+      view.render(
+        this.#session.document,
+        this.#base,
+        this.#session.activeStroke,
       );
-      view.guides = this.#guidesShown
-        ? { lines: this.#fontGuides, image }
-        : undefined;
-      view.render(document, this.#base, active);
       const line = this.#previewLine;
       if (this.#preview !== undefined && line !== undefined) {
         view.drawPreview(
           this.#preview,
-          image.left,
-          image.right,
           Number.parseFloat(getComputedStyle(line).fontSize),
         );
       }
     });
   }
 
-  /** The extent of a committed document, remembered while it is current. */
-  #span(document: InkDocument): { left: number; right: number } | undefined {
-    const baseWidth = this.#base?.width;
-    const known = this.#spanOf;
-    if (known?.document === document && known.baseWidth === baseWidth) {
-      return known.span;
-    }
-    const span = documentSpan(document, baseWidth);
-    this.#spanOf = { document, baseWidth, span };
-    return span;
+  /** Measures the preview line's font for the guides. */
+  #measure(): void {
+    const line = this.#previewLine;
+    if (line === undefined) return;
+    const font = getComputedStyle(line);
+    this.#fontGuides = fontGuides(
+      measureFont({
+        style: font.fontStyle,
+        weight: font.fontWeight,
+        family: font.fontFamily,
+      }),
+    );
   }
+
+  /** Measures the font again and redraws, as after a font loads. */
+  readonly #remeasure = (): void => {
+    if (this.#closing || this.#retired) return;
+    this.#measure();
+    this.#render();
+  };
 
   #toggleGuides(): void {
     this.#guidesShown = !this.#guidesShown;
