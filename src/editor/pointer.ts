@@ -18,6 +18,8 @@ const eraserButtons = 32;
 
 export class PointerGate {
   #active: number | undefined;
+  /** The `buttons` bit that keeps the drawing pointer drawing. */
+  #holding = 1;
   #penSeen = false;
 
   /** The pointer that is drawing, if any. */
@@ -39,7 +41,18 @@ export class PointerGate {
       (event.button === eraserButton || (event.buttons & eraserButtons) !== 0);
     if (!erasing && event.button !== 0) return undefined;
     this.#active = event.pointerId;
+    this.#holding = erasing ? eraserButtons : 1;
     return erasing ? "eraser" : "brush";
+  }
+
+  /**
+   * Whether the drawing pointer still holds the button it draws with. Pointer
+   * Events report pressing and releasing another button as a move, and
+   * `pointerup` only when the last button goes, so a stroke must end when
+   * its own button is released, even with another still held.
+   */
+  holds(event: Pick<PointerSample, "pointerId" | "buttons">): boolean {
+    return this.owns(event) && (event.buttons & this.#holding) !== 0;
   }
 
   /** Whether an event belongs to the pointer that is drawing. */

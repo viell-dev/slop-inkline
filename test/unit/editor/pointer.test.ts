@@ -51,6 +51,19 @@ describe("PointerGate", () => {
     expect(gate.down(touch())).toBeUndefined();
   });
 
+  it("stops drawing when its own button is released, even in a chord", () => {
+    const gate = new PointerGate();
+    gate.down(mouse());
+    // Right button pressed as well, then the left released.
+    expect(gate.holds(mouse({ buttons: 3 }))).toBe(true);
+    expect(gate.holds(mouse({ buttons: 2 }))).toBe(false);
+    gate.release(mouse());
+    gate.down(pen({ button: 5, buttons: 32 }));
+    expect(gate.holds(pen({ buttons: 32 }))).toBe(true);
+    expect(gate.holds(pen({ buttons: 1 }))).toBe(false);
+    expect(gate.holds(mouse({ buttons: 32 }))).toBe(false);
+  });
+
   it("does not take the eraser bit from a mouse", () => {
     const gate = new PointerGate();
     expect(gate.down(mouse({ button: 5, buttons: 32 }))).toBeUndefined();
