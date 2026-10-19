@@ -2285,7 +2285,9 @@ describe("The editor", function () {
     it("still compares a restored new symbol's file after a save fails", async function () {
       await interruptInsertion();
       await browser.executeObsidianCommand("inkline:insert-symbol");
-      await clickTop("Restore");
+      await browser.waitUntil(
+        async () => (await topButton("Restore")) !== undefined,
+      );
       // The draft's own first save made the file; nothing saved it since.
       expect(
         await browser.execute(
@@ -2294,6 +2296,7 @@ describe("The editor", function () {
               ?.textContent ?? "",
         ),
       ).not.toContain("saved again");
+      await clickTop("Restore");
       await draw([[0.5, 0.2]]);
       await browser.executeObsidian(({ app }) => {
         Reflect.set(
