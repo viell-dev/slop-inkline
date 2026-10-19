@@ -44,6 +44,12 @@ section is also its
   a new symbol whose first save was interrupted, or whose embed could not be
   inserted, finishes that save with the file it made, if nothing changed that
   file since, and inserts the embed unless the note already has it.
+- The editor follows its symbol's file while it is open. A change made
+  elsewhere, by sync, another app, or another editor, reloads a drawing with
+  nothing unsaved; otherwise the editor asks whether to reload, which Undo takes
+  back, or keep the drawing, which saving then writes over the change. Each save
+  checks the file first. A file that this version of Inkline cannot read is
+  never saved over, and a deleted symbol is saved again where it was.
 - A new symbol goes into the note it was started in, where the cursor was, even
   if that note's tab now shows another note or was closed. If the text around
   that place changed so much that it cannot be found, the symbol is added at the

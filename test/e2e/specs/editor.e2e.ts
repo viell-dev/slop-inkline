@@ -74,6 +74,23 @@ async function waitClosed(): Promise<void> {
  * again. The editor's draft names the file.
  */
 async function interruptInsertion(): Promise<void> {
+  try {
+    await failInsertion();
+    await obsidianPage.disablePlugin("inkline");
+  } finally {
+    await unlockNotes();
+  }
+  await obsidianPage.enablePlugin("inkline");
+  await loadModules();
+  await obsidianPage.openFile("Editor.md");
+}
+
+/**
+ * Saves a new symbol whose insertion fails, so that its file exists but its
+ * embed does not, and leaves the editor open. Notes stay locked until
+ * {@link unlockNotes}.
+ */
+async function failInsertion(): Promise<void> {
   await browser.executeObsidian(({ app }) => {
     const vault = app.vault as typeof app.vault & {
       inklineProcess?: typeof app.vault.process;
@@ -81,27 +98,24 @@ async function interruptInsertion(): Promise<void> {
     vault.inklineProcess = vault.process.bind(vault);
     vault.process = () => Promise.reject(new Error("the note is locked"));
   });
-  try {
-    await insert();
-    await draw(zigzag);
-    // Show another note in the tab, so that the insertion has to edit the
-    // note's file, which fails.
-    await showWelcomeInstead();
-    await browser.keys(["Control", "s"]);
-    await waitForStatus("the note is locked");
-    await obsidianPage.disablePlugin("inkline");
-  } finally {
-    await browser.executeObsidian(({ app }) => {
-      const vault = app.vault as typeof app.vault & {
-        inklineProcess?: typeof app.vault.process;
-      };
-      if (vault.inklineProcess !== undefined)
-        vault.process = vault.inklineProcess;
-    });
-  }
-  await obsidianPage.enablePlugin("inkline");
-  await loadModules();
-  await obsidianPage.openFile("Editor.md");
+  await insert();
+  await draw(zigzag);
+  // Show another note in the tab, so that the insertion has to edit the
+  // note's file, which fails.
+  await showWelcomeInstead();
+  await browser.keys(["Control", "s"]);
+  await waitForStatus("the note is locked");
+}
+
+/** Lets notes be edited again after {@link failInsertion}. */
+async function unlockNotes(): Promise<void> {
+  await browser.executeObsidian(({ app }) => {
+    const vault = app.vault as typeof app.vault & {
+      inklineProcess?: typeof app.vault.process;
+    };
+    if (vault.inklineProcess !== undefined)
+      vault.process = vault.inklineProcess;
+  });
 }
 
 /**
@@ -228,6 +242,47 @@ async function createSquare(): Promise<void> {
     const bytes = await canvas.encodePixels({ width: 24, height: 24, data });
     await app.vault.createBinary("square.ink.png", bytes.slice().buffer);
   });
+}
+
+/**
+ * Writes a symbol of three dots into `path`, as sync or another app would:
+ * through the vault, which reports it, or straight to the disk.
+ */
+async function changeElsewhere(
+  path: string,
+  how: "vault" | "disk" = "vault",
+): Promise<void> {
+  await browser.executeObsidian(
+    async ({ app }, filePath, way) => {
+      const { canvas } = window.inklineTest;
+      const dot = (x: number) => ({
+        tool: "pen" as const,
+        size: 256,
+        pressure: false,
+        points: [x, 1600],
+      });
+      const { bytes } = await canvas.saveInk(
+        { strokes: [dot(800), dot(1600), dot(2400)] },
+        undefined,
+        [],
+      );
+      if (way === "disk") {
+        await app.vault.adapter.writeBinary(filePath, bytes.slice().buffer);
+        return;
+      }
+      const file = app.vault.getFileByPath(filePath);
+      if (file === null) throw new Error(`no ${filePath}`);
+      await app.vault.modifyBinary(file, bytes.slice().buffer);
+    },
+    path,
+    how,
+  );
+}
+
+/** How many strokes a symbol file's record holds. */
+async function strokeCount(path: string): Promise<number> {
+  const record = JSON.parse(await recordOf(path)) as { strokes?: unknown[] };
+  return record.strokes?.length ?? -1;
 }
 
 describe("The editor", function () {
@@ -2101,5 +2156,156 @@ describe("The editor", function () {
     await browser.waitUntil(
       async () => (await eraser.getAttribute("aria-pressed")) === "true",
     );
+  });
+  describe("when its file changes on disk", function () {
+    it("takes in the change when nothing is unsaved", async function () {
+      await saveOne();
+      await editFile("001.ink.png");
+      await settledSurface();
+      await changeElsewhere("001.ink.png");
+      await waitForStatus("Reloaded: the file changed on disk");
+      await draw([[0.5, 0.2]]);
+      // The three dots, and the new stroke.
+      await browser.waitUntil(
+        async () => (await storedDrafts())[0]?.strokes.length === 4,
+      );
+    });
+
+    it("asks first when something is unsaved, and can keep the drawing", async function () {
+      await saveOne();
+      await editFile("001.ink.png");
+      await draw([[0.5, 0.2]]);
+      await changeElsewhere("001.ink.png");
+      await clickTop("Keep mine");
+      await browser.keys(["Control", "s"]);
+      await waitForStatus("Saved");
+      expect(await strokeCount("001.ink.png")).toBe(2);
+      // Its own saves are not changes to ask about.
+      await draw([[0.6, 0.2]]);
+      await browser.keys(["Control", "s"]);
+      await waitForStatus("Saved");
+      await browser.pause(500);
+      expect(await topButton("Keep mine")).toBeUndefined();
+      expect(await strokeCount("001.ink.png")).toBe(3);
+    });
+
+    it("reloads when asked to, with the drawing one undo away", async function () {
+      await saveOne();
+      await editFile("001.ink.png");
+      await draw([[0.5, 0.2]]);
+      await browser.waitUntil(async () => (await storedDrafts()).length === 1);
+      await changeElsewhere("001.ink.png");
+      await clickTop("Reload");
+      await waitForStatus("Reloaded: the file changed on disk");
+      // Nothing is unsaved now, so no draft is kept.
+      await browser.waitUntil(async () => (await storedDrafts()).length === 0);
+      await browser.keys(["Control", "z"]);
+      await browser.waitUntil(
+        async () => (await storedDrafts())[0]?.strokes.length === 2,
+      );
+    });
+
+    it("finds a change when saving, and saves over it only once told to", async function () {
+      await saveOne();
+      await editFile("001.ink.png");
+      await draw([[0.5, 0.2]]);
+      // Straight to the disk, and the save at once, before the vault notices.
+      await changeElsewhere("001.ink.png", "disk");
+      await browser.execute(() => {
+        const save = document.querySelector('[data-inkline-button="save"]');
+        if (!(save instanceof HTMLElement)) throw new Error("no Save button");
+        save.click();
+      });
+      await waitForStatus("Not saved: the file changed on disk");
+      expect(await strokeCount("001.ink.png")).toBe(3);
+      // Keeping the drawing goes on with the save, and its closing.
+      await clickTop("Keep mine");
+      await waitClosed();
+      expect(await strokeCount("001.ink.png")).toBe(2);
+    });
+
+    it("never saves over a file it cannot read", async function () {
+      await saveOne();
+      await editFile("001.ink.png");
+      await draw([[0.5, 0.2]]);
+      await browser.executeObsidian(async ({ app }) => {
+        const file = app.vault.getFileByPath("001.ink.png");
+        if (file === null) throw new Error("no file");
+        await app.vault.modifyBinary(
+          file,
+          new TextEncoder().encode("x").buffer,
+        );
+      });
+      await waitForStatus("Not reloaded: the file changed on disk");
+      await browser.keys(["Control", "s"]);
+      await waitForStatus("Not saved: the file changed on disk");
+      const held = await browser.executeObsidian(async ({ app }) => {
+        const file = app.vault.getFileByPath("001.ink.png");
+        if (file === null) throw new Error("no file");
+        return new TextDecoder().decode(await app.vault.readBinary(file));
+      });
+      expect(held).toBe("x");
+      // The drawing is kept as a draft meanwhile.
+      expect((await storedDrafts())[0]?.strokes).toHaveLength(2);
+    });
+
+    it("saves a deleted symbol again where it was, folder and all", async function () {
+      await browser.executeObsidian(async ({ app }) => {
+        const { canvas } = window.inklineTest;
+        const { bytes } = await canvas.saveInk(
+          {
+            strokes: [
+              {
+                tool: "pen",
+                size: 256,
+                pressure: false,
+                points: [800, 800, 1600, 2000],
+              },
+            ],
+          },
+          undefined,
+          [],
+        );
+        await app.vault.createFolder("Symbols");
+        await app.vault.createBinary("Symbols/a.ink.png", bytes.slice().buffer);
+      });
+      await editFile("Symbols/a.ink.png");
+      await draw([[0.5, 0.2]]);
+      // Straight from the disk, as sync would.
+      await browser.executeObsidian(async ({ app }) => {
+        await app.vault.adapter.rmdir("Symbols", true);
+      });
+      await waitForStatus("The file was deleted; saving makes it again");
+      await browser.keys(["Control", "s"]);
+      await waitForStatus("Saved");
+      expect(await symbolFiles()).toEqual(["Symbols/a.ink.png"]);
+      expect(await strokeCount("Symbols/a.ink.png")).toBe(2);
+    });
+
+    it("follows a new symbol's file when its first save could not insert it", async function () {
+      try {
+        await failInsertion();
+      } finally {
+        await unlockNotes();
+      }
+      await changeElsewhere("001.ink.png");
+      await clickTop("Keep mine");
+      await browser.keys(["Control", "Enter"]);
+      await waitClosed();
+      expect(await strokeCount("001.ink.png")).toBe(1);
+    });
+
+    it("follows a new symbol's file once its first save made it", async function () {
+      await insert();
+      await draw(zigzag);
+      await browser.keys(["Control", "s"]);
+      await waitForStatus("Saved");
+      await draw([[0.5, 0.2]]);
+      await changeElsewhere("001.ink.png");
+      await clickTop("Keep mine");
+      await browser.keys(["Control", "Enter"]);
+      await waitClosed();
+      expect(await strokeCount("001.ink.png")).toBe(2);
+    });
   });
 });

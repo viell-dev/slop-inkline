@@ -9,10 +9,16 @@ import {
   Notice,
   type App,
   type EventRef,
+  type TAbstractFile,
 } from "obsidian";
 import type { CarriedChunk } from "../format/ink-file.ts";
 import type { BaseLayer, InkRecord } from "../format/record.ts";
-import { drawableBase, saveInk } from "../ink/canvas.ts";
+import {
+  drawableBase,
+  openInk,
+  saveInk,
+  type EditableInk,
+} from "../ink/canvas.ts";
 import { documentSpan, type InkDocument } from "../ink/document.ts";
 import type { DrawableBase } from "../ink/render.ts";
 import {
@@ -24,6 +30,7 @@ import {
   type DraftStore,
   type DraftTarget,
 } from "./drafts.ts";
+import { FileWatch, type Reading } from "./disk.ts";
 import { PointerGate, reportsPressure } from "./pointer.ts";
 import {
   brushSizes,
@@ -33,6 +40,14 @@ import {
 } from "./session.ts";
 import { fontGuides, type Guide } from "./guides.ts";
 import { InkView, measureFont, surfaceWidth } from "./view.ts";
+
+/** The symbol's file, as the editor reads it again to see if it changed. */
+export interface SymbolFile {
+  /** Where it is, following renames, or where it was once deleted. */
+  readonly path: string;
+  /** What it holds now, or undefined when no file is there. */
+  read(): Promise<Uint8Array | undefined>;
+}
 
 export interface EditorOptions {
   readonly title: string;
@@ -55,13 +70,20 @@ export interface EditorOptions {
     record: InkRecord,
     keepDraft: () => boolean,
   ) => Promise<void>;
+  /**
+   * The symbol's file: an existing symbol's, or a new one's once its first
+   * save made it, and undefined before then. The editor reads it again when
+   * the vault says it changed and before each save, so that a change made
+   * elsewhere is never written over unasked.
+   */
+  readonly file?: () => SymbolFile | undefined;
+  /** A fingerprint of the file as opened, for an existing symbol. */
+  readonly fingerprint?: string;
   /** Where unsaved strokes are kept, and which symbol they belong to. */
   readonly drafts?: {
     readonly store: DraftStore;
     /** The symbol now: a new one is its file once the first save made it. */
     readonly target: () => DraftTarget;
-    /** A fingerprint of the file as opened, for an existing symbol. */
-    readonly fingerprint?: string;
     /**
      * Told when another editor's draft is restored, before this editor keeps
      * its own, so that a new symbol can finish with the file that draft's
@@ -90,14 +112,35 @@ function typing(element: Element | null): boolean {
   );
 }
 
+/** A save that stopped to ask a question, which says why without a notice. */
+class Unsaved extends Error {}
+
+const unreadable =
+  "the file changed on disk, and this version of Inkline cannot read it";
+
 export class InkEditorModal extends Modal {
   readonly #options: EditorOptions;
   readonly #session: DrawingSession;
   readonly #gate = new PointerGate();
   /** This editor's own draft, which no other editor writes. */
   readonly #draftId = crypto.randomUUID();
-  /** A fingerprint of the file as last opened or saved. */
-  #fingerprint: string | undefined;
+  /** The symbol's file as last opened, reloaded, or saved, and changes to it. */
+  readonly #watch: FileWatch;
+  /** The vault's reports of changes to files, while the editor is open. */
+  #vaultEvents: EventRef[] = [];
+  /** Whether the file is being read again, and whether to read it once more. */
+  #checking = false;
+  #recheck = false;
+  /** The file's chunks to keep when it is saved, from the file last read. */
+  #carried: readonly CarriedChunk[];
+  /** The document the file held as opened or last reloaded. */
+  #opened: InkDocument;
+  /**
+   * Whether the question about a change on disk is open, and the save it
+   * goes on with if the drawing is kept.
+   */
+  #askingChanged = false;
+  #resume: (() => void) | undefined;
   #view: InkView | undefined;
   #saving: Promise<boolean> | undefined;
   #closing = false;
@@ -133,7 +176,9 @@ export class InkEditorModal extends Modal {
     super(app);
     this.#options = options;
     this.#session = new DrawingSession(options.document);
-    this.#fingerprint = options.drafts?.fingerprint;
+    this.#watch = new FileWatch(options.fingerprint);
+    this.#carried = options.carried ?? [];
+    this.#opened = options.document;
     const { base } = options.document;
     if (base !== undefined && options.base !== undefined) {
       this.#decoded.set(base.png, options.base);
@@ -226,6 +271,7 @@ export class InkEditorModal extends Modal {
     this.#fonts = line.doc.fonts;
     void line.doc.fonts.ready.then(this.#remeasure);
     this.#cssChange = this.app.workspace.on("css-change", this.#remeasure);
+    this.#watchFile();
     this.#status = this.contentEl.createDiv({
       cls: "inkline-status",
       attr: { "aria-live": "polite" },
@@ -251,9 +297,13 @@ export class InkEditorModal extends Modal {
       canvas.focus();
     });
     void this.#offerDraft();
+    // The file may have changed since it was read for opening.
+    this.#checkFile();
   }
 
   override onClose(): void {
+    for (const ref of this.#vaultEvents) this.app.vault.offref(ref);
+    this.#vaultEvents = [];
     this.#resize?.disconnect();
     this.#fonts?.removeEventListener("loadingdone", this.#remeasure);
     if (this.#cssChange !== undefined) {
@@ -655,9 +705,9 @@ export class InkEditorModal extends Modal {
       target: drafts.target(),
       strokes: document.strokes,
       base: draftBase(document, pending ? undefined : saved),
-      ...(this.#fingerprint === undefined
+      ...(this.#watch.fingerprint === undefined
         ? {}
-        : { fingerprint: this.#fingerprint }),
+        : { fingerprint: this.#watch.fingerprint }),
       savedAt: Date.now(),
       gridOrigin: this.#session.gridOrigin,
     });
@@ -745,7 +795,8 @@ export class InkEditorModal extends Modal {
       ? ""
       : " Its base layer cannot be read, so only its strokes would come back.";
     const moved =
-      draft.fingerprint !== undefined && draft.fingerprint !== this.#fingerprint
+      draft.fingerprint !== undefined &&
+      draft.fingerprint !== this.#watch.fingerprint
         ? " The symbol was saved again since then, so its strokes may not line up."
         : "";
     this.#ask(
@@ -760,7 +811,7 @@ export class InkEditorModal extends Modal {
             // that undoing the restore brings it back.
             this.#session.end();
             this.#session.replace(
-              restoreDraft(this.#options.document, draft),
+              restoreDraft(this.#opened, draft),
               draft.gridOrigin,
             );
             drafts.restored?.(draft);
@@ -788,12 +839,223 @@ export class InkEditorModal extends Modal {
     );
   }
 
+  /** Follows the vault's reports of changes to the symbol's file. */
+  #watchFile(): void {
+    const vault = this.app.vault;
+    const touched = (file: TAbstractFile, oldPath?: string): void => {
+      const path = this.#options.file?.()?.path;
+      if (path !== undefined && (file.path === path || oldPath === path)) {
+        this.#checkFile();
+      }
+    };
+    this.#vaultEvents = [
+      vault.on("modify", (file) => {
+        touched(file);
+      }),
+      vault.on("delete", (file) => {
+        touched(file);
+      }),
+      vault.on("create", (file) => {
+        touched(file);
+      }),
+      vault.on("rename", (file, oldPath) => {
+        touched(file, oldPath);
+      }),
+    ];
+  }
+
+  /**
+   * Reads the symbol's file again, as after the vault reports a change to
+   * it, and responds to what changed. A save reads it itself, so a check
+   * waits for a running save, and one asked for meanwhile runs after it.
+   */
+  #checkFile(): void {
+    if (this.#retired || this.#closing) return;
+    if (this.#checking || this.#saving !== undefined) {
+      this.#recheck = true;
+      return;
+    }
+    this.#checking = true;
+    void this.#readFile()
+      .then((found) => {
+        if (found === undefined || this.#retired || this.#closing) return;
+        if (this.#saving !== undefined) {
+          this.#recheck = true;
+          return;
+        }
+        this.#respond(found.reading, found.opened);
+      })
+      // A file that cannot be read now is read again at the next report, and
+      // a save reads it itself.
+      .catch(() => undefined)
+      .finally(() => {
+        this.#checking = false;
+        if (this.#recheck) {
+          this.#recheck = false;
+          this.#checkFile();
+        }
+      });
+  }
+
+  /**
+   * The symbol's file read again: a reading to compare, and the file opened
+   * for editing when it changed and can be. Undefined while there is no file
+   * to compare, as before a new symbol's first save.
+   */
+  async #readFile(): Promise<
+    { reading: Reading; opened?: EditableInk } | undefined
+  > {
+    const file = this.#options.file?.();
+    if (file === undefined || this.#watch.fingerprint === undefined) {
+      return undefined;
+    }
+    const bytes = await file.read();
+    if (bytes === undefined) return { reading: { kind: "gone" } };
+    const fingerprint = await fingerprintOf(bytes);
+    if (!this.#watch.differs(fingerprint)) {
+      return { reading: { kind: "file", fingerprint, readable: true } };
+    }
+    let opened: EditableInk | undefined;
+    try {
+      const ink = await openInk(bytes);
+      if (ink.kind === "editable") opened = ink;
+    } catch {
+      // Not a PNG that decodes, so not readable.
+    }
+    return {
+      reading: { kind: "file", fingerprint, readable: opened !== undefined },
+      ...(opened === undefined ? {} : { opened }),
+    };
+  }
+
+  /**
+   * Takes the file as the editor's own if it holds what a failed save meant
+   * to write: one that wrote the file before a later step failed, such as a
+   * new symbol whose embed could not be inserted.
+   */
+  async #tookIfWritten(fingerprint: string): Promise<void> {
+    try {
+      const bytes = await this.#options.file?.()?.read();
+      if (bytes !== undefined && (await fingerprintOf(bytes)) === fingerprint) {
+        this.#watch.took(fingerprint);
+      }
+    } catch {
+      // Unread, the file stays as the editor last knew it.
+    }
+  }
+
+  /** Responds to the file as read while editing. */
+  #respond(reading: Reading, opened: EditableInk | undefined): void {
+    const action = this.#watch.noticed(reading, this.#session.dirty);
+    if (action === "gone") {
+      this.#announce("The file was deleted; saving makes it again");
+      return;
+    }
+    if (reading.kind !== "file") return;
+    if (action === "unreadable") {
+      this.#announce(`Not reloaded: ${unreadable}`);
+      new Notice(
+        `${this.#options.title} changed on disk, and this version of Inkline cannot read it, so the editor will not save over it.`,
+      );
+    } else if (action === "reload" && opened !== undefined) {
+      this.#reload(reading.fingerprint, opened);
+    } else if (action === "ask") {
+      this.#askChanged(reading.fingerprint);
+    }
+  }
+
+  /**
+   * Asks what to do about a change made to the file elsewhere: reload it, or
+   * keep the drawing, so that saving replaces the change. `resume` goes on
+   * with a save that stopped to ask. One such question is open at a time; a
+   * save that stops while it is open goes on once it is answered.
+   */
+  #askChanged(fingerprint: string, resume?: () => void): void {
+    if (resume !== undefined) this.#resume = resume;
+    if (this.#askingChanged) return;
+    this.#askingChanged = true;
+    const answered = (): (() => void) | undefined => {
+      const then = this.#resume;
+      this.#askingChanged = false;
+      this.#resume = undefined;
+      return then;
+    };
+    this.#ask(
+      "The symbol changed on disk",
+      `${this.#options.title} was changed outside this editor. Reload it to take that change in; Undo then brings your drawing back while the editor is open. Or keep your drawing, and saving it replaces the change.`,
+      [
+        {
+          text: "Reload",
+          primary: true,
+          act: () => {
+            answered();
+            void this.#reloadFile();
+          },
+        },
+        {
+          text: "Keep mine",
+          act: () => {
+            const then = answered();
+            this.#watch.keep(fingerprint);
+            then?.();
+          },
+        },
+      ],
+      "Not now",
+      () => void answered(),
+    );
+  }
+
+  /** Reads the file again and takes in what it now holds, as Reload asks. */
+  async #reloadFile(): Promise<void> {
+    const found = await this.#readFile();
+    if (
+      found === undefined ||
+      this.#retired ||
+      this.#closing ||
+      this.#saving !== undefined
+    ) {
+      return;
+    }
+    const { reading, opened } = found;
+    if (reading.kind === "gone") {
+      this.#announce("The file was deleted; saving makes it again");
+    } else if (!this.#watch.differs(reading.fingerprint)) {
+      // Changed back meanwhile: the drawing already follows it.
+    } else if (opened === undefined) {
+      this.#announce(`Not reloaded: ${unreadable}`);
+    } else {
+      this.#reload(reading.fingerprint, opened);
+    }
+  }
+
+  /**
+   * Takes in what the file now holds, as one step that Undo takes back, so
+   * that the drawing it replaces is not lost while the editor is open.
+   */
+  #reload(fingerprint: string, opened: EditableInk): void {
+    // A stroke being drawn is committed first, so that Undo brings it back.
+    this.#session.end();
+    const { document, base, carried } = opened;
+    if (document.base !== undefined && base !== undefined) {
+      this.#decoded.set(document.base.png, base);
+    }
+    this.#carried = carried;
+    this.#opened = document;
+    this.#session.replace(document);
+    this.#session.markSaved(document);
+    this.#watch.took(fingerprint);
+    this.#fitView();
+    this.#changed();
+    this.#announce("Reloaded: the file changed on disk");
+  }
+
   /**
    * Saves, then closes if nothing changed during the save. Strokes drawn
    * while it ran keep the editor open, since they are not saved yet.
    */
   async #saveAndClose(): Promise<void> {
-    if (!(await this.#save())) return;
+    if (!(await this.#save(() => void this.#saveAndClose()))) return;
     if (this.#session.dirty) {
       this.#announce("Saved, except for the strokes drawn while saving");
       return;
@@ -807,8 +1069,12 @@ export class InkEditorModal extends Modal {
    * unsaved. After a save, the session moves into the saved file's
    * coordinates. A failed save says why and keeps the editor open. Returns
    * whether the drawing was saved.
+   *
+   * The file is read again first. If something else changed it, the editor
+   * asks before writing over the change, and `resume` saves again if the
+   * answer is to; a file it cannot read is never written over.
    */
-  #save(): Promise<boolean> {
+  #save(resume: () => void = () => void this.#save()): Promise<boolean> {
     if (this.#saving !== undefined) return this.#saving;
     if (this.#retired) return Promise.resolve(false);
     if (this.#session.drawing) {
@@ -819,33 +1085,50 @@ export class InkEditorModal extends Modal {
     const base = this.#base;
     this.#announce("Saving…");
     this.#saving = (async () => {
+      /** The bytes being written, once the file has been checked. */
+      let attempted: string | undefined;
       try {
         const { bytes, record, left } = await saveInk(
           document,
           base,
-          this.#options.carried ?? [],
+          this.#carried,
         );
+        const found = await this.#readFile();
         if (this.#retired) throw new Error("Inkline was disabled");
+        if (found !== undefined) {
+          const action = this.#watch.saving(found.reading);
+          if (action === "unreadable") throw new Error(unreadable);
+          if (action === "ask" && found.reading.kind === "file") {
+            this.#askChanged(found.reading.fingerprint, resume);
+            throw new Unsaved("the file changed on disk");
+          }
+        }
         // Kept before the file can change, with its own base layer, so that
         // the draft does not depend on which version the file holds.
+        attempted = await fingerprintOf(bytes);
         this.#keepDraft();
         await this.#options.write(bytes, record, () => this.#keepDraft());
-        this.#fingerprint = await fingerprintOf(bytes);
+        this.#watch.took(attempted);
         this.#session.markSaved(document);
         this.#session.rebase(-left);
         this.#view?.shift(-left);
         this.#announce("Saved");
         return true;
       } catch (error) {
+        if (attempted !== undefined) await this.#tookIfWritten(attempted);
         const reason = error instanceof Error ? error.message : String(error);
         this.#announce(`Not saved: ${reason}`);
-        new Notice(`Could not save the symbol: ${reason}`);
+        if (!(error instanceof Unsaved)) {
+          new Notice(`Could not save the symbol: ${reason}`);
+        }
         return false;
       } finally {
         this.#saving = undefined;
         this.#updateButtons();
         this.#render();
         this.#keepDraft();
+        // Changes reported while it ran, its own write among them.
+        this.#checkFile();
       }
     })();
     this.#updateButtons();
