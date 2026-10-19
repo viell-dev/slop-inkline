@@ -45,6 +45,12 @@ export class InkView {
     this.#shown = undefined;
   }
 
+  /** Moves the view with a document moved by `dx` pixels, so it stays put. */
+  shift(dx: number): void {
+    this.#originX += dx;
+    this.#shown = undefined;
+  }
+
   /** Fits the surface to `cssWidth` CSS pixels across. */
   resize(cssWidth: number, devicePixelRatio: number): void {
     const width = Math.max(1, cssWidth);

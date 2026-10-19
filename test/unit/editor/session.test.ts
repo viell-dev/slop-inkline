@@ -139,6 +139,27 @@ describe("DrawingSession", () => {
     expect(session.document).toBe(emptyDocument);
   });
 
+  it("moves every state, the saved one, and the stroke being drawn", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.begin({ x: 10, y: 0 });
+    session.end();
+    const saved = session.document;
+    session.markSaved(saved);
+    session.begin({ x: 20, y: 0 });
+    session.rebase(-5);
+    session.extend([{ x: 16, y: 0 }]);
+    session.end();
+    expect(session.document.strokes.map((stroke) => stroke.points)).toEqual([
+      [80, 0],
+      [240, 0, 256, 0],
+    ]);
+    session.undo();
+    expect(session.dirty).toBe(false);
+    expect(session.document.strokes[0]?.points).toEqual([80, 0]);
+    session.undo();
+    expect(session.document).toEqual(emptyDocument);
+  });
+
   it("does not record clearing an empty drawing", () => {
     const session = new DrawingSession(emptyDocument);
     session.clear();

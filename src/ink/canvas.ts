@@ -324,7 +324,9 @@ const cropMargin = 64;
  * Saves a document: crops it to its ink with a side bearing on each side,
  * draws the image from the cropped record itself, so that its pixels are
  * exactly what the record draws, and writes both. `carried` chunks, from
- * {@link openInk}, are kept. Returns the file's bytes and its record.
+ * {@link openInk}, are kept. Returns the file's bytes, its record, and
+ * `left`, the document x the image starts at, by which the record moved
+ * everything.
  *
  * The crop is confirmed in the record's own coordinates, so that saving a
  * file again unchanged gives the same record and the same pixels. The
@@ -339,7 +341,7 @@ export async function saveInk(
   document: InkDocument,
   base: DrawableBase | undefined,
   carried: readonly CarriedChunk[] = [],
-): Promise<{ bytes: Uint8Array; record: InkRecord }> {
+): Promise<{ bytes: Uint8Array; record: InkRecord; left: number }> {
   if (document.base !== undefined && base === undefined) {
     throw new Error("the document's base layer has not been decoded");
   }
@@ -380,7 +382,7 @@ export async function saveInk(
         record,
         carried,
       );
-      return { bytes, record };
+      return { bytes, record, left };
     }
     left += next.left;
     width = next.width;

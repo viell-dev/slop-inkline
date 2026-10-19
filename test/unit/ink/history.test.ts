@@ -52,6 +52,22 @@ describe("History", () => {
     expect([history.canUndo, history.canRedo]).toEqual([false, true]);
   });
 
+  it("maps every state, keeping repeated states one state", () => {
+    const shared = { n: 1 };
+    const history = new History(shared);
+    history.push({ n: 2 });
+    history.push(shared);
+    history.undo();
+    history.map((state) => ({ n: state.n * 10 }));
+    expect(history.present).toEqual({ n: 20 });
+    history.redo();
+    const last = history.present;
+    history.undo();
+    history.undo();
+    expect(history.present).toBe(last);
+    expect(last).toEqual({ n: 10 });
+  });
+
   it("refuses a limit below 1", () => {
     expect(() => new History(0, 0)).toThrow();
     expect(() => new History(0, 1.5)).toThrow();

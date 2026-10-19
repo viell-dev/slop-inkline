@@ -3,7 +3,12 @@
 // Obsidian, so that unit tests can drive it.
 
 import type { Stroke, Tool } from "../format/record.ts";
-import { toPressure, toUnits, type InkDocument } from "../ink/document.ts";
+import {
+  moveDocument,
+  toPressure,
+  toUnits,
+  type InkDocument,
+} from "../ink/document.ts";
 import { lineBox } from "../ink/geometry.ts";
 import { History } from "../ink/history.ts";
 
@@ -201,6 +206,37 @@ export class DrawingSession {
   replace(document: InkDocument): void {
     if (this.#active !== undefined) return;
     this.#push(document);
+  }
+
+  /**
+   * Moves everything by a whole number of pixels: every state to undo or
+   * redo, the saved one, and the stroke being drawn. After a save, this puts
+   * the session in the saved file's coordinates, so that what it keeps lines
+   * up with the file.
+   */
+  rebase(dxPixels: number): void {
+    if (dxPixels === 0) return;
+    const moved = new Map<InkDocument, InkDocument>();
+    const move = (document: InkDocument): InkDocument => {
+      const known = moved.get(document);
+      if (known !== undefined) return known;
+      const next = moveDocument(document, dxPixels);
+      moved.set(document, next);
+      return next;
+    };
+    this.#history.map(move);
+    this.#saved = move(this.#saved);
+    const active = this.#active;
+    if (active !== undefined) {
+      const stride = active.pressure ? 3 : 2;
+      const dx = toUnits(dxPixels);
+      for (let index = 0; index < active.points.length; index += stride) {
+        active.points[index] = (active.points[index] ?? 0) + dx;
+      }
+    }
+    if (this.#last !== undefined) {
+      this.#last = { ...this.#last, x: this.#last.x + dxPixels };
+    }
   }
 
   /** Records `document` as saved, so that it is no longer dirty. */

@@ -58,4 +58,23 @@ export class History<State> {
     this.#present = next.state;
     return true;
   }
+
+  /**
+   * Replaces every state, to undo and to redo as well as the present, with
+   * `change` of it. A state that appears more than once stays one state, so
+   * that comparing states by identity still works.
+   */
+  map(change: (state: State) => State): void {
+    const changed = new Map<State, Entry<State>>();
+    const apply = (state: State): State => {
+      const known = changed.get(state);
+      if (known !== undefined) return known.state;
+      const next = change(state);
+      changed.set(state, { state: next });
+      return next;
+    };
+    this.#past = this.#past.map((entry) => ({ state: apply(entry.state) }));
+    this.#future = this.#future.map((entry) => ({ state: apply(entry.state) }));
+    this.#present = apply(this.#present);
+  }
 }
