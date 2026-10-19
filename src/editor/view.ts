@@ -13,6 +13,7 @@ import {
   type Guide,
   type Span,
 } from "./guides.ts";
+import type { Placement } from "./reference.ts";
 
 /** A font as CSS describes it, for {@link measureFont}. */
 export interface FontStyle {
@@ -98,6 +99,9 @@ function element2d(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
   return context;
 }
 
+/** How opaque a picture to trace over is drawn: faint, under the ink. */
+const referenceAlpha = 0.35;
+
 export class InkView {
   readonly canvas: HTMLCanvasElement;
   /** How much of the document the surface shows across, in pixels. */
@@ -118,6 +122,18 @@ export class InkView {
    * pixels, or undefined to draw no grid.
    */
   grid: { readonly spacing: number; readonly originX: number } | undefined;
+  /**
+   * A picture to trace over, drawn faintly under the ink where `placement`
+   * puts it, or undefined for none. It is not part of the drawing.
+   */
+  reference:
+    | {
+        readonly image: CanvasImageSource;
+        readonly placement: Placement;
+        readonly width: number;
+        readonly height: number;
+      }
+    | undefined;
   /** How far the committed ink reaches, from its pixels, in document pixels. */
   #inked: Span | undefined;
   /** Where the saved image would start and end, as of the last render. */
@@ -136,6 +152,11 @@ export class InkView {
   fit(left: number, right: number): void {
     this.#across = surfaceWidth(right - left);
     this.centerOn((left + right) / 2);
+  }
+
+  /** The document x in the middle of the surface, in pixels. */
+  get center(): number {
+    return this.#originX + this.#across / 2;
   }
 
   /** Puts document x `center` in the middle of the surface. */
@@ -261,6 +282,21 @@ export class InkView {
     visible.resetTransform();
     visible.clearRect(0, 0, width, height);
     this.#drawLineBox(visible, style);
+    const { reference } = this;
+    if (reference !== undefined) {
+      const { x, y, scale } = reference.placement;
+      this.#transform(visible);
+      visible.globalAlpha = referenceAlpha;
+      visible.drawImage(
+        reference.image,
+        x,
+        y,
+        reference.width * scale,
+        reference.height * scale,
+      );
+      visible.globalAlpha = 1;
+      visible.resetTransform();
+    }
     visible.drawImage(this.#work, 0, 0);
   }
 
