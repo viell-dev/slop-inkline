@@ -317,6 +317,79 @@ async function pressed(button: string): Promise<string | null> {
     .getAttribute("aria-pressed");
 }
 
+/**
+ * Writes a symbol file of one stroke per x, in units, as another editor
+ * would, with a text chunk that Inkline carries through its saves.
+ */
+async function writeSymbol(path: string, xs: readonly number[]): Promise<void> {
+  await browser.executeObsidian(
+    async ({ app }, filePath, starts) => {
+      const { canvas } = window.inklineTest;
+      const { bytes } = await canvas.saveInk(
+        {
+          strokes: starts.map((x) => ({
+            tool: "pen" as const,
+            size: 256,
+            pressure: false,
+            points: [x, 800, x + 400, 2000],
+          })),
+        },
+        undefined,
+        [
+          {
+            chunk: {
+              type: "tEXt",
+              data: new TextEncoder().encode("Comment\0from the tower"),
+            },
+            afterData: false,
+          },
+        ],
+      );
+      const folder = filePath.slice(0, Math.max(0, filePath.lastIndexOf("/")));
+      if (folder !== "" && app.vault.getFolderByPath(folder) === null) {
+        await app.vault.createFolder(folder);
+      }
+      await app.vault.createBinary(filePath, bytes.slice().buffer);
+    },
+    path,
+    xs,
+  );
+}
+
+/** How many chunks a symbol file holds that Inkline carries through saves. */
+async function carriedIn(path: string): Promise<number> {
+  return browser.executeObsidian(async ({ app }, filePath) => {
+    const file = app.vault.getFileByPath(filePath);
+    if (file === null) throw new Error(`no ${filePath}`);
+    const { inkFile } = window.inklineTest;
+    return inkFile.preservableChunks(
+      new Uint8Array(await app.vault.readBinary(file)),
+    ).length;
+  }, path);
+}
+
+/** Chooses a symbol in the open choice of symbols, by typing its name. */
+async function chooseSymbol(name: string): Promise<void> {
+  await browser.$(".prompt-input").waitForDisplayed();
+  await browser.keys(name);
+  await browser.keys(["Enter"]);
+}
+
+/** Waits for a notice whose text includes `text`. */
+async function waitForNotice(text: string): Promise<void> {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        (wanted) =>
+          [...document.querySelectorAll(".notice")].some((notice) =>
+            notice.textContent.includes(wanted),
+          ),
+        text,
+      ),
+    { timeoutMsg: `no notice with "${text}"` },
+  );
+}
+
 describe("The editor", function () {
   before(async function () {
     await loadModules();
@@ -517,7 +590,7 @@ describe("The editor", function () {
     expect(state).toEqual({
       pen: "true",
       eraser: "false",
-      size: "Brush size S",
+      size: "Brush size S (1)",
       undo: true,
       focused: true,
     });
@@ -526,6 +599,39 @@ describe("The editor", function () {
     expect(await eraser.getAttribute("aria-pressed")).toBe("true");
     await browser.keys(["Escape"]);
     await waitClosed();
+  });
+
+  it("names each button with its text, and shows its shortcut on hover", async function () {
+    await insert();
+    const buttons = await browser.execute(() =>
+      [...document.querySelectorAll("[data-inkline-button]")].map((button) => ({
+        text: button.textContent,
+        name: button.getAttribute("aria-label") ?? "",
+      })),
+    );
+    expect(buttons.length).toBeGreaterThan(10);
+    for (const { text, name } of buttons) {
+      expect(name.toLowerCase()).toContain(text.toLowerCase());
+    }
+    const tooltip = async (id: string, text: string): Promise<void> => {
+      await browser.$(`[data-inkline-button="${id}"]`).moveTo();
+      await browser.waitUntil(
+        async () =>
+          (await browser.execute(
+            () => document.querySelector(".tooltip")?.textContent ?? "",
+          )) === text,
+        { timeoutMsg: `no tooltip "${text}"` },
+      );
+      await surface().moveTo();
+    };
+    // The first hover after the editor opens shows no tooltip, so start
+    // from the surface.
+    await surface().moveTo();
+    await browser.pause(500);
+    await tooltip("copy", "Copy from: start from a copy of another symbol (V)");
+    await tooltip("size-0", "Brush size S (1)");
+    await tooltip("pen", "Pen (P)");
+    await tooltip("next", "Next: save and draw the next one (Mod+Shift+Enter)");
   });
 
   it("saves a stroke still being drawn when saving and closing", async function () {
@@ -2524,6 +2630,10 @@ describe("The editor", function () {
       expect(await pressed("size-2")).toBe("true");
       expect(await pressed("grid")).toBe("true");
       expect(await pressed("guides")).toBe("false");
+      // It can start from a copy as the first editor could.
+      expect(await browser.$('[data-inkline-button="copy"]').isExisting()).toBe(
+        true,
+      );
     });
 
     it("follows the symbol before even when the note's tab shows another", async function () {
@@ -2627,6 +2737,113 @@ describe("The editor", function () {
       expect(await editorOpen()).toBe(true);
       expect(await symbolFiles()).toEqual(["001.ink.png"]);
       expect(await strokeCount("001.ink.png")).toBe(1);
+    });
+  });
+
+  describe("starting from a copy", function () {
+    it("starts a new symbol from a copy of another, which Undo takes back", async function () {
+      await writeSymbol("Glyphs/tower.ink.png", [800, 1600]);
+      await insert();
+      await browser.keys(["v"]);
+      await chooseSymbol("tower");
+      await waitForStatus("Started from a copy of tower");
+      await browser.waitUntil(
+        async () => (await storedDrafts())[0]?.strokes.length === 2,
+      );
+      await browser.keys(["Control", "z"]);
+      await browser.waitUntil(async () => (await storedDrafts()).length === 0);
+      await browser.keys(["Control", "Shift", "z"]);
+      await browser.waitUntil(
+        async () => (await storedDrafts())[0]?.strokes.length === 2,
+      );
+      await draw([[0.5, 0.2]]);
+      await browser.keys(["Control", "Enter"]);
+      await waitClosed();
+      expect(await symbolFiles()).toEqual([
+        "001.ink.png",
+        "Glyphs/tower.ink.png",
+      ]);
+      expect(await strokeCount("001.ink.png")).toBe(3);
+      expect(await strokeCount("Glyphs/tower.ink.png")).toBe(2);
+      // The tower's text stays with its own file.
+      expect(await carriedIn("Glyphs/tower.ink.png")).toBe(1);
+      expect(await carriedIn("001.ink.png")).toBe(0);
+    });
+
+    it("copies a base layer with the strokes", async function () {
+      await createSquare();
+      await insert();
+      await browser.$('[data-inkline-button="copy"]').click();
+      await chooseSymbol("square");
+      await waitForStatus("Started from a copy of square");
+      await browser.keys(["Control", "Enter"]);
+      await waitClosed();
+      const record = JSON.parse(await recordOf("001.ink.png")) as {
+        base?: unknown;
+      };
+      expect(record.base).toBeDefined();
+    });
+
+    it("keeps the drawing when the choice cannot be opened, or is put off", async function () {
+      await browser.executeObsidian(async ({ app }) => {
+        await app.vault.createBinary(
+          "bad.ink.png",
+          new TextEncoder().encode("not a PNG").buffer,
+        );
+      });
+      await insert();
+      await draw(zigzag);
+      await browser.keys(["v"]);
+      await chooseSymbol("bad");
+      await waitForNotice("Could not open bad.ink.png");
+      await browser.keys(["v"]);
+      await browser.$(".prompt-input").waitForDisplayed();
+      await browser.keys(["Escape"]);
+      await browser.$(".prompt").waitForExist({ reverse: true });
+      expect(await editorOpen()).toBe(true);
+      expect((await storedDrafts())[0]?.strokes).toHaveLength(1);
+    });
+
+    it("closes the choice with its editor", async function () {
+      await writeSymbol("tower.ink.png", [800]);
+      await insert();
+      await draw(zigzag);
+      await delayVault("createBinary", 1500);
+      // Save and close, then the choice, while the save still runs.
+      await browser.keys(["Control", "Enter"]);
+      await browser.keys(["v"]);
+      await browser.$(".prompt-input").waitForDisplayed();
+      await waitClosed();
+      await browser.$(".prompt").waitForExist({ reverse: true });
+    });
+
+    it("closes the choice when Inkline is disabled", async function () {
+      await writeSymbol("tower.ink.png", [800]);
+      await insert();
+      await browser.keys(["v"]);
+      await browser.$(".prompt-input").waitForDisplayed();
+      await obsidianPage.disablePlugin("inkline");
+      await browser.$(".prompt").waitForExist({ reverse: true });
+      await obsidianPage.enablePlugin("inkline");
+      await loadModules();
+    });
+
+    it("says when there is no symbol to start from", async function () {
+      await insert();
+      await browser.keys(["v"]);
+      await waitForNotice("There are no symbols to start from yet.");
+      expect(await browser.$(".prompt").isExisting()).toBe(false);
+    });
+
+    it("has no Copy from for a symbol file", async function () {
+      await saveOne();
+      await editFile("001.ink.png");
+      expect(await browser.$('[data-inkline-button="copy"]').isExisting()).toBe(
+        false,
+      );
+      await browser.keys(["v"]);
+      await browser.pause(500);
+      expect(await browser.$(".prompt").isExisting()).toBe(false);
     });
   });
 });
