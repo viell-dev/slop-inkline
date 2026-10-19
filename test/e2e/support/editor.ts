@@ -78,6 +78,31 @@ export async function draw(
   await action.perform();
 }
 
+/**
+ * Waits for the editor's status line to say `text`, failing with what it last
+ * said.
+ */
+export async function waitForStatus(
+  text: string,
+  timeout = 10_000,
+): Promise<void> {
+  const status = browser.$(".inkline-status");
+  let shown = "";
+  try {
+    await browser.waitUntil(
+      async () => {
+        shown = (await status.isExisting()) ? await status.getText() : "";
+        return shown.includes(text);
+      },
+      { timeout },
+    );
+  } catch (error) {
+    throw new Error(`waited for "${text}", but the status said "${shown}"`, {
+      cause: error,
+    });
+  }
+}
+
 /** Whether the editor is open. */
 export async function editorOpen(): Promise<boolean> {
   return browser.$(".inkline-editor").isExisting();

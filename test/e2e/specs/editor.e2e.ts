@@ -18,6 +18,7 @@ import {
   symbolFiles,
   clickTop,
   topButton,
+  waitForStatus,
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 
@@ -82,16 +83,7 @@ async function interruptInsertion(): Promise<void> {
     // note's file, which fails.
     await showWelcomeInstead();
     await browser.keys(["Control", "s"]);
-    const status = browser.$(".inkline-status");
-    let shown = "";
-    try {
-      await status.waitUntil(async () => {
-        shown = await status.getText();
-        return shown.includes("the note is locked");
-      });
-    } catch (error) {
-      throw new Error(`the status said "${shown}"`, { cause: error });
-    }
+    await waitForStatus("the note is locked");
     await obsidianPage.disablePlugin("inkline");
   } finally {
     await browser.executeObsidian(({ app }) => {
@@ -328,10 +320,7 @@ describe("The editor", function () {
       await insert();
       await draw(zigzag);
       await browser.keys(["Control", "Enter"]);
-      const status = browser.$(".inkline-status");
-      await status.waitUntil(async () =>
-        (await status.getText()).includes("the disk is full"),
-      );
+      await waitForStatus("the disk is full");
       expect(await editorOpen()).toBe(true);
     } finally {
       await browser.executeObsidian(({ app }) => {
@@ -420,10 +409,7 @@ describe("The editor", function () {
         [0.3, 0.2],
         [0.7, 0.2],
       ]);
-      const status = browser.$(".inkline-status");
-      await status.waitUntil(async () =>
-        (await status.getText()).includes("strokes drawn while saving"),
-      );
+      await waitForStatus("strokes drawn while saving");
       expect(await editorOpen()).toBe(true);
     } finally {
       await browser.executeObsidian(({ app }) => {
@@ -510,10 +496,7 @@ describe("The editor", function () {
     // note's file, which fails the first time.
     await showWelcomeInstead();
     await browser.keys(["Control", "Enter"]);
-    const status = browser.$(".inkline-status");
-    await status.waitUntil(async () =>
-      (await status.getText()).includes("the note is locked"),
-    );
+    await waitForStatus("the note is locked");
     expect(await symbolFiles()).toEqual(["001.ink.png"]);
     await browser.executeObsidian(({ app }) => {
       const vault = app.vault as typeof app.vault & {
@@ -584,7 +567,7 @@ describe("The editor", function () {
     await insert();
     await draw(zigzag);
     await browser.keys(["Control", "s"]);
-    await browser.$(".inkline-status=Saved").waitForExist();
+    await waitForStatus("Saved");
     await draw([
       [0.5, 0.2],
       [0.5, 0.8],
@@ -721,7 +704,7 @@ describe("The editor", function () {
       [0.1, 0.3],
     ]);
     await browser.keys(["Control", "s"]);
-    await browser.$(".inkline-status=Saved").waitForExist();
+    await waitForStatus("Saved");
     await draw([
       [0.45, 0.8],
       [0.55, 0.8],
@@ -796,7 +779,7 @@ describe("The editor", function () {
     await editFile("square.ink.png");
     await browser.$('[data-inkline-button="clear"]').click();
     await browser.keys(["Control", "s"]);
-    await browser.$(".inkline-status=Saved").waitForExist();
+    await waitForStatus("Saved");
     await browser.keys(["Control", "z"]);
     // The file has no base layer now, so the draft keeps its own.
     await browser.waitUntil(
@@ -861,7 +844,7 @@ describe("The editor", function () {
       await fillStorage();
       await browser.executeObsidianCommand("inkline:insert-symbol");
       await clickTop("Restore");
-      await browser.$(".inkline-status=Draft not kept").waitForExist();
+      await waitForStatus("Draft not kept");
       expect((await storedDrafts()).map((draft) => draft.id)).toEqual(before);
     } finally {
       await freeStorage();
@@ -1039,9 +1022,7 @@ describe("The editor", function () {
         note: "Editor.md",
         file: { path: "001.ink.png" },
       });
-      await browser
-        .$(".inkline-status=Saved")
-        .waitForExist({ timeout: 10_000 });
+      await waitForStatus("Saved");
     } finally {
       await restoreVault();
     }
@@ -1140,7 +1121,7 @@ describe("The editor", function () {
         await delayVault("modifyBinary", 2500, when);
         try {
           await browser.keys(["Control", "s"]);
-          await browser.$(".inkline-status=Saving…").waitForExist();
+          await waitForStatus("Saving…");
           await browser.keys(["Control", "z"]);
           if (stroke) {
             await draw([
@@ -1219,5 +1200,47 @@ describe("The editor", function () {
     const text = await noteText();
     expect(text).toContain("![[001.ink.png]]");
     expect(text).toContain("[[001.ink.png]] for the door");
+  });
+
+  it("keeps a draft in line through a restart while a save writes the file", async function () {
+    await createSquare();
+    await editFile("square.ink.png");
+    // Far to the left, so that the save crops and moves everything.
+    await draw([
+      [0.05, 0.3],
+      [0.1, 0.3],
+    ]);
+    await delayVault("modifyBinary", 60_000);
+    let draft: Awaited<ReturnType<typeof storedDrafts>>[number] | undefined;
+    try {
+      await browser.keys(["Control", "s"]);
+      // The file is written; the save has not finished.
+      await browser.waitUntil(async () => {
+        const record = JSON.parse(await recordOf("square.ink.png")) as {
+          strokes?: unknown[];
+        };
+        return record.strokes?.length === 1;
+      });
+      [draft] = await storedDrafts();
+    } finally {
+      // Ends the held save, as a crash would.
+      await browser.reloadObsidian();
+    }
+    expect(draft?.base).toBe("kept");
+    const offset =
+      (draft?.strokes[0]?.points[0] ?? Number.NaN) -
+      (draft?.baseX ?? Number.NaN);
+    await loadModules();
+    await editFile("square.ink.png");
+    await clickTop("Restore");
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    const restored = JSON.parse(await recordOf("square.ink.png")) as {
+      base: { x: number };
+      strokes: { points: number[] }[];
+    };
+    expect((restored.strokes[0]?.points[0] ?? 0) - restored.base.x).toBe(
+      offset,
+    );
   });
 });

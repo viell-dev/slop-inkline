@@ -655,6 +655,9 @@ export class InkEditorModal extends Modal {
           this.#options.carried ?? [],
         );
         if (this.#retired) throw new Error("Inkline was disabled");
+        // Kept before the file can change, with its own base layer, so that
+        // the draft does not depend on which version the file holds.
+        this.#keepDraft();
         await this.#options.write(bytes, record, () => this.#keepDraft());
         this.#fingerprint = await fingerprintOf(bytes);
         this.#session.markSaved(document);
