@@ -54,7 +54,15 @@ export async function draw(
 ): Promise<void> {
   const canvas = surface();
   await canvas.waitForDisplayed();
-  const { width, height } = await canvas.getSize();
+  // The modal grows into place when it opens; wait until it has.
+  let size = await canvas.getSize();
+  await browser.waitUntil(async () => {
+    const previous = size;
+    await browser.pause(50);
+    size = await canvas.getSize();
+    return size.width === previous.width && size.height === previous.height;
+  });
+  const { width, height } = size;
   const at = ([x, y]: readonly [number, number]) => ({
     origin: canvas,
     // Offsets are from the element's centre.
@@ -102,25 +110,51 @@ export async function recordOf(path: string): Promise<string> {
 }
 
 /** A button in the topmost modal, such as the close question's. */
-export function topButton(text: string): ChainablePromiseElement {
-  return browser.$(".modal-container:last-of-type").$(`button=${text}`);
+export async function topButton(
+  text: string,
+): Promise<WebdriverIO.Element | undefined> {
+  const containers = await browser.$$(".modal-container").getElements();
+  const top = containers.at(-1);
+  if (top === undefined) return undefined;
+  const button = await top.$(`button=${text}`).getElement();
+  return (await button.isExisting()) ? button : undefined;
+}
+
+/** Clicks a button in the topmost modal, waiting for it to appear. */
+export async function clickTop(text: string): Promise<void> {
+  await browser.waitUntil(async () => (await topButton(text)) !== undefined, {
+    timeoutMsg: `no "${text}" button`,
+  });
+  await (await topButton(text))?.click();
 }
 
 /**
  * Closes every modal, discarding unsaved drawings, and every note, then
- * restores the vault, so that each test starts from the same state.
+ * restores the vault and clears drafts, so that each test starts from the
+ * same state.
  */
 export async function startOver(): Promise<void> {
-  for (let attempt = 0; attempt < 5; attempt++) {
-    if (!(await browser.$(".modal-container").isExisting())) break;
-    const discard = topButton("Discard");
-    if (await discard.isExisting()) await discard.click();
-    else await browser.keys(["Escape"]);
-  }
+  await browser.waitUntil(
+    async () => {
+      if (!(await browser.$(".modal-container").isExisting())) return true;
+      const discard = await topButton("Discard");
+      if (discard !== undefined) await discard.click();
+      else await browser.keys(["Escape"]);
+      return false;
+    },
+    { timeout: 10_000, interval: 300, timeoutMsg: "modals stayed open" },
+  );
   await browser.executeObsidian(({ app }) => {
-    app.workspace.iterateRootLeaves((leaf) => {
-      leaf.detach();
-    });
+    // Detaching while iterating would skip leaves, so collect them first.
+    const leaves: { detach(): void }[] = [];
+    app.workspace.iterateRootLeaves((leaf) => leaves.push(leaf));
+    for (const leaf of leaves) leaf.detach();
+    for (let index = window.localStorage.length - 1; index >= 0; index--) {
+      const key = window.localStorage.key(index);
+      if (key?.includes("inkline-draft:") === true) {
+        window.localStorage.removeItem(key);
+      }
+    }
   });
   await obsidianPage.resetVault();
 }

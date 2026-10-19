@@ -1,4 +1,5 @@
 import { browser, expect } from "@wdio/globals";
+import { obsidianPage } from "wdio-obsidian-service";
 import { loadModules } from "../support/browser.ts";
 import {
   draw,
@@ -8,7 +9,9 @@ import {
   recordOf,
   waitForEditor,
   startOver,
+  surface,
   symbolFiles,
+  clickTop,
   topButton,
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
@@ -75,15 +78,14 @@ describe("The editor", function () {
     await insert();
     await draw(zigzag);
     await browser.keys(["Escape"]);
-    const keep = topButton("Keep drawing");
-    await keep.waitForDisplayed();
+    await browser.waitUntil(
+      async () => (await topButton("Keep drawing")) !== undefined,
+    );
     await saveScreenshot("editor-close-question");
-    await keep.click();
+    await clickTop("Keep drawing");
     expect(await editorOpen()).toBe(true);
     await browser.keys(["Escape"]);
-    const discard = topButton("Discard");
-    await discard.waitForDisplayed();
-    await discard.click();
+    await clickTop("Discard");
     await waitClosed();
     expect(await symbolFiles()).toEqual([]);
   });
@@ -92,9 +94,7 @@ describe("The editor", function () {
     await insert();
     await draw(zigzag);
     await browser.keys(["Escape"]);
-    const save = topButton("Save");
-    await save.waitForDisplayed();
-    await save.click();
+    await clickTop("Save");
     await waitClosed();
     expect(await symbolFiles()).toEqual(["001.ink.png"]);
   });
@@ -229,5 +229,208 @@ describe("The editor", function () {
     expect(await eraser.getAttribute("aria-pressed")).toBe("true");
     await browser.keys(["Escape"]);
     await waitClosed();
+  });
+
+  it("saves a stroke still being drawn when saving and closing", async function () {
+    await insert();
+    await draw(zigzag);
+    const canvas = surface();
+    const { width, height } = await canvas.getSize();
+    await browser
+      .action("pointer", { parameters: { pointerType: "mouse" } })
+      .move({ origin: canvas, x: Math.round(-0.2 * width), y: 0 })
+      .down()
+      .move({
+        origin: canvas,
+        x: Math.round(0.2 * width),
+        y: Math.round(0.1 * height),
+        duration: 50,
+      })
+      .perform(true);
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    await browser.releaseActions();
+    const record = JSON.parse(await recordOf("001.ink.png")) as {
+      strokes: unknown[];
+    };
+    expect(record.strokes).toHaveLength(2);
+  });
+
+  it("stays open when strokes are drawn while saving", async function () {
+    await browser.executeObsidian(({ app }) => {
+      const vault = app.vault as typeof app.vault & {
+        inklineCreateBinary?: typeof app.vault.createBinary;
+      };
+      const create = vault.createBinary.bind(vault);
+      vault.inklineCreateBinary = create;
+      vault.createBinary = async (path, data, options) => {
+        await new Promise((resolve) => window.setTimeout(resolve, 1500));
+        return create(path, data, options);
+      };
+    });
+    try {
+      await insert();
+      await draw(zigzag);
+      await browser.keys(["Control", "Enter"]);
+      await draw([
+        [0.3, 0.2],
+        [0.7, 0.2],
+      ]);
+      const status = browser.$(".inkline-status");
+      await status.waitUntil(async () =>
+        (await status.getText()).includes("strokes drawn while saving"),
+      );
+      expect(await editorOpen()).toBe(true);
+    } finally {
+      await browser.executeObsidian(({ app }) => {
+        const vault = app.vault as typeof app.vault & {
+          inklineCreateBinary?: typeof app.vault.createBinary;
+        };
+        if (vault.inklineCreateBinary !== undefined) {
+          vault.createBinary = vault.inklineCreateBinary;
+        }
+      });
+    }
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    const record = JSON.parse(await recordOf("001.ink.png")) as {
+      strokes: unknown[];
+    };
+    expect(record.strokes).toHaveLength(2);
+  });
+
+  it("inserts into the note it was opened in, even after its tab shows another", async function () {
+    await insert();
+    await draw(zigzag);
+    await browser.executeObsidian(async ({ app }) => {
+      const welcome = app.vault.getFileByPath("Welcome.md");
+      if (welcome === null) throw new Error("no Welcome.md");
+      await app.workspace.getLeaf(false).openFile(welcome);
+    });
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    const texts = await browser.executeObsidian(async ({ app }) => {
+      const read = async (path: string): Promise<string> => {
+        const file = app.vault.getFileByPath(path);
+        if (file === null) throw new Error(`no ${path}`);
+        return app.vault.read(file);
+      };
+      return {
+        editor: await read("Editor.md"),
+        welcome: await read("Welcome.md"),
+      };
+    });
+    expect(texts).toEqual({
+      editor: "The door is marked with ![[001.ink.png]] which means return.\n",
+      welcome: "A synthetic vault for Inkline's end-to-end tests.\n",
+    });
+  });
+
+  it("inserts into the note's file when its tab was closed", async function () {
+    await insert();
+    await draw(zigzag);
+    const open = await browser.executeObsidian(({ app }) => {
+      for (const leaf of app.workspace.getLeavesOfType("markdown"))
+        leaf.detach();
+      return app.workspace.getLeavesOfType("markdown").length;
+    });
+    expect(open).toBe(0);
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    const text = await browser.executeObsidian(async ({ app }) => {
+      const file = app.vault.getFileByPath("Editor.md");
+      if (file === null) throw new Error("no Editor.md");
+      return app.vault.read(file);
+    });
+    expect(text).toBe(
+      "The door is marked with ![[001.ink.png]] which means return.\n",
+    );
+  });
+  it("tries the insertion again on the next save after it fails", async function () {
+    await browser.executeObsidian(({ app }) => {
+      const vault = app.vault as typeof app.vault & {
+        inklineProcess?: typeof app.vault.process;
+      };
+      vault.inklineProcess = vault.process.bind(vault);
+      vault.process = () => Promise.reject(new Error("the note is locked"));
+    });
+    await insert();
+    await draw(zigzag);
+    // Show another note in the tab, so that the insertion has to edit the
+    // note's file, which fails the first time.
+    await browser.executeObsidian(async ({ app }) => {
+      const welcome = app.vault.getFileByPath("Welcome.md");
+      if (welcome === null) throw new Error("no Welcome.md");
+      await app.workspace.getLeaf(false).openFile(welcome);
+    });
+    await browser.keys(["Control", "Enter"]);
+    const status = browser.$(".inkline-status");
+    await status.waitUntil(async () =>
+      (await status.getText()).includes("the note is locked"),
+    );
+    expect(await symbolFiles()).toEqual(["001.ink.png"]);
+    await browser.executeObsidian(({ app }) => {
+      const vault = app.vault as typeof app.vault & {
+        inklineProcess?: typeof app.vault.process;
+      };
+      if (vault.inklineProcess !== undefined)
+        vault.process = vault.inklineProcess;
+    });
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    expect(await symbolFiles()).toEqual(["001.ink.png"]);
+    const text = await browser.executeObsidian(async ({ app }) => {
+      const file = app.vault.getFileByPath("Editor.md");
+      if (file === null) throw new Error("no Editor.md");
+      return app.vault.read(file);
+    });
+    expect(text).toBe(
+      "The door is marked with ![[001.ink.png]] which means return.\n",
+    );
+  });
+
+  it("skips a number that a folder already has", async function () {
+    await browser.executeObsidian(async ({ app }) => {
+      await app.vault.createFolder("001.ink.png");
+    });
+    await insert();
+    await draw(zigzag);
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    expect(await symbolFiles()).toEqual(["002.ink.png"]);
+  });
+
+  it("keeps unsaved strokes as a draft when the plugin is disabled, and offers them back", async function () {
+    await insert();
+    await draw(zigzag);
+    await obsidianPage.disablePlugin("inkline");
+    expect(await editorOpen()).toBe(false);
+    expect(await symbolFiles()).toEqual([]);
+    await obsidianPage.enablePlugin("inkline");
+    await loadModules();
+    // The same note, where the cursor still is.
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await clickTop("Restore");
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    const record = JSON.parse(await recordOf("001.ink.png")) as {
+      strokes: unknown[];
+    };
+    expect(record.strokes).toHaveLength(1);
+  });
+
+  it("reports a symbol file that cannot be read", async function () {
+    await browser.executeObsidian(async ({ app, plugins }) => {
+      const file = await app.vault.createBinary(
+        "broken.ink.png",
+        new ArrayBuffer(8),
+      );
+      await plugins.inkline.editSymbol(file);
+    });
+    const notice = browser.$(
+      ".notice=Could not open broken.ink.png: not a PNG file",
+    );
+    await notice.waitForExist();
+    expect(await editorOpen()).toBe(false);
   });
 });
