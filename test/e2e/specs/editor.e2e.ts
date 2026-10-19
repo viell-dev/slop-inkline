@@ -2282,6 +2282,103 @@ describe("The editor", function () {
       expect(await strokeCount("Symbols/a.ink.png")).toBe(2);
     });
 
+    it("still compares a restored new symbol's file after a save fails", async function () {
+      await interruptInsertion();
+      await browser.executeObsidianCommand("inkline:insert-symbol");
+      await clickTop("Restore");
+      // The draft's own first save made the file; nothing saved it since.
+      expect(
+        await browser.execute(
+          () =>
+            [...document.querySelectorAll(".modal-container")].at(-1)
+              ?.textContent ?? "",
+        ),
+      ).not.toContain("saved again");
+      await draw([[0.5, 0.2]]);
+      await browser.executeObsidian(({ app }) => {
+        Reflect.set(
+          app.vault,
+          "inklineDelayed-modifyBinary",
+          Reflect.get(app.vault, "modifyBinary"),
+        );
+        app.vault.modifyBinary = () =>
+          Promise.reject(new Error("the disk is full"));
+      });
+      try {
+        // The save adopts the draft's file, then cannot write it.
+        await browser.keys(["Control", "s"]);
+        await waitForStatus("the disk is full");
+      } finally {
+        await restoreVault();
+      }
+      await browser.executeObsidian(async ({ app }) => {
+        const file = app.vault.getFileByPath("001.ink.png");
+        if (file === null) throw new Error("no file");
+        await app.vault.modifyBinary(
+          file,
+          new TextEncoder().encode("x").buffer,
+        );
+      });
+      await waitForStatus("Not reloaded: the file changed on disk");
+      await browser.keys(["Control", "s"]);
+      await waitForStatus("Not saved: the file changed on disk");
+      expect(
+        await browser.executeObsidian(async ({ app }) => {
+          const file = app.vault.getFileByPath("001.ink.png");
+          if (file === null) throw new Error("no file");
+          return new TextDecoder().decode(await app.vault.readBinary(file));
+        }),
+      ).toBe("x");
+    });
+
+    it("sets aside a read of the file that a save overtook", async function () {
+      await saveOne();
+      await editFile("001.ink.png");
+      await draw([[0.5, 0.2]]);
+      // The next read of the file comes back 3 s late, with what it read.
+      await browser.executeObsidian(({ app }) => {
+        Reflect.set(
+          app.vault,
+          "inklineDelayed-readBinary",
+          Reflect.get(app.vault, "readBinary"),
+        );
+        const read = app.vault.readBinary.bind(app.vault);
+        let late = true;
+        app.vault.readBinary = async (file) => {
+          const bytes = await read(file);
+          if (late) {
+            late = false;
+            await new Promise((resolve) => window.setTimeout(resolve, 3000));
+          }
+          return bytes;
+        };
+      });
+      try {
+        // A report of the file, unchanged, starts that read; the save then
+        // writes the drawing before it comes back.
+        await browser.executeObsidian(async ({ app }) => {
+          const file = app.vault.getFileByPath("001.ink.png");
+          if (file === null) throw new Error("no file");
+          await app.vault.modifyBinary(
+            file,
+            await app.vault.adapter.readBinary(file.path),
+          );
+        });
+        await browser.keys(["Control", "s"]);
+        await waitForStatus("Saved");
+        await browser.pause(3500);
+      } finally {
+        await restoreVault();
+      }
+      // The late read showed the file before the save: not a change.
+      expect(await browser.$(".inkline-status").getText()).toBe("Saved");
+      expect(await topButton("Keep mine")).toBeUndefined();
+      await draw([[0.6, 0.2]]);
+      await browser.waitUntil(
+        async () => (await storedDrafts())[0]?.strokes.length === 3,
+      );
+    });
+
     it("follows a new symbol's file when its first save could not insert it", async function () {
       try {
         await failInsertion();

@@ -26,8 +26,14 @@ export type Noticed = "nothing" | "reload" | "ask" | "unreadable" | "gone";
 export type AtSave = "write" | "ask" | "unreadable";
 
 export class FileWatch {
-  /** The file as last opened, reloaded, or saved; undefined before a file. */
+  /**
+   * The file as last opened, reloaded, or written; undefined before a file.
+   * The editor reads only a file that exists, so while none is known, any
+   * file found is a change, never one to write over unasked.
+   */
   #fingerprint: string | undefined;
+  /** How often the file known has changed, to tell stale reads. */
+  #version = 0;
   /** A change that saving was chosen to replace. */
   #kept: string | undefined;
   /** A change already asked or told about while editing. */
@@ -37,9 +43,17 @@ export class FileWatch {
     this.#fingerprint = fingerprint;
   }
 
-  /** A fingerprint of the file as last opened, reloaded, or saved. */
+  /** A fingerprint of the file as last opened, reloaded, or written. */
   get fingerprint(): string | undefined {
     return this.#fingerprint;
+  }
+
+  /**
+   * A number that changes whenever the file known does, so that a read begun
+   * before can be told from one begun after.
+   */
+  get version(): number {
+    return this.#version;
   }
 
   /**
@@ -47,11 +61,7 @@ export class FileWatch {
    * neither taken in nor chosen to save over.
    */
   differs(fingerprint: string): boolean {
-    return (
-      this.#fingerprint !== undefined &&
-      fingerprint !== this.#fingerprint &&
-      fingerprint !== this.#kept
-    );
+    return fingerprint !== this.#fingerprint && fingerprint !== this.#kept;
   }
 
   /**
@@ -60,7 +70,6 @@ export class FileWatch {
    * otherwise the editor asks, once for each change.
    */
   noticed(reading: Reading, dirty: boolean): Noticed {
-    if (this.#fingerprint === undefined) return "nothing";
     if (reading.kind === "gone") return "gone";
     if (
       !this.differs(reading.fingerprint) ||
@@ -96,10 +105,14 @@ export class FileWatch {
     this.#kept = fingerprint;
   }
 
-  /** Records that the file holds what the editor has, as opened or saved. */
+  /**
+   * Records that the file holds `fingerprint`, as opened, reloaded, or
+   * written by the editor.
+   */
   took(fingerprint: string): void {
     this.#fingerprint = fingerprint;
     this.#kept = undefined;
     this.#asked = undefined;
+    this.#version++;
   }
 }

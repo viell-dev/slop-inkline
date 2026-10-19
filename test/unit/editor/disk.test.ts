@@ -9,15 +9,25 @@ const file = (fingerprint: string, readable = true): Reading => ({
 const gone: Reading = { kind: "gone" };
 
 describe("FileWatch", () => {
-  it("has nothing to compare before there is a file", () => {
+  it("takes any file as a change while it knows of none", () => {
     const watch = new FileWatch();
-    expect(watch.differs("b")).toBe(false);
-    expect(watch.noticed(file("b"), true)).toBe("nothing");
-    expect(watch.noticed(gone, true)).toBe("nothing");
-    expect(watch.saving(file("b"))).toBe("write");
-    // A new symbol's first save gives it one.
-    watch.took("a");
+    expect(watch.differs("b")).toBe(true);
+    expect(watch.noticed(file("b"), true)).toBe("ask");
     expect(watch.saving(file("b"))).toBe("ask");
+    expect(watch.saving(file("c", false))).toBe("unreadable");
+    // Once written, as by a new symbol's first save, it is known.
+    watch.took("d");
+    expect(watch.saving(file("d"))).toBe("write");
+  });
+
+  it("changes its version with the file known, for telling stale reads", () => {
+    const watch = new FileWatch("a");
+    const before = watch.version;
+    watch.keep("b");
+    expect(watch.noticed(file("c"), true)).toBe("ask");
+    expect(watch.version).toBe(before);
+    watch.took("b");
+    expect(watch.version).not.toBe(before);
   });
 
   it("takes in a change with nothing unsaved, and asks once otherwise", () => {

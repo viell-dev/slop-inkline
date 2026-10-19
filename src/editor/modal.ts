@@ -63,12 +63,16 @@ export interface EditorOptions {
    * and inserts it. Rejects when anything could not be done, which keeps the
    * editor open with the drawing, so that the next save tries again.
    * `keepDraft` keeps the editor's draft at once, as before a step that a
-   * draft must name, and returns whether it was kept.
+   * draft must name, and returns whether it was kept. `holds` tells the
+   * editor what the file holds as soon as the host has adopted or written
+   * it, before any later step that can fail, such as inserting an embed, so
+   * that the editor goes on comparing the file with that.
    */
   readonly write: (
     bytes: Uint8Array,
     record: InkRecord,
     keepDraft: () => boolean,
+    holds: (fingerprint: string) => void,
   ) => Promise<void>;
   /**
    * The symbol's file: an existing symbol's, or a new one's once its first
@@ -795,7 +799,9 @@ export class InkEditorModal extends Modal {
       ? ""
       : " Its base layer cannot be read, so only its strokes would come back.";
     const moved =
+      // A new symbol's editor has no file yet to compare the draft's with.
       draft.fingerprint !== undefined &&
+      this.#watch.fingerprint !== undefined &&
       draft.fingerprint !== this.#watch.fingerprint
         ? " The symbol was saved again since then, so its strokes may not line up."
         : "";
@@ -876,10 +882,12 @@ export class InkEditorModal extends Modal {
       return;
     }
     this.#checking = true;
+    const known = this.#watch.version;
     void this.#readFile()
       .then((found) => {
         if (found === undefined || this.#retired || this.#closing) return;
-        if (this.#saving !== undefined) {
+        // A save that ran meanwhile, or a reload, makes the read stale.
+        if (this.#saving !== undefined || this.#watch.version !== known) {
           this.#recheck = true;
           return;
         }
@@ -899,16 +907,14 @@ export class InkEditorModal extends Modal {
 
   /**
    * The symbol's file read again: a reading to compare, and the file opened
-   * for editing when it changed and can be. Undefined while there is no file
-   * to compare, as before a new symbol's first save.
+   * for editing when it changed and can be. Undefined while there is no file,
+   * as before a new symbol's first save.
    */
   async #readFile(): Promise<
     { reading: Reading; opened?: EditableInk } | undefined
   > {
     const file = this.#options.file?.();
-    if (file === undefined || this.#watch.fingerprint === undefined) {
-      return undefined;
-    }
+    if (file === undefined) return undefined;
     const bytes = await file.read();
     if (bytes === undefined) return { reading: { kind: "gone" } };
     const fingerprint = await fingerprintOf(bytes);
@@ -926,22 +932,6 @@ export class InkEditorModal extends Modal {
       reading: { kind: "file", fingerprint, readable: opened !== undefined },
       ...(opened === undefined ? {} : { opened }),
     };
-  }
-
-  /**
-   * Takes the file as the editor's own if it holds what a failed save meant
-   * to write: one that wrote the file before a later step failed, such as a
-   * new symbol whose embed could not be inserted.
-   */
-  async #tookIfWritten(fingerprint: string): Promise<void> {
-    try {
-      const bytes = await this.#options.file?.()?.read();
-      if (bytes !== undefined && (await fingerprintOf(bytes)) === fingerprint) {
-        this.#watch.took(fingerprint);
-      }
-    } catch {
-      // Unread, the file stays as the editor last knew it.
-    }
   }
 
   /** Responds to the file as read while editing. */
@@ -1008,13 +998,12 @@ export class InkEditorModal extends Modal {
 
   /** Reads the file again and takes in what it now holds, as Reload asks. */
   async #reloadFile(): Promise<void> {
+    const known = this.#watch.version;
     const found = await this.#readFile();
-    if (
-      found === undefined ||
-      this.#retired ||
-      this.#closing ||
-      this.#saving !== undefined
-    ) {
+    if (found === undefined || this.#retired || this.#closing) return;
+    // A save or reload meanwhile makes the read stale: a fresh check decides.
+    if (this.#saving !== undefined || this.#watch.version !== known) {
+      this.#checkFile();
       return;
     }
     const { reading, opened } = found;
@@ -1085,8 +1074,6 @@ export class InkEditorModal extends Modal {
     const base = this.#base;
     this.#announce("Saving…");
     this.#saving = (async () => {
-      /** The bytes being written, once the file has been checked. */
-      let attempted: string | undefined;
       try {
         const { bytes, record, left } = await saveInk(
           document,
@@ -1105,17 +1092,23 @@ export class InkEditorModal extends Modal {
         }
         // Kept before the file can change, with its own base layer, so that
         // the draft does not depend on which version the file holds.
-        attempted = await fingerprintOf(bytes);
+        const written = await fingerprintOf(bytes);
         this.#keepDraft();
-        await this.#options.write(bytes, record, () => this.#keepDraft());
-        this.#watch.took(attempted);
+        await this.#options.write(
+          bytes,
+          record,
+          () => this.#keepDraft(),
+          (fingerprint) => {
+            this.#watch.took(fingerprint);
+          },
+        );
+        this.#watch.took(written);
         this.#session.markSaved(document);
         this.#session.rebase(-left);
         this.#view?.shift(-left);
         this.#announce("Saved");
         return true;
       } catch (error) {
-        if (attempted !== undefined) await this.#tookIfWritten(attempted);
         const reason = error instanceof Error ? error.message : String(error);
         this.#announce(`Not saved: ${reason}`);
         if (!(error instanceof Unsaved)) {

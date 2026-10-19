@@ -335,7 +335,9 @@ export function insertSymbol(host: EditorHost, view: MarkdownView): void {
     // Until the embed is inserted, the draft is kept before each write, so
     // that it names the file and the bytes even after a crash. If storage
     // refuses it, the write goes ahead: the file then holds the drawing.
-    write: async (bytes, _record, keepDraft) => {
+    // The editor learns what the file holds as soon as it is adopted or
+    // written, so that a later failure leaves it still compared.
+    write: async (bytes, _record, keepDraft, holds) => {
       stillAlive(host);
       const fingerprint = await fingerprintOf(bytes);
       if (made === undefined && claim !== undefined) {
@@ -343,6 +345,7 @@ export function insertSymbol(host: EditorHost, view: MarkdownView): void {
         if (claimed !== undefined) {
           made = { ...claimed, previous: undefined };
           adopted = true;
+          holds(claimed.fingerprint);
         }
       }
       stillAlive(host);
@@ -353,6 +356,7 @@ export function insertSymbol(host: EditorHost, view: MarkdownView): void {
         keepDraft();
         const file = await app.vault.createBinary(path, toBuffer(bytes));
         made = { file, fingerprint, previous: undefined };
+        holds(fingerprint);
       } else {
         // A draft kept meanwhile names both, since the file holds either.
         const before = made.fingerprint;
@@ -361,6 +365,7 @@ export function insertSymbol(host: EditorHost, view: MarkdownView): void {
         if (!inserted) keepDraft();
         try {
           made.file = await writeSymbol(app, made.file, bytes);
+          holds(fingerprint);
         } catch (error) {
           made.fingerprint = before;
           throw error;
