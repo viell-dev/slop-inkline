@@ -26,6 +26,11 @@ screenshots use synthetic vaults and drawings only.
   `test/` run in Node.js.
 - Scripts are TypeScript that Node.js runs directly, so they use only erasable
   syntax and import files with their `.ts` extension.
+- `src/format/` reads and writes symbol files, which
+  [docs/file-format.md](docs/file-format.md) specifies. A change to what files
+  hold updates that document in the same pull request. The golden files in
+  `test/fixtures/format/` are never changed: users' files must keep opening, so
+  a new case gets a new golden file.
 
 ## Tests
 
