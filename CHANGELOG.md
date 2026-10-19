@@ -20,6 +20,11 @@ section is also its
   clear has a shortcut, shown in its tooltip. A pen's eraser end erases, and a
   palm resting on a tablet does not draw, even one that touched it before the
   pen. A symbol wider than the editor's usual view is shown whole.
+- Guides in the editor at the text font's ascender, cap height, x-height,
+  baseline, and descender, measured from the font, and at the ends the saved
+  image would have; the Guides button or G shows or hides them.
+- A line of text under the drawing shows the symbol at its size in the text, as
+  it is drawn.
 - The editor asks before closing a drawing with unsaved changes, whether by Esc,
   the close button, or a click outside, and keeps the drawing open when a save
   fails.

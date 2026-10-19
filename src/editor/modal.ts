@@ -8,6 +8,7 @@ import {
   Modal,
   Notice,
   type App,
+  type EventRef,
 } from "obsidian";
 import type { CarriedChunk } from "../format/ink-file.ts";
 import type { BaseLayer, InkRecord } from "../format/record.ts";
@@ -25,7 +26,8 @@ import {
 } from "./drafts.ts";
 import { PointerGate, reportsPressure } from "./pointer.ts";
 import { brushSizes, DrawingSession, type InputPoint } from "./session.ts";
-import { InkView, surfaceWidth } from "./view.ts";
+import { fontGuides, type Guide } from "./guides.ts";
+import { InkView, measureFont, surfaceWidth } from "./view.ts";
 
 export interface EditorOptions {
   readonly title: string;
@@ -91,6 +93,13 @@ export class InkEditorModal extends Modal {
   #placed: { layer: BaseLayer; drawable: DrawableBase } | undefined;
   /** Whether the last draft written was kept; storage can refuse one. */
   #draftKept = true;
+  #guidesShown = true;
+  /** The note font's lines, measured when the editor opens. */
+  #fontGuides: readonly Guide[] = [];
+  #previewLine: HTMLElement | undefined;
+  #preview: HTMLCanvasElement | undefined;
+  #fonts: FontFaceSet | undefined;
+  #cssChange: EventRef | undefined;
   /**
    * The draft this editor restored, until its own draft or a save takes its
    * place: storage may refuse the editor's own at first.
@@ -158,6 +167,9 @@ export class InkEditorModal extends Modal {
     this.#addButton(toolbar, "clear", "Clear", undefined, () => {
       this.#clear();
     });
+    this.#addButton(toolbar, "guides", "Guides", "G", () => {
+      this.#toggleGuides();
+    });
     this.#addButton(toolbar, "save", "Save", "Mod+Enter", () => {
       void this.#saveAndClose();
     });
@@ -171,6 +183,23 @@ export class InkEditorModal extends Modal {
         "aria-label": "Drawing area",
       },
     });
+    // A line in the vault's text font and size, with the symbol at its size
+    // there. Its font gives the guides.
+    const line = this.contentEl.createDiv({
+      cls: "inkline-preview",
+      attr: { "aria-hidden": "true" },
+    });
+    line.createSpan({ text: "A line of text with " });
+    this.#preview = line.createEl("canvas", { cls: "inkline-preview-ink" });
+    line.createSpan({ text: " in it." });
+    this.#previewLine = line;
+    this.#measure();
+    // The font can arrive later, as a theme's web font, or change with the
+    // theme or a CSS snippet; then the guides are measured again.
+    line.doc.fonts.addEventListener("loadingdone", this.#remeasure);
+    this.#fonts = line.doc.fonts;
+    void line.doc.fonts.ready.then(this.#remeasure);
+    this.#cssChange = this.app.workspace.on("css-change", this.#remeasure);
     this.#status = this.contentEl.createDiv({
       cls: "inkline-status",
       attr: { "aria-live": "polite" },
@@ -200,6 +229,10 @@ export class InkEditorModal extends Modal {
 
   override onClose(): void {
     this.#resize?.disconnect();
+    this.#fonts?.removeEventListener("loadingdone", this.#remeasure);
+    if (this.#cssChange !== undefined) {
+      this.app.workspace.offref(this.#cssChange);
+    }
     if (this.#frame !== undefined) {
       this.#view?.canvas.win.cancelAnimationFrame(this.#frame);
     }
@@ -363,6 +396,9 @@ export class InkEditorModal extends Modal {
     key([], "e", () => {
       this.#setTool("eraser");
     });
+    key([], "g", () => {
+      this.#toggleGuides();
+    });
     brushSizes.forEach((_, index) => {
       key([], String(index + 1), () => {
         this.#setSize(index);
@@ -437,12 +473,50 @@ export class InkEditorModal extends Modal {
     // The surface's own window, which differs from the main one in a popout.
     this.#frame = view.canvas.win.requestAnimationFrame(() => {
       this.#frame = undefined;
+      view.lines = this.#guidesShown ? this.#fontGuides : undefined;
       view.render(
         this.#session.document,
         this.#base,
         this.#session.activeStroke,
       );
+      const line = this.#previewLine;
+      if (this.#preview !== undefined && line !== undefined) {
+        view.drawPreview(
+          this.#preview,
+          Number.parseFloat(getComputedStyle(line).fontSize),
+        );
+      }
     });
+  }
+
+  /** Measures the preview line's font for the guides. */
+  #measure(): void {
+    const line = this.#previewLine;
+    if (line === undefined) return;
+    const font = getComputedStyle(line);
+    this.#fontGuides = fontGuides(
+      measureFont(
+        {
+          style: font.fontStyle,
+          weight: font.fontWeight,
+          family: font.fontFamily,
+        },
+        line.doc,
+      ),
+    );
+  }
+
+  /** Measures the font again and redraws, as after a font loads. */
+  readonly #remeasure = (): void => {
+    if (this.#closing || this.#retired) return;
+    this.#measure();
+    this.#render();
+  };
+
+  #toggleGuides(): void {
+    this.#guidesShown = !this.#guidesShown;
+    this.#updateButtons();
+    this.#render();
   }
 
   #setTool(tool: "pen" | "eraser"): void {
@@ -483,6 +557,7 @@ export class InkEditorModal extends Modal {
     };
     pressed("pen", this.#session.tool === "pen");
     pressed("eraser", this.#session.tool === "eraser");
+    pressed("guides", this.#guidesShown);
     brushSizes.forEach((_, index) => {
       pressed(`size-${String(index)}`, this.#session.sizeIndex === index);
     });

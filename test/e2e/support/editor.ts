@@ -10,6 +10,19 @@ export async function openAtMarker(
   marker: string,
 ): Promise<void> {
   await obsidianPage.openFile(path);
+  // The editor can show the note a moment after the file opens.
+  await browser.waitUntil(async () =>
+    browser.executeObsidian(
+      ({ app, obsidian }, file, text) => {
+        const view = app.workspace.getActiveViewOfType(obsidian.MarkdownView);
+        return (
+          view?.file?.path === file && view.editor.getValue().includes(text)
+        );
+      },
+      path,
+      marker,
+    ),
+  );
   await browser.executeObsidian(({ app, obsidian }, text) => {
     const view = app.workspace.getActiveViewOfType(obsidian.MarkdownView);
     if (view === null) throw new Error("no Markdown view");
@@ -114,6 +127,73 @@ export async function settledSurface(): Promise<{
   return size;
 }
 
+/**
+ * The guides the surface shows, in the active window, against the font lines
+ * that an independent `measureText` of the preview line's font, in that
+ * window, predicts: how many it predicts,
+ * how many of their pixel rows are drawn across at least 30% of the width,
+ * as dashes are, and how many pixels the surface draws at all.
+ */
+export async function guideRows(): Promise<{
+  lines: number;
+  shown: number;
+  drawn: number;
+  rows: number[];
+}> {
+  return browser.execute(() => {
+    const doc = activeDocument;
+    const view = doc.defaultView;
+    if (view === null) throw new Error("no window");
+    const canvas = doc.querySelector(".inkline-editor .inkline-surface");
+    const line = doc.querySelector(".inkline-editor .inkline-preview");
+    // Obsidian's check, since a popout's elements can come from either
+    // window.
+    if (
+      canvas?.instanceOf(HTMLCanvasElement) !== true ||
+      line?.instanceOf(HTMLElement) !== true
+    ) {
+      throw new Error("no surface");
+    }
+    const font = view.getComputedStyle(line);
+    const context = new view.OffscreenCanvas(1, 1).getContext("2d");
+    if (context === null) throw new Error("no context");
+    context.font = `${font.fontStyle} ${font.fontWeight} 128px ${font.fontFamily}`;
+    const capital = context.measureText("H");
+    const lowercase = context.measureText("x");
+    const factor = canvas.width / 576;
+    const rows = [
+      144 - capital.fontBoundingBoxAscent,
+      144 - capital.actualBoundingBoxAscent,
+      144 - lowercase.actualBoundingBoxAscent,
+      144,
+      144 + capital.fontBoundingBoxDescent,
+    ]
+      .filter((y) => y >= 0 && y <= 192)
+      .map((y) => Math.round(y * factor));
+    const pixels = canvas
+      .getContext("2d")
+      ?.getImageData(0, 0, canvas.width, canvas.height);
+    if (pixels === undefined) throw new Error("no pixels");
+    const across = (row: number): number => {
+      let count = 0;
+      for (let x = 0; x < canvas.width; x++) {
+        if ((pixels.data[(row * canvas.width + x) * 4 + 3] ?? 0) > 0) count++;
+      }
+      return count;
+    };
+    let drawn = 0;
+    for (let index = 3; index < pixels.data.length; index += 4) {
+      if ((pixels.data[index] ?? 0) > 0) drawn++;
+    }
+    return {
+      lines: rows.length,
+      shown: rows.filter((row) => across(row) >= 0.3 * canvas.width).length,
+      drawn,
+      rows,
+    };
+  });
+}
+
 /** Whether the editor is open. */
 export async function editorOpen(): Promise<boolean> {
   return browser.$(".inkline-editor").isExisting();
@@ -181,9 +261,13 @@ export async function startOver(): Promise<void> {
     { interval: 300, timeoutMsg: "modals stayed open" },
   );
   await browser.executeObsidian(({ app }) => {
-    // Detaching while iterating would skip leaves, so collect them first.
+    // Detaching while iterating would skip leaves, so collect them first:
+    // the main window's, and every one in a popout window.
     const leaves: { detach(): void }[] = [];
     app.workspace.iterateRootLeaves((leaf) => leaves.push(leaf));
+    for (const leaf of app.workspace.getLeavesOfType("markdown")) {
+      if (leaf.view.containerEl.doc !== document) leaves.push(leaf);
+    }
     for (const leaf of leaves) leaf.detach();
     for (let index = window.localStorage.length - 1; index >= 0; index--) {
       const key = window.localStorage.key(index);
