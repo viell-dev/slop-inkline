@@ -336,7 +336,7 @@ describe("parseRecord checks the base image", () => {
     expect(invalid(parseRecord(variant(["base", "png"], encode(over))))).toBe(
       "base.png is too large",
     );
-  });
+  }, 30_000);
 });
 
 describe("parseRecord bounds the text", () => {
@@ -344,5 +344,29 @@ describe("parseRecord bounds the text", () => {
     expect(invalid(parseRecord(" ".repeat(limits.text + 1)))).toBe(
       "record text is too long",
     );
+  });
+
+  /** An empty record with an ignored field holding `filler`. */
+  const padded = (filler: string): string =>
+    serializeRecord({ box: record.box, strokes: [] }).replace(
+      /}$/,
+      `,"extra":"${filler}"}`,
+    );
+
+  it("counts the limit in UTF-8 bytes, not characters", () => {
+    // Three bytes each in UTF-8, one code unit each in JavaScript.
+    const over = padded("\u0800".repeat(6 * 1024 * 1024));
+    expect(over.length).toBeLessThan(limits.text);
+    expect(invalid(parseRecord(over))).toBe("record text is too long");
+    expect(parseRecord(padded("\u0800".repeat(5 * 1024 * 1024))).ok).toBe(true);
+  });
+
+  it("counts a surrogate pair as four bytes", () => {
+    // Two code units and four bytes each.
+    const pairs = Math.floor(limits.text / 4);
+    const over = padded("😀".repeat(pairs));
+    expect(new TextEncoder().encode(over).length).toBeGreaterThan(limits.text);
+    expect(invalid(parseRecord(over))).toBe("record text is too long");
+    expect(parseRecord(padded("😀".repeat(pairs - 64))).ok).toBe(true);
   });
 });

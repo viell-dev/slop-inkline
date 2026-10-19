@@ -119,20 +119,14 @@ describe("deflate and inflate", () => {
     expect(await inflate(compressed, { limit: 100_000 })).toHaveLength(100_000);
   });
 
-  it("stops reading input once the output passes the limit", async () => {
-    // 64 MiB of zeros compresses to about 64 KiB.
+  it("refuses a highly compressed input that passes the limit", async () => {
+    // 64 MiB of zeros compresses to about 64 KiB. How much input Node reads
+    // ahead varies, so how early inflation stops is checked in Obsidian's
+    // renderer, by test/e2e/specs/format.e2e.ts.
     const compressed = await deflate(new Uint8Array(64 * 1024 * 1024));
-    let consumed = 0;
-    await expect(
-      inflate(compressed, {
-        limit: 1024 * 1024,
-        onInput: (bytes) => (consumed = bytes),
-      }),
-    ).rejects.toThrow("data expands beyond");
-    // Node's stream adapters buffer some input ahead, so this shows only that
-    // reading stops early. The end-to-end tests check the bound in Obsidian.
-    expect(consumed).toBeGreaterThan(0);
-    expect(consumed).toBeLessThan(compressed.length);
+    await expect(inflate(compressed, { limit: 1024 * 1024 })).rejects.toThrow(
+      "data expands beyond 1048576 bytes",
+    );
   });
 
   it("reads all of the input otherwise", async () => {
@@ -310,6 +304,68 @@ describe("readChunks checks the critical chunks", () => {
     ).toHaveLength(4);
     expect(
       readChunks(writeChunks([headerWith(8, 2), palette, idat, iend])),
+    ).toHaveLength(4);
+  });
+
+  const paletteOf = (entries: number): Chunk => ({
+    type: "PLTE",
+    data: new Uint8Array(entries * 3),
+  });
+  const paletteCases: [string, Chunk, Chunk, string][] = [
+    [
+      "an empty PLTE",
+      headerWith(8, 3),
+      { type: "PLTE", data: new Uint8Array(0) },
+      "PLTE does not hold 1 to 256 RGB entries",
+    ],
+    [
+      "a PLTE of one byte",
+      headerWith(8, 3),
+      { type: "PLTE", data: new Uint8Array(1) },
+      "PLTE does not hold 1 to 256 RGB entries",
+    ],
+    [
+      "a PLTE of four bytes",
+      headerWith(8, 3),
+      { type: "PLTE", data: new Uint8Array(4) },
+      "PLTE does not hold 1 to 256 RGB entries",
+    ],
+    [
+      "257 palette entries",
+      headerWith(8, 3),
+      paletteOf(257),
+      "PLTE does not hold 1 to 256 RGB entries",
+    ],
+    [
+      "three entries at bit depth 1",
+      headerWith(1, 3),
+      paletteOf(3),
+      "PLTE does not hold 1 to 2 RGB entries",
+    ],
+    [
+      "257 suggested entries",
+      headerWith(8, 2),
+      paletteOf(257),
+      "PLTE does not hold 1 to 256 RGB entries",
+    ],
+  ];
+  for (const [name, ihdrChunk, plte, message] of paletteCases) {
+    it(`refuses ${name}`, () => {
+      expect(() =>
+        readChunks(writeChunks([ihdrChunk, plte, idat, iend])),
+      ).toThrow(message);
+    });
+  }
+
+  it("accepts as many entries as the bit depth allows", () => {
+    expect(
+      readChunks(writeChunks([headerWith(1, 3), paletteOf(2), idat, iend])),
+    ).toHaveLength(4);
+    expect(
+      readChunks(writeChunks([headerWith(8, 3), paletteOf(256), idat, iend])),
+    ).toHaveLength(4);
+    expect(
+      readChunks(writeChunks([headerWith(8, 6), paletteOf(256), idat, iend])),
     ).toHaveLength(4);
   });
 
