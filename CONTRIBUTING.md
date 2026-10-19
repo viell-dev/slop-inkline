@@ -82,9 +82,11 @@ and the latest public release. Downloads outside Docker go to
 `.obsidian-cache/`.
 
 Screenshots and logs go to `test-results/e2e/`, which CI uploads as an artifact.
-Screenshots are for review, never assertions: a test reads state, positions, or
-pixels back from Obsidian. Test vaults in `test/e2e/vaults/` and every drawing a
-test uses are synthetic.
+`E2E_OUTPUT_DIR` picks another directory, which must be new, empty, or an
+earlier run's output: the harness marks its directory and refuses to clean any
+other. Screenshots are for review, never assertions: a test reads state,
+positions, or pixels back from Obsidian. Test vaults in `test/e2e/vaults/` and
+every drawing a test uses are synthetic.
 
 CI runs the end-to-end tests on Linux for every pull request, and the Docker
 image weekly and on request.
