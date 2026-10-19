@@ -56,6 +56,21 @@ function isRecordChunk(chunk: Chunk): boolean {
   return textKeyword(chunk) === recordKeyword;
 }
 
+/**
+ * The chunks of a file that a rewrite should carry over: ancillary chunks
+ * marked safe to copy, such as text, which PNG lets an editor keep however it
+ * changes the pixels, other than the record. Chunks marked unsafe to copy,
+ * such as gamma or colour profiles, describe the old pixels and are dropped.
+ */
+export function preservableChunks(bytes: Uint8Array): Chunk[] {
+  return readChunks(bytes).filter(
+    (chunk) =>
+      // A lowercase first letter marks an ancillary chunk, a lowercase fourth
+      // letter one that is safe to copy.
+      /^[a-z][A-Za-z][A-Z][a-z]$/.test(chunk.type) && !isRecordChunk(chunk),
+  );
+}
+
 /** The first record chunk's parsed text, or undefined when there is none. */
 async function parseRecordChunk(
   chunks: readonly Chunk[],
@@ -97,7 +112,9 @@ export async function readInkFile(bytes: Uint8Array): Promise<InkSource> {
  * Adds a record to a PNG, such as one a canvas encoded, right after its
  * header, keeping every other chunk and the pixels as they are. An earlier
  * record is replaced, unless a later version of Inkline wrote it: replacing
- * that would lose what it recorded.
+ * that would lose what it recorded. `carried` chunks, from
+ * {@link preservableChunks} of the file being replaced, follow the record,
+ * except types the PNG already has.
  *
  * Throws `PngError` when the bytes are not a well-formed PNG, and
  * {@link RecordError} when the record's size differs from the image's or
@@ -107,6 +124,7 @@ export async function readInkFile(bytes: Uint8Array): Promise<InkSource> {
 export async function writeInkFile(
   png: Uint8Array,
   record: InkRecord,
+  carried: readonly Chunk[] = [],
 ): Promise<Uint8Array> {
   const chunks = readChunks(png);
   const { width, height } = imageHeader(chunks);
@@ -135,5 +153,13 @@ export async function writeInkFile(
   });
   const [header, ...rest] = chunks.filter((chunk) => !isRecordChunk(chunk));
   if (header === undefined) throw new RecordError("PNG has no chunks");
-  return writeChunks([header, recordChunk, ...rest]);
+  const present = new Set(rest.map((chunk) => chunk.type));
+  // Text chunks may repeat; other types are kept only if the PNG has none.
+  const extra = carried.filter(
+    (chunk) =>
+      !isRecordChunk(chunk) &&
+      /^[a-z][A-Za-z][A-Z][a-z]$/.test(chunk.type) &&
+      (/^(?:tEXt|zTXt|iTXt)$/.test(chunk.type) || !present.has(chunk.type)),
+  );
+  return writeChunks([header, recordChunk, ...extra, ...rest]);
 }

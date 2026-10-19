@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   RecordError,
   isInkPath,
+  preservableChunks,
   readInkFile,
   writeInkFile,
 } from "../../../src/format/ink-file.ts";
@@ -256,5 +257,66 @@ describe("readInkFile accepts", () => {
     await expect(readInkFile(writeChunks([header, end]))).rejects.toThrow(
       "no IDAT chunk",
     );
+  });
+});
+
+describe("carrying chunks through a save", () => {
+  const ascii = (text: string): Uint8Array =>
+    Uint8Array.from(text, (char) => char.charCodeAt(0));
+  const comment: Chunk = { type: "tEXt", data: ascii("Comment\0keep me") };
+  const physical: Chunk = { type: "pHYs", data: new Uint8Array(9) };
+  const gamma: Chunk = { type: "gAMA", data: new Uint8Array(4) };
+  const time: Chunk = { type: "tIME", data: new Uint8Array(7) };
+
+  it("keeps ancillary chunks that are safe to copy, but not the record", async () => {
+    const file = withChunks([
+      await textChunk("inkline", serializeRecord(record)),
+      comment,
+      physical,
+      gamma,
+      time,
+    ]);
+    expect(preservableChunks(file)).toEqual([comment, physical]);
+  });
+
+  it("adds carried chunks after the record", async () => {
+    const file = await writeInkFile(image, record, [comment, physical]);
+    expect(readChunks(file).map((chunk) => chunk.type)).toEqual([
+      "IHDR",
+      "iTXt",
+      "tEXt",
+      "pHYs",
+      "IDAT",
+      "IEND",
+    ]);
+    expect(readChunks(file)[2]).toEqual(comment);
+  });
+
+  it("skips a carried type the new image already has, except text", async () => {
+    const own: Chunk = { type: "pHYs", data: new Uint8Array(9).fill(1) };
+    const second: Chunk = { type: "tEXt", data: ascii("Title\0x") };
+    const fresh = withChunks([own, comment]);
+    const file = await writeInkFile(fresh, record, [physical, second]);
+    const chunks = readChunks(file);
+    expect(chunks.filter((chunk) => chunk.type === "pHYs")).toEqual([own]);
+    expect(chunks.filter((chunk) => chunk.type === "tEXt")).toEqual([
+      second,
+      comment,
+    ]);
+  });
+
+  it("never carries chunks that are not safe to copy, or a record", async () => {
+    const stale = await textChunk(
+      "inkline",
+      serializeRecord({ ...record, strokes: [] }),
+    );
+    const file = await writeInkFile(image, record, [gamma, time, stale]);
+    expect(readChunks(file).map((chunk) => chunk.type)).toEqual([
+      "IHDR",
+      "iTXt",
+      "IDAT",
+      "IEND",
+    ]);
+    expect(await readInkFile(file)).toEqual({ kind: "record", record });
   });
 });
