@@ -15,9 +15,11 @@ RUN apt-get update \
     libxcomposite1 libxdamage1 libxkbcommon0 libxrandr2 libxshmfence1 \
     libxss1 libxtst6 x11-xserver-utils xauth xvfb \
   && rm -rf /var/lib/apt/lists/* \
-  && mkdir /cache /out \
-  && chown node:node /cache /out
+  && mkdir /cache /out /home/node/inkline \
+  && chown node:node /cache /out /home/node/inkline
 
+# The working directory is made above, for node: Docker's legacy builder
+# would make it owned by root, where npm ci cannot write.
 USER node
 WORKDIR /home/node/inkline
 COPY --chown=node:node package.json package-lock.json .npmrc ./
