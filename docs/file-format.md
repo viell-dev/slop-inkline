@@ -62,8 +62,12 @@ A writer must write at most one such chunk, should place it right after `IHDR`,
 and must compress it. A reader must accept the chunk anywhere a PNG allows an
 `iTXt` chunk, must use the first one, and should also accept uncompressed text
 (compression flag 0), ignoring the compression method as PNG requires. Other
-chunks, including other `iTXt` chunks, are not part of the format; a writer that
-rewrites a file should keep them.
+chunks, including other `iTXt` chunks, are not part of the format. A writer that
+rewrites a file with new pixels should keep the ancillary chunks that PNG marks
+safe to copy (a lowercase first and fourth letter, such as `tEXt` and `pHYs`),
+after the record, and drop those it marks unsafe to copy, such as `gAMA` and
+`iCCP`, which describe the old pixels. Inkline does so, keeping text chunks
+alongside its own and other types only when the new image has none.
 
 A writer must not write a record that a reader would refuse, including one whose
 text is longer than the limit below, and must not replace a record with a higher
@@ -161,10 +165,13 @@ refuse one beyond these limits, which Inkline applies:
 
 The pixels are a rendering of the record, so a reader that redraws the strokes
 gets the same image, up to antialiasing. Inkline draws on a transparent canvas
-of the image's size:
+of the image's size, with the record's coordinates as they are:
 
-1. The base layer, if any, at (`x / 16`, `y / 16`) pixels, `scale` times its own
-   size, with smoothing.
+1. The base layer, if any: its PNG decoded without colour management (ignoring
+   `gAMA`, `iCCP`, and similar chunks), its colours replaced by the grey and its
+   alpha kept, drawn at (`x / 16`, `y / 16`) pixels at `scale` times its own
+   size, `width × scale` by `height × scale` pixels, with the canvas's
+   high-quality image smoothing.
 2. Each stroke in order: its outline, filled in the grey, over what is there for
    `"pen"` and removing it for `"eraser"` (the canvas compositing operations
    `source-over` and `destination-out`).
@@ -190,6 +197,12 @@ edge, a quadratic curve to the midpoint of each following edge, with the corner
 between them as the control point, back to the start. A single point draws a
 round dot.
 
+How a canvas antialiases curves and resamples images is up to each
+implementation, so another renderer, or another version of Chromium, may differ
+by a little at the edges of the ink; the record, the base layer's alpha, and the
+stored pixels are exact. Partly transparent pixels are stored premultiplied by
+canvases, so their grey can vary by a step or two; the alpha is what counts.
+
 ## Compatibility
 
 A reader must ignore fields it does not know, so that a later version can add
@@ -204,8 +217,14 @@ and its tests read them on every change.
 
 A record whose geometry differs from what version 1 writes, as another tool may
 write it, is still valid. Inkline edits it by scaling it to 128 pixels per em
-and moving it so that the baselines meet, rounding coordinates to whole units,
-and saves it with version 1's geometry.
+and moving it so that the baselines meet, rounding coordinates to whole units
+and sizes to whole units of at least 1, and saves it with version 1's geometry.
+
+Inkline keeps every coordinate it edits within a quarter of the format's limit,
+2²² units, so that cropping can never move one beyond the limit. It opens a
+record whose coordinates, after any scaling, lie outside that range, or whose
+sizes or base scale would leave the format's limits, from its pixels instead, as
+for a file without a usable record, rather than clamp or drop strokes.
 
 ## Files without a usable record
 
@@ -217,8 +236,11 @@ opens the file's pixels as a base layer, and saving it writes a new record. A
 file whose record has a higher version is not edited, as
 [Compatibility](#compatibility) requires.
 
-The base layer keeps the file's pixels at their own resolution, scaled so that
-the image fills the line box's height, from the left edge. Its ink is:
+The base layer keeps the file's pixels at their own resolution, decoded without
+colour management, scaled so that the image fills the line box's height, from
+the left edge. A picture under 3 pixels high would need a scale above the limit
+of 64, so each of its pixels is repeated 3 times (1 pixel high) or twice (2
+pixels high), across and down, which keeps what it shows. Its ink is:
 
 - the alpha channel, when any pixel is not fully opaque;
 - otherwise 255 minus each pixel's luminance (0.2126 R + 0.7152 G + 0.0722 B,
@@ -228,4 +250,16 @@ Files saved by Inkline's prototype, before this format, are opaque grey ink on
 white, as tall as its stored size: 192 pixels by default, which is the same
 scale as version 1, so they open unscaled.
 
-Inkline opens such pictures up to 4096 pixels a side.
+Inkline opens such pictures up to 4096 pixels a side, including after repeating
+their pixels.
+
+## Cropping
+
+When Inkline saves, it looks for the ink the drawing leaves inside the line box,
+drawing at most 4096 pixels across at a time, so that strokes far away, below or
+above the line box, or erased cost no large canvas. It crops to that ink as
+[Geometry](#geometry) describes, then draws the image from the cropped record
+and checks the crop there, adjusting it until the record's own drawing confirms
+it. The stored pixels are therefore exactly what the record draws, and opening
+and saving a file again changes neither. Strokes that leave no visible ink stay
+in the record. A crop wider than 8192 pixels, the largest image, is refused.
