@@ -71,8 +71,8 @@ export const config: WebdriverIO.Config = {
   cacheDir,
   outputDir: path.join(outputDir, "logs"),
   injectGlobals: false,
-  // Chromium 150 can take seconds to encode a PNG when the window has no
-  // idle time, which slows saves; see #16.
+  // Generous, so that a slow machine does not fail a test that would pass: a
+  // wait ends as soon as its condition holds.
   waitforTimeout: 20_000,
   mochaOpts: { ui: "bdd", timeout: 60_000 },
   // A failed test leaves a screenshot of the window as it then was.

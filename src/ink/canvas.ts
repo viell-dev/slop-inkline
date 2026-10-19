@@ -1,6 +1,6 @@
-// Opening and saving symbols with the browser's own image decoder, encoder,
-// and canvas. Everything here needs a browser; the rules it applies live in
-// modules that unit tests can run.
+// Opening and saving symbols with the browser's own image decoder and canvas;
+// the format module encodes the pixels. Everything here needs a browser; the
+// rules it applies live in modules that unit tests can run.
 
 import {
   preservableChunks,
@@ -8,7 +8,7 @@ import {
   writeInkFile,
   type CarriedChunk,
 } from "../format/ink-file.ts";
-import { imageHeader, readChunks } from "../format/png.ts";
+import { encodeRgba, imageHeader, readChunks } from "../format/png.ts";
 import {
   limits,
   unitsPerPixel,
@@ -74,24 +74,19 @@ export function readPixels(image: ImageBitmap | OffscreenCanvas): RgbaPixels {
   return context.getImageData(0, 0, surface.width, surface.height);
 }
 
-/** Encodes RGBA pixels as a PNG file. */
-export async function encodePixels(pixels: RgbaPixels): Promise<Uint8Array> {
-  const { surface, context } = canvas(pixels.width, pixels.height);
-  context.putImageData(
-    new ImageData(
-      new Uint8ClampedArray(pixels.data),
-      pixels.width,
-      pixels.height,
-    ),
-    0,
-    0,
-  );
-  return encodeCanvas(surface);
-}
-
-async function encodeCanvas(surface: OffscreenCanvas): Promise<Uint8Array> {
-  const blob = await surface.convertToBlob({ type: "image/png" });
-  return new Uint8Array(await blob.arrayBuffer());
+/**
+ * Encodes RGBA pixels as a PNG file. The format module does it rather than
+ * the canvas: Chromium can hold a canvas's encoding back for seconds, until
+ * the window has time to spare.
+ */
+export function encodePixels(pixels: RgbaPixels): Promise<Uint8Array> {
+  return encodeRgba(pixels.width, pixels.height, pixels.data, {
+    // A task of its own, so that frames and input run between batches.
+    pause: () =>
+      new Promise((resolve) => {
+        window.setTimeout(resolve, 0);
+      }),
+  });
 }
 
 /** A drawing ready to edit: the document, and its base layer decoded. */
@@ -378,14 +373,8 @@ export async function saveInk(
     // The ink is where the trial crop expects it, or the search has not
     // settled, which keeps the last crop: its pixels still match its record.
     if ((next.left === 0 && next.width === width) || attempt === 3) {
-      const image = canvas(width, lineBox.height);
-      image.context.putImageData(
-        context.getImageData(0, 0, width, lineBox.height),
-        0,
-        0,
-      );
       const bytes = await writeInkFile(
-        await encodeCanvas(image.surface),
+        await encodePixels(context.getImageData(0, 0, width, lineBox.height)),
         record,
         carried,
       );

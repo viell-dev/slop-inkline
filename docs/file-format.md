@@ -47,7 +47,8 @@ chunks are not well formed: a bad signature, length, chunk type, or CRC; an
 repeated, or forbidden `PLTE`, or one that does not hold 1 to 256 whole RGB
 entries, or more than the bit depth can index; no `IDAT` or `IDAT` chunks that
 are not consecutive; or a missing or non-empty `IEND`. It ignores bytes after
-`IEND`.
+`IEND`. When Inkline saves a symbol, it writes the image as 8-bit RGBA (colour
+type 6), not interlaced, with no colour chunks.
 
 Inkline adds one chunk:
 
