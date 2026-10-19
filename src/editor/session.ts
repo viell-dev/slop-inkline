@@ -2,7 +2,7 @@
 // current brush, and the stroke being drawn. Plain state with no canvas or
 // Obsidian, so that unit tests can drive it.
 
-import type { Stroke, Tool } from "../format/record.ts";
+import { unitsPerPixel, type Stroke, type Tool } from "../format/record.ts";
 import {
   documentMover,
   toPressure,
@@ -46,6 +46,76 @@ export interface InputPoint {
   readonly pressure?: number;
 }
 
+/**
+ * The grid's spacing, 1/8 em: 16 pixels, so that the baseline, 9 spacings
+ * down, lies on it, and a line box holds 12 spacings.
+ */
+export const gridSpacing = lineBox.pxPerEm / 8;
+
+/**
+ * The grid point nearest `point`, with its pressure, on a grid whose
+ * columns pass through `originX`; its rows pass through the line box's top.
+ */
+export function snapToGrid(point: InputPoint, originX = 0): InputPoint {
+  const x =
+    Math.round((point.x - originX) / gridSpacing) * gridSpacing + originX;
+  const y = Math.round(point.y / gridSpacing) * gridSpacing;
+  return point.pressure === undefined
+    ? { x, y }
+    : { x, y, pressure: point.pressure };
+}
+
+/** `x`, in pixels, moved by whole spacings to within the first one. */
+function withinSpacing(x: number): number {
+  return ((x % gridSpacing) + gridSpacing) % gridSpacing;
+}
+
+/**
+ * A best guess at where a document's grid columns pass, in pixels within one
+ * spacing, from where its strokes start and end; `fallback` for a document
+ * with no strokes. Each stroke's start and end, erasers' too, mark the place
+ * within a spacing where they lie, a one-point stroke's once. The place
+ * marked most often wins; of places marked equally often, the one that
+ * reached that count first in stroke order does, so with no place marked
+ * twice, it is where the first stroke starts.
+ *
+ * Strokes drawn on the grid start and end on its columns, and a save moves
+ * the drawing by whole pixels, so a drawing made on the grid lines up with it
+ * again, however a save cropped it. Where freehand ends that happen to share
+ * a place outnumber the ends drawn on the grid, the guess is theirs.
+ */
+export function gridOriginOf(document: InkDocument, fallback = 0): number {
+  const spacing = gridSpacing * unitsPerPixel;
+  const counts = new Map<number, number>();
+  let origin: number | undefined;
+  let most = 0;
+  for (const { points, pressure } of document.strokes) {
+    const stride = pressure ? 3 : 2;
+    const ends =
+      points.length > stride
+        ? [points[0], points[points.length - stride]]
+        : [points[0]];
+    for (const x of ends) {
+      if (x === undefined) continue;
+      const phase = ((x % spacing) + spacing) % spacing;
+      const count = (counts.get(phase) ?? 0) + 1;
+      counts.set(phase, count);
+      if (count > most) {
+        most = count;
+        origin = phase;
+      }
+    }
+  }
+  return origin === undefined ? fallback : origin / unitsPerPixel;
+}
+
+/** What undo and redo step through: the drawing, and where its grid lies. */
+interface SessionState {
+  readonly document: InkDocument;
+  /** Where the grid's columns pass, in pixels within one spacing. */
+  readonly gridOrigin: number;
+}
+
 /** A stroke being drawn: its brush and its points so far, in units. */
 interface ActiveStroke {
   readonly tool: Tool;
@@ -64,21 +134,43 @@ function between(from: InputPoint, to: InputPoint, along: number): InputPoint {
 }
 
 export class DrawingSession {
-  readonly #history: History<InkDocument>;
+  readonly #history: History<SessionState>;
   #saved: InkDocument;
   #active: ActiveStroke | undefined;
   /** The last input point of the stroke being drawn, before rounding. */
   #last: InputPoint | undefined;
+  /**
+   * Where a straight segment of the stroke being drawn starts, and how many
+   * values of its points lead up to there, the start included.
+   */
+  #anchor: { point: InputPoint; length: number } | undefined;
   tool: Tool = "pen";
   sizeIndex = 1;
+  /** Whether strokes start and end on the grid. */
+  snap = false;
 
   constructor(initial: InkDocument) {
-    this.#history = new History(initial);
+    this.#history = new History({
+      document: initial,
+      gridOrigin: gridOriginOf(initial),
+    });
     this.#saved = initial;
   }
 
+  /**
+   * Where the grid's columns pass, in document pixels within one spacing. It
+   * moves with the drawing when a save moves that, and with a restored one.
+   */
+  get gridOrigin(): number {
+    return this.#history.present.gridOrigin;
+  }
+
+  #snapped(point: InputPoint): InputPoint {
+    return this.snap ? snapToGrid(point, this.gridOrigin) : point;
+  }
+
   get document(): InkDocument {
-    return this.#history.present;
+    return this.#history.present.document;
   }
 
   /** The document as last saved, or as opened. */
@@ -102,7 +194,10 @@ export class DrawingSession {
 
   /** Whether the document differs from the last saved one. */
   get dirty(): boolean {
-    return this.#history.present !== this.#saved || this.#active !== undefined;
+    return (
+      this.#history.present.document !== this.#saved ||
+      this.#active !== undefined
+    );
   }
 
   get drawing(): boolean {
@@ -134,28 +229,48 @@ export class DrawingSession {
       points: [],
     };
     this.#last = undefined;
-    this.extend([point]);
+    this.#anchor = undefined;
+    this.extend([this.#snapped(point)]);
   }
 
   /**
    * Adds points to the stroke being drawn, filling gaps longer than
-   * {@link maxGap} and skipping exact repeats.
+   * {@link maxGap} and skipping exact repeats. While `straight`, as with
+   * Shift held, the stroke runs straight from where it was when that began
+   * to the latest point, which snaps to the grid when the grid is on.
    */
-  extend(points: readonly InputPoint[]): void {
+  extend(points: readonly InputPoint[], straight = false): void {
     const active = this.#active;
     if (active === undefined) return;
     for (const point of points) {
-      const previous = this.#last;
-      if (previous !== undefined) {
-        const gap = Math.hypot(point.x - previous.x, point.y - previous.y);
-        const steps = Math.ceil(gap / maxGap);
-        for (let step = 1; step < steps; step++) {
-          this.#record(active, between(previous, point, step / steps));
-        }
+      if (!straight) {
+        this.#anchor = undefined;
+        this.#append(active, point);
+        continue;
       }
-      this.#record(active, point);
-      this.#last = point;
+      const anchor = (this.#anchor ??= {
+        point: this.#last ?? point,
+        length: active.points.length,
+      });
+      // The segment is drawn again from its start for each new point.
+      active.points.length = anchor.length;
+      this.#last = anchor.point;
+      this.#append(active, this.#snapped(point));
     }
+  }
+
+  /** Records a point, and points along the gap since the last one. */
+  #append(active: ActiveStroke, point: InputPoint): void {
+    const previous = this.#last;
+    if (previous !== undefined) {
+      const gap = Math.hypot(point.x - previous.x, point.y - previous.y);
+      const steps = Math.ceil(gap / maxGap);
+      for (let step = 1; step < steps; step++) {
+        this.#record(active, between(previous, point, step / steps));
+      }
+    }
+    this.#record(active, point);
+    this.#last = point;
   }
 
   #record(active: ActiveStroke, point: InputPoint): void {
@@ -177,16 +292,23 @@ export class DrawingSession {
    * keeps the last pressure, since a pen reports none once lifted.
    */
   end(release?: InputPoint): void {
-    if (release !== undefined && this.#active !== undefined) {
-      const pressure = this.#last?.pressure;
-      this.extend([
-        pressure === undefined
+    const straight = this.#anchor !== undefined;
+    const pressure = this.#last?.pressure;
+    const at =
+      release === undefined
+        ? undefined
+        : pressure === undefined
           ? { x: release.x, y: release.y }
-          : { x: release.x, y: release.y, pressure },
-      ]);
+          : { x: release.x, y: release.y, pressure };
+    // With the grid, the stroke ends on it, at the grid point nearest the
+    // release, or else the last point, recorded in the release's place.
+    const end = this.snap ? (at ?? this.#last) : at;
+    if (end !== undefined && this.#active !== undefined) {
+      this.extend([this.#snapped(end)], straight);
     }
     const stroke = this.activeStroke;
     this.#active = undefined;
+    this.#anchor = undefined;
     if (stroke === undefined || stroke.points.length === 0) return;
     this.#push({
       ...this.document,
@@ -197,6 +319,7 @@ export class DrawingSession {
   /** Drops the stroke being drawn, as when the pointer is cancelled. */
   cancel(): void {
     this.#active = undefined;
+    this.#anchor = undefined;
   }
 
   undo(): boolean {
@@ -219,10 +342,17 @@ export class DrawingSession {
     this.#push({ strokes: [] });
   }
 
-  /** Replaces the document as one undoable step, as when restoring a draft. */
-  replace(document: InkDocument): void {
+  /**
+   * Replaces the document as one undoable step, as when restoring a draft,
+   * with the grid's columns through `gridOrigin`, or by default where the
+   * document's strokes suggest. Undoing the step puts the grid back too.
+   */
+  replace(
+    document: InkDocument,
+    gridOrigin = gridOriginOf(document, this.gridOrigin),
+  ): void {
     if (this.#active !== undefined) return;
-    this.#push(document);
+    this.#history.push({ document, gridOrigin: withinSpacing(gridOrigin) });
   }
 
   /**
@@ -233,9 +363,13 @@ export class DrawingSession {
    */
   rebase(dxPixels: number): void {
     if (dxPixels === 0) return;
-    // States share most of their strokes; they still do once moved.
+    // States share most of their strokes; they still do once moved. The grid
+    // moves with each, so that it stays where each was drawn on it.
     const move = documentMover(dxPixels);
-    this.#history.map(move);
+    this.#history.map(({ document, gridOrigin }) => ({
+      document: move(document),
+      gridOrigin: withinSpacing(gridOrigin + dxPixels),
+    }));
     this.#saved = move(this.#saved);
     const active = this.#active;
     if (active !== undefined) {
@@ -248,6 +382,10 @@ export class DrawingSession {
     if (this.#last !== undefined) {
       this.#last = { ...this.#last, x: this.#last.x + dxPixels };
     }
+    if (this.#anchor !== undefined) {
+      const { point } = this.#anchor;
+      this.#anchor.point = { ...point, x: point.x + dxPixels };
+    }
   }
 
   /** Records `document` as saved, so that it is no longer dirty. */
@@ -255,7 +393,8 @@ export class DrawingSession {
     this.#saved = document;
   }
 
+  /** Records `document` as one undoable step, keeping the grid. */
   #push(document: InkDocument): void {
-    this.#history.push(document);
+    this.#history.push({ document, gridOrigin: this.gridOrigin });
   }
 }

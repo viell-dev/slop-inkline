@@ -344,6 +344,7 @@ describe("decodeDraft", () => {
           file: { path: "001.ink.png", fingerprint: "ab", previous: "cd" },
         },
       }),
+      draft({ id: "f", gridOrigin: 1.5 }),
     ]) {
       store.put(written);
       expect(
@@ -402,6 +403,19 @@ describe("decodeDraft", () => {
       expect(decodeDraft(value, bases)).toBeUndefined();
     }
     expect(decodeDraft(stored, bases)?.base).toEqual({ kind: "kept", layer });
+  });
+
+  it("reads a draft whose grid cannot be read, without its grid", () => {
+    const storage = new MemoryStorage();
+    new DraftStore(storage).put(draft({ gridOrigin: 1.5 }));
+    const stored = storage.loadLocalStorage("inkline-draft:a");
+    if (typeof stored !== "string") throw new Error("not stored as text");
+    const good = JSON.parse(stored) as Record<string, unknown>;
+    for (const gridOrigin of ["1.5", null, [1.5]]) {
+      expect(decodeDraft(JSON.stringify({ ...good, gridOrigin }))).toEqual(
+        draft(),
+      );
+    }
   });
 });
 

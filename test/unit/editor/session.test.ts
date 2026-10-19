@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { DrawingSession, brushSizes } from "../../../src/editor/session.ts";
+import {
+  DrawingSession,
+  brushSizes,
+  gridOriginOf,
+  gridSpacing,
+  snapToGrid,
+} from "../../../src/editor/session.ts";
 import { emptyDocument } from "../../../src/ink/document.ts";
 
 describe("brushSizes", () => {
@@ -195,6 +201,191 @@ describe("DrawingSession", () => {
     session.begin({ x: 0, y: 32 });
     session.end({ x: 0, y: 32 });
     expect(session.document.strokes[1]?.points).toEqual([0, 512]);
+  });
+
+  it("draws a straight segment while straight, from where it began", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.begin({ x: 0, y: 0 });
+    session.extend([{ x: 4, y: 0 }]);
+    // Straight from (4, 0), wherever the pointer wanders on the way.
+    session.extend(
+      [
+        { x: 9, y: 7 },
+        { x: 4, y: 12 },
+        { x: 4, y: 8 },
+      ],
+      true,
+    );
+    const points = session.activeStroke?.points ?? [];
+    const xs = points.filter((_, index) => index % 2 === 0);
+    const ys = points.filter((_, index) => index % 2 === 1);
+    // Freehand to (4, 0), then straight down to (4, 8) only.
+    expect(xs.slice(0, 3)).toEqual([0, 32, 64]);
+    expect(xs.slice(2).every((x) => x === 64)).toBe(true);
+    expect(ys.at(-1)).toBe(128);
+    expect(Math.max(...ys)).toBe(128);
+    // Freehand again once it stops, from where the segment ended.
+    session.extend([{ x: 6, y: 8 }]);
+    session.end();
+    expect(session.document.strokes[0]?.points.slice(-2)).toEqual([96, 128]);
+  });
+
+  it("ends a stroke that is straight at its release, straight", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.begin({ x: 0, y: 0 });
+    session.extend([{ x: 3, y: 5 }], true);
+    session.end({ x: 0, y: 6 });
+    const points = session.document.strokes[0]?.points ?? [];
+    expect(points.filter((_, index) => index % 2 === 0)).toEqual([0, 0, 0, 0]);
+    expect(points.slice(-2)).toEqual([0, 96]);
+  });
+
+  it("starts and ends strokes on the grid when it is on", () => {
+    expect(gridSpacing).toBe(16);
+    expect(snapToGrid({ x: 7, y: 9, pressure: 0.5 })).toEqual({
+      x: 0,
+      y: 16,
+      pressure: 0.5,
+    });
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.begin({ x: 7, y: 9 });
+    session.extend([{ x: 20, y: 18 }]);
+    session.end();
+    const points = session.document.strokes[0]?.points ?? [];
+    expect(points.slice(0, 2)).toEqual([0, 256]);
+    expect(points.slice(-2)).toEqual([256, 256]);
+    // A straight segment's end follows the grid as it is drawn.
+    session.begin({ x: 0, y: 0 });
+    session.extend([{ x: 25, y: 2 }], true);
+    expect(session.activeStroke?.points.slice(-2)).toEqual([512, 0]);
+  });
+
+  it("records a tap on the grid as one point, with a pen or an eraser", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.begin({ x: 7, y: 9 });
+    session.end({ x: 7, y: 9 });
+    session.begin({ x: 7, y: 9, pressure: 0.5 });
+    session.end({ x: 7.4, y: 9.2, pressure: 0 });
+    session.begin({ x: 7, y: 9 }, "eraser");
+    session.end({ x: 7, y: 9 });
+    expect(session.document.strokes.map((stroke) => stroke.points)).toEqual([
+      [0, 256],
+      [0, 256, 128],
+      [0, 256],
+    ]);
+  });
+
+  it("keeps the grid's place in the drawing when a save moves it", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.begin({ x: 7, y: 9 });
+    session.end({ x: 7, y: 9 });
+    // A save cropped 5 pixels on the left, so everything moves left by 5.
+    session.rebase(-5);
+    expect(session.gridOrigin).toBe(11);
+    // The same place on screen is now 5 pixels further left.
+    session.begin({ x: 2, y: 9 });
+    session.end({ x: 2, y: 9 });
+    const [first, second] = session.document.strokes;
+    expect(second?.points).toEqual(first?.points);
+    expect(first?.points).toEqual([-80, 256]);
+  });
+
+  it("keeps a straight segment on the grid through a save", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.begin({ x: 0, y: 0 });
+    session.extend([{ x: 20, y: 2 }], true);
+    expect(session.activeStroke?.points.slice(-2)).toEqual([256, 0]);
+    session.rebase(-5);
+    session.extend([{ x: 15, y: 2 }], true);
+    expect(session.activeStroke?.points.slice(-2)).toEqual([176, 0]);
+  });
+
+  it("lines the grid up with where an opened drawing's strokes end", () => {
+    const stroke = (pressure: boolean, ...xs: number[]) => ({
+      tool: "pen" as const,
+      size: 16,
+      pressure,
+      points: xs.flatMap((x) => (pressure ? [x, 0, 128] : [x, 0])),
+    });
+    expect(gridOriginOf(emptyDocument)).toBe(0);
+    // With no end shared, where the first stroke starts: 145.5 and -2.5
+    // pixels.
+    expect(gridOriginOf({ strokes: [stroke(false, 2328, 100)] })).toBe(1.5);
+    expect(gridOriginOf({ strokes: [stroke(false, -40)] })).toBe(13.5);
+    // A first stroke drawn without the grid, 6.25 and 14.5 pixels into a
+    // spacing, then one on the grid, both ends 1.5 pixels into one.
+    expect(
+      gridOriginOf({
+        strokes: [stroke(false, 100, 1000), stroke(true, 280, 300, 536)],
+      }),
+    ).toBe(1.5);
+    const session = new DrawingSession({ strokes: [stroke(false, 2328)] });
+    session.snap = true;
+    // Nearest to 161.5, one spacing on from the first stroke's start.
+    session.begin({ x: 160, y: 0 });
+    session.end();
+    expect(session.document.strokes[1]?.points).toEqual([2328 + 256, 0]);
+  });
+
+  it("picks the most shared place for the grid, the first of a tie", () => {
+    const stroke = (...xs: number[]) => ({
+      tool: "pen" as const,
+      size: 16,
+      pressure: false,
+      points: xs.flatMap((x) => [x, 0]),
+    });
+    // A tap on the grid at 16 pixels, and a freehand stroke that starts and
+    // ends at 7: the freehand ends outnumber it.
+    expect(gridOriginOf({ strokes: [stroke(256), stroke(112, 112)] })).toBe(7);
+    // 6.25 and 1.5 pixels into a spacing, twice each: 6.25 got there first.
+    expect(
+      gridOriginOf({
+        strokes: [stroke(100), stroke(24), stroke(356), stroke(280)],
+      }),
+    ).toBe(6.25);
+    // A one-point stroke marks its place once.
+    expect(gridOriginOf({ strokes: [stroke(100), stroke(24, 280)] })).toBe(1.5);
+    // An eraser's ends mark theirs, as a pen's do.
+    expect(
+      gridOriginOf({
+        strokes: [stroke(24), { ...stroke(100, 356), tool: "eraser" }],
+      }),
+    ).toBe(6.25);
+    expect(gridOriginOf(emptyDocument, 3)).toBe(3);
+  });
+
+  it("puts the grid where a restored drawing has it, and back on undo", () => {
+    const stroke = (x: number) =>
+      ({ tool: "pen", size: 16, pressure: false, points: [x, 0] }) as const;
+    // 145.5 pixels, so 1.5 into a spacing.
+    const session = new DrawingSession({ strokes: [stroke(2328)] });
+    session.replace({ strokes: [stroke(0)] }, 11);
+    expect(session.gridOrigin).toBe(11);
+    session.undo();
+    expect(session.gridOrigin).toBe(1.5);
+    // A save's move shifts both, so that each stays where it was.
+    session.rebase(-5);
+    expect(session.gridOrigin).toBe(12.5);
+    session.redo();
+    expect(session.gridOrigin).toBe(6);
+    // Without one given, from the strokes' ends; with none, as it was.
+    session.replace({ strokes: [stroke(40)] });
+    expect(session.gridOrigin).toBe(2.5);
+    session.replace({ strokes: [] });
+    expect(session.gridOrigin).toBe(2.5);
+    session.replace({ strokes: [] }, -3);
+    expect(session.gridOrigin).toBe(13);
+    // Strokes and clearing keep the grid, and so does undoing them.
+    session.begin({ x: 0, y: 0 });
+    session.end();
+    session.clear();
+    session.undo();
+    session.undo();
+    expect(session.gridOrigin).toBe(13);
   });
 
   it("does not record clearing an empty drawing", () => {
