@@ -53,10 +53,83 @@ export function isPng(bytes: Uint8Array): boolean {
   );
 }
 
+/** An image's header fields, from its `IHDR` chunk. */
+export interface ImageHeader {
+  readonly width: number;
+  readonly height: number;
+  readonly bitDepth: number;
+  readonly colorType: number;
+  readonly interlaced: boolean;
+}
+
+/** The bit depths PNG allows for each colour type. */
+const bitDepths: ReadonlyMap<number, readonly number[]> = new Map([
+  [0, [1, 2, 4, 8, 16]],
+  [2, [8, 16]],
+  [3, [1, 2, 4, 8]],
+  [4, [8, 16]],
+  [6, [8, 16]],
+]);
+
+function parseHeader(data: Uint8Array): ImageHeader {
+  if (data.length !== 13) throw new PngError("IHDR is not 13 bytes");
+  const view = new DataView(data.buffer, data.byteOffset, 13);
+  const width = view.getUint32(0);
+  const height = view.getUint32(4);
+  const [bitDepth = 0, colorType = 0, compression, filter, interlace] =
+    data.subarray(8);
+  if (width < 1 || height < 1 || width > 0x7fffffff || height > 0x7fffffff) {
+    throw new PngError("IHDR has an invalid size");
+  }
+  if (!bitDepths.get(colorType)?.includes(bitDepth)) {
+    throw new PngError("IHDR has an invalid bit depth or colour type");
+  }
+  if (
+    compression !== 0 ||
+    filter !== 0 ||
+    (interlace !== 0 && interlace !== 1)
+  ) {
+    throw new PngError("IHDR has an invalid method");
+  }
+  return { width, height, bitDepth, colorType, interlaced: interlace === 1 };
+}
+
+/**
+ * Checks the critical chunks: one valid `IHDR` first, a `PLTE` before the
+ * image data where the colour type needs one and never where it forbids one,
+ * consecutive `IDAT` chunks, and an empty `IEND` last.
+ */
+function checkStructure(chunks: readonly Chunk[]): void {
+  const [first] = chunks;
+  if (first?.type !== "IHDR") throw new PngError("first chunk is not IHDR");
+  const { colorType } = parseHeader(first.data);
+  const count = (type: string): number =>
+    chunks.filter((chunk) => chunk.type === type).length;
+  if (count("IHDR") !== 1) throw new PngError("more than one IHDR chunk");
+  const firstData = chunks.findIndex((chunk) => chunk.type === "IDAT");
+  if (firstData === -1) throw new PngError("no IDAT chunk");
+  const lastData = chunks.findLastIndex((chunk) => chunk.type === "IDAT");
+  if (lastData - firstData + 1 !== count("IDAT")) {
+    throw new PngError("IDAT chunks are not consecutive");
+  }
+  const palette = chunks.findIndex((chunk) => chunk.type === "PLTE");
+  if (count("PLTE") > 1) throw new PngError("more than one PLTE chunk");
+  if (colorType === 3 && palette === -1) throw new PngError("no PLTE chunk");
+  if ((colorType === 0 || colorType === 4) && palette !== -1) {
+    throw new PngError("PLTE chunk in a greyscale image");
+  }
+  if (palette > firstData) throw new PngError("PLTE chunk after IDAT");
+  const last = chunks.at(-1);
+  if (last?.type !== "IEND" || last.data.length !== 0) {
+    throw new PngError("IEND is not empty");
+  }
+}
+
 /**
  * Splits a PNG file into its chunks, checking the signature, each chunk's
- * length and CRC, that `IHDR` comes first, and that the file ends with
- * `IEND`. Bytes after `IEND` are ignored, as PNG decoders do.
+ * length, type, and CRC, and the critical chunks' structure: one valid `IHDR`
+ * first, a `PLTE` where needed, consecutive `IDAT`, and an empty `IEND` last.
+ * Bytes after `IEND` are ignored, as PNG decoders do. Pixels are not decoded.
  */
 export function readChunks(bytes: Uint8Array): Chunk[] {
   if (!isPng(bytes)) throw new PngError("not a PNG file");
@@ -86,10 +159,12 @@ export function readChunks(bytes: Uint8Array): Chunk[] {
     }
     chunks.push({ type, data });
     offset = dataEnd + 4;
-    if (type === "IEND") return chunks;
+    if (type === "IEND") {
+      checkStructure(chunks);
+      return chunks;
+    }
   }
 }
-
 /** Joins chunks into a PNG file, computing each length and CRC. */
 export function writeChunks(chunks: readonly Chunk[]): Uint8Array {
   const size = chunks.reduce(
@@ -111,37 +186,56 @@ export function writeChunks(chunks: readonly Chunk[]): Uint8Array {
   return bytes;
 }
 
-/** The image size in pixels, from the `IHDR` chunk. */
-export function imageSize(chunks: readonly Chunk[]): {
-  width: number;
-  height: number;
-} {
-  const header = chunks[0];
-  if (header?.type !== "IHDR" || header.data.length !== 13) {
-    throw new PngError("missing IHDR chunk");
-  }
-  const view = new DataView(header.data.buffer, header.data.byteOffset, 13);
-  return { width: view.getUint32(0), height: view.getUint32(4) };
+/** The image's header fields, from chunks that {@link readChunks} checked. */
+export function imageHeader(chunks: readonly Chunk[]): ImageHeader {
+  const [header] = chunks;
+  if (header?.type !== "IHDR") throw new PngError("first chunk is not IHDR");
+  return parseHeader(header.data);
 }
 
 /** The most that {@link inflate} produces by default: 16 MiB. */
 export const maxInflatedBytes = 16 * 1024 * 1024;
 
+/**
+ * How much input the streams get at a time. Chromium inflates each input
+ * chunk whole before handing out its output, so a small slice bounds how far
+ * one chunk can expand past the limit: zlib expands at most about 1,032 times.
+ */
+const sliceBytes = 1024;
+
+export interface StreamOptions {
+  /** The most output to accept, in bytes. */
+  readonly limit?: number;
+  /** Called with the input bytes consumed so far, after each slice. */
+  readonly onInput?: (consumed: number) => void;
+}
+
 async function transform(
   bytes: Uint8Array,
   stream: CompressionStream | DecompressionStream,
-  limit: number,
+  { limit = Infinity, onInput }: StreamOptions,
 ): Promise<Uint8Array> {
-  // A copy, since the streams accept only bytes backed by an ArrayBuffer.
-  const input = new Uint8Array(bytes);
-  const reader = new ReadableStream<BufferSource>({
-    start(controller) {
-      controller.enqueue(input);
-      controller.close();
+  let consumed = 0;
+  // The input is handed over a slice at a time, only as the stream asks for
+  // more, which it does only once its output has been read: stopping reading
+  // stops the work.
+  const input = new ReadableStream<BufferSource>(
+    {
+      pull(controller) {
+        if (consumed >= bytes.length) {
+          controller.close();
+          return;
+        }
+        const end = Math.min(consumed + sliceBytes, bytes.length);
+        // A copy, since the streams take only bytes backed by an ArrayBuffer.
+        controller.enqueue(bytes.slice(consumed, end));
+        consumed = end;
+        onInput?.(consumed);
+      },
     },
-  })
-    .pipeThrough(stream)
-    .getReader();
+    { highWaterMark: 0 },
+  );
+  const reader = input.pipeThrough(stream).getReader();
   const parts: Uint8Array[] = [];
   let total = 0;
   for (;;) {
@@ -165,21 +259,23 @@ async function transform(
 
 /** Compresses with zlib, the only compression method PNG defines. */
 export function deflate(bytes: Uint8Array): Promise<Uint8Array> {
-  return transform(bytes, new CompressionStream("deflate"), Infinity);
+  return transform(bytes, new CompressionStream("deflate"), {});
 }
 
 /**
- * Decompresses zlib data, failing on corrupt or truncated input and on
- * output larger than `limit` bytes, so that a crafted file cannot exhaust
- * memory.
+ * Decompresses zlib data, failing on corrupt or truncated input and as soon
+ * as the output passes `limit` bytes (16 MiB by default), so that a crafted
+ * file cannot exhaust memory.
  */
 export function inflate(
   bytes: Uint8Array,
-  limit = maxInflatedBytes,
+  { limit = maxInflatedBytes, onInput }: StreamOptions = {},
 ): Promise<Uint8Array> {
-  return transform(bytes, new DecompressionStream("deflate"), limit);
+  return transform(bytes, new DecompressionStream("deflate"), {
+    limit,
+    ...(onInput === undefined ? {} : { onInput }),
+  });
 }
-
 export interface InternationalText {
   /** 1 to 79 Latin-1 characters, without leading, trailing, or double spaces. */
   readonly keyword: string;
@@ -228,11 +324,15 @@ export function textKeyword(chunk: Chunk): string | undefined {
 }
 
 /**
- * Decodes an `iTXt` chunk, compressed or not. Throws on a malformed chunk,
- * an unknown compression method, or text that is not valid UTF-8.
+ * Decodes an `iTXt` chunk, compressed or not. Throws when the keyword, the
+ * separators, the compression flag, or (for compressed text) the method is
+ * wrong, when the text is longer than `limit` bytes (16 MiB by default), or
+ * when it is not valid UTF-8. The language tag and translated keyword are
+ * skipped without being checked.
  */
 export async function decodeInternationalText(
   chunk: Chunk,
+  limit = maxInflatedBytes,
 ): Promise<InternationalText> {
   if (chunk.type !== "iTXt") throw new PngError("not an iTXt chunk");
   const { data } = chunk;
@@ -250,12 +350,16 @@ export async function decodeInternationalText(
     !validKeyword(keyword) ||
     translatedEnd === -1 ||
     (compressed !== 0 && compressed !== 1) ||
-    method !== 0
+    // Decoders ignore the method of uncompressed text.
+    (compressed === 1 && method !== 0)
   ) {
     throw new PngError("malformed iTXt chunk");
   }
   const raw = data.subarray(translatedEnd + 1);
-  const bytes = compressed === 1 ? await inflate(raw) : raw;
+  if (compressed === 0 && raw.length > limit) {
+    throw new PngError(`text is longer than ${String(limit)} bytes`);
+  }
+  const bytes = compressed === 1 ? await inflate(raw, { limit }) : raw;
   const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   return { keyword, text };
 }

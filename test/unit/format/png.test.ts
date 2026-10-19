@@ -5,7 +5,7 @@ import {
   decodeInternationalText,
   deflate,
   encodeInternationalText,
-  imageSize,
+  imageHeader,
   inflate,
   isPng,
   pngSignature,
@@ -14,7 +14,7 @@ import {
   writeChunks,
   type Chunk,
 } from "../../../src/format/png.ts";
-import { blank, encodePng, pixelChunks } from "../../support/png.ts";
+import { blank, encodePng, header, pixelChunks } from "../../support/png.ts";
 
 const ascii = (text: string): Uint8Array =>
   Uint8Array.from(text, (char) => char.charCodeAt(0));
@@ -42,8 +42,14 @@ describe("readChunks and writeChunks", () => {
     expect(writeChunks(chunks)).toEqual(png);
   });
 
-  it("reads the image size", () => {
-    expect(imageSize(readChunks(png))).toEqual({ width: 3, height: 2 });
+  it("reads the image header", () => {
+    expect(imageHeader(readChunks(png))).toEqual({
+      width: 3,
+      height: 2,
+      bitDepth: 8,
+      colorType: 6,
+      interlaced: false,
+    });
   });
 
   it("recognizes the signature", () => {
@@ -107,10 +113,33 @@ describe("deflate and inflate", () => {
 
   it("refuses output beyond the limit", async () => {
     const compressed = await deflate(new Uint8Array(100_000));
-    await expect(inflate(compressed, 99_999)).rejects.toThrow(
+    await expect(inflate(compressed, { limit: 99_999 })).rejects.toThrow(
       "data expands beyond 99999 bytes",
     );
-    expect(await inflate(compressed, 100_000)).toHaveLength(100_000);
+    expect(await inflate(compressed, { limit: 100_000 })).toHaveLength(100_000);
+  });
+
+  it("stops reading input once the output passes the limit", async () => {
+    // 64 MiB of zeros compresses to about 64 KiB.
+    const compressed = await deflate(new Uint8Array(64 * 1024 * 1024));
+    let consumed = 0;
+    await expect(
+      inflate(compressed, {
+        limit: 1024 * 1024,
+        onInput: (bytes) => (consumed = bytes),
+      }),
+    ).rejects.toThrow("data expands beyond");
+    // Node's stream adapters buffer some input ahead, so this shows only that
+    // reading stops early. The end-to-end tests check the bound in Obsidian.
+    expect(consumed).toBeGreaterThan(0);
+    expect(consumed).toBeLessThan(compressed.length);
+  });
+
+  it("reads all of the input otherwise", async () => {
+    const compressed = await deflate(new Uint8Array(200_000).fill(7));
+    let consumed = 0;
+    await inflate(compressed, { onInput: (bytes) => (consumed = bytes) });
+    expect(consumed).toBe(compressed.length);
   });
 
   it("rejects corrupt data", async () => {
@@ -200,5 +229,130 @@ describe("international text chunks", () => {
   it("finds no keyword in other chunks", () => {
     expect(textKeyword({ type: "tEXt", data: ascii("k\0v") })).toBeUndefined();
     expect(textKeyword({ type: "iTXt", data: ascii("\0") })).toBeUndefined();
+  });
+});
+
+describe("readChunks checks the critical chunks", () => {
+  const [ihdr, idat, iend] = pixelChunks(blank(2, 2));
+  if (ihdr === undefined || idat === undefined || iend === undefined) {
+    throw new Error("no chunks");
+  }
+  const palette: Chunk = { type: "PLTE", data: new Uint8Array(3) };
+  const text: Chunk = { type: "tEXt", data: ascii("k\0v") };
+  const headerWith = (bitDepth: number, colorType: number): Chunk => {
+    const chunk = header(2, 2);
+    const data = chunk.data.slice();
+    data[8] = bitDepth;
+    data[9] = colorType;
+    return { type: "IHDR", data };
+  };
+
+  const cases: [string, Chunk[], string][] = [
+    ["a second IHDR", [ihdr, ihdr, idat, iend], "more than one IHDR chunk"],
+    ["no image data", [ihdr, iend], "no IDAT chunk"],
+    [
+      "split image data",
+      [ihdr, idat, text, idat, iend],
+      "IDAT chunks are not consecutive",
+    ],
+    [
+      "a non-empty IEND",
+      [ihdr, idat, { type: "IEND", data: ascii("x") }],
+      "IEND is not empty",
+    ],
+    [
+      "an empty IHDR",
+      [{ type: "IHDR", data: new Uint8Array() }, idat, iend],
+      "IHDR is not 13 bytes",
+    ],
+    ["a zero width", [header(0, 2), idat, iend], "IHDR has an invalid size"],
+    [
+      "bit depth 3",
+      [headerWith(3, 6), idat, iend],
+      "IHDR has an invalid bit depth or colour type",
+    ],
+    [
+      "colour type 5",
+      [headerWith(8, 5), idat, iend],
+      "IHDR has an invalid bit depth or colour type",
+    ],
+    [
+      "a palette image without PLTE",
+      [headerWith(8, 3), idat, iend],
+      "no PLTE chunk",
+    ],
+    [
+      "PLTE in a greyscale image",
+      [headerWith(8, 0), palette, idat, iend],
+      "PLTE chunk in a greyscale image",
+    ],
+    [
+      "PLTE after the image data",
+      [headerWith(8, 2), idat, palette, iend],
+      "PLTE chunk after IDAT",
+    ],
+    [
+      "two PLTE chunks",
+      [headerWith(8, 3), palette, palette, idat, iend],
+      "more than one PLTE chunk",
+    ],
+  ];
+
+  for (const [name, chunks, message] of cases) {
+    it(`refuses ${name}`, () => {
+      expect(() => readChunks(writeChunks(chunks))).toThrow(message);
+    });
+  }
+
+  it("accepts a palette image with its PLTE and a truecolour one with a suggested palette", () => {
+    expect(
+      readChunks(writeChunks([headerWith(8, 3), palette, idat, iend])),
+    ).toHaveLength(4);
+    expect(
+      readChunks(writeChunks([headerWith(8, 2), palette, idat, iend])),
+    ).toHaveLength(4);
+  });
+
+  it("refuses an invalid method", () => {
+    const chunk = header(2, 2);
+    const data = chunk.data.slice();
+    data[12] = 2;
+    expect(() =>
+      readChunks(writeChunks([{ type: "IHDR", data }, idat, iend])),
+    ).toThrow("IHDR has an invalid method");
+  });
+});
+
+describe("uncompressed international text", () => {
+  const uncompressed = (method: number, text: string): Chunk => ({
+    type: "iTXt",
+    data: new Uint8Array([...ascii("k"), 0, 0, method, 0, 0, ...ascii(text)]),
+  });
+
+  it("ignores the compression method, as decoders must", async () => {
+    expect(await decodeInternationalText(uncompressed(255, "{}"))).toEqual({
+      keyword: "k",
+      text: "{}",
+    });
+  });
+
+  it("refuses text longer than the limit", async () => {
+    await expect(
+      decodeInternationalText(uncompressed(0, "12345"), 4),
+    ).rejects.toThrow("text is longer than 4 bytes");
+    expect(await decodeInternationalText(uncompressed(0, "1234"), 4)).toEqual({
+      keyword: "k",
+      text: "1234",
+    });
+  });
+
+  it("applies the limit to compressed text too", async () => {
+    const chunk = await encodeInternationalText({
+      keyword: "k",
+      text: "12345",
+    });
+    await expect(decodeInternationalText(chunk, 4)).rejects.toThrow(
+      "data expands beyond 4 bytes",
+    );
   });
 });
