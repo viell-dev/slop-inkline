@@ -1,17 +1,11 @@
 // Creating, inserting, and editing symbols in the vault: the editor's work
 // with files and notes.
 
-import {
-  Notice,
-  TFile,
-  normalizePath,
-  type App,
-  type MarkdownView,
-} from "obsidian";
+import { MarkdownView, Notice, TFile, normalizePath, type App } from "obsidian";
 import { inkExtension } from "../format/ink-file.ts";
 import { openInk } from "../ink/canvas.ts";
 import { emptyDocument } from "../ink/document.ts";
-import { draftKey } from "../editor/drafts.ts";
+import { fingerprintOf, type DraftStore } from "../editor/drafts.ts";
 import { InkEditorModal, type EditorOptions } from "../editor/modal.ts";
 import { visibleWidth } from "../editor/view.ts";
 import { capturePoint, findPoint, type InsertionPoint } from "./insertion.ts";
@@ -22,6 +16,8 @@ export interface EditorHost {
   readonly app: App;
   /** Tracks open editors, so that unloading can close them. */
   readonly lifecycle: NonNullable<EditorOptions["lifecycle"]>;
+  /** The vault's drafts. */
+  readonly drafts: DraftStore;
   /** Whether the plugin is still loaded; nothing is written once it is not. */
   readonly alive: () => boolean;
 }
@@ -76,29 +72,56 @@ interface Target {
 }
 
 /**
- * Inserts an embed into the target note: in its editor when that still shows
- * the note, otherwise into the note's file, at the position found again from
- * its surrounding text. When the position cannot be found, the embed goes at
- * the end of the note, and a notice says so.
+ * A Markdown view showing `file`, preferring `preferred`. A closed tab's view
+ * can still name its file, so only views still in the workspace count.
+ */
+function liveView(
+  app: App,
+  file: TFile,
+  preferred: MarkdownView,
+): MarkdownView | undefined {
+  const views = app.workspace
+    .getLeavesOfType("markdown")
+    .map((leaf) => leaf.view)
+    .filter(
+      (view): view is MarkdownView =>
+        view instanceof MarkdownView && view.file === file,
+    );
+  return views.find((view) => view === preferred) ?? views[0];
+}
+
+function appendedNotice(file: TFile): void {
+  new Notice(
+    `The note changed where the symbol was going, so it was added at the end of ${file.basename}.`,
+  );
+}
+
+/**
+ * Inserts an embed into the target note at the position found again from its
+ * surrounding text: through a live editor of the note when there is one,
+ * since it may hold changes not yet on disk, otherwise into the note's file.
+ * When the position cannot be found, the embed goes at the end of the note,
+ * and a notice says so.
  */
 async function insertEmbed(
   app: App,
   target: Target,
   embed: string,
 ): Promise<void> {
-  const { view, file, point } = target;
-  // A closed tab's view can still name its file, so it must also still be in
-  // the workspace.
-  const open = app.workspace
-    .getLeavesOfType("markdown")
-    .some((leaf) => leaf.view === view);
-  if (open && view.file === file) {
+  const { file, point } = target;
+  const view = liveView(app, file, target.view);
+  if (view !== undefined) {
     const editor = view.editor;
-    const at = findPoint(editor.getValue(), point);
+    const text = editor.getValue();
+    const at = findPoint(text, point);
     if (at !== undefined) {
       editor.replaceRange(embed, editor.offsetToPos(at));
       return;
     }
+    const gap = text === "" || text.endsWith("\n") ? "" : "\n";
+    editor.replaceRange(`${gap}${embed}\n`, editor.offsetToPos(text.length));
+    appendedNotice(file);
+    return;
   }
   const outcome = { appended: false };
   await app.vault.process(file, (text) => {
@@ -108,11 +131,7 @@ async function insertEmbed(
     const gap = text === "" || text.endsWith("\n") ? "" : "\n";
     return `${text}${gap}${embed}\n`;
   });
-  if (outcome.appended) {
-    new Notice(
-      `The note changed where the symbol was going, so it was added at the end of ${file.basename}.`,
-    );
-  }
+  if (outcome.appended) appendedNotice(file);
 }
 
 /**
@@ -140,15 +159,21 @@ export function insertSymbol(host: EditorHost, view: MarkdownView): void {
     title: "New symbol",
     document: emptyDocument,
     center: visibleWidth / 2,
-    draft: { store: app, key: draftKey({ newIn: file.path }) },
+    drafts: {
+      store: host.drafts,
+      // Once created, the symbol is its file, whatever the note does.
+      target: () =>
+        created === undefined
+          ? { kind: "new", note: file.path }
+          : { kind: "file", path: created.path },
+    },
     lifecycle: host.lifecycle,
     write: async (bytes) => {
       stillAlive(host);
       if (created === undefined) {
-        created = await app.vault.createBinary(
-          await newSymbolPath(app, file.path),
-          toBuffer(bytes),
-        );
+        const path = await newSymbolPath(app, file.path);
+        stillAlive(host);
+        created = await app.vault.createBinary(path, toBuffer(bytes));
       } else {
         await app.vault.modifyBinary(created, toBuffer(bytes));
       }
@@ -172,12 +197,17 @@ function message(error: unknown): string {
 export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
   const { app } = host;
   let opened;
+  let fingerprint;
   try {
-    opened = await openInk(new Uint8Array(await app.vault.readBinary(file)));
+    const bytes = new Uint8Array(await app.vault.readBinary(file));
+    opened = await openInk(bytes);
+    fingerprint = await fingerprintOf(bytes);
   } catch (error) {
     new Notice(`Could not open ${file.name}: ${message(error)}`);
     return;
   }
+  // Inkline may have been disabled while the file was read.
+  if (!host.alive()) return;
   if (opened.kind === "newer-version") {
     new Notice(
       `${file.name} was saved by a newer version of Inkline. Update Inkline to edit it.`,
@@ -190,7 +220,12 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
     ...(opened.base === undefined ? {} : { base: opened.base }),
     carried: opened.carried,
     center: opened.width / 2,
-    draft: { store: app, key: draftKey({ file: file.path }) },
+    drafts: {
+      store: host.drafts,
+      // The file's path follows renames.
+      target: () => ({ kind: "file", path: file.path }),
+      fingerprint,
+    },
     lifecycle: host.lifecycle,
     write: async (saved) => {
       stillAlive(host);

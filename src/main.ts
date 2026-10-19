@@ -1,4 +1,5 @@
 import { MarkdownView, Plugin, TFile } from "obsidian";
+import { DraftStore } from "./editor/drafts.ts";
 import type { InkEditorModal } from "./editor/modal.ts";
 import { isInkPath } from "./format/ink-file.ts";
 import { editSymbol, insertSymbol, type EditorHost } from "./notes/symbols.ts";
@@ -6,12 +7,15 @@ import { editSymbol, insertSymbol, type EditorHost } from "./notes/symbols.ts";
 /** Inkline: symbols drawn once and written in notes like characters. */
 export default class InklinePlugin extends Plugin {
   readonly #editors = new Set<InkEditorModal>();
+  #drafts: DraftStore | undefined;
   #loaded = false;
 
   /** What the editors this plugin opens may use while it is loaded. */
   get #host(): EditorHost {
+    this.#drafts ??= new DraftStore(this.app);
     return {
       app: this.app,
+      drafts: this.#drafts,
       lifecycle: {
         opened: (editor) => this.#editors.add(editor),
         closed: (editor) => this.#editors.delete(editor),
@@ -33,6 +37,13 @@ export default class InklinePlugin extends Plugin {
         return true;
       },
     });
+    // Drafts follow their symbol, or the note a new one is in, when renamed.
+    this.registerEvent(
+      this.app.vault.on("rename", (file, oldPath) => {
+        this.#drafts ??= new DraftStore(this.app);
+        this.#drafts.rename(oldPath, file.path);
+      }),
+    );
     this.registerEvent(
       this.app.workspace.on("file-menu", (menu, file) => {
         if (!(file instanceof TFile) || !isInkPath(file.path)) return;
