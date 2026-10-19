@@ -1,6 +1,8 @@
 // Release metadata rules, kept free of file access so that unit tests can run
 // them on synthetic input. scripts/release.ts applies them to the repository.
 
+import { fromMarkdown } from "mdast-util-from-markdown";
+
 /**
  * Release versions are plain dotted numbers without leading zeros, which is
  * SemVer without prerelease or build parts, as Obsidian's directory needs.
@@ -78,41 +80,14 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-const fenceLine = /^ {0,3}(`{3,}|~{3,})(.*)$/;
-
-/**
- * Marks each line that is Markdown text rather than fenced code, so that a
- * heading shown inside a code example is not taken for a section heading.
- * Fences follow CommonMark: three or more backticks or tildes, indented by
- * at most three spaces, closed by at least as many of the same character.
- */
-function outsideFences(lines: readonly string[]): boolean[] {
-  let open: { char: string; length: number } | undefined;
-  return lines.map((line) => {
-    const [, marker = "", rest = ""] = fenceLine.exec(line) ?? [];
-    const char = marker.charAt(0);
-    if (open === undefined) {
-      // A backtick fence's info string cannot contain a backtick.
-      if (marker === "" || (char === "`" && rest.includes("`"))) return true;
-      open = { char, length: marker.length };
-      return false;
-    }
-    if (
-      char === open.char &&
-      marker.length >= open.length &&
-      rest.trim() === ""
-    ) {
-      open = undefined;
-    }
-    return false;
-  });
-}
-
 /**
  * Returns the body of a changelog section, or undefined when the section is
  * missing or empty. A release's heading is `## x.y.z - YYYY-MM-DD`; the
- * section for unreleased changes is `## Unreleased`. The section ends at the
- * next heading of level 1 or 2 outside fenced code.
+ * section for unreleased changes is `## Unreleased`.
+ *
+ * The changelog is parsed as CommonMark, and only headings of level 1 or 2 at
+ * the top level start or end a section, so that a heading in a code example,
+ * a list, or a quote cannot cut the notes short or hide a release.
  */
 export function releaseNotes(
   changelog: string,
@@ -122,21 +97,19 @@ export function releaseNotes(
     section === "Unreleased"
       ? /^## Unreleased$/
       : new RegExp(`^## ${escapeRegExp(section)} - \\d{4}-\\d{2}-\\d{2}$`);
-  const lines = changelog.split(/\r?\n/);
-  const text = outsideFences(lines);
-  const isText = (index: number): boolean => text[index] === true;
-  const start = lines.findIndex(
-    (line, index) => isText(index) && heading.test(line.trimEnd()),
+  const source = changelog.replace(/\r\n?/g, "\n");
+  const bounds = fromMarkdown(source)
+    .children.filter((node) => node.type === "heading" && node.depth <= 2)
+    .map((node) => ({
+      start: node.position?.start.offset ?? 0,
+      end: node.position?.end.offset ?? 0,
+    }));
+  const index = bounds.findIndex(({ start, end }) =>
+    heading.test(source.slice(start, end).trim()),
   );
-  if (start === -1) return undefined;
-  const end = lines.findIndex(
-    (line, index) =>
-      index > start && isText(index) && /^ {0,3}#{1,2}(?:[ \t]|$)/.test(line),
-  );
-  const body = lines
-    .slice(start + 1, end === -1 ? undefined : end)
-    .join("\n")
-    .trim();
+  const current = bounds[index];
+  if (current === undefined) return undefined;
+  const body = source.slice(current.end, bounds[index + 1]?.start).trim();
   return body === "" ? undefined : body;
 }
 

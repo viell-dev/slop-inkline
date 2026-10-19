@@ -170,13 +170,13 @@ describe("releaseNotes", () => {
     [
       "## 0.2.0 - 2026-11-02",
       "",
-      "- Headings in notes:",
+      "Headings in notes:",
       "",
-      `  ${fence}markdown`,
-      "  ## example",
+      `${fence}markdown`,
+      "## example",
       "",
       "# title",
-      `  ${close}`,
+      close,
       "",
       "- More notes.",
       "",
@@ -203,6 +203,53 @@ describe("releaseNotes", () => {
   it("finds no section heading inside a code fence", () => {
     const fenced = ["```", "## 0.3.0 - 2026-12-01", "", "- Fake.", "```"];
     expect(releaseNotes(fenced.join("\n"), "0.3.0")).toBeUndefined();
+  });
+
+  const withListExample = (fence: string, line: string): string =>
+    [
+      "## 0.2.0 - 2026-11-02",
+      "",
+      `- ${fence}text`,
+      `  ${line}`,
+      `  ${fence}`,
+      "",
+      "- More notes.",
+      "",
+      "## 0.1.0 - 2026-10-30",
+      "",
+      "- Older notes.",
+    ].join("\n");
+
+  it("reads fences that open on a list marker", () => {
+    for (const fence of ["```", "~~~"]) {
+      for (const line of ["example", "## example"]) {
+        const text = withListExample(fence, line);
+        const notes = releaseNotes(text, "0.2.0");
+        expect(notes).toContain(line);
+        expect(notes?.endsWith("- More notes.")).toBe(true);
+        expect(notes).not.toContain("Older notes");
+        expect(releaseNotes(text, "0.1.0")).toBe("- Older notes.");
+      }
+    }
+  });
+
+  it("ignores headings inside lists and quotes", () => {
+    const text = [
+      "## 0.2.0 - 2026-11-02",
+      "",
+      "- ## A heading in a list",
+      "> ## A heading in a quote",
+      "",
+      "- More notes.",
+      "",
+      "## 0.1.0 - 2026-10-30",
+      "",
+      "- Older notes.",
+    ].join("\n");
+    expect(releaseNotes(text, "0.2.0")).toBe(
+      "- ## A heading in a list\n> ## A heading in a quote\n\n- More notes.",
+    );
+    expect(releaseNotes(text, "0.1.0")).toBe("- Older notes.");
   });
 
   it("does not open a fence on backticks whose info string has a backtick", () => {
