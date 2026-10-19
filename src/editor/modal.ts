@@ -160,6 +160,8 @@ export class InkEditorModal extends Modal {
    * goes on with if the drawing is kept.
    */
   #askingChanged = false;
+  /** Whether Next is under way, so that it opens one editor however asked. */
+  #advancing = false;
   #resume: (() => void) | undefined;
   #view: InkView | undefined;
   #saving: Promise<boolean> | undefined;
@@ -720,6 +722,7 @@ export class InkEditorModal extends Modal {
     this.#buttons.get("undo")?.setDisabled(!this.#session.canUndo);
     this.#buttons.get("redo")?.setDisabled(!this.#session.canRedo);
     this.#buttons.get("save")?.setDisabled(this.#saving !== undefined);
+    this.#buttons.get("next")?.setDisabled(this.#saving !== undefined);
   }
 
   #announce(text: string): void {
@@ -1084,15 +1087,22 @@ export class InkEditorModal extends Modal {
    */
   async #saveAndNext(): Promise<void> {
     const next = this.#options.next;
-    if (next === undefined) return;
-    if (!(await this.#save(() => void this.#saveAndNext()))) return;
-    if (this.#session.dirty) {
-      this.#announce("Saved, except for the strokes drawn while saving");
-      return;
+    if (next === undefined || this.#advancing) return;
+    this.#advancing = true;
+    try {
+      if (!(await this.#save(() => void this.#saveAndNext()))) return;
+      // Closed meanwhile, as by Save and close or by Inkline being disabled.
+      if (this.#closing || this.#retired) return;
+      if (this.#session.dirty) {
+        this.#announce("Saved, except for the strokes drawn while saving");
+        return;
+      }
+      const { tool, sizeIndex, snap } = this.#session;
+      this.#finish();
+      next({ tool, sizeIndex, grid: snap, guides: this.#guidesShown });
+    } finally {
+      this.#advancing = false;
     }
-    const { tool, sizeIndex, snap } = this.#session;
-    this.#finish();
-    next({ tool, sizeIndex, grid: snap, guides: this.#guidesShown });
   }
 
   /**

@@ -168,22 +168,6 @@ async function insertEmbed(
 }
 
 /**
- * The point just after `embed` in the target note, where the next symbol's
- * embed goes, as when a restored draft's embed was already there; the note's
- * end if it is not found.
- */
-async function pointAfter(
-  app: App,
-  target: Target,
-  embed: string,
-): Promise<InsertionPoint> {
-  const view = liveView(app, target.file, target.view);
-  const text = view?.editor.getValue() ?? (await app.vault.read(target.file));
-  const at = text.indexOf(embed);
-  return capturePoint(text, at === -1 ? text.length : at + embed.length);
-}
-
-/**
  * A file that a new symbol's first save made, or was making: by its path,
  * and, once it is found, as the vault's file, which follows renames.
  */
@@ -256,30 +240,38 @@ async function claimedFile(
 }
 
 /**
- * Whether the target note already embeds `file`, as when an interrupted
- * first save inserted it before its draft could say so: its text, live or on
- * disk, holds the embed Inkline inserts, or one that the metadata cache
- * resolves to the file. A link that does not embed the file does not count.
+ * Where the target note already embeds `file`, as when an interrupted first
+ * save inserted it before its draft could say so: the point just after the
+ * embed Inkline inserts, or after one that the metadata cache resolves to the
+ * file, however it is written, in the note's text, live or on disk. That is
+ * where the next symbol's embed goes. Undefined when the note has no such
+ * embed; a link that does not embed the file does not count.
  */
-async function embeds(
+async function existingEmbed(
   app: App,
   target: Target,
   file: TFile,
   embed: string,
-): Promise<boolean> {
+): Promise<InsertionPoint | undefined> {
   const note = target.file;
   const view = liveView(app, note, target.view);
   const text = view?.editor.getValue() ?? (await app.vault.read(note));
-  if (text.includes(embed)) return true;
+  const at = text.indexOf(embed);
+  if (at !== -1) return capturePoint(text, at + embed.length);
   // The cache may lag the text, so an embed counts only if it is still there.
-  return (app.metadataCache.getFileCache(note)?.embeds ?? []).some(
-    (cached) =>
-      text.includes(cached.original) &&
+  for (const cached of app.metadataCache.getFileCache(note)?.embeds ?? []) {
+    const found = text.indexOf(cached.original);
+    if (
+      found !== -1 &&
       app.metadataCache.getFirstLinkpathDest(
         getLinkpath(cached.link),
         note.path,
-      ) === file,
-  );
+      ) === file
+    ) {
+      return capturePoint(text, found + cached.original.length);
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -433,11 +425,14 @@ function newSymbol(
       const embed = embedFromLink(
         app.fileManager.generateMarkdownLink(made.file, note.path),
       );
-      if (!adopted || !(await embeds(app, target, made.file, embed))) {
+      const existing = adopted
+        ? await existingEmbed(app, target, made.file, embed)
+        : undefined;
+      if (existing === undefined) {
         stillAlive(host);
         after = await insertEmbed(app, target, embed);
       } else {
-        after = await pointAfter(app, target, embed);
+        after = existing;
       }
       inserted = true;
     },
