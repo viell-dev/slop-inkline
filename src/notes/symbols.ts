@@ -1,7 +1,14 @@
 // Creating, inserting, and editing symbols in the vault: the editor's work
 // with files and notes.
 
-import { MarkdownView, Notice, TFile, normalizePath, type App } from "obsidian";
+import {
+  MarkdownView,
+  Notice,
+  TFile,
+  getLinkpath,
+  normalizePath,
+  type App,
+} from "obsidian";
 import { inkExtension } from "../format/ink-file.ts";
 import { openInk } from "../ink/canvas.ts";
 import { emptyDocument } from "../ink/document.ts";
@@ -170,22 +177,30 @@ async function claimedFile(app: App, claim: Claim): Promise<TFile | undefined> {
 }
 
 /**
- * Whether the target note already embeds or links to `file`, as when an
- * interrupted first save inserted it before its draft could say so.
+ * Whether the target note already embeds `file`, as when an interrupted
+ * first save inserted it before its draft could say so: its text, live or on
+ * disk, holds the embed Inkline inserts, or one that the metadata cache
+ * resolves to the file. A link that does not embed the file does not count.
  */
-async function linksTo(
+async function embeds(
   app: App,
   target: Target,
   file: TFile,
   embed: string,
 ): Promise<boolean> {
   const note = target.file;
-  if ((app.metadataCache.resolvedLinks[note.path]?.[file.path] ?? 0) > 0) {
-    return true;
-  }
   const view = liveView(app, note, target.view);
   const text = view?.editor.getValue() ?? (await app.vault.read(note));
-  return text.includes(embed);
+  if (text.includes(embed)) return true;
+  // The cache may lag the text, so an embed counts only if it is still there.
+  return (app.metadataCache.getFileCache(note)?.embeds ?? []).some(
+    (cached) =>
+      text.includes(cached.original) &&
+      app.metadataCache.getFirstLinkpathDest(
+        getLinkpath(cached.link),
+        note.path,
+      ) === file,
+  );
 }
 
 /**
@@ -291,7 +306,7 @@ export function insertSymbol(host: EditorHost, view: MarkdownView): void {
       const embed = embedFromLink(
         app.fileManager.generateMarkdownLink(made.file, note.path),
       );
-      if (!adopted || !(await linksTo(app, target, made.file, embed))) {
+      if (!adopted || !(await embeds(app, target, made.file, embed))) {
         stillAlive(host);
         await insertEmbed(app, target, embed);
       }

@@ -1130,4 +1130,94 @@ describe("The editor", function () {
     expect(await symbolFiles()).toEqual(["renamed.ink.png"]);
     expect((await noteText()).split("renamed.ink.png")).toHaveLength(2);
   });
+
+  for (const when of ["before", "after"] as const) {
+    for (const stroke of [false, true]) {
+      it(`keeps a picture that undo brought back while a save wrote, held ${when} the write${stroke ? ", with a stroke" : ""}`, async function () {
+        await createSquare();
+        await editFile("square.ink.png");
+        await browser.$('[data-inkline-button="clear"]').click();
+        await delayVault("modifyBinary", 2500, when);
+        try {
+          await browser.keys(["Control", "s"]);
+          await browser.$(".inkline-status=Saving…").waitForExist();
+          await browser.keys(["Control", "z"]);
+          if (stroke) {
+            await draw([
+              [0.45, 0.8],
+              [0.55, 0.8],
+            ]);
+          }
+          await obsidianPage.disablePlugin("inkline");
+          // Let the old save finish: the file then holds the cleared drawing.
+          await browser.pause(3000);
+        } finally {
+          await restoreVault();
+        }
+        expect(
+          (JSON.parse(await recordOf("square.ink.png")) as { base?: unknown })
+            .base,
+        ).toBeUndefined();
+        await obsidianPage.enablePlugin("inkline");
+        await loadModules();
+        await editFile("square.ink.png");
+        await clickTop("Restore");
+        await browser.keys(["Control", "Enter"]);
+        await waitClosed();
+        const record = JSON.parse(await recordOf("square.ink.png")) as {
+          base?: { scale: number };
+          strokes: unknown[];
+        };
+        expect(record.base?.scale).toBe(8);
+        expect(record.strokes).toHaveLength(stroke ? 1 : 0);
+      });
+    }
+  }
+
+  it("offers a draft to one editor at a time, even before it is answered", async function () {
+    await insert();
+    await draw(zigzag);
+    await obsidianPage.disablePlugin("inkline");
+    await obsidianPage.enablePlugin("inkline");
+    await loadModules();
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await browser.waitUntil(
+      async () =>
+        (await browser.$$(".inkline-editor").getElements()).length === 2,
+    );
+    await browser.pause(500);
+    expect(await browser.$$("button=Restore").getElements()).toHaveLength(1);
+    // The second editor, on top, offers nothing; closing it uncovers the
+    // first one's question. Dismissed, the draft can be offered again.
+    await browser.keys(["Escape"]);
+    await clickTop("Not now");
+    await browser.keys(["Escape"]);
+    await waitClosed();
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await clickTop("Restore");
+  });
+
+  it("inserts a recovered symbol even when the note only links to its file", async function () {
+    await interruptInsertion();
+    await browser.executeObsidian(({ app, obsidian }) => {
+      const view = app.workspace.getActiveViewOfType(obsidian.MarkdownView);
+      if (view === null) throw new Error("no Markdown view");
+      view.editor.setValue("See [[001.ink.png]] for the door.\n");
+    });
+    await browser.waitUntil(async () =>
+      browser.executeObsidian(
+        ({ app }) =>
+          (app.metadataCache.resolvedLinks["Editor.md"]?.["001.ink.png"] ?? 0) >
+          0,
+      ),
+    );
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await clickTop("Restore");
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    const text = await noteText();
+    expect(text).toContain("![[001.ink.png]]");
+    expect(text).toContain("[[001.ink.png]] for the door");
+  });
 });

@@ -253,15 +253,15 @@ export function sameTarget(a: DraftTarget, b: DraftTarget): boolean {
 /**
  * How a draft of `document` keeps its base layer: as the file's own when it
  * is the base layer of `saved`, the document as the file now holds it, and
- * otherwise with the draft.
+ * otherwise with the draft, as when what the file holds is not known.
  */
 export function draftBase(
   document: InkDocument,
-  saved: InkDocument,
+  saved: InkDocument | undefined,
 ): DraftBase {
   const layer = document.base;
   if (layer === undefined) return { kind: "none" };
-  const held = saved.base;
+  const held = saved?.base;
   return held?.png === layer.png &&
     held.x === layer.x &&
     held.y === layer.y &&
@@ -359,10 +359,18 @@ export class DraftStore {
     return png;
   }
 
-  /** Stores a base layer's PNG once, returning its key, if it was kept. */
+  /**
+   * Stores a base layer's PNG once, returning its key, if it was kept. A key
+   * this store knows is used again while the index lists it; another store
+   * may have dropped it since, unused, and then it is stored again.
+   */
   #keepPng(png: Uint8Array): string | undefined {
     const known = this.#keys.get(png);
-    if (known !== undefined) return known;
+    if (known !== undefined) {
+      if (this.#list(baseIndexKey).includes(known)) return known;
+      this.#keys.delete(png);
+      this.#pngs.delete(known);
+    }
     if (basePngProblem(png) !== undefined) return undefined;
     const key = crypto.randomUUID();
     if (!this.#write(basePrefix + key, toBase64(png), baseIndexKey, key)) {

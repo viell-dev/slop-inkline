@@ -279,6 +279,21 @@ describe("DraftStore", () => {
     expect(storage.values.has("inkline-draft-bases")).toBe(false);
   });
 
+  it("stores a base layer again that another store dropped while unused", () => {
+    const storage = new MemoryStorage();
+    const first = new DraftStore(storage, () => 5000);
+    const kept = draft({ base: { kind: "kept", layer } });
+    // The base layer is stored, but its draft is refused.
+    storage.refused.add("inkline-draft:a");
+    expect(first.put(kept)).toBe(false);
+    expect(storage.keys("inkline-draft-base:")).toHaveLength(1);
+    new DraftStore(storage, () => 5000).list();
+    expect(storage.keys("inkline-draft-base:")).toEqual([]);
+    storage.refused.clear();
+    expect(first.put(kept)).toBe(true);
+    expect(new DraftStore(storage, () => 5000).list()).toEqual([kept]);
+  });
+
   it("reads a kept base layer in another session, or marks it lost", () => {
     const storage = new MemoryStorage();
     const written = draft({
@@ -388,6 +403,8 @@ describe("draftBase", () => {
       kind: "kept",
       layer: other,
     });
+    // While a save writes the file, what it holds is not known.
+    expect(draftBase(saved, undefined)).toEqual({ kind: "kept", layer });
   });
 });
 

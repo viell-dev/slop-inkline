@@ -161,37 +161,48 @@ export async function startOver(): Promise<void> {
   await obsidianPage.resetVault();
 }
 
-const delayable = ["createBinary", "readBinary", "process"] as const;
+const delayable = [
+  "createBinary",
+  "modifyBinary",
+  "readBinary",
+  "process",
+] as const;
 
 /**
- * Makes a vault method wait `ms` after it has done its work before it
- * resolves, until {@link restoreVault}, so that a test can act meanwhile.
+ * Makes a vault method wait `ms` before it starts its work, or after it has
+ * done it and before it resolves, until {@link restoreVault}, so that a test
+ * can act meanwhile.
  */
 export async function delayVault(
   name: (typeof delayable)[number],
   ms: number,
+  when: "before" | "after" = "after",
 ): Promise<void> {
   await browser.executeObsidian(
-    ({ app }, method, wait) => {
+    ({ app }, method, wait, first) => {
       const original: unknown = Reflect.get(app.vault, method);
       if (typeof original !== "function") throw new Error(`no ${method}`);
+      const pause = () =>
+        new Promise((resolve) => window.setTimeout(resolve, wait));
       Reflect.set(app.vault, `inklineDelayed-${method}`, original);
       Reflect.set(
         app.vault,
         method,
         async (...args: unknown[]): Promise<unknown> => {
+          if (first === "before") await pause();
           const result: unknown = await Reflect.apply(
             original,
             app.vault,
             args,
           );
-          await new Promise((resolve) => window.setTimeout(resolve, wait));
+          if (first === "after") await pause();
           return result;
         },
       );
     },
     name,
     ms,
+    when,
   );
 }
 

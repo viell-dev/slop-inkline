@@ -93,6 +93,8 @@ export class InkEditorModal extends Modal {
    * place: storage may refuse the editor's own at first.
    */
   #replacing: string | undefined;
+  /** The draft this editor is offering back, held while it asks. */
+  #offered: string | undefined;
   readonly #questions = new Set<Modal>();
   readonly #buttons = new Map<string, ButtonComponent>();
 
@@ -203,6 +205,7 @@ export class InkEditorModal extends Modal {
     const store = this.#options.drafts?.store;
     store?.release(this.#draftId);
     if (this.#replacing !== undefined) store?.release(this.#replacing);
+    if (this.#offered !== undefined) store?.release(this.#offered);
     this.#options.lifecycle?.closed(this);
   }
 
@@ -273,7 +276,8 @@ export class InkEditorModal extends Modal {
 
   /**
    * Asks a question in a modal of its own, which closes with the editor. Its
-   * answers do nothing once the editor has closed.
+   * answers do nothing once the editor has closed. `dismissed` runs when it
+   * closes without an answer.
    */
   #ask(
     title: string,
@@ -285,13 +289,16 @@ export class InkEditorModal extends Modal {
       act: () => void;
     }[],
     cancel: string,
+    dismissed?: () => void,
   ): void {
     const question = new ConfirmationModal(this.app);
     question.setTitle(title);
     question.setContent(content);
+    let answered = false;
     for (const answer of answers) {
       question.addButton((button) => {
         button.setButtonText(answer.text).onClick(() => {
+          answered = true;
           if (!this.#retired && !this.#closing) answer.act();
         });
         if (answer.primary === true) button.setCta().setInitialFocus();
@@ -300,7 +307,10 @@ export class InkEditorModal extends Modal {
       });
     }
     question.addCancelButton(cancel);
-    question.setCloseCallback(() => this.#questions.delete(question));
+    question.setCloseCallback(() => {
+      this.#questions.delete(question);
+      if (!answered) dismissed?.();
+    });
     this.#questions.add(question);
     question.open();
   }
@@ -478,7 +488,10 @@ export class InkEditorModal extends Modal {
   #keepDraft(): boolean {
     const drafts = this.#options.drafts;
     if (drafts === undefined || this.#retired) return true;
-    if (!this.#session.dirty) {
+    // While a save runs, the file holds the drawing as it was or as the save
+    // writes it, so the draft is kept, and keeps its own base layer.
+    const pending = this.#saving !== undefined;
+    if (!pending && !this.#session.dirty) {
       this.#forgetDraft();
       return true;
     }
@@ -487,7 +500,7 @@ export class InkEditorModal extends Modal {
       id: this.#draftId,
       target: drafts.target(),
       strokes: document.strokes,
-      base: draftBase(document, saved),
+      base: draftBase(document, pending ? undefined : saved),
       ...(this.#fingerprint === undefined
         ? {}
         : { fingerprint: this.#fingerprint }),
@@ -532,15 +545,22 @@ export class InkEditorModal extends Modal {
 
   /**
    * Offers back the newest draft another editor left for this symbol, once
-   * any base layer it keeps is decoded. Dismissing the question keeps the
-   * draft for next time; only Restore or Discard use it up, and Restore only
-   * once this editor's own draft has taken its place.
+   * any base layer it keeps is decoded, holding it meanwhile so that no other
+   * editor offers it too. Dismissing the question keeps the draft for next
+   * time; only Restore or Discard use it up, and Restore only once this
+   * editor's own draft has taken its place.
    */
   async #offerDraft(): Promise<void> {
     const drafts = this.#options.drafts;
     if (drafts === undefined) return;
     const [found] = drafts.store.forTarget(drafts.target());
     if (found === undefined) return;
+    drafts.store.hold(found.id);
+    this.#offered = found.id;
+    const letGo = (): void => {
+      drafts.store.release(found.id);
+      this.#offered = undefined;
+    };
     let readable = found.base.kind !== "lost";
     if (found.base.kind === "kept") {
       const { layer } = found.base;
@@ -574,8 +594,9 @@ export class InkEditorModal extends Modal {
             this.#session.end();
             this.#session.replace(restoreDraft(this.#options.document, draft));
             drafts.restored?.(draft);
-            // Offered to no other editor until this one's own replaces it.
-            drafts.store.hold(draft.id);
+            // Still held: offered to no other editor until this one's own
+            // replaces it.
+            this.#offered = undefined;
             this.#replacing = draft.id;
             this.#updateButtons();
             this.#render();
@@ -587,10 +608,12 @@ export class InkEditorModal extends Modal {
           destructive: true,
           act: () => {
             drafts.store.remove(draft.id);
+            letGo();
           },
         },
       ],
       "Not now",
+      letGo,
     );
   }
 
