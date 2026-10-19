@@ -21,6 +21,7 @@ import {
 import {
   InkEditorModal,
   type EditorOptions,
+  type EditorTools,
   type SymbolCopy,
   type SymbolFile,
 } from "../editor/modal.ts";
@@ -118,13 +119,14 @@ function appendedNotice(file: TFile): void {
  * surrounding text: through a live editor of the note when there is one,
  * since it may hold changes not yet on disk, otherwise into the note's file.
  * When the position cannot be found, the embed goes at the end of the note,
- * and a notice says so.
+ * and a notice says so. Returns the point just after the embed, where the
+ * next symbol's embed goes.
  */
 async function insertEmbed(
   app: App,
   target: Target,
   embed: string,
-): Promise<void> {
+): Promise<InsertionPoint> {
   const { file, point } = target;
   const view = liveView(app, file, target.view);
   if (view !== undefined) {
@@ -133,22 +135,38 @@ async function insertEmbed(
     const at = findPoint(text, point);
     if (at !== undefined) {
       editor.replaceRange(embed, editor.offsetToPos(at));
-      return;
+      return capturePoint(editor.getValue(), at + embed.length);
     }
     const gap = text === "" || text.endsWith("\n") ? "" : "\n";
     editor.replaceRange(`${gap}${embed}\n`, editor.offsetToPos(text.length));
     appendedNotice(file);
-    return;
+    return capturePoint(
+      editor.getValue(),
+      text.length + gap.length + embed.length,
+    );
   }
-  const outcome = { appended: false };
+  const outcome: { appended: boolean; after?: InsertionPoint } = {
+    appended: false,
+  };
   await app.vault.process(file, (text) => {
     const at = findPoint(text, point);
-    if (at !== undefined) return text.slice(0, at) + embed + text.slice(at);
+    if (at !== undefined) {
+      const inserted = text.slice(0, at) + embed + text.slice(at);
+      outcome.after = capturePoint(inserted, at + embed.length);
+      return inserted;
+    }
     outcome.appended = true;
     const gap = text === "" || text.endsWith("\n") ? "" : "\n";
-    return `${text}${gap}${embed}\n`;
+    const appended = `${text}${gap}${embed}\n`;
+    outcome.after = capturePoint(
+      appended,
+      text.length + gap.length + embed.length,
+    );
+    return appended;
   });
   if (outcome.appended) appendedNotice(file);
+  if (outcome.after === undefined) throw new Error("the note did not change");
+  return outcome.after;
 }
 
 /**
@@ -224,30 +242,38 @@ async function claimedFile(
 }
 
 /**
- * Whether the target note already embeds `file`, as when an interrupted
- * first save inserted it before its draft could say so: its text, live or on
- * disk, holds the embed Inkline inserts, or one that the metadata cache
- * resolves to the file. A link that does not embed the file does not count.
+ * Where the target note already embeds `file`, as when an interrupted first
+ * save inserted it before its draft could say so: the point just after the
+ * embed Inkline inserts, or after one that the metadata cache resolves to the
+ * file, however it is written, in the note's text, live or on disk. That is
+ * where the next symbol's embed goes. Undefined when the note has no such
+ * embed; a link that does not embed the file does not count.
  */
-async function embeds(
+async function existingEmbed(
   app: App,
   target: Target,
   file: TFile,
   embed: string,
-): Promise<boolean> {
+): Promise<InsertionPoint | undefined> {
   const note = target.file;
   const view = liveView(app, note, target.view);
   const text = view?.editor.getValue() ?? (await app.vault.read(note));
-  if (text.includes(embed)) return true;
+  const at = text.indexOf(embed);
+  if (at !== -1) return capturePoint(text, at + embed.length);
   // The cache may lag the text, so an embed counts only if it is still there.
-  return (app.metadataCache.getFileCache(note)?.embeds ?? []).some(
-    (cached) =>
-      text.includes(cached.original) &&
+  for (const cached of app.metadataCache.getFileCache(note)?.embeds ?? []) {
+    const found = text.indexOf(cached.original);
+    if (
+      found !== -1 &&
       app.metadataCache.getFirstLinkpathDest(
         getLinkpath(cached.link),
         note.path,
-      ) === file,
-  );
+      ) === file
+    ) {
+      return capturePoint(text, found + cached.original.length);
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -262,18 +288,33 @@ async function embeds(
  * than make another, and inserts the embed once.
  */
 export function insertSymbol(host: EditorHost, view: MarkdownView): void {
-  const { app } = host;
   const note = view.file;
   if (note === null) return;
   const editor = view.editor;
-  const target: Target = {
+  newSymbol(host, {
     view,
     file: note,
     point: capturePoint(
       editor.getValue(),
       editor.posToOffset(editor.getCursor()),
     ),
-  };
+  });
+}
+
+/**
+ * Opens the editor for a new symbol whose embed goes to `target`, as
+ * {@link insertSymbol} describes, starting with `tools` when it follows
+ * another. Its Next opens one more, whose embed follows this one's.
+ */
+function newSymbol(
+  host: EditorHost,
+  target: Target,
+  tools?: EditorTools,
+): void {
+  const { app } = host;
+  const note = target.file;
+  /** Where the next symbol's embed goes, once this one's is in the note. */
+  let after: InsertionPoint | undefined;
   /**
    * The symbol's file once made, a fingerprint of what was last written
    * there, and of what it held before while that write is under way.
@@ -294,6 +335,11 @@ export function insertSymbol(host: EditorHost, view: MarkdownView): void {
     title: "New symbol",
     document: emptyDocument,
     center: visibleWidth / 2,
+    ...(tools === undefined ? {} : { tools }),
+    next: (chosen) => {
+      if (after === undefined || !host.alive()) return;
+      newSymbol(host, { ...target, point: after }, chosen);
+    },
     drafts: {
       store: host.drafts,
       // Once inserted, the symbol is its file, whatever the note does.
@@ -382,9 +428,14 @@ export function insertSymbol(host: EditorHost, view: MarkdownView): void {
       const embed = embedFromLink(
         app.fileManager.generateMarkdownLink(made.file, note.path),
       );
-      if (!adopted || !(await embeds(app, target, made.file, embed))) {
+      const existing = adopted
+        ? await existingEmbed(app, target, made.file, embed)
+        : undefined;
+      if (existing === undefined) {
         stillAlive(host);
-        await insertEmbed(app, target, embed);
+        after = await insertEmbed(app, target, embed);
+      } else {
+        after = existing;
       }
       inserted = true;
     },

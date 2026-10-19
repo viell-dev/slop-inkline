@@ -224,10 +224,6 @@ async function writeNoise(
         data[index * 4 + 3] = seed >>> 24;
       }
       const bytes = await canvas.encodePixels({ width: w, height: h, data });
-      const folder = filePath.slice(0, Math.max(0, filePath.lastIndexOf("/")));
-      if (folder !== "" && app.vault.getFolderByPath(folder) === null) {
-        await app.vault.createFolder(folder);
-      }
       await app.vault.createBinary(filePath, bytes.slice().buffer);
       return bytes.length;
     },
@@ -289,6 +285,38 @@ async function strokeCount(path: string): Promise<number> {
   return record.strokes?.length ?? -1;
 }
 
+/** Marks the open editor, so that {@link waitForNext} can tell it apart. */
+async function markEditor(): Promise<void> {
+  await browser.execute(() => {
+    for (const editor of document.querySelectorAll(".inkline-editor")) {
+      editor.setAttribute("data-inkline-test-before", "");
+    }
+  });
+}
+
+/**
+ * Waits for the next editor after Next: `count` symbol files saved, and an
+ * editor that {@link markEditor} did not mark, whose status is still empty.
+ */
+async function waitForNext(count: number): Promise<void> {
+  const fresh = ".inkline-editor:not([data-inkline-test-before])";
+  await browser.waitUntil(
+    async () =>
+      (await symbolFiles()).length === count &&
+      (await browser.$(fresh).isExisting()) &&
+      (await browser.$(`${fresh} .inkline-status`).getText()) === "",
+    { timeoutMsg: `no editor after ${String(count)} symbols` },
+  );
+  await waitForEditor();
+}
+
+/** Whether a toolbar button shows itself pressed. */
+async function pressed(button: string): Promise<string | null> {
+  return browser
+    .$(`[data-inkline-button="${button}"]`)
+    .getAttribute("aria-pressed");
+}
+
 /**
  * Writes a symbol file of one stroke per x, in units, as another editor
  * would, with a text chunk that Inkline carries through its saves.
@@ -340,12 +368,6 @@ async function carriedIn(path: string): Promise<number> {
   }, path);
 }
 
-/** How many strokes a symbol file's record holds. */
-async function strokesIn(path: string): Promise<number> {
-  const record = JSON.parse(await recordOf(path)) as { strokes?: unknown[] };
-  return record.strokes?.length ?? -1;
-}
-
 /** Chooses a symbol in the open choice of symbols, by typing its name. */
 async function chooseSymbol(name: string): Promise<void> {
   await browser.$(".prompt-input").waitForDisplayed();
@@ -379,6 +401,22 @@ describe("The editor", function () {
 
   after(async function () {
     await startOver();
+  });
+
+  it("starts each test from the vault as it was, with a note's save under way", async function () {
+    const original = await fileText("Editor.md");
+    await openAtMarker("Editor.md", "HERE");
+    await delayVault("modify", 1500, "before");
+    // A save held across the reset, as a slow disk would hold one.
+    await browser.executeObsidian(({ app, obsidian }) => {
+      const view = app.workspace.getActiveViewOfType(obsidian.MarkdownView);
+      if (view === null) throw new Error("no Markdown view");
+      view.editor.setValue("Text from the test before\n");
+      void view.save();
+    });
+    await startOver();
+    await browser.pause(2000);
+    expect(await fileText("Editor.md")).toBe(original);
   });
 
   it("saves a drawing as a new symbol and inserts it where the cursor was", async function () {
@@ -593,6 +631,7 @@ describe("The editor", function () {
     await tooltip("copy", "Copy from: start from a copy of another symbol (V)");
     await tooltip("size-0", "Brush size S (1)");
     await tooltip("pen", "Pen (P)");
+    await tooltip("next", "Next: save and draw the next one (Mod+Shift+Enter)");
   });
 
   it("saves a stroke still being drawn when saving and closing", async function () {
@@ -2550,6 +2589,157 @@ describe("The editor", function () {
       expect(await strokeCount("001.ink.png")).toBe(2);
     });
   });
+  describe("drawing the next one", function () {
+    it("saves, inserts, and opens the next symbol right after it", async function () {
+      await insert();
+      await draw(zigzag);
+      await markEditor();
+      await browser.keys(["Control", "Shift", "Enter"]);
+      await waitForNext(1);
+      // A blank drawing: its first stroke is the draft's only one.
+      await draw([[0.5, 0.5]]);
+      await browser.waitUntil(
+        async () => (await storedDrafts())[0]?.strokes.length === 1,
+      );
+      await markEditor();
+      await browser.$('[data-inkline-button="next"]').click();
+      await waitForNext(2);
+      await draw([[0.4, 0.3]]);
+      await browser.keys(["Control", "Enter"]);
+      await waitClosed();
+      expect(await symbolFiles()).toEqual([
+        "001.ink.png",
+        "002.ink.png",
+        "003.ink.png",
+      ]);
+      expect(await noteText()).toBe(
+        "The door is marked with ![[001.ink.png]]![[002.ink.png]]![[003.ink.png]] which means return.\n",
+      );
+    });
+
+    it("starts the next symbol with the same tools", async function () {
+      await insert();
+      await draw(zigzag);
+      await browser.keys(["e", "3"]);
+      await browser.keys(["Shift", "g"]);
+      await browser.keys(["g"]);
+      await markEditor();
+      await browser.keys(["Control", "Shift", "Enter"]);
+      await waitForNext(1);
+      expect(await pressed("eraser")).toBe("true");
+      expect(await pressed("size-2")).toBe("true");
+      expect(await pressed("grid")).toBe("true");
+      expect(await pressed("guides")).toBe("false");
+      // It can start from a copy as the first editor could.
+      expect(await browser.$('[data-inkline-button="copy"]').isExisting()).toBe(
+        true,
+      );
+    });
+
+    it("follows the symbol before even when the note's tab shows another", async function () {
+      await insert();
+      await draw(zigzag);
+      await markEditor();
+      await browser.keys(["Control", "Shift", "Enter"]);
+      await waitForNext(1);
+      // The next embed then goes into the note's file.
+      await showWelcomeInstead();
+      await draw([[0.5, 0.5]]);
+      await browser.keys(["Control", "Enter"]);
+      await waitClosed();
+      expect(await fileText("Editor.md")).toBe(
+        "The door is marked with ![[001.ink.png]]![[002.ink.png]] which means return.\n",
+      );
+    });
+
+    it("stays when the symbol could not be inserted, and goes on once it is", async function () {
+      try {
+        await browser.executeObsidian(({ app }) => {
+          const vault = app.vault as typeof app.vault & {
+            inklineProcess?: typeof app.vault.process;
+          };
+          vault.inklineProcess = vault.process.bind(vault);
+          vault.process = () => Promise.reject(new Error("the note is locked"));
+        });
+        await insert();
+        await draw(zigzag);
+        await showWelcomeInstead();
+        await browser.keys(["Control", "Shift", "Enter"]);
+        await waitForStatus("the note is locked");
+        expect(await browser.$$(".inkline-editor").length).toBe(1);
+      } finally {
+        await unlockNotes();
+      }
+      await markEditor();
+      await browser.keys(["Control", "Shift", "Enter"]);
+      await waitForNext(1);
+      // Inserted into the note's file, and the next follows it there.
+      await draw([[0.5, 0.5]]);
+      await browser.keys(["Control", "Enter"]);
+      await waitClosed();
+      expect(await fileText("Editor.md")).toBe(
+        "The door is marked with ![[001.ink.png]]![[002.ink.png]] which means return.\n",
+      );
+    });
+
+    it("opens one next editor however often Next is asked during its save", async function () {
+      await insert();
+      await draw(zigzag);
+      await delayVault("createBinary", 1500);
+      await markEditor();
+      await browser.$('[data-inkline-button="next"]').click();
+      await browser.keys(["Control", "Shift", "Enter"]);
+      await browser.keys(["Control", "Shift", "Enter"]);
+      await waitForNext(1);
+      await browser.pause(2000);
+      expect(await browser.$$(".inkline-editor").length).toBe(1);
+    });
+
+    it("follows a restored symbol's embed however the note writes it", async function () {
+      await interruptInsertion();
+      // The first save's embed did reach the note, written another way.
+      await browser.executeObsidian(async ({ app }) => {
+        const note = app.vault.getFileByPath("Editor.md");
+        if (note === null) throw new Error("no Editor.md");
+        await app.vault.modify(note, "Before ![[001.ink.png|symbol]] after.\n");
+      });
+      await browser.waitUntil(async () =>
+        browser.executeObsidian(({ app }) => {
+          const note = app.vault.getFileByPath("Editor.md");
+          if (note === null) return false;
+          const embeds = app.metadataCache.getFileCache(note)?.embeds ?? [];
+          return embeds.some((embed) => embed.link === "001.ink.png");
+        }),
+      );
+      await browser.executeObsidianCommand("inkline:insert-symbol");
+      await clickTop("Restore");
+      await markEditor();
+      await browser.keys(["Control", "Shift", "Enter"]);
+      await waitForNext(1);
+      await draw([[0.5, 0.5]]);
+      await browser.keys(["Control", "Enter"]);
+      await waitClosed();
+      // The note is open, so the embed went in through its editor.
+      expect(await noteText()).toBe(
+        "Before ![[001.ink.png|symbol]]![[002.ink.png]] after.\n",
+      );
+    });
+
+    it("has no Next for a symbol file", async function () {
+      await saveOne();
+      await editFile("001.ink.png");
+      expect(await browser.$('[data-inkline-button="next"]').isExisting()).toBe(
+        false,
+      );
+      await draw([[0.5, 0.2]]);
+      await browser.keys(["Control", "Shift", "Enter"]);
+      await browser.pause(500);
+      expect(await editorOpen()).toBe(true);
+      expect(await symbolFiles()).toEqual(["001.ink.png"]);
+      expect(await strokeCount("001.ink.png")).toBe(1);
+    });
+  });
+
   describe("starting from a copy", function () {
     it("starts a new symbol from a copy of another, which Undo takes back", async function () {
       await writeSymbol("Glyphs/tower.ink.png", [800, 1600]);
@@ -2573,8 +2763,8 @@ describe("The editor", function () {
         "001.ink.png",
         "Glyphs/tower.ink.png",
       ]);
-      expect(await strokesIn("001.ink.png")).toBe(3);
-      expect(await strokesIn("Glyphs/tower.ink.png")).toBe(2);
+      expect(await strokeCount("001.ink.png")).toBe(3);
+      expect(await strokeCount("Glyphs/tower.ink.png")).toBe(2);
       // The tower's text stays with its own file.
       expect(await carriedIn("Glyphs/tower.ink.png")).toBe(1);
       expect(await carriedIn("001.ink.png")).toBe(0);

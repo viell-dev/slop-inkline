@@ -14,6 +14,10 @@ section is also its
   with a mouse, pen, or finger, and save it with Mod+Enter: Inkline creates the
   file in Obsidian's attachment location, named with the next free number, and
   inserts it where the cursor was. Nothing is created until the first save.
+- **Next**, or Mod+Shift+Enter, in the editor for a new symbol, saves and
+  inserts it, then opens a blank editor whose symbol goes right after it, with
+  the same tools, so that an inscription of several symbols is copied in one
+  pass.
 - **Copy from**, or V, in the editor for a new symbol, starts it from a copy of
   another symbol's strokes and base layer, chosen from the vault's symbols, for
   scripts whose symbols share parts. Undo takes the copy back.
