@@ -294,6 +294,236 @@ describe("The drawing core in Obsidian's renderer", function () {
     expect(from).toBe("undecodable-base");
   });
 
+  it("saves the same file again however far the drawing sits from the origin", async function () {
+    const results = await browser.execute(async () => {
+      const { canvas, record } = window.inklineTest;
+      const outcomes: boolean[] = [];
+      for (const shift of [0, 7680, 64000, 400000]) {
+        const first = await canvas.saveInk(
+          {
+            strokes: [
+              {
+                tool: "pen",
+                size: 187,
+                pressure: true,
+                points: [8937 + shift, 1245, 103, 9675 + shift, 2250, 70],
+              },
+            ],
+          },
+          undefined,
+        );
+        const opened = await canvas.openInk(first.bytes);
+        if (opened.kind !== "editable") throw new Error(opened.kind);
+        const second = await canvas.saveInk(opened.document, opened.base);
+        const pixels = async (bytes: Uint8Array): Promise<string> =>
+          canvas.readPixels(await canvas.decodePng(bytes)).data.join(",");
+        outcomes.push(
+          record.serializeRecord(first.record) ===
+            record.serializeRecord(second.record) &&
+            (await pixels(first.bytes)) === (await pixels(second.bytes)),
+        );
+      }
+      return outcomes;
+    });
+    expect(results).toEqual([true, true, true, true]);
+  });
+
+  it("draws a base layer in grey whatever its own colours", async function () {
+    const result = await browser.execute(async () => {
+      const { canvas, inkFile } = window.inklineTest;
+      const red = await canvas.encodePixels({
+        width: 1,
+        height: 1,
+        data: Uint8ClampedArray.of(255, 0, 0, 255),
+      });
+      const image = await canvas.encodePixels({
+        width: 48,
+        height: 192,
+        data: new Uint8ClampedArray(48 * 192 * 4),
+      });
+      // A 10 px red square at (10, 10), an eraser through its middle row, and
+      // a pen dot after the eraser on its left edge.
+      const file = await inkFile.writeInkFile(image, {
+        box: { pxPerEm: 128, width: 48, height: 192, baseline: 144 },
+        strokes: [
+          {
+            tool: "eraser",
+            size: 32,
+            pressure: false,
+            points: [160, 240, 320, 240],
+          },
+          { tool: "pen", size: 32, pressure: false, points: [176, 240] },
+        ],
+        base: { x: 160, y: 160, scale: 10, png: red },
+      });
+      const opened = await canvas.openInk(file);
+      if (opened.kind !== "editable") throw new Error(opened.kind);
+      const saved = await canvas.saveInk(opened.document, opened.base);
+      const pixels = canvas.readPixels(await canvas.decodePng(saved.bytes));
+      const baseX = (saved.record.base?.x ?? 0) / 16;
+      const at = (x: number, y: number): number[] => [
+        ...pixels.data.subarray(
+          (y * pixels.width + x) * 4,
+          (y * pixels.width + x) * 4 + 4,
+        ),
+      ];
+      return {
+        base: at(baseX + 5, 12),
+        erased: at(baseX + 7, 15),
+        dot: at(baseX + 1, 15),
+      };
+    });
+    expect(result.base).toEqual([126, 126, 126, 255]);
+    expect(result.erased[3]).toBe(0);
+    expect(result.dot).toEqual([126, 126, 126, 255]);
+  });
+
+  it("opens and saves pictures only one or two pixels high", async function () {
+    const results = await browser.execute(async () => {
+      const { canvas } = window.inklineTest;
+      const outcomes: { scale: number; size: number[]; width: number }[] = [];
+      for (const height of [1, 2]) {
+        const picture = await canvas.encodePixels({
+          width: 1,
+          height,
+          data: new Uint8ClampedArray(4 * height)
+            .fill(0)
+            .map((_, index) => (index % 4 === 3 ? 255 : 0)),
+        });
+        const opened = await canvas.openInk(picture);
+        if (opened.kind !== "editable" || opened.document.base === undefined) {
+          throw new Error("no base layer");
+        }
+        const saved = await canvas.saveInk(opened.document, opened.base);
+        const base = await canvas.decodePng(opened.document.base.png);
+        outcomes.push({
+          scale: opened.document.base.scale,
+          size: [base.width, base.height],
+          width: saved.record.box.width,
+        });
+      }
+      return outcomes;
+    });
+    expect(results).toEqual([
+      // 3 × 3 at scale 64 fills 192 px, plus the side bearings.
+      { scale: 64, size: [3, 3], width: 208 },
+      { scale: 48, size: [2, 4], width: 112 },
+    ]);
+  });
+
+  it("crops to the visible ink, ignoring geometry outside the line box or erased", async function () {
+    const result = await browser.execute(async () => {
+      const { canvas } = window.inklineTest;
+      const offBox = await canvas.saveInk(
+        {
+          strokes: [
+            {
+              tool: "pen",
+              size: 160,
+              pressure: false,
+              // 80 px long, with ink from -5 to 85 px.
+              points: [0, 1600, 1280, 1600],
+            },
+            {
+              tool: "pen",
+              size: 160,
+              pressure: false,
+              points: [160000, 16000],
+            },
+          ],
+        },
+        undefined,
+      );
+      const erased = await canvas.saveInk(
+        {
+          strokes: [
+            {
+              tool: "pen",
+              size: 160,
+              pressure: false,
+              points: [0, 1600, 160000, 1600],
+            },
+            {
+              tool: "eraser",
+              size: 640,
+              pressure: false,
+              points: [-800, 1600, 161000, 1600],
+            },
+          ],
+        },
+        undefined,
+      );
+      return {
+        offBox: offBox.record.box.width,
+        kept: offBox.record.strokes.length,
+        erased: erased.record.box.width,
+      };
+    });
+    // The visible line and its bearings, not the dot 10,000 px away below
+    // the line box.
+    expect(result.offBox).toBeGreaterThanOrEqual(104);
+    expect(result.offBox).toBeLessThanOrEqual(108);
+    expect(result.kept).toBe(2);
+    expect(result.erased).toBe(48);
+  });
+
+  it("keeps a file's text chunks when it is saved again", async function () {
+    const kept = await browser.execute(async () => {
+      const { canvas, png } = window.inklineTest;
+      const first = await canvas.saveInk(
+        {
+          strokes: [
+            { tool: "pen", size: 160, pressure: false, points: [320, 1600] },
+          ],
+        },
+        undefined,
+      );
+      const [header, ...rest] = png.readChunks(first.bytes);
+      if (header === undefined) throw new Error("no header");
+      const comment = {
+        type: "tEXt",
+        data: Uint8Array.from("Comment\0keep me", (char) => char.charCodeAt(0)),
+      };
+      const tagged = png.writeChunks([header, comment, ...rest]);
+      const opened = await canvas.openInk(tagged);
+      if (opened.kind !== "editable") throw new Error(opened.kind);
+      const second = await canvas.saveInk(
+        opened.document,
+        opened.base,
+        opened.carried,
+      );
+      return png
+        .readChunks(second.bytes)
+        .filter((chunk) => chunk.type === "tEXt")
+        .map((chunk) => String.fromCharCode(...chunk.data));
+    });
+    expect(kept).toEqual(["Comment\0keep me"]);
+  });
+
+  it("opens the pixels of a record whose strokes lie beyond the working range", async function () {
+    const from = await browser.execute(async () => {
+      const { canvas, document, inkFile } = window.inklineTest;
+      const image = await canvas.encodePixels({
+        width: 48,
+        height: 192,
+        data: new Uint8ClampedArray(48 * 192 * 4),
+      });
+      const file = await inkFile.writeInkFile(image, {
+        box: { pxPerEm: 128, width: 48, height: 192, baseline: 144 },
+        strokes: [
+          {
+            tool: "eraser",
+            size: 16,
+            pressure: false,
+            points: [-(document.workingRange + 1), 1600],
+          },
+        ],
+      });
+      const opened = await canvas.openInk(file);
+      return opened.kind === "editable" ? opened.from : opened.kind;
+    });
+    expect(from).toBe("unworkable");
+  });
   it("stores a grey legible on Obsidian's light and dark backgrounds", async function () {
     const backgrounds = await browser.execute(() => {
       const read = (dark: boolean): number[] => {

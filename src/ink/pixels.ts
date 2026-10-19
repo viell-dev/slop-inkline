@@ -76,3 +76,25 @@ export function inkPixels(
   }
   return data;
 }
+
+/**
+ * Repeats each pixel of a one-value-per-pixel image `factor` times across and
+ * down, which enlarges it without changing what it shows.
+ */
+export function repeatPixels(
+  values: Uint8ClampedArray,
+  width: number,
+  height: number,
+  factor: number,
+): Uint8ClampedArray {
+  if (factor === 1) return values;
+  const wide = width * factor;
+  const output = new Uint8ClampedArray(wide * height * factor);
+  for (let y = 0; y < height * factor; y++) {
+    const source = Math.floor(y / factor) * width;
+    for (let x = 0; x < wide; x++) {
+      output[y * wide + x] = values[source + Math.floor(x / factor)] ?? 0;
+    }
+  }
+  return output;
+}

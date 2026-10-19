@@ -3,6 +3,7 @@ import {
   inkAlpha,
   inkBounds,
   inkPixels,
+  repeatPixels,
   type RgbaPixels,
 } from "../../../src/ink/pixels.ts";
 import { inkGrey } from "../../../src/ink/render.ts";
@@ -84,5 +85,23 @@ describe("inkPixels", () => {
       inkGrey,
       200,
     ]);
+  });
+});
+
+describe("repeatPixels", () => {
+  it("repeats each value across and down", () => {
+    const values = Uint8ClampedArray.of(1, 2, 3, 4, 5, 6);
+    // prettier-ignore
+    expect([...repeatPixels(values, 3, 2, 2)]).toEqual([
+      1, 1, 2, 2, 3, 3,
+      1, 1, 2, 2, 3, 3,
+      4, 4, 5, 5, 6, 6,
+      4, 4, 5, 5, 6, 6,
+    ]);
+  });
+
+  it("returns the values unchanged for a factor of 1", () => {
+    const values = Uint8ClampedArray.of(7, 8);
+    expect(repeatPixels(values, 2, 1, 1)).toBe(values);
   });
 });
