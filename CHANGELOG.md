@@ -22,3 +22,10 @@ section is also its
 - The editor asks before closing a drawing with unsaved changes, whether by Esc,
   the close button, or a click outside, and keeps the drawing open when a save
   fails.
+- Unsaved strokes are kept as a draft in the vault's local storage, so that
+  closing Obsidian, a crash, or disabling Inkline loses nothing; opening the
+  same symbol, or a new one in the same note, offers them back.
+- A new symbol goes into the note it was started in, where the cursor was, even
+  if that note's tab now shows another note or was closed. If the text around
+  that place changed so much that it cannot be found, the symbol is added at the
+  end of the note, with a notice.
