@@ -500,29 +500,130 @@ describe("The drawing core in Obsidian's renderer", function () {
     expect(kept).toEqual(["Comment\0keep me"]);
   });
 
-  it("opens the pixels of a record whose strokes lie beyond the working range", async function () {
+  it("reopens what it saved with its strokes, even far from the ink", async function () {
+    const result = await browser.execute(async () => {
+      const { canvas, record } = window.inklineTest;
+      const first = await canvas.saveInk(
+        {
+          strokes: [
+            { tool: "pen", size: 160, pressure: false, points: [1600, 1600] },
+            {
+              tool: "eraser",
+              size: 16,
+              pressure: false,
+              points: [-4194304, 1600],
+            },
+          ],
+        },
+        undefined,
+      );
+      const opened = await canvas.openInk(first.bytes);
+      if (opened.kind !== "editable") throw new Error(opened.kind);
+      const second = await canvas.saveInk(opened.document, opened.base);
+      const pixels = async (bytes: Uint8Array): Promise<string> =>
+        canvas.readPixels(await canvas.decodePng(bytes)).data.join(",");
+      return {
+        from: opened.from,
+        strokes: opened.document.strokes.length,
+        sameRecord:
+          record.serializeRecord(first.record) ===
+          record.serializeRecord(second.record),
+        samePixels:
+          (await pixels(first.bytes)) === (await pixels(second.bytes)),
+      };
+    });
+    expect(result).toEqual({
+      from: "record",
+      strokes: 2,
+      sameRecord: true,
+      samePixels: true,
+    });
+  });
+
+  it("refuses to save a stroke that cropping would move past the coordinate limit", async function () {
+    const message = await browser.execute(async () => {
+      const { canvas, record } = window.inklineTest;
+      return canvas
+        .saveInk(
+          {
+            strokes: [
+              { tool: "pen", size: 160, pressure: false, points: [1600, 1600] },
+              {
+                tool: "eraser",
+                size: 16,
+                pressure: false,
+                points: [-record.limits.coordinate + 100, 1600],
+              },
+            ],
+          },
+          undefined,
+        )
+        .then(
+          () => "saved",
+          (error: unknown) => String(error),
+        );
+    });
+    expect(message).toContain("past the format's coordinate limit");
+  });
+
+  it("opens the pixels of a record that cannot be scaled to the line box", async function () {
     const from = await browser.execute(async () => {
-      const { canvas, document, inkFile } = window.inklineTest;
+      const { canvas, inkFile } = window.inklineTest;
       const image = await canvas.encodePixels({
         width: 48,
         height: 192,
         data: new Uint8ClampedArray(48 * 192 * 4),
       });
+      // At 64 px per em, the eraser's size doubles past the limit.
       const file = await inkFile.writeInkFile(image, {
-        box: { pxPerEm: 128, width: 48, height: 192, baseline: 144 },
+        box: { pxPerEm: 64, width: 48, height: 192, baseline: 72 },
         strokes: [
-          {
-            tool: "eraser",
-            size: 16,
-            pressure: false,
-            points: [-(document.workingRange + 1), 1600],
-          },
+          { tool: "eraser", size: 40000, pressure: false, points: [0, 0] },
         ],
       });
       const opened = await canvas.openInk(file);
       return opened.kind === "editable" ? opened.from : opened.kind;
     });
     expect(from).toBe("unworkable");
+  });
+
+  it("saves a base layer where the document puts it, reusing its decoded pixels", async function () {
+    const results = await browser.execute(async () => {
+      const { canvas, document } = window.inklineTest;
+      const picture = await canvas.encodePixels({
+        width: 1,
+        height: 1,
+        data: Uint8ClampedArray.of(0, 0, 0, 255),
+      });
+      const opened = await canvas.openInk(picture);
+      if (opened.kind !== "editable" || opened.document.base === undefined) {
+        throw new Error("no base layer");
+      }
+      const { base } = opened.document;
+      const variants = [
+        document.moveDocument(opened.document, 300),
+        document.moveDocument(opened.document, -300),
+        { strokes: [], base: { ...base, scale: base.scale / 2 } },
+      ];
+      const outcomes: { width: number; middle: number }[] = [];
+      for (const variant of variants) {
+        const saved = await canvas.saveInk(variant, opened.base);
+        const pixels = canvas.readPixels(await canvas.decodePng(saved.bytes));
+        const middle =
+          (60 * pixels.width + Math.floor(pixels.width / 2)) * 4 + 3;
+        outcomes.push({
+          width: saved.record.box.width,
+          middle: pixels.data[middle] ?? -1,
+        });
+      }
+      return outcomes;
+    });
+    expect(results).toEqual([
+      { width: 208, middle: 255 },
+      { width: 208, middle: 255 },
+      // Half the scale: 96 px of ink plus the bearings.
+      { width: 112, middle: 255 },
+    ]);
   });
   it("stores a grey legible on Obsidian's light and dark backgrounds", async function () {
     const backgrounds = await browser.execute(() => {

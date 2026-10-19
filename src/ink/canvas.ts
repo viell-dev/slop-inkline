@@ -6,8 +6,9 @@ import {
   preservableChunks,
   readInkFile,
   writeInkFile,
+  type CarriedChunk,
 } from "../format/ink-file.ts";
-import { imageHeader, readChunks, type Chunk } from "../format/png.ts";
+import { imageHeader, readChunks } from "../format/png.ts";
 import {
   limits,
   unitsPerPixel,
@@ -16,6 +17,7 @@ import {
 } from "../format/record.ts";
 import {
   documentFromRecord,
+  fitsFormat,
   recordFromDocument,
   type InkDocument,
 } from "./document.ts";
@@ -100,13 +102,14 @@ export interface EditableInk {
   /**
    * `record` when the file's strokes were read; otherwise why its pixels
    * became the base layer: no record, an invalid one, one that no longer
-   * matches the image, one whose base layer does not decode, or one whose
-   * strokes lie beyond what the editor can keep within the format's limits.
+   * matches the image, one whose base layer does not decode, or one with
+   * another geometry that cannot be scaled to the line box within the
+   * format's limits.
    */
   readonly from:
     "record" | "none" | "invalid" | "stale" | "undecodable-base" | "unworkable";
   /** The file's chunks to keep when it is saved again: text and the like. */
-  readonly carried: readonly Chunk[];
+  readonly carried: readonly CarriedChunk[];
 }
 
 /** A file that a later version of Inkline wrote, which must not be edited. */
@@ -184,7 +187,7 @@ export async function baseFromPicture(
 async function fromPixels(
   bytes: Uint8Array,
   from: Exclude<EditableInk["from"], "record">,
-  carried: readonly Chunk[],
+  carried: readonly CarriedChunk[],
 ): Promise<EditableInk> {
   const { layer, drawable } = await baseFromPicture(bytes);
   return {
@@ -319,16 +322,27 @@ const cropMargin = 64;
  * {@link openInk}, are kept. Returns the file's bytes and its record.
  *
  * The crop is confirmed in the record's own coordinates, so that saving a
- * file again unchanged gives the same record and the same pixels. Throws a
- * `RangeError` when the ink is wider than an image can be, and a
- * `RecordError` when the record would be refused on reading.
+ * file again unchanged gives the same record and the same pixels. The
+ * document's base layer gives its position and scale; `base` is its decoded
+ * pixels, and must be given when the document has one. Throws a `RangeError`
+ * when the ink is wider than an image can be, or when the crop would move a
+ * far stroke past the format's coordinate limit, which only a record made
+ * elsewhere can come near, and a `RecordError` when the record would be
+ * refused on reading.
  */
 export async function saveInk(
   document: InkDocument,
   base: DrawableBase | undefined,
-  carried: readonly Chunk[] = [],
+  carried: readonly CarriedChunk[] = [],
 ): Promise<{ bytes: Uint8Array; record: InkRecord }> {
-  let { left, width } = crop(findInk(document, base));
+  if (document.base !== undefined && base === undefined) {
+    throw new Error("the document's base layer has not been decoded");
+  }
+  // The document says where its base layer is; the decoded layer supplies
+  // only its pixels.
+  let { left, width } = crop(
+    findInk(document, placedBase(base, document.base)),
+  );
   for (let attempt = 0; ; attempt++) {
     if (width > limits.size.max) {
       throw new RangeError(
@@ -336,6 +350,11 @@ export async function saveInk(
       );
     }
     const record = recordFromDocument(document, left, width);
+    if (!fitsFormat(record)) {
+      throw new RangeError(
+        "a stroke lies so far from the ink that cropping would move it past the format's coordinate limit",
+      );
+    }
     const placed = placedBase(base, record.base);
     const { surface, context } = canvas(width + cropMargin, lineBox.height);
     drawInk(context, record.strokes, placed, 0);
