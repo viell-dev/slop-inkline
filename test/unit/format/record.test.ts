@@ -6,7 +6,8 @@ import {
   type InkRecord,
   type ParseResult,
 } from "../../../src/format/record.ts";
-import { blank, encodePng } from "../../support/png.ts";
+import { blank, encodePng, header, pixelChunks } from "../../support/png.ts";
+import { pngSignature, writeChunks } from "../../../src/format/png.ts";
 
 const record: InkRecord = {
   box: { pxPerEm: 128, width: 64, height: 192, baseline: 144 },
@@ -242,7 +243,7 @@ describe("parseRecord refuses", () => {
     [
       "a base image that is not a PNG",
       variant(["base", "png"], "R0lGODlh"),
-      "base.png is not a PNG",
+      "base.png is not a valid PNG: not a PNG file",
     ],
   ];
 
@@ -280,5 +281,68 @@ describe("parseRecord refuses", () => {
       "A".repeat((limits.baseBytes / 3) * 4 + 4),
     );
     expect(invalid(parseRecord(text))).toBe("base.png is too large");
+  });
+});
+
+describe("parseRecord checks the base image", () => {
+  const base64 = (bytes: Uint8Array): string =>
+    btoa(String.fromCharCode(...bytes));
+
+  it("refuses a PNG signature alone", () => {
+    const text = variant(["base", "png"], base64(pngSignature));
+    expect(invalid(parseRecord(text))).toBe(
+      "base.png is not a valid PNG: truncated chunk",
+    );
+  });
+
+  it("refuses an image larger than the limit", () => {
+    const [, idat, iend] = pixelChunks(blank(1, 1));
+    if (idat === undefined || iend === undefined) throw new Error("no chunks");
+    const huge = writeChunks([header(100_000, 100_000), idat, iend]);
+    expect(invalid(parseRecord(variant(["base", "png"], base64(huge))))).toBe(
+      "base.png is larger than 4096 pixels a side",
+    );
+  });
+
+  /** A valid PNG padded with an ancillary chunk to exactly `size` bytes. */
+  function paddedPng(size: number): Uint8Array {
+    const [ihdr, idat, iend] = pixelChunks(blank(1, 1));
+    if (ihdr === undefined || idat === undefined || iend === undefined) {
+      throw new Error("no chunks");
+    }
+    const used = writeChunks([ihdr, idat, iend]).length + 12;
+    return writeChunks([
+      ihdr,
+      { type: "zzZz", data: new Uint8Array(size - used) },
+      idat,
+      iend,
+    ]);
+  }
+
+  it("accepts a base image of exactly the size limit and refuses one byte more", () => {
+    const encode = (bytes: Uint8Array): string => {
+      let binary = "";
+      for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+        binary += String.fromCharCode(
+          ...bytes.subarray(offset, offset + 0x8000),
+        );
+      }
+      return btoa(binary);
+    };
+    const exact = paddedPng(limits.baseBytes);
+    expect(exact.length).toBe(limits.baseBytes);
+    expect(parseRecord(variant(["base", "png"], encode(exact))).ok).toBe(true);
+    const over = paddedPng(limits.baseBytes + 1);
+    expect(invalid(parseRecord(variant(["base", "png"], encode(over))))).toBe(
+      "base.png is too large",
+    );
+  });
+});
+
+describe("parseRecord bounds the text", () => {
+  it("refuses text longer than the limit before parsing it", () => {
+    expect(invalid(parseRecord(" ".repeat(limits.text + 1)))).toBe(
+      "record text is too long",
+    );
   });
 });

@@ -2,7 +2,7 @@
 // edited again without loss. docs/file-format.md specifies it; this module
 // writes it and checks it, treating every file as untrusted input.
 
-import { isPng } from "./png.ts";
+import { PngError, imageHeader, readChunks, type ImageHeader } from "./png.ts";
 
 /** The `format` value that marks a record as Inkline's. */
 export const formatName = "inkline";
@@ -30,7 +30,11 @@ export const limits = {
   strokeSize: 4096 * unitsPerPixel,
   /** Largest base image, in bytes. */
   baseBytes: 8 * 1024 * 1024,
+  /** Largest base image width and height, in pixels. */
+  baseSize: 4096,
   baseScale: { min: 1 / 64, max: 64 },
+  /** Longest record text, in bytes of UTF-8. */
+  text: 16 * 1024 * 1024,
 } as const;
 
 export type Tool = "pen" | "eraser";
@@ -207,10 +211,21 @@ function parseBase(value: unknown): BaseLayer {
     fail("base.scale is out of range");
   }
   if (typeof base.png !== "string") fail("base.png is not a string");
-  if ((base.png.length / 4) * 3 > limits.baseBytes)
+  const padding = base.png.endsWith("==") ? 2 : base.png.endsWith("=") ? 1 : 0;
+  if ((base.png.length / 4) * 3 - padding > limits.baseBytes) {
     fail("base.png is too large");
+  }
   const png = fromBase64(base.png, "base.png");
-  if (!isPng(png)) fail("base.png is not a PNG");
+  let header: ImageHeader;
+  try {
+    header = imageHeader(readChunks(png));
+  } catch (error) {
+    if (!(error instanceof PngError)) throw error;
+    fail(`base.png is not a valid PNG: ${error.message}`);
+  }
+  if (header.width > limits.baseSize || header.height > limits.baseSize) {
+    fail(`base.png is larger than ${String(limits.baseSize)} pixels a side`);
+  }
   return { x, y, scale, png };
 }
 
@@ -221,6 +236,9 @@ function parseBase(value: unknown): BaseLayer {
  */
 export function parseRecord(text: string): ParseResult {
   try {
+    // UTF-16 code units never outnumber UTF-8 bytes, so a string short enough
+    // here may still be too long in bytes; a longer one always is.
+    if (text.length > limits.text) fail("record text is too long");
     let json: unknown;
     try {
       json = JSON.parse(text);
