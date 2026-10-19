@@ -495,11 +495,14 @@ export class InkEditorModal extends Modal {
     if (line === undefined) return;
     const font = getComputedStyle(line);
     this.#fontGuides = fontGuides(
-      measureFont({
-        style: font.fontStyle,
-        weight: font.fontWeight,
-        family: font.fontFamily,
-      }),
+      measureFont(
+        {
+          style: font.fontStyle,
+          weight: font.fontWeight,
+          family: font.fontFamily,
+        },
+        line.doc,
+      ),
     );
   }
 

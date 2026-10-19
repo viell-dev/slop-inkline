@@ -21,9 +21,15 @@ export interface FontStyle {
   readonly family: string;
 }
 
-/** A font's vertical metrics, measured from its glyphs at the line box's size. */
-export function measureFont(font: FontStyle): FontMetrics {
-  const context = new OffscreenCanvas(1, 1).getContext("2d");
+/**
+ * A font's vertical metrics, measured from its glyphs at the line box's
+ * size, in `doc`, whose fonts a canvas uses: a popout window has its own.
+ */
+export function measureFont(font: FontStyle, doc: Document): FontMetrics {
+  // That window's own canvas, which uses that document's fonts.
+  const view = doc.defaultView;
+  if (view === null) throw new Error("the document has no window");
+  const context = new view.OffscreenCanvas(1, 1).getContext("2d");
   if (context === null) throw new Error("no 2D canvas context");
   const em = lineBox.pxPerEm;
   context.font = `${font.style} ${font.weight} ${String(em)}px ${font.family}`;

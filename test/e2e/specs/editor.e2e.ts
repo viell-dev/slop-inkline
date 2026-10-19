@@ -1617,6 +1617,93 @@ describe("The editor", function () {
     }
   });
 
+  it("measures the font in the window the editor opens in", async function () {
+    await browser.executeObsidian(async ({ app }) => {
+      const file = app.vault.getFileByPath("Editor.md");
+      if (file === null) throw new Error("no Editor.md");
+      await app.workspace.openPopoutLeaf().openFile(file);
+    });
+    try {
+      // A font that only the popout has, as its text font.
+      await browser.waitUntil(async () =>
+        browser.executeObsidian(({ app, obsidian }) => {
+          const view = app.workspace.getActiveViewOfType(obsidian.MarkdownView);
+          return (
+            view !== null &&
+            view.containerEl.doc !== document &&
+            view.editor.getValue().includes("HERE")
+          );
+        }),
+      );
+      await browser.executeObsidian(async ({ app, obsidian }) => {
+        const view = app.workspace.getActiveViewOfType(obsidian.MarkdownView);
+        const doc = view?.containerEl.doc;
+        const win = doc?.defaultView;
+        if (
+          view === null ||
+          doc === undefined ||
+          win === null ||
+          win === undefined
+        ) {
+          throw new Error("no popout");
+        }
+        const face = new win.FontFace(
+          "Inkline Popout Only",
+          "local('DejaVu Serif')",
+        );
+        doc.fonts.add(face);
+        await face.load();
+        doc.body.setCssProps({
+          "--font-text": '"Inkline Popout Only", monospace',
+        });
+        const editor = view.editor;
+        const at = editor.getValue().indexOf("HERE");
+        editor.setSelection(editor.offsetToPos(at), editor.offsetToPos(at + 4));
+        editor.replaceSelection("");
+        editor.focus();
+      });
+      await browser.executeObsidianCommand("inkline:insert-symbol");
+      await browser.waitUntil(async () =>
+        browser.execute(
+          () =>
+            activeDocument !== document &&
+            activeDocument.querySelector(".inkline-editor .inkline-surface") !==
+              null,
+        ),
+      );
+      // The main window does not have the font, so it measures otherwise.
+      const elsewhere = await browser.execute(() => {
+        const context = new OffscreenCanvas(1, 1).getContext("2d");
+        if (context === null) throw new Error("no context");
+        context.font = '128px "Inkline Popout Only", monospace';
+        return context.measureText("x").actualBoundingBoxAscent;
+      });
+      const there = await browser.execute(() => {
+        const view = activeDocument.defaultView;
+        if (view === null) throw new Error("no window");
+        const context = new view.OffscreenCanvas(1, 1).getContext("2d");
+        if (context === null) throw new Error("no context");
+        context.font = '128px "Inkline Popout Only", monospace';
+        return context.measureText("x").actualBoundingBoxAscent;
+      });
+      expect(there).not.toBe(elsewhere);
+      await browser.waitUntil(async () => {
+        const rows = await guideRows();
+        return rows.shown === rows.lines;
+      });
+    } finally {
+      // Disabling Inkline closes the popout's editor; then the popout goes.
+      await obsidianPage.disablePlugin("inkline");
+      await obsidianPage.enablePlugin("inkline");
+      await loadModules();
+      await browser.executeObsidian(({ app }) => {
+        for (const leaf of app.workspace.getLeavesOfType("markdown")) {
+          if (leaf.view.containerEl.doc !== document) leaf.detach();
+        }
+      });
+    }
+  });
+
   it("shows the symbol at its size in a line of text, as it is drawn", async function () {
     await insert();
     const preview = () =>
