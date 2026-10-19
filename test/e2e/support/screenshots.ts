@@ -1,9 +1,11 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { browser } from "@wdio/globals";
+import { outputDirectory } from "./harness.ts";
 
-const outputDir = path.resolve(
-  process.env.E2E_OUTPUT_DIR ?? "test-results/e2e",
+const outputDir = outputDirectory(
+  process.env.E2E_OUTPUT_DIR,
+  path.resolve(import.meta.dirname, "../../.."),
 );
 
 /**
