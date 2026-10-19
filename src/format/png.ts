@@ -102,7 +102,7 @@ function parseHeader(data: Uint8Array): ImageHeader {
 function checkStructure(chunks: readonly Chunk[]): void {
   const [first] = chunks;
   if (first?.type !== "IHDR") throw new PngError("first chunk is not IHDR");
-  const { colorType } = parseHeader(first.data);
+  const { bitDepth, colorType } = parseHeader(first.data);
   const count = (type: string): number =>
     chunks.filter((chunk) => chunk.type === type).length;
   if (count("IHDR") !== 1) throw new PngError("more than one IHDR chunk");
@@ -119,6 +119,14 @@ function checkStructure(chunks: readonly Chunk[]): void {
     throw new PngError("PLTE chunk in a greyscale image");
   }
   if (palette > firstData) throw new PngError("PLTE chunk after IDAT");
+  const paletteLength = chunks[palette]?.data.length;
+  if (paletteLength !== undefined) {
+    const entries = paletteLength / 3;
+    const most = colorType === 3 ? 2 ** bitDepth : 256;
+    if (!Number.isInteger(entries) || entries < 1 || entries > most) {
+      throw new PngError(`PLTE does not hold 1 to ${String(most)} RGB entries`);
+    }
+  }
   const last = chunks.at(-1);
   if (last?.type !== "IEND" || last.data.length !== 0) {
     throw new PngError("IEND is not empty");
