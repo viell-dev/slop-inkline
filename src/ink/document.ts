@@ -1,8 +1,9 @@
 // The drawing being edited: strokes and an optional base layer, in the
-// editor's coordinates, which use the line box and extend left and right
-// without limit. Saving crops it to its ink and makes a record.
+// editor's coordinates, which use the line box and extend left and right.
+// Saving crops it to its ink and makes a record.
 
 import {
+  limits,
   maxPressure,
   unitsPerPixel,
   type BaseLayer,
@@ -18,6 +19,13 @@ export interface InkDocument {
 
 export const emptyDocument: InkDocument = { strokes: [] };
 
+/**
+ * The coordinates, in units, that a document keeps within: a quarter of the
+ * format's limit, so that cropping, which moves everything by at most the
+ * distance to the ink, never moves a coordinate past what a record allows.
+ */
+export const workingRange = limits.coordinate / 4;
+
 /** A coordinate in pixels as the integer units the format stores. */
 export function toUnits(pixels: number): number {
   return Math.round(pixels * unitsPerPixel);
@@ -28,33 +36,47 @@ export function toPressure(pressure: number): number {
   return Math.round(Math.min(1, Math.max(0, pressure)) * maxPressure);
 }
 
-function moveStroke(stroke: Stroke, dx: number, dy: number): Stroke {
-  const stride = stroke.pressure ? 3 : 2;
-  return {
-    ...stroke,
-    points: stroke.points.map((value, index) =>
-      index % stride === 0
-        ? value + dx
-        : index % stride === 1
-          ? value + dy
-          : value,
-    ),
-  };
+function inRange(value: number): boolean {
+  return Math.abs(value) <= workingRange;
 }
 
-function scaleStroke(stroke: Stroke, scale: number, dy: number): Stroke {
+/**
+ * Whether a document can be edited and saved: every coordinate within
+ * {@link workingRange}, every size and the base layer's scale within the
+ * format's limits.
+ */
+export function isWorkable(document: InkDocument): boolean {
+  const strokesFit = document.strokes.every((stroke) => {
+    const stride = stroke.pressure ? 3 : 2;
+    return (
+      Number.isInteger(stroke.size) &&
+      stroke.size >= 1 &&
+      stroke.size <= limits.strokeSize &&
+      stroke.points.every(
+        (value, index) => index % stride === 2 || inRange(value),
+      )
+    );
+  });
+  const { base } = document;
+  return (
+    strokesFit &&
+    (base === undefined ||
+      (inRange(base.x) &&
+        inRange(base.y) &&
+        base.scale >= limits.baseScale.min &&
+        base.scale <= limits.baseScale.max))
+  );
+}
+
+function mapPoints(
+  stroke: Stroke,
+  x: (value: number) => number,
+  y: (value: number) => number,
+): readonly number[] {
   const stride = stroke.pressure ? 3 : 2;
-  return {
-    ...stroke,
-    size: Math.max(1, Math.round(stroke.size * scale)),
-    points: stroke.points.map((value, index) =>
-      index % stride === 0
-        ? Math.round(value * scale)
-        : index % stride === 1
-          ? Math.round(value * scale + dy)
-          : value,
-    ),
-  };
+  return stroke.points.map((value, index) =>
+    index % stride === 0 ? x(value) : index % stride === 1 ? y(value) : value,
+  );
 }
 
 /** Moves a document by a whole number of pixels, which loses nothing. */
@@ -64,40 +86,61 @@ export function moveDocument(
 ): InkDocument {
   if (!Number.isInteger(dxPixels)) throw new Error("moves are in whole pixels");
   const dx = dxPixels * unitsPerPixel;
-  const strokes = document.strokes.map((stroke) => moveStroke(stroke, dx, 0));
+  const strokes = document.strokes.map((stroke) => ({
+    ...stroke,
+    points: mapPoints(
+      stroke,
+      (value) => value + dx,
+      (value) => value,
+    ),
+  }));
   return document.base === undefined
     ? { strokes }
     : { strokes, base: { ...document.base, x: document.base.x + dx } };
 }
 
 /**
- * The document a record holds, in the editor's line box. A record with the
- * same geometry is used exactly. One with another scale or baseline, which
- * other tools may write, is scaled to the line box and aligned on its
- * baseline, rounding coordinates to whole units.
+ * The document a record holds, in the editor's line box, or undefined when
+ * it cannot be edited there. A record with the same scale and baseline is
+ * used exactly. One with another, which other tools may write, is scaled to
+ * the line box and aligned on its baseline, rounding coordinates to whole
+ * units. Either way, a document that would not be {@link isWorkable} is
+ * refused rather than clamped, so that no stroke is lost unnoticed.
  */
-export function documentFromRecord(record: InkRecord): InkDocument {
+export function documentFromRecord(record: InkRecord): InkDocument | undefined {
   const { box } = record;
+  let document: InkDocument;
   if (box.pxPerEm === lineBox.pxPerEm && box.baseline === lineBox.baseline) {
-    return record.base === undefined
-      ? { strokes: record.strokes }
-      : { strokes: record.strokes, base: record.base };
+    document =
+      record.base === undefined
+        ? { strokes: record.strokes }
+        : { strokes: record.strokes, base: record.base };
+  } else {
+    const scale = lineBox.pxPerEm / box.pxPerEm;
+    const dy = (lineBox.baseline - box.baseline * scale) * unitsPerPixel;
+    const strokes = record.strokes.map((stroke) => ({
+      ...stroke,
+      size: Math.max(1, Math.round(stroke.size * scale)),
+      points: mapPoints(
+        stroke,
+        (value) => Math.round(value * scale),
+        (value) => Math.round(value * scale + dy),
+      ),
+    }));
+    document =
+      record.base === undefined
+        ? { strokes }
+        : {
+            strokes,
+            base: {
+              ...record.base,
+              x: Math.round(record.base.x * scale),
+              y: Math.round(record.base.y * scale + dy),
+              scale: record.base.scale * scale,
+            },
+          };
   }
-  const scale = lineBox.pxPerEm / box.pxPerEm;
-  const dy = (lineBox.baseline - box.baseline * scale) * unitsPerPixel;
-  const strokes = record.strokes.map((stroke) =>
-    scaleStroke(stroke, scale, dy),
-  );
-  if (record.base === undefined) return { strokes };
-  return {
-    strokes,
-    base: {
-      ...record.base,
-      x: Math.round(record.base.x * scale),
-      y: Math.round(record.base.y * scale + dy),
-      scale: record.base.scale * scale,
-    },
-  };
+  return isWorkable(document) ? document : undefined;
 }
 
 /**

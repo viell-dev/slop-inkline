@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { InkRecord, Stroke } from "../../../src/format/record.ts";
+import { limits } from "../../../src/format/record.ts";
 import {
   documentFromRecord,
+  isWorkable,
   moveDocument,
   recordFromDocument,
   toPressure,
   toUnits,
+  workingRange,
   type InkDocument,
 } from "../../../src/ink/document.ts";
 import { lineBox } from "../../../src/ink/geometry.ts";
@@ -65,7 +68,9 @@ describe("recordFromDocument and documentFromRecord", () => {
     };
     const record = recordFromDocument(document, -30, 90);
     expect(record.box).toEqual({ ...lineBox, width: 90 });
-    expect(moveDocument(documentFromRecord(record), -30)).toEqual(document);
+    const reopened = documentFromRecord(record);
+    if (reopened === undefined) throw new Error("not workable");
+    expect(moveDocument(reopened, -30)).toEqual(document);
   });
 
   it("use a record in the line box exactly", () => {
@@ -92,5 +97,97 @@ describe("recordFromDocument and documentFromRecord", () => {
       ],
       base: { x: 32, y: -448, scale: 2, png },
     });
+  });
+});
+
+describe("isWorkable and documentFromRecord keep documents saveable", () => {
+  const box = { pxPerEm: 64, width: 48, height: 192, baseline: 72 };
+
+  it("refuse a conversion that would make a stroke too large", () => {
+    const record: InkRecord = {
+      box,
+      strokes: [
+        { tool: "eraser", size: 40_000, pressure: false, points: [0, 0] },
+      ],
+    };
+    expect(documentFromRecord(record)).toBeUndefined();
+  });
+
+  it("refuse a conversion that would move a point out of range", () => {
+    const record: InkRecord = {
+      box,
+      strokes: [
+        {
+          tool: "eraser",
+          size: 16,
+          pressure: false,
+          points: [0, limits.coordinate],
+        },
+      ],
+    };
+    expect(documentFromRecord(record)).toBeUndefined();
+  });
+
+  it("refuse a conversion that would scale the base layer below the limit", () => {
+    const record: InkRecord = {
+      box: { pxPerEm: 1024, width: 48, height: 192, baseline: 144 },
+      strokes: [],
+      base: { x: 0, y: 0, scale: 1 / 64, png },
+    };
+    expect(documentFromRecord(record)).toBeUndefined();
+  });
+
+  it("refuse a record whose points lie beyond the working range", () => {
+    const record: InkRecord = {
+      box: { ...lineBox, width: 48 },
+      strokes: [
+        { tool: "pen", size: 16, pressure: false, points: [1600, 1600] },
+        {
+          tool: "eraser",
+          size: 16,
+          pressure: false,
+          points: [-(workingRange + 1), 1600],
+        },
+      ],
+    };
+    expect(documentFromRecord(record)).toBeUndefined();
+  });
+
+  it("keep crops within the format's limits for any workable document", () => {
+    const document: InkDocument = {
+      strokes: [
+        {
+          tool: "pen",
+          size: limits.strokeSize,
+          pressure: false,
+          points: [workingRange, 0],
+        },
+        {
+          tool: "eraser",
+          size: 16,
+          pressure: false,
+          points: [-workingRange, 0],
+        },
+      ],
+    };
+    expect(isWorkable(document)).toBe(true);
+    // The furthest a crop can start: the right edge of the far stroke.
+    const left = (workingRange + limits.strokeSize) / 16;
+    const record = recordFromDocument(document, left, 48);
+    for (const stroke of record.strokes) {
+      for (const value of stroke.points) {
+        expect(Math.abs(value)).toBeLessThanOrEqual(limits.coordinate);
+      }
+    }
+  });
+
+  it("accept pressure values, which are not coordinates", () => {
+    expect(
+      isWorkable({
+        strokes: [
+          { tool: "pen", size: 16, pressure: true, points: [0, 0, 255] },
+        ],
+      }),
+    ).toBe(true);
   });
 });
