@@ -139,17 +139,53 @@ async function insertEmbed(
 }
 
 /**
- * The file at `claim`'s path, if it still holds what was last written there:
- * one that an interrupted first save made, and nothing has changed since.
+ * A file that a new symbol's first save made, or was making: by its path,
+ * and, once it is found, as the vault's file, which follows renames.
  */
-async function claimedFile(
-  app: App,
-  claim: CreatedFile,
-): Promise<TFile | undefined> {
-  const file = app.vault.getFileByPath(claim.path);
-  if (file === null) return undefined;
+interface Claim extends CreatedFile {
+  readonly file?: TFile;
+}
+
+/** Whether `file` is still the vault's file at its path. */
+function present(app: App, file: TFile): boolean {
+  return app.vault.getFileByPath(file.path) === file;
+}
+
+/**
+ * The claimed file, if it still holds what was last written there: one that
+ * an interrupted first save made, unchanged since. A file that changes while
+ * it is read is left alone.
+ */
+async function claimedFile(app: App, claim: Claim): Promise<TFile | undefined> {
+  const file = claim.file ?? app.vault.getFileByPath(claim.path);
+  if (file === null || !present(app, file)) return undefined;
+  const { mtime, size } = file.stat;
   const bytes = new Uint8Array(await app.vault.readBinary(file));
-  return (await fingerprintOf(bytes)) === claim.fingerprint ? file : undefined;
+  if ((await fingerprintOf(bytes)) !== claim.fingerprint) return undefined;
+  return present(app, file) &&
+    file.stat.mtime === mtime &&
+    file.stat.size === size
+    ? file
+    : undefined;
+}
+
+/**
+ * Whether the target note already embeds or links to `file`, as when an
+ * interrupted first save inserted it before its draft could say so.
+ */
+async function linksTo(
+  app: App,
+  target: Target,
+  file: TFile,
+  embed: string,
+): Promise<boolean> {
+  const note = target.file;
+  if ((app.metadataCache.resolvedLinks[note.path]?.[file.path] ?? 0) > 0) {
+    return true;
+  }
+  const view = liveView(app, note, target.view);
+  const text = view?.editor.getValue() ?? (await app.vault.read(note));
+  return text.includes(embed);
 }
 
 /**
@@ -179,7 +215,9 @@ export function insertSymbol(host: EditorHost, view: MarkdownView): void {
   /** The symbol's file once made, and a fingerprint of what it holds. */
   let made: { readonly file: TFile; fingerprint: string } | undefined;
   /** A file being made, or one that a restored draft's first save made. */
-  let claim: CreatedFile | undefined;
+  let claim: Claim | undefined;
+  /** Whether `made` came from a claim, and so may be in the note already. */
+  let adopted = false;
   let inserted = false;
   new InkEditorModal(app, {
     title: "New symbol",
@@ -194,38 +232,52 @@ export function insertSymbol(host: EditorHost, view: MarkdownView): void {
         }
         const file =
           made === undefined
-            ? claim
+            ? claim && {
+                path: claim.file?.path ?? claim.path,
+                fingerprint: claim.fingerprint,
+              }
             : { path: made.file.path, fingerprint: made.fingerprint };
         return file === undefined
           ? { kind: "new", note: note.path }
           : { kind: "new", note: note.path, file };
       },
       restored: (draft) => {
-        if (made === undefined && draft.target.kind === "new") {
-          claim = draft.target.file;
-        }
+        if (made !== undefined || draft.target.kind !== "new") return;
+        const created = draft.target.file;
+        const found =
+          created === undefined ? null : app.vault.getFileByPath(created.path);
+        claim =
+          created === undefined || found === null
+            ? created
+            : { ...created, file: found };
       },
     },
     lifecycle: host.lifecycle,
-    write: async (bytes) => {
+    // Until the embed is inserted, the draft is kept before each write, so
+    // that it names the file and the bytes even after a crash. If storage
+    // refuses it, the write goes ahead: the file then holds the drawing.
+    write: async (bytes, _record, keepDraft) => {
       stillAlive(host);
       const fingerprint = await fingerprintOf(bytes);
       if (made === undefined && claim !== undefined) {
         const file = await claimedFile(app, claim);
-        if (file !== undefined) made = { file, fingerprint: claim.fingerprint };
+        if (file !== undefined) {
+          made = { file, fingerprint: claim.fingerprint };
+          adopted = true;
+        }
       }
       stillAlive(host);
       if (made === undefined) {
         const path = await newSymbolPath(app, note.path);
         stillAlive(host);
-        // Named before it exists, in case Inkline is disabled meanwhile.
         claim = { path, fingerprint };
+        keepDraft();
         const file = await app.vault.createBinary(path, toBuffer(bytes));
         made = { file, fingerprint };
       } else {
-        // Recorded first, so that a draft kept meanwhile names these bytes.
         const before = made.fingerprint;
         made.fingerprint = fingerprint;
+        if (!inserted) keepDraft();
         try {
           await app.vault.modifyBinary(made.file, toBuffer(bytes));
         } catch (error) {
@@ -236,13 +288,13 @@ export function insertSymbol(host: EditorHost, view: MarkdownView): void {
       if (inserted) return;
       // Once Inkline is disabled, the editor's draft finishes the insertion.
       stillAlive(host);
-      await insertEmbed(
-        app,
-        target,
-        embedFromLink(
-          app.fileManager.generateMarkdownLink(made.file, note.path),
-        ),
+      const embed = embedFromLink(
+        app.fileManager.generateMarkdownLink(made.file, note.path),
       );
+      if (!adopted || !(await linksTo(app, target, made.file, embed))) {
+        stillAlive(host);
+        await insertEmbed(app, target, embed);
+      }
       inserted = true;
     },
   }).open();

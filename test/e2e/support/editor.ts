@@ -157,7 +157,60 @@ export async function startOver(): Promise<void> {
     }
   });
   await freeStorage();
+  await restoreVault();
   await obsidianPage.resetVault();
+}
+
+const delayable = ["createBinary", "readBinary", "process"] as const;
+
+/**
+ * Makes a vault method wait `ms` after it has done its work before it
+ * resolves, until {@link restoreVault}, so that a test can act meanwhile.
+ */
+export async function delayVault(
+  name: (typeof delayable)[number],
+  ms: number,
+): Promise<void> {
+  await browser.executeObsidian(
+    ({ app }, method, wait) => {
+      const original: unknown = Reflect.get(app.vault, method);
+      if (typeof original !== "function") throw new Error(`no ${method}`);
+      Reflect.set(app.vault, `inklineDelayed-${method}`, original);
+      Reflect.set(
+        app.vault,
+        method,
+        async (...args: unknown[]): Promise<unknown> => {
+          const result: unknown = await Reflect.apply(
+            original,
+            app.vault,
+            args,
+          );
+          await new Promise((resolve) => window.setTimeout(resolve, wait));
+          return result;
+        },
+      );
+    },
+    name,
+    ms,
+  );
+}
+
+/** Undoes every {@link delayVault}. */
+export async function restoreVault(): Promise<void> {
+  await browser.executeObsidian(
+    ({ app }, methods) => {
+      for (const method of methods) {
+        const original: unknown = Reflect.get(
+          app.vault,
+          `inklineDelayed-${method}`,
+        );
+        if (typeof original !== "function") continue;
+        Reflect.set(app.vault, method, original);
+        Reflect.deleteProperty(app.vault, `inklineDelayed-${method}`);
+      }
+    },
+    [...delayable],
+  );
 }
 
 const fillerPrefix = "inkline-test-filler:";

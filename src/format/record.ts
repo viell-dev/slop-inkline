@@ -188,13 +188,68 @@ function fromBase64(text: string, name: string): Uint8Array {
   return Uint8Array.from(binary, (char) => char.charCodeAt(0));
 }
 
-function toBase64(bytes: Uint8Array): string {
+/** Bytes as base64, the way a record holds a base layer's PNG. */
+export function toBase64(bytes: Uint8Array): string {
   let binary = "";
   // Chunks keep each String.fromCharCode call within argument limits.
   for (let offset = 0; offset < bytes.length; offset += 0x8000) {
     binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
   }
   return btoa(binary);
+}
+
+/** Checks a base layer's PNG against the format's limits. */
+function checkBasePng(png: Uint8Array): void {
+  if (png.length > limits.baseBytes) fail("base.png is too large");
+  let header: ImageHeader;
+  try {
+    header = imageHeader(readChunks(png));
+  } catch (error) {
+    if (!(error instanceof PngError)) throw error;
+    fail(`base.png is not a valid PNG: ${error.message}`);
+  }
+  if (header.width > limits.baseSize || header.height > limits.baseSize) {
+    fail(`base.png is larger than ${String(limits.baseSize)} pixels a side`);
+  }
+}
+
+/** A base layer's PNG from its base64 text, checked as a record's is. */
+function basePng(text: unknown): Uint8Array {
+  if (typeof text !== "string") fail("base.png is not a string");
+  const padding = text.endsWith("==") ? 2 : text.endsWith("=") ? 1 : 0;
+  if ((text.length / 4) * 3 - padding > limits.baseBytes) {
+    fail("base.png is too large");
+  }
+  const png = fromBase64(text, "base.png");
+  checkBasePng(png);
+  return png;
+}
+
+/**
+ * Why a PNG cannot be a base layer, as reading a record would refuse it, or
+ * undefined when it can.
+ */
+export function basePngProblem(png: Uint8Array): string | undefined {
+  try {
+    checkBasePng(png);
+    return undefined;
+  } catch (error) {
+    if (error instanceof InvalidRecord) return error.message;
+    throw error;
+  }
+}
+
+/**
+ * A base layer's PNG from base64 text, as a record holds it, or undefined
+ * when reading a record would refuse it.
+ */
+export function readBasePng(text: unknown): Uint8Array | undefined {
+  try {
+    return basePng(text);
+  } catch (error) {
+    if (error instanceof InvalidRecord) return undefined;
+    throw error;
+  }
 }
 
 function parseBase(value: unknown): BaseLayer {
@@ -210,23 +265,7 @@ function parseBase(value: unknown): BaseLayer {
   ) {
     fail("base.scale is out of range");
   }
-  if (typeof base.png !== "string") fail("base.png is not a string");
-  const padding = base.png.endsWith("==") ? 2 : base.png.endsWith("=") ? 1 : 0;
-  if ((base.png.length / 4) * 3 - padding > limits.baseBytes) {
-    fail("base.png is too large");
-  }
-  const png = fromBase64(base.png, "base.png");
-  let header: ImageHeader;
-  try {
-    header = imageHeader(readChunks(png));
-  } catch (error) {
-    if (!(error instanceof PngError)) throw error;
-    fail(`base.png is not a valid PNG: ${error.message}`);
-  }
-  if (header.width > limits.baseSize || header.height > limits.baseSize) {
-    fail(`base.png is larger than ${String(limits.baseSize)} pixels a side`);
-  }
-  return { x, y, scale, png };
+  return { x, y, scale, png: basePng(base.png) };
 }
 
 /**

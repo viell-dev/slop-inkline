@@ -29,7 +29,8 @@ section is also its
   a draft not restored within 30 days is dropped. If the storage refuses a
   draft, a notice says so, and the last draft kept stays. Restoring the draft of
   a new symbol whose first save was interrupted, or whose embed could not be
-  inserted, finishes that save with the file it made.
+  inserted, finishes that save with the file it made, if nothing changed that
+  file since, and inserts the embed unless the note already has it.
 - A new symbol goes into the note it was started in, where the cursor was, even
   if that note's tab now shows another note or was closed. If the text around
   that place changed so much that it cannot be found, the symbol is added at the

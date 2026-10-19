@@ -148,8 +148,9 @@ export async function drawableBase(base: BaseLayer): Promise<DrawableBase> {
  * resolution and scaled to fill the line box's height. A picture so small
  * that this would scale it more than the format allows has each pixel
  * repeated, which loses nothing, until it fits. Throws a `RangeError` for a
- * picture too large to open, or so wide for its height that repeating it
- * would make it too large.
+ * picture too large to open, so wide for its height that repeating it would
+ * make it too large, or whose ink encodes to more bytes than a base layer can
+ * hold.
  */
 export async function baseFromPicture(
   bytes: Uint8Array,
@@ -182,6 +183,12 @@ export async function baseFromPicture(
     height,
     data: inkPixels(width, height, alpha),
   });
+  // A base layer that a record could not hold could never be saved.
+  if (png.length > limits.baseBytes) {
+    throw new RangeError(
+      `a ${String(pixels.width)}×${String(pixels.height)} picture's ink takes ${String(png.length)} bytes, more than a base layer can hold (${String(limits.baseBytes)})`,
+    );
+  }
   const layer: BaseLayer = { x: 0, y: 0, scale: lineBox.height / height, png };
   return { layer, drawable: await drawableBase(layer) };
 }

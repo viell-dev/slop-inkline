@@ -10,7 +10,7 @@ import {
   type Draft,
   type VaultStorage,
 } from "../../../src/editor/drafts.ts";
-import type { BaseLayer } from "../../../src/format/record.ts";
+import { limits, type BaseLayer } from "../../../src/format/record.ts";
 import type { InkDocument } from "../../../src/ink/document.ts";
 import { blank, encodePng } from "../../support/png.ts";
 
@@ -33,6 +33,8 @@ class MemoryStorage implements VaultStorage {
   quota = Number.POSITIVE_INFINITY;
   /** Keys whose writes are dropped, whatever the quota. */
   readonly refused = new Set<string>();
+  /** How many writes each key had, refused ones included. */
+  readonly writes = new Map<string, number>();
 
   loadLocalStorage(key: string): unknown {
     const value = this.values.get(key);
@@ -44,6 +46,7 @@ class MemoryStorage implements VaultStorage {
       this.values.delete(key);
       return;
     }
+    this.writes.set(key, (this.writes.get(key) ?? 0) + 1);
     const value = JSON.stringify(data);
     const others = [...this.values]
       .filter(([other]) => other !== key)
@@ -57,6 +60,11 @@ class MemoryStorage implements VaultStorage {
       (sum, text) => sum + text.length,
       0,
     );
+  }
+
+  /** The keys stored under a prefix. */
+  keys(prefix: string): string[] {
+    return [...this.values.keys()].filter((key) => key.startsWith(prefix));
   }
 }
 
@@ -83,7 +91,7 @@ describe("DraftStore", () => {
     ]);
   });
 
-  it("finds a symbol's drafts, other than an editor's own", () => {
+  it("finds a symbol's drafts, other than those open editors hold", () => {
     const store = new DraftStore(new MemoryStorage(), () => 5000);
     store.put(draft({ id: "mine" }));
     store.put(draft({ id: "other", savedAt: 900 }));
@@ -102,11 +110,18 @@ describe("DraftStore", () => {
         },
       }),
     );
+    store.hold("mine");
     expect(
       store
-        .forTarget({ kind: "file", path: "001.ink.png" }, "mine")
+        .forTarget({ kind: "file", path: "001.ink.png" })
         .map((item) => item.id),
     ).toEqual(["other"]);
+    store.release("mine");
+    expect(
+      store
+        .forTarget({ kind: "file", path: "001.ink.png" })
+        .map((item) => item.id),
+    ).toEqual(["mine", "other"]);
     // A new symbol whose first save made a file still belongs to its note.
     expect(
       store.forTarget({ kind: "new", note: "a.md" }).map((item) => item.id),
@@ -172,6 +187,25 @@ describe("DraftStore", () => {
     ]);
   });
 
+  it("drops a draft with no strokes stored, and still lists the others", () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 5000);
+    store.put(draft({ id: "good" }));
+    const stored = storage.loadLocalStorage("inkline-draft:good");
+    if (typeof stored !== "string") throw new Error("not stored as text");
+    const { ink: _ink, ...envelope } = JSON.parse(stored) as Record<
+      string,
+      unknown
+    >;
+    storage.saveLocalStorage(
+      "inkline-draft:broken",
+      JSON.stringify({ ...envelope, id: "broken" }),
+    );
+    storage.saveLocalStorage("inkline-drafts", ["broken", "good"]);
+    expect(store.list().map((item) => item.id)).toEqual(["good"]);
+    expect(storage.keys("inkline-draft:")).toEqual(["inkline-draft:good"]);
+  });
+
   it("says when storage refuses a draft, and keeps the one it would have replaced", () => {
     const storage = new MemoryStorage();
     const store = new DraftStore(storage, () => 5000);
@@ -201,6 +235,64 @@ describe("DraftStore", () => {
     // A draft the index already lists needs no index write.
     expect(store.put(draft({ id: "a", savedAt: 2000 }))).toBe(true);
   });
+
+  it("does not keep a draft that reading would refuse", () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 5000);
+    store.put(draft());
+    const many = draft({
+      strokes: Array.from({ length: limits.strokes + 1 }, () => stroke),
+    });
+    expect(store.put(many)).toBe(false);
+    const huge = new Uint8Array(limits.baseBytes + 1);
+    huge.set(png);
+    expect(
+      store.put(
+        draft({ base: { kind: "kept", layer: { ...layer, png: huge } } }),
+      ),
+    ).toBe(false);
+    expect(storage.keys("inkline-draft-base:")).toEqual([]);
+    expect(store.list()).toEqual([draft()]);
+  });
+
+  it("stores a kept base layer once, and drops it once no draft uses it", () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 5000);
+    const kept = { kind: "kept", layer } as const;
+    for (let count = 1; count <= 5; count++) {
+      const strokes = Array.from({ length: count }, () => stroke);
+      expect(store.put(draft({ strokes, base: kept }))).toBe(true);
+    }
+    const [baseKey, ...others] = storage.keys("inkline-draft-base:");
+    expect(others).toEqual([]);
+    expect(storage.writes.get(baseKey ?? "")).toBe(1);
+    expect(storage.writes.get("inkline-draft:a")).toBe(5);
+    // Its pixels are not in the draft itself.
+    expect(storage.values.get("inkline-draft:a")).not.toContain("iVBOR");
+    store.put(draft({ id: "b", savedAt: 900, base: kept }));
+    store.remove("a");
+    store.list();
+    expect(storage.keys("inkline-draft-base:")).toEqual([baseKey]);
+    store.remove("b");
+    store.list();
+    expect(storage.keys("inkline-draft-base:")).toEqual([]);
+    expect(storage.values.has("inkline-draft-bases")).toBe(false);
+  });
+
+  it("reads a kept base layer in another session, or marks it lost", () => {
+    const storage = new MemoryStorage();
+    const written = draft({
+      base: { kind: "kept", layer: { x: -160, y: 32, scale: 2, png } },
+    });
+    new DraftStore(storage, () => 5000).put(written);
+    expect(new DraftStore(storage, () => 5000).list()).toEqual([written]);
+    for (const key of storage.keys("inkline-draft-base:")) {
+      storage.saveLocalStorage(key, "not base64!");
+    }
+    const [lost] = new DraftStore(storage, () => 5000).list();
+    expect(lost?.base).toEqual({ kind: "lost" });
+    expect(lost?.strokes).toEqual(written.strokes);
+  });
 });
 
 describe("decodeDraft", () => {
@@ -210,9 +302,9 @@ describe("decodeDraft", () => {
     for (const written of [
       draft({ fingerprint: "ab" }),
       draft({ id: "b", base: { kind: "none" } }),
+      draft({ id: "c", base: { kind: "lost" } }),
       draft({
-        id: "c",
-        base: { kind: "kept", layer: { x: -160, y: 32, scale: 2, png } },
+        id: "d",
         target: {
           kind: "new",
           note: "a.md",
@@ -229,14 +321,15 @@ describe("decodeDraft", () => {
 
   it("refuses values that are not drafts", () => {
     const storage = new MemoryStorage();
-    new DraftStore(storage).put(
-      draft({ base: { kind: "kept", layer: { x: 0, y: 0, scale: 1, png } } }),
-    );
+    new DraftStore(storage).put(draft({ base: { kind: "kept", layer } }));
     const stored = storage.loadLocalStorage("inkline-draft:a");
     if (typeof stored !== "string") throw new Error("not stored as text");
     const good = JSON.parse(stored) as Record<string, unknown> & {
       ink: Record<string, unknown>;
+      layer: Record<string, unknown>;
     };
+    const bases = (key: string): Uint8Array | undefined =>
+      key === good.layer.key ? png : undefined;
     const variant = (changes: Record<string, unknown>): string =>
       JSON.stringify({ ...good, ...changes });
     for (const value of [
@@ -249,19 +342,26 @@ describe("decodeDraft", () => {
       variant({ target: { kind: "file" } }),
       variant({ target: { kind: "new", note: "a.md", file: { path: "x" } } }),
       variant({ base: "cleared" }),
-      // A kept base layer goes with a stored one, and only it does.
+      // A kept base layer has a place, and only it does.
       variant({ base: "file" }),
-      variant({ ink: { ...good.ink, base: undefined } }),
+      variant({ layer: undefined }),
+      variant({ layer: { ...good.layer, scale: 0 } }),
+      variant({ layer: { ...good.layer, x: 0.5 } }),
       variant({ savedAt: Number.NaN }),
       variant({ fingerprint: 5 }),
+      variant({ ink: undefined }),
       variant({ ink: { ...good.ink, strokes: [{ tool: "brush" }] } }),
+      // Its pixels are stored apart, never in the strokes' record.
       variant({
-        ink: { ...good.ink, base: { x: 0, y: 0, scale: 1, png: "" } },
+        ink: {
+          ...good.ink,
+          base: { x: 0, y: 0, scale: 1, png: "iVBORw0KGgo=" },
+        },
       }),
     ]) {
-      expect(decodeDraft(value)).toBeUndefined();
+      expect(decodeDraft(value, bases)).toBeUndefined();
     }
-    expect(decodeDraft(stored)).toBeDefined();
+    expect(decodeDraft(stored, bases)?.base).toEqual({ kind: "kept", layer });
   });
 });
 
@@ -300,6 +400,9 @@ describe("restoreDraft", () => {
       base: layer,
     });
     expect(restoreDraft(original, draft({ base: { kind: "none" } }))).toEqual({
+      strokes: [stroke],
+    });
+    expect(restoreDraft(original, draft({ base: { kind: "lost" } }))).toEqual({
       strokes: [stroke],
     });
     const kept = { ...layer, x: 32 };

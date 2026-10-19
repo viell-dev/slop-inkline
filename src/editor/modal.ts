@@ -37,8 +37,14 @@ export interface EditorOptions {
    * Writes a saved symbol: the first save of a new symbol creates its file
    * and inserts it. Rejects when anything could not be done, which keeps the
    * editor open with the drawing, so that the next save tries again.
+   * `keepDraft` keeps the editor's draft at once, as before a step that a
+   * draft must name, and returns whether it was kept.
    */
-  readonly write: (bytes: Uint8Array, record: InkRecord) => Promise<void>;
+  readonly write: (
+    bytes: Uint8Array,
+    record: InkRecord,
+    keepDraft: () => boolean,
+  ) => Promise<void>;
   /** Where unsaved strokes are kept, and which symbol they belong to. */
   readonly drafts?: {
     readonly store: DraftStore;
@@ -82,6 +88,11 @@ export class InkEditorModal extends Modal {
   #placed: { layer: BaseLayer; drawable: DrawableBase } | undefined;
   /** Whether the last draft written was kept; storage can refuse one. */
   #draftKept = true;
+  /**
+   * The draft this editor restored, until its own draft or a save takes its
+   * place: storage may refuse the editor's own at first.
+   */
+  #replacing: string | undefined;
   readonly #questions = new Set<Modal>();
   readonly #buttons = new Map<string, ButtonComponent>();
 
@@ -173,6 +184,7 @@ export class InkEditorModal extends Modal {
     view.resize(canvas.clientWidth, canvas.win.devicePixelRatio);
     this.#updateButtons();
     this.#render();
+    this.#options.drafts?.store.hold(this.#draftId);
     this.#options.lifecycle?.opened(this);
     // Obsidian moves the focus once the modal is open; take it back after.
     canvas.win.requestAnimationFrame(() => {
@@ -188,6 +200,9 @@ export class InkEditorModal extends Modal {
     }
     for (const question of [...this.#questions]) question.close();
     this.contentEl.empty();
+    const store = this.#options.drafts?.store;
+    store?.release(this.#draftId);
+    if (this.#replacing !== undefined) store?.release(this.#replacing);
     this.#options.lifecycle?.closed(this);
   }
 
@@ -483,16 +498,36 @@ export class InkEditorModal extends Modal {
       new Notice(
         "Inkline could not keep a draft of the latest changes, because the vault's local storage refused it. Save the symbol to keep them.",
       );
+    } else if (
+      kept &&
+      !this.#draftKept &&
+      this.#status?.getText() === "Draft not kept"
+    ) {
+      this.#announce("Draft kept");
     }
     this.#draftKept = kept;
+    if (kept) this.#replaced();
     return kept;
   }
 
-  /** Drops this editor's own draft, never another's. */
+  /**
+   * Drops this editor's own draft, and the one it restored, which its
+   * drawing has taken the place of; never another's.
+   */
   #forgetDraft(): void {
     if (this.#retired) return;
     this.#options.drafts?.store.remove(this.#draftId);
     this.#draftKept = true;
+    this.#replaced();
+  }
+
+  /** Drops the draft this editor restored, once nothing needs it. */
+  #replaced(): void {
+    const replacing = this.#replacing;
+    if (replacing === undefined) return;
+    this.#replacing = undefined;
+    this.#options.drafts?.store.remove(replacing);
+    this.#options.drafts?.store.release(replacing);
   }
 
   /**
@@ -504,21 +539,24 @@ export class InkEditorModal extends Modal {
   async #offerDraft(): Promise<void> {
     const drafts = this.#options.drafts;
     if (drafts === undefined) return;
-    const [found] = drafts.store.forTarget(drafts.target(), this.#draftId);
+    const [found] = drafts.store.forTarget(drafts.target());
     if (found === undefined) return;
-    let draft: Draft = found;
-    let unreadable = "";
+    let readable = found.base.kind !== "lost";
     if (found.base.kind === "kept") {
       const { layer } = found.base;
       try {
         this.#decoded.set(layer.png, await drawableBase(layer));
       } catch {
-        draft = { ...found, base: { kind: "none" } };
-        unreadable =
-          " Its base layer cannot be read, so only its strokes would come back.";
+        readable = false;
       }
       if (this.#retired || this.#closing) return;
     }
+    const draft: Draft = readable
+      ? found
+      : { ...found, base: { kind: "none" } };
+    const unreadable = readable
+      ? ""
+      : " Its base layer cannot be read, so only its strokes would come back.";
     const moved =
       draft.fingerprint !== undefined && draft.fingerprint !== this.#fingerprint
         ? " The symbol was saved again since then, so its strokes may not line up."
@@ -536,9 +574,12 @@ export class InkEditorModal extends Modal {
             this.#session.end();
             this.#session.replace(restoreDraft(this.#options.document, draft));
             drafts.restored?.(draft);
+            // Offered to no other editor until this one's own replaces it.
+            drafts.store.hold(draft.id);
+            this.#replacing = draft.id;
             this.#updateButtons();
             this.#render();
-            if (this.#keepDraft()) drafts.store.remove(draft.id);
+            this.#keepDraft();
           },
         },
         {
@@ -591,7 +632,7 @@ export class InkEditorModal extends Modal {
           this.#options.carried ?? [],
         );
         if (this.#retired) throw new Error("Inkline was disabled");
-        await this.#options.write(bytes, record);
+        await this.#options.write(bytes, record, () => this.#keepDraft());
         this.#fingerprint = await fingerprintOf(bytes);
         this.#session.markSaved(document);
         this.#session.rebase(-left);

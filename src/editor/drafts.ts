@@ -1,11 +1,17 @@
 // Drafts: unsaved strokes kept in the vault's local storage, so that a crash,
 // a reload, or disabling the plugin does not lose them. Each editor writes
 // only its own draft, under its own id, and says which symbol it belongs to;
-// the next editor for that symbol offers it back.
+// the next editor for that symbol offers it back. A base layer that a draft
+// keeps is stored once, apart from it, since it does not change as strokes
+// are drawn.
 
 import {
+  basePngProblem,
+  limits,
   parseRecord,
+  readBasePng,
   recordValue,
+  toBase64,
   type BaseLayer,
   type Stroke,
 } from "../format/record.ts";
@@ -35,13 +41,15 @@ export type DraftTarget =
 
 /**
  * A draft's base layer: none, the one its symbol's file opens with, or one
- * kept in the draft itself because the file does not hold it, as after a
- * cleared drawing was saved and the clearing undone.
+ * kept with the draft because the file does not hold it, as after a cleared
+ * drawing was saved and the clearing undone. `lost` is a kept one that can
+ * no longer be read.
  */
 export type DraftBase =
   | { readonly kind: "none" }
   | { readonly kind: "file" }
-  | { readonly kind: "kept"; readonly layer: BaseLayer };
+  | { readonly kind: "kept"; readonly layer: BaseLayer }
+  | { readonly kind: "lost" };
 
 export interface Draft {
   /** The editor session that wrote it. */
@@ -65,6 +73,8 @@ export const draftLifetime = 30 * 24 * 60 * 60 * 1000;
 const draftVersion = 1;
 const indexKey = "inkline-drafts";
 const draftPrefix = "inkline-draft:";
+const baseIndexKey = "inkline-draft-bases";
+const basePrefix = "inkline-draft-base:";
 
 /**
  * Local storage for one vault, as Obsidian's `App` offers it. Writes that the
@@ -73,6 +83,14 @@ const draftPrefix = "inkline-draft:";
 export interface VaultStorage {
   loadLocalStorage(key: string): unknown;
   saveLocalStorage(key: string, data: unknown): void;
+}
+
+/** A kept base layer's place, and the key its PNG is stored under. */
+interface StoredLayer {
+  readonly key: string;
+  readonly x: number;
+  readonly y: number;
+  readonly scale: number;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -100,14 +118,46 @@ function parseTarget(value: unknown): DraftTarget | undefined {
     : { kind: "new", note: value.note, file };
 }
 
+function coordinate(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    Math.abs(value) <= limits.coordinate
+  );
+}
+
+/** A kept base layer's place, within the format's limits. */
+function parseLayer(value: unknown): StoredLayer | undefined {
+  if (!isRecord(value)) return undefined;
+  const { key, x, y, scale } = value;
+  return typeof key === "string" &&
+    coordinate(x) &&
+    coordinate(y) &&
+    typeof scale === "number" &&
+    scale >= limits.baseScale.min &&
+    scale <= limits.baseScale.max
+    ? { key, x, y, scale }
+    : undefined;
+}
+
 /** The box a draft's strokes are stored in; it does not limit them. */
 const draftBox = { ...lineBox, width: lineBox.height };
 
+interface Decoded {
+  readonly draft: Draft;
+  /** The key of the kept base layer it uses, if it could be read. */
+  readonly baseKey?: string;
+}
+
 /**
- * Reads a stored draft, checking its strokes and any base layer it keeps as
- * strictly as a record's.
+ * Reads a stored draft, checking its strokes as strictly as a record's, and
+ * any kept base layer through `bases`, which gives a key's PNG. A kept base
+ * layer that cannot be read leaves the draft `lost`, with its strokes.
  */
-export function decodeDraft(stored: unknown): Draft | undefined {
+function decode(
+  stored: unknown,
+  bases: (key: string) => Uint8Array | undefined,
+): Decoded | undefined {
   if (typeof stored !== "string") return undefined;
   let value: unknown;
   try {
@@ -116,56 +166,80 @@ export function decodeDraft(stored: unknown): Draft | undefined {
     return undefined;
   }
   if (!isRecord(value)) return undefined;
-  const { id, target, base, fingerprint, savedAt, version, ink } = value;
+  const { id, target, base, layer, fingerprint, savedAt, version, ink } = value;
   const parsedTarget = parseTarget(target);
   if (
     version !== draftVersion ||
     typeof id !== "string" ||
     parsedTarget === undefined ||
-    (base !== "none" && base !== "file" && base !== "kept") ||
     (fingerprint !== undefined && typeof fingerprint !== "string") ||
     typeof savedAt !== "number" ||
-    !Number.isFinite(savedAt)
+    !Number.isFinite(savedAt) ||
+    !isRecord(ink)
   ) {
     return undefined;
   }
   const parsed = parseRecord(JSON.stringify(ink));
-  if (!parsed.ok) return undefined;
-  const { strokes, base: layer } = parsed.record;
-  // A base layer is stored when it is kept, and only then.
-  let from: DraftBase;
-  if (base === "kept") {
-    if (layer === undefined) return undefined;
-    from = { kind: "kept", layer };
-  } else {
-    if (layer !== undefined) return undefined;
-    from = { kind: base };
-  }
-  return {
+  if (!parsed.ok || parsed.record.base !== undefined) return undefined;
+  const common = {
     id,
     target: parsedTarget,
-    strokes,
-    base: from,
+    strokes: parsed.record.strokes,
     ...(fingerprint === undefined ? {} : { fingerprint }),
     savedAt,
   };
+  if (base === "none" || base === "file" || base === "lost") {
+    return layer === undefined
+      ? { draft: { ...common, base: { kind: base } } }
+      : undefined;
+  }
+  if (base !== "kept") return undefined;
+  const place = parseLayer(layer);
+  if (place === undefined) return undefined;
+  const png = bases(place.key);
+  if (png === undefined)
+    return { draft: { ...common, base: { kind: "lost" } } };
+  const { x, y, scale } = place;
+  return {
+    draft: { ...common, base: { kind: "kept", layer: { x, y, scale, png } } },
+    baseKey: place.key,
+  };
 }
 
-/** A draft as the text stored for it. */
-function encodeDraft(draft: Draft): string {
+/**
+ * Reads a stored draft, as {@link DraftStore} does; `bases` gives the PNG a
+ * kept base layer's key names.
+ */
+export function decodeDraft(
+  stored: unknown,
+  bases: (key: string) => Uint8Array | undefined = () => undefined,
+): Draft | undefined {
+  return decode(stored, bases)?.draft;
+}
+
+/** A draft as the text stored for it, with its kept base layer's key. */
+function encodeDraft(draft: Draft, baseKey: string | undefined): string {
   const { id, target, strokes, base, fingerprint, savedAt } = draft;
-  const ink =
-    base.kind === "kept"
-      ? { box: draftBox, strokes, base: base.layer }
-      : { box: draftBox, strokes };
+  const layer =
+    base.kind === "kept" && baseKey !== undefined
+      ? {
+          base: "kept",
+          layer: {
+            key: baseKey,
+            x: base.layer.x,
+            y: base.layer.y,
+            scale: base.layer.scale,
+          },
+        }
+      : { base: base.kind === "kept" ? "lost" : base.kind };
   return JSON.stringify({
     version: draftVersion,
     id,
     target,
-    base: base.kind,
+    ...layer,
     ...(fingerprint === undefined ? {} : { fingerprint }),
     savedAt,
-    ink: recordValue(ink),
+    ink: recordValue({ box: draftBox, strokes }),
   });
 }
 
@@ -179,7 +253,7 @@ export function sameTarget(a: DraftTarget, b: DraftTarget): boolean {
 /**
  * How a draft of `document` keeps its base layer: as the file's own when it
  * is the base layer of `saved`, the document as the file now holds it, and
- * otherwise in the draft.
+ * otherwise with the draft.
  */
 export function draftBase(
   document: InkDocument,
@@ -226,74 +300,166 @@ function renamedTarget(
     : { kind: "new", note, file };
 }
 
-/** The drafts of one vault, with an index of their ids. */
+/**
+ * The drafts of one vault, with an index of their ids, and the base layers
+ * they keep, with an index of their keys. One store serves every editor
+ * while the plugin is loaded.
+ */
 export class DraftStore {
   readonly #storage: VaultStorage;
   readonly #now: () => number;
+  /** Drafts that an open editor owns or restored: offered to no other. */
+  readonly #held = new Set<string>();
+  /** Base layer PNGs stored or read, by key, and their keys by PNG. */
+  readonly #pngs = new Map<string, Uint8Array>();
+  readonly #keys = new WeakMap<Uint8Array, string>();
 
   constructor(storage: VaultStorage, now: () => number = Date.now) {
     this.#storage = storage;
     this.#now = now;
   }
 
-  #ids(): string[] {
-    const ids = this.#storage.loadLocalStorage(indexKey);
-    return Array.isArray(ids)
-      ? ids.filter((id): id is string => typeof id === "string")
+  #list(key: string): string[] {
+    const values = this.#storage.loadLocalStorage(key);
+    return Array.isArray(values)
+      ? values.filter((value): value is string => typeof value === "string")
       : [];
   }
 
-  #setIds(ids: readonly string[]): void {
-    this.#storage.saveLocalStorage(indexKey, ids.length === 0 ? null : ids);
+  #setList(key: string, values: readonly string[]): void {
+    this.#storage.saveLocalStorage(key, values.length === 0 ? null : values);
   }
 
-  /** Every readable draft, newest first, dropping expired and broken ones. */
+  /**
+   * Writes `text` under `key` and lists `id` in the index at `index`,
+   * returning whether storage kept both; it drops what it refuses, so each
+   * write is read back. A refused write leaves the value it would have
+   * replaced. A value the index would not list is removed again, since
+   * nothing could find it.
+   */
+  #write(key: string, text: string, index: string, id: string): boolean {
+    this.#storage.saveLocalStorage(key, text);
+    if (this.#storage.loadLocalStorage(key) !== text) return false;
+    const ids = this.#list(index);
+    if (ids.includes(id)) return true;
+    this.#setList(index, [...ids, id]);
+    if (this.#list(index).includes(id)) return true;
+    this.#storage.saveLocalStorage(key, null);
+    return false;
+  }
+
+  /** The stored PNG a base layer key names, read once and checked. */
+  #png(key: string): Uint8Array | undefined {
+    const known = this.#pngs.get(key);
+    if (known !== undefined) return known;
+    const png = readBasePng(this.#storage.loadLocalStorage(basePrefix + key));
+    if (png === undefined) return undefined;
+    this.#pngs.set(key, png);
+    this.#keys.set(png, key);
+    return png;
+  }
+
+  /** Stores a base layer's PNG once, returning its key, if it was kept. */
+  #keepPng(png: Uint8Array): string | undefined {
+    const known = this.#keys.get(png);
+    if (known !== undefined) return known;
+    if (basePngProblem(png) !== undefined) return undefined;
+    const key = crypto.randomUUID();
+    if (!this.#write(basePrefix + key, toBase64(png), baseIndexKey, key)) {
+      return undefined;
+    }
+    this.#pngs.set(key, png);
+    this.#keys.set(png, key);
+    return key;
+  }
+
+  /** Marks a draft as an open editor's, so that no other is offered it. */
+  hold(id: string): void {
+    this.#held.add(id);
+  }
+
+  release(id: string): void {
+    this.#held.delete(id);
+  }
+
+  /**
+   * Every readable draft, newest first, dropping expired and broken ones and
+   * the base layers that no draft uses any more.
+   */
   list(): Draft[] {
-    const ids = this.#ids();
+    const ids = this.#list(indexKey);
     const drafts: Draft[] = [];
+    const used = new Set<string>();
     for (const id of ids) {
-      const draft = decodeDraft(
+      const decoded = decode(
         this.#storage.loadLocalStorage(draftPrefix + id),
+        (key) => this.#png(key),
       );
+      const draft = decoded?.draft;
       if (draft?.id !== id || this.#now() - draft.savedAt > draftLifetime) {
         this.#storage.saveLocalStorage(draftPrefix + id, null);
         continue;
       }
+      if (decoded?.baseKey !== undefined) used.add(decoded.baseKey);
       drafts.push(draft);
     }
-    if (drafts.length !== ids.length) this.#setIds(drafts.map(({ id }) => id));
+    if (drafts.length !== ids.length) {
+      this.#setList(
+        indexKey,
+        drafts.map(({ id }) => id),
+      );
+    }
+    const keys = this.#list(baseIndexKey);
+    const kept = keys.filter((key) => used.has(key));
+    if (kept.length !== keys.length) {
+      for (const key of keys) {
+        if (used.has(key)) continue;
+        this.#storage.saveLocalStorage(basePrefix + key, null);
+        const png = this.#pngs.get(key);
+        if (png !== undefined) this.#keys.delete(png);
+        this.#pngs.delete(key);
+      }
+      this.#setList(baseIndexKey, kept);
+    }
     return drafts.sort((a, b) => b.savedAt - a.savedAt);
   }
 
-  /** The drafts for a symbol, newest first, other than `exceptId`'s. */
-  forTarget(target: DraftTarget, exceptId?: string): Draft[] {
+  /** The drafts for a symbol, newest first, other than open editors'. */
+  forTarget(target: DraftTarget): Draft[] {
     return this.list().filter(
-      (draft) => draft.id !== exceptId && sameTarget(draft.target, target),
+      (draft) => !this.#held.has(draft.id) && sameTarget(draft.target, target),
     );
   }
 
   /**
    * Keeps a draft, replacing the one with its id, and returns whether it was
-   * kept: each write is read back, since storage drops what it refuses. A
-   * draft that could not be kept leaves the one it would have replaced.
+   * kept. A draft that reading would refuse, or that storage refuses, is not
+   * kept, and the one it would have replaced stays. A kept base layer is
+   * stored once, the first time a draft uses it.
    */
   put(draft: Draft): boolean {
-    const key = draftPrefix + draft.id;
-    const text = encodeDraft(draft);
-    this.#storage.saveLocalStorage(key, text);
-    if (this.#storage.loadLocalStorage(key) !== text) return false;
-    const ids = this.#ids();
-    if (ids.includes(draft.id)) return true;
-    this.#setIds([...ids, draft.id]);
-    if (this.#ids().includes(draft.id)) return true;
-    // Not in the index, it would never be found: free its space instead.
-    this.#storage.saveLocalStorage(key, null);
-    return false;
+    const { base } = draft;
+    let baseKey: string | undefined;
+    if (base.kind === "kept") {
+      baseKey = this.#keepPng(base.layer.png);
+      if (baseKey === undefined) return false;
+    }
+    const text = encodeDraft(draft, baseKey);
+    const png = base.kind === "kept" ? base.layer.png : undefined;
+    if (
+      decode(text, (key) => (key === baseKey ? png : undefined)) === undefined
+    ) {
+      return false;
+    }
+    return this.#write(draftPrefix + draft.id, text, indexKey, draft.id);
   }
 
   remove(id: string): void {
     this.#storage.saveLocalStorage(draftPrefix + id, null);
-    this.#setIds(this.#ids().filter((other) => other !== id));
+    this.#setList(
+      indexKey,
+      this.#list(indexKey).filter((other) => other !== id),
+    );
   }
 
   /**
