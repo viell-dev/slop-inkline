@@ -2018,11 +2018,21 @@ describe("The editor", function () {
     await browser.waitUntil(
       async () => (await storedDrafts())[0]?.strokes.length === 0,
     );
+    // Backspace, which a Mac's key labelled Delete sends, clears too.
+    await browser.keys(["Control", "z"]);
+    await browser.waitUntil(
+      async () => (await storedDrafts())[0]?.strokes.length === 2,
+    );
+    await browser.keys(["Backspace"]);
+    await browser.waitUntil(
+      async () => (await storedDrafts())[0]?.strokes.length === 0,
+    );
   });
 
   it("lets a text field have the keys it types", async function () {
     await insert();
-    await settledSurface();
+    await draw(zigzag);
+    await browser.waitUntil(async () => (await storedDrafts()).length === 1);
     await browser.execute(() => {
       const content = document.querySelector(".inkline-editor .modal-content");
       if (content === null) throw new Error("no editor");
@@ -2030,7 +2040,7 @@ describe("The editor", function () {
       field.addClass("inkline-test-field");
       field.focus();
     });
-    await browser.keys(["e", "2"]);
+    await browser.keys(["e", "2", "3", "Backspace"]);
     const eraser = browser.$('[data-inkline-button="eraser"]');
     expect(await eraser.getAttribute("aria-pressed")).toBe("false");
     expect(
@@ -2039,8 +2049,12 @@ describe("The editor", function () {
         return field instanceof HTMLInputElement ? field.value : "";
       }),
     ).toBe("e2");
-    // Away from the field, the keys are the editor's again.
+    // Away from the field, the keys are the editor's again. Backspace left
+    // the drawing alone, so the click's dot is its second stroke.
     await surface().click();
+    await browser.waitUntil(
+      async () => (await storedDrafts())[0]?.strokes.length === 2,
+    );
     await browser.keys(["e"]);
     await browser.waitUntil(
       async () => (await eraser.getAttribute("aria-pressed")) === "true",

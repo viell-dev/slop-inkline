@@ -439,9 +439,12 @@ export class InkEditorModal extends Modal {
       this.#fitView();
       this.#render();
     });
-    key([], "Delete", () => {
-      this.#clear();
-    });
+    // A Mac's key labelled Delete sends Backspace.
+    for (const name of ["Delete", "Backspace"]) {
+      key([], name, () => {
+        this.#clear();
+      });
+    }
     brushSizes.forEach((_, index) => {
       key([], String(index + 1), () => {
         this.#setSize(index);
