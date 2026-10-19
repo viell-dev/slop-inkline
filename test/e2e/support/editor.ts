@@ -260,7 +260,33 @@ export async function startOver(): Promise<void> {
     },
     { interval: 300, timeoutMsg: "modals stayed open" },
   );
-  await browser.executeObsidian(({ app }) => {
+  await browser.executeObsidian(async ({ app, obsidian }) => {
+    // A note's tab saves what it holds when it closes, without waiting, so
+    // that save could land after the vault is reset below. So every note is
+    // saved first, and the reset waits for each save under way and the one
+    // it queues: save() returns at once while another runs. Obsidian keeps
+    // that state in the view's private `saving` and `saveAgain`.
+    const views: object[] = [];
+    for (const leaf of app.workspace.getLeavesOfType("markdown")) {
+      if (leaf.view instanceof obsidian.MarkdownView) views.push(leaf.view);
+    }
+    const settled = async (): Promise<void> => {
+      const busy = () =>
+        views.some(
+          (view) =>
+            Reflect.get(view, "saving") === true ||
+            Reflect.get(view, "saveAgain") === true,
+        );
+      const until = Date.now() + 15_000;
+      while (busy()) {
+        if (Date.now() > until) throw new Error("a note is still saving");
+        await new Promise((resolve) => window.setTimeout(resolve, 20));
+      }
+    };
+    for (const leaf of app.workspace.getLeavesOfType("markdown")) {
+      if (leaf.view instanceof obsidian.MarkdownView) await leaf.view.save();
+    }
+    await settled();
     // Detaching while iterating would skip leaves, so collect them first:
     // the main window's, and every one in a popout window.
     const leaves: { detach(): void }[] = [];
@@ -269,6 +295,8 @@ export async function startOver(): Promise<void> {
       if (leaf.view.containerEl.doc !== document) leaves.push(leaf);
     }
     for (const leaf of leaves) leaf.detach();
+    // Closing saves too.
+    await settled();
     for (let index = window.localStorage.length - 1; index >= 0; index--) {
       const key = window.localStorage.key(index);
       if (key?.includes("inkline-draft") === true) {
@@ -284,6 +312,7 @@ export async function startOver(): Promise<void> {
 
 const delayable = [
   "createBinary",
+  "modify",
   "modifyBinary",
   "readBinary",
   "process",

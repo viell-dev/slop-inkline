@@ -12,7 +12,7 @@ import {
   type TAbstractFile,
 } from "obsidian";
 import type { CarriedChunk } from "../format/ink-file.ts";
-import type { BaseLayer, InkRecord } from "../format/record.ts";
+import type { BaseLayer, InkRecord, Tool } from "../format/record.ts";
 import {
   drawableBase,
   openInk,
@@ -47,6 +47,14 @@ export interface SymbolFile {
   readonly path: string;
   /** What it holds now, or undefined when no file is there. */
   read(): Promise<Uint8Array | undefined>;
+}
+
+/** The tools chosen in an editor, which the next one starts with. */
+export interface EditorTools {
+  readonly tool: Tool;
+  readonly sizeIndex: number;
+  readonly grid: boolean;
+  readonly guides: boolean;
 }
 
 export interface EditorOptions {
@@ -95,6 +103,14 @@ export interface EditorOptions {
      */
     readonly restored?: (draft: Draft) => void;
   };
+  /**
+   * Opens the editor for the next symbol, whose embed follows this one's,
+   * once this one is saved and inserted, with this editor's tools; undefined
+   * where nothing follows, as for a symbol file opened from its menu.
+   */
+  readonly next?: (tools: EditorTools) => void;
+  /** The tools to start with, as the editor before this one left them. */
+  readonly tools?: EditorTools;
   /** Told when the editor opens and closes, so that its owner can track it. */
   readonly lifecycle?: {
     opened(editor: InkEditorModal): void;
@@ -144,6 +160,8 @@ export class InkEditorModal extends Modal {
    * goes on with if the drawing is kept.
    */
   #askingChanged = false;
+  /** Whether Next is under way, so that it opens one editor however asked. */
+  #advancing = false;
   #resume: (() => void) | undefined;
   #view: InkView | undefined;
   #saving: Promise<boolean> | undefined;
@@ -180,6 +198,13 @@ export class InkEditorModal extends Modal {
     super(app);
     this.#options = options;
     this.#session = new DrawingSession(options.document);
+    if (options.tools !== undefined) {
+      const { tool, sizeIndex, grid, guides } = options.tools;
+      this.#session.tool = tool;
+      this.#session.sizeIndex = sizeIndex;
+      this.#session.snap = grid;
+      this.#guidesShown = guides;
+    }
     this.#watch = new FileWatch(options.fingerprint);
     this.#carried = options.carried ?? [];
     this.#opened = options.document;
@@ -249,6 +274,18 @@ export class InkEditorModal extends Modal {
       void this.#saveAndClose();
     });
     this.#buttons.get("save")?.setCta();
+    if (this.#options.next !== undefined) {
+      this.#addButton(
+        toolbar,
+        "next",
+        "Next",
+        "Mod+Shift+Enter",
+        () => {
+          void this.#saveAndNext();
+        },
+        "Save and draw the next one",
+      );
+    }
 
     const canvas = this.contentEl.createEl("canvas", {
       cls: "inkline-surface",
@@ -467,6 +504,9 @@ export class InkEditorModal extends Modal {
       });
     };
     key(["Mod"], "Enter", () => void this.#saveAndClose(), false);
+    if (this.#options.next !== undefined) {
+      key(["Mod", "Shift"], "Enter", () => void this.#saveAndNext(), false);
+    }
     key(["Mod"], "s", () => void this.#save(), false);
     key(["Mod"], "z", () => {
       this.#undo();
@@ -682,6 +722,7 @@ export class InkEditorModal extends Modal {
     this.#buttons.get("undo")?.setDisabled(!this.#session.canUndo);
     this.#buttons.get("redo")?.setDisabled(!this.#session.canRedo);
     this.#buttons.get("save")?.setDisabled(this.#saving !== undefined);
+    this.#buttons.get("next")?.setDisabled(this.#saving !== undefined);
   }
 
   #announce(text: string): void {
@@ -1037,6 +1078,31 @@ export class InkEditorModal extends Modal {
     this.#fitView();
     this.#changed();
     this.#announce("Reloaded: the file changed on disk");
+  }
+
+  /**
+   * Saves, then opens the editor for the next symbol, whose embed follows
+   * this one's, with the same tools. As with Save and close, strokes drawn
+   * while the save ran keep this editor open instead.
+   */
+  async #saveAndNext(): Promise<void> {
+    const next = this.#options.next;
+    if (next === undefined || this.#advancing) return;
+    this.#advancing = true;
+    try {
+      if (!(await this.#save(() => void this.#saveAndNext()))) return;
+      // Closed meanwhile, as by Save and close or by Inkline being disabled.
+      if (this.#closing || this.#retired) return;
+      if (this.#session.dirty) {
+        this.#announce("Saved, except for the strokes drawn while saving");
+        return;
+      }
+      const { tool, sizeIndex, snap } = this.#session;
+      this.#finish();
+      next({ tool, sizeIndex, grid: snap, guides: this.#guidesShown });
+    } finally {
+      this.#advancing = false;
+    }
   }
 
   /**
