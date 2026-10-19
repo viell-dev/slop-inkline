@@ -56,18 +56,41 @@ function isRecordChunk(chunk: Chunk): boolean {
   return textKeyword(chunk) === recordKeyword;
 }
 
+/** A chunk to carry into a rewritten file, and which side of the image data it was on. */
+export interface CarriedChunk {
+  readonly chunk: Chunk;
+  readonly afterData: boolean;
+}
+
+/** Whether PNG marks a chunk type ancillary and safe to copy. */
+function isSafeToCopy(type: string): boolean {
+  // A lowercase first letter marks an ancillary chunk, a lowercase fourth
+  // letter one that is safe to copy.
+  return /^[a-z][A-Za-z][A-Z][a-z]$/.test(type);
+}
+
+/** Known safe-to-copy chunks that PNG requires before the image data. */
+const beforeDataOnly = new Set(["pHYs", "eXIf"]);
+
 /**
  * The chunks of a file that a rewrite should carry over: ancillary chunks
  * marked safe to copy, such as text, which PNG lets an editor keep however it
- * changes the pixels, other than the record. Chunks marked unsafe to copy,
+ * changes the pixels, other than the record. Each keeps the side of the image
+ * data it was on, as PNG requires of editors. Chunks marked unsafe to copy,
  * such as gamma or colour profiles, describe the old pixels and are dropped.
  */
-export function preservableChunks(bytes: Uint8Array): Chunk[] {
-  return readChunks(bytes).filter(
-    (chunk) =>
-      // A lowercase first letter marks an ancillary chunk, a lowercase fourth
-      // letter one that is safe to copy.
-      /^[a-z][A-Za-z][A-Z][a-z]$/.test(chunk.type) && !isRecordChunk(chunk),
+export function preservableChunks(bytes: Uint8Array): CarriedChunk[] {
+  const chunks = readChunks(bytes);
+  const lastData = chunks.findLastIndex((chunk) => chunk.type === "IDAT");
+  return chunks.flatMap((chunk, index) =>
+    isSafeToCopy(chunk.type) && !isRecordChunk(chunk)
+      ? [
+          {
+            chunk,
+            afterData: index > lastData && !beforeDataOnly.has(chunk.type),
+          },
+        ]
+      : [],
   );
 }
 
@@ -113,8 +136,9 @@ export async function readInkFile(bytes: Uint8Array): Promise<InkSource> {
  * header, keeping every other chunk and the pixels as they are. An earlier
  * record is replaced, unless a later version of Inkline wrote it: replacing
  * that would lose what it recorded. `carried` chunks, from
- * {@link preservableChunks} of the file being replaced, follow the record,
- * except types the PNG already has.
+ * {@link preservableChunks} of the file being replaced, go back to their side
+ * of the image data: after the record, or after the last `IDAT`. Text chunks
+ * are always carried; other types only where the PNG has none of its own.
  *
  * Throws `PngError` when the bytes are not a well-formed PNG, and
  * {@link RecordError} when the record's size differs from the image's or
@@ -124,7 +148,7 @@ export async function readInkFile(bytes: Uint8Array): Promise<InkSource> {
 export async function writeInkFile(
   png: Uint8Array,
   record: InkRecord,
-  carried: readonly Chunk[] = [],
+  carried: readonly CarriedChunk[] = [],
 ): Promise<Uint8Array> {
   const chunks = readChunks(png);
   const { width, height } = imageHeader(chunks);
@@ -155,11 +179,29 @@ export async function writeInkFile(
   if (header === undefined) throw new RecordError("PNG has no chunks");
   const present = new Set(rest.map((chunk) => chunk.type));
   // Text chunks may repeat; other types are kept only if the PNG has none.
-  const extra = carried.filter(
-    (chunk) =>
+  const kept = carried.filter(
+    ({ chunk }) =>
       !isRecordChunk(chunk) &&
-      /^[a-z][A-Za-z][A-Z][a-z]$/.test(chunk.type) &&
+      isSafeToCopy(chunk.type) &&
       (/^(?:tEXt|zTXt|iTXt)$/.test(chunk.type) || !present.has(chunk.type)),
   );
-  return writeChunks([header, recordChunk, ...extra, ...rest]);
+  const before = kept
+    .filter(
+      ({ chunk, afterData }) => !afterData || beforeDataOnly.has(chunk.type),
+    )
+    .map(({ chunk }) => chunk);
+  const after = kept
+    .filter(
+      ({ chunk, afterData }) => afterData && !beforeDataOnly.has(chunk.type),
+    )
+    .map(({ chunk }) => chunk);
+  const lastData = rest.findLastIndex((chunk) => chunk.type === "IDAT");
+  return writeChunks([
+    header,
+    recordChunk,
+    ...before,
+    ...rest.slice(0, lastData + 1),
+    ...after,
+    ...rest.slice(lastData + 1),
+  ]);
 }

@@ -267,36 +267,82 @@ describe("carrying chunks through a save", () => {
   const physical: Chunk = { type: "pHYs", data: new Uint8Array(9) };
   const gamma: Chunk = { type: "gAMA", data: new Uint8Array(4) };
   const time: Chunk = { type: "tIME", data: new Uint8Array(7) };
+  const unknown: Chunk = { type: "vpAg", data: new Uint8Array(9) };
+  const before = (chunk: Chunk) => ({ chunk, afterData: false });
+  const after = (chunk: Chunk) => ({ chunk, afterData: true });
 
-  it("keeps ancillary chunks that are safe to copy, but not the record", async () => {
-    const file = withChunks([
-      await textChunk("inkline", serializeRecord(record)),
-      comment,
-      physical,
-      gamma,
-      time,
+  /** A PNG with chunks before and after its image data. */
+  function framed(
+    beforeData: readonly Chunk[],
+    afterData: readonly Chunk[],
+  ): Uint8Array {
+    const [header, data, end] = pixelChunks(blank(8, 12));
+    if (header === undefined || data === undefined || end === undefined) {
+      throw new Error("no chunks");
+    }
+    return writeChunks([header, ...beforeData, data, ...afterData, end]);
+  }
+
+  it("keeps ancillary chunks that are safe to copy, but not the record, with their side of the image data", async () => {
+    const file = framed(
+      [
+        await textChunk("inkline", serializeRecord(record)),
+        comment,
+        physical,
+        gamma,
+        time,
+      ],
+      [unknown, comment],
+    );
+    expect(preservableChunks(file)).toEqual([
+      before(comment),
+      before(physical),
+      after(unknown),
+      after(comment),
     ]);
-    expect(preservableChunks(file)).toEqual([comment, physical]);
   });
 
-  it("adds carried chunks after the record", async () => {
-    const file = await writeInkFile(image, record, [comment, physical]);
+  it("puts chunks back on their side of the image data", async () => {
+    const file = await writeInkFile(image, record, [
+      before(comment),
+      before(physical),
+      after(unknown),
+    ]);
     expect(readChunks(file).map((chunk) => chunk.type)).toEqual([
       "IHDR",
       "iTXt",
       "tEXt",
       "pHYs",
       "IDAT",
+      "vpAg",
       "IEND",
     ]);
-    expect(readChunks(file)[2]).toEqual(comment);
+  });
+
+  it("keeps chunks PNG requires before the image data there", async () => {
+    const exif: Chunk = { type: "eXIf", data: new Uint8Array(4) };
+    const file = await writeInkFile(image, record, [
+      after(physical),
+      after(exif),
+    ]);
+    expect(readChunks(file).map((chunk) => chunk.type)).toEqual([
+      "IHDR",
+      "iTXt",
+      "pHYs",
+      "eXIf",
+      "IDAT",
+      "IEND",
+    ]);
   });
 
   it("skips a carried type the new image already has, except text", async () => {
     const own: Chunk = { type: "pHYs", data: new Uint8Array(9).fill(1) };
     const second: Chunk = { type: "tEXt", data: ascii("Title\0x") };
     const fresh = withChunks([own, comment]);
-    const file = await writeInkFile(fresh, record, [physical, second]);
+    const file = await writeInkFile(fresh, record, [
+      before(physical),
+      before(second),
+    ]);
     const chunks = readChunks(file);
     expect(chunks.filter((chunk) => chunk.type === "pHYs")).toEqual([own]);
     expect(chunks.filter((chunk) => chunk.type === "tEXt")).toEqual([
@@ -310,7 +356,11 @@ describe("carrying chunks through a save", () => {
       "inkline",
       serializeRecord({ ...record, strokes: [] }),
     );
-    const file = await writeInkFile(image, record, [gamma, time, stale]);
+    const file = await writeInkFile(image, record, [
+      before(gamma),
+      before(time),
+      after(stale),
+    ]);
     expect(readChunks(file).map((chunk) => chunk.type)).toEqual([
       "IHDR",
       "iTXt",
