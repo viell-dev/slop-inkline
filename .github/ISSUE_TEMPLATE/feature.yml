@@ -1,0 +1,40 @@
+name: Feature request
+description: Propose a new capability or a change to how Inkline works
+labels: ["Type: Feature Request"]
+body:
+  - type: checkboxes
+    id: searched
+    attributes:
+      label: Existing issues
+      options:
+        - label: I searched the open and closed issues and found no request for this.
+          required: true
+        - label: I follow the project's [code of
+            conduct](https://github.com/viell-dev/slop-inkline/blob/main/CODE_OF_CONDUCT.md).
+          required: true
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use case
+      description: >-
+        The problem you want to solve, in the notes and symbols you work with.
+        Describe the need, not only a solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: What Inkline should do, step by step from the user's side.
+    validations:
+      required: true
+  - type: textarea
+    id: fit
+    attributes:
+      label: Why it belongs in Inkline
+      description: >-
+        Why a plugin for drawing inline symbols should do this, rather than
+        Obsidian, a drawing plugin, or another tool. Name another tool that does
+        it, if you know one.
+    validations:
+      required: true

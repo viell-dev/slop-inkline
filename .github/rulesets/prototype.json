@@ -1,0 +1,10 @@
+{
+  "name": "Frozen prototype branch",
+  "target": "branch",
+  "enforcement": "active",
+  "bypass_actors": [],
+  "conditions": {
+    "ref_name": { "include": ["refs/heads/prototype"], "exclude": [] }
+  },
+  "rules": [{ "type": "update" }, { "type": "non_fast_forward" }]
+}
