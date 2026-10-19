@@ -451,9 +451,27 @@ function unfilter(
   return { pixels, filters };
 }
 
+/** The image data of a PNG's `IDAT` chunks, joined and inflated. */
+function imageData(chunks: readonly Chunk[]): Uint8Array {
+  const parts = chunks.filter((chunk) => chunk.type === "IDAT");
+  const joined = new Uint8Array(
+    parts.reduce((total, chunk) => total + chunk.data.length, 0),
+  );
+  let offset = 0;
+  for (const part of parts) {
+    joined.set(part.data, offset);
+    offset += part.data.length;
+  }
+  return new Uint8Array(inflateSync(joined));
+}
+
 async function decoded(width: number, height: number, data: Uint8Array) {
   const chunks = readChunks(await encodeRgba(width, height, data));
-  expect(chunks.map((chunk) => chunk.type)).toEqual(["IHDR", "IDAT", "IEND"]);
+  expect(chunks.at(0)?.type).toBe("IHDR");
+  expect(chunks.at(-1)?.type).toBe("IEND");
+  expect(chunks.slice(1, -1).every((chunk) => chunk.type === "IDAT")).toBe(
+    true,
+  );
   expect(imageHeader(chunks)).toEqual({
     width,
     height,
@@ -461,10 +479,8 @@ async function decoded(width: number, height: number, data: Uint8Array) {
     colorType: 6,
     interlaced: false,
   });
-  const raw = new Uint8Array(inflateSync(chunks[1]?.data ?? new Uint8Array()));
-  return unfilter(raw, width, height);
+  return unfilter(imageData(chunks), width, height);
 }
-
 describe("encodeRgba", () => {
   it("encodes pixels that decode back exactly", async () => {
     let seed = 3;
@@ -494,7 +510,7 @@ describe("encodeRgba", () => {
     expect(filters).toEqual([1, 2, 2]);
   });
 
-  it("pauses every few milliseconds of a long encoding", async () => {
+  it("pauses every few milliseconds of a long encoding, to its end", async () => {
     const width = 512;
     const height = 512;
     let seed = 5;
@@ -505,20 +521,25 @@ describe("encodeRgba", () => {
     const stretches: number[] = [];
     let last = performance.now();
     const bytes = await encodeRgba(width, height, data, {
-      pause: () => {
-        const now = performance.now();
-        stretches.push(now - last);
-        last = now;
-        return Promise.resolve();
+      // A task of its own, as a frame or input would need.
+      pause: async () => {
+        stretches.push(performance.now() - last);
+        await new Promise((resolve) => setImmediate(resolve));
+        last = performance.now();
       },
     });
-    expect(stretches.length).toBeGreaterThan(0);
+    // From the last pause to the end, too.
+    stretches.push(performance.now() - last);
+    expect(stretches.length).toBeGreaterThan(1);
     // A slice is 12 ms and a batch more; a frozen encoder would take all of it.
     expect(Math.max(...stretches)).toBeLessThan(100);
-    // Smaller images check the pixels; this one, the file's structure.
-    expect(imageHeader(readChunks(bytes))).toMatchObject({ width, height });
+    // The image data spans chunks of at most 64 KiB, each checksummed.
+    const chunks = readChunks(bytes);
+    const parts = chunks.filter((chunk) => chunk.type === "IDAT");
+    expect(parts.length).toBeGreaterThan(1);
+    expect(parts.every((chunk) => chunk.data.length <= 64 * 1024)).toBe(true);
+    expect(imageData(chunks).length).toBe((width * 4 + 1) * height);
   });
-
   it("refuses pixels that do not match the size", async () => {
     await expect(encodeRgba(2, 2, new Uint8Array(15))).rejects.toThrow(
       "pixel data does not match the size",

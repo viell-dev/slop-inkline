@@ -173,8 +173,17 @@ export function readChunks(bytes: Uint8Array): Chunk[] {
     }
   }
 }
-/** Joins chunks into a PNG file, computing each length and CRC. */
-export function writeChunks(chunks: readonly Chunk[]): Uint8Array {
+/** A chunk with its CRC already computed. */
+interface SealedChunk extends Chunk {
+  readonly crc: number;
+}
+
+function seal(chunk: Chunk): SealedChunk {
+  return { ...chunk, crc: crc32(typeBytes(chunk.type), chunk.data) };
+}
+
+/** Joins sealed chunks into a PNG file. */
+function joinChunks(chunks: readonly SealedChunk[]): Uint8Array {
   const size = chunks.reduce(
     (total, chunk) => total + 12 + chunk.data.length,
     pngSignature.length,
@@ -184,14 +193,18 @@ export function writeChunks(chunks: readonly Chunk[]): Uint8Array {
   bytes.set(pngSignature);
   let offset = pngSignature.length;
   for (const chunk of chunks) {
-    const type = typeBytes(chunk.type);
     view.setUint32(offset, chunk.data.length);
-    bytes.set(type, offset + 4);
+    bytes.set(typeBytes(chunk.type), offset + 4);
     bytes.set(chunk.data, offset + 8);
-    view.setUint32(offset + 8 + chunk.data.length, crc32(type, chunk.data));
+    view.setUint32(offset + 8 + chunk.data.length, chunk.crc);
     offset += 12 + chunk.data.length;
   }
   return bytes;
+}
+
+/** Joins chunks into a PNG file, computing each length and CRC. */
+export function writeChunks(chunks: readonly Chunk[]): Uint8Array {
+  return joinChunks(chunks.map(seal));
 }
 
 /** The image's header fields, from chunks that {@link readChunks} checked. */
@@ -369,26 +382,37 @@ const batchBytes = 64 * 1024;
 /** How long the encoder works before it pauses, in milliseconds. */
 const sliceMilliseconds = 12;
 
-/** A stream's bytes, read to the end, as one array. */
-async function readAll(
+/**
+ * The largest `IDAT` chunk the encoder writes. PNG lets the image data span
+ * many, and a short chunk keeps each checksum short work.
+ */
+const imageChunkBytes = 64 * 1024;
+
+/** A stream's bytes, read to the end, in the parts it gave them in. */
+async function readParts(
   stream: ReadableStream<Uint8Array>,
-): Promise<Uint8Array> {
+): Promise<Uint8Array[]> {
   const reader = stream.getReader();
   const parts: Uint8Array[] = [];
-  let total = 0;
   for (;;) {
     const { done, value } = await reader.read();
-    if (done) break;
+    if (done) return parts;
     parts.push(value);
-    total += value.length;
   }
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const part of parts) {
-    bytes.set(part, offset);
-    offset += part.length;
-  }
-  return bytes;
+}
+
+/**
+ * A function to call between pieces of work: it awaits `pause` once the work
+ * since the last pause has taken more than {@link sliceMilliseconds}.
+ */
+function slicer(pause: (() => Promise<void>) | undefined): () => Promise<void> {
+  let started = performance.now();
+  return async () => {
+    if (pause === undefined) return;
+    if (performance.now() - started <= sliceMilliseconds) return;
+    await pause();
+    started = performance.now();
+  };
 }
 
 /**
@@ -397,9 +421,10 @@ async function readAll(
  * the smallest bytes, the usual guess at what compresses best, and the rows
  * are compressed with zlib. Unlike a canvas's own encoder, this waits for
  * nothing but the work itself. The rows go to the compressor a batch at a
- * time, so that only the compressed image is held whole. Every few
- * milliseconds of work, the encoder awaits `pause`, which can let the page
- * run, so that a large image does not freeze it.
+ * time, so that only the compressed image is held whole, and it goes into
+ * `IDAT` chunks of at most 64 KiB. Every few milliseconds of work, whether
+ * filtering rows or checksumming chunks, the encoder awaits `pause`, which
+ * can let the page run, so that a large image does not freeze it.
  */
 export async function encodeRgba(
   width: number,
@@ -427,9 +452,9 @@ export async function encodeRgba(
   const compressor = new CompressionStream("deflate");
   const writer = compressor.writable.getWriter();
   // Read while writing, or the compressor would stop for want of a reader.
-  const compressed = readAll(compressor.readable);
+  const compressed = readParts(compressor.readable);
+  const breather = slicer(pause);
   try {
-    let started = performance.now();
     for (let first = 0; first < height; first += rowsPerBatch) {
       const rows = Math.min(rowsPerBatch, height - first);
       const batch = new Uint8Array(rows * rowBytes);
@@ -449,13 +474,7 @@ export async function encodeRgba(
         );
       }
       await writer.write(batch);
-      if (
-        pause !== undefined &&
-        performance.now() - started > sliceMilliseconds
-      ) {
-        await pause();
-        started = performance.now();
-      }
+      await breather();
     }
     await writer.close();
   } catch (error) {
@@ -463,7 +482,6 @@ export async function encodeRgba(
     await compressed.catch(() => undefined);
     throw error;
   }
-  const imageData = await compressed;
   const header = new Uint8Array(13);
   const view = new DataView(header.buffer);
   view.setUint32(0, width);
@@ -471,11 +489,30 @@ export async function encodeRgba(
   // Bit depth 8, colour type 6 (RGBA), deflate, adaptive filtering, and no
   // interlacing.
   header.set([8, 6, 0, 0, 0], 8);
-  return writeChunks([
-    { type: "IHDR", data: header },
-    { type: "IDAT", data: imageData },
-    { type: "IEND", data: new Uint8Array(0) },
-  ]);
+  const chunks = [seal({ type: "IHDR", data: header })];
+  // The compressor's parts, repacked into full chunks.
+  const parts = await compressed;
+  const total = parts.reduce((sum, part) => sum + part.length, 0);
+  let piece = new Uint8Array(Math.min(imageChunkBytes, total));
+  let filled = 0;
+  let left = total;
+  for (const part of parts) {
+    for (let offset = 0; offset < part.length;) {
+      const taken = Math.min(piece.length - filled, part.length - offset);
+      piece.set(part.subarray(offset, offset + taken), filled);
+      filled += taken;
+      offset += taken;
+      left -= taken;
+      if (filled === piece.length) {
+        chunks.push(seal({ type: "IDAT", data: piece }));
+        await breather();
+        piece = new Uint8Array(Math.min(imageChunkBytes, left));
+        filled = 0;
+      }
+    }
+  }
+  chunks.push(seal({ type: "IEND", data: new Uint8Array(0) }));
+  return joinChunks(chunks);
 }
 
 export interface InternationalText {
