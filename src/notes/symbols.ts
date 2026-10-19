@@ -17,7 +17,11 @@ import {
   type CreatedFile,
   type DraftStore,
 } from "../editor/drafts.ts";
-import { InkEditorModal, type EditorOptions } from "../editor/modal.ts";
+import {
+  InkEditorModal,
+  type EditorOptions,
+  type SymbolFile,
+} from "../editor/modal.ts";
 import { visibleWidth } from "../editor/view.ts";
 import { capturePoint, findPoint, type InsertionPoint } from "./insertion.ts";
 import { embedFromLink, nextNumberName, symbolStem } from "./names.ts";
@@ -158,6 +162,40 @@ function present(app: App, file: TFile): boolean {
   return app.vault.getFileByPath(file.path) === file;
 }
 
+/** The symbol file at `path`, as the editor reads it again. */
+function symbolFile(app: App, path: string): SymbolFile {
+  return {
+    path,
+    read: async () => {
+      const file = app.vault.getFileByPath(path);
+      return file === null
+        ? undefined
+        : new Uint8Array(await app.vault.readBinary(file));
+    },
+  };
+}
+
+/**
+ * Writes a symbol's bytes to its file, or, once that was deleted, to a new
+ * file at its path, with the folders it needs; returns the file written.
+ */
+async function writeSymbol(
+  app: App,
+  file: TFile,
+  bytes: Uint8Array,
+): Promise<TFile> {
+  const now = present(app, file) ? file : app.vault.getFileByPath(file.path);
+  if (now !== null) {
+    await app.vault.modifyBinary(now, toBuffer(bytes));
+    return now;
+  }
+  const folder = parentPath(file.path);
+  if (folder !== "" && app.vault.getAbstractFileByPath(folder) === null) {
+    await app.vault.createFolder(folder);
+  }
+  return app.vault.createBinary(file.path, toBuffer(bytes));
+}
+
 /**
  * The claimed file and a fingerprint of what it holds, if that is what was
  * last written there, or what it held before a write that may not have
@@ -240,7 +278,7 @@ export function insertSymbol(host: EditorHost, view: MarkdownView): void {
    */
   let made:
     | {
-        readonly file: TFile;
+        file: TFile;
         fingerprint: string;
         previous: string | undefined;
       }
@@ -293,10 +331,13 @@ export function insertSymbol(host: EditorHost, view: MarkdownView): void {
       },
     },
     lifecycle: host.lifecycle,
+    file: () => made && symbolFile(app, made.file.path),
     // Until the embed is inserted, the draft is kept before each write, so
     // that it names the file and the bytes even after a crash. If storage
     // refuses it, the write goes ahead: the file then holds the drawing.
-    write: async (bytes, _record, keepDraft) => {
+    // The editor learns what the file holds as soon as it is adopted or
+    // written, so that a later failure leaves it still compared.
+    write: async (bytes, _record, keepDraft, holds) => {
       stillAlive(host);
       const fingerprint = await fingerprintOf(bytes);
       if (made === undefined && claim !== undefined) {
@@ -304,6 +345,7 @@ export function insertSymbol(host: EditorHost, view: MarkdownView): void {
         if (claimed !== undefined) {
           made = { ...claimed, previous: undefined };
           adopted = true;
+          holds(claimed.fingerprint);
         }
       }
       stillAlive(host);
@@ -314,6 +356,7 @@ export function insertSymbol(host: EditorHost, view: MarkdownView): void {
         keepDraft();
         const file = await app.vault.createBinary(path, toBuffer(bytes));
         made = { file, fingerprint, previous: undefined };
+        holds(fingerprint);
       } else {
         // A draft kept meanwhile names both, since the file holds either.
         const before = made.fingerprint;
@@ -321,7 +364,8 @@ export function insertSymbol(host: EditorHost, view: MarkdownView): void {
         made.previous = before;
         if (!inserted) keepDraft();
         try {
-          await app.vault.modifyBinary(made.file, toBuffer(bytes));
+          made.file = await writeSymbol(app, made.file, bytes);
+          holds(fingerprint);
         } catch (error) {
           made.fingerprint = before;
           throw error;
@@ -369,6 +413,8 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
     );
     return;
   }
+  /** The symbol's file: the one opened, or the one a save made again. */
+  let symbol = file;
   new InkEditorModal(app, {
     title: symbolStem(file.name) ?? file.basename,
     document: opened.document,
@@ -376,16 +422,17 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
     carried: opened.carried,
     center: opened.width / 2,
     width: opened.width,
+    fingerprint,
     drafts: {
       store: host.drafts,
       // The file's path follows renames.
-      target: () => ({ kind: "file", path: file.path }),
-      fingerprint,
+      target: () => ({ kind: "file", path: symbol.path }),
     },
     lifecycle: host.lifecycle,
+    file: () => symbolFile(app, symbol.path),
     write: async (saved) => {
       stillAlive(host);
-      await app.vault.modifyBinary(file, toBuffer(saved));
+      symbol = await writeSymbol(app, symbol, saved);
     },
   }).open();
 }
