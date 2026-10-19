@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Weekly, so that a new public Obsidian release is tested within a week.
+  schedule:
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verify:
+    # The ruleset requires these names; keep them stable.
+    name: verify (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      # Audits what ships: the bundled runtime dependencies. The test tools'
+      # advisories wait for WebdriverIO 10 support; see issue #9.
+      - if: runner.os == 'Linux'
+        run: npm audit --omit=dev --audit-level=low
+
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Resolve the Obsidian versions
+        run: |
+          node test/e2e/wdio.conf.mts | grep '^obsidian-cache-key:' > obsidian-versions.txt
+          cat obsidian-versions.txt
+          rm -rf .obsidian-cache
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .obsidian-cache
+          key: obsidian-${{ runner.os }}-${{ hashFiles('obsidian-versions.txt') }}
+      - name: Install the virtual display
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -q --yes --no-install-recommends herbstluftwm x11-xserver-utils xvfb
+      - run: sh test/e2e/session.sh
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-results
+          path: test-results/e2e
+          if-no-files-found: warn
+          retention-days: 30
+
+  # The image the owner and agents run locally with `npm run test:e2e:docker`.
+  # Weekly and on request, so that it keeps working without slowing every pull
+  # request.
+  e2e-docker:
+    name: e2e in Docker
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: npm run test:e2e:docker
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-docker-results
+          path: test-results/e2e
+          if-no-files-found: warn
+          retention-days: 30

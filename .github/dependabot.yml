@@ -1,0 +1,52 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    labels: ["Type: Maintenance"]
+    schedule:
+      interval: weekly
+    # A version becomes a candidate a week after its publication, which leaves
+    # time for a compromised or broken release to be found and withdrawn.
+    cooldown:
+      default-days: 7
+    ignore:
+      # typescript-eslint supports TypeScript only below 6.1; see issue #8.
+      - dependency-name: typescript
+        versions: [">=6.1.0"]
+      # eslint-plugin-obsidianmd, which carries the directory review's rules,
+      # depends on eslint-plugin-import, which supports ESLint 9 at most; see
+      # issue #7.
+      - dependency-name: eslint
+        versions: [">=10.0.0"]
+      - dependency-name: "@eslint/js"
+        versions: [">=10.0.0"]
+      # wdio-obsidian-service 3 needs WebdriverIO 9; see issue #9.
+      - dependency-name: "@wdio/*"
+        versions: [">=10.0.0"]
+      - dependency-name: webdriverio
+        versions: [">=10.0.0"]
+      # The type definitions follow the lowest Node.js version the tools
+      # support, 24.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+    groups:
+      development:
+        dependency-type: development
+  - package-ecosystem: github-actions
+    directory: /
+    labels: ["Type: Maintenance"]
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+  - package-ecosystem: docker
+    directory: /test/e2e
+    labels: ["Type: Maintenance"]
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    ignore:
+      # The image follows the Node.js major the tools are developed on.
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
