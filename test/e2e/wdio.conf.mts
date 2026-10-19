@@ -31,11 +31,26 @@ if (setting(process.env.PRINT_OBSIDIAN_CACHE_KEY) !== undefined) {
   await prepareOutput(outputDir);
 }
 
+// test/e2e/session.sh starts a display for each Obsidian version when there
+// is none; a worker uses the one for its version, which is the first number
+// of its id. One worker per version at a time keeps each display to one
+// window.
+const displays = (setting(process.env.INKLINE_E2E_DISPLAYS) ?? "")
+  .split(" ")
+  .filter((display) => display !== "");
+const worker = process.env.WDIO_WORKER_ID;
+if (worker !== undefined && displays.length > 0) {
+  const version = Number(worker.split("-")[0]);
+  const display = displays[version % displays.length];
+  if (display !== undefined) process.env.DISPLAY = display;
+}
+
 export const config: WebdriverIO.Config = {
   runner: "local",
   framework: "mocha",
   specs: [path.join(import.meta.dirname, "specs/**/*.e2e.ts")],
   maxInstances: Number(setting(process.env.WDIO_MAX_INSTANCES) ?? 2),
+  maxInstancesPerCapability: 1,
   capabilities: versions.map(([appVersion, installerVersion]) => ({
     browserName: "obsidian",
     browserVersion: appVersion,
@@ -51,6 +66,16 @@ export const config: WebdriverIO.Config = {
   cacheDir,
   outputDir: path.join(outputDir, "logs"),
   injectGlobals: false,
+  // Chromium 150 can take seconds to encode a PNG when the window has no
+  // idle time, which slows saves; see #16.
+  waitforTimeout: 20_000,
   mochaOpts: { ui: "bdd", timeout: 60_000 },
+  // A failed test leaves a screenshot of the window as it then was.
+  afterTest: async (test, _context, result) => {
+    if (result.passed) return;
+    const { saveScreenshot } = await import("./support/screenshots.ts");
+    const name = test.title.replace(/[^a-z0-9]+/gi, "-").slice(0, 80);
+    await saveScreenshot(`failed-${name}`);
+  },
   logLevel: "warn",
 };

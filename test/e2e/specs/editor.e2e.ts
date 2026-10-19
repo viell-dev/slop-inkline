@@ -508,11 +508,8 @@ describe("The editor", function () {
           welcome: await text("Welcome.md"),
         };
       });
-    await browser.waitUntil(
-      async () => (await read()).editor.includes("001.ink.png"),
-      {
-        timeout: 10_000,
-      },
+    await browser.waitUntil(async () =>
+      (await read()).editor.includes("001.ink.png"),
     );
     const texts = await read();
     expect(texts).toEqual({
@@ -1274,12 +1271,20 @@ describe("The editor", function () {
     try {
       await browser.keys(["Control", "s"]);
       // The file is written; the save has not finished.
-      await browser.waitUntil(async () => {
-        const record = JSON.parse(await recordOf("square.ink.png")) as {
-          strokes?: unknown[];
-        };
-        return record.strokes?.length === 1;
-      });
+      let written = "";
+      try {
+        await browser.waitUntil(async () => {
+          written = await recordOf("square.ink.png");
+          const record = JSON.parse(written) as { strokes?: unknown[] };
+          return record.strokes?.length === 1;
+        });
+      } catch (error) {
+        const status = await browser.$(".inkline-status").getText();
+        throw new Error(
+          `the file held ${written.slice(0, 200)}, and the status said "${status}"`,
+          { cause: error },
+        );
+      }
       [draft] = await storedDrafts();
     } finally {
       // Ends the held save, as a crash would.

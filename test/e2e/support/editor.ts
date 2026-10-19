@@ -75,7 +75,7 @@ export async function draw(
  */
 export async function waitForStatus(
   text: string,
-  timeout = 10_000,
+  timeout = 20_000,
 ): Promise<void> {
   const status = browser.$(".inkline-status");
   let shown = "";
@@ -178,7 +178,7 @@ export async function startOver(): Promise<void> {
       else await browser.keys(["Escape"]);
       return false;
     },
-    { timeout: 10_000, interval: 300, timeoutMsg: "modals stayed open" },
+    { interval: 300, timeoutMsg: "modals stayed open" },
   );
   await browser.executeObsidian(({ app }) => {
     // Detaching while iterating would skip leaves, so collect them first.
