@@ -16,7 +16,13 @@ The words "must", "must not", "should", and "may" are used as in
 ## File structure
 
 The file is a PNG as defined by the
-[PNG specification](https://www.w3.org/TR/png-3/). Inkline adds one chunk:
+[PNG specification](https://www.w3.org/TR/png-3/). Inkline refuses a file whose
+chunks are not well formed: a bad signature, length, chunk type, or CRC; an
+`IHDR` that is missing, not first, repeated, or invalid; a missing, misplaced,
+or forbidden `PLTE`; no `IDAT` or `IDAT` chunks that are not consecutive; or a
+missing or non-empty `IEND`. It ignores bytes after `IEND`.
+
+Inkline adds one chunk:
 
 - type `iTXt` (international textual data);
 - keyword `inkline`;
@@ -25,10 +31,16 @@ The file is a PNG as defined by the
 - an empty language tag and an empty translated keyword;
 - as text, the record described below, as JSON in UTF-8.
 
-A writer must write at most one such chunk, and should place it right after
-`IHDR`. A reader must accept it anywhere a PNG allows an `iTXt` chunk and must
-use the first one. Other chunks, including other `iTXt` chunks, are not part of
-the format; a writer that rewrites a file should keep them.
+A writer must write at most one such chunk, should place it right after `IHDR`,
+and must compress it. A reader must accept the chunk anywhere a PNG allows an
+`iTXt` chunk, must use the first one, and should also accept uncompressed text
+(compression flag 0), ignoring the compression method as PNG requires. Other
+chunks, including other `iTXt` chunks, are not part of the format; a writer that
+rewrites a file should keep them.
+
+A writer must not write a record that a reader would refuse, including one whose
+text is longer than the limit below, and must not replace a record with a higher
+version than it knows (see [Compatibility](#compatibility)).
 
 Because the record is an ancillary chunk, programs that do not know it keep
 showing the image. Some image optimizers and converters remove ancillary chunks;
@@ -94,28 +106,29 @@ single point is a dot.
 
 The base layer is an object:
 
-| Field   | Type    | Meaning                                                                        |
-| ------- | ------- | ------------------------------------------------------------------------------ |
-| `x`     | integer | The base image's left edge, in units.                                          |
-| `y`     | integer | The base image's top edge, in units.                                           |
-| `scale` | number  | Image pixels per base image pixel, from 1/64 to 64.                            |
-| `png`   | string  | A PNG file in base64 (RFC 4648, with padding), whose alpha channel is the ink. |
+| Field   | Type    | Meaning                                                                                    |
+| ------- | ------- | ------------------------------------------------------------------------------------------ |
+| `x`     | integer | The base image's left edge, in units.                                                      |
+| `y`     | integer | The base image's top edge, in units.                                                       |
+| `scale` | number  | Image pixels per base image pixel, from 1/64 to 64.                                        |
+| `png`   | string  | A well-formed PNG file in base64 (RFC 4648, with padding), whose alpha channel is the ink. |
 
 ### Limits
 
 A reader must refuse a record that breaks a type or range above, and should
 refuse one beyond these limits, which Inkline applies:
 
-| Limit                      | Value             |
-| -------------------------- | ----------------- |
-| `box.pxPerEm`              | 16 to 1024        |
-| `box.width`, `box.height`  | 1 to 8192         |
-| Strokes                    | 10,000            |
-| Points, across all strokes | 1,000,000         |
-| Absolute coordinate        | 2²⁴ units         |
-| Stroke size                | 1 to 65,536 units |
-| Base image                 | 8 MiB             |
-| Decompressed record text   | 16 MiB            |
+| Limit                                    | Value             |
+| ---------------------------------------- | ----------------- |
+| `box.pxPerEm`                            | 16 to 1024        |
+| `box.width`, `box.height`                | 1 to 8192         |
+| Strokes                                  | 10,000            |
+| Points, across all strokes               | 1,000,000         |
+| Absolute coordinate                      | 2²⁴ units         |
+| Stroke size                              | 1 to 65,536 units |
+| Base image file                          | 8 MiB             |
+| Base image width and height              | 1 to 4096 pixels  |
+| Record text, compressed or not, in UTF-8 | 16 MiB            |
 
 ## Compatibility
 
