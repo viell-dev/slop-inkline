@@ -25,7 +25,8 @@ import {
 } from "./drafts.ts";
 import { PointerGate, reportsPressure } from "./pointer.ts";
 import { brushSizes, DrawingSession, type InputPoint } from "./session.ts";
-import { InkView, surfaceWidth } from "./view.ts";
+import { cropSpan, fontGuides, joinSpans, type Guide } from "./guides.ts";
+import { InkView, measureFont, surfaceWidth } from "./view.ts";
 
 export interface EditorOptions {
   readonly title: string;
@@ -91,6 +92,18 @@ export class InkEditorModal extends Modal {
   #placed: { layer: BaseLayer; drawable: DrawableBase } | undefined;
   /** Whether the last draft written was kept; storage can refuse one. */
   #draftKept = true;
+  #guidesShown = true;
+  /** The note font's lines, measured when the editor opens. */
+  #fontGuides: readonly Guide[] = [];
+  #previewLine: HTMLElement | undefined;
+  #preview: HTMLCanvasElement | undefined;
+  #spanOf:
+    | {
+        document: InkDocument;
+        baseWidth: number | undefined;
+        span: { left: number; right: number } | undefined;
+      }
+    | undefined;
   /**
    * The draft this editor restored, until its own draft or a save takes its
    * place: storage may refuse the editor's own at first.
@@ -158,6 +171,9 @@ export class InkEditorModal extends Modal {
     this.#addButton(toolbar, "clear", "Clear", undefined, () => {
       this.#clear();
     });
+    this.#addButton(toolbar, "guides", "Guides", "G", () => {
+      this.#toggleGuides();
+    });
     this.#addButton(toolbar, "save", "Save", "Mod+Enter", () => {
       void this.#saveAndClose();
     });
@@ -171,6 +187,24 @@ export class InkEditorModal extends Modal {
         "aria-label": "Drawing area",
       },
     });
+    // A line in the note's font, with the symbol at its size there. Its
+    // font gives the guides.
+    const line = this.contentEl.createDiv({
+      cls: "inkline-preview markdown-rendered",
+      attr: { "aria-hidden": "true" },
+    });
+    line.createSpan({ text: "A line of text with " });
+    this.#preview = line.createEl("canvas", { cls: "inkline-preview-ink" });
+    line.createSpan({ text: " in it." });
+    this.#previewLine = line;
+    const font = getComputedStyle(line);
+    this.#fontGuides = fontGuides(
+      measureFont({
+        style: font.fontStyle,
+        weight: font.fontWeight,
+        family: font.fontFamily,
+      }),
+    );
     this.#status = this.contentEl.createDiv({
       cls: "inkline-status",
       attr: { "aria-live": "polite" },
@@ -363,6 +397,9 @@ export class InkEditorModal extends Modal {
     key([], "e", () => {
       this.#setTool("eraser");
     });
+    key([], "g", () => {
+      this.#toggleGuides();
+    });
     brushSizes.forEach((_, index) => {
       key([], String(index + 1), () => {
         this.#setSize(index);
@@ -437,12 +474,48 @@ export class InkEditorModal extends Modal {
     // The surface's own window, which differs from the main one in a popout.
     this.#frame = view.canvas.win.requestAnimationFrame(() => {
       this.#frame = undefined;
-      view.render(
-        this.#session.document,
-        this.#base,
-        this.#session.activeStroke,
+      const { document } = this.#session;
+      const active = this.#session.activeStroke;
+      const image = cropSpan(
+        joinSpans(
+          this.#span(document),
+          active === undefined
+            ? undefined
+            : documentSpan({ strokes: [active] }),
+        ),
       );
+      view.guides = this.#guidesShown
+        ? { lines: this.#fontGuides, image }
+        : undefined;
+      view.render(document, this.#base, active);
+      const line = this.#previewLine;
+      if (this.#preview !== undefined && line !== undefined) {
+        view.drawPreview(
+          this.#preview,
+          image.left,
+          image.right,
+          Number.parseFloat(getComputedStyle(line).fontSize),
+        );
+      }
     });
+  }
+
+  /** The extent of a committed document, remembered while it is current. */
+  #span(document: InkDocument): { left: number; right: number } | undefined {
+    const baseWidth = this.#base?.width;
+    const known = this.#spanOf;
+    if (known?.document === document && known.baseWidth === baseWidth) {
+      return known.span;
+    }
+    const span = documentSpan(document, baseWidth);
+    this.#spanOf = { document, baseWidth, span };
+    return span;
+  }
+
+  #toggleGuides(): void {
+    this.#guidesShown = !this.#guidesShown;
+    this.#updateButtons();
+    this.#render();
   }
 
   #setTool(tool: "pen" | "eraser"): void {
@@ -483,6 +556,7 @@ export class InkEditorModal extends Modal {
     };
     pressed("pen", this.#session.tool === "pen");
     pressed("eraser", this.#session.tool === "eraser");
+    pressed("guides", this.#guidesShown);
     brushSizes.forEach((_, index) => {
       pressed(`size-${String(index)}`, this.#session.sizeIndex === index);
     });

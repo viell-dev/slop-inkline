@@ -34,6 +34,12 @@
   outline: 2px solid var(--interactive-accent);
 }
 
+/* A line of the note's text, with the symbol at its size there. */
+.inkline-preview {
+  margin-top: var(--size-4-2);
+  color: var(--text-normal);
+}
+
 .inkline-status {
   min-height: 1.5em;
   margin-top: var(--size-4-2);

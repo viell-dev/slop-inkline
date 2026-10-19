@@ -1528,4 +1528,112 @@ describe("The editor", function () {
     expect(xs[2]).toBeLessThan(xs[0] ?? Number.NaN);
     expect(xs[3]).toBeGreaterThan(xs[1] ?? Number.NaN);
   });
+
+  it("draws the note font's guides, and shows or hides them with G", async function () {
+    await insert();
+    await settledSurface();
+    const read = () =>
+      browser.execute(() => {
+        const canvas = document.querySelector(
+          ".inkline-editor .inkline-surface",
+        );
+        const line = document.querySelector(".inkline-editor .inkline-preview");
+        if (
+          !(canvas instanceof HTMLCanvasElement) ||
+          !(line instanceof HTMLElement)
+        ) {
+          throw new Error("no surface");
+        }
+        // The font's lines, measured here on their own, at 128 pixels per em.
+        const font = getComputedStyle(line);
+        const context = new OffscreenCanvas(1, 1).getContext("2d");
+        if (context === null) throw new Error("no context");
+        context.font = `${font.fontStyle} ${font.fontWeight} 128px ${font.fontFamily}`;
+        const capital = context.measureText("H");
+        const lowercase = context.measureText("x");
+        const lines = [
+          144 - capital.fontBoundingBoxAscent,
+          144 - capital.actualBoundingBoxAscent,
+          144 - lowercase.actualBoundingBoxAscent,
+          144,
+          144 + capital.fontBoundingBoxDescent,
+        ].filter((y) => y >= 0 && y <= 192);
+        const pixels = canvas
+          .getContext("2d")
+          ?.getImageData(0, 0, canvas.width, canvas.height);
+        if (pixels === undefined) throw new Error("no pixels");
+        const factor = canvas.width / 576;
+        const alphaAt = (x: number, y: number) =>
+          pixels.data[(y * canvas.width + x) * 4 + 3] ?? 0;
+        let drawn = 0;
+        for (let index = 3; index < pixels.data.length; index += 4) {
+          if ((pixels.data[index] ?? 0) > 0) drawn++;
+        }
+        return {
+          lines: lines.length,
+          // A dash starts at the left edge.
+          shown: lines.filter((y) => alphaAt(1, Math.round(y * factor)) > 0)
+            .length,
+          drawn,
+        };
+      });
+    const shown = await read();
+    expect(shown.lines).toBeGreaterThanOrEqual(3);
+    expect(shown.shown).toBe(shown.lines);
+    const button = browser.$('[data-inkline-button="guides"]');
+    expect(await button.getAttribute("aria-pressed")).toBe("true");
+    await browser.keys(["g"]);
+    await browser.waitUntil(async () => (await read()).drawn === 0);
+    expect(await button.getAttribute("aria-pressed")).toBe("false");
+    await browser.keys(["g"]);
+    await browser.waitUntil(async () => (await read()).shown === shown.lines);
+  });
+
+  it("shows the symbol at its size in a line of text, as it is drawn", async function () {
+    await insert();
+    const preview = () =>
+      browser.execute(() => {
+        const canvas = document.querySelector(
+          ".inkline-editor .inkline-preview-ink",
+        );
+        const line = document.querySelector(".inkline-editor .inkline-preview");
+        if (
+          !(canvas instanceof HTMLCanvasElement) ||
+          !(line instanceof HTMLElement)
+        ) {
+          throw new Error("no preview");
+        }
+        const pixels = canvas
+          .getContext("2d")
+          ?.getImageData(0, 0, canvas.width, canvas.height);
+        let ink = 0;
+        for (let index = 3; index < (pixels?.data.length ?? 0); index += 4) {
+          if ((pixels?.data[index] ?? 0) > 0) ink++;
+        }
+        return {
+          fontSize: Number.parseFloat(getComputedStyle(line).fontSize),
+          width: canvas.getBoundingClientRect().width,
+          height: canvas.getBoundingClientRect().height,
+          ink,
+        };
+      });
+    const empty = await preview();
+    // The line box is 1.5 em tall, and an empty symbol 3/8 em wide.
+    expect(empty.height).toBeCloseTo(1.5 * empty.fontSize, 1);
+    expect(empty.width).toBeCloseTo(0.375 * empty.fontSize, 1);
+    expect(empty.ink).toBe(0);
+    await draw([
+      [0.45, 0.5],
+      [0.5, 0.5],
+    ]);
+    await browser.waitUntil(async () => (await preview()).ink > 0);
+    const short = await preview();
+    await draw([
+      [0.5, 0.3],
+      [0.9, 0.3],
+    ]);
+    await browser.waitUntil(
+      async () => (await preview()).width > short.width + 1,
+    );
+  });
 });

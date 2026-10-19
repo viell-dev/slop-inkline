@@ -1,10 +1,42 @@
-// The drawing surface: shows the line box, the document, and the stroke being
-// drawn, in the text colour, and maps pointer positions to the document.
+// The drawing surface: shows the line box with its guides, the document, and
+// the stroke being drawn, in the text colour, and maps pointer positions to
+// the document. It also draws the preview of the symbol at its size in text.
 
 import type { Stroke } from "../format/record.ts";
 import type { InkDocument } from "../ink/document.ts";
-import { lineBox } from "../ink/geometry.ts";
+import { display, lineBox } from "../ink/geometry.ts";
 import { drawInk, type DrawableBase } from "../ink/render.ts";
+import type { FontMetrics, Guide } from "./guides.ts";
+
+/** A font as CSS describes it, for {@link measureFont}. */
+export interface FontStyle {
+  readonly style: string;
+  readonly weight: string;
+  readonly family: string;
+}
+
+/** A font's vertical metrics, measured from its glyphs at the line box's size. */
+export function measureFont(font: FontStyle): FontMetrics {
+  const context = new OffscreenCanvas(1, 1).getContext("2d");
+  if (context === null) throw new Error("no 2D canvas context");
+  const em = lineBox.pxPerEm;
+  context.font = `${font.style} ${font.weight} ${String(em)}px ${font.family}`;
+  const capital = context.measureText("H");
+  const lowercase = context.measureText("x");
+  return {
+    ascent: capital.fontBoundingBoxAscent / em,
+    descent: capital.fontBoundingBoxDescent / em,
+    capHeight: capital.actualBoundingBoxAscent / em,
+    xHeight: lowercase.actualBoundingBoxAscent / em,
+  };
+}
+
+/** What the surface shows behind the ink: the font's lines and the image's ends. */
+export interface Guides {
+  readonly lines: readonly Guide[];
+  /** Where the saved image would start and end, in document pixels. */
+  readonly image: { readonly left: number; readonly right: number };
+}
 
 /** How much of the line box the surface shows across at least, in pixels. */
 export const visibleWidth = 4.5 * lineBox.pxPerEm;
@@ -45,6 +77,8 @@ export class InkView {
   #shown: { document: InkDocument; base: DrawableBase | undefined } | undefined;
   #committed = new OffscreenCanvas(1, 1);
   #work = new OffscreenCanvas(1, 1);
+  /** The guides to draw, or undefined to draw none. */
+  guides: Guides | undefined;
 
   constructor(canvas: HTMLCanvasElement, across = visibleWidth) {
     this.canvas = canvas;
@@ -156,18 +190,76 @@ export class InkView {
     visible.drawImage(this.#work, 0, 0);
   }
 
+  /**
+   * Draws the guides: the baseline solid, the font's other lines and the
+   * image's ends dashed, each on a whole device pixel.
+   */
   #drawLineBox(
     context: CanvasRenderingContext2D,
     style: CSSStyleDeclaration,
   ): void {
+    const { guides } = this;
+    if (guides === undefined) return;
     const factor = this.#scale * this.#ratio;
-    const baseline = Math.round(lineBox.baseline * factor) + 0.5;
+    const { width, height } = this.canvas;
+    const at = (value: number): number => Math.round(value * factor) + 0.5;
     context.strokeStyle =
       style.getPropertyValue("--inkline-guide").trim() || "gray";
     context.lineWidth = 1;
-    context.beginPath();
-    context.moveTo(0, baseline);
-    context.lineTo(this.canvas.width, baseline);
-    context.stroke();
+    for (const line of guides.lines) {
+      context.setLineDash(line.name === "baseline" ? [] : [4, 4]);
+      context.beginPath();
+      context.moveTo(0, at(line.y));
+      context.lineTo(width, at(line.y));
+      context.stroke();
+    }
+    context.setLineDash([2, 4]);
+    for (const x of [guides.image.left, guides.image.right]) {
+      context.beginPath();
+      context.moveTo(at(x - this.#originX), 0);
+      context.lineTo(at(x - this.#originX), height);
+      context.stroke();
+    }
+    context.setLineDash([]);
+  }
+
+  /**
+   * Draws the symbol into `target` as it would show in text of
+   * `fontSize` CSS pixels: the image from `left` to `right` in document
+   * pixels, from what the surface last rendered, in the text colour.
+   */
+  drawPreview(
+    target: HTMLCanvasElement,
+    left: number,
+    right: number,
+    fontSize: number,
+  ): void {
+    const scale = fontSize / lineBox.pxPerEm;
+    const heightEm = display({ ...lineBox, width: right - left }).heightEm;
+    const cssWidth = (right - left) * scale;
+    const cssHeight = heightEm * fontSize;
+    target.style.width = `${String(cssWidth)}px`;
+    target.style.height = `${String(cssHeight)}px`;
+    target.style.verticalAlign = `${String(
+      display({ ...lineBox, width: right - left }).verticalAlignEm,
+    )}em`;
+    target.width = Math.max(1, Math.round(cssWidth * this.#ratio));
+    target.height = Math.max(1, Math.round(cssHeight * this.#ratio));
+    const context = element2d(target);
+    context.clearRect(0, 0, target.width, target.height);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    const factor = this.#scale * this.#ratio;
+    context.drawImage(
+      this.#work,
+      (left - this.#originX) * factor,
+      0,
+      (right - left) * factor,
+      lineBox.height * factor,
+      0,
+      0,
+      target.width,
+      target.height,
+    );
   }
 }
