@@ -25,7 +25,12 @@ import {
   type DraftTarget,
 } from "./drafts.ts";
 import { PointerGate, reportsPressure } from "./pointer.ts";
-import { brushSizes, DrawingSession, type InputPoint } from "./session.ts";
+import {
+  brushSizes,
+  DrawingSession,
+  gridSpacing,
+  type InputPoint,
+} from "./session.ts";
 import { fontGuides, type Guide } from "./guides.ts";
 import { InkView, measureFont, surfaceWidth } from "./view.ts";
 
@@ -69,6 +74,20 @@ export interface EditorOptions {
     opened(editor: InkEditorModal): void;
     closed(editor: InkEditorModal): void;
   };
+}
+
+/** Whether `element` takes typing: a text field or editable content. */
+function typing(element: Element | null): boolean {
+  if (element?.instanceOf(HTMLElement) !== true) return false;
+  return (
+    element.isContentEditable ||
+    element.instanceOf(HTMLTextAreaElement) ||
+    element.instanceOf(HTMLSelectElement) ||
+    (element.instanceOf(HTMLInputElement) &&
+      !["button", "checkbox", "radio", "range", "submit"].includes(
+        element.type,
+      ))
+  );
 }
 
 export class InkEditorModal extends Modal {
@@ -164,11 +183,18 @@ export class InkEditorModal extends Modal {
     this.#addButton(toolbar, "redo", "Redo", "Mod+Shift+Z", () => {
       this.#redo();
     });
-    this.#addButton(toolbar, "clear", "Clear", undefined, () => {
+    this.#addButton(toolbar, "clear", "Clear", "Delete", () => {
       this.#clear();
     });
     this.#addButton(toolbar, "guides", "Guides", "G", () => {
       this.#toggleGuides();
+    });
+    this.#addButton(toolbar, "grid", "Grid", "Shift+G", () => {
+      this.#toggleGrid();
+    });
+    this.#addButton(toolbar, "fit", "Fit", "F", () => {
+      this.#fitView();
+      this.#render();
     });
     this.#addButton(toolbar, "save", "Save", "Mod+Enter", () => {
       void this.#saveAndClose();
@@ -368,19 +394,26 @@ export class InkEditorModal extends Modal {
     this.#buttons.set(id, button);
   }
 
+  /**
+   * The editor's shortcuts. Those that would also edit text, the single keys
+   * and undo and redo, yield to a text field that has the focus; saving
+   * does not.
+   */
   #registerKeys(): void {
     const key = (
       modifiers: ("Mod" | "Shift")[],
       name: string,
       action: () => void,
+      yields = true,
     ): void => {
       this.scope.register(modifiers, name, () => {
+        if (yields && typing(activeDocument.activeElement)) return true;
         action();
         return false;
       });
     };
-    key(["Mod"], "Enter", () => void this.#saveAndClose());
-    key(["Mod"], "s", () => void this.#save());
+    key(["Mod"], "Enter", () => void this.#saveAndClose(), false);
+    key(["Mod"], "s", () => void this.#save(), false);
     key(["Mod"], "z", () => {
       this.#undo();
     });
@@ -398,6 +431,16 @@ export class InkEditorModal extends Modal {
     });
     key([], "g", () => {
       this.#toggleGuides();
+    });
+    key(["Shift"], "g", () => {
+      this.#toggleGrid();
+    });
+    key([], "f", () => {
+      this.#fitView();
+      this.#render();
+    });
+    key([], "Delete", () => {
+      this.#clear();
     });
     brushSizes.forEach((_, index) => {
       key([], String(index + 1), () => {
@@ -428,6 +471,9 @@ export class InkEditorModal extends Modal {
       const tool = this.#gate.down(event);
       if (tool === undefined) return;
       event.preventDefault();
+      // Drawing takes the focus, which the default action would have, so
+      // that the shortcuts are the editor's again after typing elsewhere.
+      canvas.focus({ preventScroll: true });
       canvas.setPointerCapture(event.pointerId);
       this.#session.begin(
         point(event),
@@ -446,7 +492,11 @@ export class InkEditorModal extends Modal {
         typeof event.getCoalescedEvents === "function"
           ? event.getCoalescedEvents()
           : [];
-      this.#session.extend((events.length > 0 ? events : [event]).map(point));
+      // Shift draws a straight segment while it is held.
+      this.#session.extend(
+        (events.length > 0 ? events : [event]).map(point),
+        event.shiftKey,
+      );
       this.#render();
     });
     canvas.addEventListener("pointerup", finish);
@@ -474,6 +524,7 @@ export class InkEditorModal extends Modal {
     this.#frame = view.canvas.win.requestAnimationFrame(() => {
       this.#frame = undefined;
       view.lines = this.#guidesShown ? this.#fontGuides : undefined;
+      view.grid = this.#session.snap ? gridSpacing : undefined;
       view.render(
         this.#session.document,
         this.#base,
@@ -519,6 +570,13 @@ export class InkEditorModal extends Modal {
     this.#render();
   }
 
+  /** Shows the grid, and snaps strokes' ends to it, or neither. */
+  #toggleGrid(): void {
+    this.#session.snap = !this.#session.snap;
+    this.#updateButtons();
+    this.#render();
+  }
+
   #setTool(tool: "pen" | "eraser"): void {
     this.#session.tool = tool;
     this.#updateButtons();
@@ -558,6 +616,7 @@ export class InkEditorModal extends Modal {
     pressed("pen", this.#session.tool === "pen");
     pressed("eraser", this.#session.tool === "eraser");
     pressed("guides", this.#guidesShown);
+    pressed("grid", this.#session.snap);
     brushSizes.forEach((_, index) => {
       pressed(`size-${String(index)}`, this.#session.sizeIndex === index);
     });

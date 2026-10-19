@@ -1,4 +1,5 @@
 import { browser, expect } from "@wdio/globals";
+import { Key } from "webdriverio";
 import { obsidianPage } from "wdio-obsidian-service";
 import { loadModules } from "../support/browser.ts";
 import {
@@ -1860,5 +1861,141 @@ describe("The editor", function () {
     // Chromium 150 held a canvas's own encoding back for about a second
     // when saving a picture opened as a symbol.
     expect(Math.max(...times)).toBeLessThan(700);
+  });
+
+  it("draws a straight segment while Shift is held", async function () {
+    await insert();
+    const { width, height } = await settledSurface();
+    const canvas = await surface().getElement();
+    const at = (x: number, y: number) => ({
+      origin: canvas,
+      x: Math.round((x - 0.5) * width),
+      y: Math.round((y - 0.5) * height),
+    });
+    // The pointer wanders, but Shift keeps the stroke straight.
+    await browser.actions([
+      browser
+        .action("key")
+        .down(Key.Shift)
+        .pause(10)
+        .pause(10)
+        .pause(10)
+        .pause(10)
+        .up(Key.Shift),
+      browser
+        .action("pointer", { parameters: { pointerType: "mouse" } })
+        .move(at(0.3, 0.3))
+        .down()
+        .move({ ...at(0.5, 0.8), duration: 50 })
+        .move({ ...at(0.7, 0.4), duration: 50 })
+        .up(),
+    ]);
+    await browser.waitUntil(async () => (await storedDrafts()).length === 1);
+    const [draft] = await storedDrafts();
+    const points = draft?.strokes[0]?.points ?? [];
+    const x0 = points[0] ?? 0;
+    const y0 = points[1] ?? 0;
+    const x1 = points.at(-2) ?? 0;
+    const y1 = points.at(-1) ?? 0;
+    const length = Math.hypot(x1 - x0, y1 - y0);
+    expect(length).toBeGreaterThan(16 * 50);
+    // Every point within a pixel (16 units) of the line from end to end.
+    for (let index = 0; index < points.length; index += 2) {
+      const x = points[index] ?? 0;
+      const y = points[index + 1] ?? 0;
+      const off =
+        Math.abs((x1 - x0) * (y0 - y) - (x0 - x) * (y1 - y0)) / length;
+      expect(off).toBeLessThan(16);
+    }
+  });
+
+  it("shows a grid with Shift+G, and snaps strokes' ends to it", async function () {
+    await insert();
+    await settledSurface();
+    const dots = () =>
+      browser.execute(() => {
+        const canvas = document.querySelector(
+          ".inkline-editor .inkline-surface",
+        );
+        if (!(canvas instanceof HTMLCanvasElement))
+          throw new Error("no surface");
+        const pixels = canvas
+          .getContext("2d")
+          ?.getImageData(0, 0, canvas.width, canvas.height);
+        const factor = canvas.width / 576;
+        // A grid crossing away from every guide: 2 em across, 2/8 em down.
+        const x = Math.round(256 * factor);
+        const y = Math.round(32 * factor);
+        return pixels?.data[(y * canvas.width + x) * 4 + 3] ?? 0;
+      });
+    expect(await dots()).toBe(0);
+    await browser.keys(["Shift", "g"]);
+    await browser.waitUntil(async () => (await dots()) > 0);
+    expect(
+      await browser
+        .$('[data-inkline-button="grid"]')
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    await draw([
+      [0.31, 0.27],
+      [0.52, 0.41],
+      [0.69, 0.73],
+    ]);
+    await browser.waitUntil(async () => (await storedDrafts()).length === 1);
+    const points = (await storedDrafts())[0]?.strokes[0]?.points ?? [];
+    for (const value of [points[0], points[1], points.at(-2), points.at(-1)]) {
+      expect((value ?? 1) % (16 * 16)).toBe(0);
+    }
+  });
+
+  it("clears with Delete, and fits the drawing in view with F", async function () {
+    await insert();
+    await draw([
+      [0.05, 0.4],
+      [0.1, 0.6],
+    ]);
+    await browser.waitUntil(async () => (await storedDrafts()).length === 1);
+    const before = (await storedDrafts())[0]?.strokes[0]?.points ?? [];
+    const centre = ((before[0] ?? 0) + (before.at(-2) ?? 0)) / 2 / 16;
+    await browser.keys(["f"]);
+    // The drawing is now in the middle: a dot there lands near its centre.
+    await browser.pause(200);
+    await draw([[0.5, 0.2]]);
+    await browser.waitUntil(
+      async () => (await storedDrafts())[0]?.strokes.length === 2,
+    );
+    const dot = (await storedDrafts())[0]?.strokes[1]?.points ?? [];
+    expect(Math.abs((dot[0] ?? 0) / 16 - centre)).toBeLessThan(16);
+    await browser.keys(["Delete"]);
+    await browser.waitUntil(
+      async () => (await storedDrafts())[0]?.strokes.length === 0,
+    );
+  });
+
+  it("lets a text field have the keys it types", async function () {
+    await insert();
+    await settledSurface();
+    await browser.execute(() => {
+      const content = document.querySelector(".inkline-editor .modal-content");
+      if (content === null) throw new Error("no editor");
+      const field = content.createEl("input", { type: "text" });
+      field.addClass("inkline-test-field");
+      field.focus();
+    });
+    await browser.keys(["e", "2"]);
+    const eraser = browser.$('[data-inkline-button="eraser"]');
+    expect(await eraser.getAttribute("aria-pressed")).toBe("false");
+    expect(
+      await browser.execute(() => {
+        const field = document.querySelector(".inkline-test-field");
+        return field instanceof HTMLInputElement ? field.value : "";
+      }),
+    ).toBe("e2");
+    // Away from the field, the keys are the editor's again.
+    await surface().click();
+    await browser.keys(["e"]);
+    await browser.waitUntil(
+      async () => (await eraser.getAttribute("aria-pressed")) === "true",
+    );
   });
 });

@@ -16,10 +16,15 @@ section is also its
   inserts it where the cursor was. Nothing is created until the first save.
 - **Edit symbol**, in a symbol file's menu, which opens it in the editor again
   with every stroke, so that nothing is lost by editing.
-- The editor's pen, eraser, four brush sizes, undo, redo, and clear; each but
-  clear has a shortcut, shown in its tooltip. A pen's eraser end erases, and a
-  palm resting on a tablet does not draw, even one that touched it before the
-  pen. A symbol wider than the editor's usual view is shown whole.
+- The editor's pen, eraser, four brush sizes, undo, redo, and clear, each with
+  its shortcut in its tooltip. A pen's eraser end erases, and a palm resting on
+  a tablet does not draw, even one that touched it before the pen. A symbol
+  wider than the editor's usual view is shown whole, and F fits the drawing in
+  view. Shortcuts that would also type, such as single keys and undo, give way
+  to a text field that has the focus.
+- Holding Shift while drawing makes the stroke straight from where it was when
+  Shift went down. A grid of 1/8 em, which Shift+G shows or hides, snaps the
+  ends of strokes to it, for scripts built from straight strokes and dots.
 - Guides in the editor at the text font's ascender, cap height, x-height,
   baseline, and descender, measured from the font, and at the ends the saved
   image would have; the Guides button or G shows or hides them.

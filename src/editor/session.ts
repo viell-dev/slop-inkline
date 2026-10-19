@@ -46,6 +46,21 @@ export interface InputPoint {
   readonly pressure?: number;
 }
 
+/**
+ * The grid's spacing, 1/8 em: 16 pixels, so that the baseline, 9 spacings
+ * down, lies on it, and a line box holds 12 spacings.
+ */
+export const gridSpacing = lineBox.pxPerEm / 8;
+
+/** The grid point nearest `point`, with its pressure. */
+export function snapToGrid(point: InputPoint): InputPoint {
+  const x = Math.round(point.x / gridSpacing) * gridSpacing;
+  const y = Math.round(point.y / gridSpacing) * gridSpacing;
+  return point.pressure === undefined
+    ? { x, y }
+    : { x, y, pressure: point.pressure };
+}
+
 /** A stroke being drawn: its brush and its points so far, in units. */
 interface ActiveStroke {
   readonly tool: Tool;
@@ -69,8 +84,15 @@ export class DrawingSession {
   #active: ActiveStroke | undefined;
   /** The last input point of the stroke being drawn, before rounding. */
   #last: InputPoint | undefined;
+  /**
+   * Where a straight segment of the stroke being drawn starts, and how many
+   * values of its points lead up to there, the start included.
+   */
+  #anchor: { point: InputPoint; length: number } | undefined;
   tool: Tool = "pen";
   sizeIndex = 1;
+  /** Whether strokes start and end on the grid. */
+  snap = false;
 
   constructor(initial: InkDocument) {
     this.#history = new History(initial);
@@ -134,28 +156,48 @@ export class DrawingSession {
       points: [],
     };
     this.#last = undefined;
-    this.extend([point]);
+    this.#anchor = undefined;
+    this.extend([this.snap ? snapToGrid(point) : point]);
   }
 
   /**
    * Adds points to the stroke being drawn, filling gaps longer than
-   * {@link maxGap} and skipping exact repeats.
+   * {@link maxGap} and skipping exact repeats. While `straight`, as with
+   * Shift held, the stroke runs straight from where it was when that began
+   * to the latest point, which snaps to the grid when the grid is on.
    */
-  extend(points: readonly InputPoint[]): void {
+  extend(points: readonly InputPoint[], straight = false): void {
     const active = this.#active;
     if (active === undefined) return;
     for (const point of points) {
-      const previous = this.#last;
-      if (previous !== undefined) {
-        const gap = Math.hypot(point.x - previous.x, point.y - previous.y);
-        const steps = Math.ceil(gap / maxGap);
-        for (let step = 1; step < steps; step++) {
-          this.#record(active, between(previous, point, step / steps));
-        }
+      if (!straight) {
+        this.#anchor = undefined;
+        this.#append(active, point);
+        continue;
       }
-      this.#record(active, point);
-      this.#last = point;
+      const anchor = (this.#anchor ??= {
+        point: this.#last ?? point,
+        length: active.points.length,
+      });
+      // The segment is drawn again from its start for each new point.
+      active.points.length = anchor.length;
+      this.#last = anchor.point;
+      this.#append(active, this.snap ? snapToGrid(point) : point);
     }
+  }
+
+  /** Records a point, and points along the gap since the last one. */
+  #append(active: ActiveStroke, point: InputPoint): void {
+    const previous = this.#last;
+    if (previous !== undefined) {
+      const gap = Math.hypot(point.x - previous.x, point.y - previous.y);
+      const steps = Math.ceil(gap / maxGap);
+      for (let step = 1; step < steps; step++) {
+        this.#record(active, between(previous, point, step / steps));
+      }
+    }
+    this.#record(active, point);
+    this.#last = point;
   }
 
   #record(active: ActiveStroke, point: InputPoint): void {
@@ -177,16 +219,26 @@ export class DrawingSession {
    * keeps the last pressure, since a pen reports none once lifted.
    */
   end(release?: InputPoint): void {
+    const straight = this.#anchor !== undefined;
     if (release !== undefined && this.#active !== undefined) {
       const pressure = this.#last?.pressure;
-      this.extend([
-        pressure === undefined
-          ? { x: release.x, y: release.y }
-          : { x: release.x, y: release.y, pressure },
-      ]);
+      this.extend(
+        [
+          pressure === undefined
+            ? { x: release.x, y: release.y }
+            : { x: release.x, y: release.y, pressure },
+        ],
+        straight,
+      );
+    }
+    // With the grid, a freehand stroke ends on it too; a straight one has.
+    const last = this.#last;
+    if (this.snap && !straight && last !== undefined) {
+      this.extend([snapToGrid(last)]);
     }
     const stroke = this.activeStroke;
     this.#active = undefined;
+    this.#anchor = undefined;
     if (stroke === undefined || stroke.points.length === 0) return;
     this.#push({
       ...this.document,
@@ -197,6 +249,7 @@ export class DrawingSession {
   /** Drops the stroke being drawn, as when the pointer is cancelled. */
   cancel(): void {
     this.#active = undefined;
+    this.#anchor = undefined;
   }
 
   undo(): boolean {
@@ -247,6 +300,10 @@ export class DrawingSession {
     }
     if (this.#last !== undefined) {
       this.#last = { ...this.#last, x: this.#last.x + dxPixels };
+    }
+    if (this.#anchor !== undefined) {
+      const { point } = this.#anchor;
+      this.#anchor.point = { ...point, x: point.x + dxPixels };
     }
   }
 

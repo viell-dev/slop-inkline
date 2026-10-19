@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { DrawingSession, brushSizes } from "../../../src/editor/session.ts";
+import {
+  DrawingSession,
+  brushSizes,
+  gridSpacing,
+  snapToGrid,
+} from "../../../src/editor/session.ts";
 import { emptyDocument } from "../../../src/ink/document.ts";
 
 describe("brushSizes", () => {
@@ -195,6 +200,64 @@ describe("DrawingSession", () => {
     session.begin({ x: 0, y: 32 });
     session.end({ x: 0, y: 32 });
     expect(session.document.strokes[1]?.points).toEqual([0, 512]);
+  });
+
+  it("draws a straight segment while straight, from where it began", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.begin({ x: 0, y: 0 });
+    session.extend([{ x: 4, y: 0 }]);
+    // Straight from (4, 0), wherever the pointer wanders on the way.
+    session.extend(
+      [
+        { x: 9, y: 7 },
+        { x: 4, y: 12 },
+        { x: 4, y: 8 },
+      ],
+      true,
+    );
+    const points = session.activeStroke?.points ?? [];
+    const xs = points.filter((_, index) => index % 2 === 0);
+    const ys = points.filter((_, index) => index % 2 === 1);
+    // Freehand to (4, 0), then straight down to (4, 8) only.
+    expect(xs.slice(0, 3)).toEqual([0, 32, 64]);
+    expect(xs.slice(2).every((x) => x === 64)).toBe(true);
+    expect(ys.at(-1)).toBe(128);
+    expect(Math.max(...ys)).toBe(128);
+    // Freehand again once it stops, from where the segment ended.
+    session.extend([{ x: 6, y: 8 }]);
+    session.end();
+    expect(session.document.strokes[0]?.points.slice(-2)).toEqual([96, 128]);
+  });
+
+  it("ends a stroke that is straight at its release, straight", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.begin({ x: 0, y: 0 });
+    session.extend([{ x: 3, y: 5 }], true);
+    session.end({ x: 0, y: 6 });
+    const points = session.document.strokes[0]?.points ?? [];
+    expect(points.filter((_, index) => index % 2 === 0)).toEqual([0, 0, 0, 0]);
+    expect(points.slice(-2)).toEqual([0, 96]);
+  });
+
+  it("starts and ends strokes on the grid when it is on", () => {
+    expect(gridSpacing).toBe(16);
+    expect(snapToGrid({ x: 7, y: 9, pressure: 0.5 })).toEqual({
+      x: 0,
+      y: 16,
+      pressure: 0.5,
+    });
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.begin({ x: 7, y: 9 });
+    session.extend([{ x: 20, y: 18 }]);
+    session.end();
+    const points = session.document.strokes[0]?.points ?? [];
+    expect(points.slice(0, 2)).toEqual([0, 256]);
+    expect(points.slice(-2)).toEqual([256, 256]);
+    // A straight segment's end follows the grid as it is drawn.
+    session.begin({ x: 0, y: 0 });
+    session.extend([{ x: 25, y: 2 }], true);
+    expect(session.activeStroke?.points.slice(-2)).toEqual([512, 0]);
   });
 
   it("does not record clearing an empty drawing", () => {
