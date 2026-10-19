@@ -1,9 +1,14 @@
 // Undo and redo over immutable states, such as documents: each step keeps
 // the whole state, which costs little since unchanged strokes are shared.
 
+/** A stored state, wrapped so that an empty stack differs from any state. */
+interface Entry<State> {
+  readonly state: State;
+}
+
 export class History<State> {
-  #past: State[] = [];
-  #future: State[] = [];
+  #past: Entry<State>[] = [];
+  #future: Entry<State>[] = [];
   #present: State;
   readonly #limit: number;
 
@@ -30,27 +35,27 @@ export class History<State> {
 
   /** Makes `state` the present, forgetting anything that could be redone. */
   push(state: State): void {
-    this.#past.push(this.#present);
+    this.#past.push({ state: this.#present });
     if (this.#past.length > this.#limit) this.#past.shift();
     this.#present = state;
     this.#future = [];
   }
 
-  /** Steps back, returning the new present, or undefined at the start. */
-  undo(): State | undefined {
+  /** Steps back, returning whether there was a step to undo. */
+  undo(): boolean {
     const previous = this.#past.pop();
-    if (previous === undefined) return undefined;
-    this.#future.push(this.#present);
-    this.#present = previous;
-    return previous;
+    if (previous === undefined) return false;
+    this.#future.push({ state: this.#present });
+    this.#present = previous.state;
+    return true;
   }
 
-  /** Steps forward again, or returns undefined with nothing to redo. */
-  redo(): State | undefined {
+  /** Steps forward again, returning whether there was a step to redo. */
+  redo(): boolean {
     const next = this.#future.pop();
-    if (next === undefined) return undefined;
-    this.#past.push(this.#present);
-    this.#present = next;
-    return next;
+    if (next === undefined) return false;
+    this.#past.push({ state: this.#present });
+    this.#present = next.state;
+    return true;
   }
 }

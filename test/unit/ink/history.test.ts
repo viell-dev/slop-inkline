@@ -6,14 +6,12 @@ describe("History", () => {
     const history = new History("a");
     history.push("b");
     history.push("c");
-    expect(history.undo()).toBe("b");
-    expect(history.undo()).toBe("a");
-    expect(history.undo()).toBeUndefined();
-    expect(history.present).toBe("a");
-    expect(history.redo()).toBe("b");
-    expect(history.redo()).toBe("c");
-    expect(history.redo()).toBeUndefined();
-    expect(history.present).toBe("c");
+    expect([history.undo(), history.present]).toEqual([true, "b"]);
+    expect([history.undo(), history.present]).toEqual([true, "a"]);
+    expect([history.undo(), history.present]).toEqual([false, "a"]);
+    expect([history.redo(), history.present]).toEqual([true, "b"]);
+    expect([history.redo(), history.present]).toEqual([true, "c"]);
+    expect([history.redo(), history.present]).toEqual([false, "c"]);
   });
 
   it("forgets what could be redone after a new change", () => {
@@ -22,15 +20,27 @@ describe("History", () => {
     history.undo();
     history.push(2);
     expect(history.canRedo).toBe(false);
-    expect(history.undo()).toBe(0);
+    history.undo();
+    expect(history.present).toBe(0);
   });
 
   it("keeps at most the limit of states to undo to", () => {
     const history = new History(0, 2);
     for (const state of [1, 2, 3]) history.push(state);
-    expect(history.undo()).toBe(2);
-    expect(history.undo()).toBe(1);
+    history.undo();
+    history.undo();
+    expect(history.present).toBe(1);
     expect(history.canUndo).toBe(false);
+  });
+
+  it("keeps undefined as a state like any other", () => {
+    const history = new History<string | undefined>(undefined);
+    history.push("drawn");
+    expect(history.undo()).toBe(true);
+    expect(history.present).toBeUndefined();
+    expect(history.canRedo).toBe(true);
+    expect(history.redo()).toBe(true);
+    expect(history.present).toBe("drawn");
   });
 
   it("reports what it can do", () => {
