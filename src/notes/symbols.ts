@@ -20,6 +20,7 @@ import {
 import {
   InkEditorModal,
   type EditorOptions,
+  type EditorTools,
   type SymbolFile,
 } from "../editor/modal.ts";
 import { visibleWidth } from "../editor/view.ts";
@@ -116,13 +117,14 @@ function appendedNotice(file: TFile): void {
  * surrounding text: through a live editor of the note when there is one,
  * since it may hold changes not yet on disk, otherwise into the note's file.
  * When the position cannot be found, the embed goes at the end of the note,
- * and a notice says so.
+ * and a notice says so. Returns the point just after the embed, where the
+ * next symbol's embed goes.
  */
 async function insertEmbed(
   app: App,
   target: Target,
   embed: string,
-): Promise<void> {
+): Promise<InsertionPoint> {
   const { file, point } = target;
   const view = liveView(app, file, target.view);
   if (view !== undefined) {
@@ -131,22 +133,54 @@ async function insertEmbed(
     const at = findPoint(text, point);
     if (at !== undefined) {
       editor.replaceRange(embed, editor.offsetToPos(at));
-      return;
+      return capturePoint(editor.getValue(), at + embed.length);
     }
     const gap = text === "" || text.endsWith("\n") ? "" : "\n";
     editor.replaceRange(`${gap}${embed}\n`, editor.offsetToPos(text.length));
     appendedNotice(file);
-    return;
+    return capturePoint(
+      editor.getValue(),
+      text.length + gap.length + embed.length,
+    );
   }
-  const outcome = { appended: false };
+  const outcome: { appended: boolean; after?: InsertionPoint } = {
+    appended: false,
+  };
   await app.vault.process(file, (text) => {
     const at = findPoint(text, point);
-    if (at !== undefined) return text.slice(0, at) + embed + text.slice(at);
+    if (at !== undefined) {
+      const inserted = text.slice(0, at) + embed + text.slice(at);
+      outcome.after = capturePoint(inserted, at + embed.length);
+      return inserted;
+    }
     outcome.appended = true;
     const gap = text === "" || text.endsWith("\n") ? "" : "\n";
-    return `${text}${gap}${embed}\n`;
+    const appended = `${text}${gap}${embed}\n`;
+    outcome.after = capturePoint(
+      appended,
+      text.length + gap.length + embed.length,
+    );
+    return appended;
   });
   if (outcome.appended) appendedNotice(file);
+  if (outcome.after === undefined) throw new Error("the note did not change");
+  return outcome.after;
+}
+
+/**
+ * The point just after `embed` in the target note, where the next symbol's
+ * embed goes, as when a restored draft's embed was already there; the note's
+ * end if it is not found.
+ */
+async function pointAfter(
+  app: App,
+  target: Target,
+  embed: string,
+): Promise<InsertionPoint> {
+  const view = liveView(app, target.file, target.view);
+  const text = view?.editor.getValue() ?? (await app.vault.read(target.file));
+  const at = text.indexOf(embed);
+  return capturePoint(text, at === -1 ? text.length : at + embed.length);
 }
 
 /**
@@ -260,18 +294,33 @@ async function embeds(
  * than make another, and inserts the embed once.
  */
 export function insertSymbol(host: EditorHost, view: MarkdownView): void {
-  const { app } = host;
   const note = view.file;
   if (note === null) return;
   const editor = view.editor;
-  const target: Target = {
+  newSymbol(host, {
     view,
     file: note,
     point: capturePoint(
       editor.getValue(),
       editor.posToOffset(editor.getCursor()),
     ),
-  };
+  });
+}
+
+/**
+ * Opens the editor for a new symbol whose embed goes to `target`, as
+ * {@link insertSymbol} describes, starting with `tools` when it follows
+ * another. Its Next opens one more, whose embed follows this one's.
+ */
+function newSymbol(
+  host: EditorHost,
+  target: Target,
+  tools?: EditorTools,
+): void {
+  const { app } = host;
+  const note = target.file;
+  /** Where the next symbol's embed goes, once this one's is in the note. */
+  let after: InsertionPoint | undefined;
   /**
    * The symbol's file once made, a fingerprint of what was last written
    * there, and of what it held before while that write is under way.
@@ -292,6 +341,11 @@ export function insertSymbol(host: EditorHost, view: MarkdownView): void {
     title: "New symbol",
     document: emptyDocument,
     center: visibleWidth / 2,
+    ...(tools === undefined ? {} : { tools }),
+    next: (chosen) => {
+      if (after === undefined || !host.alive()) return;
+      newSymbol(host, { ...target, point: after }, chosen);
+    },
     drafts: {
       store: host.drafts,
       // Once inserted, the symbol is its file, whatever the note does.
@@ -381,7 +435,9 @@ export function insertSymbol(host: EditorHost, view: MarkdownView): void {
       );
       if (!adopted || !(await embeds(app, target, made.file, embed))) {
         stillAlive(host);
-        await insertEmbed(app, target, embed);
+        after = await insertEmbed(app, target, embed);
+      } else {
+        after = await pointAfter(app, target, embed);
       }
       inserted = true;
     },

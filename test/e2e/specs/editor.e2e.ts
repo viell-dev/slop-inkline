@@ -285,6 +285,28 @@ async function strokeCount(path: string): Promise<number> {
   return record.strokes?.length ?? -1;
 }
 
+/**
+ * Waits for the next editor after Next: `count` symbol files saved, and an
+ * editor whose status line is still empty, unlike the one that saved.
+ */
+async function waitForNext(count: number): Promise<void> {
+  await browser.waitUntil(
+    async () =>
+      (await symbolFiles()).length === count &&
+      (await editorOpen()) &&
+      (await browser.$(".inkline-status").getText()) === "",
+    { timeoutMsg: `no editor after ${String(count)} symbols` },
+  );
+  await waitForEditor();
+}
+
+/** Whether a toolbar button shows itself pressed. */
+async function pressed(button: string): Promise<string | null> {
+  return browser
+    .$(`[data-inkline-button="${button}"]`)
+    .getAttribute("aria-pressed");
+}
+
 describe("The editor", function () {
   before(async function () {
     await loadModules();
@@ -2433,6 +2455,104 @@ describe("The editor", function () {
       await browser.keys(["Control", "Enter"]);
       await waitClosed();
       expect(await strokeCount("001.ink.png")).toBe(2);
+    });
+  });
+  describe("drawing the next one", function () {
+    it("saves, inserts, and opens the next symbol right after it", async function () {
+      await insert();
+      await draw(zigzag);
+      await browser.keys(["Control", "Shift", "Enter"]);
+      await waitForNext(1);
+      // A blank drawing: its first stroke is the draft's only one.
+      await draw([[0.5, 0.5]]);
+      await browser.waitUntil(
+        async () => (await storedDrafts())[0]?.strokes.length === 1,
+      );
+      await browser.$('[data-inkline-button="next"]').click();
+      await waitForNext(2);
+      await draw([[0.4, 0.3]]);
+      await browser.keys(["Control", "Enter"]);
+      await waitClosed();
+      expect(await symbolFiles()).toEqual([
+        "001.ink.png",
+        "002.ink.png",
+        "003.ink.png",
+      ]);
+      expect(await noteText()).toBe(
+        "The door is marked with ![[001.ink.png]]![[002.ink.png]]![[003.ink.png]] which means return.\n",
+      );
+    });
+
+    it("starts the next symbol with the same tools", async function () {
+      await insert();
+      await draw(zigzag);
+      await browser.keys(["e", "3"]);
+      await browser.keys(["Shift", "g"]);
+      await browser.keys(["g"]);
+      await browser.keys(["Control", "Shift", "Enter"]);
+      await waitForNext(1);
+      expect(await pressed("eraser")).toBe("true");
+      expect(await pressed("size-2")).toBe("true");
+      expect(await pressed("grid")).toBe("true");
+      expect(await pressed("guides")).toBe("false");
+    });
+
+    it("follows the symbol before even when the note's tab shows another", async function () {
+      await insert();
+      await draw(zigzag);
+      await browser.keys(["Control", "Shift", "Enter"]);
+      await waitForNext(1);
+      // The next embed then goes into the note's file.
+      await showWelcomeInstead();
+      await draw([[0.5, 0.5]]);
+      await browser.keys(["Control", "Enter"]);
+      await waitClosed();
+      expect(await fileText("Editor.md")).toBe(
+        "The door is marked with ![[001.ink.png]]![[002.ink.png]] which means return.\n",
+      );
+    });
+
+    it("stays when the symbol could not be inserted, and goes on once it is", async function () {
+      try {
+        await browser.executeObsidian(({ app }) => {
+          const vault = app.vault as typeof app.vault & {
+            inklineProcess?: typeof app.vault.process;
+          };
+          vault.inklineProcess = vault.process.bind(vault);
+          vault.process = () => Promise.reject(new Error("the note is locked"));
+        });
+        await insert();
+        await draw(zigzag);
+        await showWelcomeInstead();
+        await browser.keys(["Control", "Shift", "Enter"]);
+        await waitForStatus("the note is locked");
+        expect(await browser.$$(".inkline-editor").length).toBe(1);
+      } finally {
+        await unlockNotes();
+      }
+      await browser.keys(["Control", "Shift", "Enter"]);
+      await waitForNext(1);
+      // Inserted into the note's file, and the next follows it there.
+      await draw([[0.5, 0.5]]);
+      await browser.keys(["Control", "Enter"]);
+      await waitClosed();
+      expect(await fileText("Editor.md")).toBe(
+        "The door is marked with ![[001.ink.png]]![[002.ink.png]] which means return.\n",
+      );
+    });
+
+    it("has no Next for a symbol file", async function () {
+      await saveOne();
+      await editFile("001.ink.png");
+      expect(await browser.$('[data-inkline-button="next"]').isExisting()).toBe(
+        false,
+      );
+      await draw([[0.5, 0.2]]);
+      await browser.keys(["Control", "Shift", "Enter"]);
+      await browser.pause(500);
+      expect(await editorOpen()).toBe(true);
+      expect(await symbolFiles()).toEqual(["001.ink.png"]);
+      expect(await strokeCount("001.ink.png")).toBe(1);
     });
   });
 });
