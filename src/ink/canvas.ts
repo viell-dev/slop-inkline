@@ -124,7 +124,7 @@ export interface NewerInk {
  * A base layer for drawing. Its pixels are tinted to the ink's grey, keeping
  * their alpha, since a base layer's ink is its alpha whatever its colours.
  */
-async function drawableBase(base: BaseLayer): Promise<DrawableBase> {
+export async function drawableBase(base: BaseLayer): Promise<DrawableBase> {
   const bitmap = await decodePng(base.png, limits.baseSize);
   try {
     const { surface, context } = canvas(bitmap.width, bitmap.height);

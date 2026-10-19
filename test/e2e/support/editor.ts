@@ -151,10 +151,70 @@ export async function startOver(): Promise<void> {
     for (const leaf of leaves) leaf.detach();
     for (let index = window.localStorage.length - 1; index >= 0; index--) {
       const key = window.localStorage.key(index);
-      if (key?.includes("inkline-draft:") === true) {
+      if (key?.includes("inkline-draft") === true) {
         window.localStorage.removeItem(key);
       }
     }
   });
+  await freeStorage();
   await obsidianPage.resetVault();
+}
+
+const fillerPrefix = "inkline-test-filler:";
+
+/**
+ * Fills the renderer's local storage until it refuses even a few characters
+ * more, as a full disk or a quota would, and returns how many characters it
+ * took. {@link freeStorage} empties it again.
+ */
+export async function fillStorage(): Promise<number> {
+  return browser.execute((prefix) => {
+    let count = 0;
+    let filled = 0;
+    for (let size = 1024 * 1024; size >= 1; size = Math.floor(size / 4)) {
+      const value = "x".repeat(size);
+      for (;;) {
+        try {
+          window.localStorage.setItem(`${prefix}${String(count)}`, value);
+        } catch {
+          break;
+        }
+        count++;
+        filled += size;
+      }
+    }
+    return filled;
+  }, fillerPrefix);
+}
+
+/** Removes what {@link fillStorage} wrote. */
+export async function freeStorage(): Promise<void> {
+  await browser.execute((prefix) => {
+    for (let index = window.localStorage.length - 1; index >= 0; index--) {
+      const key = window.localStorage.key(index);
+      if (key?.startsWith(prefix) === true) window.localStorage.removeItem(key);
+    }
+  }, fillerPrefix);
+}
+
+/** The drafts kept in the vault's local storage, newest first. */
+export async function storedDrafts(): Promise<
+  {
+    id: string;
+    target: unknown;
+    strokes: { points: readonly number[] }[];
+    base: string;
+    baseX?: number;
+  }[]
+> {
+  return browser.executeObsidian(({ app }) => {
+    const { drafts } = window.inklineTest;
+    return new drafts.DraftStore(app).list().map((draft) => ({
+      id: draft.id,
+      target: draft.target,
+      strokes: draft.strokes.map((stroke) => ({ points: stroke.points })),
+      base: draft.base.kind,
+      ...(draft.base.kind === "kept" ? { baseX: draft.base.layer.x } : {}),
+    }));
+  });
 }

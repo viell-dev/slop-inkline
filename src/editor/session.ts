@@ -4,7 +4,7 @@
 
 import type { Stroke, Tool } from "../format/record.ts";
 import {
-  moveDocument,
+  documentMover,
   toPressure,
   toUnits,
   type InkDocument,
@@ -79,6 +79,11 @@ export class DrawingSession {
 
   get document(): InkDocument {
     return this.#history.present;
+  }
+
+  /** The document as last saved, or as opened. */
+  get saved(): InkDocument {
+    return this.#saved;
   }
 
   /** The stroke size for the current brush, in units. */
@@ -216,14 +221,8 @@ export class DrawingSession {
    */
   rebase(dxPixels: number): void {
     if (dxPixels === 0) return;
-    const moved = new Map<InkDocument, InkDocument>();
-    const move = (document: InkDocument): InkDocument => {
-      const known = moved.get(document);
-      if (known !== undefined) return known;
-      const next = moveDocument(document, dxPixels);
-      moved.set(document, next);
-      return next;
-    };
+    // States share most of their strokes; they still do once moved.
+    const move = documentMover(dxPixels);
     this.#history.map(move);
     this.#saved = move(this.#saved);
     const active = this.#active;

@@ -76,19 +76,59 @@ export function moveDocument(
   document: InkDocument,
   dxPixels: number,
 ): InkDocument {
+  return documentMover(dxPixels)(document);
+}
+
+/**
+ * A function that moves documents by a whole number of pixels, as
+ * {@link moveDocument} does, keeping what they share shared: a stroke or base
+ * layer in several documents is moved once, and the same document always
+ * moves to the same one, so that moving a whole history copies each stroke
+ * once.
+ */
+export function documentMover(
+  dxPixels: number,
+): (document: InkDocument) => InkDocument {
   if (!Number.isInteger(dxPixels)) throw new Error("moves are in whole pixels");
   const dx = dxPixels * unitsPerPixel;
-  const strokes = document.strokes.map((stroke) => ({
-    ...stroke,
-    points: mapPoints(
-      stroke,
-      (value) => value + dx,
-      (value) => value,
-    ),
-  }));
-  return document.base === undefined
-    ? { strokes }
-    : { strokes, base: { ...document.base, x: document.base.x + dx } };
+  const documents = new Map<InkDocument, InkDocument>();
+  const strokes = new Map<Stroke, Stroke>();
+  const bases = new Map<BaseLayer, BaseLayer>();
+  const moveStroke = (stroke: Stroke): Stroke => {
+    let moved = strokes.get(stroke);
+    if (moved === undefined) {
+      moved = {
+        ...stroke,
+        points: mapPoints(
+          stroke,
+          (value) => value + dx,
+          (value) => value,
+        ),
+      };
+      strokes.set(stroke, moved);
+    }
+    return moved;
+  };
+  const moveBase = (base: BaseLayer): BaseLayer => {
+    let moved = bases.get(base);
+    if (moved === undefined) {
+      moved = { ...base, x: base.x + dx };
+      bases.set(base, moved);
+    }
+    return moved;
+  };
+  return (document) => {
+    let moved = documents.get(document);
+    if (moved === undefined) {
+      const movedStrokes = document.strokes.map(moveStroke);
+      moved =
+        document.base === undefined
+          ? { strokes: movedStrokes }
+          : { strokes: movedStrokes, base: moveBase(document.base) };
+      documents.set(document, moved);
+    }
+    return moved;
+  };
 }
 
 /**

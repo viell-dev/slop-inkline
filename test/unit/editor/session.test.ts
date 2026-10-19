@@ -160,6 +160,30 @@ describe("DrawingSession", () => {
     expect(session.document).toEqual(emptyDocument);
   });
 
+  it("keeps the states' shared strokes and base layer shared when moving them", () => {
+    const png = Uint8Array.of(1);
+    const session = new DrawingSession({
+      strokes: [],
+      base: { x: 0, y: 0, scale: 1, png },
+    });
+    for (let index = 0; index < 50; index++) {
+      session.begin({ x: index, y: 0 });
+      session.extend([{ x: index, y: 40 }]);
+      session.end();
+    }
+    session.rebase(-5);
+    const states = [session.document];
+    while (session.undo()) states.push(session.document);
+    const first = states.map((state) => state.strokes[0]);
+    const bases = states.map((state) => state.base);
+    // Each state but the first shares the first stroke, moved once.
+    expect(new Set(first.slice(0, -1)).size).toBe(1);
+    expect(first[0]?.points.slice(0, 2)).toEqual([-80, 0]);
+    expect(new Set(bases).size).toBe(1);
+    expect(bases[0]).toEqual({ x: -80, y: 0, scale: 1, png });
+    expect(session.saved).toBe(states.at(-1));
+  });
+
   it("does not record clearing an empty drawing", () => {
     const session = new DrawingSession(emptyDocument);
     session.clear();

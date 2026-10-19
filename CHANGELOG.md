@@ -22,9 +22,14 @@ section is also its
 - The editor asks before closing a drawing with unsaved changes, whether by Esc,
   the close button, or a click outside, and keeps the drawing open when a save
   fails.
-- Unsaved strokes are kept as a draft in the vault's local storage, so that
-  closing Obsidian, a crash, or disabling Inkline loses nothing; opening the
-  same symbol, or a new one in the same note, offers them back.
+- Unsaved changes are kept as a draft in the vault's local storage after each
+  finished stroke, undo, redo, or clearing, so that closing Obsidian or a crash
+  loses at most a stroke still being drawn, and disabling Inkline loses nothing.
+  Opening the same symbol, or a new one in the same note, offers the draft back;
+  a draft not restored within 30 days is dropped. If the storage refuses a
+  draft, a notice says so, and the last draft kept stays. Restoring the draft of
+  a new symbol whose first save was interrupted, or whose embed could not be
+  inserted, finishes that save with the file it made.
 - A new symbol goes into the note it was started in, where the cursor was, even
   if that note's tab now shows another note or was closed. If the text around
   that place changed so much that it cannot be found, the symbol is added at the

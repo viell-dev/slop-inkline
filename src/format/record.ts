@@ -313,8 +313,16 @@ export function parseRecord(text: string): ParseResult {
  * record always produces the same text.
  */
 export function serializeRecord(record: InkRecord): string {
+  return JSON.stringify(recordValue(record));
+}
+
+/**
+ * A record as the JSON value {@link serializeRecord} writes, for embedding in
+ * other JSON, which {@link parseRecord} reads back once it is text again.
+ */
+export function recordValue(record: InkRecord): Record<string, unknown> {
   const { box, strokes, base } = record;
-  return JSON.stringify({
+  return {
     format: formatName,
     version: formatVersion,
     box: {
@@ -339,5 +347,5 @@ export function serializeRecord(record: InkRecord): string {
             png: toBase64(base.png),
           },
         }),
-  });
+  };
 }

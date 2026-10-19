@@ -11,12 +11,14 @@ import {
 } from "obsidian";
 import type { CarriedChunk } from "../format/ink-file.ts";
 import type { BaseLayer, InkRecord } from "../format/record.ts";
-import { saveInk } from "../ink/canvas.ts";
+import { drawableBase, saveInk } from "../ink/canvas.ts";
 import type { InkDocument } from "../ink/document.ts";
 import type { DrawableBase } from "../ink/render.ts";
 import {
+  draftBase,
   fingerprintOf,
   restoreDraft,
+  type Draft,
   type DraftStore,
   type DraftTarget,
 } from "./drafts.ts";
@@ -44,6 +46,12 @@ export interface EditorOptions {
     readonly target: () => DraftTarget;
     /** A fingerprint of the file as opened, for an existing symbol. */
     readonly fingerprint?: string;
+    /**
+     * Told when another editor's draft is restored, before this editor keeps
+     * its own, so that a new symbol can finish with the file that draft's
+     * first save made.
+     */
+    readonly restored?: (draft: Draft) => void;
   };
   /** Told when the editor opens and closes, so that its owner can track it. */
   readonly lifecycle?: {
@@ -68,8 +76,12 @@ export class InkEditorModal extends Modal {
   #frame: number | undefined;
   #resize: ResizeObserver | undefined;
   #status: HTMLElement | undefined;
+  /** Base layer images decoded for drawing, by their PNG. */
+  readonly #decoded = new Map<Uint8Array, DrawableBase>();
   /** The base layer placed where the document puts it, for drawing. */
   #placed: { layer: BaseLayer; drawable: DrawableBase } | undefined;
+  /** Whether the last draft written was kept; storage can refuse one. */
+  #draftKept = true;
   readonly #questions = new Set<Modal>();
   readonly #buttons = new Map<string, ButtonComponent>();
 
@@ -78,13 +90,18 @@ export class InkEditorModal extends Modal {
     this.#options = options;
     this.#session = new DrawingSession(options.document);
     this.#fingerprint = options.drafts?.fingerprint;
+    const { base } = options.document;
+    if (base !== undefined && options.base !== undefined) {
+      this.#decoded.set(base.png, options.base);
+    }
   }
 
   /** The decoded base layer, where the document now puts it. */
   get #base(): DrawableBase | undefined {
     const layer = this.#session.document.base;
-    const drawable = this.#options.base;
-    if (layer === undefined || drawable === undefined) return undefined;
+    if (layer === undefined) return undefined;
+    const drawable = this.#decoded.get(layer.png);
+    if (drawable === undefined) return undefined;
     if (this.#placed?.layer !== layer) {
       this.#placed = {
         layer,
@@ -161,7 +178,7 @@ export class InkEditorModal extends Modal {
     canvas.win.requestAnimationFrame(() => {
       canvas.focus();
     });
-    this.#offerDraft();
+    void this.#offerDraft();
   }
 
   override onClose(): void {
@@ -225,7 +242,11 @@ export class InkEditorModal extends Modal {
   dispose(): void {
     if (this.#retired) return;
     this.#session.end();
-    this.#keepDraft();
+    if (!this.#keepDraft()) {
+      new Notice(
+        `Inkline could not keep a draft of the latest changes to ${this.#options.title}.`,
+      );
+    }
     this.#retired = true;
     this.#finish();
   }
@@ -434,57 +455,90 @@ export class InkEditorModal extends Modal {
     this.#status?.setText(text);
   }
 
-  /** Keeps this editor's unsaved drawing as its draft, or drops it once saved. */
-  #keepDraft(): void {
+  /**
+   * Keeps this editor's unsaved drawing as its draft, or drops it once saved,
+   * and returns whether the drawing is safe: saved, or kept. When storage
+   * refuses a draft, the last one kept stays, and a notice says so once.
+   */
+  #keepDraft(): boolean {
     const drafts = this.#options.drafts;
-    if (drafts === undefined || this.#retired) return;
+    if (drafts === undefined || this.#retired) return true;
     if (!this.#session.dirty) {
       this.#forgetDraft();
-      return;
+      return true;
     }
-    drafts.store.put({
+    const { document, saved } = this.#session;
+    const kept = drafts.store.put({
       id: this.#draftId,
       target: drafts.target(),
-      strokes: this.#session.document.strokes,
-      baseCleared: this.#session.document.base === undefined,
+      strokes: document.strokes,
+      base: draftBase(document, saved),
       ...(this.#fingerprint === undefined
         ? {}
         : { fingerprint: this.#fingerprint }),
       savedAt: Date.now(),
     });
+    if (!kept && this.#draftKept) {
+      this.#announce("Draft not kept");
+      new Notice(
+        "Inkline could not keep a draft of the latest changes, because the vault's local storage refused it. Save the symbol to keep them.",
+      );
+    }
+    this.#draftKept = kept;
+    return kept;
   }
 
   /** Drops this editor's own draft, never another's. */
   #forgetDraft(): void {
     if (this.#retired) return;
     this.#options.drafts?.store.remove(this.#draftId);
+    this.#draftKept = true;
   }
 
   /**
-   * Offers back the newest draft another editor left for this symbol.
-   * Dismissing the question keeps it for next time; only Restore or Discard
-   * use it up.
+   * Offers back the newest draft another editor left for this symbol, once
+   * any base layer it keeps is decoded. Dismissing the question keeps the
+   * draft for next time; only Restore or Discard use it up, and Restore only
+   * once this editor's own draft has taken its place.
    */
-  #offerDraft(): void {
+  async #offerDraft(): Promise<void> {
     const drafts = this.#options.drafts;
     if (drafts === undefined) return;
-    const [draft] = drafts.store.forTarget(drafts.target(), this.#draftId);
-    if (draft === undefined) return;
+    const [found] = drafts.store.forTarget(drafts.target(), this.#draftId);
+    if (found === undefined) return;
+    let draft: Draft = found;
+    let unreadable = "";
+    if (found.base.kind === "kept") {
+      const { layer } = found.base;
+      try {
+        this.#decoded.set(layer.png, await drawableBase(layer));
+      } catch {
+        draft = { ...found, base: { kind: "none" } };
+        unreadable =
+          " Its base layer cannot be read, so only its strokes would come back.";
+      }
+      if (this.#retired || this.#closing) return;
+    }
     const moved =
       draft.fingerprint !== undefined && draft.fingerprint !== this.#fingerprint
         ? " The symbol was saved again since then, so its strokes may not line up."
         : "";
     this.#ask(
       "Restore the unsaved drawing?",
-      `This symbol has unsaved changes from ${new Date(draft.savedAt).toLocaleString()}.${moved}`,
+      `This symbol has unsaved changes from ${new Date(draft.savedAt).toLocaleString()}.${moved}${unreadable}`,
       [
         {
           text: "Restore",
           primary: true,
           act: () => {
+            // A stroke begun while the draft was read is committed first, so
+            // that undoing the restore brings it back.
+            this.#session.end();
             this.#session.replace(restoreDraft(this.#options.document, draft));
-            drafts.store.remove(draft.id);
-            this.#changed();
+            drafts.restored?.(draft);
+            this.#updateButtons();
+            this.#render();
+            if (this.#keepDraft()) drafts.store.remove(draft.id);
           },
         },
         {
