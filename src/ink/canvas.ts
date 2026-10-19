@@ -110,6 +110,8 @@ export interface EditableInk {
     "record" | "none" | "invalid" | "stale" | "undecodable-base" | "unworkable";
   /** The file's chunks to keep when it is saved again: text and the like. */
   readonly carried: readonly CarriedChunk[];
+  /** How wide the symbol shows in the line box, in pixels, from 0. */
+  readonly width: number;
 }
 
 /** A file that a later version of Inkline wrote, which must not be edited. */
@@ -122,7 +124,7 @@ export interface NewerInk {
  * A base layer for drawing. Its pixels are tinted to the ink's grey, keeping
  * their alpha, since a base layer's ink is its alpha whatever its colours.
  */
-async function drawableBase(base: BaseLayer): Promise<DrawableBase> {
+export async function drawableBase(base: BaseLayer): Promise<DrawableBase> {
   const bitmap = await decodePng(base.png, limits.baseSize);
   try {
     const { surface, context } = canvas(bitmap.width, bitmap.height);
@@ -146,8 +148,9 @@ async function drawableBase(base: BaseLayer): Promise<DrawableBase> {
  * resolution and scaled to fill the line box's height. A picture so small
  * that this would scale it more than the format allows has each pixel
  * repeated, which loses nothing, until it fits. Throws a `RangeError` for a
- * picture too large to open, or so wide for its height that repeating it
- * would make it too large.
+ * picture too large to open, so wide for its height that repeating it would
+ * make it too large, or whose ink encodes to more bytes than a base layer can
+ * hold.
  */
 export async function baseFromPicture(
   bytes: Uint8Array,
@@ -180,6 +183,12 @@ export async function baseFromPicture(
     height,
     data: inkPixels(width, height, alpha),
   });
+  // A base layer that a record could not hold could never be saved.
+  if (png.length > limits.baseBytes) {
+    throw new RangeError(
+      `a ${String(pixels.width)}×${String(pixels.height)} picture's ink takes ${String(png.length)} bytes, more than a base layer can hold (${String(limits.baseBytes)})`,
+    );
+  }
   const layer: BaseLayer = { x: 0, y: 0, scale: lineBox.height / height, png };
   return { layer, drawable: await drawableBase(layer) };
 }
@@ -196,6 +205,7 @@ async function fromPixels(
     base: drawable,
     from,
     carried,
+    width: Math.round(drawable.width * drawable.scale),
   };
 }
 
@@ -218,8 +228,10 @@ export async function openInk(
   }
   const document = documentFromRecord(source.record);
   if (document === undefined) return fromPixels(bytes, "unworkable", carried);
+  const { box } = source.record;
+  const width = Math.round((box.width * lineBox.pxPerEm) / box.pxPerEm);
   if (document.base === undefined) {
-    return { kind: "editable", document, from: "record", carried };
+    return { kind: "editable", document, from: "record", carried, width };
   }
   let base: DrawableBase;
   try {
@@ -227,7 +239,7 @@ export async function openInk(
   } catch {
     return fromPixels(bytes, "undecodable-base", carried);
   }
-  return { kind: "editable", document, base, from: "record", carried };
+  return { kind: "editable", document, base, from: "record", carried, width };
 }
 
 /** The decoded base layer placed where a record's base layer is. */
@@ -319,7 +331,9 @@ const cropMargin = 64;
  * Saves a document: crops it to its ink with a side bearing on each side,
  * draws the image from the cropped record itself, so that its pixels are
  * exactly what the record draws, and writes both. `carried` chunks, from
- * {@link openInk}, are kept. Returns the file's bytes and its record.
+ * {@link openInk}, are kept. Returns the file's bytes, its record, and
+ * `left`, the document x the image starts at, by which the record moved
+ * everything.
  *
  * The crop is confirmed in the record's own coordinates, so that saving a
  * file again unchanged gives the same record and the same pixels. The
@@ -334,7 +348,7 @@ export async function saveInk(
   document: InkDocument,
   base: DrawableBase | undefined,
   carried: readonly CarriedChunk[] = [],
-): Promise<{ bytes: Uint8Array; record: InkRecord }> {
+): Promise<{ bytes: Uint8Array; record: InkRecord; left: number }> {
   if (document.base !== undefined && base === undefined) {
     throw new Error("the document's base layer has not been decoded");
   }
@@ -375,7 +389,7 @@ export async function saveInk(
         record,
         carried,
       );
-      return { bytes, record };
+      return { bytes, record, left };
     }
     left += next.left;
     width = next.width;
