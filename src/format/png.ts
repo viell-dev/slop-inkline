@@ -1,5 +1,5 @@
-// PNG chunk reading and writing, enough to carry Inkline's record inside the
-// PNG a canvas encodes. Pixels are never decoded or encoded here.
+// PNG chunk reading and writing, enough to carry Inkline's record inside a
+// PNG, and the encoding of a symbol's pixels. Pixels are never decoded here.
 // See https://www.w3.org/TR/png-3/ for the format.
 
 /** The eight bytes every PNG file starts with. */
@@ -173,8 +173,17 @@ export function readChunks(bytes: Uint8Array): Chunk[] {
     }
   }
 }
-/** Joins chunks into a PNG file, computing each length and CRC. */
-export function writeChunks(chunks: readonly Chunk[]): Uint8Array {
+/** A chunk with its CRC already computed. */
+interface SealedChunk extends Chunk {
+  readonly crc: number;
+}
+
+function seal(chunk: Chunk): SealedChunk {
+  return { ...chunk, crc: crc32(typeBytes(chunk.type), chunk.data) };
+}
+
+/** Joins sealed chunks into a PNG file. */
+function joinChunks(chunks: readonly SealedChunk[]): Uint8Array {
   const size = chunks.reduce(
     (total, chunk) => total + 12 + chunk.data.length,
     pngSignature.length,
@@ -184,14 +193,18 @@ export function writeChunks(chunks: readonly Chunk[]): Uint8Array {
   bytes.set(pngSignature);
   let offset = pngSignature.length;
   for (const chunk of chunks) {
-    const type = typeBytes(chunk.type);
     view.setUint32(offset, chunk.data.length);
-    bytes.set(type, offset + 4);
+    bytes.set(typeBytes(chunk.type), offset + 4);
     bytes.set(chunk.data, offset + 8);
-    view.setUint32(offset + 8 + chunk.data.length, crc32(type, chunk.data));
+    view.setUint32(offset + 8 + chunk.data.length, chunk.crc);
     offset += 12 + chunk.data.length;
   }
   return bytes;
+}
+
+/** Joins chunks into a PNG file, computing each length and CRC. */
+export function writeChunks(chunks: readonly Chunk[]): Uint8Array {
+  return joinChunks(chunks.map(seal));
 }
 
 /** The image's header fields, from chunks that {@link readChunks} checked. */
@@ -284,6 +297,224 @@ export function inflate(
     ...(onInput === undefined ? {} : { onInput }),
   });
 }
+/** The predictor of PNG's Paeth filter, from the bytes left, up, and up-left. */
+function paeth(left: number, up: number, upLeft: number): number {
+  const estimate = left + up - upLeft;
+  const toLeft = Math.abs(estimate - left);
+  const toUp = Math.abs(estimate - up);
+  const toUpLeft = Math.abs(estimate - upLeft);
+  if (toLeft <= toUp && toLeft <= toUpLeft) return left;
+  return toUp <= toUpLeft ? up : upLeft;
+}
+
+/** How large a filtered byte is, read as signed: smaller compresses better. */
+function size(byte: number): number {
+  return byte < 128 ? byte : 256 - byte;
+}
+
+/**
+ * The PNG filter that leaves a row's bytes smallest, the usual guess at what
+ * compresses best, from all five scored in one pass. `row` and `above` are
+ * the offsets of the row and the one before it, if any, in `pixels`.
+ */
+function bestFilter(
+  pixels: Uint8Array,
+  row: number,
+  above: number | undefined,
+  stride: number,
+): number {
+  let none = 0;
+  let sub = 0;
+  let upward = 0;
+  let average = 0;
+  let predicted = 0;
+  for (let index = 0; index < stride; index++) {
+    const value = pixels[row + index] ?? 0;
+    const left = index >= 4 ? (pixels[row + index - 4] ?? 0) : 0;
+    const up = above === undefined ? 0 : (pixels[above + index] ?? 0);
+    const upLeft =
+      above === undefined || index < 4 ? 0 : (pixels[above + index - 4] ?? 0);
+    none += size(value);
+    sub += size((value - left) & 0xff);
+    upward += size((value - up) & 0xff);
+    average += size((value - ((left + up) >> 1)) & 0xff);
+    predicted += size((value - paeth(left, up, upLeft)) & 0xff);
+  }
+  const costs = [none, sub, upward, average, predicted];
+  let best = 0;
+  for (let type = 1; type < costs.length; type++) {
+    if ((costs[type] ?? 0) < (costs[best] ?? 0)) best = type;
+  }
+  return best;
+}
+/** Writes a row filtered with PNG filter `type` into `output` at `at`. */
+function filterRow(
+  type: number,
+  pixels: Uint8Array,
+  row: number,
+  above: number | undefined,
+  stride: number,
+  output: Uint8Array,
+  at: number,
+): void {
+  for (let index = 0; index < stride; index++) {
+    const value = pixels[row + index] ?? 0;
+    const left = index >= 4 ? (pixels[row + index - 4] ?? 0) : 0;
+    const up = above === undefined ? 0 : (pixels[above + index] ?? 0);
+    const upLeft =
+      above === undefined || index < 4 ? 0 : (pixels[above + index - 4] ?? 0);
+    const predicted =
+      type === 1
+        ? left
+        : type === 2
+          ? up
+          : type === 3
+            ? (left + up) >> 1
+            : type === 4
+              ? paeth(left, up, upLeft)
+              : 0;
+    output[at + index] = (value - predicted) & 0xff;
+  }
+}
+/** How many filtered bytes go to the compressor at a time, about. */
+const batchBytes = 64 * 1024;
+
+/** How long the encoder works before it pauses, in milliseconds. */
+const sliceMilliseconds = 12;
+
+/**
+ * The largest `IDAT` chunk the encoder writes. PNG lets the image data span
+ * many, and a short chunk keeps each checksum short work.
+ */
+const imageChunkBytes = 64 * 1024;
+
+/** A stream's bytes, read to the end, in the parts it gave them in. */
+async function readParts(
+  stream: ReadableStream<Uint8Array>,
+): Promise<Uint8Array[]> {
+  const reader = stream.getReader();
+  const parts: Uint8Array[] = [];
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return parts;
+    parts.push(value);
+  }
+}
+
+/**
+ * A function to call between pieces of work: it awaits `pause` once the work
+ * since the last pause has taken more than {@link sliceMilliseconds}.
+ */
+function slicer(pause: (() => Promise<void>) | undefined): () => Promise<void> {
+  let started = performance.now();
+  return async () => {
+    if (pause === undefined) return;
+    if (performance.now() - started <= sliceMilliseconds) return;
+    await pause();
+    started = performance.now();
+  };
+}
+
+/**
+ * Encodes 8-bit RGBA pixels, row by row, as a PNG: colour type 6, not
+ * interlaced, with no colour chunks. Each row takes the filter that leaves
+ * the smallest bytes, the usual guess at what compresses best, and the rows
+ * are compressed with zlib. Unlike a canvas's own encoder, this waits for
+ * nothing but the work itself. The rows go to the compressor a batch at a
+ * time, so that only the compressed image is held whole, and it goes into
+ * `IDAT` chunks of at most 64 KiB. Every few milliseconds of work, whether
+ * filtering rows or checksumming chunks, the encoder awaits `pause`, which
+ * can let the page run, so that a large image does not freeze it.
+ */
+export async function encodeRgba(
+  width: number,
+  height: number,
+  data: Uint8Array | Uint8ClampedArray,
+  { pause }: { readonly pause?: () => Promise<void> } = {},
+): Promise<Uint8Array> {
+  if (
+    !Number.isInteger(width) ||
+    !Number.isInteger(height) ||
+    width < 1 ||
+    height < 1 ||
+    width > 0x7fffffff ||
+    height > 0x7fffffff
+  ) {
+    throw new PngError("invalid image size");
+  }
+  const stride = width * 4;
+  if (data.length !== stride * height) {
+    throw new PngError("pixel data does not match the size");
+  }
+  const pixels = new Uint8Array(data.buffer, data.byteOffset, data.length);
+  const rowBytes = stride + 1;
+  const rowsPerBatch = Math.max(1, Math.floor(batchBytes / rowBytes));
+  const compressor = new CompressionStream("deflate");
+  const writer = compressor.writable.getWriter();
+  // Read while writing, or the compressor would stop for want of a reader.
+  const compressed = readParts(compressor.readable);
+  const breather = slicer(pause);
+  try {
+    for (let first = 0; first < height; first += rowsPerBatch) {
+      const rows = Math.min(rowsPerBatch, height - first);
+      const batch = new Uint8Array(rows * rowBytes);
+      for (let index = 0; index < rows; index++) {
+        const row = (first + index) * stride;
+        const above = first + index === 0 ? undefined : row - stride;
+        const type = bestFilter(pixels, row, above, stride);
+        batch[index * rowBytes] = type;
+        filterRow(
+          type,
+          pixels,
+          row,
+          above,
+          stride,
+          batch,
+          index * rowBytes + 1,
+        );
+      }
+      await writer.write(batch);
+      await breather();
+    }
+    await writer.close();
+  } catch (error) {
+    await writer.abort(error).catch(() => undefined);
+    await compressed.catch(() => undefined);
+    throw error;
+  }
+  const header = new Uint8Array(13);
+  const view = new DataView(header.buffer);
+  view.setUint32(0, width);
+  view.setUint32(4, height);
+  // Bit depth 8, colour type 6 (RGBA), deflate, adaptive filtering, and no
+  // interlacing.
+  header.set([8, 6, 0, 0, 0], 8);
+  const chunks = [seal({ type: "IHDR", data: header })];
+  // The compressor's parts, repacked into full chunks.
+  const parts = await compressed;
+  const total = parts.reduce((sum, part) => sum + part.length, 0);
+  let piece = new Uint8Array(Math.min(imageChunkBytes, total));
+  let filled = 0;
+  let left = total;
+  for (const part of parts) {
+    for (let offset = 0; offset < part.length;) {
+      const taken = Math.min(piece.length - filled, part.length - offset);
+      piece.set(part.subarray(offset, offset + taken), filled);
+      filled += taken;
+      offset += taken;
+      left -= taken;
+      if (filled === piece.length) {
+        chunks.push(seal({ type: "IDAT", data: piece }));
+        await breather();
+        piece = new Uint8Array(Math.min(imageChunkBytes, left));
+        filled = 0;
+      }
+    }
+  }
+  chunks.push(seal({ type: "IEND", data: new Uint8Array(0) }));
+  return joinChunks(chunks);
+}
+
 export interface InternationalText {
   /** 1 to 79 Latin-1 characters, without leading, trailing, or double spaces. */
   readonly keyword: string;
