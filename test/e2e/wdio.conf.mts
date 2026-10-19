@@ -8,7 +8,13 @@
 
 import path from "node:path";
 import { parseObsidianVersions } from "wdio-obsidian-service";
-import { outputDirectory, prepareOutput, setting } from "./support/harness.ts";
+import {
+  outputDirectory,
+  prepareOutput,
+  sessionDisplays,
+  setting,
+  workerDisplay,
+} from "./support/harness.ts";
 
 const root = path.resolve(import.meta.dirname, "../..");
 const cacheDir = path.resolve(
@@ -32,18 +38,17 @@ if (setting(process.env.PRINT_OBSIDIAN_CACHE_KEY) !== undefined) {
 }
 
 // test/e2e/session.sh starts a display for each Obsidian version when there
-// is none; a worker uses the one for its version, which is the first number
-// of its id. One worker per version at a time keeps each display to one
-// window.
-const displays = (setting(process.env.INKLINE_E2E_DISPLAYS) ?? "")
-  .split(" ")
-  .filter((display) => display !== "");
+// is none, and refuses more versions than displays; a worker uses the one
+// for its version. One worker per version at a time keeps each display to
+// one window.
+const displays = sessionDisplays(
+  process.env.INKLINE_E2E_DISPLAYS,
+  versions.length,
+);
 const worker = process.env.WDIO_WORKER_ID;
-if (worker !== undefined && displays.length > 0) {
-  const version = Number(worker.split("-")[0]);
-  const display = displays[version % displays.length];
-  if (display !== undefined) process.env.DISPLAY = display;
-}
+const display =
+  worker === undefined ? undefined : workerDisplay(worker, displays);
+if (display !== undefined) process.env.DISPLAY = display;
 
 export const config: WebdriverIO.Config = {
   runner: "local",

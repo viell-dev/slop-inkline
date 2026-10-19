@@ -10,6 +10,40 @@ export function setting(value: string | undefined): string | undefined {
 }
 
 /**
+ * The displays that test/e2e/session.sh started, one for each Obsidian
+ * version, from `INKLINE_E2E_DISPLAYS`, or none when it started none, as on
+ * a desktop with a display of its own. Throws when `versions` Obsidian
+ * versions are more than the displays, since two versions on one display
+ * resize each other's windows.
+ */
+export function sessionDisplays(
+  value: string | undefined,
+  versions: number,
+): string[] {
+  const displays = (setting(value) ?? "")
+    .split(" ")
+    .filter((display) => display !== "");
+  if (displays.length > 0 && versions > displays.length) {
+    throw new Error(
+      `the end-to-end session has ${String(displays.length)} displays, one for each Obsidian version, but OBSIDIAN_VERSIONS lists ${String(versions)} versions`,
+    );
+  }
+  return displays;
+}
+
+/**
+ * The display for a WebdriverIO worker, by the version that the first number
+ * of its id counts from 0: `"1-3"` runs the second version.
+ */
+export function workerDisplay(
+  worker: string,
+  displays: readonly string[],
+): string | undefined {
+  const version = Number(worker.split("-")[0]);
+  return Number.isInteger(version) ? displays[version] : undefined;
+}
+
+/**
  * Resolves the output directory from `E2E_OUTPUT_DIR`, or `test-results/e2e`
  * under `root` when it is unset or empty.
  */
