@@ -4,7 +4,7 @@
 import {
   decodeInternationalText,
   encodeInternationalText,
-  imageSize,
+  imageHeader,
   readChunks,
   textKeyword,
   writeChunks,
@@ -12,9 +12,11 @@ import {
 } from "./png.ts";
 import {
   formatName,
+  limits,
   parseRecord,
   serializeRecord,
   type InkRecord,
+  type ParseResult,
 } from "./record.ts";
 
 /** The file name ending that marks a PNG in the vault as a symbol. */
@@ -45,8 +47,27 @@ export type InkSource =
       readonly detail?: string;
     };
 
+/** Thrown by {@link writeInkFile} for a record it must not write. */
+export class RecordError extends Error {
+  override name = "RecordError";
+}
+
 function isRecordChunk(chunk: Chunk): boolean {
   return textKeyword(chunk) === recordKeyword;
+}
+
+/** The first record chunk's parsed text, or undefined when there is none. */
+async function parseRecordChunk(
+  chunks: readonly Chunk[],
+): Promise<ParseResult | undefined> {
+  const chunk = chunks.find(isRecordChunk);
+  if (chunk === undefined) return undefined;
+  try {
+    const { text } = await decodeInternationalText(chunk, limits.text);
+    return parseRecord(text);
+  } catch (error) {
+    return { ok: false, reason: "invalid", detail: String(error) };
+  }
 }
 
 /**
@@ -55,19 +76,12 @@ function isRecordChunk(chunk: Chunk): boolean {
  */
 export async function readInkFile(bytes: Uint8Array): Promise<InkSource> {
   const chunks = readChunks(bytes);
-  const chunk = chunks.find(isRecordChunk);
-  if (chunk === undefined) return { kind: "pixels", reason: "none" };
-  let text: string;
-  try {
-    ({ text } = await decodeInternationalText(chunk));
-  } catch (error) {
-    return { kind: "pixels", reason: "invalid", detail: String(error) };
-  }
-  const parsed = parseRecord(text);
+  const parsed = await parseRecordChunk(chunks);
+  if (parsed === undefined) return { kind: "pixels", reason: "none" };
   if (!parsed.ok) {
     return { kind: "pixels", reason: parsed.reason, detail: parsed.detail };
   }
-  const { width, height } = imageSize(chunks);
+  const { width, height } = imageHeader(chunks);
   const { box } = parsed.record;
   if (box.width !== width || box.height !== height) {
     return {
@@ -81,26 +95,45 @@ export async function readInkFile(bytes: Uint8Array): Promise<InkSource> {
 
 /**
  * Adds a record to a PNG, such as one a canvas encoded, right after its
- * header. Any record the PNG already holds is replaced; every other chunk is
- * kept as it is. Throws when the record's size differs from the image's.
+ * header, keeping every other chunk and the pixels as they are. An earlier
+ * record is replaced, unless a later version of Inkline wrote it: replacing
+ * that would lose what it recorded.
+ *
+ * Throws `PngError` when the bytes are not a well-formed PNG, and
+ * {@link RecordError} when the record's size differs from the image's or
+ * readers would refuse the record, such as for being longer than the text
+ * limit: a file this returns can always be read back.
  */
 export async function writeInkFile(
   png: Uint8Array,
   record: InkRecord,
 ): Promise<Uint8Array> {
   const chunks = readChunks(png);
-  const { width, height } = imageSize(chunks);
+  const { width, height } = imageHeader(chunks);
   if (record.box.width !== width || record.box.height !== height) {
-    throw new Error(
+    throw new RecordError(
       `record is ${String(record.box.width)}×${String(record.box.height)}, image is ${String(width)}×${String(height)}`,
     );
   }
-  const kept = chunks.filter((chunk) => !isRecordChunk(chunk));
+  const existing = await parseRecordChunk(chunks);
+  if (existing?.ok === false && existing.reason === "newer-version") {
+    throw new RecordError(
+      `the file holds a record from a later version: ${existing.detail}`,
+    );
+  }
+  const text = serializeRecord(record);
+  if (new TextEncoder().encode(text).length > limits.text) {
+    throw new RecordError("record text is too long");
+  }
+  const check = parseRecord(text);
+  if (!check.ok) {
+    throw new RecordError(`record breaks the format: ${check.detail}`);
+  }
   const recordChunk = await encodeInternationalText({
     keyword: recordKeyword,
-    text: serializeRecord(record),
+    text,
   });
-  const [header, ...rest] = kept;
-  if (header === undefined) throw new Error("PNG has no chunks");
+  const [header, ...rest] = chunks.filter((chunk) => !isRecordChunk(chunk));
+  if (header === undefined) throw new RecordError("PNG has no chunks");
   return writeChunks([header, recordChunk, ...rest]);
 }

@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  RecordError,
   isInkPath,
   readInkFile,
   writeInkFile,
@@ -14,7 +15,11 @@ import {
   writeChunks,
   type Chunk,
 } from "../../../src/format/png.ts";
-import { serializeRecord, type InkRecord } from "../../../src/format/record.ts";
+import {
+  limits,
+  serializeRecord,
+  type InkRecord,
+} from "../../../src/format/record.ts";
 import { blank, encodePng, pixelChunks } from "../../support/png.ts";
 
 const fixtures = path.resolve(import.meta.dirname, "../../fixtures/format");
@@ -186,5 +191,70 @@ describe("readInkFile", () => {
     await expect(
       readInkFile(new TextEncoder().encode("hello")),
     ).rejects.toThrow(PngError);
+  });
+});
+
+describe("writeInkFile writes only what readers accept", () => {
+  it("refuses a record whose text is longer than the limit", async () => {
+    const points = new Array<number>(2 * limits.points).fill(limits.coordinate);
+    const long: InkRecord = {
+      ...record,
+      strokes: [{ tool: "pen", size: 16, pressure: false, points }],
+    };
+    expect(serializeRecord(long).length).toBeGreaterThan(limits.text);
+    await expect(writeInkFile(image, long)).rejects.toThrow(
+      new RecordError("record text is too long"),
+    );
+  });
+
+  it("refuses a record that breaks the format", async () => {
+    const broken: InkRecord = {
+      ...record,
+      strokes: [{ tool: "pen", size: 0, pressure: false, points: [0, 0] }],
+    };
+    await expect(writeInkFile(image, broken)).rejects.toThrow(
+      "record breaks the format: strokes[0].size is not an integer",
+    );
+  });
+
+  it("refuses to replace a record from a later version", async () => {
+    const newer = serializeRecord(record).replace('"version":1', '"version":2');
+    const file = withChunks([await textChunk("inkline", newer)]);
+    await expect(writeInkFile(file, record)).rejects.toThrow(
+      "the file holds a record from a later version: version 2 is newer than 1",
+    );
+  });
+
+  it("replaces a record that breaks the format", async () => {
+    const file = withChunks([await textChunk("inkline", "{}")]);
+    expect(await readInkFile(await writeInkFile(file, record))).toEqual({
+      kind: "record",
+      record,
+    });
+  });
+});
+
+describe("readInkFile accepts", () => {
+  it("an uncompressed record", async () => {
+    const text = new TextEncoder().encode(serializeRecord(record));
+    const data = new Uint8Array([
+      ...new TextEncoder().encode("inkline"),
+      0,
+      0,
+      0,
+      0,
+      0,
+      ...text,
+    ]);
+    const file = withChunks([{ type: "iTXt", data }]);
+    expect(await readInkFile(file)).toEqual({ kind: "record", record });
+  });
+
+  it("only well-formed PNG files", async () => {
+    const [header, , end] = pixelChunks(blank(8, 12));
+    if (header === undefined || end === undefined) throw new Error("no chunks");
+    await expect(readInkFile(writeChunks([header, end]))).rejects.toThrow(
+      "no IDAT chunk",
+    );
   });
 });
