@@ -19,8 +19,10 @@ The file is a PNG as defined by the
 [PNG specification](https://www.w3.org/TR/png-3/). Inkline refuses a file whose
 chunks are not well formed: a bad signature, length, chunk type, or CRC; an
 `IHDR` that is missing, not first, repeated, or invalid; a missing, misplaced,
-or forbidden `PLTE`; no `IDAT` or `IDAT` chunks that are not consecutive; or a
-missing or non-empty `IEND`. It ignores bytes after `IEND`.
+repeated, or forbidden `PLTE`, or one that does not hold 1 to 256 whole RGB
+entries, or more than the bit depth can index; no `IDAT` or `IDAT` chunks that
+are not consecutive; or a missing or non-empty `IEND`. It ignores bytes after
+`IEND`.
 
 Inkline adds one chunk:
 
