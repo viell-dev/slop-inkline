@@ -1,13 +1,14 @@
 // Writes the version 1 golden files in this directory. They pin what version
-// 1 files contain, so that every later version keeps reading them: run this
-// only to add a fixture, never to update one.
+// 1 files contain, so that every later version keeps reading them. The script
+// writes only fixtures that do not exist yet, and never replaces a file: add a
+// new fixture under a new name, then run
 //
 //   node test/fixtures/format/generate.ts
 //
 // The drawings are synthetic, and the pixels are not renderings of the
 // strokes: these files test the format, not drawing.
 
-import { writeFile } from "node:fs/promises";
+import { access, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { writeInkFile } from "../../../src/format/ink-file.ts";
 import { serializeRecord, type InkRecord } from "../../../src/format/record.ts";
@@ -51,12 +52,24 @@ const fixtures: Record<string, InkRecord> = {
   },
 };
 
-for (const [name, record] of Object.entries(fixtures)) {
-  const png = encodePng(blank(record.box.width, record.box.height));
-  const file = await writeInkFile(png, record);
-  await writeFile(path.join(directory, `${name}.ink.png`), file);
-  await writeFile(
-    path.join(directory, `${name}.json`),
-    `${serializeRecord(record)}\n`,
+async function exists(file: string): Promise<boolean> {
+  return access(file).then(
+    () => true,
+    () => false,
   );
+}
+
+for (const [name, record] of Object.entries(fixtures)) {
+  const image = path.join(directory, `${name}.ink.png`);
+  const expected = path.join(directory, `${name}.json`);
+  const present = [await exists(image), await exists(expected)];
+  if (present.every(Boolean)) continue;
+  if (present.some(Boolean)) {
+    throw new Error(`${name} is half there; restore it from Git`);
+  }
+  const png = encodePng(blank(record.box.width, record.box.height));
+  // "wx" fails rather than replace a file that appeared meanwhile.
+  await writeFile(image, await writeInkFile(png, record), { flag: "wx" });
+  await writeFile(expected, `${serializeRecord(record)}\n`, { flag: "wx" });
+  console.log(`wrote ${name}`);
 }
