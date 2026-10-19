@@ -3,12 +3,11 @@ import type { InkRecord, Stroke } from "../../../src/format/record.ts";
 import { limits } from "../../../src/format/record.ts";
 import {
   documentFromRecord,
-  isWorkable,
+  fitsFormat,
   moveDocument,
   recordFromDocument,
   toPressure,
   toUnits,
-  workingRange,
   type InkDocument,
 } from "../../../src/ink/document.ts";
 import { lineBox } from "../../../src/ink/geometry.ts";
@@ -100,10 +99,10 @@ describe("recordFromDocument and documentFromRecord", () => {
   });
 });
 
-describe("isWorkable and documentFromRecord keep documents saveable", () => {
+describe("documentFromRecord stays within the format's limits", () => {
   const box = { pxPerEm: 64, width: 48, height: 192, baseline: 72 };
 
-  it("refuse a conversion that would make a stroke too large", () => {
+  it("refuses a conversion that would make a stroke too large", () => {
     const record: InkRecord = {
       box,
       strokes: [
@@ -113,7 +112,7 @@ describe("isWorkable and documentFromRecord keep documents saveable", () => {
     expect(documentFromRecord(record)).toBeUndefined();
   });
 
-  it("refuse a conversion that would move a point out of range", () => {
+  it("refuses a conversion that would move a point out of range", () => {
     const record: InkRecord = {
       box,
       strokes: [
@@ -128,7 +127,7 @@ describe("isWorkable and documentFromRecord keep documents saveable", () => {
     expect(documentFromRecord(record)).toBeUndefined();
   });
 
-  it("refuse a conversion that would scale the base layer below the limit", () => {
+  it("refuses a conversion that would scale the base layer below the limit", () => {
     const record: InkRecord = {
       box: { pxPerEm: 1024, width: 48, height: 192, baseline: 144 },
       strokes: [],
@@ -137,57 +136,65 @@ describe("isWorkable and documentFromRecord keep documents saveable", () => {
     expect(documentFromRecord(record)).toBeUndefined();
   });
 
-  it("refuse a record whose points lie beyond the working range", () => {
+  it("opens any valid record in the line box, however far its strokes reach", () => {
+    // What a crop of a pen at 100 px with an eraser 4 Mi units to its left
+    // saves: it must open again as it was saved.
     const record: InkRecord = {
       box: { ...lineBox, width: 48 },
       strokes: [
-        { tool: "pen", size: 16, pressure: false, points: [1600, 1600] },
+        { tool: "pen", size: 160, pressure: false, points: [384, 1600] },
         {
           tool: "eraser",
           size: 16,
           pressure: false,
-          points: [-(workingRange + 1), 1600],
-        },
-      ],
-    };
-    expect(documentFromRecord(record)).toBeUndefined();
-  });
-
-  it("keep crops within the format's limits for any workable document", () => {
-    const document: InkDocument = {
-      strokes: [
-        {
-          tool: "pen",
-          size: limits.strokeSize,
-          pressure: false,
-          points: [workingRange, 0],
+          points: [-4_195_520, 1600],
         },
         {
           tool: "eraser",
           size: 16,
           pressure: false,
-          points: [-workingRange, 0],
+          points: [-limits.coordinate, 0],
         },
       ],
     };
-    expect(isWorkable(document)).toBe(true);
-    // The furthest a crop can start: the right edge of the far stroke.
-    const left = (workingRange + limits.strokeSize) / 16;
-    const record = recordFromDocument(document, left, 48);
-    for (const stroke of record.strokes) {
-      for (const value of stroke.points) {
-        expect(Math.abs(value)).toBeLessThanOrEqual(limits.coordinate);
-      }
-    }
+    expect(documentFromRecord(record)).toEqual({ strokes: record.strokes });
   });
+});
 
-  it("accept pressure values, which are not coordinates", () => {
+describe("fitsFormat", () => {
+  it("accepts the limits themselves and pressure values", () => {
     expect(
-      isWorkable({
+      fitsFormat({
         strokes: [
-          { tool: "pen", size: 16, pressure: true, points: [0, 0, 255] },
+          {
+            tool: "pen",
+            size: limits.strokeSize,
+            pressure: true,
+            points: [limits.coordinate, -limits.coordinate, 255],
+          },
         ],
+        base: { x: 0, y: 0, scale: limits.baseScale.max, png },
       }),
     ).toBe(true);
+  });
+
+  it("refuses anything past them", () => {
+    const stroke = {
+      tool: "pen",
+      size: 16,
+      pressure: false,
+      points: [0, 0],
+    } as const;
+    expect(
+      fitsFormat({
+        strokes: [{ ...stroke, points: [limits.coordinate + 1, 0] }],
+      }),
+    ).toBe(false);
+    expect(
+      fitsFormat({ strokes: [{ ...stroke, size: limits.strokeSize + 1 }] }),
+    ).toBe(false);
+    expect(
+      fitsFormat({ strokes: [], base: { x: 0, y: 0, scale: 65, png } }),
+    ).toBe(false);
   });
 });

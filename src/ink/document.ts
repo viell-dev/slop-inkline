@@ -19,13 +19,6 @@ export interface InkDocument {
 
 export const emptyDocument: InkDocument = { strokes: [] };
 
-/**
- * The coordinates, in units, that a document keeps within: a quarter of the
- * format's limit, so that cropping, which moves everything by at most the
- * distance to the ink, never moves a coordinate past what a record allows.
- */
-export const workingRange = limits.coordinate / 4;
-
 /** A coordinate in pixels as the integer units the format stores. */
 export function toUnits(pixels: number): number {
   return Math.round(pixels * unitsPerPixel);
@@ -37,15 +30,14 @@ export function toPressure(pressure: number): number {
 }
 
 function inRange(value: number): boolean {
-  return Math.abs(value) <= workingRange;
+  return Math.abs(value) <= limits.coordinate;
 }
 
 /**
- * Whether a document can be edited and saved: every coordinate within
- * {@link workingRange}, every size and the base layer's scale within the
- * format's limits.
+ * Whether a document's coordinates, sizes, and base scale are all within the
+ * format's limits, as a record's must be.
  */
-export function isWorkable(document: InkDocument): boolean {
+export function fitsFormat(document: InkDocument): boolean {
   const strokesFit = document.strokes.every((stroke) => {
     const stride = stroke.pressure ? 3 : 2;
     return (
@@ -102,45 +94,43 @@ export function moveDocument(
 /**
  * The document a record holds, in the editor's line box, or undefined when
  * it cannot be edited there. A record with the same scale and baseline is
- * used exactly. One with another, which other tools may write, is scaled to
- * the line box and aligned on its baseline, rounding coordinates to whole
- * units. Either way, a document that would not be {@link isWorkable} is
- * refused rather than clamped, so that no stroke is lost unnoticed.
+ * used exactly, as any valid record can be. One with another, which other
+ * tools may write, is scaled to the line box and aligned on its baseline,
+ * rounding coordinates to whole units; if that would leave the format's
+ * limits, it is refused rather than clamped, so that no stroke is lost
+ * unnoticed.
  */
 export function documentFromRecord(record: InkRecord): InkDocument | undefined {
   const { box } = record;
-  let document: InkDocument;
   if (box.pxPerEm === lineBox.pxPerEm && box.baseline === lineBox.baseline) {
-    document =
-      record.base === undefined
-        ? { strokes: record.strokes }
-        : { strokes: record.strokes, base: record.base };
-  } else {
-    const scale = lineBox.pxPerEm / box.pxPerEm;
-    const dy = (lineBox.baseline - box.baseline * scale) * unitsPerPixel;
-    const strokes = record.strokes.map((stroke) => ({
-      ...stroke,
-      size: Math.max(1, Math.round(stroke.size * scale)),
-      points: mapPoints(
-        stroke,
-        (value) => Math.round(value * scale),
-        (value) => Math.round(value * scale + dy),
-      ),
-    }));
-    document =
-      record.base === undefined
-        ? { strokes }
-        : {
-            strokes,
-            base: {
-              ...record.base,
-              x: Math.round(record.base.x * scale),
-              y: Math.round(record.base.y * scale + dy),
-              scale: record.base.scale * scale,
-            },
-          };
+    return record.base === undefined
+      ? { strokes: record.strokes }
+      : { strokes: record.strokes, base: record.base };
   }
-  return isWorkable(document) ? document : undefined;
+  const scale = lineBox.pxPerEm / box.pxPerEm;
+  const dy = (lineBox.baseline - box.baseline * scale) * unitsPerPixel;
+  const strokes = record.strokes.map((stroke) => ({
+    ...stroke,
+    size: Math.max(1, Math.round(stroke.size * scale)),
+    points: mapPoints(
+      stroke,
+      (value) => Math.round(value * scale),
+      (value) => Math.round(value * scale + dy),
+    ),
+  }));
+  const document: InkDocument =
+    record.base === undefined
+      ? { strokes }
+      : {
+          strokes,
+          base: {
+            ...record.base,
+            x: Math.round(record.base.x * scale),
+            y: Math.round(record.base.y * scale + dy),
+            scale: record.base.scale * scale,
+          },
+        };
+  return fitsFormat(document) ? document : undefined;
 }
 
 /**
