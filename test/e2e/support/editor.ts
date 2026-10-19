@@ -260,7 +260,12 @@ export async function startOver(): Promise<void> {
     },
     { interval: 300, timeoutMsg: "modals stayed open" },
   );
-  await browser.executeObsidian(({ app }) => {
+  await browser.executeObsidian(async ({ app, obsidian }) => {
+    // A note's tab saves what it holds when it closes, without waiting, so
+    // that save could land after the vault is reset below: save first.
+    for (const leaf of app.workspace.getLeavesOfType("markdown")) {
+      if (leaf.view instanceof obsidian.MarkdownView) await leaf.view.save();
+    }
     // Detaching while iterating would skip leaves, so collect them first:
     // the main window's, and every one in a popout window.
     const leaves: { detach(): void }[] = [];
