@@ -8,7 +8,7 @@
 
 import path from "node:path";
 import { parseObsidianVersions } from "wdio-obsidian-service";
-import { cleanOutput, outputDirectory, setting } from "./support/harness.ts";
+import { outputDirectory, prepareOutput, setting } from "./support/harness.ts";
 
 const root = path.resolve(import.meta.dirname, "../..");
 const cacheDir = path.resolve(
@@ -24,6 +24,11 @@ const versions = await parseObsidianVersions(
 // resolved versions.
 if (setting(process.env.PRINT_OBSIDIAN_CACHE_KEY) !== undefined) {
   console.log(`obsidian-cache-key:${JSON.stringify(versions)}`);
+} else if (process.env.WDIO_WORKER_ID === undefined) {
+  // Only the launcher prepares the output, before WebdriverIO writes its log
+  // there; its onPrepare hook would run too late, and WebdriverIO only logs a
+  // hook's error, while this one stops the run.
+  await prepareOutput(outputDir);
 }
 
 export const config: WebdriverIO.Config = {
@@ -48,7 +53,4 @@ export const config: WebdriverIO.Config = {
   injectGlobals: false,
   mochaOpts: { ui: "bdd", timeout: 60_000 },
   logLevel: "warn",
-  async onPrepare() {
-    await cleanOutput(outputDir);
-  },
 };

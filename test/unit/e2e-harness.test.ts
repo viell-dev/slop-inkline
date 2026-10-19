@@ -3,8 +3,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  cleanOutput,
   outputDirectory,
+  ownerMarker,
+  prepareOutput,
   setting,
 } from "../e2e/support/harness.ts";
 
@@ -31,7 +32,7 @@ describe("outputDirectory", () => {
   });
 });
 
-describe("cleanOutput", () => {
+describe("prepareOutput", () => {
   let directory: string;
 
   beforeEach(async () => {
@@ -42,27 +43,56 @@ describe("cleanOutput", () => {
     await rm(directory, { recursive: true, force: true });
   });
 
-  it("removes only the harness's own entries", async () => {
+  async function addPreviousRun(): Promise<void> {
     await mkdir(path.join(directory, "logs"));
     await writeFile(path.join(directory, "logs", "wdio.log"), "");
     await mkdir(path.join(directory, "screenshots", "1.14.4-1.14.4"), {
       recursive: true,
     });
-    await mkdir(path.join(directory, ".git"));
-    await mkdir(path.join(directory, "src"));
-    await writeFile(path.join(directory, "src", "uncommitted.ts"), "");
+  }
 
-    await cleanOutput(directory);
-
-    expect((await readdir(directory)).sort()).toEqual([".git", "src"]);
-    expect(await readdir(path.join(directory, "src"))).toEqual([
-      "uncommitted.ts",
-    ]);
+  it("claims a directory that does not exist yet", async () => {
+    const output = path.join(directory, "new", "e2e");
+    await prepareOutput(output);
+    expect(await readdir(output)).toEqual([ownerMarker]);
   });
 
-  it("accepts a directory that does not exist yet", async () => {
-    await expect(
-      cleanOutput(path.join(directory, "missing")),
-    ).resolves.toBeUndefined();
+  it("claims an empty directory", async () => {
+    await prepareOutput(directory);
+    expect(await readdir(directory)).toEqual([ownerMarker]);
+  });
+
+  it("replaces its own previous output and keeps anything else", async () => {
+    await prepareOutput(directory);
+    await addPreviousRun();
+    await writeFile(path.join(directory, "notes.txt"), "");
+
+    await prepareOutput(directory);
+
+    expect((await readdir(directory)).sort()).toEqual(
+      [ownerMarker, "notes.txt"].sort(),
+    );
+  });
+
+  it("refuses a non-empty directory it does not own, deleting nothing", async () => {
+    await mkdir(path.join(directory, ".git"));
+    await mkdir(path.join(directory, "logs"));
+    await writeFile(path.join(directory, "logs", "other-application.log"), "");
+    await mkdir(path.join(directory, "screenshots"));
+    await writeFile(path.join(directory, "screenshots", "drawing.png"), "");
+
+    await expect(prepareOutput(directory)).rejects.toThrow(
+      "is not Inkline's end-to-end output",
+    );
+
+    expect((await readdir(directory)).sort()).toEqual(
+      [".git", "logs", "screenshots"].sort(),
+    );
+    expect(await readdir(path.join(directory, "logs"))).toEqual([
+      "other-application.log",
+    ]);
+    expect(await readdir(path.join(directory, "screenshots"))).toEqual([
+      "drawing.png",
+    ]);
   });
 });
