@@ -224,6 +224,10 @@ async function writeNoise(
         data[index * 4 + 3] = seed >>> 24;
       }
       const bytes = await canvas.encodePixels({ width: w, height: h, data });
+      const folder = filePath.slice(0, Math.max(0, filePath.lastIndexOf("/")));
+      if (folder !== "" && app.vault.getFolderByPath(folder) === null) {
+        await app.vault.createFolder(folder);
+      }
       await app.vault.createBinary(filePath, bytes.slice().buffer);
       return bytes.length;
     },
@@ -283,6 +287,85 @@ async function changeElsewhere(
 async function strokeCount(path: string): Promise<number> {
   const record = JSON.parse(await recordOf(path)) as { strokes?: unknown[] };
   return record.strokes?.length ?? -1;
+}
+
+/**
+ * Writes a symbol file of one stroke per x, in units, as another editor
+ * would, with a text chunk that Inkline carries through its saves.
+ */
+async function writeSymbol(path: string, xs: readonly number[]): Promise<void> {
+  await browser.executeObsidian(
+    async ({ app }, filePath, starts) => {
+      const { canvas } = window.inklineTest;
+      const { bytes } = await canvas.saveInk(
+        {
+          strokes: starts.map((x) => ({
+            tool: "pen" as const,
+            size: 256,
+            pressure: false,
+            points: [x, 800, x + 400, 2000],
+          })),
+        },
+        undefined,
+        [
+          {
+            chunk: {
+              type: "tEXt",
+              data: new TextEncoder().encode("Comment\0from the tower"),
+            },
+            afterData: false,
+          },
+        ],
+      );
+      const folder = filePath.slice(0, Math.max(0, filePath.lastIndexOf("/")));
+      if (folder !== "" && app.vault.getFolderByPath(folder) === null) {
+        await app.vault.createFolder(folder);
+      }
+      await app.vault.createBinary(filePath, bytes.slice().buffer);
+    },
+    path,
+    xs,
+  );
+}
+
+/** How many chunks a symbol file holds that Inkline carries through saves. */
+async function carriedIn(path: string): Promise<number> {
+  return browser.executeObsidian(async ({ app }, filePath) => {
+    const file = app.vault.getFileByPath(filePath);
+    if (file === null) throw new Error(`no ${filePath}`);
+    const { inkFile } = window.inklineTest;
+    return inkFile.preservableChunks(
+      new Uint8Array(await app.vault.readBinary(file)),
+    ).length;
+  }, path);
+}
+
+/** How many strokes a symbol file's record holds. */
+async function strokesIn(path: string): Promise<number> {
+  const record = JSON.parse(await recordOf(path)) as { strokes?: unknown[] };
+  return record.strokes?.length ?? -1;
+}
+
+/** Chooses a symbol in the open choice of symbols, by typing its name. */
+async function chooseSymbol(name: string): Promise<void> {
+  await browser.$(".prompt-input").waitForDisplayed();
+  await browser.keys(name);
+  await browser.keys(["Enter"]);
+}
+
+/** Waits for a notice whose text includes `text`. */
+async function waitForNotice(text: string): Promise<void> {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        (wanted) =>
+          [...document.querySelectorAll(".notice")].some((notice) =>
+            notice.textContent.includes(wanted),
+          ),
+        text,
+      ),
+    { timeoutMsg: `no notice with "${text}"` },
+  );
 }
 
 describe("The editor", function () {
@@ -2433,6 +2516,88 @@ describe("The editor", function () {
       await browser.keys(["Control", "Enter"]);
       await waitClosed();
       expect(await strokeCount("001.ink.png")).toBe(2);
+    });
+  });
+  describe("starting from a copy", function () {
+    it("starts a new symbol from a copy of another, which Undo takes back", async function () {
+      await writeSymbol("Glyphs/tower.ink.png", [800, 1600]);
+      await insert();
+      await browser.keys(["v"]);
+      await chooseSymbol("tower");
+      await waitForStatus("Started from a copy of tower");
+      await browser.waitUntil(
+        async () => (await storedDrafts())[0]?.strokes.length === 2,
+      );
+      await browser.keys(["Control", "z"]);
+      await browser.waitUntil(async () => (await storedDrafts()).length === 0);
+      await browser.keys(["Control", "Shift", "z"]);
+      await browser.waitUntil(
+        async () => (await storedDrafts())[0]?.strokes.length === 2,
+      );
+      await draw([[0.5, 0.2]]);
+      await browser.keys(["Control", "Enter"]);
+      await waitClosed();
+      expect(await symbolFiles()).toEqual([
+        "001.ink.png",
+        "Glyphs/tower.ink.png",
+      ]);
+      expect(await strokesIn("001.ink.png")).toBe(3);
+      expect(await strokesIn("Glyphs/tower.ink.png")).toBe(2);
+      // The tower's text stays with its own file.
+      expect(await carriedIn("Glyphs/tower.ink.png")).toBe(1);
+      expect(await carriedIn("001.ink.png")).toBe(0);
+    });
+
+    it("copies a base layer with the strokes", async function () {
+      await createSquare();
+      await insert();
+      await browser.$('[data-inkline-button="copy"]').click();
+      await chooseSymbol("square");
+      await waitForStatus("Started from a copy of square");
+      await browser.keys(["Control", "Enter"]);
+      await waitClosed();
+      const record = JSON.parse(await recordOf("001.ink.png")) as {
+        base?: unknown;
+      };
+      expect(record.base).toBeDefined();
+    });
+
+    it("keeps the drawing when the choice cannot be opened, or is put off", async function () {
+      await browser.executeObsidian(async ({ app }) => {
+        await app.vault.createBinary(
+          "bad.ink.png",
+          new TextEncoder().encode("not a PNG").buffer,
+        );
+      });
+      await insert();
+      await draw(zigzag);
+      await browser.keys(["v"]);
+      await chooseSymbol("bad");
+      await waitForNotice("Could not open bad.ink.png");
+      await browser.keys(["v"]);
+      await browser.$(".prompt-input").waitForDisplayed();
+      await browser.keys(["Escape"]);
+      await browser.$(".prompt").waitForExist({ reverse: true });
+      expect(await editorOpen()).toBe(true);
+      expect((await storedDrafts())[0]?.strokes).toHaveLength(1);
+    });
+
+    it("says when there is no symbol to start from", async function () {
+      await insert();
+      await browser.keys(["v"]);
+      await waitForNotice("There are no symbols to start from yet.");
+      expect(await browser.$(".prompt").isExisting()).toBe(false);
+    });
+
+    it("has no Copy from for a symbol file", async function () {
+      await saveOne();
+      await editFile("001.ink.png");
+      expect(await browser.$('[data-inkline-button="copy"]').isExisting()).toBe(
+        false,
+      );
+      await browser.keys(["v"]);
+      await browser.pause(500);
+      expect(await browser.$(".prompt").isExisting()).toBe(false);
     });
   });
 });

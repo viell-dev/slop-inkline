@@ -49,6 +49,12 @@ export interface SymbolFile {
   read(): Promise<Uint8Array | undefined>;
 }
 
+/** A symbol opened to start another from, and the name it goes by. */
+export interface SymbolCopy {
+  readonly name: string;
+  readonly ink: EditableInk;
+}
+
 export interface EditorOptions {
   readonly title: string;
   readonly document: InkDocument;
@@ -95,6 +101,12 @@ export interface EditorOptions {
      */
     readonly restored?: (draft: Draft) => void;
   };
+  /**
+   * Asks which symbol to start from and opens it, for a new symbol drawn as
+   * a variant of another; resolves to undefined when none is chosen or it
+   * cannot be opened. Undefined where the editor has its own symbol.
+   */
+  readonly copyFrom?: () => Promise<SymbolCopy | undefined>;
   /** Told when the editor opens and closes, so that its owner can track it. */
   readonly lifecycle?: {
     opened(editor: InkEditorModal): void;
@@ -241,6 +253,18 @@ export class InkEditorModal extends Modal {
     this.#addButton(toolbar, "grid", "Grid", "Shift+G", () => {
       this.#toggleGrid();
     });
+    if (this.#options.copyFrom !== undefined) {
+      this.#addButton(
+        toolbar,
+        "copy",
+        "Copy from",
+        "V",
+        () => {
+          void this.#copy();
+        },
+        "Start from a copy of another symbol",
+      );
+    }
     this.#addButton(toolbar, "fit", "Fit", "F", () => {
       this.#fitView();
       this.#render();
@@ -489,6 +513,11 @@ export class InkEditorModal extends Modal {
     key(["Shift"], "g", () => {
       this.#toggleGrid();
     });
+    if (this.#options.copyFrom !== undefined) {
+      key([], "v", () => {
+        void this.#copy();
+      });
+    }
     key([], "f", () => {
       this.#fitView();
       this.#render();
@@ -843,6 +872,28 @@ export class InkEditorModal extends Modal {
       "Not now",
       letGo,
     );
+  }
+
+  /**
+   * Replaces the drawing with a copy of another symbol, its strokes and base
+   * layer, as one step that Undo takes back, to draw a variant of it. The
+   * other file's other chunks, such as text, stay with that file.
+   */
+  async #copy(): Promise<void> {
+    const copyFrom = this.#options.copyFrom;
+    if (copyFrom === undefined) return;
+    const copy = await copyFrom();
+    if (copy === undefined || this.#retired || this.#closing) return;
+    // A stroke being drawn is committed first, so that Undo brings it back.
+    this.#session.end();
+    const { document, base } = copy.ink;
+    if (document.base !== undefined && base !== undefined) {
+      this.#decoded.set(document.base.png, base);
+    }
+    this.#session.replace(document);
+    this.#fitView();
+    this.#changed();
+    this.#announce(`Started from a copy of ${copy.name}`);
   }
 
   /** Follows the vault's reports of changes to the symbol's file. */

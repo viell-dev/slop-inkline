@@ -14,6 +14,9 @@ section is also its
   with a mouse, pen, or finger, and save it with Mod+Enter: Inkline creates the
   file in Obsidian's attachment location, named with the next free number, and
   inserts it where the cursor was. Nothing is created until the first save.
+- **Copy from**, or V, in the editor for a new symbol, starts it from a copy of
+  another symbol's strokes and base layer, chosen from the vault's symbols, for
+  scripts whose symbols share parts. Undo takes the copy back.
 - **Edit symbol**, in a symbol file's menu, which opens it in the editor again
   with every stroke, so that nothing is lost by editing.
 - The editor's pen, eraser, four brush sizes, undo, redo, and clear, each with

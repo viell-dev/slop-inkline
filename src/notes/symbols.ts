@@ -2,6 +2,7 @@
 // with files and notes.
 
 import {
+  FuzzySuggestModal,
   MarkdownView,
   Notice,
   TFile,
@@ -9,7 +10,7 @@ import {
   normalizePath,
   type App,
 } from "obsidian";
-import { inkExtension } from "../format/ink-file.ts";
+import { inkExtension, isInkPath } from "../format/ink-file.ts";
 import { openInk } from "../ink/canvas.ts";
 import { emptyDocument } from "../ink/document.ts";
 import {
@@ -20,6 +21,7 @@ import {
 import {
   InkEditorModal,
   type EditorOptions,
+  type SymbolCopy,
   type SymbolFile,
 } from "../editor/modal.ts";
 import { visibleWidth } from "../editor/view.ts";
@@ -331,6 +333,7 @@ export function insertSymbol(host: EditorHost, view: MarkdownView): void {
       },
     },
     lifecycle: host.lifecycle,
+    copyFrom: () => copySymbol(host),
     file: () => made && symbolFile(app, made.file.path),
     // Until the embed is inserted, the draft is kept before each write, so
     // that it names the file and the bytes even after a crash. If storage
@@ -390,6 +393,82 @@ export function insertSymbol(host: EditorHost, view: MarkdownView): void {
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** Asks which of the vault's symbols to start from, by its path. */
+class SymbolChoice extends FuzzySuggestModal<TFile> {
+  readonly #symbols: readonly TFile[];
+  readonly #chosen: (file: TFile | undefined) => void;
+  #done = false;
+
+  constructor(
+    app: App,
+    symbols: readonly TFile[],
+    chosen: (file: TFile | undefined) => void,
+  ) {
+    super(app);
+    this.#symbols = symbols;
+    this.#chosen = chosen;
+    this.setPlaceholder("Start from which symbol?");
+  }
+
+  override getItems(): TFile[] {
+    return [...this.#symbols];
+  }
+
+  override getItemText(file: TFile): string {
+    return file.path;
+  }
+
+  override onChooseItem(file: TFile): void {
+    this.#done = true;
+    this.#chosen(file);
+  }
+
+  override onClose(): void {
+    // A choice closes the modal before it is reported, so wait for it.
+    void Promise.resolve().then(() => {
+      if (!this.#done) this.#chosen(undefined);
+    });
+  }
+}
+
+/**
+ * Asks which symbol to start a new one from, and opens it for editing as a
+ * copy; undefined when none is chosen, or with a notice when the choice
+ * cannot be opened.
+ */
+async function copySymbol(host: EditorHost): Promise<SymbolCopy | undefined> {
+  const { app } = host;
+  const symbols = app.vault
+    .getFiles()
+    .filter((file) => isInkPath(file.path))
+    .sort((a, b) => a.path.localeCompare(b.path));
+  if (symbols.length === 0) {
+    new Notice("There are no symbols to start from yet.");
+    return undefined;
+  }
+  const file = await new Promise<TFile | undefined>((resolve) => {
+    new SymbolChoice(app, symbols, resolve).open();
+  });
+  if (file === undefined || !host.alive()) return undefined;
+  let opened;
+  try {
+    opened = await openInk(new Uint8Array(await app.vault.readBinary(file)));
+  } catch (error) {
+    new Notice(`Could not open ${file.name}: ${message(error)}`);
+    return undefined;
+  }
+  if (opened.kind === "newer-version") {
+    new Notice(
+      `${file.name} was saved by a newer version of Inkline. Update Inkline to start from it.`,
+    );
+    return undefined;
+  }
+  return {
+    name: symbolStem(file.name) ?? file.basename,
+    ink: opened,
+  };
 }
 
 /** Opens the editor for an existing symbol file, reporting any failure. */
