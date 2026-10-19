@@ -53,16 +53,7 @@ export async function draw(
   pointerType: "mouse" | "pen" | "touch" = "mouse",
 ): Promise<void> {
   const canvas = surface();
-  await canvas.waitForDisplayed();
-  // The modal grows into place when it opens; wait until it has.
-  let size = await canvas.getSize();
-  await browser.waitUntil(async () => {
-    const previous = size;
-    await browser.pause(50);
-    size = await canvas.getSize();
-    return size.width === previous.width && size.height === previous.height;
-  });
-  const { width, height } = size;
+  const { width, height } = await settledSurface();
   const at = ([x, y]: readonly [number, number]) => ({
     origin: canvas,
     // Offsets are from the element's centre.
@@ -101,6 +92,26 @@ export async function waitForStatus(
       cause: error,
     });
   }
+}
+
+/**
+ * Waits for the surface to stop growing, as the modal does when it opens,
+ * and returns its size.
+ */
+export async function settledSurface(): Promise<{
+  width: number;
+  height: number;
+}> {
+  const canvas = surface();
+  await canvas.waitForDisplayed();
+  let size = await canvas.getSize();
+  await browser.waitUntil(async () => {
+    const previous = size;
+    await browser.pause(50);
+    size = await canvas.getSize();
+    return size.width === previous.width && size.height === previous.height;
+  });
+  return size;
 }
 
 /** Whether the editor is open. */
@@ -183,6 +194,7 @@ export async function startOver(): Promise<void> {
   });
   await freeStorage();
   await restoreVault();
+  await restoreDecoding();
   await obsidianPage.resetVault();
 }
 
@@ -247,6 +259,37 @@ export async function restoreVault(): Promise<void> {
     },
     [...delayable],
   );
+}
+
+/**
+ * Makes `createImageBitmap`, which decodes base layers, take `ms` longer,
+ * until {@link restoreDecoding}.
+ */
+export async function delayDecoding(ms: number): Promise<void> {
+  await browser.execute((wait) => {
+    const original: unknown = Reflect.get(window, "createImageBitmap");
+    if (typeof original !== "function") throw new Error("no createImageBitmap");
+    Reflect.set(window, "inklineCreateImageBitmap", original);
+    Reflect.set(
+      window,
+      "createImageBitmap",
+      async (...args: unknown[]): Promise<unknown> => {
+        await new Promise((resolve) => window.setTimeout(resolve, wait));
+        const result: unknown = await Reflect.apply(original, window, args);
+        return result;
+      },
+    );
+  }, ms);
+}
+
+/** Undoes {@link delayDecoding}. */
+export async function restoreDecoding(): Promise<void> {
+  await browser.execute(() => {
+    const original: unknown = Reflect.get(window, "inklineCreateImageBitmap");
+    if (typeof original !== "function") return;
+    Reflect.set(window, "createImageBitmap", original);
+    Reflect.deleteProperty(window, "inklineCreateImageBitmap");
+  });
 }
 
 const fillerPrefix = "inkline-test-filler:";

@@ -44,6 +44,23 @@ describe("PointerGate", () => {
     expect(gate.down(pen({ button: 0, buttons: 32 }))).toBe("eraser");
   });
 
+  it("lets a pen take the place of a touch already drawing, as a palm's", () => {
+    const gate = new PointerGate();
+    expect(gate.down(touch())).toBe("brush");
+    // A pen's barrel button does not draw, so the touch keeps drawing.
+    expect(gate.down(pen({ button: 2, buttons: 2 }))).toBeUndefined();
+    expect(gate.owns(touch())).toBe(true);
+    expect(gate.down(pen())).toBe("brush");
+    expect(gate.owns(pen())).toBe(true);
+    expect(gate.owns(touch())).toBe(false);
+    expect(gate.release(touch())).toBe(false);
+    // A mouse does not take the place of a pen, nor a pen of a mouse.
+    expect(gate.down(mouse())).toBeUndefined();
+    gate.release(pen());
+    expect(gate.down(mouse())).toBe("brush");
+    expect(gate.down(pen())).toBeUndefined();
+  });
+
   it("ignores touch once a pen has been seen, as from a resting palm", () => {
     const gate = new PointerGate();
     expect(gate.down(pen())).toBe("brush");

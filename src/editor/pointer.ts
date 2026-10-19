@@ -1,6 +1,7 @@
 // Which pointer events draw: one pointer at a time, only the primary button,
 // a pen's eraser as the eraser, and no touch once a pen has been seen, so
-// that a palm resting on a tablet draws nothing.
+// that a palm resting on a tablet draws nothing. A touch already drawing when
+// a pen comes down was such a palm, and the pen takes its place.
 
 import type { Tool } from "../format/record.ts";
 
@@ -18,6 +19,7 @@ const eraserButtons = 32;
 
 export class PointerGate {
   #active: number | undefined;
+  #activeType: string | undefined;
   /** The `buttons` bit that keeps the drawing pointer drawing. */
   #holding = 1;
   #penSeen = false;
@@ -30,17 +32,23 @@ export class PointerGate {
   /**
    * Decides whether a `pointerdown` starts a stroke. Returns the tool the
    * device asks for (`"eraser"` for a pen's eraser end), `"brush"` to use the
-   * current brush, or undefined to ignore the event.
+   * current brush, or undefined to ignore the event. A pen that comes down
+   * while a touch draws takes its place, and the touch's stroke should be
+   * dropped: starting the pen's stroke does that.
    */
   down(event: PointerSample): Tool | "brush" | undefined {
-    if (event.pointerType === "pen") this.#penSeen = true;
-    if (this.#active !== undefined) return undefined;
+    const pen = event.pointerType === "pen";
+    if (pen) this.#penSeen = true;
     if (event.pointerType === "touch" && this.#penSeen) return undefined;
     const erasing =
-      event.pointerType === "pen" &&
+      pen &&
       (event.button === eraserButton || (event.buttons & eraserButtons) !== 0);
     if (!erasing && event.button !== 0) return undefined;
+    if (this.#active !== undefined && !(pen && this.#activeType === "touch")) {
+      return undefined;
+    }
     this.#active = event.pointerId;
+    this.#activeType = event.pointerType;
     this.#holding = erasing ? eraserButtons : 1;
     return erasing ? "eraser" : "brush";
   }
@@ -64,6 +72,7 @@ export class PointerGate {
   release(event: Pick<PointerSample, "pointerId">): boolean {
     if (!this.owns(event)) return false;
     this.#active = undefined;
+    this.#activeType = undefined;
     return true;
   }
 }

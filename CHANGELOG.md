@@ -16,9 +16,10 @@ section is also its
   inserts it where the cursor was. Nothing is created until the first save.
 - **Edit symbol**, in a symbol file's menu, which opens it in the editor again
   with every stroke, so that nothing is lost by editing.
-- The editor's pen, eraser, four brush sizes, undo, redo, and clear, each with
-  its shortcut in its tooltip. A pen's eraser end erases, and a palm resting on
-  a tablet does not draw.
+- The editor's pen, eraser, four brush sizes, undo, redo, and clear; each but
+  clear has a shortcut, shown in its tooltip. A pen's eraser end erases, and a
+  palm resting on a tablet does not draw, even one that touched it before the
+  pen. A symbol wider than the editor's usual view is shown whole.
 - The editor asks before closing a drawing with unsaved changes, whether by Esc,
   the close button, or a click outside, and keeps the drawing open when a save
   fails.

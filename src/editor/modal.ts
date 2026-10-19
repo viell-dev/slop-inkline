@@ -18,13 +18,14 @@ import {
   draftBase,
   fingerprintOf,
   restoreDraft,
+  sameTarget,
   type Draft,
   type DraftStore,
   type DraftTarget,
 } from "./drafts.ts";
 import { PointerGate, reportsPressure } from "./pointer.ts";
 import { brushSizes, DrawingSession, type InputPoint } from "./session.ts";
-import { InkView } from "./view.ts";
+import { InkView, surfaceWidth } from "./view.ts";
 
 export interface EditorOptions {
   readonly title: string;
@@ -33,6 +34,8 @@ export interface EditorOptions {
   readonly carried?: readonly CarriedChunk[];
   /** The document x to centre the surface on, in pixels. */
   readonly center: number;
+  /** How wide the drawing is, in pixels, so that the surface shows it all. */
+  readonly width?: number;
   /**
    * Writes a saved symbol: the first save of a new symbol creates its file
    * and inserts it. Rejects when anything could not be done, which keeps the
@@ -172,7 +175,7 @@ export class InkEditorModal extends Modal {
       cls: "inkline-status",
       attr: { "aria-live": "polite" },
     });
-    const view = new InkView(canvas);
+    const view = new InkView(canvas, surfaceWidth(this.#options.width ?? 0));
     this.#view = view;
     view.centerOn(this.#options.center);
     this.#listen(canvas);
@@ -380,7 +383,9 @@ export class InkEditorModal extends Modal {
     const finish = (event: PointerEvent): void => {
       if (!this.#gate.release(event)) return;
       if (event.type === "pointercancel") this.#session.cancel();
-      else this.#session.end();
+      // A release, unlike a lost capture, says where the pointer ended.
+      else if (event.type === "lostpointercapture") this.#session.end();
+      else this.#session.end(point(event));
       this.#changed();
     };
     canvas.addEventListener("pointerdown", (event) => {
@@ -569,7 +574,19 @@ export class InkEditorModal extends Modal {
       } catch {
         readable = false;
       }
-      if (this.#retired || this.#closing) return;
+      // Meanwhile the editor may have closed, saved a new symbol into its
+      // own file, started a save, or asked before closing: then the draft
+      // waits for another time.
+      if (
+        this.#retired ||
+        this.#closing ||
+        this.#saving !== undefined ||
+        this.#questions.size > 0 ||
+        !sameTarget(drafts.target(), found.target)
+      ) {
+        letGo();
+        return;
+      }
     }
     const draft: Draft = readable
       ? found

@@ -159,20 +159,27 @@ function present(app: App, file: TFile): boolean {
 }
 
 /**
- * The claimed file, if it still holds what was last written there: one that
- * an interrupted first save made, unchanged since. A file that changes while
- * it is read is left alone.
+ * The claimed file and a fingerprint of what it holds, if that is what was
+ * last written there, or what it held before a write that may not have
+ * happened: one that an interrupted first save made, unchanged since. A file
+ * that changes while it is read is left alone.
  */
-async function claimedFile(app: App, claim: Claim): Promise<TFile | undefined> {
+async function claimedFile(
+  app: App,
+  claim: Claim,
+): Promise<{ file: TFile; fingerprint: string } | undefined> {
   const file = claim.file ?? app.vault.getFileByPath(claim.path);
   if (file === null || !present(app, file)) return undefined;
   const { mtime, size } = file.stat;
   const bytes = new Uint8Array(await app.vault.readBinary(file));
-  if ((await fingerprintOf(bytes)) !== claim.fingerprint) return undefined;
+  const fingerprint = await fingerprintOf(bytes);
+  if (fingerprint !== claim.fingerprint && fingerprint !== claim.previous) {
+    return undefined;
+  }
   return present(app, file) &&
     file.stat.mtime === mtime &&
     file.stat.size === size
-    ? file
+    ? { file, fingerprint }
     : undefined;
 }
 
@@ -227,8 +234,17 @@ export function insertSymbol(host: EditorHost, view: MarkdownView): void {
       editor.posToOffset(editor.getCursor()),
     ),
   };
-  /** The symbol's file once made, and a fingerprint of what it holds. */
-  let made: { readonly file: TFile; fingerprint: string } | undefined;
+  /**
+   * The symbol's file once made, a fingerprint of what was last written
+   * there, and of what it held before while that write is under way.
+   */
+  let made:
+    | {
+        readonly file: TFile;
+        fingerprint: string;
+        previous: string | undefined;
+      }
+    | undefined;
   /** A file being made, or one that a restored draft's first save made. */
   let claim: Claim | undefined;
   /** Whether `made` came from a claim, and so may be in the note already. */
@@ -250,8 +266,17 @@ export function insertSymbol(host: EditorHost, view: MarkdownView): void {
             ? claim && {
                 path: claim.file?.path ?? claim.path,
                 fingerprint: claim.fingerprint,
+                ...(claim.previous === undefined
+                  ? {}
+                  : { previous: claim.previous }),
               }
-            : { path: made.file.path, fingerprint: made.fingerprint };
+            : {
+                path: made.file.path,
+                fingerprint: made.fingerprint,
+                ...(made.previous === undefined
+                  ? {}
+                  : { previous: made.previous }),
+              };
         return file === undefined
           ? { kind: "new", note: note.path }
           : { kind: "new", note: note.path, file };
@@ -275,9 +300,9 @@ export function insertSymbol(host: EditorHost, view: MarkdownView): void {
       stillAlive(host);
       const fingerprint = await fingerprintOf(bytes);
       if (made === undefined && claim !== undefined) {
-        const file = await claimedFile(app, claim);
-        if (file !== undefined) {
-          made = { file, fingerprint: claim.fingerprint };
+        const claimed = await claimedFile(app, claim);
+        if (claimed !== undefined) {
+          made = { ...claimed, previous: undefined };
           adopted = true;
         }
       }
@@ -288,16 +313,20 @@ export function insertSymbol(host: EditorHost, view: MarkdownView): void {
         claim = { path, fingerprint };
         keepDraft();
         const file = await app.vault.createBinary(path, toBuffer(bytes));
-        made = { file, fingerprint };
+        made = { file, fingerprint, previous: undefined };
       } else {
+        // A draft kept meanwhile names both, since the file holds either.
         const before = made.fingerprint;
         made.fingerprint = fingerprint;
+        made.previous = before;
         if (!inserted) keepDraft();
         try {
           await app.vault.modifyBinary(made.file, toBuffer(bytes));
         } catch (error) {
           made.fingerprint = before;
           throw error;
+        } finally {
+          made.previous = undefined;
         }
       }
       if (inserted) return;
@@ -346,6 +375,7 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
     ...(opened.base === undefined ? {} : { base: opened.base }),
     carried: opened.carried,
     center: opened.width / 2,
+    width: opened.width,
     drafts: {
       store: host.drafts,
       // The file's path follows renames.

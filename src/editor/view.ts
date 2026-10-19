@@ -6,8 +6,17 @@ import type { InkDocument } from "../ink/document.ts";
 import { lineBox } from "../ink/geometry.ts";
 import { drawInk, type DrawableBase } from "../ink/render.ts";
 
-/** How much of the line box the surface shows across, in document pixels. */
+/** How much of the line box the surface shows across at least, in pixels. */
 export const visibleWidth = 4.5 * lineBox.pxPerEm;
+
+/**
+ * How much the surface shows across for a drawing `width` pixels wide: all
+ * of it, with half an em to spare on each side, and never less than
+ * {@link visibleWidth}.
+ */
+export function surfaceWidth(width: number): number {
+  return Math.max(visibleWidth, width + lineBox.pxPerEm);
+}
 
 function offscreen2d(
   canvas: OffscreenCanvas,
@@ -25,6 +34,8 @@ function element2d(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
 
 export class InkView {
   readonly canvas: HTMLCanvasElement;
+  /** How much of the document the surface shows across, in pixels. */
+  readonly #across: number;
   /** CSS pixels per document pixel. */
   #scale = 1;
   /** The document x at the surface's left edge, in pixels. */
@@ -35,13 +46,14 @@ export class InkView {
   #committed = new OffscreenCanvas(1, 1);
   #work = new OffscreenCanvas(1, 1);
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement, across = visibleWidth) {
     this.canvas = canvas;
+    this.#across = across;
   }
 
   /** Puts document x `center` in the middle of the surface. */
   centerOn(center: number): void {
-    this.#originX = Math.round(center - visibleWidth / 2);
+    this.#originX = Math.round(center - this.#across / 2);
     this.#shown = undefined;
   }
 
@@ -54,7 +66,7 @@ export class InkView {
   /** Fits the surface to `cssWidth` CSS pixels across. */
   resize(cssWidth: number, devicePixelRatio: number): void {
     const width = Math.max(1, cssWidth);
-    this.#scale = width / visibleWidth;
+    this.#scale = width / this.#across;
     this.#ratio = devicePixelRatio;
     const cssHeight = lineBox.height * this.#scale;
     this.canvas.style.setProperty(
@@ -70,12 +82,17 @@ export class InkView {
     this.#shown = undefined;
   }
 
-  /** The document position under a point on the screen, in pixels. */
+  /**
+   * The document position under a point on the screen, in pixels. The
+   * drawing starts inside the surface's border, as its size does.
+   */
   toDocument(clientX: number, clientY: number): { x: number; y: number } {
-    const rect = this.canvas.getBoundingClientRect();
+    const { canvas } = this;
+    const rect = canvas.getBoundingClientRect();
     return {
-      x: (clientX - rect.left) / this.#scale + this.#originX,
-      y: (clientY - rect.top) / this.#scale,
+      x:
+        (clientX - rect.left - canvas.clientLeft) / this.#scale + this.#originX,
+      y: (clientY - rect.top - canvas.clientTop) / this.#scale,
     };
   }
 

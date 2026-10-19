@@ -24,6 +24,11 @@ describe("findPoint", () => {
   it("gives up rather than guess between two equal places", () => {
     const point = capturePoint("ab", 1);
     expect(findPoint("xab ab", point)).toBeUndefined();
+    // Text that repeats still matches where the point was after an edit
+    // before it moved the point.
+    expect(
+      findPoint("ab" + "ababab", capturePoint("ababab", 3)),
+    ).toBeUndefined();
   });
 
   it("gives up when the text around it is gone", () => {

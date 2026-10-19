@@ -23,6 +23,11 @@ export interface CreatedFile {
   readonly path: string;
   /** A fingerprint of the bytes last written to it. */
   readonly fingerprint: string;
+  /**
+   * A fingerprint of what it held before, while the write of the bytes
+   * `fingerprint` names may not have happened.
+   */
+  readonly previous?: string;
 }
 
 /**
@@ -98,10 +103,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function parseCreated(value: unknown): CreatedFile | undefined {
-  return isRecord(value) &&
-    typeof value.path === "string" &&
-    typeof value.fingerprint === "string"
-    ? { path: value.path, fingerprint: value.fingerprint }
+  if (
+    !isRecord(value) ||
+    typeof value.path !== "string" ||
+    typeof value.fingerprint !== "string"
+  ) {
+    return undefined;
+  }
+  const { path, fingerprint, previous } = value;
+  if (previous === undefined) return { path, fingerprint };
+  return typeof previous === "string"
+    ? { path, fingerprint, previous }
     : undefined;
 }
 
@@ -262,12 +274,23 @@ export function draftBase(
   const layer = document.base;
   if (layer === undefined) return { kind: "none" };
   const held = saved?.base;
-  return held?.png === layer.png &&
+  return held !== undefined &&
+    samePng(held.png, layer.png) &&
     held.x === layer.x &&
     held.y === layer.y &&
     held.scale === layer.scale
     ? { kind: "file" }
     : { kind: "kept", layer };
+}
+
+/** Whether two PNGs hold the same bytes. */
+function samePng(a: Uint8Array, b: Uint8Array): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let index = 0; index < a.length; index++) {
+    if (a[index] !== b[index]) return false;
+  }
+  return true;
 }
 
 /** The document a draft restores onto the file's own document. */
@@ -360,16 +383,18 @@ export class DraftStore {
   }
 
   /**
-   * Stores a base layer's PNG once, returning its key, if it was kept. A key
-   * this store knows is used again while the index lists it; another store
-   * may have dropped it since, unused, and then it is stored again.
+   * Stores a base layer's PNG once, returning its key, and whether this
+   * stored it, if it was kept. A key this store knows is used again while the
+   * index lists it; another store may have dropped it since, unused, and then
+   * it is stored again.
    */
-  #keepPng(png: Uint8Array): string | undefined {
+  #keepPng(png: Uint8Array): { key: string; stored: boolean } | undefined {
     const known = this.#keys.get(png);
     if (known !== undefined) {
-      if (this.#list(baseIndexKey).includes(known)) return known;
-      this.#keys.delete(png);
-      this.#pngs.delete(known);
+      if (this.#list(baseIndexKey).includes(known)) {
+        return { key: known, stored: false };
+      }
+      this.#forgetPng(known);
     }
     if (basePngProblem(png) !== undefined) return undefined;
     const key = crypto.randomUUID();
@@ -378,7 +403,23 @@ export class DraftStore {
     }
     this.#pngs.set(key, png);
     this.#keys.set(png, key);
-    return key;
+    return { key, stored: true };
+  }
+
+  #forgetPng(key: string): void {
+    const png = this.#pngs.get(key);
+    if (png !== undefined) this.#keys.delete(png);
+    this.#pngs.delete(key);
+  }
+
+  /** Removes a stored base layer that no draft uses. */
+  #dropPng(key: string): void {
+    this.#storage.saveLocalStorage(basePrefix + key, null);
+    this.#setList(
+      baseIndexKey,
+      this.#list(baseIndexKey).filter((other) => other !== key),
+    );
+    this.#forgetPng(key);
   }
 
   /** Marks a draft as an open editor's, so that no other is offered it. */
@@ -423,9 +464,7 @@ export class DraftStore {
       for (const key of keys) {
         if (used.has(key)) continue;
         this.#storage.saveLocalStorage(basePrefix + key, null);
-        const png = this.#pngs.get(key);
-        if (png !== undefined) this.#keys.delete(png);
-        this.#pngs.delete(key);
+        this.#forgetPng(key);
       }
       this.#setList(baseIndexKey, kept);
     }
@@ -447,19 +486,18 @@ export class DraftStore {
    */
   put(draft: Draft): boolean {
     const { base } = draft;
-    let baseKey: string | undefined;
-    if (base.kind === "kept") {
-      baseKey = this.#keepPng(base.layer.png);
-      if (baseKey === undefined) return false;
-    }
-    const text = encodeDraft(draft, baseKey);
     const png = base.kind === "kept" ? base.layer.png : undefined;
-    if (
-      decode(text, (key) => (key === baseKey ? png : undefined)) === undefined
-    ) {
-      return false;
-    }
-    return this.#write(draftPrefix + draft.id, text, indexKey, draft.id);
+    const kept = png === undefined ? undefined : this.#keepPng(png);
+    if (png !== undefined && kept === undefined) return false;
+    const baseKey = kept?.key;
+    const text = encodeDraft(draft, baseKey);
+    const written =
+      decode(text, (key) => (key === baseKey ? png : undefined)) !==
+        undefined &&
+      this.#write(draftPrefix + draft.id, text, indexKey, draft.id);
+    // A base layer stored for a draft that was not kept is of no use.
+    if (!written && kept?.stored === true) this.#dropPng(kept.key);
+    return written;
   }
 
   remove(id: string): void {

@@ -2,6 +2,7 @@ import { browser, expect } from "@wdio/globals";
 import { obsidianPage } from "wdio-obsidian-service";
 import { loadModules } from "../support/browser.ts";
 import {
+  delayDecoding,
   delayVault,
   draw,
   editorOpen,
@@ -10,7 +11,9 @@ import {
   noteText,
   openAtMarker,
   recordOf,
+  restoreDecoding,
   restoreVault,
+  settledSurface,
   storedDrafts,
   waitForEditor,
   startOver,
@@ -119,6 +122,62 @@ async function showWelcomeInstead(): Promise<void> {
     return showing().length;
   });
   if (left !== 0) throw new Error("a tab still shows Editor.md");
+}
+
+/**
+ * Keeps a draft for a new symbol in Editor.md, as an earlier editor would
+ * have, with a black square as its kept base layer.
+ */
+async function plantKeptDraft(): Promise<void> {
+  await browser.executeObsidian(async ({ app }) => {
+    const { canvas, drafts } = window.inklineTest;
+    const data = new Uint8ClampedArray(24 * 24 * 4);
+    for (let index = 0; index < 24 * 24; index++) data[index * 4 + 3] = 255;
+    const png = await canvas.encodePixels({ width: 24, height: 24, data });
+    const kept = new drafts.DraftStore(app).put({
+      id: "planted",
+      target: { kind: "new", note: "Editor.md" },
+      strokes: [
+        { tool: "pen", size: 256, pressure: false, points: [1600, 1600] },
+      ],
+      base: { kind: "kept", layer: { x: 0, y: 0, scale: 8, png } },
+      savedAt: Date.now(),
+    });
+    if (!kept) throw new Error("the draft was not kept");
+  });
+}
+
+/**
+ * Where the surface's drawing starts on the screen, inside its border, and
+ * how many CSS pixels a new symbol's document pixel takes.
+ */
+async function surfaceOrigin(): Promise<{
+  left: number;
+  top: number;
+  scale: number;
+  border: number;
+}> {
+  return browser.execute(() => {
+    const canvas = document.querySelector(".inkline-editor .inkline-surface");
+    if (!(canvas instanceof HTMLCanvasElement)) throw new Error("no surface");
+    const rect = canvas.getBoundingClientRect();
+    return {
+      left: rect.left + canvas.clientLeft,
+      top: rect.top + canvas.clientTop,
+      scale: canvas.clientWidth / 576,
+      border: canvas.clientLeft,
+    };
+  });
+}
+
+/** Clicks the mouse at a point in the window, in CSS pixels. */
+async function clickAt(x: number, y: number): Promise<void> {
+  await browser
+    .action("pointer", { parameters: { pointerType: "mouse" } })
+    .move({ origin: "viewport", x: Math.round(x), y: Math.round(y) })
+    .down()
+    .up()
+    .perform();
 }
 
 /** A note's text as its file holds it. */
@@ -1242,5 +1301,182 @@ describe("The editor", function () {
     expect((restored.strokes[0]?.points[0] ?? 0) - restored.base.x).toBe(
       offset,
     );
+  });
+
+  it("maps the pointer to the drawing inside the surface's border", async function () {
+    await insert();
+    await settledSurface();
+    const origin = await surfaceOrigin();
+    expect(origin.border).toBeGreaterThan(0);
+    const x = Math.round(origin.left + 100);
+    const y = Math.round(origin.top + 40);
+    await clickAt(x, y);
+    await browser.waitUntil(async () => (await storedDrafts()).length === 1);
+    const [draft] = await storedDrafts();
+    const [pointX, pointY] = draft?.strokes[0]?.points ?? [];
+    expect(
+      Math.abs(
+        (pointX ?? Number.NaN) - ((x - origin.left) / origin.scale) * 16,
+      ),
+    ).toBeLessThanOrEqual(0.5);
+    expect(
+      Math.abs((pointY ?? Number.NaN) - ((y - origin.top) / origin.scale) * 16),
+    ).toBeLessThanOrEqual(0.5);
+  });
+
+  it("shows a symbol wider than the usual view whole", async function () {
+    await browser.executeObsidian(async ({ app }) => {
+      const { canvas } = window.inklineTest;
+      const stroke = (x: number) =>
+        ({
+          tool: "pen",
+          size: 256,
+          pressure: false,
+          points: [x * 16, 1600, x * 16, 1920],
+        }) as const;
+      const { bytes } = await canvas.saveInk(
+        { strokes: [stroke(100), stroke(1100)] },
+        undefined,
+      );
+      await app.vault.createBinary("wide.ink.png", bytes.slice().buffer);
+    });
+    await editFile("wide.ink.png");
+    await settledSurface();
+    const origin = await surfaceOrigin();
+    await clickAt(origin.left + 2, origin.top + 40);
+    await browser.waitUntil(
+      async () => (await storedDrafts())[0]?.strokes.length === 3,
+    );
+    const [draft] = await storedDrafts();
+    // Left of the symbol's first stroke, at 8 pixels: the view starts before.
+    expect(draft?.strokes[2]?.points[0]).toBeLessThan(0);
+  });
+
+  it("lets a pen take over from a touch already drawing", async function () {
+    await insert();
+    const { width, height } = await settledSurface();
+    // Actions run together take a found element, not a query.
+    const canvas = await surface().getElement();
+    const at = (x: number, y: number) => ({
+      origin: canvas,
+      x: Math.round((x - 0.5) * width),
+      y: Math.round((y - 0.5) * height),
+    });
+    await browser.actions([
+      browser
+        .action("pointer", { id: "palm", parameters: { pointerType: "touch" } })
+        .move(at(0.2, 0.8))
+        .down()
+        .move({ ...at(0.25, 0.8), duration: 50 })
+        .pause(200)
+        .move({ ...at(0.3, 0.8), duration: 50 })
+        .up(),
+      browser
+        .action("pointer", { id: "stylus", parameters: { pointerType: "pen" } })
+        .pause(100)
+        .move(at(0.5, 0.2))
+        .down()
+        .move({ ...at(0.6, 0.3), duration: 100 })
+        .up(),
+    ]);
+    await browser.waitUntil(async () => (await storedDrafts()).length === 1);
+    const [draft] = await storedDrafts();
+    expect(draft?.strokes).toHaveLength(1);
+    // The pen's stroke, near the top, not the palm's, near the bottom.
+    expect(draft?.strokes[0]?.points[1]).toBeLessThan(96 * 16);
+  });
+
+  it("does not offer a note's draft once the new symbol was saved meanwhile", async function () {
+    await plantKeptDraft();
+    await delayDecoding(3000);
+    try {
+      await insert();
+      await draw(zigzag);
+      await browser.keys(["Control", "s"]);
+      await waitForStatus("Saved");
+      // Let the decoding finish.
+      await browser.pause(3500);
+      expect(await topButton("Restore")).toBeUndefined();
+    } finally {
+      await restoreDecoding();
+    }
+    expect((await storedDrafts()).map((draft) => draft.id)).toEqual([
+      "planted",
+    ]);
+  });
+
+  it("does not offer a draft over the question before closing", async function () {
+    await plantKeptDraft();
+    await delayDecoding(3000);
+    try {
+      await insert();
+      await draw(zigzag);
+      await browser.keys(["Escape"]);
+      await browser.waitUntil(
+        async () => (await topButton("Keep drawing")) !== undefined,
+      );
+      await browser.pause(3500);
+      expect(await topButton("Restore")).toBeUndefined();
+      expect(await topButton("Keep drawing")).toBeDefined();
+    } finally {
+      await restoreDecoding();
+    }
+    await clickTop("Discard");
+    await waitClosed();
+    expect((await storedDrafts()).map((draft) => draft.id)).toEqual([
+      "planted",
+    ]);
+  });
+
+  it("takes over a claimed file whose last write failed after disabling", async function () {
+    await browser.executeObsidian(({ app }) => {
+      const vault = app.vault as typeof app.vault & {
+        inklineProcess?: typeof app.vault.process;
+      };
+      vault.inklineProcess = vault.process.bind(vault);
+      vault.process = () => Promise.reject(new Error("the note is locked"));
+    });
+    try {
+      await insert();
+      await draw(zigzag);
+      await showWelcomeInstead();
+      await browser.keys(["Control", "s"]);
+      await waitForStatus("the note is locked");
+      await draw([
+        [0.5, 0.2],
+        [0.5, 0.8],
+      ]);
+      // The next write waits, and fails once Inkline is disabled.
+      await browser.executeObsidian(({ app }) => {
+        const original: unknown = Reflect.get(app.vault, "modifyBinary");
+        Reflect.set(app.vault, "inklineDelayed-modifyBinary", original);
+        Reflect.set(app.vault, "modifyBinary", async () => {
+          await new Promise((resolve) => window.setTimeout(resolve, 1500));
+          throw new Error("the disk is gone");
+        });
+      });
+      await browser.keys(["Control", "s"]);
+      await waitForStatus("Saving…");
+      await obsidianPage.disablePlugin("inkline");
+      await browser.pause(2000);
+    } finally {
+      await restoreVault();
+      await browser.executeObsidian(({ app }) => {
+        const vault = app.vault as typeof app.vault & {
+          inklineProcess?: typeof app.vault.process;
+        };
+        if (vault.inklineProcess !== undefined)
+          vault.process = vault.inklineProcess;
+      });
+    }
+    await obsidianPage.enablePlugin("inkline");
+    await loadModules();
+    await obsidianPage.openFile("Editor.md");
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await clickTop("Restore");
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    expect(await symbolFiles()).toEqual(["001.ink.png"]);
+    expect((await noteText()).split("001.ink.png")).toHaveLength(2);
   });
 });

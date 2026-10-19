@@ -184,6 +184,19 @@ describe("DrawingSession", () => {
     expect(session.saved).toBe(states.at(-1));
   });
 
+  it("ends a stroke where the pointer was let go, with the last pressure", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.begin({ x: 0, y: 0, pressure: 1 });
+    session.extend([{ x: 1, y: 0, pressure: 1 }]);
+    session.end({ x: 4, y: 0, pressure: 0 });
+    expect(session.document.strokes[0]?.points).toEqual([
+      0, 0, 255, 16, 0, 255, 40, 0, 255, 64, 0, 255,
+    ]);
+    session.begin({ x: 0, y: 32 });
+    session.end({ x: 0, y: 32 });
+    expect(session.document.strokes[1]?.points).toEqual([0, 512]);
+  });
+
   it("does not record clearing an empty drawing", () => {
     const session = new DrawingSession(emptyDocument);
     session.clear();

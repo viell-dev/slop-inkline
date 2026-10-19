@@ -279,17 +279,27 @@ describe("DraftStore", () => {
     expect(storage.values.has("inkline-draft-bases")).toBe(false);
   });
 
+  it("drops a base layer it stored for a draft that was refused", () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 5000);
+    storage.refused.add("inkline-draft:a");
+    expect(store.put(draft({ base: { kind: "kept", layer } }))).toBe(false);
+    expect(storage.keys("inkline-draft-base")).toEqual([]);
+    storage.refused.clear();
+    expect(store.put(draft({ base: { kind: "kept", layer } }))).toBe(true);
+    expect(storage.keys("inkline-draft-base:")).toHaveLength(1);
+  });
+
   it("stores a base layer again that another store dropped while unused", () => {
     const storage = new MemoryStorage();
     const first = new DraftStore(storage, () => 5000);
     const kept = draft({ base: { kind: "kept", layer } });
-    // The base layer is stored, but its draft is refused.
-    storage.refused.add("inkline-draft:a");
-    expect(first.put(kept)).toBe(false);
-    expect(storage.keys("inkline-draft-base:")).toHaveLength(1);
-    new DraftStore(storage, () => 5000).list();
+    expect(first.put(kept)).toBe(true);
+    // Another store removes the draft, and then its unused base layer.
+    const other = new DraftStore(storage, () => 5000);
+    other.remove("a");
+    other.list();
     expect(storage.keys("inkline-draft-base:")).toEqual([]);
-    storage.refused.clear();
     expect(first.put(kept)).toBe(true);
     expect(new DraftStore(storage, () => 5000).list()).toEqual([kept]);
   });
@@ -326,6 +336,14 @@ describe("decodeDraft", () => {
           file: { path: "001.ink.png", fingerprint: "ab" },
         },
       }),
+      draft({
+        id: "e",
+        target: {
+          kind: "new",
+          note: "a.md",
+          file: { path: "001.ink.png", fingerprint: "ab", previous: "cd" },
+        },
+      }),
     ]) {
       store.put(written);
       expect(
@@ -356,6 +374,13 @@ describe("decodeDraft", () => {
       variant({ id: 1 }),
       variant({ target: { kind: "file" } }),
       variant({ target: { kind: "new", note: "a.md", file: { path: "x" } } }),
+      variant({
+        target: {
+          kind: "new",
+          note: "a.md",
+          file: { path: "x", fingerprint: "ab", previous: 1 },
+        },
+      }),
       variant({ base: "cleared" }),
       // A kept base layer has a place, and only it does.
       variant({ base: "file" }),
@@ -387,6 +412,11 @@ describe("draftBase", () => {
     expect(draftBase({ strokes: [stroke], base: layer }, saved)).toEqual({
       kind: "file",
     });
+    // The same picture, decoded from a draft into bytes of its own.
+    const copy = { ...layer, png: png.slice() };
+    expect(draftBase({ strokes: [], base: copy }, saved)).toEqual({
+      kind: "file",
+    });
     expect(draftBase({ strokes: [] }, saved)).toEqual({ kind: "none" });
   });
 
@@ -398,7 +428,7 @@ describe("draftBase", () => {
       kind: "kept",
       layer: moved,
     });
-    const other = { ...layer, png: png.slice() };
+    const other = { ...layer, png: encodePng(blank(3, 3)) };
     expect(draftBase({ strokes: [], base: other }, saved)).toEqual({
       kind: "kept",
       layer: other,

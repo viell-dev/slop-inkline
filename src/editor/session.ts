@@ -171,8 +171,20 @@ export class DrawingSession {
     }
     active.points.push(...values);
   }
-  /** Commits the stroke being drawn as one undoable step. */
-  end(): void {
+  /**
+   * Commits the stroke being drawn as one undoable step, ending it at
+   * `release`, where the pointer was let go, when that is known. The release
+   * keeps the last pressure, since a pen reports none once lifted.
+   */
+  end(release?: InputPoint): void {
+    if (release !== undefined && this.#active !== undefined) {
+      const pressure = this.#last?.pressure;
+      this.extend([
+        pressure === undefined
+          ? { x: release.x, y: release.y }
+          : { x: release.x, y: release.y, pressure },
+      ]);
+    }
     const stroke = this.activeStroke;
     this.#active = undefined;
     if (stroke === undefined || stroke.points.length === 0) return;
