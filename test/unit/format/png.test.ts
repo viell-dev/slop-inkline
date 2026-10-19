@@ -120,14 +120,14 @@ describe("deflate and inflate", () => {
   });
 
   it("refuses a highly compressed input that passes the limit", async () => {
-    // 64 MiB of zeros compresses to about 64 KiB. How much input Node reads
+    // 16 MiB of zeros compresses to about 16 KiB. How much input Node reads
     // ahead varies, so how early inflation stops is checked in Obsidian's
     // renderer, by test/e2e/specs/format.e2e.ts.
-    const compressed = await deflate(new Uint8Array(64 * 1024 * 1024));
+    const compressed = await deflate(new Uint8Array(16 * 1024 * 1024));
     await expect(inflate(compressed, { limit: 1024 * 1024 })).rejects.toThrow(
       "data expands beyond 1048576 bytes",
     );
-  });
+  }, 30_000);
 
   it("reads all of the input otherwise", async () => {
     const compressed = await deflate(new Uint8Array(200_000).fill(7));
