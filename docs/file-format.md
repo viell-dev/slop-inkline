@@ -65,9 +65,12 @@ and must compress it. A reader must accept the chunk anywhere a PNG allows an
 chunks, including other `iTXt` chunks, are not part of the format. A writer that
 rewrites a file with new pixels should keep the ancillary chunks that PNG marks
 safe to copy (a lowercase first and fourth letter, such as `tEXt` and `pHYs`),
-after the record, and drop those it marks unsafe to copy, such as `gAMA` and
-`iCCP`, which describe the old pixels. Inkline does so, keeping text chunks
-alongside its own and other types only when the new image has none.
+each on the side of the image data it was on, as PNG's rules for editors
+require, with `pHYs` and `eXIf` before it as PNG requires of them; and it should
+drop those it marks unsafe to copy, such as `gAMA` and `iCCP`, which describe
+the old pixels. Inkline does so, placing those before the image data after the
+record, keeping text chunks alongside its own, and keeping other types only when
+the new image has none.
 
 A writer must not write a record that a reader would refuse, including one whose
 text is longer than the limit below, and must not replace a record with a higher
@@ -220,11 +223,10 @@ write it, is still valid. Inkline edits it by scaling it to 128 pixels per em
 and moving it so that the baselines meet, rounding coordinates to whole units
 and sizes to whole units of at least 1, and saves it with version 1's geometry.
 
-Inkline keeps every coordinate it edits within a quarter of the format's limit,
-2²² units, so that cropping can never move one beyond the limit. It opens a
-record whose coordinates, after any scaling, lie outside that range, or whose
-sizes or base scale would leave the format's limits, from its pixels instead, as
-for a file without a usable record, rather than clamp or drop strokes.
+If that scaling would take a coordinate, size, or base scale past the format's
+limits, Inkline opens the file from its pixels instead, as for a file without a
+usable record, rather than clamp or drop strokes. A record with version 1's
+geometry always opens as it is.
 
 ## Files without a usable record
 
@@ -262,4 +264,6 @@ above the line box, or erased cost no large canvas. It crops to that ink as
 and checks the crop there, adjusting it until the record's own drawing confirms
 it. The stored pixels are therefore exactly what the record draws, and opening
 and saving a file again changes neither. Strokes that leave no visible ink stay
-in the record. A crop wider than 8192 pixels, the largest image, is refused.
+in the record. A crop wider than 8192 pixels, the largest image, is refused, and
+so is one that would move a stroke past the coordinate limit, which only a
+stroke about a million pixels from the ink comes near.
