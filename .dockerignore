@@ -1,0 +1,7 @@
+.git
+.npm-cache
+.obsidian-cache
+coverage
+dist
+node_modules
+test-results

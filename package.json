@@ -1,0 +1,58 @@
+{
+  "name": "inkline",
+  "version": "0.0.0",
+  "private": true,
+  "description": "An Obsidian plugin for drawing symbols that sit inline in your notes like characters.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "build": "node scripts/build.ts",
+    "dev": "node scripts/build.ts --watch",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc -p tsconfig.json && tsc -p test && tsc -p test/e2e && tsc -p scripts",
+    "test": "vitest run",
+    "test:e2e": "wdio run test/e2e/wdio.conf.mts",
+    "test:e2e:docker": "node scripts/e2e-docker.ts",
+    "check": "npm run lint && npm run format:check && npm run typecheck && npm run test && npm run build",
+    "version": "node scripts/release.ts sync && git add manifest.json versions.json"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@types/mocha": "10.0.10",
+    "@types/node": "24.19.2",
+    "@wdio/cli": "9.32.0",
+    "@wdio/globals": "9.31.3",
+    "@wdio/local-runner": "9.32.0",
+    "@wdio/mocha-framework": "9.32.0",
+    "esbuild": "0.28.2",
+    "eslint": "9.39.5",
+    "eslint-plugin-obsidianmd": "0.4.2",
+    "globals": "17.13.0",
+    "mdast-util-from-markdown": "2.1.0",
+    "obsidian": "1.14.4",
+    "prettier": "3.9.10",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.2",
+    "vitest": "5.0.5",
+    "wdio-obsidian-reporter": "3.3.0",
+    "wdio-obsidian-service": "3.3.0",
+    "webdriverio": "9.32.0"
+  },
+  "overrides": {
+    "eslint-plugin-obsidianmd": {
+      "obsidian": "$obsidian",
+      "typescript": "$typescript"
+    }
+  },
+  "allowScripts": {
+    "esbuild": true,
+    "edgedriver": false,
+    "geckodriver": false,
+    "classic-level": false
+  }
+}

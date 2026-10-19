@@ -1,0 +1,150 @@
+name: Release
+
+# RELEASING.md describes the whole process. Without `publish`, and on pull
+# requests that change the release steps, this is a dry run: it checks and
+# builds the release, then uploads it as a workflow artifact only.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release, as in package.json; empty for a dry run of main
+        type: string
+        default: ""
+      publish:
+        description: Publish the GitHub release; leave off for a dry run
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - scripts/lib/release.ts
+      - scripts/release.ts
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || 'release' }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - name: Check the version and write the notes
+        env:
+          VERSION: ${{ inputs.version }}
+          PUBLISH: ${{ inputs.publish }}
+        run: |
+          if [ "$PUBLISH" = "true" ]; then
+            if [ -z "$VERSION" ]; then
+              echo "A published release needs a version." >&2
+              exit 1
+            fi
+            if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+              echo "Releases are published from main only." >&2
+              exit 1
+            fi
+          fi
+          if [ -n "$VERSION" ]; then
+            node scripts/release.ts check "$VERSION"
+            node scripts/release.ts notes "$VERSION" > release-notes.md
+          elif ! node scripts/release.ts notes Unreleased > release-notes.md; then
+            echo "No unreleased changes." > release-notes.md
+          fi
+          cat release-notes.md
+      - name: Record checksums
+        run: |
+          mkdir release
+          cp dist/main.js dist/manifest.json dist/styles.css release-notes.md release/
+          cd release
+          sha256sum main.js manifest.json styles.css > SHA256SUMS
+          cat SHA256SUMS
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release
+          path: release
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: publish
+    needs: prepare
+    if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release
+          path: release
+      - name: Verify the checksums
+        working-directory: release
+        run: sha256sum --check SHA256SUMS
+      - name: Refuse an existing version
+        run: |
+          if gh api "repos/$GH_REPO/git/ref/tags/$VERSION" >/dev/null 2>&1; then
+            echo "Tag $VERSION already exists; a correction needs a new version." >&2
+            exit 1
+          fi
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            release/main.js
+            release/manifest.json
+            release/styles.css
+      - name: Create the release
+        run: |
+          # Versions below 1.0.0 are prereleases, which BRAT installs.
+          case "$VERSION" in
+            0.*) kind=(--prerelease --latest=false) ;;
+            *) kind=(--latest) ;;
+          esac
+          gh release create "$VERSION" \
+            release/main.js release/manifest.json release/styles.css release/SHA256SUMS \
+            --draft --target "$GITHUB_SHA" --title "Inkline $VERSION" \
+            --notes-file release/release-notes.md
+          gh release edit "$VERSION" --draft=false "${kind[@]}"
+
+  verify:
+    name: verify publication
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      attestations: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ inputs.version }}
+    steps:
+      - name: Compare the published assets with the build
+        run: |
+          gh release download "$VERSION" --dir published
+          cd published
+          sha256sum --check SHA256SUMS
+          for file in main.js manifest.json styles.css; do
+            gh attestation verify "$file" --repo "$GH_REPO"
+          done

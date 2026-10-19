@@ -1,0 +1,11 @@
+name: Question
+description: Ask how Inkline works or how to use it
+labels: ["Type: Question"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What you want to do, what you tried, and what you read about it.
+    validations:
+      required: true

@@ -1,0 +1,55 @@
+name: Bug report
+description:
+  Report a symbol that draws, saves, or shows wrongly, a crash, or another
+  reproducible defect
+labels: ["Type: Bug"]
+body:
+  - type: checkboxes
+    id: searched
+    attributes:
+      label: Existing issues
+      options:
+        - label: I searched the open and closed issues and found no report of this.
+          required: true
+        - label: I follow the project's [code of
+            conduct](https://github.com/viell-dev/slop-inkline/blob/main/CODE_OF_CONDUCT.md).
+          required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Versions
+      description: >-
+        The Inkline version, the Obsidian version and installer version (both in
+        Settings, General), the operating system, and the input device you draw
+        with: mouse, trackpad, pen, or touch.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: >-
+        Numbered steps from a new vault or note. Use a synthetic example; never
+        attach private notes. Mention any theme or other plugins that the
+        problem needs.
+      value: |
+        1.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+      description: >-
+        What happened, with any error notice or message from the developer
+        console (View, Toggle developer tools). A screenshot or a `.ink.png`
+        file that shows the problem helps, if it holds nothing private.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+      description: What you expected instead and why.
+    validations:
+      required: true
