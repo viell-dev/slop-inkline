@@ -363,17 +363,49 @@ function filterRow(
     output[at + index] = (value - predicted) & 0xff;
   }
 }
+/** How many filtered bytes go to the compressor at a time, about. */
+const batchBytes = 64 * 1024;
+
+/** How long the encoder works before it pauses, in milliseconds. */
+const sliceMilliseconds = 12;
+
+/** A stream's bytes, read to the end, as one array. */
+async function readAll(
+  stream: ReadableStream<Uint8Array>,
+): Promise<Uint8Array> {
+  const reader = stream.getReader();
+  const parts: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    parts.push(value);
+    total += value.length;
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const part of parts) {
+    bytes.set(part, offset);
+    offset += part.length;
+  }
+  return bytes;
+}
+
 /**
  * Encodes 8-bit RGBA pixels, row by row, as a PNG: colour type 6, not
  * interlaced, with no colour chunks. Each row takes the filter that leaves
  * the smallest bytes, the usual guess at what compresses best, and the rows
  * are compressed with zlib. Unlike a canvas's own encoder, this waits for
- * nothing but the work itself.
+ * nothing but the work itself. The rows go to the compressor a batch at a
+ * time, so that only the compressed image is held whole. Every few
+ * milliseconds of work, the encoder awaits `pause`, which can let the page
+ * run, so that a large image does not freeze it.
  */
 export async function encodeRgba(
   width: number,
   height: number,
   data: Uint8Array | Uint8ClampedArray,
+  { pause }: { readonly pause?: () => Promise<void> } = {},
 ): Promise<Uint8Array> {
   if (
     !Number.isInteger(width) ||
@@ -390,15 +422,48 @@ export async function encodeRgba(
     throw new PngError("pixel data does not match the size");
   }
   const pixels = new Uint8Array(data.buffer, data.byteOffset, data.length);
-  const filtered = new Uint8Array((stride + 1) * height);
-  for (let y = 0; y < height; y++) {
-    const row = y * stride;
-    const above = y === 0 ? undefined : row - stride;
-    const type = bestFilter(pixels, row, above, stride);
-    const at = y * (stride + 1);
-    filtered[at] = type;
-    filterRow(type, pixels, row, above, stride, filtered, at + 1);
+  const rowBytes = stride + 1;
+  const rowsPerBatch = Math.max(1, Math.floor(batchBytes / rowBytes));
+  const compressor = new CompressionStream("deflate");
+  const writer = compressor.writable.getWriter();
+  // Read while writing, or the compressor would stop for want of a reader.
+  const compressed = readAll(compressor.readable);
+  try {
+    let started = performance.now();
+    for (let first = 0; first < height; first += rowsPerBatch) {
+      const rows = Math.min(rowsPerBatch, height - first);
+      const batch = new Uint8Array(rows * rowBytes);
+      for (let index = 0; index < rows; index++) {
+        const row = (first + index) * stride;
+        const above = first + index === 0 ? undefined : row - stride;
+        const type = bestFilter(pixels, row, above, stride);
+        batch[index * rowBytes] = type;
+        filterRow(
+          type,
+          pixels,
+          row,
+          above,
+          stride,
+          batch,
+          index * rowBytes + 1,
+        );
+      }
+      await writer.write(batch);
+      if (
+        pause !== undefined &&
+        performance.now() - started > sliceMilliseconds
+      ) {
+        await pause();
+        started = performance.now();
+      }
+    }
+    await writer.close();
+  } catch (error) {
+    await writer.abort(error).catch(() => undefined);
+    await compressed.catch(() => undefined);
+    throw error;
   }
+  const imageData = await compressed;
   const header = new Uint8Array(13);
   const view = new DataView(header.buffer);
   view.setUint32(0, width);
@@ -408,7 +473,7 @@ export async function encodeRgba(
   header.set([8, 6, 0, 0, 0], 8);
   return writeChunks([
     { type: "IHDR", data: header },
-    { type: "IDAT", data: await deflate(filtered) },
+    { type: "IDAT", data: imageData },
     { type: "IEND", data: new Uint8Array(0) },
   ]);
 }

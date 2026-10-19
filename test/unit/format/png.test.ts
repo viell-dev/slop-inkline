@@ -494,6 +494,31 @@ describe("encodeRgba", () => {
     expect(filters).toEqual([1, 2, 2]);
   });
 
+  it("pauses every few milliseconds of a long encoding", async () => {
+    const width = 512;
+    const height = 512;
+    let seed = 5;
+    const data = Uint8Array.from({ length: width * height * 4 }, () => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed >>> 24;
+    });
+    const stretches: number[] = [];
+    let last = performance.now();
+    const bytes = await encodeRgba(width, height, data, {
+      pause: () => {
+        const now = performance.now();
+        stretches.push(now - last);
+        last = now;
+        return Promise.resolve();
+      },
+    });
+    expect(stretches.length).toBeGreaterThan(0);
+    // A slice is 12 ms and a batch more; a frozen encoder would take all of it.
+    expect(Math.max(...stretches)).toBeLessThan(100);
+    // Smaller images check the pixels; this one, the file's structure.
+    expect(imageHeader(readChunks(bytes))).toMatchObject({ width, height });
+  });
+
   it("refuses pixels that do not match the size", async () => {
     await expect(encodeRgba(2, 2, new Uint8Array(15))).rejects.toThrow(
       "pixel data does not match the size",

@@ -1539,10 +1539,39 @@ describe("The editor", function () {
         [0.05, 0.3],
         [0.1, 0.3],
       ]);
-      const start = Date.now();
+      // Timed inside Obsidian, from "Saving…" to "Saved", without the time
+      // WebDriver takes to send keys and to poll.
+      await browser.execute(() => {
+        const status = document.querySelector(
+          ".inkline-editor .inkline-status",
+        );
+        if (status === null) throw new Error("no status");
+        const times: Record<string, number> = {};
+        Reflect.set(window, "inklineSaveTimes", times);
+        new MutationObserver(() => {
+          const text = status.textContent;
+          if (!(text in times)) {
+            times[text] = performance.now();
+          }
+        }).observe(status, {
+          childList: true,
+          characterData: true,
+          subtree: true,
+        });
+      });
       await browser.keys(["Control", "s"]);
       await waitForStatus("Saved");
-      times.push(Date.now() - start);
+      times.push(
+        await browser.execute(() => {
+          const marks: unknown = Reflect.get(window, "inklineSaveTimes");
+          if (typeof marks !== "object" || marks === null) return Infinity;
+          const saving: unknown = Reflect.get(marks, "Saving…");
+          const saved: unknown = Reflect.get(marks, "Saved");
+          return typeof saving === "number" && typeof saved === "number"
+            ? saved - saving
+            : Infinity;
+        }),
+      );
     }
     // Chromium 150 held a canvas's own encoding back for about a second
     // when saving a picture opened as a symbol.

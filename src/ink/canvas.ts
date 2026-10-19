@@ -80,7 +80,13 @@ export function readPixels(image: ImageBitmap | OffscreenCanvas): RgbaPixels {
  * the window has time to spare.
  */
 export function encodePixels(pixels: RgbaPixels): Promise<Uint8Array> {
-  return encodeRgba(pixels.width, pixels.height, pixels.data);
+  return encodeRgba(pixels.width, pixels.height, pixels.data, {
+    // A task of its own, so that frames and input run between batches.
+    pause: () =>
+      new Promise((resolve) => {
+        window.setTimeout(resolve, 0);
+      }),
+  });
 }
 
 /** A drawing ready to edit: the document, and its base layer decoded. */
