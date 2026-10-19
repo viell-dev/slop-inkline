@@ -1,8 +1,12 @@
 // Release metadata rules, kept free of file access so that unit tests can run
 // them on synthetic input. scripts/release.ts applies them to the repository.
 
-/** Release versions are plain dotted numbers, as Obsidian's directory needs. */
-export const versionPattern = /^\d+\.\d+\.\d+$/;
+/**
+ * Release versions are plain dotted numbers without leading zeros, which is
+ * SemVer without prerelease or build parts, as Obsidian's directory needs.
+ */
+export const versionPattern =
+  /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/;
 
 /** The version a repository has before its first release. */
 export const unreleasedVersion = "0.0.0";
@@ -74,10 +78,41 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+const fenceLine = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+
+/**
+ * Marks each line that is Markdown text rather than fenced code, so that a
+ * heading shown inside a code example is not taken for a section heading.
+ * Fences follow CommonMark: three or more backticks or tildes, indented by
+ * at most three spaces, closed by at least as many of the same character.
+ */
+function outsideFences(lines: readonly string[]): boolean[] {
+  let open: { char: string; length: number } | undefined;
+  return lines.map((line) => {
+    const [, marker = "", rest = ""] = fenceLine.exec(line) ?? [];
+    const char = marker.charAt(0);
+    if (open === undefined) {
+      // A backtick fence's info string cannot contain a backtick.
+      if (marker === "" || (char === "`" && rest.includes("`"))) return true;
+      open = { char, length: marker.length };
+      return false;
+    }
+    if (
+      char === open.char &&
+      marker.length >= open.length &&
+      rest.trim() === ""
+    ) {
+      open = undefined;
+    }
+    return false;
+  });
+}
+
 /**
  * Returns the body of a changelog section, or undefined when the section is
  * missing or empty. A release's heading is `## x.y.z - YYYY-MM-DD`; the
- * section for unreleased changes is `## Unreleased`.
+ * section for unreleased changes is `## Unreleased`. The section ends at the
+ * next heading of level 1 or 2 outside fenced code.
  */
 export function releaseNotes(
   changelog: string,
@@ -88,11 +123,20 @@ export function releaseNotes(
       ? /^## Unreleased$/
       : new RegExp(`^## ${escapeRegExp(section)} - \\d{4}-\\d{2}-\\d{2}$`);
   const lines = changelog.split(/\r?\n/);
-  const start = lines.findIndex((line) => heading.test(line.trimEnd()));
+  const text = outsideFences(lines);
+  const isText = (index: number): boolean => text[index] === true;
+  const start = lines.findIndex(
+    (line, index) => isText(index) && heading.test(line.trimEnd()),
+  );
   if (start === -1) return undefined;
-  const rest = lines.slice(start + 1);
-  const end = rest.findIndex((line) => line.startsWith("## "));
-  const body = (end === -1 ? rest : rest.slice(0, end)).join("\n").trim();
+  const end = lines.findIndex(
+    (line, index) =>
+      index > start && isText(index) && /^ {0,3}#{1,2}(?:[ \t]|$)/.test(line),
+  );
+  const body = lines
+    .slice(start + 1, end === -1 ? undefined : end)
+    .join("\n")
+    .trim();
   return body === "" ? undefined : body;
 }
 
