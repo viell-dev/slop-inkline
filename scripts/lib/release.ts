@@ -97,7 +97,9 @@ export function releaseNotes(
     section === "Unreleased"
       ? /^## Unreleased$/
       : new RegExp(`^## ${escapeRegExp(section)} - \\d{4}-\\d{2}-\\d{2}$`);
-  const source = changelog.replace(/\r\n?/g, "\n");
+  // The parser drops a leading byte order mark before counting offsets, so the
+  // sliced text must not have one either.
+  const source = changelog.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
   const bounds = fromMarkdown(source)
     .children.filter((node) => node.type === "heading" && node.depth <= 2)
     .map((node) => ({

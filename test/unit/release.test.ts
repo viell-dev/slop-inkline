@@ -166,6 +166,16 @@ describe("releaseNotes", () => {
     );
   });
 
+  it("reads a changelog that starts with a byte order mark", () => {
+    for (const newline of ["\n", "\r\n"]) {
+      const text = `\uFEFF${changelog.replaceAll("\n", newline)}`;
+      expect(releaseNotes(text, "0.2.0")).toBe(
+        "### Fixed\n\n- Something broken.",
+      );
+      expect(releaseNotes(text, "Unreleased")).toBe("- Something new.");
+    }
+  });
+
   const withExample = (fence: string, close = fence): string =>
     [
       "## 0.2.0 - 2026-11-02",
