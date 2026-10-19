@@ -648,7 +648,7 @@ describe("The drawing core in Obsidian's renderer", function () {
     expect(contrast(grey, backgrounds.dark)).toBeGreaterThanOrEqual(4);
   });
 
-  it("encodes pixels the same, without waiting for the window to be idle", async function () {
+  it("encodes pixels that the browser decodes back exactly", async function () {
     const result = await browser.execute(async () => {
       const { canvas } = window.inklineTest;
       const width = 31;
@@ -662,24 +662,12 @@ describe("The drawing core in Obsidian's renderer", function () {
       // Fully opaque, so that the browser's decoder gives the colours back
       // exactly, without premultiplied alpha rounding them.
       for (let index = 3; index < data.length; index += 4) data[index] = 255;
-      const times: number[] = [];
-      let bytes: Uint8Array | undefined;
-      for (let run = 0; run < 5; run++) {
-        const start = performance.now();
-        bytes = await canvas.encodePixels({ width, height, data });
-        times.push(performance.now() - start);
-      }
-      if (bytes === undefined) throw new Error("nothing encoded");
+      const bytes = await canvas.encodePixels({ width, height, data });
       const image = await canvas.decodePng(bytes);
       const pixels = canvas.readPixels(image);
       image.close();
-      return {
-        same: pixels.data.every((value, index) => value === data[index]),
-        slowest: Math.max(...times),
-      };
+      return pixels.data.every((value, index) => value === data[index]);
     });
-    expect(result.same).toBe(true);
-    // Chromium 150 held a canvas's own encoding back for about a second.
-    expect(result.slowest).toBeLessThan(500);
+    expect(result).toBe(true);
   });
 });

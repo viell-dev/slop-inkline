@@ -1528,4 +1528,24 @@ describe("The editor", function () {
     expect(xs[2]).toBeLessThan(xs[0] ?? Number.NaN);
     expect(xs[3]).toBeGreaterThan(xs[1] ?? Number.NaN);
   });
+
+  it("saves without waiting for the window to be idle", async function () {
+    const times: number[] = [];
+    for (let run = 0; run < 3; run++) {
+      await startOver();
+      await createSquare();
+      await editFile("square.ink.png");
+      await draw([
+        [0.05, 0.3],
+        [0.1, 0.3],
+      ]);
+      const start = Date.now();
+      await browser.keys(["Control", "s"]);
+      await waitForStatus("Saved");
+      times.push(Date.now() - start);
+    }
+    // Chromium 150 held a canvas's own encoding back for about a second
+    // when saving a picture opened as a symbol.
+    expect(Math.max(...times)).toBeLessThan(700);
+  });
 });

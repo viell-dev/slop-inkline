@@ -294,39 +294,75 @@ function paeth(left: number, up: number, upLeft: number): number {
   return toUp <= toUpLeft ? up : upLeft;
 }
 
-/** A row's bytes after PNG filter `type`, from the row before, if any. */
+/** How large a filtered byte is, read as signed: smaller compresses better. */
+function size(byte: number): number {
+  return byte < 128 ? byte : 256 - byte;
+}
+
+/**
+ * The PNG filter that leaves a row's bytes smallest, the usual guess at what
+ * compresses best, from all five scored in one pass. `row` and `above` are
+ * the offsets of the row and the one before it, if any, in `pixels`.
+ */
+function bestFilter(
+  pixels: Uint8Array,
+  row: number,
+  above: number | undefined,
+  stride: number,
+): number {
+  let none = 0;
+  let sub = 0;
+  let upward = 0;
+  let average = 0;
+  let predicted = 0;
+  for (let index = 0; index < stride; index++) {
+    const value = pixels[row + index] ?? 0;
+    const left = index >= 4 ? (pixels[row + index - 4] ?? 0) : 0;
+    const up = above === undefined ? 0 : (pixels[above + index] ?? 0);
+    const upLeft =
+      above === undefined || index < 4 ? 0 : (pixels[above + index - 4] ?? 0);
+    none += size(value);
+    sub += size((value - left) & 0xff);
+    upward += size((value - up) & 0xff);
+    average += size((value - ((left + up) >> 1)) & 0xff);
+    predicted += size((value - paeth(left, up, upLeft)) & 0xff);
+  }
+  const costs = [none, sub, upward, average, predicted];
+  let best = 0;
+  for (let type = 1; type < costs.length; type++) {
+    if ((costs[type] ?? 0) < (costs[best] ?? 0)) best = type;
+  }
+  return best;
+}
+/** Writes a row filtered with PNG filter `type` into `output` at `at`. */
 function filterRow(
   type: number,
-  row: Uint8Array,
-  above: Uint8Array | undefined,
+  pixels: Uint8Array,
+  row: number,
+  above: number | undefined,
+  stride: number,
   output: Uint8Array,
+  at: number,
 ): void {
-  for (let index = 0; index < row.length; index++) {
-    const value = row[index] ?? 0;
-    const left = index >= 4 ? (row[index - 4] ?? 0) : 0;
-    const up = above?.[index] ?? 0;
-    const upLeft = index >= 4 ? (above?.[index - 4] ?? 0) : 0;
+  for (let index = 0; index < stride; index++) {
+    const value = pixels[row + index] ?? 0;
+    const left = index >= 4 ? (pixels[row + index - 4] ?? 0) : 0;
+    const up = above === undefined ? 0 : (pixels[above + index] ?? 0);
+    const upLeft =
+      above === undefined || index < 4 ? 0 : (pixels[above + index - 4] ?? 0);
     const predicted =
       type === 1
         ? left
         : type === 2
           ? up
           : type === 3
-            ? Math.floor((left + up) / 2)
+            ? (left + up) >> 1
             : type === 4
               ? paeth(left, up, upLeft)
               : 0;
-    output[index] = (value - predicted) & 0xff;
+    output[at + index] = (value - predicted) & 0xff;
   }
 }
-
-/** How small filtered bytes are, read as signed: smaller compresses better. */
-function filterCost(bytes: Uint8Array): number {
-  let cost = 0;
-  for (const byte of bytes) cost += byte < 128 ? byte : 256 - byte;
-  return cost;
-}
-
 /**
  * Encodes 8-bit RGBA pixels, row by row, as a PNG: colour type 6, not
  * interlaced, with no colour chunks. Each row takes the filter that leaves
@@ -355,29 +391,13 @@ export async function encodeRgba(
   }
   const pixels = new Uint8Array(data.buffer, data.byteOffset, data.length);
   const filtered = new Uint8Array((stride + 1) * height);
-  const trial = new Uint8Array(stride);
   for (let y = 0; y < height; y++) {
-    const row = pixels.subarray(y * stride, (y + 1) * stride);
-    const above =
-      y === 0 ? undefined : pixels.subarray((y - 1) * stride, y * stride);
-    let best = 0;
-    let bestCost = Number.POSITIVE_INFINITY;
-    for (let type = 0; type < 5; type++) {
-      filterRow(type, row, above, trial);
-      const cost = filterCost(trial);
-      if (cost < bestCost) {
-        best = type;
-        bestCost = cost;
-      }
-    }
-    const start = y * (stride + 1);
-    filtered[start] = best;
-    filterRow(
-      best,
-      row,
-      above,
-      filtered.subarray(start + 1, start + 1 + stride),
-    );
+    const row = y * stride;
+    const above = y === 0 ? undefined : row - stride;
+    const type = bestFilter(pixels, row, above, stride);
+    const at = y * (stride + 1);
+    filtered[at] = type;
+    filterRow(type, pixels, row, above, stride, filtered, at + 1);
   }
   const header = new Uint8Array(13);
   const view = new DataView(header.buffer);
