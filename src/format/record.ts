@@ -230,15 +230,38 @@ function parseBase(value: unknown): BaseLayer {
 }
 
 /**
+ * The text's length in UTF-8 bytes, counted up to just past `limit` without
+ * encoding it. A string of more code units than `limit` is always longer,
+ * since no code unit takes less than one byte.
+ */
+function utf8Length(text: string, limit: number): number {
+  if (text.length > limit) return text.length;
+  let bytes = 0;
+  for (let index = 0; index < text.length && bytes <= limit; index++) {
+    const unit = text.charCodeAt(index);
+    // A surrogate is half of a four-byte character, or three bytes alone as
+    // the replacement character that encoding would write.
+    const next = text.charCodeAt(index + 1);
+    if (unit >= 0xd800 && unit <= 0xdbff && next >= 0xdc00 && next <= 0xdfff) {
+      bytes += 4;
+      index++;
+    } else {
+      bytes += unit < 0x80 ? 1 : unit < 0x800 ? 2 : 3;
+    }
+  }
+  return bytes;
+}
+
+/**
  * Reads a record from its JSON text. Fields this version does not know are
  * ignored, so that later versions can add optional ones; a higher `version`
  * means a change this version cannot read.
  */
 export function parseRecord(text: string): ParseResult {
   try {
-    // UTF-16 code units never outnumber UTF-8 bytes, so a string short enough
-    // here may still be too long in bytes; a longer one always is.
-    if (text.length > limits.text) fail("record text is too long");
+    if (utf8Length(text, limits.text) > limits.text) {
+      fail("record text is too long");
+    }
     let json: unknown;
     try {
       json = JSON.parse(text);
