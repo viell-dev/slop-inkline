@@ -26,11 +26,14 @@ screenshots use synthetic vaults and drawings only.
   `test/` run in Node.js.
 - Scripts are TypeScript that Node.js runs directly, so they use only erasable
   syntax and import files with their `.ts` extension.
-- `src/format/` reads and writes symbol files, which
-  [docs/file-format.md](docs/file-format.md) specifies. A change to what files
-  hold updates that document in the same pull request. The golden files in
-  `test/fixtures/format/` are never changed: users' files must keep opening, so
-  a new case gets a new golden file.
+- `src/format/` reads and writes symbol files, and `src/ink/` draws them;
+  [docs/file-format.md](docs/file-format.md) specifies both. A change to what
+  files hold or how strokes are drawn updates that document in the same pull
+  request. The pinned files in `test/fixtures/` (golden files, stroke outlines,
+  and the prototype-format files) are never changed: users' files must keep
+  opening and looking the same, so a new case gets a new pinned file, and an
+  update of `perfect-freehand` that changes the pinned outlines changes how
+  saved symbols look.
 
 ## Tests
 
