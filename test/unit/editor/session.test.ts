@@ -331,6 +331,63 @@ describe("DrawingSession", () => {
     expect(session.document.strokes[1]?.points).toEqual([2328 + 256, 0]);
   });
 
+  it("picks the most shared place for the grid, the first of a tie", () => {
+    const stroke = (...xs: number[]) => ({
+      tool: "pen" as const,
+      size: 16,
+      pressure: false,
+      points: xs.flatMap((x) => [x, 0]),
+    });
+    // A tap on the grid at 16 pixels, and a freehand stroke that starts and
+    // ends at 7: the freehand ends outnumber it.
+    expect(gridOriginOf({ strokes: [stroke(256), stroke(112, 112)] })).toBe(7);
+    // 6.25 and 1.5 pixels into a spacing, twice each: 6.25 got there first.
+    expect(
+      gridOriginOf({
+        strokes: [stroke(100), stroke(24), stroke(356), stroke(280)],
+      }),
+    ).toBe(6.25);
+    // A one-point stroke marks its place once.
+    expect(gridOriginOf({ strokes: [stroke(100), stroke(24, 280)] })).toBe(1.5);
+    // An eraser's ends mark theirs, as a pen's do.
+    expect(
+      gridOriginOf({
+        strokes: [stroke(24), { ...stroke(100, 356), tool: "eraser" }],
+      }),
+    ).toBe(6.25);
+    expect(gridOriginOf(emptyDocument, 3)).toBe(3);
+  });
+
+  it("puts the grid where a restored drawing has it, and back on undo", () => {
+    const stroke = (x: number) =>
+      ({ tool: "pen", size: 16, pressure: false, points: [x, 0] }) as const;
+    // 145.5 pixels, so 1.5 into a spacing.
+    const session = new DrawingSession({ strokes: [stroke(2328)] });
+    session.replace({ strokes: [stroke(0)] }, 11);
+    expect(session.gridOrigin).toBe(11);
+    session.undo();
+    expect(session.gridOrigin).toBe(1.5);
+    // A save's move shifts both, so that each stays where it was.
+    session.rebase(-5);
+    expect(session.gridOrigin).toBe(12.5);
+    session.redo();
+    expect(session.gridOrigin).toBe(6);
+    // Without one given, from the strokes' ends; with none, as it was.
+    session.replace({ strokes: [stroke(40)] });
+    expect(session.gridOrigin).toBe(2.5);
+    session.replace({ strokes: [] });
+    expect(session.gridOrigin).toBe(2.5);
+    session.replace({ strokes: [] }, -3);
+    expect(session.gridOrigin).toBe(13);
+    // Strokes and clearing keep the grid, and so does undoing them.
+    session.begin({ x: 0, y: 0 });
+    session.end();
+    session.clear();
+    session.undo();
+    session.undo();
+    expect(session.gridOrigin).toBe(13);
+  });
+
   it("does not record clearing an empty drawing", () => {
     const session = new DrawingSession(emptyDocument);
     session.clear();

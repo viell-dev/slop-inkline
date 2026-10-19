@@ -69,6 +69,11 @@ export interface Draft {
   readonly fingerprint?: string;
   /** When it was kept, in milliseconds since 1970. */
   readonly savedAt: number;
+  /**
+   * Where the editor's grid columns passed, in pixels, so that a restored
+   * drawing goes on with the grid it was drawn on; undefined if unknown.
+   */
+  readonly gridOrigin?: number;
 }
 
 /** How long a draft is kept before it is dropped unrestored: 30 days. */
@@ -179,6 +184,7 @@ function decode(
   }
   if (!isRecord(value)) return undefined;
   const { id, target, base, layer, fingerprint, savedAt, version, ink } = value;
+  const { gridOrigin } = value;
   const parsedTarget = parseTarget(target);
   if (
     version !== draftVersion ||
@@ -199,6 +205,10 @@ function decode(
     strokes: parsed.record.strokes,
     ...(fingerprint === undefined ? {} : { fingerprint }),
     savedAt,
+    // Only the grid is lost if this cannot be read, not the strokes.
+    ...(typeof gridOrigin === "number" && Number.isFinite(gridOrigin)
+      ? { gridOrigin }
+      : {}),
   };
   if (base === "none" || base === "file" || base === "lost") {
     return layer === undefined
@@ -231,7 +241,7 @@ export function decodeDraft(
 
 /** A draft as the text stored for it, with its kept base layer's key. */
 function encodeDraft(draft: Draft, baseKey: string | undefined): string {
-  const { id, target, strokes, base, fingerprint, savedAt } = draft;
+  const { id, target, strokes, base, fingerprint, savedAt, gridOrigin } = draft;
   const layer =
     base.kind === "kept" && baseKey !== undefined
       ? {
@@ -251,6 +261,7 @@ function encodeDraft(draft: Draft, baseKey: string | undefined): string {
     ...layer,
     ...(fingerprint === undefined ? {} : { fingerprint }),
     savedAt,
+    ...(gridOrigin === undefined ? {} : { gridOrigin }),
     ink: recordValue({ box: draftBox, strokes }),
   });
 }

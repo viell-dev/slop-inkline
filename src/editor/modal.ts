@@ -659,6 +659,7 @@ export class InkEditorModal extends Modal {
         ? {}
         : { fingerprint: this.#fingerprint }),
       savedAt: Date.now(),
+      gridOrigin: this.#session.gridOrigin,
     });
     if (!kept && this.#draftKept) {
       this.#announce("Draft not kept");
@@ -758,7 +759,10 @@ export class InkEditorModal extends Modal {
             // A stroke begun while the draft was read is committed first, so
             // that undoing the restore brings it back.
             this.#session.end();
-            this.#session.replace(restoreDraft(this.#options.document, draft));
+            this.#session.replace(
+              restoreDraft(this.#options.document, draft),
+              draft.gridOrigin,
+            );
             drafts.restored?.(draft);
             // Still held: offered to no other editor until this one's own
             // replaces it.

@@ -1996,6 +1996,48 @@ describe("The editor", function () {
     expect(new Set(columns).size).toBe(1);
   });
 
+  it("restores a draft with the grid it was drawn on, and undoes that too", async function () {
+    await insert();
+    // Freehand, and saved: the file alone suggests another grid.
+    await draw(zigzag);
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    await browser.keys(["Shift", "g"]);
+    // One tap, which the zigzag's two ends outvote.
+    await draw([[0.62, 0.27]]);
+    await browser.waitUntil(
+      async () => (await storedDrafts())[0]?.strokes.length === 2,
+    );
+    await obsidianPage.disablePlugin("inkline");
+    await obsidianPage.enablePlugin("inkline");
+    await loadModules();
+    await editFile("001.ink.png");
+    await clickTop("Restore");
+    await settledSurface();
+    await browser.keys(["Shift", "g"]);
+    await draw([[0.33, 0.45]]);
+    await browser.waitUntil(
+      async () => (await storedDrafts())[0]?.strokes.length === 3,
+    );
+    // Where a stroke starts within a spacing of 1/8 em, 256 units.
+    const column = (stroke: { points: readonly number[] } | undefined) =>
+      (((stroke?.points[0] ?? 0) % 256) + 256) % 256;
+    const restored = (await storedDrafts())[0]?.strokes ?? [];
+    expect(column(restored[2])).toBe(column(restored[1]));
+    // Undoing the tap and the restore leaves the file, and the grid its
+    // strokes suggest: through the zigzag's start.
+    await browser.keys(["Control", "z"]);
+    await browser.keys(["Control", "z"]);
+    await browser.waitUntil(async () => (await storedDrafts()).length === 0);
+    await draw([[0.33, 0.45]]);
+    await browser.waitUntil(
+      async () => (await storedDrafts())[0]?.strokes.length === 2,
+    );
+    const [start, tap] = (await storedDrafts())[0]?.strokes ?? [];
+    expect(column(tap)).toBe(column(start));
+    expect(column(tap)).not.toBe(column(restored[1]));
+  });
+
   it("clears with Delete, and fits the drawing in view with F", async function () {
     await insert();
     await draw([

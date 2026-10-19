@@ -65,18 +65,29 @@ export function snapToGrid(point: InputPoint, originX = 0): InputPoint {
     : { x, y, pressure: point.pressure };
 }
 
+/** `x`, in pixels, moved by whole spacings to within the first one. */
+function withinSpacing(x: number): number {
+  return ((x % gridSpacing) + gridSpacing) % gridSpacing;
+}
+
 /**
- * Where a document's grid columns pass, in pixels within one spacing: where
- * most of its strokes start and end, or with none shared, where its first
- * stroke starts. Strokes drawn on the grid start and end on its columns,
- * and a save moves the drawing by whole pixels, so a drawing made on the
- * grid lines up with it again when opened, however a save cropped it, even
- * if some of its strokes were drawn without the grid.
+ * A best guess at where a document's grid columns pass, in pixels within one
+ * spacing, from where its strokes start and end; `fallback` for a document
+ * with no strokes. Each stroke's start and end, erasers' too, mark the place
+ * within a spacing where they lie, a one-point stroke's once. The place
+ * marked most often wins; of places marked equally often, the one that
+ * reached that count first in stroke order does, so with no place marked
+ * twice, it is where the first stroke starts.
+ *
+ * Strokes drawn on the grid start and end on its columns, and a save moves
+ * the drawing by whole pixels, so a drawing made on the grid lines up with it
+ * again, however a save cropped it. Where freehand ends that happen to share
+ * a place outnumber the ends drawn on the grid, the guess is theirs.
  */
-export function gridOriginOf(document: InkDocument): number {
+export function gridOriginOf(document: InkDocument, fallback = 0): number {
   const spacing = gridSpacing * unitsPerPixel;
   const counts = new Map<number, number>();
-  let origin = 0;
+  let origin: number | undefined;
   let most = 0;
   for (const { points, pressure } of document.strokes) {
     const stride = pressure ? 3 : 2;
@@ -95,7 +106,14 @@ export function gridOriginOf(document: InkDocument): number {
       }
     }
   }
-  return origin / unitsPerPixel;
+  return origin === undefined ? fallback : origin / unitsPerPixel;
+}
+
+/** What undo and redo step through: the drawing, and where its grid lies. */
+interface SessionState {
+  readonly document: InkDocument;
+  /** Where the grid's columns pass, in pixels within one spacing. */
+  readonly gridOrigin: number;
 }
 
 /** A stroke being drawn: its brush and its points so far, in units. */
@@ -116,7 +134,7 @@ function between(from: InputPoint, to: InputPoint, along: number): InputPoint {
 }
 
 export class DrawingSession {
-  readonly #history: History<InkDocument>;
+  readonly #history: History<SessionState>;
   #saved: InkDocument;
   #active: ActiveStroke | undefined;
   /** The last input point of the stroke being drawn, before rounding. */
@@ -130,26 +148,29 @@ export class DrawingSession {
   sizeIndex = 1;
   /** Whether strokes start and end on the grid. */
   snap = false;
-  /** Where the grid's columns pass, in pixels; a save's rebase moves it. */
-  #gridOrigin: number;
 
   constructor(initial: InkDocument) {
-    this.#history = new History(initial);
+    this.#history = new History({
+      document: initial,
+      gridOrigin: gridOriginOf(initial),
+    });
     this.#saved = initial;
-    this.#gridOrigin = gridOriginOf(initial);
   }
 
-  /** Where the grid's columns pass, in document pixels. */
+  /**
+   * Where the grid's columns pass, in document pixels within one spacing. It
+   * moves with the drawing when a save moves that, and with a restored one.
+   */
   get gridOrigin(): number {
-    return this.#gridOrigin;
+    return this.#history.present.gridOrigin;
   }
 
   #snapped(point: InputPoint): InputPoint {
-    return this.snap ? snapToGrid(point, this.#gridOrigin) : point;
+    return this.snap ? snapToGrid(point, this.gridOrigin) : point;
   }
 
   get document(): InkDocument {
-    return this.#history.present;
+    return this.#history.present.document;
   }
 
   /** The document as last saved, or as opened. */
@@ -173,7 +194,10 @@ export class DrawingSession {
 
   /** Whether the document differs from the last saved one. */
   get dirty(): boolean {
-    return this.#history.present !== this.#saved || this.#active !== undefined;
+    return (
+      this.#history.present.document !== this.#saved ||
+      this.#active !== undefined
+    );
   }
 
   get drawing(): boolean {
@@ -318,10 +342,17 @@ export class DrawingSession {
     this.#push({ strokes: [] });
   }
 
-  /** Replaces the document as one undoable step, as when restoring a draft. */
-  replace(document: InkDocument): void {
+  /**
+   * Replaces the document as one undoable step, as when restoring a draft,
+   * with the grid's columns through `gridOrigin`, or by default where the
+   * document's strokes suggest. Undoing the step puts the grid back too.
+   */
+  replace(
+    document: InkDocument,
+    gridOrigin = gridOriginOf(document, this.gridOrigin),
+  ): void {
     if (this.#active !== undefined) return;
-    this.#push(document);
+    this.#history.push({ document, gridOrigin: withinSpacing(gridOrigin) });
   }
 
   /**
@@ -332,9 +363,13 @@ export class DrawingSession {
    */
   rebase(dxPixels: number): void {
     if (dxPixels === 0) return;
-    // States share most of their strokes; they still do once moved.
+    // States share most of their strokes; they still do once moved. The grid
+    // moves with each, so that it stays where each was drawn on it.
     const move = documentMover(dxPixels);
-    this.#history.map(move);
+    this.#history.map(({ document, gridOrigin }) => ({
+      document: move(document),
+      gridOrigin: withinSpacing(gridOrigin + dxPixels),
+    }));
     this.#saved = move(this.#saved);
     const active = this.#active;
     if (active !== undefined) {
@@ -351,9 +386,6 @@ export class DrawingSession {
       const { point } = this.#anchor;
       this.#anchor.point = { ...point, x: point.x + dxPixels };
     }
-    this.#gridOrigin =
-      (((this.#gridOrigin + dxPixels) % gridSpacing) + gridSpacing) %
-      gridSpacing;
   }
 
   /** Records `document` as saved, so that it is no longer dirty. */
@@ -361,7 +393,8 @@ export class DrawingSession {
     this.#saved = document;
   }
 
+  /** Records `document` as one undoable step, keeping the grid. */
   #push(document: InkDocument): void {
-    this.#history.push(document);
+    this.#history.push({ document, gridOrigin: this.gridOrigin });
   }
 }
