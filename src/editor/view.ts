@@ -113,8 +113,11 @@ export class InkView {
   #work = new OffscreenCanvas(1, 1);
   /** The font's lines, or undefined to draw no guides. */
   lines: readonly Guide[] | undefined;
-  /** The grid's spacing in document pixels, or undefined to draw no grid. */
-  grid: number | undefined;
+  /**
+   * The grid's spacing, and an x its columns pass through, in document
+   * pixels, or undefined to draw no grid.
+   */
+  grid: { readonly spacing: number; readonly originX: number } | undefined;
   /** How far the committed ink reaches, from its pixels, in document pixels. */
   #inked: Span | undefined;
   /** Where the saved image would start and end, as of the last render. */
@@ -277,9 +280,11 @@ export class InkView {
     if (grid !== undefined) {
       context.fillStyle = colour;
       const dot = Math.max(2, Math.round(this.#ratio * 2));
-      const first = Math.ceil(this.#originX / grid) * grid;
-      for (let x = first; x <= this.#originX + this.#across; x += grid) {
-        for (let y = 0; y <= lineBox.height; y += grid) {
+      const { spacing, originX } = grid;
+      const first =
+        originX + Math.ceil((this.#originX - originX) / spacing) * spacing;
+      for (let x = first; x <= this.#originX + this.#across; x += spacing) {
+        for (let y = 0; y <= lineBox.height; y += spacing) {
           context.fillRect(
             Math.round((x - this.#originX) * factor) - dot / 2,
             Math.round(y * factor) - dot / 2,

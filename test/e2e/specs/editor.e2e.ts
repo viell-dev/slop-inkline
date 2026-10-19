@@ -1948,6 +1948,54 @@ describe("The editor", function () {
     }
   });
 
+  it("keeps a tap on the grid a dot, and the grid in place through a save", async function () {
+    await insert();
+    await settledSurface();
+    await browser.keys(["Shift", "g"]);
+    await draw([[0.31, 0.27]]);
+    await browser.waitUntil(async () => (await storedDrafts()).length === 1);
+    // One point: no spur out to where the pointer was and back.
+    expect((await storedDrafts())[0]?.strokes[0]?.points).toHaveLength(2);
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    // The same place on screen, after the save moved the drawing.
+    await draw([[0.31, 0.27]]);
+    await browser.waitUntil(
+      async () => (await storedDrafts())[0]?.strokes.length === 2,
+    );
+    const [first, second] = (await storedDrafts())[0]?.strokes ?? [];
+    expect(second?.points).toEqual(first?.points);
+  });
+
+  it("lines the grid up with a reopened symbol's strokes", async function () {
+    await insert();
+    // Drawn before the grid is shown, so off it.
+    await draw(zigzag);
+    await settledSurface();
+    await browser.keys(["Shift", "g"]);
+    await draw([[0.62, 0.27]]);
+    await draw([[0.7, 0.6]]);
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    await editFile("001.ink.png");
+    await settledSurface();
+    await browser.keys(["Shift", "g"]);
+    await draw([[0.33, 0.45]]);
+    await saveScreenshot("editor-grid");
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    const { strokes } = JSON.parse(await recordOf("001.ink.png")) as {
+      strokes: { points: number[] }[];
+    };
+    // Where each stroke drawn on the grid lies within a spacing of 1/8 em,
+    // 256 units.
+    const columns = strokes
+      .slice(1)
+      .map((stroke) => (((stroke.points[0] ?? 0) % 256) + 256) % 256);
+    expect(columns).toHaveLength(3);
+    expect(new Set(columns).size).toBe(1);
+  });
+
   it("clears with Delete, and fits the drawing in view with F", async function () {
     await insert();
     await draw([

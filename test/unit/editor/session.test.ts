@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DrawingSession,
   brushSizes,
+  gridOriginOf,
   gridSpacing,
   snapToGrid,
 } from "../../../src/editor/session.ts";
@@ -258,6 +259,76 @@ describe("DrawingSession", () => {
     session.begin({ x: 0, y: 0 });
     session.extend([{ x: 25, y: 2 }], true);
     expect(session.activeStroke?.points.slice(-2)).toEqual([512, 0]);
+  });
+
+  it("records a tap on the grid as one point, with a pen or an eraser", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.begin({ x: 7, y: 9 });
+    session.end({ x: 7, y: 9 });
+    session.begin({ x: 7, y: 9, pressure: 0.5 });
+    session.end({ x: 7.4, y: 9.2, pressure: 0 });
+    session.begin({ x: 7, y: 9 }, "eraser");
+    session.end({ x: 7, y: 9 });
+    expect(session.document.strokes.map((stroke) => stroke.points)).toEqual([
+      [0, 256],
+      [0, 256, 128],
+      [0, 256],
+    ]);
+  });
+
+  it("keeps the grid's place in the drawing when a save moves it", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.begin({ x: 7, y: 9 });
+    session.end({ x: 7, y: 9 });
+    // A save cropped 5 pixels on the left, so everything moves left by 5.
+    session.rebase(-5);
+    expect(session.gridOrigin).toBe(11);
+    // The same place on screen is now 5 pixels further left.
+    session.begin({ x: 2, y: 9 });
+    session.end({ x: 2, y: 9 });
+    const [first, second] = session.document.strokes;
+    expect(second?.points).toEqual(first?.points);
+    expect(first?.points).toEqual([-80, 256]);
+  });
+
+  it("keeps a straight segment on the grid through a save", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.begin({ x: 0, y: 0 });
+    session.extend([{ x: 20, y: 2 }], true);
+    expect(session.activeStroke?.points.slice(-2)).toEqual([256, 0]);
+    session.rebase(-5);
+    session.extend([{ x: 15, y: 2 }], true);
+    expect(session.activeStroke?.points.slice(-2)).toEqual([176, 0]);
+  });
+
+  it("lines the grid up with where an opened drawing's strokes end", () => {
+    const stroke = (pressure: boolean, ...xs: number[]) => ({
+      tool: "pen" as const,
+      size: 16,
+      pressure,
+      points: xs.flatMap((x) => (pressure ? [x, 0, 128] : [x, 0])),
+    });
+    expect(gridOriginOf(emptyDocument)).toBe(0);
+    // With no end shared, where the first stroke starts: 145.5 and -2.5
+    // pixels.
+    expect(gridOriginOf({ strokes: [stroke(false, 2328, 100)] })).toBe(1.5);
+    expect(gridOriginOf({ strokes: [stroke(false, -40)] })).toBe(13.5);
+    // A first stroke drawn without the grid, 6.25 and 14.5 pixels into a
+    // spacing, then one on the grid, both ends 1.5 pixels into one.
+    expect(
+      gridOriginOf({
+        strokes: [stroke(false, 100, 1000), stroke(true, 280, 300, 536)],
+      }),
+    ).toBe(1.5);
+    const session = new DrawingSession({ strokes: [stroke(false, 2328)] });
+    session.snap = true;
+    // Nearest to 161.5, one spacing on from the first stroke's start.
+    session.begin({ x: 160, y: 0 });
+    session.end();
+    expect(session.document.strokes[1]?.points).toEqual([2328 + 256, 0]);
   });
 
   it("does not record clearing an empty drawing", () => {

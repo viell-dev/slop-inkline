@@ -24,7 +24,9 @@ section is also its
   to a text field that has the focus.
 - Holding Shift while drawing makes the stroke straight from where it was when
   Shift went down. A grid of 1/8 em, which Shift+G shows or hides, snaps the
-  ends of strokes to it, for scripts built from straight strokes and dots.
+  ends of strokes to it, for scripts built from straight strokes and dots. The
+  grid lines up with a symbol's first stroke and keeps its place on the drawing
+  through saves.
 - Guides in the editor at the text font's ascender, cap height, x-height,
   baseline, and descender, measured from the font, and at the ends the saved
   image would have; the Guides button or G shows or hides them.

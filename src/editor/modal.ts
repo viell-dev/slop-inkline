@@ -524,7 +524,9 @@ export class InkEditorModal extends Modal {
     this.#frame = view.canvas.win.requestAnimationFrame(() => {
       this.#frame = undefined;
       view.lines = this.#guidesShown ? this.#fontGuides : undefined;
-      view.grid = this.#session.snap ? gridSpacing : undefined;
+      view.grid = this.#session.snap
+        ? { spacing: gridSpacing, originX: this.#session.gridOrigin }
+        : undefined;
       view.render(
         this.#session.document,
         this.#base,
