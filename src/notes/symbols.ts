@@ -333,7 +333,7 @@ export function insertSymbol(host: EditorHost, view: MarkdownView): void {
       },
     },
     lifecycle: host.lifecycle,
-    copyFrom: () => copySymbol(host),
+    copyFrom: (closed) => copySymbol(host, closed),
     file: () => made && symbolFile(app, made.file.path),
     // Until the embed is inserted, the draft is kept before each write, so
     // that it names the file and the bytes even after a crash. If storage
@@ -436,9 +436,13 @@ class SymbolChoice extends FuzzySuggestModal<TFile> {
 /**
  * Asks which symbol to start a new one from, and opens it for editing as a
  * copy; undefined when none is chosen, or with a notice when the choice
- * cannot be opened.
+ * cannot be opened. When `closed` aborts, as when the editor that asked
+ * closes, the choice closes and nothing is opened.
  */
-async function copySymbol(host: EditorHost): Promise<SymbolCopy | undefined> {
+async function copySymbol(
+  host: EditorHost,
+  closed: AbortSignal,
+): Promise<SymbolCopy | undefined> {
   const { app } = host;
   const symbols = app.vault
     .getFiles()
@@ -448,10 +452,21 @@ async function copySymbol(host: EditorHost): Promise<SymbolCopy | undefined> {
     new Notice("There are no symbols to start from yet.");
     return undefined;
   }
+  // Read as a call: the signal can abort while this waits.
+  const ended = (): boolean => closed.aborted;
+  if (ended()) return undefined;
   const file = await new Promise<TFile | undefined>((resolve) => {
-    new SymbolChoice(app, symbols, resolve).open();
+    const choice = new SymbolChoice(app, symbols, resolve);
+    closed.addEventListener(
+      "abort",
+      () => {
+        choice.close();
+      },
+      { once: true },
+    );
+    choice.open();
   });
-  if (file === undefined || !host.alive()) return undefined;
+  if (file === undefined || ended() || !host.alive()) return undefined;
   let opened;
   try {
     opened = await openInk(new Uint8Array(await app.vault.readBinary(file)));
@@ -459,6 +474,7 @@ async function copySymbol(host: EditorHost): Promise<SymbolCopy | undefined> {
     new Notice(`Could not open ${file.name}: ${message(error)}`);
     return undefined;
   }
+  if (ended()) return undefined;
   if (opened.kind === "newer-version") {
     new Notice(
       `${file.name} was saved by a newer version of Inkline. Update Inkline to start from it.`,

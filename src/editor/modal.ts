@@ -104,9 +104,11 @@ export interface EditorOptions {
   /**
    * Asks which symbol to start from and opens it, for a new symbol drawn as
    * a variant of another; resolves to undefined when none is chosen or it
-   * cannot be opened. Undefined where the editor has its own symbol.
+   * cannot be opened, and as soon as `closed` aborts, as when the editor
+   * closes, with the choice closed too. Undefined where the editor has its
+   * own symbol.
    */
-  readonly copyFrom?: () => Promise<SymbolCopy | undefined>;
+  readonly copyFrom?: (closed: AbortSignal) => Promise<SymbolCopy | undefined>;
   /** Told when the editor opens and closes, so that its owner can track it. */
   readonly lifecycle?: {
     opened(editor: InkEditorModal): void;
@@ -156,6 +158,8 @@ export class InkEditorModal extends Modal {
    * goes on with if the drawing is kept.
    */
   #askingChanged = false;
+  /** The choice of a symbol to copy while it is open, to close with this. */
+  #choosing: AbortController | undefined;
   #resume: (() => void) | undefined;
   #view: InkView | undefined;
   #saving: Promise<boolean> | undefined;
@@ -262,7 +266,8 @@ export class InkEditorModal extends Modal {
         () => {
           void this.#copy();
         },
-        "Start from a copy of another symbol",
+        "Copy from",
+        "start from a copy of another symbol",
       );
     }
     this.#addButton(toolbar, "fit", "Fit", "F", () => {
@@ -330,6 +335,8 @@ export class InkEditorModal extends Modal {
   }
 
   override onClose(): void {
+    // A choice of symbol to copy goes with the editor that asked for it.
+    this.#choosing?.abort();
     for (const ref of this.#vaultEvents) this.app.vault.offref(ref);
     this.#vaultEvents = [];
     this.#resize?.disconnect();
@@ -455,6 +462,12 @@ export class InkEditorModal extends Modal {
     question.open();
   }
 
+  /**
+   * Adds a toolbar button. Obsidian shows a button's `aria-label` as its
+   * tooltip, so that one attribute is its name and its tooltip: `label`,
+   * which holds the visible `text`, then any `description`, then the
+   * shortcut.
+   */
   #addButton(
     parent: HTMLElement,
     id: string,
@@ -462,12 +475,13 @@ export class InkEditorModal extends Modal {
     shortcut: string | undefined,
     action: () => void,
     label = text,
+    description?: string,
   ): void {
+    const name = description === undefined ? label : `${label}: ${description}`;
     const button = new ButtonComponent(parent)
       .setButtonText(text)
-      .setTooltip(shortcut === undefined ? label : `${label} (${shortcut})`)
+      .setTooltip(shortcut === undefined ? name : `${name} (${shortcut})`)
       .onClick(action);
-    button.buttonEl.setAttribute("aria-label", label);
     button.buttonEl.dataset.inklineButton = id;
     this.#buttons.set(id, button);
   }
@@ -881,8 +895,15 @@ export class InkEditorModal extends Modal {
    */
   async #copy(): Promise<void> {
     const copyFrom = this.#options.copyFrom;
-    if (copyFrom === undefined) return;
-    const copy = await copyFrom();
+    if (copyFrom === undefined || this.#choosing !== undefined) return;
+    const choosing = new AbortController();
+    this.#choosing = choosing;
+    let copy: SymbolCopy | undefined;
+    try {
+      copy = await copyFrom(choosing.signal);
+    } finally {
+      this.#choosing = undefined;
+    }
     if (copy === undefined || this.#retired || this.#closing) return;
     // A stroke being drawn is committed first, so that Undo brings it back.
     this.#session.end();

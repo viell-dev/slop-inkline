@@ -552,7 +552,7 @@ describe("The editor", function () {
     expect(state).toEqual({
       pen: "true",
       eraser: "false",
-      size: "Brush size S",
+      size: "Brush size S (1)",
       undo: true,
       focused: true,
     });
@@ -561,6 +561,38 @@ describe("The editor", function () {
     expect(await eraser.getAttribute("aria-pressed")).toBe("true");
     await browser.keys(["Escape"]);
     await waitClosed();
+  });
+
+  it("names each button with its text, and shows its shortcut on hover", async function () {
+    await insert();
+    const buttons = await browser.execute(() =>
+      [...document.querySelectorAll("[data-inkline-button]")].map((button) => ({
+        text: button.textContent,
+        name: button.getAttribute("aria-label") ?? "",
+      })),
+    );
+    expect(buttons.length).toBeGreaterThan(10);
+    for (const { text, name } of buttons) {
+      expect(name.toLowerCase()).toContain(text.toLowerCase());
+    }
+    const tooltip = async (id: string, text: string): Promise<void> => {
+      await browser.$(`[data-inkline-button="${id}"]`).moveTo();
+      await browser.waitUntil(
+        async () =>
+          (await browser.execute(
+            () => document.querySelector(".tooltip")?.textContent ?? "",
+          )) === text,
+        { timeoutMsg: `no tooltip "${text}"` },
+      );
+      await surface().moveTo();
+    };
+    // The first hover after the editor opens shows no tooltip, so start
+    // from the surface.
+    await surface().moveTo();
+    await browser.pause(500);
+    await tooltip("copy", "Copy from: start from a copy of another symbol (V)");
+    await tooltip("size-0", "Brush size S (1)");
+    await tooltip("pen", "Pen (P)");
   });
 
   it("saves a stroke still being drawn when saving and closing", async function () {
@@ -2580,6 +2612,30 @@ describe("The editor", function () {
       await browser.$(".prompt").waitForExist({ reverse: true });
       expect(await editorOpen()).toBe(true);
       expect((await storedDrafts())[0]?.strokes).toHaveLength(1);
+    });
+
+    it("closes the choice with its editor", async function () {
+      await writeSymbol("tower.ink.png", [800]);
+      await insert();
+      await draw(zigzag);
+      await delayVault("createBinary", 1500);
+      // Save and close, then the choice, while the save still runs.
+      await browser.keys(["Control", "Enter"]);
+      await browser.keys(["v"]);
+      await browser.$(".prompt-input").waitForDisplayed();
+      await waitClosed();
+      await browser.$(".prompt").waitForExist({ reverse: true });
+    });
+
+    it("closes the choice when Inkline is disabled", async function () {
+      await writeSymbol("tower.ink.png", [800]);
+      await insert();
+      await browser.keys(["v"]);
+      await browser.$(".prompt-input").waitForDisplayed();
+      await obsidianPage.disablePlugin("inkline");
+      await browser.$(".prompt").waitForExist({ reverse: true });
+      await obsidianPage.enablePlugin("inkline");
+      await loadModules();
     });
 
     it("says when there is no symbol to start from", async function () {
