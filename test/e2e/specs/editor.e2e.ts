@@ -29,6 +29,30 @@ async function insert(): Promise<void> {
   await waitForEditor();
 }
 
+async function editFile(path: string): Promise<void> {
+  await browser.executeObsidian(({ app, plugins }, filePath) => {
+    const file = app.vault.getFileByPath(filePath);
+    if (file === null) throw new Error(`no ${filePath}`);
+    void plugins.inkline.editSymbol(file);
+  }, path);
+  await waitForEditor();
+}
+
+async function draftCount(): Promise<number> {
+  return browser.executeObsidian(({ app }) => {
+    const ids: unknown = app.loadLocalStorage("inkline-drafts");
+    return Array.isArray(ids) ? ids.length : 0;
+  });
+}
+
+/** Saves one new symbol, 001.ink.png, with one stroke. */
+async function saveOne(): Promise<void> {
+  await insert();
+  await draw(zigzag);
+  await browser.keys(["Control", "Enter"]);
+  await waitClosed();
+}
+
 async function waitClosed(): Promise<void> {
   await browser.$(".inkline-editor").waitForExist({ reverse: true });
 }
@@ -309,17 +333,27 @@ describe("The editor", function () {
     });
     await browser.keys(["Control", "Enter"]);
     await waitClosed();
-    const texts = await browser.executeObsidian(async ({ app }) => {
-      const read = async (path: string): Promise<string> => {
-        const file = app.vault.getFileByPath(path);
-        if (file === null) throw new Error(`no ${path}`);
-        return app.vault.read(file);
-      };
-      return {
-        editor: await read("Editor.md"),
-        welcome: await read("Welcome.md"),
-      };
-    });
+    // Another tab may still show the note, whose editor Obsidian saves to
+    // disk a moment later.
+    const read = () =>
+      browser.executeObsidian(async ({ app }) => {
+        const text = async (path: string): Promise<string> => {
+          const file = app.vault.getFileByPath(path);
+          if (file === null) throw new Error(`no ${path}`);
+          return app.vault.read(file);
+        };
+        return {
+          editor: await text("Editor.md"),
+          welcome: await text("Welcome.md"),
+        };
+      });
+    await browser.waitUntil(
+      async () => (await read()).editor.includes("001.ink.png"),
+      {
+        timeout: 10_000,
+      },
+    );
+    const texts = await read();
     expect(texts).toEqual({
       editor: "The door is marked with ![[001.ink.png]] which means return.\n",
       welcome: "A synthetic vault for Inkline's end-to-end tests.\n",
@@ -432,5 +466,226 @@ describe("The editor", function () {
     );
     await notice.waitForExist();
     expect(await editorOpen()).toBe(false);
+  });
+
+  it("offers a new symbol's draft for its file once it was saved", async function () {
+    await insert();
+    await draw(zigzag);
+    await browser.keys(["Control", "s"]);
+    await browser.$(".inkline-status=Saved").waitForExist();
+    await draw([
+      [0.5, 0.2],
+      [0.5, 0.8],
+    ]);
+    await obsidianPage.disablePlugin("inkline");
+    await obsidianPage.enablePlugin("inkline");
+    await loadModules();
+    // A new symbol in the same note is a different symbol: nothing to offer.
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await waitForEditor();
+    expect(await topButton("Restore")).toBeUndefined();
+    await browser.keys(["Escape"]);
+    await waitClosed();
+    await editFile("001.ink.png");
+    await clickTop("Restore");
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    const record = JSON.parse(await recordOf("001.ink.png")) as {
+      strokes: unknown[];
+    };
+    expect(record.strokes).toHaveLength(2);
+    expect(await symbolFiles()).toEqual(["001.ink.png"]);
+  });
+
+  it("keeps a draft whose question was dismissed for next time", async function () {
+    await insert();
+    await draw(zigzag);
+    await obsidianPage.disablePlugin("inkline");
+    await obsidianPage.enablePlugin("inkline");
+    await loadModules();
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await clickTop("Not now");
+    await browser.keys(["Escape"]);
+    await waitClosed();
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await clickTop("Restore");
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    expect(await symbolFiles()).toEqual(["001.ink.png"]);
+  });
+
+  it("closes its questions when the plugin is disabled, keeping the draft", async function () {
+    await insert();
+    await draw(zigzag);
+    await browser.keys(["Escape"]);
+    await browser.waitUntil(
+      async () => (await topButton("Discard")) !== undefined,
+    );
+    await obsidianPage.disablePlugin("inkline");
+    expect(await browser.$(".modal-container").isExisting()).toBe(false);
+    expect(await draftCount()).toBe(1);
+    await obsidianPage.enablePlugin("inkline");
+  });
+
+  it("does not open an editor for a file read after the plugin was disabled", async function () {
+    await saveOne();
+    await browser.executeObsidian(({ app, plugins }) => {
+      const vault = app.vault as typeof app.vault & {
+        inklineReadBinary?: typeof app.vault.readBinary;
+      };
+      const read = vault.readBinary.bind(vault);
+      vault.inklineReadBinary = read;
+      vault.readBinary = async (file) => {
+        await new Promise((resolve) => window.setTimeout(resolve, 1000));
+        return read(file);
+      };
+      const file = app.vault.getFileByPath("001.ink.png");
+      if (file === null) throw new Error("no file");
+      void plugins.inkline.editSymbol(file);
+    });
+    await obsidianPage.disablePlugin("inkline");
+    await browser.pause(1500);
+    expect(await editorOpen()).toBe(false);
+    await browser.executeObsidian(({ app }) => {
+      const vault = app.vault as typeof app.vault & {
+        inklineReadBinary?: typeof app.vault.readBinary;
+      };
+      if (vault.inklineReadBinary !== undefined)
+        vault.readBinary = vault.inklineReadBinary;
+    });
+    await obsidianPage.enablePlugin("inkline");
+  });
+
+  it("does not let an old save's completion drop a newer editor's draft", async function () {
+    await saveOne();
+    await browser.executeObsidian(({ app }) => {
+      const vault = app.vault as typeof app.vault & {
+        inklineModifyBinary?: typeof app.vault.modifyBinary;
+      };
+      const modify = vault.modifyBinary.bind(vault);
+      vault.inklineModifyBinary = modify;
+      vault.modifyBinary = async (file, data, options) => {
+        await modify(file, data, options);
+        await new Promise((resolve) => window.setTimeout(resolve, 2500));
+      };
+    });
+    await editFile("001.ink.png");
+    await draw([
+      [0.5, 0.2],
+      [0.5, 0.8],
+    ]);
+    await browser.keys(["Control", "s"]);
+    await draw([
+      [0.3, 0.2],
+      [0.7, 0.2],
+    ]);
+    await obsidianPage.disablePlugin("inkline");
+    await browser.executeObsidian(({ app }) => {
+      const vault = app.vault as typeof app.vault & {
+        inklineModifyBinary?: typeof app.vault.modifyBinary;
+      };
+      if (vault.inklineModifyBinary !== undefined)
+        vault.modifyBinary = vault.inklineModifyBinary;
+    });
+    await obsidianPage.enablePlugin("inkline");
+    await loadModules();
+    await editFile("001.ink.png");
+    await clickTop("Restore");
+    await draw([
+      [0.3, 0.8],
+      [0.7, 0.8],
+    ]);
+    // Let the old save finish.
+    await browser.pause(3000);
+    expect(await draftCount()).toBe(1);
+  });
+
+  it("restores a draft in line with a base layer moved by an earlier save", async function () {
+    await browser.executeObsidian(async ({ app }) => {
+      const { canvas } = window.inklineTest;
+      // A picture: a black square, which opens as a base layer.
+      const data = new Uint8ClampedArray(24 * 24 * 4);
+      for (let index = 0; index < 24 * 24; index++) data[index * 4 + 3] = 255;
+      const bytes = await canvas.encodePixels({ width: 24, height: 24, data });
+      await app.vault.createBinary("square.ink.png", bytes.slice().buffer);
+    });
+    await editFile("square.ink.png");
+    // Far to the left, so that the save crops and moves everything.
+    await draw([
+      [0.05, 0.3],
+      [0.1, 0.3],
+    ]);
+    await browser.keys(["Control", "s"]);
+    await browser.$(".inkline-status=Saved").waitForExist();
+    await draw([
+      [0.45, 0.8],
+      [0.55, 0.8],
+    ]);
+    const kept = await browser.executeObsidian(({ app }) => {
+      const ids = app.loadLocalStorage("inkline-drafts") as string[];
+      const draft = app.loadLocalStorage(`inkline-draft:${ids[0] ?? ""}`) as {
+        strokes: { points: number[] }[];
+      };
+      return draft.strokes.map((stroke) => stroke.points[0] ?? 0);
+    });
+    const saved = JSON.parse(await recordOf("square.ink.png")) as {
+      base: { x: number };
+      strokes: { points: number[] }[];
+    };
+    await obsidianPage.disablePlugin("inkline");
+    await obsidianPage.enablePlugin("inkline");
+    await loadModules();
+    await editFile("square.ink.png");
+    await clickTop("Restore");
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    const restored = JSON.parse(await recordOf("square.ink.png")) as {
+      base: { x: number };
+      strokes: { points: number[] }[];
+    };
+    // The first stroke was saved with the base: the draft keeps its place.
+    expect(kept[0]).toBe(saved.strokes[0]?.points[0]);
+    // After restoring, every stroke keeps its distance from the base layer.
+    const offsets = (record: typeof restored, xs: number[]) =>
+      xs.map((x) => x - record.base.x);
+    expect(
+      offsets(
+        restored,
+        restored.strokes.map((stroke) => stroke.points[0] ?? 0),
+      ),
+    ).toEqual(offsets(saved, kept));
+  });
+
+  it("inserts through the live editor, whose text is newer than the file", async function () {
+    await browser.executeObsidian(({ app, obsidian }) => {
+      const vault = app.vault as typeof app.vault & {
+        inklineCreateBinary?: typeof app.vault.createBinary;
+      };
+      const create = vault.createBinary.bind(vault);
+      vault.inklineCreateBinary = create;
+      vault.createBinary = async (path, data, options) => {
+        const file = await create(path, data, options);
+        const view = app.workspace.getActiveViewOfType(obsidian.MarkdownView);
+        view?.editor.setValue("BRAND NEW UNSAVED CONTENT\n");
+        return file;
+      };
+    });
+    try {
+      await insert();
+      await draw(zigzag);
+      await browser.keys(["Control", "Enter"]);
+      await waitClosed();
+    } finally {
+      await browser.executeObsidian(({ app }) => {
+        const vault = app.vault as typeof app.vault & {
+          inklineCreateBinary?: typeof app.vault.createBinary;
+        };
+        if (vault.inklineCreateBinary !== undefined)
+          vault.createBinary = vault.inklineCreateBinary;
+      });
+    }
+    expect(await noteText()).toBe(
+      "BRAND NEW UNSAVED CONTENT\n![[001.ink.png]]\n",
+    );
   });
 });
