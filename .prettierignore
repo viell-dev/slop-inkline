@@ -1,0 +1,6 @@
+.npm-cache/
+.obsidian-cache/
+coverage/
+dist/
+test-results/
+package-lock.json
