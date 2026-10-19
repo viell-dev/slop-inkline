@@ -3,6 +3,7 @@ import type { InkRecord, Stroke } from "../../../src/format/record.ts";
 import { limits } from "../../../src/format/record.ts";
 import {
   documentFromRecord,
+  documentSpan,
   fitsFormat,
   moveDocument,
   recordFromDocument,
@@ -196,5 +197,21 @@ describe("fitsFormat", () => {
     expect(
       fitsFormat({ strokes: [], base: { x: 0, y: 0, scale: 65, png } }),
     ).toBe(false);
+  });
+});
+
+describe("documentSpan", () => {
+  it("reaches across every stroke, widened by its radius, and the base layer", () => {
+    const document: InkDocument = {
+      strokes: [
+        { tool: "pen", size: 64, pressure: false, points: [160, 0, 320, 16] },
+        { tool: "eraser", size: 32, pressure: true, points: [-160, 0, 255] },
+      ],
+      base: { x: 480, y: 0, scale: 2, png: new Uint8Array(0) },
+    };
+    expect(documentSpan(document)).toEqual({ left: -11, right: 22 });
+    // A base layer 24 pixels wide, each covering 2: from 30 to 78.
+    expect(documentSpan(document, 24)).toEqual({ left: -11, right: 78 });
+    expect(documentSpan({ strokes: [] })).toBeUndefined();
   });
 });

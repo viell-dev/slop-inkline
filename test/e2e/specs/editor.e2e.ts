@@ -1479,4 +1479,48 @@ describe("The editor", function () {
     expect(await symbolFiles()).toEqual(["001.ink.png"]);
     expect((await noteText()).split("001.ink.png")).toHaveLength(2);
   });
+
+  it("shows a restored drawing whole, even one wider than its file", async function () {
+    await browser.executeObsidian(async ({ app }) => {
+      const { canvas } = window.inklineTest;
+      const stroke = (x: number) =>
+        ({
+          tool: "pen",
+          size: 256,
+          pressure: false,
+          points: [x * 16, 1600, x * 16, 1920],
+        }) as const;
+      const { bytes } = await canvas.saveInk(
+        { strokes: [stroke(100), stroke(1100)] },
+        undefined,
+      );
+      await app.vault.createBinary("wide.ink.png", bytes.slice().buffer);
+    });
+    await editFile("wide.ink.png");
+    await browser.$('[data-inkline-button="clear"]').click();
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    await browser.keys(["Control", "z"]);
+    await obsidianPage.disablePlugin("inkline");
+    await obsidianPage.enablePlugin("inkline");
+    await loadModules();
+    // The file now holds the cleared drawing, narrow.
+    await editFile("wide.ink.png");
+    await clickTop("Restore");
+    await settledSurface();
+    const origin = await surfaceOrigin();
+    const width = await surface().getSize("width");
+    await clickAt(origin.left + 2, origin.top + 40);
+    await clickAt(origin.left + width - 4, origin.top + 40);
+    await browser.waitUntil(
+      async () => (await storedDrafts())[0]?.strokes.length === 4,
+    );
+    const [draft] = await storedDrafts();
+    const xs = (draft?.strokes ?? []).map(
+      (stroke) => stroke.points[0] ?? Number.NaN,
+    );
+    // Clicks at both edges land outside both restored strokes.
+    expect(xs[2]).toBeLessThan(xs[0] ?? Number.NaN);
+    expect(xs[3]).toBeGreaterThan(xs[1] ?? Number.NaN);
+  });
 });

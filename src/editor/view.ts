@@ -35,7 +35,7 @@ function element2d(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
 export class InkView {
   readonly canvas: HTMLCanvasElement;
   /** How much of the document the surface shows across, in pixels. */
-  readonly #across: number;
+  #across: number;
   /** CSS pixels per document pixel. */
   #scale = 1;
   /** The document x at the surface's left edge, in pixels. */
@@ -49,6 +49,16 @@ export class InkView {
   constructor(canvas: HTMLCanvasElement, across = visibleWidth) {
     this.canvas = canvas;
     this.#across = across;
+  }
+
+  /**
+   * Shows a drawing that reaches from document x `left` to `right` whole,
+   * in the middle of the surface. Call {@link resize} after, as the scale
+   * changes.
+   */
+  fit(left: number, right: number): void {
+    this.#across = surfaceWidth(right - left);
+    this.centerOn((left + right) / 2);
   }
 
   /** Puts document x `center` in the middle of the surface. */

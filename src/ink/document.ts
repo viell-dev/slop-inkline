@@ -60,6 +60,37 @@ export function fitsFormat(document: InkDocument): boolean {
   );
 }
 
+/**
+ * How far a document reaches across, in pixels: from the left edge of its
+ * leftmost stroke or base layer to the right edge of its rightmost, each
+ * stroke widened by its radius. `baseWidth` is the base layer's image width,
+ * which only its decoded pixels give. Undefined for an empty document.
+ */
+export function documentSpan(
+  document: InkDocument,
+  baseWidth?: number,
+): { left: number; right: number } | undefined {
+  let left = Number.POSITIVE_INFINITY;
+  let right = Number.NEGATIVE_INFINITY;
+  for (const stroke of document.strokes) {
+    const stride = stroke.pressure ? 3 : 2;
+    const radius = stroke.size / 2;
+    for (let index = 0; index < stroke.points.length; index += stride) {
+      const x = stroke.points[index] ?? 0;
+      left = Math.min(left, x - radius);
+      right = Math.max(right, x + radius);
+    }
+  }
+  const { base } = document;
+  if (base !== undefined && baseWidth !== undefined) {
+    left = Math.min(left, base.x);
+    right = Math.max(right, base.x + baseWidth * base.scale * unitsPerPixel);
+  }
+  return left > right
+    ? undefined
+    : { left: left / unitsPerPixel, right: right / unitsPerPixel };
+}
+
 function mapPoints(
   stroke: Stroke,
   x: (value: number) => number,

@@ -12,7 +12,7 @@ import {
 import type { CarriedChunk } from "../format/ink-file.ts";
 import type { BaseLayer, InkRecord } from "../format/record.ts";
 import { drawableBase, saveInk } from "../ink/canvas.ts";
-import type { InkDocument } from "../ink/document.ts";
+import { documentSpan, type InkDocument } from "../ink/document.ts";
 import type { DrawableBase } from "../ink/render.ts";
 import {
   draftBase,
@@ -421,6 +421,16 @@ export class InkEditorModal extends Modal {
     });
   }
 
+  /** Fits the surface to the whole drawing, as one restored from a draft. */
+  #fitView(): void {
+    const view = this.#view;
+    if (view === undefined) return;
+    const span = documentSpan(this.#session.document, this.#base?.width);
+    if (span === undefined) return;
+    view.fit(span.left, span.right);
+    view.resize(view.canvas.clientWidth, view.canvas.win.devicePixelRatio);
+  }
+
   #render(): void {
     const view = this.#view;
     if (this.#frame !== undefined || view === undefined) return;
@@ -615,6 +625,7 @@ export class InkEditorModal extends Modal {
             // replaces it.
             this.#offered = undefined;
             this.#replacing = draft.id;
+            this.#fitView();
             this.#updateButtons();
             this.#render();
             this.#keepDraft();
