@@ -4,3 +4,4 @@ coverage/
 dist/
 test-results/
 package-lock.json
+test/fixtures/

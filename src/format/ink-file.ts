@@ -1,0 +1,139 @@
+// Reading and writing symbol files: a PNG whose pixels show the symbol and
+// whose `iTXt` chunk with the keyword `inkline` holds its record.
+
+import {
+  decodeInternationalText,
+  encodeInternationalText,
+  imageHeader,
+  readChunks,
+  textKeyword,
+  writeChunks,
+  type Chunk,
+} from "./png.ts";
+import {
+  formatName,
+  limits,
+  parseRecord,
+  serializeRecord,
+  type InkRecord,
+  type ParseResult,
+} from "./record.ts";
+
+/** The file name ending that marks a PNG in the vault as a symbol. */
+export const inkExtension = ".ink.png";
+
+/** The `iTXt` keyword of the chunk that holds the record. */
+export const recordKeyword = formatName;
+
+/** Whether a file name or path names a symbol file, in any letter case. */
+export function isInkPath(path: string): boolean {
+  return path.toLowerCase().endsWith(inkExtension);
+}
+
+/**
+ * What a symbol file holds. A record means the symbol can be edited stroke by
+ * stroke; without one, the file's pixels are all there is.
+ */
+export type InkSource =
+  | { readonly kind: "record"; readonly record: InkRecord }
+  | {
+      readonly kind: "pixels";
+      /**
+       * Why there is no usable record: none in the file, one a later version
+       * wrote, one that breaks the format, or one whose size no longer matches
+       * the image, as after resizing in another program.
+       */
+      readonly reason: "none" | "newer-version" | "invalid" | "stale";
+      readonly detail?: string;
+    };
+
+/** Thrown by {@link writeInkFile} for a record it must not write. */
+export class RecordError extends Error {
+  override name = "RecordError";
+}
+
+function isRecordChunk(chunk: Chunk): boolean {
+  return textKeyword(chunk) === recordKeyword;
+}
+
+/** The first record chunk's parsed text, or undefined when there is none. */
+async function parseRecordChunk(
+  chunks: readonly Chunk[],
+): Promise<ParseResult | undefined> {
+  const chunk = chunks.find(isRecordChunk);
+  if (chunk === undefined) return undefined;
+  try {
+    const { text } = await decodeInternationalText(chunk, limits.text);
+    return parseRecord(text);
+  } catch (error) {
+    return { ok: false, reason: "invalid", detail: String(error) };
+  }
+}
+
+/**
+ * Reads what a PNG file holds. Throws `PngError` when the bytes are not a
+ * well-formed PNG; anything wrong with the record only makes it unusable.
+ */
+export async function readInkFile(bytes: Uint8Array): Promise<InkSource> {
+  const chunks = readChunks(bytes);
+  const parsed = await parseRecordChunk(chunks);
+  if (parsed === undefined) return { kind: "pixels", reason: "none" };
+  if (!parsed.ok) {
+    return { kind: "pixels", reason: parsed.reason, detail: parsed.detail };
+  }
+  const { width, height } = imageHeader(chunks);
+  const { box } = parsed.record;
+  if (box.width !== width || box.height !== height) {
+    return {
+      kind: "pixels",
+      reason: "stale",
+      detail: `record is ${String(box.width)}×${String(box.height)}, image is ${String(width)}×${String(height)}`,
+    };
+  }
+  return { kind: "record", record: parsed.record };
+}
+
+/**
+ * Adds a record to a PNG, such as one a canvas encoded, right after its
+ * header, keeping every other chunk and the pixels as they are. An earlier
+ * record is replaced, unless a later version of Inkline wrote it: replacing
+ * that would lose what it recorded.
+ *
+ * Throws `PngError` when the bytes are not a well-formed PNG, and
+ * {@link RecordError} when the record's size differs from the image's or
+ * readers would refuse the record, such as for being longer than the text
+ * limit: a file this returns can always be read back.
+ */
+export async function writeInkFile(
+  png: Uint8Array,
+  record: InkRecord,
+): Promise<Uint8Array> {
+  const chunks = readChunks(png);
+  const { width, height } = imageHeader(chunks);
+  if (record.box.width !== width || record.box.height !== height) {
+    throw new RecordError(
+      `record is ${String(record.box.width)}×${String(record.box.height)}, image is ${String(width)}×${String(height)}`,
+    );
+  }
+  const existing = await parseRecordChunk(chunks);
+  if (existing?.ok === false && existing.reason === "newer-version") {
+    throw new RecordError(
+      `the file holds a record from a later version: ${existing.detail}`,
+    );
+  }
+  const text = serializeRecord(record);
+  if (new TextEncoder().encode(text).length > limits.text) {
+    throw new RecordError("record text is too long");
+  }
+  const check = parseRecord(text);
+  if (!check.ok) {
+    throw new RecordError(`record breaks the format: ${check.detail}`);
+  }
+  const recordChunk = await encodeInternationalText({
+    keyword: recordKeyword,
+    text,
+  });
+  const [header, ...rest] = chunks.filter((chunk) => !isRecordChunk(chunk));
+  if (header === undefined) throw new RecordError("PNG has no chunks");
+  return writeChunks([header, recordChunk, ...rest]);
+}

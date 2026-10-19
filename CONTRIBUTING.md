@@ -60,7 +60,11 @@ runs `check` on Linux and Windows, and a dependency audit on Linux.
 ## Tests
 
 Unit tests use Vitest and live in `test/unit/`. They cover code that runs
-without Obsidian; `npm test` runs them.
+without Obsidian; `npm test` runs them. Code that needs the browser's own
+implementation, such as canvas encoding or how far a stream reads ahead, is also
+tested in Obsidian's renderer: an end-to-end spec calls `loadModules()` from
+`test/e2e/support/browser.ts`, which bundles `test/e2e/browser/entry.ts` and
+makes the plugin's modules available there as `window.inklineTest`.
 
 End-to-end tests live in `test/e2e/` and run the built plugin in real Obsidian
 through WebdriverIO and
