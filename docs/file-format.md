@@ -254,7 +254,8 @@ white, as tall as its stored size: 192 pixels by default, which is the same
 scale as version 1, so they open unscaled.
 
 Inkline opens such pictures up to 4096 pixels a side, including after repeating
-their pixels.
+their pixels, and only when their ink encodes to a PNG within the base image
+limit of 8 MiB, since a base layer beyond it could not be saved.
 
 ## Cropping
 

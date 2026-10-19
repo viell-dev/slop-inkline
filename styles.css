@@ -1,1 +1,42 @@
 /* Inkline's styles. Released with main.js and manifest.json. */
+
+.inkline-editor {
+  width: min(960px, 92vw);
+}
+
+.inkline-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-2);
+  margin-bottom: var(--size-4-3);
+}
+
+.inkline-toolbar button[aria-pressed="true"] {
+  background-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.inkline-surface {
+  --inkline-guide: var(--text-faint);
+  display: block;
+  width: 100%;
+  height: var(--inkline-surface-height, 288px);
+  color: var(--text-normal);
+  background-color: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  cursor: crosshair;
+  /* The surface handles pens and touch itself, without scrolling or zooming. */
+  touch-action: none;
+}
+
+.inkline-surface:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+}
+
+.inkline-status {
+  min-height: 1.5em;
+  margin-top: var(--size-4-2);
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}

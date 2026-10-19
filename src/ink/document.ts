@@ -60,6 +60,37 @@ export function fitsFormat(document: InkDocument): boolean {
   );
 }
 
+/**
+ * How far a document reaches across, in pixels: from the left edge of its
+ * leftmost stroke or base layer to the right edge of its rightmost, each
+ * stroke widened by its radius. `baseWidth` is the base layer's image width,
+ * which only its decoded pixels give. Undefined for an empty document.
+ */
+export function documentSpan(
+  document: InkDocument,
+  baseWidth?: number,
+): { left: number; right: number } | undefined {
+  let left = Number.POSITIVE_INFINITY;
+  let right = Number.NEGATIVE_INFINITY;
+  for (const stroke of document.strokes) {
+    const stride = stroke.pressure ? 3 : 2;
+    const radius = stroke.size / 2;
+    for (let index = 0; index < stroke.points.length; index += stride) {
+      const x = stroke.points[index] ?? 0;
+      left = Math.min(left, x - radius);
+      right = Math.max(right, x + radius);
+    }
+  }
+  const { base } = document;
+  if (base !== undefined && baseWidth !== undefined) {
+    left = Math.min(left, base.x);
+    right = Math.max(right, base.x + baseWidth * base.scale * unitsPerPixel);
+  }
+  return left > right
+    ? undefined
+    : { left: left / unitsPerPixel, right: right / unitsPerPixel };
+}
+
 function mapPoints(
   stroke: Stroke,
   x: (value: number) => number,
@@ -76,19 +107,59 @@ export function moveDocument(
   document: InkDocument,
   dxPixels: number,
 ): InkDocument {
+  return documentMover(dxPixels)(document);
+}
+
+/**
+ * A function that moves documents by a whole number of pixels, as
+ * {@link moveDocument} does, keeping what they share shared: a stroke or base
+ * layer in several documents is moved once, and the same document always
+ * moves to the same one, so that moving a whole history copies each stroke
+ * once.
+ */
+export function documentMover(
+  dxPixels: number,
+): (document: InkDocument) => InkDocument {
   if (!Number.isInteger(dxPixels)) throw new Error("moves are in whole pixels");
   const dx = dxPixels * unitsPerPixel;
-  const strokes = document.strokes.map((stroke) => ({
-    ...stroke,
-    points: mapPoints(
-      stroke,
-      (value) => value + dx,
-      (value) => value,
-    ),
-  }));
-  return document.base === undefined
-    ? { strokes }
-    : { strokes, base: { ...document.base, x: document.base.x + dx } };
+  const documents = new Map<InkDocument, InkDocument>();
+  const strokes = new Map<Stroke, Stroke>();
+  const bases = new Map<BaseLayer, BaseLayer>();
+  const moveStroke = (stroke: Stroke): Stroke => {
+    let moved = strokes.get(stroke);
+    if (moved === undefined) {
+      moved = {
+        ...stroke,
+        points: mapPoints(
+          stroke,
+          (value) => value + dx,
+          (value) => value,
+        ),
+      };
+      strokes.set(stroke, moved);
+    }
+    return moved;
+  };
+  const moveBase = (base: BaseLayer): BaseLayer => {
+    let moved = bases.get(base);
+    if (moved === undefined) {
+      moved = { ...base, x: base.x + dx };
+      bases.set(base, moved);
+    }
+    return moved;
+  };
+  return (document) => {
+    let moved = documents.get(document);
+    if (moved === undefined) {
+      const movedStrokes = document.strokes.map(moveStroke);
+      moved =
+        document.base === undefined
+          ? { strokes: movedStrokes }
+          : { strokes: movedStrokes, base: moveBase(document.base) };
+      documents.set(document, moved);
+    }
+    return moved;
+  };
 }
 
 /**

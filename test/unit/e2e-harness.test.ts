@@ -6,7 +6,9 @@ import {
   outputDirectory,
   ownerMarker,
   prepareOutput,
+  sessionDisplays,
   setting,
+  workerDisplay,
 } from "../e2e/support/harness.ts";
 
 describe("setting", () => {
@@ -94,5 +96,30 @@ describe("prepareOutput", () => {
     expect(await readdir(path.join(directory, "screenshots"))).toEqual([
       "drawing.png",
     ]);
+  });
+});
+
+describe("sessionDisplays and workerDisplay", () => {
+  const four = ":99 :100 :101 :102";
+
+  it("gives each version a display of its own", () => {
+    const displays = sessionDisplays(four, 4);
+    expect(displays).toEqual([":99", ":100", ":101", ":102"]);
+    expect(workerDisplay("0-0", displays)).toBe(":99");
+    expect(workerDisplay("1-27", displays)).toBe(":100");
+    expect(workerDisplay("3-1", displays)).toBe(":102");
+    expect(workerDisplay("x-1", displays)).toBeUndefined();
+  });
+
+  it("refuses more versions than displays rather than share one", () => {
+    expect(() => sessionDisplays(four, 5)).toThrow(
+      "the end-to-end session has 4 displays, one for each Obsidian version, but OBSIDIAN_VERSIONS lists 5 versions",
+    );
+  });
+
+  it("leaves the display alone when the session started none", () => {
+    expect(sessionDisplays(undefined, 5)).toEqual([]);
+    expect(sessionDisplays(" ", 5)).toEqual([]);
+    expect(workerDisplay("0-0", [])).toBeUndefined();
   });
 });

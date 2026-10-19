@@ -76,7 +76,9 @@ Build first, then run them in one of two ways:
   suite under a virtual display. The image never contains Obsidian; the first
   run downloads it into the Docker volume `inkline-obsidian-cache`.
 - `npm run test:e2e` directly on a desktop with a display. On Linux without one,
-  `sh test/e2e/session.sh` starts Xvfb and herbstluftwm first, as CI does.
+  `sh test/e2e/session.sh` starts Xvfb and herbstluftwm first, as CI does, with
+  a display for each of up to four Obsidian versions, so that one version's
+  windows never resize another's; it refuses more versions.
 
 `OBSIDIAN_VERSIONS` picks the Obsidian versions as space-separated
 `appVersion/installerVersion` pairs. The default,
@@ -85,12 +87,12 @@ oldest installer that can run it, which has the oldest Electron a user can have,
 and the latest public release. Downloads outside Docker go to
 `.obsidian-cache/`.
 
-Screenshots and logs go to `test-results/e2e/`, which CI uploads as an artifact.
-`E2E_OUTPUT_DIR` picks another directory, which must be new, empty, or an
-earlier run's output: the harness marks its directory and refuses to clean any
-other. Screenshots are for review, never assertions: a test reads state,
-positions, or pixels back from Obsidian. Test vaults in `test/e2e/vaults/` and
-every drawing a test uses are synthetic.
+Screenshots and logs go to `test-results/e2e/`, which CI uploads as an artifact;
+a failed test leaves a screenshot named after it. `E2E_OUTPUT_DIR` picks another
+directory, which must be new, empty, or an earlier run's output: the harness
+marks its directory and refuses to clean any other. Screenshots are for review,
+never assertions: a test reads state, positions, or pixels back from Obsidian.
+Test vaults in `test/e2e/vaults/` and every drawing a test uses are synthetic.
 
 CI runs the end-to-end tests on Linux for every pull request, and the Docker
 image weekly and on request.
