@@ -54,5 +54,8 @@
     "edgedriver": false,
     "geckodriver": false,
     "classic-level": false
+  },
+  "dependencies": {
+    "perfect-freehand": "1.2.3"
   }
 }
