@@ -2331,6 +2331,33 @@ describe("The editor", function () {
       ).toBe("x");
     });
 
+    it("saves again without asking after a save that adopted the file failed", async function () {
+      await interruptInsertion();
+      await browser.executeObsidianCommand("inkline:insert-symbol");
+      await clickTop("Restore");
+      await draw([[0.5, 0.2]]);
+      await browser.executeObsidian(({ app }) => {
+        Reflect.set(
+          app.vault,
+          "inklineDelayed-modifyBinary",
+          Reflect.get(app.vault, "modifyBinary"),
+        );
+        app.vault.modifyBinary = () =>
+          Promise.reject(new Error("the disk is full"));
+      });
+      try {
+        await browser.keys(["Control", "s"]);
+        await waitForStatus("the disk is full");
+      } finally {
+        await restoreVault();
+      }
+      // The file still holds what the draft's first save wrote: the
+      // editor's own, not a change to ask about.
+      await browser.keys(["Control", "Enter"]);
+      await waitClosed();
+      expect(await strokeCount("001.ink.png")).toBe(2);
+    });
+
     it("sets aside a read of the file that a save overtook", async function () {
       await saveOne();
       await editFile("001.ink.png");
