@@ -1,5 +1,5 @@
-// PNG chunk reading and writing, enough to carry Inkline's record inside the
-// PNG a canvas encodes. Pixels are never decoded or encoded here.
+// PNG chunk reading and writing, enough to carry Inkline's record inside a
+// PNG, and the encoding of a symbol's pixels. Pixels are never decoded here.
 // See https://www.w3.org/TR/png-3/ for the format.
 
 /** The eight bytes every PNG file starts with. */
@@ -284,6 +284,115 @@ export function inflate(
     ...(onInput === undefined ? {} : { onInput }),
   });
 }
+/** The predictor of PNG's Paeth filter, from the bytes left, up, and up-left. */
+function paeth(left: number, up: number, upLeft: number): number {
+  const estimate = left + up - upLeft;
+  const toLeft = Math.abs(estimate - left);
+  const toUp = Math.abs(estimate - up);
+  const toUpLeft = Math.abs(estimate - upLeft);
+  if (toLeft <= toUp && toLeft <= toUpLeft) return left;
+  return toUp <= toUpLeft ? up : upLeft;
+}
+
+/** A row's bytes after PNG filter `type`, from the row before, if any. */
+function filterRow(
+  type: number,
+  row: Uint8Array,
+  above: Uint8Array | undefined,
+  output: Uint8Array,
+): void {
+  for (let index = 0; index < row.length; index++) {
+    const value = row[index] ?? 0;
+    const left = index >= 4 ? (row[index - 4] ?? 0) : 0;
+    const up = above?.[index] ?? 0;
+    const upLeft = index >= 4 ? (above?.[index - 4] ?? 0) : 0;
+    const predicted =
+      type === 1
+        ? left
+        : type === 2
+          ? up
+          : type === 3
+            ? Math.floor((left + up) / 2)
+            : type === 4
+              ? paeth(left, up, upLeft)
+              : 0;
+    output[index] = (value - predicted) & 0xff;
+  }
+}
+
+/** How small filtered bytes are, read as signed: smaller compresses better. */
+function filterCost(bytes: Uint8Array): number {
+  let cost = 0;
+  for (const byte of bytes) cost += byte < 128 ? byte : 256 - byte;
+  return cost;
+}
+
+/**
+ * Encodes 8-bit RGBA pixels, row by row, as a PNG: colour type 6, not
+ * interlaced, with no colour chunks. Each row takes the filter that leaves
+ * the smallest bytes, the usual guess at what compresses best, and the rows
+ * are compressed with zlib. Unlike a canvas's own encoder, this waits for
+ * nothing but the work itself.
+ */
+export async function encodeRgba(
+  width: number,
+  height: number,
+  data: Uint8Array | Uint8ClampedArray,
+): Promise<Uint8Array> {
+  if (
+    !Number.isInteger(width) ||
+    !Number.isInteger(height) ||
+    width < 1 ||
+    height < 1 ||
+    width > 0x7fffffff ||
+    height > 0x7fffffff
+  ) {
+    throw new PngError("invalid image size");
+  }
+  const stride = width * 4;
+  if (data.length !== stride * height) {
+    throw new PngError("pixel data does not match the size");
+  }
+  const pixels = new Uint8Array(data.buffer, data.byteOffset, data.length);
+  const filtered = new Uint8Array((stride + 1) * height);
+  const trial = new Uint8Array(stride);
+  for (let y = 0; y < height; y++) {
+    const row = pixels.subarray(y * stride, (y + 1) * stride);
+    const above =
+      y === 0 ? undefined : pixels.subarray((y - 1) * stride, y * stride);
+    let best = 0;
+    let bestCost = Number.POSITIVE_INFINITY;
+    for (let type = 0; type < 5; type++) {
+      filterRow(type, row, above, trial);
+      const cost = filterCost(trial);
+      if (cost < bestCost) {
+        best = type;
+        bestCost = cost;
+      }
+    }
+    const start = y * (stride + 1);
+    filtered[start] = best;
+    filterRow(
+      best,
+      row,
+      above,
+      filtered.subarray(start + 1, start + 1 + stride),
+    );
+  }
+  const header = new Uint8Array(13);
+  const view = new DataView(header.buffer);
+  view.setUint32(0, width);
+  view.setUint32(4, height);
+  // Bit depth 8, colour type 6 (RGBA), deflate, adaptive filtering, and no
+  // interlacing.
+  header.set([8, 6, 0, 0, 0], 8);
+  return writeChunks([
+    { type: "IHDR", data: header },
+    { type: "IDAT", data: await deflate(filtered) },
+    { type: "IEND", data: new Uint8Array(0) },
+  ]);
+}
+
 export interface InternationalText {
   /** 1 to 79 Latin-1 characters, without leading, trailing, or double spaces. */
   readonly keyword: string;

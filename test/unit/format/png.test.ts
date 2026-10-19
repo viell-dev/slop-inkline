@@ -5,6 +5,7 @@ import {
   decodeInternationalText,
   deflate,
   encodeInternationalText,
+  encodeRgba,
   imageHeader,
   inflate,
   isPng,
@@ -14,6 +15,7 @@ import {
   writeChunks,
   type Chunk,
 } from "../../../src/format/png.ts";
+import { inflateSync } from "node:zlib";
 import { blank, encodePng, header, pixelChunks } from "../../support/png.ts";
 
 const ascii = (text: string): Uint8Array =>
@@ -409,6 +411,95 @@ describe("uncompressed international text", () => {
     });
     await expect(decodeInternationalText(chunk, 4)).rejects.toThrow(
       "data expands beyond 4 bytes",
+    );
+  });
+});
+
+/** Undoes PNG's row filters, returning the pixels and each row's filter. */
+function unfilter(
+  raw: Uint8Array,
+  width: number,
+  height: number,
+): { pixels: Uint8Array; filters: number[] } {
+  const stride = width * 4;
+  const pixels = new Uint8Array(stride * height);
+  const filters: number[] = [];
+  for (let y = 0; y < height; y++) {
+    const type = raw[y * (stride + 1)] ?? -1;
+    filters.push(type);
+    for (let x = 0; x < stride; x++) {
+      const value = raw[y * (stride + 1) + 1 + x] ?? 0;
+      const left = x >= 4 ? (pixels[y * stride + x - 4] ?? 0) : 0;
+      const up = y > 0 ? (pixels[(y - 1) * stride + x] ?? 0) : 0;
+      const upLeft =
+        x >= 4 && y > 0 ? (pixels[(y - 1) * stride + x - 4] ?? 0) : 0;
+      const estimate = left + up - upLeft;
+      const [toLeft, toUp, toUpLeft] = [left, up, upLeft].map((byte) =>
+        Math.abs(estimate - byte),
+      );
+      const paeth =
+        (toLeft ?? 0) <= (toUp ?? 0) && (toLeft ?? 0) <= (toUpLeft ?? 0)
+          ? left
+          : (toUp ?? 0) <= (toUpLeft ?? 0)
+            ? up
+            : upLeft;
+      const predicted = [0, left, up, Math.floor((left + up) / 2), paeth][type];
+      if (predicted === undefined) throw new Error(`filter ${String(type)}`);
+      pixels[y * stride + x] = (value + predicted) & 0xff;
+    }
+  }
+  return { pixels, filters };
+}
+
+async function decoded(width: number, height: number, data: Uint8Array) {
+  const chunks = readChunks(await encodeRgba(width, height, data));
+  expect(chunks.map((chunk) => chunk.type)).toEqual(["IHDR", "IDAT", "IEND"]);
+  expect(imageHeader(chunks)).toEqual({
+    width,
+    height,
+    bitDepth: 8,
+    colorType: 6,
+    interlaced: false,
+  });
+  const raw = new Uint8Array(inflateSync(chunks[1]?.data ?? new Uint8Array()));
+  return unfilter(raw, width, height);
+}
+
+describe("encodeRgba", () => {
+  it("encodes pixels that decode back exactly", async () => {
+    let seed = 3;
+    for (const [width, height] of [
+      [1, 1],
+      [3, 2],
+      [17, 5],
+    ] as const) {
+      const data = Uint8Array.from({ length: width * height * 4 }, () => {
+        seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+        return seed >>> 24;
+      });
+      expect((await decoded(width, height, data)).pixels).toEqual(data);
+    }
+  });
+
+  it("picks the filter that leaves the smallest bytes for each row", async () => {
+    // Rows that grow along, then rows that repeat the one above.
+    const width = 16;
+    const data = new Uint8Array(width * 4 * 3);
+    for (let x = 0; x < width; x++) {
+      for (let y = 0; y < 3; y++)
+        data.fill(x * 9, (y * width + x) * 4, (y * width + x) * 4 + 4);
+    }
+    const { pixels, filters } = await decoded(width, 3, data);
+    expect(pixels).toEqual(data);
+    expect(filters).toEqual([1, 2, 2]);
+  });
+
+  it("refuses pixels that do not match the size", async () => {
+    await expect(encodeRgba(2, 2, new Uint8Array(15))).rejects.toThrow(
+      "pixel data does not match the size",
+    );
+    await expect(encodeRgba(0, 2, new Uint8Array(0))).rejects.toThrow(
+      "invalid image size",
     );
   });
 });
