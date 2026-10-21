@@ -83,11 +83,11 @@ gh workflow run release.yml --ref main -f version=<version> -f publish=true
 ```
 
 The `prepare` job repeats every step of the dry run. `publish` refuses a version
-whose tag already exists, attests the files' provenance, creates the release as
-a draft with the files and checksums, checks that the draft holds exactly those
-files, and then publishes it, which creates the tag on the commit that was
-built. Versions below 1.0.0 are marked as prereleases, and later ones as the
-latest release.
+whose tag already exists, unless it was published from exactly this build,
+attests the files' provenance, creates the release as a draft with the files and
+checksums, checks that the draft holds exactly those files for this commit, and
+then publishes it, which creates the tag on the commit that was built. Versions
+below 1.0.0 are marked as prereleases, and later ones as the latest release.
 
 ### When publishing fails part way
 
@@ -101,13 +101,16 @@ first left:
   another commit, is deleted and one is made again;
 - if GitHub cannot say whether the version's tag exists, the run stops without
   changing anything;
-- a version whose tag exists is refused, as its files are published and never
-  replaced: if the published release is wrong, release a new version.
+- a version published already from exactly this build and commit, as when
+  publishing reached GitHub but the run did not see it succeed, is left as it
+  is, and the run goes on to verify it;
+- any other version whose tag exists is refused, as its files are published and
+  never replaced: if the published release is wrong, release a new version.
 
 A draft left by a run that is not run again stays unpublished, and cannot be
 installed; the next run for that version deletes it, or remove it by hand with
-`gh release delete <version> --repo viell-dev/slop-inkline`, which deletes only
-the draft while the version has no tag.
+`gh release delete <version> --repo viell-dev/slop-inkline --yes`, which deletes
+only the draft while the version has no tag.
 
 `test/unit/publish.test.ts` runs these cases against a fake GitHub, failing at
 each step.
@@ -116,8 +119,7 @@ each step.
 
 The `verify publication` job downloads the published assets, checks them against
 `SHA256SUMS`, and verifies each file's attestation. If it fails because GitHub
-did not answer, rerun that job alone with `gh run rerun <run-id> --failed`,
-since a new run of the workflow refuses the version, whose tag now exists. If
+did not answer, rerun that job alone with `gh run rerun <run-id> --failed`. If
 the files or their attestations are wrong, the release is published and stays,
 so record the defect and release a new version. To check by hand:
 

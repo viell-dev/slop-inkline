@@ -150,10 +150,13 @@ const asUploaded = (built: readonly BuiltFile[]): Draft["assets"] =>
 class FakeGitHub implements ReleaseHost {
   tags = new Set<string>();
   drafts_ = new Map<string, Draft[]>();
-  published: number[] = [];
+  publishedIds: number[] = [];
   deleted: number[] = [];
   messages: string[] = [];
-  failOnce: "createDraft" | "publish" | "tagExists" | undefined;
+  /** Published releases, by version. */
+  releases = new Map<string, Draft>();
+  failOnce:
+    "createDraft" | "publish" | "tagExists" | "publishUnseen" | undefined;
   /** What the next draft holds, as uploaded, and the commit it targets. */
   uploads: Draft["assets"] = asUploaded(files);
   target = commit;
@@ -211,13 +214,24 @@ class FakeGitHub implements ReleaseHost {
       this.failOnce = undefined;
       return Promise.reject(new Error("the network went away"));
     }
+    const drafts = this.drafts_.get(version) ?? [];
+    const draft = drafts.find((candidate) => candidate.id === id);
+    if (draft !== undefined) this.releases.set(version, draft);
     this.drafts_.set(
       version,
-      (this.drafts_.get(version) ?? []).filter((draft) => draft.id !== id),
+      drafts.filter((candidate) => candidate.id !== id),
     );
     this.tags.add(version);
-    this.published.push(id);
+    this.publishedIds.push(id);
+    // GitHub published it, but the run did not hear back.
+    if (this.failOnce === "publishUnseen") {
+      this.failOnce = undefined;
+      return Promise.reject(new Error("the answer never came"));
+    }
     return Promise.resolve();
+  }
+  published(version: string): Promise<Draft | undefined> {
+    return Promise.resolve(this.releases.get(version));
   }
   log(message: string): void {
     this.messages.push(message);
@@ -228,7 +242,7 @@ describe("publishRelease", () => {
   it("publishes a new version with the built files", async () => {
     const github = new FakeGitHub();
     await publishRelease(github, "0.1.0", files, commit);
-    expect(github.published).toEqual([1]);
+    expect(github.publishedIds).toEqual([1]);
     expect(github.tags.has("0.1.0")).toBe(true);
     expect(github.deleted).toEqual([]);
   });
@@ -239,8 +253,44 @@ describe("publishRelease", () => {
     await expect(
       publishRelease(github, "0.1.0", files, commit),
     ).rejects.toThrow(/exists already; a correction needs a new version/);
-    expect(github.published).toEqual([]);
+    expect(github.publishedIds).toEqual([]);
     expect(github.drafts_.size).toBe(0);
+  });
+
+  it("goes on to verify a version that publishing reached, though the run did not hear back", async () => {
+    const github = new FakeGitHub();
+    github.failOnce = "publishUnseen";
+    await expect(
+      publishRelease(github, "0.1.0", files, commit),
+    ).rejects.toThrow("the answer never came");
+    expect(github.tags.has("0.1.0")).toBe(true);
+    await publishRelease(github, "0.1.0", files, commit);
+    expect(github.publishedIds).toEqual([1]);
+    expect(github.messages.at(-1)).toMatch(
+      /published already, from this build/,
+    );
+  });
+
+  it("refuses a published version of other bytes, or from another commit", async () => {
+    for (const release of [
+      {
+        id: 7,
+        target: commit,
+        assets: asUploaded([
+          { name: "main.js", sha256: "e".repeat(64) },
+          ...files.slice(1),
+        ]),
+      },
+      { id: 7, target: "f".repeat(40), assets: asUploaded(files) },
+    ]) {
+      const github = new FakeGitHub();
+      github.tags.add("0.1.0");
+      github.releases.set("0.1.0", release);
+      await expect(
+        publishRelease(github, "0.1.0", files, commit),
+      ).rejects.toThrow(/exists already; a correction needs a new version/);
+      expect(github.publishedIds).toEqual([]);
+    }
   });
 
   it("stops, changing nothing, when GitHub cannot say whether the tag exists", async () => {
@@ -249,7 +299,7 @@ describe("publishRelease", () => {
     await expect(
       publishRelease(github, "0.1.0", files, commit),
     ).rejects.toThrow("GitHub answered 502");
-    expect(github.published).toEqual([]);
+    expect(github.publishedIds).toEqual([]);
     expect(github.drafts_.size).toBe(0);
   });
 
@@ -263,7 +313,7 @@ describe("publishRelease", () => {
     expect(github.tags.size).toBe(0);
     await publishRelease(github, "0.1.0", files, commit);
     expect(github.deleted).toEqual([1]);
-    expect(github.published).toEqual([2]);
+    expect(github.publishedIds).toEqual([2]);
   });
 
   it("runs again after publishing failed, publishing the same draft", async () => {
@@ -276,7 +326,7 @@ describe("publishRelease", () => {
     expect(github.tags.size).toBe(0);
     await publishRelease(github, "0.1.0", files, commit);
     expect(github.deleted).toEqual([]);
-    expect(github.published).toEqual([1]);
+    expect(github.publishedIds).toEqual([1]);
     expect(github.messages[0]).toMatch(
       /earlier run left, which holds this build/,
     );
@@ -297,7 +347,7 @@ describe("publishRelease", () => {
       const id = github.leave("0.1.0", left);
       await publishRelease(github, "0.1.0", files, commit);
       expect(github.deleted).toEqual([id]);
-      expect(github.published).toEqual([1]);
+      expect(github.publishedIds).toEqual([1]);
       expect(github.messages[0]).toContain(`Deleting the draft ${String(id)}`);
     }
   });
@@ -314,7 +364,7 @@ describe("publishRelease", () => {
     });
     await publishRelease(github, "0.1.0", files, commit);
     expect(github.deleted).toEqual([good, partial]);
-    expect(github.published).toEqual([1]);
+    expect(github.publishedIds).toEqual([1]);
   });
 
   it("leaves a draft that is not the build unpublished, and says what it holds", async () => {
@@ -327,7 +377,7 @@ describe("publishRelease", () => {
     ).rejects.toThrow(
       /is not the build of c+: GitHub has draft 1 for c+, with .*styles\.css \(no digest\).* It stays unpublished\./,
     );
-    expect(github.published).toEqual([]);
+    expect(github.publishedIds).toEqual([]);
     expect(github.tags.size).toBe(0);
   });
 
@@ -337,7 +387,7 @@ describe("publishRelease", () => {
     await expect(
       publishRelease(github, "0.1.0", files, commit),
     ).rejects.toThrow(/is not the build of c+/);
-    expect(github.published).toEqual([]);
+    expect(github.publishedIds).toEqual([]);
   });
 });
 

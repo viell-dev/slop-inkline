@@ -137,6 +137,23 @@ async function builtFiles(directory: string): Promise<BuiltFile[]> {
   ];
 }
 
+/** A release's files, by name and the digest GitHub gives each. */
+function assetsOf(release: Record<string, unknown>): Draft["assets"] {
+  return (Array.isArray(release.assets) ? release.assets : [])
+    .map((asset: unknown) => record(asset))
+    .flatMap((asset) =>
+      typeof asset?.name === "string"
+        ? [
+            {
+              name: asset.name,
+              digest:
+                typeof asset.digest === "string" ? asset.digest : undefined,
+            },
+          ]
+        : [],
+    );
+}
+
 function host(
   directory: string,
   files: readonly BuiltFile[],
@@ -177,21 +194,7 @@ function host(
         const fields = record(release);
         if (fields?.draft !== true || fields.tag_name !== version) continue;
         if (typeof fields.id !== "number") continue;
-        const assets = (Array.isArray(fields.assets) ? fields.assets : [])
-          .map((asset: unknown) => record(asset))
-          .flatMap((asset) =>
-            typeof asset?.name === "string"
-              ? [
-                  {
-                    name: asset.name,
-                    digest:
-                      typeof asset.digest === "string"
-                        ? asset.digest
-                        : undefined,
-                  },
-                ]
-              : [],
-          );
+        const assets = assetsOf(fields);
         drafts.push({
           id: fields.id,
           target:
@@ -253,6 +256,48 @@ function host(
       ]);
       if (published === undefined) fail(`could not publish ${version}`);
       return Promise.resolve();
+    },
+    published: (version) => {
+      const found = ghRun([
+        "api",
+        `repos/${repository}/releases/tags/${version}`,
+      ]);
+      if (found.status !== 0) {
+        if (found.stderr.includes("(HTTP 404)")) {
+          return Promise.resolve(undefined);
+        }
+        return Promise.reject(
+          new Error(
+            `GitHub could not say what ${version} holds: ${found.stderr.trim()}`,
+          ),
+        );
+      }
+      const release = record(JSON.parse(found.stdout));
+      // The commit the tag names, which a lightweight or annotated tag
+      // resolves to alike.
+      const tagged = ghRun([
+        "api",
+        `repos/${repository}/commits/${version}`,
+        "--jq",
+        ".sha",
+      ]);
+      if (release === undefined || typeof release.id !== "number") {
+        return Promise.reject(
+          new Error(`GitHub gave no release for ${version}`),
+        );
+      }
+      if (tagged.status !== 0) {
+        return Promise.reject(
+          new Error(
+            `GitHub could not say which commit ${version} tags: ${tagged.stderr.trim()}`,
+          ),
+        );
+      }
+      return Promise.resolve({
+        id: release.id,
+        target: tagged.stdout.trim(),
+        assets: assetsOf(release),
+      });
     },
     log: (message) => {
       console.log(message);

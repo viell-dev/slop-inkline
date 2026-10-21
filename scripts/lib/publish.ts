@@ -135,6 +135,11 @@ export interface ReleaseHost {
   createDraft(version: string): Promise<void>;
   /** Publishes the draft `id`, which creates the tag on its commit. */
   publish(id: number, version: string): Promise<void>;
+  /**
+   * The published release of `version`, with the commit its tag names, or
+   * undefined if there is none, only a tag.
+   */
+  published(version: string): Promise<Draft | undefined>;
   log(message: string): void;
 }
 
@@ -161,7 +166,9 @@ function described(draft: Draft): string {
 
 /**
  * Publishes `version` with `files`, built from `commit`, so that a run that
- * failed part way can simply run again: a version whose tag exists is
+ * failed part way can simply run again: a version already published from
+ * exactly this build and commit is left as it is, and the run succeeds, so
+ * that the release is verified; any other version whose tag exists is
  * refused, as published files are never replaced; a single draft left by an
  * earlier run that holds exactly these files for this commit is published as
  * it is; any other drafts for the version, which nobody can have installed,
@@ -176,6 +183,13 @@ export async function publishRelease(
   commit: string,
 ): Promise<void> {
   if (await host.tagExists(version)) {
+    // A run whose publishing reached GitHub, though the run did not see it
+    // succeed, is done: running it again goes on to verify the release.
+    const release = await host.published(version);
+    if (release?.target === commit && holdsBuild(release, files)) {
+      host.log(`${version} is published already, from this build.`);
+      return;
+    }
     throw new Error(
       `The tag ${version} exists already; a correction needs a new version.`,
     );
