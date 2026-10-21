@@ -30,9 +30,10 @@ symbols show as the plain images they are.
   embed gets the class `inkline-symbol-embed`, and takes the drop in place of
   the image. The resize handle Obsidian puts on an image embed there is hidden,
   as it is larger than a symbol at text size, and so are the buttons it shows on
-  an image 80 pixels or wider; the image's context menu still zooms in and shows
-  the source. A drag that starts on a symbol is Obsidian's drag of an image,
-  which puts a copy of its embed where it ends.
+  an image 80 pixels or wider, Zoom in and Edit this block; on 1.14.4, a second
+  click on a selected image still opens Obsidian's image viewer. A drag that
+  starts on a symbol is Obsidian's drag of an image, which puts a copy of its
+  embed where it ends.
 - The attribute `aria-label` with a name, which screen readers read as the
   image's name and Obsidian shows as a tooltip, above the image, once the
   pointer is on it: the text the embed's author wrote for the image, as a wiki

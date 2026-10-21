@@ -59,11 +59,16 @@ const placeMark = "data-inkline-placed";
 /**
  * The text an embed's author wrote for its image, as an alias or alt text,
  * if any: not what Obsidian puts there of itself, which is the link as
- * written, ending in `.ink.png`, or a size, as `24` or `24x36`.
+ * written, ending in `.ink.png`, or followed by the heading or block it
+ * names, as `x.ink.png > top`, or a size, as `24` or `24x36`.
  */
 function authoredText(image: HTMLImageElement): string | undefined {
   const alt = image.getAttribute("alt")?.trim() ?? "";
-  if (alt === "" || /\.ink\.png$/i.test(alt) || /^\d+(?:x\d+)?$/.test(alt)) {
+  if (
+    alt === "" ||
+    /\.ink\.png(?:$| > )/i.test(alt) ||
+    /^\d+(?:x\d+)?$/.test(alt)
+  ) {
     return undefined;
   }
   return alt;
@@ -97,7 +102,10 @@ function unnameImage(image: HTMLImageElement): void {
   }
   image.removeAttribute(nameMark);
   if (image.hasAttribute(placeMark)) {
-    image.removeAttribute(placeAttribute);
+    // Unless it was changed since.
+    if (image.getAttribute(placeAttribute) === "top") {
+      image.removeAttribute(placeAttribute);
+    }
     image.removeAttribute(placeMark);
   }
 }
@@ -212,7 +220,9 @@ export class SymbolRenderer {
       subtree: true,
       childList: true,
       attributes: true,
-      attributeFilter: ["src", "width", "height"],
+      // The address and size, and the alt text, which Live Preview changes
+      // in place as an alias is edited, and which a name can come from.
+      attributeFilter: ["src", "width", "height", "alt"],
     });
     this.#observers.set(doc, observer);
     tagWithin(doc.body, this.#vault);

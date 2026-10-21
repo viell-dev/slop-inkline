@@ -138,8 +138,7 @@ img.inkline-symbol:not([width], [height]) {
  * Live Preview's resize handle is larger than a symbol at text size, and
  * would take the pointer over all of it: a symbol is sized by the text, or
  * by its link (#37). Its buttons, which Obsidian shows on an image 80 pixels
- * or wider, would cover a wide symbol the same way; its context menu still
- * zooms in and shows the source.
+ * or wider, would cover a wide symbol the same way.
  */
 .cm-content .image-embed.inkline-symbol-embed .image-resize-corner,
 .cm-content .image-embed.inkline-symbol-embed .embed-actions {

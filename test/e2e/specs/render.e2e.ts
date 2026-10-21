@@ -538,6 +538,8 @@ describe("Symbols in notes", function () {
             "",
             "Described ![[tower one.ink.png|a tall tower]] and ![the gate](Glyphs/tower%20one.ink.png), sized ![[tower one.ink.png|24]].",
             "",
+            "A heading's ![[tower one.ink.png#top]] too.",
+            "",
           ].join("\n"),
         );
         await app.vault.create(
@@ -612,6 +614,8 @@ describe("Symbols in notes", function () {
       "a tall tower",
       "the gate",
       "tower one",
+      // Obsidian's own text for a link to a heading, not the author's.
+      "tower one",
     ];
     for (const mode of ["preview", "source"] as const) {
       await open("Names.md", mode);
@@ -648,10 +652,34 @@ describe("Symbols in notes", function () {
       false,
       false,
       false,
+      false,
     ]);
     expect(
       covers.filter((_, index) => index !== 2).map((cover) => cover.reached),
-    ).toEqual([true, true, true, true, true]);
+    ).toEqual([true, true, true, true, true, true]);
+    // Live Preview changes an image's alt text in place as its alias is
+    // edited, and the name follows.
+    await browser.executeObsidian(({ app, obsidian }) => {
+      const editor = app.workspace.getActiveViewOfType(
+        obsidian.MarkdownView,
+      )?.editor;
+      if (editor === undefined) throw new Error("no editor");
+      const at = editor.getValue().indexOf("a tall tower");
+      editor.replaceRange(
+        "a short tower",
+        editor.offsetToPos(at),
+        editor.offsetToPos(at + "a tall tower".length),
+      );
+    });
+    await waitForNames("source", [
+      "tower one",
+      "tower one",
+      null,
+      "a short tower",
+      "the gate",
+      "tower one",
+      "tower one",
+    ]);
     // Nor on the buttons Obsidian gives an image 80 pixels or wider, which
     // it shows on a symbol that wide opened straight in Live Preview.
     await open("Wide.md", "source");
@@ -700,8 +728,9 @@ describe("Symbols in notes", function () {
       "tower two",
       "tower two",
       null,
-      "a tall tower",
+      "a short tower",
       "the gate",
+      "tower two",
       "tower two",
     ]);
   });
