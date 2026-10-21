@@ -260,7 +260,8 @@ describe("Symbols in notes", function () {
         (selector, address) => {
           const image = activeDocument.querySelector(selector);
           if (!image?.instanceOf(HTMLImageElement)) throw new Error("no image");
-          if (address !== undefined) image.setAttribute("src", address);
+          // WebDriver hands an undefined argument over as null.
+          if (typeof address === "string") image.setAttribute("src", address);
           return {
             src: image.src,
             mask: image.style.getPropertyValue("--inkline-mask"),

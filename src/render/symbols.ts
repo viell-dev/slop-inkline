@@ -91,7 +91,8 @@ function sized(image: HTMLImageElement): boolean {
  * is not one any more, keeping its mask and drop current.
  */
 export function tagImage(image: HTMLImageElement): void {
-  const src = image.currentSrc || image.src;
+  // The attribute's address, which currentSrc follows only once it loads.
+  const src = image.src || image.currentSrc;
   if (!isSymbolUrl(src)) {
     untagImage(image);
     return;
