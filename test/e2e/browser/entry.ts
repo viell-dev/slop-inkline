@@ -11,3 +11,5 @@ export * as geometry from "../../../src/ink/geometry.ts";
 export * as pixels from "../../../src/ink/pixels.ts";
 export * as render from "../../../src/ink/render.ts";
 export * as drafts from "../../../src/editor/drafts.ts";
+export * as reference from "../../../src/editor/reference.ts";
+export * as pictures from "./pictures.ts";
