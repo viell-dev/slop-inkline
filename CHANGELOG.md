@@ -56,8 +56,13 @@ section is also its
   puts its embed in place of what was typed; Esc closes the list, and what you
   type after it stays text. Code and front matter show no list. **Insert
   existing symbol**, a command, opens the same list to search.
-- **Edit symbol**, in a symbol file's menu, which opens it in the editor again
-  with every stroke, so that nothing is lost by editing.
+- **Edit symbol** opens a symbol in the editor again with every stroke, so that
+  nothing is lost by editing. It is in a symbol file's menu, and in a note: in
+  Live Preview's menu for a symbol's picture, except in callouts and tables; in
+  the menu a right-click on a symbol shows in Reading view, embedded notes, and
+  popout windows, where Obsidian opened its image viewer instead; in the
+  editor's menu on an embed's text; and as a command with the cursor on a
+  symbol's embed, outside inline code, fenced code, and front matter.
 - **Names:** the editor's title is the symbol's name, in any script, which you
   can type when you draw it and change whenever your reading of it changes.
   Characters a file name cannot hold on some system, or that would break a link,

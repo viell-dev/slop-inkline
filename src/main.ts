@@ -2,6 +2,7 @@ import { MarkdownView, Notice, Platform, Plugin, TFile } from "obsidian";
 import { DraftStore } from "./editor/drafts.ts";
 import type { InkEditorModal } from "./editor/modal.ts";
 import { isInkPath } from "./format/ink-file.ts";
+import { showSymbolMenu, symbolAt, symbolOfImage } from "./notes/entries.ts";
 import { defaultTrigger } from "./notes/search.ts";
 import { SymbolSearch, SymbolSuggest } from "./notes/suggest.ts";
 import { editSymbol, insertSymbol, type EditorHost } from "./notes/symbols.ts";
@@ -12,6 +13,8 @@ export default class InklinePlugin extends Plugin {
   readonly #editors = new Set<InkEditorModal>();
   /** Shows symbols in notes as characters, in every window. */
   readonly #renderer = new SymbolRenderer(Platform.resourcePathPrefix);
+  /** The documents whose right-clicks on symbols Inkline answers. */
+  readonly #menuDocuments = new WeakSet<Document>();
   #drafts: DraftStore | undefined;
   #loaded = false;
 
@@ -32,9 +35,11 @@ export default class InklinePlugin extends Plugin {
   override onload(): void {
     this.#loaded = true;
     this.#renderer.watch(document);
+    this.#offerMenus(document);
     this.registerEvent(
       this.app.workspace.on("window-open", (win) => {
         this.#renderer.watch(win.doc);
+        this.#offerMenus(win.doc);
       }),
     );
     this.registerEvent(
@@ -46,6 +51,7 @@ export default class InklinePlugin extends Plugin {
     this.app.workspace.onLayoutReady(() => {
       this.app.workspace.iterateAllLeaves((leaf) => {
         this.#renderer.watch(leaf.view.containerEl.doc);
+        this.#offerMenus(leaf.view.containerEl.doc);
       });
     });
     this.addCommand({
@@ -56,6 +62,24 @@ export default class InklinePlugin extends Plugin {
         // Only where there is a cursor to insert at: not in Reading view.
         if (!view?.file || view.getMode() !== "source") return false;
         if (!checking) insertSymbol(this.#host, view);
+        return true;
+      },
+    });
+    this.addCommand({
+      id: "edit-symbol-at-cursor",
+      // Offered only with the cursor on a symbol embed, which it edits.
+      name: "Edit symbol",
+      editorCheckCallback: (checking, editor, info) => {
+        const note = info.file;
+        if (note === null) return false;
+        const file = symbolAt(
+          this.app,
+          editor.getValue(),
+          editor.posToOffset(editor.getCursor()),
+          note.path,
+        );
+        if (file === undefined) return false;
+        if (!checking) void this.editSymbol(file);
         return true;
       },
     });
@@ -89,6 +113,9 @@ export default class InklinePlugin extends Plugin {
         this.#drafts.rename(oldPath, file.path);
       }),
     );
+    // A symbol file's menu: in the file explorer, on its tab, and wherever
+    // Obsidian shows a link's file menu, as in the editor's menu on an
+    // embed's text and its image's menu in Live Preview.
     this.registerEvent(
       this.app.workspace.on("file-menu", (menu, file) => {
         if (!(file instanceof TFile) || !isInkPath(file.path)) return;
@@ -113,6 +140,56 @@ export default class InklinePlugin extends Plugin {
     // Symbols show as the plain images they are once Inkline is off.
     this.#renderer.stop();
     for (const editor of [...this.#editors]) editor.dispose();
+  }
+
+  /**
+   * Shows a symbol's menu where a symbol in a note is right-clicked and
+   * Obsidian shows no menu for an image: in rendered notes, as in Reading
+   * view and embedded notes, and in Live Preview if nothing answered. Where
+   * Obsidian shows one, as in Live Preview, its menu holds Edit symbol
+   * already. Once for each window's document.
+   */
+  #offerMenus(doc: Document): void {
+    if (this.#menuDocuments.has(doc)) return;
+    this.#menuDocuments.add(doc);
+    /** Shows the menu if `event` is on a symbol, rendered or not as `inNote`. */
+    const offer = (event: MouseEvent, inNote: boolean) => {
+      if (event.defaultPrevented) return;
+      // Not `instanceof`: a popout window's notes are drawn with the main
+      // window's classes, and its own elements have the popout's.
+      const image = event.targetNode;
+      if (
+        image?.instanceOf(HTMLImageElement) !== true ||
+        !image.hasClass("inkline-symbol")
+      ) {
+        return;
+      }
+      // In a note only, not in a list of symbols, as type to insert shows.
+      const note = image.closest(
+        ".markdown-preview-view, .markdown-source-view",
+      );
+      if (note?.hasClass("markdown-preview-view") !== inNote) return;
+      const file = symbolOfImage(this.app, image);
+      if (file === undefined) return;
+      event.preventDefault();
+      showSymbolMenu(this.app, file, image, event);
+    };
+    // A rendered note opens Obsidian's image viewer on a right-click unless
+    // its default is prevented by then, so Inkline answers a symbol's
+    // right-click there before the note sees it.
+    const capture = { capture: true };
+    this.registerDomEvent(
+      doc,
+      "contextmenu",
+      (event) => {
+        offer(event, true);
+      },
+      capture,
+    );
+    // Elsewhere Obsidian's own menu for an image comes first.
+    this.registerDomEvent(doc, "contextmenu", (event) => {
+      offer(event, false);
+    });
   }
 
   /** Opens the editor for a symbol file; failures show a notice. */
