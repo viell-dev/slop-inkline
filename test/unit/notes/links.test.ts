@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   embedAt,
+  insertionAt,
   paragraphLinks,
   outsideLinks,
   textLinks,
@@ -169,11 +170,58 @@ describe("links as Obsidian reads them", () => {
     ]);
   });
 
+  it("finds addresses after any character, in any case, and email ones", () => {
+    expect(
+      spans(
+        '"https://example.com/path" xhttps://no.example Https://Example.com foo.www.example.com',
+      ),
+    ).toEqual([
+      ["https://example.com/path", false, "https://example.com/path"],
+      ["https://no.example", false, "https://no.example"],
+      ["Https://Example.com", false, "Https://Example.com"],
+      ["www.example.com", false, "www.example.com"],
+    ]);
+    expect(
+      spans("mailto:a@example.com, b.c@example.org and <d@example.net>"),
+    ).toEqual([
+      ["mailto:a@example.com", false, "mailto:a@example.com"],
+      ["b.c@example.org", false, "b.c@example.org"],
+      ["<d@example.net>", false, "d@example.net"],
+    ]);
+  });
+
+  it("ends an address where Obsidian does, and needs a dot in its host", () => {
+    expect(spans("See https://x.y/a; then")).toEqual([
+      ["https://x.y/a", false, "https://x.y/a"],
+    ]);
+    expect(spans("https://x www.x www.example https://.")).toEqual([]);
+  });
+
+  it("reads a tab-only line as text, but a line of spaces as blank", () => {
+    expect(spans("[a\n\t\nb](c)")).toEqual([["[a\n\t\nb](c)", false, "c"]]);
+    expect(spans("[a\n  \nb](c)")).toEqual([]);
+  });
+
+  it("puts a space before what follows a bare address", () => {
+    const text = "See https://example.com/path now, [[gate]].";
+    // Inside the address, at its end, and at its start.
+    expect(insertionAt(text, 10)).toEqual({ at: 28, before: " " });
+    expect(insertionAt(text, 28)).toEqual({ at: 28, before: " " });
+    expect(insertionAt(text, 4)).toEqual({ at: 4, before: "" });
+    // A link has its own end.
+    expect(insertionAt(text, 37)).toEqual({ at: 42, before: "" });
+  });
+
   it("reads a long line of unclosed brackets in time", () => {
     const started = performance.now();
     expect(textLinks("[".repeat(20000))).toEqual([]);
     expect(textLinks("[[".repeat(10000))).toEqual([]);
     expect(textLinks(`${"[".repeat(20000)}]`)).toEqual([]);
+    // Links nested in links, around one embed, and an address before many
+    // closing parentheses.
+    const nested = `${"[".repeat(5000)}![](x.png)${"](b)".repeat(5000)}`;
+    expect(textLinks(nested).length).toBeGreaterThan(0);
+    expect(textLinks(`https://x.y/a${")".repeat(5000)}`)).toHaveLength(1);
     expect(performance.now() - started).toBeLessThan(200);
   });
 });

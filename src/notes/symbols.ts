@@ -27,7 +27,7 @@ import {
 } from "../editor/modal.ts";
 import { visibleWidth } from "../editor/view.ts";
 import { capturePoint, findPoint, type InsertionPoint } from "./insertion.ts";
-import { outsideLinks } from "./links.ts";
+import { insertionAt } from "./links.ts";
 import { embedFromLink, nextNumberName, symbolStem } from "./names.ts";
 
 /** What the plugin lends the editors it opens. */
@@ -120,7 +120,8 @@ function appendedNotice(file: TFile): void {
  * surrounding text: through a live editor of the note when there is one,
  * since it may hold changes not yet on disk, otherwise into the note's file.
  * A position inside a link or embed moves to just past it, so that the embed
- * never splits one. When the position cannot be found, the embed goes at the
+ * never splits one, with a space first after a bare web address, which only
+ * a space ends. When the position cannot be found, the embed goes at the
  * end of the note, and a notice says so. Returns the point just after the
  * embed, where the next symbol's embed goes.
  */
@@ -136,10 +137,11 @@ async function insertEmbed(
     const text = editor.getValue();
     const found = findPoint(text, point);
     // Never inside a link or embed, which the embed would split.
-    const at = found === undefined ? undefined : outsideLinks(text, found);
-    if (at !== undefined) {
-      editor.replaceRange(embed, editor.offsetToPos(at));
-      return capturePoint(editor.getValue(), at + embed.length);
+    const place = found === undefined ? undefined : insertionAt(text, found);
+    if (place !== undefined) {
+      const inserted = place.before + embed;
+      editor.replaceRange(inserted, editor.offsetToPos(place.at));
+      return capturePoint(editor.getValue(), place.at + inserted.length);
     }
     const gap = text === "" || text.endsWith("\n") ? "" : "\n";
     editor.replaceRange(`${gap}${embed}\n`, editor.offsetToPos(text.length));
@@ -154,10 +156,11 @@ async function insertEmbed(
   };
   await app.vault.process(file, (text) => {
     const found = findPoint(text, point);
-    const at = found === undefined ? undefined : outsideLinks(text, found);
-    if (at !== undefined) {
-      const inserted = text.slice(0, at) + embed + text.slice(at);
-      outcome.after = capturePoint(inserted, at + embed.length);
+    const place = found === undefined ? undefined : insertionAt(text, found);
+    if (place !== undefined) {
+      const { at, before } = place;
+      const inserted = text.slice(0, at) + before + embed + text.slice(at);
+      outcome.after = capturePoint(inserted, at + before.length + embed.length);
       return inserted;
     }
     outcome.appended = true;

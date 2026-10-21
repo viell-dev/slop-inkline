@@ -19,6 +19,11 @@ export interface LinkSpan {
    * decoded as Obsidian decodes them, or an autolink's address.
    */
   readonly target: string;
+  /**
+   * Whether it is a bare web or mail address, which has no mark at its end:
+   * only a space ends one.
+   */
+  readonly bare?: boolean;
 }
 
 /** The end of the code span that starts at `at`, or undefined if it never ends. */
@@ -178,36 +183,90 @@ function destination(
   return { url, end: index + 1 };
 }
 
-/** An autolink in angle brackets, `<https://…>`, from just past its `<`. */
-const autolink = /[A-Za-z][A-Za-z0-9+.-]{1,31}:[^\s<>]*>/y;
+/**
+ * An autolink in angle brackets, from just past its `<`: an address with a
+ * scheme, `<https://…>`, or an email address, `<a@example.com>`.
+ */
+const autolink =
+  /(?:[A-Za-z][A-Za-z0-9+.-]{1,31}:[^\s<>]*|[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)>/y;
 
-/** A bare web address, as Obsidian shows one as a link. */
-const bareAddress = /(?:https?:\/\/|www\.)[^\s<]+/y;
+/**
+ * The start of a bare web or mail address, which Obsidian shows as a link
+ * after any character, in any letter case.
+ */
+const addressStart = /(?:https?:\/\/|mailto:|www\.)/iy;
 
-/** What may stand just before a bare web address. */
-function beforeAddress(char: string | undefined): boolean {
-  return char === undefined || /[\s*_~(]/.test(char);
+/** The characters of a bare address: up to a space or a `<`. */
+const addressBody = /[^\s<]+/y;
+
+/** A bare email address, `a@example.com`. */
+const emailAddress = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/y;
+
+/** Whether `char` may be part of an email address's name, before its `@`. */
+function emailName(char: string | undefined): boolean {
+  return char !== undefined && /[A-Za-z0-9._%+-]/.test(char);
 }
 
 /**
  * `address` without the punctuation that ends a sentence after it rather
- * than belonging to it: trailing `?!.,:*_~'"`, and a `)` that opens nothing.
+ * than belonging to it: trailing `?!.,:;*_~'"`, and a `)` that opens
+ * nothing.
  */
 function trimmedAddress(address: string): string {
+  let opens = 0;
+  let closes = 0;
+  for (const char of address) {
+    if (char === "(") opens++;
+    else if (char === ")") closes++;
+  }
   let end = address.length;
   for (;;) {
     const last = address[end - 1] ?? "";
-    if ("?!.,:*_~'\"".includes(last)) {
+    if ("?!.,:;*_~'\"".includes(last)) {
       end--;
-      continue;
-    }
-    const kept = address.slice(0, end);
-    if (last === ")" && kept.split(")").length > kept.split("(").length) {
+    } else if (last === ")" && closes > opens) {
       end--;
-      continue;
+      closes--;
+    } else {
+      return address.slice(0, end);
     }
-    return kept;
   }
+}
+
+/**
+ * Whether `address`, a bare one, names a host as Obsidian requires before
+ * it shows a link: one with a dot, as `https://x.y` has and `https://x` has
+ * not, or for one that starts `www.`, a dot after it.
+ */
+function hostOf(address: string): boolean {
+  const lower = address.toLowerCase();
+  if (lower.startsWith("mailto:")) return address.includes("@");
+  const www = lower.startsWith("www.");
+  const rest = www ? address : address.slice(address.indexOf("://") + 3);
+  const host = rest.split(/[/?#]/, 1)[0] ?? "";
+  const labels = host.split(".");
+  return labels.length >= (www ? 3 : 2) && labels.every((label) => label);
+}
+
+/** The bare address that starts at `index` in `text`, if one does. */
+function bareAddressAt(text: string, index: number): string | undefined {
+  const first = text[index]?.toLowerCase();
+  addressStart.lastIndex = index;
+  if (
+    (first === "h" || first === "m" || first === "w") &&
+    addressStart.test(text)
+  ) {
+    addressBody.lastIndex = index;
+    const body = addressBody.exec(text)?.[0] ?? "";
+    const address = trimmedAddress(body);
+    return hostOf(address) ? address : undefined;
+  }
+  if (emailName(text[index]) && !emailName(text[index - 1])) {
+    emailAddress.lastIndex = index;
+    const found = emailAddress.exec(text);
+    if (found !== null) return trimmedAddress(found[0]);
+  }
+  return undefined;
 }
 
 /**
@@ -223,8 +282,17 @@ export function paragraphLinks(text: string): LinkSpan[] {
     open: forward(text, "[["),
     lineEnd: forward(text, "\n"),
   };
+  // The Markdown link whose text the scan is reading, where only embeds are
+  // found, as an image that links; at the text's end the scan goes on past
+  // the link. Read in the same pass, the text costs nothing more.
+  let within: { textEnd: number; end: number } | undefined;
   let index = 0;
   while (index < text.length) {
+    if (within !== undefined && index >= within.textEnd) {
+      index = Math.max(index, within.end);
+      within = undefined;
+      continue;
+    }
     const char = text[index];
     if (char === "\\") {
       // An escaped character is never syntax.
@@ -233,14 +301,14 @@ export function paragraphLinks(text: string): LinkSpan[] {
     }
     if (char === "`") {
       const end = codeSpanEnd(text, index);
-      if (end === undefined) {
+      if (end === undefined || (within !== undefined && end > within.textEnd)) {
         while (text[index] === "`") index++;
       } else {
         index = end;
       }
       continue;
     }
-    if (char === "<") {
+    if (within === undefined && char === "<") {
       autolink.lastIndex = index + 1;
       const found = autolink.exec(text);
       if (found !== null) {
@@ -255,25 +323,22 @@ export function paragraphLinks(text: string): LinkSpan[] {
         continue;
       }
     }
-    if ((char === "h" || char === "w") && beforeAddress(text[index - 1])) {
-      bareAddress.lastIndex = index;
-      const found = bareAddress.exec(text);
-      if (found !== null) {
-        const address = trimmedAddress(found[0]);
-        if (address.length > 0) {
-          spans.push({
-            start: index,
-            end: index + address.length,
-            embed: false,
-            target: address,
-          });
-          index += address.length;
-          continue;
-        }
+    if (within === undefined) {
+      const address = bareAddressAt(text, index);
+      if (address !== undefined && address.length > 0) {
+        spans.push({
+          start: index,
+          end: index + address.length,
+          embed: false,
+          target: address,
+          bare: true,
+        });
+        index += address.length;
+        continue;
       }
     }
     const embed = char === "!" && text[index + 1] === "[";
-    if (char !== "[" && !embed) {
+    if (!embed && (char !== "[" || within !== undefined)) {
       index++;
       continue;
     }
@@ -284,16 +349,10 @@ export function paragraphLinks(text: string): LinkSpan[] {
       continue;
     }
     spans.push({ start: index, end: found.end, embed, target: found.target });
-    // An embed inside a Markdown link's text, as an image that links.
-    if (found.text !== undefined) {
-      for (const inner of paragraphLinks(found.text.value)) {
-        if (!inner.embed) continue;
-        spans.push({
-          ...inner,
-          start: inner.start + found.text.offset,
-          end: inner.end + found.text.offset,
-        });
-      }
+    if (within === undefined && found.textEnd !== undefined) {
+      within = { textEnd: found.textEnd, end: found.end };
+      index = bracket + 1;
+      continue;
     }
     index = found.end;
   }
@@ -301,22 +360,16 @@ export function paragraphLinks(text: string): LinkSpan[] {
 }
 
 /**
- * The link whose `[` is at `bracket`: where it ends, what it leads to, and a
- * Markdown link's text, with its offset. Undefined where Obsidian reads no
- * link, as for an empty one.
+ * The link whose `[` is at `bracket`: where it ends, what it leads to, and
+ * for a Markdown link, the `]` that ends its text. Undefined where Obsidian
+ * reads no link, as for an empty one.
  */
 function linkAt(
   text: string,
   bracket: number,
   brackets: ReadonlyMap<number, number>,
   find: Finders,
-):
-  | {
-      end: number;
-      target: string;
-      text?: { value: string; offset: number };
-    }
-  | undefined {
+): { end: number; target: string; textEnd?: number } | undefined {
   if (text[bracket + 1] === "[") {
     // A wiki link, on one line, holding no other.
     const close = find.close(bracket + 2);
@@ -339,24 +392,31 @@ function linkAt(
   const close = brackets.get(bracket);
   if (close === undefined || text[close + 1] !== "(") return undefined;
   const found = destination(text, close + 1);
-  if (found === undefined) return undefined;
-  if (found.url === "") return undefined;
+  if (found === undefined || found.url === "") return undefined;
   return {
     end: found.end,
     target: withoutSubpath(decoded(unescaped(found.url))),
-    text: { value: text.slice(bracket + 1, close), offset: bracket + 1 },
+    textEnd: close,
   };
+}
+
+/**
+ * Whether `line` is blank to Obsidian, ending a paragraph: empty, or only
+ * spaces of any width, but not a tab, which Obsidian reads as text there.
+ */
+function blank(line: string): boolean {
+  return line.trim() === "" && !line.includes("\t");
 }
 
 /**
  * The links and embeds in a note's text, at their offsets in it, read a
  * paragraph at a time. A paragraph here is any run of lines without a blank
- * one, so a link is also read across a heading or a fence that Markdown
- * would end the paragraph at; that only ever moves an insertion later.
+ * one, so a link is also read across a heading, a fence, or a quote's line
+ * that Markdown would end the paragraph at; that only ever moves an
+ * insertion later.
  */
 export function textLinks(text: string): LinkSpan[] {
   const spans: LinkSpan[] = [];
-  const lines = text.split("\n");
   let offset = 0;
   let start = 0;
   let paragraph: string[] = [];
@@ -367,8 +427,8 @@ export function textLinks(text: string): LinkSpan[] {
     }
     paragraph = [];
   };
-  for (const line of lines) {
-    if (line.trim() === "") {
+  for (const line of text.split("\n")) {
+    if (blank(line)) {
       flush();
     } else {
       if (paragraph.length === 0) start = offset;
@@ -386,12 +446,27 @@ export function textLinks(text: string): LinkSpan[] {
  * around it when it lies in one's text.
  */
 export function outsideLinks(text: string, offset: number): number {
+  return insertionAt(text, offset).at;
+}
+
+/**
+ * Where and how to insert at `offset` in `text` without splitting a link:
+ * the offset {@link outsideLinks} gives, and a space to put before what is
+ * inserted where it would otherwise run on from a bare web address, which
+ * only a space ends.
+ */
+export function insertionAt(
+  text: string,
+  offset: number,
+): { at: number; before: string } {
+  const spans = textLinks(text);
   let at = offset;
   // In order of their starts, a link comes before the embeds in its text.
-  for (const span of textLinks(text)) {
+  for (const span of spans) {
     if (span.start < at && at < span.end) at = span.end;
   }
-  return at;
+  const after = spans.some((span) => span.bare === true && span.end === at);
+  return { at, before: after ? " " : "" };
 }
 
 /**
