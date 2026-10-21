@@ -3,7 +3,12 @@ import {
   inkAlpha,
   inkBounds,
   inkPixels,
+  lightInk,
+  luminance,
+  otsuThreshold,
   repeatPixels,
+  thresholdAlpha,
+  thresholdEdge,
   type RgbaPixels,
 } from "../../../src/ink/pixels.ts";
 import { inkGrey } from "../../../src/ink/render.ts";
@@ -103,5 +108,80 @@ describe("repeatPixels", () => {
   it("returns the values unchanged for a factor of 1", () => {
     const values = Uint8ClampedArray.of(7, 8);
     expect(repeatPixels(values, 2, 1, 1)).toBe(values);
+  });
+});
+
+describe("luminance", () => {
+  it("weighs the channels as Rec. 709 does, on white where transparent", () => {
+    const image = pixels(4, 1, [
+      ...[255, 255, 255, 255],
+      ...[0, 0, 0, 255],
+      ...[0, 255, 0, 255],
+      ...[0, 0, 0, 0],
+    ]);
+    expect([...luminance(image)]).toEqual([
+      255,
+      0,
+      Math.round(0.7152 * 255),
+      255,
+    ]);
+  });
+
+  it("lays half-transparent black on white as mid grey", () => {
+    expect([...luminance(pixels(1, 1, [0, 0, 0, 128]))]).toEqual([127]);
+  });
+});
+
+describe("otsuThreshold", () => {
+  it("splits two groups between them", () => {
+    const values = Uint8ClampedArray.from([
+      ...new Array<number>(30).fill(40),
+      ...new Array<number>(70).fill(200),
+    ]);
+    const threshold = otsuThreshold(values);
+    expect(threshold).toBeGreaterThan(40);
+    expect(threshold).toBeLessThanOrEqual(200);
+  });
+
+  it("puts each value of a two-value picture on its own side", () => {
+    const values = Uint8ClampedArray.from([10, 10, 11, 11]);
+    expect(otsuThreshold(values)).toBe(11);
+  });
+
+  it("gives the middle for a picture of one value", () => {
+    expect(otsuThreshold(Uint8ClampedArray.from([90, 90, 90]))).toBe(128);
+  });
+});
+
+describe("lightInk", () => {
+  it("takes the smaller part of the picture as the ink", () => {
+    const darkGround = Uint8ClampedArray.from([0, 0, 0, 255]);
+    const lightGround = Uint8ClampedArray.from([255, 255, 255, 0]);
+    expect(lightInk(darkGround, 128)).toBe(true);
+    expect(lightInk(lightGround, 128)).toBe(false);
+  });
+});
+
+describe("thresholdAlpha", () => {
+  it("makes dark values ink, with a ramp across the threshold", () => {
+    const values = Uint8ClampedArray.from([0, 99, 100, 255]);
+    const alpha = [...thresholdAlpha(values, 100, false)];
+    expect(alpha[0]).toBe(255);
+    expect(alpha[3]).toBe(0);
+    // Either side of the threshold, about half: the ramp's middle is between.
+    expect(alpha[1]).toBeGreaterThan(127);
+    expect(alpha[2]).toBeLessThan(128);
+    expect((alpha[1] ?? 0) + (alpha[2] ?? 0)).toBe(255);
+  });
+
+  it("makes light values ink with light", () => {
+    const values = Uint8ClampedArray.from([0, 255]);
+    expect([...thresholdAlpha(values, 100, true)]).toEqual([0, 255]);
+  });
+
+  it("is full or empty beyond half the edge from the threshold", () => {
+    const half = thresholdEdge / 2;
+    const values = Uint8ClampedArray.from([100 - half - 1, 100 + half]);
+    expect([...thresholdAlpha(values, 100, false)]).toEqual([255, 0]);
   });
 });

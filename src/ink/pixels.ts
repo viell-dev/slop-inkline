@@ -98,3 +98,99 @@ export function repeatPixels(
   }
   return output;
 }
+
+/**
+ * Each pixel's luminance, from 0 for black to 255 for white, with Rec. 709
+ * weights on the stored values, as if the picture lay on white: a
+ * transparent pixel counts as white, like the paper around dark ink.
+ */
+export function luminance(pixels: RgbaPixels): Uint8ClampedArray {
+  const { width, height, data } = pixels;
+  const values = new Uint8ClampedArray(width * height);
+  for (let index = 0; index < values.length; index++) {
+    const offset = index * 4;
+    const alpha = (data[offset + 3] ?? 0) / 255;
+    const own =
+      0.2126 * (data[offset] ?? 0) +
+      0.7152 * (data[offset + 1] ?? 0) +
+      0.0722 * (data[offset + 2] ?? 0);
+    values[index] = Math.round(own * alpha + 255 * (1 - alpha));
+  }
+  return values;
+}
+
+/**
+ * The threshold that best splits `values` into dark and light, by Otsu's
+ * method: the one that makes the two groups' means lie furthest apart,
+ * weighted by their sizes. Values below it are dark. A picture of one value
+ * throughout gives the middle, 128.
+ */
+export function otsuThreshold(values: Uint8ClampedArray): number {
+  const counts = new Array<number>(256).fill(0);
+  for (const value of values) counts[value] = (counts[value] ?? 0) + 1;
+  const total = values.length;
+  let sum = 0;
+  for (let value = 0; value < 256; value++) {
+    sum += value * (counts[value] ?? 0);
+  }
+  let darkCount = 0;
+  let darkSum = 0;
+  let best = -1;
+  let threshold = 128;
+  for (let value = 0; value < 255; value++) {
+    darkCount += counts[value] ?? 0;
+    darkSum += value * (counts[value] ?? 0);
+    const lightCount = total - darkCount;
+    if (darkCount === 0 || lightCount === 0) continue;
+    const apart = darkSum / darkCount - (sum - darkSum) / lightCount;
+    const between = darkCount * lightCount * apart * apart;
+    if (between > best) {
+      best = between;
+      threshold = value + 1;
+    }
+  }
+  return threshold;
+}
+
+/**
+ * Whether the ink in `values` is likely light on a dark ground, as in many
+ * games' screenshots: whether more of it lies below `threshold` than at or
+ * above it. Ink is the smaller part of a picture of a symbol.
+ */
+export function lightInk(
+  values: Uint8ClampedArray,
+  threshold: number,
+): boolean {
+  let dark = 0;
+  for (const value of values) if (value < threshold) dark++;
+  return dark > values.length - dark;
+}
+
+/**
+ * How many luminance levels a threshold's edge spans: pixels within half of
+ * it from the threshold get part of an ink's alpha, so that the edges of a
+ * picture's shapes stay as smooth as they were.
+ */
+export const thresholdEdge = 32;
+
+/**
+ * The ink in `values` by a threshold, as one alpha per pixel: dark values
+ * become ink, or light ones with `light`, full well past the threshold and
+ * none well short of it, with a ramp of {@link thresholdEdge} levels across
+ * it.
+ */
+export function thresholdAlpha(
+  values: Uint8ClampedArray,
+  threshold: number,
+  light: boolean,
+): Uint8ClampedArray {
+  const alpha = new Uint8ClampedArray(values.length);
+  for (let index = 0; index < values.length; index++) {
+    const value = values[index] ?? 0;
+    // The middle of the ramp lies halfway between the last dark level and
+    // the threshold, the first light one.
+    const past = light ? value - threshold + 0.5 : threshold - 0.5 - value;
+    alpha[index] = Math.round((past / thresholdEdge + 0.5) * 255);
+  }
+  return alpha;
+}
