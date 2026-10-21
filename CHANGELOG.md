@@ -28,6 +28,14 @@ section is also its
   from the keyboard. Next takes it on to the next symbol where it was, so that
   an inscription is traced from one screenshot, and **Remove picture** takes it
   away.
+- **Make ink**, or I, in the editor, turns the picture being traced into the
+  symbol's ink, as its base layer, by a threshold that a slider sets and the
+  surface previews; **Light ink** takes a light symbol on a dark or transparent
+  ground. Only what the surface shows, across and within the line box's height,
+  becomes ink, so that the other symbols of a screenshot stay out. The ink takes
+  the place of any base layer the drawing had, and Undo takes it back. Saving,
+  or closing and saving, while the preview shows makes that ink first. Copying a
+  symbol you can see then needs no drawing at all.
 - Symbols show in notes as characters: as tall as the line, standing on its
   baseline, and in the text's colour, in light and dark themes, in Live Preview,
   Reading view, embedded notes, hover previews, canvas cards, and popout

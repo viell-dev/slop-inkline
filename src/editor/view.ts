@@ -159,6 +159,11 @@ export class InkView {
     return this.#originX + this.#across / 2;
   }
 
+  /** The document's x from the surface's left edge to its right, in pixels. */
+  get visible(): Span {
+    return { left: this.#originX, right: this.#originX + this.#across };
+  }
+
   /** Puts document x `center` in the middle of the surface. */
   centerOn(center: number): void {
     this.#originX = Math.round(center - this.#across / 2);
