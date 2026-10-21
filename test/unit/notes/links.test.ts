@@ -237,12 +237,13 @@ describe("links as Obsidian reads them", () => {
 
   it("reads addresses only as Obsidian links them", () => {
     // www. in lower case only, no email in a tag, an email after a %, and
-    // only the email after a scheme Obsidian does not read.
+    // mailto: in any case, as Live Preview reads it.
     expect(
-      spans("Www.Example.Com #a@b.co %c@d.co MAILTO:e@f.co www.g.co"),
+      spans("Www.Example.Com #a@b.co %c@d.co a%b@c.co MAILTO:e@f.co www.g.co"),
     ).toEqual([
       ["c@d.co", false, "c@d.co"],
-      ["e@f.co", false, "e@f.co"],
+      ["b@c.co", false, "b@c.co"],
+      ["MAILTO:e@f.co", false, "MAILTO:e@f.co"],
       ["www.g.co", false, "www.g.co"],
     ]);
   });
@@ -258,6 +259,9 @@ describe("links as Obsidian reads them", () => {
     const started = performance.now();
     expect(textLinks("https://".repeat(10000))).toEqual([]);
     expect(textLinks("mailto:".repeat(10000))).toEqual([]);
+    // Percent-encoded text, where each % could start an email's name.
+    expect(textLinks("%E5%A1%94".repeat(3000))).toEqual([]);
+    expect(textLinks("a%".repeat(30000))).toEqual([]);
     const word = `${"a".repeat(93)}http://`.repeat(1000);
     expect(textLinks(word)).toEqual([]);
     expect(performance.now() - started).toBeLessThan(200);

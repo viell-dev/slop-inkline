@@ -199,8 +199,12 @@ const addressBody = /[^\s<]+/y;
 /** An address's host: up to a space, a `<`, or the start of its path. */
 const hostChars = /[^\s</?#]*/y;
 
-/** A bare email address, `a@example.com`. */
-const emailAddress = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/y;
+/**
+ * A bare email address, `a@example.com`. Its name holds no `%`, as Obsidian
+ * reads `a%b@c.d` as `b@c.d`; a `%` there would also make each one in
+ * percent-encoded text start a search to its end.
+ */
+const emailAddress = /[A-Za-z0-9._+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/y;
 
 /**
  * Whether `char` may start an email address's name: where one stands just
@@ -254,7 +258,8 @@ function hostAt(text: string, at: number, least: number): boolean {
  * The bare address that starts at `index` in `text`, if one does, as
  * Obsidian shows one as a link: a web one, after any character, its scheme
  * in any letter case and `www.` in lower case, with a dot in its host; a
- * `mailto:` one; or an email address, outside a tag. `bare` says whether only
+ * `mailto:` one, in any letter case, as Live Preview reads it; or an email
+ * address, outside a tag. `bare` says whether only
  * a space ends it, as for every one but an email address, which Obsidian
  * ends itself.
  */
@@ -270,7 +275,10 @@ function bareAddressAt(
     web = scheme !== null && hostAt(text, index + scheme[0].length, 2);
   } else if (first === "w" && text.startsWith("www.", index)) {
     web = hostAt(text, index, 3);
-  } else if (first === "m" && text.startsWith("mailto:", index)) {
+  } else if (
+    (first === "m" || first === "M") &&
+    text.slice(index, index + 7).toLowerCase() === "mailto:"
+  ) {
     emailAddress.lastIndex = index + "mailto:".length;
     web = emailAddress.test(text);
   }
