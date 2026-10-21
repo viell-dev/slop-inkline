@@ -132,6 +132,13 @@ async function listOpen(): Promise<boolean> {
 }
 
 describe("Inserting a symbol with none in the vault", function () {
+  // A list left open would take the keys of every test after it.
+  after(async function () {
+    if (await browser.$(".prompt-input").isExisting()) {
+      await browser.keys(["Escape"]);
+    }
+  });
+
   it("says there are none, in place of an empty list", async function () {
     await browser.executeObsidian(async ({ app }) => {
       await app.vault.create("Empty.md", "The door reads HERE.\n");
