@@ -55,10 +55,29 @@ function anchor(heading: string): string {
     .toLowerCase();
 }
 
+/**
+ * The anchors of `text`'s headings, outside fenced code, with `-1`, `-2`,
+ * and so on after a repeated one, as VitePress numbers them.
+ */
 function anchors(text: string): string[] {
-  return [...text.matchAll(/^#{1,6} (.+)$/gm)].map((match) =>
-    anchor(match[1] ?? ""),
-  );
+  const seen = new Map<string, number>();
+  let fence: string | undefined;
+  const found: string[] = [];
+  for (const line of text.split("\n")) {
+    const mark = /^\s*(`{3,}|~{3,})/.exec(line)?.[1];
+    if (mark !== undefined) {
+      if (fence === undefined) fence = mark;
+      else if (mark.startsWith(fence)) fence = undefined;
+      continue;
+    }
+    const heading = fence === undefined ? /^#{1,6} (.+)$/.exec(line) : null;
+    if (heading === null) continue;
+    const slug = anchor(heading[1] ?? "");
+    const count = seen.get(slug) ?? 0;
+    seen.set(slug, count + 1);
+    found.push(count === 0 ? slug : `${slug}-${String(count)}`);
+  }
+  return found;
 }
 
 describe("the documentation", () => {
@@ -104,10 +123,18 @@ describe("the documentation", () => {
         ? []
         : [{ text: button.text, key: button.key, named: match[2] ?? "" }];
     });
-    expect(named.length).toBeGreaterThan(10);
     for (const { text, key, named: keys } of named) {
       expect(keys.split(", or ")[0], text).toBe(key);
     }
+    // Every button with a key is named there, apart from the brush sizes,
+    // which it names together.
+    const sizeLabels = brushSizes.map((size) => size.label);
+    expect([...new Set(named.map(({ text }) => text))].sort()).toEqual(
+      buttons
+        .map(({ text }) => text)
+        .filter((text) => !sizeLabels.includes(text))
+        .sort(),
+    );
     // Keys with no button of their own.
     for (const key of ["Mod+S", "Esc"]) {
       expect(rows.some((cells) => cells[0] === key)).toBe(true);
@@ -151,13 +178,14 @@ describe("the documentation", () => {
     const code = readdirSync("src", { recursive: true, encoding: "utf8" })
       .filter((name) => name.endsWith(".ts"))
       .map((name) => source(join("src", name)))
-      .join("\n");
+      .join("\n")
+      .replace(/\s+/g, " ");
     const quoted = [
       ...page("troubleshooting.md").matchAll(/\*\*"([^"]+)"\*\*/g),
     ].flatMap((match) =>
       (match[1] ?? "")
         .split("…")
-        .map((part) => part.trim())
+        .map((part) => part.replace(/\s+/g, " ").trim())
         .filter((part) => part.length >= 12),
     );
     expect(quoted.length).toBeGreaterThan(3);
