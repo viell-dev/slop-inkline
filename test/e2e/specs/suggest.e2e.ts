@@ -104,7 +104,10 @@ async function addSymbols(paths: string[]): Promise<void> {
   );
 }
 
-/** Deletes the files at `paths`, as Obsidian is set to. */
+/**
+ * Deletes the files at `paths`, as Obsidian is set to, and waits for the
+ * vault to forget them, which it can do only after the trash has them.
+ */
 async function deleteFiles(paths: string[]): Promise<void> {
   await browser.executeObsidian(async ({ app }, files) => {
     for (const path of files) {
@@ -112,6 +115,13 @@ async function deleteFiles(paths: string[]): Promise<void> {
       if (file !== null) await app.fileManager.trashFile(file);
     }
   }, paths);
+  await browser.waitUntil(async () =>
+    browser.executeObsidian(
+      ({ app }, files) =>
+        files.every((path) => app.vault.getFileByPath(path) === null),
+      paths,
+    ),
+  );
 }
 
 /** Whether a suggestion or list is open. */
@@ -161,7 +171,9 @@ describe("Inserting a symbol you have", function () {
         }
         await app.vault.create(
           "Code.md",
-          "A `SPAN` here.\n\n```\nFENCE\n```\n\nAfter TEXT.\n",
+          // A marker alone in a code span would leave it empty, and the
+          // editor would then select past it.
+          "A `code SPAN` here.\n\n```\nFENCE\n```\n\nAfter TEXT.\n",
         );
       },
       symbols,
@@ -272,7 +284,7 @@ describe("Inserting a symbol you have", function () {
       expect(await listOpen()).toBe(false);
     }
     expect(await noteText()).toBe(
-      "A `;;arc` here.\n\n```\n;;arc\n```\n\nAfter ;;arc.\n",
+      "A `code ;;arc` here.\n\n```\n;;arc\n```\n\nAfter ;;arc.\n",
     );
   });
 
