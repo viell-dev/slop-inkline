@@ -11,11 +11,11 @@ import { openAtMarker } from "../support/editor.ts";
 const count = 5000;
 
 /**
- * The most a keystroke's search may take, at its slowest. In Docker on
- * Windows 11, the slowest of 30 searches of 5,000 symbols took 13 ms in
- * Obsidian 1.14.4 and 17 ms in 1.13.4, and a test beside other work can take
- * five times as long; a search that scanned the vault once for each symbol
- * took over 2 s each, and the test ran past its 60 s limit.
+ * The most a keystroke's search may take, for the slowest query, each the
+ * fastest of three rounds. In Docker on Windows 11, with 5,000 symbols, it
+ * was 6 ms in Obsidian 1.14.4 and 8 ms in 1.13.4, and 18 ms at worst over
+ * every round; a search that scanned the vault once for each symbol took
+ * over 2 s each, and the test ran past its 60 s limit.
  */
 const budget = 100;
 
@@ -35,25 +35,41 @@ function symbol(): string {
 describe("A vault with many symbols", function () {
   before(async function () {
     this.timeout(600_000);
-    await browser.executeObsidian(
-      async ({ app }, total, png) => {
-        const data = Uint8Array.from(atob(png), (c) => c.charCodeAt(0)).buffer;
-        await app.vault.createFolder("Many");
-        for (let index = 0; index < total; index++) {
-          const folder = `Many/${String(Math.floor(index / 100)).padStart(2, "0")}`;
-          if (index % 100 === 0) await app.vault.createFolder(folder);
-          const name = `glyph ${String(index).padStart(4, "0")}`;
-          await app.vault.createBinary(`${folder}/${name}.ink.png`, data);
-        }
-        // A note that uses one of them twice, which ranks it first.
-        await app.vault.create(
-          "Large.md",
-          "Used: ![[glyph 0007.ink.png]] ![[glyph 0007.ink.png]]\n\nHERE\n",
-        );
-      },
-      count,
-      symbol(),
-    );
+    // In batches, each well within WebDriver's limit for one script, which
+    // all of them at once can pass on a loaded machine; a batch makes only
+    // what is missing, so that one sent again does no harm.
+    const png = symbol();
+    for (let first = 0; first < count; first += 500) {
+      await browser.executeObsidian(
+        async ({ app }, from, to, image) => {
+          const data = Uint8Array.from(atob(image), (c) =>
+            c.charCodeAt(0),
+          ).buffer;
+          for (let index = from; index < to; index++) {
+            const folder = `Many/${String(Math.floor(index / 100)).padStart(2, "0")}`;
+            for (const path of ["Many", folder]) {
+              if (app.vault.getFolderByPath(path) === null) {
+                await app.vault.createFolder(path);
+              }
+            }
+            const file = `${folder}/glyph ${String(index).padStart(4, "0")}.ink.png`;
+            if (app.vault.getFileByPath(file) === null) {
+              await app.vault.createBinary(file, data);
+            }
+          }
+        },
+        first,
+        Math.min(first + 500, count),
+        png,
+      );
+    }
+    await browser.executeObsidian(async ({ app }) => {
+      // A note that uses one of them twice, which ranks it first.
+      await app.vault.create(
+        "Large.md",
+        "Used: ![[glyph 0007.ink.png]] ![[glyph 0007.ink.png]]\n\nHERE\n",
+      );
+    });
     await browser.waitUntil(async () =>
       browser.executeObsidian(
         ({ app }) =>
@@ -121,19 +137,27 @@ describe("A vault with many symbols", function () {
         "4242",
         "zzzz",
       ];
-      const times: number[] = [];
+      // Each query's fastest of three rounds: a slow search is slow in every
+      // round, while other work beside the test, such as the other Obsidian
+      // version's tests, slows only some.
+      const best = new Map<string, number>();
       const lists = new Map<string, string[]>();
       for (let round = 0; round < 3; round++) {
         for (const query of queries) {
           const started = performance.now();
           lists.set(query, list(query));
-          times.push(performance.now() - started);
+          const ms = performance.now() - started;
+          best.set(query, Math.min(best.get(query) ?? ms, ms));
         }
       }
+      const times = [...best.values()];
       return {
         symbols: app.vault
           .getFiles()
-          .filter((entry) => entry.path.endsWith(".ink.png")).length,
+          .filter(
+            (entry) =>
+              entry.path.startsWith("Many/") && entry.path.endsWith(".ink.png"),
+          ).length,
         times,
         all: lists.get("") ?? [],
         spaced: lists.get("glyph 4242") ?? [],
@@ -142,7 +166,7 @@ describe("A vault with many symbols", function () {
       };
     });
     console.log(
-      `${String(result.symbols)} symbols: slowest search ${Math.max(...result.times).toFixed(1)} ms, median ${[...result.times].sort((a, b) => a - b)[Math.floor(result.times.length / 2)]?.toFixed(1) ?? "?"} ms`,
+      `${String(result.symbols)} symbols: slowest query ${Math.max(...result.times).toFixed(1)} ms, median ${[...result.times].sort((a, b) => a - b)[Math.floor(result.times.length / 2)]?.toFixed(1) ?? "?"} ms, each the fastest of three`,
     );
     expect(result.symbols).toBe(count);
     // The list holds the 50 best, the one the note uses most first.

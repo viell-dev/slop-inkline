@@ -749,22 +749,26 @@ describe("Symbols in notes", function () {
         }
         return container;
       };
-      // The observer's own work, apart from the page drawing the images.
-      const apart = symbols();
-      const started = performance.now();
-      window.inklineTest.renderSymbols.tagWithin(apart, vault);
-      const ms = performance.now() - started;
+      // The observer's own work, apart from the page drawing the images:
+      // the fastest of five runs, each on images of its own. Slow tagging
+      // shows in every run, while other work beside the test, such as the
+      // other Obsidian version's tests, slows only some.
+      let ms = Number.POSITIVE_INFINITY;
+      let tagged = 0;
+      for (let run = 0; run < 5; run++) {
+        const apart = symbols();
+        const started = performance.now();
+        window.inklineTest.renderSymbols.tagWithin(apart, vault);
+        ms = Math.min(ms, performance.now() - started);
+        tagged = apart.querySelectorAll("img.inkline-symbol").length;
+      }
       // And a thousand added at once, which the observer finds.
       const added = symbols();
       activeDocument.body.append(added);
       await new Promise((resolve) => window.setTimeout(resolve, 0));
       const found = added.querySelectorAll("img.inkline-symbol").length;
       added.remove();
-      return {
-        ms,
-        apart: apart.querySelectorAll("img.inkline-symbol").length,
-        found,
-      };
+      return { ms, apart: tagged, found };
     });
     expect(result.apart).toBe(1000);
     expect(result.found).toBe(1000);
