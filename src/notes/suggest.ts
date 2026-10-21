@@ -131,10 +131,20 @@ export class SymbolSuggest extends EditorSuggest<TFile> {
   override selectSuggestion(file: TFile): void {
     const { context } = this;
     if (context === null) return;
-    context.editor.replaceRange(
+    const { editor, start } = context;
+    // Obsidian updates the context a moment after each change, so a choice
+    // made straight after typing finds the end of the name anew, as far as
+    // the cursor, when the same trigger still starts it.
+    const cursor = editor.getCursor();
+    const found =
+      cursor.line === start.line
+        ? triggerQuery(editor.getLine(cursor.line), cursor.ch, this.#trigger())
+        : undefined;
+    const end = found?.start === start.ch ? cursor : context.end;
+    editor.replaceRange(
       embedFor(this.app, file, context.file.path),
-      context.start,
-      context.end,
+      start,
+      end,
     );
   }
 }

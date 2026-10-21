@@ -20,8 +20,10 @@ function symbol(): string {
 const symbols = [
   "arch.ink.png",
   "001.ink.png",
-  "Glyphs/tower one.ink.png",
+  // The one the note uses, first, so that it is the older: only its uses can
+  // rank it above the other.
   "Glyphs/tower two.ink.png",
+  "Glyphs/tower one.ink.png",
 ];
 
 /** The names the open suggestion or list shows, top first. */
@@ -38,13 +40,17 @@ async function suggested(): Promise<string[]> {
 /** Waits for a suggestion or list to show `names`, top first. */
 async function waitForSuggested(names: string[]): Promise<void> {
   let shown: string[] = [];
-  await browser.waitUntil(
-    async () => {
+  try {
+    await browser.waitUntil(async () => {
       shown = await suggested();
       return JSON.stringify(shown) === JSON.stringify(names);
-    },
-    { timeoutMsg: `suggested ${JSON.stringify(shown)}` },
-  );
+    });
+  } catch (error) {
+    throw new Error(
+      `waited for ${JSON.stringify(names)}, but the list showed ${JSON.stringify(shown)}`,
+      { cause: error },
+    );
+  }
 }
 
 /** Types `text` into the focused editor, a key at a time. */
@@ -55,13 +61,21 @@ async function type(text: string): Promise<void> {
 /** Waits for the note to read `text`, failing with what it last read. */
 async function waitForNote(text: string): Promise<void> {
   let read = "";
-  await browser.waitUntil(
-    async () => {
+  let path: string | undefined;
+  try {
+    await browser.waitUntil(async () => {
       read = await noteText();
       return read === text;
-    },
-    { timeoutMsg: `the note read ${JSON.stringify(read)}` },
-  );
+    });
+  } catch (error) {
+    path = await browser.executeObsidian(
+      ({ app }) => app.workspace.getActiveFile()?.path,
+    );
+    throw new Error(
+      `waited for ${JSON.stringify(text)}, but ${String(path)} read ${JSON.stringify(read)}`,
+      { cause: error },
+    );
+  }
 }
 
 describe("Inserting a symbol you have", function () {
@@ -71,7 +85,11 @@ describe("Inserting a symbol you have", function () {
       async ({ app }, paths, png) => {
         const data = Uint8Array.from(atob(png), (c) => c.charCodeAt(0)).buffer;
         await app.vault.createFolder("Glyphs");
-        for (const path of paths) await app.vault.createBinary(path, data);
+        for (const path of paths) {
+          await app.vault.createBinary(path, data);
+          // A later change time for each.
+          await new Promise((resolve) => window.setTimeout(resolve, 20));
+        }
         await app.vault.create(
           "Uses.md",
           "Twice: ![[Glyphs/tower two.ink.png]] and ![[Glyphs/tower two.ink.png]].\n\nHERE\n",
