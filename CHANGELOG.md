@@ -58,10 +58,11 @@ section is also its
   existing symbol**, a command, opens the same list to search.
 - **Edit symbol** opens a symbol in the editor again with every stroke, so that
   nothing is lost by editing. It is in a symbol file's menu, and in a note: in
-  the menu of a symbol's picture, in Live Preview, Reading view, embedded notes,
-  and popout windows, where a right-click on a symbol shows its menu rather than
-  Obsidian's image viewer; in the editor's menu on an embed's text; and as a
-  command with the cursor on a symbol's embed.
+  Live Preview's menu for a symbol's picture, except in callouts and tables; in
+  the menu a right-click on a symbol shows in Reading view, embedded notes, and
+  popout windows, where Obsidian opened its image viewer instead; in the
+  editor's menu on an embed's text; and as a command with the cursor on a
+  symbol's embed, outside code and front matter.
 - The editor's pen, eraser, four brush sizes, undo, redo, and clear, each with
   its shortcut in its tooltip. A pen's eraser end erases, and a palm resting on
   a tablet does not draw, even one that touched it before the pen. A symbol
