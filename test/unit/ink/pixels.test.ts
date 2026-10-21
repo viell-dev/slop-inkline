@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   alphaBounds,
+  inkDefaults,
+  maxPreviewPixels,
+  pictureLuminance,
+  previewFactor,
+  shrinkLuminance,
+  thresholdRange,
   cropAlpha,
   inkAlpha,
   inkBounds,
@@ -331,6 +337,115 @@ describe("regionValues", () => {
       height: 2,
       left: 1,
       top: 0,
+    });
+  });
+});
+
+describe("thresholdRange", () => {
+  const all = Uint8ClampedArray.from([0, 15, 128, 240, 255]);
+
+  it("leaves no ink at one end, and makes everything ink at the other", () => {
+    expect([...thresholdAlpha(all, thresholdRange.min, false)]).toEqual([
+      0, 0, 0, 0, 0,
+    ]);
+    expect([...thresholdAlpha(all, thresholdRange.max, false)]).toEqual([
+      255, 255, 255, 255, 255,
+    ]);
+    expect([...thresholdAlpha(all, thresholdRange.min, true)]).toEqual([
+      255, 255, 255, 255, 255,
+    ]);
+    expect([...thresholdAlpha(all, thresholdRange.max, true)]).toEqual([
+      0, 0, 0, 0, 0,
+    ]);
+  });
+});
+
+describe("pictureLuminance", () => {
+  it("keeps each pixel's alpha only when the picture has transparency", () => {
+    const opaque = pixels(1, 1, [0, 0, 0, 255]);
+    expect(pictureLuminance(opaque)).toEqual({
+      width: 1,
+      height: 1,
+      values: Uint8ClampedArray.from([0]),
+    });
+    const clear = pixels(2, 1, [255, 255, 255, 255, 0, 0, 0, 0]);
+    expect(pictureLuminance(clear).alpha).toEqual(
+      Uint8ClampedArray.from([255, 0]),
+    );
+  });
+});
+
+describe("previewFactor and shrinkLuminance", () => {
+  it("shrinks only a picture beyond the preview's size", () => {
+    expect(previewFactor(1024, 1024)).toBe(1);
+    expect(maxPreviewPixels).toBe(1024 * 1024);
+    expect(previewFactor(3840, 2160)).toBe(3);
+    expect(previewFactor(4096, 4096)).toBe(4);
+  });
+
+  it("takes each block's mean, with smaller blocks at the edges", () => {
+    const picture = {
+      width: 3,
+      height: 2,
+      values: Uint8ClampedArray.from([0, 10, 100, 20, 30, 200]),
+      alpha: Uint8ClampedArray.from([255, 255, 0, 255, 255, 0]),
+    };
+    expect(shrinkLuminance(picture, 2)).toEqual({
+      width: 2,
+      height: 1,
+      values: Uint8ClampedArray.from([15, 150]),
+      alpha: Uint8ClampedArray.from([255, 0]),
+    });
+    expect(shrinkLuminance(picture, 1)).toBe(picture);
+  });
+});
+
+describe("inkDefaults", () => {
+  it("takes the smaller part of an opaque picture as the ink", () => {
+    const darkOnLight = Uint8ClampedArray.from([0, 255, 255, 255]);
+    const lightOnDark = Uint8ClampedArray.from([255, 0, 0, 0]);
+    expect(inkDefaults({ values: darkOnLight })).toEqual({
+      threshold: 128,
+      light: false,
+    });
+    expect(inkDefaults({ values: lightOnDark }).light).toBe(true);
+  });
+
+  it("takes a transparent picture's opaque pixels as the ink", () => {
+    // A light glyph, then a dark one, each on a transparent ground that
+    // counts as white.
+    const alpha = Uint8ClampedArray.from([255, 0, 0, 0]);
+    expect(
+      inkDefaults({
+        values: Uint8ClampedArray.from([250, 255, 255, 255]),
+        alpha,
+      }).light,
+    ).toBe(true);
+    expect(
+      inkDefaults({ values: Uint8ClampedArray.from([5, 255, 255, 255]), alpha })
+        .light,
+    ).toBe(false);
+  });
+});
+
+describe("traceInk with transparency", () => {
+  it("leaves a transparent ground empty, even as light ink", () => {
+    // A white square on a transparent ground, 2 × 1.
+    const picture = pictureLuminance(
+      pixels(2, 1, [255, 255, 255, 255, 0, 0, 0, 0]),
+    );
+    const ink = traceInk(picture, { x: 0, y: 0, scale: 1 }, 128, true, {
+      left: 0,
+      top: 0,
+      right: 2,
+      bottom: 1,
+    });
+    expect(ink).toEqual({
+      alpha: Uint8ClampedArray.from([255]),
+      width: 1,
+      height: 1,
+      x: 0,
+      y: 0,
     });
   });
 });

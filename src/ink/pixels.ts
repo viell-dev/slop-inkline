@@ -70,9 +70,9 @@ export function inkPixels(
   height: number,
   alpha: Uint8ClampedArray,
 ): Uint8ClampedArray<ArrayBuffer> {
-  const data = new Uint8ClampedArray(width * height * 4);
+  const data = new Uint8ClampedArray(width * height * 4).fill(inkGrey);
   for (let index = 0; index < width * height; index++) {
-    data.set([inkGrey, inkGrey, inkGrey, alpha[index] ?? 0], index * 4);
+    data[index * 4 + 3] = alpha[index] ?? 0;
   }
   return data;
 }
@@ -128,8 +128,12 @@ export function luminance(pixels: RgbaPixels): Uint8ClampedArray {
  * picture of one value throughout gives the middle, 128.
  */
 export function otsuThreshold(values: Uint8ClampedArray): number {
-  const counts = new Array<number>(256).fill(0);
-  for (const value of values) counts[value] = (counts[value] ?? 0) + 1;
+  const counts = new Uint32Array(256);
+  // eslint-disable-next-line @typescript-eslint/prefer-for-of -- for...of over a typed array is many times slower in V8
+  for (let index = 0; index < values.length; index++) {
+    const value = values[index] ?? 0;
+    counts[value] = (counts[value] ?? 0) + 1;
+  }
   const total = values.length;
   let sum = 0;
   for (let value = 0; value < 256; value++) {
@@ -170,7 +174,10 @@ export function lightInk(
   threshold: number,
 ): boolean {
   let dark = 0;
-  for (const value of values) if (value < threshold) dark++;
+  // eslint-disable-next-line @typescript-eslint/prefer-for-of -- for...of over a typed array is many times slower in V8
+  for (let index = 0; index < values.length; index++) {
+    if ((values[index] ?? 0) < threshold) dark++;
+  }
   return dark > values.length - dark;
 }
 
@@ -180,6 +187,15 @@ export function lightInk(
  * picture's shapes stay as smooth as they were.
  */
 export const thresholdEdge = 32;
+
+/**
+ * The thresholds the editor offers: half an edge past each end of the values,
+ * so that one end leaves no ink and the other makes everything ink.
+ */
+export const thresholdRange = {
+  min: -thresholdEdge / 2,
+  max: 256 + thresholdEdge / 2,
+} as const;
 
 /**
  * The ink in `values` by a threshold, as one alpha per pixel: dark values
@@ -192,13 +208,16 @@ export function thresholdAlpha(
   threshold: number,
   light: boolean,
 ): Uint8ClampedArray {
-  const alpha = new Uint8ClampedArray(values.length);
-  for (let index = 0; index < values.length; index++) {
-    const value = values[index] ?? 0;
+  const table = new Uint8ClampedArray(256);
+  for (let value = 0; value < 256; value++) {
     // The middle of the ramp lies halfway between the last dark level and
     // the threshold, the first light one.
     const past = light ? value - threshold + 0.5 : threshold - 0.5 - value;
-    alpha[index] = Math.round((past / thresholdEdge + 0.5) * 255);
+    table[value] = Math.round((past / thresholdEdge + 0.5) * 255);
+  }
+  const alpha = new Uint8ClampedArray(values.length);
+  for (let index = 0; index < values.length; index++) {
+    alpha[index] = table[values[index] ?? 0] ?? 0;
   }
   return alpha;
 }
@@ -261,6 +280,124 @@ export interface Luminance {
   readonly width: number;
   readonly height: number;
   readonly values: Uint8ClampedArray;
+  /**
+   * Each pixel's own alpha, when any pixel is not fully opaque: its ink is
+   * no more opaque than it is, so that a transparent ground stays empty.
+   */
+  readonly alpha?: Uint8ClampedArray;
+}
+
+/**
+ * A picture's luminance and, when any pixel is not fully opaque, each
+ * pixel's alpha, as {@link traceInk} takes them.
+ */
+export function pictureLuminance(pixels: RgbaPixels): Luminance {
+  const { width, height, data } = pixels;
+  const alpha = new Uint8ClampedArray(width * height);
+  let opaque = true;
+  for (let index = 0; index < alpha.length; index++) {
+    const value = data[index * 4 + 3] ?? 0;
+    alpha[index] = value;
+    if (value !== 255) opaque = false;
+  }
+  const values = luminance(pixels);
+  return opaque ? { width, height, values } : { width, height, values, alpha };
+}
+
+/**
+ * The largest picture the preview traces, in pixels: a larger one is traced
+ * from a smaller copy, which is still finer than the surface shows it.
+ */
+export const maxPreviewPixels = 1024 * 1024;
+
+/**
+ * How much smaller, across and down, the copy of a picture of `width` ×
+ * `height` pixels that the preview traces is: 1 for one within
+ * {@link maxPreviewPixels}.
+ */
+export function previewFactor(width: number, height: number): number {
+  return Math.max(1, Math.ceil(Math.sqrt((width * height) / maxPreviewPixels)));
+}
+
+/**
+ * `picture` made `factor` times smaller across and down, each value, and
+ * alpha, the mean of the block it stands for; the blocks at the right and
+ * bottom edges may be smaller.
+ */
+export function shrinkLuminance(picture: Luminance, factor: number): Luminance {
+  if (factor <= 1) return picture;
+  const width = Math.ceil(picture.width / factor);
+  const height = Math.ceil(picture.height / factor);
+  const shrink = (source: Uint8ClampedArray): Uint8ClampedArray => {
+    const output = new Uint8ClampedArray(width * height);
+    for (let y = 0; y < height; y++) {
+      const top = y * factor;
+      const bottom = Math.min(picture.height, top + factor);
+      for (let x = 0; x < width; x++) {
+        const left = x * factor;
+        const right = Math.min(picture.width, left + factor);
+        let sum = 0;
+        for (let row = top; row < bottom; row++) {
+          for (let column = left; column < right; column++) {
+            sum += source[row * picture.width + column] ?? 0;
+          }
+        }
+        output[y * width + x] = Math.round(
+          sum / ((bottom - top) * (right - left)),
+        );
+      }
+    }
+    return output;
+  };
+  const values = shrink(picture.values);
+  return picture.alpha === undefined
+    ? { width, height, values }
+    : { width, height, values, alpha: shrink(picture.alpha) };
+}
+
+/**
+ * Where to start making ink of part of a picture: the threshold by Otsu's
+ * method, and whether the ink is light. On an opaque picture the ink is the
+ * smaller part, as {@link lightInk} judges. Where the picture has
+ * transparency, its fairly opaque pixels are the ink, and their own
+ * luminance says whether it is light.
+ */
+export function inkDefaults(part: {
+  readonly values: Uint8ClampedArray;
+  readonly alpha?: Uint8ClampedArray;
+}): { threshold: number; light: boolean } {
+  const { values, alpha } = part;
+  if (alpha === undefined) {
+    const threshold = otsuThreshold(values);
+    return { threshold, light: lightInk(values, threshold) };
+  }
+  let count = 0;
+  // eslint-disable-next-line @typescript-eslint/prefer-for-of -- for...of over a typed array is many times slower in V8
+  for (let index = 0; index < alpha.length; index++) {
+    if ((alpha[index] ?? 0) >= 128) count++;
+  }
+  if (count === 0) {
+    const threshold = otsuThreshold(values);
+    return { threshold, light: lightInk(values, threshold) };
+  }
+  const ink = new Uint8ClampedArray(count);
+  let at = 0;
+  for (let index = 0; index < alpha.length; index++) {
+    if ((alpha[index] ?? 0) >= 128) ink[at++] = values[index] ?? 0;
+  }
+  const threshold = otsuThreshold(ink);
+  // The ink is all there is: light if most of it is.
+  return { threshold, light: !lightInk(ink, threshold) };
+}
+
+/** Part of a picture's luminance, and where it starts in the picture. */
+export interface Region {
+  readonly values: Uint8ClampedArray;
+  readonly alpha?: Uint8ClampedArray;
+  readonly width: number;
+  readonly height: number;
+  readonly left: number;
+  readonly top: number;
 }
 
 /**
@@ -272,15 +409,7 @@ export function regionValues(
   picture: Luminance,
   place: PicturePlace,
   region: Bounds,
-):
-  | {
-      readonly values: Uint8ClampedArray;
-      readonly width: number;
-      readonly height: number;
-      readonly left: number;
-      readonly top: number;
-    }
-  | undefined {
+): Region | undefined {
   const { x, y, scale } = place;
   const left = Math.max(0, Math.floor((region.left - x) / scale));
   const right = Math.min(picture.width, Math.ceil((region.right - x) / scale));
@@ -291,13 +420,12 @@ export function regionValues(
   );
   if (right <= left || bottom <= top) return undefined;
   const width = right - left;
-  const values = cropAlpha(picture.values, picture.width, {
-    left,
-    top,
-    right,
-    bottom,
-  });
-  return { values, width, height: bottom - top, left, top };
+  const bounds = { left, top, right, bottom };
+  const values = cropAlpha(picture.values, picture.width, bounds);
+  const part = { values, width, height: bottom - top, left, top };
+  return picture.alpha === undefined
+    ? part
+    : { ...part, alpha: cropAlpha(picture.alpha, picture.width, bounds) };
 }
 
 /** A picture's ink: one alpha per pixel of part of it, and where that is. */
@@ -323,8 +451,28 @@ export function traceInk(
   region: Bounds,
 ): TracedInk | undefined {
   const part = regionValues(picture, place, region);
-  if (part === undefined) return undefined;
+  return part && traceRegion(part, place, threshold, light);
+}
+
+/**
+ * The ink of `part` of a picture at `place`, as {@link traceInk} finds it:
+ * for a threshold changing while the part stays the same.
+ */
+export function traceRegion(
+  part: Region,
+  place: PicturePlace,
+  threshold: number,
+  light: boolean,
+): TracedInk | undefined {
   const alpha = thresholdAlpha(part.values, threshold, light);
+  const own = part.alpha;
+  if (own !== undefined) {
+    for (let index = 0; index < alpha.length; index++) {
+      alpha[index] = Math.round(
+        ((alpha[index] ?? 0) * (own[index] ?? 0)) / 255,
+      );
+    }
+  }
   const bounds = alphaBounds(alpha, part.width);
   if (bounds === undefined) return undefined;
   const { scale } = place;
