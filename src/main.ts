@@ -80,28 +80,6 @@ export default class InklinePlugin extends Plugin {
         return true;
       },
     });
-    // The editor's own menu, on the text of a symbol's embed.
-    this.registerEvent(
-      this.app.workspace.on("editor-menu", (menu, editor, info) => {
-        const note = info.file;
-        if (note === null) return;
-        const file = symbolAt(
-          this.app,
-          editor.getValue(),
-          editor.posToOffset(editor.getCursor()),
-          note.path,
-        );
-        if (file === undefined) return;
-        menu.addItem((item) =>
-          item
-            .setTitle("Edit symbol")
-            .setIcon("pencil")
-            .onClick(() => {
-              void this.editSymbol(file);
-            }),
-        );
-      }),
-    );
     // A symbol you already have: its name after the trigger, or a list.
     this.registerEditorSuggest(
       new SymbolSuggest(this.app, () => defaultTrigger),
@@ -132,6 +110,9 @@ export default class InklinePlugin extends Plugin {
         this.#drafts.rename(oldPath, file.path);
       }),
     );
+    // A symbol file's menu: in the file explorer, on its tab, and wherever
+    // Obsidian shows a link's file menu, as in the editor's menu on an
+    // embed's text and its image's menu in Live Preview.
     this.registerEvent(
       this.app.workspace.on("file-menu", (menu, file) => {
         if (!(file instanceof TFile) || !isInkPath(file.path)) return;

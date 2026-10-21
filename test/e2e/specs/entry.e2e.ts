@@ -300,26 +300,29 @@ describe("Editing a symbol from a note", function () {
     }
   });
 
-  it("offers Edit symbol in the editor's menu on an embed's text", async function () {
+  it("offers Edit symbol once in the editor's menu on an embed's text", async function () {
     await open("Entry.md", "source");
-    await browser.executeObsidian(({ app, obsidian }) => {
-      const editor = app.workspace.getActiveViewOfType(
-        obsidian.MarkdownView,
-      )?.editor;
-      if (editor === undefined) throw new Error("no editor");
-      const at = editor.getValue().indexOf("001.ink.png");
-      editor.focus();
-      editor.setCursor(editor.offsetToPos(at + 3));
-    });
-    // Right-clicked on the embed's own text, where the cursor goes.
-    await browser
-      .$(".workspace-leaf.mod-active .markdown-source-view .cm-active.cm-line")
-      .$('.//span[contains(text(), "001.ink.png")]')
-      .click({ button: "right" });
-    await browser.waitUntil(async () => (await menuItems()).length > 0);
-    expect(await menuItems()).toContain("Edit symbol");
-    await choose("Edit symbol");
-    expect(await editorName()).toBe("001");
-    await closeEditor();
+    // Obsidian's menu is for where the click is, wherever the cursor was.
+    for (const cursor of ["Top line", "001.ink.png"]) {
+      await browser.executeObsidian(({ app, obsidian }, wanted) => {
+        const editor = app.workspace.getActiveViewOfType(
+          obsidian.MarkdownView,
+        )?.editor;
+        if (editor === undefined) throw new Error("no editor");
+        const at = editor.getValue().indexOf(wanted);
+        editor.focus();
+        editor.setCursor(editor.offsetToPos(at + 3));
+      }, cursor);
+      await browser
+        .$(".workspace-leaf.mod-active .markdown-source-view .cm-content")
+        .$('.//span[contains(text(), "001.ink.png")]')
+        .click({ button: "right" });
+      await browser.waitUntil(async () => (await menuItems()).length > 0);
+      const items = await menuItems();
+      expect(items.filter((item) => item === "Edit symbol")).toHaveLength(1);
+      await choose("Edit symbol");
+      expect(await editorName()).toBe("001");
+      await closeEditor();
+    }
   });
 });
