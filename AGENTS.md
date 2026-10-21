@@ -59,11 +59,12 @@ have no `v` prefix and are immutable. The files record the live rulesets but do
 not apply them; after a pull request that changes one merges, update the live
 ruleset to match. [.github/labels.json](.github/labels.json) is the label list
 in the same way. The Settings workflow compares the live labels and rulesets
-with these files, and checks how issues and pull requests use the labels,
-weekly, on request, and when a change to the files merges; run it after applying
-a change. GitHub shows a ruleset's bypass actors to administrators only, so it
-compares them only when run with such a token, as `node scripts/settings.ts`
-with `GH_TOKEN` set.
+with these files, and checks how issues and pull requests use the labels, weekly
+and on request; run it after applying a change. It also runs on a pull request
+that changes its own code, where it fails while a change to the files in the
+same pull request is not applied yet. GitHub shows a ruleset's bypass actors to
+administrators only, so it compares them only when run with such a token, as
+`node scripts/settings.ts` with `GH_TOKEN` set.
 
 - Merge with a merge commit after checking the exact head:
   `gh pr merge --merge --match-head-commit <sha>`. Squash and rebase merges are
@@ -73,7 +74,7 @@ with `GH_TOKEN` set.
   parallel pull requests do not wait for one another's end-to-end runs. CI runs
   again on `main` after every merge, and a failure there is fixed first.
 - Zero required approvals is deliberate: the repository has a single account,
-  and review is the review below.
+  and review is as the next section describes.
 - Delete the branch after the merge.
 
 ## Review
@@ -99,12 +100,19 @@ with `GH_TOKEN` set.
   - a change to the release steps, to a workflow that can write to the
     repository or publish, to the rulesets, or to compatibility metadata such as
     `minAppVersion`;
+  - a change that removes, skips, or weakens a test, a lint rule, or a required
+    check, or that changes a setting, rather than the code, so that a failing
+    change can merge;
   - a change that loosens these rules.
 - Ordinary, well-understood changes, such as documentation, tests, tooling, and
   small fixes outside those areas, can rest on the author's review.
-- The author fixes or answers each finding. A material fix, or a finding the
-  author disputes, gets a further round covering the changes since the reviewed
-  commit. The review names its model and the commit it covered.
+- The author fixes or answers each finding. A material fix, a finding the author
+  disputes, or any other material change pushed after the reviewed commit of a
+  pull request these rules require to be reviewed, gets a further round covering
+  the changes since that commit. The review names its model and the commit it
+  covered.
+- Never weaken a check or a safeguard to get a change merged: fix the change, or
+  record why the check is wrong and fix the check in its own reviewed change.
 
 ## Labels
 
@@ -123,8 +131,8 @@ owner's other agent-maintained projects.
   their expected results, and what to report.
 - The owner is not the project's tester: automate every check that a machine can
   make, and ask a person only for what one cannot observe.
-- `Status: Blocked` marks work that waits on a stated condition, linked from the
-  issues and pull requests it affects. Optional feedback blocks nothing.
+- `Status: Blocked` marks work that waits on a stated condition, with links to
+  the issues and pull requests it affects. Optional feedback blocks nothing.
 
 ## Dependencies
 

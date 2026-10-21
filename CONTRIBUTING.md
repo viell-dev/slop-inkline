@@ -114,9 +114,10 @@ approval from a second account.
   changes to `Unreleased` in [CHANGELOG.md](CHANGELOG.md).
 - Keep each pull request to one change.
 
-A maintaining agent reviews every pull request, and releases and changes that
-could lose or damage a drawing also get an independent review by another agent,
-as [AGENTS.md](AGENTS.md#review) describes. Labels are used as
+A maintaining agent reviews every pull request. Releases, changes that could
+lose or damage a drawing, and changes to the checks and release steps that guard
+them also get an independent review by another agent, as
+[AGENTS.md](AGENTS.md#review) describes. Labels are used as
 [AGENTS.md](AGENTS.md#labels) says.
 
 ## Dependencies

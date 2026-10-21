@@ -4,14 +4,17 @@ name: Settings
 # .github/rulesets/, and checks how issues and pull requests use the labels,
 # as AGENTS.md describes. It only reads: the files record the settings, and
 # a maintaining agent applies a change to them after it merges, then runs
-# this to confirm it.
+# this on request to confirm it.
 
 on:
-  push:
-    branches: [main]
+  # On a pull request that changes the check itself, so that it is seen to run
+  # here. It compares the live settings with the pull request's files, so it
+  # fails while a change to those files is not applied yet.
+  pull_request:
     paths:
-      - .github/labels.json
-      - .github/rulesets/**
+      - .github/workflows/settings.yml
+      - scripts/lib/settings.ts
+      - scripts/settings.ts
   # Weekly, so that a label used by hand or a setting changed outside a pull
   # request is found within a week.
   schedule:

@@ -83,6 +83,13 @@ describe("labelProblems", () => {
     ]);
   });
 
+  it("reports a label to rename when only its letter case differs", () => {
+    const live = [...recorded.slice(1), { ...recorded[0], name: "type: bug" }];
+    expect(labelProblems(recorded, live)).toEqual([
+      'label "type: bug" should be renamed "Type: Bug"',
+    ]);
+  });
+
   it("refuses what is not a list", () => {
     expect(labelProblems({}, [])).toEqual(["labels.json is not a list"]);
     expect(labelProblems([], null)).toEqual(["the live labels are not a list"]);
@@ -116,7 +123,7 @@ describe("rulesetProblems", () => {
     };
     const other = { ...ruleset, name: "Something else" };
     expect(rulesetProblems([ruleset], [changed]).problems).toEqual([
-      'ruleset "PRs and CI for main" has other rules than its file',
+      'ruleset "PRs and CI for main" has other rules than its file: pull_request',
     ]);
     expect(
       rulesetProblems([ruleset, other], [other, { ...ruleset, name: "New" }])

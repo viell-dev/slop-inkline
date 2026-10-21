@@ -38,8 +38,11 @@ function stringOf(value: unknown, key: string): string | undefined {
 
 /**
  * Every way the live labels differ from the recorded ones: a label missing,
- * one with another colour or description, or one the file does not list.
- * Names compare exactly, as a label's name is how it is used.
+ * one with another colour or description, one the file does not list, or
+ * one whose name differs only in letter case. GitHub refuses a second label
+ * that differs only so, and such a label is renamed, which keeps it on the
+ * issues that have it. Otherwise names compare exactly, as a label's name is
+ * how it is used.
  */
 export function labelProblems(recorded: unknown, live: unknown): string[] {
   if (!Array.isArray(recorded)) return ["labels.json is not a list"];
@@ -50,17 +53,28 @@ export function labelProblems(recorded: unknown, live: unknown): string[] {
     const name = stringOf(label, "name");
     if (name !== undefined) liveByName.set(name, label);
   }
-  const names = new Set<string>();
+  const recordedByName = new Map<string, unknown>();
   for (const label of recorded) {
     const name = stringOf(label, "name");
     if (name === undefined) {
       problems.push("labels.json has a label without a name");
-      continue;
+    } else {
+      recordedByName.set(name, label);
     }
-    names.add(name);
+  }
+  for (const [name, label] of recordedByName) {
     const found = liveByName.get(name);
     if (found === undefined) {
-      problems.push(`label "${name}" is missing`);
+      const renamed = [...liveByName.keys()].find(
+        (liveName) =>
+          !recordedByName.has(liveName) &&
+          liveName.toLowerCase() === name.toLowerCase(),
+      );
+      problems.push(
+        renamed === undefined
+          ? `label "${name}" is missing`
+          : `label "${renamed}" should be renamed "${name}"`,
+      );
       continue;
     }
     for (const key of ["color", "description"]) {
@@ -72,9 +86,14 @@ export function labelProblems(recorded: unknown, live: unknown): string[] {
       }
     }
   }
+  const recordedNames = [...recordedByName.keys()].map((name) =>
+    name.toLowerCase(),
+  );
   for (const name of liveByName.keys()) {
-    if (!names.has(name))
-      problems.push(`label "${name}" is not in labels.json`);
+    if (recordedByName.has(name)) continue;
+    // A label renamed in letter case is reported above.
+    if (recordedNames.includes(name.toLowerCase())) continue;
+    problems.push(`label "${name}" is not in labels.json`);
   }
   return problems;
 }
@@ -87,6 +106,30 @@ const rulesetFields = [
   "conditions",
   "rules",
 ] as const;
+
+/** The types of the rules that differ between two lists of rules. */
+function differingRules(recorded: unknown, live: unknown): string[] {
+  const byType = (rules: unknown): Map<string, string[]> => {
+    const types = new Map<string, string[]>();
+    for (const rule of Array.isArray(rules) ? rules : []) {
+      const type = stringOf(rule, "type") ?? "(no type)";
+      types.set(type, [
+        ...(types.get(type) ?? []),
+        JSON.stringify(canonical(rule)),
+      ]);
+    }
+    return types;
+  };
+  const want = byType(recorded);
+  const have = byType(live);
+  return [...new Set([...want.keys(), ...have.keys()])]
+    .filter(
+      (type) =>
+        JSON.stringify(want.get(type)?.sort() ?? []) !==
+        JSON.stringify(have.get(type)?.sort() ?? []),
+    )
+    .sort();
+}
 
 /**
  * Every way the live rulesets differ from the recorded ones, matched by
@@ -130,9 +173,12 @@ export function rulesetProblems(
       const want =
         field === "rules" ? sortedRules(ruleset[field]) : ruleset[field];
       const have = field === "rules" ? sortedRules(found[field]) : found[field];
-      if (!same(want, have)) {
-        problems.push(`ruleset "${name}" has other ${field} than its file`);
-      }
+      if (same(want, have)) continue;
+      problems.push(
+        field === "rules"
+          ? `ruleset "${name}" has other rules than its file: ${differingRules(ruleset.rules, found.rules).join(", ")}`
+          : `ruleset "${name}" has other ${field} than its file`,
+      );
     }
     if (!("bypass_actors" in found)) unseen.push(name);
     else if (!same(ruleset.bypass_actors ?? [], found.bypass_actors)) {
