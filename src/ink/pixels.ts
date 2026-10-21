@@ -194,3 +194,47 @@ export function thresholdAlpha(
   }
   return alpha;
 }
+
+/**
+ * The smallest rectangle holding every value above zero in `alpha`, one
+ * value per pixel of an image `width` pixels wide, if any is.
+ */
+export function alphaBounds(
+  alpha: Uint8ClampedArray,
+  width: number,
+): Bounds | undefined {
+  const height = width === 0 ? 0 : Math.floor(alpha.length / width);
+  let left = width;
+  let top = height;
+  let right = -1;
+  let bottom = -1;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if ((alpha[y * width + x] ?? 0) === 0) continue;
+      left = Math.min(left, x);
+      right = Math.max(right, x);
+      top = Math.min(top, y);
+      bottom = Math.max(bottom, y);
+    }
+  }
+  return right === -1
+    ? undefined
+    : { left, top, right: right + 1, bottom: bottom + 1 };
+}
+
+/** The part of `alpha`, `width` values a row, that `bounds` holds. */
+export function cropAlpha(
+  alpha: Uint8ClampedArray,
+  width: number,
+  bounds: Bounds,
+): Uint8ClampedArray {
+  const across = bounds.right - bounds.left;
+  const output = new Uint8ClampedArray(across * (bounds.bottom - bounds.top));
+  for (let y = bounds.top; y < bounds.bottom; y++) {
+    output.set(
+      alpha.subarray(y * width + bounds.left, y * width + bounds.right),
+      (y - bounds.top) * across,
+    );
+  }
+  return output;
+}

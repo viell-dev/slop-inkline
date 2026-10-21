@@ -670,4 +670,79 @@ describe("The drawing core in Obsidian's renderer", function () {
     });
     expect(result).toBe(true);
   });
+
+  it("turns a traced picture into a base layer by a threshold, where it sits", async function () {
+    const result = await browser.execute(async () => {
+      const { canvas, render } = window.inklineTest;
+      // A 20 px square in the middle of a 40 px picture, dark on light or
+      // light on dark.
+      const picture = async (ink: string, ground: string) => {
+        const surface = new OffscreenCanvas(40, 40);
+        const context = surface.getContext("2d");
+        if (context === null) throw new Error("no 2D context");
+        context.fillStyle = ground;
+        context.fillRect(0, 0, 40, 40);
+        context.fillStyle = ink;
+        context.fillRect(10, 10, 20, 20);
+        return createImageBitmap(surface);
+      };
+      const traced = async (
+        image: ImageBitmap,
+        place: { x: number; y: number; scale: number },
+        light: boolean,
+      ) => {
+        const made = await canvas.baseFromTrace(image, place, 128, light);
+        if (made === undefined) return undefined;
+        const { x, y, scale, png } = made.layer;
+        const bitmap = await canvas.decodePng(png);
+        const { width, height, data } = canvas.readPixels(bitmap);
+        bitmap.close();
+        let full = 0;
+        let grey = true;
+        for (let at = 0; at < data.length; at += 4) {
+          if (data[at + 3] === 255) full++;
+          if (data[at] !== render.inkGrey) grey = false;
+        }
+        return { x, y, scale, width, height, full, grey };
+      };
+      const dark = await picture("black", "white");
+      const light = await picture("white", "black");
+      const results = {
+        dark: await traced(dark, { x: 100, y: 50, scale: 2 }, false),
+        light: await traced(light, { x: 100, y: 50, scale: 2 }, true),
+        // Its top 15 picture rows lie above the line box.
+        cut: await traced(dark, { x: 0, y: -30, scale: 2 }, false),
+        below: await traced(dark, { x: 0, y: 200, scale: 2 }, false),
+        // Light ink asked of a dark square on white: the ground is the ink.
+        ground: await traced(dark, { x: 0, y: 0, scale: 1 }, true),
+      };
+      dark.close();
+      light.close();
+      return results;
+    });
+    // At (100 + 10 × 2, 50 + 10 × 2) pixels, in units of 1/16 pixel.
+    const square = {
+      x: 1920,
+      y: 1120,
+      scale: 2,
+      width: 20,
+      height: 20,
+      full: 400,
+      grey: true,
+    };
+    expect(result.dark).toEqual(square);
+    expect(result.light).toEqual(square);
+    expect(result.cut).toEqual({
+      x: 320,
+      y: 0,
+      scale: 2,
+      width: 20,
+      height: 15,
+      full: 300,
+      grey: true,
+    });
+    expect(result.below).toBeNull();
+    expect(result.ground).toMatchObject({ x: 0, y: 0, width: 40, height: 40 });
+    expect(result.ground?.full).toBe(40 * 40 - 400);
+  });
 });

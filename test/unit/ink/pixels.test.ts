@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  alphaBounds,
+  cropAlpha,
   inkAlpha,
   inkBounds,
   inkPixels,
@@ -183,5 +185,29 @@ describe("thresholdAlpha", () => {
     const half = thresholdEdge / 2;
     const values = Uint8ClampedArray.from([100 - half - 1, 100 + half]);
     expect([...thresholdAlpha(values, 100, false)]).toEqual([255, 0]);
+  });
+});
+
+describe("alphaBounds and cropAlpha", () => {
+  const alpha = Uint8ClampedArray.from([
+    ...[0, 0, 0, 0],
+    ...[0, 9, 0, 0],
+    ...[0, 0, 7, 0],
+  ]);
+
+  it("finds the rectangle around every value above zero", () => {
+    expect(alphaBounds(alpha, 4)).toEqual({
+      left: 1,
+      top: 1,
+      right: 3,
+      bottom: 3,
+    });
+    expect(alphaBounds(new Uint8ClampedArray(6), 3)).toBeUndefined();
+  });
+
+  it("crops to a rectangle", () => {
+    expect([
+      ...cropAlpha(alpha, 4, { left: 1, top: 1, right: 3, bottom: 3 }),
+    ]).toEqual([9, 0, 0, 7]);
   });
 });
