@@ -137,6 +137,27 @@ async function builtFiles(directory: string): Promise<BuiltFile[]> {
   ];
 }
 
+/**
+ * The commit that the tag `version` names, by the tag's own ref, so that a
+ * branch of the same name cannot stand in for it; an annotated tag is
+ * followed to its commit. Undefined if GitHub cannot say.
+ */
+function taggedCommit(version: string): string | undefined {
+  let target = record(
+    ghJson(["api", `repos/${repository}/git/ref/tags/${version}`]),
+  )?.object;
+  for (let depth = 0; depth < 5; depth++) {
+    const object = record(target);
+    if (typeof object?.sha !== "string") return undefined;
+    if (object.type === "commit") return object.sha;
+    if (object.type !== "tag") return undefined;
+    target = record(
+      ghJson(["api", `repos/${repository}/git/tags/${object.sha}`]),
+    )?.object;
+  }
+  return undefined;
+}
+
 /** A release's files, by name and the digest GitHub gives each. */
 function assetsOf(release: Record<string, unknown>): Draft["assets"] {
   return (Array.isArray(release.assets) ? release.assets : [])
@@ -273,29 +294,20 @@ function host(
         );
       }
       const release = record(JSON.parse(found.stdout));
-      // The commit the tag names, which a lightweight or annotated tag
-      // resolves to alike.
-      const tagged = ghRun([
-        "api",
-        `repos/${repository}/commits/${version}`,
-        "--jq",
-        ".sha",
-      ]);
       if (release === undefined || typeof release.id !== "number") {
         return Promise.reject(
           new Error(`GitHub gave no release for ${version}`),
         );
       }
-      if (tagged.status !== 0) {
+      const commit = taggedCommit(version);
+      if (commit === undefined) {
         return Promise.reject(
-          new Error(
-            `GitHub could not say which commit ${version} tags: ${tagged.stderr.trim()}`,
-          ),
+          new Error(`GitHub could not say which commit ${version} tags`),
         );
       }
       return Promise.resolve({
         id: release.id,
-        target: tagged.stdout.trim(),
+        target: commit,
         assets: assetsOf(release),
       });
     },
