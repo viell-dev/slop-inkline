@@ -4,7 +4,7 @@ import {
   dropFor,
   explicitHeight,
   isSymbolUrl,
-} from "../../../src/render/symbols.ts";
+} from "../../../src/render/layout.ts";
 
 describe("isSymbolUrl", () => {
   it("knows a vault symbol's URL, with the query Obsidian adds", () => {
