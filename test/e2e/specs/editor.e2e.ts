@@ -3615,6 +3615,22 @@ describe("The editor", function () {
       await waitClosed();
     });
 
+    it("makes the ink being previewed when saving, or says why it cannot", async function () {
+      await insert();
+      await pasteMarked(...squareOn("white", "rgb(128, 128, 128)"));
+      await browser.keys(["i"]);
+      // No ink at this threshold: the save stops, and the editor stays.
+      await setThreshold(100);
+      await browser.keys(["Control", "Enter"]);
+      await waitForStatus("No ink at this threshold: try another");
+      expect(await editorOpen()).toBe(true);
+      expect(await symbolFiles()).toEqual([]);
+      await setThreshold(200);
+      await browser.keys(["Control", "Enter"]);
+      await waitClosed();
+      expect(await baseSize("001.ink.png")).toEqual([20, 20]);
+    });
+
     it("leaves the slider its arrow keys while the picture moves", async function () {
       await insert();
       await pastePicture("red");

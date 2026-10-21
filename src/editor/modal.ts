@@ -749,7 +749,7 @@ export class InkEditorModal extends Modal {
     if (this.#options.next !== undefined) {
       key(["Mod", "Shift"], "Enter", () => void this.#saveAndNext(), false);
     }
-    key(["Mod"], "s", () => void this.#save(), false);
+    key(["Mod"], "s", () => void this.#saveOnly(), false);
     key(["Mod"], "z", () => {
       this.#undo();
     });
@@ -1840,6 +1840,27 @@ export class InkEditorModal extends Modal {
     this.#announce("Reloaded: the file changed on disk");
   }
 
+  /** Saves, keeping the editor open. */
+  async #saveOnly(): Promise<void> {
+    if (await this.#applyPending()) await this.#save();
+  }
+
+  /**
+   * Makes the ink being previewed, before a save, so that the save keeps
+   * what the surface shows. Returns whether the save may go on, which it may
+   * not when the threshold leaves no ink or the editor closed meanwhile.
+   */
+  async #applyPending(): Promise<boolean> {
+    if (!this.#makingInk()) return true;
+    await this.#applyInk();
+    return !this.#makingInk() && !this.#ended();
+  }
+
+  /** Whether what makes ink of the picture is open. */
+  #makingInk(): boolean {
+    return this.#converting !== undefined;
+  }
+
   /**
    * Saves, then opens the editor for the next symbol, whose embed follows
    * this one's, with the same tools. As with Save and close, strokes drawn
@@ -1850,6 +1871,7 @@ export class InkEditorModal extends Modal {
     if (next === undefined || this.#advancing) return;
     this.#advancing = true;
     try {
+      if (!(await this.#applyPending())) return;
       if (!(await this.#save(() => void this.#saveAndNext()))) return;
       // Closed meanwhile, as by Save and close or by Inkline being disabled.
       if (this.#closing || this.#retired) return;
@@ -1877,6 +1899,7 @@ export class InkEditorModal extends Modal {
    * while it ran keep the editor open, since they are not saved yet.
    */
   async #saveAndClose(): Promise<void> {
+    if (!(await this.#applyPending())) return;
     if (!(await this.#save(() => void this.#saveAndClose()))) return;
     if (this.#session.dirty) {
       this.#announce("Saved, except for the strokes drawn while saving");

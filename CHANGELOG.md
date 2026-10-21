@@ -28,6 +28,12 @@ section is also its
   from the keyboard. Next takes it on to the next symbol where it was, so that
   an inscription is traced from one screenshot, and **Remove picture** takes it
   away.
+- **Make ink**, or I, in the editor, turns the picture being traced into the
+  symbol's ink, as its base layer, by a threshold that a slider sets and the
+  surface previews; **Light ink** takes a light symbol on a dark ground. Only
+  what the surface shows across becomes ink, so that the other symbols of a
+  screenshot stay out, and Undo takes it back. Copying a symbol you can see then
+  needs no drawing at all.
 - **Edit symbol**, in a symbol file's menu, which opens it in the editor again
   with every stroke, so that nothing is lost by editing.
 - The editor's pen, eraser, four brush sizes, undo, redo, and clear, each with
