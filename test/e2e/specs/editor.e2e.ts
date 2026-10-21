@@ -1179,6 +1179,26 @@ describe("The editor", function () {
       expect(await editorOpen()).toBe(true);
       expect((await nameField()).value).toBe("tower");
       expect(await strokeCount("001.ink.png")).toBe(2);
+      // Failing again, slowly, with a stroke drawn meanwhile, which is not
+      // saved either, and the status says both.
+      await browser.executeObsidian(({ app }) => {
+        app.fileManager.renameFile = () =>
+          new Promise((_resolve, reject) => {
+            window.setTimeout(() => {
+              reject(new Error("the disk says no"));
+            }, 1500);
+          });
+      });
+      await browser.keys(["Control", "Enter"]);
+      await draw([
+        [0.3, 0.5],
+        [0.7, 0.5],
+      ]);
+      await waitForStatus(
+        "Saved, except for the name and what changed while saving",
+      );
+      expect(await editorOpen()).toBe(true);
+      expect(await strokeCount("001.ink.png")).toBe(2);
     } finally {
       await browser.executeObsidian(({ app }) => {
         const manager = app.fileManager as typeof app.fileManager & {
@@ -1200,6 +1220,32 @@ describe("The editor", function () {
     if (await update.isDisplayed()) await update.click();
     await waitClosed();
     expect(await symbolFiles()).toEqual(["tower.ink.png"]);
+    expect(await strokeCount("tower.ink.png")).toBe(3);
+  });
+
+  it("says only that it saved when the symbol was renamed elsewhere meanwhile", async function () {
+    await saveOne();
+    await editFile("001.ink.png");
+    await draw([
+      [0.6, 0.3],
+      [0.6, 0.7],
+    ]);
+    // Renamed as the file explorer or sync would, while the save writes.
+    await delayVault("modifyBinary", 1500, "before");
+    await browser.keys(["Control", "s"]);
+    await browser.executeObsidian(async ({ app }) => {
+      const file = app.vault.getFileByPath("001.ink.png");
+      if (file === null) throw new Error("no 001");
+      await app.vault.rename(file, "tower.ink.png");
+    });
+    // No rename was asked, so none failed.
+    await waitForStatus("Saved");
+    expect(await browser.$(".inkline-status").getText()).toBe("Saved");
+    expect((await nameField()).value).toBe("tower");
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    expect(await symbolFiles()).toEqual(["tower.ink.png"]);
+    expect(await strokeCount("tower.ink.png")).toBe(2);
   });
 
   it("keeps the joiners a name is spelled with", async function () {

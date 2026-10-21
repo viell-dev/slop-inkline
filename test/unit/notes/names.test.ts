@@ -129,7 +129,8 @@ describe("chooseName", () => {
     // An invisible space, or a control that reorders text, would hide or
     // fake a name; so would a control character.
     expect(chooseName(char(0x200b))).toEqual({ kind: "number" });
-    for (const code of [0x200b, 0x2060, 0xfeff, 0x202e, 0x2067, 0x85]) {
+    const left = [0x200b, 0x2060, 0x2062, 0xfeff, 0xfffa, 0x202e, 0x2067, 0x85];
+    for (const code of left) {
       expect(chooseName(`ga${char(code)}te`)).toEqual({
         kind: "name",
         name: "gate",
@@ -174,7 +175,8 @@ describe("chooseName", () => {
 
 describe("chooseRename", () => {
   it("keeps a file's own name, which chooseName would change or refuse", () => {
-    for (const own of ["a#1", "door.", "con", "tower"]) {
+    // A file named elsewhere with spaces around its name too.
+    for (const own of ["a#1", "door.", "con", "tower", " gate "]) {
       expect(chooseRename(own, own)).toEqual({ kind: "name", name: own });
       expect(chooseRename(` ${own} `, own)).toEqual({
         kind: "name",

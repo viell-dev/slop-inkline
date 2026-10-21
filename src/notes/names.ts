@@ -30,12 +30,14 @@ const reserved = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i;
 const noBreakSpaces = new Set([0xa0, 0x202f]);
 
 /**
- * Invisible spaces and the controls that reorder text, which would make a
- * name look empty, the same as another, or other than it is. Other format
- * characters stay, as the joiners and direction marks that scripts and
- * emoji need for a name to be spelled and shown as it is.
+ * Invisible spaces, operators, and annotation marks, and the controls that
+ * reorder text, which would make a name look empty, the same as another,
+ * or other than it is. Other format characters stay, as the joiners and
+ * direction marks that scripts and emoji need for a name to be spelled and
+ * shown as it is.
  */
-const invisible = /[\u200b\u2060\ufeff\u202a-\u202e\u2066-\u2069]/u;
+const invisible =
+  /[\u200b\u2060-\u2064\ufeff\ufff9-\ufffb\u202a-\u202e\u2066-\u2069]/u;
 
 /**
  * Whether `char` can be in a name: not a control character, an invisible
@@ -92,12 +94,12 @@ export function chooseName(typed: string): NameChoice {
 /**
  * What `typed` makes the name of a symbol named `current`, `""` for one with
  * no file yet: as `chooseName` says, except that its own name, typed again,
- * keeps it. A file can come by a name that `chooseName` would change or
- * refuse, as one renamed elsewhere to `a#1`, or to `con` on Linux; saving it
- * leaves that name alone.
+ * keeps it, spaces around either aside. A file can come by a name that
+ * `chooseName` would change or refuse, as one renamed elsewhere to `a#1`, or
+ * to `con` on Linux; saving it leaves that name alone.
  */
 export function chooseRename(typed: string, current: string): NameChoice {
-  const own = current.normalize("NFC");
+  const own = current.normalize("NFC").trim();
   if (own !== "" && typed.normalize("NFC").trim() === own) {
     // As the file has it, composed or not, so that nothing renames it.
     return { kind: "name", name: current };

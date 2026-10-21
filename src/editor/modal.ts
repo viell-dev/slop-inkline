@@ -853,21 +853,23 @@ export class InkEditorModal extends Modal {
     if (typed !== undefined && field.value === typed) field.value = name;
   }
 
-  /** Whether the file has the name `typed` gave it, as saving read it. */
-  #took(typed: string): boolean {
-    const name = this.#fileName() ?? "";
-    const choice = chooseRename(typed, name);
-    return (
-      choice.kind === "number" ||
-      (choice.kind === "name" && choice.name === name)
-    );
+  /**
+   * Whether a save that sent `typed`, with the symbol named `before`, gave
+   * the file the name it asked for, or asked for none, as when the file was
+   * renamed elsewhere meanwhile.
+   */
+  #took(typed: string, before: string): boolean {
+    const choice = chooseRename(typed, before);
+    if (choice.kind !== "name" || choice.name === before) return true;
+    return choice.name === this.#fileName();
   }
 
   /** What a save says when something is still unsaved after it. */
   get #partlySaved(): string {
-    return this.#notRenamed
-      ? "Saved, but not renamed"
-      : "Saved, except for what changed while saving";
+    if (!this.#notRenamed) return "Saved, except for what changed while saving";
+    return this.#session.dirty
+      ? "Saved, except for the name and what changed while saving"
+      : "Saved, but not renamed";
   }
 
   /**
@@ -2210,6 +2212,7 @@ export class InkEditorModal extends Modal {
         const written = await fingerprintOf(bytes);
         this.#keepDraft();
         const typed = this.#typedName;
+        const before = this.#savedName;
         await this.#options.write(
           bytes,
           record,
@@ -2221,7 +2224,7 @@ export class InkEditorModal extends Modal {
         );
         // A rename that failed leaves the name typed in the field, unsaved,
         // for the next save to try again.
-        this.#notRenamed = !this.#took(typed);
+        this.#notRenamed = !this.#took(typed, before);
         this.#named(this.#notRenamed ? undefined : typed);
         this.#watch.took(written);
         this.#session.markSaved(document);
