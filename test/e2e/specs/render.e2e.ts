@@ -753,14 +753,14 @@ describe("Symbols in notes", function () {
       // the fastest of five runs, each on images of its own. Slow tagging
       // shows in every run, while other work beside the test, such as the
       // other Obsidian version's tests, slows only some.
-      let ms = Number.POSITIVE_INFINITY;
-      let tagged = 0;
+      const runs: number[] = [];
+      const tagged: number[] = [];
       for (let run = 0; run < 5; run++) {
         const apart = symbols();
         const started = performance.now();
         window.inklineTest.renderSymbols.tagWithin(apart, vault);
-        ms = Math.min(ms, performance.now() - started);
-        tagged = apart.querySelectorAll("img.inkline-symbol").length;
+        runs.push(performance.now() - started);
+        tagged.push(apart.querySelectorAll("img.inkline-symbol").length);
       }
       // And a thousand added at once, which the observer finds.
       const added = symbols();
@@ -768,11 +768,20 @@ describe("Symbols in notes", function () {
       await new Promise((resolve) => window.setTimeout(resolve, 0));
       const found = added.querySelectorAll("img.inkline-symbol").length;
       added.remove();
-      return { ms, apart: tagged, found };
+      return { runs, tagged, found };
     });
-    expect(result.apart).toBe(1000);
+    console.log(
+      `Tagging 1,000 symbols, five runs: ${result.runs.map((ms) => ms.toFixed(1)).join(", ")} ms`,
+    );
+    // Every run tags them all: nothing is remembered from one to the next.
+    expect(result.tagged).toEqual([1000, 1000, 1000, 1000, 1000]);
     expect(result.found).toBe(1000);
-    // A budget with room for a slow machine: a few frames for a thousand.
-    expect(result.ms).toBeLessThan(50);
+    // A budget with room for a slow machine, a few frames for a thousand,
+    // for the fastest run, which is warmed up. Beside the other version's
+    // tests in Docker on Windows 11, it took 16 ms in Obsidian 1.14.4 and
+    // 21 ms in 1.13.4. It guards against tagging that grows faster than the
+    // number of images, which took 300 ms and more, not against a constant
+    // slowdown of two or three times.
+    expect(Math.min(...result.runs)).toBeLessThan(50);
   });
 });

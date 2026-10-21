@@ -33,11 +33,13 @@ function symbol(): string {
 }
 
 describe("A vault with many symbols", function () {
+  // Making 5,000 symbols takes 20 s or more beside the other version's tests,
+  // and the hook takes the suite's limit, not one it sets itself.
+  this.timeout(600_000);
+
   before(async function () {
-    this.timeout(600_000);
-    // In batches, each well within WebDriver's limit for one script, which
-    // all of them at once can pass on a loaded machine; a batch makes only
-    // what is missing, so that one sent again does no harm.
+    // In batches, each well within WebDriver's limit for one script, and each
+    // making only what is missing, so that one sent again does no harm.
     const png = symbol();
     for (let first = 0; first < count; first += 500) {
       await browser.executeObsidian(
@@ -82,7 +84,7 @@ describe("A vault with many symbols", function () {
 
   it("finds the symbols a keystroke matches within a few frames", async function () {
     await openAtMarker("Large.md", "HERE");
-    const result = await browser.executeObsidian(({ app }) => {
+    const result = await browser.executeObsidian(({ app }, limit) => {
       // The list Inkline registered, among the editor's suggestions: an
       // internal of Obsidian's that only this measurement reads.
       const manager: unknown = Reflect.get(app.workspace, "editorSuggest");
@@ -93,11 +95,13 @@ describe("A vault with many symbols", function () {
       const registered: readonly unknown[] = Array.isArray(suggests)
         ? suggests
         : [];
+      // By its class's name, which the build keeps, as it does not minify.
+      const name = (suggest: unknown): string =>
+        typeof suggest === "object" && suggest !== null
+          ? suggest.constructor.name
+          : typeof suggest;
       const found = registered.find(
-        (suggest: unknown) =>
-          typeof suggest === "object" &&
-          suggest !== null &&
-          suggest.constructor.name === "SymbolSuggest",
+        (suggest) => name(suggest) === "SymbolSuggest",
       );
       const search: unknown =
         typeof found === "object" && found !== null
@@ -105,7 +109,9 @@ describe("A vault with many symbols", function () {
           : undefined;
       const file = app.vault.getFileByPath("Large.md");
       if (typeof search !== "function" || file === null) {
-        throw new Error("no list of symbols registered");
+        throw new Error(
+          `no list of symbols registered among ${JSON.stringify(registered.map(name))}`,
+        );
       }
       const list = (query: string): string[] => {
         const files: unknown = search.call(found, {
@@ -140,14 +146,17 @@ describe("A vault with many symbols", function () {
       // Each query's fastest of three rounds: a slow search is slow in every
       // round, while other work beside the test, such as the other Obsidian
       // version's tests, slows only some.
+      // A search far over budget ends the rounds, so that the test reports
+      // its times rather than running out of time.
       const best = new Map<string, number>();
       const lists = new Map<string, string[]>();
-      for (let round = 0; round < 3; round++) {
+      rounds: for (let round = 0; round < 3; round++) {
         for (const query of queries) {
           const started = performance.now();
           lists.set(query, list(query));
           const ms = performance.now() - started;
           best.set(query, Math.min(best.get(query) ?? ms, ms));
+          if (ms > limit * 10) break rounds;
         }
       }
       const times = [...best.values()];
@@ -164,9 +173,9 @@ describe("A vault with many symbols", function () {
         number: lists.get("4242") ?? [],
         none: lists.get("zzzz") ?? [],
       };
-    });
+    }, budget);
     console.log(
-      `${String(result.symbols)} symbols: slowest query ${Math.max(...result.times).toFixed(1)} ms, median ${[...result.times].sort((a, b) => a - b)[Math.floor(result.times.length / 2)]?.toFixed(1) ?? "?"} ms, each the fastest of three`,
+      `${String(result.symbols)} symbols, each query's fastest of three rounds: ${result.times.map((ms) => ms.toFixed(1)).join(", ")} ms`,
     );
     expect(result.symbols).toBe(count);
     // The list holds the 50 best, the one the note uses most first.
