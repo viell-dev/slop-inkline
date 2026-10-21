@@ -226,6 +226,50 @@ async function insertEmbed(
 }
 
 /**
+ * Puts `next` in place of `embed`, which Inkline inserted just before
+ * `point` in the target note, if it is still there: through a live editor of
+ * the note when there is one, otherwise in the note's file. Returns the point
+ * just after it then, or undefined if it is not there any more.
+ */
+async function replaceEmbed(
+  app: App,
+  target: Target,
+  point: InsertionPoint,
+  embed: string,
+  next: string,
+): Promise<InsertionPoint | undefined> {
+  const { file } = target;
+  /** Where `embed` starts in `text`, if it ends at the point. */
+  const start = (text: string): number | undefined => {
+    const end = findPoint(text, point);
+    return end !== undefined && text.slice(end - embed.length, end) === embed
+      ? end - embed.length
+      : undefined;
+  };
+  const view = liveView(app, file, target.view);
+  if (view !== undefined) {
+    const editor = view.editor;
+    const at = start(editor.getValue());
+    if (at === undefined) return undefined;
+    editor.replaceRange(
+      next,
+      editor.offsetToPos(at),
+      editor.offsetToPos(at + embed.length),
+    );
+    return capturePoint(editor.getValue(), at + next.length);
+  }
+  let after: InsertionPoint | undefined;
+  await app.vault.process(file, (text) => {
+    const at = start(text);
+    if (at === undefined) return text;
+    const replaced = text.slice(0, at) + next + text.slice(at + embed.length);
+    after = capturePoint(replaced, at + next.length);
+    return replaced;
+  });
+  return after;
+}
+
+/**
  * A file that a new symbol's first save made, or was making: by its path,
  * and, once it is found, as the vault's file, which follows renames.
  */
@@ -517,7 +561,20 @@ function newSymbol(
         } finally {
           made.previous = undefined;
         }
-        made.file = await rename(app, made.file, renaming);
+        if (renaming !== undefined) {
+          // Obsidian updates the links it knows of, as its settings say. The
+          // embed just inserted, which its cache can lack for a moment after,
+          // Inkline updates itself.
+          const known =
+            (app.metadataCache.resolvedLinks[note.path]?.[made.file.path] ??
+              0) > 0;
+          const was = inserted ? embedFor(app, made.file, note.path) : "";
+          made.file = await rename(app, made.file, renaming);
+          if (inserted && !known && after !== undefined) {
+            const now = embedFor(app, made.file, note.path);
+            after = (await replaceEmbed(app, target, after, was, now)) ?? after;
+          }
+        }
       }
       if (inserted) return;
       // Once Inkline is disabled, the editor's draft finishes the insertion.

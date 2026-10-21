@@ -941,7 +941,9 @@ describe("The editor", function () {
 
   it("refuses a name its folder has, in any case, or one Windows keeps", async function () {
     await saveOne();
-    await insert();
+    await openAtMarker("Welcome.md", "vault");
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await waitForEditor();
     await draw(zigzag);
     for (const [name, reason] of [
       ["001", "the vault's top folder already has a symbol named 001"],
@@ -958,7 +960,9 @@ describe("The editor", function () {
     await waitClosed();
     expect(await symbolFiles()).toEqual(["001.ink.png", "arch.ink.png"]);
     // A name that differs only in letter case is the same file on Windows.
-    await insert();
+    await openAtMarker("Welcome.md", "synthetic");
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await waitForEditor();
     await draw(zigzag);
     await nameSymbol("ARCH");
     await browser.keys(["Control", "Enter"]);
@@ -1003,14 +1007,14 @@ describe("The editor", function () {
     await browser.keys(["Control", "s"]);
     await waitForStatus("Saved");
     expect(await nameField()).toEqual({ value: "001", placeholder: "001" });
+    // Renamed straight after its first save, before Obsidian's cache holds
+    // the embed just inserted, which Inkline then updates itself.
     await nameSymbol("gate");
     await browser.keys(["Control", "Enter"]);
-    await browser.$("button=Just once").waitForDisplayed();
-    await browser.$("button=Just once").click();
     await waitClosed();
     expect(await symbolFiles()).toEqual(["gate.ink.png"]);
-    await browser.waitUntil(async () =>
-      (await noteOnDisk("Editor.md")).includes("![[gate.ink.png]]"),
+    expect(await noteText()).toBe(
+      "The door is marked with ![[gate.ink.png]] which means return.\n",
     );
   });
 
