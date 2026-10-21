@@ -1038,35 +1038,69 @@ describe("The editor", function () {
   });
 
   it("puts the next symbol after one renamed as Obsidian updates its link", async function () {
-    await browser.executeObsidian(async ({ app }) => {
-      await app.vault.create("Inscription.md", "Symbols: HERE");
-    });
-    await openAtMarker("Inscription.md", "HERE");
-    await browser.executeObsidianCommand("inkline:insert-symbol");
-    await waitForEditor();
-    await draw(zigzag);
-    await browser.keys(["Control", "s"]);
-    await waitForStatus("Saved");
-    // Once Obsidian knows the embed, it rewrites it itself, at the end of
-    // the note, where nothing after it shows where the next one goes.
-    await waitForLink("Inscription.md", "001.ink.png");
-    await nameSymbol("gate");
-    await browser.keys(["Control", "Shift", "Enter"]);
-    await browser.$("button=Just once").waitForDisplayed();
-    await browser.$("button=Just once").click();
-    await waitForEditor();
-    await browser.waitUntil(async () => (await nameField()).value === "");
-    await draw(zigzag);
-    await browser.keys(["Control", "Enter"]);
-    await waitClosed();
-    expect(await noteText()).toBe("Symbols: ![[gate.ink.png]]![[001.ink.png]]");
-    expect(
-      await browser.execute(() =>
-        Array.from(document.querySelectorAll(".notice")).some((notice) =>
-          notice.textContent.includes("added at the end"),
+    // With the note open, Obsidian rewrites the embed after the rename; with
+    // its tab showing another note, before, in the note's file.
+    for (const [note, tab] of [
+      ["Inscription.md", "open"],
+      ["Closed inscription.md", "closed"],
+    ] as const) {
+      await browser.executeObsidian(async ({ app }, path) => {
+        await app.vault.create(path, "Symbols: HERE");
+      }, note);
+      const before = await symbolFiles();
+      await openAtMarker(note, "HERE");
+      await browser.executeObsidianCommand("inkline:insert-symbol");
+      await waitForEditor();
+      await draw(zigzag);
+      await browser.keys(["Control", "s"]);
+      await waitForStatus("Saved");
+      // Once Obsidian knows the embed, it rewrites it itself, at the end of
+      // the note, where nothing after it shows where the next one goes.
+      const first = (await symbolFiles()).find(
+        (path) => !before.includes(path),
+      );
+      if (first === undefined) throw new Error("no new symbol");
+      await waitForLink(note, first);
+      if (tab === "closed") {
+        await browser.executeObsidian(async ({ app, obsidian }, path) => {
+          const welcome = app.vault.getFileByPath("Welcome.md");
+          if (welcome === null) throw new Error("no Welcome.md");
+          for (const leaf of app.workspace.getLeavesOfType("markdown")) {
+            if (
+              leaf.view instanceof obsidian.MarkdownView &&
+              leaf.view.file?.path === path
+            ) {
+              await leaf.openFile(welcome);
+            }
+          }
+        }, note);
+      }
+      const name = tab === "open" ? "gate" : "gate two";
+      await nameSymbol(name);
+      await browser.keys(["Control", "Shift", "Enter"]);
+      await browser.$("button=Just once").waitForDisplayed();
+      await browser.$("button=Just once").click();
+      await waitForEditor();
+      await browser.waitUntil(async () => (await nameField()).value === "");
+      await draw(zigzag);
+      await browser.keys(["Control", "Enter"]);
+      await waitClosed();
+      let text = "";
+      await browser
+        .waitUntil(async () => {
+          text = await noteOnDisk(note);
+          return text.startsWith(`Symbols: ![[${name}.ink.png]]![[`);
+        })
+        .catch(() => undefined);
+      expect(text).toBe(`Symbols: ![[${name}.ink.png]]![[${first}]]`);
+      expect(
+        await browser.execute(() =>
+          Array.from(document.querySelectorAll(".notice")).some((notice) =>
+            notice.textContent.includes("added at the end"),
+          ),
         ),
-      ),
-    ).toBe(false);
+      ).toBe(false);
+    }
   });
 
   it("keeps a name the symbol was given elsewhere while it was open", async function () {
