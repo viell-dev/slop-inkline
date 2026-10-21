@@ -238,3 +238,70 @@ export function cropAlpha(
   }
   return output;
 }
+
+/** Where a picture sits in the document. */
+export interface PicturePlace {
+  /** Its left and top edges, in document pixels. */
+  readonly x: number;
+  readonly y: number;
+  /** Document pixels per picture pixel. */
+  readonly scale: number;
+}
+
+/** A picture's ink: one alpha per pixel of part of it, and where that is. */
+export interface TracedInk {
+  readonly alpha: Uint8ClampedArray;
+  readonly width: number;
+  readonly height: number;
+  /** The part's left and top edges, in document pixels. */
+  readonly x: number;
+  readonly y: number;
+}
+
+/**
+ * The ink of a picture at `place` by a threshold, as {@link thresholdAlpha}
+ * finds it, for the part of the picture that lies within `region`, in
+ * document pixels, cropped to its ink; undefined when none is there.
+ */
+export function traceInk(
+  pixels: RgbaPixels,
+  place: PicturePlace,
+  threshold: number,
+  light: boolean,
+  region: Bounds,
+): TracedInk | undefined {
+  const { x, y, scale } = place;
+  const left = Math.max(0, Math.floor((region.left - x) / scale));
+  const right = Math.min(pixels.width, Math.ceil((region.right - x) / scale));
+  const top = Math.max(0, Math.floor((region.top - y) / scale));
+  const bottom = Math.min(
+    pixels.height,
+    Math.ceil((region.bottom - y) / scale),
+  );
+  if (right <= left || bottom <= top) return undefined;
+  const across = right - left;
+  const part = new Uint8ClampedArray(across * (bottom - top) * 4);
+  for (let row = top; row < bottom; row++) {
+    part.set(
+      pixels.data.subarray(
+        (row * pixels.width + left) * 4,
+        (row * pixels.width + right) * 4,
+      ),
+      (row - top) * across * 4,
+    );
+  }
+  const alpha = thresholdAlpha(
+    luminance({ width: across, height: bottom - top, data: part }),
+    threshold,
+    light,
+  );
+  const bounds = alphaBounds(alpha, across);
+  if (bounds === undefined) return undefined;
+  return {
+    alpha: cropAlpha(alpha, across, bounds),
+    width: bounds.right - bounds.left,
+    height: bounds.bottom - bounds.top,
+    x: x + (left + bounds.left) * scale,
+    y: y + (top + bounds.top) * scale,
+  };
+}

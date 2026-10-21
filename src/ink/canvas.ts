@@ -24,15 +24,12 @@ import {
 import { crop, lineBox, type Bounds } from "./geometry.ts";
 import { outlineBounds, strokeOutline } from "./outline.ts";
 import {
-  alphaBounds,
-  cropAlpha,
   inkAlpha,
   inkBounds,
   inkPixels,
-  luminance,
   repeatPixels,
-  thresholdAlpha,
   type RgbaPixels,
+  type TracedInk,
 } from "./pixels.ts";
 import { drawInk, inkColor, type DrawableBase } from "./render.ts";
 
@@ -193,48 +190,47 @@ export async function baseFromPicture(
 }
 
 /**
- * A base layer from a picture traced over, by a threshold: the picture's
- * ink, at its own resolution, where the picture sits. `place` gives its left
- * and top edges, in document pixels, and its scale, in document pixels per
- * picture pixel. Dark pixels become ink, or light ones with `light`. Only the
- * rows within the line box are kept, cropped to their ink; undefined when no
- * ink is left. Throws a `RangeError` when the ink is larger than a base layer
- * can be, or encodes to more bytes than one can hold.
+ * A traced picture's ink, as `traceInk` finds it at `scale` document pixels
+ * per picture pixel, ready to draw as a base layer at once: to preview it
+ * while the threshold changes, without encoding it.
  */
-export async function baseFromTrace(
-  picture: ImageBitmap,
-  place: { readonly x: number; readonly y: number; readonly scale: number },
-  threshold: number,
-  light: boolean,
-): Promise<{ layer: BaseLayer; drawable: DrawableBase } | undefined> {
-  const { x, y, scale } = place;
-  const pixels = readPixels(picture);
-  const { width } = pixels;
-  const first = Math.max(0, Math.floor(-y / scale));
-  const end = Math.min(pixels.height, Math.ceil((lineBox.height - y) / scale));
-  if (end <= first) return undefined;
-  const alpha = thresholdAlpha(
-    luminance({
-      width,
-      height: end - first,
-      data: pixels.data.subarray(first * width * 4, end * width * 4),
-    }),
-    threshold,
-    light,
+export function previewInk(ink: TracedInk, scale: number): DrawableBase {
+  const { surface, context } = canvas(ink.width, ink.height);
+  context.putImageData(
+    new ImageData(inkPixels(ink.width, ink.height, ink.alpha), ink.width),
+    0,
+    0,
   );
-  const bounds = alphaBounds(alpha, width);
-  if (bounds === undefined) return undefined;
-  const across = bounds.right - bounds.left;
-  const down = bounds.bottom - bounds.top;
-  if (across > limits.baseSize || down > limits.baseSize) {
+  return {
+    x: Math.round(ink.x * unitsPerPixel),
+    y: Math.round(ink.y * unitsPerPixel),
+    scale,
+    image: surface,
+    width: ink.width,
+    height: ink.height,
+  };
+}
+
+/**
+ * A base layer of a traced picture's ink, as `traceInk` finds it at `scale`
+ * document pixels per picture pixel. Throws a `RangeError` when the ink is
+ * larger than a base layer can be, or encodes to more bytes than one can
+ * hold.
+ */
+export async function baseFromInk(
+  ink: TracedInk,
+  scale: number,
+): Promise<{ layer: BaseLayer; drawable: DrawableBase }> {
+  const { width, height } = ink;
+  if (width > limits.baseSize || height > limits.baseSize) {
     throw new RangeError(
-      `the picture's ink is ${String(across)}×${String(down)} pixels, larger than a base layer can be (${String(limits.baseSize)} a side)`,
+      `the picture's ink is ${String(width)}×${String(height)} pixels, larger than a base layer can be (${String(limits.baseSize)} a side)`,
     );
   }
   const png = await encodePixels({
-    width: across,
-    height: down,
-    data: inkPixels(across, down, cropAlpha(alpha, width, bounds)),
+    width,
+    height,
+    data: inkPixels(width, height, ink.alpha),
   });
   if (png.length > limits.baseBytes) {
     throw new RangeError(
@@ -242,8 +238,8 @@ export async function baseFromTrace(
     );
   }
   const layer: BaseLayer = {
-    x: Math.round((x + bounds.left * scale) * unitsPerPixel),
-    y: Math.round((y + (first + bounds.top) * scale) * unitsPerPixel),
+    x: Math.round(ink.x * unitsPerPixel),
+    y: Math.round(ink.y * unitsPerPixel),
     scale,
     png,
   };

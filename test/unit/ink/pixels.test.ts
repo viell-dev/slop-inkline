@@ -11,6 +11,7 @@ import {
   repeatPixels,
   thresholdAlpha,
   thresholdEdge,
+  traceInk,
   type RgbaPixels,
 } from "../../../src/ink/pixels.ts";
 import { inkGrey } from "../../../src/ink/render.ts";
@@ -209,5 +210,93 @@ describe("alphaBounds and cropAlpha", () => {
     expect([
       ...cropAlpha(alpha, 4, { left: 1, top: 1, right: 3, bottom: 3 }),
     ]).toEqual([9, 0, 0, 7]);
+  });
+});
+
+describe("traceInk", () => {
+  // A 4 × 4 picture: white, with a black 2 × 2 square in its middle.
+  const white = [255, 255, 255, 255];
+  const black = [0, 0, 0, 255];
+  const picture = pixels(4, 4, [
+    ...white,
+    ...white,
+    ...white,
+    ...white,
+    ...white,
+    ...black,
+    ...black,
+    ...white,
+    ...white,
+    ...black,
+    ...black,
+    ...white,
+    ...white,
+    ...white,
+    ...white,
+    ...white,
+  ]);
+  const everywhere = { left: -1e6, top: -1e6, right: 1e6, bottom: 1e6 };
+
+  it("crops to the ink, and says where it sits", () => {
+    const ink = traceInk(
+      picture,
+      { x: 100, y: 50, scale: 2 },
+      128,
+      false,
+      everywhere,
+    );
+    expect(ink).toEqual({
+      alpha: Uint8ClampedArray.from([255, 255, 255, 255]),
+      width: 2,
+      height: 2,
+      x: 102,
+      y: 52,
+    });
+  });
+
+  it("keeps only what lies in the region, by whole picture pixels", () => {
+    // The region ends inside the square's first column, which it keeps.
+    const ink = traceInk(picture, { x: 0, y: 0, scale: 10 }, 128, false, {
+      left: 0,
+      top: 0,
+      right: 15,
+      bottom: 40,
+    });
+    expect(ink).toMatchObject({ width: 1, height: 2, x: 10, y: 10 });
+  });
+
+  it("takes the light ground as ink with light", () => {
+    const ink = traceInk(
+      picture,
+      { x: 0, y: 0, scale: 1 },
+      128,
+      true,
+      everywhere,
+    );
+    expect(ink?.width).toBe(4);
+    expect(
+      [...(ink?.alpha ?? [])].filter((value) => value === 255),
+    ).toHaveLength(12);
+  });
+
+  it("finds nothing outside the picture or without ink", () => {
+    const place = { x: 0, y: 0, scale: 1 };
+    expect(
+      traceInk(picture, place, 128, false, {
+        left: 10,
+        top: 0,
+        right: 20,
+        bottom: 4,
+      }),
+    ).toBeUndefined();
+    // The top row is all ground.
+    expect(
+      traceInk(picture, place, 128, false, {
+        left: 0,
+        top: 0,
+        right: 4,
+        bottom: 1,
+      }),
+    ).toBeUndefined();
   });
 });
