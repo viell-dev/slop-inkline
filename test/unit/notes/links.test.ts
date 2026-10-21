@@ -257,34 +257,39 @@ describe("links as Obsidian reads them", () => {
 
   // A budget for each of these tests, far above what reading the text in one
   // pass takes and far below what reading it again from each failed start
-  // would. Alone, each test takes 60 ms at most; beside the other test files,
-  // which Vitest runs at once, up to four times that. Rereading the address
-  // after each failed start, as the scanner did before it read only an
-  // address's host, took about 6 s on the first input alone.
-  const budget = 1000;
+  // would. On Windows 11, under Vitest, the scanner takes about 0.2 s on the
+  // first test and 0.1 s on the second, alone, and up to five times as long
+  // beside the other test files, which Vitest runs at once. Each scanner that
+  // read too much took over 20 s on one of them: the one before 40d83d6, which
+  // read a whole address before checking its host, 64 s on the first; the one
+  // before da2a509, with `%` in an email's name, 25 s on the first; the one
+  // before 7c4eb35, which read brackets again from each `[`, 28 s on the
+  // second; and the one before 99c10e1, which trimmed an address's `)` one at
+  // a time, 21 s on its last input.
+  const budget = 3000;
 
   it("reads long runs of failed address starts in time", () => {
     const started = performance.now();
-    expect(textLinks("https://".repeat(10000))).toEqual([]);
-    expect(textLinks("mailto:".repeat(10000))).toEqual([]);
+    expect(textLinks("https://".repeat(20000))).toEqual([]);
+    expect(textLinks("mailto:".repeat(20000))).toEqual([]);
     // Percent-encoded text, where each % could start an email's name.
-    expect(textLinks("%E5%A1%94".repeat(3000))).toEqual([]);
-    expect(textLinks("a%".repeat(30000))).toEqual([]);
-    const word = `${"a".repeat(93)}http://`.repeat(1000);
+    expect(textLinks("%E5%A1%94".repeat(6000))).toEqual([]);
+    expect(textLinks("a%".repeat(60000))).toEqual([]);
+    const word = `${"a".repeat(93)}http://`.repeat(2000);
     expect(textLinks(word)).toEqual([]);
     expect(performance.now() - started).toBeLessThan(budget);
   });
 
   it("reads a long line of unclosed brackets in time", () => {
     const started = performance.now();
-    expect(textLinks("[".repeat(20000))).toEqual([]);
-    expect(textLinks("[[".repeat(10000))).toEqual([]);
-    expect(textLinks(`${"[".repeat(20000)}]`)).toEqual([]);
+    expect(textLinks("[".repeat(40000))).toEqual([]);
+    expect(textLinks("[[".repeat(20000))).toEqual([]);
+    expect(textLinks(`${"[".repeat(40000)}]`)).toEqual([]);
     // Links nested in links, around one embed, and an address before many
     // closing parentheses.
-    const nested = `${"[".repeat(5000)}![](x.png)${"](b)".repeat(5000)}`;
+    const nested = `${"[".repeat(10000)}![](x.png)${"](b)".repeat(10000)}`;
     expect(textLinks(nested).length).toBeGreaterThan(0);
-    expect(textLinks(`https://x.y/a${")".repeat(5000)}`)).toHaveLength(1);
+    expect(textLinks(`https://x.y/a${")".repeat(40000)}`)).toHaveLength(1);
     expect(performance.now() - started).toBeLessThan(budget);
   });
 });
@@ -384,20 +389,26 @@ describe("links in generated text", () => {
     }
   });
 
-  it("never inserts inside a link, and moves nothing that is outside one", () => {
-    const next = random(42);
-    for (let round = 0; round < 500; round++) {
-      const { text, links } = line(next);
-      for (let offset = 0; offset <= text.length; offset++) {
-        const moved = outsideLinks(text, offset);
-        const inside = links.find(
-          (link) => link.start < offset && offset < link.end,
-        );
-        expect(moved).toBe(inside === undefined ? offset : inside.end);
-        expect(
-          links.some((link) => link.start < moved && moved < link.end),
-        ).toBe(false);
+  // This checks what is read, not how fast: its 500 rounds take over a second,
+  // and several beside the other test files, more than Vitest's default.
+  it(
+    "never inserts inside a link, and moves nothing that is outside one",
+    { timeout: 30_000 },
+    () => {
+      const next = random(42);
+      for (let round = 0; round < 500; round++) {
+        const { text, links } = line(next);
+        for (let offset = 0; offset <= text.length; offset++) {
+          const moved = outsideLinks(text, offset);
+          const inside = links.find(
+            (link) => link.start < offset && offset < link.end,
+          );
+          expect(moved).toBe(inside === undefined ? offset : inside.end);
+          expect(
+            links.some((link) => link.start < moved && moved < link.end),
+          ).toBe(false);
+        }
       }
-    }
-  });
+    },
+  );
 });
