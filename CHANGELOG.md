@@ -61,9 +61,10 @@ section is also its
   are left out. A new symbol left unnamed takes the next free number in its
   folder when first saved. A changed name renames the file through Obsidian, so
   that the links to it follow as Obsidian's settings say, and the embed just
-  inserted follows too. A name its folder already has, in any letter case, or
-  one Windows keeps for itself, is refused with a notice, and the editor stays
-  open. Drafts keep a name typed but not saved.
+  inserted follows too. A name its folder already has, in any letter case, one
+  Windows keeps for itself, or one too long for a file name, is refused with a
+  notice, and the editor stays open. A symbol renamed elsewhere while its editor
+  is open keeps its new name. Drafts keep a name typed but not saved.
 - The editor's pen, eraser, four brush sizes, undo, redo, and clear, each with
   its shortcut in its tooltip. A pen's eraser end erases, and a palm resting on
   a tablet does not draw, even one that touched it before the pen. A symbol
