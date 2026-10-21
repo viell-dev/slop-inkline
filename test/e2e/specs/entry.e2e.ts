@@ -26,12 +26,24 @@ async function open(
   );
 }
 
-/** Right-clicks the symbol's image in the active leaf, once it is tagged. */
-async function rightClickSymbol(within = ""): Promise<void> {
+/**
+ * Right-clicks the symbol's image in the active leaf's visible view, once it
+ * is tagged; `within` narrows it, as to an embedded note.
+ */
+async function rightClickSymbol(
+  view: "source" | "reading",
+  within = "",
+): Promise<void> {
   const image = browser.$(
-    `.workspace-leaf.mod-active ${within} img.inkline-symbol`,
+    `.workspace-leaf.mod-active .markdown-${view}-view ${within} img.inkline-symbol`,
   );
   await image.waitForExist();
+  // Loaded, and settled where the note puts it: an embedded note draws its
+  // text a moment after it opens.
+  await browser.waitUntil(async () =>
+    image.getProperty("complete").then((complete) => complete === true),
+  );
+  await browser.pause(500);
   await image.click({ button: "right" });
 }
 
@@ -46,7 +58,16 @@ async function menuItems(): Promise<string[]> {
 
 /** Chooses the open menu's item `title`. */
 async function choose(title: string): Promise<void> {
-  await browser.$(`.menu .menu-item-title=${title}`).click();
+  const chosen = await browser.execute((wanted) => {
+    const item = Array.from(
+      document.querySelectorAll(".menu .menu-item-title"),
+    ).find((found) => found.textContent === wanted);
+    const button = item?.closest(".menu-item");
+    if (!button?.instanceOf(HTMLElement)) return false;
+    button.click();
+    return true;
+  }, title);
+  if (!chosen) throw new Error(`no menu item "${title}"`);
 }
 
 /** The name of the symbol the open editor edits, from its title. */
@@ -66,6 +87,19 @@ async function closeEditor(): Promise<void> {
 }
 
 describe("Editing a symbol from a note", function () {
+  // A menu or editor a failed test leaves open would take the next one's
+  // clicks.
+  afterEach(async function () {
+    for (let tries = 0; tries < 3; tries++) {
+      const open = await browser.execute(
+        () => document.querySelector(".menu, .inkline-editor, .modal") !== null,
+      );
+      if (!open) return;
+      await browser.keys(["Escape"]);
+      await browser.pause(200);
+    }
+  });
+
   before(async function () {
     const data = new Uint8Array(64 * 192 * 4).fill(160);
     await browser.executeObsidian(
@@ -94,7 +128,7 @@ describe("Editing a symbol from a note", function () {
 
   it("offers Edit symbol in Live Preview's own menu for the image", async function () {
     await open("Entry.md", "live");
-    await rightClickSymbol();
+    await rightClickSymbol("source");
     await browser.waitUntil(async () =>
       (await menuItems()).includes("Edit symbol"),
     );
@@ -105,12 +139,12 @@ describe("Editing a symbol from a note", function () {
 
   it("shows a symbol's menu in Reading view, where Obsidian shows none", async function () {
     await open("Entry.md", "preview");
-    await rightClickSymbol();
+    await rightClickSymbol("reading");
     await browser.waitUntil(async () => (await menuItems()).length > 0);
-    // Obsidian's items for a file come with it, as in Live Preview's menu.
+    // Obsidian's items for a file come with it, as in a file's menu.
     const items = await menuItems();
     expect(items).toContain("Edit symbol");
-    expect(items).toContain("Open in new tab");
+    expect(items).toContain("Reveal file in navigation");
     expect(items.filter((item) => item === "Edit symbol")).toHaveLength(1);
     await choose("Edit symbol");
     expect(await editorName()).toBe("001");
@@ -127,7 +161,7 @@ describe("Editing a symbol from a note", function () {
 
   it("shows the menu in an embedded note and in a popout window", async function () {
     await open("Host.md", "preview");
-    await rightClickSymbol(".markdown-embed");
+    await rightClickSymbol("reading", ".markdown-embed");
     await browser.waitUntil(async () =>
       (await menuItems()).includes("Edit symbol"),
     );
@@ -152,13 +186,24 @@ describe("Editing a symbol from a note", function () {
           return true;
         }),
       );
-      await browser.waitUntil(async () =>
-        browser.execute(() =>
-          Array.from(
-            activeDocument.querySelectorAll(".menu .menu-item-title"),
-          ).some((item) => item.textContent === "Edit symbol"),
-        ),
-      );
+      let menus: string[] = [];
+      try {
+        await browser.waitUntil(async () => {
+          menus = await browser.execute(() =>
+            [activeDocument, document].flatMap((doc) =>
+              Array.from(doc.querySelectorAll(".menu .menu-item-title")).map(
+                (item) =>
+                  `${doc === document ? "main" : "popout"}: ${item.textContent}`,
+              ),
+            ),
+          );
+          return menus.includes("popout: Edit symbol");
+        });
+      } catch (error) {
+        throw new Error(`no menu in the popout: ${JSON.stringify(menus)}`, {
+          cause: error,
+        });
+      }
     } finally {
       await browser.executeObsidian(({ app }) => {
         for (const leaf of app.workspace.getLeavesOfType("markdown")) {
@@ -192,20 +237,31 @@ describe("Editing a symbol from a note", function () {
     for (const text of ["Top line", "![[photo.png]]"]) {
       await cursorAfter(text);
       expect(
-        await browser.executeObsidian(({ app }) => {
-          // Whether Obsidian ran the command, which its API does not say.
+        await browser.executeObsidian(({ app, obsidian }) => {
+          // Whether the palette would offer it, as Obsidian asks the
+          // command; its API does not say.
           const commands: unknown = Reflect.get(app, "commands");
-          const run: unknown = Reflect.get(
-            Object(commands),
-            "executeCommandById",
-          );
-          if (typeof run !== "function") return "no executeCommandById";
-          const ran: unknown = Reflect.apply(run, commands, [
+          const find: unknown = Reflect.get(Object(commands), "findCommand");
+          if (typeof find !== "function") return "no findCommand";
+          const command: unknown = Reflect.apply(find, commands, [
             "inkline:edit-symbol-at-cursor",
           ]);
-          return ran;
+          const check: unknown = Reflect.get(
+            Object(command),
+            "editorCheckCallback",
+          );
+          const view = app.workspace.getActiveViewOfType(obsidian.MarkdownView);
+          if (typeof check !== "function" || view === null) return "none";
+          const offered: unknown = Reflect.apply(check, command, [
+            true,
+            view.editor,
+            view,
+          ]);
+          return offered;
         }),
       ).toBe(false);
+      // And run anyway, it opens nothing.
+      await browser.executeObsidianCommand("inkline:edit-symbol-at-cursor");
       await browser.pause(300);
       expect(await browser.$(".inkline-editor").isExisting()).toBe(false);
     }
@@ -222,8 +278,10 @@ describe("Editing a symbol from a note", function () {
       editor.focus();
       editor.setCursor(editor.offsetToPos(at + 3));
     });
+    // Right-clicked on the embed's own text, where the cursor goes.
     await browser
       .$(".workspace-leaf.mod-active .markdown-source-view .cm-active.cm-line")
+      .$('.//span[contains(text(), "001.ink.png")]')
       .click({ button: "right" });
     await browser.waitUntil(async () => (await menuItems()).length > 0);
     expect(await menuItems()).toContain("Edit symbol");

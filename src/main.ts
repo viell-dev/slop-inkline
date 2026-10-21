@@ -165,13 +165,12 @@ export default class InklinePlugin extends Plugin {
    * shows one, as in Live Preview, its menu holds Edit symbol already.
    */
   #offerMenus(doc: Document): void {
+    // A popout window's elements are of its own window's classes.
+    const Image = doc.defaultView?.HTMLImageElement ?? HTMLImageElement;
     this.registerDomEvent(doc, "contextmenu", (event) => {
       if (event.defaultPrevented) return;
       const image = event.target;
-      if (
-        !(image instanceof HTMLImageElement) ||
-        !image.hasClass("inkline-symbol")
-      ) {
+      if (!(image instanceof Image) || !image.hasClass("inkline-symbol")) {
         return;
       }
       const file = symbolOfImage(this.app, image);
