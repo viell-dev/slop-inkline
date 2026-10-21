@@ -12,3 +12,4 @@ export * as render from "../../../src/ink/render.ts";
 export * as drafts from "../../../src/editor/drafts.ts";
 export * as reference from "../../../src/editor/reference.ts";
 export * as pictures from "./pictures.ts";
+export * as renderSymbols from "../../../src/render/symbols.ts";

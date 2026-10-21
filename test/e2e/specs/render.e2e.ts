@@ -42,16 +42,21 @@ async function open(path: string, mode: "source" | "preview"): Promise<void> {
       if (!(leaf.view instanceof obsidian.MarkdownView)) {
         throw new Error("not a Markdown view");
       }
+      // The leaf the tests look in, whatever was active before.
+      app.workspace.setActiveLeaf(leaf, { focus: true });
     },
     path,
     mode,
   );
 }
 
-/** The selector of the visible view's symbols and other images. */
+/**
+ * The selector of the visible view's symbols and other images, without the
+ * empty images CodeMirror puts beside its widgets.
+ */
 function images(mode: "source" | "preview"): string {
   return mode === "source"
-    ? ".workspace-leaf.mod-active .markdown-source-view img"
+    ? ".workspace-leaf.mod-active .markdown-source-view img:not(.cm-widgetBuffer)"
     : ".workspace-leaf.mod-active .markdown-reading-view img";
 }
 
@@ -67,7 +72,8 @@ interface Shown {
 /**
  * How the images in `selector` show: whether each is tagged, its size, and
  * how far its bottom lies below its line's baseline, measured with an empty
- * inline block on the baseline next to it.
+ * inline block on the baseline next to its embed, which is in the line
+ * itself, as the image is not in Live Preview.
  */
 async function shown(selector: string): Promise<Shown[]> {
   return browser.execute((wanted) => {
@@ -79,7 +85,7 @@ async function shown(selector: string): Promise<Shown[]> {
             "display: inline-block; width: 0; height: 0; vertical-align: baseline",
         },
       });
-      node.after(probe);
+      (node.closest(".image-embed") ?? node).after(probe);
       const baseline = probe.getBoundingClientRect().bottom;
       probe.remove();
       const rect = node.getBoundingClientRect();
@@ -309,26 +315,41 @@ describe("Symbols in notes", function () {
     await waitForTagged(images("source"), 2);
   });
 
-  it("tag a thousand symbols quickly", async function () {
-    const timing = await browser.execute(async () => {
-      const container = createDiv();
-      for (let index = 0; index < 1000; index++) {
-        // A symbol's URL, not loaded: tagging reads only the address.
-        container.createEl("img", {
-          attr: { src: `app://inkline-test/${String(index)}.ink.png`, alt: "" },
-        });
-      }
+  it("tag a thousand symbols quickly, however they are added", async function () {
+    const result = await browser.execute(async () => {
+      const symbols = () => {
+        const container = createDiv();
+        for (let index = 0; index < 1000; index++) {
+          // A symbol's URL, not loaded: tagging reads only the address.
+          container.createEl("img", {
+            attr: {
+              src: `app://inkline-test/${String(index)}.ink.png`,
+              alt: "",
+            },
+          });
+        }
+        return container;
+      };
+      // The observer's own work, apart from the page drawing the images.
+      const apart = symbols();
       const started = performance.now();
-      activeDocument.body.append(container);
-      // The observer runs before the next task.
+      window.inklineTest.renderSymbols.tagWithin(apart);
+      const ms = performance.now() - started;
+      // And a thousand added at once, which the observer finds.
+      const added = symbols();
+      activeDocument.body.append(added);
       await new Promise((resolve) => window.setTimeout(resolve, 0));
-      const ended = performance.now();
-      const tagged = container.querySelectorAll("img.inkline-symbol").length;
-      container.remove();
-      return { ms: ended - started, tagged };
+      const found = added.querySelectorAll("img.inkline-symbol").length;
+      added.remove();
+      return {
+        ms,
+        apart: apart.querySelectorAll("img.inkline-symbol").length,
+        found,
+      };
     });
-    expect(timing.tagged).toBe(1000);
-    // A budget with room for a slow machine: far below a frame per symbol.
-    expect(timing.ms).toBeLessThan(200);
+    expect(result.apart).toBe(1000);
+    expect(result.found).toBe(1000);
+    // A budget with room for a slow machine: a few frames for a thousand.
+    expect(result.ms).toBeLessThan(50);
   });
 });

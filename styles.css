@@ -99,3 +99,19 @@ img.inkline-symbol:not([width], [height]) {
   width: auto;
   height: 1.5em;
 }
+
+/*
+ * In Live Preview, the image is a block in an inline embed, which Obsidian
+ * lines up with the bottom of the line and whose image it widens to the
+ * embed: the embed takes the drop, and the image keeps its own width.
+ */
+.cm-content .image-embed.inkline-symbol-embed {
+  vertical-align: var(--inkline-drop, -0.375em);
+}
+
+.cm-content
+  .image-embed
+  .image-wrapper
+  img.inkline-symbol:not([width], [height]) {
+  width: auto;
+}

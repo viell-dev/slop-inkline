@@ -9,6 +9,13 @@ import { lineBox } from "../ink/geometry.ts";
 /** The class a symbol's image gets, which styles.css styles. */
 export const symbolClass = "inkline-symbol";
 
+/**
+ * The class the embed around a symbol's image gets: in Live Preview the
+ * image is a block inside an inline embed, which is what lines up with the
+ * text, so the embed takes the drop there.
+ */
+export const embedClass = "inkline-symbol-embed";
+
 /** The custom properties a tagged image gets: its mask, and its drop. */
 const maskProperty = "--inkline-mask";
 const dropProperty = "--inkline-drop";
@@ -91,8 +98,14 @@ export function tagImage(image: HTMLImageElement): void {
   }
   image.addClass(symbolClass);
   image.style.setProperty(maskProperty, cssUrl(src));
+  const embed = image.parentElement?.closest(".image-embed");
+  const holders: HTMLElement[] = [image];
+  if (embed?.instanceOf(HTMLElement) === true) {
+    embed.addClass(embedClass);
+    holders.push(embed);
+  }
   if (!sized(image)) {
-    image.style.removeProperty(dropProperty);
+    for (const holder of holders) holder.style.removeProperty(dropProperty);
     return;
   }
   const drop = (): void => {
@@ -102,8 +115,10 @@ export function tagImage(image: HTMLImageElement): void {
       image.naturalWidth,
       image.naturalHeight,
     );
-    if (height !== undefined)
-      image.style.setProperty(dropProperty, dropFor(height));
+    if (height === undefined) return;
+    for (const holder of holders) {
+      holder.style.setProperty(dropProperty, dropFor(height));
+    }
   };
   drop();
   // The width alone gives the height only once the image's own size is known.
@@ -116,6 +131,11 @@ export function untagImage(image: HTMLImageElement): void {
   image.removeClass(symbolClass);
   image.style.removeProperty(maskProperty);
   image.style.removeProperty(dropProperty);
+  const embed = image.parentElement?.closest(`.${embedClass}`);
+  if (embed?.instanceOf(HTMLElement) === true) {
+    embed.removeClass(embedClass);
+    embed.style.removeProperty(dropProperty);
+  }
 }
 
 /** Tags every image in or at `node`. */
