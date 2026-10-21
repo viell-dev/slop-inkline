@@ -29,6 +29,7 @@ import {
   inkPixels,
   repeatPixels,
   type RgbaPixels,
+  type TracedInk,
 } from "./pixels.ts";
 import { drawInk, inkColor, type DrawableBase } from "./render.ts";
 
@@ -185,6 +186,63 @@ export async function baseFromPicture(
     );
   }
   const layer: BaseLayer = { x: 0, y: 0, scale: lineBox.height / height, png };
+  return { layer, drawable: await drawableBase(layer) };
+}
+
+/**
+ * A traced picture's ink, as `traceInk` finds it at `scale` document pixels
+ * per picture pixel, ready to draw as a base layer at once: to preview it
+ * while the threshold changes, without encoding it.
+ */
+export function previewInk(ink: TracedInk, scale: number): DrawableBase {
+  const { surface, context } = canvas(ink.width, ink.height);
+  context.putImageData(
+    new ImageData(inkPixels(ink.width, ink.height, ink.alpha), ink.width),
+    0,
+    0,
+  );
+  return {
+    x: Math.round(ink.x * unitsPerPixel),
+    y: Math.round(ink.y * unitsPerPixel),
+    scale,
+    image: surface,
+    width: ink.width,
+    height: ink.height,
+  };
+}
+
+/**
+ * A base layer of a traced picture's ink, as `traceInk` finds it at `scale`
+ * document pixels per picture pixel. Throws a `RangeError` when the ink is
+ * larger than a base layer can be, or encodes to more bytes than one can
+ * hold.
+ */
+export async function baseFromInk(
+  ink: TracedInk,
+  scale: number,
+): Promise<{ layer: BaseLayer; drawable: DrawableBase }> {
+  const { width, height } = ink;
+  if (width > limits.baseSize || height > limits.baseSize) {
+    throw new RangeError(
+      `the picture's ink is ${String(width)}×${String(height)} pixels, larger than a base layer can be (${String(limits.baseSize)} a side)`,
+    );
+  }
+  const png = await encodePixels({
+    width,
+    height,
+    data: inkPixels(width, height, ink.alpha),
+  });
+  if (png.length > limits.baseBytes) {
+    throw new RangeError(
+      `the picture's ink takes ${String(png.length)} bytes, more than a base layer can hold (${String(limits.baseBytes)})`,
+    );
+  }
+  const layer: BaseLayer = {
+    x: Math.round(ink.x * unitsPerPixel),
+    y: Math.round(ink.y * unitsPerPixel),
+    scale,
+    png,
+  };
   return { layer, drawable: await drawableBase(layer) };
 }
 

@@ -2,17 +2,34 @@
 // system clipboard or dropped on the surface, and found again in the
 // surface's pixels.
 
-/** A picture of `width` × `height` pixels in one CSS colour, as a PNG. */
+/** A rectangle drawn on a picture, in its pixels and a CSS colour. */
+export interface Mark {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  readonly colour: string;
+}
+
+/**
+ * A picture of `width` × `height` pixels in one CSS colour, with `marks`
+ * drawn on it, as a PNG.
+ */
 export async function picture(
   width: number,
   height: number,
   colour: string,
+  marks: readonly Mark[] = [],
 ): Promise<Blob> {
   const canvas = new OffscreenCanvas(width, height);
   const context = canvas.getContext("2d");
   if (context === null) throw new Error("no 2D canvas context");
   context.fillStyle = colour;
   context.fillRect(0, 0, width, height);
+  for (const mark of marks) {
+    context.fillStyle = mark.colour;
+    context.fillRect(mark.x, mark.y, mark.width, mark.height);
+  }
   return canvas.convertToBlob({ type: "image/png" });
 }
 
@@ -53,8 +70,9 @@ export async function copyPicture(
   width: number,
   height: number,
   colour: string,
+  marks: readonly Mark[] = [],
 ): Promise<void> {
-  const blob = await picture(width, height, colour);
+  const blob = await picture(width, height, colour, marks);
   const url = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -166,4 +184,29 @@ export function greyIn(
     if (a > 0 && Math.abs(r - g) <= 2 && Math.abs(g - b) <= 2) count++;
   }
   return count;
+}
+
+/**
+ * The colour at device pixel `x`, `y` of `canvas`, and whether it is the
+ * canvas's text colour, as ink is drawn in, fully opaque.
+ */
+export function inkAt(
+  canvas: HTMLCanvasElement,
+  x: number,
+  y: number,
+): { rgba: number[]; ink: boolean } {
+  const context = canvas.getContext("2d");
+  if (context === null) throw new Error("no 2D canvas context");
+  const rgba = [...context.getImageData(x, y, 1, 1).data];
+  const probe = new OffscreenCanvas(1, 1).getContext("2d");
+  if (probe === null) throw new Error("no 2D canvas context");
+  probe.fillStyle = getComputedStyle(canvas).color;
+  probe.fillRect(0, 0, 1, 1);
+  const text = [...probe.getImageData(0, 0, 1, 1).data];
+  const ink =
+    rgba[3] === 255 &&
+    [0, 1, 2].every(
+      (channel) => Math.abs((rgba[channel] ?? 0) - (text[channel] ?? 0)) <= 3,
+    );
+  return { rgba, ink };
 }

@@ -14,13 +14,28 @@ import {
 import type { CarriedChunk } from "../format/ink-file.ts";
 import type { BaseLayer, InkRecord, Tool } from "../format/record.ts";
 import {
+  baseFromInk,
   drawableBase,
   openInk,
+  previewInk,
+  readPixels,
   saveInk,
   type EditableInk,
 } from "../ink/canvas.ts";
 import { documentSpan, type InkDocument } from "../ink/document.ts";
-import { lineBox } from "../ink/geometry.ts";
+import { lineBox, type Bounds } from "../ink/geometry.ts";
+import {
+  inkDefaults,
+  pictureLuminance,
+  previewShrink,
+  regionValues,
+  shrinkLuminance,
+  thresholdRange,
+  traceRegion,
+  type Luminance,
+  type PicturePlace,
+  type Region,
+} from "../ink/pixels.ts";
 import type { DrawableBase } from "../ink/render.ts";
 import {
   draftBase,
@@ -119,6 +134,63 @@ const keyScale = wheelFactor(-100);
 
 const noPicture = "Paste or drop a picture to trace over it.";
 const tracing = "Tracing over a picture, which is not saved.";
+const making = "Making ink of the picture: set the threshold, then Apply.";
+
+/**
+ * The part of the picture that would become ink, as the preview last traced
+ * it: kept while the picture and the surface stay put, as the threshold
+ * changes.
+ */
+interface PartShown {
+  readonly placement: Placement;
+  readonly region: Bounds;
+  /** Where the copy traced sits: the picture's place, at its scale. */
+  readonly place: PicturePlace;
+  /** Undefined when no part of the picture is there. */
+  readonly part: Region | undefined;
+}
+
+/**
+ * The ink that a threshold gives that part, as last shown, with the
+ * documents shown with it as their base layer, one per drawing.
+ */
+interface InkShown {
+  readonly part: Region | undefined;
+  readonly threshold: number;
+  readonly light: boolean;
+  /** Undefined when the threshold leaves no ink. */
+  readonly base: DrawableBase | undefined;
+  readonly documents: WeakMap<InkDocument, InkDocument>;
+}
+
+/**
+ * The copy of a picture `factor` times smaller, from `copies`, which holds
+ * the picture itself at 1; made and kept there when first needed.
+ */
+function copyOf(copies: Map<number, Luminance>, factor: number): Luminance {
+  let copy = copies.get(factor);
+  if (copy === undefined) {
+    const picture = copies.get(1);
+    if (picture === undefined) throw new Error("no picture to copy");
+    copy = shrinkLuminance(picture, factor);
+    copies.set(factor, copy);
+  }
+  return copy;
+}
+
+/** `placement` for a copy of its picture `factor` times smaller. */
+function shrunkPlace(placement: Placement, factor: number): PicturePlace {
+  return { ...placement, scale: placement.scale * factor };
+}
+
+function sameBounds(a: Bounds, b: Bounds): boolean {
+  return (
+    a.left === b.left &&
+    a.top === b.top &&
+    a.right === b.right &&
+    a.bottom === b.bottom
+  );
+}
 
 export interface EditorOptions {
   readonly title: string;
@@ -276,6 +348,33 @@ export class InkEditorModal extends Modal {
    */
   #dragged: { clientX: number; clientY: number } | undefined;
   #pictureHint: HTMLElement | undefined;
+  /**
+   * Making ink of the picture, while its controls are open: the picture's
+   * luminance, found once, the threshold, and whether the ink is lighter
+   * than its ground.
+   */
+  #converting:
+    | {
+        readonly image: ImageBitmap;
+        readonly luma: Luminance;
+        /**
+         * What the preview traces, by how many times smaller than the
+         * picture: the picture itself, at 1, or a smaller copy, made when
+         * first needed, so that each step stays quick however much of a
+         * large picture is in view.
+         */
+        readonly copies: Map<number, Luminance>;
+        threshold: number;
+        light: boolean;
+      }
+    | undefined;
+  /** The part and ink last shown while making ink, kept while unchanged. */
+  #partShown: PartShown | undefined;
+  #inkShown: InkShown | undefined;
+  /** Making ink of the picture, while its encoding runs. */
+  #applying: Promise<void> | undefined;
+  #convertBar: HTMLElement | undefined;
+  #thresholdInput: HTMLInputElement | undefined;
   /** The document whose pastes the editor takes, while it is open. */
   #pasteDocument: Document | undefined;
   readonly #questions = new Set<Modal>();
@@ -400,13 +499,60 @@ export class InkEditorModal extends Modal {
       "Move",
       "drag the picture or use the arrow keys; the wheel or + and − scale it",
     );
+    this.#addButton(
+      pictureBar,
+      "ink",
+      "Make ink",
+      "I",
+      () => {
+        this.#toggleConvert();
+      },
+      "Make ink",
+      "turn the picture into the symbol's ink, by a threshold",
+    );
     this.#addButton(pictureBar, "remove", "Remove picture", undefined, () => {
       this.#setPicture(undefined);
       this.#announce("Picture removed");
-      // The button is disabled now, which would leave the focus nowhere.
-      this.#view?.canvas.focus({ preventScroll: true });
+      this.#refocus();
     });
     this.#pictureHint = pictureBar.createSpan({ cls: "inkline-picture-hint" });
+    // What turns the picture into ink, while Make ink is on.
+    const convertBar = this.contentEl.createDiv({ cls: "inkline-convert" });
+    convertBar.hide();
+    const threshold = convertBar
+      .createEl("label", { text: "Threshold" })
+      .createEl("input", {
+        type: "range",
+        attr: {
+          min: String(thresholdRange.min),
+          max: String(thresholdRange.max),
+          step: "1",
+        },
+      });
+    threshold.addEventListener("input", () => {
+      this.#setThreshold(Number(threshold.value));
+    });
+    this.#thresholdInput = threshold;
+    this.#addButton(
+      convertBar,
+      "light",
+      "Light ink",
+      undefined,
+      () => {
+        this.#toggleLight();
+      },
+      "Light ink",
+      "the ink is lighter than the ground around it",
+    );
+    this.#addButton(convertBar, "apply", "Apply", undefined, () => {
+      void this.#applyInk();
+    });
+    this.#buttons.get("apply")?.setCta();
+    this.#addButton(convertBar, "cancel", "Cancel", undefined, () => {
+      this.#stopConverting();
+      this.#announce("No ink made");
+    });
+    this.#convertBar = convertBar;
     this.#pasteDocument = this.modalEl.doc;
     this.#pasteDocument.addEventListener("paste", this.#paste);
 
@@ -492,6 +638,7 @@ export class InkEditorModal extends Modal {
     this.#pictureRequests++;
     this.#picture?.image.close();
     this.#picture = undefined;
+    this.#forgetConverting();
     this.contentEl.empty();
     const store = this.#options.drafts?.store;
     store?.release(this.#draftId);
@@ -514,7 +661,8 @@ export class InkEditorModal extends Modal {
       this.#announce("Saving…");
       return;
     }
-    if (!this.#session.dirty) {
+    // Ink being previewed is unsaved too: Save makes it, as saving does.
+    if (!this.#session.dirty && !this.#previewing()) {
       this.#forgetDraft();
       this.#finish();
       return;
@@ -652,7 +800,7 @@ export class InkEditorModal extends Modal {
     if (this.#options.next !== undefined) {
       key(["Mod", "Shift"], "Enter", () => void this.#saveAndNext(), false);
     }
-    key(["Mod"], "s", () => void this.#save(), false);
+    key(["Mod"], "s", () => void this.#saveOnly(), false);
     key(["Mod"], "z", () => {
       this.#undo();
     });
@@ -686,6 +834,9 @@ export class InkEditorModal extends Modal {
     key([], "m", () => {
       this.#toggleMove();
     });
+    key([], "i", () => {
+      this.#toggleConvert();
+    });
     // While moving the picture, the arrow keys move it and + and − scale
     // it; otherwise they keep what they do.
     const moving = (
@@ -696,7 +847,11 @@ export class InkEditorModal extends Modal {
       this.scope.register(modifiers, name, () => {
         const picture = this.#picture;
         if (!this.#moving || picture === undefined) return true;
-        if (typing(activeDocument.activeElement)) return true;
+        const focused = activeDocument.activeElement;
+        // A text field, or the threshold's slider, keeps its own keys.
+        if (typing(focused) || focused?.instanceOf(HTMLInputElement) === true) {
+          return true;
+        }
         this.#placePicture(action(picture));
         return false;
       });
@@ -986,8 +1141,285 @@ export class InkEditorModal extends Modal {
     if (this.#picture?.image !== picture?.image) this.#picture?.image.close();
     this.#picture = picture;
     if (picture === undefined) this.#moving = false;
+    if (this.#converting?.image !== picture?.image) this.#forgetConverting();
     this.#updateButtons();
     this.#render();
+  }
+
+  /** Opens or closes what turns the picture into ink. */
+  #toggleConvert(): void {
+    if (this.#converting !== undefined) {
+      this.#stopConverting();
+      this.#announce("No ink made");
+      return;
+    }
+    const picture = this.#picture;
+    const view = this.#view;
+    if (picture === undefined || view === undefined) {
+      this.#announce("Paste or drop a picture first, to make ink of it");
+      return;
+    }
+    const luma = pictureLuminance(readPixels(picture.image));
+    const copies = new Map([[1, luma]]);
+    // The defaults come from the part that would become ink, as finely as
+    // the preview traces it.
+    const region = this.#inkRegion(view);
+    const shrink = previewShrink(
+      luma.width,
+      luma.height,
+      picture.placement,
+      region,
+    );
+    const source = copyOf(copies, shrink);
+    const part = regionValues(
+      source,
+      shrunkPlace(picture.placement, shrink),
+      region,
+    );
+    const { threshold, light } = inkDefaults(part ?? source);
+    this.#converting = {
+      image: picture.image,
+      luma,
+      copies,
+      threshold,
+      light,
+    };
+    this.#updateButtons();
+    this.#render();
+    this.#announce(making);
+    this.#thresholdInput?.focus();
+  }
+
+  /** Closes what turns the picture into ink, making none. */
+  #stopConverting(): void {
+    this.#forgetConverting();
+    this.#updateButtons();
+    this.#render();
+    this.#refocus();
+  }
+
+  /**
+   * Puts the focus on the surface, as after a control that had it hides or
+   * is disabled, which would leave it nowhere.
+   */
+  #refocus(): void {
+    this.#view?.canvas.focus({ preventScroll: true });
+  }
+
+  #setThreshold(value: number): void {
+    const converting = this.#converting;
+    if (converting === undefined || !Number.isFinite(value)) return;
+    converting.threshold = Math.min(
+      thresholdRange.max,
+      Math.max(thresholdRange.min, Math.round(value)),
+    );
+    this.#render();
+  }
+
+  #toggleLight(): void {
+    const converting = this.#converting;
+    if (converting === undefined) return;
+    converting.light = !converting.light;
+    this.#updateButtons();
+    this.#render();
+  }
+
+  /**
+   * Where the picture becomes ink: the part the surface shows across, within
+   * the line box's height, so that the rest of a screenshot of several
+   * symbols stays out.
+   */
+  #inkRegion(view: InkView): Bounds {
+    const { left, right } = view.visible;
+    return { left, top: 0, right, bottom: lineBox.height };
+  }
+
+  /**
+   * The document and base layer to show: the drawing, or while making ink,
+   * the drawing with the picture's ink at the threshold as its base layer.
+   */
+  #shown(view: InkView): {
+    document: InkDocument;
+    base: DrawableBase | undefined;
+  } {
+    const document = this.#session.document;
+    const converting = this.#converting;
+    const picture = this.#picture;
+    if (converting === undefined || picture === undefined) {
+      return { document, base: this.#base };
+    }
+    const region = this.#inkRegion(view);
+    let area = this.#partShown;
+    if (
+      area?.placement !== picture.placement ||
+      !sameBounds(area.region, region)
+    ) {
+      const { luma, copies } = converting;
+      // As finely as the picture itself, unless too much of it is in view.
+      const shrink = previewShrink(
+        luma.width,
+        luma.height,
+        picture.placement,
+        region,
+      );
+      const place = shrunkPlace(picture.placement, shrink);
+      area = {
+        placement: picture.placement,
+        region,
+        place,
+        part: regionValues(copyOf(copies, shrink), place, region),
+      };
+      this.#partShown = area;
+    }
+    const { place } = area;
+    let shown = this.#inkShown;
+    if (
+      shown === undefined ||
+      shown.part !== area.part ||
+      shown.threshold !== converting.threshold ||
+      shown.light !== converting.light
+    ) {
+      const ink =
+        area.part &&
+        traceRegion(area.part, place, converting.threshold, converting.light);
+      shown = {
+        part: area.part,
+        threshold: converting.threshold,
+        light: converting.light,
+        base: ink && previewInk(ink, place.scale),
+        documents: new WeakMap(),
+      };
+      this.#inkShown = shown;
+    }
+    const { base } = shown;
+    // One document per drawing, so that the surface redraws only on a change.
+    let previewed = shown.documents.get(document);
+    if (previewed === undefined) {
+      previewed =
+        base === undefined
+          ? { strokes: document.strokes }
+          : {
+              strokes: document.strokes,
+              // Only where it goes; the view draws the preview's own pixels.
+              base: {
+                x: base.x,
+                y: base.y,
+                scale: base.scale,
+                png: new Uint8Array(),
+              },
+            };
+      shown.documents.set(document, previewed);
+    }
+    return { document: previewed, base };
+  }
+
+  /**
+   * Makes the picture's ink at the threshold the drawing's base layer, in
+   * place of any it had, as one step that Undo takes back. The picture stays,
+   * to trace over or to make ink of again.
+   */
+  #applyInk(): Promise<void> {
+    if (this.#applying === undefined) {
+      this.#applying = this.#makeInk().finally(() => {
+        this.#applying = undefined;
+        this.#updateButtons();
+        // Disabling Apply while it ran let go of the focus; with no ink
+        // made, the row stays open, and the focus goes back to Apply.
+        const focused = this.modalEl.doc.activeElement;
+        if (focused === null || focused === this.modalEl.doc.body) {
+          if (this.#converting === undefined) this.#refocus();
+          else this.#buttons.get("apply")?.buttonEl.focus();
+        }
+      });
+      this.#updateButtons();
+    }
+    return this.#applying;
+  }
+
+  /**
+   * Makes the ink {@link #applyInk} describes, from the picture at its own
+   * resolution. If the threshold, Light ink, the picture, or the surface
+   * changed while the ink was encoded, it makes the ink again, so that what
+   * it makes is what the surface shows.
+   */
+  async #makeInk(): Promise<void> {
+    for (;;) {
+      const converting = this.#converting;
+      const picture = this.#picture;
+      const view = this.#view;
+      if (converting === undefined || picture === undefined || !view) return;
+      const { threshold, light } = converting;
+      const { placement } = picture;
+      const region = this.#inkRegion(view);
+      const part = regionValues(converting.luma, placement, region);
+      if (part === undefined) {
+        this.#announce("No ink made: no part of the picture is on the surface");
+        return;
+      }
+      const ink = traceRegion(part, placement, threshold, light);
+      if (ink === undefined) {
+        this.#announce("No ink at this threshold: try another");
+        return;
+      }
+      let made: Awaited<ReturnType<typeof baseFromInk>>;
+      this.#announce("Making ink…");
+      try {
+        made = await baseFromInk(ink, placement.scale);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        this.#announce(`No ink made: ${reason}`);
+        return;
+      }
+      // Closed, or made ink of meanwhile, or put off.
+      if (this.#ended() || this.#converting !== converting) return;
+      if (
+        converting.threshold !== threshold ||
+        converting.light !== light ||
+        this.#picture?.placement !== placement ||
+        !sameBounds(this.#inkRegion(view), region)
+      ) {
+        continue;
+      }
+      this.#keepInk(made);
+      return;
+    }
+  }
+
+  /** Makes `made` the drawing's base layer, closing what made it. */
+  #keepInk(made: Awaited<ReturnType<typeof baseFromInk>>): void {
+    // A stroke being drawn is committed first, so that Undo keeps it apart.
+    this.#session.end();
+    this.#decoded.set(made.layer.png, made.drawable);
+    const { strokes, base } = this.#session.document;
+    this.#session.replace(
+      { strokes, base: made.layer },
+      this.#session.gridOrigin,
+    );
+    this.#forgetConverting();
+    this.#changed();
+    this.#refocus();
+    this.#announce(
+      base === undefined
+        ? "Made ink of the picture; Undo takes it back"
+        : "Made ink of the picture, in place of the base layer before; Undo takes it back",
+    );
+  }
+
+  /** Lets go of what made ink of the picture, and what it showed. */
+  #forgetConverting(): void {
+    this.#converting = undefined;
+    this.#partShown = undefined;
+    this.#inkShown = undefined;
+  }
+
+  /** Whether the surface shows ink being made of the picture. */
+  #previewing(): boolean {
+    return this.#converting !== undefined && this.#inkShown?.base !== undefined;
+  }
+
+  /** Whether the editor has closed, or Inkline was disabled. */
+  #ended(): boolean {
+    return this.#closing || this.#retired;
   }
 
   /** Switches between moving the picture and drawing. */
@@ -1022,7 +1454,9 @@ export class InkEditorModal extends Modal {
   #fitView(): void {
     const view = this.#view;
     if (view === undefined) return;
-    const span = documentSpan(this.#session.document, this.#base?.width);
+    // What the surface shows: the drawing, or the ink being made.
+    const { document, base } = this.#shown(view);
+    const span = documentSpan(document, base?.width);
     if (span === undefined) return;
     view.fit(span.left, span.right);
     view.resize(view.canvas.clientWidth, view.canvas.win.devicePixelRatio);
@@ -1039,11 +1473,8 @@ export class InkEditorModal extends Modal {
         ? { spacing: gridSpacing, originX: this.#session.gridOrigin }
         : undefined;
       view.reference = this.#picture;
-      view.render(
-        this.#session.document,
-        this.#base,
-        this.#session.activeStroke,
-      );
+      const { document, base } = this.#shown(view);
+      view.render(document, base, this.#session.activeStroke);
       const line = this.#previewLine;
       if (this.#preview !== undefined && line !== undefined) {
         view.drawPreview(
@@ -1135,7 +1566,18 @@ export class InkEditorModal extends Modal {
     const picture = this.#picture !== undefined;
     this.#buttons.get("move")?.setDisabled(!picture);
     this.#buttons.get("remove")?.setDisabled(!picture);
-    this.#pictureHint?.setText(picture ? tracing : noPicture);
+    this.#buttons.get("ink")?.setDisabled(!picture);
+    const converting = this.#converting;
+    pressed("ink", converting !== undefined);
+    this.#buttons.get("apply")?.setDisabled(this.#applying !== undefined);
+    pressed("light", converting?.light === true);
+    this.#convertBar?.toggle(converting !== undefined);
+    if (converting !== undefined && this.#thresholdInput !== undefined) {
+      this.#thresholdInput.value = String(converting.threshold);
+    }
+    this.#pictureHint?.setText(
+      converting !== undefined ? making : picture ? tracing : noPicture,
+    );
     this.#view?.canvas.toggleClass("is-moving", this.#moving);
     pressed("guides", this.#guidesShown);
     pressed("grid", this.#session.snap);
@@ -1532,6 +1974,27 @@ export class InkEditorModal extends Modal {
     this.#announce("Reloaded: the file changed on disk");
   }
 
+  /** Saves, keeping the editor open. */
+  async #saveOnly(): Promise<void> {
+    if (await this.#applyPending()) await this.#save();
+  }
+
+  /**
+   * Makes the ink being previewed, before a save, so that the save keeps
+   * what the surface shows. Returns whether the save may go on, which it may
+   * not when the threshold leaves no ink or the editor closed meanwhile.
+   */
+  async #applyPending(): Promise<boolean> {
+    if (!this.#makingInk()) return true;
+    await this.#applyInk();
+    return !this.#makingInk() && !this.#ended();
+  }
+
+  /** Whether what makes ink of the picture is open. */
+  #makingInk(): boolean {
+    return this.#converting !== undefined;
+  }
+
   /**
    * Saves, then opens the editor for the next symbol, whose embed follows
    * this one's, with the same tools. As with Save and close, strokes drawn
@@ -1542,6 +2005,7 @@ export class InkEditorModal extends Modal {
     if (next === undefined || this.#advancing) return;
     this.#advancing = true;
     try {
+      if (!(await this.#applyPending())) return;
       if (!(await this.#save(() => void this.#saveAndNext()))) return;
       // Closed meanwhile, as by Save and close or by Inkline being disabled.
       if (this.#closing || this.#retired) return;
@@ -1569,6 +2033,7 @@ export class InkEditorModal extends Modal {
    * while it ran keep the editor open, since they are not saved yet.
    */
   async #saveAndClose(): Promise<void> {
+    if (!(await this.#applyPending())) return;
     if (!(await this.#save(() => void this.#saveAndClose()))) return;
     if (this.#session.dirty) {
       this.#announce("Saved, except for the strokes drawn while saving");

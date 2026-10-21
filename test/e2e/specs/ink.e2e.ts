@@ -670,4 +670,148 @@ describe("The drawing core in Obsidian's renderer", function () {
     });
     expect(result).toBe(true);
   });
+
+  it("previews the ink of a 4K screenshot quickly", async function () {
+    const ms = await browser.execute(() => {
+      const { canvas, pixels } = window.inklineTest;
+      // A 3840 × 2160 luminance with a dark band, as a screenshot might be.
+      const width = 3840;
+      const height = 2160;
+      const values = new Uint8ClampedArray(width * height).fill(230);
+      values.fill(20, width * 900, width * 1200);
+      const picture = pixels.shrinkLuminance(
+        { width, height, values },
+        pixels.previewFactor(width, height),
+      );
+      const place = {
+        x: 0,
+        y: 0,
+        scale: 0.05 * pixels.previewFactor(width, height),
+      };
+      const part = pixels.regionValues(picture, place, {
+        left: -1e6,
+        top: -1e6,
+        right: 1e6,
+        bottom: 1e6,
+      });
+      if (part === undefined) throw new Error("no part");
+      const started = performance.now();
+      for (let threshold = 100; threshold < 110; threshold++) {
+        const ink = pixels.traceRegion(part, place, threshold, false);
+        if (ink === undefined) throw new Error("no ink");
+        canvas.previewInk(ink, place.scale);
+      }
+      return (performance.now() - started) / 10;
+    });
+    // Per step: a few frames at most, where tracing the whole picture took
+    // a second, with room for a slow machine.
+    expect(ms).toBeLessThan(300);
+  });
+
+  it("makes a base layer and a preview of a traced picture's ink", async function () {
+    const result = await browser.execute(async () => {
+      const { canvas, geometry, pixels, render } = window.inklineTest;
+      // A 20 px square in the middle of a 40 px picture, dark on light or
+      // light on dark.
+      const picture = async (ink: string, ground: string) => {
+        const surface = new OffscreenCanvas(40, 40);
+        const context = surface.getContext("2d");
+        if (context === null) throw new Error("no 2D context");
+        context.fillStyle = ground;
+        context.fillRect(0, 0, 40, 40);
+        context.fillStyle = ink;
+        context.fillRect(10, 10, 20, 20);
+        const bitmap = await createImageBitmap(surface);
+        const read = canvas.readPixels(bitmap);
+        bitmap.close();
+        return read;
+      };
+      const lineBox = {
+        left: -1e6,
+        top: 0,
+        right: 1e6,
+        bottom: geometry.lineBox.height,
+      };
+      const traced = async (
+        read: Awaited<ReturnType<typeof picture>>,
+        place: { x: number; y: number; scale: number },
+        light: boolean,
+      ) => {
+        const ink = pixels.traceInk(
+          {
+            width: read.width,
+            height: read.height,
+            values: pixels.luminance(read),
+          },
+          place,
+          128,
+          light,
+          lineBox,
+        );
+        if (ink === undefined) return undefined;
+        const preview = canvas.previewInk(ink, place.scale);
+        const { layer } = await canvas.baseFromInk(ink, place.scale);
+        const bitmap = await canvas.decodePng(layer.png);
+        const { width, height, data } = canvas.readPixels(bitmap);
+        bitmap.close();
+        let full = 0;
+        let grey = true;
+        for (let at = 0; at < data.length; at += 4) {
+          if (data[at + 3] === 255) full++;
+          if (data[at] !== render.inkGrey) grey = false;
+        }
+        return {
+          layer: { x: layer.x, y: layer.y, scale: layer.scale },
+          preview: {
+            x: preview.x,
+            y: preview.y,
+            scale: preview.scale,
+            width: preview.width,
+            height: preview.height,
+          },
+          width,
+          height,
+          full,
+          grey,
+        };
+      };
+      return {
+        dark: await traced(
+          await picture("black", "white"),
+          { x: 100, y: 50, scale: 2 },
+          false,
+        ),
+        light: await traced(
+          await picture("white", "black"),
+          { x: 100, y: 50, scale: 2 },
+          true,
+        ),
+        // Its top 15 picture rows lie above the line box.
+        cut: await traced(
+          await picture("black", "white"),
+          { x: 0, y: -30, scale: 2 },
+          false,
+        ),
+      };
+    });
+    // At (100 + 10 × 2, 50 + 10 × 2) pixels, in units of 1/16 pixel.
+    const square = {
+      layer: { x: 1920, y: 1120, scale: 2 },
+      preview: { x: 1920, y: 1120, scale: 2, width: 20, height: 20 },
+      width: 20,
+      height: 20,
+      full: 400,
+      grey: true,
+    };
+    expect(result.dark).toEqual(square);
+    expect(result.light).toEqual(square);
+    expect(result.cut).toEqual({
+      layer: { x: 320, y: 0, scale: 2 },
+      preview: { x: 320, y: 0, scale: 2, width: 20, height: 15 },
+      width: 20,
+      height: 15,
+      full: 300,
+      grey: true,
+    });
+  });
 });
