@@ -11,6 +11,7 @@
 import { spawnSync } from "node:child_process";
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -35,25 +36,37 @@ mkdirSync(output, { recursive: true });
 if (process.platform !== "win32") chmodSync(output, 0o777);
 
 const versions = process.env.OBSIDIAN_VERSIONS;
-// The image's ID, from a file of its own, which goes once it is read.
+// The image's ID, from a file of its own, which goes once the build ends,
+// whether it succeeds, fails, or is stopped with Ctrl+C: the build stops
+// then, and this script ends below.
 const built = mkdtempSync(join(tmpdir(), "inkline-e2e-"));
 const idFile = join(built, "image-id");
-const build = spawnSync(
-  "docker",
-  [
-    "build",
-    "--file",
-    "test/e2e/Dockerfile",
-    "--tag",
-    image,
-    "--iidfile",
-    idFile,
-    ".",
-  ],
-  { stdio: "inherit" },
-);
-const id = build.status === 0 ? readFileSync(idFile, "utf8").trim() : "";
-rmSync(built, { recursive: true, force: true });
+const stay = (): void => undefined;
+process.on("SIGINT", stay);
+let build: ReturnType<typeof spawnSync>;
+let id = "";
+try {
+  build = spawnSync(
+    "docker",
+    [
+      "build",
+      "--file",
+      "test/e2e/Dockerfile",
+      "--tag",
+      image,
+      "--iidfile",
+      idFile,
+      ".",
+    ],
+    { stdio: "inherit" },
+  );
+  if (build.status === 0 && existsSync(idFile)) {
+    id = readFileSync(idFile, "utf8").trim();
+  }
+} finally {
+  process.off("SIGINT", stay);
+  rmSync(built, { recursive: true, force: true });
+}
 if (build.error !== undefined) throw build.error;
 if (build.status !== 0) process.exit(build.status ?? 1);
 if (id === "") throw new Error("docker build wrote no image ID");
