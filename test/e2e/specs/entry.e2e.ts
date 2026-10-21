@@ -372,7 +372,8 @@ describe("Editing a symbol from a note", function () {
       await browser.pause(300);
       expect(await browser.$(".inkline-editor").isExisting()).toBe(false);
     }
-    // In front matter and code, an embed is text, and shows nothing.
+    // In front matter and code, an opening fence's info string included,
+    // an embed is text, and shows nothing.
     await browser.executeObsidian(async ({ app }) => {
       await app.vault.create(
         "Code.md",
@@ -381,7 +382,7 @@ describe("Editing a symbol from a note", function () {
           "pic: ![[001.ink.png]]",
           "---",
           "",
-          "```",
+          "```![[001.ink.png]]",
           "![[001.ink.png]]",
           "",
           "![[001.ink.png]]",
@@ -397,7 +398,8 @@ describe("Editing a symbol from a note", function () {
       [0, false],
       [1, false],
       [2, false],
-      [3, true],
+      [3, false],
+      [4, true],
     ] as const) {
       await cursorAfter("![[001.ink.png]]", nth);
       expect(await offered()).toBe(shown);
