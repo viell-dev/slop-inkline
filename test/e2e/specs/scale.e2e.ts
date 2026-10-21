@@ -15,7 +15,7 @@ const count = 5000;
  * Windows 11, the slowest of 30 searches of 5,000 symbols took 13 ms in
  * Obsidian 1.14.4 and 17 ms in 1.13.4, and a test beside other work can take
  * five times as long; a search that scanned the vault once for each symbol
- * took MUTANT.
+ * took over 2 s each, and the test ran past its 60 s limit.
  */
 const budget = 100;
 
