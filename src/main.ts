@@ -13,6 +13,8 @@ export default class InklinePlugin extends Plugin {
   readonly #editors = new Set<InkEditorModal>();
   /** Shows symbols in notes as characters, in every window. */
   readonly #renderer = new SymbolRenderer(Platform.resourcePathPrefix);
+  /** The documents whose right-clicks on symbols Inkline answers. */
+  readonly #menuDocuments = new WeakSet<Document>();
   #drafts: DraftStore | undefined;
   #loaded = false;
 
@@ -49,6 +51,7 @@ export default class InklinePlugin extends Plugin {
     this.app.workspace.onLayoutReady(() => {
       this.app.workspace.iterateAllLeaves((leaf) => {
         this.#renderer.watch(leaf.view.containerEl.doc);
+        this.#offerMenus(leaf.view.containerEl.doc);
       });
     });
     this.addCommand({
@@ -140,13 +143,15 @@ export default class InklinePlugin extends Plugin {
   }
 
   /**
-   * Shows the menu of a symbol's file where a symbol is right-clicked and
+   * Shows a symbol's menu where a symbol in a note is right-clicked and
    * Obsidian shows no menu for an image: in rendered notes, as in Reading
-   * view and embedded notes, and wherever else nothing answered. Where
+   * view and embedded notes, and in Live Preview if nothing answered. Where
    * Obsidian shows one, as in Live Preview, its menu holds Edit symbol
-   * already.
+   * already. Once for each window's document.
    */
   #offerMenus(doc: Document): void {
+    if (this.#menuDocuments.has(doc)) return;
+    this.#menuDocuments.add(doc);
     /** Shows the menu if `event` is on a symbol, rendered or not as `inNote`. */
     const offer = (event: MouseEvent, inNote: boolean) => {
       if (event.defaultPrevented) return;
@@ -159,13 +164,15 @@ export default class InklinePlugin extends Plugin {
       ) {
         return;
       }
-      if ((image.closest(".markdown-preview-view") !== null) !== inNote) {
-        return;
-      }
+      // In a note only, not in a list of symbols, as type to insert shows.
+      const note = image.closest(
+        ".markdown-preview-view, .markdown-source-view",
+      );
+      if (note?.hasClass("markdown-preview-view") !== inNote) return;
       const file = symbolOfImage(this.app, image);
       if (file === undefined) return;
       event.preventDefault();
-      showSymbolMenu(this.app, file, event);
+      showSymbolMenu(this.app, file, image, event);
     };
     // A rendered note opens Obsidian's image viewer on a right-click unless
     // its default is prevented by then, so Inkline answers a symbol's
