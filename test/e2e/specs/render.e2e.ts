@@ -608,11 +608,31 @@ describe("Symbols in notes", function () {
       underIsSymbol: true,
     });
     await saveScreenshot("render-names");
-    // Renamed, the symbol's embeds follow, and so does its name.
+    // Renamed, the symbol's embeds follow, and so does its name. Obsidian
+    // would first ask whether to update the links, which its setting, not in
+    // its API, says to do without asking.
     await browser.executeObsidian(async ({ app }) => {
-      const file = app.vault.getFileByPath("Glyphs/tower one.ink.png");
-      if (file === null) throw new Error("no tower one");
-      await app.fileManager.renameFile(file, "Glyphs/tower two.ink.png");
+      const vault: object = app.vault;
+      const configurable = (
+        candidate: object,
+      ): candidate is {
+        getConfig(key: string): unknown;
+        setConfig(key: string, value: unknown): void;
+      } =>
+        "getConfig" in candidate &&
+        typeof candidate.getConfig === "function" &&
+        "setConfig" in candidate &&
+        typeof candidate.setConfig === "function";
+      if (!configurable(vault)) throw new Error("Obsidian has no setConfig");
+      const before = vault.getConfig("alwaysUpdateLinks");
+      vault.setConfig("alwaysUpdateLinks", true);
+      try {
+        const file = app.vault.getFileByPath("Glyphs/tower one.ink.png");
+        if (file === null) throw new Error("no tower one");
+        await app.fileManager.renameFile(file, "Glyphs/tower two.ink.png");
+      } finally {
+        vault.setConfig("alwaysUpdateLinks", before);
+      }
     });
     await waitForNames("source", ["tower two", "tower two", null]);
   });
