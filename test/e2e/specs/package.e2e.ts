@@ -76,7 +76,7 @@ describe("The installed plugin", function () {
       const styled = [...document.styleSheets].some((sheet) => {
         try {
           return [...sheet.cssRules].some((rule) =>
-            rule.cssText.includes(".inkline-text"),
+            rule.cssText.includes("img.inkline-symbol"),
           );
         } catch {
           return false;
