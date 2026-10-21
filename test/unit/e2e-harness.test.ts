@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   outputDirectory,
+  pluginDirectory,
   ownerMarker,
   prepareOutput,
   sessionDisplays,
@@ -17,6 +18,20 @@ describe("setting", () => {
     expect(setting("")).toBeUndefined();
     expect(setting("  ")).toBeUndefined();
     expect(setting("latest/latest")).toBe("latest/latest");
+  });
+});
+
+describe("pluginDirectory", () => {
+  const root = path.resolve("checkout");
+
+  it("defaults to the build in dist", () => {
+    expect(pluginDirectory(undefined, root)).toBe(path.join(root, "dist"));
+    expect(pluginDirectory(" ", root)).toBe(path.join(root, "dist"));
+  });
+
+  it("resolves a given directory from the checkout", () => {
+    expect(pluginDirectory("release", root)).toBe(path.join(root, "release"));
+    expect(pluginDirectory("/release", root)).toBe(path.resolve("/release"));
   });
 });
 
