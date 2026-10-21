@@ -75,7 +75,11 @@ Build first, then run them in one of two ways:
 - `npm run test:e2e:docker` on any system with Docker, Windows included. It
   builds the image in `test/e2e/Dockerfile` from your checkout and runs the
   suite under a virtual display. The image never contains Obsidian; the first
-  run downloads it into the Docker volume `inkline-obsidian-cache`.
+  run downloads it into the Docker volume `inkline-obsidian-cache`. Runs from
+  several checkouts can go at once: each runs the image it built, under a tag
+  `inkline-e2e:run-…` of its own that it removes when it ends. A run killed
+  before it could, as by closing its terminal, leaves its tag behind, which
+  `docker image rm` takes away.
 - `npm run test:e2e` directly on a desktop with a display. On Linux without one,
   `sh test/e2e/session.sh` starts Xvfb and herbstluftwm first, as CI does, with
   a display for each of up to four Obsidian versions, so that one version's
