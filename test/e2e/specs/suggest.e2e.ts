@@ -296,10 +296,12 @@ describe("Inserting a symbol you have", function () {
     await type(";;gone");
     await waitForSuggested(["gone"]);
     await deleteFiles(["gone.ink.png"]);
+    // Still listed, for Enter to choose it.
+    await waitForSuggested(["gone"]);
     await browser.keys(["Enter"]);
+    expect(await noteText()).toBe("The door reads ;;gone.\n");
     await waitForNotice("gone was deleted, so it was not inserted.");
     await browser.$(".suggestion-container").waitForExist({ reverse: true });
-    expect(await noteText()).toBe("The door reads ;;gone.\n");
     // Nor from the command's list.
     await addSymbols(["gone.ink.png"]);
     await browser.executeObsidianCommand("inkline:insert-existing-symbol");
@@ -307,6 +309,7 @@ describe("Inserting a symbol you have", function () {
     await type("gone");
     await waitForSuggested(["gone"]);
     await deleteFiles(["gone.ink.png"]);
+    await waitForSuggested(["gone"]);
     await browser.keys(["Enter"]);
     await browser.$(".prompt-input").waitForExist({ reverse: true });
     expect(await noteText()).toBe("The door reads ;;gone.\n");
