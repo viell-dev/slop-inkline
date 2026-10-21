@@ -90,7 +90,11 @@ Build first, then run them in one of two ways:
 `earliest/earliest latest/latest`, tests the manifest's `minAppVersion` on the
 oldest installer that can run it, which has the oldest Electron a user can have,
 and the latest public release. Downloads outside Docker go to
-`.obsidian-cache/`.
+`.obsidian-cache/`. Outside Docker, `E2E_PLUGIN_DIR` picks the folder of plugin
+files to install, `dist/` by default; the Release workflow names the release's
+own files, and `test/e2e/specs/package.e2e.ts` checks that the test vault holds
+exactly those. `npm run test:e2e:docker` always installs the build it makes in
+its image.
 
 Screenshots and logs go to `test-results/e2e/`, which CI uploads as an artifact;
 a failed test leaves a screenshot named after it. `E2E_OUTPUT_DIR` picks another

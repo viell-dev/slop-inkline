@@ -10,6 +10,7 @@ import path from "node:path";
 import { parseObsidianVersions } from "wdio-obsidian-service";
 import {
   outputDirectory,
+  pluginDirectory,
   prepareOutput,
   sessionDisplays,
   setting,
@@ -61,7 +62,7 @@ export const config: WebdriverIO.Config = {
     browserVersion: appVersion,
     "wdio:obsidianOptions": {
       installerVersion,
-      plugins: [path.join(root, "dist")],
+      plugins: [pluginDirectory(process.env.E2E_PLUGIN_DIR, root)],
       vault: path.join(import.meta.dirname, "vaults/basic"),
     },
     "goog:chromeOptions": { args: ["--disable-dev-shm-usage"] },
