@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
-  defaultTrigger,
   holdsTyped,
   insideCodeBlock,
   insideCodeSpan,
   rankSymbols,
   triggerQuery,
 } from "../../../src/notes/search.ts";
+import { defaultSettings } from "../../../src/settings.ts";
+
+const defaultTrigger = defaultSettings.trigger;
 
 describe("triggerQuery", () => {
   it("finds the name typed after the trigger", () => {

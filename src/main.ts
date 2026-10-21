@@ -3,10 +3,18 @@ import { DraftStore } from "./editor/drafts.ts";
 import type { InkEditorModal } from "./editor/modal.ts";
 import { isInkPath } from "./format/ink-file.ts";
 import { showSymbolMenu, symbolAt, symbolOfImage } from "./notes/entries.ts";
-import { defaultTrigger } from "./notes/search.ts";
 import { SymbolSearch, SymbolSuggest } from "./notes/suggest.ts";
 import { editSymbol, insertSymbol, type EditorHost } from "./notes/symbols.ts";
 import { SymbolRenderer } from "./render/symbols.ts";
+import { brushSizes } from "./editor/session.ts";
+import { InklineSettingTab } from "./settings-tab.ts";
+import {
+  defaultSettings,
+  readSettings,
+  withSetting,
+  type SettingKey,
+  type Settings,
+} from "./settings.ts";
 
 /** Inkline: symbols drawn once and written in notes like characters. */
 export default class InklinePlugin extends Plugin {
@@ -17,12 +25,14 @@ export default class InklinePlugin extends Plugin {
   readonly #menuDocuments = new WeakSet<Document>();
   #drafts: DraftStore | undefined;
   #loaded = false;
+  #settings: Settings = defaultSettings;
 
   /** What the editors this plugin opens may use while it is loaded. */
   get #host(): EditorHost {
     this.#drafts ??= new DraftStore(this.app);
     return {
       app: this.app,
+      settings: () => this.#settings,
       drafts: this.#drafts,
       lifecycle: {
         opened: (editor) => this.#editors.add(editor),
@@ -32,7 +42,14 @@ export default class InklinePlugin extends Plugin {
     };
   }
 
-  override onload(): void {
+  override async onload(): Promise<void> {
+    this.#settings = readSettings(await this.loadData(), brushSizes.length);
+    this.addSettingTab(
+      new InklineSettingTab(this.app, this, {
+        settings: () => this.#settings,
+        change: (key, value) => this.#change(key, value),
+      }),
+    );
     this.#loaded = true;
     this.#renderer.watch(document);
     this.#offerMenus(document);
@@ -85,7 +102,7 @@ export default class InklinePlugin extends Plugin {
     });
     // A symbol you already have: its name after the trigger, or a list.
     this.registerEditorSuggest(
-      new SymbolSuggest(this.app, () => defaultTrigger),
+      new SymbolSuggest(this.app, () => this.#settings.trigger),
     );
     this.addCommand({
       id: "insert-existing-symbol",
@@ -190,6 +207,15 @@ export default class InklinePlugin extends Plugin {
     this.registerDomEvent(doc, "contextmenu", (event) => {
       offer(event, false);
     });
+  }
+
+  /** Sets and stores one setting; false if it cannot hold `value`. */
+  async #change(key: SettingKey, value: unknown): Promise<boolean> {
+    const changed = withSetting(this.#settings, key, value, brushSizes.length);
+    if (changed === undefined) return false;
+    this.#settings = changed;
+    await this.saveData(changed);
+    return true;
   }
 
   /** Opens the editor for a symbol file; failures show a notice. */

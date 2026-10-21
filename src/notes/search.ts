@@ -2,9 +2,6 @@
 // a line of text, and how the symbols that match it are ordered. Plain
 // functions, so that unit tests can check them; suggest.ts shows them.
 
-/** What starts typing a symbol's name in a note, as `;;tower`. */
-export const defaultTrigger = ";;";
-
 /** The longest name typed after a trigger that is still looked up. */
 const maxQuery = 64;
 
