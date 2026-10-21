@@ -9,15 +9,14 @@ import {
   ItemView,
   Keymap,
   MarkdownView,
-  Menu,
   Notice,
-  parseLinktext,
   type TAbstractFile,
   type TFile,
   type Vault,
 } from "obsidian";
 import { isInkPath } from "../format/ink-file.ts";
 import { embedFor } from "../notes/embeds.ts";
+import { showLinkMenu } from "../notes/entries.ts";
 import { insertionAt } from "../notes/links.ts";
 import { symbolStem } from "../notes/names.ts";
 import { textClass } from "../render/symbols.ts";
@@ -50,38 +49,6 @@ function usesLabel(count: number): string {
 /** A note's path as the library shows it, without `.md`. */
 function noteLabel(path: string): string {
   return path.toLowerCase().endsWith(".md") ? path.slice(0, -3) : path;
-}
-
-/**
- * Shows the menu Obsidian shows for a link to `file`, from `leaf`, at the
- * pointer of `event`, or below `anchor` when the event came from the
- * keyboard: open, rename, and the file's menu with Edit symbol in it. A
- * path that does not read back as a link to the file, as one with a `#`,
- * gets the file's menu alone.
- */
-function showLinkMenu(
-  view: ItemView,
-  file: TFile,
-  event: MouseEvent,
-  anchor: HTMLElement,
-): void {
-  const { app, leaf } = view;
-  const menu = new Menu();
-  const linked = app.metadataCache.getFirstLinkpathDest(
-    parseLinktext(file.path).path,
-    "",
-  );
-  if (linked === file) {
-    app.workspace.handleLinkContextMenu(menu, file.path, "", leaf);
-  } else {
-    app.workspace.trigger("file-menu", menu, file, "link-context-menu", leaf);
-  }
-  if (event.clientX === 0 && event.clientY === 0) {
-    const box = anchor.getBoundingClientRect();
-    menu.showAtPosition({ x: box.left, y: box.bottom }, anchor.doc);
-  } else {
-    menu.showAtMouseEvent(event);
-  }
 }
 
 /** The symbol library, in a sidebar. */
@@ -322,7 +289,7 @@ export class SymbolLibraryView extends ItemView {
     });
     row.addEventListener("contextmenu", (event) => {
       event.preventDefault();
-      showLinkMenu(this, file, event, insert);
+      showLinkMenu(this.app, file, this.leaf, event, insert);
     });
     const expanded = this.#expanded.has(entry.path);
     const uses = row.createEl("button", {
