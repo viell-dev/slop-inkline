@@ -27,7 +27,6 @@ import { lineBox, type Bounds } from "../ink/geometry.ts";
 import {
   inkDefaults,
   pictureLuminance,
-  previewFactor,
   previewShrink,
   regionValues,
   shrinkLuminance,
@@ -162,6 +161,21 @@ interface InkShown {
   /** Undefined when the threshold leaves no ink. */
   readonly base: DrawableBase | undefined;
   readonly documents: WeakMap<InkDocument, InkDocument>;
+}
+
+/**
+ * The copy of a picture `factor` times smaller, from `copies`, which holds
+ * the picture itself at 1; made and kept there when first needed.
+ */
+function copyOf(copies: Map<number, Luminance>, factor: number): Luminance {
+  let copy = copies.get(factor);
+  if (copy === undefined) {
+    const picture = copies.get(1);
+    if (picture === undefined) throw new Error("no picture to copy");
+    copy = shrinkLuminance(picture, factor);
+    copies.set(factor, copy);
+  }
+  return copy;
 }
 
 /** `placement` for a copy of its picture `factor` times smaller. */
@@ -344,11 +358,12 @@ export class InkEditorModal extends Modal {
         readonly image: ImageBitmap;
         readonly luma: Luminance;
         /**
-         * What the preview traces: the picture, or for a large one a copy
-         * `factor` times smaller, so that each step stays quick.
+         * What the preview traces, by how many times smaller than the
+         * picture: the picture itself, at 1, or a smaller copy, made when
+         * first needed, so that each step stays quick however much of a
+         * large picture is in view.
          */
-        readonly preview: Luminance;
-        readonly factor: number;
+        readonly copies: Map<number, Luminance>;
         threshold: number;
         light: boolean;
       }
@@ -1145,8 +1160,7 @@ export class InkEditorModal extends Modal {
       return;
     }
     const luma = pictureLuminance(readPixels(picture.image));
-    const factor = previewFactor(luma.width, luma.height);
-    const preview = shrinkLuminance(luma, factor);
+    const copies = new Map([[1, luma]]);
     // The defaults come from the part that would become ink, as finely as
     // the preview traces it.
     const region = this.#inkRegion(view);
@@ -1155,9 +1169,8 @@ export class InkEditorModal extends Modal {
       luma.height,
       picture.placement,
       region,
-      factor,
     );
-    const source = shrink === 1 ? luma : preview;
+    const source = copyOf(copies, shrink);
     const part = regionValues(
       source,
       shrunkPlace(picture.placement, shrink),
@@ -1167,8 +1180,7 @@ export class InkEditorModal extends Modal {
     this.#converting = {
       image: picture.image,
       luma,
-      preview,
-      factor,
+      copies,
       threshold,
       light,
     };
@@ -1242,21 +1254,20 @@ export class InkEditorModal extends Modal {
       area?.placement !== picture.placement ||
       !sameBounds(area.region, region)
     ) {
-      const { luma, preview, factor } = converting;
+      const { luma, copies } = converting;
       // As finely as the picture itself, unless too much of it is in view.
       const shrink = previewShrink(
         luma.width,
         luma.height,
         picture.placement,
         region,
-        factor,
       );
       const place = shrunkPlace(picture.placement, shrink);
       area = {
         placement: picture.placement,
         region,
         place,
-        part: regionValues(shrink === 1 ? luma : preview, place, region),
+        part: regionValues(copyOf(copies, shrink), place, region),
       };
       this.#partShown = area;
     }

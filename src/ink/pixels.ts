@@ -289,7 +289,10 @@ export interface Luminance {
 
 /**
  * A picture's luminance and, when any pixel is not fully opaque, each
- * pixel's alpha, as {@link traceInk} takes them.
+ * pixel's alpha, as {@link traceInk} takes them. With alpha, the luminance
+ * is each pixel's own colour's, not laid on white, since the alpha limits
+ * the ink by itself: an anti-aliased edge is the glyph's colour, part
+ * opaque.
  */
 export function pictureLuminance(pixels: RgbaPixels): Luminance {
   const { width, height, data } = pixels;
@@ -300,8 +303,17 @@ export function pictureLuminance(pixels: RgbaPixels): Luminance {
     alpha[index] = value;
     if (value !== 255) opaque = false;
   }
-  const values = luminance(pixels);
-  return opaque ? { width, height, values } : { width, height, values, alpha };
+  if (opaque) return { width, height, values: luminance(pixels) };
+  const values = new Uint8ClampedArray(width * height);
+  for (let index = 0; index < values.length; index++) {
+    const offset = index * 4;
+    values[index] = Math.round(
+      0.2126 * (data[offset] ?? 0) +
+        0.7152 * (data[offset + 1] ?? 0) +
+        0.0722 * (data[offset + 2] ?? 0),
+    );
+  }
+  return { width, height, values, alpha };
 }
 
 /**
@@ -320,39 +332,44 @@ export function previewFactor(width: number, height: number): number {
 }
 
 /**
- * `picture` made `factor` times smaller across and down, each value, and
- * alpha, the mean of the block it stands for; the blocks at the right and
- * bottom edges may be smaller.
+ * `picture` made `factor` times smaller across and down: each alpha the
+ * mean of the block it stands for, and each value its mean, weighted by
+ * alpha where there is any, so that a transparent pixel's colour counts for
+ * nothing. The blocks at the right and bottom edges may be smaller.
  */
 export function shrinkLuminance(picture: Luminance, factor: number): Luminance {
   if (factor <= 1) return picture;
   const width = Math.ceil(picture.width / factor);
   const height = Math.ceil(picture.height / factor);
-  const shrink = (source: Uint8ClampedArray): Uint8ClampedArray => {
-    const output = new Uint8ClampedArray(width * height);
-    for (let y = 0; y < height; y++) {
-      const top = y * factor;
-      const bottom = Math.min(picture.height, top + factor);
-      for (let x = 0; x < width; x++) {
-        const left = x * factor;
-        const right = Math.min(picture.width, left + factor);
-        let sum = 0;
-        for (let row = top; row < bottom; row++) {
-          for (let column = left; column < right; column++) {
-            sum += source[row * picture.width + column] ?? 0;
-          }
+  const own = picture.alpha;
+  const values = new Uint8ClampedArray(width * height);
+  const alpha =
+    own === undefined ? undefined : new Uint8ClampedArray(width * height);
+  for (let y = 0; y < height; y++) {
+    const top = y * factor;
+    const bottom = Math.min(picture.height, top + factor);
+    for (let x = 0; x < width; x++) {
+      const left = x * factor;
+      const right = Math.min(picture.width, left + factor);
+      let sum = 0;
+      let weight = 0;
+      for (let row = top; row < bottom; row++) {
+        for (let column = left; column < right; column++) {
+          const at = row * picture.width + column;
+          const a = own === undefined ? 1 : (own[at] ?? 0);
+          sum += (picture.values[at] ?? 0) * a;
+          weight += a;
         }
-        output[y * width + x] = Math.round(
-          sum / ((bottom - top) * (right - left)),
-        );
       }
+      const count = (bottom - top) * (right - left);
+      values[y * width + x] = weight === 0 ? 0 : Math.round(sum / weight);
+      if (alpha !== undefined)
+        alpha[y * width + x] = Math.round(weight / count);
     }
-    return output;
-  };
-  const values = shrink(picture.values);
-  return picture.alpha === undefined
+  }
+  return alpha === undefined
     ? { width, height, values }
-    : { width, height, values, alpha: shrink(picture.alpha) };
+    : { width, height, values, alpha };
 }
 
 /**
@@ -450,21 +467,19 @@ export function regionBounds(
 
 /**
  * How much smaller a copy of a picture at `place` the preview should trace,
- * for the part of it within `region`: 1, the picture itself, when that part
- * is within {@link maxPreviewPixels}, so that a picture zoomed in on shows as
- * finely as Apply makes it; otherwise `factor`, the copy's.
+ * for the part of it within `region`: just enough that the part is within
+ * {@link maxPreviewPixels}, and 1, the picture itself, when it is already,
+ * so that a picture zoomed in on shows as finely as Apply makes it.
  */
 export function previewShrink(
   width: number,
   height: number,
   place: PicturePlace,
   region: Bounds,
-  factor: number,
 ): number {
   const bounds = regionBounds(width, height, place, region);
   if (bounds === undefined) return 1;
-  const area = (bounds.right - bounds.left) * (bounds.bottom - bounds.top);
-  return area <= maxPreviewPixels ? 1 : factor;
+  return previewFactor(bounds.right - bounds.left, bounds.bottom - bounds.top);
 }
 
 /**

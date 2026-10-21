@@ -385,7 +385,7 @@ describe("previewFactor and shrinkLuminance", () => {
     expect(previewFactor(4096, 4096)).toBe(4);
   });
 
-  it("takes each block's mean, with smaller blocks at the edges", () => {
+  it("takes each block's mean, weighted by alpha, with smaller blocks at the edges", () => {
     const picture = {
       width: 3,
       height: 2,
@@ -395,7 +395,8 @@ describe("previewFactor and shrinkLuminance", () => {
     expect(shrinkLuminance(picture, 2)).toEqual({
       width: 2,
       height: 1,
-      values: Uint8ClampedArray.from([15, 150]),
+      // A transparent block's colours count for nothing.
+      values: Uint8ClampedArray.from([15, 0]),
       alpha: Uint8ClampedArray.from([255, 0]),
     });
     expect(shrinkLuminance(picture, 1)).toBe(picture);
@@ -478,7 +479,44 @@ describe("regionBounds and previewShrink", () => {
   it("traces the picture itself when what is in view is small enough", () => {
     const small = { left: 0, top: 0, right: 10, bottom: 10 };
     const large = { left: 0, top: 0, right: 2000, bottom: 2000 };
-    expect(previewShrink(4000, 4000, place, small, 4)).toBe(1);
-    expect(previewShrink(4000, 4000, place, large, 4)).toBe(4);
+    const middling = { left: 0, top: 0, right: 700, bottom: 700 };
+    expect(previewShrink(4000, 4000, place, small)).toBe(1);
+    // 1400 × 1400 picture pixels in view: twice smaller is enough.
+    expect(previewShrink(4000, 4000, place, middling)).toBe(2);
+    expect(previewShrink(4000, 4000, place, large)).toBe(4);
+  });
+});
+
+describe("anti-aliased glyphs on a transparent ground", () => {
+  it("keep each pixel's own colour, so that only the alpha thins the edges", () => {
+    // A black core with a half-transparent black edge, on a clear ground.
+    const picture = pictureLuminance(
+      pixels(3, 1, [0, 0, 0, 255, 0, 0, 0, 128, 0, 0, 0, 0]),
+    );
+    expect([...picture.values]).toEqual([0, 0, 0]);
+    expect([...(picture.alpha ?? [])]).toEqual([255, 128, 0]);
+    const { threshold, light } = inkDefaults(picture);
+    const ink = traceInk(picture, { x: 0, y: 0, scale: 1 }, threshold, light, {
+      left: 0,
+      top: 0,
+      right: 3,
+      bottom: 1,
+    });
+    expect([...(ink?.alpha ?? [])]).toEqual([255, 128]);
+  });
+
+  it("shrink by colour weighted by alpha", () => {
+    const picture = {
+      width: 2,
+      height: 1,
+      values: Uint8ClampedArray.from([100, 200]),
+      alpha: Uint8ClampedArray.from([255, 85]),
+    };
+    expect(shrinkLuminance(picture, 2)).toEqual({
+      width: 1,
+      height: 1,
+      values: Uint8ClampedArray.from([125]),
+      alpha: Uint8ClampedArray.from([170]),
+    });
   });
 });
