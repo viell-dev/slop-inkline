@@ -108,13 +108,16 @@ approval from a second account.
 - Describe the problem and the resulting behavior, the decisions the change
   makes, the alternatives rejected, and the remaining limits. Link the issue.
 - Add a "Verification" section: the commands run, the inputs tried beyond the
-  tests, and the platforms and Obsidian versions checked.
+  tests, the platforms and Obsidian versions checked, and whether another agent
+  reviewed the change, at which commit, and why or why not.
 - Add tests, update every document the change makes stale, and add user-visible
   changes to `Unreleased` in [CHANGELOG.md](CHANGELOG.md).
 - Keep each pull request to one change.
 
-Pull requests that change what ships are also reviewed by another agent running
-a different model, as [AGENTS.md](AGENTS.md#review) describes.
+A maintaining agent reviews every pull request, and releases and changes that
+could lose or damage a drawing also get an independent review by another agent,
+as [AGENTS.md](AGENTS.md#review) describes. Labels are used as
+[AGENTS.md](AGENTS.md#labels) says.
 
 ## Dependencies
 

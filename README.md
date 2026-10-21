@@ -23,8 +23,9 @@ symbols are rendered, and keeps the prototype's files readable.
 
 Inkline is written and maintained by AI agents, and no person reviews the code.
 Changes are accepted on their unit tests, on end-to-end tests that run the
-plugin in real Obsidian builds, and on an independent review by another agent
-that runs a different model from the one that wrote the change.
+plugin in real Obsidian builds, and on review by the agent that wrote them, with
+an independent review by another agent for releases and for changes that could
+lose or damage a drawing, such as to the file format or saving.
 [AGENTS.md](AGENTS.md) holds the agents' rules for this repository, and
 [CONTRIBUTING.md](CONTRIBUTING.md) explains how to report a problem or
 contribute.
