@@ -235,6 +235,34 @@ describe("links as Obsidian reads them", () => {
     expect(insertionAt(text, 37)).toEqual({ at: 42, before: "" });
   });
 
+  it("reads addresses only as Obsidian links them", () => {
+    // www. in lower case only, no email in a tag, an email after a %, and
+    // only the email after a scheme Obsidian does not read.
+    expect(
+      spans("Www.Example.Com #a@b.co %c@d.co MAILTO:e@f.co www.g.co"),
+    ).toEqual([
+      ["c@d.co", false, "c@d.co"],
+      ["e@f.co", false, "e@f.co"],
+      ["www.g.co", false, "www.g.co"],
+    ]);
+  });
+
+  it("puts no space after an email address, which Obsidian ends itself", () => {
+    const text = "Mail a@example.com or mailto:b@example.com now.";
+    expect(insertionAt(text, 8)).toEqual({ at: 18, before: "" });
+    // Live Preview reads on past a mailto: address.
+    expect(insertionAt(text, 30)).toEqual({ at: 42, before: " " });
+  });
+
+  it("reads long runs of failed address starts in time", () => {
+    const started = performance.now();
+    expect(textLinks("https://".repeat(10000))).toEqual([]);
+    expect(textLinks("mailto:".repeat(10000))).toEqual([]);
+    const word = `${"a".repeat(93)}http://`.repeat(1000);
+    expect(textLinks(word)).toEqual([]);
+    expect(performance.now() - started).toBeLessThan(200);
+  });
+
   it("reads a long line of unclosed brackets in time", () => {
     const started = performance.now();
     expect(textLinks("[".repeat(20000))).toEqual([]);

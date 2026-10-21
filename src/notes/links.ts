@@ -20,8 +20,8 @@ export interface LinkSpan {
    */
   readonly target: string;
   /**
-   * Whether it is a bare web or mail address, which has no mark at its end:
-   * only a space ends one.
+   * Whether it is a bare web address, or a `mailto:` one, which has no mark
+   * at its end: only a space ends one.
    */
   readonly bare?: boolean;
 }
@@ -190,21 +190,24 @@ function destination(
 const autolink =
   /(?:[A-Za-z][A-Za-z0-9+.-]{1,31}:[^\s<>]*|[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)>/y;
 
-/**
- * The start of a bare web or mail address, which Obsidian shows as a link
- * after any character, in any letter case.
- */
-const addressStart = /(?:https?:\/\/|mailto:|www\.)/iy;
+/** The scheme of a bare web address, in any letter case, as Obsidian reads it. */
+const webScheme = /https?:\/\//iy;
 
 /** The characters of a bare address: up to a space or a `<`. */
 const addressBody = /[^\s<]+/y;
 
+/** An address's host: up to a space, a `<`, or the start of its path. */
+const hostChars = /[^\s</?#]*/y;
+
 /** A bare email address, `a@example.com`. */
 const emailAddress = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/y;
 
-/** Whether `char` may be part of an email address's name, before its `@`. */
-function emailName(char: string | undefined): boolean {
-  return char !== undefined && /[A-Za-z0-9._%+-]/.test(char);
+/**
+ * Whether `char` may start an email address's name: where one stands just
+ * before, the address would start there instead.
+ */
+function emailStart(char: string | undefined): boolean {
+  return char !== undefined && /[A-Za-z0-9._+-]/.test(char);
 }
 
 /**
@@ -220,7 +223,7 @@ function trimmedAddress(address: string): string {
     else if (char === ")") closes++;
   }
   let end = address.length;
-  for (;;) {
+  while (end > 0) {
     const last = address[end - 1] ?? "";
     if ("?!.,:;*_~'\"".includes(last)) {
       end--;
@@ -228,43 +231,64 @@ function trimmedAddress(address: string): string {
       end--;
       closes--;
     } else {
-      return address.slice(0, end);
+      break;
     }
   }
+  return address.slice(0, end);
 }
 
 /**
- * Whether `address`, a bare one, names a host as Obsidian requires before
- * it shows a link: one with a dot, as `https://x.y` has and `https://x` has
- * not, or for one that starts `www.`, a dot after it.
+ * Whether the host that starts at `at` in `text` is one Obsidian links: at
+ * least `least` labels between dots, none empty, as `https://x.y` has two
+ * and `https://x` one. Only the host is read, so that a long run of failed
+ * starts costs no more than their hosts.
  */
-function hostOf(address: string): boolean {
-  const lower = address.toLowerCase();
-  if (lower.startsWith("mailto:")) return address.includes("@");
-  const www = lower.startsWith("www.");
-  const rest = www ? address : address.slice(address.indexOf("://") + 3);
-  const host = rest.split(/[/?#]/, 1)[0] ?? "";
+function hostAt(text: string, at: number, least: number): boolean {
+  hostChars.lastIndex = at;
+  const host = trimmedAddress(hostChars.exec(text)?.[0] ?? "");
   const labels = host.split(".");
-  return labels.length >= (www ? 3 : 2) && labels.every((label) => label);
+  return labels.length >= least && labels.every((label) => label !== "");
 }
 
-/** The bare address that starts at `index` in `text`, if one does. */
-function bareAddressAt(text: string, index: number): string | undefined {
-  const first = text[index]?.toLowerCase();
-  addressStart.lastIndex = index;
-  if (
-    (first === "h" || first === "m" || first === "w") &&
-    addressStart.test(text)
-  ) {
+/**
+ * The bare address that starts at `index` in `text`, if one does, as
+ * Obsidian shows one as a link: a web one, after any character, its scheme
+ * in any letter case and `www.` in lower case, with a dot in its host; a
+ * `mailto:` one; or an email address, outside a tag. `bare` says whether only
+ * a space ends it, as for every one but an email address, which Obsidian
+ * ends itself.
+ */
+function bareAddressAt(
+  text: string,
+  index: number,
+): { address: string; bare: boolean } | undefined {
+  const first = text[index];
+  let web = false;
+  if (first === "h" || first === "H") {
+    webScheme.lastIndex = index;
+    const scheme = webScheme.exec(text);
+    web = scheme !== null && hostAt(text, index + scheme[0].length, 2);
+  } else if (first === "w" && text.startsWith("www.", index)) {
+    web = hostAt(text, index, 3);
+  } else if (first === "m" && text.startsWith("mailto:", index)) {
+    emailAddress.lastIndex = index + "mailto:".length;
+    web = emailAddress.test(text);
+  }
+  if (web) {
     addressBody.lastIndex = index;
     const body = addressBody.exec(text)?.[0] ?? "";
-    const address = trimmedAddress(body);
-    return hostOf(address) ? address : undefined;
+    return { address: trimmedAddress(body), bare: true };
   }
-  if (emailName(text[index]) && !emailName(text[index - 1])) {
+  if (
+    emailStart(first) &&
+    !emailStart(text[index - 1]) &&
+    text[index - 1] !== "#"
+  ) {
     emailAddress.lastIndex = index;
     const found = emailAddress.exec(text);
-    if (found !== null) return trimmedAddress(found[0]);
+    if (found !== null) {
+      return { address: trimmedAddress(found[0]), bare: false };
+    }
   }
   return undefined;
 }
@@ -324,16 +348,17 @@ export function paragraphLinks(text: string): LinkSpan[] {
       }
     }
     if (within === undefined) {
-      const address = bareAddressAt(text, index);
-      if (address !== undefined && address.length > 0) {
+      const found = bareAddressAt(text, index);
+      if (found !== undefined && found.address.length > 0) {
+        const end = index + found.address.length;
         spans.push({
           start: index,
-          end: index + address.length,
+          end,
           embed: false,
-          target: address,
-          bare: true,
+          target: found.address,
+          ...(found.bare ? { bare: true } : {}),
         });
-        index += address.length;
+        index = end;
         continue;
       }
     }
