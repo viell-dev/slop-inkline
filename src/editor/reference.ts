@@ -135,3 +135,32 @@ export async function decodePicture(picture: Blob): Promise<ImageBitmap> {
     bitmap.close();
   }
 }
+
+/** The file extensions of pictures the browser can decode to trace over. */
+const pictureExtensions = /\.(?:png|jpe?g|gif|bmp|webp|avif)$/i;
+
+/** Whether a vault path names a picture that can be traced over. */
+export function isPicturePath(path: string): boolean {
+  return pictureExtensions.test(path);
+}
+
+/**
+ * The vault path that an `obsidian://open` link names, as Obsidian's file
+ * explorer puts on a drag in a URI list, when it names a file in the vault
+ * called `vault`; otherwise undefined. The first link of the list counts.
+ */
+export function openLinkPath(
+  uriList: string,
+  vault: string,
+): string | undefined {
+  const first = uriList
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line !== "" && !line.startsWith("#"));
+  // Read as text: Chromium before 130 parses no host from such a link.
+  const query = /^obsidian:\/\/open\/?\?([^#]*)/i.exec(first ?? "")?.[1];
+  if (query === undefined) return undefined;
+  const params = new URLSearchParams(query);
+  if (params.get("vault") !== vault) return undefined;
+  return params.get("file") ?? undefined;
+}

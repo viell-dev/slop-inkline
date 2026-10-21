@@ -439,17 +439,22 @@ async function surfaceLayout(): Promise<{
 /** Where the surface shows a red or blue picture, in device pixels. */
 async function pictureShown(
   colour: "red" | "blue" = "red",
+  editor = 0,
 ): Promise<(Box & { alpha: number }) | undefined> {
   // WebDriver hands back undefined as null.
-  const shown = await browser.execute((wanted) => {
-    const canvas = activeDocument.querySelector(
-      ".inkline-editor .inkline-surface",
-    );
-    if (canvas?.instanceOf(HTMLCanvasElement) !== true) {
-      throw new Error("no surface");
-    }
-    return window.inklineTest.pictures.shown(canvas, wanted) ?? null;
-  }, colour);
+  const shown = await browser.execute(
+    (wanted, index) => {
+      const canvas = activeDocument.querySelectorAll(
+        ".inkline-editor .inkline-surface",
+      )[index];
+      if (canvas?.instanceOf(HTMLCanvasElement) !== true) {
+        throw new Error("no surface");
+      }
+      return window.inklineTest.pictures.shown(canvas, wanted) ?? null;
+    },
+    colour,
+    editor,
+  );
   return shown ?? undefined;
 }
 
@@ -457,11 +462,12 @@ async function pictureShown(
 async function waitForPicture(
   test: (box: Box | undefined) => boolean,
   colour: "red" | "blue" = "red",
+  editor = 0,
 ): Promise<(Box & { alpha: number }) | undefined> {
-  let shown = await pictureShown(colour);
+  let shown = await pictureShown(colour, editor);
   await browser.waitUntil(
     async () => {
-      shown = await pictureShown(colour);
+      shown = await pictureShown(colour, editor);
       return test(shown);
     },
     { timeoutMsg: `the picture stayed at ${JSON.stringify(shown)}` },
@@ -539,6 +545,24 @@ async function dropFile(type: string, text?: string): Promise<void> {
     },
     type,
     text,
+  );
+}
+
+/** Drops a link to a vault file, as Obsidian's file explorer drags one. */
+async function dropVaultFile(path: string, vault?: string): Promise<void> {
+  await browser.executeObsidian(
+    ({ app }, filePath, name) => {
+      const canvas = activeDocument.querySelector(
+        ".inkline-editor .inkline-surface",
+      );
+      if (canvas === null) throw new Error("no surface");
+      const link = new URL("obsidian://open");
+      link.searchParams.set("vault", name ?? app.vault.getName());
+      link.searchParams.set("file", filePath);
+      window.inklineTest.pictures.drop(canvas, { uriList: link.href });
+    },
+    path,
+    vault,
   );
 }
 
@@ -3103,6 +3127,117 @@ describe("The editor", function () {
       expect(await fileCount()).toBe(files);
     });
 
+    it("takes a picture dragged from Obsidian's file explorer", async function () {
+      await browser.executeObsidian(async ({ app }) => {
+        const blob = await window.inklineTest.pictures.picture(20, 60, "blue");
+        await app.vault.createFolder("Pictures");
+        await app.vault.createBinary(
+          "Pictures/glyph one.png",
+          await blob.arrayBuffer(),
+        );
+        await app.vault.create("Pictures/notes.md", "Not a picture.");
+      });
+      await insert();
+      // Another vault's picture, and this one's note, are not taken.
+      await dropVaultFile("Pictures/glyph one.png", "Another vault");
+      await waitForStatus("only a picture can be traced over");
+      await dropVaultFile("Pictures/notes.md");
+      await browser.pause(300);
+      expect(await pictureShown("blue")).toBeUndefined();
+      await dropVaultFile("Pictures/glyph one.png");
+      await waitForStatus("Tracing over the picture");
+      const expected = await placedBox(20, 60);
+      await waitForPicture((box) => near(box, expected), "blue");
+    });
+
+    it("scales a picture over 4096 pixels a side down, keeping its proportions", async function () {
+      const sizes = await browser.execute(async () => {
+        const { pictures, reference } = window.inklineTest;
+        const size = async (width: number, height: number) => {
+          const image = await reference.decodePicture(
+            await pictures.picture(width, height, "red"),
+          );
+          const found = [image.width, image.height];
+          image.close();
+          return found;
+        };
+        return { large: await size(5000, 100), fits: await size(300, 200) };
+      });
+      expect(sizes.large).toEqual([4096, 82]);
+      expect(sizes.fits).toEqual([300, 200]);
+    });
+
+    it("takes a paste only in the editor on top", async function () {
+      await insert();
+      // A second editor, over the first, as the command palette can open.
+      await browser.executeObsidianCommand("inkline:insert-symbol");
+      await browser.waitUntil(
+        async () =>
+          (await browser.$$(".inkline-editor").getElements()).length === 2,
+      );
+      await browser.pause(300);
+      await pastePicture("red");
+      await waitForPicture((box) => box !== undefined, "red", 1);
+      await browser.pause(300);
+      expect(await pictureShown("red", 0)).toBeUndefined();
+    });
+
+    it("keeps following the pointer when a save moves the view mid-drag", async function () {
+      await insert();
+      // Far to the left, so that the save crops a lot off.
+      await draw([
+        [0.1, 0.4],
+        [0.15, 0.6],
+      ]);
+      await pastePicture("red");
+      const placed = await waitForPicture((box) => box !== undefined);
+      if (placed === undefined) throw new Error("no picture");
+      const { ratio } = await surfaceLayout();
+      await browser.keys(["m"]);
+      // A mouse's events, dispatched on the surface: WebDriver lets go of a
+      // button between its calls, and a drag must outlast the save.
+      const mouse = (type: string, dx: number, dy: number, buttons: number) =>
+        browser.execute(
+          (event, x, y, held) => {
+            const canvas = activeDocument.querySelector(
+              ".inkline-editor .inkline-surface",
+            );
+            if (canvas === null) throw new Error("no surface");
+            const rect = canvas.getBoundingClientRect();
+            canvas.dispatchEvent(
+              new PointerEvent(event, {
+                bubbles: true,
+                cancelable: true,
+                pointerId: 1,
+                pointerType: "mouse",
+                isPrimary: true,
+                button: event === "pointermove" ? -1 : 0,
+                buttons: held,
+                clientX: rect.left + rect.width / 2 + x,
+                clientY: rect.top + rect.height / 2 + y,
+              }),
+            );
+          },
+          type,
+          dx,
+          dy,
+          buttons,
+        );
+      await mouse("pointerdown", 0, 0, 1);
+      await mouse("pointermove", 10, 5, 1);
+      await waitForPicture((box) =>
+        near(box, moved(placed, 10 * ratio, 5 * ratio)),
+      );
+      // The save crops the drawing, and moves the view with it.
+      await browser.keys(["Control", "s"]);
+      await waitForStatus("Saved");
+      await mouse("pointermove", 30, 15, 1);
+      await mouse("pointerup", 30, 15, 0);
+      await waitForPicture((box) =>
+        near(box, moved(placed, 30 * ratio, 15 * ratio)),
+      );
+    });
+
     it("moves the picture in Move mode, and scales it about the pointer", async function () {
       await insert();
       await pastePicture("red");
@@ -3135,25 +3270,27 @@ describe("The editor", function () {
       // The arrow keys move it by a pixel, or by a grid spacing with Shift.
       await browser.keys(["ArrowRight"]);
       await browser.keys(["ArrowRight"]);
-      await browser.keys(["Shift", "ArrowDown"]);
+      // Up, so that the picture stays whole on the surface as it grows.
+      await browser.keys(["Shift", "ArrowUp"]);
       const nudged = await waitForPicture((box) =>
-        near(box, moved(wheeled, 2 * factor, 16 * factor)),
+        near(box, moved(wheeled, 2 * factor, -16 * factor)),
       );
       if (nudged === undefined) throw new Error("no picture");
 
-      // − scales it down about its middle.
+      // + and = scale it up about its middle, and − down.
+      const middleX = (nudged.left + nudged.right) / 2;
+      const middleY = (nudged.top + nudged.bottom) / 2;
+      for (const grow of ["+", "="]) {
+        await browser.keys([grow]);
+        await waitForPicture((box) =>
+          near(box, scaled(nudged, notch, middleX, middleY), 3),
+        );
+        await browser.keys(["-"]);
+        await waitForPicture((box) => near(box, nudged, 3));
+      }
       await browser.keys(["-"]);
       const shrunk = await waitForPicture((box) =>
-        near(
-          box,
-          scaled(
-            nudged,
-            1 / notch,
-            (nudged.left + nudged.right) / 2,
-            (nudged.top + nudged.bottom) / 2,
-          ),
-          3,
-        ),
+        near(box, scaled(nudged, 1 / notch, middleX, middleY), 3),
       );
       if (shrunk === undefined) throw new Error("no picture");
 
@@ -3254,6 +3391,15 @@ describe("The editor", function () {
       expect(await pictureShown("red")).toBeUndefined();
       await browser.$('[data-inkline-button="remove"]').click();
       await waitForStatus("Picture removed");
+      // The focus goes back to the surface, from the disabled button.
+      expect(
+        await browser.execute(
+          () =>
+            activeDocument.activeElement?.classList.contains(
+              "inkline-surface",
+            ) === true,
+        ),
+      ).toBe(true);
       await waitForPicture((box) => box === undefined, "blue");
       expect(await browser.$('[data-inkline-button="move"]').isEnabled()).toBe(
         false,

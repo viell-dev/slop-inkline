@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   fitWithin,
+  isPicturePath,
   movePicture,
+  openLinkPath,
   placePicture,
   scaleLimits,
   scalePicture,
@@ -82,5 +84,63 @@ describe("fitWithin", () => {
 
   it("never makes a side smaller than a pixel", () => {
     expect(fitWithin(100_000, 1, 4096)).toEqual({ width: 4096, height: 1 });
+  });
+});
+
+describe("isPicturePath", () => {
+  it("knows the pictures a browser decodes, in any case", () => {
+    for (const path of [
+      "a.png",
+      "b/c.JPG",
+      "d.jpeg",
+      "e.gif",
+      "f.webp",
+      "g.avif",
+      "h.bmp",
+    ]) {
+      expect(isPicturePath(path)).toBe(true);
+    }
+    for (const path of ["a.svg", "b.md", "png", "c.png.md"]) {
+      expect(isPicturePath(path)).toBe(false);
+    }
+  });
+});
+
+describe("openLinkPath", () => {
+  it("reads the file of a link to this vault", () => {
+    expect(
+      openLinkPath(
+        "obsidian://open?vault=Notes&file=Glyphs%2Ftower%20one.png",
+        "Notes",
+      ),
+    ).toBe("Glyphs/tower one.png");
+  });
+
+  it("takes the first link of a list, past comments", () => {
+    expect(
+      openLinkPath(
+        [
+          "# dragged",
+          "obsidian://open?vault=Notes&file=a.png",
+          "obsidian://open?vault=Notes&file=b.png",
+        ].join("\r\n"),
+        "Notes",
+      ),
+    ).toBe("a.png");
+  });
+
+  it("refuses another vault, another kind of link, and no link", () => {
+    expect(
+      openLinkPath("obsidian://open?vault=Other&file=a.png", "Notes"),
+    ).toBeUndefined();
+    expect(
+      openLinkPath("obsidian://search?vault=Notes&query=a", "Notes"),
+    ).toBeUndefined();
+    expect(openLinkPath("https://example.com/a.png", "Notes")).toBeUndefined();
+    expect(
+      openLinkPath("obsidian://open?vault=Notes", "Notes"),
+    ).toBeUndefined();
+    expect(openLinkPath("not a link", "Notes")).toBeUndefined();
+    expect(openLinkPath("", "Notes")).toBeUndefined();
   });
 });

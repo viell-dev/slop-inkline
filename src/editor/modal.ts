@@ -42,7 +42,9 @@ import {
 import { fontGuides, type Guide } from "./guides.ts";
 import {
   decodePicture,
+  isPicturePath,
   movePicture,
+  openLinkPath,
   placePicture,
   scalePicture,
   wheelFactor,
@@ -99,9 +101,13 @@ function pictureIn(data: DataTransfer | null): File | undefined {
   return undefined;
 }
 
-/** Whether a drag carries files, which a drop could trace over. */
-function dragsFiles(event: DragEvent): boolean {
-  return event.dataTransfer?.types.includes("Files") === true;
+/**
+ * Whether a drag could carry a picture: files, or links, as Obsidian's file
+ * explorer drags a vault file.
+ */
+function dragsPicture(event: DragEvent): boolean {
+  const types = event.dataTransfer?.types ?? [];
+  return types.includes("Files") || types.includes("text/uri-list");
 }
 
 /** How far the arrow keys move a picture, in document pixels. */
@@ -264,8 +270,11 @@ export class InkEditorModal extends Modal {
   #pictureRequests = 0;
   /** Whether dragging and the wheel move the picture, rather than drawing. */
   #moving = false;
-  /** Where the pointer dragging the picture last was, in document pixels. */
-  #dragged: { x: number; y: number } | undefined;
+  /**
+   * Where the pointer dragging the picture last was, on the screen: the view
+   * can move under it, as a save or Fit does, so each move maps both ends.
+   */
+  #dragged: { clientX: number; clientY: number } | undefined;
   #pictureHint: HTMLElement | undefined;
   /** The document whose pastes the editor takes, while it is open. */
   #pasteDocument: Document | undefined;
@@ -389,11 +398,13 @@ export class InkEditorModal extends Modal {
         this.#toggleMove();
       },
       "Move",
-      "drag the picture, turn the wheel to scale it",
+      "drag the picture or use the arrow keys; the wheel or + and − scale it",
     );
     this.#addButton(pictureBar, "remove", "Remove picture", undefined, () => {
       this.#setPicture(undefined);
       this.#announce("Picture removed");
+      // The button is disabled now, which would leave the focus nowhere.
+      this.#view?.canvas.focus({ preventScroll: true });
     });
     this.#pictureHint = pictureBar.createSpan({ cls: "inkline-picture-hint" });
     this.#pasteDocument = this.modalEl.doc;
@@ -765,7 +776,7 @@ export class InkEditorModal extends Modal {
       canvas.setPointerCapture(event.pointerId);
       if (this.#moving) {
         // A pen taking over from a touch drags from where it came down.
-        this.#dragged = this.#view?.toDocument(event.clientX, event.clientY);
+        this.#dragged = { clientX: event.clientX, clientY: event.clientY };
         canvas.addClass("is-dragging");
         return;
       }
@@ -827,7 +838,7 @@ export class InkEditorModal extends Modal {
     );
     // A picture dropped on the surface.
     canvas.addEventListener("dragover", (event) => {
-      if (!dragsFiles(event)) return;
+      if (!dragsPicture(event)) return;
       event.preventDefault();
       if (event.dataTransfer !== null) event.dataTransfer.dropEffect = "copy";
       canvas.addClass("is-drop-target");
@@ -837,28 +848,41 @@ export class InkEditorModal extends Modal {
     });
     canvas.addEventListener("drop", (event) => {
       canvas.removeClass("is-drop-target");
-      if (!dragsFiles(event)) return;
+      if (!dragsPicture(event)) return;
       // Neither the browser nor Obsidian does anything else with it.
       event.preventDefault();
       event.stopPropagation();
       const picture = pictureIn(event.dataTransfer);
-      if (picture === undefined) {
+      if (picture !== undefined) {
+        void this.#trace(picture);
+        return;
+      }
+      // A picture in the vault, dragged from Obsidian's file explorer.
+      const { vault } = this.app;
+      const path = openLinkPath(
+        event.dataTransfer?.getData("text/uri-list") ?? "",
+        vault.getName(),
+      );
+      const file = path === undefined ? null : vault.getFileByPath(path);
+      if (file === null || !isPicturePath(file.path)) {
         this.#announce("Not traced: only a picture can be traced over");
         return;
       }
-      void this.#trace(picture);
+      void this.#trace(
+        vault.readBinary(file).then((bytes) => new Blob([bytes])),
+      );
     });
   }
 
   /**
-   * Takes a picture pasted into the editor, unless a text field or a
-   * question takes the paste. Chromium sends a paste to the focused element,
-   * or to the body when that cannot be edited, as older versions do for the
-   * surface; a paste to the body while the editor is open is the editor's.
+   * Takes a picture pasted into the editor while it is the modal on top,
+   * unless a text field has the focus. Chromium sends a paste to the focused
+   * element, or to the body when that cannot be edited, as older versions do
+   * for the surface; a paste to the body is the top editor's.
    */
   readonly #paste = (event: ClipboardEvent): void => {
     const doc = this.modalEl.doc;
-    if (this.#closing || this.#retired || this.#questions.size > 0) return;
+    if (this.#closing || this.#retired || !this.#onTop()) return;
     if (
       !event.composedPath().includes(this.modalEl) &&
       event.target !== doc.body
@@ -875,14 +899,25 @@ export class InkEditorModal extends Modal {
     void this.#trace(picture);
   };
 
+  /**
+   * Whether this editor is the modal on top: not under a question, a choice,
+   * or another editor.
+   */
+  #onTop(): boolean {
+    const modals = this.modalEl.doc.querySelectorAll(".modal-container");
+    return modals.item(modals.length - 1) === this.containerEl;
+  }
+
   /** Moves the picture with the pointer dragging it. */
   #drag(event: PointerEvent): void {
-    const from = this.#dragged;
+    const last = this.#dragged;
     const picture = this.#picture;
-    const to = this.#view?.toDocument(event.clientX, event.clientY);
-    if (from === undefined || to === undefined) return;
-    this.#dragged = to;
+    const view = this.#view;
+    if (last === undefined || view === undefined) return;
+    this.#dragged = { clientX: event.clientX, clientY: event.clientY };
     if (picture === undefined) return;
+    const from = view.toDocument(last.clientX, last.clientY);
+    const to = view.toDocument(event.clientX, event.clientY);
     this.#placePicture(
       movePicture(picture.placement, to.x - from.x, to.y - from.y),
     );
@@ -897,15 +932,15 @@ export class InkEditorModal extends Modal {
   }
 
   /**
-   * Decodes a pasted or dropped picture and traces over it, in place of any
-   * other, as tall as a capital letter between the guides and in the middle
-   * of the surface. Only the picture asked for last is taken.
+   * Reads and decodes a pasted or dropped picture and traces over it, in
+   * place of any other, as tall as a capital letter between the guides and
+   * in the middle of the surface. Only the picture asked for last is taken.
    */
-  async #trace(file: Blob): Promise<void> {
+  async #trace(file: Blob | Promise<Blob>): Promise<void> {
     const request = ++this.#pictureRequests;
     let image: ImageBitmap;
     try {
-      image = await decodePicture(file);
+      image = await decodePicture(await file);
     } catch {
       if (request === this.#pictureRequests) {
         this.#announce("Not traced: Inkline cannot read this picture");
@@ -939,7 +974,7 @@ export class InkEditorModal extends Modal {
       ),
     });
     this.#announce(
-      "Tracing over the picture: Move (M) drags it, and the wheel scales it",
+      "Tracing over the picture. Move (M), then drag it or use the arrow keys; the wheel or + and − scale it",
     );
   }
 

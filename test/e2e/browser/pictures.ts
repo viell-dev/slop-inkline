@@ -76,10 +76,14 @@ export function copyText(text: string): void {
   electron().clipboard.writeText(text);
 }
 
-/** Drops `file` on the middle of `target`, as dragging it from a folder does. */
-export function drop(target: Element, file: File): void {
+/**
+ * Drops `item` on the middle of `target`: a file, as dragging it from a
+ * folder does, or a URI list, as Obsidian's file explorer drags a vault file.
+ */
+export function drop(target: Element, item: File | { uriList: string }): void {
   const data = new DataTransfer();
-  data.items.add(file);
+  if (item instanceof File) data.items.add(item);
+  else data.setData("text/uri-list", item.uriList);
   const rect = target.getBoundingClientRect();
   const at = {
     bubbles: true,

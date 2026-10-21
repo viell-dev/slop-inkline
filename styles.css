@@ -54,12 +54,13 @@
   cursor: grabbing;
 }
 
-.inkline-surface.is-drop-target {
-  outline: 2px dashed var(--interactive-accent);
-}
-
 .inkline-surface:focus-visible {
   outline: 2px solid var(--interactive-accent);
+}
+
+/* After the focus outline, which a drag over the focused surface replaces. */
+.inkline-surface.is-drop-target {
+  outline: 2px dashed var(--interactive-accent);
 }
 
 /* A line of the note's text, with the symbol at its size there. */
