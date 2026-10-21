@@ -33,7 +33,8 @@ const ruleset = {
 
 describe("the repository's label and ruleset files", () => {
   it("list each label once, with a colour and a description", () => {
-    const names = labels.map((label) => label.name);
+    // In any letter case, as GitHub refuses two labels that differ only so.
+    const names = labels.map((label) => label.name.toLowerCase());
     expect(new Set(names).size).toBe(names.length);
     for (const label of labels) {
       expect(label.color).toMatch(/^[0-9a-f]{6}$/);
