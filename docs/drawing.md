@@ -1,0 +1,115 @@
+# Drawing in the editor
+
+The editor opens over the note for a new symbol, from **Inkline: Insert
+symbol**, or for one you have, from **Edit symbol**. Its parts, from the top:
+
+- the **name field**, which holds the symbol's name;
+- the **toolbar**, with each tool's shortcut in its tooltip;
+- the **picture bar**, for a picture you trace over;
+- the **drawing area**, one line of text tall, with its guides;
+- a **line of text** that shows the symbol at its real size as you draw;
+- a **status line**, which says what the editor did last, such as "Saved".
+
+In the shortcuts below, Mod is Ctrl, or Cmd on macOS. Single-key shortcuts and
+undo give way to a text field that has the focus, such as the name field, so
+that typing a name never switches tools; press Enter in the field to go back to
+drawing. [Keyboard and accessibility](./keyboard.md) lists every key.
+
+## Pen and eraser
+
+**Pen** (P) draws; **Eraser** (E) takes ink away. The end of a pen that erases,
+or its eraser button, erases whichever tool is chosen. Strokes follow a pen's
+pressure, thicker as it presses harder; a mouse, a trackpad, and a finger draw
+at the brush's own width. Only the main button draws, and only one pointer at a
+time: once a pen has touched the screen, touch stops drawing, so a palm resting
+on a tablet leaves no marks.
+
+The four **brush sizes**, S, M, L, and XL (keys 1 to 4), are 1/16 to 4/16 of
+the text's size, so a stroke matches the weight of the letters at any size.
+
+## Undo, redo, and clear
+
+**Undo** (Mod+Z) and **Redo** (Mod+Shift+Z, or Mod+Y) step through every stroke,
+clearing, copy, and ink made from a picture. **Clear** (Delete, or Backspace)
+takes away the whole drawing, and Undo brings it back.
+
+## Straight lines and the grid
+
+Hold Shift while drawing to make the stroke straight, from where it was when
+Shift went down. **Grid** (Shift+G) shows a grid of 1/8 of the text's size and
+snaps the ends of strokes to it, for scripts built from straight strokes and
+dots; a tap on the grid stays a dot. The grid keeps its place through saves,
+and on a symbol you open again it lines up with most of its strokes.
+
+## Guides, view, and width
+
+**Guides** (G) shows or hides the lines at the text font's ascender, cap
+height, x-height, baseline, and descender, measured from the font your vault's
+text uses, and the edges the saved image will have. **Fit** (F) fits the drawing
+in view; a symbol wider than the usual view opens whole.
+
+A symbol is as wide as its ink: saving crops the image to the ink, with a
+little space on each side, as a font spaces its letters. Its height is always
+one line of text.
+
+## Trace over a picture
+
+Paste a picture with Mod+V, or drop one on the editor, such as a screenshot of
+a symbol in a game, or an image from Obsidian's file explorer. It shows faintly
+under the drawing, as tall as a capital letter, for you to draw over. It is
+never saved, nor kept in drafts.
+
+**Move** (M) lets you drag the picture and scale it with the wheel; the arrow
+keys move it, and + and − scale it, from the keyboard. Press M again to draw.
+**Remove picture** takes it away, and another paste replaces it. **Next** takes
+the picture on to the next symbol where it was, so that you can trace a whole
+inscription from one screenshot.
+
+## Make ink of a picture
+
+**Make ink** (I) turns the picture into the symbol's ink, so that a symbol you
+can see needs no drawing at all. A slider sets the threshold between ink and
+ground, and the drawing area previews the result; **Light ink** takes a light
+symbol on a dark or transparent ground. **Apply** makes the ink, and **Cancel**
+makes none.
+
+Only what the drawing area shows becomes ink, across and within the line's
+height, so that the other symbols of a screenshot stay out: move and scale the
+picture first. The ink is the symbol's base layer, under its strokes: it takes
+the place of any base layer the symbol had, such as ink an earlier Make ink
+gave, and Undo takes it back. Saving while the preview shows makes that ink
+first.
+
+## Start from a copy
+
+In the editor for a new symbol, **Copy from** (V) starts it from a copy of
+another symbol's strokes, chosen from the vault's symbols, for scripts whose
+symbols share parts. Undo takes the copy back.
+
+## Save
+
+- **Save** (Mod+Enter) saves and closes the editor. For a new symbol, the first
+  save creates the file and inserts its embed.
+- Mod+S saves and keeps the editor open.
+- **Next** (Mod+Shift+Enter), for a new symbol, saves and inserts it, then opens
+  a blank editor for the symbol that follows it.
+
+A save that fails keeps the editor open with the drawing and says why. Closing
+with unsaved changes, by Esc, the close button, or a click outside, asks
+whether to save, discard them, or keep drawing; [Saving and
+recovery](./recovery.md) describes the rest.
+
+## The name
+
+The name field is the symbol's file name without `.ink.png`. A name can use any
+script, and emoji, with the joiners and marks they need. A name is refused, with
+a notice, when its folder already has a symbol of that name in any letter case,
+when Windows reserves it, such as `CON`, or when it is too long for a file
+name. Characters that a file name cannot hold on some system, or that would
+break a link, such as `/ \ : * ? " < > | # ^ [ ]`, are left out, as are
+invisible spaces and the controls that reorder text.
+
+Changing the name of a symbol that has a file renames the file when you save,
+through Obsidian, so that the links to it follow as Obsidian's settings say. If
+the rename fails, the drawing is saved anyway, and the editor stays open with
+the name for the next save to try.
