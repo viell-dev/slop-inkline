@@ -50,16 +50,42 @@ const nameAttribute = "aria-label";
 const nameMark = "data-inkline-name";
 
 /**
- * Gives `image` its symbol's name, unless it is hidden from screen readers,
- * as a picture beside its name in a list is, or has a name of its own.
+ * Where Obsidian shows the tooltip: above, as it does for its own links in
+ * text, rather than over the next line; and the mark that Inkline set it.
+ */
+const placeAttribute = "data-tooltip-position";
+const placeMark = "data-inkline-placed";
+
+/**
+ * The text an embed's author wrote for its image, as an alias or alt text,
+ * if any: not what Obsidian puts there of itself, which is the link as
+ * written, ending in `.ink.png`, or a size, as `24` or `24x36`.
+ */
+function authoredText(image: HTMLImageElement): string | undefined {
+  const alt = image.getAttribute("alt")?.trim() ?? "";
+  if (alt === "" || /\.ink\.png$/i.test(alt) || /^\d+(?:x\d+)?$/.test(alt)) {
+    return undefined;
+  }
+  return alt;
+}
+
+/**
+ * Gives `image` a name, which Obsidian shows as its tooltip and screen
+ * readers read: the text its embed's author wrote for it, or else its
+ * symbol's name. An image hidden from screen readers, as a picture beside
+ * its name in a list is, or with a name of its own, keeps what it has.
  */
 function nameImage(image: HTMLImageElement, src: string): void {
   if (image.getAttribute("aria-hidden") === "true") return;
   const current = image.getAttribute(nameAttribute);
   if (current !== null && current !== image.getAttribute(nameMark)) return;
-  const name = symbolName(src);
+  const name = authoredText(image) ?? symbolName(src);
   image.setAttribute(nameAttribute, name);
   image.setAttribute(nameMark, name);
+  if (!image.hasAttribute(placeAttribute)) {
+    image.setAttribute(placeAttribute, "top");
+    image.setAttribute(placeMark, "");
+  }
 }
 
 /** Removes the name {@link nameImage} gave `image`, if it still has it. */
@@ -70,6 +96,10 @@ function unnameImage(image: HTMLImageElement): void {
     image.removeAttribute(nameAttribute);
   }
   image.removeAttribute(nameMark);
+  if (image.hasAttribute(placeMark)) {
+    image.removeAttribute(placeAttribute);
+    image.removeAttribute(placeMark);
+  }
 }
 
 /** Whether an image has a size of its own, as `![[x.ink.png|24]]` gives. */
