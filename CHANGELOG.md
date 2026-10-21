@@ -28,6 +28,12 @@ section is also its
   from the keyboard. Next takes it on to the next symbol where it was, so that
   an inscription is traced from one screenshot, and **Remove picture** takes it
   away.
+- Symbols show in notes as characters: as tall as the line, standing on its
+  baseline, and in the text's colour, in light and dark themes, in Live Preview,
+  Reading view, embedded notes, hover previews, canvas cards, and popout
+  windows. An explicit size, as `![[x.ink.png|24]]` gives, is kept and stays on
+  the baseline. Other images are left as they are, and with Inkline disabled
+  symbols show as the plain images they are.
 - **Edit symbol**, in a symbol file's menu, which opens it in the editor again
   with every stroke, so that nothing is lost by editing.
 - The editor's pen, eraser, four brush sizes, undo, redo, and clear, each with

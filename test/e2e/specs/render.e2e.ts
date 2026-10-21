@@ -163,6 +163,24 @@ describe("Symbols in notes", function () {
         await app.vault.createBinary("Glyphs/photo.png", bytes(picture));
         await app.vault.create("Render.md", text);
         await app.vault.create("Host.md", "Embedded:\n\n![[Render]]\n");
+        await app.vault.create("Linked.md", "A link to [[Render]] here.\n");
+        await app.vault.create(
+          "Board.canvas",
+          JSON.stringify({
+            nodes: [
+              {
+                id: "render",
+                type: "file",
+                file: "Render.md",
+                x: 0,
+                y: 0,
+                width: 640,
+                height: 480,
+              },
+            ],
+            edges: [],
+          }),
+        );
       },
       symbol,
       photo,
@@ -223,6 +241,48 @@ describe("Symbols in notes", function () {
       }
     });
   }
+
+  it("show in a hover preview", async function () {
+    await open("Linked.md", "preview");
+    await browser
+      .$(".workspace-leaf.mod-active .markdown-reading-view a.internal-link")
+      .moveTo();
+    try {
+      await browser.waitUntil(async () =>
+        browser.execute(
+          () =>
+            activeDocument.querySelectorAll(".hover-popover img.inkline-symbol")
+              .length === 2,
+        ),
+      );
+    } finally {
+      // Away from the link and the preview, to the window's corner, so that
+      // the preview closes before the next test.
+      await browser
+        .action("pointer", { parameters: { pointerType: "mouse" } })
+        .move({ x: 2, y: 2 })
+        .perform();
+      await browser.$(".hover-popover").waitForExist({ reverse: true });
+    }
+  });
+
+  it("show in a canvas card", async function () {
+    await browser.executeObsidian(async ({ app }) => {
+      const file = app.vault.getFileByPath("Board.canvas");
+      if (file === null) throw new Error("no canvas");
+      const leaf = app.workspace.getLeaf(false);
+      await leaf.openFile(file);
+      app.workspace.setActiveLeaf(leaf, { focus: true });
+    });
+    await browser.waitUntil(async () =>
+      browser.execute(
+        () =>
+          activeDocument.querySelectorAll(".canvas-node img.inkline-symbol")
+            .length === 2,
+      ),
+    );
+    await saveScreenshot("render-canvas");
+  });
 
   it("show in an embedded note and in a popout window", async function () {
     await open("Host.md", "preview");
