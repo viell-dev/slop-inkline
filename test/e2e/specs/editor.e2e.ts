@@ -641,6 +641,56 @@ function squareOn(ground: string, ink: string): Parameters<typeof pasteMarked> {
   ];
 }
 
+/** Drops a picture of `ground` with `marks` on it on the surface. */
+async function dropMarked(
+  width: number,
+  height: number,
+  ground: string,
+  marks: Mark[],
+): Promise<void> {
+  await browser.execute(
+    async (w, h, fill, drawn) => {
+      const { pictures } = window.inklineTest;
+      const canvas = activeDocument.querySelector(
+        ".inkline-editor .inkline-surface",
+      );
+      if (canvas === null) throw new Error("no surface");
+      const blob = await pictures.picture(w, h, fill, drawn);
+      pictures.drop(
+        canvas,
+        new File([blob], "dropped.png", { type: "image/png" }),
+      );
+    },
+    width,
+    height,
+    ground,
+    marks,
+  );
+  await waitForStatus("Tracing over the picture");
+}
+
+/**
+ * Whether the surface shows ink at `fx`, `fy` of the way across and down a
+ * square picture where a new symbol's picture first sits.
+ */
+async function inkInPicture(fx: number, fy: number): Promise<boolean> {
+  const { factor, capTop } = await surfaceLayout();
+  const side = 144 - capTop;
+  return browser.execute(
+    (x, y) => {
+      const canvas = activeDocument.querySelector(
+        ".inkline-editor .inkline-surface",
+      );
+      if (canvas?.instanceOf(HTMLCanvasElement) !== true) {
+        throw new Error("no surface");
+      }
+      return window.inklineTest.pictures.inkAt(canvas, x, y).ink;
+    },
+    Math.round((288 - side / 2 + fx * side) * factor),
+    Math.round((capTop + fy * side) * factor),
+  );
+}
+
 /** Whether the controls that make ink are showing. */
 async function makingInk(): Promise<boolean> {
   return browser.$(".inkline-convert").isDisplayed();
@@ -3629,6 +3679,126 @@ describe("The editor", function () {
       await browser.keys(["Control", "Enter"]);
       await waitClosed();
       expect(await baseSize("001.ink.png")).toEqual([20, 20]);
+    });
+
+    it("makes the ink being previewed on Mod+S, and on Next", async function () {
+      await insert();
+      await pasteMarked(...squareOn("white", "black"));
+      await browser.keys(["i"]);
+      await browser.waitUntil(inkInMiddle);
+      await browser.keys(["Control", "s"]);
+      await waitForStatus("Saved");
+      expect(await makingInk()).toBe(false);
+      expect(await editorOpen()).toBe(true);
+      expect(await baseSize("001.ink.png")).toEqual([20, 20]);
+      // Again, and Next, which hands the picture on.
+      await browser.keys(["i"]);
+      await setThreshold(100);
+      await markEditor();
+      await browser.keys(["Control", "Shift", "Enter"]);
+      await waitForNext(1);
+      expect(await pictureHint()).toBe(
+        "Tracing over a picture, which is not saved.",
+      );
+      expect(await baseSize("001.ink.png")).toEqual([20, 20]);
+      expect(await strokeCount("001.ink.png")).toBe(0);
+    });
+
+    it("asks before closing over the ink being previewed, and Save makes it", async function () {
+      await insert();
+      await pasteMarked(...squareOn("white", "black"));
+      await browser.keys(["i"]);
+      await browser.waitUntil(inkInMiddle);
+      await browser.keys(["Escape"]);
+      await clickTop("Save");
+      await waitClosed();
+      expect(await baseSize("001.ink.png")).toEqual([20, 20]);
+    });
+
+    it("makes ink of a light symbol on a transparent ground", async function () {
+      await insert();
+      await dropMarked(...squareOn("rgba(0, 0, 0, 0)", "white"));
+      await browser.keys(["i"]);
+      expect(await pressed("light")).toBe("true");
+      await browser.waitUntil(inkInMiddle);
+      // The ground stays empty.
+      expect(await inkInPicture(0.1, 0.1)).toBe(false);
+      await browser.$('[data-inkline-button="apply"]').click();
+      await waitForStatus("Made ink of the picture");
+      await browser.keys(["Control", "Enter"]);
+      await waitClosed();
+      expect(await baseSize("001.ink.png")).toEqual([20, 20]);
+    });
+
+    it("leaves no ink at one end of the slider and all at the other", async function () {
+      await insert();
+      await pasteMarked(...squareOn("white", "black"));
+      await browser.keys(["i"]);
+      await browser.waitUntil(inkInMiddle);
+      expect(await inkInPicture(0.1, 0.1)).toBe(false);
+      await setThreshold(-1000);
+      await browser.waitUntil(async () => !(await inkInMiddle()));
+      expect(await thresholdSlider().getValue()).toBe("-16");
+      await setThreshold(1000);
+      await browser.waitUntil(async () => inkInPicture(0.1, 0.1));
+      expect(await thresholdSlider().getValue()).toBe("272");
+    });
+
+    it("says when no part of the picture is on the surface, and fits to the ink", async function () {
+      await insert();
+      await pasteMarked(...squareOn("white", "black"));
+      // Off the surface to the right: 40 grid spacings, 5 em.
+      await browser.keys(["m"]);
+      for (let step = 0; step < 40; step++) {
+        await browser.keys(["Shift", "ArrowRight"]);
+      }
+      await browser.keys(["i"]);
+      await browser.$('[data-inkline-button="apply"]').click();
+      await waitForStatus("no part of the picture is on the surface");
+      expect(await makingInk()).toBe(true);
+      // Back a little, into view at the right edge, then F fits the ink.
+      await browser.keys(["i"]);
+      for (let step = 0; step < 25; step++) {
+        await browser.keys(["Shift", "ArrowLeft"]);
+      }
+      await browser.keys(["i"]);
+      expect(await inkInMiddle()).toBe(false);
+      await browser.keys(["f"]);
+      await browser.waitUntil(inkInMiddle);
+    });
+
+    it("makes the ink the surface shows when the threshold moves during Apply", async function () {
+      await insert();
+      // Two greys, one above the other: 150 makes ink of the darker only,
+      // 250 of both.
+      await pasteMarked(3000, 1000, "rgb(200, 200, 200)", [
+        { x: 0, y: 0, width: 3000, height: 500, colour: "rgb(100, 100, 100)" },
+      ]);
+      await browser.keys(["i"]);
+      await setThreshold(150);
+      // In one turn: the encoding of the darker half cannot end before the
+      // threshold moves.
+      await browser.execute(() => {
+        const apply = activeDocument.querySelector(
+          '[data-inkline-button="apply"]',
+        );
+        const slider = activeDocument.querySelector(
+          ".inkline-convert input[type=range]",
+        );
+        if (
+          apply?.instanceOf(HTMLElement) !== true ||
+          slider?.instanceOf(HTMLInputElement) !== true
+        ) {
+          throw new Error("no controls");
+        }
+        apply.click();
+        slider.value = "250";
+        slider.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await waitForStatus("Made ink of the picture");
+      await browser.keys(["Control", "Enter"]);
+      await waitClosed();
+      expect(await baseSize("001.ink.png")).toEqual([3000, 1000]);
     });
 
     it("leaves the slider its arrow keys while the picture moves", async function () {

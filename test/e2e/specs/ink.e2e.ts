@@ -671,6 +671,42 @@ describe("The drawing core in Obsidian's renderer", function () {
     expect(result).toBe(true);
   });
 
+  it("previews the ink of a 4K screenshot quickly", async function () {
+    const ms = await browser.execute(() => {
+      const { canvas, pixels } = window.inklineTest;
+      // A 3840 × 2160 luminance with a dark band, as a screenshot might be.
+      const width = 3840;
+      const height = 2160;
+      const values = new Uint8ClampedArray(width * height).fill(230);
+      values.fill(20, width * 900, width * 1200);
+      const picture = pixels.shrinkLuminance(
+        { width, height, values },
+        pixels.previewFactor(width, height),
+      );
+      const place = {
+        x: 0,
+        y: 0,
+        scale: 0.05 * pixels.previewFactor(width, height),
+      };
+      const part = pixels.regionValues(picture, place, {
+        left: -1e6,
+        top: -1e6,
+        right: 1e6,
+        bottom: 1e6,
+      });
+      if (part === undefined) throw new Error("no part");
+      const started = performance.now();
+      for (let threshold = 100; threshold < 110; threshold++) {
+        const ink = pixels.traceRegion(part, place, threshold, false);
+        if (ink === undefined) throw new Error("no ink");
+        canvas.previewInk(ink, place.scale);
+      }
+      return (performance.now() - started) / 10;
+    });
+    // Per step: a frame or so, where tracing the whole picture took a second.
+    expect(ms).toBeLessThan(150);
+  });
+
   it("makes a base layer and a preview of a traced picture's ink", async function () {
     const result = await browser.execute(async () => {
       const { canvas, geometry, pixels, render } = window.inklineTest;
