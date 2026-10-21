@@ -12,8 +12,8 @@ section is also its
 
 - **Insert symbol**, a command that opens the editor for a new symbol. Draw it
   with a mouse, pen, or finger, and save it with Mod+Enter: Inkline creates the
-  file in Obsidian's attachment location, named with the next free number, and
-  inserts it where the cursor was. Nothing is created until the first save.
+  file in Obsidian's attachment location and inserts it where the cursor was.
+  Nothing is created until the first save.
 - **Next**, or Mod+Shift+Enter, in the editor for a new symbol, saves and
   inserts it, then opens a blank editor whose symbol goes right after it, with
   the same tools, so that an inscription of several symbols is copied in one
@@ -55,6 +55,15 @@ section is also its
   existing symbol**, a command, opens the same list to search.
 - **Edit symbol**, in a symbol file's menu, which opens it in the editor again
   with every stroke, so that nothing is lost by editing.
+- **Names:** the editor's title is the symbol's name, in any script, which you
+  can type when you draw it and change whenever your reading of it changes.
+  Characters a file name cannot hold on some system, or that would break a link,
+  are left out. A new symbol left unnamed takes the next free number in its
+  folder when first saved. A changed name renames the file through Obsidian, so
+  that the links to it follow as Obsidian's settings say, and the embed just
+  inserted follows too. A name its folder already has, in any letter case, or
+  one Windows keeps for itself, is refused with a notice, and the editor stays
+  open. Drafts keep a name typed but not saved.
 - The editor's pen, eraser, four brush sizes, undo, redo, and clear, each with
   its shortcut in its tooltip. A pen's eraser end erases, and a palm resting on
   a tablet does not draw, even one that touched it before the pen. A symbol

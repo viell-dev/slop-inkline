@@ -1312,6 +1312,8 @@ describe("The editor", function () {
   it("keeps unsaved strokes as a draft when the plugin is disabled, and offers them back", async function () {
     await insert();
     await draw(zigzag);
+    // The name typed comes back with the strokes.
+    await nameSymbol("gate");
     await obsidianPage.disablePlugin("inkline");
     expect(await editorOpen()).toBe(false);
     expect(await symbolFiles()).toEqual([]);
@@ -1320,9 +1322,10 @@ describe("The editor", function () {
     // The same note, where the cursor still is.
     await browser.executeObsidianCommand("inkline:insert-symbol");
     await clickTop("Restore");
+    expect((await nameField()).value).toBe("gate");
     await browser.keys(["Control", "Enter"]);
     await waitClosed();
-    const record = JSON.parse(await recordOf("001.ink.png")) as {
+    const record = JSON.parse(await recordOf("gate.ink.png")) as {
       strokes: unknown[];
     };
     expect(record.strokes).toHaveLength(1);
