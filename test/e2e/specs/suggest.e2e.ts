@@ -105,14 +105,16 @@ async function addSymbols(paths: string[]): Promise<void> {
 }
 
 /**
- * Deletes the files at `paths`, as Obsidian is set to, and waits for the
- * vault to forget them, which it can do only after the trash has them.
+ * Moves the files at `paths` to the vault's own trash, and waits for the
+ * vault to forget them, which it does once it sees them go. Obsidian 1.14.4
+ * in Docker closes a list when a file goes to the system's trash.
  */
 async function deleteFiles(paths: string[]): Promise<void> {
   await browser.executeObsidian(async ({ app }, files) => {
     for (const path of files) {
-      const file = app.vault.getFileByPath(path);
-      if (file !== null) await app.fileManager.trashFile(file);
+      if (app.vault.getFileByPath(path) !== null) {
+        await app.vault.adapter.trashLocal(path);
+      }
     }
   }, paths);
   await browser.waitUntil(async () =>

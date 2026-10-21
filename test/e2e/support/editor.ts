@@ -29,12 +29,15 @@ export async function openAtMarker(
     const editor = view.editor;
     const at = editor.getValue().indexOf(text);
     if (at === -1) throw new Error(`no ${text} in the note`);
+    editor.focus();
     editor.setSelection(
       editor.offsetToPos(at),
       editor.offsetToPos(at + text.length),
     );
     editor.replaceSelection("");
-    editor.focus();
+    // Removed beside a code span's backtick, the marker can leave Live
+    // Preview's selection reaching past it; the cursor goes where it was.
+    editor.setCursor(editor.offsetToPos(at));
   }, marker);
 }
 
