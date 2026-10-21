@@ -105,17 +105,20 @@ async function addSymbols(paths: string[]): Promise<void> {
 }
 
 /**
- * Makes the vault say it has no file at `paths`, as once they are deleted,
- * without the events a deletion sends: on Obsidian 1.14.4 they sometimes
- * close an open list before a test can choose from it.
+ * Makes the vault say it has no file at `paths`, by path and in its list of
+ * files, as once they are deleted, without the events a deletion sends: on
+ * Obsidian 1.14.4 they sometimes close an open list before a test can
+ * choose from it.
  */
 async function forgetFiles(paths: string[]): Promise<void> {
   await browser.executeObsidian(({ app }, files) => {
     const vault = app.vault;
-    const original = vault.getFileByPath.bind(vault);
-    Reflect.set(vault, "inklineRemembered", original);
+    const byPath = vault.getFileByPath.bind(vault);
+    const all = vault.getFiles.bind(vault);
+    Reflect.set(vault, "inklineRemembered", { byPath, all });
     vault.getFileByPath = (path: string) =>
-      files.includes(path) ? null : original(path);
+      files.includes(path) ? null : byPath(path);
+    vault.getFiles = () => all().filter((file) => !files.includes(file.path));
   }, paths);
 }
 
@@ -123,10 +126,11 @@ async function forgetFiles(paths: string[]): Promise<void> {
 async function rememberFiles(): Promise<void> {
   await browser.executeObsidian(({ app }) => {
     const vault = app.vault;
-    const original: unknown = Reflect.get(vault, "inklineRemembered");
-    if (typeof original !== "function") return;
+    const kept: unknown = Reflect.get(vault, "inklineRemembered");
+    if (typeof kept !== "object" || kept === null) return;
     Reflect.deleteProperty(vault, "inklineRemembered");
-    Reflect.set(vault, "getFileByPath", original);
+    Reflect.set(vault, "getFileByPath", Reflect.get(kept, "byPath"));
+    Reflect.set(vault, "getFiles", Reflect.get(kept, "all"));
   });
 }
 
