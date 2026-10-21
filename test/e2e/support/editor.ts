@@ -23,19 +23,45 @@ export async function openAtMarker(
       marker,
     ),
   );
-  await browser.executeObsidian(({ app, obsidian }, text) => {
+  const at = await browser.executeObsidian(({ app, obsidian }, text) => {
     const view = app.workspace.getActiveViewOfType(obsidian.MarkdownView);
     if (view === null) throw new Error("no Markdown view");
     const editor = view.editor;
-    const at = editor.getValue().indexOf(text);
-    if (at === -1) throw new Error(`no ${text} in the note`);
+    const found = editor.getValue().indexOf(text);
+    if (found === -1) throw new Error(`no ${text} in the note`);
     editor.setSelection(
-      editor.offsetToPos(at),
-      editor.offsetToPos(at + text.length),
+      editor.offsetToPos(found),
+      editor.offsetToPos(found + text.length),
     );
     editor.replaceSelection("");
     editor.focus();
+    return found;
   }, marker);
+  // Removed beside a code span's backtick, the marker can leave Live
+  // Preview's selection reaching past it once the editor redraws the span,
+  // so the cursor is put where the marker was until it stays there for two
+  // checks running.
+  let held = 0;
+  await browser.waitUntil(
+    async () => {
+      const there = await browser.executeObsidian(
+        ({ app, obsidian }, offset) => {
+          const view = app.workspace.getActiveViewOfType(obsidian.MarkdownView);
+          if (view === null) throw new Error("no Markdown view");
+          const editor = view.editor;
+          const from = editor.posToOffset(editor.getCursor("from"));
+          const to = editor.posToOffset(editor.getCursor("to"));
+          if (from === offset && to === offset) return true;
+          editor.setCursor(editor.offsetToPos(offset));
+          return false;
+        },
+        at,
+      );
+      held = there ? held + 1 : 0;
+      return held >= 2;
+    },
+    { interval: 50 },
+  );
 }
 
 /** The active note's text, as the editor has it. */
@@ -45,6 +71,21 @@ export async function noteText(): Promise<string> {
     if (view === null) throw new Error("no Markdown view");
     return view.editor.getValue();
   });
+}
+
+/** Waits for a notice whose text includes `text`. */
+export async function waitForNotice(text: string): Promise<void> {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        (wanted) =>
+          [...document.querySelectorAll(".notice")].some((notice) =>
+            notice.textContent.includes(wanted),
+          ),
+        text,
+      ),
+    { timeoutMsg: `no notice with "${text}"` },
+  );
 }
 
 /** The editor's drawing surface. */

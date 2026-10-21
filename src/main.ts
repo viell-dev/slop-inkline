@@ -1,7 +1,9 @@
-import { MarkdownView, Platform, Plugin, TFile } from "obsidian";
+import { MarkdownView, Notice, Platform, Plugin, TFile } from "obsidian";
 import { DraftStore } from "./editor/drafts.ts";
 import type { InkEditorModal } from "./editor/modal.ts";
 import { isInkPath } from "./format/ink-file.ts";
+import { defaultTrigger } from "./notes/search.ts";
+import { SymbolSearch, SymbolSuggest } from "./notes/suggest.ts";
 import { editSymbol, insertSymbol, type EditorHost } from "./notes/symbols.ts";
 import { SymbolRenderer } from "./render/symbols.ts";
 
@@ -54,6 +56,29 @@ export default class InklinePlugin extends Plugin {
         // Only where there is a cursor to insert at: not in Reading view.
         if (!view?.file || view.getMode() !== "source") return false;
         if (!checking) insertSymbol(this.#host, view);
+        return true;
+      },
+    });
+    // A symbol you already have: its name after the trigger, or a list.
+    this.registerEditorSuggest(
+      new SymbolSuggest(this.app, () => defaultTrigger),
+    );
+    this.addCommand({
+      id: "insert-existing-symbol",
+      name: "Insert existing symbol",
+      checkCallback: (checking) => {
+        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+        if (!view?.file || view.getMode() !== "source") return false;
+        if (!checking) {
+          const { editor } = view;
+          if (!this.app.vault.getFiles().some((file) => isInkPath(file.path))) {
+            new Notice("There are no symbols to insert yet.");
+            return true;
+          }
+          new SymbolSearch(this.app, view.file.path, (embed) => {
+            editor.replaceSelection(embed);
+          }).open();
+        }
         return true;
       },
     });
