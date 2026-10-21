@@ -341,7 +341,9 @@ describe("Inserting a symbol you have", function () {
   });
 
   it("inserts nothing for a symbol deleted while it was listed", async function () {
-    await addSymbols(["gone.ink.png"]);
+    // ;;gon lists gonk too, so the list shows gone alone only once the last
+    // key has been read, before the vault forgets it.
+    await addSymbols(["gone.ink.png", "gonk.ink.png"]);
     try {
       await openAtMarker("Deleted.md", "HERE");
       await type(";;gone");
@@ -369,7 +371,7 @@ describe("Inserting a symbol you have", function () {
       expect(await noteText()).toBe("The door reads ;;gone.\n");
     } finally {
       await rememberFiles();
-      await deleteFiles(["gone.ink.png"]);
+      await deleteFiles(["gone.ink.png", "gonk.ink.png"]);
     }
   });
 
