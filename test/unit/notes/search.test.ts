@@ -117,7 +117,11 @@ describe("holdsTyped", () => {
 });
 
 describe("insideCodeBlock", () => {
-  const note = (text: string) => text.split("\n");
+  /** A note's lines, as `insideCodeBlock` reads them. */
+  const note = (text: string) => {
+    const lines = text.split("\n");
+    return (index: number) => lines[index];
+  };
 
   it("knows the lines of a fenced code block, of either mark", () => {
     const lines = note("a\n```js\n;;x\n```\n;;y\n~~~~\n;;z\n~~~~");

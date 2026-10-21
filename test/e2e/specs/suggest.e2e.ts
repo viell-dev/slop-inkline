@@ -175,6 +175,7 @@ describe("Inserting a symbol you have", function () {
           "Sentence",
           "Deleted",
           "Links",
+          "Typo",
         ]) {
           await app.vault.create(`${name}.md`, "The door reads HERE.\n");
         }
@@ -265,6 +266,19 @@ describe("Inserting a symbol you have", function () {
     await waitForNote("The door reads ;;tower\n![[arch.ink.png]].\n");
   });
 
+  it("lists again once a key that ended the name is taken back", async function () {
+    await openAtMarker("Typo.md", "HERE");
+    await type(";;arc");
+    await waitForSuggested(["arch"]);
+    // A [ is link syntax, which ends the name.
+    await type("[");
+    await browser.$(".suggestion-container").waitForExist({ reverse: true });
+    await browser.keys(["Backspace"]);
+    await waitForSuggested(["arch"]);
+    await browser.keys(["Enter"]);
+    await waitForNote("The door reads ![[arch.ink.png]].\n");
+  });
+
   it("matches a name with a space only if it holds what was typed", async function () {
     await openAtMarker("Sentence.md", "HERE");
     // A fuzzy match would find "tower" in "to wer".
@@ -323,8 +337,12 @@ describe("Inserting a symbol you have", function () {
   });
 
   it("inserts Markdown links that lead back to their symbols", async function () {
-    // Obsidian leaves a % bare in the links it makes (#35).
-    const odd = ["Glyphs/sun 50%.ink.png", "Glyphs/x%41.ink.png"];
+    // Obsidian leaves a % bare in the links it makes (#35), and a ) too.
+    const odd = [
+      "Glyphs/sun 50%.ink.png",
+      "Glyphs/jix%41&y.ink.png",
+      "Glyphs/half)moon.ink.png",
+    ];
     await useMarkdownLinks(true);
     try {
       await addSymbols(odd);
@@ -332,16 +350,18 @@ describe("Inserting a symbol you have", function () {
       for (const [typed, name] of [
         [";;tower o", "tower one"],
         [" ;;sun", "sun 50%"],
-        [" ;;x%41", "x%41"],
+        [" ;;jix", "jix%41&y"],
+        [" ;;half", "half)moon"],
       ] as const) {
         await type(typed);
         await waitForSuggested([name]);
         await browser.keys(["Enter"]);
       }
       // Obsidian's own link, where it leads back; one with a % that starts
-      // no escape mended; and one whose % starts one, by its vault path.
+      // no escape mended; and by their vault paths, one whose % starts one,
+      // and one whose ) would end the link.
       await waitForNote(
-        "The door reads ![](tower%20one.ink.png) ![](sun%2050%25.ink.png) ![](Glyphs/x%2541.ink.png).\n",
+        "The door reads ![](tower%20one.ink.png) ![](sun%2050%25.ink.png) ![](Glyphs/jix%2541&y.ink.png) ![](Glyphs/half%29moon.ink.png).\n",
       );
       await browser.executeObsidian(async ({ app, obsidian }) => {
         await app.workspace.getActiveViewOfType(obsidian.MarkdownView)?.save();

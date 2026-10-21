@@ -131,6 +131,19 @@ export class SymbolSuggest extends EditorSuggest<TFile> {
     editor: Editor,
     file: TFile | null,
   ): EditorSuggestTriggerInfo | null {
+    const found = this.#find(cursor, editor, file);
+    // A list that closes because no trigger is being typed any more, as when
+    // a `[` after the name ends it, dismisses nothing.
+    if (found === null) this.#listed = false;
+    return found;
+  }
+
+  /** The trigger and name being typed before `cursor`, if any is listed. */
+  #find(
+    cursor: EditorPosition,
+    editor: Editor,
+    file: TFile | null,
+  ): EditorSuggestTriggerInfo | null {
     if (file === null) return null;
     const line = editor.getLine(cursor.line);
     const found = triggerQuery(line, cursor.ch, this.#trigger());
@@ -148,7 +161,11 @@ export class SymbolSuggest extends EditorSuggest<TFile> {
     // Not in code or front matter, where a trigger is the note's own text.
     if (
       insideCodeSpan(line, found.start) ||
-      insideCodeBlock(editor.getValue().split("\n"), cursor.line)
+      insideCodeBlock(
+        (index) =>
+          index < editor.lineCount() ? editor.getLine(index) : undefined,
+        cursor.line,
+      )
     ) {
       return null;
     }
@@ -166,10 +183,11 @@ export class SymbolSuggest extends EditorSuggest<TFile> {
   }
 
   /**
-   * Closes the list. Closed while it showed symbols, and not by a choice, as
-   * Esc closes it, it stays closed for that trigger, so that what is typed
-   * after it is text. Obsidian also closes it when nothing matches, which
-   * dismisses nothing.
+   * Closes the list. Closed while it showed symbols for a trigger still
+   * being typed, and not by a choice, as Esc or leaving the editor closes
+   * it, it stays closed for that trigger, so that what is typed after it is
+   * text. Obsidian also closes it when nothing matches, or when the trigger
+   * ends, which dismisses nothing.
    */
   override close(): void {
     const { context } = this;

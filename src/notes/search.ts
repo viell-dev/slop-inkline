@@ -113,30 +113,33 @@ function isFrontMatterFence(text: string | undefined): boolean {
 }
 
 /**
- * Whether line `line` of a note whose lines are `lines` lies in its front
- * matter or in a fenced code block, where text such as a trigger is the
- * note's own. It reads the text as it is now, as the metadata cache, which
- * follows saves, may not yet. A fence may follow a quote's `>` markers or
- * indentation; one left open runs to the end of the note, as Markdown reads
- * it.
+ * Whether line `line` of a note lies in its front matter or in a fenced
+ * code block, where text such as a trigger is the note's own. `lineAt`
+ * gives the note's lines as it is now, as the metadata cache, which follows
+ * saves, may not yet, and undefined past its end; only the lines before
+ * `line` are read, and the front matter's. A fence may follow a quote's `>`
+ * markers or indentation; one left open runs to the end of the note, as
+ * Markdown reads it. An indented code block is not told apart from a list
+ * item's indented text, and counts as text.
  */
 export function insideCodeBlock(
-  lines: readonly string[],
+  lineAt: (index: number) => string | undefined,
   line: number,
 ): boolean {
   let from = 0;
-  if (isFrontMatterFence(lines[0])) {
-    const end = lines.findIndex(
-      (text, index) => index > 0 && isFrontMatterFence(text),
-    );
-    if (end !== -1) {
+  if (isFrontMatterFence(lineAt(0))) {
+    let end = 1;
+    while (lineAt(end) !== undefined && !isFrontMatterFence(lineAt(end))) {
+      end++;
+    }
+    if (lineAt(end) !== undefined) {
       if (line <= end) return true;
       from = end + 1;
     }
   }
   let fence: { mark: string; length: number } | undefined;
   for (let index = from; index < line; index++) {
-    const text = (lines[index] ?? "").replace(/^(?:\s*>)*\s*/, "");
+    const text = (lineAt(index) ?? "").replace(/^(?:\s*>)*\s*/, "");
     const run = /^(`{3,}|~{3,})(.*)$/.exec(text);
     if (run === null) continue;
     const marks = run[1] ?? "";
