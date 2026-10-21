@@ -538,9 +538,11 @@ describe("Symbols in notes", function () {
             "",
             "Described ![[tower one.ink.png|a tall tower]] and ![the gate](Glyphs/tower%20one.ink.png), sized ![[tower one.ink.png|24]].",
             "",
-            "Wide ![[wide.ink.png]] here.",
-            "",
           ].join("\n"),
+        );
+        await app.vault.create(
+          "Wide.md",
+          "Top line.\n\nWide ![[wide.ink.png]] here.\n",
         );
       },
       toBase64(blockSymbol()),
@@ -610,13 +612,11 @@ describe("Symbols in notes", function () {
       "a tall tower",
       "the gate",
       "tower one",
-      "wide",
     ];
     for (const mode of ["preview", "source"] as const) {
       await open("Names.md", mode);
       await waitForNames(mode, named);
       await hover(mode, 0, "tower one");
-      await hover(mode, 6, "wide");
     }
     // In Live Preview, the pointer is on each symbol, not on a resize handle
     // or the buttons Obsidian gives a wide image, which the photo keeps (#37).
@@ -648,11 +648,26 @@ describe("Symbols in notes", function () {
       false,
       false,
       false,
-      false,
     ]);
     expect(
       covers.filter((_, index) => index !== 2).map((cover) => cover.reached),
-    ).toEqual([true, true, true, true, true, true]);
+    ).toEqual([true, true, true, true, true]);
+    // Nor on the buttons Obsidian gives an image 80 pixels or wider, which
+    // it shows on a symbol that wide opened straight in Live Preview.
+    await open("Wide.md", "source");
+    await waitForNames("source", ["wide"]);
+    const reached = await browser.execute((selector) => {
+      const image = activeDocument.querySelector(selector);
+      const box = image?.getBoundingClientRect();
+      return box === undefined
+        ? false
+        : activeDocument.elementFromPoint(
+            box.left + box.width / 2,
+            box.top + box.height / 2,
+          ) === image;
+    }, images("source"));
+    expect(reached).toBe(true);
+    await hover("source", 0, "wide");
     await saveScreenshot("render-names");
     // Renamed, the symbol's embeds follow, and so does its name. Obsidian
     // would first ask whether to update the links, which its setting, not in
@@ -687,7 +702,6 @@ describe("Symbols in notes", function () {
       "a tall tower",
       "the gate",
       "tower two",
-      "wide",
     ]);
   });
 
