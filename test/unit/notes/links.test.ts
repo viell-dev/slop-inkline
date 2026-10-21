@@ -265,7 +265,7 @@ describe("links as Obsidian reads them", () => {
   // before da2a509, with `%` in an email's name, 25 s on the first; the one
   // before 7c4eb35, which read brackets again from each `[`, 28 s on the
   // second; and the one before 99c10e1, which trimmed an address's `)` one at
-  // a time, 21 s on its last input.
+  // a time, 21 s on its last input alone.
   const budget = 3000;
 
   it("reads long runs of failed address starts in time", () => {
