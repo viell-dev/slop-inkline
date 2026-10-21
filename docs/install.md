@@ -5,8 +5,8 @@
 Inkline has no release, so the only way to try it is to build it from its
 source, as below. Once it has releases, versions below 1.0.0 will be GitHub
 prereleases that you install with
-[BRAT](https://github.com/TfTHacker/obsidian42-brat), and 1.0.0 will be offered
-for Obsidian's community plugin directory.
+[BRAT](https://github.com/TfTHacker/obsidian42-brat), and 1.0.0 is planned to be
+submitted to Obsidian's community plugin directory.
 
 :::
 

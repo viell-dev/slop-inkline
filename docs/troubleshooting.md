@@ -19,8 +19,8 @@ what to use instead.
 
 **Typing `;;` lists nothing.** The list does not open in code or front matter,
 nor when a space follows `;;` straight away. With no symbols in the vault yet,
-it says so. Typed with a space, a name matches only symbols whose names hold
-what you typed.
+`;;` shows nothing, and **Inkline: Insert existing symbol** says so. Typed with
+a space, a name matches only symbols whose names hold what you typed.
 
 **"… was saved by a newer version of Inkline."** Update Inkline, as
 [Install](./install.md#update) describes; this version will not edit the symbol,

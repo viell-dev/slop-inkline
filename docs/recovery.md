@@ -28,9 +28,10 @@ A changed name is a change, and so is ink that Make ink is previewing.
 
 After each finished stroke, undo, redo, or clearing, and each change of name,
 the editor keeps a draft of the drawing in the vault's local storage, which
-Obsidian keeps on your computer for that vault. Closing Obsidian, a crash, or
-turning Inkline off then loses at most a stroke still being drawn. A picture you
-were tracing over is not kept.
+Obsidian keeps on your computer for that vault. Closing Obsidian or a crash then
+loses at most a stroke still being drawn, and turning Inkline off loses nothing:
+it ends the stroke and keeps the draft. A picture you were tracing over is not
+kept.
 
 Opening the same symbol again, or a new symbol in the same note, asks **Restore
 the unsaved drawing?**, with the time the draft was kept:
@@ -76,8 +77,10 @@ elsewhere, by sync, another app, or another editor, is not lost to a save:
 ## Pictures without strokes
 
 A `.ink.png` file whose strokes are missing opens as a picture: its pixels
-become the symbol's base layer, at the same size, never stretched or recoloured,
-and the pen and eraser act on it. That happens with files from other programs,
-with files whose strokes an image optimiser or a sync tool stripped out, and
-with symbols from Inkline's earlier prototype, whose white background becomes
-transparent. Saving one stores strokes again from then on.
+become the symbol's base layer, at their own resolution, scaled in proportion to
+the line's height, and the pen and eraser act on it. Its transparency, or for an
+opaque picture its darkness, becomes the ink, in the text's colour like any
+other. That happens with files from other programs, with files whose strokes an
+image optimiser or a sync tool stripped out, and with symbols from Inkline's
+earlier prototype, whose white background becomes transparent. Saving one stores
+strokes again from then on.

@@ -54,8 +54,9 @@ npm run check
 
 `check` runs ESLint with the rules of Obsidian's community directory review
 (`eslint-plugin-obsidianmd`) and typescript-eslint's strict type-checked rules,
-Prettier, the TypeScript checks of the plugin, the tests, and the scripts, the
-unit tests, and the build. `npm run format` applies Prettier. GitHub Actions
+Prettier, the TypeScript checks of the plugin, the tests, the scripts, and the
+documentation site's configuration, the unit tests, the build, and the
+documentation site's build. `npm run format` applies Prettier. GitHub Actions
 runs `check` on Linux and Windows, and a dependency audit on Linux.
 
 ## Tests

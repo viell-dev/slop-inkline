@@ -34,10 +34,14 @@ On a branch from `main`:
 3. Rename `## Unreleased` in `CHANGELOG.md` to `## <version> - <YYYY-MM-DD>`,
    with the planned release date, and add an empty `## Unreleased` above it. The
    section becomes the release notes, so write it for users.
-4. Run `node scripts/release.ts check <version>`, which the workflow runs too:
+4. Update the user guide in `docs/` for the release: the "No release yet" boxes
+   on the home and install pages, and how the release is installed, with BRAT
+   for versions below 1.0.0. `test/unit/docs.test.ts` fails until they no longer
+   say there is no release.
+5. Run `node scripts/release.ts check <version>`, which the workflow runs too:
    it checks that the metadata files agree and that the changelog section
    exists.
-5. Have another agent review the release pull request, as
+6. Have another agent review the release pull request, as
    [AGENTS.md](AGENTS.md#review) requires: everything since the previous
    release, not only the version change. That covers the changes, the open
    defects, the evidence of the tests, compatibility with the Obsidian versions

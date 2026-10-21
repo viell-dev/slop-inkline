@@ -32,13 +32,27 @@ function tableRows(text: string): string[][] {
 }
 
 /** A heading's anchor, as VitePress makes it. */
+/** Combining marks, which VitePress drops from an anchor. */
+const combining = new RegExp(
+  `[${String.fromCharCode(0x300)}-${String.fromCharCode(0x36f)}]`,
+  "g",
+);
+
+/**
+ * A heading's anchor, as VitePress makes it from the heading's text: its
+ * slug rule, after the Markdown marks that do not show in the text.
+ */
 function anchor(heading: string): string {
   return heading
-    .toLowerCase()
-    .replace(/[`*_]/g, "")
-    .replace(/[^\p{L}\p{N}\s-]/gu, "")
-    .trim()
-    .replace(/\s+/g, "-");
+    .replace(/[`*]/g, "")
+    .normalize("NFKD")
+    .replace(combining, "")
+    .replace(/\p{Cc}/gu, "")
+    .replace(/[\s~`!@#$%^&*()\-_+=[\]{}|\\;:"'“”‘’<>,.?/]+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/^(\d)/, "_$1")
+    .toLowerCase();
 }
 
 function anchors(text: string): string[] {
@@ -80,6 +94,20 @@ describe("the documentation", () => {
     const sizes = rows.find((cells) => cells[1]?.startsWith("S, "));
     expect(sizes?.[1]).toBe(brushSizes.map((size) => size.label).join(", "));
     expect(sizes?.[0]).toBe(brushSizes.map((_, index) => index + 1).join(", "));
+    // The guide to the editor names the same keys in its text, as
+    // **Pen** (P).
+    const named = [
+      ...page("drawing.md").matchAll(/\*\*([^*]+)\*\* \(([^)]+)\)/g),
+    ].flatMap((match) => {
+      const button = buttons.find(({ text }) => text === match[1]);
+      return button === undefined
+        ? []
+        : [{ text: button.text, key: button.key, named: match[2] ?? "" }];
+    });
+    expect(named.length).toBeGreaterThan(10);
+    for (const { text, key, named: keys } of named) {
+      expect(keys.split(", or ")[0], text).toBe(key);
+    }
     // Keys with no button of their own.
     for (const key of ["Mod+S", "Esc"]) {
       expect(rows.some((cells) => cells[0] === key)).toBe(true);
@@ -103,14 +131,37 @@ describe("the documentation", () => {
     expect(page("install.md")).toContain(
       `Obsidian **${manifest.minAppVersion} or later**`,
     );
-    expect(page("index.md")).toContain(`Obsidian\n${manifest.minAppVersion}`);
+    expect(page("index.md")).toMatch(
+      new RegExp(
+        `Obsidian\\s+${manifest.minAppVersion.replaceAll(".", "\\.")}`,
+      ),
+    );
   });
 
-  it("says that there is no release while there is none", () => {
-    expect(packageJson.version).toBe("0.0.0");
+  it("says that there is no release while there is none, and only then", () => {
+    const unreleased = packageJson.version === "0.0.0";
     for (const name of ["index.md", "install.md"]) {
-      expect(page(name)).toContain("::: warning No release yet");
+      expect(page(name).includes("::: warning No release yet"), name).toBe(
+        unreleased,
+      );
     }
+  });
+
+  it("quotes notices as the plugin words them", () => {
+    const code = readdirSync("src", { recursive: true, encoding: "utf8" })
+      .filter((name) => name.endsWith(".ts"))
+      .map((name) => source(join("src", name)))
+      .join("\n");
+    const quoted = [
+      ...page("troubleshooting.md").matchAll(/\*\*"([^"]+)"\*\*/g),
+    ].flatMap((match) =>
+      (match[1] ?? "")
+        .split("…")
+        .map((part) => part.trim())
+        .filter((part) => part.length >= 12),
+    );
+    expect(quoted.length).toBeGreaterThan(3);
+    for (const part of quoted) expect(code, part).toContain(part);
   });
 
   it("links only to pages, headings, and repository files that exist", () => {

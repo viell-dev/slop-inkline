@@ -126,42 +126,69 @@ async function output(values: Record<string, string>): Promise<void> {
   else await appendFile(file, lines);
 }
 
-/** Reads `url` until it answers, or for about five minutes. */
-async function read(url: string): Promise<string | undefined> {
-  for (let attempt = 0; attempt < 30; attempt++) {
-    const response = await fetch(url, {
+/**
+ * How long the deployment may take to show: Pages' cache serves a page for
+ * up to ten minutes, and each address below asks past it with a query.
+ */
+const deadline = Date.now() + 12 * 60_000;
+
+/**
+ * Reads `url` until `fresh` accepts what it says, or the deadline passes;
+ * each attempt asks with a query of its own, so that Pages' cache cannot
+ * answer with what an earlier deployment left. The last text read, or
+ * undefined if none ever answered.
+ */
+async function readFresh(
+  url: string,
+  fresh: (text: string) => boolean,
+): Promise<string | undefined> {
+  let last: string | undefined;
+  for (let attempt = 0; ; attempt++) {
+    const separator = url.includes("?") ? "&" : "?";
+    const response = await fetch(`${url}${separator}v=${String(attempt)}`, {
       headers: { "cache-control": "no-cache" },
     }).catch(() => undefined);
-    if (response?.ok === true) return response.text();
+    if (response?.ok === true) {
+      last = await response.text();
+      if (fresh(last)) return last;
+    }
+    if (Date.now() > deadline) return last;
     await sleep(10_000);
   }
-  return undefined;
 }
 
 async function verify(site: string, commit: string): Promise<void> {
   const base = site.endsWith("/") ? site : `${site}/`;
-  // Pages can serve the previous deployment for a while.
-  let deployed: unknown;
-  for (let attempt = 0; attempt < 30; attempt++) {
-    const text = await read(`${base}version.json?${String(attempt)}`);
-    deployed = text === undefined ? undefined : JSON.parse(text);
-    if (isRecord(deployed) && deployed.commit === commit) break;
-    await sleep(10_000);
-  }
+  const names = (text: string): unknown => {
+    try {
+      const parsed: unknown = JSON.parse(text);
+      return isRecord(parsed) ? parsed : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  const version = await readFresh(`${base}version.json`, (text) => {
+    const parsed = names(text);
+    return isRecord(parsed) && parsed.commit === commit;
+  });
+  const deployed = version === undefined ? undefined : names(version);
   if (!isRecord(deployed) || deployed.commit !== commit) {
-    fail(`${base}version.json does not name ${commit}`);
+    fail(`${base}version.json does not name ${commit} after 12 minutes`);
   }
-  const sitemap = await read(`${base}sitemap.xml`);
+  const sitemap = await readFresh(`${base}sitemap.xml`, (text) =>
+    text.includes("<loc>"),
+  );
   if (sitemap === undefined) fail(`${base}sitemap.xml does not answer`);
   const pages = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map(
     (match) => match[1] ?? "",
   );
   if (pages.length === 0) fail("the sitemap lists no pages");
   const problems: string[] = [];
+  const built = `content="${commit}"`;
   for (const page of pages) {
-    const html = await read(page);
+    const html = await readFresh(page, (text) => text.includes(built));
     if (html === undefined) problems.push(`${page} does not answer`);
-    else if (!html.includes(`content="${commit}"`)) {
+    else if (!html.includes(built)) {
       problems.push(`${page} is not from ${commit}`);
     }
   }

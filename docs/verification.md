@@ -53,7 +53,8 @@ saving it again never changes it.
 
 - Synthetic files in the prototype's format, at two sizes, in
   [test/fixtures/legacy](https://github.com/viell-dev/slop-inkline/tree/main/test/fixtures/legacy),
-  open as a base layer of their own pixels, unscaled
+  open as a base layer of their own pixels, pixel for pixel, scaled to the
+  line's height
   ([ink.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/ink.e2e.ts)).
 - Pictures without a record, transparent ones, pictures one or two pixels high,
   and records that cannot be scaled open from their pixels, and a record from a
@@ -120,14 +121,14 @@ saving it again never changes it.
 
 Each of these asserts a budget beside its correctness checks:
 
-| What                                                         | Budget      | Where         |
-| ------------------------------------------------------------ | ----------- | ------------- |
-| Tagging a thousand symbols in a note, however they are added | 50 ms       | render.e2e.ts |
-| Searching 5,000 symbols as each letter of a name is typed    | 100 ms each | scale.e2e.ts  |
-| Keeping a draft with a large base layer, after the first     | 50 ms each  | editor.e2e.ts |
-| Previewing the ink of a 4K screenshot                        | 300 ms      | ink.e2e.ts    |
-| Saving, without waiting for the window to be idle            | 700 ms each | editor.e2e.ts |
-| Reading long lines of failed links in one pass               | 3 s each    | links.test.ts |
+| What                                                                                     | Budget      | Where                                                                                              |
+| ---------------------------------------------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------- |
+| Tagging a thousand symbols in a note, the fastest of five runs                           | 50 ms       | [render.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/render.e2e.ts)  |
+| Searching 5,000 symbols as each letter of a name is typed, each query's fastest of three | 100 ms      | [scale.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/scale.e2e.ts)    |
+| Keeping a draft with a large base layer, after the first                                 | 50 ms each  | [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)  |
+| Previewing the ink of a 4K screenshot                                                    | 300 ms      | [ink.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/ink.e2e.ts)        |
+| Saving, without waiting for the window to be idle                                        | 700 ms each | [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)  |
+| Reading long lines of failed links in one pass                                           | 3 s each    | [links.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/links.test.ts) |
 
 ### A release is what was tested
 
@@ -178,8 +179,8 @@ check against a commit whose CI never ran
   pressure and pointer types, not with real devices.
 - Obsidian's mobile apps are not tested, as Inkline does not support them.
 - Printing and PDF export of notes with symbols are not checked yet.
-- The test machines have the fonts DejaVu and Noto; a theme's own font is
-  checked through the guides' measurement, not by eye.
+- CI's runners have the DejaVu fonts, and the Docker image DejaVu and Noto; a
+  theme's own font is checked through the guides' measurement, not by eye.
 - Installing a published release, and its attestation, are not tested yet, as
   there is no release.
 - The budgets are wall-clock times. Each leaves room for a slow machine, but

@@ -83,8 +83,9 @@ first.
 ## Start from a copy
 
 In the editor for a new symbol, **Copy from** (V) starts it from a copy of
-another symbol's strokes, chosen from the vault's symbols, for scripts whose
-symbols share parts. Undo takes the copy back.
+another symbol's strokes and ink, chosen from the vault's symbols, in place of
+what is drawn so far, for scripts whose symbols share parts. Undo takes the copy
+back.
 
 ## Save
 
