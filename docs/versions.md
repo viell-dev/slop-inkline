@@ -32,4 +32,6 @@ The
 builds the site with VitePress and deploys it to GitHub Pages, then reads the
 deployed `version.json` and every page back, and fails unless they are the
 commit it built. It has permission to deploy Pages only: it cannot push to the
-repository, create a tag, or publish a release.
+repository, create a tag, or publish a release. The repository's Pages are built
+by GitHub Actions, and its `github-pages` environment takes deployments from
+`main` only, so a workflow run on another branch cannot deploy.

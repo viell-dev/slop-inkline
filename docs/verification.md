@@ -7,16 +7,16 @@ says how to run them.
 
 ## Where the checks run
 
-| Check                     | What it runs                                                                                                                               | Where                                       |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------- |
-| `verify (ubuntu-latest)`  | `npm run check`: ESLint with Obsidian's directory rules, Prettier, types, the unit tests, the build, and this site's build                 | GitHub Actions, Linux; required             |
-| `verify (windows-latest)` | The same                                                                                                                                   | GitHub Actions, Windows; required           |
-| `e2e`                     | The end-to-end suite in real Obsidian: 1.13.4, the manifest's minimum, on the oldest installer that runs it, and the latest public release | GitHub Actions, Linux, under Xvfb; required |
-| `e2e in Docker`           | The same suite in the image `npm run test:e2e:docker` builds                                                                               | Weekly and on request                       |
-| Weekly CI                 | Every check above, so that a new Obsidian release is tested within a week                                                                  | Mondays                                     |
-| Settings                  | The live labels and rulesets against their files, and every issue's labels                                                                 | Weekly and on request                       |
-| Pages                     | This site, deployed and read back page by page                                                                                             | After each change to `main`                 |
-| Release                   | The release checks and files, as a dry run on pull requests that change the release steps                                                  | On request, and on those pull requests      |
+| Check                     | What it runs                                                                                                                                                                | Where                                       |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| `verify (ubuntu-latest)`  | `npm run check`: ESLint with Obsidian's directory rules, Prettier, types, the unit tests, the build, and this site's build                                                  | GitHub Actions, Linux; required             |
+| `verify (windows-latest)` | The same                                                                                                                                                                    | GitHub Actions, Windows; required           |
+| `e2e`                     | The end-to-end suite in real Obsidian: 1.13.4, the manifest's minimum, on the oldest installer that runs it, and the latest public release                                  | GitHub Actions, Linux, under Xvfb; required |
+| `e2e in Docker`           | The same suite in the image `npm run test:e2e:docker` builds                                                                                                                | Weekly and on request                       |
+| Weekly CI                 | Every check above, so that a new Obsidian release is tested within a week                                                                                                   | Mondays                                     |
+| Settings                  | The live labels and rulesets against their files, and every issue's labels                                                                                                  | Weekly and on request                       |
+| Pages                     | This site, deployed and read back page by page                                                                                                                              | After each change to `main`                 |
+| Release                   | The commit's required CI, the release checks, and the release's own files installed in Obsidian, as a dry run on request and on pull requests that change the release steps | On request, and on those pull requests      |
 
 The end-to-end tests assert on state, positions, and pixels read back from
 Obsidian, never on screenshots; their screenshots are kept as artifacts for
@@ -129,6 +129,20 @@ Each of these asserts a budget beside its correctness checks:
 | Saving, without waiting for the window to be idle            | 700 ms each | editor.e2e.ts |
 | Reading long lines of failed links in one pass               | 3 s each    | links.test.ts |
 
+### A release is what was tested
+
+- A release is refused unless the commit's required checks, the end-to-end tests
+  in both Obsidian versions included, passed within the last week
+  ([publish.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/publish.test.ts)).
+- Before publishing, the release's own files are installed in Obsidian, in the
+  oldest and the latest version, and must be those files byte for byte, load
+  with their version, commands, and styles, and save a symbol
+  ([package.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/package.e2e.ts)).
+  Every end-to-end run checks the build in `dist/` the same way.
+- A publication that fails part way can run again without replacing anything
+  published: each failure is run against a fake GitHub
+  ([publish.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/publish.test.ts)).
+
 ### What this site and the repository say agrees
 
 - The release metadata agrees across `package.json`, `manifest.json`, and
@@ -147,9 +161,14 @@ record where they broke the behaviour on purpose and watched the check fail, or
 ran a check against the code before a fix: among them, the checks of code in
 fences ([#50](https://github.com/viell-dev/slop-inkline/pull/50)), the link
 scanner's budgets against each earlier slow scanner
-([#49](https://github.com/viell-dev/slop-inkline/pull/49)), and the test of a
-failed rename with a slow stroke
-([#51](https://github.com/viell-dev/slop-inkline/pull/51)).
+([#49](https://github.com/viell-dev/slop-inkline/pull/49)), the test of a failed
+rename with a slow stroke
+([#51](https://github.com/viell-dev/slop-inkline/pull/51)), the harness's waits
+with slowed frames ([#53](https://github.com/viell-dev/slop-inkline/pull/53)),
+the budgets for tagging and for searching a large vault against slow code
+([#54](https://github.com/viell-dev/slop-inkline/pull/54)), and the release's CI
+check against a commit whose CI never ran
+([#55](https://github.com/viell-dev/slop-inkline/pull/55)).
 
 ## Limits of this evidence
 
@@ -164,5 +183,5 @@ failed rename with a slow stroke
 - Installing a published release, and its attestation, are not tested yet, as
   there is no release.
 - The budgets are wall-clock times. Each leaves room for a slow machine, but
-  heavy work beside a run can still exceed one; such a failure is
-  investigated, not run again until it passes.
+  heavy work beside a run can still exceed one; such a failure is investigated,
+  not run again until it passes.
