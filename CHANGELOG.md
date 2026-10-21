@@ -58,13 +58,17 @@ section is also its
 - **Names:** the editor's title is the symbol's name, in any script, which you
   can type when you draw it and change whenever your reading of it changes.
   Characters a file name cannot hold on some system, or that would break a link,
-  are left out. A new symbol left unnamed takes the next free number in its
-  folder when first saved. A changed name renames the file through Obsidian, so
-  that the links to it follow as Obsidian's settings say, and the embed just
-  inserted follows too. A name its folder already has, in any letter case, one
-  Windows keeps for itself, or one too long for a file name, is refused with a
-  notice, and the editor stays open. A symbol renamed elsewhere while its editor
-  is open keeps its new name. Drafts keep a name typed but not saved.
+  are left out, as are invisible spaces and the controls that reorder text; the
+  joiners and marks that scripts and emoji need stay. A new symbol left unnamed
+  takes the next free number in its folder when first saved. A changed name
+  renames the file through Obsidian, so that the links to it follow as
+  Obsidian's settings say, and the embed just inserted follows too; if the
+  rename fails, the drawing is saved and the editor stays open with the name,
+  for the next save to try. A name its folder already has, in any letter case,
+  one Windows keeps for itself, or one too long for a file name, is refused with
+  a notice, and the editor stays open. A symbol keeps a name it was given
+  elsewhere, before or while its editor is open, even one Inkline would not
+  give. Drafts keep a name typed but not saved.
 - The editor's pen, eraser, four brush sizes, undo, redo, and clear, each with
   its shortcut in its tooltip. A pen's eraser end erases, and a palm resting on
   a tablet does not draw, even one that touched it before the pen. A symbol
