@@ -11,7 +11,22 @@
   margin-bottom: var(--size-4-3);
 }
 
-.inkline-toolbar button[aria-pressed="true"] {
+/* A picture to trace over: Move, Remove picture, and what is being traced. */
+.inkline-picture {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--size-4-2);
+  margin-bottom: var(--size-4-3);
+}
+
+.inkline-picture-hint {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.inkline-toolbar button[aria-pressed="true"],
+.inkline-picture button[aria-pressed="true"] {
   background-color: var(--interactive-accent);
   color: var(--text-on-accent);
 }
@@ -28,6 +43,19 @@
   cursor: crosshair;
   /* The surface handles pens and touch itself, without scrolling or zooming. */
   touch-action: none;
+}
+
+/* Dragging moves the picture to trace over, rather than drawing. */
+.inkline-surface.is-moving {
+  cursor: grab;
+}
+
+.inkline-surface.is-dragging {
+  cursor: grabbing;
+}
+
+.inkline-surface.is-drop-target {
+  outline: 2px dashed var(--interactive-accent);
 }
 
 .inkline-surface:focus-visible {

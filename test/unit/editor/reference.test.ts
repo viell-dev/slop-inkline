@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  fitWithin,
   movePicture,
   placePicture,
   scaleLimits,
@@ -59,5 +60,27 @@ describe("wheelFactor", () => {
     expect(wheelFactor(100)).toBeLessThan(1);
     expect(wheelFactor(100) * wheelFactor(-100)).toBeCloseTo(1, 12);
     expect(wheelFactor(0)).toBe(1);
+  });
+});
+
+describe("wheelFactor's delta modes", () => {
+  it("counts a notch the same in pixels, lines, and pages", () => {
+    expect(wheelFactor(3, 1)).toBeCloseTo(wheelFactor(100), 12);
+    expect(wheelFactor(1, 2)).toBeCloseTo(wheelFactor(800), 12);
+  });
+});
+
+describe("fitWithin", () => {
+  it("keeps a size that fits", () => {
+    expect(fitWithin(4096, 10, 4096)).toEqual({ width: 4096, height: 10 });
+  });
+
+  it("scales a larger size down to the limit, keeping its proportions", () => {
+    expect(fitWithin(8192, 2048, 4096)).toEqual({ width: 4096, height: 1024 });
+    expect(fitWithin(3000, 6000, 4096)).toEqual({ width: 2048, height: 4096 });
+  });
+
+  it("never makes a side smaller than a pixel", () => {
+    expect(fitWithin(100_000, 1, 4096)).toEqual({ width: 4096, height: 1 });
   });
 });

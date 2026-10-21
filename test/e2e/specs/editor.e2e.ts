@@ -390,6 +390,194 @@ async function waitForNotice(text: string): Promise<void> {
   );
 }
 
+interface Box {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+/**
+ * A new symbol's surface, for placing a picture: device pixels per document
+ * pixel and per CSS pixel, the surface's border, and where the top of a
+ * capital letter is, in document pixels, from an independent measurement of
+ * the preview line's font.
+ */
+async function surfaceLayout(): Promise<{
+  factor: number;
+  ratio: number;
+  border: number;
+  capTop: number;
+  xTop: number;
+}> {
+  return browser.execute(() => {
+    const doc = activeDocument;
+    const view = doc.defaultView;
+    const canvas = doc.querySelector(".inkline-editor .inkline-surface");
+    const line = doc.querySelector(".inkline-editor .inkline-preview");
+    if (
+      view === null ||
+      canvas?.instanceOf(HTMLCanvasElement) !== true ||
+      line?.instanceOf(HTMLElement) !== true
+    ) {
+      throw new Error("no surface");
+    }
+    const font = view.getComputedStyle(line);
+    const context = new view.OffscreenCanvas(1, 1).getContext("2d");
+    if (context === null) throw new Error("no context");
+    context.font = `${font.fontStyle} ${font.fontWeight} 128px ${font.fontFamily}`;
+    return {
+      factor: canvas.width / 576,
+      ratio: canvas.width / canvas.clientWidth,
+      border: canvas.clientLeft,
+      capTop: 144 - context.measureText("H").actualBoundingBoxAscent,
+      xTop: 144 - context.measureText("x").actualBoundingBoxAscent,
+    };
+  });
+}
+
+/** Where the surface shows a red or blue picture, in device pixels. */
+async function pictureShown(
+  colour: "red" | "blue" = "red",
+): Promise<(Box & { alpha: number }) | undefined> {
+  // WebDriver hands back undefined as null.
+  const shown = await browser.execute((wanted) => {
+    const canvas = activeDocument.querySelector(
+      ".inkline-editor .inkline-surface",
+    );
+    if (canvas?.instanceOf(HTMLCanvasElement) !== true) {
+      throw new Error("no surface");
+    }
+    return window.inklineTest.pictures.shown(canvas, wanted) ?? null;
+  }, colour);
+  return shown ?? undefined;
+}
+
+/** Waits for the surface to show a picture that `test` accepts, and returns it. */
+async function waitForPicture(
+  test: (box: Box | undefined) => boolean,
+  colour: "red" | "blue" = "red",
+): Promise<(Box & { alpha: number }) | undefined> {
+  let shown = await pictureShown(colour);
+  await browser.waitUntil(
+    async () => {
+      shown = await pictureShown(colour);
+      return test(shown);
+    },
+    { timeoutMsg: `the picture stayed at ${JSON.stringify(shown)}` },
+  );
+  return shown;
+}
+
+/** Whether every edge of `box` is within `tolerance` of `expected`'s. */
+function near(box: Box | undefined, expected: Box, tolerance = 2): boolean {
+  return (
+    box !== undefined &&
+    (["left", "top", "right", "bottom"] as const).every(
+      (edge) => Math.abs(box[edge] - expected[edge]) <= tolerance,
+    )
+  );
+}
+
+/** `box` moved by `dx` and `dy`. */
+function moved(box: Box, dx: number, dy: number): Box {
+  return {
+    left: box.left + dx,
+    top: box.top + dy,
+    right: box.right + dx,
+    bottom: box.bottom + dy,
+  };
+}
+
+/** `box` scaled by `factor` about the point `x`, `y`. */
+function scaled(box: Box, factor: number, x: number, y: number): Box {
+  return {
+    left: x - (x - box.left) * factor,
+    top: y - (y - box.top) * factor,
+    right: x + (box.right - x) * factor,
+    bottom: y + (box.bottom - y) * factor,
+  };
+}
+
+/**
+ * Where a new symbol's surface first shows a picture of `width` × `height`
+ * pixels: as tall as from the cap height to the baseline, in the middle.
+ */
+async function placedBox(width: number, height: number): Promise<Box> {
+  const { factor, capTop } = await surfaceLayout();
+  const across = ((144 - capTop) / height) * width;
+  return {
+    left: (288 - across / 2) * factor,
+    top: capTop * factor,
+    right: (288 + across / 2) * factor,
+    bottom: 144 * factor,
+  };
+}
+
+/** Copies a 40 px square picture of one colour, and pastes it. */
+async function pastePicture(colour: "red" | "blue"): Promise<void> {
+  await browser.execute(async (fill) => {
+    await window.inklineTest.pictures.copyPicture(40, 40, fill);
+  }, colour);
+  await browser.keys(["Control", "v"]);
+}
+
+/**
+ * Drops a file of `type` on the surface: `text`, or a 20 × 60 px blue
+ * picture.
+ */
+async function dropFile(type: string, text?: string): Promise<void> {
+  await browser.execute(
+    async (fileType, content) => {
+      const { pictures } = window.inklineTest;
+      const canvas = activeDocument.querySelector(
+        ".inkline-editor .inkline-surface",
+      );
+      if (canvas === null) throw new Error("no surface");
+      const body = content ?? (await pictures.picture(20, 60, "blue"));
+      pictures.drop(canvas, new File([body], "dropped", { type: fileType }));
+    },
+    type,
+    text,
+  );
+}
+
+/** Turns the wheel by `deltaY` at `x`, `y` CSS pixels from the surface's middle. */
+async function turnWheel(x: number, y: number, deltaY: number): Promise<void> {
+  await browser
+    .action("wheel")
+    .scroll({ origin: surface(), x, y, deltaX: 0, deltaY })
+    .perform();
+}
+
+/** Drags with the mouse by `dx`, `dy` CSS pixels from the surface's middle. */
+async function dragBy(dx: number, dy: number): Promise<void> {
+  const origin = surface();
+  await browser
+    .action("pointer", { parameters: { pointerType: "mouse" } })
+    .move({ origin, x: 0, y: 0 })
+    .down()
+    .move({
+      origin,
+      x: Math.round(dx / 2),
+      y: Math.round(dy / 2),
+      duration: 50,
+    })
+    .move({ origin, x: dx, y: dy, duration: 50 })
+    .up()
+    .perform();
+}
+
+/** How many files the vault holds. */
+async function fileCount(): Promise<number> {
+  return browser.executeObsidian(({ app }) => app.vault.getFiles().length);
+}
+
+/** The words next to the picture's buttons. */
+async function pictureHint(): Promise<string> {
+  return browser.$(".inkline-picture-hint").getText();
+}
+
 describe("The editor", function () {
   before(async function () {
     await loadModules();
@@ -2844,6 +3032,238 @@ describe("The editor", function () {
       await browser.keys(["v"]);
       await browser.pause(500);
       expect(await browser.$(".prompt").isExisting()).toBe(false);
+    });
+  });
+
+  describe("tracing over a picture", function () {
+    it("shows a pasted picture faintly, as tall as a capital, outside the drawing", async function () {
+      await insert();
+      expect(await pictureHint()).toBe(
+        "Paste or drop a picture to trace over it.",
+      );
+      await pastePicture("red");
+      await waitForStatus("Tracing over the picture");
+      const expected = await placedBox(40, 40);
+      const shown = await waitForPicture((box) => near(box, expected));
+      await saveScreenshot("editor-tracing-pasted");
+      // Faint: about a third opaque, under the guides and the ink.
+      expect(Math.abs((shown?.alpha ?? 0) - 0.35 * 255)).toBeLessThanOrEqual(3);
+      const { factor, xTop } = await surfaceLayout();
+      const guide = await browser.execute(
+        (row, from, to) => {
+          const canvas = activeDocument.querySelector(
+            ".inkline-editor .inkline-surface",
+          );
+          if (canvas?.instanceOf(HTMLCanvasElement) !== true) {
+            throw new Error("no surface");
+          }
+          return window.inklineTest.pictures.greyIn(canvas, row, from, to);
+        },
+        Math.round(xTop * factor),
+        Math.ceil(shown?.left ?? 0),
+        Math.floor(shown?.right ?? 0),
+      );
+      // The x-height's dashes, about half of the row, cross it unblended.
+      expect(guide).toBeGreaterThan(
+        0.3 * ((shown?.right ?? 0) - (shown?.left ?? 0)),
+      );
+      expect(await pictureHint()).toBe(
+        "Tracing over a picture, which is not saved.",
+      );
+      expect(await browser.$('[data-inkline-button="move"]').isEnabled()).toBe(
+        true,
+      );
+      // Not part of the drawing: nothing to keep, and nothing to ask.
+      expect(await storedDrafts()).toHaveLength(0);
+      await browser.keys(["Escape"]);
+      await waitClosed();
+      expect(await symbolFiles()).toEqual([]);
+    });
+
+    it("takes a dropped picture, and says when a drop or paste holds none", async function () {
+      await insert();
+      const files = await fileCount();
+      await dropFile("text/plain", "not a picture");
+      await waitForStatus("only a picture can be traced over");
+      await dropFile("image/png", "not a PNG");
+      await waitForStatus("Inkline cannot read this picture");
+      await browser.execute(() => {
+        window.inklineTest.pictures.copyText("not a picture");
+      });
+      await browser.keys(["Control", "v"]);
+      await waitForStatus("The clipboard holds no picture to trace over");
+      expect(await pictureShown("blue")).toBeUndefined();
+      await dropFile("image/png");
+      const expected = await placedBox(20, 60);
+      await waitForPicture((box) => near(box, expected), "blue");
+      expect(await surface().getAttribute("class")).not.toContain(
+        "is-drop-target",
+      );
+      // Obsidian took nothing into the vault.
+      expect(await fileCount()).toBe(files);
+    });
+
+    it("moves the picture in Move mode, and scales it about the pointer", async function () {
+      await insert();
+      await pastePicture("red");
+      const placed = await waitForPicture((box) => box !== undefined);
+      if (placed === undefined) throw new Error("no picture");
+      const { factor, ratio, border } = await surfaceLayout();
+      await browser.keys(["m"]);
+      expect(await pressed("move")).toBe("true");
+      expect(await pressed("pen")).toBe("false");
+      expect(await surface().getAttribute("class")).toContain("is-moving");
+
+      // Dragging moves it with the pointer.
+      await dragBy(30, 15);
+      const dragged = await waitForPicture((box) =>
+        near(box, moved(placed, 30 * ratio, 15 * ratio)),
+      );
+      if (dragged === undefined) throw new Error("no picture");
+
+      // The wheel scales it about the point under the pointer.
+      const { width, height } = await settledSurface();
+      const x = (width / 2 - 20 - border) * ratio;
+      const y = (height / 2 - 10 - border) * ratio;
+      const notch = Math.exp(100 / 500);
+      await turnWheel(-20, -10, -100);
+      const wheeled = await waitForPicture((box) =>
+        near(box, scaled(dragged, notch, x, y), 3),
+      );
+      if (wheeled === undefined) throw new Error("no picture");
+
+      // The arrow keys move it by a pixel, or by a grid spacing with Shift.
+      await browser.keys(["ArrowRight"]);
+      await browser.keys(["ArrowRight"]);
+      await browser.keys(["Shift", "ArrowDown"]);
+      const nudged = await waitForPicture((box) =>
+        near(box, moved(wheeled, 2 * factor, 16 * factor)),
+      );
+      if (nudged === undefined) throw new Error("no picture");
+
+      // − scales it down about its middle.
+      await browser.keys(["-"]);
+      const shrunk = await waitForPicture((box) =>
+        near(
+          box,
+          scaled(
+            nudged,
+            1 / notch,
+            (nudged.left + nudged.right) / 2,
+            (nudged.top + nudged.bottom) / 2,
+          ),
+          3,
+        ),
+      );
+      if (shrunk === undefined) throw new Error("no picture");
+
+      // The pen draws again, and leaves the picture where it is.
+      await browser.keys(["p"]);
+      expect(await pressed("move")).toBe("false");
+      expect(await pressed("pen")).toBe("true");
+      await draw([
+        [0.05, 0.5],
+        [0.15, 0.5],
+      ]);
+      await browser.waitUntil(
+        async () => (await storedDrafts())[0]?.strokes.length === 1,
+      );
+      expect(near(await pictureShown(), shrunk, 1)).toBe(true);
+    });
+
+    it("never saves the picture", async function () {
+      await insert();
+      await pastePicture("red");
+      await waitForPicture((box) => box !== undefined);
+      await draw(zigzag);
+      await browser.keys(["Control", "Enter"]);
+      await waitClosed();
+      const record = JSON.parse(await recordOf("001.ink.png")) as {
+        strokes?: unknown[];
+        base?: unknown;
+      };
+      expect(record.strokes).toHaveLength(1);
+      expect(record.base).toBeUndefined();
+      // Every inked pixel is the ink's own grey.
+      const coloured = await browser.executeObsidian(async ({ app }) => {
+        const file = app.vault.getFileByPath("001.ink.png");
+        if (file === null) throw new Error("no 001.ink.png");
+        const { canvas } = window.inklineTest;
+        const bitmap = await canvas.decodePng(
+          new Uint8Array(await app.vault.readBinary(file)),
+        );
+        const { data } = canvas.readPixels(bitmap);
+        let count = 0;
+        for (let at = 0; at < data.length; at += 4) {
+          const [r = 0, g = 0, b = 0, a = 0] = data.subarray(at, at + 4);
+          if (a > 0 && (Math.abs(r - g) > 2 || Math.abs(g - b) > 2)) count++;
+        }
+        return count;
+      });
+      expect(coloured).toBe(0);
+    });
+
+    it("stays where it is on the surface through a save, and into the next symbol", async function () {
+      await insert();
+      await pastePicture("red");
+      const placed = await waitForPicture((box) => box !== undefined);
+      if (placed === undefined) throw new Error("no picture");
+      // Far to the left, so that the save crops a lot off.
+      await draw([
+        [0.1, 0.4],
+        [0.15, 0.6],
+      ]);
+      await browser.keys(["Control", "s"]);
+      await waitForStatus("Saved");
+      await browser.pause(100);
+      expect(near(await pictureShown(), placed, 1)).toBe(true);
+      await markEditor();
+      await browser.keys(["Control", "Shift", "Enter"]);
+      await waitForNext(1);
+      await waitForPicture((box) => near(box, placed, 1));
+      expect(await pictureHint()).toBe(
+        "Tracing over a picture, which is not saved.",
+      );
+      // Nothing to save in the next one yet.
+      await browser.keys(["Escape"]);
+      await waitClosed();
+    });
+
+    it("leaves a paste into a text field to the field", async function () {
+      await writeSymbol("tower.ink.png", [800]);
+      await insert();
+      await browser.keys(["v"]);
+      await browser.$(".prompt-input").waitForDisplayed();
+      await pastePicture("red");
+      await browser.pause(500);
+      expect(await pictureShown()).toBeUndefined();
+      expect(await browser.$(".inkline-status").getText()).toBe("");
+      await browser.keys(["Escape"]);
+      await browser.$(".prompt").waitForExist({ reverse: true });
+      // With the focus back on the editor, the same paste is its.
+      await pastePicture("red");
+      await waitForPicture((box) => box !== undefined);
+    });
+
+    it("replaces the picture with the next one pasted, and removes it", async function () {
+      await insert();
+      await pastePicture("red");
+      await waitForPicture((box) => box !== undefined);
+      await pastePicture("blue");
+      await waitForPicture((box) => box !== undefined, "blue");
+      expect(await pictureShown("red")).toBeUndefined();
+      await browser.$('[data-inkline-button="remove"]').click();
+      await waitForStatus("Picture removed");
+      await waitForPicture((box) => box === undefined, "blue");
+      expect(await browser.$('[data-inkline-button="move"]').isEnabled()).toBe(
+        false,
+      );
+      expect(await pictureHint()).toBe(
+        "Paste or drop a picture to trace over it.",
+      );
+      await browser.keys(["m"]);
+      await waitForStatus("Paste or drop a picture first, to move it");
+      expect(await pressed("move")).toBe("false");
     });
   });
 });

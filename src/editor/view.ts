@@ -218,8 +218,9 @@ export class InkView {
   }
 
   /**
-   * Draws the line box and the document, with `active`, the stroke being
-   * drawn, on top: erasing it cuts the ink below as it will when committed.
+   * Draws any picture to trace over, the line box, and the document, with
+   * `active`, the stroke being drawn, on top: erasing it cuts the ink below
+   * as it will when committed, never the picture.
    * The image's ends come from the committed ink's pixels inside the line
    * box, as a save crops to them, read back each time the ink changes, and
    * from a pen stroke being drawn.
@@ -281,7 +282,7 @@ export class InkView {
     const visible = element2d(this.canvas);
     visible.resetTransform();
     visible.clearRect(0, 0, width, height);
-    this.#drawLineBox(visible, style);
+    // A picture to trace over goes below the guides, which line it up.
     const { reference } = this;
     if (reference !== undefined) {
       const { x, y, scale } = reference.placement;
@@ -297,6 +298,7 @@ export class InkView {
       visible.globalAlpha = 1;
       visible.resetTransform();
     }
+    this.#drawLineBox(visible, style);
     visible.drawImage(this.#work, 0, 0);
   }
 
