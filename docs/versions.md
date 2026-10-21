@@ -27,7 +27,8 @@ released.
 
 ## How it is deployed
 
-The [Pages workflow](https://github.com/viell-dev/slop-inkline/blob/main/.github/workflows/pages.yml)
+The
+[Pages workflow](https://github.com/viell-dev/slop-inkline/blob/main/.github/workflows/pages.yml)
 builds the site with VitePress and deploys it to GitHub Pages, then reads the
 deployed `version.json` and every page back, and fails unless they are the
 commit it built. It has permission to deploy Pages only: it cannot push to the

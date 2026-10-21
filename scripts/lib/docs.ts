@@ -34,7 +34,11 @@ export type DocsSource =
       /** The release the site describes, or `unreleased`. */
       readonly version: string;
     }
-  | { readonly deploy: false; readonly reason: string; readonly error: boolean };
+  | {
+      readonly deploy: false;
+      readonly reason: string;
+      readonly error: boolean;
+    };
 
 /** The branch that corrects the documentation of release `version`. */
 export function docsBranch(version: string): string {
@@ -77,7 +81,7 @@ export function docsSource(request: DocsRequest): DocsSource {
     );
   }
   const branch = request.branch;
-  if (branch === undefined || !branch.containsTag) {
+  if (branch?.containsTag !== true) {
     return refuse(
       `${request.ref} must be made from the tag ${latest}, so that it describes that release.`,
     );

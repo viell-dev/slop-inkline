@@ -79,6 +79,15 @@ gh release download <version> --repo viell-dev/slop-inkline --dir check
 gh attestation verify check/main.js --repo viell-dev/slop-inkline
 ```
 
+## Documentation
+
+Once a release is published, the Pages workflow deploys the site from its tag,
+so that the site describes the release users can install, and reads it back. A
+correction to that documentation goes on a branch named `docs-<version>` from
+the tag, changing only `docs/`, deployed with
+`gh workflow run pages.yml --ref main -f ref=docs-<version>`; the tag never
+moves. [docs/versions.md](docs/versions.md) describes the rules.
+
 ## The community directory
 
 New plugins are submitted through Obsidian's developer dashboard at

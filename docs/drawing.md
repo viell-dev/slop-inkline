@@ -24,8 +24,8 @@ at the brush's own width. Only the main button draws, and only one pointer at a
 time: once a pen has touched the screen, touch stops drawing, so a palm resting
 on a tablet leaves no marks.
 
-The four **brush sizes**, S, M, L, and XL (keys 1 to 4), are 1/16 to 4/16 of
-the text's size, so a stroke matches the weight of the letters at any size.
+The four **brush sizes**, S, M, L, and XL (keys 1 to 4), are 1/16 to 4/16 of the
+text's size, so a stroke matches the weight of the letters at any size.
 
 ## Undo, redo, and clear
 
@@ -38,24 +38,24 @@ takes away the whole drawing, and Undo brings it back.
 Hold Shift while drawing to make the stroke straight, from where it was when
 Shift went down. **Grid** (Shift+G) shows a grid of 1/8 of the text's size and
 snaps the ends of strokes to it, for scripts built from straight strokes and
-dots; a tap on the grid stays a dot. The grid keeps its place through saves,
-and on a symbol you open again it lines up with most of its strokes.
+dots; a tap on the grid stays a dot. The grid keeps its place through saves, and
+on a symbol you open again it lines up with most of its strokes.
 
 ## Guides, view, and width
 
-**Guides** (G) shows or hides the lines at the text font's ascender, cap
-height, x-height, baseline, and descender, measured from the font your vault's
-text uses, and the edges the saved image will have. **Fit** (F) fits the drawing
-in view; a symbol wider than the usual view opens whole.
+**Guides** (G) shows or hides the lines at the text font's ascender, cap height,
+x-height, baseline, and descender, measured from the font your vault's text
+uses, and the edges the saved image will have. **Fit** (F) fits the drawing in
+view; a symbol wider than the usual view opens whole.
 
-A symbol is as wide as its ink: saving crops the image to the ink, with a
-little space on each side, as a font spaces its letters. Its height is always
-one line of text.
+A symbol is as wide as its ink: saving crops the image to the ink, with a little
+space on each side, as a font spaces its letters. Its height is always one line
+of text.
 
 ## Trace over a picture
 
-Paste a picture with Mod+V, or drop one on the editor, such as a screenshot of
-a symbol in a game, or an image from Obsidian's file explorer. It shows faintly
+Paste a picture with Mod+V, or drop one on the editor, such as a screenshot of a
+symbol in a game, or an image from Obsidian's file explorer. It shows faintly
 under the drawing, as tall as a capital letter, for you to draw over. It is
 never saved, nor kept in drafts.
 
@@ -95,19 +95,19 @@ symbols share parts. Undo takes the copy back.
   a blank editor for the symbol that follows it.
 
 A save that fails keeps the editor open with the drawing and says why. Closing
-with unsaved changes, by Esc, the close button, or a click outside, asks
-whether to save, discard them, or keep drawing; [Saving and
-recovery](./recovery.md) describes the rest.
+with unsaved changes, by Esc, the close button, or a click outside, asks whether
+to save, discard them, or keep drawing; [Saving and recovery](./recovery.md)
+describes the rest.
 
 ## The name
 
 The name field is the symbol's file name without `.ink.png`. A name can use any
 script, and emoji, with the joiners and marks they need. A name is refused, with
 a notice, when its folder already has a symbol of that name in any letter case,
-when Windows reserves it, such as `CON`, or when it is too long for a file
-name. Characters that a file name cannot hold on some system, or that would
-break a link, such as `/ \ : * ? " < > | # ^ [ ]`, are left out, as are
-invisible spaces and the controls that reorder text.
+when Windows reserves it, such as `CON`, or when it is too long for a file name.
+Characters that a file name cannot hold on some system, or that would break a
+link, such as `/ \ : * ? " < > | # ^ [ ]`, are left out, as are invisible spaces
+and the controls that reorder text.
 
 Changing the name of a symbol that has a file renames the file when you save,
 through Obsidian, so that the links to it follow as Obsidian's settings say. If

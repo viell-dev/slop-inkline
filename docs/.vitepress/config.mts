@@ -5,7 +5,7 @@
 
 import { execFileSync } from "node:child_process";
 import { writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import { defineConfig } from "vitepress";
 
 const repository = "https://github.com/viell-dev/slop-inkline";
@@ -38,6 +38,24 @@ export default defineConfig({
   lastUpdated: false,
   sitemap: { hostname: "https://viell-dev.github.io/slop-inkline/" },
   head: [["meta", { name: "inkline-docs-commit", content: commit }]],
+  markdown: {
+    // A link out of docs/, as to the test fixtures, works on GitHub, where
+    // the page sits in the repository; on the site it leads to the same
+    // path in the repository at the commit the site was built from.
+    config(md) {
+      md.core.ruler.push("inkline_repository_links", (state) => {
+        for (const token of state.tokens) {
+          for (const child of token.children ?? []) {
+            if (child.type !== "link_open") continue;
+            const href = child.attrGet("href");
+            if (href?.startsWith("../") !== true) continue;
+            const path = posix.normalize(posix.join("docs", href));
+            child.attrSet("href", `${repository}/tree/${commit}/${path}`);
+          }
+        }
+      });
+    },
+  },
   // What the deployment's check reads back: the commit the site was built
   // from, and which version it describes.
   async buildEnd({ outDir }) {

@@ -1,18 +1,21 @@
 # Install
 
 ::: warning No release yet
+
 Inkline has no release, so the only way to try it is to build it from its
 source, as below. Once it has releases, versions below 1.0.0 will be GitHub
-prereleases that you install with [BRAT](https://github.com/TfTHacker/obsidian42-brat),
-and 1.0.0 will be offered for Obsidian's community plugin directory.
+prereleases that you install with
+[BRAT](https://github.com/TfTHacker/obsidian42-brat), and 1.0.0 will be offered
+for Obsidian's community plugin directory.
+
 :::
 
 ## What you need
 
 - Obsidian **1.13.4 or later** on Windows, macOS, or Linux. Inkline is for
   desktop only: Obsidian's mobile apps do not offer it.
-- To build it: [Git](https://git-scm.com/), and
-  [Node.js](https://nodejs.org/) 24 or later with the npm it ships.
+- To build it: [Git](https://git-scm.com/), and [Node.js](https://nodejs.org/)
+  24 or later with the npm it ships.
 - A vault to try it in. A new vault, or a copy of one, keeps your own notes out
   of the way while you try an unreleased build.
 
@@ -35,8 +38,8 @@ it, and in the latest public release of Obsidian.
 
 2. In your vault's folder, make the folder `.obsidian/plugins/inkline/`, and
    copy the three files into it. The `.obsidian` folder is hidden on macOS and
-   Linux; a vault set to use another configuration folder has its plugins
-   there instead.
+   Linux; a vault set to use another configuration folder has its plugins there
+   instead.
 3. In Obsidian, open **Settings → Community plugins**. If community plugins are
    turned off, turn them on.
 4. Under **Installed plugins**, turn on **Inkline**. If it is not listed yet,

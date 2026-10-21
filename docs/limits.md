@@ -16,12 +16,11 @@ The [issues](https://github.com/viell-dev/slop-inkline/issues) track each one.
 
 ## Menus without Edit symbol
 
-Where one of Obsidian's own menus takes a right-click on a symbol, that menu
-has no **Edit symbol**
-([#40](https://github.com/viell-dev/slop-inkline/issues/40)):
+Where one of Obsidian's own menus takes a right-click on a symbol, that menu has
+no **Edit symbol** ([#40](https://github.com/viell-dev/slop-inkline/issues/40)):
 
-- **Callouts and tables in Live Preview**, where Obsidian shows its menu for
-  the callout or the table;
+- **Callouts and tables in Live Preview**, where Obsidian shows its menu for the
+  callout or the table;
 - **A text card on a canvas that is not selected**, where the canvas shows its
   menu for the card. Click the card once, and a right-click on the symbol then
   shows the symbol's menu;
@@ -45,8 +44,8 @@ link would still lead elsewhere by its path in the vault.
 ## Files and sizes
 
 - A symbol's pixels changed by another program that keeps Inkline's chunk do not
-  show in Inkline's editor, which draws the strokes; see [Without
-  Inkline](./without-inkline.md#editing-them-elsewhere).
+  show in Inkline's editor, which draws the strokes; see
+  [Without Inkline](./without-inkline.md#editing-them-elsewhere).
 - A picture to trace over is scaled down to 4096 pixels on its longer side. A
   file opened from its pixels can be up to 4096 pixels a side, and its ink must
   fit within 8 MiB, the largest base layer a symbol can store.

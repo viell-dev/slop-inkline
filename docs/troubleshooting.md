@@ -3,10 +3,10 @@
 ## Common problems
 
 **A symbol shows as a large grey picture.** Inkline is off, or did not load:
-check that it is turned on under **Settings → Community plugins**. Inkline
-shows only images from the vault whose file names end in `.ink.png` as
-characters; any other image stays a picture. A symbol file opened in its own tab
-stays a picture too.
+check that it is turned on under **Settings → Community plugins**. Inkline shows
+only images from the vault whose file names end in `.ink.png` as characters; any
+other image stays a picture. A symbol file opened in its own tab stays a picture
+too.
 
 **Insert symbol is not in the command palette.** It needs a note open in editing
 view, Live Preview or source mode, where there is a cursor to insert at; Reading
@@ -31,9 +31,9 @@ refused or a file that could not be written. The editor stays open with the
 drawing, which is also kept as a draft: fix what the notice says, and save
 again.
 
-**"… is saved, but could not be renamed: …"** The drawing is saved under the
-old name, and the new name stays in the editor's name field, for the next save
-to try again.
+**"… is saved, but could not be renamed: …"** The drawing is saved under the old
+name, and the new name stays in the editor's name field, for the next save to
+try again.
 
 **"The note changed where the symbol was going, so it was added at the end of
 …"** The text around the place where you started the symbol changed too much to
@@ -50,16 +50,16 @@ classes and properties Inkline gives symbols, for theme and snippet authors.
 
 ## Report a problem
 
-Search the [open and closed
-issues](https://github.com/viell-dev/slop-inkline/issues?q=is%3Aissue) first,
-then open a [bug
-report](https://github.com/viell-dev/slop-inkline/issues/new?template=bug.yml)
+Search the
+[open and closed issues](https://github.com/viell-dev/slop-inkline/issues?q=is%3Aissue)
+first, then open a
+[bug report](https://github.com/viell-dev/slop-inkline/issues/new?template=bug.yml)
 with:
 
 - the Inkline version, or for a development build the commit it was built from,
   which `git rev-parse --short HEAD` prints in its folder;
-- the Obsidian version and installer version, both under **Settings →
-  General**, and your operating system;
+- the Obsidian version and installer version, both under **Settings → General**,
+  and your operating system;
 - what you draw with: a mouse, a trackpad, a pen, or touch;
 - numbered steps from a new vault or note, with any theme or other plugin the
   problem needs;
@@ -68,10 +68,10 @@ with:
 A screenshot, or a `.ink.png` file that shows the problem, helps. Use synthetic
 examples only, and leave private notes and drawings out of every report.
 
-Ask a question with the [question
-form](https://github.com/viell-dev/slop-inkline/issues/new?template=question.yml),
-and suggest a feature with the [feature
-form](https://github.com/viell-dev/slop-inkline/issues/new?template=feature.yml).
-Report a vulnerability privately, as the [security
-policy](https://github.com/viell-dev/slop-inkline/blob/main/SECURITY.md)
+Ask a question with the
+[question form](https://github.com/viell-dev/slop-inkline/issues/new?template=question.yml),
+and suggest a feature with the
+[feature form](https://github.com/viell-dev/slop-inkline/issues/new?template=feature.yml).
+Report a vulnerability privately, as the
+[security policy](https://github.com/viell-dev/slop-inkline/blob/main/SECURITY.md)
 describes, never in a public issue.

@@ -14,11 +14,14 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "typecheck": "tsc -p tsconfig.json && tsc -p test && tsc -p test/e2e && tsc -p scripts",
+    "typecheck": "tsc -p tsconfig.json && tsc -p test && tsc -p test/e2e && tsc -p scripts && tsc -p docs/.vitepress",
     "test": "vitest run",
     "test:e2e": "wdio run test/e2e/wdio.conf.mts",
     "test:e2e:docker": "node scripts/e2e-docker.ts",
-    "check": "npm run lint && npm run format:check && npm run typecheck && npm run test && npm run build",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs",
+    "check": "npm run lint && npm run format:check && npm run typecheck && npm run test && npm run build && npm run docs:build",
     "version": "node scripts/release.ts sync && git add manifest.json versions.json"
   },
   "devDependencies": {

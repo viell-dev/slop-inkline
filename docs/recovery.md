@@ -14,8 +14,8 @@ not part of it, and stay unsaved.
 
 ## Closing with unsaved changes
 
-Closing the editor with changes that are not saved, by Esc, the close button,
-or a click outside it, asks **Save this symbol?**:
+Closing the editor with changes that are not saved, by Esc, the close button, or
+a click outside it, asks **Save this symbol?**:
 
 - **Save** saves and closes, or, if the save fails, keeps the editor open and
   says why;

@@ -11,6 +11,7 @@
 // repository in GITHUB_REPOSITORY, by default viell-dev/slop-inkline.
 
 import { appendFile } from "node:fs/promises";
+import { setTimeout as sleep } from "node:timers/promises";
 import { docsBranch, docsSource, type DocsRequest } from "./lib/docs.ts";
 import { isRecord } from "./lib/settings.ts";
 
@@ -76,7 +77,9 @@ async function resolve(): Promise<void> {
   if (event === "release") {
     const jobs = process.env.RELEASE_JOBS_URL ?? "";
     if (jobs === "" || !(await published(jobs))) {
-      console.log("The Release run published nothing; the site stays as it is.");
+      console.log(
+        "The Release run published nothing; the site stays as it is.",
+      );
       await output({ deploy: "false" });
       return;
     }
@@ -130,7 +133,7 @@ async function read(url: string): Promise<string | undefined> {
       headers: { "cache-control": "no-cache" },
     }).catch(() => undefined);
     if (response?.ok === true) return response.text();
-    await new Promise((resolve) => setTimeout(resolve, 10_000));
+    await sleep(10_000);
   }
   return undefined;
 }
@@ -143,7 +146,7 @@ async function verify(site: string, commit: string): Promise<void> {
     const text = await read(`${base}version.json?${String(attempt)}`);
     deployed = text === undefined ? undefined : JSON.parse(text);
     if (isRecord(deployed) && deployed.commit === commit) break;
-    await new Promise((resolve) => setTimeout(resolve, 10_000));
+    await sleep(10_000);
   }
   if (!isRecord(deployed) || deployed.commit !== commit) {
     fail(`${base}version.json does not name ${commit}`);

@@ -1,0 +1,128 @@
+name: Pages
+
+# Builds the documentation site and deploys it to GitHub Pages, as
+# docs/versions.md describes: from main while Inkline has no release, then
+# from the newest release's tag, or from a docs-<version> branch that changes
+# only the documentation. It then reads the deployed site back, and fails
+# unless every page is the commit it built. It can deploy Pages and nothing
+# else: no job may push, tag, or publish a release. CI builds the site for
+# every pull request, in `npm run check`.
+
+on:
+  push:
+    branches: [main]
+  # After a Release run; the resolve step checks whether it published.
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch or tag to deploy the site from
+        type: string
+        default: main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    name: resolve
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      deploy: ${{ steps.source.outputs.deploy }}
+      ref: ${{ steps.source.outputs.ref }}
+      version: ${{ steps.source.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: Choose what to deploy
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name == 'workflow_run' && 'release' || github.event_name == 'workflow_dispatch' && 'dispatch' || 'push' }}
+          REF: ${{ inputs.ref || 'main' }}
+          RELEASE_JOBS_URL: ${{ github.event.workflow_run.jobs_url }}
+        run: node scripts/docs.ts resolve
+
+  build:
+    name: build
+    needs: resolve
+    if: needs.resolve.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      commit: ${{ steps.commit.outputs.commit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.ref }}
+          persist-credentials: false
+      - name: Record the commit
+        id: commit
+        run: echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - run: npm ci
+      - run: npm run docs:build
+        env:
+          DOCS_COMMIT: ${{ steps.commit.outputs.commit }}
+          DOCS_VERSION: ${{ needs.resolve.outputs.version }}
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: docs/.vitepress/dist
+
+  deploy:
+    name: deploy
+    needs: build
+    # The github-pages environment takes deployments from main's workflow
+    # only; the build above may have checked out another ref.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy the site
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+  verify:
+    name: verify deployment
+    needs: [build, deploy]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: Read the deployed site back
+        env:
+          URL: ${{ needs.deploy.outputs.url }}
+          COMMIT: ${{ needs.build.outputs.commit }}
+        run: node scripts/docs.ts verify "$URL" "$COMMIT"

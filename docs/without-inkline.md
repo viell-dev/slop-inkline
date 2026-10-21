@@ -30,11 +30,11 @@ inside the PNG:
 
 - a program that drops that chunk, as many image editors and optimisers do, or
   that changes the image's size, leaves a picture that Inkline opens as pixels
-  you can draw on and erase, as [Saving and
-  recovery](./recovery.md#pictures-without-strokes) describes;
+  you can draw on and erase, as
+  [Saving and recovery](./recovery.md#pictures-without-strokes) describes;
 - a program that keeps the chunk and changes only pixels leaves the strokes as
-  they were: Inkline's editor shows the strokes, not that change, and saving
-  the symbol there replaces it.
+  they were: Inkline's editor shows the strokes, not that change, and saving the
+  symbol there replaces it.
 
 The [file format](./file-format.md) specifies the pixels and the chunk, for
 anyone writing a tool that reads or writes symbols.

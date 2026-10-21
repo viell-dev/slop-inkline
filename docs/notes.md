@@ -8,16 +8,15 @@ knows a symbol by its file name, which ends in `.ink.png`.
 
 In a note, a symbol is as tall as a line of text, 1.5 times the text's size,
 which is Obsidian's default line height, and stands on the baseline like a
-letter. It takes the colour of the text around it, in light and dark themes,
-and grows with headings and zoom. A line set tighter
-than that, such as a heading, grows to fit it.
+letter. It takes the colour of the text around it, in light and dark themes, and
+grows with headings and zoom. A line set tighter than that, such as a heading,
+grows to fit it.
 
 This holds in Live Preview, Reading view, callouts, tables, embedded notes,
 hover previews, text cards on a canvas, and popout windows.
 
 - **An explicit size** that Obsidian's embed syntax gives, as in
-  `![[tower.ink.png|24]]`, is kept, and the symbol still stands on the
-  baseline.
+  `![[tower.ink.png|24]]`, is kept, and the symbol still stands on the baseline.
 - **Hovering** a symbol shows its name, or what its embed's alias or alt text
   says; screen readers read it too.
 - **A symbol file shown on its own**, in its own tab or as an image on a canvas,
@@ -58,8 +57,8 @@ Typed with a space, the name must hold what you typed, so that a sentence typed
 on after `;;` stops matching. `;;` in code, inline or fenced, and in front
 matter lists nothing: it is the note's own text there.
 
-**Inkline: Insert existing symbol** opens the same list as a search, and
-inserts the chosen symbol at the cursor.
+**Inkline: Insert existing symbol** opens the same list as a search, and inserts
+the chosen symbol at the cursor.
 
 ## Edit a symbol
 
@@ -81,13 +80,14 @@ around each.
 ## Names and renames
 
 A symbol's name is its file's name, and a name is the place for your current
-reading of it. Rename it in its editor, as [Drawing in the
-editor](./drawing.md#the-name) describes, or rename its file in Obsidian in any
-way: an open editor follows a rename made elsewhere, and keeps the name given
-there, even one Inkline itself would not give.
+reading of it. Rename it in its editor, as
+[Drawing in the editor](./drawing.md#the-name) describes, or rename its file in
+Obsidian in any way: an open editor follows a rename made elsewhere, and keeps
+the name given there, even one Inkline itself would not give.
 
 ## Find where a symbol is used
 
 Every use of a symbol is a link to its file, so Obsidian finds them: open the
 symbol's file, and Obsidian's backlinks for it list the notes that use it. A
-library of your symbols in the sidebar, with how many notes use each, is planned.
+library of your symbols in the sidebar, with how many notes use each, is
+planned.
