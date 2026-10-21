@@ -80,6 +80,29 @@ async function nameField(): Promise<{ value: string; placeholder: string }> {
   });
 }
 
+/**
+ * Saves the note at `note`, if open, and waits for Obsidian's metadata cache
+ * to know that it links to `file`, as it does some time after an edit.
+ */
+async function waitForLink(note: string, file: string): Promise<void> {
+  await browser.executeObsidian(async ({ app, obsidian }, path) => {
+    for (const leaf of app.workspace.getLeavesOfType("markdown")) {
+      const view = leaf.view;
+      if (view instanceof obsidian.MarkdownView && view.file?.path === path) {
+        await view.save();
+      }
+    }
+  }, note);
+  await browser.waitUntil(async () =>
+    browser.executeObsidian(
+      ({ app }, from, to) =>
+        (app.metadataCache.resolvedLinks[from]?.[to] ?? 0) > 0,
+      note,
+      file,
+    ),
+  );
+}
+
 /** The text of the note at `path`, as it is on disk. */
 async function noteOnDisk(path: string): Promise<string> {
   return browser.executeObsidian(async ({ app }, file) => {
@@ -968,6 +991,18 @@ describe("The editor", function () {
     await browser.keys(["Control", "Enter"]);
     await waitForNotice("already has a symbol named ARCH");
     expect(await symbolFiles()).toEqual(["001.ink.png", "arch.ink.png"]);
+    // A decomposed letter makes the composed name's file, as Obsidian
+    // composes names.
+    await browser.executeObsidian(async ({ app }) => {
+      const file = app.vault.getFileByPath("arch.ink.png");
+      if (file === null) throw new Error("no arch");
+      await app.vault.copy(file, `caf${String.fromCharCode(0xe9)}.ink.png`);
+    });
+    await nameSymbol(`cafe${String.fromCharCode(0x301)}`);
+    await browser.keys(["Control", "Enter"]);
+    await waitForNotice(
+      `already has a symbol named caf${String.fromCharCode(0xe9)}`,
+    );
   });
 
   it("renames a symbol whose name changes, as Obsidian updates links", async function () {
@@ -989,7 +1024,8 @@ describe("The editor", function () {
     await browser.$("button=Keep drawing").waitForDisplayed();
     await browser.$("button=Keep drawing").click();
     // Obsidian asks whether to update the links to it, as its settings say,
-    // and the save waits for the answer.
+    // once its cache knows of them, and the save waits for the answer.
+    await waitForLink("Editor.md", "001.ink.png");
     await browser.keys(["Control", "Enter"]);
     await browser.$("button=Just once").waitForDisplayed();
     expect(await editorOpen()).toBe(true);
@@ -999,6 +1035,57 @@ describe("The editor", function () {
     await browser.waitUntil(async () =>
       (await noteOnDisk("Editor.md")).includes("![[tower.ink.png]]"),
     );
+  });
+
+  it("puts the next symbol after one renamed as Obsidian updates its link", async function () {
+    await browser.executeObsidian(async ({ app }) => {
+      await app.vault.create("Inscription.md", "Symbols: HERE");
+    });
+    await openAtMarker("Inscription.md", "HERE");
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await waitForEditor();
+    await draw(zigzag);
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    // Once Obsidian knows the embed, it rewrites it itself, at the end of
+    // the note, where nothing after it shows where the next one goes.
+    await waitForLink("Inscription.md", "001.ink.png");
+    await nameSymbol("gate");
+    await browser.keys(["Control", "Shift", "Enter"]);
+    await browser.$("button=Just once").waitForDisplayed();
+    await browser.$("button=Just once").click();
+    await waitForEditor();
+    await browser.waitUntil(async () => (await nameField()).value === "");
+    await draw(zigzag);
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    expect(await noteText()).toBe("Symbols: ![[gate.ink.png]]![[001.ink.png]]");
+    expect(
+      await browser.execute(() =>
+        Array.from(document.querySelectorAll(".notice")).some((notice) =>
+          notice.textContent.includes("added at the end"),
+        ),
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps a name the symbol was given elsewhere while it was open", async function () {
+    await saveOne();
+    await editFile("001.ink.png");
+    // Renamed as the file explorer or sync would, without Inkline.
+    await browser.executeObsidian(async ({ app }) => {
+      const file = app.vault.getFileByPath("001.ink.png");
+      if (file === null) throw new Error("no 001");
+      await app.vault.rename(file, "tower.ink.png");
+    });
+    await browser.waitUntil(async () => (await nameField()).value === "tower");
+    await draw([
+      [0.6, 0.3],
+      [0.6, 0.7],
+    ]);
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    expect(await symbolFiles()).toEqual(["tower.ink.png"]);
   });
 
   it("renames a new symbol saved under a number once it is named", async function () {

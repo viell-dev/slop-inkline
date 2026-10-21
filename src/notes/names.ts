@@ -20,8 +20,29 @@ export function symbolStem(fileName: string): string | undefined {
  */
 const forbidden = '*"\\/<>:|?#^[]';
 
-/** Names Windows keeps for devices, which no file there can have. */
-const reserved = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+/**
+ * Names Windows keeps for devices, which no file there can have, alone or
+ * before a dot, as Windows reads `CON.txt` as `CON`.
+ */
+const reserved = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i;
+
+/** The no-break spaces Obsidian turns into plain ones in a file's name. */
+const noBreakSpaces = new Set([0xa0, 0x202f]);
+
+/**
+ * Whether `char` can be in a name: not a control character or a format
+ * character, such as a zero-width space, which would make a name look empty
+ * or the same as another, and not one a file name cannot hold.
+ */
+function allowed(char: string): boolean {
+  const code = char.codePointAt(0) ?? 0;
+  return (
+    code >= 0x20 &&
+    code !== 0x7f &&
+    !/\p{Cf}/u.test(char) &&
+    !forbidden.includes(char)
+  );
+}
 
 /** The most bytes most file systems allow in a file's name. */
 const maxNameBytes = 255;
@@ -33,19 +54,18 @@ export type NameChoice =
   | { readonly kind: "refused"; readonly reason: string };
 
 /**
- * What `typed`, a name typed for a symbol, makes its name: the text without
- * the characters a file name cannot hold, and without space around it or
- * dots before it, which would hide the file, or after it, which Windows
- * drops. An empty name takes the next number in its folder. A name Windows
- * keeps for a device, or one too long for a file name, is refused, with the
- * reason.
+ * What `typed`, a name typed for a symbol, makes its name: the text as
+ * Obsidian stores a file's name, its characters composed and its no-break
+ * spaces plain, without the characters a name cannot hold, and without
+ * space around it or dots before it, which would hide the file, or after
+ * it, which Windows drops. An empty name takes the next number in its
+ * folder. A name Windows keeps for a device, or one too long for a file
+ * name, is refused, with the reason.
  */
 export function chooseName(typed: string): NameChoice {
-  const kept = Array.from(typed)
-    .filter((char) => {
-      const code = char.codePointAt(0) ?? 0;
-      return code >= 0x20 && code !== 0x7f && !forbidden.includes(char);
-    })
+  const kept = Array.from(typed.normalize("NFC"))
+    .map((char) => (noBreakSpaces.has(char.codePointAt(0) ?? 0) ? " " : char))
+    .filter(allowed)
     .join("");
   const name = kept
     .trim()

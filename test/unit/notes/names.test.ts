@@ -109,11 +109,38 @@ describe("chooseName", () => {
     expect(chooseName("???")).toEqual({ kind: "number" });
   });
 
+  it("keeps a name as Obsidian stores it, without invisible characters", () => {
+    const char = (code: number) => String.fromCharCode(code);
+    // A decomposed letter is composed, as Obsidian composes file names.
+    expect(chooseName(`cafe${char(0x301)}`)).toEqual({
+      kind: "name",
+      name: `caf${char(0xe9)}`,
+    });
+    // A no-break space is a plain one.
+    expect(chooseName(`the${char(0xa0)}gate`)).toEqual({
+      kind: "name",
+      name: "the gate",
+    });
+    expect(chooseName(`door.${char(0x202f)}.`)).toEqual({
+      kind: "name",
+      name: "door",
+    });
+    // A format character, as a zero-width space, would hide or fake a name.
+    expect(chooseName(char(0x200b))).toEqual({ kind: "number" });
+    expect(chooseName(`ga${char(0x200d)}te`)).toEqual({
+      kind: "name",
+      name: "gate",
+    });
+  });
+
   it("refuses device names and names too long for a file", () => {
     for (const name of ["CON", "nul", "Com1", "LPT9"]) {
       expect(chooseName(name).kind).toBe("refused");
     }
     expect(chooseName("CONSOLE")).toEqual({ kind: "name", name: "CONSOLE" });
+    // Windows reads a name before a dot as the device too.
+    expect(chooseName("CON.txt").kind).toBe("refused");
+    expect(chooseName("CONSOLE.txt").kind).toBe("name");
     // 247 bytes and .ink.png fit; one more byte does not.
     expect(chooseName("a".repeat(247)).kind).toBe("name");
     expect(chooseName("a".repeat(248)).kind).toBe("refused");

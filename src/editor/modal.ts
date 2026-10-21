@@ -37,6 +37,7 @@ import {
   type Region,
 } from "../ink/pixels.ts";
 import type { DrawableBase } from "../ink/render.ts";
+import { chooseName } from "../notes/names.ts";
 import {
   draftBase,
   fingerprintOf,
@@ -773,12 +774,15 @@ export class InkEditorModal extends Modal {
   }
 
   /**
-   * Whether the name field holds another name than the symbol's. Left empty
-   * for a symbol that has a name, it keeps that name.
+   * Whether saving would give the symbol another name than it has: the name
+   * field, as saving reads it, holds another, or one that saving would
+   * refuse. Left empty, the field keeps the symbol's name, or takes a number
+   * for a new one.
    */
   get #nameChanged(): boolean {
-    const typed = this.#typedName.trim();
-    return typed !== "" && typed !== this.#savedName;
+    const choice = chooseName(this.#typedName);
+    if (choice.kind === "number") return false;
+    return choice.kind === "refused" || choice.name !== this.#savedName;
   }
 
   /** Whether anything is unsaved: strokes, or a new name. */
@@ -1887,6 +1891,11 @@ export class InkEditorModal extends Modal {
         touched(file);
       }),
       vault.on("rename", (file, oldPath) => {
+        // Renamed elsewhere, as in the file explorer or by sync, the symbol
+        // keeps its new name: a later save does not rename it back.
+        if (file.path === this.#options.file?.()?.path) {
+          this.#named(this.#savedName);
+        }
         touched(file, oldPath);
       }),
     ];
@@ -2097,7 +2106,7 @@ export class InkEditorModal extends Modal {
       // Closed meanwhile, as by Save and close or by Inkline being disabled.
       if (this.#closing || this.#retired) return;
       if (this.#unsaved) {
-        this.#announce("Saved, except for the strokes drawn while saving");
+        this.#announce("Saved, except for what changed while saving");
         return;
       }
       const { tool, sizeIndex, snap } = this.#session;
@@ -2123,7 +2132,7 @@ export class InkEditorModal extends Modal {
     if (!(await this.#applyPending())) return;
     if (!(await this.#save(() => void this.#saveAndClose()))) return;
     if (this.#unsaved) {
-      this.#announce("Saved, except for the strokes drawn while saving");
+      this.#announce("Saved, except for what changed while saving");
       return;
     }
     this.#finish();

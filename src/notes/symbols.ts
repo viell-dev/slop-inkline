@@ -26,7 +26,12 @@ import {
   type SymbolFile,
 } from "../editor/modal.ts";
 import { visibleWidth } from "../editor/view.ts";
-import { capturePoint, findPoint, type InsertionPoint } from "./insertion.ts";
+import {
+  capturePoint,
+  findPoint,
+  replacedBefore,
+  type InsertionPoint,
+} from "./insertion.ts";
 import { embedFor } from "./embeds.ts";
 import { insertionAt } from "./links.ts";
 import {
@@ -226,44 +231,61 @@ async function insertEmbed(
 }
 
 /**
- * Puts `next` in place of `embed`, which Inkline inserted just before
- * `point` in the target note, if it is still there: through a live editor of
- * the note when there is one, otherwise in the note's file. Returns the point
- * just after it then, or undefined if it is not there any more.
+ * Has the embed Inkline inserted just before `point` in the target note
+ * follow its symbol's rename, from `was` to `now`: puts `now` in place of
+ * `was` if Obsidian left it, or finds where `now` ends if Obsidian already
+ * rewrote it. Works through a live editor of the note when there is one,
+ * otherwise in the note's file. Returns the point just after the embed, where
+ * the next symbol's goes, or undefined if neither is there any more.
  */
-async function replaceEmbed(
+async function followRename(
   app: App,
   target: Target,
   point: InsertionPoint,
-  embed: string,
-  next: string,
+  was: string,
+  now: string,
 ): Promise<InsertionPoint | undefined> {
   const { file } = target;
-  /** Where `embed` starts in `text`, if it ends at the point. */
-  const start = (text: string): number | undefined => {
+  const moved = replacedBefore(point, was, now);
+  /** Where the embed is in `text`, and whether it is still the old one. */
+  const locate = (
+    text: string,
+  ): { start: number; old: boolean } | undefined => {
     const end = findPoint(text, point);
-    return end !== undefined && text.slice(end - embed.length, end) === embed
-      ? end - embed.length
-      : undefined;
+    if (end !== undefined && text.slice(end - was.length, end) === was) {
+      return { start: end - was.length, old: true };
+    }
+    const renamed = findPoint(text, moved);
+    if (
+      renamed !== undefined &&
+      text.slice(renamed - now.length, renamed) === now
+    ) {
+      return { start: renamed - now.length, old: false };
+    }
+    return undefined;
   };
   const view = liveView(app, file, target.view);
   if (view !== undefined) {
     const editor = view.editor;
-    const at = start(editor.getValue());
-    if (at === undefined) return undefined;
-    editor.replaceRange(
-      next,
-      editor.offsetToPos(at),
-      editor.offsetToPos(at + embed.length),
-    );
-    return capturePoint(editor.getValue(), at + next.length);
+    const found = locate(editor.getValue());
+    if (found === undefined) return undefined;
+    if (found.old) {
+      editor.replaceRange(
+        now,
+        editor.offsetToPos(found.start),
+        editor.offsetToPos(found.start + was.length),
+      );
+    }
+    return capturePoint(editor.getValue(), found.start + now.length);
   }
   let after: InsertionPoint | undefined;
   await app.vault.process(file, (text) => {
-    const at = start(text);
-    if (at === undefined) return text;
-    const replaced = text.slice(0, at) + next + text.slice(at + embed.length);
-    after = capturePoint(replaced, at + next.length);
+    const found = locate(text);
+    if (found === undefined) return text;
+    const replaced = found.old
+      ? text.slice(0, found.start) + now + text.slice(found.start + was.length)
+      : text;
+    after = capturePoint(replaced, found.start + now.length);
     return replaced;
   });
   return after;
@@ -315,7 +337,9 @@ function renamedPath(
 
 /**
  * Gives `file` the path `renamedPath` found, through Obsidian, so that the
- * links to it follow as its settings say; returns the file.
+ * links to it follow as its settings say; returns the file. The drawing is
+ * written by then, so a rename that fails says so in a notice and leaves the
+ * file as it is, rather than failing the save.
  */
 async function rename(
   app: App,
@@ -323,7 +347,13 @@ async function rename(
   path: string | undefined,
 ): Promise<TFile> {
   if (path === undefined) return file;
-  await app.fileManager.renameFile(file, path);
+  try {
+    await app.fileManager.renameFile(file, path);
+  } catch (error) {
+    new Notice(
+      `${file.name} is saved, but could not be renamed: ${message(error)}`,
+    );
+  }
   return file;
 }
 
@@ -564,15 +594,14 @@ function newSymbol(
         if (renaming !== undefined) {
           // Obsidian updates the links it knows of, as its settings say. The
           // embed just inserted, which its cache can lack for a moment after,
-          // Inkline updates itself.
-          const known =
-            (app.metadataCache.resolvedLinks[note.path]?.[made.file.path] ??
-              0) > 0;
+          // or which the answer to its question can leave as it was, follows
+          // the symbol it was inserted for, and the next symbol goes after it.
           const was = inserted ? embedFor(app, made.file, note.path) : "";
           made.file = await rename(app, made.file, renaming);
-          if (inserted && !known && after !== undefined) {
+          if (inserted && after !== undefined) {
+            stillAlive(host);
             const now = embedFor(app, made.file, note.path);
-            after = (await replaceEmbed(app, target, after, was, now)) ?? after;
+            after = (await followRename(app, target, after, was, now)) ?? after;
           }
         }
       }
