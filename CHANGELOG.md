@@ -62,7 +62,7 @@ section is also its
   the menu a right-click on a symbol shows in Reading view, embedded notes, and
   popout windows, where Obsidian opened its image viewer instead; in the
   editor's menu on an embed's text; and as a command with the cursor on a
-  symbol's embed, outside code and front matter.
+  symbol's embed, outside inline code, fenced code, and front matter.
 - The editor's pen, eraser, four brush sizes, undo, redo, and clear, each with
   its shortcut in its tooltip. A pen's eraser end erases, and a palm resting on
   a tablet does not draw, even one that touched it before the pen. A symbol
