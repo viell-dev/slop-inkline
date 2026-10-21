@@ -210,10 +210,17 @@ export class SymbolSuggest extends EditorSuggest<TFile> {
   override selectSuggestion(file: TFile): void {
     const { context } = this;
     if (context === null) return;
-    // Closed by a choice, the list dismisses nothing, even when its symbol
-    // has gone.
+    // Closed by a choice, the list dismisses nothing, unless its symbol has
+    // gone, below.
     this.#choosing = true;
     if (!stillThere(this.app, file)) {
+      // Dismissed, so that Obsidian's next look at the trigger, which can
+      // still be due from the last key typed, does not list it again.
+      this.#dismissed = {
+        path: context.file.path,
+        line: context.start.line,
+        ch: context.start.ch,
+      };
       this.close();
       return;
     }

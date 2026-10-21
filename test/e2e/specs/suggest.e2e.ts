@@ -351,7 +351,13 @@ describe("Inserting a symbol you have", function () {
       expect(await noteText()).toBe("The door reads ;;gone.\n");
       await waitForNotice("gone was deleted, so it was not inserted.");
       await browser.$(".suggestion-container").waitForExist({ reverse: true });
+      // And stays closed for that trigger, as Obsidian may look at it again:
+      // even with the symbol back, ;;gon lists nothing.
       await rememberFiles();
+      await browser.keys(["Backspace"]);
+      await browser.pause(500);
+      expect(await listOpen()).toBe(false);
+      await type("e");
       // Nor from the command's list.
       await browser.executeObsidianCommand("inkline:insert-existing-symbol");
       await browser.$(".prompt-input").waitForDisplayed();
