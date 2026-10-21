@@ -18,6 +18,7 @@ import {
   settledSurface,
   storedDrafts,
   waitForEditor,
+  waitForNotice,
   startOver,
   surface,
   symbolFiles,
@@ -373,21 +374,6 @@ async function chooseSymbol(name: string): Promise<void> {
   await browser.$(".prompt-input").waitForDisplayed();
   await browser.keys(name);
   await browser.keys(["Enter"]);
-}
-
-/** Waits for a notice whose text includes `text`. */
-async function waitForNotice(text: string): Promise<void> {
-  await browser.waitUntil(
-    async () =>
-      browser.execute(
-        (wanted) =>
-          [...document.querySelectorAll(".notice")].some((notice) =>
-            notice.textContent.includes(wanted),
-          ),
-        text,
-      ),
-    { timeoutMsg: `no notice with "${text}"` },
-  );
 }
 
 interface Box {

@@ -1,4 +1,4 @@
-import { MarkdownView, Plugin, TFile } from "obsidian";
+import { MarkdownView, Notice, Plugin, TFile } from "obsidian";
 import { DraftStore } from "./editor/drafts.ts";
 import type { InkEditorModal } from "./editor/modal.ts";
 import { isInkPath } from "./format/ink-file.ts";
@@ -51,6 +51,10 @@ export default class InklinePlugin extends Plugin {
         if (!view?.file || view.getMode() !== "source") return false;
         if (!checking) {
           const { editor } = view;
+          if (!this.app.vault.getFiles().some((file) => isInkPath(file.path))) {
+            new Notice("There are no symbols to insert yet.");
+            return true;
+          }
           new SymbolSearch(this.app, view.file.path, (embed) => {
             editor.replaceSelection(embed);
           }).open();

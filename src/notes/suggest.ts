@@ -5,6 +5,7 @@
 
 import {
   EditorSuggest,
+  Notice,
   prepareFuzzySearch,
   SuggestModal,
   type App,
@@ -15,8 +16,15 @@ import {
   type TFile,
 } from "obsidian";
 import { isInkPath } from "../format/ink-file.ts";
-import { embedFromLink, symbolStem } from "./names.ts";
-import { rankSymbols, triggerQuery } from "./search.ts";
+import { embedFor } from "./embeds.ts";
+import { symbolStem } from "./names.ts";
+import {
+  holdsTyped,
+  insideCodeBlock,
+  insideCodeSpan,
+  rankSymbols,
+  triggerQuery,
+} from "./search.ts";
 
 /** The most symbols a list shows at once. */
 const shownAtMost = 50;
@@ -30,7 +38,8 @@ function nameOf(file: TFile): string {
  * The vault's symbols whose names match `query`, as Obsidian's fuzzy search
  * matches them, best first: by the match, then by how often the note at
  * `notePath` uses each, then by how recently each changed. An empty query
- * matches every symbol.
+ * matches every symbol. A query with a space matches only names that hold
+ * it, so that a sentence typed on after a trigger stops matching.
  */
 export function findSymbols(
   app: App,
@@ -45,6 +54,7 @@ export function findSymbols(
     .filter((file) => isInkPath(file.path))
     .flatMap((file) => {
       const name = nameOf(file);
+      if (query.includes(" ") && !holdsTyped(name, query)) return [];
       const found = match === undefined ? { score: 0 } : match(name);
       if (found === null) return [];
       return [
@@ -65,7 +75,8 @@ export function findSymbols(
 
 /** Shows a symbol in a list: its picture, its name, and its folder. */
 function renderSymbol(app: App, file: TFile, el: HTMLElement): void {
-  el.addClass("inkline-suggestion");
+  // Its picture is text, as the renderer paints symbols in text.
+  el.addClass("inkline-suggestion", "inkline-text");
   el.createEl("img", {
     cls: "inkline-suggestion-picture",
     attr: { src: app.vault.getResourcePath(file), alt: "" },
@@ -78,9 +89,14 @@ function renderSymbol(app: App, file: TFile, el: HTMLElement): void {
   }
 }
 
-/** The embed that shows `file` in the note at `notePath`. */
-function embedFor(app: App, file: TFile, notePath: string): string {
-  return embedFromLink(app.fileManager.generateMarkdownLink(file, notePath));
+/**
+ * Whether `file` is still the vault's, as it may not be when it was deleted
+ * while a list showed it; a notice says so when it is not.
+ */
+function stillThere(app: App, file: TFile): boolean {
+  if (app.vault.getFileByPath(file.path) === file) return true;
+  new Notice(`${nameOf(file)} was deleted, so it was not inserted.`);
+  return false;
 }
 
 /**
@@ -90,6 +106,15 @@ function embedFor(app: App, file: TFile, notePath: string): string {
  */
 export class SymbolSuggest extends EditorSuggest<TFile> {
   readonly #trigger: () => string;
+  /** Whether the list last showed symbols, as it does when Esc closes it. */
+  #listed = false;
+  /** Whether the list is closing because a symbol was chosen. */
+  #choosing = false;
+  /**
+   * The trigger whose list was dismissed, by its note, line, and column:
+   * the text typed after it is text, until that trigger goes or moves.
+   */
+  #dismissed: { path: string; line: number; ch: number } | undefined;
 
   constructor(app: App, trigger: () => string) {
     super(app);
@@ -97,7 +122,7 @@ export class SymbolSuggest extends EditorSuggest<TFile> {
     this.setInstructions([
       { command: "↑↓", purpose: "to choose" },
       { command: "↵", purpose: "to insert the symbol" },
-      { command: "esc", purpose: "to keep typing" },
+      { command: "esc", purpose: "to dismiss" },
     ]);
   }
 
@@ -107,12 +132,26 @@ export class SymbolSuggest extends EditorSuggest<TFile> {
     file: TFile | null,
   ): EditorSuggestTriggerInfo | null {
     if (file === null) return null;
-    const found = triggerQuery(
-      editor.getLine(cursor.line),
-      cursor.ch,
-      this.#trigger(),
-    );
-    if (found === undefined) return null;
+    const line = editor.getLine(cursor.line);
+    const found = triggerQuery(line, cursor.ch, this.#trigger());
+    const dismissed = this.#dismissed;
+    if (
+      dismissed !== undefined &&
+      (found === undefined ||
+        dismissed.path !== file.path ||
+        dismissed.line !== cursor.line ||
+        dismissed.ch !== found.start)
+    ) {
+      this.#dismissed = undefined;
+    }
+    if (found === undefined || this.#dismissed !== undefined) return null;
+    // Not in code or front matter, where a trigger is the note's own text.
+    if (
+      insideCodeSpan(line, found.start) ||
+      insideCodeBlock(editor.getValue().split("\n"), cursor.line)
+    ) {
+      return null;
+    }
     return {
       start: { line: cursor.line, ch: found.start },
       end: cursor,
@@ -121,7 +160,29 @@ export class SymbolSuggest extends EditorSuggest<TFile> {
   }
 
   override getSuggestions(context: EditorSuggestContext): TFile[] {
-    return findSymbols(this.app, context.query, context.file.path);
+    const found = findSymbols(this.app, context.query, context.file.path);
+    this.#listed = found.length > 0;
+    return found;
+  }
+
+  /**
+   * Closes the list. Closed while it showed symbols, and not by a choice, as
+   * Esc closes it, it stays closed for that trigger, so that what is typed
+   * after it is text. Obsidian also closes it when nothing matches, which
+   * dismisses nothing.
+   */
+  override close(): void {
+    const { context } = this;
+    if (this.#listed && !this.#choosing && context !== null) {
+      this.#dismissed = {
+        path: context.file.path,
+        line: context.start.line,
+        ch: context.start.ch,
+      };
+    }
+    this.#listed = false;
+    this.#choosing = false;
+    super.close();
   }
 
   override renderSuggestion(file: TFile, el: HTMLElement): void {
@@ -131,6 +192,13 @@ export class SymbolSuggest extends EditorSuggest<TFile> {
   override selectSuggestion(file: TFile): void {
     const { context } = this;
     if (context === null) return;
+    // Closed by a choice, the list dismisses nothing, even when its symbol
+    // has gone.
+    this.#choosing = true;
+    if (!stillThere(this.app, file)) {
+      this.close();
+      return;
+    }
     const { editor, start } = context;
     // Obsidian updates the context a moment after each change, so a choice
     // made straight after typing finds the end of the name anew, as far as
@@ -146,6 +214,7 @@ export class SymbolSuggest extends EditorSuggest<TFile> {
       start,
       end,
     );
+    this.close();
   }
 }
 
@@ -171,6 +240,7 @@ export class SymbolSearch extends SuggestModal<TFile> {
   }
 
   override onChooseSuggestion(file: TFile): void {
+    if (!stillThere(this.app, file)) return;
     this.#chosen(embedFor(this.app, file, this.#notePath));
   }
 }

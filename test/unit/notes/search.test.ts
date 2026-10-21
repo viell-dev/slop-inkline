@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   defaultTrigger,
+  holdsTyped,
+  insideCodeBlock,
+  insideCodeSpan,
   rankSymbols,
   triggerQuery,
 } from "../../../src/notes/search.ts";
@@ -84,5 +87,67 @@ describe("rankSymbols", () => {
     const c = symbol("arch", 0, 0, 0);
     expect(rankSymbols([b, c, a])).toEqual([c, a, b]);
     expect(rankSymbols([a, b, c])).toEqual([c, a, b]);
+  });
+});
+
+describe("insideCodeSpan", () => {
+  it("knows a column between backticks", () => {
+    const line = "a `;;x` b";
+    expect(insideCodeSpan(line, 3)).toBe(true);
+    expect(insideCodeSpan(line, 6)).toBe(true);
+    expect(insideCodeSpan(line, 1)).toBe(false);
+    expect(insideCodeSpan(line, 8)).toBe(false);
+  });
+
+  it("matches runs of the same length, and leaves an unclosed run text", () => {
+    expect(insideCodeSpan("``a`;;``", 5)).toBe(true);
+    expect(insideCodeSpan("a ` ;;", 5)).toBe(false);
+    // An escaped backtick opens nothing.
+    expect(insideCodeSpan("\\`;;`", 3)).toBe(false);
+  });
+});
+
+describe("holdsTyped", () => {
+  it("takes a name holding the words typed, in any case", () => {
+    expect(holdsTyped("tower one", "tower o")).toBe(true);
+    expect(holdsTyped("The Tower One", "tower o")).toBe(true);
+    expect(holdsTyped("tower", "to wer")).toBe(false);
+    expect(holdsTyped("tower", "to ")).toBe(false);
+  });
+});
+
+describe("insideCodeBlock", () => {
+  const note = (text: string) => text.split("\n");
+
+  it("knows the lines of a fenced code block, of either mark", () => {
+    const lines = note("a\n```js\n;;x\n```\n;;y\n~~~~\n;;z\n~~~~");
+    expect(insideCodeBlock(lines, 0)).toBe(false);
+    expect(insideCodeBlock(lines, 2)).toBe(true);
+    expect(insideCodeBlock(lines, 4)).toBe(false);
+    expect(insideCodeBlock(lines, 6)).toBe(true);
+  });
+
+  it("closes a fence only with a run of its mark as long, and alone", () => {
+    const lines = note("````\n```\n;;a\n~~~~\n```` x\n;;b\n`````\n;;c");
+    expect(insideCodeBlock(lines, 2)).toBe(true);
+    expect(insideCodeBlock(lines, 5)).toBe(true);
+    expect(insideCodeBlock(lines, 7)).toBe(false);
+  });
+
+  it("runs an open fence to the end, in quotes and indented too", () => {
+    expect(insideCodeBlock(note("> ```\n> ;;a"), 1)).toBe(true);
+    expect(insideCodeBlock(note("  ```\n;;a"), 1)).toBe(true);
+    // Backticks in the info string make it text.
+    expect(insideCodeBlock(note("``` a`b\n;;a"), 1)).toBe(false);
+  });
+
+  it("knows the front matter, only when it opens the note and closes", () => {
+    const lines = note("---\ntags: ;;a\n---\n;;b");
+    expect(insideCodeBlock(lines, 1)).toBe(true);
+    expect(insideCodeBlock(lines, 3)).toBe(false);
+    expect(insideCodeBlock(note("---\n;;a"), 1)).toBe(false);
+    expect(insideCodeBlock(note("a\n---\n;;b\n---"), 2)).toBe(false);
+    // A fence after the front matter still counts.
+    expect(insideCodeBlock(note("---\n---\n```\n;;a"), 3)).toBe(true);
   });
 });

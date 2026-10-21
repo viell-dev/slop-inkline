@@ -47,6 +47,21 @@ export async function noteText(): Promise<string> {
   });
 }
 
+/** Waits for a notice whose text includes `text`. */
+export async function waitForNotice(text: string): Promise<void> {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        (wanted) =>
+          [...document.querySelectorAll(".notice")].some((notice) =>
+            notice.textContent.includes(wanted),
+          ),
+        text,
+      ),
+    { timeoutMsg: `no notice with "${text}"` },
+  );
+}
+
 /** The editor's drawing surface. */
 export function surface(): ChainablePromiseElement {
   return browser.$(".inkline-editor .inkline-surface");
