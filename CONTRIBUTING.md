@@ -75,7 +75,11 @@ Build first, then run them in one of two ways:
 - `npm run test:e2e:docker` on any system with Docker, Windows included. It
   builds the image in `test/e2e/Dockerfile` from your checkout and runs the
   suite under a virtual display. The image never contains Obsidian; the first
-  run downloads it into the Docker volume `inkline-obsidian-cache`.
+  run downloads it into the Docker volume `inkline-obsidian-cache`. Runs from
+  several checkouts can go at once: each runs the image it built, under a tag
+  `inkline-e2e:run-…` of its own that it removes when it ends. A run killed
+  before it could, as by closing its terminal, leaves its tag behind, which
+  `docker image rm` takes away.
 - `npm run test:e2e` directly on a desktop with a display. On Linux without one,
   `sh test/e2e/session.sh` starts Xvfb and herbstluftwm first, as CI does, with
   a display for each of up to four Obsidian versions, so that one version's
@@ -108,13 +112,17 @@ approval from a second account.
 - Describe the problem and the resulting behavior, the decisions the change
   makes, the alternatives rejected, and the remaining limits. Link the issue.
 - Add a "Verification" section: the commands run, the inputs tried beyond the
-  tests, and the platforms and Obsidian versions checked.
+  tests, the platforms and Obsidian versions checked, and whether another agent
+  reviewed the change, at which commit, and why or why not.
 - Add tests, update every document the change makes stale, and add user-visible
   changes to `Unreleased` in [CHANGELOG.md](CHANGELOG.md).
 - Keep each pull request to one change.
 
-Pull requests that change what ships are also reviewed by another agent running
-a different model, as [AGENTS.md](AGENTS.md#review) describes.
+A maintaining agent reviews every pull request. Releases, changes that could
+lose or damage a drawing, and changes to the checks and release steps that guard
+them also get an independent review by another agent, as
+[AGENTS.md](AGENTS.md#review) describes. Labels are used as
+[AGENTS.md](AGENTS.md#labels) says.
 
 ## Dependencies
 

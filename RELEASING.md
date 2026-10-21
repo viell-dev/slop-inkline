@@ -13,8 +13,10 @@ prereleases, which testers install with
 [BRAT](https://github.com/TfTHacker/obsidian42-brat). Version 1.0.0 is the first
 one submitted to Obsidian's community directory.
 
-Publishing a release speaks for the repository's owner, so the maintaining
-agents publish only a release the owner has authorized.
+The maintaining agents publish a release once it is ready by the steps below,
+without asking the owner for each one: GitHub releases are the plugin's channel.
+Submitting the plugin to Obsidian's community directory, or a change of what
+Inkline is for or where it is distributed, needs the owner's decision.
 
 ## Prepare the release pull request
 
@@ -35,6 +37,13 @@ On a branch from `main`:
 4. Run `node scripts/release.ts check <version>`, which the workflow runs too:
    it checks that the metadata files agree and that the changelog section
    exists.
+5. Have another agent review the release pull request, as
+   [AGENTS.md](AGENTS.md#review) requires: everything since the previous
+   release, not only the version change. That covers the changes, the open
+   defects, the evidence of the tests, compatibility with the Obsidian versions
+   the manifest accepts, the files the release ships, the documentation, and
+   installing and updating. Prefer a model other than the one that wrote most of
+   the changes.
 
 ## Prepare without publishing
 
@@ -73,6 +82,8 @@ gh attestation verify check/main.js --repo viell-dev/slop-inkline
 ## The community directory
 
 New plugins are submitted through Obsidian's developer dashboard at
-community.obsidian.md, which needs the owner's sign-in. Later versions reach
-directory users from the releases on their own. Before submitting, the plugin
-must pass the directory's review rules, which `npm run lint` applies.
+community.obsidian.md, which needs the owner's decision and sign-in: ask in an
+issue with `Needs: Owner`, as [AGENTS.md](AGENTS.md#labels) describes, once the
+release to submit is published. Later versions reach directory users from the
+releases on their own. Before submitting, the plugin must pass the directory's
+review rules, which `npm run lint` applies.

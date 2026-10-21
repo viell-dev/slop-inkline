@@ -1179,21 +1179,33 @@ describe("The editor", function () {
       expect(await editorOpen()).toBe(true);
       expect((await nameField()).value).toBe("tower");
       expect(await strokeCount("001.ink.png")).toBe(2);
-      // Failing again, slowly, with a stroke drawn meanwhile, which is not
-      // saved either, and the status says both.
+      // Failing again, held until a stroke is drawn meanwhile, which is not
+      // saved either, and the status says both. The rename fails only once
+      // the stroke is drawn, however long drawing it takes.
       await browser.executeObsidian(({ app }) => {
+        const held = window as Window & { inklineFailRename?: () => void };
         app.fileManager.renameFile = () =>
           new Promise((_resolve, reject) => {
-            window.setTimeout(() => {
+            held.inklineFailRename = () => {
               reject(new Error("the disk says no"));
-            }, 1500);
+            };
           });
       });
       await browser.keys(["Control", "Enter"]);
+      // The save has written the drawing, and waits for the rename.
+      await browser.waitUntil(async () =>
+        browser.execute(() => "inklineFailRename" in window),
+      );
       await draw([
         [0.3, 0.5],
         [0.7, 0.5],
       ]);
+      await browser.execute(() => {
+        const held = window as Window & { inklineFailRename?: () => void };
+        const fail = held.inklineFailRename;
+        delete held.inklineFailRename;
+        fail?.();
+      });
       await waitForStatus(
         "Saved, except for the name and what changed while saving",
       );
@@ -1208,6 +1220,8 @@ describe("The editor", function () {
           manager.renameFile = manager.inklineRenameFile;
           delete manager.inklineRenameFile;
         }
+        delete (window as Window & { inklineFailRename?: () => void })
+          .inklineFailRename;
       });
     }
     // The next save renames it, Obsidian asking about the links if its
