@@ -43,4 +43,10 @@ export default defineConfig(
       "import/no-nodejs-modules": "off",
     },
   },
+  // Scripts call GitHub's API with Node.js's own fetch, as Obsidian's
+  // requestUrl does not exist there.
+  {
+    files: ["scripts/**"],
+    rules: { "no-restricted-globals": "off" },
+  },
 );
