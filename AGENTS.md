@@ -73,14 +73,14 @@ in the same way.
 
 ## Review
 
-- Every pull request that can change what ships is reviewed by an agent from a
-  different model provider than the one that wrote it, because a different
-  provider makes different mistakes. Reviewers report findings and do not push
-  to the branch.
+- Every pull request that can change what ships is reviewed by another agent, in
+  a session of its own, running a different model from the one that wrote it,
+  because a different model makes different mistakes. Reviewers report findings
+  and do not push to the branch.
 - The author fixes or answers each finding. A material finding is closed only
   when the reviewer accepts the fix or the answer in a further round. The review
-  names the commit it covered; a behavior-changing commit pushed after it needs
-  another round.
+  names its model and the commit it covered; a behavior-changing commit pushed
+  after it needs another round.
 - Only wording and typo fixes in documentation, and comments, may skip
   independent review. Dependency updates, workflows, release steps,
   compatibility metadata such as `minAppVersion`, and any change that loosens
