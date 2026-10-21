@@ -417,6 +417,18 @@ describe("decodeDraft", () => {
       );
     }
   });
+
+  it("keeps the name typed for a symbol, and reads one it cannot without it", () => {
+    const storage = new MemoryStorage();
+    new DraftStore(storage).put(draft({ name: "the gate" }));
+    const stored = storage.loadLocalStorage("inkline-draft:a");
+    if (typeof stored !== "string") throw new Error("not stored as text");
+    const good = JSON.parse(stored) as Record<string, unknown>;
+    expect(decodeDraft(stored)?.name).toBe("the gate");
+    for (const name of [3, null, ["the gate"]]) {
+      expect(decodeDraft(JSON.stringify({ ...good, name }))).toEqual(draft());
+    }
+  });
 });
 
 describe("draftBase", () => {

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { embedPath } from "../../../src/notes/links.ts";
 import {
+  chooseName,
+  chooseRename,
   embedFromLink,
   encodePath,
   nextNumberName,
@@ -78,5 +80,124 @@ describe("encodePath", () => {
     expect(encodePath("Glyphs/jix%41&y.ink.png")).toBe(
       "Glyphs/jix%2541&y.ink.png",
     );
+  });
+});
+
+describe("chooseName", () => {
+  it("keeps a name in any script, without what a file name cannot hold", () => {
+    expect(chooseName("tower")).toEqual({ kind: "name", name: "tower" });
+    expect(chooseName("ᚠᚢ 塔")).toEqual({ kind: "name", name: "ᚠᚢ 塔" });
+    expect(chooseName("gate?")).toEqual({ kind: "name", name: "gate" });
+    expect(chooseName('a*b"c\\d/e<f>g:h|i#j^k[l]m')).toEqual({
+      kind: "name",
+      name: "abcdefghijklm",
+    });
+    expect(chooseName("tab\there")).toEqual({ kind: "name", name: "tabhere" });
+  });
+
+  it("drops space around a name, dots before it, and dots after it", () => {
+    expect(chooseName("  the gate  ")).toEqual({
+      kind: "name",
+      name: "the gate",
+    });
+    expect(chooseName(".hidden")).toEqual({ kind: "name", name: "hidden" });
+    expect(chooseName("door. . ")).toEqual({ kind: "name", name: "door" });
+  });
+
+  it("takes a number for an empty name, or one with nothing left", () => {
+    expect(chooseName("")).toEqual({ kind: "number" });
+    expect(chooseName("   ")).toEqual({ kind: "number" });
+    expect(chooseName("???")).toEqual({ kind: "number" });
+  });
+
+  it("keeps a name as Obsidian stores it, without invisible characters", () => {
+    const char = (code: number) => String.fromCharCode(code);
+    // A decomposed letter is composed, as Obsidian composes file names.
+    expect(chooseName(`cafe${char(0x301)}`)).toEqual({
+      kind: "name",
+      name: `caf${char(0xe9)}`,
+    });
+    // A no-break space is a plain one.
+    expect(chooseName(`the${char(0xa0)}gate`)).toEqual({
+      kind: "name",
+      name: "the gate",
+    });
+    expect(chooseName(`door.${char(0x202f)}.`)).toEqual({
+      kind: "name",
+      name: "door",
+    });
+    // An invisible space, or a control that reorders text, would hide or
+    // fake a name; so would a control character.
+    expect(chooseName(char(0x200b))).toEqual({ kind: "number" });
+    const left = [0x200b, 0x2060, 0x2062, 0xfeff, 0xfffa, 0x202e, 0x2067, 0x85];
+    for (const code of left) {
+      expect(chooseName(`ga${char(code)}te`)).toEqual({
+        kind: "name",
+        name: "gate",
+      });
+    }
+  });
+
+  it("keeps the joiners and marks that spell or show a name", () => {
+    const text = (...codes: number[]) => String.fromCodePoint(...codes);
+    const names = [
+      // Three faces joined into one emoji.
+      text(0x1f468, 0x200d, 0x1f469, 0x200d, 0x1f467),
+      // A Persian word whose two parts a non-joiner keeps apart.
+      text(0x645, 0x6cc, 0x200c, 0x62e, 0x648, 0x627, 0x647, 0x645),
+      // A Devanagari half-form, which the joiner asks for.
+      text(0x915, 0x94d, 0x200d, 0x937),
+      // Latin and Arabic, with the marks that set their order.
+      text(0x61, 0x200f, 0x627, 0x61c, 0x628),
+    ];
+    for (const name of names) {
+      expect(chooseName(name)).toEqual({ kind: "name", name });
+    }
+    // Joiners alone still name nothing.
+    expect(chooseName(text(0x200d, 0x200c))).toEqual({ kind: "number" });
+  });
+
+  it("refuses device names and names too long for a file", () => {
+    for (const name of ["CON", "nul", "Com1", "LPT9"]) {
+      expect(chooseName(name).kind).toBe("refused");
+    }
+    expect(chooseName("CONSOLE")).toEqual({ kind: "name", name: "CONSOLE" });
+    // Windows reads a name before a dot as the device too.
+    expect(chooseName("CON.txt").kind).toBe("refused");
+    expect(chooseName("CONSOLE.txt").kind).toBe("name");
+    // 247 bytes and .ink.png fit; one more byte does not.
+    expect(chooseName("a".repeat(247)).kind).toBe("name");
+    expect(chooseName("a".repeat(248)).kind).toBe("refused");
+    // Three bytes each in UTF-8.
+    expect(chooseName("塔".repeat(83)).kind).toBe("refused");
+  });
+});
+
+describe("chooseRename", () => {
+  it("keeps a file's own name, which chooseName would change or refuse", () => {
+    // A file named elsewhere with spaces around its name too.
+    for (const own of ["a#1", "door.", "con", "tower", " gate "]) {
+      expect(chooseRename(own, own)).toEqual({ kind: "name", name: own });
+      expect(chooseRename(` ${own} `, own)).toEqual({
+        kind: "name",
+        name: own,
+      });
+    }
+    // Decomposed in the file or the field, it is the same name, as the file
+    // has it.
+    const decomposed = `cafe${String.fromCharCode(0x301)}`;
+    expect(chooseRename(`caf${String.fromCharCode(0xe9)}`, decomposed)).toEqual(
+      {
+        kind: "name",
+        name: decomposed,
+      },
+    );
+  });
+
+  it("reads any other name as chooseName does", () => {
+    expect(chooseRename("", "a#1")).toEqual({ kind: "number" });
+    expect(chooseRename("a#2", "a#1")).toEqual({ kind: "name", name: "a2" });
+    expect(chooseRename("con", "")).toEqual(chooseName("con"));
+    expect(chooseRename("CON", "con").kind).toBe("refused");
   });
 });

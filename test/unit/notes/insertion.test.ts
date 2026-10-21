@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { capturePoint, findPoint } from "../../../src/notes/insertion.ts";
+import {
+  capturePoint,
+  findPoint,
+  replacedBefore,
+} from "../../../src/notes/insertion.ts";
 
 const note = "The door is marked with  which means return.\n";
 const at = note.indexOf("  which") + 1;
@@ -41,5 +45,38 @@ describe("findPoint", () => {
     expect(findPoint(note, capturePoint(note, 0))).toBe(0);
     expect(findPoint(note, capturePoint(note, note.length))).toBe(note.length);
     expect(findPoint("", capturePoint("", 0))).toBe(0);
+  });
+});
+
+describe("replacedBefore", () => {
+  it("finds a point again once the text just before it was replaced", () => {
+    const was = "![[001.ink.png]]";
+    const now = "![[the gate.ink.png]]";
+    // At the end of a note, where nothing after the point tells it apart.
+    const note = `Symbols: ${was}`;
+    const point = capturePoint(note, note.length);
+    const renamed = `Symbols: ${now}`;
+    expect(findPoint(renamed, point)).toBeUndefined();
+    expect(findPoint(renamed, replacedBefore(point, was, now))).toBe(
+      renamed.length,
+    );
+    // In the middle, and with text before longer than the context.
+    const long = `${"x".repeat(100)} ${was} and on.`;
+    const middle = capturePoint(long, long.indexOf(" and on."));
+    const moved = long.replace(was, now);
+    expect(findPoint(moved, replacedBefore(middle, was, now))).toBe(
+      moved.indexOf(" and on."),
+    );
+  });
+
+  it("finds a point after text longer than the context it keeps", () => {
+    const was = `![[${"a".repeat(80)}.ink.png]]`;
+    const now = `![[${"b".repeat(80)}.ink.png]]`;
+    const note = `Start ${was}`;
+    const point = capturePoint(note, note.length);
+    const renamed = `Start ${now}`;
+    expect(findPoint(renamed, replacedBefore(point, was, now))).toBe(
+      renamed.length,
+    );
   });
 });

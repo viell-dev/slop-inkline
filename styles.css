@@ -4,6 +4,12 @@
   width: min(960px, 92vw);
 }
 
+/* The symbol's name, in the title's place and at its size. */
+.inkline-editor .modal-title .inkline-name {
+  width: 100%;
+  font: inherit;
+}
+
 .inkline-toolbar {
   display: flex;
   flex-wrap: wrap;
