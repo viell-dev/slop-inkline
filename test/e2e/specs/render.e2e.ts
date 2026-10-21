@@ -392,13 +392,22 @@ describe("Symbols in notes", function () {
             .length === 2,
       ),
     );
-    // The image node of the symbol file itself is a picture there.
-    const node = await browser.execute(() =>
-      Array.from(
-        activeDocument.querySelectorAll(".canvas-node-content.media-embed img"),
-      ).map((image) => image.classList.contains("inkline-symbol")),
-    );
-    expect(node).toEqual([false]);
+    // The image node of the symbol file itself is a picture there, once it
+    // has loaded.
+    const node = async () =>
+      browser.execute(() =>
+        Array.from(
+          activeDocument.querySelectorAll(
+            ".canvas-node-content.media-embed img",
+          ),
+        )
+          .filter(
+            (image) => image.instanceOf(HTMLImageElement) && image.complete,
+          )
+          .map((image) => image.classList.contains("inkline-symbol")),
+      );
+    await browser.waitUntil(async () => (await node()).length === 1);
+    expect(await node()).toEqual([false]);
     await saveScreenshot("render-canvas");
   });
 

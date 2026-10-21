@@ -44,7 +44,9 @@ section is also its
   is kept and stays on the baseline. A symbol file shown on its own, in its tab
   or as a canvas's image, stays a picture; images from outside the vault and
   other images are left as they are; and with Inkline disabled, symbols show as
-  the plain images they are.
+  the plain images they are. A plugin's own view of a note shows them as text
+  with the `inkline-text` class, as [docs/rendering.md](docs/rendering.md)
+  describes for theme and plugin authors.
 - **Edit symbol**, in a symbol file's menu, which opens it in the editor again
   with every stroke, so that nothing is lost by editing.
 - The editor's pen, eraser, four brush sizes, undo, redo, and clear, each with
