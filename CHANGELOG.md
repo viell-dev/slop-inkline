@@ -86,4 +86,5 @@ section is also its
 - A new symbol goes into the note it was started in, where the cursor was, even
   if that note's tab now shows another note or was closed. If the text around
   that place changed so much that it cannot be found, the symbol is added at the
-  end of the note, with a notice.
+  end of the note, with a notice. A cursor inside a link or embed puts the
+  symbol just after it, so that no link is split.
