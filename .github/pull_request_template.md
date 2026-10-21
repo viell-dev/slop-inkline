@@ -20,5 +20,7 @@ rejected, and the remaining limits.
 ## Verification
 
 List the commands run, the inputs tried beyond the tests, the platforms and
-Obsidian versions checked, and the CI run. Confirm that the documentation and
-tests agree with the change and that `CHANGELOG.md` lists it under `Unreleased`.
+Obsidian versions checked, and the CI run. Say whether another agent reviewed
+the change, at which commit, and why or why not. Confirm that the documentation
+and tests agree with the change and that `CHANGELOG.md` lists it under
+`Unreleased`.
