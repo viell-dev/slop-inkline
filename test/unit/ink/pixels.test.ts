@@ -10,6 +10,7 @@ import {
   otsuThreshold,
   repeatPixels,
   thresholdAlpha,
+  regionValues,
   thresholdEdge,
   traceInk,
   type RgbaPixels,
@@ -235,11 +236,12 @@ describe("traceInk", () => {
     ...white,
     ...white,
   ]);
+  const values = { width: 4, height: 4, values: luminance(picture) };
   const everywhere = { left: -1e6, top: -1e6, right: 1e6, bottom: 1e6 };
 
   it("crops to the ink, and says where it sits", () => {
     const ink = traceInk(
-      picture,
+      values,
       { x: 100, y: 50, scale: 2 },
       128,
       false,
@@ -256,7 +258,7 @@ describe("traceInk", () => {
 
   it("keeps only what lies in the region, by whole picture pixels", () => {
     // The region ends inside the square's first column, which it keeps.
-    const ink = traceInk(picture, { x: 0, y: 0, scale: 10 }, 128, false, {
+    const ink = traceInk(values, { x: 0, y: 0, scale: 10 }, 128, false, {
       left: 0,
       top: 0,
       right: 15,
@@ -267,7 +269,7 @@ describe("traceInk", () => {
 
   it("takes the light ground as ink with light", () => {
     const ink = traceInk(
-      picture,
+      values,
       { x: 0, y: 0, scale: 1 },
       128,
       true,
@@ -282,7 +284,7 @@ describe("traceInk", () => {
   it("finds nothing outside the picture or without ink", () => {
     const place = { x: 0, y: 0, scale: 1 };
     expect(
-      traceInk(picture, place, 128, false, {
+      traceInk(values, place, 128, false, {
         left: 10,
         top: 0,
         right: 20,
@@ -291,12 +293,39 @@ describe("traceInk", () => {
     ).toBeUndefined();
     // The top row is all ground.
     expect(
-      traceInk(picture, place, 128, false, {
+      traceInk(values, place, 128, false, {
         left: 0,
         top: 0,
         right: 4,
         bottom: 1,
       }),
     ).toBeUndefined();
+  });
+});
+
+describe("regionValues", () => {
+  it("cuts out the part in the region, and says where it starts", () => {
+    const picture = {
+      width: 3,
+      height: 2,
+      values: Uint8ClampedArray.from([1, 2, 3, 4, 5, 6]),
+    };
+    const part = regionValues(
+      picture,
+      { x: 10, y: 0, scale: 2 },
+      {
+        left: 12,
+        top: 0,
+        right: 16,
+        bottom: 4,
+      },
+    );
+    expect(part).toEqual({
+      values: Uint8ClampedArray.from([2, 3, 5, 6]),
+      width: 2,
+      height: 2,
+      left: 1,
+      top: 0,
+    });
   });
 });

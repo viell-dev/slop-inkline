@@ -248,6 +248,50 @@ export interface PicturePlace {
   readonly scale: number;
 }
 
+/** A picture's luminance, one value per pixel, as {@link luminance} gives. */
+export interface Luminance {
+  readonly width: number;
+  readonly height: number;
+  readonly values: Uint8ClampedArray;
+}
+
+/**
+ * The luminance of the part of a picture at `place` that lies within
+ * `region`, in document pixels, by whole picture pixels, with where that
+ * part's top left corner is in the picture; undefined when no part does.
+ */
+export function regionValues(
+  picture: Luminance,
+  place: PicturePlace,
+  region: Bounds,
+):
+  | {
+      readonly values: Uint8ClampedArray;
+      readonly width: number;
+      readonly height: number;
+      readonly left: number;
+      readonly top: number;
+    }
+  | undefined {
+  const { x, y, scale } = place;
+  const left = Math.max(0, Math.floor((region.left - x) / scale));
+  const right = Math.min(picture.width, Math.ceil((region.right - x) / scale));
+  const top = Math.max(0, Math.floor((region.top - y) / scale));
+  const bottom = Math.min(
+    picture.height,
+    Math.ceil((region.bottom - y) / scale),
+  );
+  if (right <= left || bottom <= top) return undefined;
+  const width = right - left;
+  const values = cropAlpha(picture.values, picture.width, {
+    left,
+    top,
+    right,
+    bottom,
+  });
+  return { values, width, height: bottom - top, left, top };
+}
+
 /** A picture's ink: one alpha per pixel of part of it, and where that is. */
 export interface TracedInk {
   readonly alpha: Uint8ClampedArray;
@@ -264,44 +308,23 @@ export interface TracedInk {
  * document pixels, cropped to its ink; undefined when none is there.
  */
 export function traceInk(
-  pixels: RgbaPixels,
+  picture: Luminance,
   place: PicturePlace,
   threshold: number,
   light: boolean,
   region: Bounds,
 ): TracedInk | undefined {
-  const { x, y, scale } = place;
-  const left = Math.max(0, Math.floor((region.left - x) / scale));
-  const right = Math.min(pixels.width, Math.ceil((region.right - x) / scale));
-  const top = Math.max(0, Math.floor((region.top - y) / scale));
-  const bottom = Math.min(
-    pixels.height,
-    Math.ceil((region.bottom - y) / scale),
-  );
-  if (right <= left || bottom <= top) return undefined;
-  const across = right - left;
-  const part = new Uint8ClampedArray(across * (bottom - top) * 4);
-  for (let row = top; row < bottom; row++) {
-    part.set(
-      pixels.data.subarray(
-        (row * pixels.width + left) * 4,
-        (row * pixels.width + right) * 4,
-      ),
-      (row - top) * across * 4,
-    );
-  }
-  const alpha = thresholdAlpha(
-    luminance({ width: across, height: bottom - top, data: part }),
-    threshold,
-    light,
-  );
-  const bounds = alphaBounds(alpha, across);
+  const part = regionValues(picture, place, region);
+  if (part === undefined) return undefined;
+  const alpha = thresholdAlpha(part.values, threshold, light);
+  const bounds = alphaBounds(alpha, part.width);
   if (bounds === undefined) return undefined;
+  const { scale } = place;
   return {
-    alpha: cropAlpha(alpha, across, bounds),
+    alpha: cropAlpha(alpha, part.width, bounds),
     width: bounds.right - bounds.left,
     height: bounds.bottom - bounds.top,
-    x: x + (left + bounds.left) * scale,
-    y: y + (top + bounds.top) * scale,
+    x: place.x + (part.left + bounds.left) * scale,
+    y: place.y + (part.top + bounds.top) * scale,
   };
 }

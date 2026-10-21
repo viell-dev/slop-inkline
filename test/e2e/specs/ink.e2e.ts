@@ -700,7 +700,17 @@ describe("The drawing core in Obsidian's renderer", function () {
         place: { x: number; y: number; scale: number },
         light: boolean,
       ) => {
-        const ink = pixels.traceInk(read, place, 128, light, lineBox);
+        const ink = pixels.traceInk(
+          {
+            width: read.width,
+            height: read.height,
+            values: pixels.luminance(read),
+          },
+          place,
+          128,
+          light,
+          lineBox,
+        );
         if (ink === undefined) return undefined;
         const preview = canvas.previewInk(ink, place.scale);
         const { layer } = await canvas.baseFromInk(ink, place.scale);
