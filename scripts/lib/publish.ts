@@ -10,9 +10,17 @@ export interface BuiltFile {
   readonly sha256: string;
 }
 
+/** A check that the ruleset requires, and the app whose run counts. */
+export interface RequiredCheck {
+  readonly context: string;
+  readonly integrationId: number | undefined;
+}
+
 /** A check run on a commit, as GitHub's checks API gives it. */
 export interface CheckRun {
   readonly name: string;
+  /** The app that made it. */
+  readonly appId: number | undefined;
   readonly status: string;
   readonly conclusion: string | null;
   /** When it completed, as an ISO date, or null while it runs. */
@@ -22,67 +30,78 @@ export interface CheckRun {
 /** How long a passing run of the required checks stays good for a release. */
 export const ciLifetimeDays = 7;
 
+function field(value: unknown, key: string): unknown {
+  return typeof value === "object" && value !== null
+    ? Reflect.get(value, key)
+    : undefined;
+}
+
+function list(value: unknown): readonly unknown[] {
+  if (!Array.isArray(value)) return [];
+  const items: readonly unknown[] = value;
+  return items;
+}
+
 /**
- * The names of the checks that a ruleset file requires, as
- * .github/rulesets/main.json records them.
+ * The checks that a ruleset file requires, as .github/rulesets/main.json
+ * records them, each with the app whose run of it counts.
  */
-export function requiredChecks(ruleset: unknown): string[] {
-  const rules: unknown =
-    typeof ruleset === "object" && ruleset !== null
-      ? Reflect.get(ruleset, "rules")
-      : undefined;
-  if (!Array.isArray(rules)) return [];
-  const listed: readonly unknown[] = rules;
-  return listed.flatMap((rule) => {
-    if (typeof rule !== "object" || rule === null) return [];
-    if (Reflect.get(rule, "type") !== "required_status_checks") return [];
-    const parameters: unknown = Reflect.get(rule, "parameters");
-    const checks: unknown =
-      typeof parameters === "object" && parameters !== null
-        ? Reflect.get(parameters, "required_status_checks")
-        : undefined;
-    if (!Array.isArray(checks)) return [];
-    const each: readonly unknown[] = checks;
-    return each.flatMap((check) => {
-      const context: unknown =
-        typeof check === "object" && check !== null
-          ? Reflect.get(check, "context")
-          : undefined;
-      return typeof context === "string" ? [context] : [];
+export function requiredChecks(ruleset: unknown): RequiredCheck[] {
+  return list(field(ruleset, "rules")).flatMap((rule) => {
+    if (field(rule, "type") !== "required_status_checks") return [];
+    const checks = list(
+      field(field(rule, "parameters"), "required_status_checks"),
+    );
+    return checks.flatMap((check) => {
+      const context = field(check, "context");
+      const integration = field(check, "integration_id");
+      return typeof context === "string"
+        ? [
+            {
+              context,
+              integrationId:
+                typeof integration === "number" ? integration : undefined,
+            },
+          ]
+        : [];
     });
   });
 }
 
 /**
  * Every reason a commit whose check runs are `runs` cannot be released at
- * `now`: a required check that has no run, whose latest run did not pass,
- * or whose latest run is older than {@link ciLifetimeDays} days, as the
- * end-to-end check's latest Obsidian release may have moved on since.
+ * `now`: a required check that has no run by its app, whose latest run did
+ * not pass, or whose latest run is older than {@link ciLifetimeDays} days,
+ * as the end-to-end check's latest Obsidian release may have moved on since.
  */
 export function ciProblems(
-  required: readonly string[],
+  required: readonly RequiredCheck[],
   runs: readonly CheckRun[],
   now: Date,
 ): string[] {
   if (required.length === 0) return ["the ruleset requires no checks"];
   const problems: string[] = [];
-  for (const name of required) {
+  for (const { context, integrationId } of required) {
     const latest = runs
-      .filter((run) => run.name === name)
+      .filter(
+        (run) =>
+          run.name === context &&
+          (integrationId === undefined || run.appId === integrationId),
+      )
       .sort((a, b) =>
         (b.completedAt ?? "9999").localeCompare(a.completedAt ?? "9999"),
       )[0];
     if (latest === undefined) {
-      problems.push(`${name} has not run on this commit`);
+      problems.push(`${context} has not run on this commit`);
     } else if (latest.status !== "completed" || latest.completedAt === null) {
-      problems.push(`${name} is still running`);
+      problems.push(`${context} is still running`);
     } else if (latest.conclusion !== "success") {
-      problems.push(`${name} ended ${String(latest.conclusion)}`);
+      problems.push(`${context} ended ${String(latest.conclusion)}`);
     } else {
       const age = now.getTime() - Date.parse(latest.completedAt);
       if (age > ciLifetimeDays * 24 * 60 * 60 * 1000) {
         problems.push(
-          `${name} last passed ${latest.completedAt}, over ${String(ciLifetimeDays)} days ago: run CI on main again`,
+          `${context} last passed ${latest.completedAt}, over ${String(ciLifetimeDays)} days ago: run CI on main again`,
         );
       }
     }
@@ -93,6 +112,8 @@ export function ciProblems(
 /** A release that is not published yet: a draft, which has no tag. */
 export interface Draft {
   readonly id: number;
+  /** The commit it will tag when published. */
+  readonly target: string;
   readonly assets: readonly {
     readonly name: string;
     /** As GitHub gives it, `sha256:<hex>`, when it does. */
@@ -102,15 +123,18 @@ export interface Draft {
 
 /** What publishing needs of GitHub; scripts/publish.ts gives the real one. */
 export interface ReleaseHost {
-  /** Whether a tag of that name exists, as a published release makes one. */
+  /**
+   * Whether a tag of that name exists, as a published release makes one.
+   * Throws when GitHub cannot say, so that an error never reads as "no tag".
+   */
   tagExists(version: string): Promise<boolean>;
-  /** The draft release for `version`, if one is left from an earlier run. */
-  draft(version: string): Promise<Draft | undefined>;
+  /** Every draft release for `version`, as earlier runs can leave them. */
+  drafts(version: string): Promise<readonly Draft[]>;
   deleteDraft(id: number): Promise<void>;
-  /** Creates the draft for `version` with the built files and its notes. */
+  /** Creates a draft for `version` with the built files and its notes. */
   createDraft(version: string): Promise<void>;
-  /** Publishes the draft, which creates the tag on the built commit. */
-  publish(version: string): Promise<void>;
+  /** Publishes the draft `id`, which creates the tag on its commit. */
+  publish(id: number, version: string): Promise<void>;
   log(message: string): void;
 }
 
@@ -127,44 +151,62 @@ export function holdsBuild(draft: Draft, files: readonly BuiltFile[]): boolean {
   );
 }
 
+/** What a draft holds, for a message. */
+function described(draft: Draft): string {
+  const assets = draft.assets
+    .map((asset) => `${asset.name} (${asset.digest ?? "no digest"})`)
+    .join(", ");
+  return `draft ${String(draft.id)} for ${draft.target}, with ${assets === "" ? "no files" : assets}`;
+}
+
 /**
- * Publishes `version` with `files`, so that a run that failed part way can
- * simply run again: a version whose tag exists is refused, as published
- * files are never replaced; a draft left by an earlier run that holds
- * exactly these files is published as it is; any other draft, which nobody
- * can have installed, is deleted and made again. The draft is checked to
- * hold the built files before it is published.
+ * Publishes `version` with `files`, built from `commit`, so that a run that
+ * failed part way can simply run again: a version whose tag exists is
+ * refused, as published files are never replaced; a single draft left by an
+ * earlier run that holds exactly these files for this commit is published as
+ * it is; any other drafts for the version, which nobody can have installed,
+ * are deleted and one is made again. The draft is checked to hold the built
+ * files for this commit, and to be the only one, before it is published by
+ * its id.
  */
 export async function publishRelease(
   host: ReleaseHost,
   version: string,
   files: readonly BuiltFile[],
+  commit: string,
 ): Promise<void> {
   if (await host.tagExists(version)) {
     throw new Error(
       `The tag ${version} exists already; a correction needs a new version.`,
     );
   }
-  const left = await host.draft(version);
-  if (left !== undefined && holdsBuild(left, files)) {
+  const left = await host.drafts(version);
+  const [only] = left;
+  let id: number;
+  if (left.length === 1 && only?.target === commit && holdsBuild(only, files)) {
     host.log(
       `Publishing the draft an earlier run left, which holds this build.`,
     );
+    id = only.id;
   } else {
-    if (left !== undefined) {
-      host.log(
-        `Deleting a draft an earlier run left, which holds other files.`,
-      );
-      await host.deleteDraft(left.id);
+    for (const draft of left) {
+      host.log(`Deleting the ${described(draft)}.`);
+      await host.deleteDraft(draft.id);
     }
     await host.createDraft(version);
-    const made = await host.draft(version);
-    if (made === undefined || !holdsBuild(made, files)) {
+    const made = await host.drafts(version);
+    const [draft] = made;
+    if (
+      made.length !== 1 ||
+      draft?.target !== commit ||
+      !holdsBuild(draft, files)
+    ) {
       throw new Error(
-        `The draft for ${version} does not hold the built files; it stays a draft.`,
+        `The draft for ${version} is not the build of ${commit}: GitHub has ${made.length === 0 ? "no draft" : made.map(described).join("; ")}. It stays unpublished.`,
       );
     }
+    id = draft.id;
   }
-  await host.publish(version);
+  await host.publish(id, version);
   host.log(`Published ${version}.`);
 }

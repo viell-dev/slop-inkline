@@ -40,10 +40,9 @@ function record(value: unknown): Record<string, unknown> | undefined {
   return isRecord(value) ? value : undefined;
 }
 
-/** Runs the GitHub CLI; its output, or undefined if it failed. */
+/** Runs the GitHub CLI: its output, or undefined if it failed. */
 function gh(args: readonly string[]): string | undefined {
-  const result = spawnSync("gh", args, { encoding: "utf8" });
-  if (result.error !== undefined) throw result.error;
+  const result = ghRun(args);
   if (result.status !== 0) {
     if (result.stderr !== "") console.error(result.stderr.trim());
     return undefined;
@@ -51,14 +50,21 @@ function gh(args: readonly string[]): string | undefined {
   return result.stdout;
 }
 
+function ghRun(args: readonly string[]): {
+  status: number | null;
+  stdout: string;
+  stderr: string;
+} {
+  const result = spawnSync("gh", args, { encoding: "utf8" });
+  if (result.error !== undefined) throw result.error;
+  return result;
+}
+
 function ghJson(args: readonly string[]): unknown {
   const output = gh(args);
   if (output === undefined) fail(`gh ${args.join(" ")} failed`);
   return JSON.parse(output);
 }
-
-/** GitHub Actions, the app whose checks the ruleset requires. */
-const actionsApp = 15368;
 
 async function ci(commit: string): Promise<void> {
   const ruleset: unknown = JSON.parse(
@@ -77,12 +83,13 @@ async function ci(commit: string): Promise<void> {
       return (Array.isArray(list) ? list : []).flatMap((run: unknown) => {
         const fields = record(run);
         const app = record(fields?.app);
-        if (fields === undefined || app?.id !== actionsApp) return [];
+        if (fields === undefined) return [];
         const { name, status, conclusion, completed_at: completedAt } = fields;
         return typeof name === "string" && typeof status === "string"
           ? [
               {
                 name,
+                appId: typeof app?.id === "number" ? app.id : undefined,
                 status,
                 conclusion: typeof conclusion === "string" ? conclusion : null,
                 completedAt:
@@ -97,7 +104,9 @@ async function ci(commit: string): Promise<void> {
   if (problems.length > 0) {
     fail(`${commit} cannot be released:\n${problems.join("\n")}`);
   }
-  console.log(`${commit} passed ${required.join(", ")} within the last week.`);
+  console.log(
+    `${commit} passed ${required.map((check) => check.context).join(", ")} within the last week.`,
+  );
 }
 
 /** The files `directory`'s SHA256SUMS lists, and that file itself. */
@@ -128,16 +137,28 @@ async function builtFiles(directory: string): Promise<BuiltFile[]> {
   ];
 }
 
-function host(directory: string, files: readonly BuiltFile[]): ReleaseHost {
-  const commit = process.env.GITHUB_SHA;
-  if (commit === undefined) fail("GITHUB_SHA names no commit to tag");
+function host(
+  directory: string,
+  files: readonly BuiltFile[],
+  commit: string,
+): ReleaseHost {
   return {
-    tagExists: (version) =>
-      Promise.resolve(
-        gh(["api", `repos/${repository}/git/ref/tags/${version}`]) !==
-          undefined,
-      ),
-    draft: (version) => {
+    tagExists: (version) => {
+      const found = ghRun([
+        "api",
+        `repos/${repository}/git/ref/tags/${version}`,
+      ]);
+      if (found.status === 0) return Promise.resolve(true);
+      // Only GitHub's answer that there is no such tag means none: any other
+      // failure might hide a published version.
+      if (found.stderr.includes("(HTTP 404)")) return Promise.resolve(false);
+      return Promise.reject(
+        new Error(
+          `GitHub could not say whether the tag ${version} exists: ${found.stderr.trim()}`,
+        ),
+      );
+    },
+    drafts: (version) => {
       const pages = ghJson([
         "api",
         "--paginate",
@@ -151,6 +172,7 @@ function host(directory: string, files: readonly BuiltFile[]): ReleaseHost {
           return listed;
         },
       );
+      const drafts: Draft[] = [];
       for (const release of releases) {
         const fields = record(release);
         if (fields?.draft !== true || fields.tag_name !== version) continue;
@@ -170,10 +192,16 @@ function host(directory: string, files: readonly BuiltFile[]): ReleaseHost {
                 ]
               : [],
           );
-        const draft: Draft = { id: fields.id, assets };
-        return Promise.resolve(draft);
+        drafts.push({
+          id: fields.id,
+          target:
+            typeof fields.target_commitish === "string"
+              ? fields.target_commitish
+              : "",
+          assets,
+        });
       }
-      return Promise.resolve(undefined);
+      return Promise.resolve(drafts);
     },
     deleteDraft: (id) => {
       if (
@@ -207,19 +235,21 @@ function host(directory: string, files: readonly BuiltFile[]): ReleaseHost {
       if (created === undefined) fail(`could not create the draft ${version}`);
       return Promise.resolve();
     },
-    publish: (version) => {
+    // By the draft's id, so that it is the very draft that was checked.
+    publish: (id, version) => {
       // Versions below 1.0.0 are prereleases, which BRAT installs.
-      const kind = version.startsWith("0.")
-        ? ["--prerelease", "--latest=false"]
-        : ["--latest"];
+      const prerelease = version.startsWith("0.");
       const published = gh([
-        "release",
-        "edit",
-        version,
-        "--repo",
-        repository,
-        "--draft=false",
-        ...kind,
+        "api",
+        "-X",
+        "PATCH",
+        `repos/${repository}/releases/${String(id)}`,
+        "-F",
+        "draft=false",
+        "-F",
+        `prerelease=${String(prerelease)}`,
+        "-f",
+        `make_latest=${String(!prerelease)}`,
       ]);
       if (published === undefined) fail(`could not publish ${version}`);
       return Promise.resolve();
@@ -243,12 +273,17 @@ switch (command) {
     if (version === undefined || directory === undefined) {
       fail("usage: publish.ts publish <version> <directory>");
     }
+    const commit = process.env.GITHUB_SHA;
+    if (commit === undefined) fail("GITHUB_SHA names no commit to tag");
     const files = await builtFiles(directory);
-    await publishRelease(host(directory, files), version, files).catch(
-      (error: unknown) => {
-        fail(error instanceof Error ? error.message : String(error));
-      },
-    );
+    await publishRelease(
+      host(directory, files, commit),
+      version,
+      files,
+      commit,
+    ).catch((error: unknown) => {
+      fail(error instanceof Error ? error.message : String(error));
+    });
     break;
   }
   default:

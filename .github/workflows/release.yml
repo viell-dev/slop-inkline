@@ -21,9 +21,13 @@ on:
       - .github/workflows/release.yml
       - scripts/lib/publish.ts
       - scripts/lib/release.ts
+      - scripts/lib/settings.ts
       - scripts/publish.ts
       - scripts/release.ts
+      - test/e2e/session.sh
       - test/e2e/specs/package.e2e.ts
+      - test/e2e/support/harness.ts
+      - test/e2e/wdio.conf.mts
 
 permissions:
   contents: read
@@ -87,8 +91,9 @@ jobs:
           cd release
           sha256sum main.js manifest.json styles.css > SHA256SUMS
           cat SHA256SUMS
-      # The release's own files, installed in Obsidian as a user's would be,
-      # in the oldest and the latest versions the end-to-end tests use.
+      # The release's own files, in a test vault's plugin folder, where
+      # Obsidian loads them, in the oldest and the latest versions the
+      # end-to-end tests use.
       - name: Resolve the Obsidian versions
         env:
           PRINT_OBSIDIAN_CACHE_KEY: "1"
@@ -164,9 +169,10 @@ jobs:
             release/manifest.json
             release/styles.css
       # Creates the release as a draft with the files, checks that it holds
-      # them, and publishes it, which creates the tag. Run again after a
-      # failure part way, it resumes a draft that holds this build, or
-      # replaces one that does not; it never touches a published version.
+      # them for this commit, and publishes it by its id, which creates the
+      # tag. Run again after a failure part way, it resumes a draft that
+      # holds this build, or replaces any other; it never touches a
+      # published version.
       - name: Publish the release
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}

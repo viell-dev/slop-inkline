@@ -60,11 +60,13 @@ Run the Release workflow from the Actions tab or with
 2. It runs `npm run check`, and refuses metadata or notes that do not match the
    version.
 3. It builds the files and records their checksums.
-4. It installs exactly those files into Obsidian 1.13.4, on its oldest
-   installer, and the latest public release, as a user's Obsidian installs them,
-   and checks that they are the files built, that the plugin loads with their
-   version, commands, and styles, and that it saves a symbol
-   (`test/e2e/specs/package.e2e.ts`).
+4. It puts exactly those files in a test vault's plugin folder, where Obsidian
+   loads them, in the manifest's `minAppVersion` on its oldest installer and in
+   the latest public release, and checks that they are the files built, that the
+   plugin loads with their version, commands, and styles, that it saves a symbol
+   (`test/e2e/specs/package.e2e.ts`), and that it unloads and loads again
+   (`test/e2e/specs/plugin.e2e.ts`). Obsidian's own download of a release, and
+   BRAT's, are not exercised before one exists.
 5. It uploads the files with the notes and checksums as the `release` artifact,
    and the end-to-end output as `release-e2e-results`.
 
@@ -93,12 +95,19 @@ Run the same command again. Nothing is published until the last step, and a
 draft has no tag and cannot be installed, so a second run can repair what the
 first left:
 
-- a draft that holds exactly this build, as after a failure in the last step, is
-  published as it is;
-- a draft that holds other files, as after an upload that broke off, is deleted
-  and made again;
+- a single draft that holds exactly this build, for this commit, as after a
+  failure in the last step, is published as it is, by its id;
+- any other draft for the version, as after an upload that broke off, or one for
+  another commit, is deleted and one is made again;
+- if GitHub cannot say whether the version's tag exists, the run stops without
+  changing anything;
 - a version whose tag exists is refused, as its files are published and never
   replaced: if the published release is wrong, release a new version.
+
+A draft left by a run that is not run again stays unpublished, and cannot be
+installed; the next run for that version deletes it, or remove it by hand with
+`gh release delete <version> --repo viell-dev/slop-inkline`, which deletes only
+the draft while the version has no tag.
 
 `test/unit/publish.test.ts` runs these cases against a fake GitHub, failing at
 each step.
@@ -107,9 +116,10 @@ each step.
 
 The `verify publication` job downloads the published assets, checks them against
 `SHA256SUMS`, and verifies each file's attestation. If it fails because GitHub
-did not answer, rerun the job; if the files or their attestations are wrong, the
-release is published and stays, so record the defect and release a new version.
-To check by hand:
+did not answer, rerun that job alone with `gh run rerun <run-id> --failed`,
+since a new run of the workflow refuses the version, whose tag now exists. If
+the files or their attestations are wrong, the release is published and stays,
+so record the defect and release a new version. To check by hand:
 
 ```sh
 gh release download <version> --repo viell-dev/slop-inkline --dir check
