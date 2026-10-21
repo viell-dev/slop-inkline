@@ -289,7 +289,7 @@ export class SymbolLibraryView extends ItemView {
     });
     row.addEventListener("contextmenu", (event) => {
       event.preventDefault();
-      showLinkMenu(this.app, file, this.leaf, event, insert);
+      showLinkMenu(this.app, file, this.leaf, event);
     });
     const expanded = this.#expanded.has(entry.path);
     const uses = row.createEl("button", {

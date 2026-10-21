@@ -71,10 +71,8 @@ function leafOf(app: App, element: Element): WorkspaceLeaf | undefined {
 }
 
 /**
- * Shows the menu Obsidian shows for a link to `file`, as from `leaf`, for a
- * right-click on `anchor`: at the pointer of `event`, or below `anchor`
- * when the event came from the keyboard. As Live Preview's menu for an image
- * holds it: open in a new tab or to the right, rename, and the file's menu
+ * Shows the menu Obsidian shows for a link to `file`, as from `leaf`, at
+ * the pointer of `event`, as Live Preview's menu for an image holds it: open in a new tab or to the right, rename, and the file's menu
  * with every plugin's items, Inkline's Edit symbol among them. A path that
  * does not read back as a link to the file, as one with a `#`, gets the
  * file's menu alone.
@@ -84,7 +82,6 @@ export function showLinkMenu(
   file: TFile,
   leaf: WorkspaceLeaf | undefined,
   event: MouseEvent,
-  anchor: HTMLElement,
 ): void {
   const menu = new Menu();
   const linked = app.metadataCache.getFirstLinkpathDest(
@@ -96,12 +93,7 @@ export function showLinkMenu(
   } else {
     app.workspace.trigger("file-menu", menu, file, "link-context-menu", leaf);
   }
-  if (event.clientX === 0 && event.clientY === 0) {
-    const box = anchor.getBoundingClientRect();
-    menu.showAtPosition({ x: box.left, y: box.bottom }, anchor.doc);
-  } else {
-    menu.showAtMouseEvent(event);
-  }
+  menu.showAtMouseEvent(event);
 }
 
 /** Shows {@link showLinkMenu} for the symbol `image`, from the leaf it is in. */
@@ -111,5 +103,5 @@ export function showSymbolMenu(
   image: HTMLImageElement,
   event: MouseEvent,
 ): void {
-  showLinkMenu(app, file, leafOf(app, image), event, image);
+  showLinkMenu(app, file, leafOf(app, image), event);
 }
