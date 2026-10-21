@@ -11,8 +11,12 @@
   margin-bottom: var(--size-4-3);
 }
 
-/* A picture to trace over: Move, Remove picture, and what is being traced. */
-.inkline-picture {
+/*
+ * A picture to trace over: Move, Make ink, Remove picture, and what is being
+ * traced; then, while making ink, the threshold and what applies it.
+ */
+.inkline-picture,
+.inkline-convert {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -25,8 +29,15 @@
   font-size: var(--font-ui-small);
 }
 
+.inkline-convert label {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+}
+
 .inkline-toolbar button[aria-pressed="true"],
-.inkline-picture button[aria-pressed="true"] {
+.inkline-picture button[aria-pressed="true"],
+.inkline-convert button[aria-pressed="true"] {
   background-color: var(--interactive-accent);
   color: var(--text-on-accent);
 }

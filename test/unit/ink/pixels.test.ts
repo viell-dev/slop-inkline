@@ -152,6 +152,11 @@ describe("otsuThreshold", () => {
     expect(otsuThreshold(values)).toBe(11);
   });
 
+  it("takes the middle of thresholds that split equally well", () => {
+    const values = Uint8ClampedArray.from([0, 0, 255, 255, 255]);
+    expect(otsuThreshold(values)).toBe(128);
+  });
+
   it("gives the middle for a picture of one value", () => {
     expect(otsuThreshold(Uint8ClampedArray.from([90, 90, 90]))).toBe(128);
   });

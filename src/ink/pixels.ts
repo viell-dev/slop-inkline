@@ -122,8 +122,10 @@ export function luminance(pixels: RgbaPixels): Uint8ClampedArray {
 /**
  * The threshold that best splits `values` into dark and light, by Otsu's
  * method: the one that makes the two groups' means lie furthest apart,
- * weighted by their sizes. Values below it are dark. A picture of one value
- * throughout gives the middle, 128.
+ * weighted by their sizes. Values below it are dark. Where thresholds split
+ * equally well, as all between two values with none in between do, the
+ * middle one wins, so that the picture's edges ramp evenly across it. A
+ * picture of one value throughout gives the middle, 128.
  */
 export function otsuThreshold(values: Uint8ClampedArray): number {
   const counts = new Array<number>(256).fill(0);
@@ -136,7 +138,8 @@ export function otsuThreshold(values: Uint8ClampedArray): number {
   let darkCount = 0;
   let darkSum = 0;
   let best = -1;
-  let threshold = 128;
+  let first = 128;
+  let last = 128;
   for (let value = 0; value < 255; value++) {
     darkCount += counts[value] ?? 0;
     darkSum += value * (counts[value] ?? 0);
@@ -144,12 +147,17 @@ export function otsuThreshold(values: Uint8ClampedArray): number {
     if (darkCount === 0 || lightCount === 0) continue;
     const apart = darkSum / darkCount - (sum - darkSum) / lightCount;
     const between = darkCount * lightCount * apart * apart;
-    if (between > best) {
+    // Equal but for rounding, as across a run of empty values.
+    const tie = 1e-9 * Math.max(1, best);
+    if (between > best + tie) {
       best = between;
-      threshold = value + 1;
+      first = value + 1;
+      last = value + 1;
+    } else if (between >= best - tie) {
+      last = value + 1;
     }
   }
-  return threshold;
+  return Math.round((first + last) / 2);
 }
 
 /**
