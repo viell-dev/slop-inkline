@@ -56,6 +56,17 @@ async function menuItems(): Promise<string[]> {
   );
 }
 
+/**
+ * The sources of the file menus built since the last call, as `file-menu`
+ * names them: Inkline's own menu is `inkline-symbol`.
+ */
+async function menuSources(): Promise<string[]> {
+  return browser.execute(() => {
+    const sources: unknown = Reflect.get(window, "fileMenuSources");
+    return Array.isArray(sources) ? sources.splice(0).map(String) : [];
+  });
+}
+
 /** Whether Obsidian's image viewer is open. */
 async function viewerOpen(): Promise<boolean> {
   return browser.execute(() => document.querySelector(".lightbox") !== null);
@@ -109,6 +120,13 @@ describe("Editing a symbol from a note", function () {
   });
 
   before(async function () {
+    await browser.executeObsidian(({ app }) => {
+      const sources: string[] = [];
+      Reflect.set(window, "fileMenuSources", sources);
+      app.workspace.on("file-menu", (_menu, _file, source) => {
+        sources.push(source);
+      });
+    });
     const data = new Uint8Array(64 * 192 * 4).fill(160);
     await browser.executeObsidian(
       async ({ app }, photo) => {
@@ -136,12 +154,14 @@ describe("Editing a symbol from a note", function () {
 
   it("offers Edit symbol in Live Preview's own menu for the image", async function () {
     await open("Entry.md", "live");
+    await menuSources();
     await rightClickSymbol("source");
     await browser.waitUntil(async () =>
       (await menuItems()).includes("Edit symbol"),
     );
-    // Obsidian's menu, not one of Inkline's in its place.
+    // Obsidian's menu, which Inkline neither replaces nor builds one under.
     expect(await menuItems()).toContain("Copy image");
+    expect(await menuSources()).not.toContain("inkline-symbol");
     await choose("Edit symbol");
     expect(await editorName()).toBe("001");
     await closeEditor();
@@ -149,8 +169,10 @@ describe("Editing a symbol from a note", function () {
 
   it("shows a symbol's menu in Reading view, instead of the image viewer", async function () {
     await open("Entry.md", "preview");
+    await menuSources();
     await rightClickSymbol("reading");
     await browser.waitUntil(async () => (await menuItems()).length > 0);
+    expect(await menuSources()).toEqual(["inkline-symbol"]);
     // Obsidian's items for a file come with it, as in a file's menu.
     const items = await menuItems();
     expect(items).toContain("Edit symbol");
