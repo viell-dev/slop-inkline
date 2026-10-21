@@ -28,7 +28,25 @@ symbols show as the plain images they are.
   it the drop is `-0.375em`, for an image 1.5 em tall.
 - In Live Preview, where the image is a block inside the editor's embed, that
   embed gets the class `inkline-symbol-embed`, and takes the drop in place of
-  the image.
+  the image. The resize handle Obsidian puts on an image embed there is hidden,
+  as it is larger than a symbol at text size, and so are the buttons it shows on
+  an image 80 pixels or wider, Zoom in and Edit this block. What Obsidian does
+  with a selected image stays: a second click opens its image viewer, where
+  Obsidian has one, as it does since 1.13.2, and `+`, `-`, and `0` resize it. A
+  drag that starts on a symbol is Obsidian's drag of an image, which puts a copy
+  of its embed where it ends.
+- The attribute `aria-label` with a name, which screen readers read as the
+  image's name and Obsidian shows as a tooltip, above the image, once the
+  pointer is on it: the text the embed's author wrote for the image, as a wiki
+  link's alias or a Markdown link's alt text, or else the symbol's name, its
+  file's name without `.ink.png`. A size, as `|24` gives, or the link as
+  written, which Obsidian puts there of itself, is no such text. With it,
+  `data-inkline-name` holding the same, and `data-tooltip-position="top"` unless
+  the image had a position, with `data-inkline-placed`, so that untagging
+  removes only what Inkline gave. An image with `aria-hidden="true"`, as a
+  picture beside its name in a list, or with an `aria-label` of its own keeps it
+  as it is. In a canvas card that is not being edited, Obsidian keeps the
+  pointer off the card's content, so only screen readers get the name there.
 
 Inkline's styles paint the ink with `background-color: currentColor`. To colour
 symbols differently from the text around them, set `color` on

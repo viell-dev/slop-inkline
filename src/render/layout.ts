@@ -31,6 +31,22 @@ export function isSymbolUrl(src: string, vault: string): boolean {
   return decoded.toLowerCase().endsWith(".ink.png");
 }
 
+/**
+ * A symbol's name from its image's URL: its file's name, decoded, without
+ * the `.ink.png` ending in any letter case, and without the folder or the
+ * query Obsidian adds.
+ */
+export function symbolName(src: string): string {
+  const path = src.split(/[?#]/, 1)[0] ?? "";
+  let file = path.slice(path.lastIndexOf("/") + 1);
+  try {
+    file = decodeURIComponent(file);
+  } catch {
+    // A stray % leaves the name as it is.
+  }
+  return file.replace(/\.ink\.png$/i, "");
+}
+
 /** A CSS `url()` for `src`, with what would end its string escaped. */
 export function cssUrl(src: string): string {
   const escaped = src

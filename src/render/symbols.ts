@@ -4,7 +4,13 @@
 // through a mask of its own pixels. One observer per window finds them as
 // Obsidian adds them.
 
-import { cssUrl, dropFor, explicitHeight, isSymbolUrl } from "./layout.ts";
+import {
+  cssUrl,
+  dropFor,
+  explicitHeight,
+  isSymbolUrl,
+  symbolName,
+} from "./layout.ts";
 
 /** The class a symbol's image gets, which styles.css styles. */
 export const symbolClass = "inkline-symbol";
@@ -34,6 +40,76 @@ export const embedClass = "inkline-symbol-embed";
 const maskProperty = "--inkline-mask";
 const dropProperty = "--inkline-drop";
 
+/**
+ * The attribute a symbol's name goes in: Obsidian shows it as a tooltip on
+ * hover, and screen readers read it as the image's name.
+ */
+const nameAttribute = "aria-label";
+
+/** Where the name Inkline gave an image is kept, so that only it is removed. */
+const nameMark = "data-inkline-name";
+
+/**
+ * Where Obsidian shows the tooltip: above, as it does for its own links in
+ * text, rather than over the next line; and the mark that Inkline set it.
+ */
+const placeAttribute = "data-tooltip-position";
+const placeMark = "data-inkline-placed";
+
+/**
+ * The text an embed's author wrote for its image, as an alias or alt text,
+ * if any: not what Obsidian puts there of itself, which is the link as
+ * written, ending in `.ink.png`, or followed by the heading or block it
+ * names, as `x.ink.png > top`, or a size, as `24` or `24x36`.
+ */
+function authoredText(image: HTMLImageElement): string | undefined {
+  const alt = image.getAttribute("alt")?.trim() ?? "";
+  if (
+    alt === "" ||
+    /\.ink\.png(?:$| > )/i.test(alt) ||
+    /^\d+(?:x\d+)?$/.test(alt)
+  ) {
+    return undefined;
+  }
+  return alt;
+}
+
+/**
+ * Gives `image` a name, which Obsidian shows as its tooltip and screen
+ * readers read: the text its embed's author wrote for it, or else its
+ * symbol's name. An image hidden from screen readers, as a picture beside
+ * its name in a list is, or with a name of its own, keeps what it has.
+ */
+function nameImage(image: HTMLImageElement, src: string): void {
+  if (image.getAttribute("aria-hidden") === "true") return;
+  const current = image.getAttribute(nameAttribute);
+  if (current !== null && current !== image.getAttribute(nameMark)) return;
+  const name = authoredText(image) ?? symbolName(src);
+  image.setAttribute(nameAttribute, name);
+  image.setAttribute(nameMark, name);
+  if (!image.hasAttribute(placeAttribute)) {
+    image.setAttribute(placeAttribute, "top");
+    image.setAttribute(placeMark, "");
+  }
+}
+
+/** Removes the name {@link nameImage} gave `image`, if it still has it. */
+function unnameImage(image: HTMLImageElement): void {
+  const given = image.getAttribute(nameMark);
+  if (given === null) return;
+  if (image.getAttribute(nameAttribute) === given) {
+    image.removeAttribute(nameAttribute);
+  }
+  image.removeAttribute(nameMark);
+  if (image.hasAttribute(placeMark)) {
+    // Unless it was changed since.
+    if (image.getAttribute(placeAttribute) === "top") {
+      image.removeAttribute(placeAttribute);
+    }
+    image.removeAttribute(placeMark);
+  }
+}
+
 /** Whether an image has a size of its own, as `![[x.ink.png|24]]` gives. */
 function sized(image: HTMLImageElement): boolean {
   return image.hasAttribute("width") || image.hasAttribute("height");
@@ -52,6 +128,7 @@ export function tagImage(image: HTMLImageElement, vault: string): void {
   }
   image.addClass(symbolClass);
   image.style.setProperty(maskProperty, cssUrl(src));
+  nameImage(image, src);
   const embed = image.parentElement?.closest(".image-embed");
   const holders: HTMLElement[] = [image];
   if (embed?.instanceOf(HTMLElement) === true) {
@@ -87,6 +164,7 @@ export function untagImage(image: HTMLImageElement): void {
   image.removeClass(symbolClass);
   image.style.removeProperty(maskProperty);
   image.style.removeProperty(dropProperty);
+  unnameImage(image);
   const embed = image.parentElement?.closest(`.${embedClass}`);
   if (embed?.instanceOf(HTMLElement) === true) {
     embed.removeClass(embedClass);
@@ -142,7 +220,9 @@ export class SymbolRenderer {
       subtree: true,
       childList: true,
       attributes: true,
-      attributeFilter: ["src", "width", "height"],
+      // The address and size, and the alt text, which Live Preview changes
+      // in place as an alias is edited, and which a name can come from.
+      attributeFilter: ["src", "width", "height", "alt"],
     });
     this.#observers.set(doc, observer);
     tagWithin(doc.body, this.#vault);

@@ -77,9 +77,14 @@ export function findSymbols(
 function renderSymbol(app: App, file: TFile, el: HTMLElement): void {
   // Its picture is text, as the renderer paints symbols in text.
   el.addClass("inkline-suggestion", "inkline-text");
+  // Beside its name, the picture says nothing more to a screen reader.
   el.createEl("img", {
     cls: "inkline-suggestion-picture",
-    attr: { src: app.vault.getResourcePath(file), alt: "" },
+    attr: {
+      src: app.vault.getResourcePath(file),
+      alt: "",
+      "aria-hidden": "true",
+    },
   });
   const text = el.createDiv({ cls: "inkline-suggestion-text" });
   text.createDiv({ cls: "inkline-suggestion-name", text: nameOf(file) });

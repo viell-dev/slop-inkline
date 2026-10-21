@@ -44,9 +44,12 @@ section is also its
   is kept and stays on the baseline. A symbol file shown on its own, in its tab
   or as a canvas's image, stays a picture; images from outside the vault and
   other images are left as they are; and with Inkline disabled, symbols show as
-  the plain images they are. A plugin's own view of a note shows them as text
-  with the `inkline-text` class, as [docs/rendering.md](docs/rendering.md)
-  describes for theme and plugin authors.
+  the plain images they are. Hovering a symbol shows its name, or what its
+  embed's alias or alt text says, which screen readers read as well; and in Live
+  Preview, Obsidian's resize handle and image buttons no longer cover it. A
+  plugin's own view of a note shows them as text with the `inkline-text` class,
+  as [docs/rendering.md](docs/rendering.md) describes for theme and plugin
+  authors.
 - **Type to insert:** in a note, type `;;` and a few letters of a symbol's name,
   in any script, to choose it from a list with its picture: the best match
   first, then those the note uses most, then the most recently changed. Enter
