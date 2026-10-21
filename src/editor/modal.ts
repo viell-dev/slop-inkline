@@ -875,14 +875,17 @@ export class InkEditorModal extends Modal {
   }
 
   /**
-   * Takes a picture pasted into the editor while it is the modal on top,
-   * unless a text field has the focus. Chromium sends a paste to the focused
-   * element, or to the body when that cannot be edited, as older versions do
-   * for the surface; a paste to the body is the top editor's.
+   * Takes a picture pasted into the editor while it is the modal on top and
+   * asks nothing, unless a text field has the focus. Its questions open in
+   * whichever window is active, so one can be open in another. Chromium
+   * sends a paste to the focused element, or to the body when that cannot be
+   * edited, as older versions do for the surface; a paste to the body is the
+   * top editor's.
    */
   readonly #paste = (event: ClipboardEvent): void => {
     const doc = this.modalEl.doc;
-    if (this.#closing || this.#retired || !this.#onTop()) return;
+    if (this.#closing || this.#retired || this.#questions.size > 0) return;
+    if (!this.#onTop()) return;
     if (
       !event.composedPath().includes(this.modalEl) &&
       event.target !== doc.body
