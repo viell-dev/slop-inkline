@@ -28,7 +28,14 @@ symbols show as the plain images they are.
   it the drop is `-0.375em`, for an image 1.5 em tall.
 - In Live Preview, where the image is a block inside the editor's embed, that
   embed gets the class `inkline-symbol-embed`, and takes the drop in place of
-  the image.
+  the image. The resize handle Obsidian puts on an image embed there is hidden,
+  as it is larger than a symbol at text size.
+- The attribute `aria-label` with the symbol's name, its file's name without
+  `.ink.png`, which Obsidian shows as a tooltip on hover and screen readers read
+  as the image's name; and `data-inkline-name`, holding the same, so that
+  untagging removes only a name Inkline gave. An image with
+  `aria-hidden="true"`, as a picture beside its name in a list, or with an
+  `aria-label` of its own keeps it as it is.
 
 Inkline's styles paint the ink with `background-color: currentColor`. To colour
 symbols differently from the text around them, set `color` on
