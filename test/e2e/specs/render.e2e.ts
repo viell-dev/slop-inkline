@@ -496,11 +496,125 @@ describe("Symbols in notes", function () {
         images("source"),
       );
       expect(masked).toBe(0);
+      // Nor do they keep the names Inkline gave them.
+      const named = await browser.execute(
+        (selector) =>
+          Array.from(activeDocument.querySelectorAll(selector)).filter(
+            (image) =>
+              image.hasAttribute("aria-label") ||
+              image.hasAttribute("data-inkline-name"),
+          ).length,
+        images("source"),
+      );
+      expect(named).toBe(0);
     } finally {
       await obsidianPage.enablePlugin("inkline");
       await loadModules();
     }
     await waitForTagged(images("source"), 2);
+  });
+
+  it("show their names on hover, and follow a rename", async function () {
+    await browser.executeObsidian(async ({ app }, block) => {
+      const bytes = Uint8Array.from(atob(block), (c) => c.charCodeAt(0));
+      await app.vault.createBinary("Glyphs/tower one.ink.png", bytes.buffer);
+      await app.vault.create(
+        "Names.md",
+        "Wiki ![[tower one.ink.png]] and ![](Glyphs/tower%20one.ink.png) and ![[Glyphs/photo.png]].\n",
+      );
+    }, toBase64(blockSymbol()));
+    /** The names the visible view's images have, in order. */
+    const names = async (mode: "source" | "preview") =>
+      browser.execute(
+        (selector) =>
+          Array.from(activeDocument.querySelectorAll(selector)).map((image) =>
+            image.getAttribute("aria-label"),
+          ),
+        images(mode),
+      );
+    /** Waits for the visible view's images to have `wanted` as their names. */
+    const waitForNames = async (
+      mode: "source" | "preview",
+      wanted: (string | null)[],
+    ) => {
+      let last: (string | null)[] = [];
+      try {
+        await browser.waitUntil(async () => {
+          last = await names(mode);
+          return JSON.stringify(last) === JSON.stringify(wanted);
+        });
+      } catch (error) {
+        throw new Error(
+          `wanted the names ${JSON.stringify(wanted)}, but saw ${JSON.stringify(last)}`,
+          { cause: error },
+        );
+      }
+    };
+    /** Hovers the view's first symbol and waits for its tooltip. */
+    const hoverFirst = async (mode: "source" | "preview", name: string) => {
+      // Obsidian shows a tooltip when the pointer comes to the element.
+      await browser.$(".workspace-leaf.mod-active .view-header-title").moveTo();
+      await browser.pause(300);
+      await browser.$(images(mode)).moveTo();
+      let shown = "";
+      try {
+        await browser.waitUntil(async () => {
+          shown = await browser.execute(
+            () => document.querySelector(".tooltip")?.textContent ?? "",
+          );
+          return shown === name;
+        });
+      } catch (error) {
+        throw new Error(`wanted the tooltip "${name}", but saw "${shown}"`, {
+          cause: error,
+        });
+      }
+    };
+    for (const mode of ["preview", "source"] as const) {
+      await open("Names.md", mode);
+      // Both links name the symbol; the photo is no symbol's.
+      await waitForNames(mode, ["tower one", "tower one", null]);
+      await hoverFirst(mode, "tower one");
+    }
+    // In Live Preview, the pointer is on the symbol, not on a resize handle,
+    // which the photo keeps (#37).
+    const handles = await browser.execute((selector) => {
+      const shown = (image: Element) => {
+        const corner = image
+          .closest(".image-embed")
+          ?.querySelector(".image-resize-corner");
+        return corner?.instanceOf(HTMLElement) === true
+          ? getComputedStyle(corner).display !== "none"
+          : null;
+      };
+      const [first] = Array.from(activeDocument.querySelectorAll(selector));
+      const box = first?.getBoundingClientRect();
+      const under =
+        box === undefined
+          ? null
+          : activeDocument.elementFromPoint(
+              box.left + box.width / 2,
+              box.top + box.height / 2,
+            );
+      return {
+        handles: Array.from(activeDocument.querySelectorAll(selector)).map(
+          shown,
+        ),
+        underIsSymbol: under === first,
+      };
+    }, images("source"));
+    expect(handles).toEqual({
+      handles: [false, false, true],
+      underIsSymbol: true,
+    });
+    await saveScreenshot("render-names");
+    // Renamed, the symbol's embeds follow, and so does its name.
+    await browser.executeObsidian(async ({ app }) => {
+      const file = app.vault.getFileByPath("Glyphs/tower one.ink.png");
+      if (file === null) throw new Error("no tower one");
+      await app.fileManager.renameFile(file, "Glyphs/tower two.ink.png");
+    });
+    await waitForNames("source", ["tower two", "tower two", null]);
   });
 
   it("tag a thousand symbols quickly, however they are added", async function () {

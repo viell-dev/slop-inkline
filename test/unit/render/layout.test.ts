@@ -4,6 +4,7 @@ import {
   dropFor,
   explicitHeight,
   isSymbolUrl,
+  symbolName,
 } from "../../../src/render/layout.ts";
 
 describe("isSymbolUrl", () => {
@@ -70,5 +71,17 @@ describe("explicitHeight", () => {
     expect(explicitHeight("wide", null, 96, 192)).toBeUndefined();
     expect(explicitHeight(null, "0", 96, 192)).toBeUndefined();
     expect(explicitHeight(null, null, 96, 192)).toBeUndefined();
+  });
+});
+
+describe("symbolName", () => {
+  it("reads a symbol's name from its address", () => {
+    expect(symbolName("app://a1b2/v/Glyphs/tower%20one.ink.png?123")).toBe(
+      "tower one",
+    );
+    expect(symbolName("app://a1b2/v/%E5%A1%94.INK.PNG")).toBe("塔");
+    expect(symbolName("app://a1b2/v/50%25%20off.ink.png#x")).toBe("50% off");
+    // A stray % leaves the name as written.
+    expect(symbolName("app://a1b2/v/a%.ink.png")).toBe("a%");
   });
 });

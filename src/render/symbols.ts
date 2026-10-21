@@ -4,7 +4,13 @@
 // through a mask of its own pixels. One observer per window finds them as
 // Obsidian adds them.
 
-import { cssUrl, dropFor, explicitHeight, isSymbolUrl } from "./layout.ts";
+import {
+  cssUrl,
+  dropFor,
+  explicitHeight,
+  isSymbolUrl,
+  symbolName,
+} from "./layout.ts";
 
 /** The class a symbol's image gets, which styles.css styles. */
 export const symbolClass = "inkline-symbol";
@@ -34,6 +40,38 @@ export const embedClass = "inkline-symbol-embed";
 const maskProperty = "--inkline-mask";
 const dropProperty = "--inkline-drop";
 
+/**
+ * The attribute a symbol's name goes in: Obsidian shows it as a tooltip on
+ * hover, and screen readers read it as the image's name.
+ */
+const nameAttribute = "aria-label";
+
+/** Where the name Inkline gave an image is kept, so that only it is removed. */
+const nameMark = "data-inkline-name";
+
+/**
+ * Gives `image` its symbol's name, unless it is hidden from screen readers,
+ * as a picture beside its name in a list is, or has a name of its own.
+ */
+function nameImage(image: HTMLImageElement, src: string): void {
+  if (image.getAttribute("aria-hidden") === "true") return;
+  const current = image.getAttribute(nameAttribute);
+  if (current !== null && current !== image.getAttribute(nameMark)) return;
+  const name = symbolName(src);
+  image.setAttribute(nameAttribute, name);
+  image.setAttribute(nameMark, name);
+}
+
+/** Removes the name {@link nameImage} gave `image`, if it still has it. */
+function unnameImage(image: HTMLImageElement): void {
+  const given = image.getAttribute(nameMark);
+  if (given === null) return;
+  if (image.getAttribute(nameAttribute) === given) {
+    image.removeAttribute(nameAttribute);
+  }
+  image.removeAttribute(nameMark);
+}
+
 /** Whether an image has a size of its own, as `![[x.ink.png|24]]` gives. */
 function sized(image: HTMLImageElement): boolean {
   return image.hasAttribute("width") || image.hasAttribute("height");
@@ -52,6 +90,7 @@ export function tagImage(image: HTMLImageElement, vault: string): void {
   }
   image.addClass(symbolClass);
   image.style.setProperty(maskProperty, cssUrl(src));
+  nameImage(image, src);
   const embed = image.parentElement?.closest(".image-embed");
   const holders: HTMLElement[] = [image];
   if (embed?.instanceOf(HTMLElement) === true) {
@@ -87,6 +126,7 @@ export function untagImage(image: HTMLImageElement): void {
   image.removeClass(symbolClass);
   image.style.removeProperty(maskProperty);
   image.style.removeProperty(dropProperty);
+  unnameImage(image);
   const embed = image.parentElement?.closest(`.${embedClass}`);
   if (embed?.instanceOf(HTMLElement) === true) {
     embed.removeClass(embedClass);

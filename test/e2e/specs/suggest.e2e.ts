@@ -233,6 +233,19 @@ describe("Inserting a symbol you have", function () {
     await openAtMarker("Typing.md", "HERE");
     await type(";;arc");
     await waitForSuggested(["arch"]);
+    // Its picture, beside its name, is painted as text but given no name.
+    expect(
+      await browser.execute(() => {
+        const picture = activeDocument.querySelector(
+          ".inkline-suggestion-picture",
+        );
+        return [
+          picture?.classList.contains("inkline-symbol"),
+          picture?.getAttribute("aria-hidden"),
+          picture?.getAttribute("aria-label"),
+        ];
+      }),
+    ).toEqual([true, "true", null]);
     await saveScreenshot("suggest-typing");
     await browser.keys(["Enter"]);
     await waitForNote("The door reads ![[arch.ink.png]].\n");

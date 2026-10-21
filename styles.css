@@ -134,6 +134,15 @@ img.inkline-symbol:not([width], [height]) {
   width: auto;
 }
 
+/*
+ * Live Preview's resize handle is larger than a symbol at text size, and
+ * would take the pointer over all of it: a symbol is sized by the text, or
+ * by its link (#37).
+ */
+.cm-content .image-embed.inkline-symbol-embed .image-resize-corner {
+  display: none;
+}
+
 /* A symbol in a list of them: its picture, as tall as the text, and names. */
 .inkline-suggestion {
   display: flex;
