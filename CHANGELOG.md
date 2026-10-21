@@ -56,8 +56,12 @@ section is also its
   puts its embed in place of what was typed; Esc closes the list, and what you
   type after it stays text. Code and front matter show no list. **Insert
   existing symbol**, a command, opens the same list to search.
-- **Edit symbol**, in a symbol file's menu, which opens it in the editor again
-  with every stroke, so that nothing is lost by editing.
+- **Edit symbol** opens a symbol in the editor again with every stroke, so that
+  nothing is lost by editing. It is in a symbol file's menu, and in a note: in
+  the menu of a symbol's picture, in Live Preview, Reading view, embedded notes,
+  and popout windows, where a right-click on a symbol shows its menu rather than
+  Obsidian's image viewer; in the editor's menu on an embed's text; and as a
+  command with the cursor on a symbol's embed.
 - The editor's pen, eraser, four brush sizes, undo, redo, and clear, each with
   its shortcut in its tooltip. A pen's eraser end erases, and a palm resting on
   a tablet does not draw, even one that touched it before the pen. A symbol
