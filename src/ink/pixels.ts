@@ -385,6 +385,34 @@ export function inkDefaults(part: {
   for (let index = 0; index < alpha.length; index++) {
     if ((alpha[index] ?? 0) >= 128) ink[at++] = values[index] ?? 0;
   }
+  let darkest = 255;
+  let lightest = 0;
+  let sum = 0;
+  // eslint-disable-next-line @typescript-eslint/prefer-for-of -- for...of over a typed array is many times slower in V8
+  for (let index = 0; index < ink.length; index++) {
+    const value = ink[index] ?? 0;
+    darkest = Math.min(darkest, value);
+    lightest = Math.max(lightest, value);
+    sum += value;
+  }
+  // Ink of nearly one value, as a glyph of one colour is: a threshold past
+  // all of it on the far side makes it all full ink, rather than cutting
+  // through it.
+  if (lightest - darkest < thresholdEdge) {
+    const light = sum / ink.length >= 128;
+    return light
+      ? {
+          threshold: Math.max(thresholdRange.min, darkest - thresholdEdge / 2),
+          light,
+        }
+      : {
+          threshold: Math.min(
+            thresholdRange.max,
+            lightest + thresholdEdge / 2 + 1,
+          ),
+          light,
+        };
+  }
   const threshold = otsuThreshold(ink);
   // The ink is all there is: light if most of it is.
   return { threshold, light: !lightInk(ink, threshold) };
@@ -401,6 +429,45 @@ export interface Region {
 }
 
 /**
+ * The picture pixels of a picture of `width` × `height` pixels at `place`
+ * that lie within `region`, in document pixels, by whole picture pixels;
+ * undefined when none do.
+ */
+export function regionBounds(
+  width: number,
+  height: number,
+  place: PicturePlace,
+  region: Bounds,
+): Bounds | undefined {
+  const { x, y, scale } = place;
+  const left = Math.max(0, Math.floor((region.left - x) / scale));
+  const right = Math.min(width, Math.ceil((region.right - x) / scale));
+  const top = Math.max(0, Math.floor((region.top - y) / scale));
+  const bottom = Math.min(height, Math.ceil((region.bottom - y) / scale));
+  if (right <= left || bottom <= top) return undefined;
+  return { left, top, right, bottom };
+}
+
+/**
+ * How much smaller a copy of a picture at `place` the preview should trace,
+ * for the part of it within `region`: 1, the picture itself, when that part
+ * is within {@link maxPreviewPixels}, so that a picture zoomed in on shows as
+ * finely as Apply makes it; otherwise `factor`, the copy's.
+ */
+export function previewShrink(
+  width: number,
+  height: number,
+  place: PicturePlace,
+  region: Bounds,
+  factor: number,
+): number {
+  const bounds = regionBounds(width, height, place, region);
+  if (bounds === undefined) return 1;
+  const area = (bounds.right - bounds.left) * (bounds.bottom - bounds.top);
+  return area <= maxPreviewPixels ? 1 : factor;
+}
+
+/**
  * The luminance of the part of a picture at `place` that lies within
  * `region`, in document pixels, by whole picture pixels, with where that
  * part's top left corner is in the picture; undefined when no part does.
@@ -410,17 +477,10 @@ export function regionValues(
   place: PicturePlace,
   region: Bounds,
 ): Region | undefined {
-  const { x, y, scale } = place;
-  const left = Math.max(0, Math.floor((region.left - x) / scale));
-  const right = Math.min(picture.width, Math.ceil((region.right - x) / scale));
-  const top = Math.max(0, Math.floor((region.top - y) / scale));
-  const bottom = Math.min(
-    picture.height,
-    Math.ceil((region.bottom - y) / scale),
-  );
-  if (right <= left || bottom <= top) return undefined;
+  const bounds = regionBounds(picture.width, picture.height, place, region);
+  if (bounds === undefined) return undefined;
+  const { left, top, right, bottom } = bounds;
   const width = right - left;
-  const bounds = { left, top, right, bottom };
   const values = cropAlpha(picture.values, picture.width, bounds);
   const part = { values, width, height: bottom - top, left, top };
   return picture.alpha === undefined

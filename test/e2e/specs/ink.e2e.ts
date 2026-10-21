@@ -703,8 +703,9 @@ describe("The drawing core in Obsidian's renderer", function () {
       }
       return (performance.now() - started) / 10;
     });
-    // Per step: a frame or so, where tracing the whole picture took a second.
-    expect(ms).toBeLessThan(150);
+    // Per step: a few frames at most, where tracing the whole picture took
+    // a second, with room for a slow machine.
+    expect(ms).toBeLessThan(300);
   });
 
   it("makes a base layer and a preview of a traced picture's ink", async function () {

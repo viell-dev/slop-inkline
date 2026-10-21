@@ -5,6 +5,8 @@ import {
   maxPreviewPixels,
   pictureLuminance,
   previewFactor,
+  previewShrink,
+  regionBounds,
   shrinkLuminance,
   thresholdRange,
   cropAlpha,
@@ -447,5 +449,36 @@ describe("traceInk with transparency", () => {
       x: 0,
       y: 0,
     });
+  });
+});
+
+describe("inkDefaults for a glyph of one grey", () => {
+  it("makes all of it full ink, light or dark", () => {
+    const alpha = Uint8ClampedArray.from([255, 255, 0, 0]);
+    for (const grey of [40, 128, 200]) {
+      const values = Uint8ClampedArray.from([grey, grey + 3, 255, 255]);
+      const { threshold, light } = inkDefaults({ values, alpha });
+      const ink = thresholdAlpha(values.subarray(0, 2), threshold, light);
+      expect([...ink]).toEqual([255, 255]);
+    }
+  });
+});
+
+describe("regionBounds and previewShrink", () => {
+  const place = { x: 0, y: 0, scale: 0.5 };
+  it("finds the picture pixels in a region", () => {
+    expect(
+      regionBounds(100, 100, place, { left: 10, top: 0, right: 20, bottom: 5 }),
+    ).toEqual({ left: 20, top: 0, right: 40, bottom: 10 });
+    expect(
+      regionBounds(100, 100, place, { left: 60, top: 0, right: 70, bottom: 5 }),
+    ).toBeUndefined();
+  });
+
+  it("traces the picture itself when what is in view is small enough", () => {
+    const small = { left: 0, top: 0, right: 10, bottom: 10 };
+    const large = { left: 0, top: 0, right: 2000, bottom: 2000 };
+    expect(previewShrink(4000, 4000, place, small, 4)).toBe(1);
+    expect(previewShrink(4000, 4000, place, large, 4)).toBe(4);
   });
 });

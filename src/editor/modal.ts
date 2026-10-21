@@ -28,6 +28,7 @@ import {
   inkDefaults,
   pictureLuminance,
   previewFactor,
+  previewShrink,
   regionValues,
   shrinkLuminance,
   thresholdRange,
@@ -144,6 +145,8 @@ const making = "Making ink of the picture: set the threshold, then Apply.";
 interface PartShown {
   readonly placement: Placement;
   readonly region: Bounds;
+  /** Where the copy traced sits: the picture's place, at its scale. */
+  readonly place: PicturePlace;
   /** Undefined when no part of the picture is there. */
   readonly part: Region | undefined;
 }
@@ -1144,13 +1147,23 @@ export class InkEditorModal extends Modal {
     const luma = pictureLuminance(readPixels(picture.image));
     const factor = previewFactor(luma.width, luma.height);
     const preview = shrinkLuminance(luma, factor);
-    // The defaults come from the part that would become ink.
-    const part = regionValues(
-      preview,
-      shrunkPlace(picture.placement, factor),
-      this.#inkRegion(view),
+    // The defaults come from the part that would become ink, as finely as
+    // the preview traces it.
+    const region = this.#inkRegion(view);
+    const shrink = previewShrink(
+      luma.width,
+      luma.height,
+      picture.placement,
+      region,
+      factor,
     );
-    const { threshold, light } = inkDefaults(part ?? preview);
+    const source = shrink === 1 ? luma : preview;
+    const part = regionValues(
+      source,
+      shrunkPlace(picture.placement, shrink),
+      region,
+    );
+    const { threshold, light } = inkDefaults(part ?? source);
     this.#converting = {
       image: picture.image,
       luma,
@@ -1224,19 +1237,30 @@ export class InkEditorModal extends Modal {
       return { document, base: this.#base };
     }
     const region = this.#inkRegion(view);
-    const place = shrunkPlace(picture.placement, converting.factor);
     let area = this.#partShown;
     if (
       area?.placement !== picture.placement ||
       !sameBounds(area.region, region)
     ) {
+      const { luma, preview, factor } = converting;
+      // As finely as the picture itself, unless too much of it is in view.
+      const shrink = previewShrink(
+        luma.width,
+        luma.height,
+        picture.placement,
+        region,
+        factor,
+      );
+      const place = shrunkPlace(picture.placement, shrink);
       area = {
         placement: picture.placement,
         region,
-        part: regionValues(converting.preview, place, region),
+        place,
+        part: regionValues(shrink === 1 ? luma : preview, place, region),
       };
       this.#partShown = area;
     }
+    const { place } = area;
     let shown = this.#inkShown;
     if (
       shown === undefined ||
@@ -1288,6 +1312,13 @@ export class InkEditorModal extends Modal {
       this.#applying = this.#makeInk().finally(() => {
         this.#applying = undefined;
         this.#updateButtons();
+        // Disabling Apply while it ran let go of the focus; with no ink
+        // made, the row stays open, and the focus goes back to Apply.
+        const focused = this.modalEl.doc.activeElement;
+        if (focused === null || focused === this.modalEl.doc.body) {
+          if (this.#converting === undefined) this.#refocus();
+          else this.#buttons.get("apply")?.buttonEl.focus();
+        }
       });
       this.#updateButtons();
     }
@@ -1320,6 +1351,7 @@ export class InkEditorModal extends Modal {
         return;
       }
       let made: Awaited<ReturnType<typeof baseFromInk>>;
+      this.#announce("Making ink…");
       try {
         made = await baseFromInk(ink, placement.scale);
       } catch (error) {

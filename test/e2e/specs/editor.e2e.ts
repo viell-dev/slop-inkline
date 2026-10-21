@@ -3683,24 +3683,28 @@ describe("The editor", function () {
 
     it("makes the ink being previewed on Mod+S, and on Next", async function () {
       await insert();
-      await pasteMarked(...squareOn("white", "black"));
+      // Two greys, one above the other: 150 makes ink of the darker only,
+      // 250 of both, so that each save's base layer shows its threshold.
+      await pasteMarked(400, 200, "rgb(200, 200, 200)", [
+        { x: 0, y: 0, width: 400, height: 100, colour: "rgb(100, 100, 100)" },
+      ]);
       await browser.keys(["i"]);
-      await browser.waitUntil(inkInMiddle);
+      await setThreshold(150);
       await browser.keys(["Control", "s"]);
       await waitForStatus("Saved");
       expect(await makingInk()).toBe(false);
       expect(await editorOpen()).toBe(true);
-      expect(await baseSize("001.ink.png")).toEqual([20, 20]);
-      // Again, and Next, which hands the picture on.
+      expect(await baseSize("001.ink.png")).toEqual([400, 100]);
+      // Again at 250, and Next, which hands the picture on.
       await browser.keys(["i"]);
-      await setThreshold(100);
+      await setThreshold(250);
       await markEditor();
       await browser.keys(["Control", "Shift", "Enter"]);
       await waitForNext(1);
       expect(await pictureHint()).toBe(
         "Tracing over a picture, which is not saved.",
       );
-      expect(await baseSize("001.ink.png")).toEqual([20, 20]);
+      expect(await baseSize("001.ink.png")).toEqual([400, 200]);
       expect(await strokeCount("001.ink.png")).toBe(0);
     });
 
@@ -3756,6 +3760,15 @@ describe("The editor", function () {
       await browser.$('[data-inkline-button="apply"]').click();
       await waitForStatus("no part of the picture is on the surface");
       expect(await makingInk()).toBe(true);
+      // The row stays open, and the focus stays in it, on Apply.
+      await browser.waitUntil(async () =>
+        browser.execute(
+          () =>
+            activeDocument.activeElement?.getAttribute(
+              "data-inkline-button",
+            ) === "apply",
+        ),
+      );
       // Back a little, into view at the right edge, then F fits the ink.
       await browser.keys(["i"]);
       for (let step = 0; step < 25; step++) {
