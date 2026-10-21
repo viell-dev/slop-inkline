@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { embedPath } from "../../../src/notes/links.ts";
 import {
   chooseName,
+  chooseRename,
   embedFromLink,
   encodePath,
   nextNumberName,
@@ -125,12 +126,34 @@ describe("chooseName", () => {
       kind: "name",
       name: "door",
     });
-    // A format character, as a zero-width space, would hide or fake a name.
+    // An invisible space, or a control that reorders text, would hide or
+    // fake a name; so would a control character.
     expect(chooseName(char(0x200b))).toEqual({ kind: "number" });
-    expect(chooseName(`ga${char(0x200d)}te`)).toEqual({
-      kind: "name",
-      name: "gate",
-    });
+    for (const code of [0x200b, 0x2060, 0xfeff, 0x202e, 0x2067, 0x85]) {
+      expect(chooseName(`ga${char(code)}te`)).toEqual({
+        kind: "name",
+        name: "gate",
+      });
+    }
+  });
+
+  it("keeps the joiners and marks that spell or show a name", () => {
+    const text = (...codes: number[]) => String.fromCodePoint(...codes);
+    const names = [
+      // Three faces joined into one emoji.
+      text(0x1f468, 0x200d, 0x1f469, 0x200d, 0x1f467),
+      // A Persian word whose two parts a non-joiner keeps apart.
+      text(0x645, 0x6cc, 0x200c, 0x62e, 0x648, 0x627, 0x647, 0x645),
+      // A Devanagari half-form, which the joiner asks for.
+      text(0x915, 0x94d, 0x200d, 0x937),
+      // Latin and Arabic, with the marks that set their order.
+      text(0x61, 0x200f, 0x627, 0x61c, 0x628),
+    ];
+    for (const name of names) {
+      expect(chooseName(name)).toEqual({ kind: "name", name });
+    }
+    // Joiners alone still name nothing.
+    expect(chooseName(text(0x200d, 0x200c))).toEqual({ kind: "number" });
   });
 
   it("refuses device names and names too long for a file", () => {
@@ -146,5 +169,33 @@ describe("chooseName", () => {
     expect(chooseName("a".repeat(248)).kind).toBe("refused");
     // Three bytes each in UTF-8.
     expect(chooseName("塔".repeat(83)).kind).toBe("refused");
+  });
+});
+
+describe("chooseRename", () => {
+  it("keeps a file's own name, which chooseName would change or refuse", () => {
+    for (const own of ["a#1", "door.", "con", "tower"]) {
+      expect(chooseRename(own, own)).toEqual({ kind: "name", name: own });
+      expect(chooseRename(` ${own} `, own)).toEqual({
+        kind: "name",
+        name: own,
+      });
+    }
+    // Decomposed in the file or the field, it is the same name, as the file
+    // has it.
+    const decomposed = `cafe${String.fromCharCode(0x301)}`;
+    expect(chooseRename(`caf${String.fromCharCode(0xe9)}`, decomposed)).toEqual(
+      {
+        kind: "name",
+        name: decomposed,
+      },
+    );
+  });
+
+  it("reads any other name as chooseName does", () => {
+    expect(chooseRename("", "a#1")).toEqual({ kind: "number" });
+    expect(chooseRename("a#2", "a#1")).toEqual({ kind: "name", name: "a2" });
+    expect(chooseRename("con", "")).toEqual(chooseName("con"));
+    expect(chooseRename("CON", "con").kind).toBe("refused");
   });
 });

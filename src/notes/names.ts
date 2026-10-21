@@ -30,17 +30,20 @@ const reserved = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i;
 const noBreakSpaces = new Set([0xa0, 0x202f]);
 
 /**
- * Whether `char` can be in a name: not a control character or a format
- * character, such as a zero-width space, which would make a name look empty
- * or the same as another, and not one a file name cannot hold.
+ * Invisible spaces and the controls that reorder text, which would make a
+ * name look empty, the same as another, or other than it is. Other format
+ * characters stay, as the joiners and direction marks that scripts and
+ * emoji need for a name to be spelled and shown as it is.
+ */
+const invisible = /[\u200b\u2060\ufeff\u202a-\u202e\u2066-\u2069]/u;
+
+/**
+ * Whether `char` can be in a name: not a control character, an invisible
+ * one, or one a file name cannot hold.
  */
 function allowed(char: string): boolean {
-  const code = char.codePointAt(0) ?? 0;
   return (
-    code >= 0x20 &&
-    code !== 0x7f &&
-    !/\p{Cf}/u.test(char) &&
-    !forbidden.includes(char)
+    !/\p{Cc}/u.test(char) && !invisible.test(char) && !forbidden.includes(char)
   );
 }
 
@@ -58,9 +61,9 @@ export type NameChoice =
  * Obsidian stores a file's name, its characters composed and its no-break
  * spaces plain, without the characters a name cannot hold, and without
  * space around it or dots before it, which would hide the file, or after
- * it, which Windows drops. An empty name takes the next number in its
- * folder. A name Windows keeps for a device, or one too long for a file
- * name, is refused, with the reason.
+ * it, which Windows drops. An empty name, or one of format characters
+ * alone, takes the next number in its folder. A name Windows keeps for a
+ * device, or one too long for a file name, is refused, with the reason.
  */
 export function chooseName(typed: string): NameChoice {
   const kept = Array.from(typed.normalize("NFC"))
@@ -72,7 +75,7 @@ export function chooseName(typed: string): NameChoice {
     .replace(/^\.+/, "")
     .replace(/[. ]+$/, "")
     .trim();
-  if (name === "") return { kind: "number" };
+  if (name.replace(/\p{Cf}/gu, "").trim() === "") return { kind: "number" };
   if (reserved.test(name)) {
     return {
       kind: "refused",
@@ -84,6 +87,22 @@ export function chooseName(typed: string): NameChoice {
     return { kind: "refused", reason: `the name is too long for a file` };
   }
   return { kind: "name", name };
+}
+
+/**
+ * What `typed` makes the name of a symbol named `current`, `""` for one with
+ * no file yet: as `chooseName` says, except that its own name, typed again,
+ * keeps it. A file can come by a name that `chooseName` would change or
+ * refuse, as one renamed elsewhere to `a#1`, or to `con` on Linux; saving it
+ * leaves that name alone.
+ */
+export function chooseRename(typed: string, current: string): NameChoice {
+  const own = current.normalize("NFC");
+  if (own !== "" && typed.normalize("NFC").trim() === own) {
+    // As the file has it, composed or not, so that nothing renames it.
+    return { kind: "name", name: current };
+  }
+  return chooseName(typed);
 }
 
 /**

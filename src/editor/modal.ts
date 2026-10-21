@@ -37,7 +37,7 @@ import {
   type Region,
 } from "../ink/pixels.ts";
 import type { DrawableBase } from "../ink/render.ts";
-import { chooseName } from "../notes/names.ts";
+import { chooseRename } from "../notes/names.ts";
 import {
   draftBase,
   fingerprintOf,
@@ -311,6 +311,8 @@ export class InkEditorModal extends Modal {
   #nameField: HTMLInputElement | undefined;
   /** The symbol's name as last opened or saved, or empty before it has one. */
   #savedName: string;
+  /** Whether the last save kept the drawing but could not rename the file. */
+  #notRenamed = false;
   /**
    * Whether the question about a change on disk is open, and the save it
    * goes on with if the drawing is kept.
@@ -776,11 +778,11 @@ export class InkEditorModal extends Modal {
   /**
    * Whether saving would give the symbol another name than it has: the name
    * field, as saving reads it, holds another, or one that saving would
-   * refuse. Left empty, the field keeps the symbol's name, or takes a number
-   * for a new one.
+   * refuse. Left empty, or holding the name the symbol has, the field keeps
+   * it, or takes a number for a new one.
    */
   get #nameChanged(): boolean {
-    const choice = chooseName(this.#typedName);
+    const choice = chooseRename(this.#typedName, this.#savedName);
     if (choice.kind === "number") return false;
     return choice.kind === "refused" || choice.name !== this.#savedName;
   }
@@ -826,19 +828,46 @@ export class InkEditorModal extends Modal {
     this.#nameField = field;
   }
 
-  /**
-   * After a save that sent `typed` as the name, takes the name the file now
-   * has, and shows it in the field unless it was changed meanwhile.
-   */
-  #named(typed: string): void {
+  /** The name of the file the editor saves to, or undefined before it has one. */
+  #fileName(): string | undefined {
     const path = this.#options.file?.()?.path;
     const file = path?.slice(path.lastIndexOf("/") + 1);
-    if (file?.toLowerCase().endsWith(inkExtension) !== true) return;
-    this.#savedName = file.slice(0, -inkExtension.length);
+    return file?.toLowerCase().endsWith(inkExtension) === true
+      ? file.slice(0, -inkExtension.length)
+      : undefined;
+  }
+
+  /**
+   * After a save that sent `typed` as the name, or a rename made elsewhere,
+   * takes the name the file now has, and shows it in the field if the field
+   * still holds `typed`. Undefined leaves the field as it is, as after a
+   * rename that failed.
+   */
+  #named(typed: string | undefined): void {
+    const name = this.#fileName();
+    if (name === undefined) return;
+    this.#savedName = name;
     const field = this.#nameField;
     if (field === undefined) return;
-    field.placeholder = this.#savedName;
-    if (field.value === typed) field.value = this.#savedName;
+    field.placeholder = name;
+    if (typed !== undefined && field.value === typed) field.value = name;
+  }
+
+  /** Whether the file has the name `typed` gave it, as saving read it. */
+  #took(typed: string): boolean {
+    const name = this.#fileName() ?? "";
+    const choice = chooseRename(typed, name);
+    return (
+      choice.kind === "number" ||
+      (choice.kind === "name" && choice.name === name)
+    );
+  }
+
+  /** What a save says when something is still unsaved after it. */
+  get #partlySaved(): string {
+    return this.#notRenamed
+      ? "Saved, but not renamed"
+      : "Saved, except for what changed while saving";
   }
 
   /**
@@ -2106,7 +2135,7 @@ export class InkEditorModal extends Modal {
       // Closed meanwhile, as by Save and close or by Inkline being disabled.
       if (this.#closing || this.#retired) return;
       if (this.#unsaved) {
-        this.#announce("Saved, except for what changed while saving");
+        this.#announce(this.#partlySaved);
         return;
       }
       const { tool, sizeIndex, snap } = this.#session;
@@ -2132,7 +2161,7 @@ export class InkEditorModal extends Modal {
     if (!(await this.#applyPending())) return;
     if (!(await this.#save(() => void this.#saveAndClose()))) return;
     if (this.#unsaved) {
-      this.#announce("Saved, except for what changed while saving");
+      this.#announce(this.#partlySaved);
       return;
     }
     this.#finish();
@@ -2190,7 +2219,10 @@ export class InkEditorModal extends Modal {
           },
           typed,
         );
-        this.#named(typed);
+        // A rename that failed leaves the name typed in the field, unsaved,
+        // for the next save to try again.
+        this.#notRenamed = !this.#took(typed);
+        this.#named(this.#notRenamed ? undefined : typed);
         this.#watch.took(written);
         this.#session.markSaved(document);
         this.#session.rebase(-left);
@@ -2199,7 +2231,7 @@ export class InkEditorModal extends Modal {
         if (this.#picture !== undefined) {
           this.#placePicture(movePicture(this.#picture.placement, -left, 0));
         }
-        this.#announce("Saved");
+        this.#announce(this.#notRenamed ? "Saved, but not renamed" : "Saved");
         return true;
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);

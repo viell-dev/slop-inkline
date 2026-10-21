@@ -35,7 +35,7 @@ import {
 import { embedFor } from "./embeds.ts";
 import { insertionAt } from "./links.ts";
 import {
-  chooseName,
+  chooseRename,
   nextNumberName,
   symbolStem,
   type NameChoice,
@@ -95,11 +95,13 @@ function claimName(app: App, folder: string, name: string, own?: TFile): void {
 }
 
 /**
- * The name `typed` gives a symbol, or throws with the reason it cannot be
- * one.
+ * The name `typed` gives a symbol whose file is `file`, if it has one, or
+ * throws with the reason it cannot be one. The file's own name, typed
+ * again, keeps it.
  */
-function chosen(typed: string): NameChoice {
-  const choice = chooseName(typed);
+function chosen(typed: string, file?: TFile): NameChoice {
+  const own = file === undefined ? "" : (symbolStem(file.name) ?? "");
+  const choice = chooseRename(typed, own);
   if (choice.kind === "refused") throw new Error(choice.reason);
   return choice;
 }
@@ -556,7 +558,7 @@ function newSymbol(
       stillAlive(host);
       // Checked before anything is written, so that a refused name leaves
       // the vault as it was.
-      const name = chosen(typed);
+      const name = chosen(typed, made?.file);
       const fingerprint = await fingerprintOf(bytes);
       if (made === undefined && claim !== undefined) {
         const claimed = await claimedFile(app, claim);
@@ -597,8 +599,11 @@ function newSymbol(
           // or which the answer to its question can leave as it was, follows
           // the symbol it was inserted for, and the next symbol goes after it.
           const was = inserted ? embedFor(app, made.file, note.path) : "";
+          const from = made.file.path;
+          stillAlive(host);
           made.file = await rename(app, made.file, renaming);
-          if (inserted && after !== undefined) {
+          // A rename that failed left the file, and its embed, as they were.
+          if (inserted && after !== undefined && made.file.path !== from) {
             stillAlive(host);
             const now = embedFor(app, made.file, note.path);
             after = (await followRename(app, target, after, was, now)) ?? after;
@@ -760,8 +765,9 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
     file: () => symbolFile(app, symbol.path),
     write: async (saved, _record, _keepDraft, _holds, typed) => {
       stillAlive(host);
-      const renaming = renamedPath(app, symbol, chosen(typed));
+      const renaming = renamedPath(app, symbol, chosen(typed, symbol));
       symbol = await writeSymbol(app, symbol, saved);
+      stillAlive(host);
       symbol = await rename(app, symbol, renaming);
     },
   }).open();
