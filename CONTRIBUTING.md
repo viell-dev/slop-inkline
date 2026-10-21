@@ -113,8 +113,8 @@ approval from a second account.
   changes to `Unreleased` in [CHANGELOG.md](CHANGELOG.md).
 - Keep each pull request to one change.
 
-Pull requests that change what ships are also reviewed by an agent from a
-different model provider, as [AGENTS.md](AGENTS.md#review) describes.
+Pull requests that change what ships are also reviewed by another agent running
+a different model, as [AGENTS.md](AGENTS.md#review) describes.
 
 ## Dependencies
 
