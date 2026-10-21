@@ -1,5 +1,7 @@
 // Runs the end-to-end suite in Docker, on any system with Docker, Windows
-// included: builds test/e2e/Dockerfile from this checkout and runs it.
+// included: builds test/e2e/Dockerfile from this checkout and runs it. It
+// runs the image it built by its ID, so that a run from another checkout,
+// which builds under the same tag, cannot swap its code in.
 // Arguments go to `wdio run`, such as `--spec test/e2e/specs/plugin.e2e.ts`.
 //
 // OBSIDIAN_VERSIONS picks the Obsidian versions, as in test/e2e/wdio.conf.mts.
@@ -7,8 +9,15 @@
 // INKLINE_OBSIDIAN_CACHE_VOLUME; screenshots and logs go to test-results/e2e.
 
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync } from "node:fs";
-import { resolve } from "node:path";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 const image = "inkline-e2e";
 const cacheVolume =
@@ -26,7 +35,28 @@ mkdirSync(output, { recursive: true });
 if (process.platform !== "win32") chmodSync(output, 0o777);
 
 const versions = process.env.OBSIDIAN_VERSIONS;
-run("docker", ["build", "--file", "test/e2e/Dockerfile", "--tag", image, "."]);
+// The image's ID, from a file of its own, which goes once it is read.
+const built = mkdtempSync(join(tmpdir(), "inkline-e2e-"));
+const idFile = join(built, "image-id");
+const build = spawnSync(
+  "docker",
+  [
+    "build",
+    "--file",
+    "test/e2e/Dockerfile",
+    "--tag",
+    image,
+    "--iidfile",
+    idFile,
+    ".",
+  ],
+  { stdio: "inherit" },
+);
+const id = build.status === 0 ? readFileSync(idFile, "utf8").trim() : "";
+rmSync(built, { recursive: true, force: true });
+if (build.error !== undefined) throw build.error;
+if (build.status !== 0) process.exit(build.status ?? 1);
+if (id === "") throw new Error("docker build wrote no image ID");
 run("docker", [
   "run",
   "--rm",
@@ -37,6 +67,6 @@ run("docker", [
   `${cacheVolume}:/cache`,
   "--volume",
   `${output}:/out`,
-  image,
+  id,
   ...process.argv.slice(2),
 ]);
