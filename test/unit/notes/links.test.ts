@@ -200,6 +200,10 @@ describe("links as Obsidian reads them", () => {
   it("reads a tab-only line as text, but a line of spaces as blank", () => {
     expect(spans("[a\n\t\nb](c)")).toEqual([["[a\n\t\nb](c)", false, "c"]]);
     expect(spans("[a\n  \nb](c)")).toEqual([]);
+    // No-break and ideographic spaces are blank to Obsidian too.
+    for (const space of [0xa0, 0x3000]) {
+      expect(spans(`[a\n${String.fromCharCode(space)}\nb](c)`)).toEqual([]);
+    }
   });
 
   it("puts a space before what follows a bare address", () => {
