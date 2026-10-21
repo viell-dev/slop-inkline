@@ -90,6 +90,50 @@
   font-size: var(--font-ui-small);
 }
 
+/*
+ * A symbol in a note, as a character: as tall as the line box, 1.5 em, with
+ * its baseline, 0.375 em above its bottom, on the text's, and its ink in the
+ * text colour, painted through a mask of its own pixels, which are moved out
+ * of sight. An explicit size, as ![[x.ink.png|24]] gives, is kept, and the
+ * observer works out its drop.
+ */
+img.inkline-symbol {
+  background-color: currentColor;
+  mask-image: var(--inkline-mask);
+  mask-size: 100% 100%;
+  mask-repeat: no-repeat;
+  object-position: -99999px 0;
+  vertical-align: var(--inkline-drop, -0.375em);
+}
+
+img.inkline-symbol:not([width], [height]) {
+  width: auto;
+  height: 1.5em;
+}
+
+/*
+ * In the editor, Obsidian lines image embeds up with the bottom of the line:
+ * a symbol's stands on the baseline instead. Where the embed is the editor's
+ * own widget, its image is a block inside it, so the embed takes the drop,
+ * and the image keeps its own width rather than the embed's. In callouts,
+ * tables, and embedded notes, the editor shows rendered text, whose image is
+ * inline and drops itself.
+ */
+.cm-content .image-embed.inkline-symbol-embed {
+  vertical-align: baseline;
+}
+
+.cm-content .image-embed.inkline-symbol-embed:has(> .image-wrapper) {
+  vertical-align: var(--inkline-drop, -0.375em);
+}
+
+.cm-content
+  .image-embed
+  .image-wrapper
+  img.inkline-symbol:not([width], [height]) {
+  width: auto;
+}
+
 /* A symbol in a list of them: its picture, as tall as the text, and names. */
 .inkline-suggestion {
   display: flex;

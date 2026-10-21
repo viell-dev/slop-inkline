@@ -1,14 +1,17 @@
-import { MarkdownView, Notice, Plugin, TFile } from "obsidian";
+import { MarkdownView, Notice, Platform, Plugin, TFile } from "obsidian";
 import { DraftStore } from "./editor/drafts.ts";
 import type { InkEditorModal } from "./editor/modal.ts";
 import { isInkPath } from "./format/ink-file.ts";
 import { defaultTrigger } from "./notes/search.ts";
 import { SymbolSearch, SymbolSuggest } from "./notes/suggest.ts";
 import { editSymbol, insertSymbol, type EditorHost } from "./notes/symbols.ts";
+import { SymbolRenderer } from "./render/symbols.ts";
 
 /** Inkline: symbols drawn once and written in notes like characters. */
 export default class InklinePlugin extends Plugin {
   readonly #editors = new Set<InkEditorModal>();
+  /** Shows symbols in notes as characters, in every window. */
+  readonly #renderer = new SymbolRenderer(Platform.resourcePathPrefix);
   #drafts: DraftStore | undefined;
   #loaded = false;
 
@@ -28,6 +31,23 @@ export default class InklinePlugin extends Plugin {
 
   override onload(): void {
     this.#loaded = true;
+    this.#renderer.watch(document);
+    this.registerEvent(
+      this.app.workspace.on("window-open", (win) => {
+        this.#renderer.watch(win.doc);
+      }),
+    );
+    this.registerEvent(
+      this.app.workspace.on("window-close", (win) => {
+        this.#renderer.unwatch(win.doc);
+      }),
+    );
+    // Popout windows open before Inkline was.
+    this.app.workspace.onLayoutReady(() => {
+      this.app.workspace.iterateAllLeaves((leaf) => {
+        this.#renderer.watch(leaf.view.containerEl.doc);
+      });
+    });
     this.addCommand({
       id: "insert-symbol",
       name: "Insert symbol",
@@ -90,6 +110,8 @@ export default class InklinePlugin extends Plugin {
    */
   override onunload(): void {
     this.#loaded = false;
+    // Symbols show as the plain images they are once Inkline is off.
+    this.#renderer.stop();
     for (const editor of [...this.#editors]) editor.dispose();
   }
 

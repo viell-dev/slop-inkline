@@ -29,6 +29,12 @@ that runs a different model from the one that wrote the change.
 [CONTRIBUTING.md](CONTRIBUTING.md) explains how to report a problem or
 contribute.
 
+## For theme and plugin authors
+
+[docs/rendering.md](docs/rendering.md) describes the classes and properties
+Inkline gives symbols in text, and how a plugin's own view of a note can show
+them as text.
+
 ## License
 
 [MIT](LICENSE)

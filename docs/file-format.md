@@ -36,7 +36,10 @@ pixels wide.
 
 To show the image in text, scale it to `height / pxPerEm` em tall and set its
 `vertical-align` to `-(height - baseline) / pxPerEm` em; its baseline then lies
-on the text's. For version 1 files that is 1.5 em and -0.375 em.
+on the text's. For version 1 files that is 1.5 em and -0.375 em. Inkline itself
+shows every symbol in a note at version 1's size and baseline, since it tells
+symbols apart by their addresses, without reading the files; a file written with
+another geometry, which Inkline never writes, shows at version 1's.
 
 ## File structure
 

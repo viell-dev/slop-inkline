@@ -36,11 +36,23 @@ section is also its
   the place of any base layer the drawing had, and Undo takes it back. Saving,
   or closing and saving, while the preview shows makes that ink first. Copying a
   symbol you can see then needs no drawing at all.
+- Symbols show in notes as characters: 1.5 em tall, the default line height,
+  standing on the baseline, and in the text's colour, in light and dark themes,
+  in Live Preview, Reading view, callouts, tables, embedded notes, hover
+  previews, canvas cards, and popout windows. A heading or another line set
+  tighter than 1.5 grows to fit. An explicit size, as `![[x.ink.png|24]]` gives,
+  is kept and stays on the baseline. A symbol file shown on its own, in its tab
+  or as a canvas's image, stays a picture; images from outside the vault and
+  other images are left as they are; and with Inkline disabled, symbols show as
+  the plain images they are. A plugin's own view of a note shows them as text
+  with the `inkline-text` class, as [docs/rendering.md](docs/rendering.md)
+  describes for theme and plugin authors.
 - **Type to insert:** in a note, type `;;` and a few letters of a symbol's name,
   in any script, to choose it from a list with its picture: the best match
   first, then those the note uses most, then the most recently changed. Enter
-  puts its embed in place of what was typed. **Insert existing symbol**, a
-  command, opens the same list to search.
+  puts its embed in place of what was typed; Esc closes the list, and what you
+  type after it stays text. Code and front matter show no list. **Insert
+  existing symbol**, a command, opens the same list to search.
 - **Edit symbol**, in a symbol file's menu, which opens it in the editor again
   with every stroke, so that nothing is lost by editing.
 - The editor's pen, eraser, four brush sizes, undo, redo, and clear, each with
