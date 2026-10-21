@@ -470,6 +470,24 @@ export function insertionAt(
 }
 
 /**
+ * The path that `embed`, a Markdown embed written alone, leads to as Obsidian
+ * reads it: whole, so that a `)` that opens nothing does not end it early,
+ * with its escapes removed and decoded. Undefined when it does not read as
+ * one embed, whole.
+ */
+export function embedPath(embed: string): string | undefined {
+  const spans = paragraphLinks(embed);
+  const [span] = spans;
+  return spans.length === 1 &&
+    span !== undefined &&
+    span.embed &&
+    span.start === 0 &&
+    span.end === embed.length
+    ? span.target
+    : undefined;
+}
+
+/**
  * The embed at `offset` in `text`, with the offset on it or at either of its
  * ends, as a cursor right after an embed is; undefined when there is none.
  * Where one embed ends and the next starts, it is the one that ends there,

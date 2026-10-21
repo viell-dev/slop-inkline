@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   embedAt,
+  embedPath,
   insertionAt,
   paragraphLinks,
   outsideLinks,
@@ -149,6 +150,24 @@ describe("links as Obsidian reads them", () => {
       ["[a](\tb)", false, "b"],
       ["![](a.png#b)", true, "a.png"],
     ]);
+  });
+
+  it("reads a Markdown embed alone as one, whole, or as none", () => {
+    expect(embedPath("![](<a b/001.ink.png>)")).toBe("a b/001.ink.png");
+    expect(embedPath("![](sun%20(big).ink.png)")).toBe("sun (big).ink.png");
+    expect(embedPath("![](sun%2050%25.ink.png)")).toBe("sun 50%.ink.png");
+    // Escapes of reserved characters stay, as Obsidian reads them.
+    expect(embedPath("![](x%26y.ink.png)")).toBe("x%26y.ink.png");
+    // A ) that opens nothing, a ( that is not closed, and a space.
+    for (const embed of [
+      "![](a)b.ink.png)",
+      "![](a(b.ink.png)",
+      "![](a b.ink.png)",
+      "![](<a.ink.png)",
+      "![[a.ink.png]] ![[b.ink.png]]",
+    ]) {
+      expect(embedPath(embed)).toBeUndefined();
+    }
   });
 
   it("finds no link where Obsidian reads none", () => {
