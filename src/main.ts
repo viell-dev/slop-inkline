@@ -142,9 +142,9 @@ export default class InklinePlugin extends Plugin {
   /**
    * Shows the menu of a symbol's file where a symbol is right-clicked and
    * Obsidian shows no menu for an image: in rendered notes, as in Reading
-   * view, embedded notes, and hover previews, and wherever else nothing
-   * answered. Where Obsidian shows one, as in Live Preview, its menu holds
-   * Edit symbol already.
+   * view and embedded notes, and wherever else nothing answered. Where
+   * Obsidian shows one, as in Live Preview, its menu holds Edit symbol
+   * already.
    */
   #offerMenus(doc: Document): void {
     /** Shows the menu if `event` is on a symbol, rendered or not as `inNote`. */

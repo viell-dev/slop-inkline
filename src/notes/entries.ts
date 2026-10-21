@@ -1,6 +1,6 @@
 // Where a symbol in a note can be opened for editing from: the embed at the
-// cursor, for a command and the editor's menu, and a symbol's image, for a
-// menu where Obsidian shows none. editSymbol in symbols.ts opens it.
+// cursor, for a command, and a symbol's image, for a menu where Obsidian
+// shows none. editSymbol in symbols.ts opens it.
 
 import { Menu, type App, type TFile } from "obsidian";
 import { isInkPath } from "../format/ink-file.ts";
