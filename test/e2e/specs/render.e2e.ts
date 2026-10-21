@@ -695,6 +695,7 @@ describe("Symbols in notes", function () {
         vault.setConfig("alwaysUpdateLinks", before);
       }
     });
+    await open("Names.md", "source");
     await waitForNames("source", [
       "tower two",
       "tower two",
