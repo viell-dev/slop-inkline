@@ -21,6 +21,13 @@ section is also its
 - **Copy from**, or V, in the editor for a new symbol, starts it from a copy of
   another symbol's strokes and base layer, chosen from the vault's symbols, for
   scripts whose symbols share parts. Undo takes the copy back.
+- **Tracing** in the editor: paste or drop a picture, such as a screenshot of a
+  symbol in a game, and it shows faintly under the drawing, as tall as a capital
+  letter, to draw over. It is never saved or kept in drafts. **Move**, or M,
+  drags it and scales it with the wheel; the arrow keys and + and − do the same
+  from the keyboard. Next takes it on to the next symbol where it was, so that
+  an inscription is traced from one screenshot, and **Remove picture** takes it
+  away.
 - **Edit symbol**, in a symbol file's menu, which opens it in the editor again
   with every stroke, so that nothing is lost by editing.
 - The editor's pen, eraser, four brush sizes, undo, redo, and clear, each with

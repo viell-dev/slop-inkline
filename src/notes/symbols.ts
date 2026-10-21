@@ -337,7 +337,11 @@ function newSymbol(
     center: visibleWidth / 2,
     ...(tools === undefined ? {} : { tools }),
     next: (chosen) => {
-      if (after === undefined || !host.alive()) return;
+      if (after === undefined || !host.alive()) {
+        // No editor takes the picture over.
+        chosen.picture?.image.close();
+        return;
+      }
       newSymbol(host, { ...target, point: after }, chosen);
     },
     drafts: {

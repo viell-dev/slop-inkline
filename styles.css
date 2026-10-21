@@ -11,7 +11,22 @@
   margin-bottom: var(--size-4-3);
 }
 
-.inkline-toolbar button[aria-pressed="true"] {
+/* A picture to trace over: Move, Remove picture, and what is being traced. */
+.inkline-picture {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--size-4-2);
+  margin-bottom: var(--size-4-3);
+}
+
+.inkline-picture-hint {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.inkline-toolbar button[aria-pressed="true"],
+.inkline-picture button[aria-pressed="true"] {
   background-color: var(--interactive-accent);
   color: var(--text-on-accent);
 }
@@ -30,8 +45,22 @@
   touch-action: none;
 }
 
+/* Dragging moves the picture to trace over, rather than drawing. */
+.inkline-surface.is-moving {
+  cursor: grab;
+}
+
+.inkline-surface.is-dragging {
+  cursor: grabbing;
+}
+
 .inkline-surface:focus-visible {
   outline: 2px solid var(--interactive-accent);
+}
+
+/* After the focus outline, which a drag over the focused surface replaces. */
+.inkline-surface.is-drop-target {
+  outline: 2px dashed var(--interactive-accent);
 }
 
 /* A line of the note's text, with the symbol at its size there. */

@@ -20,6 +20,7 @@ import {
   type EditableInk,
 } from "../ink/canvas.ts";
 import { documentSpan, type InkDocument } from "../ink/document.ts";
+import { lineBox } from "../ink/geometry.ts";
 import type { DrawableBase } from "../ink/render.ts";
 import {
   draftBase,
@@ -39,6 +40,16 @@ import {
   type InputPoint,
 } from "./session.ts";
 import { fontGuides, type Guide } from "./guides.ts";
+import {
+  decodePicture,
+  isPicturePath,
+  movePicture,
+  openLinkPath,
+  placePicture,
+  scalePicture,
+  wheelFactor,
+  type Placement,
+} from "./reference.ts";
 import { InkView, measureFont, surfaceWidth } from "./view.ts";
 
 /** The symbol's file, as the editor reads it again to see if it changed. */
@@ -55,13 +66,59 @@ export interface SymbolCopy {
   readonly ink: EditableInk;
 }
 
+/** A picture to trace over, shown faintly under the drawing, never saved. */
+export interface TracedPicture {
+  readonly image: ImageBitmap;
+  readonly width: number;
+  readonly height: number;
+  readonly placement: Placement;
+}
+
 /** The tools chosen in an editor, which the next one starts with. */
 export interface EditorTools {
   readonly tool: Tool;
   readonly sizeIndex: number;
   readonly grid: boolean;
   readonly guides: boolean;
+  /**
+   * The picture being traced over, which the next editor takes over and
+   * closes, with its x measured from the middle of the surface, so that it
+   * stays where it was on the surface.
+   */
+  readonly picture?: TracedPicture;
 }
+
+/** The first picture file that `data` holds, as pasted or dropped. */
+function pictureIn(data: DataTransfer | null): File | undefined {
+  if (data === null) return undefined;
+  const found = [...data.files].find((file) => file.type.startsWith("image/"));
+  if (found !== undefined) return found;
+  for (const item of data.items) {
+    if (item.kind !== "file" || !item.type.startsWith("image/")) continue;
+    const file = item.getAsFile();
+    if (file !== null) return file;
+  }
+  return undefined;
+}
+
+/**
+ * Whether a drag could carry a picture: files, or links, as Obsidian's file
+ * explorer drags a vault file.
+ */
+function dragsPicture(event: DragEvent): boolean {
+  const types = event.dataTransfer?.types ?? [];
+  return types.includes("Files") || types.includes("text/uri-list");
+}
+
+/** How far the arrow keys move a picture, in document pixels. */
+const nudge = 1;
+/** How far they move it with Shift held: one grid spacing. */
+const shiftNudge = gridSpacing;
+/** How much + and − scale a picture: as much as a notch of the wheel. */
+const keyScale = wheelFactor(-100);
+
+const noPicture = "Paste or drop a picture to trace over it.";
+const tracing = "Tracing over a picture, which is not saved.";
 
 export interface EditorOptions {
   readonly title: string;
@@ -207,6 +264,20 @@ export class InkEditorModal extends Modal {
   #replacing: string | undefined;
   /** The draft this editor is offering back, held while it asks. */
   #offered: string | undefined;
+  /** The picture to trace over, which this editor closes when done with it. */
+  #picture: TracedPicture | undefined;
+  /** Counts pictures asked for, so that only the latest is taken. */
+  #pictureRequests = 0;
+  /** Whether dragging and the wheel move the picture, rather than drawing. */
+  #moving = false;
+  /**
+   * Where the pointer dragging the picture last was, on the screen: the view
+   * can move under it, as a save or Fit does, so each move maps both ends.
+   */
+  #dragged: { clientX: number; clientY: number } | undefined;
+  #pictureHint: HTMLElement | undefined;
+  /** The document whose pastes the editor takes, while it is open. */
+  #pasteDocument: Document | undefined;
   readonly #questions = new Set<Modal>();
   readonly #buttons = new Map<string, ButtonComponent>();
 
@@ -316,6 +387,28 @@ export class InkEditorModal extends Modal {
         "save and draw the next one",
       );
     }
+    // A picture to trace over, and what moves or removes it.
+    const pictureBar = this.contentEl.createDiv({ cls: "inkline-picture" });
+    this.#addButton(
+      pictureBar,
+      "move",
+      "Move",
+      "M",
+      () => {
+        this.#toggleMove();
+      },
+      "Move",
+      "drag the picture or use the arrow keys; the wheel or + and − scale it",
+    );
+    this.#addButton(pictureBar, "remove", "Remove picture", undefined, () => {
+      this.#setPicture(undefined);
+      this.#announce("Picture removed");
+      // The button is disabled now, which would leave the focus nowhere.
+      this.#view?.canvas.focus({ preventScroll: true });
+    });
+    this.#pictureHint = pictureBar.createSpan({ cls: "inkline-picture-hint" });
+    this.#pasteDocument = this.modalEl.doc;
+    this.#pasteDocument.addEventListener("paste", this.#paste);
 
     const canvas = this.contentEl.createEl("canvas", {
       cls: "inkline-surface",
@@ -350,6 +443,14 @@ export class InkEditorModal extends Modal {
     const view = new InkView(canvas, surfaceWidth(this.#options.width ?? 0));
     this.#view = view;
     view.centerOn(this.#options.center);
+    // The editor before this one's picture, where it was on the surface.
+    const carried = this.#options.tools?.picture;
+    if (carried !== undefined) {
+      this.#picture = {
+        ...carried,
+        placement: movePicture(carried.placement, view.center, 0),
+      };
+    }
     this.#listen(canvas);
     this.#registerKeys();
 
@@ -386,6 +487,11 @@ export class InkEditorModal extends Modal {
       this.#view?.canvas.win.cancelAnimationFrame(this.#frame);
     }
     for (const question of [...this.#questions]) question.close();
+    this.#pasteDocument?.removeEventListener("paste", this.#paste);
+    // Pictures still being decoded are closed as they arrive.
+    this.#pictureRequests++;
+    this.#picture?.image.close();
+    this.#picture = undefined;
     this.contentEl.empty();
     const store = this.#options.drafts?.store;
     store?.release(this.#draftId);
@@ -577,6 +683,49 @@ export class InkEditorModal extends Modal {
       this.#fitView();
       this.#render();
     });
+    key([], "m", () => {
+      this.#toggleMove();
+    });
+    // While moving the picture, the arrow keys move it and + and − scale
+    // it; otherwise they keep what they do.
+    const moving = (
+      modifiers: "Shift"[],
+      name: string,
+      action: (picture: TracedPicture) => Placement,
+    ): void => {
+      this.scope.register(modifiers, name, () => {
+        const picture = this.#picture;
+        if (!this.#moving || picture === undefined) return true;
+        if (typing(activeDocument.activeElement)) return true;
+        this.#placePicture(action(picture));
+        return false;
+      });
+    };
+    for (const [modifiers, step] of [
+      [[], nudge],
+      [["Shift"], shiftNudge],
+    ] as const) {
+      const by = (dx: number, dy: number) => (picture: TracedPicture) =>
+        movePicture(picture.placement, dx * step, dy * step);
+      moving([...modifiers], "ArrowLeft", by(-1, 0));
+      moving([...modifiers], "ArrowRight", by(1, 0));
+      moving([...modifiers], "ArrowUp", by(0, -1));
+      moving([...modifiers], "ArrowDown", by(0, 1));
+    }
+    const scaled = (factor: number) => (picture: TracedPicture) => {
+      const { x, y, scale } = picture.placement;
+      return scalePicture(
+        picture.placement,
+        factor,
+        x + (picture.width * scale) / 2,
+        y + (picture.height * scale) / 2,
+      );
+    };
+    // + takes Shift on many keyboards, and = is the same key without it.
+    moving([], "+", scaled(keyScale));
+    moving(["Shift"], "+", scaled(keyScale));
+    moving([], "=", scaled(keyScale));
+    moving([], "-", scaled(1 / keyScale));
     // A Mac's key labelled Delete sends Backspace.
     for (const name of ["Delete", "Backspace"]) {
       key([], name, () => {
@@ -602,6 +751,15 @@ export class InkEditorModal extends Modal {
     };
     const finish = (event: PointerEvent): void => {
       if (!this.#gate.release(event)) return;
+      if (this.#dragged !== undefined) {
+        // The picture stays where the drag left it, or where a release says.
+        if (event.type === "pointerup" || event.type === "pointermove") {
+          this.#drag(event);
+        }
+        this.#dragged = undefined;
+        canvas.removeClass("is-dragging");
+        return;
+      }
       if (event.type === "pointercancel") this.#session.cancel();
       // A release, unlike a lost capture, says where the pointer ended.
       else if (event.type === "lostpointercapture") this.#session.end();
@@ -616,6 +774,12 @@ export class InkEditorModal extends Modal {
       // that the shortcuts are the editor's again after typing elsewhere.
       canvas.focus({ preventScroll: true });
       canvas.setPointerCapture(event.pointerId);
+      if (this.#moving) {
+        // A pen taking over from a touch drags from where it came down.
+        this.#dragged = { clientX: event.clientX, clientY: event.clientY };
+        canvas.addClass("is-dragging");
+        return;
+      }
       this.#session.begin(
         point(event),
         tool === "brush" ? this.#session.tool : tool,
@@ -627,6 +791,10 @@ export class InkEditorModal extends Modal {
       // Releasing the drawing button while another is held is a move.
       if (!this.#gate.holds(event)) {
         finish(event);
+        return;
+      }
+      if (this.#dragged !== undefined) {
+        this.#drag(event);
         return;
       }
       const events =
@@ -646,6 +814,208 @@ export class InkEditorModal extends Modal {
     canvas.addEventListener("contextmenu", (event) => {
       event.preventDefault();
     });
+    // While moving the picture, the wheel scales it about the pointer.
+    canvas.addEventListener(
+      "wheel",
+      (event) => {
+        const picture = this.#picture;
+        const view = this.#view;
+        if (!this.#moving || picture === undefined || view === undefined) {
+          return;
+        }
+        event.preventDefault();
+        const { x, y } = view.toDocument(event.clientX, event.clientY);
+        this.#placePicture(
+          scalePicture(
+            picture.placement,
+            wheelFactor(event.deltaY, event.deltaMode),
+            x,
+            y,
+          ),
+        );
+      },
+      { passive: false },
+    );
+    // A picture dropped on the surface.
+    canvas.addEventListener("dragover", (event) => {
+      if (!dragsPicture(event)) return;
+      event.preventDefault();
+      if (event.dataTransfer !== null) event.dataTransfer.dropEffect = "copy";
+      canvas.addClass("is-drop-target");
+    });
+    canvas.addEventListener("dragleave", () => {
+      canvas.removeClass("is-drop-target");
+    });
+    canvas.addEventListener("drop", (event) => {
+      canvas.removeClass("is-drop-target");
+      if (!dragsPicture(event)) return;
+      // Neither the browser nor Obsidian does anything else with it.
+      event.preventDefault();
+      event.stopPropagation();
+      const picture = pictureIn(event.dataTransfer);
+      if (picture !== undefined) {
+        void this.#trace(picture);
+        return;
+      }
+      // A picture in the vault, dragged from Obsidian's file explorer.
+      const { vault } = this.app;
+      const path = openLinkPath(
+        event.dataTransfer?.getData("text/uri-list") ?? "",
+        vault.getName(),
+      );
+      const file = path === undefined ? null : vault.getFileByPath(path);
+      if (file === null || !isPicturePath(file.path)) {
+        this.#announce("Not traced: only a picture can be traced over");
+        return;
+      }
+      void this.#trace(
+        vault.readBinary(file).then((bytes) => new Blob([bytes])),
+      );
+    });
+  }
+
+  /**
+   * Takes a picture pasted into the editor while it is the modal on top and
+   * asks nothing, unless a text field has the focus. Its questions open in
+   * whichever window is active, so one can be open in another. Chromium
+   * sends a paste to the focused element, or to the body when that cannot be
+   * edited, as older versions do for the surface; a paste to the body is the
+   * top editor's.
+   */
+  readonly #paste = (event: ClipboardEvent): void => {
+    const doc = this.modalEl.doc;
+    if (this.#closing || this.#retired || this.#questions.size > 0) return;
+    if (!this.#onTop()) return;
+    if (
+      !event.composedPath().includes(this.modalEl) &&
+      event.target !== doc.body
+    ) {
+      return;
+    }
+    if (typing(doc.activeElement)) return;
+    const picture = pictureIn(event.clipboardData);
+    event.preventDefault();
+    if (picture === undefined) {
+      this.#announce("The clipboard holds no picture to trace over");
+      return;
+    }
+    void this.#trace(picture);
+  };
+
+  /**
+   * Whether this editor is the modal on top: not under a question, a choice,
+   * or another editor.
+   */
+  #onTop(): boolean {
+    const modals = this.modalEl.doc.querySelectorAll(".modal-container");
+    return modals.item(modals.length - 1) === this.containerEl;
+  }
+
+  /** Moves the picture with the pointer dragging it. */
+  #drag(event: PointerEvent): void {
+    const last = this.#dragged;
+    const picture = this.#picture;
+    const view = this.#view;
+    if (last === undefined || view === undefined) return;
+    this.#dragged = { clientX: event.clientX, clientY: event.clientY };
+    if (picture === undefined) return;
+    const from = view.toDocument(last.clientX, last.clientY);
+    const to = view.toDocument(event.clientX, event.clientY);
+    this.#placePicture(
+      movePicture(picture.placement, to.x - from.x, to.y - from.y),
+    );
+  }
+
+  /** Puts the picture where `placement` says, and shows it there. */
+  #placePicture(placement: Placement): void {
+    const picture = this.#picture;
+    if (picture === undefined) return;
+    this.#picture = { ...picture, placement };
+    this.#render();
+  }
+
+  /**
+   * Reads and decodes a pasted or dropped picture and traces over it, in
+   * place of any other, as tall as a capital letter between the guides and
+   * in the middle of the surface. Only the picture asked for last is taken.
+   */
+  async #trace(file: Blob | Promise<Blob>): Promise<void> {
+    const request = ++this.#pictureRequests;
+    let image: ImageBitmap;
+    try {
+      image = await decodePicture(await file);
+    } catch {
+      if (request === this.#pictureRequests) {
+        this.#announce("Not traced: Inkline cannot read this picture");
+      }
+      return;
+    }
+    const view = this.#view;
+    if (
+      request !== this.#pictureRequests ||
+      this.#closing ||
+      this.#retired ||
+      view === undefined
+    ) {
+      image.close();
+      return;
+    }
+    const top =
+      this.#fontGuides.find((guide) => guide.name === "cap height")?.y ??
+      lineBox.baseline - 0.7 * lineBox.pxPerEm;
+    const { width, height } = image;
+    this.#setPicture({
+      image,
+      width,
+      height,
+      placement: placePicture(
+        width,
+        height,
+        top,
+        lineBox.baseline,
+        view.center,
+      ),
+    });
+    this.#announce(
+      "Tracing over the picture. Move (M), then drag it or use the arrow keys; the wheel or + and − scale it",
+    );
+  }
+
+  /** Traces over `picture`, or over none, closing the one it replaces. */
+  #setPicture(picture: TracedPicture | undefined): void {
+    if (this.#picture?.image !== picture?.image) this.#picture?.image.close();
+    this.#picture = picture;
+    if (picture === undefined) this.#moving = false;
+    this.#updateButtons();
+    this.#render();
+  }
+
+  /** Switches between moving the picture and drawing. */
+  #toggleMove(): void {
+    if (this.#picture === undefined) {
+      this.#announce("Paste or drop a picture first, to move it");
+      return;
+    }
+    this.#moving = !this.#moving;
+    this.#updateButtons();
+  }
+
+  /**
+   * Lets go of the picture, for the editor after this one to take over, with
+   * its x measured from the middle of the surface.
+   */
+  #handOverPicture(): TracedPicture | undefined {
+    const picture = this.#picture;
+    const view = this.#view;
+    this.#picture = undefined;
+    if (picture === undefined || view === undefined) {
+      picture?.image.close();
+      return undefined;
+    }
+    return {
+      ...picture,
+      placement: movePicture(picture.placement, -view.center, 0),
+    };
   }
 
   /** Fits the surface to the whole drawing, as one restored from a draft. */
@@ -668,6 +1038,7 @@ export class InkEditorModal extends Modal {
       view.grid = this.#session.snap
         ? { spacing: gridSpacing, originX: this.#session.gridOrigin }
         : undefined;
+      view.reference = this.#picture;
       view.render(
         this.#session.document,
         this.#base,
@@ -722,6 +1093,7 @@ export class InkEditorModal extends Modal {
 
   #setTool(tool: "pen" | "eraser"): void {
     this.#session.tool = tool;
+    this.#moving = false;
     this.#updateButtons();
   }
 
@@ -756,8 +1128,15 @@ export class InkEditorModal extends Modal {
         .get(id)
         ?.buttonEl.setAttribute("aria-pressed", String(value));
     };
-    pressed("pen", this.#session.tool === "pen");
-    pressed("eraser", this.#session.tool === "eraser");
+    const drawing = !this.#moving;
+    pressed("pen", drawing && this.#session.tool === "pen");
+    pressed("eraser", drawing && this.#session.tool === "eraser");
+    pressed("move", this.#moving);
+    const picture = this.#picture !== undefined;
+    this.#buttons.get("move")?.setDisabled(!picture);
+    this.#buttons.get("remove")?.setDisabled(!picture);
+    this.#pictureHint?.setText(picture ? tracing : noPicture);
+    this.#view?.canvas.toggleClass("is-moving", this.#moving);
     pressed("guides", this.#guidesShown);
     pressed("grid", this.#session.snap);
     brushSizes.forEach((_, index) => {
@@ -1171,8 +1550,15 @@ export class InkEditorModal extends Modal {
         return;
       }
       const { tool, sizeIndex, snap } = this.#session;
+      const picture = this.#handOverPicture();
       this.#finish();
-      next({ tool, sizeIndex, grid: snap, guides: this.#guidesShown });
+      next({
+        tool,
+        sizeIndex,
+        grid: snap,
+        guides: this.#guidesShown,
+        ...(picture === undefined ? {} : { picture }),
+      });
     } finally {
       this.#advancing = false;
     }
@@ -1245,6 +1631,10 @@ export class InkEditorModal extends Modal {
         this.#session.markSaved(document);
         this.#session.rebase(-left);
         this.#view?.shift(-left);
+        // The picture moves with the drawing, so it stays where it was.
+        if (this.#picture !== undefined) {
+          this.#placePicture(movePicture(this.#picture.placement, -left, 0));
+        }
         this.#announce("Saved");
         return true;
       } catch (error) {
