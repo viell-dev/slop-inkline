@@ -2,6 +2,7 @@ import { MarkdownView, Notice, Platform, Plugin, TFile } from "obsidian";
 import { DraftStore } from "./editor/drafts.ts";
 import type { InkEditorModal } from "./editor/modal.ts";
 import { isInkPath } from "./format/ink-file.ts";
+import { showSymbolMenu, symbolAt, symbolOfImage } from "./notes/entries.ts";
 import { defaultTrigger } from "./notes/search.ts";
 import { SymbolSearch, SymbolSuggest } from "./notes/suggest.ts";
 import { editSymbol, insertSymbol, type EditorHost } from "./notes/symbols.ts";
@@ -32,9 +33,11 @@ export default class InklinePlugin extends Plugin {
   override onload(): void {
     this.#loaded = true;
     this.#renderer.watch(document);
+    this.#offerMenus(document);
     this.registerEvent(
       this.app.workspace.on("window-open", (win) => {
         this.#renderer.watch(win.doc);
+        this.#offerMenus(win.doc);
       }),
     );
     this.registerEvent(
@@ -59,6 +62,46 @@ export default class InklinePlugin extends Plugin {
         return true;
       },
     });
+    this.addCommand({
+      id: "edit-symbol-at-cursor",
+      // Offered only with the cursor on a symbol embed, which it edits.
+      name: "Edit symbol",
+      editorCheckCallback: (checking, editor, info) => {
+        const note = info.file;
+        if (note === null) return false;
+        const file = symbolAt(
+          this.app,
+          editor.getValue(),
+          editor.posToOffset(editor.getCursor()),
+          note.path,
+        );
+        if (file === undefined) return false;
+        if (!checking) void this.editSymbol(file);
+        return true;
+      },
+    });
+    // The editor's own menu, on the text of a symbol's embed.
+    this.registerEvent(
+      this.app.workspace.on("editor-menu", (menu, editor, info) => {
+        const note = info.file;
+        if (note === null) return;
+        const file = symbolAt(
+          this.app,
+          editor.getValue(),
+          editor.posToOffset(editor.getCursor()),
+          note.path,
+        );
+        if (file === undefined) return;
+        menu.addItem((item) =>
+          item
+            .setTitle("Edit symbol")
+            .setIcon("pencil")
+            .onClick(() => {
+              void this.editSymbol(file);
+            }),
+        );
+      }),
+    );
     // A symbol you already have: its name after the trigger, or a list.
     this.registerEditorSuggest(
       new SymbolSuggest(this.app, () => defaultTrigger),
@@ -113,6 +156,29 @@ export default class InklinePlugin extends Plugin {
     // Symbols show as the plain images they are once Inkline is off.
     this.#renderer.stop();
     for (const editor of [...this.#editors]) editor.dispose();
+  }
+
+  /**
+   * Shows the menu of a symbol's file where a symbol is right-clicked and
+   * nothing else answered, as in Reading view, embedded notes, and hover
+   * previews, where Obsidian shows no menu for an image. Where Obsidian
+   * shows one, as in Live Preview, its menu holds Edit symbol already.
+   */
+  #offerMenus(doc: Document): void {
+    this.registerDomEvent(doc, "contextmenu", (event) => {
+      if (event.defaultPrevented) return;
+      const image = event.target;
+      if (
+        !(image instanceof HTMLImageElement) ||
+        !image.hasClass("inkline-symbol")
+      ) {
+        return;
+      }
+      const file = symbolOfImage(this.app, image);
+      if (file === undefined) return;
+      event.preventDefault();
+      showSymbolMenu(this.app, file, event);
+    });
   }
 
   /** Opens the editor for a symbol file; failures show a notice. */
