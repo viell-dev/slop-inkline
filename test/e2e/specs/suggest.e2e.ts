@@ -212,7 +212,7 @@ describe("Inserting a symbol you have", function () {
           "Code.md",
           // A marker alone in a code span would leave it empty, and the
           // editor would then select past it.
-          "A `code SPAN` here.\n\n```\nFENCE\n```\n\nAfter TEXT.\n",
+          "A `code SPAN` here.\n\n```INFO\nFENCE\n```\n\nAfter TEXT.\n",
         );
       },
       symbols,
@@ -342,14 +342,15 @@ describe("Inserting a symbol you have", function () {
     await type(";;arc");
     await waitForSuggested(["arch"]);
     await browser.keys(["Escape"]);
-    for (const marker of ["SPAN", "FENCE"]) {
+    // The info string after an opening fence is code too.
+    for (const marker of ["SPAN", "INFO", "FENCE"]) {
       await openAtMarker("Code.md", marker);
       await type(";;arc");
       await browser.pause(500);
       expect(await listOpen()).toBe(false);
     }
     expect(await noteText()).toBe(
-      "A `code ;;arc` here.\n\n```\n;;arc\n```\n\nAfter ;;arc.\n",
+      "A `code ;;arc` here.\n\n```;;arc\n;;arc\n```\n\nAfter ;;arc.\n",
     );
   });
 

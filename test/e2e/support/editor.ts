@@ -9,7 +9,7 @@ export async function openAtMarker(
   path: string,
   marker: string,
 ): Promise<void> {
-  await obsidianPage.openFile(path);
+  await showNote(path);
   // The editor can show the note a moment after the file opens.
   await browser.waitUntil(async () =>
     browser.executeObsidian(
@@ -93,9 +93,52 @@ export function surface(): ChainablePromiseElement {
   return browser.$(".inkline-editor .inkline-surface");
 }
 
-/** Waits for the editor to be open. */
+/**
+ * Shows the note at `path`, in the tab that already shows it if one does.
+ * `obsidianPage.openFile` opens a new tab each time, and in Obsidian 1.13.4
+ * and 1.14.4 a note opened in a second tab just after an edit in the first
+ * can miss that edit, which an edit in the second then overwrites, on disk
+ * and in both tabs: a test's next step would lose what the one before it
+ * inserted.
+ */
+async function showNote(path: string): Promise<void> {
+  const shown = await browser.executeObsidian(({ app, obsidian }, file) => {
+    const leaf = app.workspace
+      .getLeavesOfType("markdown")
+      .find(
+        (candidate) =>
+          candidate.view instanceof obsidian.MarkdownView &&
+          candidate.view.file?.path === file,
+      );
+    if (leaf === undefined) return false;
+    app.workspace.setActiveLeaf(leaf, { focus: true });
+    return true;
+  }, path);
+  if (!shown) await obsidianPage.openFile(path);
+}
+
+/**
+ * Waits for the editor to be open and to have drawn its first frame. In that
+ * frame it takes the focus back from where Obsidian puts it, the name field,
+ * and sizes its preview line, so that a key pressed before it would go to
+ * the name field, and the preview would read the size of an empty canvas.
+ */
 export async function waitForEditor(): Promise<void> {
   await surface().waitForDisplayed();
+  await browser.execute(
+    () =>
+      new Promise<void>((resolve) => {
+        const canvas = document.querySelector(
+          ".inkline-editor .inkline-surface",
+        );
+        const win = canvas?.ownerDocument.defaultView ?? window;
+        win.requestAnimationFrame(() => {
+          win.requestAnimationFrame(() => {
+            resolve();
+          });
+        });
+      }),
+  );
 }
 
 /**
