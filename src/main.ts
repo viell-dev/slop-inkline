@@ -160,23 +160,47 @@ export default class InklinePlugin extends Plugin {
 
   /**
    * Shows the menu of a symbol's file where a symbol is right-clicked and
-   * nothing else answered, as in Reading view, embedded notes, and hover
-   * previews, where Obsidian shows no menu for an image. Where Obsidian
-   * shows one, as in Live Preview, its menu holds Edit symbol already.
+   * Obsidian shows no menu for an image: in rendered notes, as in Reading
+   * view, embedded notes, and hover previews, and wherever else nothing
+   * answered. Where Obsidian shows one, as in Live Preview, its menu holds
+   * Edit symbol already.
    */
   #offerMenus(doc: Document): void {
-    // A popout window's elements are of its own window's classes.
-    const Image = doc.defaultView?.HTMLImageElement ?? HTMLImageElement;
-    this.registerDomEvent(doc, "contextmenu", (event) => {
+    /** Shows the menu if `event` is on a symbol, rendered or not as `inNote`. */
+    const offer = (event: MouseEvent, inNote: boolean) => {
       if (event.defaultPrevented) return;
-      const image = event.target;
-      if (!(image instanceof Image) || !image.hasClass("inkline-symbol")) {
+      // Not `instanceof`: a popout window's notes are drawn with the main
+      // window's classes, and its own elements have the popout's.
+      const image = event.targetNode;
+      if (
+        image?.instanceOf(HTMLImageElement) !== true ||
+        !image.hasClass("inkline-symbol")
+      ) {
+        return;
+      }
+      if ((image.closest(".markdown-preview-view") !== null) !== inNote) {
         return;
       }
       const file = symbolOfImage(this.app, image);
       if (file === undefined) return;
       event.preventDefault();
       showSymbolMenu(this.app, file, event);
+    };
+    // A rendered note opens Obsidian's image viewer on a right-click unless
+    // its default is prevented by then, so Inkline answers a symbol's
+    // right-click there before the note sees it.
+    const capture = { capture: true };
+    this.registerDomEvent(
+      doc,
+      "contextmenu",
+      (event) => {
+        offer(event, true);
+      },
+      capture,
+    );
+    // Elsewhere Obsidian's own menu for an image comes first.
+    this.registerDomEvent(doc, "contextmenu", (event) => {
+      offer(event, false);
     });
   }
 

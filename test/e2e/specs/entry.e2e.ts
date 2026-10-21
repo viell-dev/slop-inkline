@@ -56,6 +56,11 @@ async function menuItems(): Promise<string[]> {
   );
 }
 
+/** Whether Obsidian's image viewer is open. */
+async function viewerOpen(): Promise<boolean> {
+  return browser.execute(() => document.querySelector(".lightbox") !== null);
+}
+
 /** Chooses the open menu's item `title`. */
 async function choose(title: string): Promise<void> {
   const chosen = await browser.execute((wanted) => {
@@ -87,12 +92,15 @@ async function closeEditor(): Promise<void> {
 }
 
 describe("Editing a symbol from a note", function () {
-  // A menu or editor a failed test leaves open would take the next one's
-  // clicks.
+  // A menu, editor, or image viewer a test leaves open would take the next
+  // one's clicks.
   afterEach(async function () {
     for (let tries = 0; tries < 3; tries++) {
       const open = await browser.execute(
-        () => document.querySelector(".menu, .inkline-editor, .modal") !== null,
+        () =>
+          document.querySelector(
+            ".menu, .inkline-editor, .modal, .lightbox",
+          ) !== null,
       );
       if (!open) return;
       await browser.keys(["Escape"]);
@@ -132,12 +140,14 @@ describe("Editing a symbol from a note", function () {
     await browser.waitUntil(async () =>
       (await menuItems()).includes("Edit symbol"),
     );
+    // Obsidian's menu, not one of Inkline's in its place.
+    expect(await menuItems()).toContain("Copy image");
     await choose("Edit symbol");
     expect(await editorName()).toBe("001");
     await closeEditor();
   });
 
-  it("shows a symbol's menu in Reading view, where Obsidian shows none", async function () {
+  it("shows a symbol's menu in Reading view, instead of the image viewer", async function () {
     await open("Entry.md", "preview");
     await rightClickSymbol("reading");
     await browser.waitUntil(async () => (await menuItems()).length > 0);
@@ -146,16 +156,21 @@ describe("Editing a symbol from a note", function () {
     expect(items).toContain("Edit symbol");
     expect(items).toContain("Reveal file in navigation");
     expect(items.filter((item) => item === "Edit symbol")).toHaveLength(1);
+    // Obsidian opens its image viewer on a right-click there, as the picture
+    // below shows, but not on a symbol's.
+    await browser.pause(300);
+    expect(await viewerOpen()).toBe(false);
     await choose("Edit symbol");
     expect(await editorName()).toBe("001");
     await closeEditor();
-    // A picture that is no symbol gets no menu from Inkline.
+    // A picture that is no symbol gets no menu from Inkline, and Obsidian's
+    // viewer opens as for any picture.
     await browser
       .$(
         ".workspace-leaf.mod-active .markdown-reading-view img:not(.inkline-symbol)",
       )
       .click({ button: "right" });
-    await browser.pause(500);
+    await browser.waitUntil(viewerOpen);
     expect(await menuItems()).toEqual([]);
   });
 
@@ -165,7 +180,11 @@ describe("Editing a symbol from a note", function () {
     await browser.waitUntil(async () =>
       (await menuItems()).includes("Edit symbol"),
     );
+    await browser.pause(300);
+    expect(await viewerOpen()).toBe(false);
     await browser.keys(["Escape"]);
+    const main = await browser.getWindowHandle();
+    const before = await browser.getWindowHandles();
     await browser.executeObsidian(async ({ app }) => {
       const file = app.vault.getFileByPath("Entry.md");
       if (file === null) throw new Error("no Entry.md");
@@ -174,37 +193,29 @@ describe("Editing a symbol from a note", function () {
         .openFile(file, { state: { mode: "preview" } });
     });
     try {
-      // A right-click on the symbol there, as the popout's own document
-      // gets it.
+      // A right-click in the popout's own window, where its menu shows.
+      let popout: string | undefined;
+      await browser.waitUntil(async () => {
+        const handles = await browser.getWindowHandles();
+        popout = handles.find((handle) => !before.includes(handle));
+        return popout !== undefined;
+      });
+      if (popout === undefined) throw new Error("no popout window");
+      await browser.switchToWindow(popout);
+      const image = browser.$(".markdown-reading-view img.inkline-symbol");
+      await image.waitForExist();
       await browser.waitUntil(async () =>
-        browser.execute(() => {
-          const image = activeDocument.querySelector("img.inkline-symbol");
-          if (activeDocument === document || image === null) return false;
-          image.dispatchEvent(
-            new MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
-          );
-          return true;
-        }),
+        image.getProperty("complete").then((complete) => complete === true),
       );
-      let menus: string[] = [];
-      try {
-        await browser.waitUntil(async () => {
-          menus = await browser.execute(() =>
-            [activeDocument, document].flatMap((doc) =>
-              Array.from(doc.querySelectorAll(".menu .menu-item-title")).map(
-                (item) =>
-                  `${doc === document ? "main" : "popout"}: ${item.textContent}`,
-              ),
-            ),
-          );
-          return menus.includes("popout: Edit symbol");
-        });
-      } catch (error) {
-        throw new Error(`no menu in the popout: ${JSON.stringify(menus)}`, {
-          cause: error,
-        });
-      }
+      await browser.pause(500);
+      await image.click({ button: "right" });
+      await browser.waitUntil(async () =>
+        (await menuItems()).includes("Edit symbol"),
+      );
+      expect(await viewerOpen()).toBe(false);
+      await browser.keys(["Escape"]);
     } finally {
+      await browser.switchToWindow(main);
       await browser.executeObsidian(({ app }) => {
         for (const leaf of app.workspace.getLeavesOfType("markdown")) {
           if (leaf.view.containerEl.doc !== document) leaf.detach();
