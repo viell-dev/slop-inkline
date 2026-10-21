@@ -1273,7 +1273,7 @@ describe("The editor", function () {
         [0.3, 0.2],
         [0.7, 0.2],
       ]);
-      await waitForStatus("strokes drawn while saving");
+      await waitForStatus("changed while saving");
       expect(await editorOpen()).toBe(true);
     } finally {
       await browser.executeObsidian(({ app }) => {
