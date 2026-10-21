@@ -13,6 +13,60 @@ export function symbolStem(fileName: string): string | undefined {
 }
 
 /**
+ * The characters a symbol's name cannot hold: those Obsidian refuses in a
+ * file name on Windows, a superset of those it refuses elsewhere, so that a
+ * vault stays usable on every system; and those that would break a link to
+ * the file. Control characters go too.
+ */
+const forbidden = '*"\\/<>:|?#^[]';
+
+/** Names Windows keeps for devices, which no file there can have. */
+const reserved = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+
+/** The most bytes most file systems allow in a file's name. */
+const maxNameBytes = 255;
+
+/** What a name typed for a symbol makes it: a number, a name, or neither. */
+export type NameChoice =
+  | { readonly kind: "number" }
+  | { readonly kind: "name"; readonly name: string }
+  | { readonly kind: "refused"; readonly reason: string };
+
+/**
+ * What `typed`, a name typed for a symbol, makes its name: the text without
+ * the characters a file name cannot hold, and without space around it or
+ * dots before it, which would hide the file, or after it, which Windows
+ * drops. An empty name takes the next number in its folder. A name Windows
+ * keeps for a device, or one too long for a file name, is refused, with the
+ * reason.
+ */
+export function chooseName(typed: string): NameChoice {
+  const kept = Array.from(typed)
+    .filter((char) => {
+      const code = char.codePointAt(0) ?? 0;
+      return code >= 0x20 && code !== 0x7f && !forbidden.includes(char);
+    })
+    .join("");
+  const name = kept
+    .trim()
+    .replace(/^\.+/, "")
+    .replace(/[. ]+$/, "")
+    .trim();
+  if (name === "") return { kind: "number" };
+  if (reserved.test(name)) {
+    return {
+      kind: "refused",
+      reason: `${name} is a name Windows keeps for itself`,
+    };
+  }
+  const bytes = new TextEncoder().encode(`${name}${inkExtension}`).length;
+  if (bytes > maxNameBytes) {
+    return { kind: "refused", reason: `the name is too long for a file` };
+  }
+  return { kind: "name", name };
+}
+
+/**
  * The lowest number name not taken among the symbol names in a folder:
  * `001`, then `002`, and so on, filling gaps.
  */

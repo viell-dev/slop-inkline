@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { embedPath } from "../../../src/notes/links.ts";
 import {
+  chooseName,
   embedFromLink,
   encodePath,
   nextNumberName,
@@ -78,5 +79,45 @@ describe("encodePath", () => {
     expect(encodePath("Glyphs/jix%41&y.ink.png")).toBe(
       "Glyphs/jix%2541&y.ink.png",
     );
+  });
+});
+
+describe("chooseName", () => {
+  it("keeps a name in any script, without what a file name cannot hold", () => {
+    expect(chooseName("tower")).toEqual({ kind: "name", name: "tower" });
+    expect(chooseName("ᚠᚢ 塔")).toEqual({ kind: "name", name: "ᚠᚢ 塔" });
+    expect(chooseName("gate?")).toEqual({ kind: "name", name: "gate" });
+    expect(chooseName('a*b"c\\d/e<f>g:h|i#j^k[l]m')).toEqual({
+      kind: "name",
+      name: "abcdefghijklm",
+    });
+    expect(chooseName("tab\there")).toEqual({ kind: "name", name: "tabhere" });
+  });
+
+  it("drops space around a name, dots before it, and dots after it", () => {
+    expect(chooseName("  the gate  ")).toEqual({
+      kind: "name",
+      name: "the gate",
+    });
+    expect(chooseName(".hidden")).toEqual({ kind: "name", name: "hidden" });
+    expect(chooseName("door. . ")).toEqual({ kind: "name", name: "door" });
+  });
+
+  it("takes a number for an empty name, or one with nothing left", () => {
+    expect(chooseName("")).toEqual({ kind: "number" });
+    expect(chooseName("   ")).toEqual({ kind: "number" });
+    expect(chooseName("???")).toEqual({ kind: "number" });
+  });
+
+  it("refuses device names and names too long for a file", () => {
+    for (const name of ["CON", "nul", "Com1", "LPT9"]) {
+      expect(chooseName(name).kind).toBe("refused");
+    }
+    expect(chooseName("CONSOLE")).toEqual({ kind: "name", name: "CONSOLE" });
+    // 247 bytes and .ink.png fit; one more byte does not.
+    expect(chooseName("a".repeat(247)).kind).toBe("name");
+    expect(chooseName("a".repeat(248)).kind).toBe("refused");
+    // Three bytes each in UTF-8.
+    expect(chooseName("塔".repeat(83)).kind).toBe("refused");
   });
 });
