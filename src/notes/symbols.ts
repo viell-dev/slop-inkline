@@ -28,6 +28,7 @@ import {
 import { visibleWidth } from "../editor/view.ts";
 import { capturePoint, findPoint, type InsertionPoint } from "./insertion.ts";
 import { embedFor } from "./embeds.ts";
+import { insertionAt } from "./links.ts";
 import { nextNumberName, symbolStem } from "./names.ts";
 
 /** What the plugin lends the editors it opens. */
@@ -119,9 +120,11 @@ function appendedNotice(file: TFile): void {
  * Inserts an embed into the target note at the position found again from its
  * surrounding text: through a live editor of the note when there is one,
  * since it may hold changes not yet on disk, otherwise into the note's file.
- * When the position cannot be found, the embed goes at the end of the note,
- * and a notice says so. Returns the point just after the embed, where the
- * next symbol's embed goes.
+ * A position inside a link or embed moves to just past it, so that the embed
+ * never splits one, with a space first after a bare web address, which only
+ * a space ends. When the position cannot be found, the embed goes at the
+ * end of the note, and a notice says so. Returns the point just after the
+ * embed, where the next symbol's embed goes.
  */
 async function insertEmbed(
   app: App,
@@ -133,10 +136,13 @@ async function insertEmbed(
   if (view !== undefined) {
     const editor = view.editor;
     const text = editor.getValue();
-    const at = findPoint(text, point);
-    if (at !== undefined) {
-      editor.replaceRange(embed, editor.offsetToPos(at));
-      return capturePoint(editor.getValue(), at + embed.length);
+    const found = findPoint(text, point);
+    // Never inside a link or embed, which the embed would split.
+    const place = found === undefined ? undefined : insertionAt(text, found);
+    if (place !== undefined) {
+      const inserted = place.before + embed;
+      editor.replaceRange(inserted, editor.offsetToPos(place.at));
+      return capturePoint(editor.getValue(), place.at + inserted.length);
     }
     const gap = text === "" || text.endsWith("\n") ? "" : "\n";
     editor.replaceRange(`${gap}${embed}\n`, editor.offsetToPos(text.length));
@@ -150,10 +156,12 @@ async function insertEmbed(
     appended: false,
   };
   await app.vault.process(file, (text) => {
-    const at = findPoint(text, point);
-    if (at !== undefined) {
-      const inserted = text.slice(0, at) + embed + text.slice(at);
-      outcome.after = capturePoint(inserted, at + embed.length);
+    const found = findPoint(text, point);
+    const place = found === undefined ? undefined : insertionAt(text, found);
+    if (place !== undefined) {
+      const { at, before } = place;
+      const inserted = text.slice(0, at) + before + embed + text.slice(at);
+      outcome.after = capturePoint(inserted, at + before.length + embed.length);
       return inserted;
     }
     outcome.appended = true;

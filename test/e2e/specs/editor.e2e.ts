@@ -1074,6 +1074,46 @@ describe("The editor", function () {
     });
   });
 
+  it("inserts after a link or embed the cursor was in, never inside", async function () {
+    await browser.executeObsidian(async ({ app }) => {
+      await app.vault.create(
+        "Links.md",
+        // The third link's text wraps onto the next line, and the last is a
+        // bare address, which only a space ends.
+        "See [[gate|the HEREgate]] and ![](Old%20(2)/towTHEREer.png) now.\nA [wrapped\nlink WHEREtext](w.md) ends.\nGo to https://example.com/paMARKth now.\n",
+      );
+    });
+    for (const [marker, expected] of [
+      [
+        "HERE",
+        "See [[gate|the gate]]![[001.ink.png]] and ![](Old%20(2)/towTHEREer.png) now.\nA [wrapped\nlink WHEREtext](w.md) ends.\nGo to https://example.com/paMARKth now.\n",
+      ],
+      [
+        "THERE",
+        "See [[gate|the gate]]![[001.ink.png]] and ![](Old%20(2)/tower.png)![[002.ink.png]] now.\nA [wrapped\nlink WHEREtext](w.md) ends.\nGo to https://example.com/paMARKth now.\n",
+      ],
+      [
+        "WHERE",
+        "See [[gate|the gate]]![[001.ink.png]] and ![](Old%20(2)/tower.png)![[002.ink.png]] now.\nA [wrapped\nlink text](w.md)![[003.ink.png]] ends.\nGo to https://example.com/paMARKth now.\n",
+      ],
+      [
+        "MARK",
+        "See [[gate|the gate]]![[001.ink.png]] and ![](Old%20(2)/tower.png)![[002.ink.png]] now.\nA [wrapped\nlink text](w.md)![[003.ink.png]] ends.\nGo to https://example.com/path ![[004.ink.png]] now.\n",
+      ],
+    ] as const) {
+      await openAtMarker("Links.md", marker);
+      await browser.executeObsidianCommand("inkline:insert-symbol");
+      await waitForEditor();
+      await draw(zigzag);
+      await browser.keys(["Control", "Enter"]);
+      await waitClosed();
+      await browser
+        .waitUntil(async () => (await noteText()) === expected)
+        .catch(() => undefined);
+      expect(await noteText()).toBe(expected);
+    }
+  });
+
   it("inserts into the note's file when its tab was closed", async function () {
     await insert();
     await draw(zigzag);

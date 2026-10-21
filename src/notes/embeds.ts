@@ -1,13 +1,9 @@
 // The embed that shows a symbol in a note: the link Obsidian makes for it, as
 // names.ts adapts it, checked to lead back to it.
 
-import { getLinkpath, type App, type TFile } from "obsidian";
-import {
-  embedFromLink,
-  encodePath,
-  markdownDestination,
-  readDestination,
-} from "./names.ts";
+import type { App, TFile } from "obsidian";
+import { embedPath } from "./links.ts";
+import { embedFromLink, encodePath } from "./names.ts";
 
 /**
  * The embed that shows `file` in the note at `notePath`, in the link format
@@ -20,12 +16,13 @@ export function embedFor(app: App, file: TFile, notePath: string): string {
   const embed = embedFromLink(
     app.fileManager.generateMarkdownLink(file, notePath),
   );
-  const written = markdownDestination(embed);
-  if (written === undefined) return embed;
-  const path = readDestination(written);
+  // Only a Markdown link can lead elsewhere: a wiki link takes no escapes.
+  if (!embed.startsWith("![](")) return embed;
+  // Read as the links of a note are read, as Obsidian reads them.
+  const path = embedPath(embed);
   const target =
     path === undefined
       ? null
-      : app.metadataCache.getFirstLinkpathDest(getLinkpath(path), notePath);
+      : app.metadataCache.getFirstLinkpathDest(path, notePath);
   return target === file ? embed : `![](${encodePath(file.path)})`;
 }
