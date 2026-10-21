@@ -491,6 +491,7 @@ export async function storedDrafts(): Promise<
     strokes: { points: readonly number[] }[];
     base: string;
     baseX?: number;
+    name?: string;
   }[]
 > {
   return browser.executeObsidian(({ app }) => {
@@ -501,6 +502,7 @@ export async function storedDrafts(): Promise<
       strokes: draft.strokes.map((stroke) => ({ points: stroke.points })),
       base: draft.base.kind,
       ...(draft.base.kind === "kept" ? { baseX: draft.base.layer.x } : {}),
+      ...(draft.name === undefined ? {} : { name: draft.name }),
     }));
   });
 }
