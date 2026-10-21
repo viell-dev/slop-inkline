@@ -255,6 +255,14 @@ describe("links as Obsidian reads them", () => {
     expect(insertionAt(text, 30)).toEqual({ at: 42, before: " " });
   });
 
+  // A budget for each of these tests, far above what reading the text in one
+  // pass takes and far below what reading it again from each failed start
+  // would. Alone, each test takes 60 ms at most; beside the other test files,
+  // which Vitest runs at once, up to four times that. Rereading the address
+  // after each failed start, as the scanner did before it read only an
+  // address's host, took about 6 s on the first input alone.
+  const budget = 1000;
+
   it("reads long runs of failed address starts in time", () => {
     const started = performance.now();
     expect(textLinks("https://".repeat(10000))).toEqual([]);
@@ -264,7 +272,7 @@ describe("links as Obsidian reads them", () => {
     expect(textLinks("a%".repeat(30000))).toEqual([]);
     const word = `${"a".repeat(93)}http://`.repeat(1000);
     expect(textLinks(word)).toEqual([]);
-    expect(performance.now() - started).toBeLessThan(200);
+    expect(performance.now() - started).toBeLessThan(budget);
   });
 
   it("reads a long line of unclosed brackets in time", () => {
@@ -277,7 +285,7 @@ describe("links as Obsidian reads them", () => {
     const nested = `${"[".repeat(5000)}![](x.png)${"](b)".repeat(5000)}`;
     expect(textLinks(nested).length).toBeGreaterThan(0);
     expect(textLinks(`https://x.y/a${")".repeat(5000)}`)).toHaveLength(1);
-    expect(performance.now() - started).toBeLessThan(200);
+    expect(performance.now() - started).toBeLessThan(budget);
   });
 });
 
