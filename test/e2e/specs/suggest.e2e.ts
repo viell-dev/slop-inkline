@@ -105,9 +105,34 @@ async function addSymbols(paths: string[]): Promise<void> {
 }
 
 /**
+ * Makes the vault say it has no file at `paths`, as once they are deleted,
+ * without the events a deletion sends: on Obsidian 1.14.4 they sometimes
+ * close an open list before a test can choose from it.
+ */
+async function forgetFiles(paths: string[]): Promise<void> {
+  await browser.executeObsidian(({ app }, files) => {
+    const vault = app.vault;
+    const original = vault.getFileByPath.bind(vault);
+    Reflect.set(vault, "inklineRemembered", original);
+    vault.getFileByPath = (path: string) =>
+      files.includes(path) ? null : original(path);
+  }, paths);
+}
+
+/** Undoes {@link forgetFiles}. */
+async function rememberFiles(): Promise<void> {
+  await browser.executeObsidian(({ app }) => {
+    const vault = app.vault;
+    const original: unknown = Reflect.get(vault, "inklineRemembered");
+    if (typeof original !== "function") return;
+    Reflect.deleteProperty(vault, "inklineRemembered");
+    Reflect.set(vault, "getFileByPath", original);
+  });
+}
+
+/**
  * Moves the files at `paths` to the vault's own trash, and waits for the
- * vault to forget them, which it does once it sees them go. Obsidian 1.14.4
- * in Docker closes a list when a file goes to the system's trash.
+ * vault to forget them, which it does once it sees them go.
  */
 async function deleteFiles(paths: string[]): Promise<void> {
   await browser.executeObsidian(async ({ app }, files) => {
@@ -313,27 +338,29 @@ describe("Inserting a symbol you have", function () {
 
   it("inserts nothing for a symbol deleted while it was listed", async function () {
     await addSymbols(["gone.ink.png"]);
-    await openAtMarker("Deleted.md", "HERE");
-    await type(";;gone");
-    await waitForSuggested(["gone"]);
-    await deleteFiles(["gone.ink.png"]);
-    // Still listed, for Enter to choose it.
-    await waitForSuggested(["gone"]);
-    await browser.keys(["Enter"]);
-    expect(await noteText()).toBe("The door reads ;;gone.\n");
-    await waitForNotice("gone was deleted, so it was not inserted.");
-    await browser.$(".suggestion-container").waitForExist({ reverse: true });
-    // Nor from the command's list.
-    await addSymbols(["gone.ink.png"]);
-    await browser.executeObsidianCommand("inkline:insert-existing-symbol");
-    await browser.$(".prompt-input").waitForDisplayed();
-    await type("gone");
-    await waitForSuggested(["gone"]);
-    await deleteFiles(["gone.ink.png"]);
-    await waitForSuggested(["gone"]);
-    await browser.keys(["Enter"]);
-    await browser.$(".prompt-input").waitForExist({ reverse: true });
-    expect(await noteText()).toBe("The door reads ;;gone.\n");
+    try {
+      await openAtMarker("Deleted.md", "HERE");
+      await type(";;gone");
+      await waitForSuggested(["gone"]);
+      await forgetFiles(["gone.ink.png"]);
+      await browser.keys(["Enter"]);
+      expect(await noteText()).toBe("The door reads ;;gone.\n");
+      await waitForNotice("gone was deleted, so it was not inserted.");
+      await browser.$(".suggestion-container").waitForExist({ reverse: true });
+      await rememberFiles();
+      // Nor from the command's list.
+      await browser.executeObsidianCommand("inkline:insert-existing-symbol");
+      await browser.$(".prompt-input").waitForDisplayed();
+      await type("gone");
+      await waitForSuggested(["gone"]);
+      await forgetFiles(["gone.ink.png"]);
+      await browser.keys(["Enter"]);
+      await browser.$(".prompt-input").waitForExist({ reverse: true });
+      expect(await noteText()).toBe("The door reads ;;gone.\n");
+    } finally {
+      await rememberFiles();
+      await deleteFiles(["gone.ink.png"]);
+    }
   });
 
   it("inserts Markdown links that lead back to their symbols", async function () {
