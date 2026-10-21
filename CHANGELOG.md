@@ -47,6 +47,12 @@ section is also its
   the plain images they are. A plugin's own view of a note shows them as text
   with the `inkline-text` class, as [docs/rendering.md](docs/rendering.md)
   describes for theme and plugin authors.
+- **Type to insert:** in a note, type `;;` and a few letters of a symbol's name,
+  in any script, to choose it from a list with its picture: the best match
+  first, then those the note uses most, then the most recently changed. Enter
+  puts its embed in place of what was typed; Esc closes the list, and what you
+  type after it stays text. Code and front matter show no list. **Insert
+  existing symbol**, a command, opens the same list to search.
 - **Edit symbol**, in a symbol file's menu, which opens it in the editor again
   with every stroke, so that nothing is lost by editing.
 - The editor's pen, eraser, four brush sizes, undo, redo, and clear, each with

@@ -27,8 +27,9 @@ import {
 } from "../editor/modal.ts";
 import { visibleWidth } from "../editor/view.ts";
 import { capturePoint, findPoint, type InsertionPoint } from "./insertion.ts";
+import { embedFor } from "./embeds.ts";
 import { insertionAt } from "./links.ts";
-import { embedFromLink, nextNumberName, symbolStem } from "./names.ts";
+import { nextNumberName, symbolStem } from "./names.ts";
 
 /** What the plugin lends the editors it opens. */
 export interface EditorHost {
@@ -437,9 +438,7 @@ function newSymbol(
       if (inserted) return;
       // Once Inkline is disabled, the editor's draft finishes the insertion.
       stillAlive(host);
-      const embed = embedFromLink(
-        app.fileManager.generateMarkdownLink(made.file, note.path),
-      );
+      const embed = embedFor(app, made.file, note.path);
       const existing = adopted
         ? await existingEmbed(app, target, made.file, embed)
         : undefined;
