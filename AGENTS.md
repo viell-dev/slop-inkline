@@ -75,8 +75,10 @@ in the same way.
 
 - Every pull request that can change what ships is reviewed by another agent, in
   a session of its own, running a different model from the one that wrote it,
-  because a different model makes different mistakes. Reviewers report findings
-  and do not push to the branch.
+  because a different model makes different mistakes. A model of another line,
+  such as Claude Fable reviewing Claude Opus, or from another provider counts;
+  another version, effort setting, or harness of the same model does not.
+  Reviewers report findings and do not push to the branch.
 - The author fixes or answers each finding. A material finding is closed only
   when the reviewer accepts the fix or the answer in a further round. The review
   names its model and the commit it covered; a behavior-changing commit pushed
