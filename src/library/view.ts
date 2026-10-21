@@ -14,6 +14,7 @@ import {
   parseLinktext,
   type TAbstractFile,
   type TFile,
+  type Vault,
 } from "obsidian";
 import { isInkPath } from "../format/ink-file.ts";
 import { embedFor } from "../notes/embeds.ts";
@@ -29,6 +30,11 @@ import {
 
 /** The library's view type, as Obsidian registers and restores it. */
 export const libraryViewType = "inkline-library";
+
+/** The address of `file`'s picture, which changes as the file does. */
+function pictureOf(vault: Vault, file: TFile | undefined): string {
+  return file === undefined ? "" : vault.getResourcePath(file);
+}
 
 /** How a folder is named in the library: the vault's top folder by name. */
 function folderLabel(folder: string): string {
@@ -90,6 +96,12 @@ export class SymbolLibraryView extends ItemView {
   /** The folders the folder field offers, by the index of their option. */
   #folders: readonly string[] = [];
   #list: HTMLElement | undefined;
+  /**
+   * What the library last showed, so that a change elsewhere, as an edit to
+   * a note that Obsidian's cache then resolves, redraws nothing, and a click
+   * on a symbol is not lost to a redraw between its press and its release.
+   */
+  #shown = "";
   /** Shows the library again, once for a burst of changes. */
   readonly #refresh = debounce(
     () => {
@@ -215,6 +227,21 @@ export class SymbolLibraryView extends ItemView {
     if (this.#folder !== undefined && !folders.includes(this.#folder)) {
       this.#folder = undefined;
     }
+    const shown = filterCatalog(entries, this.#query, this.#folder);
+    const key = JSON.stringify([
+      folders,
+      this.#folder ?? null,
+      entries.length,
+      shown.map((entry) => [
+        entry.path,
+        entry.notes,
+        this.#expanded.has(entry.path),
+        // Its picture's address, which changes as the file does.
+        pictureOf(this.app.vault, files.get(entry.path)),
+      ]),
+    ]);
+    if (key === this.#shown) return;
+    this.#shown = key;
     field.empty();
     field.createEl("option", { value: "-1", text: "All folders" });
     folders.forEach((folder, index) => {
@@ -241,7 +268,6 @@ export class SymbolLibraryView extends ItemView {
       });
       return;
     }
-    const shown = filterCatalog(entries, this.#query, this.#folder);
     if (shown.length === 0) {
       list.createDiv({
         cls: "inkline-library-empty",

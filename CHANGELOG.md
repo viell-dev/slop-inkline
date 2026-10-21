@@ -56,6 +56,14 @@ section is also its
   puts its embed in place of what was typed; Esc closes the list, and what you
   type after it stays text. Code and front matter show no list. **Insert
   existing symbol**, a command, opens the same list to search.
+- **Symbol library:** **Show symbol library**, a command, opens a view of every
+  symbol in the vault in the right sidebar, with its picture, its name and
+  folder, and how many notes use it, which lists them to open. A filter by name,
+  in any letter case, and a choice of folder narrow it. A click inserts a symbol
+  at the cursor of the note last edited, never inside a link or embed, and puts
+  the cursor after it, so that symbols clicked in turn follow one another; a
+  symbol's menu holds **Edit symbol**, with what Obsidian offers for a link to
+  the file.
 - **Edit symbol**, in a symbol file's menu, which opens it in the editor again
   with every stroke, so that nothing is lost by editing.
 - **Names:** the editor's title is the symbol's name, in any script, which you

@@ -345,6 +345,21 @@ describe("The symbol library", function () {
       await app.vault.rename(file, "tower.ink.png");
     });
     await waitForNames(["arch", "tower"]);
+    // A note that uses no symbol changes nothing the library shows, so it
+    // is not drawn again, which would lose a click under way.
+    await browser.execute(() => {
+      document
+        .querySelector(".inkline-library-symbol")
+        ?.setAttribute("data-test-mark", "kept");
+    });
+    await browser.executeObsidian(async ({ app }) => {
+      await app.vault.create("Plain.md", "Nothing here but [[Welcome]].\n");
+    });
+    await waitForLink("Plain.md", "Welcome.md");
+    await browser.pause(500);
+    expect(
+      await browser.$(".inkline-library-symbol[data-test-mark]").isExisting(),
+    ).toBe(true);
     await browser.executeObsidian(async ({ app }) => {
       await app.vault.create("Note.md", "See ![[tower.ink.png]].\n");
     });
