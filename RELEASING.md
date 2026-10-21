@@ -49,11 +49,28 @@ On a branch from `main`:
 
 Run the Release workflow from the Actions tab or with
 `gh workflow run release.yml --ref main -f version=<version>`. Without
-`publish`, it is a dry run: it runs the checks, refuses metadata or notes that
-do not match the version, builds the files, and uploads them with the notes and
-checksums as the `release` artifact. With no version, it builds `main` as it is,
-with the `Unreleased` notes. Pull requests that change the release steps run the
-dry run too.
+`publish`, it is a dry run, which changes nothing outside the workflow run:
+
+1. It refuses a commit whose required checks, `verify` on Linux and Windows and
+   the end-to-end tests in both Obsidian versions, did not pass, or last passed
+   more than a week ago, when the latest Obsidian release may have changed
+   since. `node scripts/publish.ts ci <commit>` makes the same check by hand. To
+   refresh a week-old commit, run CI on `main` again with
+   `gh workflow run ci.yml --ref main`.
+2. It runs `npm run check`, and refuses metadata or notes that do not match the
+   version.
+3. It builds the files and records their checksums.
+4. It installs exactly those files into Obsidian 1.13.4, on its oldest
+   installer, and the latest public release, as a user's Obsidian installs them,
+   and checks that they are the files built, that the plugin loads with their
+   version, commands, and styles, and that it saves a symbol
+   (`test/e2e/specs/package.e2e.ts`).
+5. It uploads the files with the notes and checksums as the `release` artifact,
+   and the end-to-end output as `release-e2e-results`.
+
+With no version, it builds `main` as it is, with the `Unreleased` notes. Pull
+requests that change the release steps run the dry run too, without step 1, as
+their own CI is still running.
 
 ## Publish
 
@@ -63,16 +80,36 @@ After the release pull request merges and its checks pass on `main`, run:
 gh workflow run release.yml --ref main -f version=<version> -f publish=true
 ```
 
-The `prepare` job repeats the checks and the build. `publish` refuses a version
+The `prepare` job repeats every step of the dry run. `publish` refuses a version
 whose tag already exists, attests the files' provenance, creates the release as
-a draft with the files and checksums, and then publishes it, which creates the
-tag on the commit that was built. Versions below 1.0.0 are marked as
-prereleases, and later ones as the latest release.
+a draft with the files and checksums, checks that the draft holds exactly those
+files, and then publishes it, which creates the tag on the commit that was
+built. Versions below 1.0.0 are marked as prereleases, and later ones as the
+latest release.
+
+### When publishing fails part way
+
+Run the same command again. Nothing is published until the last step, and a
+draft has no tag and cannot be installed, so a second run can repair what the
+first left:
+
+- a draft that holds exactly this build, as after a failure in the last step, is
+  published as it is;
+- a draft that holds other files, as after an upload that broke off, is deleted
+  and made again;
+- a version whose tag exists is refused, as its files are published and never
+  replaced: if the published release is wrong, release a new version.
+
+`test/unit/publish.test.ts` runs these cases against a fake GitHub, failing at
+each step.
 
 ## Verify
 
 The `verify publication` job downloads the published assets, checks them against
-`SHA256SUMS`, and verifies each file's attestation. To check by hand:
+`SHA256SUMS`, and verifies each file's attestation. If it fails because GitHub
+did not answer, rerun the job; if the files or their attestations are wrong, the
+release is published and stays, so record the defect and release a new version.
+To check by hand:
 
 ```sh
 gh release download <version> --repo viell-dev/slop-inkline --dir check

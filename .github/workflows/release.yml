@@ -1,8 +1,9 @@
 name: Release
 
 # RELEASING.md describes the whole process. Without `publish`, and on pull
-# requests that change the release steps, this is a dry run: it checks and
-# builds the release, then uploads it as a workflow artifact only.
+# requests that change the release steps, this is a dry run: it checks the
+# commit's CI and the release, builds the files, installs them in Obsidian,
+# and uploads them as a workflow artifact only.
 
 on:
   workflow_dispatch:
@@ -18,8 +19,11 @@ on:
   pull_request:
     paths:
       - .github/workflows/release.yml
+      - scripts/lib/publish.ts
       - scripts/lib/release.ts
+      - scripts/publish.ts
       - scripts/release.ts
+      - test/e2e/specs/package.e2e.ts
 
 permissions:
   contents: read
@@ -32,7 +36,10 @@ jobs:
   prepare:
     name: prepare
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      checks: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -42,6 +49,14 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      # A release is of a commit whose required CI passed, the end-to-end
+      # tests in both Obsidian versions included, within the last week. A
+      # pull request's own CI is still running, so its dry run skips this.
+      - name: Check the commit's CI
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/publish.ts ci "$GITHUB_SHA"
       - run: npm run check
       - name: Check the version and write the notes
         env:
@@ -72,6 +87,34 @@ jobs:
           cd release
           sha256sum main.js manifest.json styles.css > SHA256SUMS
           cat SHA256SUMS
+      # The release's own files, installed in Obsidian as a user's would be,
+      # in the oldest and the latest versions the end-to-end tests use.
+      - name: Resolve the Obsidian versions
+        env:
+          PRINT_OBSIDIAN_CACHE_KEY: "1"
+        run: |
+          node test/e2e/wdio.conf.mts | grep '^obsidian-cache-key:' > obsidian-versions.txt
+          cat obsidian-versions.txt
+          rm -rf .obsidian-cache
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .obsidian-cache
+          key: obsidian-${{ runner.os }}-${{ hashFiles('obsidian-versions.txt') }}
+      - name: Install the virtual display and the test fonts
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -q --yes --no-install-recommends fonts-dejavu-core herbstluftwm x11-xserver-utils xvfb
+      - name: Install the release in Obsidian
+        env:
+          E2E_PLUGIN_DIR: release
+        run: sh test/e2e/session.sh --spec test/e2e/specs/package.e2e.ts --spec test/e2e/specs/plugin.e2e.ts
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-e2e-results
+          path: test-results/e2e
+          if-no-files-found: warn
+          retention-days: 30
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release
@@ -95,6 +138,12 @@ jobs:
       GH_REPO: ${{ github.repository }}
       VERSION: ${{ inputs.version }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release
@@ -114,18 +163,14 @@ jobs:
             release/main.js
             release/manifest.json
             release/styles.css
-      - name: Create the release
-        run: |
-          # Versions below 1.0.0 are prereleases, which BRAT installs.
-          case "$VERSION" in
-            0.*) kind=(--prerelease --latest=false) ;;
-            *) kind=(--latest) ;;
-          esac
-          gh release create "$VERSION" \
-            release/main.js release/manifest.json release/styles.css release/SHA256SUMS \
-            --draft --target "$GITHUB_SHA" --title "Inkline $VERSION" \
-            --notes-file release/release-notes.md
-          gh release edit "$VERSION" --draft=false "${kind[@]}"
+      # Creates the release as a draft with the files, checks that it holds
+      # them, and publishes it, which creates the tag. Run again after a
+      # failure part way, it resumes a draft that holds this build, or
+      # replaces one that does not; it never touches a published version.
+      - name: Publish the release
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node scripts/publish.ts publish "$VERSION" release
 
   verify:
     name: verify publication
