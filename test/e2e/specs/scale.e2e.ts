@@ -14,8 +14,8 @@ const count = 5000;
  * The most a keystroke's search may take, for the slowest query, each the
  * fastest of three rounds. In Docker on Windows 11, with 5,000 symbols, it
  * was 6 ms in Obsidian 1.14.4 and 8 ms in 1.13.4, and 18 ms at worst over
- * every round; a search that scanned the vault once for each symbol took
- * over 2 s each, and the test ran past its 60 s limit.
+ * every round. A search that scanned the vault once for each symbol took
+ * over a second, which ends the rounds and fails the test on its time.
  */
 const budget = 100;
 
@@ -82,108 +82,118 @@ describe("A vault with many symbols", function () {
     );
   });
 
-  it("finds the symbols a keystroke matches within a few frames", async function () {
-    await openAtMarker("Large.md", "HERE");
-    const result = await browser.executeObsidian(({ app }, limit) => {
-      // The list Inkline registered, among the editor's suggestions: an
-      // internal of Obsidian's that only this measurement reads.
-      const manager: unknown = Reflect.get(app.workspace, "editorSuggest");
-      const suggests: unknown =
-        typeof manager === "object" && manager !== null
-          ? Reflect.get(manager, "suggests")
-          : undefined;
-      const registered: readonly unknown[] = Array.isArray(suggests)
-        ? suggests
-        : [];
-      // By its class's name, which the build keeps, as it does not minify.
-      const name = (suggest: unknown): string =>
-        typeof suggest === "object" && suggest !== null
-          ? suggest.constructor.name
-          : typeof suggest;
-      const found = registered.find(
-        (suggest) => name(suggest) === "SymbolSuggest",
-      );
-      const search: unknown =
-        typeof found === "object" && found !== null
-          ? Reflect.get(found, "getSuggestions")
-          : undefined;
-      const file = app.vault.getFileByPath("Large.md");
-      if (typeof search !== "function" || file === null) {
-        throw new Error(
-          `no list of symbols registered among ${JSON.stringify(registered.map(name))}`,
-        );
-      }
-      const list = (query: string): string[] => {
-        const files: unknown = search.call(found, {
-          query,
-          file,
-          editor: undefined,
-          start: { line: 2, ch: 0 },
-          end: { line: 2, ch: query.length + 2 },
-        });
-        return Array.isArray(files)
-          ? files.map((entry: unknown) =>
-              typeof entry === "object" && entry !== null
-                ? String(Reflect.get(entry, "path"))
-                : "",
-            )
+  describe("as each letter is typed", function () {
+    // The suite's 600 s are for making the symbols; a search that hangs
+    // fails here sooner.
+    this.timeout(120_000);
+
+    it("finds the symbols a keystroke matches within a few frames", async function () {
+      await openAtMarker("Large.md", "HERE");
+      const result = await browser.executeObsidian(({ app }, limit) => {
+        // The list Inkline registered, among the editor's suggestions: an
+        // internal of Obsidian's that only this measurement reads.
+        const manager: unknown = Reflect.get(app.workspace, "editorSuggest");
+        const suggests: unknown =
+          typeof manager === "object" && manager !== null
+            ? Reflect.get(manager, "suggests")
+            : undefined;
+        const registered: readonly unknown[] = Array.isArray(suggests)
+          ? suggests
           : [];
-      };
-      // As each letter of a name is typed, then a name with a space, a
-      // number in full, and nothing that matches.
-      const queries = [
-        "",
-        "g",
-        "gl",
-        "gly",
-        "glyph",
-        "glyph 4",
-        "glyph 42",
-        "glyph 4242",
-        "4242",
-        "zzzz",
-      ];
-      // Each query's fastest of three rounds: a slow search is slow in every
-      // round, while other work beside the test, such as the other Obsidian
-      // version's tests, slows only some.
-      // A search far over budget ends the rounds, so that the test reports
-      // its times rather than running out of time.
-      const best = new Map<string, number>();
-      const lists = new Map<string, string[]>();
-      rounds: for (let round = 0; round < 3; round++) {
-        for (const query of queries) {
-          const started = performance.now();
-          lists.set(query, list(query));
-          const ms = performance.now() - started;
-          best.set(query, Math.min(best.get(query) ?? ms, ms));
-          if (ms > limit * 10) break rounds;
+        // By its class's name, which the build keeps, as it does not minify.
+        const name = (suggest: unknown): string =>
+          typeof suggest === "object" && suggest !== null
+            ? suggest.constructor.name
+            : typeof suggest;
+        const found = registered.find(
+          (suggest) => name(suggest) === "SymbolSuggest",
+        );
+        const search: unknown =
+          typeof found === "object" && found !== null
+            ? Reflect.get(found, "getSuggestions")
+            : undefined;
+        const file = app.vault.getFileByPath("Large.md");
+        if (typeof search !== "function" || file === null) {
+          throw new Error(
+            `no list of symbols registered among ${JSON.stringify(registered.map(name))}`,
+          );
         }
-      }
-      const times = [...best.values()];
-      return {
-        symbols: app.vault
-          .getFiles()
-          .filter(
-            (entry) =>
-              entry.path.startsWith("Many/") && entry.path.endsWith(".ink.png"),
-          ).length,
-        times,
-        all: lists.get("") ?? [],
-        spaced: lists.get("glyph 4242") ?? [],
-        number: lists.get("4242") ?? [],
-        none: lists.get("zzzz") ?? [],
-      };
-    }, budget);
-    console.log(
-      `${String(result.symbols)} symbols, each query's fastest of three rounds: ${result.times.map((ms) => ms.toFixed(1)).join(", ")} ms`,
-    );
-    expect(result.symbols).toBe(count);
-    // The list holds the 50 best, the one the note uses most first.
-    expect(result.all).toHaveLength(50);
-    expect(result.all[0]).toBe("Many/00/glyph 0007.ink.png");
-    expect(result.spaced).toEqual(["Many/42/glyph 4242.ink.png"]);
-    expect(result.number[0]).toBe("Many/42/glyph 4242.ink.png");
-    expect(result.none).toEqual([]);
-    expect(Math.max(...result.times)).toBeLessThan(budget);
+        const list = (query: string): string[] => {
+          const files: unknown = search.call(found, {
+            query,
+            file,
+            editor: undefined,
+            start: { line: 2, ch: 0 },
+            end: { line: 2, ch: query.length + 2 },
+          });
+          return Array.isArray(files)
+            ? files.map((entry: unknown) =>
+                typeof entry === "object" && entry !== null
+                  ? String(Reflect.get(entry, "path"))
+                  : "",
+              )
+            : [];
+        };
+        // As each letter of a name is typed, then a name with a space, a
+        // number in full, and nothing that matches.
+        const queries = [
+          "",
+          "g",
+          "gl",
+          "gly",
+          "glyph",
+          "glyph 4",
+          "glyph 42",
+          "glyph 4242",
+          "4242",
+          "zzzz",
+        ];
+        // Each query's fastest of three rounds: a slow search is slow in every
+        // round, while other work beside the test, such as the other Obsidian
+        // version's tests, slows only some. The search remembers nothing from
+        // one round to the next, so each round does all of its work.
+        // A search far over budget ends the rounds, so that the test reports
+        // its times rather than running out of time.
+        const best = new Map<string, number>();
+        const lists = new Map<string, string[]>();
+        rounds: for (let round = 0; round < 3; round++) {
+          for (const query of queries) {
+            const started = performance.now();
+            lists.set(query, list(query));
+            const ms = performance.now() - started;
+            best.set(query, Math.min(best.get(query) ?? ms, ms));
+            if (ms > limit * 10) break rounds;
+          }
+        }
+        const times = [...best.values()];
+        return {
+          symbols: app.vault
+            .getFiles()
+            .filter(
+              (entry) =>
+                entry.path.startsWith("Many/") &&
+                entry.path.endsWith(".ink.png"),
+            ).length,
+          times,
+          all: lists.get("") ?? [],
+          spaced: lists.get("glyph 4242") ?? [],
+          number: lists.get("4242") ?? [],
+          none: lists.get("zzzz") ?? [],
+        };
+      }, budget);
+      console.log(
+        `${String(result.symbols)} symbols, each query's fastest of three rounds: ${result.times.map((ms) => ms.toFixed(1)).join(", ")} ms`,
+      );
+      expect(result.symbols).toBe(count);
+      // The time first: a search far over budget ends the rounds, before
+      // the later queries have their lists.
+      expect(Math.max(...result.times)).toBeLessThan(budget);
+      // The list holds the 50 best, the one the note uses most first.
+      expect(result.all).toHaveLength(50);
+      expect(result.all[0]).toBe("Many/00/glyph 0007.ink.png");
+      expect(result.spaced).toEqual(["Many/42/glyph 4242.ink.png"]);
+      expect(result.number[0]).toBe("Many/42/glyph 4242.ink.png");
+      expect(result.none).toEqual([]);
+    });
   });
 });
