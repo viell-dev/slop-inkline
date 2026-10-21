@@ -59,6 +59,27 @@ function matchBrackets(text: string): Map<number, number> {
   return matched;
 }
 
+/**
+ * A search for `token` in `text` from positions that never go back, as a
+ * scan moving forward asks, which reads `text` once in all rather than
+ * once for each position: the index of the next `token` at or after
+ * `from`, or -1.
+ */
+function forward(text: string, token: string): (from: number) => number {
+  let found = -2;
+  return (from) => {
+    if (found !== -1 && found < from) found = text.indexOf(token, from);
+    return found;
+  };
+}
+
+/** The forward searches a paragraph's scan for wiki links needs. */
+interface Finders {
+  readonly close: (from: number) => number;
+  readonly open: (from: number) => number;
+  readonly lineEnd: (from: number) => number;
+}
+
 /** Whether `char` is space between a destination's parts: a line break too. */
 function spacing(char: string | undefined): boolean {
   return char === " " || char === "\t" || char === "\n" || char === "\r";
@@ -197,6 +218,11 @@ function trimmedAddress(address: string): string {
 export function paragraphLinks(text: string): LinkSpan[] {
   const spans: LinkSpan[] = [];
   const brackets = matchBrackets(text);
+  const find: Finders = {
+    close: forward(text, "]]"),
+    open: forward(text, "[["),
+    lineEnd: forward(text, "\n"),
+  };
   let index = 0;
   while (index < text.length) {
     const char = text[index];
@@ -252,7 +278,7 @@ export function paragraphLinks(text: string): LinkSpan[] {
       continue;
     }
     const bracket = embed ? index + 1 : index;
-    const found = linkAt(text, bracket, brackets);
+    const found = linkAt(text, bracket, brackets, find);
     if (found === undefined) {
       index = bracket + 1;
       continue;
@@ -283,6 +309,7 @@ function linkAt(
   text: string,
   bracket: number,
   brackets: ReadonlyMap<number, number>,
+  find: Finders,
 ):
   | {
       end: number;
@@ -292,18 +319,19 @@ function linkAt(
   | undefined {
   if (text[bracket + 1] === "[") {
     // A wiki link, on one line, holding no other.
-    const lineEnd = text.indexOf("\n", bracket);
-    const close = text.indexOf("]]", bracket + 2);
-    const nested = text.indexOf("[[", bracket + 2);
+    const close = find.close(bracket + 2);
+    const nested = find.open(bracket + 2);
+    const lineEnd = find.lineEnd(bracket);
     if (
       close !== -1 &&
-      (lineEnd === -1 || close < lineEnd) &&
-      (nested === -1 || nested > close)
+      (nested === -1 || nested > close) &&
+      (lineEnd === -1 || lineEnd > close)
     ) {
       const inner = text.slice(bracket + 2, close);
-      // A table writes the | before an alias or size as \|.
-      // One that names only a heading, [[#top]], leads within the note.
+      // An empty one is no link; one that names only a heading, [[#top]],
+      // leads within the note.
       if (inner.trim() === "") return undefined;
+      // A table writes the | before an alias or size as \|.
       const path = (inner.split(/[|#]/, 1)[0] ?? "").replace(/\\$/, "");
       return { end: close + 2, target: path };
     }
