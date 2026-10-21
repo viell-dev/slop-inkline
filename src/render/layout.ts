@@ -12,12 +12,15 @@ export const baselineFraction =
   (lineBox.height - lineBox.baseline) / lineBox.height;
 
 /**
- * Whether an image's URL is a symbol file's: whether its path, before any
- * query or fragment, ends in `.ink.png`, in any letter case. Obsidian gives
- * vault images their file's path, with a query that changes when the file
- * does.
+ * Whether an image's URL is a symbol file's in the vault: whether it starts
+ * with `vault`, the address Obsidian gives the vault's files, and its path,
+ * before any query or fragment, ends in `.ink.png`, in any letter case.
+ * Obsidian gives vault images their file's path, with a query that changes
+ * when the file does. Images from elsewhere are not the vault's symbols, and
+ * a mask of one could fail where the image itself loads.
  */
-export function isSymbolUrl(src: string): boolean {
+export function isSymbolUrl(src: string, vault: string): boolean {
+  if (vault === "" || !src.startsWith(vault)) return false;
   const path = src.split(/[?#]/, 1)[0] ?? "";
   let decoded = path;
   try {

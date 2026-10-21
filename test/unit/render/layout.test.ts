@@ -7,24 +7,38 @@ import {
 } from "../../../src/render/layout.ts";
 
 describe("isSymbolUrl", () => {
+  const vault = "app://a1b2/";
+
+  it("refuses images from anywhere but the vault", () => {
+    expect(isSymbolUrl("https://example.com/a.ink.png", vault)).toBe(false);
+    expect(isSymbolUrl("app://other/V/a.ink.png", vault)).toBe(false);
+    expect(isSymbolUrl("app://a1b2/V/a.ink.png", "")).toBe(false);
+  });
+
   it("knows a vault symbol's URL, with the query Obsidian adds", () => {
     expect(
-      isSymbolUrl("app://a1b2/C:/Vault/Glyphs/001.ink.png?1760000000"),
+      isSymbolUrl("app://a1b2/C:/Vault/Glyphs/001.ink.png?1760000000", vault),
     ).toBe(true);
-    expect(isSymbolUrl("app://a1b2/home/me/Vault/tower.INK.PNG")).toBe(true);
+    expect(isSymbolUrl("app://a1b2/home/me/Vault/tower.INK.PNG", vault)).toBe(
+      true,
+    );
   });
 
   it("decodes the path, and survives a stray %", () => {
-    expect(isSymbolUrl("app://a1b2/V/glyph%20one.ink%2Epng?2")).toBe(true);
-    expect(isSymbolUrl("app://a1b2/V/100%.ink.png")).toBe(true);
+    expect(isSymbolUrl("app://a1b2/V/glyph%20one.ink%2Epng?2", vault)).toBe(
+      true,
+    );
+    expect(isSymbolUrl("app://a1b2/V/100%.ink.png", vault)).toBe(true);
   });
 
   it("refuses other images, and a symbol's name in the query only", () => {
-    expect(isSymbolUrl("app://a1b2/V/photo.png")).toBe(false);
-    expect(isSymbolUrl("app://a1b2/V/ink.png")).toBe(false);
-    expect(isSymbolUrl("app://a1b2/V/photo.png?x.ink.png")).toBe(false);
-    expect(isSymbolUrl("https://example.com/a.png#b.ink.png")).toBe(false);
-    expect(isSymbolUrl("")).toBe(false);
+    expect(isSymbolUrl("app://a1b2/V/photo.png", vault)).toBe(false);
+    expect(isSymbolUrl("app://a1b2/V/ink.png", vault)).toBe(false);
+    expect(isSymbolUrl("app://a1b2/V/photo.png?x.ink.png", vault)).toBe(false);
+    expect(isSymbolUrl("https://example.com/a.png#b.ink.png", vault)).toBe(
+      false,
+    );
+    expect(isSymbolUrl("", vault)).toBe(false);
   });
 });
 

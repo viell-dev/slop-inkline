@@ -1,4 +1,4 @@
-import { MarkdownView, Plugin, TFile } from "obsidian";
+import { MarkdownView, Platform, Plugin, TFile } from "obsidian";
 import { DraftStore } from "./editor/drafts.ts";
 import type { InkEditorModal } from "./editor/modal.ts";
 import { isInkPath } from "./format/ink-file.ts";
@@ -9,7 +9,7 @@ import { SymbolRenderer } from "./render/symbols.ts";
 export default class InklinePlugin extends Plugin {
   readonly #editors = new Set<InkEditorModal>();
   /** Shows symbols in notes as characters, in every window. */
-  readonly #renderer = new SymbolRenderer();
+  readonly #renderer = new SymbolRenderer(Platform.resourcePathPrefix);
   #drafts: DraftStore | undefined;
   #loaded = false;
 

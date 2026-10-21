@@ -112,11 +112,18 @@ img.inkline-symbol:not([width], [height]) {
 }
 
 /*
- * In Live Preview, the image is a block in an inline embed, which Obsidian
- * lines up with the bottom of the line and whose image it widens to the
- * embed: the embed takes the drop, and the image keeps its own width.
+ * In the editor, Obsidian lines image embeds up with the bottom of the line:
+ * a symbol's stands on the baseline instead. Where the embed is the editor's
+ * own widget, its image is a block inside it, so the embed takes the drop,
+ * and the image keeps its own width rather than the embed's. In callouts,
+ * tables, and embedded notes, the editor shows rendered text, whose image is
+ * inline and drops itself.
  */
 .cm-content .image-embed.inkline-symbol-embed {
+  vertical-align: baseline;
+}
+
+.cm-content .image-embed.inkline-symbol-embed:has(> .image-wrapper) {
   vertical-align: var(--inkline-drop, -0.375em);
 }
 

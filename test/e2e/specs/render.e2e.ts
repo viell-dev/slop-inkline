@@ -1,3 +1,5 @@
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { browser, expect } from "@wdio/globals";
 import { obsidianPage } from "wdio-obsidian-service";
 import { encodePng } from "../../support/png.ts";
@@ -26,6 +28,25 @@ const note = [
   "Sized ![[Glyphs/block.ink.png|24]] text.",
   "",
   "A photo ![[Glyphs/photo.png]] here.",
+  "",
+].join("\n");
+
+/**
+ * The same symbol in the places where the editor shows rendered text: a
+ * callout, a table, and an embedded note. The first line holds the cursor,
+ * so that the editor shows the rest rendered.
+ */
+const contexts = [
+  "Top line.",
+  "",
+  "> [!note] Callout",
+  "> In a callout ![[Glyphs/block.ink.png]] here.",
+  "",
+  "| Cell |",
+  "| --- |",
+  "| In a table ![[Glyphs/block.ink.png]] here. |",
+  "",
+  "![[Render]]",
   "",
 ].join("\n");
 
@@ -62,6 +83,8 @@ function images(mode: "source" | "preview"): string {
 
 interface Shown {
   tagged: boolean;
+  /** Whether it has a size of its own, as `|24` gives. */
+  sized: boolean;
   /** The image's height and width, and how far its bottom is below the baseline. */
   height: number;
   width: number;
@@ -91,6 +114,7 @@ async function shown(selector: string): Promise<Shown[]> {
       const rect = node.getBoundingClientRect();
       return {
         tagged: node.classList.contains("inkline-symbol"),
+        sized: node.hasAttribute("width") || node.hasAttribute("height"),
         height: rect.height,
         width: rect.width,
         drop: rect.bottom - baseline,
@@ -150,12 +174,31 @@ async function colours(
 }
 
 describe("Symbols in notes", function () {
+  /** Serves a symbol from outside the vault, with no CORS headers. */
+  let server: Server | undefined;
+  let remote = "";
+
   before(async function () {
+    const png = blockSymbol();
+    const started = createServer((_request, response) => {
+      response.writeHead(200, { "content-type": "image/png" });
+      response.end(png);
+    });
+    server = started;
+    await new Promise<void>((resolve) => {
+      started.listen(0, "127.0.0.1", resolve);
+    });
+    const address: string | AddressInfo | null = started.address();
+    if (address === null || typeof address === "string") {
+      throw new Error("the server has no port");
+    }
+    const { port } = address;
+    remote = `http://127.0.0.1:${String(port)}/remote.ink.png`;
     await loadModules();
     const symbol = toBase64(blockSymbol());
     const photo = toBase64(blockSymbol());
     await browser.executeObsidian(
-      async ({ app }, block, picture, text) => {
+      async ({ app }, block, picture, text, around, address) => {
         const bytes = (b64: string) =>
           Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)).buffer;
         await app.vault.createFolder("Glyphs");
@@ -164,6 +207,8 @@ describe("Symbols in notes", function () {
         await app.vault.create("Render.md", text);
         await app.vault.create("Host.md", "Embedded:\n\n![[Render]]\n");
         await app.vault.create("Linked.md", "A link to [[Render]] here.\n");
+        await app.vault.create("Contexts.md", around);
+        await app.vault.create("Remote.md", `Remote ![](${address}) here.\n`);
         await app.vault.create(
           "Board.canvas",
           JSON.stringify({
@@ -177,6 +222,15 @@ describe("Symbols in notes", function () {
                 width: 640,
                 height: 480,
               },
+              {
+                id: "picture",
+                type: "file",
+                file: "Glyphs/block.ink.png",
+                x: 700,
+                y: 0,
+                width: 200,
+                height: 400,
+              },
             ],
             edges: [],
           }),
@@ -185,7 +239,13 @@ describe("Symbols in notes", function () {
       symbol,
       photo,
       note,
+      contexts,
+      remote,
     );
+  });
+
+  after(function () {
+    server?.close();
   });
 
   for (const mode of ["source", "preview"] as const) {
@@ -200,6 +260,10 @@ describe("Symbols in notes", function () {
         throw new Error("missing images");
       }
       // 1.5 em tall, with the baseline 0.375 em above the bottom.
+      // As wide as its picture at that height: 64 × 192 is a third.
+      expect(Math.abs(plain.width - 0.5 * plain.fontSize)).toBeLessThanOrEqual(
+        0.5,
+      );
       expect(Math.abs(plain.height - 1.5 * plain.fontSize)).toBeLessThanOrEqual(
         1,
       );
@@ -266,6 +330,53 @@ describe("Symbols in notes", function () {
     }
   });
 
+  it("stand on the baseline in Live Preview callouts, tables, and embeds", async function () {
+    await open("Contexts.md", "source");
+    // One each in the callout and the table, and two in the embedded note.
+    await waitForTagged(images("source"), 4);
+    const all = await shown(images("source"));
+    for (const image of all.filter((each) => each.tagged)) {
+      // A quarter of its height below the baseline, however tall it is.
+      expect(Math.abs(image.drop - image.height / 4)).toBeLessThanOrEqual(1);
+      if (!image.sized) {
+        expect(
+          Math.abs(image.height - 1.5 * image.fontSize),
+        ).toBeLessThanOrEqual(1);
+      }
+    }
+    await saveScreenshot("render-contexts");
+  });
+
+  it("stay pictures where a symbol file is shown on its own", async function () {
+    await browser.executeObsidian(async ({ app }) => {
+      const file = app.vault.getFileByPath("Glyphs/block.ink.png");
+      if (file === null) throw new Error("no symbol");
+      const leaf = app.workspace.getLeaf(false);
+      await leaf.openFile(file);
+      app.workspace.setActiveLeaf(leaf, { focus: true });
+    });
+    const own = ".workspace-leaf.mod-active .image-container img";
+    await browser.$(own).waitForExist();
+    const [picture] = await shown(own);
+    expect(picture?.tagged).toBe(false);
+    expect(picture?.height).toBe(192);
+  });
+
+  it("leave a symbol from outside the vault as the image it is", async function () {
+    await open("Remote.md", "preview");
+    const selector = `${images("preview")}[src="${remote}"]`;
+    await browser.waitUntil(async () =>
+      browser.execute((wanted) => {
+        const image = activeDocument.querySelector(wanted);
+        return image?.instanceOf(HTMLImageElement) === true && image.complete;
+      }, selector),
+    );
+    const [picture] = await shown(selector);
+    expect(picture?.tagged).toBe(false);
+    // Loaded, at its own size, where a mask could have hidden it.
+    expect(picture?.height).toBe(192);
+  });
+
   it("show in a canvas card", async function () {
     await browser.executeObsidian(async ({ app }) => {
       const file = app.vault.getFileByPath("Board.canvas");
@@ -281,6 +392,13 @@ describe("Symbols in notes", function () {
             .length === 2,
       ),
     );
+    // The image node of the symbol file itself is a picture there.
+    const node = await browser.execute(() =>
+      Array.from(
+        activeDocument.querySelectorAll(".canvas-node-content.media-embed img"),
+      ).map((image) => image.classList.contains("inkline-symbol")),
+    );
+    expect(node).toEqual([false]);
     await saveScreenshot("render-canvas");
   });
 
@@ -377,16 +495,15 @@ describe("Symbols in notes", function () {
   });
 
   it("tag a thousand symbols quickly, however they are added", async function () {
-    const result = await browser.execute(async () => {
+    const result = await browser.executeObsidian(async ({ obsidian }) => {
+      const vault = obsidian.Platform.resourcePathPrefix;
+      // A thousand symbols in rendered text, by their addresses in the vault,
+      // not loaded: tagging reads only the address.
       const symbols = () => {
-        const container = createDiv();
+        const container = createDiv({ cls: "markdown-rendered" });
         for (let index = 0; index < 1000; index++) {
-          // A symbol's URL, not loaded: tagging reads only the address.
           container.createEl("img", {
-            attr: {
-              src: `app://inkline-test/${String(index)}.ink.png`,
-              alt: "",
-            },
+            attr: { src: `${vault}Glyphs/${String(index)}.ink.png`, alt: "" },
           });
         }
         return container;
@@ -394,7 +511,7 @@ describe("Symbols in notes", function () {
       // The observer's own work, apart from the page drawing the images.
       const apart = symbols();
       const started = performance.now();
-      window.inklineTest.renderSymbols.tagWithin(apart);
+      window.inklineTest.renderSymbols.tagWithin(apart, vault);
       const ms = performance.now() - started;
       // And a thousand added at once, which the observer finds.
       const added = symbols();

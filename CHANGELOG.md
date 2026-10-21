@@ -36,12 +36,15 @@ section is also its
   the place of any base layer the drawing had, and Undo takes it back. Saving,
   or closing and saving, while the preview shows makes that ink first. Copying a
   symbol you can see then needs no drawing at all.
-- Symbols show in notes as characters: as tall as the line, standing on its
-  baseline, and in the text's colour, in light and dark themes, in Live Preview,
-  Reading view, embedded notes, hover previews, canvas cards, and popout
-  windows. An explicit size, as `![[x.ink.png|24]]` gives, is kept and stays on
-  the baseline. Other images are left as they are, and with Inkline disabled
-  symbols show as the plain images they are.
+- Symbols show in notes as characters: 1.5 em tall, the default line height,
+  standing on the baseline, and in the text's colour, in light and dark themes,
+  in Live Preview, Reading view, callouts, tables, embedded notes, hover
+  previews, canvas cards, and popout windows. A heading or another line set
+  tighter than 1.5 grows to fit. An explicit size, as `![[x.ink.png|24]]` gives,
+  is kept and stays on the baseline. A symbol file shown on its own, in its tab
+  or as a canvas's image, stays a picture; images from outside the vault and
+  other images are left as they are; and with Inkline disabled, symbols show as
+  the plain images they are.
 - **Edit symbol**, in a symbol file's menu, which opens it in the editor again
   with every stroke, so that nothing is lost by editing.
 - The editor's pen, eraser, four brush sizes, undo, redo, and clear, each with

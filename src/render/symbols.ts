@@ -10,6 +10,20 @@ import { cssUrl, dropFor, explicitHeight, isSymbolUrl } from "./layout.ts";
 export const symbolClass = "inkline-symbol";
 
 /**
+ * A class that marks an element whose symbols are text, as a list of them
+ * is, alongside a note's own text.
+ */
+export const textClass = "inkline-text";
+
+/**
+ * Where symbols are text: a note's rendered text, as in Reading view, embeds,
+ * hover previews, and canvas cards; the editor's text; and what marks itself
+ * so. A symbol file shown on its own, as in its own tab or a canvas's image
+ * node, is a picture there, and keeps its size.
+ */
+const textSelector = `.markdown-rendered, .cm-content, .${textClass}`;
+
+/**
  * The class the embed around a symbol's image gets: in Live Preview the
  * image is a block inside an inline embed, which is what lines up with the
  * text, so the embed takes the drop there.
@@ -29,10 +43,10 @@ function sized(image: HTMLImageElement): boolean {
  * Tags `image` as a symbol if its URL is a symbol file's, or untags it if it
  * is not one any more, keeping its mask and drop current.
  */
-export function tagImage(image: HTMLImageElement): void {
+export function tagImage(image: HTMLImageElement, vault: string): void {
   // The attribute's address, which currentSrc follows only once it loads.
   const src = image.src || image.currentSrc;
-  if (!isSymbolUrl(src)) {
+  if (!isSymbolUrl(src, vault) || image.closest(textSelector) === null) {
     untagImage(image);
     return;
   }
@@ -49,6 +63,8 @@ export function tagImage(image: HTMLImageElement): void {
     return;
   }
   const drop = (): void => {
+    // Untagged meanwhile, as when its address changed or Inkline stopped.
+    if (!image.hasClass(symbolClass)) return;
     const height = explicitHeight(
       image.getAttribute("width"),
       image.getAttribute("height"),
@@ -79,14 +95,14 @@ export function untagImage(image: HTMLImageElement): void {
 }
 
 /** Tags every image in or at `node`. */
-export function tagWithin(node: Node): void {
+export function tagWithin(node: Node, vault: string): void {
   if (node.instanceOf(HTMLImageElement)) {
-    tagImage(node);
+    tagImage(node, vault);
     return;
   }
   if (!node.instanceOf(Element)) return;
   for (const image of Array.from(node.getElementsByTagName("img"))) {
-    tagImage(image);
+    tagImage(image, vault);
   }
 }
 
@@ -95,6 +111,13 @@ export function tagWithin(node: Node): void {
  * sources change, and untags them all when it stops.
  */
 export class SymbolRenderer {
+  /** The address the vault's files start with: `Platform.resourcePathPrefix`. */
+  readonly #vault: string;
+
+  constructor(vault: string) {
+    this.#vault = vault;
+  }
+
   readonly #observers = new Map<Document, MutationObserver>();
 
   /** Starts tagging symbols in `doc`, a window's document. */
@@ -106,11 +129,13 @@ export class SymbolRenderer {
       for (const record of records) {
         if (record.type === "attributes") {
           if (record.target.instanceOf(HTMLImageElement)) {
-            tagImage(record.target);
+            tagImage(record.target, this.#vault);
           }
           continue;
         }
-        for (const node of Array.from(record.addedNodes)) tagWithin(node);
+        for (const node of Array.from(record.addedNodes)) {
+          tagWithin(node, this.#vault);
+        }
       }
     });
     observer.observe(doc.body, {
@@ -120,7 +145,7 @@ export class SymbolRenderer {
       attributeFilter: ["src", "width", "height"],
     });
     this.#observers.set(doc, observer);
-    tagWithin(doc.body);
+    tagWithin(doc.body, this.#vault);
   }
 
   /** Stops tagging symbols in `doc`, and untags those it has. */
