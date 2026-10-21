@@ -36,6 +36,11 @@ section is also its
   the place of any base layer the drawing had, and Undo takes it back. Saving,
   or closing and saving, while the preview shows makes that ink first. Copying a
   symbol you can see then needs no drawing at all.
+- **Type to insert:** in a note, type `;;` and a few letters of a symbol's name,
+  in any script, to choose it from a list with its picture: the best match
+  first, then those the note uses most, then the most recently changed. Enter
+  puts its embed in place of what was typed. **Insert existing symbol**, a
+  command, opens the same list to search.
 - **Edit symbol**, in a symbol file's menu, which opens it in the editor again
   with every stroke, so that nothing is lost by editing.
 - The editor's pen, eraser, four brush sizes, undo, redo, and clear, each with
