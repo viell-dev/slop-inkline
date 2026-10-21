@@ -1,16 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
   embedAt,
-  lineLinks,
+  paragraphLinks,
   outsideLinks,
   textLinks,
 } from "../../../src/notes/links.ts";
 
-describe("lineLinks", () => {
+describe("paragraphLinks", () => {
   it("finds wiki links and embeds, with their targets", () => {
     const line =
       "A [[tower]], ![[Glyphs/arch.ink.png]], [[gate#top|the gate]].";
-    expect(lineLinks(line)).toEqual([
+    expect(paragraphLinks(line)).toEqual([
       { start: 2, end: 11, embed: false, target: "tower" },
       { start: 13, end: 37, embed: true, target: "Glyphs/arch.ink.png" },
       { start: 39, end: 60, embed: false, target: "gate" },
@@ -19,7 +19,7 @@ describe("lineLinks", () => {
 
   it("finds Markdown links and embeds, with their destinations decoded", () => {
     const line = "![](Glyphs/tower%20one.ink.png) and [a](b.md 'title').";
-    expect(lineLinks(line)).toEqual([
+    expect(paragraphLinks(line)).toEqual([
       { start: 0, end: 31, embed: true, target: "Glyphs/tower one.ink.png" },
       { start: 36, end: 53, embed: false, target: "b.md" },
     ]);
@@ -27,27 +27,27 @@ describe("lineLinks", () => {
 
   it("takes parentheses, a bare %, and angle brackets in destinations", () => {
     // A space is written %20, as Obsidian writes Markdown links.
-    expect(lineLinks("![](Old%20(2)/a.ink.png)")).toEqual([
+    expect(paragraphLinks("![](Old%20(2)/a.ink.png)")).toEqual([
       { start: 0, end: 24, embed: true, target: "Old (2)/a.ink.png" },
     ]);
-    expect(lineLinks("![](100%.ink.png)")[0]?.target).toBe("100%.ink.png");
-    expect(lineLinks("![](<A B/c.ink.png>)")).toEqual([
+    expect(paragraphLinks("![](100%.ink.png)")[0]?.target).toBe("100%.ink.png");
+    expect(paragraphLinks("![](<A B/c.ink.png>)")).toEqual([
       { start: 0, end: 20, embed: true, target: "A B/c.ink.png" },
     ]);
   });
 
   it("skips escaped syntax and code spans", () => {
-    expect(lineLinks("\\[[not]] and \\![[a]]")).toEqual([
+    expect(paragraphLinks("\\[[not]] and \\![[a]]")).toEqual([
       { start: 15, end: 20, embed: false, target: "a" },
     ]);
-    expect(lineLinks("`![[code]]` and ``![[`more`]]`` then [[real]]")).toEqual([
-      { start: 37, end: 45, embed: false, target: "real" },
-    ]);
+    expect(
+      paragraphLinks("`![[code]]` and ``![[`more`]]`` then [[real]]"),
+    ).toEqual([{ start: 37, end: 45, embed: false, target: "real" }]);
   });
 
   it("finds nothing in brackets that are not a link", () => {
-    expect(lineLinks("[just text] and [[unclosed and [a](b")).toEqual([]);
-    expect(lineLinks("an unclosed `code span [[x]]")).toEqual([
+    expect(paragraphLinks("[just text] and [[unclosed and [a](b")).toEqual([]);
+    expect(paragraphLinks("an unclosed `code span [[x]]")).toEqual([
       { start: 23, end: 28, embed: false, target: "x" },
     ]);
   });
@@ -83,6 +83,101 @@ describe("outsideLinks and embedAt", () => {
   });
 });
 
+describe("links as Obsidian reads them", () => {
+  const spans = (text: string) =>
+    textLinks(text).map(({ start, end, embed, target }) => [
+      text.slice(start, end),
+      embed,
+      target,
+    ]);
+
+  it("reads a Markdown link across a line break, but no link across a blank line", () => {
+    const text =
+      "some [the symbol of the gate\nis here](gate.md) and ![a\nb](c.png)\n- [a\n  b](d)\n> [e\n> f](g)\n[h\n\ni](j) [[k\nl]]";
+    expect(spans(text)).toEqual([
+      ["[the symbol of the gate\nis here](gate.md)", false, "gate.md"],
+      ["![a\nb](c.png)", true, "c.png"],
+      ["[a\n  b](d)", false, "d"],
+      ["[e\n> f](g)", false, "g"],
+    ]);
+    // With space and a line break around the destination and its title.
+    expect(spans('[a](\nb\n"t"\n)')).toEqual([['[a](\nb\n"t"\n)', false, "b"]]);
+  });
+
+  it("reads titles with escaped delimiters", () => {
+    for (const title of ['"ti\\"tle"', "'ti\\'tle'", "(ti\\)tle)"]) {
+      expect(spans(`See [gate](gate.md ${title}) now`)).toEqual([
+        [`[gate](gate.md ${title})`, false, "gate.md"],
+      ]);
+    }
+  });
+
+  it("knows an escaped backslash leaves the ! after it an embed's", () => {
+    expect(spans("\\\\![[a]] and \\![[b]]")).toEqual([
+      ["![[a]]", true, "a"],
+      ["[[b]]", false, "b"],
+    ]);
+  });
+
+  it("reads a wiki target as Obsidian does, in tables too", () => {
+    expect(spans("| ![[a.ink.png\\|24]] | [[b\\|alias]] | [[c\\]] |")).toEqual([
+      ["![[a.ink.png\\|24]]", true, "a.ink.png"],
+      ["[[b\\|alias]]", false, "b"],
+      ["[[c\\]]", false, "c"],
+    ]);
+    // A link to a heading in the same note leads nowhere else.
+    expect(spans("[[#top]]")).toEqual([["[[#top]]", false, ""]]);
+  });
+
+  it("finds an embed inside a Markdown link's text", () => {
+    const text = "[![[x.ink.png]]](https://example.com) [![](y.png)](z)";
+    expect(spans(text)).toEqual([
+      ["[![[x.ink.png]]](https://example.com)", false, "https://example.com"],
+      ["![[x.ink.png]]", true, "x.ink.png"],
+      ["[![](y.png)](z)", false, "z"],
+      ["![](y.png)", true, "y.png"],
+    ]);
+    expect(outsideLinks(text, 5)).toBe(37);
+    expect(embedAt(text, 5)?.target).toBe("x.ink.png");
+  });
+
+  it("decodes a destination as Obsidian does, without its heading", () => {
+    expect(spans("![](a%2Fb.png) [a](b\\)c) [a](\tb) ![](a.png#b)")).toEqual([
+      ["![](a%2Fb.png)", true, "a%2Fb.png"],
+      ["[a](b\\)c)", false, "b)c"],
+      ["[a](\tb)", false, "b"],
+      ["![](a.png#b)", true, "a.png"],
+    ]);
+  });
+
+  it("finds no link where Obsidian reads none", () => {
+    expect(spans("[[]] ![[]] []() [a]() [[a [[b]] [[x|[[y]]]]")).toEqual([
+      ["[[b]]", false, "b"],
+      ["[[y]]", false, "y"],
+    ]);
+  });
+
+  it("finds web addresses, as Obsidian shows them as links", () => {
+    expect(
+      spans(
+        "See https://example.com/a_(b), <https://example.org/x>, (www.example.net) or xhttps://no.",
+      ),
+    ).toEqual([
+      ["https://example.com/a_(b)", false, "https://example.com/a_(b)"],
+      ["<https://example.org/x>", false, "https://example.org/x"],
+      ["www.example.net", false, "www.example.net"],
+    ]);
+  });
+
+  it("reads a long line of unclosed brackets in time", () => {
+    const started = performance.now();
+    expect(textLinks("[".repeat(20000))).toEqual([]);
+    expect(textLinks("[[".repeat(10000))).toEqual([]);
+    expect(textLinks(`${"[".repeat(20000)}]`)).toEqual([]);
+    expect(performance.now() - started).toBeLessThan(200);
+  });
+});
+
 /** A seeded generator of numbers from 0 up to 1, so that failures repeat. */
 function random(seed: number): () => number {
   let state = seed >>> 0;
@@ -106,9 +201,20 @@ describe("links in generated text", () => {
     "塔",
     "a%2Fb",
   ];
-  const plain = ["The door", " reads ", "x", " (aside) ", " 50% ", " [note] "];
+  // Line breaks too, and blank lines where two meet, which no link spans.
+  const plain = [
+    "The door",
+    " reads ",
+    "x",
+    " (aside) ",
+    " 50% ",
+    " [note] ",
+    "\n",
+  ];
+  // A Markdown link's text may wrap onto the next line.
+  const texts = ["", "the\ngate", "a b"];
 
-  /** A line of text and links, and the links it holds. */
+  /** Text of a few lines and links, and the links it holds. */
   function line(next: () => number): {
     text: string;
     links: { start: number; end: number; embed: boolean; target: string }[];
@@ -146,7 +252,7 @@ describe("links in generated text", () => {
           next() < 0.5
             ? `<${encodeURI(target).replace(/%20/g, " ")}>`
             : encodeURI(target);
-        link = `${embed ? "!" : ""}[](${written})`;
+        link = `${embed ? "!" : ""}[${pick(texts)}](${written})`;
       }
       links.push({
         start: text.length,
@@ -163,7 +269,7 @@ describe("links in generated text", () => {
     const next = random(20261021);
     for (let round = 0; round < 500; round++) {
       const { text, links } = line(next);
-      expect(lineLinks(text)).toEqual(links);
+      expect(textLinks(text)).toEqual(links);
     }
   });
 

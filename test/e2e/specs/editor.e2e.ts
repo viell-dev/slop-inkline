@@ -1092,17 +1092,22 @@ describe("The editor", function () {
     await browser.executeObsidian(async ({ app }) => {
       await app.vault.create(
         "Links.md",
-        "See [[gate|the HEREgate]] and ![](Old%20(2)/towTHEREer.png) now.\n",
+        // The last link's text wraps onto the next line.
+        "See [[gate|the HEREgate]] and ![](Old%20(2)/towTHEREer.png) now.\nA [wrapped\nlink WHEREtext](w.md) ends.\n",
       );
     });
     for (const [marker, expected] of [
       [
         "HERE",
-        "See [[gate|the gate]]![[001.ink.png]] and ![](Old%20(2)/towTHEREer.png) now.\n",
+        "See [[gate|the gate]]![[001.ink.png]] and ![](Old%20(2)/towTHEREer.png) now.\nA [wrapped\nlink WHEREtext](w.md) ends.\n",
       ],
       [
         "THERE",
-        "See [[gate|the gate]]![[001.ink.png]] and ![](Old%20(2)/tower.png)![[002.ink.png]] now.\n",
+        "See [[gate|the gate]]![[001.ink.png]] and ![](Old%20(2)/tower.png)![[002.ink.png]] now.\nA [wrapped\nlink WHEREtext](w.md) ends.\n",
+      ],
+      [
+        "WHERE",
+        "See [[gate|the gate]]![[001.ink.png]] and ![](Old%20(2)/tower.png)![[002.ink.png]] now.\nA [wrapped\nlink text](w.md)![[003.ink.png]] ends.\n",
       ],
     ] as const) {
       await openAtMarker("Links.md", marker);
