@@ -23,6 +23,28 @@ export function capturePoint(text: string, offset: number): InsertionPoint {
   };
 }
 
+/**
+ * `point`, which lay just after the text `was`, as it is once `was` is
+ * `now`, as when Obsidian rewrites an embed after a rename: the text before
+ * it changed with it, so that it is found where `now` ends.
+ */
+export function replacedBefore(
+  point: InsertionPoint,
+  was: string,
+  now: string,
+): InsertionPoint {
+  const { before } = point;
+  const kept = before.endsWith(was)
+    ? before.slice(0, before.length - was.length)
+    : "";
+  return {
+    offset: point.offset - was.length + now.length,
+    before: (kept + now).slice(-contextLength),
+    after: point.after,
+    length: point.length - was.length + now.length,
+  };
+}
+
 /** The offset of the only occurrence of `needle`, or undefined. */
 function only(text: string, needle: string): number | undefined {
   if (needle === "") return undefined;

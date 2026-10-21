@@ -11,7 +11,7 @@ import {
   type EventRef,
   type TAbstractFile,
 } from "obsidian";
-import type { CarriedChunk } from "../format/ink-file.ts";
+import { inkExtension, type CarriedChunk } from "../format/ink-file.ts";
 import type { BaseLayer, InkRecord, Tool } from "../format/record.ts";
 import {
   baseFromInk,
@@ -37,6 +37,7 @@ import {
   type Region,
 } from "../ink/pixels.ts";
 import type { DrawableBase } from "../ink/render.ts";
+import { chooseRename } from "../notes/names.ts";
 import {
   draftBase,
   fingerprintOf,
@@ -193,7 +194,13 @@ function sameBounds(a: Bounds, b: Bounds): boolean {
 }
 
 export interface EditorOptions {
+  /** What the editor calls the symbol until it has a name: "New symbol". */
   readonly title: string;
+  /**
+   * The symbol's name, which its name field starts with, or undefined for a
+   * new one, whose field starts empty.
+   */
+  readonly name?: string;
   readonly document: InkDocument;
   readonly base?: DrawableBase;
   readonly carried?: readonly CarriedChunk[];
@@ -209,13 +216,15 @@ export interface EditorOptions {
    * draft must name, and returns whether it was kept. `holds` tells the
    * editor what the file holds as soon as the host has adopted or written
    * it, before any later step that can fail, such as inserting an embed, so
-   * that the editor goes on comparing the file with that.
+   * that the editor goes on comparing the file with that. `name` is what the
+   * name field holds, as typed, for the file to take as its name.
    */
   readonly write: (
     bytes: Uint8Array,
     record: InkRecord,
     keepDraft: () => boolean,
     holds: (fingerprint: string) => void,
+    name: string,
   ) => Promise<void>;
   /**
    * The symbol's file: an existing symbol's, or a new one's once its first
@@ -298,6 +307,12 @@ export class InkEditorModal extends Modal {
   #carried: readonly CarriedChunk[];
   /** The document the file held as opened or last reloaded. */
   #opened: InkDocument;
+  /** The field for the symbol's name, in the title's place. */
+  #nameField: HTMLInputElement | undefined;
+  /** The symbol's name as last opened or saved, or empty before it has one. */
+  #savedName: string;
+  /** Whether the last save kept the drawing but could not rename the file. */
+  #notRenamed = false;
   /**
    * Whether the question about a change on disk is open, and the save it
    * goes on with if the drawing is kept.
@@ -394,6 +409,7 @@ export class InkEditorModal extends Modal {
     this.#watch = new FileWatch(options.fingerprint);
     this.#carried = options.carried ?? [];
     this.#opened = options.document;
+    this.#savedName = options.name ?? "";
     const { base } = options.document;
     if (base !== undefined && options.base !== undefined) {
       this.#decoded.set(base.png, options.base);
@@ -417,7 +433,7 @@ export class InkEditorModal extends Modal {
 
   override onOpen(): void {
     this.modalEl.addClass("inkline-editor");
-    this.setTitle(this.#options.title);
+    this.#addNameField();
     const toolbar = this.contentEl.createDiv({ cls: "inkline-toolbar" });
     this.#addButton(toolbar, "pen", "Pen", "P", () => {
       this.#setTool("pen");
@@ -662,7 +678,7 @@ export class InkEditorModal extends Modal {
       return;
     }
     // Ink being previewed is unsaved too: Save makes it, as saving does.
-    if (!this.#session.dirty && !this.#previewing()) {
+    if (!this.#unsaved && !this.#previewing()) {
       this.#forgetDraft();
       this.#finish();
       return;
@@ -701,7 +717,7 @@ export class InkEditorModal extends Modal {
     this.#session.end();
     if (!this.#keepDraft()) {
       new Notice(
-        `Inkline could not keep a draft of the latest changes to ${this.#options.title}.`,
+        `Inkline could not keep a draft of the latest changes to ${this.#displayName}.`,
       );
     }
     this.#retired = true;
@@ -752,6 +768,108 @@ export class InkEditorModal extends Modal {
     });
     this.#questions.add(question);
     question.open();
+  }
+
+  /** What the name field holds, as typed. */
+  get #typedName(): string {
+    return this.#nameField?.value ?? this.#savedName;
+  }
+
+  /**
+   * Whether saving would give the symbol another name than it has: the name
+   * field, as saving reads it, holds another, or one that saving would
+   * refuse. Left empty, or holding the name the symbol has, the field keeps
+   * it, or takes a number for a new one.
+   */
+  get #nameChanged(): boolean {
+    const choice = chooseRename(this.#typedName, this.#savedName);
+    if (choice.kind === "number") return false;
+    return choice.kind === "refused" || choice.name !== this.#savedName;
+  }
+
+  /** Whether anything is unsaved: strokes, or a new name. */
+  get #unsaved(): boolean {
+    return this.#session.dirty || this.#nameChanged;
+  }
+
+  /** What notices call the symbol: its name, or "New symbol" until it has one. */
+  get #displayName(): string {
+    return this.#savedName === "" ? this.#options.title : this.#savedName;
+  }
+
+  /**
+   * Puts a field for the symbol's name in the title's place. Enter goes back
+   * to drawing; changing the name is a change to save, which drafts keep.
+   */
+  #addNameField(): void {
+    this.titleEl.empty();
+    const field = this.titleEl.createEl("input", {
+      cls: "inkline-name",
+      type: "text",
+      value: this.#savedName,
+      attr: {
+        "aria-label": "Symbol name",
+        placeholder:
+          this.#savedName === ""
+            ? `${this.#options.title}: name it, or leave it for the next number`
+            : this.#savedName,
+        spellcheck: "false",
+        autocomplete: "off",
+      },
+    });
+    field.addEventListener("input", () => {
+      this.#keepDraft();
+    });
+    field.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" || event.isComposing) return;
+      event.preventDefault();
+      this.#view?.canvas.focus({ preventScroll: true });
+    });
+    this.#nameField = field;
+  }
+
+  /** The name of the file the editor saves to, or undefined before it has one. */
+  #fileName(): string | undefined {
+    const path = this.#options.file?.()?.path;
+    const file = path?.slice(path.lastIndexOf("/") + 1);
+    return file?.toLowerCase().endsWith(inkExtension) === true
+      ? file.slice(0, -inkExtension.length)
+      : undefined;
+  }
+
+  /**
+   * After a save that sent `typed` as the name, or a rename made elsewhere,
+   * takes the name the file now has, and shows it in the field if the field
+   * still holds `typed`. Undefined leaves the field as it is, as after a
+   * rename that failed.
+   */
+  #named(typed: string | undefined): void {
+    const name = this.#fileName();
+    if (name === undefined) return;
+    this.#savedName = name;
+    const field = this.#nameField;
+    if (field === undefined) return;
+    field.placeholder = name;
+    if (typed !== undefined && field.value === typed) field.value = name;
+  }
+
+  /**
+   * Whether a save that sent `typed`, with the symbol named `before`, gave
+   * the file the name it asked for, or asked for none, as when the file was
+   * renamed elsewhere meanwhile.
+   */
+  #took(typed: string, before: string): boolean {
+    const choice = chooseRename(typed, before);
+    if (choice.kind !== "name" || choice.name === before) return true;
+    return choice.name === this.#fileName();
+  }
+
+  /** What a save says when something is still unsaved after it. */
+  get #partlySaved(): string {
+    if (!this.#notRenamed) return "Saved, except for what changed while saving";
+    return this.#session.dirty
+      ? "Saved, except for the name and what changed while saving"
+      : "Saved, but not renamed";
   }
 
   /**
@@ -1605,7 +1723,7 @@ export class InkEditorModal extends Modal {
     // While a save runs, the file holds the drawing as it was or as the save
     // writes it, so the draft is kept, and keeps its own base layer.
     const pending = this.#saving !== undefined;
-    if (!pending && !this.#session.dirty) {
+    if (!pending && !this.#unsaved) {
       this.#forgetDraft();
       return true;
     }
@@ -1620,6 +1738,7 @@ export class InkEditorModal extends Modal {
         : { fingerprint: this.#watch.fingerprint }),
       savedAt: Date.now(),
       gridOrigin: this.#session.gridOrigin,
+      ...(this.#nameChanged ? { name: this.#typedName } : {}),
     });
     if (!kept && this.#draftKept) {
       this.#announce("Draft not kept");
@@ -1726,6 +1845,9 @@ export class InkEditorModal extends Modal {
               restoreDraft(this.#opened, draft),
               draft.gridOrigin,
             );
+            if (draft.name !== undefined && this.#nameField !== undefined) {
+              this.#nameField.value = draft.name;
+            }
             drafts.restored?.(draft);
             // Still held: offered to no other editor until this one's own
             // replaces it.
@@ -1800,6 +1922,11 @@ export class InkEditorModal extends Modal {
         touched(file);
       }),
       vault.on("rename", (file, oldPath) => {
+        // Renamed elsewhere, as in the file explorer or by sync, the symbol
+        // keeps its new name: a later save does not rename it back.
+        if (file.path === this.#options.file?.()?.path) {
+          this.#named(this.#savedName);
+        }
         touched(file, oldPath);
       }),
     ];
@@ -1880,7 +2007,7 @@ export class InkEditorModal extends Modal {
     if (action === "unreadable") {
       this.#announce(`Not reloaded: ${unreadable}`);
       new Notice(
-        `${this.#options.title} changed on disk, and this version of Inkline cannot read it, so the editor will not save over it.`,
+        `${this.#displayName} changed on disk, and this version of Inkline cannot read it, so the editor will not save over it.`,
       );
     } else if (action === "reload" && opened !== undefined) {
       this.#reload(reading.fingerprint, opened);
@@ -1907,7 +2034,7 @@ export class InkEditorModal extends Modal {
     };
     this.#ask(
       "The symbol changed on disk",
-      `${this.#options.title} was changed outside this editor. Reload it to take that change in; Undo then brings your drawing back while the editor is open. Or keep your drawing, and saving it replaces the change.`,
+      `${this.#displayName} was changed outside this editor. Reload it to take that change in; Undo then brings your drawing back while the editor is open. Or keep your drawing, and saving it replaces the change.`,
       [
         {
           text: "Reload",
@@ -2009,8 +2136,8 @@ export class InkEditorModal extends Modal {
       if (!(await this.#save(() => void this.#saveAndNext()))) return;
       // Closed meanwhile, as by Save and close or by Inkline being disabled.
       if (this.#closing || this.#retired) return;
-      if (this.#session.dirty) {
-        this.#announce("Saved, except for the strokes drawn while saving");
+      if (this.#unsaved) {
+        this.#announce(this.#partlySaved);
         return;
       }
       const { tool, sizeIndex, snap } = this.#session;
@@ -2035,8 +2162,8 @@ export class InkEditorModal extends Modal {
   async #saveAndClose(): Promise<void> {
     if (!(await this.#applyPending())) return;
     if (!(await this.#save(() => void this.#saveAndClose()))) return;
-    if (this.#session.dirty) {
-      this.#announce("Saved, except for the strokes drawn while saving");
+    if (this.#unsaved) {
+      this.#announce(this.#partlySaved);
       return;
     }
     this.#finish();
@@ -2084,6 +2211,8 @@ export class InkEditorModal extends Modal {
         // the draft does not depend on which version the file holds.
         const written = await fingerprintOf(bytes);
         this.#keepDraft();
+        const typed = this.#typedName;
+        const before = this.#savedName;
         await this.#options.write(
           bytes,
           record,
@@ -2091,7 +2220,12 @@ export class InkEditorModal extends Modal {
           (fingerprint) => {
             this.#watch.took(fingerprint);
           },
+          typed,
         );
+        // A rename that failed leaves the name typed in the field, unsaved,
+        // for the next save to try again.
+        this.#notRenamed = !this.#took(typed, before);
+        this.#named(this.#notRenamed ? undefined : typed);
         this.#watch.took(written);
         this.#session.markSaved(document);
         this.#session.rebase(-left);
@@ -2100,7 +2234,7 @@ export class InkEditorModal extends Modal {
         if (this.#picture !== undefined) {
           this.#placePicture(movePicture(this.#picture.placement, -left, 0));
         }
-        this.#announce("Saved");
+        this.#announce(this.#notRenamed ? "Saved, but not renamed" : "Saved");
         return true;
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);

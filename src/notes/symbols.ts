@@ -26,10 +26,20 @@ import {
   type SymbolFile,
 } from "../editor/modal.ts";
 import { visibleWidth } from "../editor/view.ts";
-import { capturePoint, findPoint, type InsertionPoint } from "./insertion.ts";
+import {
+  capturePoint,
+  findPoint,
+  replacedBefore,
+  type InsertionPoint,
+} from "./insertion.ts";
 import { embedFor } from "./embeds.ts";
 import { insertionAt } from "./links.ts";
-import { nextNumberName, symbolStem } from "./names.ts";
+import {
+  chooseRename,
+  nextNumberName,
+  symbolStem,
+  type NameChoice,
+} from "./names.ts";
 
 /** What the plugin lends the editors it opens. */
 export interface EditorHost {
@@ -56,24 +66,68 @@ function stillAlive(host: EditorHost): void {
   if (!host.alive()) throw new Error("Inkline was disabled");
 }
 
+/** The names of what a folder of the vault holds, `""` for its root. */
+function namesIn(app: App, folder: string): string[] {
+  return (
+    app.vault.getFolderByPath(folder === "" ? "/" : folder)?.children ?? []
+  ).map((child) => child.name);
+}
+
+/** The path of the file named `name` in `folder`. */
+function pathIn(folder: string, name: string): string {
+  return normalizePath(folder === "" ? name : `${folder}/${name}`);
+}
+
+/**
+ * Throws if `folder` already holds something named `name`.ink.png, in any
+ * letter case, as Windows and macOS read names, other than `own`.
+ */
+function claimName(app: App, folder: string, name: string, own?: TFile): void {
+  const file = `${name}${inkExtension}`.toLowerCase();
+  const taken = namesIn(app, folder).some(
+    (other) =>
+      other.toLowerCase() === file && pathIn(folder, other) !== own?.path,
+  );
+  if (taken) {
+    const where = folder === "" ? "the vault's top folder" : folder;
+    throw new Error(`${where} already has a symbol named ${name}`);
+  }
+}
+
+/**
+ * The name `typed` gives a symbol whose file is `file`, if it has one, or
+ * throws with the reason it cannot be one. The file's own name, typed
+ * again, keeps it.
+ */
+function chosen(typed: string, file?: TFile): NameChoice {
+  const own = file === undefined ? "" : (symbolStem(file.name) ?? "");
+  const choice = chooseRename(typed, own);
+  if (choice.kind === "refused") throw new Error(choice.reason);
+  return choice;
+}
+
 /**
  * Where a new symbol for the note at `sourcePath` goes: Obsidian's attachment
- * location for it, with the lowest number name that no file or folder there
- * already has.
+ * location for it, under the name `name` chose, or else the lowest number
+ * name that no file or folder there already has. Throws if the folder has a
+ * symbol of that name already.
  */
 export async function newSymbolPath(
   app: App,
   sourcePath: string,
+  name: NameChoice = { kind: "number" },
 ): Promise<string> {
   const probe = await app.fileManager.getAvailablePathForAttachment(
     `inkline${inkExtension}`,
     sourcePath,
   );
   const folder = parentPath(probe);
-  const taken = (
-    app.vault.getFolderByPath(folder === "" ? "/" : folder)?.children ?? []
-  )
-    .map((child) => symbolStem(child.name))
+  if (name.kind === "name") {
+    claimName(app, folder, name.name);
+    return pathIn(folder, `${name.name}${inkExtension}`);
+  }
+  const taken = namesIn(app, folder)
+    .map((child) => symbolStem(child))
     .filter((stem): stem is string => stem !== undefined);
   for (;;) {
     const stem = nextNumberName(taken);
@@ -179,6 +233,67 @@ async function insertEmbed(
 }
 
 /**
+ * Has the embed Inkline inserted just before `point` in the target note
+ * follow its symbol's rename, from `was` to `now`: puts `now` in place of
+ * `was` if Obsidian left it, or finds where `now` ends if Obsidian already
+ * rewrote it. Works through a live editor of the note when there is one,
+ * otherwise in the note's file. Returns the point just after the embed, where
+ * the next symbol's goes, or undefined if neither is there any more.
+ */
+async function followRename(
+  app: App,
+  target: Target,
+  point: InsertionPoint,
+  was: string,
+  now: string,
+): Promise<InsertionPoint | undefined> {
+  const { file } = target;
+  const moved = replacedBefore(point, was, now);
+  /** Where the embed is in `text`, and whether it is still the old one. */
+  const locate = (
+    text: string,
+  ): { start: number; old: boolean } | undefined => {
+    const end = findPoint(text, point);
+    if (end !== undefined && text.slice(end - was.length, end) === was) {
+      return { start: end - was.length, old: true };
+    }
+    const renamed = findPoint(text, moved);
+    if (
+      renamed !== undefined &&
+      text.slice(renamed - now.length, renamed) === now
+    ) {
+      return { start: renamed - now.length, old: false };
+    }
+    return undefined;
+  };
+  const view = liveView(app, file, target.view);
+  if (view !== undefined) {
+    const editor = view.editor;
+    const found = locate(editor.getValue());
+    if (found === undefined) return undefined;
+    if (found.old) {
+      editor.replaceRange(
+        now,
+        editor.offsetToPos(found.start),
+        editor.offsetToPos(found.start + was.length),
+      );
+    }
+    return capturePoint(editor.getValue(), found.start + now.length);
+  }
+  let after: InsertionPoint | undefined;
+  await app.vault.process(file, (text) => {
+    const found = locate(text);
+    if (found === undefined) return text;
+    const replaced = found.old
+      ? text.slice(0, found.start) + now + text.slice(found.start + was.length)
+      : text;
+    after = capturePoint(replaced, found.start + now.length);
+    return replaced;
+  });
+  return after;
+}
+
+/**
  * A file that a new symbol's first save made, or was making: by its path,
  * and, once it is found, as the vault's file, which follows renames.
  */
@@ -202,6 +317,46 @@ function symbolFile(app: App, path: string): SymbolFile {
         : new Uint8Array(await app.vault.readBinary(file));
     },
   };
+}
+
+/**
+ * Where `file` goes to take the name `name` chose, in its own folder, or
+ * undefined to keep its name, as an empty name does for a symbol that has
+ * one. Throws if another file there has that name.
+ */
+function renamedPath(
+  app: App,
+  file: TFile,
+  name: NameChoice,
+): string | undefined {
+  if (name.kind !== "name" || symbolStem(file.name) === name.name) {
+    return undefined;
+  }
+  const folder = parentPath(file.path);
+  claimName(app, folder, name.name, file);
+  return pathIn(folder, `${name.name}${inkExtension}`);
+}
+
+/**
+ * Gives `file` the path `renamedPath` found, through Obsidian, so that the
+ * links to it follow as its settings say; returns the file. The drawing is
+ * written by then, so a rename that fails says so in a notice and leaves the
+ * file as it is, rather than failing the save.
+ */
+async function rename(
+  app: App,
+  file: TFile,
+  path: string | undefined,
+): Promise<TFile> {
+  if (path === undefined) return file;
+  try {
+    await app.fileManager.renameFile(file, path);
+  } catch (error) {
+    new Notice(
+      `${file.name} is saved, but could not be renamed: ${message(error)}`,
+    );
+  }
+  return file;
 }
 
 /**
@@ -399,8 +554,11 @@ function newSymbol(
     // refuses it, the write goes ahead: the file then holds the drawing.
     // The editor learns what the file holds as soon as it is adopted or
     // written, so that a later failure leaves it still compared.
-    write: async (bytes, _record, keepDraft, holds) => {
+    write: async (bytes, _record, keepDraft, holds, typed) => {
       stillAlive(host);
+      // Checked before anything is written, so that a refused name leaves
+      // the vault as it was.
+      const name = chosen(typed, made?.file);
       const fingerprint = await fingerprintOf(bytes);
       if (made === undefined && claim !== undefined) {
         const claimed = await claimedFile(app, claim);
@@ -412,7 +570,7 @@ function newSymbol(
       }
       stillAlive(host);
       if (made === undefined) {
-        const path = await newSymbolPath(app, note.path);
+        const path = await newSymbolPath(app, note.path, name);
         stillAlive(host);
         claim = { path, fingerprint };
         keepDraft();
@@ -420,6 +578,7 @@ function newSymbol(
         made = { file, fingerprint, previous: undefined };
         holds(fingerprint);
       } else {
+        const renaming = renamedPath(app, made.file, name);
         // A draft kept meanwhile names both, since the file holds either.
         const before = made.fingerprint;
         made.fingerprint = fingerprint;
@@ -433,6 +592,22 @@ function newSymbol(
           throw error;
         } finally {
           made.previous = undefined;
+        }
+        if (renaming !== undefined) {
+          // Obsidian updates the links it knows of, as its settings say. The
+          // embed just inserted, which its cache can lack for a moment after,
+          // or which the answer to its question can leave as it was, follows
+          // the symbol it was inserted for, and the next symbol goes after it.
+          const was = inserted ? embedFor(app, made.file, note.path) : "";
+          const from = made.file.path;
+          stillAlive(host);
+          made.file = await rename(app, made.file, renaming);
+          // A rename that failed left the file, and its embed, as they were.
+          if (inserted && after !== undefined && made.file.path !== from) {
+            stillAlive(host);
+            const now = embedFor(app, made.file, note.path);
+            after = (await followRename(app, target, after, was, now)) ?? after;
+          }
         }
       }
       if (inserted) return;
@@ -573,7 +748,8 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
   /** The symbol's file: the one opened, or the one a save made again. */
   let symbol = file;
   new InkEditorModal(app, {
-    title: symbolStem(file.name) ?? file.basename,
+    title: "Symbol",
+    name: symbolStem(file.name) ?? file.basename,
     document: opened.document,
     ...(opened.base === undefined ? {} : { base: opened.base }),
     carried: opened.carried,
@@ -587,9 +763,12 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
     },
     lifecycle: host.lifecycle,
     file: () => symbolFile(app, symbol.path),
-    write: async (saved) => {
+    write: async (saved, _record, _keepDraft, _holds, typed) => {
       stillAlive(host);
+      const renaming = renamedPath(app, symbol, chosen(typed, symbol));
       symbol = await writeSymbol(app, symbol, saved);
+      stillAlive(host);
+      symbol = await rename(app, symbol, renaming);
     },
   }).open();
 }
