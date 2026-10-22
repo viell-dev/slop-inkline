@@ -13,8 +13,12 @@
 
 import { appendFile } from "node:fs/promises";
 import { setTimeout as sleep } from "node:timers/promises";
-import { docsBranch, docsSource, type DocsRequest } from "./lib/docs.ts";
-import { isRecord } from "./lib/settings.ts";
+import {
+  docsBranch,
+  docsSource,
+  isRecord,
+  type DocsRequest,
+} from "./lib/docs.ts";
 
 const repository = process.env.GITHUB_REPOSITORY ?? "viell-dev/slop-inkline";
 const token = process.env.GH_TOKEN;

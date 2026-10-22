@@ -27,9 +27,11 @@ release, and never moves the release's tag. It goes on a branch named
 that branch. It refuses such a branch unless it contains the tag and changes
 nothing outside `docs/` but the files that deploy the site, so that the site
 never describes code that was not released, and a defect in the deployment can
-still be mended for a release. A `docs-<version>` branch is made only by these
-steps, and a ruleset keeps it from being deleted or rewritten, so that what a
-deployment was built from stays readable.
+still be mended for a release. Its dependencies cannot change there, so a
+dependency that stops building the site waits for the next release. A
+`docs-<version>` branch is made only by these steps, and a ruleset keeps it from
+being deleted or rewritten, so that what a deployment was built from stays
+readable.
 
 ## How it is deployed
 

@@ -43,12 +43,20 @@ export type DocsSource =
  * The files that deploy the site, which a correction branch may change too,
  * so that a defect in the deployment can be mended for a release; they run
  * only in that branch's own run, which can deploy the site and nothing else.
+ * The dependencies, `package.json`, `package-lock.json`, and `.nvmrc`,
+ * are left out on purpose: a correction does not change what builds the
+ * site, so a pin that stops building waits for the next release.
  */
 export const deploymentFiles: readonly string[] = [
   ".github/workflows/pages.yml",
   "scripts/docs.ts",
   "scripts/lib/docs.ts",
 ];
+
+/** Whether `value` is an object with string keys, as JSON gives one. */
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 /** The branch that corrects the documentation of release `version`. */
 export function docsBranch(version: string): string {
