@@ -1,8 +1,9 @@
 // The Pages workflow's steps that need GitHub, as docs/versions.md describes:
 //
-//   node scripts/docs.ts resolve          choose what to deploy, from EVENT
-//                                         (push, release, or dispatch) and
-//                                         REF, and write it to GITHUB_OUTPUT
+//   node scripts/docs.ts resolve          choose whether to deploy, from EVENT
+//                                         (push or dispatch) and REF, the
+//                                         run's own branch or tag, and write
+//                                         it to GITHUB_OUTPUT
 //   node scripts/docs.ts verify <url> <commit>
 //                                         read the deployed site back until it
 //                                         is <commit>, then check every page
@@ -52,39 +53,14 @@ async function releases(): Promise<string[]> {
     .map((release) => release.tag);
 }
 
-/** Whether the Release run behind a `release` event published anything. */
-async function published(jobsUrl: string): Promise<boolean> {
-  const response = await api(
-    jobsUrl.replace(/^https:\/\/api\.github\.com\//, ""),
-  );
-  const jobs = isRecord(response) ? response.jobs : undefined;
-  return (
-    Array.isArray(jobs) &&
-    jobs.some(
-      (job) =>
-        isRecord(job) && job.name === "publish" && job.conclusion === "success",
-    )
-  );
-}
-
 async function resolve(): Promise<void> {
   const event = process.env.EVENT;
-  if (event !== "push" && event !== "release" && event !== "dispatch") {
-    fail(`EVENT is ${String(event)}, not push, release, or dispatch`);
+  if (event !== "push" && event !== "dispatch") {
+    fail(`EVENT is ${String(event)}, not push or dispatch`);
   }
   const tags = await releases();
-  let ref = process.env.REF ?? "main";
-  if (event === "release") {
-    const jobs = process.env.RELEASE_JOBS_URL ?? "";
-    if (jobs === "" || !(await published(jobs))) {
-      console.log(
-        "The Release run published nothing; the site stays as it is.",
-      );
-      await output({ deploy: "false" });
-      return;
-    }
-    ref = tags[0] ?? "";
-  }
+  // The ref this run is on, and builds.
+  const ref = process.env.REF ?? "main";
   const request: DocsRequest = { event, ref, releases: tags };
   const latest = tags[0];
   let branch: DocsRequest["branch"];

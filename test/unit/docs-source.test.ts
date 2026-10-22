@@ -27,12 +27,14 @@ describe("docsSource", () => {
     ).toMatchObject({ deploy: false, error: false });
   });
 
-  it("deploys the newest release, after it is published or on request", () => {
-    for (const event of ["release", "dispatch"] as const) {
-      expect(
-        docsSource({ event, ref: "0.2.0", releases: ["0.2.0", "0.1.0"] }),
-      ).toEqual({ deploy: true, ref: "0.2.0", version: "0.2.0" });
-    }
+  it("deploys the newest release when run on its tag", () => {
+    expect(
+      docsSource({
+        event: "dispatch",
+        ref: "0.2.0",
+        releases: ["0.2.0", "0.1.0"],
+      }),
+    ).toEqual({ deploy: true, ref: "0.2.0", version: "0.2.0" });
   });
 
   it("refuses an older release, main, or another branch once released", () => {

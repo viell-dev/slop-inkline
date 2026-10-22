@@ -134,12 +134,18 @@ gh attestation verify check/main.js --repo viell-dev/slop-inkline
 
 ## Documentation
 
-Once a release is published, the Pages workflow deploys the site from its tag,
-so that the site describes the release users can install, and reads it back. A
+Once the release is published and verified, deploy the site from its tag, so
+that the site describes the release users can install:
+
+```sh
+gh workflow run pages.yml --ref <version>
+```
+
+The workflow builds the commit it runs on and reads the deployed site back. A
 correction to that documentation goes on a branch named `docs-<version>` from
 the tag, changing only `docs/`, deployed with
-`gh workflow run pages.yml --ref main -f ref=docs-<version>`; the tag never
-moves. [docs/versions.md](docs/versions.md) describes the rules.
+`gh workflow run pages.yml --ref docs-<version>`; the tag never moves.
+[docs/versions.md](docs/versions.md) describes the rules.
 
 ## The community directory
 

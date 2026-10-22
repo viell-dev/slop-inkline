@@ -84,7 +84,7 @@ describe("the documentation", () => {
   it("lists every command, and no other", () => {
     const names = [
       ...source("src/main.ts").matchAll(
-        /addCommand\(\{\s*id: "[^"]+",(?:\s*\/\/[^\n]*)*\s*name: "([^"]+)"/g,
+        /addCommand\(\{\s*id: "[^"]+",(?:\n[ \t]*\/\/[^\n]*)*\n[ \t]*name: "([^"]+)"/g,
       ),
     ].map((match) => match[1] ?? "");
     expect(names.length).toBeGreaterThan(0);

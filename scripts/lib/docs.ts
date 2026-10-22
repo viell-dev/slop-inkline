@@ -7,12 +7,9 @@
 
 /** What started the Pages workflow, and what it was asked to deploy. */
 export interface DocsRequest {
-  /**
-   * `push` for a change merged to main, `release` after a Release run that
-   * published, and `dispatch` when run by hand for `ref`.
-   */
-  readonly event: "push" | "release" | "dispatch";
-  /** The branch or tag asked for: `main` for a push. */
+  /** `push` for a change merged to main, `dispatch` when run on request. */
+  readonly event: "push" | "dispatch";
+  /** The branch or tag the run is on, which it builds: `main` for a push. */
   readonly ref: string;
   /** The published releases' tags, newest first; drafts are not releases. */
   readonly releases: readonly string[];
@@ -69,11 +66,6 @@ export function docsSource(request: DocsRequest): DocsSource {
   }
   if (request.ref === latest) {
     return { deploy: true, ref: latest, version: latest };
-  }
-  if (request.event === "release") {
-    return refuse(
-      `The release run published ${request.ref}, but the newest release is ${latest}.`,
-    );
   }
   if (request.ref !== docsBranch(latest)) {
     return refuse(
