@@ -61,7 +61,11 @@ async function resolve(): Promise<void> {
   const tags = await releases();
   // The ref this run is on, and builds.
   const ref = process.env.REF ?? "main";
-  const request: DocsRequest = { event, ref, releases: tags };
+  const refType = process.env.REF_TYPE;
+  if (refType !== "branch" && refType !== "tag") {
+    fail(`REF_TYPE is ${String(refType)}, not branch or tag`);
+  }
+  const request: DocsRequest = { event, ref, refType, releases: tags };
   const latest = tags[0];
   let branch: DocsRequest["branch"];
   if (latest !== undefined && ref === docsBranch(latest)) {

@@ -25,8 +25,11 @@ A correction to the current release's documentation does not wait for a new
 release, and never moves the release's tag. It goes on a branch named
 `docs-<version>`, made from the release's tag, and the Pages workflow is run on
 that branch. It refuses such a branch unless it contains the tag and changes
-nothing outside `docs/`, so that the site never describes code that was not
-released.
+nothing outside `docs/` but the files that deploy the site, so that the site
+never describes code that was not released, and a defect in the deployment can
+still be mended for a release. A `docs-<version>` branch is made only by these
+steps, and a ruleset keeps it from being deleted or rewritten, so that what a
+deployment was built from stays readable.
 
 ## How it is deployed
 
@@ -38,4 +41,7 @@ page back, and fails unless they are the commit it built. It has permission to
 deploy Pages only: it cannot push to the repository, create a tag, or publish a
 release. The repository's Pages are built by GitHub Actions, and its
 `github-pages` environment takes deployments only from `main`, `docs-*`
-branches, and version tags.
+branches, and version tags. These rules guard against mistakes, not against a
+person with write access to the repository: a run on a tag or a `docs-*` branch
+uses that ref's own workflow, which can deploy the site and nothing else, so
+what such a ref can change is the site.

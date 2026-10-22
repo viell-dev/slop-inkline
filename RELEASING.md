@@ -143,9 +143,10 @@ gh workflow run pages.yml --ref <version>
 
 The workflow builds the commit it runs on and reads the deployed site back. A
 correction to that documentation goes on a branch named `docs-<version>` from
-the tag, changing only `docs/`, deployed with
-`gh workflow run pages.yml --ref docs-<version>`; the tag never moves.
-[docs/versions.md](docs/versions.md) describes the rules.
+the tag, changing only `docs/` and, to mend a defect in the deployment,
+`.github/workflows/pages.yml`, `scripts/docs.ts`, or `scripts/lib/docs.ts`,
+deployed with `gh workflow run pages.yml --ref docs-<version>`; the tag never
+moves. [docs/versions.md](docs/versions.md) describes the rules.
 
 ## The community directory
 

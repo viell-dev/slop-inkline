@@ -11,6 +11,8 @@ export interface DocsRequest {
   readonly event: "push" | "dispatch";
   /** The branch or tag the run is on, which it builds: `main` for a push. */
   readonly ref: string;
+  /** Whether `ref` is a branch or a tag. */
+  readonly refType: "branch" | "tag";
   /** The published releases' tags, newest first; drafts are not releases. */
   readonly releases: readonly string[];
   /**
@@ -37,6 +39,17 @@ export type DocsSource =
       readonly error: boolean;
     };
 
+/**
+ * The files that deploy the site, which a correction branch may change too,
+ * so that a defect in the deployment can be mended for a release; they run
+ * only in that branch's own run, which can deploy the site and nothing else.
+ */
+export const deploymentFiles: readonly string[] = [
+  ".github/workflows/pages.yml",
+  "scripts/docs.ts",
+  "scripts/lib/docs.ts",
+];
+
 /** The branch that corrects the documentation of release `version`. */
 export function docsBranch(version: string): string {
   return `docs-${version}`;
@@ -50,8 +63,10 @@ export function docsSource(request: DocsRequest): DocsSource {
     reason,
     error,
   });
+  const branch = (name: string): boolean =>
+    request.refType === "branch" && request.ref === name;
   if (latest === undefined) {
-    if (request.ref === "main") {
+    if (branch("main")) {
       return { deploy: true, ref: "main", version: "unreleased" };
     }
     return refuse(
@@ -64,21 +79,23 @@ export function docsSource(request: DocsRequest): DocsSource {
       false,
     );
   }
-  if (request.ref === latest) {
+  if (request.refType === "tag" && request.ref === latest) {
     return { deploy: true, ref: latest, version: latest };
   }
-  if (request.ref !== docsBranch(latest)) {
+  if (!branch(docsBranch(latest))) {
     return refuse(
       `Only ${latest} or ${docsBranch(latest)} can be deployed, not ${request.ref}.`,
     );
   }
-  const branch = request.branch;
-  if (branch?.containsTag !== true) {
+  const changes = request.branch;
+  if (changes?.containsTag !== true) {
     return refuse(
       `${request.ref} must be made from the tag ${latest}, so that it describes that release.`,
     );
   }
-  const outside = branch.changed.filter((file) => !file.startsWith("docs/"));
+  const outside = changes.changed.filter(
+    (file) => !file.startsWith("docs/") && !deploymentFiles.includes(file),
+  );
   if (outside.length > 0) {
     return refuse(
       `${request.ref} changes more than the documentation: ${outside.join(", ")}.`,

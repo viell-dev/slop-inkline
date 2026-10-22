@@ -44,6 +44,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           EVENT: ${{ github.event_name == 'workflow_dispatch' && 'dispatch' || 'push' }}
           REF: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
         run: node scripts/docs.ts resolve
 
   build:
