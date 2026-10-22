@@ -46,8 +46,13 @@ screenshots use synthetic vaults and drawings only.
 
 ## Documents
 
-Prettier formats Markdown at 80 columns. It joins a GitHub alert's `[!NOTE]`
-marker with the text after it, which breaks the alert: put
+The user guide in `docs/` describes what the plugin does now, and what is
+planned as planned; [CONTRIBUTING.md](CONTRIBUTING.md#documentation) says how it
+is built, checked, and deployed. Keep the file format and the rendering contract
+as developer reference there. Prettier formats Markdown at 80 columns; leave a
+blank line after a VitePress container's opening `:::` line and before its
+closing one, or Prettier joins them with the text. It joins a GitHub alert's
+`[!NOTE]` marker with the text after it, which breaks the alert: put
 `<!-- prettier-ignore -->` on the line before an alert in a repository file, and
 check that the marker keeps its own line in issue and pull request bodies.
 

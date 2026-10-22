@@ -54,8 +54,9 @@ npm run check
 
 `check` runs ESLint with the rules of Obsidian's community directory review
 (`eslint-plugin-obsidianmd`) and typescript-eslint's strict type-checked rules,
-Prettier, the TypeScript checks of the plugin, the tests, and the scripts, the
-unit tests, and the build. `npm run format` applies Prettier. GitHub Actions
+Prettier, the TypeScript checks of the plugin, the tests, the scripts, and the
+documentation site's configuration, the unit tests, the build, and the
+documentation site's build. `npm run format` applies Prettier. GitHub Actions
 runs `check` on Linux and Windows, and a dependency audit on Linux.
 
 ## Tests
@@ -105,6 +106,22 @@ Test vaults in `test/e2e/vaults/` and every drawing a test uses are synthetic.
 
 CI runs the end-to-end tests on Linux for every pull request, and the Docker
 image weekly and on request.
+
+## Documentation
+
+The user guide and the reference are a [VitePress](https://vitepress.dev/) site
+in `docs/`, which the Pages workflow deploys to GitHub Pages. `npm run docs:dev`
+serves it with live reload, and `npm run docs:build`, part of `check`, builds it
+and fails on a link to a page that does not exist. `test/unit/docs.test.ts`
+checks that the site lists every command and every button's key as the code has
+them, gives the defaults and the Obsidian version the code and manifest have,
+links only to headings and repository files that exist, and gives example embeds
+that read as symbols.
+
+A change that users can see updates the guide in the same pull request. Until
+the first release the site describes `main`; after it, the newest release, as
+[docs/versions.md](docs/versions.md) describes, including how to correct a
+release's documentation without a new release.
 
 ## Pull requests
 
