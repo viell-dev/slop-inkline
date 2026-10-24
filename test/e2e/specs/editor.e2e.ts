@@ -839,6 +839,49 @@ describe("The editor", function () {
     );
   });
 
+  it("takes shortcut focus before the first frame, without stealing later name typing", async function () {
+    await openAtMarker("Editor.md", "HERE");
+    await browser.execute(() => {
+      const frames = window.requestAnimationFrame.bind(window);
+      const held: FrameRequestCallback[] = [];
+      window.requestAnimationFrame = (callback) => {
+        held.push(callback);
+        return held.length;
+      };
+      Reflect.set(window, "inklineReleaseFrames", () => {
+        window.requestAnimationFrame = frames;
+        for (const callback of held) frames(callback);
+      });
+    });
+    try {
+      await browser.executeObsidianCommand("inkline:insert-symbol");
+      // Deliberately bypass waitForEditor: no animation frame has run yet.
+      await browser.keys(["e"]);
+      expect(await nameField()).toMatchObject({ value: "" });
+      expect(
+        await browser
+          .$('[data-inkline-button="eraser"]')
+          .getAttribute("aria-pressed"),
+      ).toBe("true");
+      // Choosing the name field before that first frame must stay a choice.
+      await nameSymbol("gate");
+    } finally {
+      await browser.execute(() => {
+        const release: unknown = Reflect.get(window, "inklineReleaseFrames");
+        if (typeof release === "function") Reflect.apply(release, window, []);
+        Reflect.deleteProperty(window, "inklineReleaseFrames");
+      });
+    }
+    await waitForEditor();
+    await browser.keys(["p"]);
+    expect(await nameField()).toMatchObject({ value: "gatep" });
+    expect(
+      await browser
+        .$('[data-inkline-button="eraser"]')
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+  });
+
   it("asks before closing unsaved work, and keeps drawing or discards it", async function () {
     await insert();
     await draw(zigzag);
@@ -1260,6 +1303,120 @@ describe("The editor", function () {
     await waitClosed();
     expect(await symbolFiles()).toEqual(["tower.ink.png"]);
     expect(await strokeCount("tower.ink.png")).toBe(2);
+  });
+
+  it("reports a successful rename when another rename follows before it resolves", async function () {
+    await saveOne();
+    await editFile("001.ink.png");
+    await waitForLink("Editor.md", "001.ink.png");
+    await browser.executeObsidian(({ app }) => {
+      const rename = app.fileManager.renameFile.bind(app.fileManager);
+      Reflect.set(window, "inklineRestoreRename", () => {
+        app.fileManager.renameFile = rename;
+      });
+      app.fileManager.renameFile = async (...args) => {
+        await rename(...args);
+        await new Promise<void>((resolve) => {
+          Reflect.set(window, "inklineFinishRename", resolve);
+        });
+      };
+    });
+    try {
+      await nameSymbol("tower");
+      await browser.keys(["Control", "s"]);
+      await browser.$("button=Just once").waitForDisplayed();
+      await browser.$("button=Just once").click();
+      await browser.waitUntil(async () =>
+        browser.execute(() => "inklineFinishRename" in window),
+      );
+      await browser.executeObsidian(async ({ app }) => {
+        const file = app.vault.getFileByPath("tower.ink.png");
+        if (file === null) throw new Error("no tower");
+        await app.vault.rename(file, "external.ink.png");
+      });
+    } finally {
+      await browser.execute(() => {
+        for (const key of ["inklineFinishRename", "inklineRestoreRename"]) {
+          const action: unknown = Reflect.get(window, key);
+          if (typeof action === "function") Reflect.apply(action, window, []);
+          Reflect.deleteProperty(window, key);
+        }
+      });
+    }
+    await waitForStatus("Saved");
+    expect(await browser.$(".inkline-status").getText()).toBe("Saved");
+    expect(await nameField()).toEqual({
+      value: "external",
+      placeholder: "external",
+    });
+    expect(await symbolFiles()).toEqual(["external.ink.png"]);
+    expect(await strokeCount("external.ink.png")).toBe(1);
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+  });
+
+  it("keeps an external rename during a new symbol's later save fingerprint", async function () {
+    await insert();
+    await draw(zigzag);
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    await draw([
+      [0.6, 0.3],
+      [0.6, 0.7],
+    ]);
+    await browser.execute(() => {
+      const digest = crypto.subtle.digest.bind(crypto.subtle);
+      let calls = 0;
+      Reflect.set(window, "inklineRestoreDigest", () => {
+        crypto.subtle.digest = digest;
+      });
+      crypto.subtle.digest = async (...args) => {
+        // The save checks the file, fingerprints its new bytes, then the
+        // new-symbol writer fingerprints them for interrupted-save recovery.
+        if (++calls === 3) {
+          await new Promise<void>((resolve) => {
+            Reflect.set(window, "inklineFinishDigest", resolve);
+          });
+        }
+        return digest(...args);
+      };
+    });
+    try {
+      await browser.keys(["Control", "s"]);
+      await browser.waitUntil(async () =>
+        browser.execute(() => "inklineFinishDigest" in window),
+      );
+      await browser.executeObsidian(async ({ app }) => {
+        const file = app.vault.getFileByPath("001.ink.png");
+        if (file === null) throw new Error("no 001");
+        await app.vault.rename(file, "external.ink.png");
+      });
+    } finally {
+      await browser.execute(() => {
+        for (const key of ["inklineRestoreDigest", "inklineFinishDigest"]) {
+          const action: unknown = Reflect.get(window, key);
+          if (typeof action === "function") Reflect.apply(action, window, []);
+          Reflect.deleteProperty(window, key);
+        }
+      });
+    }
+    // A rename requested by mistake may ask about links. Answer it so the
+    // assertion reports the filename instead of leaving a pending save.
+    await browser.waitUntil(
+      async () =>
+        (await browser.$(".inkline-status").getText()) !== "Saving…" ||
+        (await browser.$("button=Just once").isDisplayed()),
+    );
+    if (await browser.$("button=Just once").isDisplayed()) {
+      await browser.$("button=Just once").click();
+    }
+    await waitForStatus("Saved");
+    expect(await symbolFiles()).toEqual(["external.ink.png"]);
+    expect(await strokeCount("external.ink.png")).toBe(2);
+    expect(await nameField()).toEqual({
+      value: "external",
+      placeholder: "external",
+    });
   });
 
   it("keeps the joiners a name is spelled with", async function () {

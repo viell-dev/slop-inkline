@@ -359,24 +359,26 @@ export async function renameSymbol(
 
 /**
  * Gives `file` the path `renamedPath` found, through Obsidian, so that the
- * links to it follow as its settings say; returns the file. The drawing is
- * written by then, so a rename that fails says so in a notice and leaves the
- * file as it is, rather than failing the save.
+ * links to it follow as its settings say; returns whether it succeeded or
+ * no rename was requested. The drawing is written by then, so a rename that
+ * fails says so in a notice and leaves the file as it is, rather than
+ * failing the save.
  */
 async function rename(
   app: App,
   file: TFile,
   path: string | undefined,
-): Promise<TFile> {
-  if (path === undefined) return file;
+): Promise<boolean> {
+  if (path === undefined) return true;
   try {
     await app.fileManager.renameFile(file, path);
+    return true;
   } catch (error) {
     new Notice(
       `${file.name} is saved, but could not be renamed: ${message(error)}`,
     );
+    return false;
   }
-  return file;
 }
 
 /**
@@ -593,11 +595,18 @@ function newSymbol(
       // Checked before anything is written, so that a refused name leaves
       // the vault as it was.
       const name = chosen(typed, made?.file);
+      // Compare the requested name and the file's name together, before a
+      // hash can yield to an external rename. An unchanged name keeps that
+      // rename instead of taking the file back to its name before the save.
+      let renaming =
+        made === undefined ? undefined : renamedPath(app, made.file, name);
+      let named = true;
       const fingerprint = await fingerprintOf(bytes);
       if (made === undefined && claim !== undefined) {
         const claimed = await claimedFile(app, claim);
         if (claimed !== undefined) {
           made = { ...claimed, previous: undefined };
+          renaming = renamedPath(app, made.file, name);
           adopted = true;
           holds(claimed.fingerprint);
         }
@@ -612,7 +621,6 @@ function newSymbol(
         made = { file, fingerprint, previous: undefined };
         holds(fingerprint);
       } else {
-        const renaming = renamedPath(app, made.file, name);
         // A draft kept meanwhile names both, since the file holds either.
         const before = made.fingerprint;
         made.fingerprint = fingerprint;
@@ -635,7 +643,7 @@ function newSymbol(
           const was = inserted ? embedFor(app, made.file, note.path) : "";
           const from = made.file.path;
           stillAlive(host);
-          made.file = await rename(app, made.file, renaming);
+          named = await rename(app, made.file, renaming);
           // A rename that failed left the file, and its embed, as they were.
           if (inserted && after !== undefined && made.file.path !== from) {
             stillAlive(host);
@@ -644,7 +652,7 @@ function newSymbol(
           }
         }
       }
-      if (inserted) return;
+      if (inserted) return named;
       // Once Inkline is disabled, the editor's draft finishes the insertion.
       stillAlive(host);
       const embed = embedFor(app, made.file, note.path);
@@ -658,6 +666,7 @@ function newSymbol(
         after = existing;
       }
       inserted = true;
+      return named;
     },
   }).open();
 }
@@ -804,7 +813,7 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
       const renaming = renamedPath(app, symbol, chosen(typed, symbol));
       symbol = await writeSymbol(app, symbol, saved);
       stillAlive(host);
-      symbol = await rename(app, symbol, renaming);
+      return rename(app, symbol, renaming);
     },
   }).open();
 }

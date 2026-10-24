@@ -8,6 +8,14 @@ section is also its
 
 ## Unreleased
 
+### Fixed
+
+- An editor shortcut pressed immediately after opening goes to the drawing area.
+  Selecting the name field to type before the first frame keeps its focus.
+- Saving keeps an external rename when no new name was requested, including
+  during a new symbol's later save. The save status reports the native rename's
+  outcome even if another rename follows before it finishes.
+
 ### Added
 
 - **Rename** in the symbol library edits a symbol's name directly in its row,

@@ -119,9 +119,8 @@ async function showNote(path: string): Promise<void> {
 
 /**
  * Waits for the editor to be open and to have drawn its first frame. In that
- * frame it takes the focus back from where Obsidian puts it, the name field,
- * and sizes its preview line, so that a key pressed before it would go to
- * the name field, and the preview would read the size of an empty canvas.
+ * frame it sizes its preview line, so that a preview measured before it
+ * would read the size of an empty canvas. Keyboard focus is ready at once.
  */
 export async function waitForEditor(): Promise<void> {
   await surface().waitForDisplayed();
