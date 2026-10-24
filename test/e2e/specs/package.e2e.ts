@@ -93,6 +93,7 @@ describe("The installed plugin", function () {
       "inkline:edit-symbol-at-cursor",
       "inkline:insert-existing-symbol",
       "inkline:insert-symbol",
+      "inkline:show-library",
     ]);
     expect(loaded.styled).toBe(true);
   });

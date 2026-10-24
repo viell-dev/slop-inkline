@@ -10,11 +10,17 @@ own; give one any of them under **Settings → Hotkeys**.
 | **Inkline: Insert symbol**          | Opens the editor for a new symbol, inserted at the cursor once saved.   |
 | **Inkline: Insert existing symbol** | Lists your symbols to search, and inserts the one chosen at the cursor. |
 | **Inkline: Edit symbol**            | Opens the symbol whose embed the cursor is on in the editor.            |
+| **Inkline: Show symbol library**    | Opens the Symbols view in the right sidebar.                            |
 
 The insert commands are offered in a note in editing view, and **Edit symbol**
 only with the cursor on a symbol's embed. In a note, `;;` and a few letters of a
 symbol's name list your symbols as you type; the arrow keys choose one, Enter
 inserts it, and Esc closes the list.
+
+In the library, Tab reaches the name filter, folder selector, symbol buttons,
+usage counts, and the notes in an expanded list. Enter activates a button or
+opens a note; Space also activates a button. Inserting keeps the focus in the
+library for the next symbol.
 
 ## The editor's keys
 

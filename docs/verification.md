@@ -108,6 +108,12 @@ saving it again never changes it.
 - Edit symbol only where the cursor or the pointer is on a symbol, in every
   entry point
   ([entry.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/entry.e2e.ts)).
+- The library lists symbols and their referring notes, filters by name and
+  folder, follows file and link changes, and inserts successive symbols without
+  replacing selected text or splitting a link
+  ([catalog.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/library/catalog.test.ts)
+  and
+  [library.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library.e2e.ts)).
 
 ### The keyboard reaches everything but drawing
 

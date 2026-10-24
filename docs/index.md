@@ -63,13 +63,15 @@ in text.
   symbol you have to insert it again. See [Symbols in notes](./notes.md).
 - **Name** and rename it in its editor, and **edit** it again from its menu, a
   command, or the file explorer.
+- **Find and reuse** your symbols in the sidebar library, with filters by name
+  and folder, and the notes that use each. See
+  [Find where a symbol is used](./notes.md#find-where-a-symbol-is-used).
 - **Keep your work**: the editor asks before closing unsaved work, keeps unsaved
   strokes as a draft after a crash, and never saves over a file it cannot read.
   See [Saving and recovery](./recovery.md).
 
-A sidebar library of your symbols is planned. [Settings](./settings.md)
-describes size, colour, insertion, and drawing preferences;
-[Known limits](./limits.md) lists what else is missing.
+[Settings](./settings.md) describes size, colour, insertion, and drawing
+preferences; [Known limits](./limits.md) lists what else is missing.
 
 ## Who maintains it
 

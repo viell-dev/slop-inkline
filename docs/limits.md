@@ -7,9 +7,12 @@ The [issues](https://github.com/viell-dev/slop-inkline/issues) track each one.
 
 - **No release.** Inkline is under development; see [Install](./install.md).
 - **Desktop only.** Obsidian's mobile apps do not offer Inkline.
-- **No symbol library.** A sidebar view of all your symbols, with how many notes
-  use each, is planned. Meanwhile, the file explorer lists the files ending in
-  `.ink.png`, and a symbol file's backlinks list the notes that use it.
+- **Renaming directly in the library** is planned. For now, use the symbol's
+  editor or its file's menu.
+- **Large libraries** show every matching symbol at once, without paging. Filter
+  by name or folder to narrow the list.
+- **Library insertion needs a sidebar.** If the library's tab is dragged into
+  the main area, move it back to a sidebar to insert into a note.
 - **Printing and PDF export** of notes with symbols have not been checked yet.
 
 ## Menus without Edit symbol

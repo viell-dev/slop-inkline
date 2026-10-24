@@ -294,7 +294,10 @@ export async function symbolFiles(): Promise<string[]> {
   );
 }
 
-/** Creates a synthetic symbol with one stroke for each x coordinate. */
+/**
+ * Writes a symbol file at `path`, with its folders, holding one stroke for
+ * each of `xs`, as the editor saves them. Needs `loadModules`, from browser.ts.
+ */
 export async function createSymbol(
   path: string,
   xs: readonly number[] = [400],

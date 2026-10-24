@@ -175,3 +175,91 @@ img.inkline-symbol:not([width], [height]) {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
 }
+
+/*
+ * The symbol library: a filter, then a list of symbols, each a button that
+ * inserts it, with how many notes use it, which lists them.
+ */
+.inkline-library {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+}
+
+.inkline-library-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-2);
+}
+
+.inkline-library-search {
+  flex: 1 1 8em;
+  min-width: 0;
+}
+
+.inkline-library-folder {
+  flex: 1 1 6em;
+  min-width: 0;
+}
+
+.inkline-library-symbol {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--size-4-1) var(--size-4-2);
+}
+
+.inkline-library-insert {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--size-4-3);
+  min-width: 0;
+  height: auto;
+  padding: var(--size-4-1) var(--size-4-2);
+  text-align: start;
+  background: none;
+  box-shadow: none;
+}
+
+.inkline-library-insert:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+/* Larger than in text, to tell symbols apart, and painted as they are. */
+.inkline-library img.inkline-library-picture {
+  flex: none;
+  width: auto;
+  height: 2em;
+}
+
+.inkline-library-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.inkline-library-folder-name {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.inkline-library-uses {
+  flex: none;
+  height: auto;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  background: none;
+  box-shadow: none;
+}
+
+.inkline-library-notes {
+  flex-basis: 100%;
+  margin: 0;
+  padding-inline-start: var(--size-4-8);
+  list-style: none;
+}
+
+.inkline-library-empty {
+  color: var(--text-muted);
+}
