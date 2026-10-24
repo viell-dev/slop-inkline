@@ -26,10 +26,6 @@ section is also its
 - Documentation corrections deploy from `main` with their build commit recorded
   on every page.
 
-### Fixed
-
-- The BRAT installation guide now explains how to start repository validation.
-
 ## 0.1.0 - 2026-10-24
 
 ### Added

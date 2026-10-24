@@ -1,5 +1,5 @@
-// node scripts/package.ts <directory>: package and verify the release's three
-// raw plugin files, adding inkline-<version>.zip beside them.
+// node scripts/package.ts <directory> [output-directory]: package and verify
+// the three raw plugin files, adding inkline-<version>.zip to the output.
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
