@@ -40,6 +40,28 @@ export class InklineSettingTab extends PluginSettingTab {
   override getSettingDefinitions(): SettingDefinitionItem[] {
     return [
       {
+        name: "Symbol size",
+        desc: "Height in text, relative to the usual line height. A size written in an embed is kept.",
+        control: {
+          type: "slider",
+          key: "symbolScale",
+          defaultValue: defaultSettings.symbolScale,
+          min: 50,
+          max: 200,
+          step: 5,
+          displayFormat: (value) => `${String(value)}%`,
+        },
+      },
+      {
+        name: "Text colour",
+        desc: "Symbols take the colour of the text around them. Off, they keep their stored grey pixels.",
+        control: {
+          type: "toggle",
+          key: "textColor",
+          defaultValue: defaultSettings.textColor,
+        },
+      },
+      {
         name: "Insert trigger",
         desc: "Typed in a note, these characters and a few letters of a symbol's name list the symbols to insert.",
         aliases: ["type to insert", "suggest"],

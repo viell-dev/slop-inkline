@@ -109,12 +109,19 @@ img.inkline-symbol {
   mask-size: 100% 100%;
   mask-repeat: no-repeat;
   object-position: -99999px 0;
-  vertical-align: var(--inkline-drop, -0.375em);
+  vertical-align: var(--inkline-drop, calc(-0.375em * var(--inkline-scale, 1)));
 }
 
 img.inkline-symbol:not([width], [height]) {
   width: auto;
-  height: 1.5em;
+  height: calc(1.5em * var(--inkline-scale, 1));
+}
+
+/* Stored colour shows the PNG's own pixels, retaining the same layout. */
+.inkline-stored-color img.inkline-symbol {
+  background-color: transparent;
+  mask-image: none;
+  object-position: 50% 50%;
 }
 
 /*
@@ -130,7 +137,7 @@ img.inkline-symbol:not([width], [height]) {
 }
 
 .cm-content .image-embed.inkline-symbol-embed:has(> .image-wrapper) {
-  vertical-align: var(--inkline-drop, -0.375em);
+  vertical-align: var(--inkline-drop, calc(-0.375em * var(--inkline-scale, 1)));
 }
 
 .cm-content

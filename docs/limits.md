@@ -7,8 +7,6 @@ The [issues](https://github.com/viell-dev/slop-inkline/issues) track each one.
 
 - **No release.** Inkline is under development; see [Install](./install.md).
 - **Desktop only.** Obsidian's mobile apps do not offer Inkline.
-- **No settings tab.** Its choices are fixed for now; [Settings](./settings.md)
-  lists them, and what is planned.
 - **No symbol library.** A sidebar view of all your symbols, with how many notes
   use each, is planned. Meanwhile, the file explorer lists the files ending in
   `.ink.png`, and a symbol file's backlinks list the notes that use it.

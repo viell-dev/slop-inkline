@@ -294,6 +294,36 @@ export async function symbolFiles(): Promise<string[]> {
   );
 }
 
+/** Creates a synthetic symbol with one stroke for each x coordinate. */
+export async function createSymbol(
+  path: string,
+  xs: readonly number[] = [400],
+): Promise<void> {
+  await browser.executeObsidian(
+    async ({ app }, filePath, starts) => {
+      const { bytes } = await window.inklineTest.canvas.saveInk(
+        {
+          strokes: starts.map((x) => ({
+            tool: "pen" as const,
+            size: 256,
+            pressure: false,
+            points: [x, 800, x + 400, 2000],
+          })),
+        },
+        undefined,
+        [],
+      );
+      const folder = filePath.slice(0, Math.max(0, filePath.lastIndexOf("/")));
+      if (folder !== "" && app.vault.getFolderByPath(folder) === null) {
+        await app.vault.createFolder(folder);
+      }
+      await app.vault.createBinary(filePath, bytes.slice().buffer);
+    },
+    path,
+    xs,
+  );
+}
+
 /** The record a symbol file holds, as JSON, or why it has none. */
 export async function recordOf(path: string): Promise<string> {
   return browser.executeObsidian(async ({ app }, filePath) => {

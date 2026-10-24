@@ -1018,13 +1018,13 @@ export class InkEditorModal extends Modal {
   }
 
   #listen(canvas: HTMLCanvasElement): void {
+    let pressure = true;
     const point = (event: PointerEvent): InputPoint => {
       const { x, y } = this.#view?.toDocument(event.clientX, event.clientY) ?? {
         x: 0,
         y: 0,
       };
-      return reportsPressure(event.pointerType) &&
-        this.#options.pressure?.() !== false
+      return reportsPressure(event.pointerType) && pressure
         ? { x, y, pressure: event.pressure }
         : { x, y };
     };
@@ -1059,6 +1059,7 @@ export class InkEditorModal extends Modal {
         canvas.addClass("is-dragging");
         return;
       }
+      pressure = this.#options.pressure?.() !== false;
       this.#session.begin(
         point(event),
         tool === "brush" ? this.#session.tool : tool,

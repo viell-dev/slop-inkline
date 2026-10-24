@@ -26,6 +26,8 @@ export default class InklinePlugin extends Plugin {
   #drafts: DraftStore | undefined;
   #loaded = false;
   #settings: Settings = defaultSettings;
+  /** Settings writes finish in order, even when controls change quickly. */
+  #savingSettings: Promise<void> = Promise.resolve();
 
   /** What the editors this plugin opens may use while it is loaded. */
   get #host(): EditorHost {
@@ -43,7 +45,17 @@ export default class InklinePlugin extends Plugin {
   }
 
   override async onload(): Promise<void> {
-    this.#settings = readSettings(await this.loadData(), brushSizes.length);
+    try {
+      this.#settings = readSettings(await this.loadData(), brushSizes.length);
+    } catch {
+      new Notice(
+        "Inkline settings could not be read. Using defaults for this session.",
+      );
+    }
+    this.#renderer.configure(
+      this.#settings.symbolScale / 100,
+      this.#settings.textColor,
+    );
     this.addSettingTab(
       new InklineSettingTab(this.app, this, {
         settings: () => this.#settings,
@@ -214,8 +226,19 @@ export default class InklinePlugin extends Plugin {
     const changed = withSetting(this.#settings, key, value, brushSizes.length);
     if (changed === undefined) return false;
     this.#settings = changed;
-    await this.saveData(changed);
-    return true;
+    this.#renderer.configure(changed.symbolScale / 100, changed.textColor);
+    const save = this.#savingSettings.then(() => this.saveData(changed));
+    // A failure is announced below, and must not block the next write.
+    this.#savingSettings = save.catch(() => undefined);
+    try {
+      await save;
+      return true;
+    } catch {
+      new Notice(
+        "Inkline settings could not be saved. Changes apply for this session.",
+      );
+      return false;
+    }
   }
 
   /** Opens the editor for a symbol file; failures show a notice. */

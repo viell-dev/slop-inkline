@@ -58,6 +58,15 @@ describe("withSetting", () => {
     expect(withSetting(defaultSettings, "guides", false, sizes)?.guides).toBe(
       false,
     );
+    expect(
+      withSetting(defaultSettings, "textColor", false, sizes)?.textColor,
+    ).toBe(false);
+    for (const symbolScale of [50, 75, 100, 150, 200]) {
+      expect(
+        withSetting(defaultSettings, "symbolScale", symbolScale, sizes)
+          ?.symbolScale,
+      ).toBe(symbolScale);
+    }
   });
 
   it("refuses a value its setting cannot hold", () => {
@@ -68,8 +77,19 @@ describe("withSetting", () => {
       ["brushSize", -1],
       ["brushSize", 1.5],
       ["brushSize", "big"],
+      ["brushSize", ""],
+      ["brushSize", "  "],
       ["pressure", "yes"],
       ["guides", 1],
+      ["textColor", "false"],
+      ["symbolScale", 0],
+      ["symbolScale", 45],
+      ["symbolScale", 205],
+      ["symbolScale", 113],
+      ["symbolScale", 150.5],
+      ["symbolScale", "150"],
+      ["symbolScale", Number.NaN],
+      ["symbolScale", Number.POSITIVE_INFINITY],
     ] as const) {
       expect(withSetting(defaultSettings, key, value, sizes)).toBeUndefined();
     }
@@ -89,6 +109,8 @@ describe("readSettings", () => {
       brushSize: 2,
       pressure: false,
       guides: false,
+      symbolScale: 150,
+      textColor: false,
     };
     expect(readSettings(stored, sizes)).toEqual(stored);
   });

@@ -191,6 +191,8 @@ export function tagWithin(node: Node, vault: string): void {
 export class SymbolRenderer {
   /** The address the vault's files start with: `Platform.resourcePathPrefix`. */
   readonly #vault: string;
+  #scale = 1;
+  #textColor = true;
 
   constructor(vault: string) {
     this.#vault = vault;
@@ -198,11 +200,27 @@ export class SymbolRenderer {
 
   readonly #observers = new Map<Document, MutationObserver>();
 
+  /** Applies display settings to existing windows and those opened later. */
+  configure(scale: number, textColor: boolean): void {
+    this.#scale = scale;
+    this.#textColor = textColor;
+    for (const doc of this.#observers.keys()) this.#configureDocument(doc);
+  }
+
+  #configureDocument(doc: Document): void {
+    doc.documentElement.style.setProperty(
+      "--inkline-scale",
+      String(this.#scale),
+    );
+    doc.documentElement.toggleClass("inkline-stored-color", !this.#textColor);
+  }
+
   /** Starts tagging symbols in `doc`, a window's document. */
   watch(doc: Document): void {
     if (this.#observers.has(doc)) return;
     const view = doc.defaultView;
     if (view === null) return;
+    this.#configureDocument(doc);
     const observer = new view.MutationObserver((records) => {
       for (const record of records) {
         if (record.type === "attributes") {
@@ -234,6 +252,8 @@ export class SymbolRenderer {
     if (observer === undefined) return;
     observer.disconnect();
     this.#observers.delete(doc);
+    doc.documentElement.style.removeProperty("--inkline-scale");
+    doc.documentElement.removeClass("inkline-stored-color");
     for (const image of Array.from(doc.getElementsByTagName("img"))) {
       untagImage(image);
     }

@@ -1,6 +1,6 @@
 // Inkline's settings: what they are, what they start as, and how the data
 // stored for them is read back. A plain module, so that unit tests can check
-// it; the settings tab in main.ts shows them.
+// it; settings-tab.ts shows them.
 
 /** Inkline's settings. */
 export interface Settings {
@@ -12,6 +12,10 @@ export interface Settings {
   readonly pressure: boolean;
   /** Whether a new editor starts with its guides shown. */
   readonly guides: boolean;
+  /** A symbol's height in text, as a percentage of the usual line height. */
+  readonly symbolScale: number;
+  /** Whether symbols take the text's colour rather than their stored pixels. */
+  readonly textColor: boolean;
 }
 
 /** The settings Inkline starts with, and what a value it cannot read becomes. */
@@ -20,6 +24,8 @@ export const defaultSettings: Settings = {
   brushSize: 1,
   pressure: true,
   guides: true,
+  symbolScale: 100,
+  textColor: true,
 };
 
 /** The most characters a trigger may have. */
@@ -54,6 +60,8 @@ export const settingKeys: readonly SettingKey[] = [
   "brushSize",
   "pressure",
   "guides",
+  "symbolScale",
+  "textColor",
 ];
 
 /**
@@ -73,7 +81,10 @@ export function withSetting(
         ? { ...settings, trigger: value }
         : undefined;
     case "brushSize": {
-      const index = typeof value === "string" ? Number(value) : value;
+      const index =
+        typeof value === "string" && /^\d+$/.test(value)
+          ? Number(value)
+          : value;
       return typeof index === "number" &&
         Number.isInteger(index) &&
         index >= 0 &&
@@ -81,8 +92,17 @@ export function withSetting(
         ? { ...settings, brushSize: index }
         : undefined;
     }
+    case "symbolScale":
+      return typeof value === "number" &&
+        Number.isInteger(value) &&
+        value >= 50 &&
+        value <= 200 &&
+        value % 5 === 0
+        ? { ...settings, symbolScale: value }
+        : undefined;
     case "pressure":
     case "guides":
+    case "textColor":
       return typeof value === "boolean"
         ? { ...settings, [key]: value }
         : undefined;

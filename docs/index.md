@@ -67,8 +67,9 @@ in text.
   strokes as a draft after a crash, and never saves over a file it cannot read.
   See [Saving and recovery](./recovery.md).
 
-A sidebar library of your symbols and a settings tab are planned and not here
-yet; [Known limits](./limits.md) lists what else is missing.
+A sidebar library of your symbols is planned. [Settings](./settings.md)
+describes size, colour, insertion, and drawing preferences;
+[Known limits](./limits.md) lists what else is missing.
 
 ## Who maintains it
 
