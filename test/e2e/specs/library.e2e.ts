@@ -423,16 +423,11 @@ describe("The symbol library", function () {
     );
     // The menu Obsidian shows for a link to the file.
     expect(await menuItems()).toContain("Open in new tab");
-    const chosen = await browser.execute(() => {
-      const item = Array.from(
-        document.querySelectorAll(".menu .menu-item-title"),
-      ).find((found) => found.textContent === "Edit symbol");
-      const button = item?.closest(".menu-item");
-      if (!button?.instanceOf(HTMLElement)) return false;
-      button.click();
-      return true;
-    });
-    expect(chosen).toBe(true);
+    // Use pointer input on the displayed item. A programmatic DOM click can
+    // run before the host's menu activation task.
+    const edit = browser.$(".menu-item-title=Edit symbol");
+    await edit.waitForDisplayed();
+    await edit.click();
     await waitForEditor();
     expect(
       await browser.execute(
