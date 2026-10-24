@@ -1,0 +1,43 @@
+name: Settings
+
+# Compares the live labels and rulesets with .github/labels.json and
+# .github/rulesets/, and checks how issues and pull requests use the labels,
+# as AGENTS.md describes. It only reads: the files record the settings, and
+# a maintaining agent applies a change to them after it merges, then runs
+# this on request to confirm it.
+
+on:
+  # On a pull request that changes the check itself, so that it is seen to run
+  # here. It compares the live settings with the pull request's files, so it
+  # fails while a change to those files is not applied yet.
+  pull_request:
+    paths:
+      - .github/workflows/settings.yml
+      - scripts/lib/settings.ts
+      - scripts/settings.ts
+  # Weekly, so that a label used by hand or a setting changed outside a pull
+  # request is found within a week.
+  schedule:
+    - cron: "47 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  compare:
+    name: compare
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - run: node scripts/settings.ts
+        env:
+          GH_TOKEN: ${{ github.token }}

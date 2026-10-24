@@ -57,6 +57,21 @@ export function outputDirectory(
     : path.resolve(directory);
 }
 
+/**
+ * The directory of the plugin's files to install, from `E2E_PLUGIN_DIR`, or
+ * the build's `dist` under `root` when it is unset or empty. The Release
+ * workflow names the release's own files.
+ */
+export function pluginDirectory(
+  value: string | undefined,
+  root: string,
+): string {
+  const directory = setting(value);
+  return directory === undefined
+    ? path.join(root, "dist")
+    : path.resolve(root, directory);
+}
+
 /** The file that marks a directory as the harness's own output. */
 export const ownerMarker = ".inkline-e2e-output";
 
