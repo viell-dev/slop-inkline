@@ -7,8 +7,6 @@ The [issues](https://github.com/viell-dev/slop-inkline/issues) track each one.
 
 - **No release.** Inkline is under development; see [Install](./install.md).
 - **Desktop only.** Obsidian's mobile apps do not offer Inkline.
-- **Renaming directly in the library** is planned. For now, use the symbol's
-  editor or its file's menu.
 - **Large libraries** show every matching symbol at once, without paging. Filter
   by name or folder to narrow the list.
 - **Library insertion needs a sidebar.** If the library's tab is dragged into

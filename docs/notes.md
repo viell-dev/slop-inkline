@@ -84,7 +84,7 @@ around each.
 ## Names and renames
 
 A symbol's name is its file's name, and a name is the place for your current
-reading of it. Rename it in its editor, as
+reading of it. Rename it directly in the library, in its editor, as
 [Drawing in the editor](./drawing.md#the-name) describes, or rename its file in
 Obsidian in any way: an open editor follows a rename made elsewhere, and keeps
 the name given there, even one Inkline itself would not give.
@@ -106,10 +106,19 @@ by folder, the top folder first, then by name, with numbers in order.
 - Click **1 note**, or **2 notes**, to list the notes that use a symbol, then
   click a note to open it. Ctrl-click, or Cmd-click on macOS, opens a new tab.
 - Right-click a symbol for its file's menu, including **Edit symbol**.
+- Choose **Rename** beside a symbol to edit its name in that row. Enter or
+  **Save** renames it through Obsidian, so links follow according to Obsidian's
+  link settings. Esc or **Cancel** keeps the old name. An empty name also keeps
+  the old name. The same name rules apply as in the drawing editor.
 
-The list follows files and their links as they change. Renaming directly in the
-list is planned; for now, rename in the symbol's editor or its file's menu.
-Obsidian's backlinks for the symbol file also list the notes that link to it.
+If a name is refused or a rename fails, the entered name stays for correction or
+retry. Save or cancel it before filtering again; the list then catches up with
+any files and links that changed while you typed. Renaming changes the file's
+name, leaving its drawing's bytes as they are. A symbol deleted and replaced
+while its name is being edited cannot rename the replacement.
+
+The list follows files and their links as they change. Obsidian's backlinks for
+the symbol file also list the notes that link to it.
 
 Keep the library in a sidebar to insert into a note. If its tab is dragged into
 the main area, return it to a sidebar before inserting.

@@ -114,6 +114,10 @@ saving it again never changes it.
   ([catalog.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/library/catalog.test.ts)
   and
   [library.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library.e2e.ts)).
+- Renaming in a library row: links follow, PNG bytes stay identical, names in
+  other scripts work, errors keep the entered name for retry, a deleted and
+  replaced file is refused, and repeated submission starts only one rename
+  ([library-renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-renaming.e2e.ts)).
 
 ### Preferences are kept and apply where they are shown
 

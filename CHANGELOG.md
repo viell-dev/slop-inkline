@@ -10,6 +10,11 @@ section is also its
 
 ### Added
 
+- **Rename** in the symbol library edits a symbol's name directly in its row,
+  using the same name rules as its drawing editor and Obsidian's link updates.
+  Enter or Save applies it; Esc or Cancel keeps the old name. Errors keep the
+  entered name for correction or retry. Renaming leaves the PNG bytes as they
+  are and refuses a file deleted and replaced while its name is being edited.
 - **Settings → Inkline:** symbol size from 50% to 200% of the usual line height,
   text colour or stored grey, the insert trigger, the starting brush, pen
   pressure, and guides. Size and colour update open notes and popout windows

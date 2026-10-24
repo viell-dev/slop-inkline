@@ -22,6 +22,10 @@ usage counts, and the notes in an expanded list. Enter activates a button or
 opens a note; Space also activates a button. Inserting keeps the focus in the
 library for the next symbol.
 
+**Rename** edits a name in its row. Enter saves it, and Esc cancels it; the
+**Save** and **Cancel** buttons do the same. Afterward focus returns to the
+symbol's Rename button, or to the name filter if the symbol no longer shows.
+
 ## The editor's keys
 
 Mod is Ctrl, or Cmd on macOS. Each button's tooltip shows its key. The keys that
