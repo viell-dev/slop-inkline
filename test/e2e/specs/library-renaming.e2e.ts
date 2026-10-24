@@ -1,6 +1,6 @@
 import { browser, expect } from "@wdio/globals";
 import { loadModules } from "../support/browser.ts";
-import { createSymbol, startOver } from "../support/editor.ts";
+import { createSymbol, startOver, waitForNotice } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 
 const nameField = () => browser.$(".inkline-library-rename-form input");
@@ -201,6 +201,25 @@ describe("Renaming in the symbol library", function () {
     ).toBe(true);
     await browser.$(".inkline-library-rename-form").$("button=Cancel").click();
     await waitForName("gate");
+  });
+
+  it("refuses a stale file menu while another name is being edited", async function () {
+    await createSymbol("gate.ink.png");
+    await createSymbol("tower.ink.png");
+    await showLibrary();
+    await beginRename("gate", "arch");
+    await browser.executeObsidian(async ({ app }) => {
+      const file = app.vault.getFileByPath("tower.ink.png");
+      if (file === null) throw new Error("no tower");
+      await app.fileManager.trashFile(file);
+    });
+    await createSymbol("tower.ink.png", [1200]);
+    await row("tower").$(".inkline-library-insert").click({ button: "right" });
+    await waitForNotice(
+      "tower changed or was deleted. Finish renaming to refresh the library.",
+    );
+    expect(await browser.$(".menu").isExisting()).toBe(false);
+    expect(await nameField().getValue()).toBe("arch");
   });
 
   it("keeps the entered name and caret through vault changes", async function () {

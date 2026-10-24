@@ -315,6 +315,15 @@ export class SymbolLibraryView extends ItemView {
     row.addEventListener("contextmenu", (event) => {
       if (row.querySelector(".inkline-library-rename-form") !== null) return;
       event.preventDefault();
+      if (this.app.vault.getFileByPath(file.path) !== file) {
+        const next =
+          this.#renaming === undefined
+            ? "Refreshing the library."
+            : "Finish renaming to refresh the library.";
+        new Notice(`${entry.name} changed or was deleted. ${next}`);
+        this.#refresh();
+        return;
+      }
       showLinkMenu(this.app, file, this.leaf, event);
     });
     const expanded = this.#expanded.has(entry.path);
