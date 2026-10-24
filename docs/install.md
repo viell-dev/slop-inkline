@@ -78,8 +78,10 @@ install ZIP as well, run `node scripts/package.ts dist test-results/package`.
    plugins**.
 2. Download the newer release's install ZIP and extract it into the same
    `.obsidian/plugins/` directory. Replace the three plugin files in `inkline/`;
-   keep `data.json`, which stores your preferences and recovery drafts. For a
-   loose-file installation, replace only those same three files.
+   keep `data.json`, which stores your preferences. If your tool extracts
+   elsewhere, copy only the three plugin files into the existing `inkline/`
+   directory rather than replacing the directory. For a loose-file installation,
+   replace only those same three files.
 3. Turn Inkline on again, or restart Obsidian.
 
 Your drawings remain ordinary PNG attachments in the vault. A symbol saved by a

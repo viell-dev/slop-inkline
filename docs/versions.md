@@ -28,4 +28,5 @@ The
 builds VitePress from its own main commit, deploys to GitHub Pages, and reads
 `version.json` and every page back. It fails unless the pages identify that
 exact commit. It refuses tags and other branches, and has permission to deploy
-Pages only: it cannot push code, change tags, or publish a release.
+Pages only: it cannot push code, change tags, or publish a release. The
+`github-pages` environment permits deployment from `main` only.

@@ -48,7 +48,8 @@ On a branch from `main`:
 4. Update the user guide in `docs/` for the release: the "No release yet" boxes
    on the home and install pages, and the manual ZIP installation and update
    path. `test/unit/docs.test.ts` fails until they no longer say there is no
-   release.
+   release. Remove **Unreleased** labels only from behavior included in this
+   release; retain labels for later work.
 5. Run `node scripts/release.ts check <version>`, which the workflow runs too:
    it checks that the metadata files agree and that the changelog section
    exists.
