@@ -2143,6 +2143,53 @@ describe("The editor", function () {
     expect((await noteText()).split("![[001.ink.png]]")).toHaveLength(2);
   });
 
+  it("keeps an adopted file known when a restored draft's name collides", async function () {
+    await browser.executeObsidian(async ({ app }) => {
+      const { canvas, drafts } = window.inklineTest;
+      const note = app.vault.getFileByPath("Editor.md");
+      if (note === null) throw new Error("no Editor.md");
+      const drawing = {
+        strokes: [
+          { tool: "pen", size: 256, pressure: false, points: [1600, 1600] },
+        ],
+      } as const;
+      const { bytes } = await canvas.saveInk(drawing, undefined);
+      await app.vault.createBinary("001.ink.png", bytes.slice().buffer);
+      await app.vault.createBinary("taken.ink.png", bytes.slice().buffer);
+      await app.vault.modify(note, "A symbol ![[001.ink.png]]HERE here.\n");
+      // A crash after inserting, before the draft recorded the insertion.
+      new drafts.DraftStore(app).put({
+        id: "claimed-collision",
+        target: {
+          kind: "new",
+          note: note.path,
+          file: {
+            path: "001.ink.png",
+            fingerprint: await drafts.fingerprintOf(bytes),
+          },
+        },
+        strokes: drawing.strokes,
+        base: { kind: "none" },
+        name: "taken",
+        savedAt: Date.now(),
+      });
+    });
+    await insert();
+    await clickTop("Restore");
+    await browser.keys(["Control", "s"]);
+    await waitForNotice("already has a symbol named taken");
+    await waitForStatus("Not saved");
+    // Checking after a refused name must not mistake the adopted file for
+    // an external edit, or forget that its embed may already be in the note.
+    await nameSymbol("001");
+    expect(await topButton("Keep mine")).toBeUndefined();
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    expect(await noteText()).toBe("A symbol ![[001.ink.png]] here.\n");
+    expect(await strokeCount("001.ink.png")).toBe(1);
+    expect(await symbolFiles()).toEqual(["001.ink.png", "taken.ink.png"]);
+  });
+
   it("offers a draft whose kept base layer cannot be read, without it", async function () {
     await browser.executeObsidian(({ app }) => {
       const { drafts, png } = window.inklineTest;

@@ -606,9 +606,9 @@ function newSymbol(
         const claimed = await claimedFile(app, claim);
         if (claimed !== undefined) {
           made = { ...claimed, previous: undefined };
-          renaming = renamedPath(app, made.file, name);
           adopted = true;
           holds(claimed.fingerprint);
+          renaming = renamedPath(app, made.file, name);
         }
       }
       stillAlive(host);
