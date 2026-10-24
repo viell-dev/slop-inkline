@@ -345,6 +345,15 @@ describe("Inkline settings", function () {
         if (leaf.view.containerEl.doc !== document) leaf.detach();
       }
     });
+    // Detaching the last leaf starts native window closure. Finish that
+    // cleanup before the next test enumerates and switches to its windows.
+    await browser.waitUntil(
+      async () => {
+        const handles = await browser.getWindowHandles();
+        return handles.length === 1 && handles[0] === mainWindow;
+      },
+      { timeoutMsg: "the detached popout window did not close" },
+    );
   });
 
   it("stores rapid changes in order when the first write is still pending", async function () {
