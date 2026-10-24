@@ -8,9 +8,23 @@ section is also its
 
 ## Unreleased
 
-### Fixed
+## 0.1.1-rc.1 - 2026-10-25
 
-- The BRAT installation guide now explains how to start repository validation.
+### Added
+
+- A versioned install ZIP that extracts directly into `.obsidian/plugins/`, with
+  the same three plugin files as the loose release assets. Both forms have
+  checksums and verified build provenance.
+
+### Changed
+
+- Manual installation and updates are the documented path, without a separate
+  installer plugin. The guide includes the expected directory layout and how to
+  preserve preferences and drawings during updates.
+- Release candidates have explicit SemVer prerelease versions. The published
+  `0.1.0` tag and assets remain unchanged.
+- Documentation corrections deploy from `main` with their build commit recorded
+  on every page.
 
 ## 0.1.0 - 2026-10-24
 

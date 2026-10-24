@@ -13,7 +13,7 @@ RUN apt-get update \
     libasound2 libatk-bridge2.0-0 libcups2 libdrm2 libgbm1 libgtk-3-0 \
     libnotify4 libnss3 libpango-1.0-0 libsecret-1-0 libx11-xcb1 \
     libxcomposite1 libxdamage1 libxkbcommon0 libxrandr2 libxshmfence1 \
-    libxss1 libxtst6 poppler-utils x11-xserver-utils xauth xvfb \
+    libxss1 libxtst6 poppler-utils unzip x11-xserver-utils xauth xvfb \
   && rm -rf /var/lib/apt/lists/* \
   && mkdir /cache /out /home/node/inkline \
   && chown node:node /cache /out /home/node/inkline
@@ -25,7 +25,12 @@ WORKDIR /home/node/inkline
 COPY --chown=node:node package.json package-lock.json .npmrc ./
 RUN npm ci
 COPY --chown=node:node . .
-RUN npm run build
+RUN npm run build \
+  && mkdir release \
+  && cp dist/main.js dist/manifest.json dist/styles.css release/ \
+  && node scripts/package.ts release \
+  && unzip -q release/inkline-*.zip -d packaged
 
-ENV OBSIDIAN_CACHE_DIR=/cache E2E_OUTPUT_DIR=/out
+ENV OBSIDIAN_CACHE_DIR=/cache E2E_OUTPUT_DIR=/out \
+    E2E_PLUGIN_DIR=/home/node/inkline/packaged/inkline
 ENTRYPOINT ["sh", "test/e2e/session.sh"]

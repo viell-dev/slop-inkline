@@ -19,6 +19,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { isRecord } from "./lib/settings.ts";
+import { installArchiveName, isPrerelease } from "./lib/version.ts";
 import {
   ciProblems,
   publishRelease,
@@ -110,7 +111,10 @@ async function ci(commit: string): Promise<void> {
 }
 
 /** The files `directory`'s SHA256SUMS lists, and that file itself. */
-async function builtFiles(directory: string): Promise<BuiltFile[]> {
+async function builtFiles(
+  directory: string,
+  version: string,
+): Promise<BuiltFile[]> {
   const sums = await readFile(join(directory, "SHA256SUMS"));
   const listed = sums
     .toString("utf8")
@@ -123,6 +127,23 @@ async function builtFiles(directory: string): Promise<BuiltFile[]> {
       }
       return { name: match[2], sha256: match[1] };
     });
+  const expected = [
+    "main.js",
+    "manifest.json",
+    "styles.css",
+    installArchiveName(version),
+  ].sort();
+  if (
+    listed.length !== expected.length ||
+    listed
+      .map((file) => file.name)
+      .sort()
+      .some((name, index) => name !== expected[index])
+  ) {
+    fail(
+      "SHA256SUMS must list exactly the plugin files and versioned install ZIP",
+    );
+  }
   for (const file of listed) {
     const bytes = await readFile(join(directory, file.name));
     const actual = createHash("sha256").update(bytes).digest("hex");
@@ -261,8 +282,7 @@ function host(
     },
     // By the draft's id, so that it is the very draft that was checked.
     publish: (id, version) => {
-      // Versions below 1.0.0 are prereleases, which BRAT installs.
-      const prerelease = version.startsWith("0.");
+      const prerelease = isPrerelease(version);
       const published = gh([
         "api",
         "-X",
@@ -332,7 +352,7 @@ switch (command) {
     }
     const commit = process.env.GITHUB_SHA;
     if (commit === undefined) fail("GITHUB_SHA names no commit to tag");
-    const files = await builtFiles(directory);
+    const files = await builtFiles(directory, version);
     await publishRelease(
       host(directory, files, commit),
       version,

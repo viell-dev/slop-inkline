@@ -22,6 +22,9 @@ on:
       - scripts/lib/publish.ts
       - scripts/lib/release.ts
       - scripts/lib/settings.ts
+      - scripts/lib/version.ts
+      - scripts/lib/package.ts
+      - scripts/package.ts
       - scripts/publish.ts
       - scripts/release.ts
       - test/e2e/session.sh
@@ -84,12 +87,13 @@ jobs:
             echo "No unreleased changes." > release-notes.md
           fi
           cat release-notes.md
-      - name: Record checksums
+      - name: Package the manual installation and record checksums
         run: |
           mkdir release
           cp dist/main.js dist/manifest.json dist/styles.css release-notes.md release/
+          node scripts/package.ts release
           cd release
-          sha256sum main.js manifest.json styles.css > SHA256SUMS
+          sha256sum main.js manifest.json styles.css inkline-*.zip > SHA256SUMS
           cat SHA256SUMS
       # The release's own files, in a test vault's plugin folder, where
       # Obsidian loads them, in the oldest and the latest versions the
@@ -108,10 +112,12 @@ jobs:
       - name: Install the virtual display and the test fonts
         run: |
           sudo apt-get update -q
-          sudo apt-get install -q --yes --no-install-recommends fonts-dejavu-core herbstluftwm x11-xserver-utils xvfb
-      - name: Install the release in Obsidian
+          sudo apt-get install -q --yes --no-install-recommends fonts-dejavu-core herbstluftwm unzip x11-xserver-utils xvfb
+      - name: Extract the install ZIP
+        run: unzip -q release/inkline-*.zip -d extracted
+      - name: Install the extracted release in Obsidian
         env:
-          E2E_PLUGIN_DIR: release
+          E2E_PLUGIN_DIR: extracted/inkline
         run: sh test/e2e/session.sh --spec test/e2e/specs/package.e2e.ts --spec test/e2e/specs/plugin.e2e.ts
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -162,6 +168,7 @@ jobs:
             release/main.js
             release/manifest.json
             release/styles.css
+            release/inkline-*.zip
       # Creates the release as a draft with the files, checks that it holds
       # them for this commit, and publishes it by its id, which creates the
       # tag. Run again after a failure part way, it resumes a draft that
@@ -190,6 +197,10 @@ jobs:
           gh release download "$VERSION" --dir published
           cd published
           sha256sum --check SHA256SUMS
-          for file in main.js manifest.json styles.css; do
+          for file in main.js manifest.json styles.css inkline-*.zip; do
             gh attestation verify "$file" --repo "$GH_REPO"
+          done
+          unzip -q inkline-*.zip -d extracted
+          for file in main.js manifest.json styles.css; do
+            cmp "$file" "extracted/inkline/$file"
           done

@@ -82,19 +82,19 @@ describe("metadataProblems", () => {
     ]);
   });
 
-  it("reports versions that are not plain dotted numbers", () => {
+  it("reports invalid release identifiers and non-numeric app versions", () => {
     expect(
       metadataProblems({
-        packageJson: { version: "1.0.0-beta.1" },
-        manifest: { version: "1.0.0-beta.1", minAppVersion: "1.13" },
+        packageJson: { version: "1.0.0-beta.01" },
+        manifest: { version: "1.0.0-beta.01", minAppVersion: "1.13" },
         versions: { v1: 2 },
       }),
     ).toEqual([
-      "package.json version 1.0.0-beta.1 is not x.y.z",
+      "package.json version 1.0.0-beta.01 is not a release version",
       "manifest.json minAppVersion 1.13 is not x.y.z",
       "versions.json key v1 is not x.y.z",
       "versions.json entry for v1 is not x.y.z",
-      "versions.json does not map 1.0.0-beta.1 to the manifest's minAppVersion 1.13",
+      "versions.json does not map 1.0.0-beta.01 to the manifest's minAppVersion 1.13",
     ]);
   });
 
@@ -107,7 +107,7 @@ describe("metadataProblems", () => {
           versions: { [version]: "1.013.4" },
         }),
       ).toEqual([
-        `package.json version ${version} is not x.y.z`,
+        `package.json version ${version} is not a release version`,
         "manifest.json minAppVersion 1.013.4 is not x.y.z",
         `versions.json key ${version} is not x.y.z`,
         `versions.json entry for ${version} is not x.y.z`,
@@ -131,7 +131,7 @@ describe("metadataProblems", () => {
     expect(
       metadataProblems({ packageJson: null, manifest: [], versions: "{}" }),
     ).toEqual([
-      "package.json version undefined is not x.y.z",
+      "package.json version undefined is not a release version",
       "manifest.json minAppVersion undefined is not x.y.z",
       "versions.json is not an object",
     ]);
@@ -289,7 +289,7 @@ describe("releaseProblems", () => {
       versions: {},
     };
     expect(releaseProblems(placeholder, changelog, "0.0.0")).toEqual([
-      "0.0.0 is not a releasable x.y.z version",
+      "0.0.0 is not a releasable version",
       'CHANGELOG.md has no non-empty "## 0.0.0 - YYYY-MM-DD" section',
     ]);
   });

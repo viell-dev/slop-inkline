@@ -34,8 +34,8 @@ features:
 
 ::: info Prerelease
 
-Inkline 0.1.0 is a prerelease for Obsidian 1.13.4 or later, on desktop.
-[Install with BRAT](./install.md), then draw your first symbol.
+Inkline is a prerelease for Obsidian 1.13.4 or later, on desktop.
+[Install the release ZIP](./install.md), then draw your first symbol.
 
 :::
 

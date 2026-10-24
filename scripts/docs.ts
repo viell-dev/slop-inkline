@@ -13,12 +13,7 @@
 
 import { appendFile, readFile } from "node:fs/promises";
 import { setTimeout as sleep } from "node:timers/promises";
-import {
-  docsBranch,
-  docsSource,
-  isRecord,
-  type DocsRequest,
-} from "./lib/docs.ts";
+import { docsSource, isRecord, type DocsRequest } from "./lib/docs.ts";
 
 const repository = process.env.GITHUB_REPOSITORY ?? "viell-dev/slop-inkline";
 const token = process.env.GH_TOKEN;
@@ -82,27 +77,7 @@ async function resolve(): Promise<void> {
     releases: tags,
     version: manifest.version,
   };
-  const latest = tags[0];
-  let branch: DocsRequest["branch"];
-  if (latest !== undefined && ref === docsBranch(latest)) {
-    const compared = await api(
-      `repos/${repository}/compare/${encodeURIComponent(latest)}...${encodeURIComponent(ref)}`,
-    );
-    if (!isRecord(compared)) fail("the comparison is not an object");
-    const files = Array.isArray(compared.files) ? compared.files : [];
-    branch = {
-      containsTag: compared.behind_by === 0,
-      changed: files.flatMap((file) =>
-        isRecord(file) && typeof file.filename === "string"
-          ? [file.filename]
-          : [],
-      ),
-    };
-  }
-  const source = docsSource({
-    ...request,
-    ...(branch === undefined ? {} : { branch }),
-  });
+  const source = docsSource(request);
   if (!source.deploy) {
     console.log(source.reason);
     await output({ deploy: "false" });

@@ -126,10 +126,13 @@ them, gives the defaults and the Obsidian version the code and manifest have,
 links only to headings and repository files that exist, and gives example embeds
 that read as symbols.
 
-A change that users can see updates the guide in the same pull request. Until
-the first release the site describes `main`; after it, the newest release, as
-[docs/versions.md](docs/versions.md) describes, including how to correct a
-release's documentation without a new release.
+A change that users can see updates the guide in the same pull request. The
+guide deploys from `main` and describes the newest published release. Clearly
+label behavior absent from that release **Unreleased**, keeping the released
+instructions usable. Author and PR review check that distinction before merge; a
+changelog entry alone does not label the guide. A release PR removes the labels
+only for behavior included in that release. [docs/versions.md](docs/versions.md)
+describes deployment and corrections.
 
 ## Pull requests
 

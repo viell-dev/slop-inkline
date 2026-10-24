@@ -24,3 +24,7 @@ Obsidian versions checked, and the CI run. Say whether another agent reviewed
 the change, at which commit, and why or why not. Confirm that the documentation
 and tests agree with the change and that `CHANGELOG.md` lists it under
 `Unreleased`.
+
+Confirm that guide changes describe the newest published release or visibly
+label unreleased behavior **Unreleased**, preserving the released instructions.
+For a release PR, remove those labels only for behavior included in the release.
