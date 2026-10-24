@@ -6,11 +6,14 @@ knows a symbol by its file name, which ends in `.ink.png`.
 
 ## How symbols show
 
-In a note, a symbol is as tall as a line of text, 1.5 times the text's size,
+By default, a symbol is as tall as a line of text, 1.5 times the text's size,
 which is Obsidian's default line height, and stands on the baseline like a
 letter. It takes the colour of the text around it, in light and dark themes, and
 grows with headings and zoom. A line set tighter than that, such as a heading,
 grows to fit it.
+
+[Settings](./settings.md) changes the size relative to the text and chooses
+whether ink takes the text's colour or shows its stored grey pixels.
 
 This holds in Live Preview, Reading view, callouts, tables, embedded notes,
 hover previews, text cards on a canvas, and popout windows.

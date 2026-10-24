@@ -11,7 +11,7 @@ import packageJson from "../../package.json" with { type: "json" };
 import { emptyDocument } from "../../src/ink/document.ts";
 import { brushSizes, DrawingSession } from "../../src/editor/session.ts";
 import { textLinks } from "../../src/notes/links.ts";
-import { defaultTrigger } from "../../src/notes/search.ts";
+import { defaultSettings } from "../../src/settings.ts";
 import { isInkPath } from "../../src/format/ink-file.ts";
 
 const pages = readdirSync("docs").filter((name) => name.endsWith(".md"));
@@ -147,10 +147,11 @@ describe("the documentation", () => {
     const settings = page("settings.md");
     const session = new DrawingSession(emptyDocument);
     const brush = brushSizes[session.sizeIndex]?.label ?? "";
-    expect(settings).toContain(`| \`${defaultTrigger}\``);
+    expect(settings).toContain(`| \`${defaultSettings.trigger}\``);
     expect(settings).toMatch(new RegExp(`\\| ${brush}, `));
-    expect(page("notes.md")).toContain(`\`${defaultTrigger}\``);
-    expect(page("start.md")).toContain(`\`${defaultTrigger}\``);
+    expect(page("notes.md")).toContain(`\`${defaultSettings.trigger}\``);
+    expect(page("start.md")).toContain(`\`${defaultSettings.trigger}\``);
+    expect(settings).toContain(`${String(defaultSettings.symbolScale)}%`);
   });
 
   it("names the Obsidian version the manifest needs, on desktop only", () => {

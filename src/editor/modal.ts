@@ -256,6 +256,11 @@ export interface EditorOptions {
   /** The tools to start with, as the editor before this one left them. */
   readonly tools?: EditorTools;
   /**
+   * Whether strokes follow a pen's pressure, asked as each stroke starts, so
+   * that a change in the settings applies at once; they do when undefined.
+   */
+  readonly pressure?: () => boolean;
+  /**
    * Asks which symbol to start from and opens it, for a new symbol drawn as
    * a variant of another; resolves to undefined when none is chosen or it
    * cannot be opened, and as soon as `closed` aborts, as when the editor
@@ -1013,12 +1018,13 @@ export class InkEditorModal extends Modal {
   }
 
   #listen(canvas: HTMLCanvasElement): void {
+    let pressure = true;
     const point = (event: PointerEvent): InputPoint => {
       const { x, y } = this.#view?.toDocument(event.clientX, event.clientY) ?? {
         x: 0,
         y: 0,
       };
-      return reportsPressure(event.pointerType)
+      return reportsPressure(event.pointerType) && pressure
         ? { x, y, pressure: event.pressure }
         : { x, y };
     };
@@ -1053,6 +1059,7 @@ export class InkEditorModal extends Modal {
         canvas.addClass("is-dragging");
         return;
       }
+      pressure = this.#options.pressure?.() !== false;
       this.#session.begin(
         point(event),
         tool === "brush" ? this.#session.tool : tool,

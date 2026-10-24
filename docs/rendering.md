@@ -25,7 +25,8 @@ symbols show as the plain images they are.
   colour.
 - For an image with a size of its own, as `![[x.ink.png|24]]` gives, the custom
   property `--inkline-drop`, how far below the baseline its bottom lies. Without
-  it the drop is `-0.375em`, for an image 1.5 em tall.
+  it the drop is `-0.375em` times the configured scale, for an image 1.5 em tall
+  at the default 100%.
 - In Live Preview, where the image is a block inside the editor's embed, that
   embed gets the class `inkline-symbol-embed`, and takes the drop in place of
   the image. The resize handle Obsidian puts on an image embed there is hidden,
@@ -48,9 +49,16 @@ symbols show as the plain images they are.
   as it is. In a canvas card that is not being edited, Obsidian keeps the
   pointer off the card's content, so only screen readers get the name there.
 
-Inkline's styles paint the ink with `background-color: currentColor`. To colour
-symbols differently from the text around them, set `color` on
-`img.inkline-symbol`.
+Each watched document's root has `--inkline-scale`, the symbol size as a factor,
+1 by default. Symbols without an explicit size use it for their height and drop;
+explicit sizes keep their own height and drop. The root also has
+`inkline-stored-color` when text colour is off. Both are removed when Inkline
+stops watching the document.
+
+With text colour on, Inkline's styles paint the ink with
+`background-color: currentColor`. To colour symbols differently from the text
+around them, set `color` on `img.inkline-symbol`. With text colour off, the mask
+and background are removed and the image's own pixels show in the same layout.
 
 ## Symbols in a view of your own
 
