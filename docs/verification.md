@@ -7,16 +7,16 @@ says how to run them.
 
 ## Where the checks run
 
-| Check                     | What it runs                                                                                                                                                                | Where                                                                                                                            |
-| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `verify (ubuntu-latest)`  | `npm run check`: ESLint with Obsidian's directory rules, Prettier, types, the unit tests, the build, and this site's build                                                  | GitHub Actions, Linux; required                                                                                                  |
-| `verify (windows-latest)` | The same                                                                                                                                                                    | GitHub Actions, Windows; required                                                                                                |
-| `e2e`                     | The end-to-end suite in real Obsidian: 1.13.4, the manifest's minimum, on the oldest installer that runs it, and the latest public release                                  | GitHub Actions, Linux, under Xvfb; required                                                                                      |
-| `e2e in Docker`           | The same suite in the image `npm run test:e2e:docker` builds                                                                                                                | Weekly and on request                                                                                                            |
-| Weekly CI                 | Every check above, so that a new Obsidian release is tested within a week                                                                                                   | Mondays                                                                                                                          |
-| Settings                  | The live labels and rulesets against their files, and every issue's labels                                                                                                  | Weekly and on request                                                                                                            |
-| Pages                     | This site, deployed and read back page by page                                                                                                                              | After each change to `main` until the first release; then on request, on the newest release's tag or its `docs-<version>` branch |
-| Release                   | The commit's required CI, the release checks, and the release's own files installed in Obsidian, as a dry run on request and on pull requests that change the release steps | On request, and on those pull requests                                                                                           |
+| Check                     | What it runs                                                                                                                                                                | Where                                                                                         |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `verify (ubuntu-latest)`  | `npm run check`: ESLint with Obsidian's directory rules, Prettier, types, the unit tests, the build, and this site's build                                                  | GitHub Actions, Linux; required                                                               |
+| `verify (windows-latest)` | The same                                                                                                                                                                    | GitHub Actions, Windows; required                                                             |
+| `e2e`                     | The end-to-end suite in real Obsidian: 1.13.4, the manifest's minimum, on the oldest installer that runs it, and the latest public release                                  | GitHub Actions, Linux, under Xvfb; required                                                   |
+| `e2e in Docker`           | The same suite in the image `npm run test:e2e:docker` builds                                                                                                                | Weekly and on request                                                                         |
+| Weekly CI                 | Every check above, so that a new Obsidian release is tested within a week                                                                                                   | Mondays                                                                                       |
+| Settings                  | The live labels and rulesets against their files, and every issue's labels                                                                                                  | Weekly and on request                                                                         |
+| Pages                     | This site, deployed and read back page by page                                                                                                                              | After changes to `main` describing the newest published release; on request after publication |
+| Release                   | The commit's required CI, the release checks, and the release's own files installed in Obsidian, as a dry run on request and on pull requests that change the release steps | On request, and on those pull requests                                                        |
 
 The end-to-end tests assert on state, positions, and pixels read back from
 Obsidian, never on screenshots; their screenshots are kept as artifacts for
@@ -178,15 +178,17 @@ Each of these asserts a budget beside its correctness checks:
   oldest and the latest version, and must be those files byte for byte, load
   with their version, commands, and styles, and save a symbol
   ([package.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/package.e2e.ts)).
-  Every end-to-end run checks the build in `dist/` the same way.
+  Direct CI checks the loose build in `dist/`; Docker and release preparation
+  check the plugin extracted from the install ZIP.
 - A publication that fails part way can run again without replacing anything
   published: each failure is run against a fake GitHub
   ([publish.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/publish.test.ts)).
 
 ### What this site and the repository say agrees
 
-- The release metadata agrees across `package.json`, `manifest.json`, and
-  `versions.json`, and each release has its changelog section
+- The package and manifest versions agree, numeric releases have matching
+  compatibility entries in `versions.json`, RCs stay out of that directory map,
+  and each release has its changelog section
   ([release.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/release.test.ts)).
 - This site's commands, keys, defaults, Obsidian version, links, and example
   embeds agree with the code
@@ -222,11 +224,13 @@ check against a commit whose CI never ran
   many different symbols are not covered by that fixture.
 - CI's runners have the DejaVu fonts, and the Docker image DejaVu and Noto; a
   theme's own font is checked through the guides' measurement, not by eye.
-- Published downloads, checksums, attestations, and BRAT installation are
-  checked after publication, when those assets first exist. They cannot be
-  verified in a prerelease pull request; the Release workflow checks downloads
-  and attestations after publishing, and the maintainer records the BRAT check
-  in the release pull request.
+- The release workflow checks the install ZIP's exact layout and bytes, extracts
+  it with the system archive tool, and tests the extracted plugin in both real
+  Obsidian hosts. Windows unit checks also extract a synthetic package with
+  PowerShell. After publication, the workflow verifies downloaded checksums and
+  attestations, then extracts the published ZIP and compares its files with the
+  loose assets. This verifies our manual installation channel. It does not audit
+  or endorse third-party installer plugins.
 - The budgets are wall-clock times. Each leaves room for a slow machine, but
   heavy work beside a run can still exceed one; such a failure is investigated,
   not run again until it passes.

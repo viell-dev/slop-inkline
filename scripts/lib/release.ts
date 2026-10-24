@@ -2,13 +2,11 @@
 // them on synthetic input. scripts/release.ts applies them to the repository.
 
 import { fromMarkdown } from "mdast-util-from-markdown";
-
-/**
- * Release versions are plain dotted numbers without leading zeros, which is
- * SemVer without prerelease or build parts, as Obsidian's directory needs.
- */
-export const versionPattern =
-  /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/;
+import {
+  isPrerelease,
+  releaseVersionPattern,
+  stableVersionPattern,
+} from "./version.ts";
 
 /** The version a repository has before its first release. */
 export const unreleasedVersion = "0.0.0";
@@ -39,15 +37,20 @@ export function metadataProblems(metadata: Metadata): string[] {
   const manifestVersion = stringField(metadata.manifest, "version");
   const minAppVersion = stringField(metadata.manifest, "minAppVersion");
 
-  if (version === undefined || !versionPattern.test(version)) {
-    problems.push(`package.json version ${String(version)} is not x.y.z`);
+  if (version === undefined || !releaseVersionPattern.test(version)) {
+    problems.push(
+      `package.json version ${String(version)} is not a release version`,
+    );
   }
   if (manifestVersion !== version) {
     problems.push(
       `manifest.json version ${String(manifestVersion)} differs from package.json version ${String(version)}`,
     );
   }
-  if (minAppVersion === undefined || !versionPattern.test(minAppVersion)) {
+  if (
+    minAppVersion === undefined ||
+    !stableVersionPattern.test(minAppVersion)
+  ) {
     problems.push(
       `manifest.json minAppVersion ${String(minAppVersion)} is not x.y.z`,
     );
@@ -57,16 +60,20 @@ export function metadataProblems(metadata: Metadata): string[] {
     return problems;
   }
   for (const [release, appVersion] of Object.entries(metadata.versions)) {
-    if (!versionPattern.test(release)) {
+    if (!stableVersionPattern.test(release)) {
       problems.push(`versions.json key ${release} is not x.y.z`);
     }
-    if (typeof appVersion !== "string" || !versionPattern.test(appVersion)) {
+    if (
+      typeof appVersion !== "string" ||
+      !stableVersionPattern.test(appVersion)
+    ) {
       problems.push(`versions.json entry for ${release} is not x.y.z`);
     }
   }
   if (
     version !== undefined &&
     version !== unreleasedVersion &&
+    !isPrerelease(version) &&
     metadata.versions[version] !== minAppVersion
   ) {
     problems.push(
@@ -122,8 +129,8 @@ export function releaseProblems(
   version: string,
 ): string[] {
   const problems = metadataProblems(metadata);
-  if (!versionPattern.test(version) || version === unreleasedVersion) {
-    problems.push(`${version} is not a releasable x.y.z version`);
+  if (!releaseVersionPattern.test(version) || version === unreleasedVersion) {
+    problems.push(`${version} is not a releasable version`);
   }
   const packageVersion = stringField(metadata.packageJson, "version");
   if (packageVersion !== version) {
@@ -151,6 +158,9 @@ export function syncMetadata(
   const minAppVersion = manifest.minAppVersion;
   return {
     manifest: { ...manifest, version },
-    versions: { ...versions, [version]: minAppVersion },
+    // RCs are installed manually; keep the community directory's map numeric.
+    versions: isPrerelease(version)
+      ? { ...versions }
+      : { ...versions, [version]: minAppVersion },
   };
 }

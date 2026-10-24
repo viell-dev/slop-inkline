@@ -5,8 +5,8 @@ The [issues](https://github.com/viell-dev/slop-inkline/issues) track each one.
 
 ## Not there yet
 
-- **Prerelease.** Install with BRAT; Inkline is not in Obsidian's community
-  directory. See [Install](./install.md).
+- **Prerelease.** Install manually from GitHub releases; Inkline is not in
+  Obsidian's community directory. See [Install](./install.md).
 - **Desktop only.** Obsidian's mobile apps do not offer Inkline.
 - **Large libraries** show every matching symbol at once, without paging. Filter
   by name or folder to narrow the list.

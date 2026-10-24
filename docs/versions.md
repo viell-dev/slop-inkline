@@ -1,47 +1,31 @@
 # Versions of this site
 
-Each page's footer says which version of Inkline the site describes and the
-commit it was built from; `version.json` at the site's root says the same for
-tools.
+The guide lives in `docs/` on the repository's protected `main` branch. Each
+page's footer records the installable version it describes and the exact main
+commit used to build it; `version.json` records the same facts for tools.
 
 ## The current release
 
-The site describes the newest release, prereleases included, since that is the
-version you can install. Changes merged after it appear with the next release;
-until then, the `Unreleased` section of the
+The default guide describes the newest published release, including release
+candidates. Behavior that has not been released is labelled **Unreleased**; the
 [changelog](https://github.com/viell-dev/slop-inkline/blob/main/CHANGELOG.md)
-lists them.
+records those changes too.
 
-Once a release is published, the Pages workflow is run on its tag, which deploys
-the site from it.
+Documentation corrections go through ordinary pull requests to `main` and deploy
+from there. They do not need a separate documentation branch, a new software
+release, or a moved tag. The historical `docs-0.1.0` branch records an earlier
+deployment; it is no longer used for current guide updates.
 
-Before the first release, changes on `main` deploy the unreleased guide only
-while its manifest version is `0.0.0`. Preparing a release leaves that site in
-place until publication, so it never offers a release that cannot be installed.
-
-A correction to the current release's documentation does not wait for a new
-release, and never moves the release's tag. It goes on a branch named
-`docs-<version>`, made from the release's tag, and the Pages workflow is run on
-that branch. It refuses such a branch unless it contains the tag and changes
-nothing outside `docs/` but the files that deploy the site, so that the site
-never describes code that was not released, and a defect in the deployment can
-still be mended for a release. Its dependencies cannot change there, so a
-dependency that stops building the site waits for the next release. A
-`docs-<version>` branch is made only by these steps, and a ruleset keeps it from
-being deleted or rewritten, so that what a deployment was built from stays
-readable.
+Preparing a new software version can put its guide on main before its download
+exists. The Pages workflow keeps the existing site until that version is
+published, then it is run again on `main`. Before the first release, only the
+explicitly unreleased `0.0.0` guide can deploy.
 
 ## How it is deployed
 
 The
 [Pages workflow](https://github.com/viell-dev/slop-inkline/blob/main/.github/workflows/pages.yml)
-builds the site with VitePress from the commit it runs on, never another, and
-deploys it to GitHub Pages, then reads the deployed `version.json` and every
-page back, and fails unless they are the commit it built. It has permission to
-deploy Pages only: it cannot push to the repository, create a tag, or publish a
-release. The repository's Pages are built by GitHub Actions, and its
-`github-pages` environment takes deployments only from `main`, `docs-*`
-branches, and version tags. These rules guard against mistakes, not against a
-person with write access to the repository: a run on a tag or a `docs-*` branch
-uses that ref's own workflow, which can deploy the site and nothing else, so
-what such a ref can change is the site.
+builds VitePress from its own main commit, deploys to GitHub Pages, and reads
+`version.json` and every page back. It fails unless the pages identify that
+exact commit. It refuses tags and other branches, and has permission to deploy
+Pages only: it cannot push code, change tags, or publish a release.

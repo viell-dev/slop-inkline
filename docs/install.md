@@ -2,9 +2,10 @@
 
 ::: info Prerelease
 
-Inkline 0.1.0 is a GitHub prerelease. Install it with
-[BRAT](https://github.com/TfTHacker/obsidian42-brat); Inkline is not in
-Obsidian's community plugin directory.
+Inkline is distributed through
+[GitHub releases](https://github.com/viell-dev/slop-inkline/releases). It is not
+in Obsidian's community plugin directory. Install the release files manually; no
+separate installer plugin is needed.
 
 :::
 
@@ -16,82 +17,81 @@ Obsidian's community plugin directory.
   of the way while you try a prerelease.
 
 Each change is tested in Obsidian 1.13.4, on the oldest installer that can run
-it, and in the latest public release of Obsidian.
+it, and in the latest public release of Obsidian. The host tests run on Linux;
+see [Promises and evidence](./verification.md) for the tested platforms and
+limits.
 
-## Install with BRAT
+## Install the ZIP
 
-1. In **Settings → Community plugins**, turn community plugins on if needed,
-   browse for **BRAT**, install it, and enable it.
-2. In **Settings → BRAT**, choose **Add beta plugin**.
-3. Enter `viell-dev/slop-inkline` as the repository, then press **Tab** to leave
-   the field and start validation. Wait for the versions to load and select
-   **Latest version**. You can select **0.1.0 (Prerelease)** instead to stay on
-   that specific version.
-4. Leave **Enable after installing the plugin** on and choose **Add plugin**.
+1. Open the [releases page](https://github.com/viell-dev/slop-inkline/releases)
+   and download **inkline-&lt;version&gt;.zip** from the release's **Assets**. A
+   version such as `0.1.1-rc.1` is a release candidate for testing. GitHub's
+   **Source code** archives contain source files, not the built plugin.
+2. Extract the ZIP into your vault's `.obsidian/plugins/` directory. The ZIP
+   contains its own `inkline/` folder, so the result must be:
+
+   ```text
+   .obsidian/plugins/inkline/main.js
+   .obsidian/plugins/inkline/manifest.json
+   .obsidian/plugins/inkline/styles.css
+   ```
+
+   The `.obsidian` directory is hidden on some systems. If your vault uses a
+   different configuration directory, use its `plugins/` directory instead.
+
+3. In Obsidian, open **Settings → Community plugins**, turn community plugins on
+   if needed, and enable **Inkline**. Restart Obsidian if it is not listed.
 
 Inkline is ready: run **Inkline: Insert symbol** from the command palette in a
-note, as [Your first symbol](./start.md) shows. A GitHub token is not needed for
-this public repository.
+note, as [Your first symbol](./start.md) shows.
 
-## Install the release files manually
+The ZIP has the same three plugin files as the loose assets. `SHA256SUMS`
+records SHA-256 checksums for both. The older 0.1.0 release predates the install
+ZIP; use the loose-file steps below for that version.
 
-Download `main.js`, `manifest.json`, and `styles.css` from the
-[0.1.0 release](https://github.com/viell-dev/slop-inkline/releases/tag/0.1.0).
-Put all three in your vault's `.obsidian/plugins/inkline/` folder, then enable
-**Inkline** under **Settings → Community plugins**. A vault with a different
-configuration folder has its plugins there instead. `SHA256SUMS` records the
-files' SHA-256 checksums.
+## Install the loose files
+
+Download `main.js`, `manifest.json`, and `styles.css` from the same GitHub
+release. Create `.obsidian/plugins/inkline/` in your vault and put all three
+files inside it, then enable **Inkline** under **Settings → Community plugins**.
+A vault with a different configuration directory has its plugins there instead.
 
 ## Build and install a development build
 
 You need [Git](https://git-scm.com/) and [Node.js](https://nodejs.org/) 24 or
 later with the npm it ships. A development build can include unreleased changes.
 
-1. Get the source and build it:
+```sh
+git clone https://github.com/viell-dev/slop-inkline.git
+cd slop-inkline
+npm ci
+npm run build
+```
 
-   ```sh
-   git clone https://github.com/viell-dev/slop-inkline.git
-   cd slop-inkline
-   npm ci
-   npm run build
-   ```
-
-   The build writes three files to `dist/`: `main.js`, `manifest.json`, and
-   `styles.css`.
-
-2. In your vault's folder, make the folder `.obsidian/plugins/inkline/`, and
-   copy the three files into it. The `.obsidian` folder is hidden on macOS and
-   Linux; a vault set to use another configuration folder has its plugins there
-   instead.
-3. In Obsidian, open **Settings → Community plugins**. If community plugins are
-   turned off, turn them on.
-4. Under **Installed plugins**, turn on **Inkline**. If it is not listed yet,
-   reload the list of plugins with the button beside that heading.
-
-Inkline is ready: run **Inkline: Insert symbol** from the command palette in a
-note, as [Your first symbol](./start.md) shows.
+The build writes `main.js`, `manifest.json`, and `styles.css` to `dist/`.
+Install those three files with the loose-file steps above. To make a local
+install ZIP as well, run `node scripts/package.ts dist test-results/package`.
 
 ## Update
 
-With BRAT, run its **Plugins: Check for updates to all beta plugins and UPDATE**
-command, or enable **Auto-update plugins at startup** in its settings. A
-specific version selected during installation stays fixed until you change it in
-BRAT.
+1. Save any open drawing, then turn Inkline off under **Settings → Community
+   plugins**.
+2. Download the newer release's install ZIP and extract it into the same
+   `.obsidian/plugins/` directory. Replace the three plugin files in `inkline/`;
+   keep `data.json`, which stores your preferences and recovery drafts. For a
+   loose-file installation, replace only those same three files.
+3. Turn Inkline on again, or restart Obsidian.
 
-For a manual installation, download the newer release's three files and replace
-the old ones. For a development build, pull the newer source and run `npm ci`
-and `npm run build` again, then copy the three files. Turn Inkline off and on
-again under **Settings → Community plugins**, or restart Obsidian.
-
-A symbol saved by a newer version of Inkline than the one you have opens with a
-notice to update Inkline rather than in the editor, so that it is never saved
-over by a version that does not understand it.
+Your drawings remain ordinary PNG attachments in the vault. A symbol saved by a
+newer version than the one you have opens with a notice to update Inkline rather
+than in the editor, so that it is never saved over by a version that does not
+understand it.
 
 ## Turn off or remove
 
 Turn Inkline off under **Settings → Community plugins**, or uninstall it there,
-which deletes its folder. Your symbols stay: they are PNG files in your vault
-with ordinary embeds, which Obsidian shows as images, as
+which deletes its plugin directory. Your symbols stay in the vault with ordinary
+embeds, which Obsidian shows as images, as
 [Without Inkline](./without-inkline.md) describes. Turning Inkline off with an
 editor open keeps its unsaved strokes as a draft, which the editor offers back
 when Inkline is on again.

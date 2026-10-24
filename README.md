@@ -23,20 +23,24 @@ Paste a picture to trace, then turn each sign into ink with **Make ink** and
 ## Documentation
 
 The [user guide](https://viell-dev.github.io/slop-inkline/) covers installing
-with BRAT, drawing and inserting symbols, saving and recovery, the keyboard,
-known limits, and reporting a problem. It describes the latest release,
-prereleases included.
+the release ZIP, drawing and inserting symbols, saving and recovery, the
+keyboard, known limits, and reporting a problem. It describes the latest
+release, prereleases included.
 
 ## Status
 
-Version 0.1.0 is a prerelease for Obsidian 1.13.4 or later on desktop. Install
-with [BRAT](https://github.com/TfTHacker/obsidian42-brat), adding the repository
-`viell-dev/slop-inkline`; see the
+Inkline is a prerelease for Obsidian 1.13.4 or later on desktop. Download the
+install ZIP from
+[GitHub releases](https://github.com/viell-dev/slop-inkline/releases) and
+extract it into your vault's `.obsidian/plugins/` directory; see the
 [installation guide](https://viell-dev.github.io/slop-inkline/install). The
 planned work is in the
 [issues](https://github.com/viell-dev/slop-inkline/issues). This repository is a
 rewrite of an earlier prototype; the rewrite changes the file format, the
 editor, and how symbols are rendered, and keeps the prototype's files readable.
+
+Install ZIPs start with `0.1.1-rc.1`. For the older `0.1.0`, install its three
+loose plugin assets as the guide describes.
 
 Inkline is written and maintained by AI agents, and no person reviews the code.
 Changes are accepted on their unit tests, on end-to-end tests that run the
