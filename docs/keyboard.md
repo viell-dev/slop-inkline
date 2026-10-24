@@ -33,6 +33,9 @@ would also type, the single keys and undo and redo, give way to a text field
 that has the focus, such as the name field; the saving keys work anywhere in the
 editor.
 
+The drawing area has focus as soon as the editor opens, so a shortcut works
+immediately. Select the name field to type a name; Enter returns to drawing.
+
 | Key                       | Button      | What it does                                            |
 | ------------------------- | ----------- | ------------------------------------------------------- |
 | P                         | Pen         | Draw.                                                   |

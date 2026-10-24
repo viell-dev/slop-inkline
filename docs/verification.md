@@ -101,10 +101,13 @@ saving it again never changes it.
   lead back to their symbols
   ([suggest.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/suggest.e2e.ts)).
 - Names and renames: what a file name cannot hold, names a folder already has,
-  renames that fail, and names given elsewhere
+  renames that fail, names given elsewhere during saving or hashing, and the
+  reported outcome when an external rename follows a successful native rename
   ([names.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/names.test.ts)
   and
   [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)).
+- Keyboard focus before the editor's first animation frame, and intentional
+  name-field typing across that frame (the same host tests).
 - Edit symbol only where the cursor or the pointer is on a symbol, in every
   entry point
   ([entry.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/entry.e2e.ts)).

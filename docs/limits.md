@@ -52,10 +52,3 @@ link would still lead elsewhere by its path in the vault.
   geometry another tool wrote into its file.
 - Images from outside the vault are left as they are, even when their names end
   in `.ink.png`.
-
-## Rare cases
-
-- If a symbol's file is renamed elsewhere while its editor is saving a rename of
-  its own, the status can say "Saved, but not renamed" though the rename
-  happened; the file keeps the name it was given last
-  ([#43](https://github.com/viell-dev/slop-inkline/issues/43)).

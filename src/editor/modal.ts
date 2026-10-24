@@ -218,6 +218,8 @@ export interface EditorOptions {
    * it, before any later step that can fail, such as inserting an embed, so
    * that the editor goes on comparing the file with that. `name` is what the
    * name field holds, as typed, for the file to take as its name.
+   * Resolves to whether that name was kept or applied. False means only the
+   * rename failed: the drawing is saved, and the name stays for a retry.
    */
   readonly write: (
     bytes: Uint8Array,
@@ -225,7 +227,7 @@ export interface EditorOptions {
     keepDraft: () => boolean,
     holds: (fingerprint: string) => void,
     name: string,
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   /**
    * The symbol's file: an existing symbol's, or a new one's once its first
    * save made it, and undefined before then. The editor reads it again when
@@ -436,6 +438,13 @@ export class InkEditorModal extends Modal {
     return this.#placed.drawable;
   }
 
+  override open(): void {
+    super.open();
+    // Obsidian chooses its initial focus after onOpen. Take the drawing's
+    // focus immediately, before a shortcut can type in the name field.
+    this.#view?.canvas.focus();
+  }
+
   override onOpen(): void {
     this.modalEl.addClass("inkline-editor");
     this.#addNameField();
@@ -631,10 +640,6 @@ export class InkEditorModal extends Modal {
     this.#render();
     this.#options.drafts?.store.hold(this.#draftId);
     this.#options.lifecycle?.opened(this);
-    // Obsidian moves the focus once the modal is open; take it back after.
-    canvas.win.requestAnimationFrame(() => {
-      canvas.focus();
-    });
     void this.#offerDraft();
     // The file may have changed since it was read for opening.
     this.#checkFile();
@@ -856,17 +861,6 @@ export class InkEditorModal extends Modal {
     if (field === undefined) return;
     field.placeholder = name;
     if (typed !== undefined && field.value === typed) field.value = name;
-  }
-
-  /**
-   * Whether a save that sent `typed`, with the symbol named `before`, gave
-   * the file the name it asked for, or asked for none, as when the file was
-   * renamed elsewhere meanwhile.
-   */
-  #took(typed: string, before: string): boolean {
-    const choice = chooseRename(typed, before);
-    if (choice.kind !== "name" || choice.name === before) return true;
-    return choice.name === this.#fileName();
   }
 
   /** What a save says when something is still unsaved after it. */
@@ -2219,8 +2213,7 @@ export class InkEditorModal extends Modal {
         const written = await fingerprintOf(bytes);
         this.#keepDraft();
         const typed = this.#typedName;
-        const before = this.#savedName;
-        await this.#options.write(
+        const named = await this.#options.write(
           bytes,
           record,
           () => this.#keepDraft(),
@@ -2231,7 +2224,7 @@ export class InkEditorModal extends Modal {
         );
         // A rename that failed leaves the name typed in the field, unsaved,
         // for the next save to try again.
-        this.#notRenamed = !this.#took(typed, before);
+        this.#notRenamed = !named;
         this.#named(this.#notRenamed ? undefined : typed);
         this.#watch.took(written);
         this.#session.markSaved(document);
