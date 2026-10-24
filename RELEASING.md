@@ -135,13 +135,13 @@ gh attestation verify check/main.js --repo viell-dev/slop-inkline
 Once those checks pass, verify the installation channel in a clean synthetic
 vault with the current BRAT release:
 
-1. Add `viell-dev/slop-inkline` in BRAT, leave the repository field to start
-   validation, select **Latest version**, and enable Inkline. Compare installed
-   `main.js` and `styles.css` with the verified downloads byte for byte, and
-   compare every value in the installed `manifest.json` with the downloaded
-   manifest after parsing both as JSON. BRAT 2.2.0 writes a compact manifest,
-   changing its checksum without changing its values. The published downloads
-   must still pass their original checksums and attestations above.
+1. Add `viell-dev/slop-inkline` in BRAT, press **Tab** to leave the repository
+   field and start validation, select **Latest version**, and enable Inkline.
+   Compare installed `main.js` and `styles.css` with the verified downloads byte
+   for byte, and compare every value in the installed `manifest.json` with the
+   downloaded manifest after parsing both as JSON. BRAT 2.2.0 writes a compact
+   manifest, changing its checksum without changing its values. The published
+   downloads must still pass their original checksums and attestations above.
 2. Draw, save, and reopen a synthetic symbol. Turn Inkline off and on again and
    check that its commands, symbol, and saved preferences remain available.
 3. Exercise BRAT's update check and reinstall route, repeating the comparisons
@@ -150,8 +150,8 @@ vault with the current BRAT release:
    **Choose a single plugin to reinstall** command omits plugins tracked through
    that version selector, including **Latest version**. Also check installation
    of the specific version, which BRAT keeps fixed instead of updating
-   automatically. An update check with no newer release verifies that path only;
-   record an upgrade separately when a newer release exists.
+   automatically. An update check with no newer release does not prove an
+   upgrade; record upgrade evidence when verifying the next release.
 4. Record the release commit, BRAT and Obsidian versions, downloaded checksums,
    attestation results, installation/update/reinstall results, and any evidence
    limits in the release pull request. Do this for both supported test hosts;

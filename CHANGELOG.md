@@ -11,8 +11,6 @@ section is also its
 ### Fixed
 
 - The BRAT installation guide now explains how to start repository validation.
-  Release checks account for BRAT's manifest formatting and version-selection
-  reinstall route.
 
 ## 0.1.0 - 2026-10-24
 
