@@ -23,9 +23,10 @@ it, and in the latest public release of Obsidian.
 1. In **Settings → Community plugins**, turn community plugins on if needed,
    browse for **BRAT**, install it, and enable it.
 2. In **Settings → BRAT**, choose **Add beta plugin**.
-3. Enter `viell-dev/slop-inkline` as the repository, wait for validation, and
-   select **Latest version**. You can select **0.1.0 (Prerelease)** instead to
-   stay on that specific version.
+3. Enter `viell-dev/slop-inkline` as the repository, then press **Tab** to leave
+   the field and start validation. Wait for the versions to load and select
+   **Latest version**. You can select **0.1.0 (Prerelease)** instead to stay on
+   that specific version.
 4. Leave **Enable after installing the plugin** on and choose **Add plugin**.
 
 Inkline is ready: run **Inkline: Insert symbol** from the command palette in a

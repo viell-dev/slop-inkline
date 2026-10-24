@@ -8,6 +8,10 @@ section is also its
 
 ## Unreleased
 
+### Fixed
+
+- The BRAT installation guide now explains how to start repository validation.
+
 ## 0.1.0 - 2026-10-24
 
 ### Added
