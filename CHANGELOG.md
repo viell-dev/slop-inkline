@@ -10,19 +10,10 @@ section is also its
 
 ## 0.1.0 - 2026-10-24
 
-### Fixed
-
-- Native PDF export shows symbols inline with the text, preserving size,
-  baseline, colour preferences, and explicit embed sizes. Renderer resources are
-  released when its temporary window closes.
-- An editor shortcut pressed immediately after opening goes to the drawing area.
-  Selecting the name field to type before the first frame keeps its focus.
-- Saving keeps an external rename when no new name was requested, including
-  during a new symbol's later save. The save status reports the native rename's
-  outcome even if another rename follows before it finishes.
-
 ### Added
 
+- Native PDF export shows symbols inline with the text, preserving size,
+  baseline, colour preferences, and explicit embed sizes.
 - **Rename** in the symbol library edits a symbol's name directly in its row,
   using the same name rules as its drawing editor and Obsidian's link updates.
   Enter or Save applies it; Esc or Cancel keeps the old name. Errors keep the
@@ -34,7 +25,6 @@ section is also its
   immediately, while explicit embed sizes stay as written. Preferences survive
   reloads; read and write failures show a notice, and rapid changes are stored
   in order.
-
 - **Insert symbol**, a command that opens the editor for a new symbol. Draw it
   with a mouse, pen, or finger, and save it with Mod+Enter: Inkline creates the
   file in Obsidian's attachment location and inserts it where the cursor was.
@@ -73,8 +63,9 @@ section is also its
   embed's alias or alt text says, which screen readers read as well; and in Live
   Preview, Obsidian's resize handle and image buttons no longer cover it. A
   plugin's own view of a note shows them as text with the `inkline-text` class,
-  as [docs/rendering.md](docs/rendering.md) describes for theme and plugin
-  authors.
+  as the
+  [rendering contract](https://viell-dev.github.io/slop-inkline/rendering)
+  describes for theme and plugin authors.
 - **Type to insert:** in a note, type `;;` and a few letters of a symbol's name,
   in any script, to choose it from a list with its picture: the best match
   first, then those the note uses most, then the most recently changed. Enter

@@ -13,7 +13,7 @@ The [issues](https://github.com/viell-dev/slop-inkline/issues) track each one.
 - **Library insertion needs a sidebar.** If the library's tab is dragged into
   the main area, move it back to a sidebar to insert into a note.
 - **Physical printing** has not been checked. Native
-  [PDF export](./notes.md#export-a-note-to-pdf) is verified.
+  [PDF export](./notes.md#export-a-note-to-pdf) is verified on Linux.
 
 ## Menus without Edit symbol
 

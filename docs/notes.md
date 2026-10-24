@@ -130,5 +130,5 @@ export options, and save the PDF. Symbols keep their size, baseline, and colour
 preference, including explicit embed sizes. Obsidian uses its light print theme
 for the exported note, even when you read it in a dark theme.
 
-Physical printer output has not been checked; the automated checks cover the
-native PDF export and the resulting document's pixels and layout.
+Physical printer output has not been checked; the automated checks cover native
+PDF export on Linux and the resulting document's pixels and layout.

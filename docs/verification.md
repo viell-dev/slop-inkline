@@ -216,11 +216,16 @@ check against a commit whose CI never ran
 - Pens and touch are tested with WebDriver's pointer events, which carry
   pressure and pointer types, not with real devices.
 - Obsidian's mobile apps are not tested, as Inkline does not support them.
-- Physical printer output is not checked; native PDF export is covered above.
+- Physical printer output is not checked. Native PDF export is covered on Linux
+  with default and explicitly sized embeds of one symbol; long notes containing
+  many different symbols are not covered by that fixture.
 - CI's runners have the DejaVu fonts, and the Docker image DejaVu and Noto; a
   theme's own font is checked through the guides' measurement, not by eye.
-- Installing a published release, and its attestation, are not tested yet, as
-  there is no release.
+- Published downloads, checksums, attestations, and BRAT installation are
+  checked after publication, when those assets first exist. They cannot be
+  verified in a prerelease pull request; the Release workflow checks downloads
+  and attestations after publishing, and the maintainer records the BRAT check
+  in the release pull request.
 - The budgets are wall-clock times. Each leaves room for a slow machine, but
   heavy work beside a run can still exceed one; such a failure is investigated,
   not run again until it passes.
