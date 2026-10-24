@@ -3,7 +3,8 @@ name: Pages
 # Builds the documentation site from this run's own commit and deploys it to
 # GitHub Pages, as docs/versions.md describes, then reads the deployed site
 # back and fails unless every page is that commit. A push to main deploys
-# while Inkline has no release. Run on request on another ref, with
+# while Inkline has no release and its manifest is still 0.0.0. A prepared
+# first release waits for publication. Run on request on another ref, with
 # `gh workflow run pages.yml --ref <ref>`, it deploys only the newest
 # release's tag, or a docs-<version> branch that holds that tag and changes
 # only the documentation. It never checks out another ref than its own, so

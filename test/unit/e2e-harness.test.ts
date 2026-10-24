@@ -66,6 +66,8 @@ describe("prepareOutput", () => {
     await mkdir(path.join(directory, "screenshots", "1.14.4-1.14.4"), {
       recursive: true,
     });
+    await mkdir(path.join(directory, "pdfs"));
+    await writeFile(path.join(directory, "pdfs", "old-export.pdf"), "%PDF-");
   }
 
   it("claims a directory that does not exist yet", async () => {

@@ -13,7 +13,7 @@ RUN apt-get update \
     libasound2 libatk-bridge2.0-0 libcups2 libdrm2 libgbm1 libgtk-3-0 \
     libnotify4 libnss3 libpango-1.0-0 libsecret-1-0 libx11-xcb1 \
     libxcomposite1 libxdamage1 libxkbcommon0 libxrandr2 libxshmfence1 \
-    libxss1 libxtst6 x11-xserver-utils xauth xvfb \
+    libxss1 libxtst6 poppler-utils x11-xserver-utils xauth xvfb \
   && rm -rf /var/lib/apt/lists/* \
   && mkdir /cache /out /home/node/inkline \
   && chown node:node /cache /out /home/node/inkline

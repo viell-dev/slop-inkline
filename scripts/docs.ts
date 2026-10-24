@@ -11,7 +11,7 @@
 // It reads GitHub's API with the token in GH_TOKEN, if set, for the
 // repository in GITHUB_REPOSITORY, by default viell-dev/slop-inkline.
 
-import { appendFile } from "node:fs/promises";
+import { appendFile, readFile } from "node:fs/promises";
 import { setTimeout as sleep } from "node:timers/promises";
 import {
   docsBranch,
@@ -69,7 +69,19 @@ async function resolve(): Promise<void> {
   if (refType !== "branch" && refType !== "tag") {
     fail(`REF_TYPE is ${String(refType)}, not branch or tag`);
   }
-  const request: DocsRequest = { event, ref, refType, releases: tags };
+  const manifest: unknown = JSON.parse(
+    await readFile(new URL("../manifest.json", import.meta.url), "utf8"),
+  );
+  if (!isRecord(manifest) || typeof manifest.version !== "string") {
+    fail("the manifest has no version");
+  }
+  const request: DocsRequest = {
+    event,
+    ref,
+    refType,
+    releases: tags,
+    version: manifest.version,
+  };
   const latest = tags[0];
   let branch: DocsRequest["branch"];
   if (latest !== undefined && ref === docsBranch(latest)) {

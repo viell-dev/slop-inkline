@@ -132,6 +132,22 @@ gh release download <version> --repo viell-dev/slop-inkline --dir check
 gh attestation verify check/main.js --repo viell-dev/slop-inkline
 ```
 
+Once those checks pass, verify the installation channel in a clean synthetic
+vault with the current BRAT release:
+
+1. Add `viell-dev/slop-inkline` in BRAT, select **Latest version**, and enable
+   Inkline. Check that the installed version and all three plugin files match
+   the published release and its checksums.
+2. Draw, save, and reopen a synthetic symbol. Turn Inkline off and on again and
+   check that its commands, symbol, and saved preferences remain available.
+3. Exercise BRAT's update check and reinstall route, confirming the same
+   published files and preserved drawing. Also check installation of the
+   specific version, which BRAT keeps fixed instead of updating automatically.
+4. Record the release commit, BRAT and Obsidian versions, downloaded checksums,
+   attestation results, installation/update/reinstall results, and any evidence
+   limits in the release pull request. Do this for both supported test hosts;
+   never invent or modify a published release to simulate an update.
+
 ## Documentation
 
 Once the release is published and verified, deploy the site from its tag, so

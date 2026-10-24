@@ -24,6 +24,16 @@ review.
 
 ## The promises
 
+### A deciphering session works from beginning to end
+
+- A synthetic inscription is pasted as a tracing picture, copied into three
+  distinct editable symbols with **Make ink** and **Next**, reused in another
+  note from the library, renamed with both notes' links following, opened from
+  its usage list, and read back in light and dark themes
+  ([journey.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/journey.e2e.ts)).
+  The guide's screenshots come from this fixture, with no private notes or game
+  artwork.
+
 ### Symbol files stay readable, and look the same
 
 A symbol is a PNG with a version 1 record, which every later version reads, and
@@ -70,6 +80,13 @@ saving it again never changes it.
   cards, and popout windows; symbol files on their own and images from outside
   the vault stay pictures; and with Inkline disabled, symbols are plain images
   (the same file).
+- Native PDF export, through Obsidian's real command and PDF writer: the output
+  is rasterized independently with Poppler, and its pixels prove the symbol's
+  size, baseline, text colour or stored grey, configured scale, and explicit
+  sizes. Ordinary pictures stay pictures, and the temporary window's renderer
+  settings are cleared on close. The test redirects the save dialog and
+  suppresses the post-export viewer launch; the native PDF writer still runs
+  ([pdf.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/pdf.e2e.ts)).
 
 ### Drawing is never lost
 
@@ -200,11 +217,16 @@ check against a commit whose CI never ran
 - Pens and touch are tested with WebDriver's pointer events, which carry
   pressure and pointer types, not with real devices.
 - Obsidian's mobile apps are not tested, as Inkline does not support them.
-- Printing and PDF export of notes with symbols are not checked yet.
+- Physical printer output is not checked. Native PDF export is covered on Linux
+  with default and explicitly sized embeds of one symbol; long notes containing
+  many different symbols are not covered by that fixture.
 - CI's runners have the DejaVu fonts, and the Docker image DejaVu and Noto; a
   theme's own font is checked through the guides' measurement, not by eye.
-- Installing a published release, and its attestation, are not tested yet, as
-  there is no release.
+- Published downloads, checksums, attestations, and BRAT installation are
+  checked after publication, when those assets first exist. They cannot be
+  verified in a prerelease pull request; the Release workflow checks downloads
+  and attestations after publishing, and the maintainer records the BRAT check
+  in the release pull request.
 - The budgets are wall-clock times. Each leaves room for a slow machine, but
   heavy work beside a run can still exceed one; such a failure is investigated,
   not run again until it passes.

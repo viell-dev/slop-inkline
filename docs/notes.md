@@ -122,3 +122,13 @@ the symbol file also list the notes that link to it.
 
 Keep the library in a sidebar to insert into a note. If its tab is dragged into
 the main area, return it to a sidebar before inserting.
+
+## Export a note to PDF
+
+Run Obsidian's **Export to PDF** command while the note is open, choose its
+export options, and save the PDF. Symbols keep their size, baseline, and colour
+preference, including explicit embed sizes. Obsidian uses its light print theme
+for the exported note, even when you read it in a dark theme.
+
+Physical printer output has not been checked; the automated checks cover native
+PDF export on Linux and the resulting document's pixels and layout.

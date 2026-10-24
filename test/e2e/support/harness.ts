@@ -76,7 +76,7 @@ export function pluginDirectory(
 export const ownerMarker = ".inkline-e2e-output";
 
 /** The entries the harness creates in its output directory. */
-export const outputEntries = ["logs", "screenshots"] as const;
+export const outputEntries = ["logs", "screenshots", "pdfs"] as const;
 
 /**
  * Prepares the output directory for a run and removes the previous run's
@@ -96,7 +96,7 @@ export async function prepareOutput(directory: string): Promise<void> {
   }
   await writeFile(
     path.join(directory, ownerMarker),
-    "Output of Inkline's end-to-end tests. Each run replaces logs/ and screenshots/.\n",
+    "Output of Inkline's end-to-end tests. Each run replaces logs/, screenshots/, and pdfs/.\n",
   );
   await Promise.all(
     outputEntries.map((entry) =>
