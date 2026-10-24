@@ -89,7 +89,10 @@ Build first, then run them in one of two ways:
 Direct runs also need Poppler's `pdftoppm` and `pdftotext` on `PATH` for the
 native PDF-output checks. Docker includes them, and CI installs `poppler-utils`.
 The checks retain the PDF, its rasterized page, text coordinates, and measured
-print layout with the other end-to-end artifacts.
+print layout with the other end-to-end artifacts. The PDF test redirects the
+save dialog and suppresses only the native request's post-export viewer flag, so
+it writes the real PDF without launching a desktop application. Its snapshots
+retain the original viewer request.
 
 `OBSIDIAN_VERSIONS` picks the Obsidian versions as space-separated
 `appVersion/installerVersion` pairs. The default,

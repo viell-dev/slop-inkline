@@ -23,6 +23,8 @@ interface PrintProbe {
   closed: boolean;
   cleanupChecked: boolean;
   cleaned: boolean;
+  viewerRequests: { filePath: string; requested: boolean }[];
+  error?: string;
   restore(): void;
 }
 
@@ -51,8 +53,9 @@ function block(): Uint8Array {
 }
 
 /**
- * Redirects only the core exporter's native save dialog. Its hidden window,
- * Markdown rendering, print styles, IPC, and native PDF writer all run.
+ * Redirects the native save dialog and suppresses the request's post-export
+ * viewer flag. The hidden window, Markdown, print styles, IPC, and native PDF
+ * writer still run; no PDF is opened in the contributor's external viewer.
  * Observes the print document without changing it, retaining its final layout
  * before the exporter removes it, and checks cleanup after the window closes.
  */
@@ -79,6 +82,7 @@ async function prepareExport(destination: string): Promise<void> {
     });
     const open = window.open.bind(window);
     const observers: MutationObserver[] = [];
+    const restoreSend: (() => void)[] = [];
     const probe: PrintProbe = {
       images: [],
       scale: "",
@@ -86,10 +90,12 @@ async function prepareExport(destination: string): Promise<void> {
       closed: false,
       cleanupChecked: false,
       cleaned: false,
+      viewerRequests: [],
       restore: () => {
         window.open = open;
         Object.defineProperty(dialog, "showSaveDialog", descriptor);
         for (const observer of observers) observer.disconnect();
+        for (const restore of restoreSend) restore();
       },
     };
     window.inklinePrintProbe = probe;
@@ -97,6 +103,56 @@ async function prepareExport(destination: string): Promise<void> {
       const child = open(...args);
       if (child === null) return child;
       const doc = child.document;
+      // The core exporter installs this window's Electron bridge before its
+      // first asynchronous rendering step. Intercept only the subsequent
+      // print request's viewer flag; the main process writes the actual PDF.
+      queueMicrotask(() => {
+        try {
+          const bridge: unknown = Reflect.get(child, "electron");
+          if (typeof bridge !== "object" || bridge === null)
+            throw new Error("no export-window Electron bridge");
+          const ipc: unknown = Reflect.get(bridge, "ipcRenderer");
+          if (typeof ipc !== "object" || ipc === null)
+            throw new Error("no export-window IPC");
+          const send: unknown = Reflect.get(ipc, "send");
+          if (typeof send !== "function") throw new Error("no native IPC send");
+          const original = Object.getOwnPropertyDescriptor(ipc, "send");
+          Object.defineProperty(ipc, "send", {
+            configurable: true,
+            value: (channel: unknown, ...args: unknown[]): void => {
+              if (channel === "print-to-pdf") {
+                const options = args[0];
+                if (
+                  typeof options !== "object" ||
+                  options === null ||
+                  Array.isArray(options) ||
+                  !("filepath" in options) ||
+                  options.filepath !== filePath ||
+                  !("open" in options) ||
+                  typeof options.open !== "boolean"
+                ) {
+                  probe.error = "unexpected native PDF request";
+                  throw new Error(probe.error);
+                }
+                probe.viewerRequests.push({
+                  filePath,
+                  requested: options.open,
+                });
+                args[0] = { ...options, open: false };
+              }
+              Reflect.apply(send, ipc, [channel, ...args]);
+            },
+          });
+          restoreSend.push(() => {
+            if (original === undefined) Reflect.deleteProperty(ipc, "send");
+            else Object.defineProperty(ipc, "send", original);
+          });
+        } catch (error) {
+          probe.error = error instanceof Error ? error.message : String(error);
+          // An unknown host bridge must fail before it can launch a viewer.
+          child.close();
+        }
+      });
       const capture = () => {
         const images = Array.from(doc.querySelectorAll(".print img"));
         if (images.length === 0) return;
@@ -305,6 +361,10 @@ describe("Native PDF export", function () {
       await mkdir(folder, { recursive: true });
       const prefix = path.join(folder, mode.name);
       const pdf = `${prefix}.pdf`;
+      const viewport = await browser.execute(() => ({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      }));
       await prepareExport(pdf);
       try {
         await browser.executeObsidianCommand("workspace:export-pdf");
@@ -312,6 +372,10 @@ describe("Native PDF export", function () {
         await browser.$(".modal button.mod-cta").click();
         await browser.waitUntil(
           async () => {
+            const error = await browser.execute(
+              () => window.inklinePrintProbe?.error,
+            );
+            if (typeof error === "string") throw new Error(error);
             try {
               return (
                 (await readFile(pdf)).subarray(0, 5).toString() === "%PDF-"
@@ -331,6 +395,16 @@ describe("Native PDF export", function () {
             ),
           { timeoutMsg: "native export window did not close" },
         );
+        await browser.waitUntil(
+          async () =>
+            browser.execute(
+              (before) =>
+                window.innerWidth === before.width &&
+                window.innerHeight === before.height,
+              viewport,
+            ),
+          { timeoutMsg: "native PDF export left the main window resized" },
+        );
         const snapshot = await browser.execute(() => {
           const probe = window.inklinePrintProbe;
           if (probe === undefined) throw new Error("no print probe");
@@ -339,6 +413,7 @@ describe("Native PDF export", function () {
             scale: probe.scale,
             stored: probe.stored,
             cleaned: probe.cleaned,
+            viewerRequests: probe.viewerRequests,
           };
         });
         await writeFile(`${prefix}.json`, JSON.stringify(snapshot, null, 2));
@@ -399,6 +474,9 @@ describe("Native PDF export", function () {
         expect(snapshot.scale).toBe(String(scale));
         expect(snapshot.stored).toBe(!mode.textColor);
         expect(snapshot.cleaned).toBe(true);
+        expect(
+          snapshot.viewerRequests.map((request) => request.filePath),
+        ).toEqual([pdf]);
       } finally {
         await browser.execute(() => {
           window.inklinePrintProbe?.restore();

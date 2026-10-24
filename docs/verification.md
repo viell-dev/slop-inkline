@@ -84,7 +84,8 @@ saving it again never changes it.
   is rasterized independently with Poppler, and its pixels prove the symbol's
   size, baseline, text colour or stored grey, configured scale, and explicit
   sizes. Ordinary pictures stay pictures, and the temporary window's renderer
-  settings are cleared on close
+  settings are cleared on close. The test redirects the save dialog and
+  suppresses the post-export viewer launch; the native PDF writer still runs
   ([pdf.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/pdf.e2e.ts)).
 
 ### Drawing is never lost
