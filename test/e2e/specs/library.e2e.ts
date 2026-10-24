@@ -1,5 +1,6 @@
 import { browser, expect } from "@wdio/globals";
 import { loadModules } from "../support/browser.ts";
+import { saveScreenshot } from "../support/screenshots.ts";
 import {
   createSymbol,
   openAtMarker,
@@ -181,6 +182,7 @@ describe("The symbol library", function () {
     expect(
       await row("001").$(".inkline-library-uses").getAttribute("aria-expanded"),
     ).toBe("true");
+    await saveScreenshot("symbol-library");
     await row("001").$("a=Uses").click();
     await browser.waitUntil(async () =>
       browser.executeObsidian(
@@ -269,6 +271,41 @@ describe("The symbol library", function () {
       "Copy.md",
       "Read ![[gate.ink.png]]![[tower.ink.png]], then [[Welcome]]![[gate.ink.png]].\n",
     );
+  });
+
+  it("inserts with the keyboard without replacing selected text", async function () {
+    await createSymbol("gate.ink.png");
+    await browser.executeObsidian(async ({ app }) => {
+      await app.vault.create("Selection.md", "Keep HEREboth words.\n");
+    });
+    await openAtMarker("Selection.md", "HERE");
+    await browser.executeObsidian(({ app, obsidian }) => {
+      const editor = app.workspace.getActiveViewOfType(
+        obsidian.MarkdownView,
+      )?.editor;
+      if (editor === undefined) throw new Error("no note editor");
+      const start = editor.getValue().indexOf("both");
+      editor.setSelection(
+        editor.offsetToPos(start),
+        editor.offsetToPos(start + "both".length),
+      );
+    });
+    await showLibrary();
+    await waitForNames(["gate"]);
+    await filterBy("gate");
+    await browser.keys(["Tab"]);
+    expect(
+      await browser.execute(() => document.activeElement?.className),
+    ).toContain("inkline-library-folder");
+    await browser.keys(["Tab"]);
+    expect(
+      await browser.execute(() => document.activeElement?.className),
+    ).toContain("inkline-library-insert");
+    await browser.keys(["Enter"]);
+    await waitForText("Selection.md", "Keep both![[gate.ink.png]] words.\n");
+    expect(
+      await browser.execute(() => document.activeElement?.className),
+    ).toContain("inkline-library-insert");
   });
 
   it("says why it inserts nothing without a note in editing view", async function () {
