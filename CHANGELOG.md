@@ -8,8 +8,13 @@ section is also its
 
 ## Unreleased
 
+## 0.1.0 - 2026-10-24
+
 ### Fixed
 
+- Native PDF export shows symbols inline with the text, preserving size,
+  baseline, colour preferences, and explicit embed sizes. Renderer resources are
+  released when its temporary window closes.
 - An editor shortcut pressed immediately after opening goes to the drawing area.
   Selecting the name field to type before the first frame keeps its focus.
 - Saving keeps an external rename when no new name was requested, including

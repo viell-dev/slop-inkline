@@ -5,13 +5,15 @@ The [issues](https://github.com/viell-dev/slop-inkline/issues) track each one.
 
 ## Not there yet
 
-- **No release.** Inkline is under development; see [Install](./install.md).
+- **Prerelease.** Install with BRAT; Inkline is not in Obsidian's community
+  directory. See [Install](./install.md).
 - **Desktop only.** Obsidian's mobile apps do not offer Inkline.
 - **Large libraries** show every matching symbol at once, without paging. Filter
   by name or folder to narrow the list.
 - **Library insertion needs a sidebar.** If the library's tab is dragged into
   the main area, move it back to a sidebar to insert into a note.
-- **Printing and PDF export** of notes with symbols have not been checked yet.
+- **Physical printing** has not been checked. Native
+  [PDF export](./notes.md#export-a-note-to-pdf) is verified.
 
 ## Menus without Edit symbol
 

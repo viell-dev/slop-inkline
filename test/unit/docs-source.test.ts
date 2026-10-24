@@ -2,10 +2,39 @@ import { describe, expect, it } from "vitest";
 import { deploymentFiles, docsSource } from "../../scripts/lib/docs.ts";
 
 describe("docsSource", () => {
+  it("keeps the existing site while the first release is prepared but unpublished", () => {
+    for (const event of ["push", "dispatch"] as const) {
+      expect(
+        docsSource({
+          event,
+          ref: "main",
+          refType: "branch",
+          releases: [],
+          version: "0.1.0",
+        }),
+      ).toMatchObject({ deploy: false, error: false });
+    }
+    expect(
+      docsSource({
+        event: "dispatch",
+        ref: "0.1.0",
+        refType: "tag",
+        releases: ["0.1.0"],
+        version: "0.1.0",
+      }),
+    ).toEqual({ deploy: true, ref: "0.1.0", version: "0.1.0" });
+  });
+
   it("deploys main, as unreleased, before the first release", () => {
     for (const event of ["push", "dispatch"] as const) {
       expect(
-        docsSource({ event, ref: "main", refType: "branch", releases: [] }),
+        docsSource({
+          version: "0.0.0",
+          event,
+          ref: "main",
+          refType: "branch",
+          releases: [],
+        }),
       ).toEqual({ deploy: true, ref: "main", version: "unreleased" });
     }
   });
@@ -18,7 +47,13 @@ describe("docsSource", () => {
       ["main", "tag"],
     ] as const) {
       expect(
-        docsSource({ event: "dispatch", ref, refType, releases: [] }),
+        docsSource({
+          version: "0.0.0",
+          event: "dispatch",
+          ref,
+          refType,
+          releases: [],
+        }),
       ).toMatchObject({ deploy: false, error: true });
     }
   });
@@ -26,6 +61,7 @@ describe("docsSource", () => {
   it("leaves the newest release's site alone when main changes", () => {
     expect(
       docsSource({
+        version: "0.0.0",
         event: "push",
         ref: "main",
         refType: "branch",
@@ -37,6 +73,7 @@ describe("docsSource", () => {
   it("deploys the newest release when run on its tag", () => {
     expect(
       docsSource({
+        version: "0.0.0",
         event: "dispatch",
         ref: "0.2.0",
         refType: "tag",
@@ -56,6 +93,7 @@ describe("docsSource", () => {
     ] as const) {
       expect(
         docsSource({
+          version: "0.0.0",
           event: "dispatch",
           ref,
           refType,
@@ -72,6 +110,7 @@ describe("docsSource", () => {
     ]) {
       expect(
         docsSource({
+          version: "0.0.0",
           event: "dispatch",
           ref: "docs-0.2.0",
           refType: "branch",
@@ -91,6 +130,7 @@ describe("docsSource", () => {
     ]) {
       expect(
         docsSource({
+          version: "0.0.0",
           event: "dispatch",
           ref: "docs-0.2.0",
           refType: "branch",
@@ -101,6 +141,7 @@ describe("docsSource", () => {
     }
     expect(
       docsSource({
+        version: "0.0.0",
         event: "dispatch",
         ref: "docs-0.2.0",
         refType: "branch",
@@ -111,6 +152,7 @@ describe("docsSource", () => {
 
   it("names the files outside the documentation that a branch changes", () => {
     const source = docsSource({
+      version: "0.0.0",
       event: "dispatch",
       ref: "docs-0.2.0",
       refType: "branch",

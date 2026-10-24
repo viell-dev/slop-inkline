@@ -21,6 +21,7 @@ interface PrintProbe {
   scale: string;
   stored: boolean;
   closed: boolean;
+  cleanupChecked: boolean;
   cleaned: boolean;
   restore(): void;
 }
@@ -76,13 +77,14 @@ async function prepareExport(destination: string): Promise<void> {
       writable: true,
       value: () => Promise.resolve({ canceled: false, filePath }),
     });
-    const open = window.open;
+    const open = window.open.bind(window);
     const observers: MutationObserver[] = [];
     const probe: PrintProbe = {
       images: [],
       scale: "",
       stored: false,
       closed: false,
+      cleanupChecked: false,
       cleaned: false,
       restore: () => {
         window.open = open;
@@ -92,7 +94,7 @@ async function prepareExport(destination: string): Promise<void> {
     };
     window.inklinePrintProbe = probe;
     window.open = (...args) => {
-      const child = open.call(window, ...args);
+      const child = open(...args);
       if (child === null) return child;
       const doc = child.document;
       const capture = () => {
@@ -134,6 +136,7 @@ async function prepareExport(destination: string): Promise<void> {
               doc.documentElement.style.getPropertyValue("--inkline-scale") ===
                 "" &&
               !doc.documentElement.classList.contains("inkline-stored-color");
+            probe.cleanupChecked = true;
           }, 0);
         },
         { once: true },
@@ -228,14 +231,17 @@ async function printedBlock(
           grey,
         };
       };
+      const text = pixels(first);
       return {
         ink: pixels({
           left: first.right + 1,
           right: last.left - 1,
-          top: first.top - expectedHeight,
-          bottom: first.bottom + expectedHeight / 4 + 3,
+          // Use the actual text pixels' baseline and leave room for a
+          // misplaced block, without including the paragraph above it.
+          top: text.bottom - expectedHeight / 2 - 6,
+          bottom: text.bottom + expectedHeight / 4 + 6,
         }),
-        text: pixels(first),
+        text,
       };
     },
     png,
@@ -318,7 +324,11 @@ describe("Native PDF export", function () {
         );
         await browser.waitUntil(
           async () =>
-            browser.execute(() => window.inklinePrintProbe?.closed === true),
+            browser.execute(
+              () =>
+                window.inklinePrintProbe?.closed === true &&
+                window.inklinePrintProbe.cleanupChecked,
+            ),
           { timeoutMsg: "native export window did not close" },
         );
         const snapshot = await browser.execute(() => {
@@ -361,6 +371,7 @@ describe("Native PDF export", function () {
             wordBox(xml, `${name}After.`),
             height,
           );
+          expect(text.count).toBeGreaterThan(10);
           expect(ink.count).toBeGreaterThan(10);
           expect(Math.abs(ink.height - height / 2)).toBeLessThanOrEqual(2);
           expect(Math.abs(ink.width - (width * 3) / 4)).toBeLessThanOrEqual(2);
