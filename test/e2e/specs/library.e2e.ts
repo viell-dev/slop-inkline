@@ -215,6 +215,80 @@ describe("The symbol library", function () {
     await waitForNames(["Tower", "gate", "tower two"]);
   });
 
+  it("opens the exact referring note when its name contains a hash", async function () {
+    await createSymbol("gate.ink.png");
+    await browser.executeObsidian(async ({ app }) => {
+      await app.vault.create("Read#this.md", "See ![[gate.ink.png]].\n");
+    });
+    await waitForLink("Read#this.md", "gate.ink.png");
+    await showLibrary();
+    await waitForNames(["gate"]);
+    await row("gate").$(".inkline-library-uses").click();
+    await row("gate").$("a=Read#this").click();
+    await browser.waitUntil(
+      async () =>
+        browser.executeObsidian(
+          ({ app }) => app.workspace.getActiveFile()?.path === "Read#this.md",
+        ),
+      { timeout: 3000, timeoutMsg: "the exact referring note did not open" },
+    );
+    expect(
+      await browser.executeObsidian(
+        ({ app }) => app.vault.getFileByPath("Read.md") === null,
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps focus on a referring note when its row refreshes", async function () {
+    await createSymbol("gate.ink.png");
+    await browser.executeObsidian(async ({ app }) => {
+      await app.vault.create("Uses.md", "See ![[gate.ink.png]].\n");
+    });
+    await waitForLink("Uses.md", "gate.ink.png");
+    await showLibrary();
+    await waitForNames(["gate"]);
+    await row("gate").$(".inkline-library-uses").click();
+    await browser.execute(() => {
+      document
+        .querySelector<HTMLAnchorElement>(".inkline-library-note")
+        ?.focus();
+    });
+    await browser.executeObsidian(async ({ app }) => {
+      await app.vault.create("More.md", "See ![[gate.ink.png]].\n");
+    });
+    await browser.waitUntil(async () => (await rows())[0]?.uses === "2 notes");
+    expect(
+      await browser.execute(() => ({
+        note: document.activeElement?.classList.contains(
+          "inkline-library-note",
+        ),
+        text: document.activeElement?.textContent,
+      })),
+    ).toEqual({ note: true, text: "Uses" });
+  });
+
+  it("keeps focus in the row when its last referring note is removed", async function () {
+    await createSymbol("gate.ink.png");
+    await browser.executeObsidian(async ({ app }) => {
+      await app.vault.create("Uses.md", "See ![[gate.ink.png]].\n");
+    });
+    await waitForLink("Uses.md", "gate.ink.png");
+    await showLibrary();
+    await waitForNames(["gate"]);
+    await row("gate").$(".inkline-library-uses").click();
+    await browser.executeObsidian(async ({ app }) => {
+      const file = app.vault.getFileByPath("Uses.md");
+      if (file === null) throw new Error("no Uses.md");
+      await app.fileManager.trashFile(file);
+    });
+    await browser.waitUntil(async () => (await rows())[0]?.uses === "Not used");
+    expect(
+      await browser.execute(() =>
+        document.activeElement?.classList.contains("inkline-library-insert"),
+      ),
+    ).toBe(true);
+  });
+
   it("inserts a symbol at the cursor, outside a link, and the next after it", async function () {
     await createSymbol("gate.ink.png");
     await createSymbol("tower.ink.png");
@@ -303,6 +377,8 @@ describe("The symbol library", function () {
     ).toContain("inkline-library-insert");
     await browser.keys(["Enter"]);
     await waitForText("Selection.md", "Keep both![[gate.ink.png]] words.\n");
+    // The metadata-cache refresh replaces the row after the note saves.
+    await browser.waitUntil(async () => (await rows())[0]?.uses === "1 note");
     expect(
       await browser.execute(() => document.activeElement?.className),
     ).toContain("inkline-library-insert");

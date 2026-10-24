@@ -1,7 +1,8 @@
 // The symbol library: a view of every symbol in the vault, in a sidebar,
 // with its picture, name, folder, and the notes that use it, filtered by
-// name and folder. A click inserts a symbol at the cursor of the note last
-// edited; its menu is the one Obsidian shows for a link to it, with Edit
+// name and folder. A click inserts a symbol at the cursor of the most
+// recently active note; its menu is the one Obsidian shows for a link to it,
+// with Edit
 // symbol among its items. catalog.ts decides what it lists.
 
 import {
@@ -227,6 +228,7 @@ export class SymbolLibraryView extends ItemView {
             ?.getAttribute("data-inkline-path")
         : undefined;
     const focusRole = focused?.getAttribute("data-inkline-role");
+    const focusNote = focused?.getAttribute("data-inkline-note");
     list.empty();
     if (entries.length === 0) {
       list.createDiv({
@@ -250,9 +252,21 @@ export class SymbolLibraryView extends ItemView {
       const row = Array.from(list.querySelectorAll("[data-inkline-path]")).find(
         (found) => found.getAttribute("data-inkline-path") === focusPath,
       );
-      const target = row?.querySelector(
-        `[data-inkline-role="${focusRole ?? "insert"}"]`,
-      );
+      let target =
+        focusRole === "note"
+          ? Array.from(row?.querySelectorAll("[data-inkline-note]") ?? []).find(
+              (note) => note.getAttribute("data-inkline-note") === focusNote,
+            )
+          : row?.querySelector(
+              `[data-inkline-role="${focusRole ?? "insert"}"]`,
+            );
+      if (
+        target === undefined ||
+        target === null ||
+        (target.instanceOf(HTMLButtonElement) && target.disabled)
+      ) {
+        target = row?.querySelector('[data-inkline-role="insert"]');
+      }
       if (target?.instanceOf(HTMLElement) === true) target.focus();
     }
   }
@@ -315,20 +329,27 @@ export class SymbolLibraryView extends ItemView {
         cls: "inkline-library-note",
         text: noteLabel(note),
         href: "#",
+        attr: { "data-inkline-role": "note", "data-inkline-note": note },
       });
       open.addEventListener("click", (event) => {
         event.preventDefault();
-        void this.app.workspace.openLinkText(
-          note,
-          "",
-          Keymap.isModEvent(event),
-        );
+        const file = this.app.vault.getFileByPath(note);
+        if (file === null) {
+          new Notice("That note is no longer in the vault.");
+          return;
+        }
+        void this.app.workspace
+          .getLeaf(Keymap.isModEvent(event))
+          .openFile(file)
+          .catch(() => {
+            new Notice("The note could not be opened.");
+          });
       });
     }
   }
 
   /**
-   * Inserts `file`'s embed at the cursor of the note last edited, never
+   * Inserts `file`'s embed at the cursor of the most recently active note, never
    * inside a link or embed, and puts the cursor after it, so that the next
    * symbol clicked follows it. The library keeps the focus.
    */

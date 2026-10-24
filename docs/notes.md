@@ -95,11 +95,11 @@ by folder, the top folder first, then by name, with numbers in order.
 
 - Type part of a name in **Filter by name**, in any letter case or script, and
   choose a folder to narrow the list.
-- Click a symbol to insert it at the cursor in the note last edited. The cursor
-  moves after it and the library keeps the focus, so successive clicks write
-  successive symbols. A selection's text is kept; a cursor inside a link or
-  embed puts the symbol just after it. Open a note in editing view first; a note
-  in Reading view cannot take an insertion.
+- Click a symbol to insert it at the cursor in the note you were last in. The
+  cursor moves after it and the library keeps the focus, so successive clicks
+  write successive symbols. A selection's text is kept; a cursor inside a link
+  or embed puts the symbol just after it. Open a note in editing view first; a
+  note in Reading view cannot take an insertion.
 - Click **1 note**, or **2 notes**, to list the notes that use a symbol, then
   click a note to open it. Ctrl-click, or Cmd-click on macOS, opens a new tab.
 - Right-click a symbol for its file's menu, including **Edit symbol**.
@@ -107,3 +107,6 @@ by folder, the top folder first, then by name, with numbers in order.
 The list follows files and their links as they change. Renaming directly in the
 list is planned; for now, rename in the symbol's editor or its file's menu.
 Obsidian's backlinks for the symbol file also list the notes that link to it.
+
+Keep the library in a sidebar to insert into a note. If its tab is dragged into
+the main area, return it to a sidebar before inserting.

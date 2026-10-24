@@ -60,9 +60,9 @@ section is also its
   symbol in the vault in the right sidebar, with its picture, its name and
   folder, and how many notes use it, which lists them to open. A filter by name,
   in any letter case, and a choice of folder narrow it. A click inserts a symbol
-  at the cursor of the note last edited, never inside a link or embed, and puts
-  the cursor after it, so that symbols clicked in turn follow one another; a
-  symbol's menu holds **Edit symbol**, with what Obsidian offers for a link to
+  at the cursor of the note you were last in, never inside a link or embed, and
+  puts the cursor after it, so that symbols clicked in turn follow one another;
+  a symbol's menu holds **Edit symbol**, with what Obsidian offers for a link to
   the file.
 - **Edit symbol** opens a symbol in the editor again with every stroke, so that
   nothing is lost by editing. It is in a symbol file's menu, in the symbol
