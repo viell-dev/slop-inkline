@@ -32,12 +32,10 @@ features:
       drawn, however often you edit it.
 ---
 
-::: warning No release yet
+::: info Prerelease
 
-Inkline is under development and has no release. This site describes the
-development version on `main`, which you can
-[build and install yourself](./install.md). Its first release will need Obsidian
-1.13.4 or later, on desktop.
+Inkline 0.1.0 is a prerelease for Obsidian 1.13.4 or later, on desktop.
+[Install with BRAT](./install.md), then draw your first symbol.
 
 :::
 
@@ -54,6 +52,8 @@ ready-made symbols: it draws small symbols of your own, one at a time, for use
 in text.
 
 ## What it does now
+
+![An invented inscription in Reading view, with inline symbols and the library's renamed sign linked to both notes that use it.](./screenshots/reading-light.png)
 
 - **Draw** a symbol in an editor sized to one line of text, with a mouse, pen,
   or finger, with guides at the text font's lines; trace over a screenshot, or

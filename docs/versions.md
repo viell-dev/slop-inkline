@@ -4,22 +4,20 @@ Each page's footer says which version of Inkline the site describes and the
 commit it was built from; `version.json` at the site's root says the same for
 tools.
 
-## Before the first release
+## The current release
 
-Inkline has no release yet, so the site describes the development version on
-`main`, and says so on its home page and in every footer. Each change merged to
-`main` deploys it again.
-
-## Once Inkline has releases
-
-The site will describe the newest release, prereleases included, since that is
-the version you can install. Changes merged after it appear with the next
-release; until then, the `Unreleased` section of the
+The site describes the newest release, prereleases included, since that is the
+version you can install. Changes merged after it appear with the next release;
+until then, the `Unreleased` section of the
 [changelog](https://github.com/viell-dev/slop-inkline/blob/main/CHANGELOG.md)
 lists them.
 
 Once a release is published, the Pages workflow is run on its tag, which deploys
 the site from it.
+
+Before the first release, changes on `main` deploy the unreleased guide only
+while its manifest version is `0.0.0`. Preparing a release leaves that site in
+place until publication, so it never offers a release that cannot be installed.
 
 A correction to the current release's documentation does not wait for a new
 release, and never moves the release's tag. It goes on a branch named

@@ -65,6 +65,11 @@ export default class InklinePlugin extends Plugin {
     );
     this.#loaded = true;
     this.#renderer.watch(document);
+    // Markdown also renders in temporary documents, such as the hidden
+    // PDF export window, which is not a workspace popout.
+    this.registerMarkdownPostProcessor((element) => {
+      if (this.#loaded) this.#renderer.watch(element.doc);
+    });
     this.#offerMenus(document);
     this.registerEvent(
       this.app.workspace.on("window-open", (win) => {

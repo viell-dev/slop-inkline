@@ -66,10 +66,10 @@ jobs:
         with:
           path: .obsidian-cache
           key: obsidian-${{ runner.os }}-${{ hashFiles('obsidian-versions.txt') }}
-      - name: Install the virtual display and the test fonts
+      - name: Install the virtual display, test fonts, and PDF tools
         run: |
           sudo apt-get update -q
-          sudo apt-get install -q --yes --no-install-recommends fonts-dejavu-core herbstluftwm x11-xserver-utils xvfb
+          sudo apt-get install -q --yes --no-install-recommends fonts-dejavu-core herbstluftwm poppler-utils x11-xserver-utils xvfb
       - run: sh test/e2e/session.sh
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

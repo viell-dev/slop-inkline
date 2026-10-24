@@ -198,13 +198,14 @@ export class SymbolRenderer {
     this.#vault = vault;
   }
 
-  readonly #observers = new Map<Document, MutationObserver>();
+  /** How each watched document stops its observer and close listener. */
+  readonly #watching = new Map<Document, () => void>();
 
   /** Applies display settings to existing windows and those opened later. */
   configure(scale: number, textColor: boolean): void {
     this.#scale = scale;
     this.#textColor = textColor;
-    for (const doc of this.#observers.keys()) this.#configureDocument(doc);
+    for (const doc of this.#watching.keys()) this.#configureDocument(doc);
   }
 
   #configureDocument(doc: Document): void {
@@ -217,9 +218,9 @@ export class SymbolRenderer {
 
   /** Starts tagging symbols in `doc`, a window's document. */
   watch(doc: Document): void {
-    if (this.#observers.has(doc)) return;
+    if (this.#watching.has(doc)) return;
     const view = doc.defaultView;
-    if (view === null) return;
+    if (view === null || view.closed) return;
     this.#configureDocument(doc);
     const observer = new view.MutationObserver((records) => {
       for (const record of records) {
@@ -242,16 +243,23 @@ export class SymbolRenderer {
       // in place as an alias is edited, and which a name can come from.
       attributeFilter: ["src", "width", "height", "alt"],
     });
-    this.#observers.set(doc, observer);
+    const closed = (): void => {
+      this.unwatch(doc);
+    };
+    view.addEventListener("unload", closed, { once: true });
+    this.#watching.set(doc, () => {
+      observer.disconnect();
+      view.removeEventListener("unload", closed);
+    });
     tagWithin(doc.body, this.#vault);
   }
 
   /** Stops tagging symbols in `doc`, and untags those it has. */
   unwatch(doc: Document): void {
-    const observer = this.#observers.get(doc);
-    if (observer === undefined) return;
-    observer.disconnect();
-    this.#observers.delete(doc);
+    const stop = this.#watching.get(doc);
+    if (stop === undefined) return;
+    stop();
+    this.#watching.delete(doc);
     doc.documentElement.style.removeProperty("--inkline-scale");
     doc.documentElement.removeClass("inkline-stored-color");
     for (const image of Array.from(doc.getElementsByTagName("img"))) {
@@ -261,6 +269,6 @@ export class SymbolRenderer {
 
   /** Stops tagging in every window. */
   stop(): void {
-    for (const doc of [...this.#observers.keys()]) this.unwatch(doc);
+    for (const doc of [...this.#watching.keys()]) this.unwatch(doc);
   }
 }

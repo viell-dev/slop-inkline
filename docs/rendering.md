@@ -13,9 +13,11 @@ cards have; the editor's `.cm-content`; or an element with the class
 canvas's image node, stays a picture at its own size. Images from outside the
 vault, and other images, are left as they are.
 
-Inkline watches every window, popouts included, and tags images as Obsidian adds
-them or changes their address or size. Disabling Inkline removes every tag, and
-symbols show as the plain images they are.
+Inkline watches the main window, workspace popouts, and documents Obsidian
+renders Markdown into, including its temporary PDF export windows. It tags
+images as Obsidian adds them or changes their address or size. Closing a window
+stops its observer and removes its display settings. Disabling Inkline removes
+every tag, and symbols show as the plain images they are.
 
 ## What a tagged image gets
 

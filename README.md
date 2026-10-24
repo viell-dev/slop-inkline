@@ -13,20 +13,30 @@ work the same way.
 Each symbol is a normal PNG file in your vault, embedded with a normal image
 link, so your notes still show it if you disable or uninstall the plugin.
 
+![An invented inscription transcribed as inline symbols, beside the library showing the renamed sign and both notes that use it.](docs/screenshots/reading-dark.png)
+
+Paste a picture to trace, then turn each sign into ink with **Make ink** and
+**Next**, or draw over it yourself:
+
+![The drawing editor tracing the first sign of the synthetic inscription, with font guides and the Make ink button.](docs/screenshots/tracing.png)
+
 ## Documentation
 
-The [user guide](https://viell-dev.github.io/slop-inkline/) covers installing a
-development build, drawing and inserting symbols, saving and recovery, the
-keyboard, known limits, and reporting a problem. Until the first release, it
-describes the development version on `main`.
+The [user guide](https://viell-dev.github.io/slop-inkline/) covers installing
+with BRAT, drawing and inserting symbols, saving and recovery, the keyboard,
+known limits, and reporting a problem. It describes the latest release,
+prereleases included.
 
 ## Status
 
-Under development, with no release yet; the planned work is in the
-[issues](https://github.com/viell-dev/slop-inkline/issues). The first release
-needs Obsidian 1.13.4 or later on desktop. This repository is a rewrite of an
-earlier prototype; the rewrite changes the file format, the editor, and how
-symbols are rendered, and keeps the prototype's files readable.
+Version 0.1.0 is a prerelease for Obsidian 1.13.4 or later on desktop. Install
+with [BRAT](https://github.com/TfTHacker/obsidian42-brat), adding the repository
+`viell-dev/slop-inkline`; see the
+[installation guide](https://viell-dev.github.io/slop-inkline/install). The
+planned work is in the
+[issues](https://github.com/viell-dev/slop-inkline/issues). This repository is a
+rewrite of an earlier prototype; the rewrite changes the file format, the
+editor, and how symbols are rendered, and keeps the prototype's files readable.
 
 Inkline is written and maintained by AI agents, and no person reviews the code.
 Changes are accepted on their unit tests, on end-to-end tests that run the

@@ -1,12 +1,10 @@
 # Install
 
-::: warning No release yet
+::: info Prerelease
 
-Inkline has no release, so the only way to try it is to build it from its
-source, as below. Once it has releases, versions below 1.0.0 will be GitHub
-prereleases that you install with
-[BRAT](https://github.com/TfTHacker/obsidian42-brat), and 1.0.0 is planned to be
-submitted to Obsidian's community plugin directory.
+Inkline 0.1.0 is a GitHub prerelease. Install it with
+[BRAT](https://github.com/TfTHacker/obsidian42-brat); Inkline is not in
+Obsidian's community plugin directory.
 
 :::
 
@@ -14,15 +12,39 @@ submitted to Obsidian's community plugin directory.
 
 - Obsidian **1.13.4 or later** on Windows, macOS, or Linux. Inkline is for
   desktop only: Obsidian's mobile apps do not offer it.
-- To build it: [Git](https://git-scm.com/), and [Node.js](https://nodejs.org/)
-  24 or later with the npm it ships.
 - A vault to try it in. A new vault, or a copy of one, keeps your own notes out
-  of the way while you try an unreleased build.
+  of the way while you try a prerelease.
 
 Each change is tested in Obsidian 1.13.4, on the oldest installer that can run
 it, and in the latest public release of Obsidian.
 
+## Install with BRAT
+
+1. In **Settings → Community plugins**, turn community plugins on if needed,
+   browse for **BRAT**, install it, and enable it.
+2. In **Settings → BRAT**, choose **Add beta plugin**.
+3. Enter `viell-dev/slop-inkline` as the repository, wait for validation, and
+   select **Latest version**. You can select **0.1.0 (Prerelease)** instead to
+   stay on that specific version.
+4. Leave **Enable after installing the plugin** on and choose **Add plugin**.
+
+Inkline is ready: run **Inkline: Insert symbol** from the command palette in a
+note, as [Your first symbol](./start.md) shows. A GitHub token is not needed for
+this public repository.
+
+## Install the release files manually
+
+Download `main.js`, `manifest.json`, and `styles.css` from the
+[0.1.0 release](https://github.com/viell-dev/slop-inkline/releases/tag/0.1.0).
+Put all three in your vault's `.obsidian/plugins/inkline/` folder, then enable
+**Inkline** under **Settings → Community plugins**. A vault with a different
+configuration folder has its plugins there instead. `SHA256SUMS` records the
+files' SHA-256 checksums.
+
 ## Build and install a development build
+
+You need [Git](https://git-scm.com/) and [Node.js](https://nodejs.org/) 24 or
+later with the npm it ships. A development build can include unreleased changes.
 
 1. Get the source and build it:
 
@@ -50,15 +72,15 @@ note, as [Your first symbol](./start.md) shows.
 
 ## Update
 
-Get the newer source and build it again, copy the three files over the old ones,
-then turn Inkline off and on again under **Settings → Community plugins**, or
-restart Obsidian.
+With BRAT, run its **Plugins: Check for updates to all beta plugins and UPDATE**
+command, or enable **Auto-update plugins at startup** in its settings. A
+specific version selected during installation stays fixed until you change it in
+BRAT.
 
-```sh
-git pull
-npm ci
-npm run build
-```
+For a manual installation, download the newer release's three files and replace
+the old ones. For a development build, pull the newer source and run `npm ci`
+and `npm run build` again, then copy the three files. Turn Inkline off and on
+again under **Settings → Community plugins**, or restart Obsidian.
 
 A symbol saved by a newer version of Inkline than the one you have opens with a
 notice to update Inkline rather than in the editor, so that it is never saved

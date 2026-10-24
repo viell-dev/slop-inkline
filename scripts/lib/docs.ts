@@ -15,6 +15,8 @@ export interface DocsRequest {
   readonly refType: "branch" | "tag";
   /** The published releases' tags, newest first; drafts are not releases. */
   readonly releases: readonly string[];
+  /** The version in this run's manifest; 0.0.0 is the unreleased product. */
+  readonly version: string;
   /**
    * For a `docs-<version>` branch: whether it contains the release's tag,
    * and the files it changes since that tag.
@@ -75,6 +77,12 @@ export function docsSource(request: DocsRequest): DocsSource {
     request.refType === "branch" && request.ref === name;
   if (latest === undefined) {
     if (branch("main")) {
+      if (request.version !== "0.0.0") {
+        return refuse(
+          `The site for ${request.version} waits until that release is published.`,
+          false,
+        );
+      }
       return { deploy: true, ref: "main", version: "unreleased" };
     }
     return refuse(
