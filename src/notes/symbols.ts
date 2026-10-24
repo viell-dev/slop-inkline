@@ -338,6 +338,23 @@ function renamedPath(
 }
 
 /**
+ * Renames a symbol without writing its drawing, using the editor's name
+ * rules and Obsidian's link updates. A deleted or replaced file is refused.
+ * Throws on failure, so the caller can keep the requested name to retry.
+ */
+export async function renameSymbol(
+  app: App,
+  file: TFile,
+  typed: string,
+): Promise<void> {
+  if (!present(app, file) || !isInkPath(file.path)) {
+    throw new Error("The symbol is no longer in the vault.");
+  }
+  const path = renamedPath(app, file, chosen(typed, file));
+  if (path !== undefined) await app.fileManager.renameFile(file, path);
+}
+
+/**
  * Gives `file` the path `renamedPath` found, through Obsidian, so that the
  * links to it follow as its settings say; returns the file. The drawing is
  * written by then, so a rename that fails says so in a notice and leaves the

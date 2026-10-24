@@ -20,6 +20,7 @@ import { embedFor } from "../notes/embeds.ts";
 import { showLinkMenu } from "../notes/entries.ts";
 import { insertionAt } from "../notes/links.ts";
 import { symbolStem } from "../notes/names.ts";
+import { renameSymbol } from "../notes/symbols.ts";
 import { textClass } from "../render/symbols.ts";
 import {
   catalog,
@@ -61,6 +62,9 @@ export class SymbolLibraryView extends ItemView {
   /** The symbols whose notes are listed. */
   readonly #expanded = new Set<string>();
   #folderField: HTMLSelectElement | undefined;
+  #searchField: HTMLInputElement | undefined;
+  /** Keeps the entered name and caret intact while vault updates arrive. */
+  #renaming: HTMLInputElement | undefined;
   /** The folders the folder field offers, by the index of their option. */
   #folders: readonly string[] = [];
   #list: HTMLElement | undefined;
@@ -92,6 +96,7 @@ export class SymbolLibraryView extends ItemView {
   }
 
   override onOpen(): Promise<void> {
+    this.#shown = "";
     const root = this.contentEl;
     root.empty();
     root.addClass("inkline-library");
@@ -122,6 +127,7 @@ export class SymbolLibraryView extends ItemView {
       this.#render();
     });
     this.#folderField = folders;
+    this.#searchField = search;
     // Its pictures are text, as the renderer paints symbols in text.
     this.#list = root.createDiv({
       cls: ["inkline-library-list", textClass],
@@ -156,6 +162,10 @@ export class SymbolLibraryView extends ItemView {
 
   override onClose(): Promise<void> {
     this.#refresh.cancel();
+    this.#renaming = undefined;
+    this.#searchField = undefined;
+    this.#folderField = undefined;
+    this.#list = undefined;
     return Promise.resolve();
   }
 
@@ -184,6 +194,7 @@ export class SymbolLibraryView extends ItemView {
 
   /** Shows the library as the vault holds it now, keeping the focus. */
   #render(): void {
+    if (this.#renaming !== undefined) return;
     const list = this.#list;
     const field = this.#folderField;
     if (list === undefined || field === undefined) return;
@@ -302,6 +313,7 @@ export class SymbolLibraryView extends ItemView {
       this.#insert(file);
     });
     row.addEventListener("contextmenu", (event) => {
+      if (row.querySelector(".inkline-library-rename-form") !== null) return;
       event.preventDefault();
       showLinkMenu(this.app, file, this.leaf, event);
     });
@@ -313,6 +325,17 @@ export class SymbolLibraryView extends ItemView {
         "data-inkline-role": "uses",
         "aria-expanded": String(expanded && entry.notes.length > 0),
       },
+    });
+    const rename = row.createEl("button", {
+      cls: "inkline-library-rename",
+      text: "Rename",
+      attr: {
+        "data-inkline-role": "rename",
+        "aria-label": `Rename ${entry.name}`,
+      },
+    });
+    rename.addEventListener("click", () => {
+      this.#rename(row, entry, file);
     });
     if (entry.notes.length === 0) {
       uses.disabled = true;
@@ -346,6 +369,86 @@ export class SymbolLibraryView extends ItemView {
           });
       });
     }
+  }
+
+  /** Edits a name in its row, deferring refreshes until saved or cancelled. */
+  #rename(row: HTMLElement, entry: CatalogEntry, file: TFile): void {
+    if (this.#renaming !== undefined) {
+      this.#renaming.focus();
+      return;
+    }
+    row.empty();
+    const form = row.createEl("form", {
+      cls: "inkline-library-rename-form",
+      attr: { "aria-label": `Rename ${entry.name}` },
+    });
+    const input = form.createEl("input", {
+      type: "text",
+      value: entry.name,
+      attr: {
+        "aria-label": "Symbol name",
+        spellcheck: "false",
+        autocomplete: "off",
+      },
+    });
+    const save = form.createEl("button", { type: "submit", text: "Save" });
+    const cancel = form.createEl("button", { type: "button", text: "Cancel" });
+    const error = form.createDiv({
+      cls: "inkline-library-rename-error",
+      attr: { role: "alert" },
+    });
+    this.#renaming = input;
+    if (this.#searchField !== undefined) this.#searchField.disabled = true;
+    if (this.#folderField !== undefined) this.#folderField.disabled = true;
+    let saving = false;
+    const finish = () => {
+      if (this.#renaming !== input) return;
+      this.#renaming = undefined;
+      if (this.#searchField !== undefined) this.#searchField.disabled = false;
+      if (this.#folderField !== undefined) this.#folderField.disabled = false;
+      this.#shown = "";
+      this.#render();
+      const current = Array.from(
+        this.#list?.querySelectorAll("[data-inkline-path]") ?? [],
+      ).find((found) => found.getAttribute("data-inkline-path") === file.path);
+      const button = current?.querySelector('[data-inkline-role="rename"]');
+      if (button?.instanceOf(HTMLElement) === true) button.focus();
+      else this.#searchField?.focus();
+    };
+    cancel.addEventListener("click", finish);
+    input.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!saving) finish();
+    });
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (saving) return;
+      saving = true;
+      save.disabled = true;
+      cancel.disabled = true;
+      input.readOnly = true;
+      error.setText("");
+      void renameSymbol(this.app, file, input.value).then(
+        finish,
+        (failure: unknown) => {
+          if (this.#renaming !== input) return;
+          saving = false;
+          save.disabled = false;
+          cancel.disabled = false;
+          input.readOnly = false;
+          error.setText(
+            failure instanceof Error
+              ? failure.message
+              : "The symbol could not be renamed.",
+          );
+          input.focus();
+        },
+      );
+    });
+    input.focus();
+    input.select();
   }
 
   /**

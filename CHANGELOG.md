@@ -10,6 +10,12 @@ section is also its
 
 ### Added
 
+- **Rename** in the symbol library edits a symbol's name directly in its row,
+  using the same name rules as its drawing editor and Obsidian's link updates.
+  Enter or Save applies it; Esc or Cancel keeps the old name. Errors keep the
+  entered name for correction or retry. Renaming leaves the PNG bytes as they
+  are and refuses a file deleted and replaced while its name is being edited.
+
 - **Insert symbol**, a command that opens the editor for a new symbol. Draw it
   with a mouse, pen, or finger, and save it with Mod+Enter: Inkline creates the
   file in Obsidian's attachment location and inserts it where the cursor was.
