@@ -245,6 +245,14 @@ describe("A deciphering session", function () {
         (await textOf("Inscription.md")).includes("![[return.ink.png]]") &&
         (await textOf("Notebook.md")).includes("![[return.ink.png]]"),
     );
+    // Link text updates before the host's separate link index catches up.
+    // Wait for the renamed row's enabled control before sending pointer input.
+    await browser.waitUntil(
+      async () =>
+        (await row("return").$(".inkline-library-uses").getText()) ===
+        "2 notes",
+    );
+    await row("return").$(".inkline-library-uses").waitForClickable();
     await row("return").$(".inkline-library-uses").click();
     await browser.waitUntil(
       async () =>

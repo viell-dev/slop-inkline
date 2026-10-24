@@ -624,27 +624,81 @@ describe("Symbols in notes", function () {
     }
     // In Live Preview, the pointer is on each symbol, not on a resize handle
     // or the buttons Obsidian gives a wide image, which the photo keeps (#37).
-    const covers = await browser.execute((selector) => {
-      const shown = (image: Element, overlay: string) => {
-        const element = image.closest(".image-embed")?.querySelector(overlay);
-        return element?.instanceOf(HTMLElement) === true
-          ? getComputedStyle(element).display !== "none"
-          : null;
-      };
-      return Array.from(activeDocument.querySelectorAll(selector)).map(
-        (image) => {
-          const box = image.getBoundingClientRect();
-          const under = activeDocument.elementFromPoint(
-            box.left + box.width / 2,
-            box.top + box.height / 2,
-          );
-          return {
-            handle: shown(image, ".image-resize-corner"),
-            reached: under === image,
-          };
-        },
-      );
-    }, images("source"));
+    // Horizontal splits make some symbols start offscreen, as in a small window.
+    // Hit testing a point outside the viewport cannot establish an overlay.
+    await browser.executeObsidian(async ({ app, obsidian }) => {
+      const view = app.workspace.getActiveViewOfType(obsidian.MarkdownView);
+      if (view === null) throw new Error("no split fixture");
+      for (const path of ["Wide.md", "Render.md"]) {
+        const other = app.vault.getFileByPath(path);
+        if (other === null) throw new Error(`no ${path}`);
+        await app.workspace
+          .createLeafBySplit(view.leaf, "horizontal")
+          .openFile(other);
+      }
+      app.workspace.setActiveLeaf(view.leaf, { focus: true });
+    });
+    const lastStartsBelow = () =>
+      browser.execute((selector) => {
+        const pane = activeDocument.querySelector<HTMLElement>(
+          ".workspace-leaf.mod-active .cm-scroller",
+        );
+        if (pane === null) throw new Error("no scrolling editor");
+        pane.scrollTop = 0;
+        const last = Array.from(activeDocument.querySelectorAll(selector)).at(
+          -1,
+        );
+        if (last === undefined) throw new Error("no last symbol");
+        const box = last.getBoundingClientRect();
+        return box.top + box.height / 2 > pane.getBoundingClientRect().bottom;
+      }, images("source"));
+    const covers: { handle: boolean | null; reached: boolean }[] = [];
+    try {
+      await browser.waitUntil(lastStartsBelow, {
+        timeoutMsg:
+          "the split pane did not put the last symbol below its viewport",
+      });
+      for (let index = 0; index < named.length; index++) {
+        const image = browser.$$(images("source"))[index];
+        if (image === undefined) throw new Error(`no image ${String(index)}`);
+        await image.scrollIntoView({ block: "center" });
+        const cover = await browser.execute(
+          (selector, wanted) => {
+            const image = activeDocument.querySelectorAll(selector)[wanted];
+            if (image === undefined)
+              throw new Error("no image after scrolling");
+            const handle = image
+              .closest(".image-embed")
+              ?.querySelector(".image-resize-corner");
+            const box = image.getBoundingClientRect();
+            const under = activeDocument.elementFromPoint(
+              box.left + box.width / 2,
+              box.top + box.height / 2,
+            );
+            return {
+              handle:
+                handle?.instanceOf(HTMLElement) === true
+                  ? getComputedStyle(handle).display !== "none"
+                  : null,
+              reached: under === image,
+            };
+          },
+          images("source"),
+          index,
+        );
+        covers.push(cover);
+      }
+    } finally {
+      await browser.executeObsidian(({ app, obsidian }) => {
+        for (const leaf of app.workspace.getLeavesOfType("markdown")) {
+          if (
+            leaf.view instanceof obsidian.MarkdownView &&
+            ["Wide.md", "Render.md"].includes(leaf.view.file?.path ?? "")
+          )
+            leaf.detach();
+        }
+      });
+    }
     expect(covers.map((cover) => cover.handle)).toEqual([
       false,
       false,
