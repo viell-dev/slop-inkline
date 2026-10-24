@@ -2,6 +2,7 @@ import { MarkdownView, Notice, Platform, Plugin, TFile } from "obsidian";
 import { DraftStore } from "./editor/drafts.ts";
 import type { InkEditorModal } from "./editor/modal.ts";
 import { isInkPath } from "./format/ink-file.ts";
+import { libraryViewType, SymbolLibraryView } from "./library/view.ts";
 import { showSymbolMenu, symbolAt, symbolOfImage } from "./notes/entries.ts";
 import { defaultTrigger } from "./notes/search.ts";
 import { SymbolSearch, SymbolSuggest } from "./notes/suggest.ts";
@@ -63,6 +64,16 @@ export default class InklinePlugin extends Plugin {
         if (!view?.file || view.getMode() !== "source") return false;
         if (!checking) insertSymbol(this.#host, view);
         return true;
+      },
+    });
+    this.registerView(libraryViewType, (leaf) => new SymbolLibraryView(leaf));
+    this.addCommand({
+      id: "show-library",
+      name: "Show symbol library",
+      callback: () => {
+        void this.app.workspace.ensureSideLeaf(libraryViewType, "right", {
+          active: true,
+        });
       },
     });
     this.addCommand({

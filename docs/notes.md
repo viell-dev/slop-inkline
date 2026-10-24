@@ -70,6 +70,7 @@ It is offered:
 - in Reading view, embedded notes, and popout windows, in the menu Inkline shows
   on right-click on a symbol, where Obsidian would open its image viewer;
 - in the editor's menu on an embed's text;
+- in a symbol's menu in the library;
 - as the command **Inkline: Edit symbol**, with the cursor on a symbol's embed,
   outside code and front matter.
 
@@ -87,7 +88,25 @@ the name given there, even one Inkline itself would not give.
 
 ## Find where a symbol is used
 
-Every use of a symbol is a link to its file, so Obsidian finds them: open the
-symbol's file, and Obsidian's backlinks for it list the notes that use it. A
-library of your symbols in the sidebar, with how many notes use each, is
-planned.
+Run **Inkline: Show symbol library** to open **Symbols** in the right sidebar.
+It lists every symbol with its picture, name, folder, and how many notes link to
+it. Each note counts once, however often it uses the symbol. Symbols are ordered
+by folder, the top folder first, then by name, with numbers in order.
+
+- Type part of a name in **Filter by name**, in any letter case or script, and
+  choose a folder to narrow the list.
+- Click a symbol to insert it at the cursor in the note you were last in. The
+  cursor moves after it and the library keeps the focus, so successive clicks
+  write successive symbols. A selection's text is kept; a cursor inside a link
+  or embed puts the symbol just after it. Open a note in editing view first; a
+  note in Reading view cannot take an insertion.
+- Click **1 note**, or **2 notes**, to list the notes that use a symbol, then
+  click a note to open it. Ctrl-click, or Cmd-click on macOS, opens a new tab.
+- Right-click a symbol for its file's menu, including **Edit symbol**.
+
+The list follows files and their links as they change. Renaming directly in the
+list is planned; for now, rename in the symbol's editor or its file's menu.
+Obsidian's backlinks for the symbol file also list the notes that link to it.
+
+Keep the library in a sidebar to insert into a note. If its tab is dragged into
+the main area, return it to a sidebar before inserting.
