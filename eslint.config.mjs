@@ -10,6 +10,8 @@ export default defineConfig(
     ".obsidian-cache/",
     "coverage/",
     "dist/",
+    "docs/.vitepress/dist/",
+    "docs/.vitepress/cache/",
     "test-results/",
   ]),
   // The rules Obsidian's community directory review applies, to every file.
@@ -33,7 +35,7 @@ export default defineConfig(
   },
   // Development tools run in Node.js, not in Obsidian.
   {
-    files: ["scripts/**", "test/**", "*.{js,mjs}"],
+    files: ["scripts/**", "test/**", "docs/.vitepress/**", "*.{js,mjs}"],
     languageOptions: { globals: globals.node },
     rules: {
       // Wraps no-console to point at Obsidian's logging guideline.
@@ -42,5 +44,11 @@ export default defineConfig(
       "obsidianmd/no-nodejs-modules": "off",
       "import/no-nodejs-modules": "off",
     },
+  },
+  // Scripts call GitHub's API with Node.js's own fetch, as Obsidian's
+  // requestUrl does not exist there.
+  {
+    files: ["scripts/**"],
+    rules: { "no-restricted-globals": "off" },
   },
 );

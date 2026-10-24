@@ -1,0 +1,108 @@
+name: Pages
+
+# Builds the documentation site from this run's own commit and deploys it to
+# GitHub Pages, as docs/versions.md describes, then reads the deployed site
+# back and fails unless every page is that commit. A push to main deploys
+# while Inkline has no release. Run on request on another ref, with
+# `gh workflow run pages.yml --ref <ref>`, it deploys only the newest
+# release's tag, or a docs-<version> branch that holds that tag and changes
+# only the documentation. It never checks out another ref than its own, so
+# that no other code runs in it, and it can deploy Pages and nothing else:
+# no job may push, tag, or publish a release. CI builds the site for every
+# pull request, in `npm run check`.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    name: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      deploy: ${{ steps.source.outputs.deploy }}
+      version: ${{ steps.source.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: Choose whether to deploy
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name == 'workflow_dispatch' && 'dispatch' || 'push' }}
+          REF: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: node scripts/docs.ts resolve
+
+  build:
+    name: build
+    needs: resolve
+    if: needs.resolve.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - run: npm ci
+      - run: npm run docs:build
+        env:
+          DOCS_COMMIT: ${{ github.sha }}
+          DOCS_VERSION: ${{ needs.resolve.outputs.version }}
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: docs/.vitepress/dist
+
+  deploy:
+    name: deploy
+    # The github-pages environment takes deployments from main, docs-*
+    # branches, and version tags only; resolve chose this run's ref.
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy the site
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+  verify:
+    name: verify deployment
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: Read the deployed site back
+        env:
+          URL: ${{ needs.deploy.outputs.url }}
+          COMMIT: ${{ github.sha }}
+        run: node scripts/docs.ts verify "$URL" "$COMMIT"

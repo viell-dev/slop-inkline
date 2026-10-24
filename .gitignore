@@ -8,6 +8,8 @@ node_modules/
 /main.js
 /test-results/
 /coverage/
+/docs/.vitepress/dist/
+/docs/.vitepress/cache/
 *.map
 
 # Local tooling

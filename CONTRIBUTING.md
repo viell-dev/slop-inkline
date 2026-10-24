@@ -54,8 +54,9 @@ npm run check
 
 `check` runs ESLint with the rules of Obsidian's community directory review
 (`eslint-plugin-obsidianmd`) and typescript-eslint's strict type-checked rules,
-Prettier, the TypeScript checks of the plugin, the tests, and the scripts, the
-unit tests, and the build. `npm run format` applies Prettier. GitHub Actions
+Prettier, the TypeScript checks of the plugin, the tests, the scripts, and the
+documentation site's configuration, the unit tests, the build, and the
+documentation site's build. `npm run format` applies Prettier. GitHub Actions
 runs `check` on Linux and Windows, and a dependency audit on Linux.
 
 ## Tests
@@ -75,7 +76,11 @@ Build first, then run them in one of two ways:
 - `npm run test:e2e:docker` on any system with Docker, Windows included. It
   builds the image in `test/e2e/Dockerfile` from your checkout and runs the
   suite under a virtual display. The image never contains Obsidian; the first
-  run downloads it into the Docker volume `inkline-obsidian-cache`.
+  run downloads it into the Docker volume `inkline-obsidian-cache`. Runs from
+  several checkouts can go at once: each runs the image it built, under a tag
+  `inkline-e2e:run-…` of its own that it removes when it ends. A run killed
+  before it could, as by closing its terminal, leaves its tag behind, which
+  `docker image rm` takes away.
 - `npm run test:e2e` directly on a desktop with a display. On Linux without one,
   `sh test/e2e/session.sh` starts Xvfb and herbstluftwm first, as CI does, with
   a display for each of up to four Obsidian versions, so that one version's
@@ -86,7 +91,11 @@ Build first, then run them in one of two ways:
 `earliest/earliest latest/latest`, tests the manifest's `minAppVersion` on the
 oldest installer that can run it, which has the oldest Electron a user can have,
 and the latest public release. Downloads outside Docker go to
-`.obsidian-cache/`.
+`.obsidian-cache/`. Outside Docker, `E2E_PLUGIN_DIR` picks the folder of plugin
+files to install, `dist/` by default; the Release workflow names the release's
+own files, and `test/e2e/specs/package.e2e.ts` checks that the test vault holds
+exactly those. `npm run test:e2e:docker` always installs the build it makes in
+its image.
 
 Screenshots and logs go to `test-results/e2e/`, which CI uploads as an artifact;
 a failed test leaves a screenshot named after it. `E2E_OUTPUT_DIR` picks another
@@ -98,6 +107,22 @@ Test vaults in `test/e2e/vaults/` and every drawing a test uses are synthetic.
 CI runs the end-to-end tests on Linux for every pull request, and the Docker
 image weekly and on request.
 
+## Documentation
+
+The user guide and the reference are a [VitePress](https://vitepress.dev/) site
+in `docs/`, which the Pages workflow deploys to GitHub Pages. `npm run docs:dev`
+serves it with live reload, and `npm run docs:build`, part of `check`, builds it
+and fails on a link to a page that does not exist. `test/unit/docs.test.ts`
+checks that the site lists every command and every button's key as the code has
+them, gives the defaults and the Obsidian version the code and manifest have,
+links only to headings and repository files that exist, and gives example embeds
+that read as symbols.
+
+A change that users can see updates the guide in the same pull request. Until
+the first release the site describes `main`; after it, the newest release, as
+[docs/versions.md](docs/versions.md) describes, including how to correct a
+release's documentation without a new release.
+
 ## Pull requests
 
 Every change to `main` goes through a pull request with passing CI and is merged
@@ -108,13 +133,17 @@ approval from a second account.
 - Describe the problem and the resulting behavior, the decisions the change
   makes, the alternatives rejected, and the remaining limits. Link the issue.
 - Add a "Verification" section: the commands run, the inputs tried beyond the
-  tests, and the platforms and Obsidian versions checked.
+  tests, the platforms and Obsidian versions checked, and whether another agent
+  reviewed the change, at which commit, and why or why not.
 - Add tests, update every document the change makes stale, and add user-visible
   changes to `Unreleased` in [CHANGELOG.md](CHANGELOG.md).
 - Keep each pull request to one change.
 
-Pull requests that change what ships are also reviewed by another agent running
-a different model, as [AGENTS.md](AGENTS.md#review) describes.
+A maintaining agent reviews every pull request. Releases, changes that could
+lose or damage a drawing, and changes to the checks and release steps that guard
+them also get an independent review by another agent, as
+[AGENTS.md](AGENTS.md#review) describes. Labels are used as
+[AGENTS.md](AGENTS.md#labels) says.
 
 ## Dependencies
 

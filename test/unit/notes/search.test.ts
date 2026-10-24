@@ -147,6 +147,24 @@ describe("insideCodeBlock", () => {
     expect(insideCodeBlock(note("``` a`b\n;;a"), 1)).toBe(false);
   });
 
+  it("counts a fence's own lines, the info string included, as code", () => {
+    const lines = note("a\n```![[001.ink.png]]\ntext\n\nmore\n```\nb");
+    expect(insideCodeBlock(lines, 1)).toBe(true);
+    expect(insideCodeBlock(lines, 5)).toBe(true);
+    expect(insideCodeBlock(lines, 6)).toBe(false);
+    expect(insideCodeBlock(note("> ~~~ ;;a"), 0)).toBe(true);
+    // A run that cannot open a fence is text, on its own line too.
+    expect(insideCodeBlock(note("``` a`b"), 0)).toBe(false);
+    expect(insideCodeBlock(note("`` ;;a"), 0)).toBe(false);
+  });
+
+  it("reads lines that end in a carriage return", () => {
+    const lines = note("a\r\n```\r\n;;x\r\n```\r\n;;y");
+    expect(insideCodeBlock(lines, 2)).toBe(true);
+    expect(insideCodeBlock(lines, 4)).toBe(false);
+    expect(insideCodeBlock(note("---\r\nt: ;;a\r\n---\r\n;;b"), 3)).toBe(false);
+  });
+
   it("knows the front matter, only when it opens the note and closes", () => {
     const lines = note("---\ntags: ;;a\n---\n;;b");
     expect(insideCodeBlock(lines, 1)).toBe(true);
