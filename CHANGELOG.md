@@ -15,6 +15,12 @@ section is also its
   Enter or Save applies it; Esc or Cancel keeps the old name. Errors keep the
   entered name for correction or retry. Renaming leaves the PNG bytes as they
   are and refuses a file deleted and replaced while its name is being edited.
+- **Settings → Inkline:** symbol size from 50% to 200% of the usual line height,
+  text colour or stored grey, the insert trigger, the starting brush, pen
+  pressure, and guides. Size and colour update open notes and popout windows
+  immediately, while explicit embed sizes stay as written. Preferences survive
+  reloads; read and write failures show a notice, and rapid changes are stored
+  in order.
 
 - **Insert symbol**, a command that opens the editor for a new symbol. Draw it
   with a mouse, pen, or finger, and save it with Mod+Enter: Inkline creates the

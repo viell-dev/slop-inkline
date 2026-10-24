@@ -34,6 +34,7 @@ import {
 } from "./insertion.ts";
 import { embedFor } from "./embeds.ts";
 import { insertionAt } from "./links.ts";
+import type { Settings } from "../settings.ts";
 import {
   chooseRename,
   nextNumberName,
@@ -44,6 +45,8 @@ import {
 /** What the plugin lends the editors it opens. */
 export interface EditorHost {
   readonly app: App;
+  /** Inkline's settings as they are now. */
+  readonly settings: () => Settings;
   /** Tracks open editors, so that unloading can close them. */
   readonly lifecycle: NonNullable<EditorOptions["lifecycle"]>;
   /** The vault's drafts. */
@@ -483,6 +486,19 @@ export function insertSymbol(host: EditorHost, view: MarkdownView): void {
 }
 
 /**
+ * The tools an editor starts with when it follows no other: the pen, with
+ * the brush and guides the settings choose, and no grid.
+ */
+function startingTools(settings: Settings): EditorTools {
+  return {
+    tool: "pen",
+    sizeIndex: settings.brushSize,
+    grid: false,
+    guides: settings.guides,
+  };
+}
+
+/**
  * Opens the editor for a new symbol whose embed goes to `target`, as
  * {@link insertSymbol} describes, starting with `tools` when it follows
  * another. Its Next opens one more, whose embed follows this one's.
@@ -516,7 +532,8 @@ function newSymbol(
     title: "New symbol",
     document: emptyDocument,
     center: visibleWidth / 2,
-    ...(tools === undefined ? {} : { tools }),
+    tools: tools ?? startingTools(host.settings()),
+    pressure: () => host.settings().pressure,
     next: (chosen) => {
       if (after === undefined || !host.alive()) {
         // No editor takes the picture over.
@@ -766,6 +783,8 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
   let symbol = file;
   new InkEditorModal(app, {
     title: "Symbol",
+    tools: startingTools(host.settings()),
+    pressure: () => host.settings().pressure,
     name: symbolStem(file.name) ?? file.basename,
     document: opened.document,
     ...(opened.base === undefined ? {} : { base: opened.base }),

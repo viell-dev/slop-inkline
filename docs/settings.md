@@ -1,31 +1,34 @@
 # Settings
 
-Inkline has no settings tab yet. Until it has, it works with these fixed
-choices:
+Open **Settings → Inkline** to change these choices:
 
-| What                               | Now                                        |
-| ---------------------------------- | ------------------------------------------ |
-| What starts typing a symbol's name | `;;`                                       |
-| The brush a new editor starts with | M, the second of four sizes                |
-| Pen pressure                       | On: a pen's strokes follow its pressure    |
-| Guides in a new editor             | Shown                                      |
-| A symbol's height in text          | 1.5 times the text's size, the line height |
-| A symbol's colour in text          | The colour of the text around it           |
-| Where new symbols go               | Obsidian's location for new attachments    |
+| Setting        | Default                     | What it changes                                                                           |
+| -------------- | --------------------------- | ----------------------------------------------------------------------------------------- |
+| Symbol size    | 100%                        | Height relative to the usual line height, from 50% to 200%, in steps of 5%.               |
+| Text colour    | On                          | Symbols take the colour of the surrounding text. Off, they show their stored grey pixels. |
+| Insert trigger | `;;`                        | These characters and a few letters of a name list symbols to insert.                      |
+| Brush size     | M, the second of four sizes | The brush an editor starts with.                                                          |
+| Pen pressure   | On                          | A pen's new strokes follow its pressure. Off, their thickness follows the brush alone.    |
+| Guides         | Shown                       | Whether an editor starts with the text's lines shown. G still toggles them there.         |
 
-The editor for the next symbol, after **Next**, starts with the tools the one
-before it had.
+Size and colour apply at once to existing symbols in open notes, including
+Reading view, Live Preview, and popout windows. At 100%, symbols are 1.5 times
+the text's size, the usual line height. A size written in an embed, as in
+`![[tower.ink.png|24]]`, stays as written. These settings change how symbols
+show, leaving the PNG files and their strokes as they are.
 
-## Planned
+The trigger changes at once. It has one to eight characters, no whitespace or
+`[`, `]`, or `|`, and at least one character that is not a letter or digit. An
+invalid trigger is refused, keeping the last valid one.
 
-A settings tab in **Settings → Inkline** is planned, with:
+Brush size and guides apply when an editor opens. **Next** keeps the previous
+editor's tools instead. Pen pressure applies when each stroke starts; changing
+it leaves existing strokes as drawn. A mouse's strokes have no pen pressure.
 
-- the characters that start typing a symbol's name, in place of `;;`;
-- the brush a new symbol's editor starts with;
-- whether strokes follow a pen's pressure;
-- whether a new editor shows its guides;
-- a symbol's size relative to the text around it;
-- whether a symbol takes the text's colour or keeps the grey it is stored in.
+Settings are kept in the vault's Inkline plugin data and survive reloading
+Obsidian. Unreadable or invalid preferences use defaults. If a write fails, a
+notice says the change applies for the session; the next successful change
+stores the current choices together.
 
-Where new symbols go will stay Obsidian's own setting, under **Settings → Files
-and links**.
+Where new symbols go is Obsidian's own setting, under **Settings → Files and
+links → Default location for new attachments**.

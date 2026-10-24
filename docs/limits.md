@@ -7,8 +7,6 @@ The [issues](https://github.com/viell-dev/slop-inkline/issues) track each one.
 
 - **No release.** Inkline is under development; see [Install](./install.md).
 - **Desktop only.** Obsidian's mobile apps do not offer Inkline.
-- **No settings tab.** Its choices are fixed for now; [Settings](./settings.md)
-  lists them, and what is planned.
 - **Large libraries** show every matching symbol at once, without paging. Filter
   by name or folder to narrow the list.
 - **Library insertion needs a sidebar.** If the library's tab is dragged into

@@ -119,6 +119,15 @@ saving it again never changes it.
   replaced file is refused, and repeated submission starts only one rename
   ([library-renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-renaming.e2e.ts)).
 
+### Preferences are kept and apply where they are shown
+
+- Validated defaults and saved values, including invalid data
+  ([settings.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/settings.test.ts)).
+- The real settings tab, immediate trigger changes, drawing defaults after
+  reload, stored-grey pixels and explicit sizes, new and existing popouts,
+  ordered writes, write failures followed by recovery, and malformed settings
+  ([settings.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/settings.e2e.ts)).
+
 ### The keyboard reaches everything but drawing
 
 - Each control is labelled, its tooltip shows its key, toggles say whether they
