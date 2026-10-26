@@ -8,6 +8,8 @@ section is also its
 
 ## Unreleased
 
+- Refresh existing symbol instances after their file changes, without reopening
+  the note, in both text-colour and stored-grey display modes.
 - Keep the editor's close control clear of the symbol name in both themes.
 - Show a circle for the pen or eraser's nominal size, and remember their sizes
   separately while drawing and through Next. A pen's eraser end uses the Eraser

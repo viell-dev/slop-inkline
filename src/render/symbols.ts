@@ -201,6 +201,26 @@ export class SymbolRenderer {
   /** How each watched document stops its observer and close listener. */
   readonly #watching = new Map<Document, () => void>();
 
+  /** Reloads instances of one changed file in every watched document. */
+  refresh(src: string): void {
+    if (!isSymbolUrl(src, this.#vault)) return;
+    const address = src.split(/[?#]/, 1)[0];
+    const refreshed = new URL(src);
+    // A distinct request even if two writes share a filesystem timestamp.
+    refreshed.searchParams.set("inkline", crypto.randomUUID());
+    for (const doc of this.#watching.keys()) {
+      for (const image of Array.from(doc.getElementsByTagName("img"))) {
+        if (
+          image.hasClass(symbolClass) &&
+          image.src.split(/[?#]/, 1)[0] === address
+        ) {
+          image.src = refreshed.href;
+          tagImage(image, this.#vault);
+        }
+      }
+    }
+  }
+
   /** Applies display settings to existing windows and those opened later. */
   configure(scale: number, textColor: boolean): void {
     this.#scale = scale;
