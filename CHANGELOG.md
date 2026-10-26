@@ -8,6 +8,24 @@ section is also its
 
 ## Unreleased
 
+## 0.1.1-rc.3 - 2026-10-26
+
+This candidate has a focused
+[brush-cursor test request](https://github.com/viell-dev/slop-inkline/issues/90).
+The previous candidate's practical pass is complete.
+[Grid alignment](https://github.com/viell-dev/slop-inkline/issues/84),
+[save choices](https://github.com/viell-dev/slop-inkline/issues/85),
+[attachment folders](https://github.com/viell-dev/slop-inkline/issues/86),
+[editing zoom](https://github.com/viell-dev/slop-inkline/issues/87) and
+[pen weights](https://github.com/viell-dev/slop-inkline/issues/88) remain
+tracked for later candidates.
+
+### Fixed
+
+- Use one brush ring with a centre dot while drawing, removing the competing
+  system crosshair. Restore the ordinary cursor when the brush indicator is
+  hidden, and keep the grab cursor when moving a tracing picture.
+
 ## 0.1.1-rc.2 - 2026-10-26
 
 ### Added

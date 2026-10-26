@@ -102,6 +102,11 @@ saving it again never changes it.
   ([editor-feedback.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor-feedback.e2e.ts)).
 - Help explains the drawing tools and guides, closes with Escape, and restores
   focus to drawing without changing its strokes (the same file).
+- The brush replaces the native crosshair only while visible, with a centre dot
+  and fractional-coordinate checks at two editor widths in both themes. Leaving,
+  cancelling, and Help restore the fallback cursor; the indicator never enters
+  saved strokes (the same file). These host checks do not establish subjective
+  pointer comfort or physical pen behaviour.
 
 ### Drawing is never lost
 

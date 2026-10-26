@@ -68,6 +68,19 @@
   pointer-events: none;
 }
 
+.inkline-brush-cursor::after {
+  content: "";
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background-color: var(--text-normal);
+  box-shadow: 0 0 0 1px var(--background-primary);
+}
+
 .inkline-surface {
   --inkline-guide: var(--text-faint);
   display: block;
@@ -82,6 +95,11 @@
   outline-offset: -2px;
   /* The surface handles pens and touch itself, without scrolling or zooming. */
   touch-action: none;
+}
+
+/* Hide the native crosshair only while its replacement is visible. */
+.inkline-surface.has-brush-cursor {
+  cursor: none;
 }
 
 /* Dragging moves the picture to trace over, rather than drawing. */
