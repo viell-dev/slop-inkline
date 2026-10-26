@@ -20,6 +20,8 @@ section is also its
 
 ### Fixed
 
+- Refresh existing symbol instances after their file changes, without reopening
+  the note, in both text-colour and stored-grey display modes.
 - Keep the editor's close control clear of the symbol name in both themes.
 - Remove the drawing area's redundant hover tooltip, keeping its accessible
   name.

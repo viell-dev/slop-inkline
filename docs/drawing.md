@@ -114,6 +114,10 @@ back.
 - **Next** (Mod+Shift+Enter), for a new symbol, saves and inserts it, then opens
   a blank editor for the symbol that follows it.
 
+Saving an edited symbol updates its existing placements in open notes and popout
+windows, in both text-colour and stored-grey modes. Notes keep their text and
+any explicit image sizes; they do not need to be reopened.
+
 A save that fails keeps the editor open with the drawing and says why. Closing
 with unsaved changes, by Esc, the close button, or a click outside, asks whether
 to save, discard them, or keep drawing; [Saving and recovery](./recovery.md)
