@@ -65,6 +65,15 @@ export default class InklinePlugin extends Plugin {
     );
     this.#loaded = true;
     this.#renderer.watch(document);
+    // Obsidian can leave existing embeds pointing at the old resource URL
+    // after an image changes. Refresh both their pixels and their ink mask.
+    this.registerEvent(
+      this.app.vault.on("modify", (file) => {
+        if (file instanceof TFile && isInkPath(file.path)) {
+          this.#renderer.refresh(this.app.vault.getResourcePath(file));
+        }
+      }),
+    );
     // Markdown also renders in temporary documents, such as the hidden
     // PDF export window, which is not a workspace popout.
     this.registerMarkdownPostProcessor((element) => {

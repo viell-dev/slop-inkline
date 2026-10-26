@@ -19,6 +19,11 @@ images as Obsidian adds them or changes their address or size. Closing a window
 stops its observer and removes its display settings. Disabling Inkline removes
 every tag, and symbols show as the plain images they are.
 
+**Unreleased:** when a symbol file changes, Inkline refreshes its tagged images
+in every watched document. The image source and mask use a fresh resource URL,
+including a cache key so that consecutive saves with the same file timestamp
+still reload. Note text and explicit image sizes stay unchanged.
+
 ## What a tagged image gets
 
 - The class `inkline-symbol`.

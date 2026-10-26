@@ -8,6 +8,9 @@ section is also its
 
 ## Unreleased
 
+- Refresh existing symbol instances after their file changes, without reopening
+  the note, in both text-colour and stored-grey display modes.
+
 ## 0.1.1-rc.1 - 2026-10-25
 
 ### Added
