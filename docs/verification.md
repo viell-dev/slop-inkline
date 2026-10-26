@@ -97,11 +97,11 @@ saving it again never changes it.
 
 - The brush circle follows the nominal tool size and drawing-area scale; mouse,
   pen and touch ownership are checked. Pen and Eraser keep separate sizes,
-  including through **Next**. The close button clears the name field, and the
-  drawing area's accessible name produces no hover tooltip
+  including through **Next**. The close button stays clear of the name field,
+  and the drawing area's accessible name produces no hover tooltip
   ([editor-feedback.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor-feedback.e2e.ts)).
-- Help explains the drawing tools and guides, blocks editor input while open,
-  and restores focus to drawing on close (the same file).
+- Help explains the drawing tools and guides, closes with Escape, and restores
+  focus to drawing without changing its strokes (the same file).
 
 ### Drawing is never lost
 
