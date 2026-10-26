@@ -145,7 +145,16 @@ export class DrawingSession {
    */
   #anchor: { point: InputPoint; length: number } | undefined;
   tool: Tool = "pen";
-  sizeIndex = 1;
+  /** Each tool keeps its own selected size for the life of the session. */
+  readonly sizes: Record<Tool, number> = { pen: 1, eraser: 1 };
+
+  get sizeIndex(): number {
+    return this.sizes[this.tool];
+  }
+
+  set sizeIndex(index: number) {
+    this.sizes[this.tool] = index;
+  }
   /** Whether strokes start and end on the grid. */
   snap = false;
 
@@ -180,7 +189,12 @@ export class DrawingSession {
 
   /** The stroke size for the current brush, in units. */
   get size(): number {
-    const brush = brushSizes[this.sizeIndex] ?? brushSizes[1];
+    return this.sizeFor(this.tool);
+  }
+
+  /** The nominal diameter for a tool, including a pen's eraser end. */
+  sizeFor(tool: Tool): number {
+    const brush = brushSizes[this.sizes[tool]] ?? brushSizes[1];
     return toUnits((brush?.em ?? 1 / 8) * lineBox.pxPerEm);
   }
 
@@ -204,6 +218,11 @@ export class DrawingSession {
     return this.#active !== undefined;
   }
 
+  /** The captured brush diameter, without copying the active stroke's points. */
+  get activeSize(): number | undefined {
+    return this.#active?.size;
+  }
+
   /** The stroke being drawn, as it would be committed now. */
   get activeStroke(): Stroke | undefined {
     const active = this.#active;
@@ -224,7 +243,7 @@ export class DrawingSession {
   begin(point: InputPoint, tool: Tool = this.tool): void {
     this.#active = {
       tool,
-      size: this.size,
+      size: this.sizeFor(tool),
       pressure: point.pressure !== undefined,
       points: [],
     };

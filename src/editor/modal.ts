@@ -12,7 +12,12 @@ import {
   type TAbstractFile,
 } from "obsidian";
 import { inkExtension, type CarriedChunk } from "../format/ink-file.ts";
-import type { BaseLayer, InkRecord, Tool } from "../format/record.ts";
+import {
+  unitsPerPixel,
+  type BaseLayer,
+  type InkRecord,
+  type Tool,
+} from "../format/record.ts";
 import {
   baseFromInk,
   drawableBase,
@@ -94,6 +99,8 @@ export interface TracedPicture {
 export interface EditorTools {
   readonly tool: Tool;
   readonly sizeIndex: number;
+  /** Both tools' sizes when continuing with Next. */
+  readonly sizes?: Readonly<Record<Tool, number>>;
   readonly grid: boolean;
   readonly guides: boolean;
   /**
@@ -331,6 +338,10 @@ export class InkEditorModal extends Modal {
   /** The choice of a symbol to copy while it is open, to close with this. */
   #choosing: AbortController | undefined;
   #view: InkView | undefined;
+  #cursor: HTMLElement | undefined;
+  #hover:
+    | { pointerId: number; clientX: number; clientY: number; eraser: boolean }
+    | undefined;
   #saving: Promise<boolean> | undefined;
   #closing = false;
   /** Set when disposed: nothing more is saved or written as a draft. */
@@ -409,7 +420,13 @@ export class InkEditorModal extends Modal {
     if (options.tools !== undefined) {
       const { tool, sizeIndex, grid, guides } = options.tools;
       this.#session.tool = tool;
-      this.#session.sizeIndex = sizeIndex;
+      Object.assign(
+        this.#session.sizes,
+        options.tools.sizes ?? {
+          pen: sizeIndex,
+          eraser: sizeIndex,
+        },
+      );
       this.#session.snap = grid;
       this.#guidesShown = guides;
     }
@@ -516,6 +533,9 @@ export class InkEditorModal extends Modal {
         "save and draw the next one",
       );
     }
+    this.#addButton(toolbar, "help", "Help", undefined, () => {
+      this.#help();
+    });
     // A picture to trace over, and what moves or removes it.
     const pictureBar = this.contentEl.createDiv({ cls: "inkline-picture" });
     this.#addButton(
@@ -586,14 +606,27 @@ export class InkEditorModal extends Modal {
     this.#pasteDocument = this.modalEl.doc;
     this.#pasteDocument.addEventListener("paste", this.#paste);
 
-    const canvas = this.contentEl.createEl("canvas", {
+    const drawing = this.contentEl.createDiv({ cls: "inkline-drawing" });
+    const labelId = `inkline-drawing-${this.#draftId}`;
+    drawing.createSpan({
+      text: "Drawing area",
+      attr: { id: labelId, hidden: "" },
+    });
+    const canvas = drawing.createEl("canvas", {
       cls: "inkline-surface",
       attr: {
         tabindex: "0",
         role: "img",
-        "aria-label": "Drawing area",
+        // Obsidian turns aria-label into a tooltip. A separate label keeps
+        // the accessible name without covering the drawing on hover.
+        "aria-labelledby": labelId,
       },
     });
+    this.#cursor = drawing.createDiv({
+      cls: "inkline-brush-cursor",
+      attr: { "aria-hidden": "true" },
+    });
+    this.#cursor.hide();
     // A line in the vault's text font and size, with the symbol at its size
     // there. Its font gives the guides.
     const line = this.contentEl.createDiv({
@@ -1013,6 +1046,27 @@ export class InkEditorModal extends Modal {
 
   #listen(canvas: HTMLCanvasElement): void {
     let pressure = true;
+    const hover = (event: PointerEvent): void => {
+      if (this.#gate.active !== undefined && !this.#gate.owns(event)) return;
+      if (event.pointerType === "touch") return;
+      this.#hover = {
+        pointerId: event.pointerId,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        eraser:
+          event.pointerType === "pen" &&
+          (event.button === 5 || (event.buttons & 32) !== 0),
+      };
+      this.#updateCursor();
+    };
+    const hideCursor = (event: PointerEvent): void => {
+      if (event.pointerId !== this.#hover?.pointerId) return;
+      this.#hover = undefined;
+      this.#updateCursor();
+    };
+    canvas.addEventListener("pointerenter", hover);
+    canvas.addEventListener("pointerleave", hideCursor);
+    canvas.addEventListener("pointercancel", hideCursor);
     const point = (event: PointerEvent): InputPoint => {
       const { x, y } = this.#view?.toDocument(event.clientX, event.clientY) ?? {
         x: 0,
@@ -1042,6 +1096,7 @@ export class InkEditorModal extends Modal {
     canvas.addEventListener("pointerdown", (event) => {
       const tool = this.#gate.down(event);
       if (tool === undefined) return;
+      if (event.pointerType === "touch") this.#hover = undefined;
       event.preventDefault();
       // Drawing takes the focus, which the default action would have, so
       // that the shortcuts are the editor's again after typing elsewhere.
@@ -1058,9 +1113,11 @@ export class InkEditorModal extends Modal {
         point(event),
         tool === "brush" ? this.#session.tool : tool,
       );
+      hover(event);
       this.#render();
     });
     canvas.addEventListener("pointermove", (event) => {
+      hover(event);
       if (!this.#gate.owns(event)) return;
       // Releasing the drawing button while another is held is a move.
       if (!this.#gate.holds(event)) {
@@ -1594,6 +1651,7 @@ export class InkEditorModal extends Modal {
       view.reference = this.#picture;
       const { document, base } = this.#shown(view);
       view.render(document, base, this.#session.activeStroke);
+      this.#updateCursor();
       const line = this.#previewLine;
       if (this.#preview !== undefined && line !== undefined) {
         view.drawPreview(
@@ -1707,6 +1765,87 @@ export class InkEditorModal extends Modal {
     this.#buttons.get("redo")?.setDisabled(!this.#session.canRedo);
     this.#buttons.get("save")?.setDisabled(this.#saving !== undefined);
     this.#buttons.get("next")?.setDisabled(this.#saving !== undefined);
+    this.#updateCursor();
+  }
+
+  /** A screen overlay only: never part of the preview or saved ink. */
+  #updateCursor(): void {
+    const cursor = this.#cursor;
+    const view = this.#view;
+    const hover = this.#hover;
+    if (cursor === undefined) return;
+    if (view === undefined || hover === undefined || this.#moving) {
+      cursor.hide();
+      return;
+    }
+    const canvas = view.canvas;
+    const rect = canvas.getBoundingClientRect();
+    const x = hover.clientX - rect.left;
+    const y = hover.clientY - rect.top;
+    const inside =
+      x >= canvas.clientLeft &&
+      y >= canvas.clientTop &&
+      x < canvas.clientLeft + canvas.clientWidth &&
+      y < canvas.clientTop + canvas.clientHeight;
+    cursor.toggle(inside);
+    if (!inside) return;
+    const tool = hover.eraser ? "eraser" : this.#session.tool;
+    const size = this.#session.activeSize ?? this.#session.sizeFor(tool);
+    const diameter =
+      ((size / unitsPerPixel) * canvas.clientWidth) /
+      (view.visible.right - view.visible.left);
+    cursor.style.width = `${String(diameter)}px`;
+    cursor.style.height = `${String(diameter)}px`;
+    cursor.style.left = `${String(x)}px`;
+    cursor.style.top = `${String(y)}px`;
+  }
+
+  /** A short guide available without leaving a drawing. */
+  #help(): void {
+    this.#hover = undefined;
+    this.#updateCursor();
+    const help = new Modal(this.app);
+    help.setTitle("Drawing quick start");
+    help.modalEl.addClass("inkline-help");
+    const content = help.contentEl;
+    content.createEl("p", {
+      text: "Draw a symbol once, then reuse it in your notes. The preview below the drawing shows its size beside text.",
+    });
+    const steps = content.createEl("ul");
+    for (const text of [
+      "Pen (P) adds ink; Eraser (E) removes it. Sizes S–XL (1–4) are remembered separately until you close the editor, including through Next. For a mouse or pen, the circle shows nominal diameter; pressure can change stroke width. A pen's eraser end uses the Eraser size on contact; hovering shows the selected tool's size.",
+      "Hold Shift while drawing for a straight segment. Grid (Shift+G) shows dots and snaps stroke ends to them; it does not change the font guides.",
+      "Undo (Mod+Z) and Redo (Mod+Shift+Z) step through changes. Clear removes the drawing and can be undone.",
+      "Paste or drop a picture to trace. Move positions it; the wheel scales it. Make ink converts the visible picture into editable ink. The tracing picture itself is not saved.",
+      "Name the symbol, then Save (Mod+Enter). For a new symbol, Next (Mod+Shift+Enter) saves it and starts another. Mod is Ctrl on Windows/Linux, Cmd on macOS.",
+    ])
+      steps.createEl("li", { text });
+    content.createEl("h2", { text: "What the guides mean" });
+    content.createEl("p", {
+      text: "The horizontal guides follow your note font, from top to bottom; a font may put some at the same height or outside the drawing area. Toggle them together with the guide button or its shortcut.",
+    });
+    const guides = content.createEl("ul");
+    for (const text of [
+      "Ascender: the font's upper extent.",
+      "Cap height: the top of a capital such as H.",
+      "x-height: the top of a lowercase letter such as x.",
+      "Baseline (solid): where letters sit.",
+      "Descender: the font's lower extent, for parts below the baseline.",
+      "Vertical dashed lines: the saved image's left and right edges, including spacing. They follow the ink as you draw.",
+    ])
+      guides.createEl("li", { text });
+    help.onClose = () => {
+      this.#questions.delete(help);
+    };
+    // Obsidian restores the opener's focus after onClose; resume drawing
+    // after that, so the next shortcut cannot activate the Help button.
+    const close = help.close.bind(help);
+    help.close = () => {
+      close();
+      if (!this.#closing && !this.#retired) this.#view?.canvas.focus();
+    };
+    this.#questions.add(help);
+    help.open();
   }
 
   #announce(text: string): void {
@@ -2147,6 +2286,7 @@ export class InkEditorModal extends Modal {
       next({
         tool,
         sizeIndex,
+        sizes: { ...this.#session.sizes },
         grid: snap,
         guides: this.#guidesShown,
         ...(picture === undefined ? {} : { picture }),
