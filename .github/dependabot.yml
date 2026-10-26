@@ -25,6 +25,11 @@ updates:
         versions: [">=10.0.0"]
       - dependency-name: webdriverio
         versions: [">=10.0.0"]
+      # Security PR #68 pulled in WebdriverIO 10 to update Mocha's serializer.
+      # Keep 6.x backports eligible. Remove with the WebdriverIO 10 adoption
+      # in #9, or when a supported Mocha/WebdriverIO 9 path uses version 7.
+      - dependency-name: serialize-javascript
+        versions: [">=7.0.0"]
       # The type definitions follow the lowest Node.js version the tools
       # support, 24.
       - dependency-name: "@types/node"

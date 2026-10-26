@@ -2,20 +2,29 @@
 
 Notable changes to Inkline, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version numbers are
-plain dotted numbers, and versions below 1.0.0 are prereleases. Each release's
+SemVer versions, with an `-rc.N` suffix for release candidates. Each release's
 section is also its
 [GitHub release](https://github.com/viell-dev/slop-inkline/releases)'s notes.
 
 ## Unreleased
 
+## 0.1.1-rc.2 - 2026-10-26
+
+### Added
+
+- A circle showing the mouse or pen brush's nominal size, scaled with the
+  drawing area. Pen pressure can change the stroke width.
+- A Help button with a built-in quick start and explanations of the guides.
+- Separate Pen and Eraser sizes while the editor is open and through Next. Each
+  newly opened editor starts both at the configured default size.
+
+### Fixed
+
 - Refresh existing symbol instances after their file changes, without reopening
   the note, in both text-colour and stored-grey display modes.
 - Keep the editor's close control clear of the symbol name in both themes.
-- Show a circle for the pen or eraser's nominal size, and remember their sizes
-  separately while drawing and through Next. A pen's eraser end uses the Eraser
-  size.
 - Remove the drawing area's redundant hover tooltip, keeping its accessible
-  name, and add Help with a quick start and guide explanations.
+  name.
 
 ## 0.1.1-rc.1 - 2026-10-25
 

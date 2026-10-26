@@ -75,7 +75,7 @@ export class InklineSettingTab extends PluginSettingTab {
       },
       {
         name: "Brush size",
-        desc: "The brush a new symbol's editor starts with. Next keeps the one chosen.",
+        desc: "The starting size for both Pen and Eraser. Next keeps each tool's chosen size.",
         control: {
           type: "dropdown",
           key: "brushSize",

@@ -61,16 +61,15 @@ steps, and + and − scale it. Copy from and Next are only in the editor for a n
 symbol. Make ink's threshold is a slider, which its arrow keys move; **Light
 ink**, **Apply**, and **Cancel** are buttons, as is **Remove picture**.
 
-**Unreleased:** the **Help** button opens a quick start and guide explanations.
-Esc closes Help and returns focus to the drawing area.
+The **Help** button opens a quick start and guide explanations. Esc closes Help
+and returns focus to the drawing area.
 
 ## Accessibility
 
 - Every control has a label which screen readers read. Toolbar tooltips also
   include their shortcuts. The pen, the eraser, the brush sizes, the guides, the
   grid, Move, Make ink, and Light ink say whether they are on.
-- **Unreleased:** the drawing area keeps its accessible name without a hover
-  tooltip.
+- The drawing area keeps its accessible name without a hover tooltip.
 - The editor's status line, such as "Saving…", "Saved", or "Not saved" and why,
   is announced as it changes.
 - The editor puts the focus on the drawing area when it opens, and drawing puts
