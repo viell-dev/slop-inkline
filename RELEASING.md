@@ -166,6 +166,24 @@ Obsidian hosts:
    installation/update results, and evidence limits in the release PR. Never
    invent or modify a published release to simulate an upgrade.
 
+The repeatable update check is `test/e2e/manual/update.e2e.ts`, outside the
+ordinary suite because it needs two actual release artifacts. After verifying
+the downloaded checksums, extract the previous ZIP. In the Linux test
+environment, set `E2E_PLUGIN_DIR` to its extracted `inkline/` directory,
+`E2E_PREVIOUS_VERSION` to its version and `E2E_UPDATE_ZIP` to the new downloaded
+ZIP. Keep the checkout at the new release commit, then run:
+
+```sh
+sh test/e2e/session.sh --spec test/e2e/manual/update.e2e.ts
+```
+
+For Docker, mount both artifact paths read-only and pass those variables to the
+project's test image. The check refuses missing inputs or a non-temporary vault,
+draws with the old release, saves a preference, extracts the new ZIP with
+`unzip`, reloads the host, and verifies the unchanged drawing, note and
+preferences through another plugin reload. It runs on both default host
+versions; inspect the resulting screenshots as well as the assertions.
+
 ## Documentation
 
 The guide and its corrections live on protected `main`. Once a release is
