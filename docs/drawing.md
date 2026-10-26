@@ -29,6 +29,11 @@ on a tablet leaves no marks.
 The four **brush sizes**, S, M, L, and XL (keys 1 to 4), are 1/16 to 4/16 of the
 text's size, so a stroke matches the weight of the letters at any size.
 
+**Unreleased:** a circle at the pointer shows the brush's nominal diameter,
+scaled with the drawing area. Pen pressure can change the stroke width. Pen and
+Eraser keep separate sizes while the editor is open and through **Next**. A
+separately opened editor starts both tools at the configured default size.
+
 ## Undo, redo, and clear
 
 **Undo** (Mod+Z) and **Redo** (Mod+Shift+Z, or Mod+Y) step through every stroke,
@@ -49,6 +54,16 @@ on a symbol you open again it lines up with most of its strokes.
 x-height, baseline, and descender, measured from the font your vault's text
 uses, and the edges the saved image will have. **Fit** (F) fits the drawing in
 view; a symbol wider than the usual view opens whole.
+
+**Unreleased:** **Help** opens a built-in quick start with an explanation of
+each guide, the grid, drawing, tracing, and saving. Close Help or press Esc to
+return to the drawing. The horizontal guides, top to bottom, are the font's
+upper extent (ascender), the top of a capital such as H (cap height), the top of
+a lowercase x (x-height), the solid baseline where letters sit, and the font's
+lower extent (descender). Some fonts put guides at the same height or outside
+the drawing area. The vertical dashed lines mark the saved image's edges,
+including spacing. Guide visibility is still all together; individual visibility
+and colour choices are planned.
 
 A symbol is as wide as its ink: saving crops the image to the ink, with a little
 space on each side, as a font spaces its letters. Its height is always one line

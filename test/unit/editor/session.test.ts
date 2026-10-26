@@ -15,6 +15,22 @@ describe("brushSizes", () => {
 });
 
 describe("DrawingSession", () => {
+  it("remembers each tool's size and uses the eraser size for a device eraser", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.sizeIndex = 0;
+    session.tool = "eraser";
+    expect(session.sizeIndex).toBe(1);
+    session.sizeIndex = 3;
+    session.tool = "pen";
+    expect(session.sizeIndex).toBe(0);
+    session.begin({ x: 0, y: 0 }, "eraser");
+    expect(session.activeStroke).toMatchObject({ tool: "eraser", size: 512 });
+    session.end();
+    expect(session.size).toBe(128);
+    session.tool = "eraser";
+    expect(session.sizeIndex).toBe(3);
+  });
+
   it("commits a stroke with the current brush, in units", () => {
     const session = new DrawingSession(emptyDocument);
     session.sizeIndex = 2;

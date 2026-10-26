@@ -8,6 +8,12 @@ section is also its
 
 ## Unreleased
 
+- Keep the editor's close control clear of the symbol name in both themes.
+- Show a circle for the pen or eraser's nominal size, and remember their sizes
+  separately while drawing and through Next.
+- Remove the drawing area's redundant hover tooltip, keeping its accessible
+  name, and add Help with a quick start and guide explanations.
+
 ## 0.1.1-rc.1 - 2026-10-25
 
 ### Added
