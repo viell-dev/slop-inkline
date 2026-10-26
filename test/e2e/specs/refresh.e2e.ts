@@ -37,7 +37,7 @@ async function visibleImages(): Promise<
 }
 
 /** The actual saved width, decoded from bytes rather than a cached URL. */
-async function savedWidth(): Promise<number> {
+async function savedWidth(symbol = edited): Promise<number> {
   return browser.executeObsidian(async ({ app }, path) => {
     const file = app.vault.getFileByPath(path);
     if (file === null) throw new Error("no symbol");
@@ -47,7 +47,7 @@ async function savedWidth(): Promise<number> {
     const width = bitmap.width;
     bitmap.close();
     return width;
-  }, edited);
+  }, symbol);
 }
 
 describe("Saved symbol refresh", function () {
@@ -128,7 +128,44 @@ describe("Saved symbol refresh", function () {
     }
   }
 
-  it("refreshes a popout after external writes even when timestamps repeat", async function () {
+  it("refreshes a symbol with a Unicode filename", async function () {
+    const unicode = "Glyphs/塔 λ.ink.png";
+    const replacement = "Glyphs/wide.ink.png";
+    const contents = `A Unicode symbol ![[${unicode}]].\n`;
+    await createSymbol(unicode, [0]);
+    await createSymbol(replacement, [0, 4000]);
+    await browser.executeObsidian(async ({ app }, value) => {
+      const file = await app.vault.create("Unicode.md", value);
+      await app.workspace
+        .getLeaf(false)
+        .openFile(file, { state: { mode: "preview" } });
+    }, contents);
+    await browser.waitUntil(async () => (await visibleImages()).length === 1);
+    const before = (await visibleImages())[0];
+    if (before === undefined) throw new Error("no Unicode symbol");
+    const expected = await savedWidth(replacement);
+    expect(expected).not.toBe(before.naturalWidth);
+    await browser.executeObsidian(
+      async ({ app }, target, source) => {
+        const file = app.vault.getFileByPath(target);
+        const other = app.vault.getFileByPath(source);
+        if (file === null || other === null) throw new Error("no symbol");
+        await app.vault.modifyBinary(file, await app.vault.readBinary(other));
+      },
+      unicode,
+      replacement,
+    );
+    await browser.waitUntil(
+      async () => (await visibleImages())[0]?.naturalWidth === expected,
+    );
+    const after = (await visibleImages())[0];
+    if (after === undefined) throw new Error("Unicode symbol disappeared");
+    expect(after.src).not.toBe(before.src);
+    expect(after.mask).toContain(after.src);
+    expect(await noteText()).toBe(contents);
+  });
+
+  it("refreshes a popout after changes outside the editor even when timestamps repeat", async function () {
     await browser.executeObsidian(async ({ app }) => {
       const file = app.vault.getFileByPath("Refresh.md");
       if (file === null) throw new Error("no note");

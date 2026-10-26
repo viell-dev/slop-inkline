@@ -87,6 +87,21 @@ saving it again never changes it.
   settings are cleared on close. The test redirects the save dialog and
   suppresses the post-export viewer launch; the native PDF writer still runs
   ([pdf.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/pdf.e2e.ts)).
+- Saving refreshes existing placements in Live Preview, Reading view and
+  popouts, preserving note text, explicit widths and unrelated images. Names
+  with spaces, percent signs and Unicode are covered, as are repeated file
+  timestamps
+  ([refresh.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/refresh.e2e.ts)).
+
+### The editor shows what its tools do
+
+- The brush circle follows the nominal tool size and drawing-area scale; mouse,
+  pen and touch ownership are checked. Pen and Eraser keep separate sizes,
+  including through **Next**. The close button clears the name field, and the
+  drawing area's accessible name produces no hover tooltip
+  ([editor-feedback.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor-feedback.e2e.ts)).
+- Help explains the drawing tools and guides, blocks editor input while open,
+  and restores focus to drawing on close (the same file).
 
 ### Drawing is never lost
 
@@ -180,6 +195,13 @@ Each of these asserts a budget beside its correctness checks:
   ([package.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/package.e2e.ts)).
   Direct CI checks the loose build in `dist/`; Docker and release preparation
   check the plugin extracted from the install ZIP.
+- The explicit release update check starts from the previous published ZIP,
+  draws and saves a preference, then installs the new verified ZIP. It checks
+  the drawing bytes, note and preferences survive replacement and reloading, and
+  both tools start with the configured size
+  ([update.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/manual/update.e2e.ts)).
+  This runs separately from ordinary CI because it needs both release artifacts;
+  the release PR records its inputs and results.
 - A publication that fails part way can run again without replacing anything
   published: each failure is run against a fake GitHub
   ([publish.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/publish.test.ts)).
@@ -218,6 +240,8 @@ check against a commit whose CI never ran
   on Windows; Obsidian on Windows and macOS is not tested.
 - Pens and touch are tested with WebDriver's pointer events, which carry
   pressure and pointer types, not with real devices.
+- Refresh checks outside the symbol editor use Obsidian's `vault.modifyBinary`;
+  they do not exercise operating-system file changes through its file watcher.
 - Obsidian's mobile apps are not tested, as Inkline does not support them.
 - Physical printer output is not checked. Native PDF export is covered on Linux
   with default and explicitly sized embeds of one symbol; long notes containing

@@ -31,6 +31,7 @@ RUN npm run build \
   && node scripts/package.ts release \
   && unzip -q release/inkline-*.zip -d packaged
 
-ENV OBSIDIAN_CACHE_DIR=/cache E2E_OUTPUT_DIR=/out \
+# Chromium needs a UTF-8 locale to load file URLs with non-ASCII names.
+ENV LANG=C.UTF-8 OBSIDIAN_CACHE_DIR=/cache E2E_OUTPUT_DIR=/out \
     E2E_PLUGIN_DIR=/home/node/inkline/packaged/inkline
 ENTRYPOINT ["sh", "test/e2e/session.sh"]

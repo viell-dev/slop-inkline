@@ -43,6 +43,17 @@ async function loadedVersion(): Promise<string> {
 
 describe("Updating the actual previous release", function () {
   it("preserves a drawing and preference through ZIP replacement and reload", async function () {
+    const location = await browser.executeObsidian(({ app, obsidian }) => {
+      if (!(app.vault.adapter instanceof obsidian.FileSystemAdapter))
+        throw new Error("The update check requires a desktop test vault");
+      return {
+        vault: app.vault.adapter.getBasePath(),
+        config: app.vault.configDir,
+      };
+    });
+    const vault = realpathSync(location.vault);
+    if (!vault.startsWith("/tmp/"))
+      throw new Error("This check only updates disposable Linux test vaults");
     expect(await loadedVersion()).toBe(previous);
     await openAtMarker("Editor.md", "HERE");
     await browser.executeObsidianCommand("inkline:insert-symbol");
@@ -68,38 +79,29 @@ describe("Updating the actual previous release", function () {
         text,
       ),
     );
-    const state = await browser.executeObsidian(
-      async ({ app, obsidian, plugins }) => {
-        if (!(app.vault.adapter instanceof obsidian.FileSystemAdapter))
-          throw new Error("The update check requires a desktop test vault");
-        const stored: unknown = await plugins.inkline.loadData();
-        await plugins.inkline.saveData({
-          ...(typeof stored === "object" && stored !== null ? stored : {}),
-          brushSize: 3,
-        });
-        return {
-          vault: app.vault.adapter.getBasePath(),
-          config: app.vault.configDir,
-          drawing: Array.from(
-            new Uint8Array(await app.vault.adapter.readBinary("001.ink.png")),
-          ),
-          preferences: await app.vault.adapter.read(
-            `${app.vault.configDir}/plugins/inkline/data.json`,
-          ),
-        };
-      },
-    );
+    const state = await browser.executeObsidian(async ({ app, plugins }) => {
+      const stored: unknown = await plugins.inkline.loadData();
+      await plugins.inkline.saveData({
+        ...(typeof stored === "object" && stored !== null ? stored : {}),
+        brushSize: 3,
+      });
+      return {
+        drawing: Array.from(
+          new Uint8Array(await app.vault.adapter.readBinary("001.ink.png")),
+        ),
+        preferences: await app.vault.adapter.read(
+          `${app.vault.configDir}/plugins/inkline/data.json`,
+        ),
+      };
+    });
     await obsidianPage.disablePlugin("inkline");
-    const vault = realpathSync(state.vault);
-    if (!vault.startsWith("/tmp/"))
-      throw new Error("This check only updates disposable Linux test vaults");
     // Exercise the documented extraction, preserving data.json beside the
     // three plugin files. Only verified project release ZIPs belong here.
     execFileSync("unzip", [
       "-o",
       zip,
       "-d",
-      path.join(vault, state.config, "plugins"),
+      path.join(vault, location.config, "plugins"),
     ]);
     await obsidianPage.enablePlugin("inkline");
     // Refresh the renderer, not WDIO's vault setup (which reinstalls the old
@@ -124,6 +126,17 @@ describe("Updating the actual previous release", function () {
         await plugins.inkline.editSymbol(file);
       });
       await waitForEditor();
+      expect(
+        await browser
+          .$('[data-inkline-button="size-3"]')
+          .getAttribute("aria-pressed"),
+      ).toBe("true");
+      await browser.keys("e");
+      expect(
+        await browser
+          .$('[data-inkline-button="eraser"]')
+          .getAttribute("aria-pressed"),
+      ).toBe("true");
       expect(
         await browser
           .$('[data-inkline-button="size-3"]')
