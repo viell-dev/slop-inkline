@@ -132,9 +132,9 @@ owner's other agent-maintained projects.
   person can answer gets `Needs: Human` instead; use only the more specific of
   the two. Assign the person being asked under either label, including the owner
   when asking them to test. The issue says exactly what is needed, why human
-  input is required, the recommendation, what result to expect, and which
-  work waits for it; a test request names the build, gives synthetic inputs,
-  numbered steps with their expected results, and what to report.
+  input is required, the recommendation, what result to expect, and which work
+  waits for it; a test request names the build, gives synthetic inputs, numbered
+  steps with their expected results, and what to report.
 - Agents own functional verification. A person must also try the first stable
   release and substantial interface or workflow changes before stable
   publication, as [RELEASING.md](RELEASING.md#human-release-testing) describes.
