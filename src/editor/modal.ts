@@ -1776,6 +1776,7 @@ export class InkEditorModal extends Modal {
     if (cursor === undefined) return;
     if (view === undefined || hover === undefined || this.#moving) {
       cursor.hide();
+      view?.canvas.removeClass("has-brush-cursor");
       return;
     }
     const canvas = view.canvas;
@@ -1788,6 +1789,7 @@ export class InkEditorModal extends Modal {
       x < canvas.clientLeft + canvas.clientWidth &&
       y < canvas.clientTop + canvas.clientHeight;
     cursor.toggle(inside);
+    canvas.toggleClass("has-brush-cursor", inside);
     if (!inside) return;
     const tool = hover.eraser ? "eraser" : this.#session.tool;
     const size = this.#session.activeSize ?? this.#session.sizeFor(tool);
