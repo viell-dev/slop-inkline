@@ -130,12 +130,20 @@ owner's other agent-maintained projects.
   work on, their sign-in, access, or their own observation, goes in an issue of
   its own, assigned to the owner, with `Needs: Owner`. One that another suitable
   person can answer gets `Needs: Human` instead; use only the more specific of
-  the two. The issue says exactly what is needed, why an agent cannot provide
-  it, the recommendation, what result to expect, and which work waits for it; a
-  test request names the build, gives synthetic inputs, numbered steps with
-  their expected results, and what to report.
-- The owner is not the project's tester: automate every check that a machine can
-  make, and ask a person only for what one cannot observe.
+  the two. Assign the person being asked under either label, including the owner
+  when asking them to test. The issue says exactly what is needed, why human
+  input is required, the recommendation, what result to expect, and which
+  work waits for it; a test request names the build, gives synthetic inputs,
+  numbered steps with their expected results, and what to report.
+- Agents own functional verification. A person must also try the first stable
+  release and substantial interface or workflow changes before stable
+  publication, as [RELEASING.md](RELEASING.md#human-release-testing) describes.
+  Automated evidence and agent review cannot replace that usability judgement.
+- Before ending a thread with a human request, verify its live assignee and
+  labels and link it with the pending action and release impact. Keep the issue
+  open after candidate publication or preparation merges; close it only after
+  the answer and resulting work are handled. Check outstanding requests when
+  maintenance resumes and record answers received elsewhere.
 - `Status: Blocked` marks work that waits on a stated condition, with links to
   the issues and pull requests it affects. Optional feedback blocks nothing.
 
