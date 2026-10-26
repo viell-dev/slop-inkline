@@ -218,6 +218,11 @@ export class DrawingSession {
     return this.#active !== undefined;
   }
 
+  /** The captured brush diameter, without copying the active stroke's points. */
+  get activeSize(): number | undefined {
+    return this.#active?.size;
+  }
+
   /** The stroke being drawn, as it would be committed now. */
   get activeStroke(): Stroke | undefined {
     const active = this.#active;

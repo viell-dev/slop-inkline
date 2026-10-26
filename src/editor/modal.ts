@@ -339,7 +339,9 @@ export class InkEditorModal extends Modal {
   #choosing: AbortController | undefined;
   #view: InkView | undefined;
   #cursor: HTMLElement | undefined;
-  #hover: { clientX: number; clientY: number; eraser: boolean } | undefined;
+  #hover:
+    | { pointerId: number; clientX: number; clientY: number; eraser: boolean }
+    | undefined;
   #saving: Promise<boolean> | undefined;
   #closing = false;
   /** Set when disposed: nothing more is saved or written as a draft. */
@@ -607,9 +609,8 @@ export class InkEditorModal extends Modal {
     const drawing = this.contentEl.createDiv({ cls: "inkline-drawing" });
     const labelId = `inkline-drawing-${this.#draftId}`;
     drawing.createSpan({
-      cls: "inkline-visually-hidden",
       text: "Drawing area",
-      attr: { id: labelId },
+      attr: { id: labelId, hidden: "" },
     });
     const canvas = drawing.createEl("canvas", {
       cls: "inkline-surface",
@@ -1047,19 +1048,19 @@ export class InkEditorModal extends Modal {
     let pressure = true;
     const hover = (event: PointerEvent): void => {
       if (this.#gate.active !== undefined && !this.#gate.owns(event)) return;
-      this.#hover =
-        event.pointerType === "touch"
-          ? undefined
-          : {
-              clientX: event.clientX,
-              clientY: event.clientY,
-              eraser:
-                event.pointerType === "pen" &&
-                (event.button === 5 || (event.buttons & 32) !== 0),
-            };
+      if (event.pointerType === "touch") return;
+      this.#hover = {
+        pointerId: event.pointerId,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        eraser:
+          event.pointerType === "pen" &&
+          (event.button === 5 || (event.buttons & 32) !== 0),
+      };
       this.#updateCursor();
     };
-    const hideCursor = (): void => {
+    const hideCursor = (event: PointerEvent): void => {
+      if (event.pointerId !== this.#hover?.pointerId) return;
       this.#hover = undefined;
       this.#updateCursor();
     };
@@ -1095,6 +1096,7 @@ export class InkEditorModal extends Modal {
     canvas.addEventListener("pointerdown", (event) => {
       const tool = this.#gate.down(event);
       if (tool === undefined) return;
+      if (event.pointerType === "touch") this.#hover = undefined;
       event.preventDefault();
       // Drawing takes the focus, which the default action would have, so
       // that the shortcuts are the editor's again after typing elsewhere.
@@ -1788,8 +1790,7 @@ export class InkEditorModal extends Modal {
     cursor.toggle(inside);
     if (!inside) return;
     const tool = hover.eraser ? "eraser" : this.#session.tool;
-    const size =
-      this.#session.activeStroke?.size ?? this.#session.sizeFor(tool);
+    const size = this.#session.activeSize ?? this.#session.sizeFor(tool);
     const diameter =
       ((size / unitsPerPixel) * canvas.clientWidth) /
       (view.visible.right - view.visible.left);
@@ -1812,14 +1813,14 @@ export class InkEditorModal extends Modal {
     });
     const steps = content.createEl("ul");
     for (const text of [
-      "Pen (P) adds ink; Eraser (E) removes it. Sizes S–XL (1–4) are remembered separately until you close the editor, including through Next. The circle shows the nominal brush diameter; pen pressure can change stroke width.",
+      "Pen (P) adds ink; Eraser (E) removes it. Sizes S–XL (1–4) are remembered separately until you close the editor, including through Next. A pen's eraser end uses the Eraser size. For a mouse or pen, the circle shows nominal diameter; pressure can change stroke width.",
       "Hold Shift while drawing for a straight segment. Grid (Shift+G) shows dots and snaps stroke ends to them; it does not change the font guides.",
       "Undo (Mod+Z) and Redo (Mod+Shift+Z) step through changes. Clear removes the drawing and can be undone.",
       "Paste or drop a picture to trace. Move positions it; the wheel scales it. Make ink converts the visible picture into editable ink. The tracing picture itself is not saved.",
       "Name the symbol, then Save (Mod+Enter). For a new symbol, Next (Mod+Shift+Enter) saves it and starts another. Mod is Ctrl on Windows/Linux, Cmd on macOS.",
     ])
       steps.createEl("li", { text });
-    content.createEl("h3", { text: "What the guides mean" });
+    content.createEl("h2", { text: "What the guides mean" });
     content.createEl("p", {
       text: "The horizontal guides follow your note font, from top to bottom; a font may put some at the same height or outside the drawing area. Toggle them together with the guide button or its shortcut.",
     });

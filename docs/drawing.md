@@ -29,10 +29,11 @@ on a tablet leaves no marks.
 The four **brush sizes**, S, M, L, and XL (keys 1 to 4), are 1/16 to 4/16 of the
 text's size, so a stroke matches the weight of the letters at any size.
 
-**Unreleased:** a circle at the pointer shows the brush's nominal diameter,
+**Unreleased:** for a mouse or pen, a circle shows the brush's nominal diameter,
 scaled with the drawing area. Pen pressure can change the stroke width. Pen and
 Eraser keep separate sizes while the editor is open and through **Next**. A
-separately opened editor starts both tools at the configured default size.
+separately opened editor starts both tools at the configured default size. The
+pen's eraser end uses the Eraser size, whichever tool is selected.
 
 ## Undo, redo, and clear
 

@@ -68,15 +68,6 @@
   pointer-events: none;
 }
 
-.inkline-visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
 .inkline-surface {
   --inkline-guide: var(--text-faint);
   display: block;
@@ -87,6 +78,8 @@
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-s);
   cursor: crosshair;
+  /* Keep focus and drop outlines inside the cursor's clipping wrapper. */
+  outline-offset: -2px;
   /* The surface handles pens and touch itself, without scrolling or zooming. */
   touch-action: none;
 }
@@ -102,7 +95,6 @@
 
 .inkline-surface:focus-visible {
   outline: 2px solid var(--interactive-accent);
-  outline-offset: -2px;
 }
 
 /* After the focus outline, which a drag over the focused surface replaces. */

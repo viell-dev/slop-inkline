@@ -10,7 +10,8 @@ section is also its
 
 - Keep the editor's close control clear of the symbol name in both themes.
 - Show a circle for the pen or eraser's nominal size, and remember their sizes
-  separately while drawing and through Next.
+  separately while drawing and through Next. A pen's eraser end uses the Eraser
+  size.
 - Remove the drawing area's redundant hover tooltip, keeping its accessible
   name, and add Help with a quick start and guide explanations.
 

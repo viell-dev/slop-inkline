@@ -17,12 +17,25 @@ async function insert(): Promise<void> {
 }
 
 describe("Editor feedback", function () {
+  let originalTheme: string[] = [];
   before(async function () {
     await loadModules();
   });
 
   beforeEach(async function () {
     await startOver();
+    originalTheme = await browser.execute(() =>
+      [...document.body.classList].filter(
+        (name) => name === "theme-light" || name === "theme-dark",
+      ),
+    );
+  });
+
+  afterEach(async function () {
+    await browser.execute((themes) => {
+      document.body.removeClass("theme-light", "theme-dark");
+      for (const theme of themes) document.body.addClass(theme);
+    }, originalTheme);
   });
 
   after(async function () {
@@ -43,6 +56,7 @@ describe("Editor feedback", function () {
         const a = name.getBoundingClientRect();
         const b = close.getBoundingClientRect();
         return {
+          nameWidth: a.width,
           overlap:
             Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) *
             Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top)),
@@ -50,6 +64,7 @@ describe("Editor feedback", function () {
       }, theme);
       await saveScreenshot(`editor-feedback-${theme}`);
       expect(layout.overlap).toBe(0);
+      expect(layout.nameWidth).toBeGreaterThan(300);
     });
   }
 
@@ -78,6 +93,7 @@ describe("Editor feedback", function () {
     expect(large.width / small.width).toBeCloseTo(2, 1);
     await browser.keys("e");
     await cursor.waitForDisplayed();
+    expect((await cursor.getSize()).width).toBe(small.width);
     await browser.$('[data-inkline-button="pen"]').moveTo();
     await cursor.waitForDisplayed({ reverse: true });
     await browser.keys(["Control", "Enter"]);
@@ -129,10 +145,24 @@ describe("Editor feedback", function () {
     await surface().moveTo();
     const cursor = browser.$(".inkline-brush-cursor");
     await cursor.waitForDisplayed();
-    const before = {
-      brush: (await cursor.getSize()).width,
-      surface: (await surface().getSize()).width,
-    };
+    // WebDriver's getSize rounds to whole pixels; compare the actual CSS
+    // dimensions, excluding the surface border, at both scales.
+    const measure = () =>
+      browser.execute(() => {
+        const brush = document.querySelector(".inkline-brush-cursor");
+        const canvas = document.querySelector(".inkline-surface");
+        if (
+          !(brush instanceof HTMLElement) ||
+          !(canvas instanceof HTMLCanvasElement)
+        ) {
+          throw new Error("no drawing controls");
+        }
+        return {
+          brush: brush.getBoundingClientRect().width,
+          surface: canvas.clientWidth,
+        };
+      });
+    const before = await measure();
     await browser.execute(() => {
       const modal = document.querySelector(".inkline-editor");
       if (modal instanceof HTMLElement) modal.setCssProps({ width: "480px" });
@@ -144,10 +174,7 @@ describe("Editor feedback", function () {
     await browser.waitUntil(
       async () => (await cursor.getSize()).width < before.brush,
     );
-    const after = {
-      brush: (await cursor.getSize()).width,
-      surface: (await surface().getSize()).width,
-    };
+    const after = await measure();
     expect(after.brush / before.brush).toBeCloseTo(
       after.surface / before.surface,
       2,
@@ -192,5 +219,72 @@ describe("Editor feedback", function () {
     expect(saved).toMatchObject({
       strokes: [expect.objectContaining({ tool: "pen" })],
     });
+  });
+
+  it("keeps the picture drop outline inside the surface without keyboard focus", async function () {
+    await insert();
+    await browser.$(".inkline-name").click();
+    const outline = await browser.execute(() => {
+      const canvas = document.querySelector(".inkline-surface");
+      if (!(canvas instanceof HTMLCanvasElement)) throw new Error("no surface");
+      const data = new DataTransfer();
+      data.items.add(
+        new File(["synthetic"], "trace.png", { type: "image/png" }),
+      );
+      canvas.dispatchEvent(
+        new DragEvent("dragover", {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer: data,
+        }),
+      );
+      const style = getComputedStyle(canvas);
+      return {
+        style: style.outlineStyle,
+        outside:
+          Number.parseFloat(style.outlineOffset) +
+          Number.parseFloat(style.outlineWidth),
+      };
+    });
+    expect(outline.style).toBe("dashed");
+    expect(outline.outside).toBeLessThanOrEqual(0);
+    await saveScreenshot("editor-drop-outline");
+  });
+
+  it("keeps a pen's circle when an unrelated palm pointer moves or leaves", async function () {
+    await insert();
+    const state = await browser.execute(() => {
+      const canvas = document.querySelector(".inkline-surface");
+      const cursor = document.querySelector(".inkline-brush-cursor");
+      if (
+        !(canvas instanceof HTMLCanvasElement) ||
+        !(cursor instanceof HTMLElement)
+      )
+        throw new Error("no controls");
+      const rect = canvas.getBoundingClientRect();
+      const pen = {
+        pointerType: "pen",
+        pointerId: 41,
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + rect.height / 2,
+        bubbles: true,
+      };
+      canvas.dispatchEvent(new PointerEvent("pointermove", pen));
+      const visible = () => getComputedStyle(cursor).display !== "none";
+      const before = visible();
+      for (const type of ["pointermove", "pointerleave", "pointercancel"]) {
+        canvas.dispatchEvent(
+          new PointerEvent(type, {
+            ...pen,
+            pointerId: 42,
+            pointerType: "touch",
+          }),
+        );
+      }
+      const afterPalm = visible();
+      canvas.dispatchEvent(new PointerEvent("pointerleave", pen));
+      return { before, afterPalm, afterPen: visible() };
+    });
+    expect(state).toEqual({ before: true, afterPalm: true, afterPen: false });
   });
 });
