@@ -1813,7 +1813,7 @@ export class InkEditorModal extends Modal {
     });
     const steps = content.createEl("ul");
     for (const text of [
-      "Pen (P) adds ink; Eraser (E) removes it. Sizes S–XL (1–4) are remembered separately until you close the editor, including through Next. A pen's eraser end uses the Eraser size. For a mouse or pen, the circle shows nominal diameter; pressure can change stroke width.",
+      "Pen (P) adds ink; Eraser (E) removes it. Sizes S–XL (1–4) are remembered separately until you close the editor, including through Next. For a mouse or pen, the circle shows nominal diameter; pressure can change stroke width. A pen's eraser end uses the Eraser size on contact; hovering shows the selected tool's size.",
       "Hold Shift while drawing for a straight segment. Grid (Shift+G) shows dots and snaps stroke ends to them; it does not change the font guides.",
       "Undo (Mod+Z) and Redo (Mod+Shift+Z) step through changes. Clear removes the drawing and can be undone.",
       "Paste or drop a picture to trace. Move positions it; the wheel scales it. Make ink converts the visible picture into editable ink. The tracing picture itself is not saved.",

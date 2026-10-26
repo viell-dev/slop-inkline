@@ -33,7 +33,8 @@ text's size, so a stroke matches the weight of the letters at any size.
 scaled with the drawing area. Pen pressure can change the stroke width. Pen and
 Eraser keep separate sizes while the editor is open and through **Next**. A
 separately opened editor starts both tools at the configured default size. The
-pen's eraser end uses the Eraser size, whichever tool is selected.
+pen's eraser end uses the Eraser size, whichever tool is selected. Its circle
+switches to that size on contact; hovering shows the selected tool's size.
 
 ## Undo, redo, and clear
 
