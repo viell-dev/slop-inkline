@@ -12,9 +12,13 @@ section is also its
 
 This candidate has a focused
 [brush-cursor test request](https://github.com/viell-dev/slop-inkline/issues/90).
-The previous candidate's practical pass is complete. Grid alignment, save
-choices, attachment folders, editing zoom and pen weights remain tracked in
-[#84–#88](https://github.com/viell-dev/slop-inkline/issues/82#issuecomment-6427810942).
+The previous candidate's practical pass is complete.
+[Grid alignment](https://github.com/viell-dev/slop-inkline/issues/84),
+[save choices](https://github.com/viell-dev/slop-inkline/issues/85),
+[attachment folders](https://github.com/viell-dev/slop-inkline/issues/86),
+[editing zoom](https://github.com/viell-dev/slop-inkline/issues/87) and
+[pen weights](https://github.com/viell-dev/slop-inkline/issues/88) remain
+tracked for later candidates.
 
 ### Fixed
 
