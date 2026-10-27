@@ -93,8 +93,9 @@
 }
 
 /* The theme's default green and orange fall below 3:1 against a light
-   background, so light themes draw those lines darker. */
-.theme-light .inkline-surface {
+   background, so light themes draw those lines darker. :where keeps this as
+   specific as one class, so that a snippet on body .inkline-surface wins. */
+:where(.theme-light) .inkline-surface {
   --inkline-guide-x-height: #067a34;
   --inkline-guide-baseline: #b35900;
 }

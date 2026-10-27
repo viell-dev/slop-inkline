@@ -179,6 +179,40 @@ describe("Guide lines", function () {
     });
   }
 
+  it("lets a CSS snippet on body .inkline-surface change a line's colour, in a light theme too", async function () {
+    await browser.execute(() => {
+      document.body.classList.remove("theme-light", "theme-dark");
+      document.body.classList.add("theme-light");
+      // A snippet's rule, as a stylesheet of its own.
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync(
+        "body .inkline-surface { --inkline-guide-baseline: rgb(200, 20, 60); --inkline-guide-x-height: rgb(20, 60, 200); }",
+      );
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+      Reflect.set(window, "inklineTestSnippet", sheet);
+    });
+    try {
+      await openEditor();
+      let lines: LineShown[] = [];
+      await browser.waitUntil(async () => {
+        lines = await linesShown();
+        const colour = (name: string) =>
+          lines.find((line) => line.name === name)?.drawn?.join(",");
+        return (
+          colour("baseline") === "200,20,60" &&
+          colour("x-height") === "20,60,200"
+        );
+      });
+    } finally {
+      await browser.execute(() => {
+        const sheet: unknown = Reflect.get(window, "inklineTestSnippet");
+        document.adoptedStyleSheets = document.adoptedStyleSheets.filter(
+          (adopted) => adopted !== sheet,
+        );
+      });
+    }
+  });
+
   it("shows only the font lines the settings turn on, and G hides them all", async function () {
     await storeSettings({ capHeightGuide: false, descenderGuide: false });
     await openEditor();

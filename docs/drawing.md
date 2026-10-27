@@ -78,7 +78,8 @@ draw the green and orange darker, for contrast with the background. Inkline's
 hides those together. A CSS snippet can change a line's colour by setting
 `--inkline-guide-ascender`, `--inkline-guide-cap-height`,
 `--inkline-guide-x-height`, `--inkline-guide-baseline` or
-`--inkline-guide-descender` on `.inkline-surface`.
+`--inkline-guide-descender` on `body .inkline-surface`, for example
+`body .inkline-surface { --inkline-guide-baseline: crimson; }`.
 
 A symbol is as wide as its ink: saving crops the image to the ink, with a little
 space on each side, as a font spaces its letters. Its height is always one line
