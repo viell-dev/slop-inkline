@@ -117,12 +117,13 @@ saving it again never changes it.
   below 5 ms per update while preserving the bitmap's coverage. This bounds the
   sampling cost in the Linux host harness; it does not measure physical-input
   latency or establish performance on every device.
-- **Make ink** of a synthetic 16-pixel H, enlarged nearly six times, leaves at
-  most two partly covered document pixels at each edge of the saved symbol, and
-  the reopened symbol draws the same pixels
+- **Make ink** of a synthetic H, enlarged from about 1.2 to 11.5 times, leaves
+  at most two partly covered document pixels at each edge of the saved symbol,
+  and the reopened symbol draws the same pixels
   ([conversion-clarity.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/conversion-clarity.e2e.ts)).
-  Unit tests pin the finer sampling, its alpha weighting, and its bounds of a
-  million samples and a base layer's sides
+  Unit tests pin the finer sampling, its alpha weighting, the threshold ramp it
+  narrows for large enlargements, and its bounds of a million samples and a base
+  layer's sides
   ([pixels.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/ink/pixels.test.ts)).
 
 ### Drawing is never lost

@@ -201,20 +201,21 @@ export const thresholdRange = {
 /**
  * The ink in `values` by a threshold, as one alpha per pixel: dark values
  * become ink, or light ones with `light`, full well past the threshold and
- * none well short of it, with a ramp of {@link thresholdEdge} levels across
- * it.
+ * none well short of it, with a ramp of `edge` levels across it,
+ * {@link thresholdEdge} unless finer samples need a narrower one.
  */
 export function thresholdAlpha(
   values: Uint8ClampedArray,
   threshold: number,
   light: boolean,
+  edge = thresholdEdge,
 ): Uint8ClampedArray {
   const table = new Uint8ClampedArray(256);
   for (let value = 0; value < 256; value++) {
     // The middle of the ramp lies halfway between the last dark level and
     // the threshold, the first light one.
     const past = light ? value - threshold + 0.5 : threshold - 0.5 - value;
-    table[value] = Math.round((past / thresholdEdge + 0.5) * 255);
+    table[value] = Math.round((past / edge + 0.5) * 255);
   }
   const alpha = new Uint8ClampedArray(values.length);
   for (let index = 0; index < values.length; index++) {
@@ -564,17 +565,19 @@ function samplesAlong(
 /**
  * The part of `picture` at `place` that lies within `region`, as
  * {@link regionValues} gives it, but from samples `factor` times finer across
- * and down, with where those samples are. Each sample is between the four
- * pixels around it, by how near it is to each: its alpha theirs, and its
- * value theirs weighted by alpha where there is any, so that a transparent
- * pixel's colour counts for nothing. Undefined when no part is in `region`.
+ * and down, with where those samples are and the threshold's ramp for them.
+ * Each sample is between the four pixels around it, by how near it is to
+ * each: its alpha theirs, and its value theirs weighted by alpha where there
+ * is any, so that a transparent pixel's colour counts for nothing. Undefined
+ * when no part is in `region`.
  */
 export function enlargedRegion(
   picture: Luminance,
   place: PicturePlace,
   region: Bounds,
   factor: number,
-): { part: Region; place: PicturePlace } | undefined {
+): { part: Region; place: PicturePlace; edge: number } | undefined {
+  const coarse = regionBounds(picture.width, picture.height, place, region);
   const fine = { ...place, scale: place.scale / factor };
   const bounds = regionBounds(
     picture.width * factor,
@@ -582,8 +585,14 @@ export function enlargedRegion(
     fine,
     region,
   );
-  if (bounds === undefined) return undefined;
-  const { left, top, right, bottom } = bounds;
+  if (coarse === undefined || bounds === undefined) return undefined;
+  // Within the picture pixels the region holds, by which enlargeFactor
+  // bounds the samples: dividing by the finer scale can round one past them.
+  const left = Math.max(bounds.left, coarse.left * factor);
+  const top = Math.max(bounds.top, coarse.top * factor);
+  const right = Math.min(bounds.right, coarse.right * factor);
+  const bottom = Math.min(bounds.bottom, coarse.bottom * factor);
+  if (right <= left || bottom <= top) return undefined;
   const width = right - left;
   const height = bottom - top;
   const columns = samplesAlong(left, right, factor, picture.width);
@@ -627,6 +636,10 @@ export function enlargedRegion(
   return {
     part: alpha === undefined ? part : { ...part, alpha },
     place: fine,
+    // Between two pixels' centres, values change by at most 255 over
+    // `factor` samples: a ramp no wider than that keeps an edge to about one
+    // sample, however much the picture is enlarged.
+    edge: Math.min(thresholdEdge, 255 / factor),
   };
 }
 
@@ -658,15 +671,17 @@ export function traceInk(
 
 /**
  * The ink of `part` of a picture at `place`, as {@link traceInk} finds it:
- * for a threshold changing while the part stays the same.
+ * for a threshold changing while the part stays the same. `edge` is the
+ * threshold's ramp, as {@link thresholdAlpha} takes it.
  */
 export function traceRegion(
   part: Region,
   place: PicturePlace,
   threshold: number,
   light: boolean,
+  edge = thresholdEdge,
 ): TracedInk | undefined {
-  const alpha = thresholdAlpha(part.values, threshold, light);
+  const alpha = thresholdAlpha(part.values, threshold, light, edge);
   const own = part.alpha;
   if (own !== undefined) {
     for (let index = 0; index < alpha.length; index++) {

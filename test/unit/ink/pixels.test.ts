@@ -587,6 +587,7 @@ describe("enlargedRegion", () => {
     expect(enlargedRegion(picture, place, region, 1)).toEqual({
       part: regionValues(picture, place, region),
       place,
+      edge: thresholdEdge,
     });
   });
 
@@ -613,6 +614,7 @@ describe("enlargedRegion", () => {
         top: 0,
       },
       place: { x: 10, y: 0, scale: 1 },
+      edge: thresholdEdge,
     });
     const whole = enlargedRegion(
       picture,
@@ -690,7 +692,13 @@ describe("enlargedRegion", () => {
     expect(factor).toBe(6);
     const enlarged = enlargedRegion(picture, place, region, factor);
     if (enlarged === undefined) throw new Error("no part");
-    const ink = traceRegion(enlarged.part, enlarged.place, 128, false);
+    const ink = traceRegion(
+      enlarged.part,
+      enlarged.place,
+      128,
+      false,
+      enlarged.edge,
+    );
     // The black pixel's own six document pixels, every row full ink.
     expect(ink?.x).toBe(0);
     expect(ink?.width).toBe(6);
@@ -700,5 +708,53 @@ describe("enlargedRegion", () => {
     // enlarged six times over, softening its edge across them.
     const coarse = traceInk(picture, place, 128, false, region);
     expect(coarse?.width).toBe(1);
+  });
+
+  it("narrows the threshold's ramp to about one sample however enlarged", () => {
+    // A black pixel beside a white one, sixteen document pixels each: the
+    // full ramp would spread the edge over two samples.
+    const picture = {
+      width: 2,
+      height: 1,
+      values: Uint8ClampedArray.from([0, 255]),
+    };
+    const place = { x: 0, y: 0, scale: 16 };
+    const region = { left: 0, top: 0, right: 32, bottom: 1 };
+    const enlarged = enlargedRegion(picture, place, region, 16);
+    if (enlarged === undefined) throw new Error("no part");
+    expect(enlarged.edge).toBeCloseTo(255 / 16);
+    const partial = (edge: number) =>
+      [
+        ...(traceRegion(enlarged.part, enlarged.place, 128, false, edge)
+          ?.alpha ?? []),
+      ].filter((value) => value > 0 && value < 255);
+    // The edge falls between two samples: nearly full and nearly empty, where
+    // the full ramp leaves both well short.
+    expect(partial(enlarged.edge)).toEqual([248, 8]);
+    expect(partial(thresholdEdge)).toEqual([187, 68]);
+  });
+
+  it("keeps to the picture pixels in the region, however the division rounds", () => {
+    // Picture pixels 70 and 71 lie in the region; dividing its left edge by
+    // the finer scale rounds down to a sample of pixel 69.
+    const picture = {
+      width: 115,
+      height: 1,
+      values: new Uint8ClampedArray(115),
+    };
+    const place = { x: 5.6, y: 0, scale: 2.33 };
+    const region = {
+      left: 5.6 + 70 * 2.33,
+      top: 0,
+      right: 5.6 + 72 * 2.33,
+      bottom: 1,
+    };
+    expect(regionBounds(115, 1, place, region)).toMatchObject({
+      left: 70,
+      right: 72,
+    });
+    const enlarged = enlargedRegion(picture, place, region, 3);
+    expect(enlarged?.part.left).toBe(210);
+    expect(enlarged?.part.width).toBe(6);
   });
 });
