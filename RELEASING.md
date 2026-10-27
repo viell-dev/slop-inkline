@@ -180,7 +180,8 @@ draft has no tag and cannot be installed, so a second run can repair what the
 first left:
 
 - a single draft that holds exactly this build, for this commit, as after a
-  failure in the last step, is published as it is, by its id;
+  failure in the last step, or after GitHub listed the new draft too late, is
+  published as it is, by its id;
 - any other draft for the version, as after an upload that broke off, or one for
   another commit, is deleted and one is made again;
 - if GitHub cannot say whether the version's tag exists, the run stops without
