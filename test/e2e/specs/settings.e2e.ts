@@ -112,10 +112,15 @@ describe("Inkline settings", function () {
 
   after(async function () {
     await startOver();
-    await browser.executeObsidian(async ({ plugins }, defaults) => {
-      await plugins.inkline.saveData(defaults);
-    }, defaultSettings);
+    // As in beforeEach, without the plugin, which the last test run may have
+    // left off or loading.
     await obsidianPage.disablePlugin("inkline");
+    await browser.executeObsidian(async ({ app }, defaults) => {
+      await app.vault.adapter.write(
+        `${app.vault.configDir}/plugins/inkline/data.json`,
+        JSON.stringify(defaults),
+      );
+    }, defaultSettings);
     await obsidianPage.enablePlugin("inkline");
   });
 
