@@ -68,7 +68,7 @@ import {
   gridSpacing,
   type InputPoint,
 } from "./session.ts";
-import { fontGuides, type Guide } from "./guides.ts";
+import { fontGuides, type Guide, type GuideName } from "./guides.ts";
 import {
   decodePicture,
   isPicturePath,
@@ -308,6 +308,11 @@ export interface EditorOptions {
   readonly next?: (tools: EditorTools) => void;
   /** The tools to start with, as the editor before this one left them. */
   readonly tools?: EditorTools;
+  /**
+   * Which of the font's lines the guides show, asked as they are drawn, so
+   * that a change in the settings applies at once; all of them when undefined.
+   */
+  readonly guideLines?: () => ReadonlySet<GuideName>;
   /**
    * Asks which symbol to start from and opens it, for a new symbol drawn as
    * a variant of another; resolves to undefined when none is chosen or it
@@ -1687,7 +1692,10 @@ export class InkEditorModal extends Modal {
     // The surface's own window, which differs from the main one in a popout.
     this.#frame = view.canvas.win.requestAnimationFrame(() => {
       this.#frame = undefined;
-      view.lines = this.#guidesShown ? this.#fontGuides : undefined;
+      const shown = this.#options.guideLines?.();
+      view.lines = this.#guidesShown
+        ? this.#fontGuides.filter((guide) => shown?.has(guide.name) ?? true)
+        : undefined;
       view.grid = this.#session.snap
         ? { spacing: gridSpacing, originX: this.#session.gridOrigin }
         : undefined;
@@ -1901,15 +1909,15 @@ export class InkEditorModal extends Modal {
       steps.createEl("li", { text });
     content.createEl("h2", { text: "What the guides mean" });
     content.createEl("p", {
-      text: "The horizontal guides follow your note font, from top to bottom; a font may put some at the same height or outside the drawing area. Toggle them together with the guide button or its shortcut.",
+      text: "The horizontal guides follow your note font, from top to bottom, each in its own colour; a font may put some at the same height or outside the drawing area. Toggle them together with the guide button or its shortcut; the plugin's settings choose which lines show.",
     });
     const guides = content.createEl("ul");
     for (const text of [
-      "Ascender: the font's upper extent.",
-      "Cap height: the top of a capital such as H.",
-      "x-height: the top of a lowercase letter such as x.",
-      "Baseline (solid): where letters sit.",
-      "Descender: the font's lower extent, for parts below the baseline.",
+      "Ascender (purple): the font's upper extent.",
+      "Cap height (blue): the top of a capital such as H.",
+      "x-height (green): the top of a lowercase letter such as x.",
+      "Baseline (orange, solid): where letters sit.",
+      "Descender (pink): the font's lower extent, for parts below the baseline.",
       "Vertical dashed lines: the saved image's left and right edges, including spacing. They follow the ink as you draw.",
     ])
       guides.createEl("li", { text });

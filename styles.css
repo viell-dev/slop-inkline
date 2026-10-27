@@ -71,6 +71,13 @@
 
 .inkline-surface {
   --inkline-guide: var(--text-faint);
+  /* Each of the font's lines in a colour of the theme's; a CSS snippet can
+     set others. */
+  --inkline-guide-ascender: var(--color-purple);
+  --inkline-guide-cap-height: var(--color-blue);
+  --inkline-guide-x-height: var(--color-green);
+  --inkline-guide-baseline: var(--color-orange);
+  --inkline-guide-descender: var(--color-pink);
   display: block;
   width: 100%;
   height: var(--inkline-surface-height, 288px);

@@ -8,6 +8,7 @@ import { display, lineBox } from "../ink/geometry.ts";
 import { drawInk, type DrawableBase } from "../ink/render.ts";
 import {
   cropSpan,
+  guideColourProperty,
   joinSpans,
   type FontMetrics,
   type Guide,
@@ -310,7 +311,7 @@ export class InkView {
   /**
    * Draws the grid, as dots where its lines cross, and the guides: the
    * baseline solid, the font's other lines and the image's ends dashed, each
-   * on a whole device pixel.
+   * on a whole device pixel, and each font line in its own colour.
    */
   #drawLineBox(
     context: CanvasRenderingContext2D,
@@ -342,12 +343,15 @@ export class InkView {
     context.strokeStyle = colour;
     context.lineWidth = 1;
     for (const line of lines) {
+      context.strokeStyle =
+        style.getPropertyValue(guideColourProperty(line.name)).trim() || colour;
       context.setLineDash(line.name === "baseline" ? [] : [4, 4]);
       context.beginPath();
       context.moveTo(0, at(line.y));
       context.lineTo(width, at(line.y));
       context.stroke();
     }
+    context.strokeStyle = colour;
     context.setLineDash([2, 4]);
     for (const x of [this.#image.left, this.#image.right]) {
       context.beginPath();

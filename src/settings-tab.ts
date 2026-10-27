@@ -7,15 +7,35 @@ import {
   type Plugin,
   type SettingDefinitionItem,
 } from "obsidian";
+import { guideNames, type GuideName } from "./editor/guides.ts";
 import { brushSizes } from "./editor/session.ts";
 import {
   defaultSettings,
+  guideSettings,
   settingKeys,
   symbolFolderProblem,
   triggerProblem,
   type SettingKey,
   type Settings,
 } from "./settings.ts";
+
+/** Each of the font's lines, as the settings name it. */
+const guideLabels: Readonly<Record<GuideName, string>> = {
+  ascender: "Ascender line",
+  "cap height": "Cap height line",
+  "x-height": "x-height line",
+  baseline: "Baseline",
+  descender: "Descender line",
+};
+
+/** What each line marks, and its colour, as the theme gives it by default. */
+const guideDescriptions: Readonly<Record<GuideName, string>> = {
+  ascender: "The font's upper extent, in purple.",
+  "cap height": "The top of a capital such as H, in blue.",
+  "x-height": "The top of a lowercase letter such as x, in green.",
+  baseline: "Where letters sit, solid, in orange.",
+  descender: "The font's lower extent, in pink.",
+};
 
 /** What the tab needs of the plugin: its settings, and a way to change one. */
 export interface SettingsHost {
@@ -99,13 +119,28 @@ export class InklineSettingTab extends PluginSettingTab {
         },
       },
       {
-        name: "Guides",
-        desc: "A new editor shows the text's lines to draw on. G shows or hides them there.",
-        control: {
-          type: "toggle",
-          key: "guides",
-          defaultValue: defaultSettings.guides,
-        },
+        type: "group",
+        heading: "Guides",
+        items: [
+          {
+            name: "Show in a new editor",
+            desc: "A new editor shows the lines turned on below to draw on. G shows or hides them there.",
+            control: {
+              type: "toggle",
+              key: "guides",
+              defaultValue: defaultSettings.guides,
+            },
+          },
+          ...guideNames.map((guide) => ({
+            name: guideLabels[guide],
+            desc: guideDescriptions[guide],
+            control: {
+              type: "toggle" as const,
+              key: guideSettings[guide],
+              defaultValue: defaultSettings[guideSettings[guide]] === true,
+            },
+          })),
+        ],
       },
     ];
   }

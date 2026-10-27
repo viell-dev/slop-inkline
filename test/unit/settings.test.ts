@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { guideNames } from "../../src/editor/guides.ts";
 import {
   defaultSettings,
+  guideSettings,
   readSettings,
+  shownGuides,
   triggerProblem,
   withSetting,
 } from "../../src/settings.ts";
@@ -87,6 +90,7 @@ describe("withSetting", () => {
       ["symbolFolder", ".hidden"],
       ["symbolFolder", 3],
       ["guides", 1],
+      ["capHeightGuide", "no"],
       ["textColor", "false"],
       ["symbolScale", 0],
       ["symbolScale", 45],
@@ -115,6 +119,11 @@ describe("readSettings", () => {
       symbolFolder: "Notes/Signs",
       brushSize: 2,
       guides: false,
+      ascenderGuide: true,
+      capHeightGuide: false,
+      xHeightGuide: true,
+      baselineGuide: true,
+      descenderGuide: false,
       symbolScale: 150,
       textColor: false,
     };
@@ -136,5 +145,22 @@ describe("readSettings", () => {
         sizes,
       ),
     ).toEqual(defaultSettings);
+  });
+});
+
+describe("shownGuides", () => {
+  it("shows every font line by default, and only those turned on", () => {
+    expect([...shownGuides(defaultSettings)]).toEqual([...guideNames]);
+    expect([
+      ...shownGuides({
+        ...defaultSettings,
+        ascenderGuide: false,
+        descenderGuide: false,
+      }),
+    ]).toEqual(["cap height", "x-height", "baseline"]);
+  });
+
+  it("maps each font line to a setting of its own", () => {
+    expect(new Set(Object.values(guideSettings)).size).toBe(guideNames.length);
   });
 });
