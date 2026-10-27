@@ -260,67 +260,98 @@ describe("Brush sizes beside text", function () {
     }
   });
 
-  it("shows M in a note about as heavy as the text beside it", async function () {
-    // The presets as strokes of a symbol, in a note of upright letters.
+  it("shows M in a note about as heavy as the text beside it, in both themes", async function () {
+    // Each preset as eight strokes a whole screen pixel apart at a 16 px
+    // font, each a document pixel further on, so that their mean covers every
+    // position the strokes can take against the screen's pixels.
+    const phases = 8;
     const sizes = brushSizes.map((size) => size.em * 128 * 16);
-    await browser.executeObsidian(async ({ app }, units) => {
-      const { bytes } = await window.inklineTest.canvas.saveInk(
-        {
-          strokes: units.map((size, index) => ({
-            tool: "pen" as const,
-            size,
-            pressure: false,
-            points: [800 + index * 640, 800, 800 + index * 640, 2000],
-          })),
-        },
-        undefined,
-        [],
-      );
-      await app.vault.createBinary("weights.ink.png", bytes.slice().buffer);
-      const note = await app.vault.create(
-        "Weights.md",
-        "llllllllllll\n\nnnnnnnnnnnnn\n\nx ![[weights.ink.png]] x\n",
-      );
-      await app.workspace
-        .getLeaf(true)
-        .openFile(note, { state: { mode: "preview" } });
-    }, sizes);
+    await browser.executeObsidian(
+      async ({ app }, units, count) => {
+        const strokes = units.flatMap((size, preset) =>
+          Array.from({ length: count }, (_, phase) => {
+            const x = 800 + (preset * count + phase) * 1024 + phase * 16;
+            return {
+              tool: "pen" as const,
+              size,
+              pressure: false,
+              points: [x, 800, x, 2000],
+            };
+          }),
+        );
+        const { bytes } = await window.inklineTest.canvas.saveInk(
+          { strokes },
+          undefined,
+          [],
+        );
+        await app.vault.createBinary("weights.ink.png", bytes.slice().buffer);
+        const note = await app.vault.create(
+          "Weights.md",
+          "llllllllllll\n\nnnnnnnnnnnnn\n\nx ![[weights.ink.png]] x\n",
+        );
+        await app.workspace
+          .getLeaf(true)
+          .openFile(note, { state: { mode: "preview" } });
+      },
+      sizes,
+      phases,
+    );
     const view = "//div[contains(@class, 'markdown-reading-view')]";
     const symbol = `${view}//img[contains(@class, 'inkline-symbol')]`;
     await browser.$(symbol).waitForDisplayed();
-    await browser.waitUntil(async () =>
-      browser.execute(
-        (wanted) =>
-          activeDocument.evaluate(
-            wanted,
-            activeDocument,
-            null,
-            XPathResult.FIRST_ORDERED_NODE_TYPE,
-            null,
-          ).singleNodeValue instanceof HTMLImageElement,
-        symbol,
+    // Away from the symbol, whose label shows a tooltip on hover.
+    await browser
+      .action("pointer")
+      .move({ x: 1, y: 1, origin: "viewport" })
+      .perform();
+    const original = await browser.execute(() =>
+      [...document.body.classList].filter(
+        (name) => name === "theme-light" || name === "theme-dark",
       ),
     );
-    await saveScreenshot("pen-weights-reading");
-    const text = [
-      ...(await shownRuns(
-        `${view}//p[normalize-space(.)='llllllllllll']`,
-        0.6,
-      )),
-      ...(await shownRuns(
-        `${view}//p[normalize-space(.)='nnnnnnnnnnnn']`,
-        0.75,
-      )),
-    ];
-    const strokes = await shownRuns(symbol, 0.5);
-    console.log("Shown weights", JSON.stringify({ text, strokes }));
-    expect(strokes).toHaveLength(brushSizes.length);
-    const stem = median(text);
-    const [s = 0, m = 0, l = 0, xl = 0] = strokes;
-    expect(s).toBeLessThan(stem * 0.75);
-    expect(Math.abs(m - stem)).toBeLessThanOrEqual(stem * 0.2);
-    expect(l).toBeGreaterThanOrEqual(stem * 1.3);
-    expect(xl).toBeGreaterThan(l);
+    try {
+      for (const theme of ["theme-light", "theme-dark"]) {
+        await browser.execute((name) => {
+          document.body.classList.remove("theme-light", "theme-dark");
+          document.body.classList.add(name);
+        }, theme);
+        // Every stroke drawn, in this theme's colour.
+        let strokes: number[] = [];
+        await browser.waitUntil(async () => {
+          strokes = await shownRuns(symbol, 0.5);
+          return strokes.length === sizes.length * phases;
+        });
+        await saveScreenshot(`pen-weights-reading-${theme}`);
+        const text = [
+          ...(await shownRuns(
+            `${view}//p[normalize-space(.)='llllllllllll']`,
+            0.6,
+          )),
+          ...(await shownRuns(
+            `${view}//p[normalize-space(.)='nnnnnnnnnnnn']`,
+            0.75,
+          )),
+        ];
+        const shown = sizes.map(
+          (_, preset) =>
+            strokes
+              .slice(preset * phases, (preset + 1) * phases)
+              .reduce((sum, width) => sum + width, 0) / phases,
+        );
+        console.log("Shown weights", JSON.stringify({ theme, text, shown }));
+        const stem = median(text);
+        const [s = 0, m = 0, l = 0, xl = 0] = shown;
+        expect(s).toBeLessThan(stem * 0.75);
+        expect(Math.abs(m - stem)).toBeLessThanOrEqual(stem * 0.2);
+        expect(l).toBeGreaterThanOrEqual(stem * 1.3);
+        expect(xl).toBeGreaterThan(l);
+      }
+    } finally {
+      await browser.execute((themes) => {
+        document.body.classList.remove("theme-light", "theme-dark");
+        document.body.classList.add(...themes);
+      }, original);
+    }
   });
 
   it("keeps strokes of M a grid spacing apart distinct, for dense symbols", async function () {

@@ -19,8 +19,10 @@ says how to run them.
 | Release                   | The commit's required CI, the release checks, and the release's own files installed in Obsidian, as a dry run on request and on pull requests that change the release steps | On request, and on those pull requests                                                        |
 
 The end-to-end tests assert on state, positions, and pixels read back from
-Obsidian, never on screenshots; their screenshots are kept as artifacts for
-review.
+Obsidian, never by comparing screenshots with reference images. Where what
+Obsidian shows on the screen is itself the subject, such as a symbol's colour or
+its strokes' weight beside text, a test measures the pixels of a screenshot of
+that element. Screenshots are also kept as artifacts for review.
 
 ## The promises
 
