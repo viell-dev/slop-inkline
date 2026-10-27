@@ -107,6 +107,16 @@ saving it again never changes it.
   cancelling, and Help restore the fallback cursor; the indicator never enters
   saved strokes (the same file). These host checks do not establish subjective
   pointer comfort or physical pen behaviour.
+- The fixed bitmap retains its coverage across fractional positions and zoom
+  levels
+  ([brush-cursor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/brush-cursor.e2e.ts)).
+  Contrast checks cover light, dark, grey, coloured and translucent backgrounds,
+  ink edges, stationary theme redraws and readback failure recovery
+  ([cursor-contrast.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/cursor-contrast.e2e.ts)).
+  Three fixed rounds of 300 pointer updates at 200% zoom must have a median
+  below 5 ms per update while preserving the bitmap's coverage. This bounds the
+  sampling cost in the Linux host harness; it does not measure physical-input
+  latency or establish performance on every device.
 
 ### Drawing is never lost
 

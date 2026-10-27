@@ -8,6 +8,24 @@ section is also its
 
 ## Unreleased
 
+## 0.1.1-rc.5 - 2026-10-27
+
+The rc.4 report confirmed that the brush cursor's shape stays fixed, but its
+white halo looked too heavy on dark backgrounds. This candidate addresses that
+[contrast feedback](https://github.com/viell-dev/slop-inkline/issues/90), with
+automated pixel checks and screenshot review. Further comfort feedback is
+welcome; it does not block continued prereleases. Public stable publication
+remains on hold, with the earlier
+[workflow feedback](https://github.com/viell-dev/slop-inkline/issues/5) and
+[automatic conversion softness](https://github.com/viell-dev/slop-inkline/issues/92)
+tracked separately.
+
+### Fixed
+
+- Keep the brush circle and centre dot thin on both themes and over ink or
+  tracing pictures. Their colour adapts to the background without the extra
+  white halo, preserving the fixed shape and selected brush size.
+
 ## 0.1.1-rc.4 - 2026-10-27
 
 This candidate follows the
