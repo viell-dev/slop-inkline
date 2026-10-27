@@ -111,7 +111,10 @@ first.
 A picture shown larger than its own pixels, such as a small screenshot scaled up
 to a capital's height, is sampled at the drawing's finer resolution before the
 threshold applies. The ink's edges stay sharp instead of spreading across each
-enlarged pixel.
+enlarged pixel. Where that would take too many samples, as for a large picture
+enlarged across the whole drawing area, it is sampled less finely, down to its
+own pixels. A picture with transparency keeps the soft edges of its own
+transparency when enlarged; see [Limits](./limits.md#files-and-sizes).
 
 ## Start from a copy
 

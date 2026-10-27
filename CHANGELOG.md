@@ -25,7 +25,9 @@ tracked separately.
   picture is sampled at the drawing's finer resolution before the threshold
   applies, rather than each thresholded pixel being enlarged, which spread every
   edge across several pixels. Symbols made before keep their ink; make ink of
-  the picture again to sharpen one.
+  the picture again to sharpen one. A picture with transparency still keeps the
+  soft edges of that transparency
+  ([#96](https://github.com/viell-dev/slop-inkline/issues/96)).
 
 ## 0.1.1-rc.5 - 2026-10-27
 
