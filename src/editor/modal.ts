@@ -53,6 +53,7 @@ import {
   type DraftTarget,
 } from "./drafts.ts";
 import { FileWatch, type Reading } from "./disk.ts";
+import { paintBrushCursor } from "./cursor.ts";
 import { PointerGate, reportsPressure } from "./pointer.ts";
 import {
   brushSizes,
@@ -338,7 +339,13 @@ export class InkEditorModal extends Modal {
   /** The choice of a symbol to copy while it is open, to close with this. */
   #choosing: AbortController | undefined;
   #view: InkView | undefined;
-  #cursor: HTMLElement | undefined;
+  #cursor: HTMLCanvasElement | undefined;
+  #cursorSize:
+    | { diameter: number; ratio: number; hotspot: number | undefined }
+    | undefined;
+  readonly #resizeCursor = (): void => {
+    this.#updateCursor();
+  };
   #hover:
     | { pointerId: number; clientX: number; clientY: number; eraser: boolean }
     | undefined;
@@ -622,11 +629,12 @@ export class InkEditorModal extends Modal {
         "aria-labelledby": labelId,
       },
     });
-    this.#cursor = drawing.createDiv({
+    this.#cursor = drawing.createEl("canvas", {
       cls: "inkline-brush-cursor",
       attr: { "aria-hidden": "true" },
     });
     this.#cursor.hide();
+    canvas.win.addEventListener("resize", this.#resizeCursor);
     // A line in the vault's text font and size, with the symbol at its size
     // there. Its font gives the guides.
     const line = this.contentEl.createDiv({
@@ -684,6 +692,7 @@ export class InkEditorModal extends Modal {
     for (const ref of this.#vaultEvents) this.app.vault.offref(ref);
     this.#vaultEvents = [];
     this.#resize?.disconnect();
+    this.#view?.canvas.win.removeEventListener("resize", this.#resizeCursor);
     this.#fonts?.removeEventListener("loadingdone", this.#remeasure);
     if (this.#cssChange !== undefined) {
       this.app.workspace.offref(this.#cssChange);
@@ -1768,18 +1777,18 @@ export class InkEditorModal extends Modal {
     this.#updateCursor();
   }
 
-  /** A screen overlay only: never part of the preview or saved ink. */
+  /** A fixed pointer bitmap only: never part of the preview or saved ink. */
   #updateCursor(): void {
     const cursor = this.#cursor;
     const view = this.#view;
     const hover = this.#hover;
-    if (cursor === undefined) return;
-    if (view === undefined || hover === undefined || this.#moving) {
+    if (view === undefined || cursor === undefined) return;
+    const canvas = view.canvas;
+    if (hover === undefined || this.#moving) {
       cursor.hide();
-      view?.canvas.removeClass("has-brush-cursor");
+      canvas.removeClass("has-brush-cursor");
       return;
     }
-    const canvas = view.canvas;
     const rect = canvas.getBoundingClientRect();
     const x = hover.clientX - rect.left;
     const y = hover.clientY - rect.top;
@@ -1788,18 +1797,40 @@ export class InkEditorModal extends Modal {
       y >= canvas.clientTop &&
       x < canvas.clientLeft + canvas.clientWidth &&
       y < canvas.clientTop + canvas.clientHeight;
-    cursor.toggle(inside);
-    canvas.toggleClass("has-brush-cursor", inside);
-    if (!inside) return;
+    if (!inside) {
+      cursor.hide();
+      canvas.removeClass("has-brush-cursor");
+      return;
+    }
     const tool = hover.eraser ? "eraser" : this.#session.tool;
     const size = this.#session.activeSize ?? this.#session.sizeFor(tool);
     const diameter =
       ((size / unitsPerPixel) * canvas.clientWidth) /
       (view.visible.right - view.visible.left);
-    cursor.style.width = `${String(diameter)}px`;
-    cursor.style.height = `${String(diameter)}px`;
-    cursor.style.left = `${String(x)}px`;
-    cursor.style.top = `${String(y)}px`;
+    const ratio = canvas.win.devicePixelRatio;
+    if (
+      this.#cursorSize?.diameter !== diameter ||
+      this.#cursorSize.ratio !== ratio
+    ) {
+      this.#cursorSize = {
+        diameter,
+        ratio,
+        hotspot: paintBrushCursor(cursor, diameter, ratio),
+      };
+    }
+    const hotspot = this.#cursorSize.hotspot;
+    cursor.toggle(hotspot !== undefined);
+    canvas.toggleClass("has-brush-cursor", hotspot !== undefined);
+    if (hotspot === undefined) return;
+    // Align in viewport device pixels, not the fractional parent layout.
+    // Scale the integer intrinsic dimensions to avoid CSS size rounding.
+    // Each bitmap pixel maps to one display pixel even at fractional zoom;
+    // the centre stays within half a device pixel of the pointer.
+    const left =
+      (Math.round(hover.clientX * ratio) - hotspot) / ratio - rect.left;
+    const top =
+      (Math.round(hover.clientY * ratio) - hotspot) / ratio - rect.top;
+    cursor.style.transform = `translate(${String(left)}px, ${String(top)}px) scale(${String(1 / ratio)})`;
   }
 
   /** A short guide available without leaving a drawing. */

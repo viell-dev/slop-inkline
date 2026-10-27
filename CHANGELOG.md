@@ -8,6 +8,23 @@ section is also its
 
 ## Unreleased
 
+## 0.1.1-rc.4 - 2026-10-27
+
+This candidate follows the
+[rc.3 cursor report and focused retest](https://github.com/viell-dev/slop-inkline/issues/90).
+The remaining practical checks passed; the changed cursor still needs a focused
+human pass. Public stable publication remains on hold.
+[Automatic conversion softness](https://github.com/viell-dev/slop-inkline/issues/92)
+is tracked separately, alongside the earlier
+[drawing-workflow feedback](https://github.com/viell-dev/slop-inkline/issues/5).
+
+### Fixed
+
+- Keep the brush cursor's shape fixed during movement. A bitmap replaces the
+  repainted outline, with the selected brush diameter at the current zoom and
+  display scale. Its black ring, centre dot and white halo remain visible on
+  both themes and tracing pictures; a crosshair provides a visible fallback.
+
 ## 0.1.1-rc.3 - 2026-10-26
 
 This candidate has a focused
