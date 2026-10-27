@@ -1576,9 +1576,8 @@ export class InkEditorModal extends Modal {
   /**
    * Makes the ink {@link #applyInk} describes, from the picture at its own
    * resolution, or finer where it is enlarged. If the threshold, Light ink,
-   * the picture, or the surface
-   * changed while the ink was encoded, it makes the ink again, so that what
-   * it makes is what the surface shows.
+   * the picture, or the surface changed while the ink was encoded, it makes
+   * the ink again, so that what it makes is what the surface shows.
    */
   async #makeInk(): Promise<void> {
     for (;;) {
