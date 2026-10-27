@@ -142,6 +142,9 @@ describe("Editor feedback", function () {
     expect((await cursorImage()).bitmap).toBe(small.bitmap);
     await browser.$('[data-inkline-button="pen"]').moveTo();
     await browser.waitUntil(async () => !(await hasBrushCursor()));
+    expect(
+      await browser.$(".inkline-brush-cursor").getCSSProperty("display"),
+    ).toMatchObject({ value: "none" });
     expect(await surface().getCSSProperty("cursor")).toMatchObject({
       value: "crosshair",
     });
@@ -156,7 +159,8 @@ describe("Editor feedback", function () {
     await surface().moveTo();
     const cancelled = await browser.execute(() => {
       const canvas = document.querySelector(".inkline-surface");
-      if (!(canvas instanceof HTMLCanvasElement))
+      const cursor = document.querySelector(".inkline-brush-cursor");
+      if (!(canvas instanceof HTMLCanvasElement) || cursor === null)
         throw new Error("no drawing controls");
       const rect = canvas.getBoundingClientRect();
       const sample = {
@@ -171,9 +175,14 @@ describe("Editor feedback", function () {
       return {
         native: getComputedStyle(canvas).cursor,
         replacement: canvas.classList.contains("has-brush-cursor"),
+        display: getComputedStyle(cursor).display,
       };
     });
-    expect(cancelled).toEqual({ native: "crosshair", replacement: false });
+    expect(cancelled).toEqual({
+      native: "crosshair",
+      replacement: false,
+      display: "none",
+    });
     await surface().moveTo({ xOffset: 20 });
     await browser.waitUntil(hasBrushCursor);
     // Keyboard activation opens Help without a pointerleave hiding the ring.
@@ -188,6 +197,9 @@ describe("Editor feedback", function () {
       value: "crosshair",
     });
     expect(await hasBrushCursor()).toBe(false);
+    expect(
+      await browser.$(".inkline-brush-cursor").getCSSProperty("display"),
+    ).toMatchObject({ value: "none" });
     await browser.keys("Escape");
     await browser.$(".inkline-help").waitForExist({ reverse: true });
     await surface().moveTo({ xOffset: -20 });
@@ -340,7 +352,8 @@ describe("Editor feedback", function () {
     await insert();
     const state = await browser.execute(() => {
       const canvas = document.querySelector(".inkline-surface");
-      if (!(canvas instanceof HTMLCanvasElement))
+      const cursor = document.querySelector(".inkline-brush-cursor");
+      if (!(canvas instanceof HTMLCanvasElement) || cursor === null)
         throw new Error("no controls");
       const rect = canvas.getBoundingClientRect();
       const pen = {
@@ -351,7 +364,7 @@ describe("Editor feedback", function () {
         bubbles: true,
       };
       canvas.dispatchEvent(new PointerEvent("pointermove", pen));
-      const visible = () => getComputedStyle(canvas).cursor === "none";
+      const visible = () => getComputedStyle(cursor).display !== "none";
       const before = visible();
       for (const type of ["pointermove", "pointerleave", "pointercancel"]) {
         canvas.dispatchEvent(
