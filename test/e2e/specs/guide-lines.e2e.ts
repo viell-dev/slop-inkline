@@ -84,6 +84,8 @@ async function linesShown(): Promise<LineShown[]> {
         let marked = 0;
         for (let x = 0; x < pixels.width; x++) {
           const at = (row * pixels.width + x) * 4;
+          // Undrawn pixels are clear, not the background colour.
+          if ((pixels.data[at + 3] ?? 0) === 0) continue;
           const colour = [...pixels.data.slice(at, at + 3)];
           if (near(colour, ground)) continue;
           if (near(colour, expected)) marked++;

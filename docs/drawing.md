@@ -72,7 +72,8 @@ x (x-height), the solid baseline where letters sit, and the font's lower extent
 area. The vertical dashed lines mark the saved image's edges, including spacing.
 
 Each font line has a colour of its own, from your theme: ascender purple, cap
-height blue, x-height green, baseline orange, and descender pink. Inkline's
+height blue, x-height green, baseline orange, and descender pink; light themes
+draw the green and orange darker, for contrast with the background. Inkline's
 [settings](./settings.md) choose which lines show; **Guides** then shows or
 hides those together. A CSS snippet can change a line's colour by setting
 `--inkline-guide-ascender`, `--inkline-guide-cap-height`,

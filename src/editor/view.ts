@@ -343,6 +343,8 @@ export class InkView {
     context.strokeStyle = colour;
     context.lineWidth = 1;
     for (const line of lines) {
+      // A value the canvas cannot read leaves the faint guide colour.
+      context.strokeStyle = colour;
       context.strokeStyle =
         style.getPropertyValue(guideColourProperty(line.name)).trim() || colour;
       context.setLineDash(line.name === "baseline" ? [] : [4, 4]);

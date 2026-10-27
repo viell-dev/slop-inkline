@@ -1913,11 +1913,11 @@ export class InkEditorModal extends Modal {
     });
     const guides = content.createEl("ul");
     for (const text of [
-      "Ascender (purple): the font's upper extent.",
-      "Cap height (blue): the top of a capital such as H.",
-      "x-height (green): the top of a lowercase letter such as x.",
-      "Baseline (orange, solid): where letters sit.",
-      "Descender (pink): the font's lower extent, for parts below the baseline.",
+      "Ascender (purple by default): the font's upper extent.",
+      "Cap height (blue by default): the top of a capital such as H.",
+      "x-height (green by default): the top of a lowercase letter such as x.",
+      "Baseline (orange by default, solid): where letters sit.",
+      "Descender (pink by default): the font's lower extent, for parts below the baseline.",
       "Vertical dashed lines: the saved image's left and right edges, including spacing. They follow the ink as you draw.",
     ])
       guides.createEl("li", { text });

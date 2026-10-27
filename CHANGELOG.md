@@ -20,7 +20,8 @@ publication remains on hold, as the earlier
 
 - Each guide line has a colour of its own, from your theme: ascender purple, cap
   height blue, x-height green, baseline orange, and descender pink, named in
-  Help and the settings. A CSS snippet can change them.
+  Help and the settings. Light themes draw the green and orange darker, for
+  contrast. A CSS snippet can change them.
 - A **Guides** group in the settings turns each font line on or off. The setting
   that shows guides in a new editor is now **Show in a new editor**, in the same
   group; G still shows or hides the chosen lines.

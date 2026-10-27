@@ -30,11 +30,11 @@ const guideLabels: Readonly<Record<GuideName, string>> = {
 
 /** What each line marks, and its colour, as the theme gives it by default. */
 const guideDescriptions: Readonly<Record<GuideName, string>> = {
-  ascender: "The font's upper extent, in purple.",
-  "cap height": "The top of a capital such as H, in blue.",
-  "x-height": "The top of a lowercase letter such as x, in green.",
-  baseline: "Where letters sit, solid, in orange.",
-  descender: "The font's lower extent, in pink.",
+  ascender: "The font's upper extent, purple by default.",
+  "cap height": "The top of a capital such as H, blue by default.",
+  "x-height": "The top of a lowercase letter such as x, green by default.",
+  baseline: "Where letters sit, solid, orange by default.",
+  descender: "The font's lower extent, pink by default.",
 };
 
 /** What the tab needs of the plugin: its settings, and a way to change one. */

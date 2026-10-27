@@ -92,6 +92,13 @@
   touch-action: none;
 }
 
+/* The theme's default green and orange fall below 3:1 against a light
+   background, so light themes draw those lines darker. */
+.theme-light .inkline-surface {
+  --inkline-guide-x-height: #067a34;
+  --inkline-guide-baseline: #b35900;
+}
+
 /* Hide the system pointer only while a complete replacement is visible. */
 .inkline-surface.has-brush-cursor {
   cursor: none;
