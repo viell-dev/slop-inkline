@@ -92,6 +92,60 @@ export function chooseName(typed: string): NameChoice {
 }
 
 /**
+ * The folder in the vault that `typed` names for new symbols: its folders'
+ * names joined by `/`, with no slashes around them, or `""` to keep Obsidian's
+ * place for attachments; or why it cannot be one. A `\` is read as `/`, as
+ * Obsidian reads it, and a no-break space as a plain one. Otherwise each
+ * folder's name follows the rules of a symbol's name, but one that breaks them
+ * is refused rather than changed, as a setting is shown again as it was typed.
+ */
+export function chooseFolder(
+  typed: string,
+): { readonly folder: string } | { readonly reason: string } {
+  const text = Array.from(typed.normalize("NFC"))
+    .map((char) => (noBreakSpaces.has(char.codePointAt(0) ?? 0) ? " " : char))
+    .join("")
+    .trim();
+  const parts = text.split(/[/\\]/).filter((part) => part !== "");
+  for (const part of parts) {
+    if (part === "." || part === "..") {
+      return {
+        reason:
+          "Name the folder from the vault's top: . and .. are not folders.",
+      };
+    }
+    if (part.replace(/\p{Cf}/gu, "").trim() === "") {
+      return { reason: "A folder's name needs a visible character." };
+    }
+    if (part.startsWith(".")) {
+      return {
+        reason: `${part} starts with a dot, which hides it from Obsidian.`,
+      };
+    }
+    if (part !== part.trim() || part.endsWith(".")) {
+      return {
+        reason: `${part} starts or ends with a space, or ends with a dot, which Windows drops.`,
+      };
+    }
+    const refused = Array.from(part).find((char) => !allowed(char));
+    if (refused !== undefined) {
+      return {
+        reason: forbidden.includes(refused)
+          ? `A folder's name cannot hold ${refused}.`
+          : "A folder's name cannot hold an invisible or control character.",
+      };
+    }
+    if (reserved.test(part)) {
+      return { reason: `${part} is a name Windows keeps for itself.` };
+    }
+    if (new TextEncoder().encode(part).length > maxNameBytes) {
+      return { reason: `${part} is too long for a folder's name.` };
+    }
+  }
+  return { folder: parts.join("/") };
+}
+
+/**
  * What `typed` makes the name of a symbol named `current`, `""` for one with
  * no file yet: as `chooseName` says, except that its own name, typed again,
  * keeps it, spaces around either aside. A file can come by a name that

@@ -6,9 +6,11 @@ import {
   MarkdownView,
   Notice,
   TFile,
+  TFolder,
   getLinkpath,
   normalizePath,
   type App,
+  type TAbstractFile,
 } from "obsidian";
 import { inkExtension, isInkPath } from "../format/ink-file.ts";
 import { openInk } from "../ink/canvas.ts";
@@ -110,21 +112,75 @@ function chosen(typed: string, file?: TFile): NameChoice {
 }
 
 /**
- * Where a new symbol for the note at `sourcePath` goes: Obsidian's attachment
- * location for it, under the name `name` chose, or else the lowest number
- * name that no file or folder there already has. Throws if the folder has a
- * symbol of that name already.
+ * Makes `folder` in the vault, with the folders it is in, unless it is there
+ * already, and returns its path. A folder there already whose name differs
+ * only in letter case stands in for it, as Windows and macOS read names, so
+ * that a vault moved between systems keeps one folder. Throws if a file
+ * stands where it, or a folder it is in, would be.
+ */
+async function makeFolder(app: App, folder: string): Promise<string> {
+  let made = "";
+  for (const part of folder.split("/")) {
+    const path = made === "" ? part : `${made}/${part}`;
+    const within =
+      made === "" ? app.vault.getRoot() : app.vault.getFolderByPath(made);
+    const same = (child: TAbstractFile): boolean =>
+      child.name.normalize("NFC").toLowerCase() === part.toLowerCase();
+    // A folder before a file, as a case-sensitive system can hold both.
+    const found =
+      app.vault.getAbstractFileByPath(path) ??
+      within?.children.find(
+        (child) => child instanceof TFolder && same(child),
+      ) ??
+      within?.children.find(same) ??
+      null;
+    if (found instanceof TFile) {
+      throw new Error(
+        `${found.path} is a file, so the symbol folder cannot be made there`,
+      );
+    }
+    if (found !== null) {
+      made = found.path;
+      continue;
+    }
+    try {
+      await app.vault.createFolder(path);
+    } catch (error) {
+      // Another save can have made it meanwhile.
+      if (app.vault.getFolderByPath(path) === null) {
+        const reason = error instanceof Error ? error.message : String(error);
+        throw new Error(
+          `the symbol folder ${path} could not be made: ${reason}`,
+        );
+      }
+    }
+    made = path;
+  }
+  return made;
+}
+
+/**
+ * Where a new symbol for the note at `sourcePath` goes: `symbolFolder`, made if
+ * need be, or Obsidian's attachment location for it when that is empty, under
+ * the name `name` chose, or else the lowest number name that no file or folder
+ * there already has. Throws if the folder has a symbol of that name already.
  */
 export async function newSymbolPath(
   app: App,
   sourcePath: string,
   name: NameChoice = { kind: "number" },
+  symbolFolder = "",
 ): Promise<string> {
-  const probe = await app.fileManager.getAvailablePathForAttachment(
-    `inkline${inkExtension}`,
-    sourcePath,
-  );
-  const folder = parentPath(probe);
+  let folder = symbolFolder;
+  if (folder === "") {
+    const probe = await app.fileManager.getAvailablePathForAttachment(
+      `inkline${inkExtension}`,
+      sourcePath,
+    );
+    folder = parentPath(probe);
+  } else {
+    folder = await makeFolder(app, folder);
+  }
   if (name.kind === "name") {
     claimName(app, folder, name.name);
     return pathIn(folder, `${name.name}${inkExtension}`);
@@ -612,7 +668,12 @@ function newSymbol(
       }
       stillAlive(host);
       if (made === undefined) {
-        const path = await newSymbolPath(app, note.path, name);
+        const path = await newSymbolPath(
+          app,
+          note.path,
+          name,
+          host.settings().symbolFolder,
+        );
         stillAlive(host);
         claim = { path, fingerprint };
         keepDraft();

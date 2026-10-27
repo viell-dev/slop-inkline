@@ -20,8 +20,9 @@ It assumes Inkline is [installed](./install.md) and turned on.
 5. Press **Save**, or Ctrl+Enter (Cmd+Enter on macOS).
 
 Inkline creates the file `tower.ink.png` where Obsidian puts new attachments for
-that note, as **Settings → Files and links** says, and inserts its embed where
-the cursor was, written as the vault writes links:
+that note, as **Settings → Files and links** says, or in the folder Inkline's
+[settings](./settings.md) name, and inserts its embed where the cursor was,
+written as the vault writes links:
 
 ```md
 The door is marked with ![[tower.ink.png]] which means return.

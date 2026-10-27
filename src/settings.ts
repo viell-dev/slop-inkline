@@ -2,10 +2,17 @@
 // stored for them is read back. A plain module, so that unit tests can check
 // it; settings-tab.ts shows them.
 
+import { chooseFolder } from "./notes/names.ts";
+
 /** Inkline's settings. */
 export interface Settings {
   /** What starts typing a symbol's name in a note, as `;;tower`. */
   readonly trigger: string;
+  /**
+   * The folder in the vault for new symbols, or empty to put them where
+   * Obsidian puts a note's new attachments.
+   */
+  readonly symbolFolder: string;
   /** The brush a new editor starts with, by its index among the sizes. */
   readonly brushSize: number;
   /** Whether a new editor starts with its guides shown. */
@@ -19,6 +26,7 @@ export interface Settings {
 /** The settings Inkline starts with, and what a value it cannot read becomes. */
 export const defaultSettings: Settings = {
   trigger: ";;",
+  symbolFolder: "",
   brushSize: 1,
   guides: true,
   symbolScale: 100,
@@ -48,12 +56,22 @@ export function triggerProblem(trigger: string): string | undefined {
   return undefined;
 }
 
+/**
+ * Why `folder` cannot be the folder for new symbols, as `chooseFolder`
+ * says, or undefined if it can.
+ */
+export function symbolFolderProblem(folder: string): string | undefined {
+  const chosen = chooseFolder(folder);
+  return "reason" in chosen ? chosen.reason : undefined;
+}
+
 /** The keys of the settings, as the settings tab stores them. */
 export type SettingKey = keyof Settings;
 
 /** Every setting's key. */
 export const settingKeys: readonly SettingKey[] = [
   "trigger",
+  "symbolFolder",
   "brushSize",
   "guides",
   "symbolScale",
@@ -62,8 +80,8 @@ export const settingKeys: readonly SettingKey[] = [
 
 /**
  * `settings` with `key` set to `value`, or undefined if `value` is not one
- * that `key` can hold: a trigger as {@link triggerProblem} allows, a brush
- * among `sizes`, or a boolean.
+ * that `key` can hold: a trigger as {@link triggerProblem} allows, a folder as
+ * `chooseFolder` writes it, a brush among `sizes`, a size, or a boolean.
  */
 export function withSetting(
   settings: Settings,
@@ -76,6 +94,13 @@ export function withSetting(
       return typeof value === "string" && triggerProblem(value) === undefined
         ? { ...settings, trigger: value }
         : undefined;
+    case "symbolFolder": {
+      if (typeof value !== "string") return undefined;
+      const chosen = chooseFolder(value);
+      return "folder" in chosen
+        ? { ...settings, symbolFolder: chosen.folder }
+        : undefined;
+    }
     case "brushSize": {
       const index =
         typeof value === "string" && /^\d+$/.test(value)

@@ -8,6 +8,20 @@ section is also its
 
 ## Unreleased
 
+## 0.1.1-rc.9 - 2026-10-27
+
+This candidate follows the rc.2 report that new symbols land in the vault's top
+folder ([symbol folder](https://github.com/viell-dev/slop-inkline/issues/86)).
+Public stable publication remains on hold, as the earlier
+[workflow feedback](https://github.com/viell-dev/slop-inkline/issues/5) records.
+
+### Added
+
+- A **Symbol folder** setting names a folder in the vault for new symbols, such
+  as `Symbols`. Inkline makes it, with any folders it is in, when it saves the
+  first symbol there. Empty, the default, keeps them where Obsidian puts a
+  note's new attachments. Symbols already in the vault stay where they are.
+
 ## 0.1.1-rc.8 - 2026-10-27
 
 This candidate narrows Inkline to the setup it is built and tested for, as the

@@ -11,6 +11,7 @@ import { brushSizes } from "./editor/session.ts";
 import {
   defaultSettings,
   settingKeys,
+  symbolFolderProblem,
   triggerProblem,
   type SettingKey,
   type Settings,
@@ -71,6 +72,18 @@ export class InklineSettingTab extends PluginSettingTab {
           defaultValue: defaultSettings.trigger,
           placeholder: defaultSettings.trigger,
           validate: (value) => triggerProblem(value),
+        },
+      },
+      {
+        name: "Symbol folder",
+        desc: "The folder in the vault where new symbols are saved, made when the first one is. Empty puts them where Obsidian puts new attachments.",
+        aliases: ["attachment folder", "location"],
+        control: {
+          type: "text",
+          key: "symbolFolder",
+          defaultValue: defaultSettings.symbolFolder,
+          placeholder: "Same as new attachments",
+          validate: (value) => symbolFolderProblem(value),
         },
       },
       {

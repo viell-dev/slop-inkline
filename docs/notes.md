@@ -31,9 +31,9 @@ hover previews, text cards on a canvas, and popout windows.
 
 Run **Inkline: Insert symbol** in a note in editing view, draw the symbol, and
 save it, as [Your first symbol](./start.md) shows. The first save creates the
-file where Obsidian puts the note's new attachments, under the name you typed or
-the next free number in that folder, and inserts the embed, written as your
-vault writes links.
+file in the [symbol folder](./settings.md), or where Obsidian puts the note's
+new attachments, under the name you typed or the next free number in that
+folder, and inserts the embed, written as your vault writes links.
 
 The embed goes where the cursor was when you ran the command:
 

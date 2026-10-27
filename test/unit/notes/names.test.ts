@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { embedPath } from "../../../src/notes/links.ts";
 import {
+  chooseFolder,
   chooseName,
   chooseRename,
   embedFromLink,
@@ -199,5 +200,52 @@ describe("chooseRename", () => {
     expect(chooseRename("a#2", "a#1")).toEqual({ kind: "name", name: "a2" });
     expect(chooseRename("con", "")).toEqual(chooseName("con"));
     expect(chooseRename("CON", "con").kind).toBe("refused");
+  });
+});
+
+describe("chooseFolder", () => {
+  it("keeps Obsidian's place for an empty folder", () => {
+    expect(chooseFolder("")).toEqual({ folder: "" });
+    expect(chooseFolder("  /  ")).toEqual({ folder: "" });
+  });
+
+  it("names folders inside the vault, without slashes around them", () => {
+    expect(chooseFolder("Symbols")).toEqual({ folder: "Symbols" });
+    expect(chooseFolder(" /Notes//Symbols/ ")).toEqual({
+      folder: "Notes/Symbols",
+    });
+    expect(chooseFolder("Écriture/Signes")).toEqual({
+      folder: "Écriture/Signes",
+    });
+    // A no-break space is a plain one, as Obsidian stores a name, and a
+    // backslash a slash, as Obsidian reads a path.
+    expect(chooseFolder("My signs")).toEqual({ folder: "My signs" });
+    expect(chooseFolder("Conlang\\Signs")).toEqual({
+      folder: "Conlang/Signs",
+    });
+  });
+
+  it("refuses folders that leave or hide from the vault, or break a name", () => {
+    for (const typed of [
+      "..",
+      "Notes/../..",
+      "./Symbols",
+      ".hidden",
+      "Notes/.trash",
+      "‍",
+      "Notes/‎",
+      "Sym:bols",
+      "Sym#bols",
+      "Sym[bols]",
+      "Notes/con",
+      "LPT1.signs",
+      "Signs.",
+      "Notes/ Signs",
+      "Sym\u0007bols",
+      "Sym​bols",
+      "x".repeat(256),
+    ]) {
+      expect(chooseFolder(typed)).toHaveProperty("reason");
+    }
   });
 });
