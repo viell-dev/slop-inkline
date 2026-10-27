@@ -125,6 +125,12 @@ saving it again never changes it.
   narrows for large enlargements, and its bounds of a million samples and a base
   layer's sides
   ([pixels.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/ink/pixels.test.ts)).
+- Each brush size, drawn with a mouse and measured in the saved symbol, is as
+  wide as its size. M is within 15% of the stems of regular text and L lies
+  between regular and bold, for the editor's text font, DejaVu Sans and Noto
+  Serif, measured in the host. Five M strokes a grid spacing apart stay
+  separate, and pen pressure draws M at its size at half pressure
+  ([pen-weights.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/pen-weights.e2e.ts)).
 
 ### Drawing is never lost
 
