@@ -1,4 +1,5 @@
 import { browser, expect } from "@wdio/globals";
+import { brushSizes } from "../../../src/editor/session.ts";
 import { loadModules } from "../support/browser.ts";
 import { cursorImage, hasBrushCursor, setPageZoom } from "../support/cursor.ts";
 import {
@@ -77,7 +78,7 @@ describe("Fixed brush bitmap", function () {
               ),
               native: getComputedStyle(surface).cursor,
               visible: getComputedStyle(cursor).display !== "none",
-              expectedDiameter: surface.clientWidth / 36,
+              surfaceWidth: surface.clientWidth,
             };
           });
         });
@@ -89,10 +90,11 @@ describe("Fixed brush bitmap", function () {
           expect(state.native).toBe("none");
           expect(state.visible).toBe(true);
         }
+        // A new editor shows 4.5 em, at M.
+        const expected =
+          ((states[0]?.surfaceWidth ?? 0) / 4.5) * (brushSizes[1]?.em ?? 0);
         expect(
-          Math.abs(
-            (await cursorImage()).diameter - (states[0]?.expectedDiameter ?? 0),
-          ),
+          Math.abs((await cursorImage()).diameter - expected),
         ).toBeLessThan(0.3);
       }
     }
@@ -105,11 +107,11 @@ describe("Fixed brush bitmap", function () {
       if (!(canvas instanceof HTMLCanvasElement)) throw new Error("no surface");
       return canvas.clientWidth;
     });
-    for (const preset of [1, 2, 3, 4]) {
-      await browser.keys(String(preset));
+    for (const [index, size] of brushSizes.entries()) {
+      await browser.keys(String(index + 1));
       const image = await cursorImage();
-      // A new editor shows 4.5 em; the presets are 1/16 to 4/16 em.
-      expect(Math.abs(image.diameter - (width * preset) / 72)).toBeLessThan(
+      // A new editor shows 4.5 em.
+      expect(Math.abs(image.diameter - (width / 4.5) * size.em)).toBeLessThan(
         0.3,
       );
       expect(image.width).toBe(image.height);

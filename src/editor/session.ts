@@ -15,19 +15,22 @@ import { History } from "../ink/history.ts";
 export interface BrushSize {
   /** The button label. */
   readonly label: string;
-  /** The stroke's diameter in em, matched to text weights at any size. */
+  /** The stroke's diameter in em, so that it scales with the text. */
   readonly em: number;
 }
 
 /**
- * The brush sizes, by how they look in text: at a 16 px font, 1, 2, 3, and
- * 4 px wide, from a hairline to a bold stroke.
+ * The brush sizes, by how they look beside text. Sans and serif text fonts
+ * have stems of about 0.09 em in their regular weight and 0.15 to 0.19 em in
+ * bold, so M draws as regular text, L as bold, XL heavier, and S half as
+ * thick as text, for fine detail. At a 16 px font they are 0.75, 1.5, 2.25,
+ * and 3 px wide; their steps of 3/64 em keep whole document pixels.
  */
 export const brushSizes: readonly BrushSize[] = [
-  { label: "S", em: 1 / 16 },
-  { label: "M", em: 2 / 16 },
-  { label: "L", em: 3 / 16 },
-  { label: "XL", em: 4 / 16 },
+  { label: "S", em: 3 / 64 },
+  { label: "M", em: 6 / 64 },
+  { label: "L", em: 9 / 64 },
+  { label: "XL", em: 12 / 64 },
 ];
 
 /**
