@@ -1,6 +1,6 @@
 import { browser, expect } from "@wdio/globals";
 import { loadModules } from "../support/browser.ts";
-import { cursorImage, hasBrushCursor } from "../support/cursor.ts";
+import { cursorImage, hasBrushCursor, setPageZoom } from "../support/cursor.ts";
 import {
   openAtMarker,
   startOver,
@@ -9,7 +9,7 @@ import {
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 
-describe("Native brush cursor", function () {
+describe("Fixed brush bitmap", function () {
   before(async function () {
     await loadModules();
   });
@@ -24,32 +24,80 @@ describe("Native brush cursor", function () {
     await startOver();
   });
 
-  it("uses one fixed image and hotspot while the pointer moves", async function () {
-    await surface().moveTo();
-    const cursors = await browser.execute(() => {
-      const canvas = document.querySelector(".inkline-surface");
-      if (!(canvas instanceof HTMLCanvasElement)) throw new Error("no surface");
-      const rect = canvas.getBoundingClientRect();
-      return [0.125, 0.375, 0.625, 0.875].map((offset) => {
-        canvas.dispatchEvent(
-          new PointerEvent("pointermove", {
-            pointerType: "mouse",
-            pointerId: 51,
-            clientX: rect.left + 80 + offset,
-            clientY: rect.top + 80 + offset,
-            bubbles: true,
-          }),
-        );
-        return getComputedStyle(canvas).cursor;
-      });
-    });
-    await saveScreenshot("native-brush-cursor");
-    expect(cursors[0]).toContain("data:image/png;base64,");
-    expect(new Set(cursors).size).toBe(1);
-    expect(cursors[0]).toMatch(/\d+ \d+, crosshair$/);
-    expect(await browser.$(".inkline-brush-cursor").isExisting()).toBe(false);
+  afterEach(async function () {
+    await setPageZoom(1);
   });
 
+  it("keeps fixed pixels and an aligned footprint through movement and zoom", async function () {
+    for (const zoom of [0.8, 1, 1.25, 1.5, 2]) {
+      await setPageZoom(zoom);
+      for (const width of [721.5, 480.25]) {
+        await browser.execute((value) => {
+          const modal = document.querySelector(".inkline-editor");
+          if (modal instanceof HTMLElement)
+            modal.style.width = `${String(value)}px`;
+        }, width);
+        await surface().moveTo();
+        const states = await browser.execute(() => {
+          const surface = document.querySelector(".inkline-surface");
+          const cursor = document.querySelector(".inkline-brush-cursor");
+          if (
+            !(surface instanceof HTMLCanvasElement) ||
+            !(cursor instanceof HTMLCanvasElement)
+          )
+            throw new Error("no brush bitmap");
+          const bounds = surface.getBoundingClientRect();
+          const ratio = devicePixelRatio;
+          return [0.125, 0.375, 0.625, 0.875].map((fraction) => {
+            const x = bounds.left + 80 + fraction;
+            const y = bounds.top + 80 + fraction;
+            surface.dispatchEvent(
+              new PointerEvent("pointermove", {
+                pointerType: "mouse",
+                pointerId: 51,
+                clientX: x,
+                clientY: y,
+                bubbles: true,
+              }),
+            );
+            const rect = cursor.getBoundingClientRect();
+            return {
+              bitmap: cursor.toDataURL(),
+              scaleError: Math.max(
+                Math.abs(rect.width * ratio - cursor.width),
+                Math.abs(rect.height * ratio - cursor.height),
+              ),
+              pixelError: Math.max(
+                Math.abs(rect.left * ratio - Math.round(rect.left * ratio)),
+                Math.abs(rect.top * ratio - Math.round(rect.top * ratio)),
+              ),
+              centreError: Math.max(
+                Math.abs((rect.left + rect.width / 2 - x) * ratio),
+                Math.abs((rect.top + rect.height / 2 - y) * ratio),
+              ),
+              native: getComputedStyle(surface).cursor,
+              visible: getComputedStyle(cursor).display !== "none",
+              expectedDiameter: surface.clientWidth / 36,
+            };
+          });
+        });
+        expect(new Set(states.map((state) => state.bitmap)).size).toBe(1);
+        for (const state of states) {
+          expect(state.scaleError).toBeLessThan(0.02);
+          expect(state.pixelError).toBeLessThan(0.02);
+          expect(state.centreError).toBeLessThanOrEqual(0.51);
+          expect(state.native).toBe("none");
+          expect(state.visible).toBe(true);
+        }
+        expect(
+          Math.abs(
+            (await cursorImage()).diameter - (states[0]?.expectedDiameter ?? 0),
+          ),
+        ).toBeLessThan(0.3);
+      }
+    }
+    await saveScreenshot("fixed-brush-cursor");
+  });
   it("draws a circular footprint with a centred dot at every preset", async function () {
     await surface().moveTo();
     const width = await browser.execute(() => {
@@ -88,44 +136,56 @@ describe("Native brush cursor", function () {
     }
   });
 
-  it("supplies decoded 1x and 2x images and a visible bounded fallback", async function () {
-    const results = await browser.execute(async () => {
-      const { brushCursor } = window.inklineTest.cursor;
+  it("paints bounded symmetric bitmaps at fractional display densities", async function () {
+    const results = await browser.execute(() => {
+      const { paintBrushCursor } = window.inklineTest.cursor;
+      const canvas = createEl("canvas");
       const values = [];
-      for (const diameter of [1, 7.125, 25.5, 124]) {
-        const css = brushCursor(diameter, document);
-        const sources = [
-          ...css.matchAll(/data:image\/png;base64,[A-Za-z0-9+/=]+/g),
-        ];
-        const sizes = [];
-        for (const match of sources) {
-          const image = new Image();
-          image.src = match[0];
-          await image.decode();
-          sizes.push([image.naturalWidth, image.naturalHeight]);
+      for (const ratio of [0.8, 1, 1.25, 1.5, 2, 3]) {
+        for (const diameter of [1, 7.125, 25.5, 124]) {
+          const hotspot = paintBrushCursor(canvas, diameter, ratio);
+          const context = canvas.getContext("2d");
+          if (context === null) throw new Error("no context");
+          const pixels = context.getImageData(
+            0,
+            0,
+            canvas.width,
+            canvas.height,
+          ).data;
+          const symmetric = pixels.every((value, index) => {
+            const channel = index % 4;
+            const pixel = Math.floor(index / 4);
+            const x = pixel % canvas.width;
+            const y = Math.floor(pixel / canvas.width);
+            return value === pixels[(x * canvas.width + y) * 4 + channel];
+          });
+          values.push({
+            hotspot,
+            width: canvas.width,
+            height: canvas.height,
+            symmetric,
+          });
         }
-        values.push({ supported: CSS.supports("cursor", css), sizes });
       }
       return {
         values,
-        fallback: [0, -1, 125, NaN, Infinity].map((diameter) =>
-          brushCursor(diameter, document),
+        fallback: [0, -1, 10000, NaN, Infinity].map(
+          (diameter) => paintBrushCursor(canvas, diameter, 1) === undefined,
+        ),
+        invalidDensity: [0, -1, NaN, Infinity].map(
+          (ratio) => paintBrushCursor(canvas, 20, ratio) === undefined,
         ),
       };
     });
     for (const value of results.values) {
-      expect(value.supported).toBe(true);
-      expect(value.sizes).toHaveLength(2);
-      const one = value.sizes[0];
-      const two = value.sizes[1];
-      expect(one?.[0]).toBe(one?.[1]);
-      expect(one?.[0]).toBeLessThanOrEqual(128);
-      expect(two?.[0]).toBe((one?.[0] ?? 0) * 2);
-      expect(two?.[1]).toBe((one?.[1] ?? 0) * 2);
+      expect(value.width).toBe(value.height);
+      expect(value.width).toBeLessThanOrEqual(1024);
+      expect(value.hotspot).toBe(value.width / 2);
+      expect(value.symmetric).toBe(true);
     }
-    expect(results.fallback).toEqual(Array<string>(5).fill("crosshair"));
+    expect(results.fallback).toEqual(Array<boolean>(5).fill(true));
+    expect(results.invalidDensity).toEqual(Array<boolean>(4).fill(true));
   });
-
   it("uses the eraser footprint for eraser contact and restores Pen on hover", async function () {
     await surface().moveTo();
     await browser.keys("1");
@@ -152,9 +212,9 @@ describe("Native brush cursor", function () {
       }, buttons);
     };
     await dispatch(32);
-    expect((await cursorImage()).css).toBe(eraser.css);
+    expect((await cursorImage()).bitmap).toBe(eraser.bitmap);
     await dispatch(0);
-    expect((await cursorImage()).css).toBe(pen.css);
+    expect((await cursorImage()).bitmap).toBe(pen.bitmap);
   });
 
   it("retains grab and grabbing for tracing and restores the brush", async function () {

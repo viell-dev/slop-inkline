@@ -68,7 +68,7 @@ describe("Editor feedback", function () {
       expect(layout.nameWidth).toBeGreaterThan(300);
     });
 
-    it(`keeps a fixed native brush at fractional positions in ${theme}`, async function () {
+    it(`keeps a fixed brush bitmap at fractional positions in ${theme}`, async function () {
       await insert();
       for (const width of [721.5, 480.25]) {
         await browser.execute(
@@ -139,7 +139,7 @@ describe("Editor feedback", function () {
     expect(large.diameter / small.diameter).toBeCloseTo(2, 1);
     await browser.keys("e");
     await browser.waitUntil(hasBrushCursor);
-    expect((await cursorImage()).css).toBe(small.css);
+    expect((await cursorImage()).bitmap).toBe(small.bitmap);
     await browser.$('[data-inkline-button="pen"]').moveTo();
     await browser.waitUntil(async () => !(await hasBrushCursor()));
     expect(await surface().getCSSProperty("cursor")).toMatchObject({
@@ -170,10 +170,10 @@ describe("Editor feedback", function () {
       canvas.dispatchEvent(new PointerEvent("pointercancel", sample));
       return {
         native: getComputedStyle(canvas).cursor,
-        replacement: canvas.style.getPropertyValue("--inkline-brush-cursor"),
+        replacement: canvas.classList.contains("has-brush-cursor"),
       };
     });
-    expect(cancelled).toEqual({ native: "crosshair", replacement: "" });
+    expect(cancelled).toEqual({ native: "crosshair", replacement: false });
     await surface().moveTo({ xOffset: 20 });
     await browser.waitUntil(hasBrushCursor);
     // Keyboard activation opens Help without a pointerleave hiding the ring.
@@ -351,8 +351,7 @@ describe("Editor feedback", function () {
         bubbles: true,
       };
       canvas.dispatchEvent(new PointerEvent("pointermove", pen));
-      const visible = () =>
-        getComputedStyle(canvas).cursor.includes("data:image/png");
+      const visible = () => getComputedStyle(canvas).cursor === "none";
       const before = visible();
       for (const type of ["pointermove", "pointerleave", "pointercancel"]) {
         canvas.dispatchEvent(

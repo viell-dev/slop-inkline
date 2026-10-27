@@ -58,6 +58,17 @@
   overflow: hidden;
 }
 
+.inkline-brush-cursor {
+  position: absolute;
+  left: 0;
+  top: 0;
+  max-width: none;
+  transform-origin: 0 0;
+  image-rendering: pixelated;
+  will-change: transform;
+  pointer-events: none;
+}
+
 .inkline-surface {
   --inkline-guide: var(--text-faint);
   display: block;
@@ -67,11 +78,16 @@
   background-color: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-s);
-  cursor: var(--inkline-brush-cursor, crosshair);
+  cursor: crosshair;
   /* Keep focus and drop outlines inside the drawing wrapper. */
   outline-offset: -2px;
   /* The surface handles pens and touch itself, without scrolling or zooming. */
   touch-action: none;
+}
+
+/* Hide the system pointer only while a complete replacement is visible. */
+.inkline-surface.has-brush-cursor {
+  cursor: none;
 }
 
 /* Dragging moves the picture to trace over, rather than drawing. */
