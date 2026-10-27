@@ -8,6 +8,25 @@ section is also its
 
 ## Unreleased
 
+## 0.1.1-rc.6 - 2026-10-27
+
+This candidate follows the rc.3 report that **Make ink** gave a symbol blurry
+edges
+([automatic conversion softness](https://github.com/viell-dev/slop-inkline/issues/92)).
+The rc.5 brush circle is unchanged, and no further human check is needed for
+this objective pixel fix. Public stable publication remains on hold, with the
+earlier [workflow feedback](https://github.com/viell-dev/slop-inkline/issues/5)
+tracked separately.
+
+### Fixed
+
+- Keep the edges of **Make ink** sharp when the picture is shown larger than its
+  own pixels, such as a small screenshot scaled up to a capital's height. The
+  picture is sampled at the drawing's finer resolution before the threshold
+  applies, rather than each thresholded pixel being enlarged, which spread every
+  edge across several pixels. Symbols made before keep their ink; make ink of
+  the picture again to sharpen one.
+
 ## 0.1.1-rc.5 - 2026-10-27
 
 The rc.4 report confirmed that the brush cursor's shape stays fixed, but its
