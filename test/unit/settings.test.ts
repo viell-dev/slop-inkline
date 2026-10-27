@@ -52,6 +52,13 @@ describe("withSetting", () => {
     expect(
       withSetting(defaultSettings, "brushSize", "0", sizes)?.brushSize,
     ).toBe(0);
+    expect(
+      withSetting(defaultSettings, "symbolFolder", " /Notes/Signs/ ", sizes)
+        ?.symbolFolder,
+    ).toBe("Notes/Signs");
+    expect(
+      withSetting(defaultSettings, "symbolFolder", "", sizes)?.symbolFolder,
+    ).toBe("");
     expect(withSetting(defaultSettings, "guides", false, sizes)?.guides).toBe(
       false,
     );
@@ -76,6 +83,9 @@ describe("withSetting", () => {
       ["brushSize", "big"],
       ["brushSize", ""],
       ["brushSize", "  "],
+      ["symbolFolder", "../Signs"],
+      ["symbolFolder", ".hidden"],
+      ["symbolFolder", 3],
       ["guides", 1],
       ["textColor", "false"],
       ["symbolScale", 0],
@@ -102,6 +112,7 @@ describe("readSettings", () => {
   it("reads what was stored", () => {
     const stored = {
       trigger: "::",
+      symbolFolder: "Notes/Signs",
       brushSize: 2,
       guides: false,
       symbolScale: 150,

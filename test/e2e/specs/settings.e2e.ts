@@ -124,9 +124,10 @@ describe("Inkline settings", function () {
     await obsidianPage.enablePlugin("inkline");
   });
 
-  it("shows all five controls with their defaults", async function () {
+  it("shows all six controls with their defaults", async function () {
     await openSettings();
     expect(await setting("Insert trigger").$("input").getValue()).toBe(";;");
+    expect(await setting("Symbol folder").$("input").getValue()).toBe("");
     expect(await setting("Brush size").$("select").getValue()).toBe("1");
     expect(await setting("Symbol size").$("input").getValue()).toBe("100");
     // Pen pressure was removed with pen-device support (#101).
@@ -167,6 +168,16 @@ describe("Inkline settings", function () {
     await browser.waitUntil(
       async () => (await noteText()) === "Read ![[gate.ink.png]]",
     );
+  });
+
+  it("stores a symbol folder, refusing one that leaves the vault", async function () {
+    await openSettings();
+    await setting("Symbol folder").$("input").setValue("/Signs/Script/");
+    await waitForStored({ symbolFolder: "Signs/Script" });
+    await setting("Symbol folder").$("input").setValue("../Signs");
+    await setting("Brush size").$("select").click();
+    await closeSettings();
+    await waitForStored({ symbolFolder: "Signs/Script" });
   });
 
   it("keeps drawing defaults across reload and applies them to a new editor", async function () {
@@ -473,6 +484,7 @@ describe("Inkline settings", function () {
     await obsidianPage.enablePlugin("inkline");
     await openSettings();
     expect(await setting("Insert trigger").$("input").getValue()).toBe(";;");
+    expect(await setting("Symbol folder").$("input").getValue()).toBe("");
     expect(await setting("Symbol size").$("input").getValue()).toBe("100");
     await closeSettings();
   });
