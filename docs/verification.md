@@ -126,10 +126,12 @@ saving it again never changes it.
   layer's sides
   ([pixels.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/ink/pixels.test.ts)).
 - Each brush size, drawn with a mouse and measured in the saved symbol, is as
-  wide as its size. M is within 15% of the stems of regular text and L lies
-  between regular and bold, for the editor's text font, DejaVu Sans and Noto
-  Serif, measured in the host. Five M strokes a grid spacing apart stay
-  separate, and pen pressure draws M at its size at half pressure
+  wide as its size. M is within 15% of the stems of regular text, L lies between
+  1.3 times regular and 1.1 times bold, and XL is at least about as heavy as
+  bold, for the editor's text font and, where the host has them, DejaVu Sans and
+  Noto Serif. In a note in reading view, an inline symbol's M strokes show
+  within 20% of the text's stems on the screen. Five M strokes a grid spacing
+  apart stay separate, and the renderer draws M at its size at half pen pressure
   ([pen-weights.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/pen-weights.e2e.ts)).
 
 ### Drawing is never lost

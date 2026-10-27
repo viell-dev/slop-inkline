@@ -12,23 +12,32 @@ import { saveScreenshot } from "../support/screenshots.ts";
 /** Stems of a font's regular and bold weights, in pixels at 128 px an em. */
 interface Stems {
   readonly family: string;
+  /** Whether the host has the font, rather than drawing another for it. */
+  readonly installed: boolean;
   readonly regular: number;
   readonly bold: number;
 }
 
 /**
- * The stems of the editor's text font and of two others the host has, each
- * the median of the vertical stems of l, I, H and n at 128 px, as the coverage
- * across a row through them.
+ * The stems of the editor's text font and of two others, each the median of
+ * the vertical stems of l, I, H and n at 128 px, as the coverage across a row
+ * through them. Bold is the weight Obsidian gives bold text in notes.
  */
 async function fontStems(): Promise<Stems[]> {
   return browser.execute(() => {
     const line = activeDocument.querySelector(".inkline-preview");
     if (!(line instanceof HTMLElement)) throw new Error("no preview line");
+    const strong = line.createEl("strong", { text: "X" });
+    const boldWeight = getComputedStyle(strong).fontWeight;
+    strong.remove();
     const em = 128;
     const canvas = new OffscreenCanvas(em * 2, em * 2);
     const context = canvas.getContext("2d");
     if (context === null) throw new Error("no context");
+    const widthIn = (font: string) => {
+      context.font = `${String(em)}px ${font}`;
+      return context.measureText("mmmmmmmmmmlli").width;
+    };
     const stem = (family: string, weight: string) => {
       const widths = [];
       for (const [glyph, along] of [
@@ -59,13 +68,16 @@ async function fontStems(): Promise<Stems[]> {
       widths.sort((a, b) => a - b);
       return ((widths[1] ?? 0) + (widths[2] ?? 0)) / 2;
     };
-    return [getComputedStyle(line).fontFamily, "DejaVu Sans", "Noto Serif"].map(
-      (family) => ({
-        family,
-        regular: stem(family, "400"),
-        bold: stem(family, "700"),
-      }),
-    );
+    const editorFont = getComputedStyle(line).fontFamily;
+    return [editorFont, '"DejaVu Sans"', '"Noto Serif"'].map((family) => ({
+      family,
+      // A named font the host lacks falls back to monospace here.
+      installed:
+        family === editorFont ||
+        widthIn(`${family}, monospace`) !== widthIn("monospace"),
+      regular: stem(family, "400"),
+      bold: stem(family, boldWeight),
+    }));
   });
 }
 
@@ -113,6 +125,89 @@ async function savedRuns(
   }, line);
 }
 
+/**
+ * The coverage of each run of ink across a row of what `selector` shows on
+ * the screen, from a screenshot of it: the row `along` its ink's height, in
+ * screen pixels, against the element's text colour on its background.
+ */
+async function shownRuns(selector: string, along: number): Promise<number[]> {
+  const element = await browser.$(selector).getElement();
+  const shot = await browser.takeElementScreenshot(element.elementId);
+  return browser.execute(
+    async (png, wanted, at) => {
+      const node = activeDocument.evaluate(
+        wanted,
+        activeDocument,
+        null,
+        XPathResult.FIRST_ORDERED_NODE_TYPE,
+        null,
+      ).singleNodeValue;
+      if (!(node instanceof Element)) throw new Error(`no ${wanted}`);
+      const probe = new OffscreenCanvas(1, 1).getContext("2d");
+      if (probe === null) throw new Error("no 2D context");
+      probe.fillStyle = getComputedStyle(node).color;
+      probe.fillRect(0, 0, 1, 1);
+      const ink = probe.getImageData(0, 0, 1, 1).data;
+      const lightness = (data: Uint8ClampedArray, at: number) =>
+        0.2126 * (data[at] ?? 0) +
+        0.7152 * (data[at + 1] ?? 0) +
+        0.0722 * (data[at + 2] ?? 0);
+      const bytes = Uint8Array.from(atob(png), (c) => c.charCodeAt(0));
+      const bitmap = await createImageBitmap(new Blob([bytes]));
+      const { width, height, data } =
+        window.inklineTest.canvas.readPixels(bitmap);
+      bitmap.close();
+      const ground = lightness(data, 0);
+      const full = ground - lightness(ink, 0);
+      const cover = (x: number, y: number) =>
+        Math.max(
+          0,
+          Math.min(1, (ground - lightness(data, (y * width + x) * 4)) / full),
+        );
+      let top = height;
+      let bottom = -1;
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          if (cover(x, y) > 0.5) {
+            top = Math.min(top, y);
+            bottom = Math.max(bottom, y);
+          }
+        }
+      }
+      const y = Math.round(top + (bottom - top) * at);
+      const runs: number[] = [];
+      let inside = false;
+      for (let x = 0; x < width; x++) {
+        const covered = cover(x, y);
+        if (covered > 0.02) {
+          if (!inside) runs.push(0);
+          runs[runs.length - 1] = (runs.at(-1) ?? 0) + covered;
+        }
+        inside = covered > 0.02;
+      }
+      return runs;
+    },
+    shot,
+    selector,
+    along,
+  );
+}
+
+function median(values: readonly number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1
+    ? (sorted[middle] ?? 0)
+    : ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2;
+}
+
+/** Opens an editor for a new symbol in Editor.md. */
+async function openEditor(): Promise<void> {
+  await openAtMarker("Editor.md", "HERE");
+  await browser.executeObsidianCommand("inkline:insert-symbol");
+  await waitForEditor();
+}
+
 /** Saves the symbol being drawn and waits for the editor to close. */
 async function save(): Promise<void> {
   await browser.keys(["Control", "Enter"]);
@@ -125,12 +220,10 @@ describe("Brush sizes beside text", function () {
   });
   beforeEach(async function () {
     await startOver();
-    await openAtMarker("Editor.md", "HERE");
-    await browser.executeObsidianCommand("inkline:insert-symbol");
-    await waitForEditor();
   });
 
-  it("draws M as regular text, L as bold, S finer and XL heavier", async function () {
+  it("draws M about as heavy as regular text, L near bold, S finer and XL heavier", async function () {
+    await openEditor();
     const fonts = await fontStems();
     // One upright stroke a size, with the mouse, so with no pressure.
     for (const [index] of brushSizes.entries()) {
@@ -153,16 +246,85 @@ describe("Brush sizes beside text", function () {
       expect(Math.abs((widths[index] ?? 0) - size.em * 128)).toBeLessThan(0.5);
     });
     const [s = 0, m = 0, l = 0, xl = 0] = widths;
-    for (const { regular, bold } of fonts) {
+    // The editor's own font, and the others only where the host has them.
+    for (const { regular, bold } of fonts.filter((font) => font.installed)) {
+      // S about half the weight of text, for fine detail.
       expect(s).toBeLessThanOrEqual(regular * 0.6);
+      // M within 15% of regular text's stems.
       expect(Math.abs(m - regular)).toBeLessThanOrEqual(regular * 0.15);
+      // L well above regular, and no more than a little above bold.
       expect(l).toBeGreaterThanOrEqual(regular * 1.3);
       expect(l).toBeLessThanOrEqual(bold * 1.1);
+      // XL at least about as heavy as bold.
       expect(xl).toBeGreaterThanOrEqual(bold * 0.95);
     }
   });
 
+  it("shows M in a note about as heavy as the text beside it", async function () {
+    // The presets as strokes of a symbol, in a note of upright letters.
+    const sizes = brushSizes.map((size) => size.em * 128 * 16);
+    await browser.executeObsidian(async ({ app }, units) => {
+      const { bytes } = await window.inklineTest.canvas.saveInk(
+        {
+          strokes: units.map((size, index) => ({
+            tool: "pen" as const,
+            size,
+            pressure: false,
+            points: [800 + index * 640, 800, 800 + index * 640, 2000],
+          })),
+        },
+        undefined,
+        [],
+      );
+      await app.vault.createBinary("weights.ink.png", bytes.slice().buffer);
+      const note = await app.vault.create(
+        "Weights.md",
+        "llllllllllll\n\nnnnnnnnnnnnn\n\nx ![[weights.ink.png]] x\n",
+      );
+      await app.workspace
+        .getLeaf(true)
+        .openFile(note, { state: { mode: "preview" } });
+    }, sizes);
+    const view = "//div[contains(@class, 'markdown-reading-view')]";
+    const symbol = `${view}//img[contains(@class, 'inkline-symbol')]`;
+    await browser.$(symbol).waitForDisplayed();
+    await browser.waitUntil(async () =>
+      browser.execute(
+        (wanted) =>
+          activeDocument.evaluate(
+            wanted,
+            activeDocument,
+            null,
+            XPathResult.FIRST_ORDERED_NODE_TYPE,
+            null,
+          ).singleNodeValue instanceof HTMLImageElement,
+        symbol,
+      ),
+    );
+    await saveScreenshot("pen-weights-reading");
+    const text = [
+      ...(await shownRuns(
+        `${view}//p[normalize-space(.)='llllllllllll']`,
+        0.6,
+      )),
+      ...(await shownRuns(
+        `${view}//p[normalize-space(.)='nnnnnnnnnnnn']`,
+        0.75,
+      )),
+    ];
+    const strokes = await shownRuns(symbol, 0.5);
+    console.log("Shown weights", JSON.stringify({ text, strokes }));
+    expect(strokes).toHaveLength(brushSizes.length);
+    const stem = median(text);
+    const [s = 0, m = 0, l = 0, xl = 0] = strokes;
+    expect(s).toBeLessThan(stem * 0.75);
+    expect(Math.abs(m - stem)).toBeLessThanOrEqual(stem * 0.2);
+    expect(l).toBeGreaterThanOrEqual(stem * 1.3);
+    expect(xl).toBeGreaterThan(l);
+  });
+
   it("keeps strokes of M a grid spacing apart distinct, for dense symbols", async function () {
+    await openEditor();
     await browser.keys("2");
     // Five level strokes, 16 document pixels apart in a line box 192 tall.
     for (let line = 0; line < 5; line++) {
@@ -189,7 +351,8 @@ describe("Brush sizes beside text", function () {
     expect(runs).toHaveLength(5);
   });
 
-  it("draws M with pen pressure about as wide as its size at half pressure", async function () {
+  it("draws M's pressure curve around its own width, as the renderer draws it", async function () {
+    // Saved pen strokes at set pressures, not pointer input.
     const size = (brushSizes[1]?.em ?? 0) * 128;
     const widths = await browser.execute((units: number) => {
       const { record, render } = window.inklineTest;

@@ -26,10 +26,11 @@ at the brush's own width. Only the main button draws, and only one pointer at a
 time: once a pen has touched the screen, touch stops drawing, so a palm resting
 on a tablet leaves no marks.
 
-The four **brush sizes**, S, M, L, and XL (keys 1 to 4), scale with the text. M
-draws about as thick as the letters of regular text, L as bold text, and XL
-heavier; S is half as thick as regular text, for fine detail. Fonts differ, so
-the match is close rather than exact.
+The four **brush sizes**, S, M, L, and XL (keys 1 to 4), scale with the text and
+serve both Pen and Eraser. M draws about as thick as the letters of regular
+text, L near bold text, and XL heavier still; S is about half as thick as
+regular text, for fine detail. Fonts differ, so the match is close rather than
+exact.
 
 For a mouse or pen, a circle shows the brush's nominal diameter, scaled with the
 drawing area. Pen pressure can change the stroke width. Pen and Eraser keep

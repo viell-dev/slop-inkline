@@ -12,19 +12,21 @@ section is also its
 
 This candidate follows the rc.2 report that the brush sizes did not match the
 weight of text
-([pen weights](https://github.com/viell-dev/slop-inkline/issues/88)). No further
-human check is needed for this measured change; comfort feedback is welcome.
-Public stable publication remains on hold, with the earlier
+([pen weights](https://github.com/viell-dev/slop-inkline/issues/88)). No human
+check is requested for this candidate; comfort feedback is welcome. Public
+stable publication remains on hold, with the earlier
 [workflow feedback](https://github.com/viell-dev/slop-inkline/issues/5) tracked
 separately.
 
 ### Changed
 
 - Match the brush sizes to the weight of text. **M** now draws about as thick as
-  regular text and **L** as bold text, rather than M being nearly twice as heavy
-  as text. **S** is half the weight of text, for fine detail, and **XL** heavier
-  than bold. Each size is three quarters of what it was, and the keys, labels
-  and the default size are unchanged. Strokes already drawn keep their width.
+  regular text and **L** near bold text, where M was about 1.4 times as heavy as
+  text. **S** is about half the weight of text, for fine detail, and **XL**
+  heavier still. Each size is three quarters of what it was, for the Pen and the
+  Eraser alike; the keys, labels and the default size are unchanged. Strokes
+  already drawn keep their width, so new strokes added to an older symbol can
+  look lighter than its earlier ones of the same size.
 
 ## 0.1.1-rc.6 - 2026-10-27
 

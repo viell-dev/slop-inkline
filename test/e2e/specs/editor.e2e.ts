@@ -1,6 +1,9 @@
 import { browser, expect } from "@wdio/globals";
 import { Key } from "webdriverio";
 import { obsidianPage } from "wdio-obsidian-service";
+import { brushSizes } from "../../../src/editor/session.ts";
+import { unitsPerPixel } from "../../../src/format/record.ts";
+import { lineBox } from "../../../src/ink/geometry.ts";
 import { loadModules } from "../support/browser.ts";
 import {
   delayDecoding,
@@ -825,7 +828,14 @@ describe("The editor", function () {
     expect(record).toMatchObject({
       format: "inkline",
       box: { pxPerEm: 128, height: 192, baseline: 144 },
-      strokes: [{ tool: "pen", size: 256, pressure: false }],
+      // The default size, M.
+      strokes: [
+        {
+          tool: "pen",
+          size: (brushSizes[1]?.em ?? 0) * lineBox.pxPerEm * unitsPerPixel,
+          pressure: false,
+        },
+      ],
     });
   });
 

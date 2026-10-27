@@ -198,7 +198,7 @@ export class DrawingSession {
   /** The nominal diameter for a tool, including a pen's eraser end. */
   sizeFor(tool: Tool): number {
     const brush = brushSizes[this.sizes[tool]] ?? brushSizes[1];
-    return toUnits((brush?.em ?? 1 / 8) * lineBox.pxPerEm);
+    return toUnits((brush?.em ?? 6 / 64) * lineBox.pxPerEm);
   }
 
   get canUndo(): boolean {
