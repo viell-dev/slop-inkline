@@ -167,9 +167,11 @@ The `prepare` job repeats every step of the dry run. `publish` refuses a version
 whose tag already exists, unless it was published from exactly this build,
 attests the files' provenance, creates the release as a draft with the files and
 checksums, checks that the draft holds exactly those files for this commit, and
-then publishes it, which creates the tag on the commit that was built. Versions
-with a prerelease suffix are marked as prereleases; plain versions become the
-latest release.
+then publishes it, which creates the tag on the commit that was built. GitHub
+can list a new draft a few seconds late, so while its list shows no draft at
+all, the check lists again, waiting up to 20 seconds in all; any draft it lists
+is checked at once. Versions with a prerelease suffix are marked as prereleases;
+plain versions become the latest release.
 
 ### When publishing fails part way
 

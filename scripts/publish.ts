@@ -18,6 +18,7 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { isRecord } from "./lib/settings.ts";
 import { installArchiveName, isPrerelease } from "./lib/version.ts";
 import {
@@ -330,6 +331,9 @@ function host(
         target: commit,
         assets: assetsOf(release),
       });
+    },
+    wait: async (ms) => {
+      await sleep(ms);
     },
     log: (message) => {
       console.log(message);

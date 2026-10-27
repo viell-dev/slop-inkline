@@ -140,8 +140,18 @@ export interface ReleaseHost {
    * undefined if there is none, only a tag.
    */
   published(version: string): Promise<Draft | undefined>;
+  /** Waits `ms` milliseconds. */
+  wait(ms: number): Promise<void>;
   log(message: string): void;
 }
+
+/**
+ * How often to list the drafts after making one, and how long to wait before
+ * each later listing, longer each time: GitHub can leave a release it has just
+ * made out of its list for a few seconds.
+ */
+export const draftListings = 5;
+export const draftListingWait = 2000;
 
 /** Whether `draft` holds exactly the built files, byte for byte. */
 export function holdsBuild(draft: Draft, files: readonly BuiltFile[]): boolean {
@@ -208,7 +218,17 @@ export async function publishRelease(
       await host.deleteDraft(draft.id);
     }
     await host.createDraft(version);
-    const made = await host.drafts(version);
+    // Only an empty list is waited out: any draft it does show is checked.
+    let made = await host.drafts(version);
+    for (
+      let listing = 1;
+      made.length === 0 && listing < draftListings;
+      listing++
+    ) {
+      host.log(`GitHub lists no draft for ${version} yet; waiting.`);
+      await host.wait(draftListingWait * listing);
+      made = await host.drafts(version);
+    }
     const [draft] = made;
     if (
       made.length !== 1 ||
