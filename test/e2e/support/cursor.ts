@@ -18,8 +18,8 @@ export async function cursorImage() {
       let weight = 0;
       for (let x = start; x < end; x++) {
         const at = (cy * canvas.width + x) * 4;
-        const amount =
-          ((255 - (pixels[at] ?? 255)) / 255) * ((pixels[at + 3] ?? 0) / 255);
+        // The ring's coverage is independent of its adaptive black/white RGB.
+        const amount = (pixels[at + 3] ?? 0) / 255;
         sum += (x + 0.5) * amount;
         weight += amount;
       }

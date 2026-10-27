@@ -116,9 +116,13 @@ describe("Fixed brush bitmap", function () {
       expect(image.hotspot).toEqual([image.width / 2, image.height / 2]);
       const centre = ((image.height / 2) * image.width + image.width / 2) * 4;
       expect(image.pixels[centre]).toBeLessThan(100);
-      expect(image.pixels[centre + 3]).toBe(255);
-      // Compare the alpha footprint's horizontal/vertical span, including
-      // its contrast halo; a stretched oval must fail even if centred.
+      // Check the visible dot over this light surface. Removing the opaque
+      // white halo leaves antialiased coverage, with the same visible core.
+      const alpha = (image.pixels[centre + 3] ?? 0) / 255;
+      const visible = (image.pixels[centre] ?? 255) * alpha + 255 * (1 - alpha);
+      expect(visible).toBeLessThan(64);
+      // Compare the alpha footprint's horizontal/vertical span; a stretched
+      // oval must fail even if centred.
       const xs: number[] = [];
       const ys: number[] = [];
       for (let y = 0; y < image.height; y++) {
@@ -143,7 +147,7 @@ describe("Fixed brush bitmap", function () {
       const values = [];
       for (const ratio of [0.8, 1, 1.25, 1.5, 2, 3]) {
         for (const diameter of [1, 7.125, 25.5, 124]) {
-          const hotspot = paintBrushCursor(canvas, diameter, ratio);
+          const hotspot = paintBrushCursor(canvas, diameter, ratio)?.hotspot;
           const context = canvas.getContext("2d");
           if (context === null) throw new Error("no context");
           const pixels = context.getImageData(
