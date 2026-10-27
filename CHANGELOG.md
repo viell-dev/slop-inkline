@@ -14,9 +14,9 @@ This candidate follows the rc.2 report that the brush sizes did not match the
 weight of text
 ([pen weights](https://github.com/viell-dev/slop-inkline/issues/88)). No human
 check is requested for this candidate; comfort feedback is welcome. Public
-stable publication remains on hold, with the earlier
-[workflow feedback](https://github.com/viell-dev/slop-inkline/issues/5) tracked
-separately.
+stable publication remains on hold, and a human pass covering these sizes is
+required before any stable release, as the earlier
+[workflow feedback](https://github.com/viell-dev/slop-inkline/issues/5) records.
 
 ### Changed
 

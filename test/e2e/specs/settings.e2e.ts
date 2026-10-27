@@ -258,6 +258,7 @@ describe("Inkline settings", function () {
     const first = await browser
       .$(".markdown-reading-view img.inkline-symbol")
       .getElement();
+    await saveScreenshot("settings-stored-colour");
     const shot = await browser.takeElementScreenshot(first.elementId);
     const grey = await browser.execute(async (png) => {
       const bytes = Uint8Array.from(atob(png), (character) =>
