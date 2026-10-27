@@ -58,29 +58,6 @@
   overflow: hidden;
 }
 
-.inkline-brush-cursor {
-  position: absolute;
-  box-sizing: border-box;
-  border: 1px solid var(--text-normal);
-  box-shadow: 0 0 0 1px var(--background-primary);
-  border-radius: 50%;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-}
-
-.inkline-brush-cursor::after {
-  content: "";
-  position: absolute;
-  width: 2px;
-  height: 2px;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  border-radius: 50%;
-  background-color: var(--text-normal);
-  box-shadow: 0 0 0 1px var(--background-primary);
-}
-
 .inkline-surface {
   --inkline-guide: var(--text-faint);
   display: block;
@@ -90,16 +67,11 @@
   background-color: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-s);
-  cursor: crosshair;
-  /* Keep focus and drop outlines inside the cursor's clipping wrapper. */
+  cursor: var(--inkline-brush-cursor, crosshair);
+  /* Keep focus and drop outlines inside the drawing wrapper. */
   outline-offset: -2px;
   /* The surface handles pens and touch itself, without scrolling or zooming. */
   touch-action: none;
-}
-
-/* Hide the native crosshair only while its replacement is visible. */
-.inkline-surface.has-brush-cursor {
-  cursor: none;
 }
 
 /* Dragging moves the picture to trace over, rather than drawing. */

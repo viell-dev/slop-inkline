@@ -1,5 +1,6 @@
 import { browser, expect } from "@wdio/globals";
 import { loadModules } from "../support/browser.ts";
+import { cursorImage, hasBrushCursor } from "../support/cursor.ts";
 import {
   draw,
   openAtMarker,
@@ -67,7 +68,7 @@ describe("Editor feedback", function () {
       expect(layout.nameWidth).toBeGreaterThan(300);
     });
 
-    it(`centres a single brush cursor at fractional positions in ${theme}`, async function () {
+    it(`keeps a fixed native brush at fractional positions in ${theme}`, async function () {
       await insert();
       for (const width of [721.5, 480.25]) {
         await browser.execute(
@@ -84,15 +85,11 @@ describe("Editor feedback", function () {
         await surface().moveTo();
         const measurements = await browser.execute(() => {
           const canvas = document.querySelector(".inkline-surface");
-          const cursor = document.querySelector(".inkline-brush-cursor");
-          if (
-            !(canvas instanceof HTMLCanvasElement) ||
-            !(cursor instanceof HTMLElement)
-          )
+          if (!(canvas instanceof HTMLCanvasElement))
             throw new Error("no drawing controls");
           const rect = canvas.getBoundingClientRect();
           const offsets = [0.125, 0.375, 0.625, 0.875];
-          const errors = offsets.map((fraction) => {
+          const cursors = offsets.map((fraction) => {
             const clientX = rect.left + 80 + fraction;
             const clientY = rect.top + 80 + fraction;
             canvas.dispatchEvent(
@@ -104,33 +101,15 @@ describe("Editor feedback", function () {
                 bubbles: true,
               }),
             );
-            const ring = cursor.getBoundingClientRect();
-            return Math.max(
-              Math.abs(ring.left + ring.width / 2 - clientX),
-              Math.abs(ring.top + ring.height / 2 - clientY),
-            );
+            return getComputedStyle(canvas).cursor;
           });
-          const dot = getComputedStyle(cursor, "::after");
-          return {
-            errors,
-            native: getComputedStyle(canvas).cursor,
-            dot: {
-              content: dot.content,
-              width: dot.width,
-              height: dot.height,
-              colour: dot.backgroundColor,
-            },
-            ink: getComputedStyle(canvas).color,
-          };
+          return cursors;
         });
-        expect(Math.max(...measurements.errors)).toBeLessThan(0.05);
-        expect(measurements.native).toBe("none");
-        expect(measurements.dot).toEqual({
-          content: '""',
-          width: "2px",
-          height: "2px",
-          colour: measurements.ink,
-        });
+        expect(new Set(measurements).size).toBe(1);
+        const image = await cursorImage();
+        expect(image.width).toBe(image.height);
+        expect(image.hotspot).toEqual([image.width / 2, image.height / 2]);
+        expect(image.diameter).toBeGreaterThan(0);
       }
       await saveScreenshot(`editor-centred-cursor-${theme}`);
     });
@@ -150,23 +129,19 @@ describe("Editor feedback", function () {
   it("shows the brush footprint without adding it to the drawing", async function () {
     await insert();
     await surface().moveTo();
-    const cursor = browser.$(".inkline-brush-cursor");
-    await cursor.waitForDisplayed();
-    expect(await surface().getCSSProperty("cursor")).toMatchObject({
-      value: "none",
-    });
-    const small = await cursor.getSize();
+    await browser.waitUntil(hasBrushCursor);
+    const small = await cursorImage();
     await browser.keys("4");
     await browser.waitUntil(
-      async () => (await cursor.getSize()).width > small.width,
+      async () => (await cursorImage()).diameter > small.diameter,
     );
-    const large = await cursor.getSize();
-    expect(large.width / small.width).toBeCloseTo(2, 1);
+    const large = await cursorImage();
+    expect(large.diameter / small.diameter).toBeCloseTo(2, 1);
     await browser.keys("e");
-    await cursor.waitForDisplayed();
-    expect((await cursor.getSize()).width).toBe(small.width);
+    await browser.waitUntil(hasBrushCursor);
+    expect((await cursorImage()).css).toBe(small.css);
     await browser.$('[data-inkline-button="pen"]').moveTo();
-    await cursor.waitForDisplayed({ reverse: true });
+    await browser.waitUntil(async () => !(await hasBrushCursor()));
     expect(await surface().getCSSProperty("cursor")).toMatchObject({
       value: "crosshair",
     });
@@ -181,8 +156,7 @@ describe("Editor feedback", function () {
     await surface().moveTo();
     const cancelled = await browser.execute(() => {
       const canvas = document.querySelector(".inkline-surface");
-      const cursor = document.querySelector(".inkline-brush-cursor");
-      if (!(canvas instanceof HTMLCanvasElement) || cursor === null)
+      if (!(canvas instanceof HTMLCanvasElement))
         throw new Error("no drawing controls");
       const rect = canvas.getBoundingClientRect();
       const sample = {
@@ -196,12 +170,12 @@ describe("Editor feedback", function () {
       canvas.dispatchEvent(new PointerEvent("pointercancel", sample));
       return {
         native: getComputedStyle(canvas).cursor,
-        display: getComputedStyle(cursor).display,
+        replacement: canvas.style.getPropertyValue("--inkline-brush-cursor"),
       };
     });
-    expect(cancelled).toEqual({ native: "crosshair", display: "none" });
+    expect(cancelled).toEqual({ native: "crosshair", replacement: "" });
     await surface().moveTo({ xOffset: 20 });
-    await browser.$(".inkline-brush-cursor").waitForDisplayed();
+    await browser.waitUntil(hasBrushCursor);
     // Keyboard activation opens Help without a pointerleave hiding the ring.
     await browser.execute(() => {
       const help = document.querySelector('[data-inkline-button="help"]');
@@ -213,16 +187,11 @@ describe("Editor feedback", function () {
     expect(await surface().getCSSProperty("cursor")).toMatchObject({
       value: "crosshair",
     });
-    await browser
-      .$(".inkline-brush-cursor")
-      .waitForDisplayed({ reverse: true });
+    expect(await hasBrushCursor()).toBe(false);
     await browser.keys("Escape");
     await browser.$(".inkline-help").waitForExist({ reverse: true });
     await surface().moveTo({ xOffset: -20 });
-    await browser.$(".inkline-brush-cursor").waitForDisplayed();
-    expect(await surface().getCSSProperty("cursor")).toMatchObject({
-      value: "none",
-    });
+    await browser.waitUntil(hasBrushCursor);
   });
 
   it("keeps pen and eraser sizes separately through tool switches and Next", async function () {
@@ -266,25 +235,18 @@ describe("Editor feedback", function () {
   it("scales the brush circle with the surface and keeps it after a stroke", async function () {
     await insert();
     await surface().moveTo();
-    const cursor = browser.$(".inkline-brush-cursor");
-    await cursor.waitForDisplayed();
-    // WebDriver's getSize rounds to whole pixels; compare the actual CSS
-    // dimensions, excluding the surface border, at both scales.
-    const measure = () =>
-      browser.execute(() => {
-        const brush = document.querySelector(".inkline-brush-cursor");
+    await browser.waitUntil(hasBrushCursor);
+    // Measure the actual cursor image, excluding its transparent padding.
+    const measure = async () => ({
+      brush: (await cursorImage()).diameter,
+      surface: await browser.execute(() => {
         const canvas = document.querySelector(".inkline-surface");
-        if (
-          !(brush instanceof HTMLElement) ||
-          !(canvas instanceof HTMLCanvasElement)
-        ) {
+        if (!(canvas instanceof HTMLCanvasElement)) {
           throw new Error("no drawing controls");
         }
-        return {
-          brush: brush.getBoundingClientRect().width,
-          surface: canvas.clientWidth,
-        };
-      });
+        return canvas.clientWidth;
+      }),
+    });
     const before = await measure();
     await browser.execute(() => {
       const modal = document.querySelector(".inkline-editor");
@@ -295,7 +257,7 @@ describe("Editor feedback", function () {
     );
     await surface().moveTo();
     await browser.waitUntil(
-      async () => (await cursor.getSize()).width < before.brush,
+      async () => (await cursorImage()).diameter < before.brush,
     );
     const after = await measure();
     expect(after.brush / before.brush).toBeCloseTo(
@@ -306,7 +268,7 @@ describe("Editor feedback", function () {
       [0.4, 0.3],
       [0.5, 0.7],
     ]);
-    await cursor.waitForDisplayed();
+    await browser.waitUntil(hasBrushCursor);
     await saveScreenshot("editor-brush-circle");
   });
 
@@ -378,11 +340,7 @@ describe("Editor feedback", function () {
     await insert();
     const state = await browser.execute(() => {
       const canvas = document.querySelector(".inkline-surface");
-      const cursor = document.querySelector(".inkline-brush-cursor");
-      if (
-        !(canvas instanceof HTMLCanvasElement) ||
-        !(cursor instanceof HTMLElement)
-      )
+      if (!(canvas instanceof HTMLCanvasElement))
         throw new Error("no controls");
       const rect = canvas.getBoundingClientRect();
       const pen = {
@@ -393,7 +351,8 @@ describe("Editor feedback", function () {
         bubbles: true,
       };
       canvas.dispatchEvent(new PointerEvent("pointermove", pen));
-      const visible = () => getComputedStyle(cursor).display !== "none";
+      const visible = () =>
+        getComputedStyle(canvas).cursor.includes("data:image/png");
       const before = visible();
       for (const type of ["pointermove", "pointerleave", "pointercancel"]) {
         canvas.dispatchEvent(

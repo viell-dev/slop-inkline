@@ -53,6 +53,7 @@ import {
   type DraftTarget,
 } from "./drafts.ts";
 import { FileWatch, type Reading } from "./disk.ts";
+import { brushCursor } from "./cursor.ts";
 import { PointerGate, reportsPressure } from "./pointer.ts";
 import {
   brushSizes,
@@ -338,7 +339,7 @@ export class InkEditorModal extends Modal {
   /** The choice of a symbol to copy while it is open, to close with this. */
   #choosing: AbortController | undefined;
   #view: InkView | undefined;
-  #cursor: HTMLElement | undefined;
+  #cursor: { diameter: number; value: string } | undefined;
   #hover:
     | { pointerId: number; clientX: number; clientY: number; eraser: boolean }
     | undefined;
@@ -622,11 +623,6 @@ export class InkEditorModal extends Modal {
         "aria-labelledby": labelId,
       },
     });
-    this.#cursor = drawing.createDiv({
-      cls: "inkline-brush-cursor",
-      attr: { "aria-hidden": "true" },
-    });
-    this.#cursor.hide();
     // A line in the vault's text font and size, with the symbol at its size
     // there. Its font gives the guides.
     const line = this.contentEl.createDiv({
@@ -1768,18 +1764,16 @@ export class InkEditorModal extends Modal {
     this.#updateCursor();
   }
 
-  /** A screen overlay only: never part of the preview or saved ink. */
+  /** A native pointer image only: never part of the preview or saved ink. */
   #updateCursor(): void {
-    const cursor = this.#cursor;
     const view = this.#view;
     const hover = this.#hover;
-    if (cursor === undefined) return;
-    if (view === undefined || hover === undefined || this.#moving) {
-      cursor.hide();
-      view?.canvas.removeClass("has-brush-cursor");
+    if (view === undefined) return;
+    const canvas = view.canvas;
+    if (hover === undefined || this.#moving) {
+      canvas.style.removeProperty("--inkline-brush-cursor");
       return;
     }
-    const canvas = view.canvas;
     const rect = canvas.getBoundingClientRect();
     const x = hover.clientX - rect.left;
     const y = hover.clientY - rect.top;
@@ -1788,18 +1782,25 @@ export class InkEditorModal extends Modal {
       y >= canvas.clientTop &&
       x < canvas.clientLeft + canvas.clientWidth &&
       y < canvas.clientTop + canvas.clientHeight;
-    cursor.toggle(inside);
-    canvas.toggleClass("has-brush-cursor", inside);
-    if (!inside) return;
+    if (!inside) {
+      canvas.style.removeProperty("--inkline-brush-cursor");
+      return;
+    }
     const tool = hover.eraser ? "eraser" : this.#session.tool;
     const size = this.#session.activeSize ?? this.#session.sizeFor(tool);
     const diameter =
       ((size / unitsPerPixel) * canvas.clientWidth) /
       (view.visible.right - view.visible.left);
-    cursor.style.width = `${String(diameter)}px`;
-    cursor.style.height = `${String(diameter)}px`;
-    cursor.style.left = `${String(x)}px`;
-    cursor.style.top = `${String(y)}px`;
+    if (this.#cursor?.diameter !== diameter) {
+      this.#cursor = { diameter, value: brushCursor(diameter, canvas.doc) };
+    }
+    // No image generation or style mutation on ordinary pointer movement.
+    if (
+      canvas.style.getPropertyValue("--inkline-brush-cursor") !==
+      this.#cursor.value
+    ) {
+      canvas.style.setProperty("--inkline-brush-cursor", this.#cursor.value);
+    }
   }
 
   /** A short guide available without leaving a drawing. */
