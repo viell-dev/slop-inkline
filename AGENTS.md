@@ -40,9 +40,14 @@ screenshots use synthetic vaults and drawings only.
 - Every behavior change comes with tests. Code that needs Obsidian gets an
   end-to-end test in `test/e2e/`; run the suite with `npm run test:e2e:docker`
   before pushing, and look at the screenshots it writes.
-- Assert on state, positions, and pixels read back from Obsidian, never on
-  screenshots. Use `editor.getValue()` rather than `vault.cachedRead()` for a
-  note's text right after a change: the cache can still hold the old text.
+- Assert on state, positions, and pixels read back from Obsidian, never by
+  comparing screenshots with reference images. Where what Obsidian shows on the
+  screen is itself the subject and the DOM, a canvas or a saved file cannot give
+  it, as with a CSS mask or text drawn by the host, a test may measure the
+  pixels of a screenshot of the elements concerned in the host, assert on the
+  measurements with stated tolerances, and keep the screenshot as an artifact.
+  Use `editor.getValue()` rather than `vault.cachedRead()` for a note's text
+  right after a change: the cache can still hold the old text.
 
 ## Documents
 

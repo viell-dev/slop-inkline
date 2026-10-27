@@ -294,8 +294,9 @@ export async function symbolFiles(): Promise<string[]> {
 }
 
 /**
- * Writes a symbol file at `path`, with its folders, holding one stroke for
- * each of `xs`, as the editor saves them. Needs `loadModules`, from browser.ts.
+ * Writes a symbol file at `path`, with its folders, holding one stroke 16
+ * pixels wide for each of `xs`, in the format the editor saves. Needs
+ * `loadModules`, from browser.ts.
  */
 export async function createSymbol(
   path: string,

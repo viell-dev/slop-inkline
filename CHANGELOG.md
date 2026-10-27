@@ -8,6 +8,26 @@ section is also its
 
 ## Unreleased
 
+## 0.1.1-rc.7 - 2026-10-27
+
+This candidate follows the rc.2 report that the brush sizes did not match the
+weight of text
+([pen weights](https://github.com/viell-dev/slop-inkline/issues/88)). No human
+check is requested for this candidate; comfort feedback is welcome. Public
+stable publication remains on hold, and a human pass covering these sizes is
+required before any stable release, as the earlier
+[workflow feedback](https://github.com/viell-dev/slop-inkline/issues/5) records.
+
+### Changed
+
+- Match the brush sizes to the weight of text. **M** now draws about as thick as
+  regular text and **L** near bold text, where M was about 1.4 times as heavy as
+  text. **S** is about half the weight of text, for fine detail, and **XL**
+  heavier still. Each size is three quarters of what it was, for the Pen and the
+  Eraser alike; the keys, labels and the default size are unchanged. Strokes
+  already drawn keep their width, so new strokes added to an older symbol can
+  look lighter than its earlier ones of the same size.
+
 ## 0.1.1-rc.6 - 2026-10-27
 
 This candidate follows the rc.3 report that **Make ink** gave a symbol blurry

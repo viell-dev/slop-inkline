@@ -109,8 +109,12 @@ Screenshots and logs go to `test-results/e2e/`, which CI uploads as an artifact;
 a failed test leaves a screenshot named after it. `E2E_OUTPUT_DIR` picks another
 directory, which must be new, empty, or an earlier run's output: the harness
 marks its directory and refuses to clean any other. Screenshots are for review,
-never assertions: a test reads state, positions, or pixels back from Obsidian.
-Test vaults in `test/e2e/vaults/` and every drawing a test uses are synthetic.
+never compared with reference images: a test reads state, positions, or pixels
+back from Obsidian. Where what Obsidian shows on the screen is itself the
+subject and the DOM, a canvas or a saved file cannot give it, as with a CSS mask
+or text drawn by the host, a test may measure the pixels of a screenshot of the
+elements concerned, with stated tolerances. Test vaults in `test/e2e/vaults/`
+and every drawing a test uses are synthetic.
 
 CI runs the end-to-end tests on Linux for every pull request, and the Docker
 image weekly and on request.

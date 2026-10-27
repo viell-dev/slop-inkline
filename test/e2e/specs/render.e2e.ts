@@ -290,6 +290,7 @@ describe("Symbols in notes", function () {
             Reflect.apply(change, app, [chosen]);
           }, theme);
           await browser.pause(300);
+          await saveScreenshot(`render-colour-${mode}-${theme}`);
           const { text, grey } = await colours(images(mode));
           // The block is 3/4 of the width and half the height: 3/8 of it.
           expect(text).toBeGreaterThan(0.3);

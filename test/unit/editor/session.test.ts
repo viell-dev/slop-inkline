@@ -9,8 +9,11 @@ import {
 import { emptyDocument } from "../../../src/ink/document.ts";
 
 describe("brushSizes", () => {
-  it("run from 1 to 4 px at a 16 px font", () => {
-    expect(brushSizes.map((size) => size.em * 16)).toEqual([1, 2, 3, 4]);
+  it("run from 0.75 to 3 px at a 16 px font, in whole document pixels", () => {
+    expect(brushSizes.map((size) => size.em * 16)).toEqual([
+      0.75, 1.5, 2.25, 3,
+    ]);
+    expect(brushSizes.map((size) => size.em * 128)).toEqual([6, 12, 18, 24]);
   });
 });
 
@@ -24,9 +27,9 @@ describe("DrawingSession", () => {
     session.tool = "pen";
     expect(session.sizeIndex).toBe(0);
     session.begin({ x: 0, y: 0 }, "eraser");
-    expect(session.activeStroke).toMatchObject({ tool: "eraser", size: 512 });
+    expect(session.activeStroke).toMatchObject({ tool: "eraser", size: 384 });
     session.end();
-    expect(session.size).toBe(128);
+    expect(session.size).toBe(96);
     session.tool = "eraser";
     expect(session.sizeIndex).toBe(3);
   });
@@ -38,7 +41,7 @@ describe("DrawingSession", () => {
     session.extend([{ x: 10.5, y: 21 }]);
     session.end();
     expect(session.document.strokes).toEqual([
-      { tool: "pen", size: 384, pressure: false, points: [160, 320, 168, 336] },
+      { tool: "pen", size: 288, pressure: false, points: [160, 320, 168, 336] },
     ]);
   });
 
