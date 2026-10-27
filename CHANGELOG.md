@@ -8,6 +8,24 @@ section is also its
 
 ## Unreleased
 
+## 0.1.1-rc.8 - 2026-10-27
+
+This candidate narrows Inkline to the setup it is built and tested for, as the
+owner decided in [#101](https://github.com/viell-dev/slop-inkline/issues/101):
+desktop Obsidian with a mouse or a trackpad. The pen-device support it removes
+is kept on the
+[pen-input branch](https://github.com/viell-dev/slop-inkline/tree/pen-input).
+Public stable publication remains on hold, as the earlier
+[workflow feedback](https://github.com/viell-dev/slop-inkline/issues/5) records.
+
+### Removed
+
+- Pen pressure, a pen's eraser end, palm rejection, and the **Pen pressure**
+  setting. A drawing tablet's pen or a touchscreen now draws as a mouse does,
+  one pointer at a time, at the brush's width. Symbols drawn with pressure in
+  earlier versions keep it and look the same, and saving them again leaves those
+  strokes as they are.
+
 ## 0.1.1-rc.7 - 2026-10-27
 
 This candidate follows the rc.2 report that the brush sizes did not match the

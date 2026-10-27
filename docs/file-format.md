@@ -136,11 +136,13 @@ Each stroke is an object:
 | ---------- | ------- | ------------------------------------------------------------------------------------- |
 | `tool`     | string  | `"pen"` adds ink; `"eraser"` removes it.                                              |
 | `size`     | integer | The stroke's diameter, in units.                                                      |
-| `pressure` | boolean | Whether each point carries pressure, as from a pen; a mouse records none.             |
+| `pressure` | boolean | Whether each point carries pressure, as from a pen in versions before 0.1.1-rc.8.     |
 | `points`   | array   | The points in drawing order, flattened: `x, y` per point, or `x, y, p` with pressure. |
 
 Pressure `p` is an integer from 0 to 255. A stroke has at least one point; a
-single point is a dot.
+single point is a dot. Inkline writes `false` for every new stroke, as it no
+longer records pen pressure, but reads and draws strokes with pressure as
+before, and saving a symbol again keeps them as they are.
 
 The base layer is an object:
 

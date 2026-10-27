@@ -21,7 +21,7 @@ body:
       description: >-
         The Inkline version, the Obsidian version and installer version (both in
         Settings, General), the operating system, and the input device you draw
-        with: mouse, trackpad, pen, or touch.
+        with: a mouse, a trackpad, or another pointer.
     validations:
       required: true
   - type: textarea

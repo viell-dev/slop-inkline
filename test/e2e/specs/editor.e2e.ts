@@ -2590,7 +2590,7 @@ describe("The editor", function () {
     expect(draft?.strokes[2]?.points[0]).toBeLessThan(0);
   });
 
-  it("lets a pen take over from a touch already drawing", async function () {
+  it("lets only the pointer already drawing draw, whatever kind each is", async function () {
     await insert();
     const { width, height } = await settledSurface();
     // Actions run together take a found element, not a query.
@@ -2620,8 +2620,9 @@ describe("The editor", function () {
     await browser.waitUntil(async () => (await storedDrafts()).length === 1);
     const [draft] = await storedDrafts();
     expect(draft?.strokes).toHaveLength(1);
-    // The pen's stroke, near the top, not the palm's, near the bottom.
-    expect(draft?.strokes[0]?.points[1]).toBeLessThan(96 * 16);
+    // The touch's stroke, near the bottom: a pen coming down meanwhile is a
+    // second pointer, and pens have no special place since #101.
+    expect(draft?.strokes[0]?.points[1]).toBeGreaterThan(96 * 16);
   });
 
   it("does not offer a note's draft once the new symbol was saved meanwhile", async function () {

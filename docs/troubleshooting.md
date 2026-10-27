@@ -60,7 +60,7 @@ with:
   which `git rev-parse --short HEAD` prints in its folder;
 - the Obsidian version and installer version, both under **Settings → General**,
   and your operating system;
-- what you draw with: a mouse, a trackpad, a pen, or touch;
+- what you draw with: a mouse, a trackpad, or another pointer;
 - numbered steps from a new vault or note, with any theme or other plugin the
   problem needs;
 - what happened, with any message, and what you expected instead.

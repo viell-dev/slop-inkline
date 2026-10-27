@@ -8,8 +8,6 @@ export interface Settings {
   readonly trigger: string;
   /** The brush a new editor starts with, by its index among the sizes. */
   readonly brushSize: number;
-  /** Whether strokes follow a pen's pressure, where the device reports it. */
-  readonly pressure: boolean;
   /** Whether a new editor starts with its guides shown. */
   readonly guides: boolean;
   /** A symbol's height in text, as a percentage of the usual line height. */
@@ -22,7 +20,6 @@ export interface Settings {
 export const defaultSettings: Settings = {
   trigger: ";;",
   brushSize: 1,
-  pressure: true,
   guides: true,
   symbolScale: 100,
   textColor: true,
@@ -58,7 +55,6 @@ export type SettingKey = keyof Settings;
 export const settingKeys: readonly SettingKey[] = [
   "trigger",
   "brushSize",
-  "pressure",
   "guides",
   "symbolScale",
   "textColor",
@@ -100,7 +96,6 @@ export function withSetting(
         value % 5 === 0
         ? { ...settings, symbolScale: value }
         : undefined;
-    case "pressure":
     case "guides":
     case "textColor":
       return typeof value === "boolean"

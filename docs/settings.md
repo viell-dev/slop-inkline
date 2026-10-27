@@ -8,7 +8,6 @@ Open **Settings → Inkline** to change these choices:
 | Text colour    | On                          | Symbols take the colour of the surrounding text. Off, they show their stored grey pixels. |
 | Insert trigger | `;;`                        | These characters and a few letters of a name list symbols to insert.                      |
 | Brush size     | M, the second of four sizes | The starting size for both Pen and Eraser.                                                |
-| Pen pressure   | On                          | A pen's new strokes follow its pressure. Off, their thickness follows the brush alone.    |
 | Guides         | Shown                       | Whether an editor starts with the text's lines shown. G still toggles them there.         |
 
 Size and colour apply at once to existing symbols in open notes, including
@@ -23,9 +22,7 @@ invalid trigger is refused, keeping the last valid one.
 
 Brush size sets both Pen and Eraser when an editor opens. Each tool then keeps
 its own chosen size, including through **Next**. Guides also apply when an
-editor opens, and **Next** keeps their current visibility. Pen pressure applies
-when each stroke starts; changing it leaves existing strokes as drawn. A mouse's
-strokes have no pen pressure.
+editor opens, and **Next** keeps their current visibility.
 
 Settings are kept in the vault's Inkline plugin data and survive reloading
 Obsidian. Unreadable or invalid preferences use defaults. If a write fails, a

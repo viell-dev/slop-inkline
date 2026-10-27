@@ -18,7 +18,7 @@ describe("brushSizes", () => {
 });
 
 describe("DrawingSession", () => {
-  it("remembers each tool's size and uses the eraser size for a device eraser", () => {
+  it("remembers each tool's size, and draws with the chosen tool's", () => {
     const session = new DrawingSession(emptyDocument);
     session.sizeIndex = 0;
     session.tool = "eraser";
@@ -26,12 +26,14 @@ describe("DrawingSession", () => {
     session.sizeIndex = 3;
     session.tool = "pen";
     expect(session.sizeIndex).toBe(0);
-    session.begin({ x: 0, y: 0 }, "eraser");
-    expect(session.activeStroke).toMatchObject({ tool: "eraser", size: 384 });
+    session.begin({ x: 0, y: 0 });
+    expect(session.activeStroke).toMatchObject({ tool: "pen", size: 96 });
     session.end();
-    expect(session.size).toBe(96);
     session.tool = "eraser";
     expect(session.sizeIndex).toBe(3);
+    session.begin({ x: 0, y: 0 });
+    expect(session.activeStroke).toMatchObject({ tool: "eraser", size: 384 });
+    session.end();
   });
 
   it("commits a stroke with the current brush, in units", () => {
@@ -45,14 +47,14 @@ describe("DrawingSession", () => {
     ]);
   });
 
-  it("records pressure from devices that report it", () => {
+  it("records new strokes without pressure, as the pointer gives none", () => {
     const session = new DrawingSession(emptyDocument);
-    session.begin({ x: 0, y: 0, pressure: 0.25 });
-    session.extend([{ x: 1, y: 0, pressure: 1 }]);
+    session.begin({ x: 0, y: 0 });
+    session.extend([{ x: 1, y: 0 }]);
     session.end();
     expect(session.document.strokes[0]).toMatchObject({
-      pressure: true,
-      points: [0, 0, 64, 16, 0, 255],
+      pressure: false,
+      points: [0, 0, 16, 0],
     });
   });
 
@@ -68,13 +70,13 @@ describe("DrawingSession", () => {
     expect(session.document.strokes[0]?.points).toEqual([16, 16, 32, 16]);
   });
 
-  it("fills gaps longer than 2 px along the straight line, pressure included", () => {
+  it("fills gaps longer than 2 px along the straight line", () => {
     const session = new DrawingSession(emptyDocument);
-    session.begin({ x: 0, y: 0, pressure: 0 });
-    session.extend([{ x: 10, y: 0, pressure: 1 }]);
+    session.begin({ x: 0, y: 0 });
+    session.extend([{ x: 10, y: 0 }]);
     session.end();
     expect(session.document.strokes[0]?.points).toEqual([
-      0, 0, 0, 32, 0, 51, 64, 0, 102, 96, 0, 153, 128, 0, 204, 160, 0, 255,
+      0, 0, 32, 0, 64, 0, 96, 0, 128, 0, 160, 0,
     ]);
   });
 
@@ -85,14 +87,6 @@ describe("DrawingSession", () => {
     session.begin({ x: 100, y: 0 });
     session.end();
     expect(session.document.strokes[1]?.points).toEqual([1600, 0]);
-  });
-
-  it("uses the tool a device asks for", () => {
-    const session = new DrawingSession(emptyDocument);
-    session.begin({ x: 0, y: 0 }, "eraser");
-    session.end();
-    expect(session.document.strokes[0]?.tool).toBe("eraser");
-    expect(session.tool).toBe("pen");
   });
 
   it("shows the stroke being drawn and drops a cancelled one", () => {
@@ -209,13 +203,13 @@ describe("DrawingSession", () => {
     expect(session.saved).toBe(states.at(-1));
   });
 
-  it("ends a stroke where the pointer was let go, with the last pressure", () => {
+  it("ends a stroke where the pointer was let go", () => {
     const session = new DrawingSession(emptyDocument);
-    session.begin({ x: 0, y: 0, pressure: 1 });
-    session.extend([{ x: 1, y: 0, pressure: 1 }]);
-    session.end({ x: 4, y: 0, pressure: 0 });
+    session.begin({ x: 0, y: 0 });
+    session.extend([{ x: 1, y: 0 }]);
+    session.end({ x: 4, y: 0 });
     expect(session.document.strokes[0]?.points).toEqual([
-      0, 0, 255, 16, 0, 255, 40, 0, 255, 64, 0, 255,
+      0, 0, 16, 0, 40, 0, 64, 0,
     ]);
     session.begin({ x: 0, y: 32 });
     session.end({ x: 0, y: 32 });
@@ -261,11 +255,7 @@ describe("DrawingSession", () => {
 
   it("starts and ends strokes on the grid when it is on", () => {
     expect(gridSpacing).toBe(16);
-    expect(snapToGrid({ x: 7, y: 9, pressure: 0.5 })).toEqual({
-      x: 0,
-      y: 16,
-      pressure: 0.5,
-    });
+    expect(snapToGrid({ x: 7, y: 9 })).toEqual({ x: 0, y: 16 });
     const session = new DrawingSession(emptyDocument);
     session.snap = true;
     session.begin({ x: 7, y: 9 });
@@ -280,18 +270,19 @@ describe("DrawingSession", () => {
     expect(session.activeStroke?.points.slice(-2)).toEqual([512, 0]);
   });
 
-  it("records a tap on the grid as one point, with a pen or an eraser", () => {
+  it("records a tap on the grid as one point, with the pen or the eraser", () => {
     const session = new DrawingSession(emptyDocument);
     session.snap = true;
     session.begin({ x: 7, y: 9 });
     session.end({ x: 7, y: 9 });
-    session.begin({ x: 7, y: 9, pressure: 0.5 });
-    session.end({ x: 7.4, y: 9.2, pressure: 0 });
-    session.begin({ x: 7, y: 9 }, "eraser");
+    session.begin({ x: 7, y: 9 });
+    session.end({ x: 7.4, y: 9.2 });
+    session.tool = "eraser";
+    session.begin({ x: 7, y: 9 });
     session.end({ x: 7, y: 9 });
     expect(session.document.strokes.map((stroke) => stroke.points)).toEqual([
       [0, 256],
-      [0, 256, 128],
+      [0, 256],
       [0, 256],
     ]);
   });

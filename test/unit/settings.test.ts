@@ -52,9 +52,6 @@ describe("withSetting", () => {
     expect(
       withSetting(defaultSettings, "brushSize", "0", sizes)?.brushSize,
     ).toBe(0);
-    expect(
-      withSetting(defaultSettings, "pressure", false, sizes)?.pressure,
-    ).toBe(false);
     expect(withSetting(defaultSettings, "guides", false, sizes)?.guides).toBe(
       false,
     );
@@ -79,7 +76,6 @@ describe("withSetting", () => {
       ["brushSize", "big"],
       ["brushSize", ""],
       ["brushSize", "  "],
-      ["pressure", "yes"],
       ["guides", 1],
       ["textColor", "false"],
       ["symbolScale", 0],
@@ -107,12 +103,13 @@ describe("readSettings", () => {
     const stored = {
       trigger: "::",
       brushSize: 2,
-      pressure: false,
       guides: false,
       symbolScale: 150,
       textColor: false,
     };
     expect(readSettings(stored, sizes)).toEqual(stored);
+    // Earlier versions stored a Pen pressure setting, which is gone.
+    expect(readSettings({ ...stored, pressure: false }, sizes)).toEqual(stored);
   });
 
   it("keeps the default for each value it cannot read, and ignores others", () => {
@@ -127,6 +124,6 @@ describe("readSettings", () => {
         },
         sizes,
       ),
-    ).toEqual({ ...defaultSettings, pressure: false });
+    ).toEqual(defaultSettings);
   });
 });

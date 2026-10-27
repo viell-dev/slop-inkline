@@ -124,12 +124,14 @@ describe("Inkline settings", function () {
     await obsidianPage.enablePlugin("inkline");
   });
 
-  it("shows all six controls with their defaults", async function () {
+  it("shows all five controls with their defaults", async function () {
     await openSettings();
     expect(await setting("Insert trigger").$("input").getValue()).toBe(";;");
     expect(await setting("Brush size").$("select").getValue()).toBe("1");
     expect(await setting("Symbol size").$("input").getValue()).toBe("100");
-    for (const name of ["Text colour", "Pen pressure", "Guides"]) {
+    // Pen pressure was removed with pen-device support (#101).
+    expect(await setting("Pen pressure").isExisting()).toBe(false);
+    for (const name of ["Text colour", "Guides"]) {
       expect(
         await setting(name).$(".checkbox-container").getAttribute("class"),
       ).toContain("is-enabled");
@@ -171,8 +173,7 @@ describe("Inkline settings", function () {
     await openSettings();
     await setting("Brush size").$("select").selectByAttribute("value", "3");
     await toggle("Guides");
-    await toggle("Pen pressure");
-    await waitForStored({ brushSize: 3, guides: false, pressure: false });
+    await waitForStored({ brushSize: 3, guides: false });
     await closeSettings();
     await obsidianPage.disablePlugin("inkline");
     await obsidianPage.enablePlugin("inkline");
@@ -211,6 +212,7 @@ describe("Inkline settings", function () {
       return opened.document.strokes;
     });
     expect(strokes).toHaveLength(1);
+    // A pen draws as a mouse does: pen pressure is no longer recorded (#101).
     expect(strokes[0]?.pressure).toBe(false);
   });
 
@@ -391,7 +393,7 @@ describe("Inkline settings", function () {
     });
     try {
       await toggle("Guides");
-      await toggle("Pen pressure");
+      await toggle("Text colour");
       await browser.executeObsidian(({ plugins }) => {
         const release: unknown = Reflect.get(
           plugins.inkline,
@@ -406,7 +408,7 @@ describe("Inkline settings", function () {
             Reflect.get(plugins.inkline, "inklineSettingsWrites") === 2,
         ),
       );
-      await waitForStored({ guides: false, pressure: false });
+      await waitForStored({ guides: false, textColor: false });
     } finally {
       await browser.executeObsidian(({ plugins }) => {
         const plugin = plugins.inkline;
@@ -455,8 +457,8 @@ describe("Inkline settings", function () {
         Reflect.deleteProperty(plugin, "inklineOriginalSaveData");
       });
     }
-    await toggle("Pen pressure");
-    await waitForStored({ guides: false, pressure: false });
+    await toggle("Text colour");
+    await waitForStored({ guides: false, textColor: false });
     await closeSettings();
   });
 

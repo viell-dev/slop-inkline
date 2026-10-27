@@ -11,8 +11,9 @@ separate installer plugin is needed.
 
 ## What you need
 
-- Obsidian **1.13.4 or later** on Windows, macOS, or Linux. Inkline is for
-  desktop only: Obsidian's mobile apps do not offer it.
+- Obsidian **1.13.4 or later** on desktop, with a mouse or a trackpad. Inkline
+  is tested on Linux; Windows and macOS should work but are not tested.
+  Obsidian's mobile apps do not offer it.
 - A vault to try it in. A new vault, or a copy of one, keeps your own notes out
   of the way while you try a prerelease.
 

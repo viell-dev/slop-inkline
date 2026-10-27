@@ -7,7 +7,11 @@ The [issues](https://github.com/viell-dev/slop-inkline/issues) track each one.
 
 - **Prerelease.** Install manually from GitHub releases; Inkline is not in
   Obsidian's community directory. See [Install](./install.md).
-- **Desktop only.** Obsidian's mobile apps do not offer Inkline.
+- **Desktop only.** Obsidian's mobile apps do not offer Inkline. The host tests
+  run on Linux; Windows and macOS should work but are not tested.
+- **Mouse or trackpad.** A drawing tablet's pen or a touchscreen draws as a
+  mouse does: pen pressure and a pen's eraser end are not supported. Symbols
+  drawn with pressure in earlier versions keep it.
 - **Large libraries** show every matching symbol at once, without paging. Filter
   by name or folder to narrow the list.
 - **Library insertion needs a sidebar.** If the library's tab is dragged into

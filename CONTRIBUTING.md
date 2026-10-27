@@ -19,7 +19,7 @@ Search the open and closed
 with the bug form's details:
 
 - the Inkline version, the Obsidian version and installer version, the operating
-  system, and what you draw with: mouse, trackpad, pen, or touch;
+  system, and what you draw with: a mouse, a trackpad, or another pointer;
 - numbered steps from a new vault or note, with any theme or other plugins the
   problem needs;
 - what happened, with any error message;
