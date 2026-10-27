@@ -70,8 +70,16 @@ drawing. The horizontal guides, top to bottom, are the font's upper extent
 x (x-height), the solid baseline where letters sit, and the font's lower extent
 (descender). Some fonts put guides at the same height or outside the drawing
 area. The vertical dashed lines mark the saved image's edges, including spacing.
-Guide visibility is still all together; individual visibility and colour choices
-are planned.
+
+Each font line has a colour of its own, from your theme: ascender purple, cap
+height blue, x-height green, baseline orange, and descender pink; light themes
+draw the green and orange darker, for contrast with the background. Inkline's
+[settings](./settings.md) choose which lines show; **Guides** then shows or
+hides those together. A CSS snippet can change a line's colour by setting
+`--inkline-guide-ascender`, `--inkline-guide-cap-height`,
+`--inkline-guide-x-height`, `--inkline-guide-baseline` or
+`--inkline-guide-descender` on `body .inkline-surface`, for example
+`body .inkline-surface { --inkline-guide-baseline: crimson; }`.
 
 A symbol is as wide as its ink: saving crops the image to the ink, with a little
 space on each side, as a font spaces its letters. Its height is always one line

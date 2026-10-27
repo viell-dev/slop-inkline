@@ -9,7 +9,7 @@ Open **Settings → Inkline** to change these choices:
 | Insert trigger | `;;`                        | These characters and a few letters of a name list symbols to insert.                      |
 | Symbol folder  | Empty                       | The folder in the vault for new symbols. Empty puts them where new attachments go.        |
 | Brush size     | M, the second of four sizes | The starting size for both Pen and Eraser.                                                |
-| Guides         | Shown                       | Whether an editor starts with the text's lines shown. G still toggles them there.         |
+| Guides         | Shown, with every line      | Whether an editor starts with the guides shown, and which font lines they show.           |
 
 Size and colour apply at once to existing symbols in open notes, including
 Reading view, Live Preview, and popout windows. At 100%, symbols are 1.5 times
@@ -22,8 +22,11 @@ The trigger changes at once. It has one to eight characters, no whitespace or
 invalid trigger is refused, keeping the last valid one.
 
 Brush size sets both Pen and Eraser when an editor opens. Each tool then keeps
-its own chosen size, including through **Next**. Guides also apply when an
-editor opens, and **Next** keeps their current visibility.
+its own chosen size, including through **Next**. Under **Guides**, **Show in a
+new editor** applies when an editor opens, and **Next** keeps the current
+visibility; G still shows or hides the guides there. One toggle for each font
+line, ascender, cap height, x-height, baseline and descender, chooses whether
+the guides include it, and applies the next time the drawing area redraws.
 
 Settings are kept in the vault's Inkline plugin data and survive reloading
 Obsidian. Unreadable or invalid preferences use defaults. If a write fails, a

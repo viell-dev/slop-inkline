@@ -8,6 +8,24 @@ section is also its
 
 ## Unreleased
 
+## 0.1.1-rc.10 - 2026-10-27
+
+This candidate follows the rc.1 report that the drawing guides were hard to tell
+apart and could only be shown or hidden together
+([guides](https://github.com/viell-dev/slop-inkline/issues/72)). Public stable
+publication remains on hold, as the earlier
+[workflow feedback](https://github.com/viell-dev/slop-inkline/issues/5) records.
+
+### Added
+
+- Each guide line has a colour of its own, from your theme: ascender purple, cap
+  height blue, x-height green, baseline orange, and descender pink, named in
+  Help and the settings. Light themes draw the green and orange darker, for
+  contrast. A CSS snippet can change them.
+- A **Guides** group in the settings turns each font line on or off. The setting
+  that shows guides in a new editor is now **Show in a new editor**, in the same
+  group; G still shows or hides the chosen lines.
+
 ## 0.1.1-rc.9 - 2026-10-27
 
 This candidate follows the rc.2 report that new symbols land in the vault's top

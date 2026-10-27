@@ -104,6 +104,11 @@ saving it again never changes it.
   clear of the name field, and the drawing area's accessible name produces no
   hover tooltip
   ([editor-feedback.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor-feedback.e2e.ts)).
+- Each font line is drawn in its own colour from the theme's CSS custom
+  property, in light and dark themes, read back from the drawing area's pixels;
+  turning a line off in the settings removes only that line, and G hides and
+  shows the rest
+  ([guide-lines.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/guide-lines.e2e.ts)).
 - Help explains the drawing tools and guides, closes with Escape, and restores
   focus to drawing without changing its strokes (the same file).
 - The brush replaces the native crosshair only while visible, with a centre dot

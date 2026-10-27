@@ -25,6 +25,23 @@ export interface FontMetrics {
 export type GuideName =
   "ascender" | "cap height" | "x-height" | "baseline" | "descender";
 
+/** The font's guides, top to bottom. */
+export const guideNames: readonly GuideName[] = [
+  "ascender",
+  "cap height",
+  "x-height",
+  "baseline",
+  "descender",
+];
+
+/**
+ * The CSS custom property that colours a guide, as `--inkline-guide-cap-height`,
+ * which styles.css sets from the theme's colours and a CSS snippet can change.
+ */
+export function guideColourProperty(name: GuideName): string {
+  return `--inkline-guide-${name.replace(" ", "-")}`;
+}
+
 export interface Guide {
   readonly name: GuideName;
   /** In line box pixels from the top. */

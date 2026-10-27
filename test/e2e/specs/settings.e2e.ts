@@ -124,7 +124,7 @@ describe("Inkline settings", function () {
     await obsidianPage.enablePlugin("inkline");
   });
 
-  it("shows all six controls with their defaults", async function () {
+  it("shows every control with its default", async function () {
     await openSettings();
     expect(await setting("Insert trigger").$("input").getValue()).toBe(";;");
     expect(await setting("Symbol folder").$("input").getValue()).toBe("");
@@ -132,7 +132,15 @@ describe("Inkline settings", function () {
     expect(await setting("Symbol size").$("input").getValue()).toBe("100");
     // Pen pressure was removed with pen-device support (#101).
     expect(await setting("Pen pressure").isExisting()).toBe(false);
-    for (const name of ["Text colour", "Guides"]) {
+    for (const name of [
+      "Text colour",
+      "Show in a new editor",
+      "Ascender line",
+      "Cap height line",
+      "x-height line",
+      "Baseline",
+      "Descender line",
+    ]) {
       expect(
         await setting(name).$(".checkbox-container").getAttribute("class"),
       ).toContain("is-enabled");
@@ -184,7 +192,7 @@ describe("Inkline settings", function () {
   it("keeps drawing defaults across reload and applies them to a new editor", async function () {
     await openSettings();
     await setting("Brush size").$("select").selectByAttribute("value", "3");
-    await toggle("Guides");
+    await toggle("Show in a new editor");
     await waitForStored({ brushSize: 3, guides: false });
     await closeSettings();
     await obsidianPage.disablePlugin("inkline");
@@ -404,7 +412,7 @@ describe("Inkline settings", function () {
       };
     });
     try {
-      await toggle("Guides");
+      await toggle("Show in a new editor");
       await toggle("Text colour");
       await browser.executeObsidian(({ plugins }) => {
         const release: unknown = Reflect.get(
@@ -454,7 +462,7 @@ describe("Inkline settings", function () {
       plugin.saveData = () => Promise.reject(new Error("disk is full"));
     });
     try {
-      await toggle("Guides");
+      await toggle("Show in a new editor");
       await waitForNotice("Inkline settings could not be saved");
     } finally {
       await browser.executeObsidian(({ plugins }) => {

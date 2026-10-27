@@ -3892,7 +3892,7 @@ describe("The editor", function () {
           if (canvas?.instanceOf(HTMLCanvasElement) !== true) {
             throw new Error("no surface");
           }
-          return window.inklineTest.pictures.greyIn(canvas, row, from, to);
+          return window.inklineTest.pictures.guideIn(canvas, row, from, to);
         },
         Math.round(xTop * factor),
         Math.ceil(shown?.left ?? 0),

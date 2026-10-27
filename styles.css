@@ -71,6 +71,13 @@
 
 .inkline-surface {
   --inkline-guide: var(--text-faint);
+  /* Each of the font's lines in a colour of the theme's; a CSS snippet can
+     set others. */
+  --inkline-guide-ascender: var(--color-purple);
+  --inkline-guide-cap-height: var(--color-blue);
+  --inkline-guide-x-height: var(--color-green);
+  --inkline-guide-baseline: var(--color-orange);
+  --inkline-guide-descender: var(--color-pink);
   display: block;
   width: 100%;
   height: var(--inkline-surface-height, 288px);
@@ -83,6 +90,14 @@
   outline-offset: -2px;
   /* The surface handles pens and touch itself, without scrolling or zooming. */
   touch-action: none;
+}
+
+/* The theme's default green and orange fall below 3:1 against a light
+   background, so light themes draw those lines darker. :where keeps this as
+   specific as one class, so that a snippet on body .inkline-surface wins. */
+:where(.theme-light) .inkline-surface {
+  --inkline-guide-x-height: #067a34;
+  --inkline-guide-baseline: #b35900;
 }
 
 /* Hide the system pointer only while a complete replacement is visible. */

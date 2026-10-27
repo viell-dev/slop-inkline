@@ -115,9 +115,46 @@ export function drop(target: Element, item: File | { uriList: string }): void {
   }
 }
 
-/** Whether a pixel is clearly red or blue, as no ink or guide is. */
+/** Whether a pixel is clearly red or blue, as no ink is. */
 function tinted(colour: "red" | "blue", r: number, g: number, b: number) {
   return colour === "red" ? r - Math.max(g, b) > 100 : b - Math.max(r, g) > 100;
+}
+
+/** The custom properties the surface's guides take their colours from. */
+const guideProperties = [
+  "--inkline-guide",
+  "--inkline-guide-ascender",
+  "--inkline-guide-cap-height",
+  "--inkline-guide-x-height",
+  "--inkline-guide-baseline",
+  "--inkline-guide-descender",
+];
+
+/**
+ * The colours the guides on `canvas` are drawn in, as RGB: crisp and opaque,
+ * over any picture, so that a pixel in one of them is a guide's.
+ */
+function guideColours(canvas: HTMLCanvasElement): number[][] {
+  const probe = new OffscreenCanvas(1, 1).getContext("2d");
+  if (probe === null) throw new Error("no 2D canvas context");
+  const style = getComputedStyle(canvas);
+  return guideProperties
+    .map((name) => style.getPropertyValue(name).trim())
+    .filter((value) => value !== "")
+    .map((value) => {
+      probe.clearRect(0, 0, 1, 1);
+      probe.fillStyle = value;
+      probe.fillRect(0, 0, 1, 1);
+      return [...probe.getImageData(0, 0, 1, 1).data.slice(0, 3)];
+    });
+}
+
+/** Whether `r`, `g`, `b` is one of `colours`, within rounding. */
+function among(colours: number[][], r: number, g: number, b: number) {
+  return colours.some(
+    ([cr = 0, cg = 0, cb = 0]) =>
+      Math.abs(r - cr) <= 3 && Math.abs(g - cg) <= 3 && Math.abs(b - cb) <= 3,
+  );
 }
 
 /**
@@ -140,6 +177,7 @@ export function shown(
   if (context === null) throw new Error("no 2D canvas context");
   const { width, height } = canvas;
   const { data } = context.getImageData(0, 0, width, height);
+  const guides = guideColours(canvas);
   let left = width;
   let top = height;
   let right = -1;
@@ -149,7 +187,7 @@ export function shown(
       const at = (y * width + x) * 4;
       if ((data[at + 3] ?? 0) === 0) continue;
       const [r = 0, g = 0, b = 0] = data.subarray(at, at + 3);
-      if (!tinted(colour, r, g, b)) {
+      if (!tinted(colour, r, g, b) || among(guides, r, g, b)) {
         continue;
       }
       left = Math.min(left, x);
@@ -167,9 +205,9 @@ export function shown(
 
 /**
  * How many pixels of row `y` of the surface, from `left` to `right`, are
- * drawn in a grey, as the guides are and a red or blue picture is not.
+ * drawn in a guide's colour, as a red or blue picture is not.
  */
-export function greyIn(
+export function guideIn(
   canvas: HTMLCanvasElement,
   y: number,
   left: number,
@@ -178,10 +216,11 @@ export function greyIn(
   const context = canvas.getContext("2d");
   if (context === null) throw new Error("no 2D canvas context");
   const { data } = context.getImageData(left, y, right - left, 1);
+  const guides = guideColours(canvas);
   let count = 0;
   for (let at = 0; at < data.length; at += 4) {
     const [r = 0, g = 0, b = 0, a = 0] = data.subarray(at, at + 4);
-    if (a > 0 && Math.abs(r - g) <= 2 && Math.abs(g - b) <= 2) count++;
+    if (a > 0 && among(guides, r, g, b)) count++;
   }
   return count;
 }

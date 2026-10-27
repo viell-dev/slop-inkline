@@ -36,7 +36,7 @@ import {
 } from "./insertion.ts";
 import { embedFor } from "./embeds.ts";
 import { insertionAt } from "./links.ts";
-import type { Settings } from "../settings.ts";
+import { shownGuides, type Settings } from "../settings.ts";
 import {
   chooseRename,
   nextNumberName,
@@ -591,6 +591,7 @@ function newSymbol(
     document: emptyDocument,
     center: visibleWidth / 2,
     tools: tools ?? startingTools(host.settings()),
+    guideLines: () => shownGuides(host.settings()),
     next: (chosen) => {
       if (after === undefined || !host.alive()) {
         // No editor takes the picture over.
@@ -853,6 +854,7 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
   new InkEditorModal(app, {
     title: "Symbol",
     tools: startingTools(host.settings()),
+    guideLines: () => shownGuides(host.settings()),
     name: symbolStem(file.name) ?? file.basename,
     document: opened.document,
     ...(opened.base === undefined ? {} : { base: opened.base }),

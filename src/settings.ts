@@ -2,6 +2,7 @@
 // stored for them is read back. A plain module, so that unit tests can check
 // it; settings-tab.ts shows them.
 
+import { guideNames, type GuideName } from "./editor/guides.ts";
 import { chooseFolder } from "./notes/names.ts";
 
 /** Inkline's settings. */
@@ -17,6 +18,12 @@ export interface Settings {
   readonly brushSize: number;
   /** Whether a new editor starts with its guides shown. */
   readonly guides: boolean;
+  /** Which of the font's lines the guides show. */
+  readonly ascenderGuide: boolean;
+  readonly capHeightGuide: boolean;
+  readonly xHeightGuide: boolean;
+  readonly baselineGuide: boolean;
+  readonly descenderGuide: boolean;
   /** A symbol's height in text, as a percentage of the usual line height. */
   readonly symbolScale: number;
   /** Whether symbols take the text's colour rather than their stored pixels. */
@@ -29,6 +36,11 @@ export const defaultSettings: Settings = {
   symbolFolder: "",
   brushSize: 1,
   guides: true,
+  ascenderGuide: true,
+  capHeightGuide: true,
+  xHeightGuide: true,
+  baselineGuide: true,
+  descenderGuide: true,
   symbolScale: 100,
   textColor: true,
 };
@@ -74,6 +86,11 @@ export const settingKeys: readonly SettingKey[] = [
   "symbolFolder",
   "brushSize",
   "guides",
+  "ascenderGuide",
+  "capHeightGuide",
+  "xHeightGuide",
+  "baselineGuide",
+  "descenderGuide",
   "symbolScale",
   "textColor",
 ];
@@ -122,6 +139,11 @@ export function withSetting(
         ? { ...settings, symbolScale: value }
         : undefined;
     case "guides":
+    case "ascenderGuide":
+    case "capHeightGuide":
+    case "xHeightGuide":
+    case "baselineGuide":
+    case "descenderGuide":
     case "textColor":
       return typeof value === "boolean"
         ? { ...settings, [key]: value }
@@ -143,4 +165,20 @@ export function readSettings(data: unknown, sizes: number): Settings {
     if (read !== undefined) settings = read;
   }
   return settings;
+}
+
+/** The setting that shows each of the font's lines among the guides. */
+export const guideSettings: Readonly<Record<GuideName, SettingKey>> = {
+  ascender: "ascenderGuide",
+  "cap height": "capHeightGuide",
+  "x-height": "xHeightGuide",
+  baseline: "baselineGuide",
+  descender: "descenderGuide",
+};
+
+/** The font's lines that `settings` show among the guides. */
+export function shownGuides(settings: Settings): ReadonlySet<GuideName> {
+  return new Set(
+    guideNames.filter((name) => settings[guideSettings[name]] === true),
+  );
 }
