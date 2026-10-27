@@ -53,7 +53,11 @@ import {
   type DraftTarget,
 } from "./drafts.ts";
 import { FileWatch, type Reading } from "./disk.ts";
-import { paintBrushCursor } from "./cursor.ts";
+import {
+  contrastBrushCursor,
+  paintBrushCursor,
+  type BrushCursor,
+} from "./cursor.ts";
 import { PointerGate, reportsPressure } from "./pointer.ts";
 import {
   brushSizes,
@@ -341,7 +345,7 @@ export class InkEditorModal extends Modal {
   #view: InkView | undefined;
   #cursor: HTMLCanvasElement | undefined;
   #cursorSize:
-    | { diameter: number; ratio: number; hotspot: number | undefined }
+    | { diameter: number; ratio: number; brush: BrushCursor | undefined }
     | undefined;
   readonly #resizeCursor = (): void => {
     this.#updateCursor();
@@ -633,6 +637,7 @@ export class InkEditorModal extends Modal {
       cls: "inkline-brush-cursor",
       attr: { "aria-hidden": "true" },
     });
+    this.#cursorSize = undefined;
     this.#cursor.hide();
     canvas.win.addEventListener("resize", this.#resizeCursor);
     // A line in the vault's text font and size, with the symbol at its size
@@ -1815,13 +1820,16 @@ export class InkEditorModal extends Modal {
       this.#cursorSize = {
         diameter,
         ratio,
-        hotspot: paintBrushCursor(cursor, diameter, ratio),
+        brush: paintBrushCursor(cursor, diameter, ratio),
       };
     }
-    const hotspot = this.#cursorSize.hotspot;
-    cursor.toggle(hotspot !== undefined);
-    canvas.toggleClass("has-brush-cursor", hotspot !== undefined);
-    if (hotspot === undefined) return;
+    const brush = this.#cursorSize.brush;
+    if (brush === undefined) {
+      cursor.hide();
+      canvas.removeClass("has-brush-cursor");
+      return;
+    }
+    const { hotspot } = brush;
     // Align in viewport device pixels, not the fractional parent layout.
     // Scale the integer intrinsic dimensions to avoid CSS size rounding.
     // Each bitmap pixel maps to one display pixel even at fractional zoom;
@@ -1830,6 +1838,16 @@ export class InkEditorModal extends Modal {
       (Math.round(hover.clientX * ratio) - hotspot) / ratio - rect.left;
     const top =
       (Math.round(hover.clientY * ratio) - hotspot) / ratio - rect.top;
+    const visible = contrastBrushCursor(
+      brush,
+      canvas,
+      left - canvas.clientLeft,
+      top - canvas.clientTop,
+      ratio,
+    );
+    cursor.toggle(visible);
+    canvas.toggleClass("has-brush-cursor", visible);
+    if (!visible) return;
     cursor.style.transform = `translate(${String(left)}px, ${String(top)}px) scale(${String(1 / ratio)})`;
   }
 

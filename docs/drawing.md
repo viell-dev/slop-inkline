@@ -37,12 +37,13 @@ opened editor starts both tools at the configured default size. The pen's eraser
 end uses the Eraser size, whichever tool is selected. Its circle switches to
 that size on contact; hovering shows the selected tool's size.
 
-The brush circle has a centre dot, with a black line and white halo for contrast
-on either theme or a tracing picture. It is a fixed bitmap that keeps its shape
-as you move and changes size with the brush, drawing area, zoom and display
-scaling. Moving a tracing picture uses the grab cursor. Neither the circle nor
-dot is part of the preview or saved symbol. If the host cannot draw the
-indicator, a crosshair remains visible instead.
+The brush circle and centre dot change between black and white to contrast with
+the drawing underneath, including tracing pictures. The thin outline keeps its
+shape and thickness as you move across light and dark areas. It changes size
+with the brush, drawing area, zoom and display scaling. Moving a tracing picture
+uses the grab cursor. Neither the circle nor dot is part of the preview or saved
+symbol. If the host cannot draw the indicator or read its background, a
+crosshair remains visible instead.
 
 ## Undo, redo, and clear
 
