@@ -62,8 +62,15 @@ describe("Fixed brush bitmap", function () {
               }),
             );
             const rect = cursor.getBoundingClientRect();
+            const pixels = cursor
+              .getContext("2d")
+              ?.getImageData(0, 0, cursor.width, cursor.height).data;
             return {
-              bitmap: cursor.toDataURL(),
+              // The ring's shape: its colour follows what is under it, as
+              // the coloured guide lines are where it crosses them.
+              coverage: Array.from(
+                pixels?.filter((_, index) => index % 4 === 3) ?? [],
+              ).join(),
               scaleError: Math.max(
                 Math.abs(rect.width * ratio - cursor.width),
                 Math.abs(rect.height * ratio - cursor.height),
@@ -82,7 +89,7 @@ describe("Fixed brush bitmap", function () {
             };
           });
         });
-        expect(new Set(states.map((state) => state.bitmap)).size).toBe(1);
+        expect(new Set(states.map((state) => state.coverage)).size).toBe(1);
         for (const state of states) {
           expect(state.scaleError).toBeLessThan(0.02);
           expect(state.pixelError).toBeLessThan(0.02);
