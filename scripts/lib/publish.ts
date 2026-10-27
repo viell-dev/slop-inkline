@@ -140,8 +140,22 @@ export interface ReleaseHost {
    * undefined if there is none, only a tag.
    */
   published(version: string): Promise<Draft | undefined>;
+  /** Waits `ms` milliseconds. */
+  wait(ms: number): Promise<void>;
   log(message: string): void;
 }
+
+/**
+ * How often to list the drafts after making one: GitHub can leave a release it
+ * has just made out of its list for a few seconds.
+ */
+export const draftListings = 5;
+
+/**
+ * How long to wait before each later listing, in milliseconds, times the
+ * listings so far: 2, 4, 6 and 8 seconds, 20 in all.
+ */
+export const draftListingWait = 2000;
 
 /** Whether `draft` holds exactly the built files, byte for byte. */
 export function holdsBuild(draft: Draft, files: readonly BuiltFile[]): boolean {
@@ -208,15 +222,29 @@ export async function publishRelease(
       await host.deleteDraft(draft.id);
     }
     await host.createDraft(version);
-    const made = await host.drafts(version);
+    // Only an empty list is waited out: any draft it does show is checked.
+    let made = await host.drafts(version);
+    for (
+      let listing = 1;
+      made.length === 0 && listing < draftListings;
+      listing++
+    ) {
+      host.log(`GitHub lists no draft for ${version} yet; waiting.`);
+      await host.wait(draftListingWait * listing);
+      made = await host.drafts(version);
+    }
     const [draft] = made;
     if (
       made.length !== 1 ||
       draft?.target !== commit ||
       !holdsBuild(draft, files)
     ) {
+      const listed =
+        made.length === 0
+          ? `lists no draft, even after waiting ${String((draftListingWait * draftListings * (draftListings - 1)) / 2000)} seconds; run again to publish it once listed`
+          : `has ${made.map(described).join("; ")}`;
       throw new Error(
-        `The draft for ${version} is not the build of ${commit}: GitHub has ${made.length === 0 ? "no draft" : made.map(described).join("; ")}. It stays unpublished.`,
+        `The draft for ${version} is not the build of ${commit}: GitHub ${listed}. It stays unpublished.`,
       );
     }
     id = draft.id;

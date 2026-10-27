@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   ciProblems,
+  draftListingWait,
+  draftListings,
   holdsBuild,
   publishRelease,
   requiredChecks,
@@ -160,8 +162,18 @@ class FakeGitHub implements ReleaseHost {
   /** What the next draft holds, as uploaded, and the commit it targets. */
   uploads: Draft["assets"] = asUploaded(files);
   target = commit;
+  /**
+   * How many listings leave out the draft made last, even one a run before,
+   * as GitHub's list can lag behind a release it has just made.
+   */
+  listedLate = 0;
+  /** How many listings after a deletion still show the deleted drafts. */
+  deletedListed = 0;
+  waits: number[] = [];
   #ids = 1;
   #left = 100;
+  #unlisted: number | undefined;
+  #deleted = new Map<string, Draft[]>();
 
   leave(version: string, draft: Omit<Draft, "id">): number {
     const id = this.#left++;
@@ -179,11 +191,26 @@ class FakeGitHub implements ReleaseHost {
     return Promise.resolve(this.tags.has(version));
   }
   drafts(version: string): Promise<readonly Draft[]> {
-    return Promise.resolve(this.drafts_.get(version) ?? []);
+    let all = this.drafts_.get(version) ?? [];
+    const deleted = this.#deleted.get(version) ?? [];
+    if (this.deletedListed > 0 && deleted.length > 0) {
+      this.deletedListed--;
+      all = [...deleted, ...all];
+    }
+    if (this.#unlisted !== undefined && this.listedLate > 0) {
+      this.listedLate--;
+      const hidden = this.#unlisted;
+      return Promise.resolve(all.filter((draft) => draft.id !== hidden));
+    }
+    return Promise.resolve(all);
   }
   deleteDraft(id: number): Promise<void> {
     this.deleted.push(id);
     for (const [version, drafts] of this.drafts_) {
+      this.#deleted.set(version, [
+        ...(this.#deleted.get(version) ?? []),
+        ...drafts.filter((draft) => draft.id === id),
+      ]);
       this.drafts_.set(
         version,
         drafts.filter((draft) => draft.id !== id),
@@ -207,6 +234,7 @@ class FakeGitHub implements ReleaseHost {
       ...existing,
       { id, target: this.target, assets: this.uploads },
     ]);
+    this.#unlisted = id;
     return Promise.resolve();
   }
   publish(id: number, version: string): Promise<void> {
@@ -216,7 +244,11 @@ class FakeGitHub implements ReleaseHost {
     }
     const drafts = this.drafts_.get(version) ?? [];
     const draft = drafts.find((candidate) => candidate.id === id);
-    if (draft !== undefined) this.releases.set(version, draft);
+    // GitHub answers 404 for a release that is not there, as a deleted one.
+    if (draft === undefined) {
+      return Promise.reject(new Error(`GitHub has no release ${String(id)}`));
+    }
+    this.releases.set(version, draft);
     this.drafts_.set(
       version,
       drafts.filter((candidate) => candidate.id !== id),
@@ -233,6 +265,10 @@ class FakeGitHub implements ReleaseHost {
   published(version: string): Promise<Draft | undefined> {
     return Promise.resolve(this.releases.get(version));
   }
+  wait(ms: number): Promise<void> {
+    this.waits.push(ms);
+    return Promise.resolve();
+  }
   log(message: string): void {
     this.messages.push(message);
   }
@@ -245,6 +281,72 @@ describe("publishRelease", () => {
     expect(github.publishedIds).toEqual([1]);
     expect(github.tags.has("0.1.0")).toBe(true);
     expect(github.deleted).toEqual([]);
+    expect(github.waits).toEqual([]);
+  });
+
+  it("waits for GitHub to list a draft it has just made", async () => {
+    const github = new FakeGitHub();
+    github.listedLate = 2;
+    await publishRelease(github, "0.1.0", files, commit);
+    expect(github.publishedIds).toEqual([1]);
+    expect(github.waits).toEqual([draftListingWait, draftListingWait * 2]);
+  });
+
+  it("refuses a draft GitHub never lists, publishing nothing", async () => {
+    const github = new FakeGitHub();
+    github.listedLate = draftListings;
+    await expect(
+      publishRelease(github, "0.1.0", files, commit),
+    ).rejects.toThrow(
+      /GitHub lists no draft, even after waiting 20 seconds; run again.*It stays unpublished/,
+    );
+    expect(github.publishedIds).toEqual([]);
+    expect(github.waits).toHaveLength(draftListings - 1);
+  });
+
+  it("refuses at once when GitHub still lists a deleted draft beside the new one", async () => {
+    const github = new FakeGitHub();
+    const old = github.leave("0.1.0", {
+      target: commit,
+      assets: asUploaded(files).slice(0, 2),
+    });
+    github.deletedListed = 1;
+    await expect(
+      publishRelease(github, "0.1.0", files, commit),
+    ).rejects.toThrow(/is not the build of/);
+    expect(github.deleted).toEqual([old]);
+    expect(github.publishedIds).toEqual([]);
+    expect(github.waits).toEqual([]);
+  });
+
+  it("refuses more than one listed draft, even ones holding this build", async () => {
+    // Two drafts of this build, as two broken runs can leave: both are
+    // deleted, and a lagging list still shows them beside the new one.
+    const github = new FakeGitHub();
+    const first = github.leave("0.1.0", {
+      target: commit,
+      assets: asUploaded(files),
+    });
+    const second = github.leave("0.1.0", {
+      target: commit,
+      assets: asUploaded(files),
+    });
+    github.deletedListed = 1;
+    await expect(
+      publishRelease(github, "0.1.0", files, commit),
+    ).rejects.toThrow(/is not the build of/);
+    expect(github.deleted).toEqual([first, second]);
+    expect(github.publishedIds).toEqual([]);
+  });
+
+  it("refuses at once a draft listed with other files, without waiting", async () => {
+    const github = new FakeGitHub();
+    github.uploads = asUploaded(files).slice(0, 2);
+    await expect(
+      publishRelease(github, "0.1.0", files, commit),
+    ).rejects.toThrow(/is not the build of/);
+    expect(github.publishedIds).toEqual([]);
+    expect(github.waits).toEqual([]);
   });
 
   it("refuses a version whose tag exists, changing nothing", async () => {
