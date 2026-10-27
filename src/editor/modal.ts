@@ -30,6 +30,8 @@ import {
 import { documentSpan, type InkDocument } from "../ink/document.ts";
 import { lineBox, type Bounds } from "../ink/geometry.ts";
 import {
+  enlargeFactor,
+  enlargedRegion,
   inkDefaults,
   pictureLuminance,
   previewShrink,
@@ -194,6 +196,33 @@ function copyOf(copies: Map<number, Luminance>, factor: number): Luminance {
 /** `placement` for a copy of its picture `factor` times smaller. */
 function shrunkPlace(placement: Placement, factor: number): PicturePlace {
   return { ...placement, scale: placement.scale * factor };
+}
+
+/**
+ * The part of the picture whose copies `copies` holds, at `placement`, that
+ * becomes ink within `region`, with where its pixels are. An enlarged
+ * picture is sampled more finely, as `enlargeFactor` says, so that its ink's
+ * edges are as sharp as the document shows; any other is the copy `shrink`
+ * times smaller.
+ */
+function inkPart(
+  copies: Map<number, Luminance>,
+  placement: Placement,
+  region: Bounds,
+  shrink: number,
+): { part: Region | undefined; place: PicturePlace } {
+  const picture = copyOf(copies, 1);
+  const factor = enlargeFactor(
+    picture.width,
+    picture.height,
+    placement,
+    region,
+  );
+  const enlarged =
+    factor > 1 ? enlargedRegion(picture, placement, region, factor) : undefined;
+  if (enlarged !== undefined) return enlarged;
+  const place = shrunkPlace(placement, shrink);
+  return { part: regionValues(copyOf(copies, shrink), place, region), place };
 }
 
 function sameBounds(a: Bounds, b: Bounds): boolean {
@@ -1360,6 +1389,8 @@ export class InkEditorModal extends Modal {
       picture.placement,
       region,
     );
+    // From the picture's own pixels, even where the ink comes from finer
+    // samples: those add values between its own, not more of its tones.
     const source = copyOf(copies, shrink);
     const part = regionValues(
       source,
@@ -1452,13 +1483,13 @@ export class InkEditorModal extends Modal {
         picture.placement,
         region,
       );
-      const place = shrunkPlace(picture.placement, shrink);
-      area = {
-        placement: picture.placement,
+      const { part, place } = inkPart(
+        copies,
+        picture.placement,
         region,
-        place,
-        part: regionValues(copyOf(copies, shrink), place, region),
-      };
+        shrink,
+      );
+      area = { placement: picture.placement, region, place, part };
       this.#partShown = area;
     }
     const { place } = area;
@@ -1541,12 +1572,12 @@ export class InkEditorModal extends Modal {
       const { threshold, light } = converting;
       const { placement } = picture;
       const region = this.#inkRegion(view);
-      const part = regionValues(converting.luma, placement, region);
+      const { part, place } = inkPart(converting.copies, placement, region, 1);
       if (part === undefined) {
         this.#announce("No ink made: no part of the picture is on the surface");
         return;
       }
-      const ink = traceRegion(part, placement, threshold, light);
+      const ink = traceRegion(part, place, threshold, light);
       if (ink === undefined) {
         this.#announce("No ink at this threshold: try another");
         return;
@@ -1554,7 +1585,7 @@ export class InkEditorModal extends Modal {
       let made: Awaited<ReturnType<typeof baseFromInk>>;
       this.#announce("Making ink…");
       try {
-        made = await baseFromInk(ink, placement.scale);
+        made = await baseFromInk(ink, place.scale);
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
         this.#announce(`No ink made: ${reason}`);

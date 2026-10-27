@@ -1,6 +1,7 @@
 // Pixel rules that need no canvas: where the ink is, and how a picture's
 // pixels become ink when a file without a record is opened.
 
+import { limits } from "../format/record.ts";
 import type { Bounds } from "./geometry.ts";
 import { inkGrey } from "./render.ts";
 
@@ -501,6 +502,132 @@ export function regionValues(
   return picture.alpha === undefined
     ? part
     : { ...part, alpha: cropAlpha(picture.alpha, picture.width, bounds) };
+}
+
+/**
+ * How many times finer, across and down, to sample the part of a picture of
+ * `width` × `height` pixels at `place` that lies within `region` before
+ * making ink of it: enough that a sample is no larger than a document pixel,
+ * so that the ink of an enlarged picture has edges as sharp as the document
+ * shows, not as soft as one of the picture's pixels. 1, the picture itself,
+ * for a picture no larger than the document shows it, or where finer samples
+ * would be more than {@link maxPreviewPixels} or more than a base layer
+ * holds a side.
+ */
+export function enlargeFactor(
+  width: number,
+  height: number,
+  place: PicturePlace,
+  region: Bounds,
+): number {
+  if (place.scale <= 1) return 1;
+  const bounds = regionBounds(width, height, place, region);
+  if (bounds === undefined) return 1;
+  const across = bounds.right - bounds.left;
+  const down = bounds.bottom - bounds.top;
+  return Math.max(
+    1,
+    Math.min(
+      Math.ceil(place.scale),
+      Math.floor(limits.baseSize / Math.max(across, down)),
+      Math.floor(Math.sqrt(maxPreviewPixels / (across * down))),
+    ),
+  );
+}
+
+/**
+ * For samples `from` up to `to` along a side of a picture `size` pixels
+ * long, sampled `factor` times finer: the pixels on each side of each
+ * sample's centre, the nearest edge pixel standing in past the picture's
+ * ends, and how far the sample lies from the first towards the second.
+ */
+function samplesAlong(
+  from: number,
+  to: number,
+  factor: number,
+  size: number,
+): { before: Int32Array; after: Int32Array; past: Float64Array } {
+  const count = to - from;
+  const before = new Int32Array(count);
+  const after = new Int32Array(count);
+  const past = new Float64Array(count);
+  for (let index = 0; index < count; index++) {
+    const at = (from + index + 0.5) / factor - 0.5;
+    const whole = Math.floor(at);
+    before[index] = Math.min(size - 1, Math.max(0, whole));
+    after[index] = Math.min(size - 1, Math.max(0, whole + 1));
+    past[index] = at - whole;
+  }
+  return { before, after, past };
+}
+
+/**
+ * The part of `picture` at `place` that lies within `region`, as
+ * {@link regionValues} gives it, but from samples `factor` times finer across
+ * and down, with where those samples are. Each sample is between the four
+ * pixels around it, by how near it is to each: its alpha theirs, and its
+ * value theirs weighted by alpha where there is any, so that a transparent
+ * pixel's colour counts for nothing. Undefined when no part is in `region`.
+ */
+export function enlargedRegion(
+  picture: Luminance,
+  place: PicturePlace,
+  region: Bounds,
+  factor: number,
+): { part: Region; place: PicturePlace } | undefined {
+  const fine = { ...place, scale: place.scale / factor };
+  const bounds = regionBounds(
+    picture.width * factor,
+    picture.height * factor,
+    fine,
+    region,
+  );
+  if (bounds === undefined) return undefined;
+  const { left, top, right, bottom } = bounds;
+  const width = right - left;
+  const height = bottom - top;
+  const columns = samplesAlong(left, right, factor, picture.width);
+  const rows = samplesAlong(top, bottom, factor, picture.height);
+  const source = picture.values;
+  const own = picture.alpha;
+  const values = new Uint8ClampedArray(width * height);
+  const alpha =
+    own === undefined ? undefined : new Uint8ClampedArray(width * height);
+  for (let y = 0; y < height; y++) {
+    const upper = (rows.before[y] ?? 0) * picture.width;
+    const lower = (rows.after[y] ?? 0) * picture.width;
+    const down = rows.past[y] ?? 0;
+    for (let x = 0; x < width; x++) {
+      const across = columns.past[x] ?? 0;
+      const near = columns.before[x] ?? 0;
+      const far = columns.after[x] ?? 0;
+      // Unrolled over the four pixels: this runs for up to a million samples.
+      let a = (1 - across) * (1 - down);
+      let b = across * (1 - down);
+      let c = (1 - across) * down;
+      let d = across * down;
+      if (own !== undefined) {
+        a *= own[upper + near] ?? 0;
+        b *= own[upper + far] ?? 0;
+        c *= own[lower + near] ?? 0;
+        d *= own[lower + far] ?? 0;
+      }
+      const weight = a + b + c + d;
+      const sum =
+        a * (source[upper + near] ?? 0) +
+        b * (source[upper + far] ?? 0) +
+        c * (source[lower + near] ?? 0) +
+        d * (source[lower + far] ?? 0);
+      const at = y * width + x;
+      values[at] = weight === 0 ? 0 : Math.round(sum / weight);
+      if (alpha !== undefined) alpha[at] = Math.round(weight);
+    }
+  }
+  const part = { values, width, height, left, top };
+  return {
+    part: alpha === undefined ? part : { ...part, alpha },
+    place: fine,
+  };
 }
 
 /** A picture's ink: one alpha per pixel of part of it, and where that is. */

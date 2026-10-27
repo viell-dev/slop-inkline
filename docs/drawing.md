@@ -108,6 +108,11 @@ the place of any base layer the symbol had, such as ink an earlier Make ink
 gave, and Undo takes it back. Saving while the preview shows makes that ink
 first.
 
+A picture shown larger than its own pixels, such as a small screenshot scaled up
+to a capital's height, is sampled at the drawing's finer resolution before the
+threshold applies. The ink's edges stay sharp instead of spreading across each
+enlarged pixel.
+
 ## Start from a copy
 
 In the editor for a new symbol, **Copy from** (V) starts it from a copy of
