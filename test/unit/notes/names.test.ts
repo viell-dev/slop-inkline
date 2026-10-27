@@ -217,8 +217,12 @@ describe("chooseFolder", () => {
     expect(chooseFolder("Écriture/Signes")).toEqual({
       folder: "Écriture/Signes",
     });
-    // A no-break space is a plain one, as Obsidian stores a name.
+    // A no-break space is a plain one, as Obsidian stores a name, and a
+    // backslash a slash, as Obsidian reads a path.
     expect(chooseFolder("My signs")).toEqual({ folder: "My signs" });
+    expect(chooseFolder("Conlang\\Signs")).toEqual({
+      folder: "Conlang/Signs",
+    });
   });
 
   it("refuses folders that leave or hide from the vault, or break a name", () => {
@@ -228,7 +232,8 @@ describe("chooseFolder", () => {
       "./Symbols",
       ".hidden",
       "Notes/.trash",
-      "Notes\\Symbols",
+      "‍",
+      "Notes/‎",
       "Sym:bols",
       "Sym#bols",
       "Sym[bols]",

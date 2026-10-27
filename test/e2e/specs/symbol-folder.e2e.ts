@@ -138,5 +138,26 @@ describe("Where new symbols go", function () {
     expect(await editorOpen()).toBe(true);
     expect(await symbolFiles()).toEqual([]);
     expect(await noteText()).not.toContain("![[");
+    // With the file gone, the same drawing saves there.
+    await browser.executeObsidian(async ({ app }) => {
+      const file = app.vault.getFileByPath("Signs");
+      if (file === null) throw new Error("no file");
+      await app.fileManager.trashFile(file);
+    });
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    expect(await symbolFiles()).toEqual(["Signs/Script/001.ink.png"]);
+  });
+
+  it("uses a folder there already whose name differs in letter case", async function () {
+    await browser.executeObsidian(async ({ app }) => {
+      await app.vault.createFolder("Signs");
+    });
+    await setSymbolFolder("signs/Script");
+    await insertInNote();
+    await draw(zigzag);
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    expect(await symbolFiles()).toEqual(["Signs/Script/001.ink.png"]);
   });
 });

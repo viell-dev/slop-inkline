@@ -93,8 +93,9 @@ export function chooseName(typed: string): NameChoice {
 
 /**
  * The folder in the vault that `typed` names for new symbols: its folders'
- * names joined by `/`, with no slashes around them, or `""` to keep
- * Obsidian's place for attachments; or why it cannot be one. Each folder's
+ * names joined by `/`, with no slashes around them, a `\` read as `/` as
+ * Obsidian reads it, or `""` to keep Obsidian's place for attachments; or
+ * why it cannot be one. Each folder's
  * name follows the rules of a symbol's name, but a name that breaks them is
  * refused rather than changed, as a setting is shown again as it was typed.
  */
@@ -105,11 +106,16 @@ export function chooseFolder(
     .map((char) => (noBreakSpaces.has(char.codePointAt(0) ?? 0) ? " " : char))
     .join("")
     .trim();
-  if (text.includes("\\")) return { reason: "Use / between folders." };
-  const parts = text.split("/").filter((part) => part !== "");
+  const parts = text.split(/[/\\]/).filter((part) => part !== "");
   for (const part of parts) {
     if (part === "." || part === "..") {
-      return { reason: "A folder cannot be . or .., which leave the vault." };
+      return {
+        reason:
+          "Name the folder from the vault's top: . and .. are not folders.",
+      };
+    }
+    if (part.replace(/\p{Cf}/gu, "").trim() === "") {
+      return { reason: "A folder's name needs a visible character." };
     }
     if (part.startsWith(".")) {
       return {

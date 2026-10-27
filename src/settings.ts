@@ -9,7 +9,7 @@ export interface Settings {
   /** What starts typing a symbol's name in a note, as `;;tower`. */
   readonly trigger: string;
   /**
-   * The folder in the vault for new symbols, or `"`" to put them where
+   * The folder in the vault for new symbols, or empty to put them where
    * Obsidian puts a note's new attachments.
    */
   readonly symbolFolder: string;

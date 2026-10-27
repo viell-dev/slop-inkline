@@ -175,9 +175,10 @@ describe("Inkline settings", function () {
     await setting("Symbol folder").$("input").setValue("/Signs/Script/");
     await waitForStored({ symbolFolder: "Signs/Script" });
     await setting("Symbol folder").$("input").setValue("../Signs");
-    await setting("Brush size").$("select").click();
+    // A change stored after it shows that the refused folder stored nothing.
+    await setting("Brush size").$("select").selectByAttribute("value", "2");
+    await waitForStored({ brushSize: 2, symbolFolder: "Signs/Script" });
     await closeSettings();
-    await waitForStored({ symbolFolder: "Signs/Script" });
   });
 
   it("keeps drawing defaults across reload and applies them to a new editor", async function () {

@@ -111,33 +111,51 @@ function chosen(typed: string, file?: TFile): NameChoice {
 
 /**
  * Makes `folder` in the vault, with the folders it is in, unless it is there
- * already. Throws if a file stands where it, or a folder it is in, would be.
+ * already, and returns its path. A folder there already whose name differs
+ * only in letter case stands in for it, as Windows and macOS read names, so
+ * that a vault moved between systems keeps one folder. Throws if a file
+ * stands where it, or a folder it is in, would be.
  */
-async function makeFolder(app: App, folder: string): Promise<void> {
-  const parts = folder.split("/");
-  for (let depth = 1; depth <= parts.length; depth++) {
-    const path = parts.slice(0, depth).join("/");
-    const found = app.vault.getAbstractFileByPath(path);
-    if (found === null) {
-      try {
-        await app.vault.createFolder(path);
-      } catch (error) {
+async function makeFolder(app: App, folder: string): Promise<string> {
+  let made = "";
+  for (const part of folder.split("/")) {
+    const path = made === "" ? part : `${made}/${part}`;
+    const within =
+      made === "" ? app.vault.getRoot() : app.vault.getFolderByPath(made);
+    const found =
+      app.vault.getAbstractFileByPath(path) ??
+      within?.children.find(
+        (child) => child.name.toLowerCase() === part.toLowerCase(),
+      ) ??
+      null;
+    if (found instanceof TFile) {
+      throw new Error(
+        `${found.path} is a file, so the symbol folder cannot be made there`,
+      );
+    }
+    if (found !== null) {
+      made = found.path;
+      continue;
+    }
+    try {
+      await app.vault.createFolder(path);
+    } catch (error) {
+      // Another save can have made it meanwhile.
+      if (app.vault.getFolderByPath(path) === null) {
         const reason = error instanceof Error ? error.message : String(error);
         throw new Error(
           `the symbol folder ${path} could not be made: ${reason}`,
         );
       }
-    } else if (found instanceof TFile) {
-      throw new Error(
-        `${path} is a file, so the symbol folder cannot be made there`,
-      );
     }
+    made = path;
   }
+  return made;
 }
 
 /**
  * Where a new symbol for the note at `sourcePath` goes: `symbolFolder`, made if
- * need be, or Obsidian's attachment location for it when that is ```, under
+ * need be, or Obsidian's attachment location for it when that is empty, under
  * the name `name` chose, or else the lowest number name that no file or folder
  * there already has. Throws if the folder has a symbol of that name already.
  */
@@ -155,7 +173,7 @@ export async function newSymbolPath(
     );
     folder = parentPath(probe);
   } else {
-    await makeFolder(app, folder);
+    folder = await makeFolder(app, folder);
   }
   if (name.kind === "name") {
     claimName(app, folder, name.name);

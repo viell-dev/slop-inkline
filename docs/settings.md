@@ -32,10 +32,14 @@ stores the current choices together.
 
 New symbols go where Obsidian puts a note's new attachments, as **Settings →
 Files and links → Default location for new attachments** says, unless **Symbol
-folder** names a folder in the vault, such as `Symbols` or `Conlang/Signs`.
-Inkline makes that folder, and any folder it is in, when it saves the first
-symbol there. Symbols already in the vault stay where they are. A folder name
-that would leave the vault or hide from Obsidian, such as `..` or one starting
-with a dot, is refused, keeping the last valid one, as are characters a file
-name cannot hold. If a file stands where the folder would be, the save stops
-with a message and the drawing stays open.
+folder** names a folder in the vault from its top, such as `Symbols` or
+`Conlang/Signs`. Empty, or just `/`, follows Obsidian. Inkline makes the folder,
+and any folder it is in, when it saves the first symbol there; a folder there
+already whose name differs only in letter case is used instead. Symbols already
+in the vault stay where they are.
+
+The folder is stored as you type. Text that cannot name a folder in the vault
+isn't stored, and the box says why: `.` or `..`, a name starting with a dot,
+which hides it from Obsidian, or characters a file name cannot hold. If a file
+stands where the folder would be, the save stops with a message and the drawing
+stays open.
