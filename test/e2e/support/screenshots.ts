@@ -11,7 +11,8 @@ const outputDir = outputDirectory(
 /**
  * Saves a screenshot of the Obsidian window under
  * `screenshots/<app version>-<installer version>/<name>.png` in the output
- * directory. Screenshots are artifacts for review, never assertions.
+ * directory. The screenshots this saves are artifacts for review, never
+ * assertions.
  */
 export async function saveScreenshot(
   name: string,

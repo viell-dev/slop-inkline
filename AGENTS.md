@@ -42,11 +42,12 @@ screenshots use synthetic vaults and drawings only.
   before pushing, and look at the screenshots it writes.
 - Assert on state, positions, and pixels read back from Obsidian, never by
   comparing screenshots with reference images. Where what Obsidian shows on the
-  screen is itself the subject, such as a symbol's colour or its strokes' weight
-  beside text, a test may measure the pixels of a screenshot of that element in
-  the host and assert on the measurements. Use `editor.getValue()` rather than
-  `vault.cachedRead()` for a note's text right after a change: the cache can
-  still hold the old text.
+  screen is itself the subject and the DOM, a canvas or a saved file cannot give
+  it, as with a CSS mask or text drawn by the host, a test may measure the
+  pixels of a screenshot of the elements concerned in the host, assert on the
+  measurements with stated tolerances, and keep the screenshot as an artifact.
+  Use `editor.getValue()` rather than `vault.cachedRead()` for a note's text
+  right after a change: the cache can still hold the old text.
 
 ## Documents
 

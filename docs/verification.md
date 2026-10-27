@@ -20,9 +20,11 @@ says how to run them.
 
 The end-to-end tests assert on state, positions, and pixels read back from
 Obsidian, never by comparing screenshots with reference images. Where what
-Obsidian shows on the screen is itself the subject, such as a symbol's colour or
-its strokes' weight beside text, a test measures the pixels of a screenshot of
-that element. Screenshots are also kept as artifacts for review.
+Obsidian shows on the screen is itself the subject and the DOM, a canvas or a
+saved file cannot give it, as with a symbol's colour through a CSS mask or text
+drawn beside it, a test measures the pixels of a screenshot of the elements
+concerned, with stated tolerances. Screenshots are also kept as artifacts for
+review.
 
 ## The promises
 
@@ -76,7 +78,7 @@ saving it again never changes it.
 
 - In Live Preview and Reading view, in light and dark themes, a symbol stands on
   the text's baseline, as tall as the line box, and its pixels take the text's
-  colour, read back from Obsidian
+  colour, measured from screenshots of the symbol in Obsidian
   ([render.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/render.e2e.ts)).
 - The same holds in callouts, tables, embedded notes, hover previews, canvas
   cards, and popout windows; symbol files on their own and images from outside
@@ -131,9 +133,10 @@ saving it again never changes it.
   wide as its size. M is within 15% of the stems of regular text, L lies between
   1.3 times regular and 1.1 times bold, and XL is at least about as heavy as
   bold, for the editor's text font and, where the host has them, DejaVu Sans and
-  Noto Serif. In a note in reading view, an inline symbol's M strokes show
-  within 20% of the text's stems on the screen. Five M strokes a grid spacing
-  apart stay separate, and the renderer draws M at its size at half pen pressure
+  Noto Serif. In a note in reading view, in light and dark themes, an inline
+  symbol's M strokes show within 20% of the text's stems on the screen. Five M
+  strokes a grid spacing apart stay separate, and the renderer draws M at its
+  size at half pen pressure
   ([pen-weights.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/pen-weights.e2e.ts)).
 
 ### Drawing is never lost

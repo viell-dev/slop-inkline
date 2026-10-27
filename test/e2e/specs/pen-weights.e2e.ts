@@ -261,9 +261,10 @@ describe("Brush sizes beside text", function () {
   });
 
   it("shows M in a note about as heavy as the text beside it, in both themes", async function () {
-    // Each preset as eight strokes a whole screen pixel apart at a 16 px
-    // font, each a document pixel further on, so that their mean covers every
-    // position the strokes can take against the screen's pixels.
+    // Each preset as eight strokes, 64 document pixels apart, eight screen
+    // pixels at a 16 px font, plus one more document pixel for each, so that
+    // their mean covers every position a stroke can take against the screen's
+    // pixels.
     const phases = 8;
     const sizes = brushSizes.map((size) => size.em * 128 * 16);
     await browser.executeObsidian(
@@ -315,11 +316,16 @@ describe("Brush sizes beside text", function () {
           document.body.classList.remove("theme-light", "theme-dark");
           document.body.classList.add(name);
         }, theme);
-        // Every stroke drawn, in this theme's colour.
+        // Every stroke drawn, in this theme's colour: the same twice running,
+        // so that no frame of the change of theme is measured.
         let strokes: number[] = [];
         await browser.waitUntil(async () => {
+          const before = strokes;
           strokes = await shownRuns(symbol, 0.5);
-          return strokes.length === sizes.length * phases;
+          return (
+            strokes.length === sizes.length * phases &&
+            strokes.join() === before.join()
+          );
         });
         await saveScreenshot(`pen-weights-reading-${theme}`);
         const text = [
