@@ -99,10 +99,10 @@ saving it again never changes it.
 
 ### The editor shows what its tools do
 
-- The brush circle follows the nominal tool size and drawing-area scale; mouse,
-  pen and touch ownership are checked. Pen and Eraser keep separate sizes,
-  including through **Next**. The close button stays clear of the name field,
-  and the drawing area's accessible name produces no hover tooltip
+- The brush circle follows the nominal tool size and drawing-area scale. Pen and
+  Eraser keep separate sizes, including through **Next**. The close button stays
+  clear of the name field, and the drawing area's accessible name produces no
+  hover tooltip
   ([editor-feedback.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor-feedback.e2e.ts)).
 - Help explains the drawing tools and guides, closes with Escape, and restores
   focus to drawing without changing its strokes (the same file).
@@ -110,7 +110,7 @@ saving it again never changes it.
   and fractional-coordinate checks at two editor widths in both themes. Leaving,
   cancelling, and Help restore the fallback cursor; the indicator never enters
   saved strokes (the same file). These host checks do not establish subjective
-  pointer comfort or physical pen behaviour.
+  pointer comfort.
 - The fixed bitmap retains its coverage across fractional positions and zoom
   levels
   ([brush-cursor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/brush-cursor.e2e.ts)).
@@ -135,8 +135,7 @@ saving it again never changes it.
   bold, for the editor's text font and, where the host has them, DejaVu Sans and
   Noto Serif. In a note in reading view, in light and dark themes, an inline
   symbol's M strokes show within 20% of the text's stems on the screen. Five M
-  strokes a grid spacing apart stay separate, and the renderer draws M at its
-  size at half pen pressure
+  strokes a grid spacing apart stay separate
   ([pen-weights.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/pen-weights.e2e.ts)).
 
 ### Drawing is never lost
@@ -274,8 +273,9 @@ check against a commit whose CI never ran
 
 - The end-to-end tests run on Linux only. The unit tests and the build also run
   on Windows; Obsidian on Windows and macOS is not tested.
-- Pens and touch are tested with WebDriver's pointer events, which carry
-  pressure and pointer types, not with real devices.
+- Drawing is tested with WebDriver's mouse and synthetic pointer events, not
+  with real devices. Drawing tablets and touchscreens are not supported beyond
+  drawing as a mouse does.
 - Refresh checks outside the symbol editor use Obsidian's `vault.modifyBinary`;
   they do not exercise operating-system file changes through its file watcher.
 - Obsidian's mobile apps are not tested, as Inkline does not support them.

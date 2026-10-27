@@ -61,7 +61,7 @@ import {
   paintBrushCursor,
   type BrushCursor,
 } from "./cursor.ts";
-import { PointerGate, reportsPressure } from "./pointer.ts";
+import { PointerGate } from "./pointer.ts";
 import {
   brushSizes,
   DrawingSession,
@@ -309,11 +309,6 @@ export interface EditorOptions {
   /** The tools to start with, as the editor before this one left them. */
   readonly tools?: EditorTools;
   /**
-   * Whether strokes follow a pen's pressure, asked as each stroke starts, so
-   * that a change in the settings applies at once; they do when undefined.
-   */
-  readonly pressure?: () => boolean;
-  /**
    * Asks which symbol to start from and opens it, for a new symbol drawn as
    * a variant of another; resolves to undefined when none is chosen or it
    * cannot be opened, and as soon as `closed` aborts, as when the editor
@@ -389,9 +384,7 @@ export class InkEditorModal extends Modal {
   readonly #resizeCursor = (): void => {
     this.#updateCursor();
   };
-  #hover:
-    | { pointerId: number; clientX: number; clientY: number; eraser: boolean }
-    | undefined;
+  #hover: { pointerId: number; clientX: number; clientY: number } | undefined;
   #saving: Promise<boolean> | undefined;
   #closing = false;
   /** Set when disposed: nothing more is saved or written as a draft. */
@@ -1098,17 +1091,12 @@ export class InkEditorModal extends Modal {
   }
 
   #listen(canvas: HTMLCanvasElement): void {
-    let pressure = true;
     const hover = (event: PointerEvent): void => {
       if (this.#gate.active !== undefined && !this.#gate.owns(event)) return;
-      if (event.pointerType === "touch") return;
       this.#hover = {
         pointerId: event.pointerId,
         clientX: event.clientX,
         clientY: event.clientY,
-        eraser:
-          event.pointerType === "pen" &&
-          (event.button === 5 || (event.buttons & 32) !== 0),
       };
       this.#updateCursor();
     };
@@ -1121,13 +1109,9 @@ export class InkEditorModal extends Modal {
     canvas.addEventListener("pointerleave", hideCursor);
     canvas.addEventListener("pointercancel", hideCursor);
     const point = (event: PointerEvent): InputPoint => {
-      const { x, y } = this.#view?.toDocument(event.clientX, event.clientY) ?? {
-        x: 0,
-        y: 0,
-      };
-      return reportsPressure(event.pointerType) && pressure
-        ? { x, y, pressure: event.pressure }
-        : { x, y };
+      return (
+        this.#view?.toDocument(event.clientX, event.clientY) ?? { x: 0, y: 0 }
+      );
     };
     const finish = (event: PointerEvent): void => {
       if (!this.#gate.release(event)) return;
@@ -1147,25 +1131,18 @@ export class InkEditorModal extends Modal {
       this.#changed();
     };
     canvas.addEventListener("pointerdown", (event) => {
-      const tool = this.#gate.down(event);
-      if (tool === undefined) return;
-      if (event.pointerType === "touch") this.#hover = undefined;
+      if (!this.#gate.down(event)) return;
       event.preventDefault();
       // Drawing takes the focus, which the default action would have, so
       // that the shortcuts are the editor's again after typing elsewhere.
       canvas.focus({ preventScroll: true });
       canvas.setPointerCapture(event.pointerId);
       if (this.#moving) {
-        // A pen taking over from a touch drags from where it came down.
         this.#dragged = { clientX: event.clientX, clientY: event.clientY };
         canvas.addClass("is-dragging");
         return;
       }
-      pressure = this.#options.pressure?.() !== false;
-      this.#session.begin(
-        point(event),
-        tool === "brush" ? this.#session.tool : tool,
-      );
+      this.#session.begin(point(event));
       hover(event);
       this.#render();
     });
@@ -1859,8 +1836,7 @@ export class InkEditorModal extends Modal {
       canvas.removeClass("has-brush-cursor");
       return;
     }
-    const tool = hover.eraser ? "eraser" : this.#session.tool;
-    const size = this.#session.activeSize ?? this.#session.sizeFor(tool);
+    const size = this.#session.activeSize ?? this.#session.size;
     const diameter =
       ((size / unitsPerPixel) * canvas.clientWidth) /
       (view.visible.right - view.visible.left);
@@ -1916,7 +1892,7 @@ export class InkEditorModal extends Modal {
     });
     const steps = content.createEl("ul");
     for (const text of [
-      "Pen (P) adds ink; Eraser (E) removes it. Sizes S–XL (1–4) are remembered separately until you close the editor, including through Next. For a mouse or pen, the circle shows nominal diameter; pressure can change stroke width. A pen's eraser end uses the Eraser size on contact; hovering shows the selected tool's size.",
+      "Pen (P) adds ink; Eraser (E) removes it. Sizes S–XL (1–4) are remembered separately until you close the editor, including through Next. The circle shows the brush's diameter.",
       "Hold Shift while drawing for a straight segment. Grid (Shift+G) shows dots and snaps stroke ends to them; it does not change the font guides.",
       "Undo (Mod+Z) and Redo (Mod+Shift+Z) step through changes. Clear removes the drawing and can be undone.",
       "Paste or drop a picture to trace. Move positions it; the wheel scales it. Make ink converts the visible picture into editable ink. The tracing picture itself is not saved.",

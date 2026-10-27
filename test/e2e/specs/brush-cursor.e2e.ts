@@ -192,37 +192,6 @@ describe("Fixed brush bitmap", function () {
     expect(results.fallback).toEqual(Array<boolean>(5).fill(true));
     expect(results.invalidDensity).toEqual(Array<boolean>(4).fill(true));
   });
-  it("uses the eraser footprint for eraser contact and restores Pen on hover", async function () {
-    await surface().moveTo();
-    await browser.keys("1");
-    const pen = await cursorImage();
-    await browser.keys("e");
-    await browser.keys("4");
-    const eraser = await cursorImage();
-    await browser.keys("p");
-    const dispatch = async (buttons: number): Promise<void> => {
-      await browser.execute((pressed) => {
-        const canvas = document.querySelector(".inkline-surface");
-        if (canvas === null) throw new Error("no surface");
-        const rect = canvas.getBoundingClientRect();
-        canvas.dispatchEvent(
-          new PointerEvent("pointermove", {
-            pointerType: "pen",
-            pointerId: 53,
-            buttons: pressed,
-            clientX: rect.left + 80,
-            clientY: rect.top + 80,
-            bubbles: true,
-          }),
-        );
-      }, buttons);
-    };
-    await dispatch(32);
-    expect((await cursorImage()).bitmap).toBe(eraser.bitmap);
-    await dispatch(0);
-    expect((await cursorImage()).bitmap).toBe(pen.bitmap);
-  });
-
   it("retains grab and grabbing for tracing and restores the brush", async function () {
     await browser.execute(async () => {
       const canvas = document.querySelector(".inkline-surface");

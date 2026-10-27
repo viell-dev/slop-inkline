@@ -55,8 +55,8 @@ in text.
 
 ![An invented inscription in Reading view, with inline symbols and the library's renamed sign linked to both notes that use it.](./screenshots/reading-light.png)
 
-- **Draw** a symbol in an editor sized to one line of text, with a mouse, pen,
-  or finger, with guides at the text font's lines; trace over a screenshot, or
+- **Draw** a symbol in an editor sized to one line of text, with a mouse or a
+  trackpad, with guides at the text font's lines; trace over a screenshot, or
   turn it into ink, instead of drawing. See
   [Drawing in the editor](./drawing.md).
 - **Insert** it where you were writing, or type `;;` and a few letters of a

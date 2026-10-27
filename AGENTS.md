@@ -181,6 +181,16 @@ legacy import with synthetic drawings in the prototype's format. Once nothing
 needs it, delete the branch and its ruleset in the pull request that makes it
 unneeded.
 
+## The pen-input branch
+
+`pen-input` keeps the pen-device support that `main` removed on the owner's
+decision in [#101](https://github.com/viell-dev/slop-inkline/issues/101): pen
+pressure, a pen's eraser end, palm rejection, and the Pen pressure setting, as
+released in 0.1.1-rc.7. Read it for reference, as with
+`git show pen-input:src/editor/pointer.ts`. Do not delete it, merge it, or base
+work on it without the owner's decision. Symbol files keep their `pressure`
+field, so `main` still reads and draws strokes with pressure.
+
 ## Instruction files
 
 Agent instructions live in `AGENTS.md` files only. Do not add `CLAUDE.md`,

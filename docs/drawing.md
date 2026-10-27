@@ -19,12 +19,10 @@ drawing. [Keyboard and accessibility](./keyboard.md) lists every key.
 
 ## Pen and eraser
 
-**Pen** (P) draws; **Eraser** (E) takes ink away. The end of a pen that erases,
-or its eraser button, erases whichever tool is chosen. Strokes follow a pen's
-pressure, thicker as it presses harder; a mouse, a trackpad, and a finger draw
-at the brush's own width. Only the main button draws, and only one pointer at a
-time: once a pen has touched the screen, touch stops drawing, so a palm resting
-on a tablet leaves no marks.
+**Pen** (P) draws; **Eraser** (E) takes ink away. Draw with a mouse or a
+trackpad: every stroke is as wide as the brush. Only the main button draws, and
+only one pointer at a time. A drawing tablet's pen or a touchscreen draws as a
+mouse does, without pressure; Inkline does not support them otherwise.
 
 The four **brush sizes**, S, M, L, and XL (keys 1 to 4), scale with the text and
 serve both Pen and Eraser. M draws about as thick as the letters of regular
@@ -32,12 +30,9 @@ text, L near bold text, and XL heavier still; S is about half as thick as
 regular text, for fine detail. Fonts differ, so the match is close rather than
 exact.
 
-For a mouse or pen, a circle shows the brush's nominal diameter, scaled with the
-drawing area. Pen pressure can change the stroke width. Pen and Eraser keep
-separate sizes while the editor is open and through **Next**. A separately
-opened editor starts both tools at the configured default size. The pen's eraser
-end uses the Eraser size, whichever tool is selected. Its circle switches to
-that size on contact; hovering shows the selected tool's size.
+A circle shows the brush's diameter, scaled with the drawing area. Pen and
+Eraser keep separate sizes while the editor is open and through **Next**. A
+separately opened editor starts both tools at the configured default size.
 
 The brush circle and centre dot change between black and white to contrast with
 the drawing underneath, including tracing pictures. The thin outline keeps its

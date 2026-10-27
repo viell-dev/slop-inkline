@@ -535,7 +535,6 @@ function newSymbol(
     document: emptyDocument,
     center: visibleWidth / 2,
     tools: tools ?? startingTools(host.settings()),
-    pressure: () => host.settings().pressure,
     next: (chosen) => {
       if (after === undefined || !host.alive()) {
         // No editor takes the picture over.
@@ -793,7 +792,6 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
   new InkEditorModal(app, {
     title: "Symbol",
     tools: startingTools(host.settings()),
-    pressure: () => host.settings().pressure,
     name: symbolStem(file.name) ?? file.basename,
     document: opened.document,
     ...(opened.base === undefined ? {} : { base: opened.base }),

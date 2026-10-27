@@ -76,6 +76,6 @@ and returns focus to the drawing area.
   it back there, so that its keys work again after typing elsewhere.
 - Hovering a symbol in a note shows its name, which screen readers read as the
   image's name.
-- Drawing itself needs a pointer: a mouse, a pen, a trackpad, or touch. Make ink
-  turns a pasted picture into a symbol without drawing, with the keyboard moving
-  and scaling the picture.
+- Drawing itself needs a pointer, such as a mouse or a trackpad. Make ink turns
+  a pasted picture into a symbol without drawing, with the keyboard moving and
+  scaling the picture.

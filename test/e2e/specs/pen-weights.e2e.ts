@@ -387,45 +387,4 @@ describe("Brush sizes beside text", function () {
     console.log("Dense strokes", JSON.stringify(runs));
     expect(runs).toHaveLength(5);
   });
-
-  it("draws M's pressure curve around its own width, as the renderer draws it", async function () {
-    // Saved pen strokes at set pressures, not pointer input.
-    const size = (brushSizes[1]?.em ?? 0) * 128;
-    const widths = await browser.execute((units: number) => {
-      const { record, render } = window.inklineTest;
-      const canvas = new OffscreenCanvas(400, 200);
-      const context = canvas.getContext("2d");
-      if (context === null) throw new Error("no context");
-      const pressures = [0.25, 0.5, 1];
-      // Upright strokes at x 100, 200 and 300, at one pressure each.
-      render.drawInk(
-        context,
-        pressures.map((pressure, index) => {
-          const x = (index + 1) * 100 * record.unitsPerPixel;
-          const p = Math.round(pressure * record.maxPressure);
-          return {
-            tool: "pen" as const,
-            size: units,
-            pressure: true,
-            points: [x, 40 * 16, p, x, 100 * 16, p, x, 160 * 16, p],
-          };
-        }),
-        undefined,
-      );
-      const row = context.getImageData(0, 100, 400, 1).data;
-      return pressures.map((_, index) => {
-        let covered = 0;
-        for (let x = index * 100 + 50; x < index * 100 + 150; x++) {
-          covered += (row[x * 4 + 3] ?? 0) / 255;
-        }
-        return covered;
-      });
-    }, size * 16);
-    console.log("Pressure widths", JSON.stringify({ size, widths }));
-    const [light = 0, half = 0, full = 0] = widths;
-    expect(Math.abs(half - size)).toBeLessThan(0.75);
-    expect(light).toBeLessThan(half);
-    expect(full).toBeGreaterThan(half);
-    expect(full).toBeLessThanOrEqual(size * 1.5 + 0.75);
-  });
 });

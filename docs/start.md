@@ -9,8 +9,8 @@ It assumes Inkline is [installed](./install.md) and turned on.
    where the symbol goes, as you would before typing a letter.
 2. Open the command palette (Ctrl+P, or Cmd+P on macOS) and run **Inkline:
    Insert symbol**. The editor opens over the note. Nothing is created yet.
-3. Draw the symbol in the drawing area with a mouse, a pen, or a finger. The
-   lines across it are guides at the text font's ascender, cap height, x-height,
+3. Draw the symbol in the drawing area with a mouse or a trackpad. The lines
+   across it are guides at the text font's ascender, cap height, x-height,
    baseline, and descender, so that you can draw it at the size of the letters
    around it. The line of text under the drawing shows the symbol at its size in
    the text as you draw.

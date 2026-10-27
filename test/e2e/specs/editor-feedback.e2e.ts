@@ -164,7 +164,7 @@ describe("Editor feedback", function () {
         throw new Error("no drawing controls");
       const rect = canvas.getBoundingClientRect();
       const sample = {
-        pointerType: "pen",
+        pointerType: "mouse",
         pointerId: 52,
         clientX: rect.left + 80.25,
         clientY: rect.top + 80.25,
@@ -346,39 +346,5 @@ describe("Editor feedback", function () {
     expect(outline.style).toBe("dashed");
     expect(outline.outside).toBeLessThanOrEqual(0);
     await saveScreenshot("editor-drop-outline");
-  });
-
-  it("keeps a pen's circle when an unrelated palm pointer moves or leaves", async function () {
-    await insert();
-    const state = await browser.execute(() => {
-      const canvas = document.querySelector(".inkline-surface");
-      const cursor = document.querySelector(".inkline-brush-cursor");
-      if (!(canvas instanceof HTMLCanvasElement) || cursor === null)
-        throw new Error("no controls");
-      const rect = canvas.getBoundingClientRect();
-      const pen = {
-        pointerType: "pen",
-        pointerId: 41,
-        clientX: rect.left + rect.width / 2,
-        clientY: rect.top + rect.height / 2,
-        bubbles: true,
-      };
-      canvas.dispatchEvent(new PointerEvent("pointermove", pen));
-      const visible = () => getComputedStyle(cursor).display !== "none";
-      const before = visible();
-      for (const type of ["pointermove", "pointerleave", "pointercancel"]) {
-        canvas.dispatchEvent(
-          new PointerEvent(type, {
-            ...pen,
-            pointerId: 42,
-            pointerType: "touch",
-          }),
-        );
-      }
-      const afterPalm = visible();
-      canvas.dispatchEvent(new PointerEvent("pointerleave", pen));
-      return { before, afterPalm, afterPen: visible() };
-    });
-    expect(state).toEqual({ before: true, afterPalm: true, afterPen: false });
   });
 });

@@ -86,15 +86,6 @@ export class InklineSettingTab extends PluginSettingTab {
         },
       },
       {
-        name: "Pen pressure",
-        desc: "Strokes drawn with a pen grow thicker as it presses harder. Off, every stroke is as thick as its brush.",
-        control: {
-          type: "toggle",
-          key: "pressure",
-          defaultValue: defaultSettings.pressure,
-        },
-      },
-      {
         name: "Guides",
         desc: "A new editor shows the text's lines to draw on. G shows or hides them there.",
         control: {

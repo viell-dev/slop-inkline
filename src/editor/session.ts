@@ -3,12 +3,7 @@
 // Obsidian, so that unit tests can drive it.
 
 import { unitsPerPixel, type Stroke, type Tool } from "../format/record.ts";
-import {
-  documentMover,
-  toPressure,
-  toUnits,
-  type InkDocument,
-} from "../ink/document.ts";
+import { documentMover, toUnits, type InkDocument } from "../ink/document.ts";
 import { lineBox } from "../ink/geometry.ts";
 import { History } from "../ink/history.ts";
 
@@ -41,12 +36,10 @@ export const brushSizes: readonly BrushSize[] = [
  */
 export const maxGap = 2;
 
-/** A point from an input device, in document pixels. */
+/** A point from the pointer, in document pixels. */
 export interface InputPoint {
   readonly x: number;
   readonly y: number;
-  /** From 0 to 1, for devices that report pressure; otherwise undefined. */
-  readonly pressure?: number;
 }
 
 /**
@@ -56,16 +49,14 @@ export interface InputPoint {
 export const gridSpacing = lineBox.pxPerEm / 8;
 
 /**
- * The grid point nearest `point`, with its pressure, on a grid whose
- * columns pass through `originX`; its rows pass through the line box's top.
+ * The grid point nearest `point`, on a grid whose columns pass through
+ * `originX`; its rows pass through the line box's top.
  */
 export function snapToGrid(point: InputPoint, originX = 0): InputPoint {
-  const x =
-    Math.round((point.x - originX) / gridSpacing) * gridSpacing + originX;
-  const y = Math.round(point.y / gridSpacing) * gridSpacing;
-  return point.pressure === undefined
-    ? { x, y }
-    : { x, y, pressure: point.pressure };
+  return {
+    x: Math.round((point.x - originX) / gridSpacing) * gridSpacing + originX,
+    y: Math.round(point.y / gridSpacing) * gridSpacing,
+  };
 }
 
 /** `x`, in pixels, moved by whole spacings to within the first one. */
@@ -119,21 +110,22 @@ interface SessionState {
   readonly gridOrigin: number;
 }
 
-/** A stroke being drawn: its brush and its points so far, in units. */
+/**
+ * A stroke being drawn: its brush and its points so far, in units, `x, y`
+ * each, as new strokes carry no pressure.
+ */
 interface ActiveStroke {
   readonly tool: Tool;
   readonly size: number;
-  readonly pressure: boolean;
   readonly points: number[];
 }
 
-/** The point `along` the way from `from` to `to`, pressure included. */
+/** The point `along` the way from `from` to `to`. */
 function between(from: InputPoint, to: InputPoint, along: number): InputPoint {
-  const x = from.x + (to.x - from.x) * along;
-  const y = from.y + (to.y - from.y) * along;
-  if (to.pressure === undefined) return { x, y };
-  const start = from.pressure ?? to.pressure;
-  return { x, y, pressure: start + (to.pressure - start) * along };
+  return {
+    x: from.x + (to.x - from.x) * along,
+    y: from.y + (to.y - from.y) * along,
+  };
 }
 
 export class DrawingSession {
@@ -195,7 +187,7 @@ export class DrawingSession {
     return this.sizeFor(this.tool);
   }
 
-  /** The nominal diameter for a tool, including a pen's eraser end. */
+  /** The nominal diameter for a tool's selected size. */
   sizeFor(tool: Tool): number {
     const brush = brushSizes[this.sizes[tool]] ?? brushSizes[1];
     return toUnits((brush?.em ?? 6 / 64) * lineBox.pxPerEm);
@@ -234,22 +226,14 @@ export class DrawingSession {
       : {
           tool: active.tool,
           size: active.size,
-          pressure: active.pressure,
+          pressure: false,
           points: [...active.points],
         };
   }
 
-  /**
-   * Starts a stroke with the current brush, or with `tool` when the input
-   * device decides it, such as a pen's eraser end.
-   */
-  begin(point: InputPoint, tool: Tool = this.tool): void {
-    this.#active = {
-      tool,
-      size: this.sizeFor(tool),
-      pressure: point.pressure !== undefined,
-      points: [],
-    };
+  /** Starts a stroke with the current brush. */
+  begin(point: InputPoint): void {
+    this.#active = { tool: this.tool, size: this.size, points: [] };
     this.#last = undefined;
     this.#anchor = undefined;
     this.extend([this.#snapped(point)]);
@@ -296,35 +280,23 @@ export class DrawingSession {
   }
 
   #record(active: ActiveStroke, point: InputPoint): void {
-    const stride = active.pressure ? 3 : 2;
-    const values = [toUnits(point.x), toUnits(point.y)];
-    if (active.pressure) values.push(toPressure(point.pressure ?? 0.5));
-    const last = active.points.slice(-stride);
-    if (
-      last.length === stride &&
-      last.every((value, i) => value === values[i])
-    ) {
+    const x = toUnits(point.x);
+    const y = toUnits(point.y);
+    const { points } = active;
+    if (points.length >= 2 && points.at(-2) === x && points.at(-1) === y) {
       return;
     }
-    active.points.push(...values);
+    points.push(x, y);
   }
   /**
    * Commits the stroke being drawn as one undoable step, ending it at
-   * `release`, where the pointer was let go, when that is known. The release
-   * keeps the last pressure, since a pen reports none once lifted.
+   * `release`, where the pointer was let go, when that is known.
    */
   end(release?: InputPoint): void {
     const straight = this.#anchor !== undefined;
-    const pressure = this.#last?.pressure;
-    const at =
-      release === undefined
-        ? undefined
-        : pressure === undefined
-          ? { x: release.x, y: release.y }
-          : { x: release.x, y: release.y, pressure };
     // With the grid, the stroke ends on it, at the grid point nearest the
     // release, or else the last point, recorded in the release's place.
-    const end = this.snap ? (at ?? this.#last) : at;
+    const end = this.snap ? (release ?? this.#last) : release;
     if (end !== undefined && this.#active !== undefined) {
       this.extend([this.#snapped(end)], straight);
     }
@@ -395,9 +367,8 @@ export class DrawingSession {
     this.#saved = move(this.#saved);
     const active = this.#active;
     if (active !== undefined) {
-      const stride = active.pressure ? 3 : 2;
       const dx = toUnits(dxPixels);
-      for (let index = 0; index < active.points.length; index += stride) {
+      for (let index = 0; index < active.points.length; index += 2) {
         active.points[index] = (active.points[index] ?? 0) + dx;
       }
     }
