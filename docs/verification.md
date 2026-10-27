@@ -199,8 +199,9 @@ saving it again never changes it.
   ([settings.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/settings.e2e.ts)).
 - New symbols follow Obsidian's place for attachments, in the vault's top
   folder, the note's own folder, and a folder of its own, with no symbol folder
-  set; with one, they go there through **Next**, nested folders are made, and a
-  file in the folder's place stops the save with the drawing kept
+  set; with one, they go there through **Next**, nested folders are made, a
+  folder there in other letter case is used, and a file in the folder's place
+  stops the save with the drawing kept, which saves once the file is gone
   ([symbol-folder.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-folder.e2e.ts)).
   Unit tests refuse folders that leave or hide from the vault or break a name
   ([names.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/names.test.ts)).

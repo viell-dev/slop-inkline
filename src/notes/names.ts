@@ -93,11 +93,11 @@ export function chooseName(typed: string): NameChoice {
 
 /**
  * The folder in the vault that `typed` names for new symbols: its folders'
- * names joined by `/`, with no slashes around them, a `\` read as `/` as
- * Obsidian reads it, or `""` to keep Obsidian's place for attachments; or
- * why it cannot be one. Each folder's
- * name follows the rules of a symbol's name, but a name that breaks them is
- * refused rather than changed, as a setting is shown again as it was typed.
+ * names joined by `/`, with no slashes around them, or `""` to keep Obsidian's
+ * place for attachments; or why it cannot be one. A `\` is read as `/`, as
+ * Obsidian reads it, and a no-break space as a plain one. Otherwise each
+ * folder's name follows the rules of a symbol's name, but one that breaks them
+ * is refused rather than changed, as a setting is shown again as it was typed.
  */
 export function chooseFolder(
   typed: string,

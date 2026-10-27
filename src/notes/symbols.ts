@@ -6,9 +6,11 @@ import {
   MarkdownView,
   Notice,
   TFile,
+  TFolder,
   getLinkpath,
   normalizePath,
   type App,
+  type TAbstractFile,
 } from "obsidian";
 import { inkExtension, isInkPath } from "../format/ink-file.ts";
 import { openInk } from "../ink/canvas.ts";
@@ -122,11 +124,15 @@ async function makeFolder(app: App, folder: string): Promise<string> {
     const path = made === "" ? part : `${made}/${part}`;
     const within =
       made === "" ? app.vault.getRoot() : app.vault.getFolderByPath(made);
+    const same = (child: TAbstractFile): boolean =>
+      child.name.normalize("NFC").toLowerCase() === part.toLowerCase();
+    // A folder before a file, as a case-sensitive system can hold both.
     const found =
       app.vault.getAbstractFileByPath(path) ??
       within?.children.find(
-        (child) => child.name.toLowerCase() === part.toLowerCase(),
+        (child) => child instanceof TFolder && same(child),
       ) ??
+      within?.children.find(same) ??
       null;
     if (found instanceof TFile) {
       throw new Error(
