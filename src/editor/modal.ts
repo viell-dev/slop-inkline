@@ -30,11 +30,14 @@ import {
 import { documentSpan, type InkDocument } from "../ink/document.ts";
 import { lineBox, type Bounds } from "../ink/geometry.ts";
 import {
+  enlargeFactor,
+  enlargedRegion,
   inkDefaults,
   pictureLuminance,
   previewShrink,
   regionValues,
   shrinkLuminance,
+  thresholdEdge,
   thresholdRange,
   traceRegion,
   type Luminance,
@@ -157,10 +160,15 @@ const making = "Making ink of the picture: set the threshold, then Apply.";
 interface PartShown {
   readonly placement: Placement;
   readonly region: Bounds;
-  /** Where the copy traced sits: the picture's place, at its scale. */
+  /**
+   * Where the pixels traced sit: the picture's place, at the scale of the
+   * copy or of the finer samples traced.
+   */
   readonly place: PicturePlace;
   /** Undefined when no part of the picture is there. */
   readonly part: Region | undefined;
+  /** The threshold's ramp for those pixels. */
+  readonly edge: number;
 }
 
 /**
@@ -194,6 +202,37 @@ function copyOf(copies: Map<number, Luminance>, factor: number): Luminance {
 /** `placement` for a copy of its picture `factor` times smaller. */
 function shrunkPlace(placement: Placement, factor: number): PicturePlace {
   return { ...placement, scale: placement.scale * factor };
+}
+
+/**
+ * The part of the picture whose copies `copies` holds, at `placement`, that
+ * becomes ink within `region`, with where its pixels are and the threshold's
+ * ramp for them. An enlarged picture is sampled more finely, as
+ * `enlargeFactor` says, so that its ink's edges are as sharp as the document
+ * shows; any other is the copy `shrink` times smaller.
+ */
+function inkPart(
+  copies: Map<number, Luminance>,
+  placement: Placement,
+  region: Bounds,
+  shrink: number,
+): { part: Region | undefined; place: PicturePlace; edge: number } {
+  const picture = copyOf(copies, 1);
+  const factor = enlargeFactor(
+    picture.width,
+    picture.height,
+    placement,
+    region,
+  );
+  const enlarged =
+    factor > 1 ? enlargedRegion(picture, placement, region, factor) : undefined;
+  if (enlarged !== undefined) return enlarged;
+  const place = shrunkPlace(placement, shrink);
+  return {
+    part: regionValues(copyOf(copies, shrink), place, region),
+    place,
+    edge: thresholdEdge,
+  };
 }
 
 function sameBounds(a: Bounds, b: Bounds): boolean {
@@ -1360,6 +1399,8 @@ export class InkEditorModal extends Modal {
       picture.placement,
       region,
     );
+    // From the picture's own pixels, even where the ink comes from finer
+    // samples: those add values between its own, not more of its tones.
     const source = copyOf(copies, shrink);
     const part = regionValues(
       source,
@@ -1452,16 +1493,16 @@ export class InkEditorModal extends Modal {
         picture.placement,
         region,
       );
-      const place = shrunkPlace(picture.placement, shrink);
-      area = {
-        placement: picture.placement,
+      const { part, place, edge } = inkPart(
+        copies,
+        picture.placement,
         region,
-        place,
-        part: regionValues(copyOf(copies, shrink), place, region),
-      };
+        shrink,
+      );
+      area = { placement: picture.placement, region, place, part, edge };
       this.#partShown = area;
     }
-    const { place } = area;
+    const { place, edge } = area;
     let shown = this.#inkShown;
     if (
       shown === undefined ||
@@ -1471,7 +1512,13 @@ export class InkEditorModal extends Modal {
     ) {
       const ink =
         area.part &&
-        traceRegion(area.part, place, converting.threshold, converting.light);
+        traceRegion(
+          area.part,
+          place,
+          converting.threshold,
+          converting.light,
+          edge,
+        );
       shown = {
         part: area.part,
         threshold: converting.threshold,
@@ -1528,9 +1575,9 @@ export class InkEditorModal extends Modal {
 
   /**
    * Makes the ink {@link #applyInk} describes, from the picture at its own
-   * resolution. If the threshold, Light ink, the picture, or the surface
-   * changed while the ink was encoded, it makes the ink again, so that what
-   * it makes is what the surface shows.
+   * resolution, or finer where it is enlarged. If the threshold, Light ink,
+   * the picture, or the surface changed while the ink was encoded, it makes
+   * the ink again, so that what it makes is what the surface shows.
    */
   async #makeInk(): Promise<void> {
     for (;;) {
@@ -1541,12 +1588,17 @@ export class InkEditorModal extends Modal {
       const { threshold, light } = converting;
       const { placement } = picture;
       const region = this.#inkRegion(view);
-      const part = regionValues(converting.luma, placement, region);
+      const { part, place, edge } = inkPart(
+        converting.copies,
+        placement,
+        region,
+        1,
+      );
       if (part === undefined) {
         this.#announce("No ink made: no part of the picture is on the surface");
         return;
       }
-      const ink = traceRegion(part, placement, threshold, light);
+      const ink = traceRegion(part, place, threshold, light, edge);
       if (ink === undefined) {
         this.#announce("No ink at this threshold: try another");
         return;
@@ -1554,7 +1606,7 @@ export class InkEditorModal extends Modal {
       let made: Awaited<ReturnType<typeof baseFromInk>>;
       this.#announce("Making ink…");
       try {
-        made = await baseFromInk(ink, placement.scale);
+        made = await baseFromInk(ink, place.scale);
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
         this.#announce(`No ink made: ${reason}`);

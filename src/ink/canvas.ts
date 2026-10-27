@@ -191,7 +191,7 @@ export async function baseFromPicture(
 
 /**
  * A traced picture's ink, as `traceInk` finds it at `scale` document pixels
- * per picture pixel, ready to draw as a base layer at once: to preview it
+ * per pixel traced, ready to draw as a base layer at once: to preview it
  * while the threshold changes, without encoding it.
  */
 export function previewInk(ink: TracedInk, scale: number): DrawableBase {
@@ -213,7 +213,7 @@ export function previewInk(ink: TracedInk, scale: number): DrawableBase {
 
 /**
  * A base layer of a traced picture's ink, as `traceInk` finds it at `scale`
- * document pixels per picture pixel. Throws a `RangeError` when the ink is
+ * document pixels per pixel traced. Throws a `RangeError` when the ink is
  * larger than a base layer can be, or encodes to more bytes than one can
  * hold.
  */

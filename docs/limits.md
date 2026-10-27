@@ -50,6 +50,10 @@ link would still lead elsewhere by its path in the vault.
 - A picture to trace over is scaled down to 4096 pixels on its longer side. A
   file opened from its pixels can be up to 4096 pixels a side, and its ink must
   fit within 8 MiB, the largest base layer a symbol can store.
+- **Make ink** of a picture with transparency, shown larger than its own pixels,
+  keeps the soft edges of that transparency: they spread across each enlarged
+  pixel, while an opaque picture's edges stay sharp
+  ([#96](https://github.com/viell-dev/slop-inkline/issues/96)).
 - Every symbol shows in notes at the size and baseline Inkline saves, whatever
   geometry another tool wrote into its file.
 - Images from outside the vault are left as they are, even when their names end

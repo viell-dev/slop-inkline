@@ -4256,8 +4256,9 @@ describe("The editor", function () {
       );
       await browser.keys(["Control", "Enter"]);
       await waitClosed();
-      // The square, at the picture's own resolution.
-      expect(await baseSize("001.ink.png")).toEqual([20, 20]);
+      // The square, sampled three times finer than the picture: as tall as a
+      // capital, its 40 pixels are each over two document pixels.
+      expect(await baseSize("001.ink.png")).toEqual([60, 60]);
     });
 
     it("makes light ink of a light symbol on a dark ground", async function () {
@@ -4270,7 +4271,7 @@ describe("The editor", function () {
       await waitForStatus("Made ink of the picture");
       await browser.keys(["Control", "Enter"]);
       await waitClosed();
-      expect(await baseSize("001.ink.png")).toEqual([20, 20]);
+      expect(await baseSize("001.ink.png")).toEqual([60, 60]);
     });
 
     it("makes ink only of what the surface shows across", async function () {
@@ -4295,7 +4296,7 @@ describe("The editor", function () {
       await waitForStatus("Made ink of the picture");
       await browser.keys(["Control", "Enter"]);
       await waitClosed();
-      expect(await baseSize("001.ink.png")).toEqual([20, 20]);
+      expect(await baseSize("001.ink.png")).toEqual([60, 60]);
     });
 
     it("previews each threshold, and Cancel makes no ink", async function () {
@@ -4331,7 +4332,9 @@ describe("The editor", function () {
       await setThreshold(200);
       await browser.keys(["Control", "Enter"]);
       await waitClosed();
-      expect(await baseSize("001.ink.png")).toEqual([20, 20]);
+      // Three times finer, as in the first test; at 200, well above the grey,
+      // the ink reaches one sample past its edge on each side.
+      expect(await baseSize("001.ink.png")).toEqual([62, 62]);
     });
 
     it("makes the ink being previewed on Mod+S, and on Next", async function () {
@@ -4369,7 +4372,7 @@ describe("The editor", function () {
       await browser.keys(["Escape"]);
       await clickTop("Save");
       await waitClosed();
-      expect(await baseSize("001.ink.png")).toEqual([20, 20]);
+      expect(await baseSize("001.ink.png")).toEqual([60, 60]);
     });
 
     it("makes ink of a light symbol on a transparent ground", async function () {
@@ -4384,7 +4387,9 @@ describe("The editor", function () {
       await waitForStatus("Made ink of the picture");
       await browser.keys(["Control", "Enter"]);
       await waitClosed();
-      expect(await baseSize("001.ink.png")).toEqual([20, 20]);
+      // Three times finer; the square's own alpha fades over one sample past
+      // its edge on each side (#96).
+      expect(await baseSize("001.ink.png")).toEqual([62, 62]);
     });
 
     it("leaves no ink at one end of the slider and all at the other", async function () {

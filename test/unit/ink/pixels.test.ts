@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   alphaBounds,
+  enlargeFactor,
+  enlargedRegion,
   inkDefaults,
   maxPreviewPixels,
   pictureLuminance,
@@ -21,8 +23,10 @@ import {
   regionValues,
   thresholdEdge,
   traceInk,
+  traceRegion,
   type RgbaPixels,
 } from "../../../src/ink/pixels.ts";
+import { limits } from "../../../src/format/record.ts";
 import { inkGrey } from "../../../src/ink/render.ts";
 
 function pixels(width: number, height: number, rgba: number[]): RgbaPixels {
@@ -518,5 +522,239 @@ describe("anti-aliased glyphs on a transparent ground", () => {
       values: Uint8ClampedArray.from([125]),
       alpha: Uint8ClampedArray.from([170]),
     });
+  });
+});
+
+describe("enlargeFactor", () => {
+  const all = { left: 0, top: 0, right: 10000, bottom: 10000 };
+
+  it("samples a picture finer only where it is enlarged", () => {
+    expect(enlargeFactor(16, 16, { x: 0, y: 0, scale: 1 }, all)).toBe(1);
+    expect(enlargeFactor(16, 16, { x: 0, y: 0, scale: 0.5 }, all)).toBe(1);
+    // Enough that a sample is no larger than a document pixel.
+    expect(enlargeFactor(16, 16, { x: 0, y: 0, scale: 5.75 }, all)).toBe(6);
+    expect(enlargeFactor(16, 16, { x: 0, y: 0, scale: 2 }, all)).toBe(2);
+    // None of it in the region.
+    expect(
+      enlargeFactor(
+        16,
+        16,
+        { x: 0, y: 0, scale: 4 },
+        {
+          left: 100,
+          top: 0,
+          right: 200,
+          bottom: 10,
+        },
+      ),
+    ).toBe(1);
+  });
+
+  it("stays within the preview's pixels and a base layer's sides", () => {
+    // 400 × 400 picture pixels twice finer are 640,000 samples; three times
+    // finer would be more than the preview's million.
+    expect(enlargeFactor(400, 400, { x: 0, y: 0, scale: 4 }, all)).toBe(2);
+    expect(enlargeFactor(600, 600, { x: 0, y: 0, scale: 4 }, all)).toBe(1);
+    // A long strip, few samples, but too long a side to be twice finer.
+    const long = limits.baseSize / 2 + 1;
+    expect(enlargeFactor(long, 1, { x: 0, y: 0, scale: 3 }, all)).toBe(1);
+    expect(enlargeFactor(long - 1, 1, { x: 0, y: 0, scale: 3 }, all)).toBe(2);
+  });
+
+  it("counts only the part in the region", () => {
+    // 600 × 600 is too many to enlarge, but only 100 × 100 is in view.
+    const place = { x: 0, y: 0, scale: 4 };
+    expect(
+      enlargeFactor(600, 600, place, {
+        left: 0,
+        top: 0,
+        right: 400,
+        bottom: 400,
+      }),
+    ).toBe(4);
+  });
+});
+
+describe("enlargedRegion", () => {
+  it("is the region's own pixels when one sample is one pixel", () => {
+    const picture = {
+      width: 3,
+      height: 2,
+      values: Uint8ClampedArray.from([1, 2, 3, 4, 5, 6]),
+    };
+    const place = { x: 10, y: 0, scale: 2 };
+    const region = { left: 12, top: 0, right: 16, bottom: 4 };
+    expect(enlargedRegion(picture, place, region, 1)).toEqual({
+      part: regionValues(picture, place, region),
+      place,
+      edge: thresholdEdge,
+    });
+  });
+
+  it("samples between pixel centres, the nearest edge pixel past the ends", () => {
+    const picture = {
+      width: 2,
+      height: 1,
+      values: Uint8ClampedArray.from([0, 255]),
+    };
+    // From the second sample on, the picture's right half, four document
+    // pixels wide, then only the second pixel's right half.
+    const enlarged = enlargedRegion(
+      picture,
+      { x: 10, y: 0, scale: 4 },
+      { left: 14, top: 0, right: 100, bottom: 1 },
+      4,
+    );
+    expect(enlarged).toEqual({
+      part: {
+        values: Uint8ClampedArray.from([159, 223, 255, 255]),
+        width: 4,
+        height: 1,
+        left: 4,
+        top: 0,
+      },
+      place: { x: 10, y: 0, scale: 1 },
+      edge: thresholdEdge,
+    });
+    const whole = enlargedRegion(
+      picture,
+      { x: 10, y: 0, scale: 4 },
+      { left: 0, top: 0, right: 100, bottom: 1 },
+      4,
+    );
+    expect([...(whole?.part.values ?? [])]).toEqual([
+      0, 0, 32, 96, 159, 223, 255, 255,
+    ]);
+  });
+
+  it("samples between all four pixels around each sample", () => {
+    const picture = {
+      width: 2,
+      height: 2,
+      values: Uint8ClampedArray.from([0, 255, 255, 255]),
+    };
+    const enlarged = enlargedRegion(
+      picture,
+      { x: 0, y: 0, scale: 2 },
+      { left: 0, top: 0, right: 4, bottom: 4 },
+      2,
+    );
+    expect([...(enlarged?.part.values ?? [])]).toEqual([
+      0, 64, 191, 255, 64, 112, 207, 255, 191, 207, 239, 255, 255, 255, 255,
+      255,
+    ]);
+  });
+
+  it("weights colours by alpha, so a transparent ground's colour counts for nothing", () => {
+    // A white pixel beside a clear black one.
+    const picture = {
+      width: 2,
+      height: 1,
+      values: Uint8ClampedArray.from([255, 0]),
+      alpha: Uint8ClampedArray.from([255, 0]),
+    };
+    const enlarged = enlargedRegion(
+      picture,
+      { x: 0, y: 0, scale: 4 },
+      { left: 0, top: 0, right: 8, bottom: 1 },
+      4,
+    );
+    expect([...(enlarged?.part.values ?? [])]).toEqual([
+      255, 255, 255, 255, 255, 255, 0, 0,
+    ]);
+    expect([...(enlarged?.part.alpha ?? [])]).toEqual([
+      255, 255, 223, 159, 96, 32, 0, 0,
+    ]);
+  });
+
+  it("is undefined when no part of the picture is in the region", () => {
+    const picture = { width: 2, height: 1, values: new Uint8ClampedArray(2) };
+    expect(
+      enlargedRegion(
+        picture,
+        { x: 0, y: 0, scale: 4 },
+        { left: 20, top: 0, right: 30, bottom: 4 },
+        4,
+      ),
+    ).toBeUndefined();
+  });
+
+  it("makes ink of an enlarged sharp edge with no partly covered pixels", () => {
+    // A black pixel beside a white one, six document pixels each.
+    const picture = {
+      width: 2,
+      height: 1,
+      values: Uint8ClampedArray.from([0, 255]),
+    };
+    const place = { x: 0, y: 0, scale: 6 };
+    const region = { left: 0, top: 0, right: 12, bottom: 6 };
+    const factor = enlargeFactor(2, 1, place, region);
+    expect(factor).toBe(6);
+    const enlarged = enlargedRegion(picture, place, region, factor);
+    if (enlarged === undefined) throw new Error("no part");
+    const ink = traceRegion(
+      enlarged.part,
+      enlarged.place,
+      128,
+      false,
+      enlarged.edge,
+    );
+    // The black pixel's own six document pixels, every row full ink.
+    expect(ink?.x).toBe(0);
+    expect(ink?.width).toBe(6);
+    expect(ink?.height).toBe(6);
+    expect(new Set(ink?.alpha)).toEqual(new Set([255]));
+    // Ink at the picture's own resolution, as before, is one pixel to be
+    // enlarged six times over, softening its edge across them.
+    const coarse = traceInk(picture, place, 128, false, region);
+    expect(coarse?.width).toBe(1);
+  });
+
+  it("narrows the threshold's ramp to about one sample however enlarged", () => {
+    // A black pixel beside a white one, sixteen document pixels each: the
+    // full ramp would spread the edge over two samples.
+    const picture = {
+      width: 2,
+      height: 1,
+      values: Uint8ClampedArray.from([0, 255]),
+    };
+    const place = { x: 0, y: 0, scale: 16 };
+    const region = { left: 0, top: 0, right: 32, bottom: 1 };
+    const enlarged = enlargedRegion(picture, place, region, 16);
+    if (enlarged === undefined) throw new Error("no part");
+    expect(enlarged.edge).toBeCloseTo(255 / 16);
+    const partial = (edge: number) =>
+      [
+        ...(traceRegion(enlarged.part, enlarged.place, 128, false, edge)
+          ?.alpha ?? []),
+      ].filter((value) => value > 0 && value < 255);
+    // The edge falls between two samples: nearly full and nearly empty, where
+    // the full ramp leaves both well short.
+    expect(partial(enlarged.edge)).toEqual([248, 8]);
+    expect(partial(thresholdEdge)).toEqual([187, 68]);
+  });
+
+  it("keeps to the picture pixels in the region, however the division rounds", () => {
+    // Picture pixels 70 and 71 lie in the region; dividing its left edge by
+    // the finer scale rounds down to a sample of pixel 69.
+    const picture = {
+      width: 115,
+      height: 1,
+      values: new Uint8ClampedArray(115),
+    };
+    const place = { x: 5.6, y: 0, scale: 2.33 };
+    const region = {
+      left: 5.6 + 70 * 2.33,
+      top: 0,
+      right: 5.6 + 72 * 2.33,
+      bottom: 1,
+    };
+    expect(regionBounds(115, 1, place, region)).toMatchObject({
+      left: 70,
+      right: 72,
+    });
+    const enlarged = enlargedRegion(picture, place, region, 3);
+    expect(enlarged?.part.left).toBe(210);
+    expect(enlarged?.part.width).toBe(6);
   });
 });
