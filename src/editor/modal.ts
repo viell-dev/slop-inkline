@@ -89,9 +89,6 @@ export interface SymbolUses {
   readonly notes: number;
 }
 
-/** How a save of an existing symbol goes: over it, or as a new symbol. */
-type SaveChoice = "replace" | "new";
-
 /** How a question about saving says that the symbol `name` is used. */
 function usedText(name: string, { links, notes }: SymbolUses): string {
   return `${name} is used ${String(links)} times, in ${String(notes)} ${notes === 1 ? "note" : "notes"}.`;
@@ -297,23 +294,12 @@ export interface EditorOptions {
     name: string,
   ) => Promise<boolean>;
   /**
-   * For an existing symbol, which other notes may show: how the notes use
-   * it, asked before the first save of a changed drawing, so that the editor
-   * asks first, when it is used more than once, whether to replace it
-   * everywhere or save the drawing as a new symbol; and `writeNew`, which
-   * writes it as one, beside it, under the name `name` chooses, or a name
-   * after it, leaving it and every note as they are. The editor then edits
-   * the new symbol, whose file `file` gives from then on. `keepDraft` keeps
-   * the editor's draft at once, as when the draft's target changes.
+   * For an existing symbol, which other notes may show: how the vault's
+   * notes use it, asked before the first save of a changed drawing, so that
+   * the editor can ask first, when it is used more than once, whether to
+   * change it everywhere. Undefined for a new symbol.
    */
-  readonly shared?: {
-    readonly uses: () => SymbolUses;
-    readonly writeNew: (
-      bytes: Uint8Array,
-      name: string,
-      keepDraft: () => boolean,
-    ) => Promise<void>;
-  };
+  readonly uses?: () => SymbolUses;
   /**
    * The symbol's file: an existing symbol's, or a new one's once its first
    * save made it, and undefined before then. The editor reads it again when
@@ -418,12 +404,12 @@ export class InkEditorModal extends Modal {
   #askingChanged = false;
   #resume: (() => void) | undefined;
   /**
-   * Whether this editor need not ask again how to save a shared symbol, as
-   * after Replace, or once it edits a new symbol that it saved as one.
+   * Whether this editor need not ask again before saving over a symbol used
+   * more than once, as Replace was chosen.
    */
   #choseReplace = false;
-  /** The question about how to save, while it is open. */
-  #askingHow: Promise<SaveChoice | undefined> | undefined;
+  /** The question whether to replace a shared symbol, while it is open. */
+  #askingReplace: Promise<boolean> | undefined;
   /** Whether Next is under way, so that it opens one editor however asked. */
   #advancing = false;
   /** The choice of a symbol to copy while it is open, to close with this. */
@@ -438,8 +424,6 @@ export class InkEditorModal extends Modal {
   };
   #hover: { pointerId: number; clientX: number; clientY: number } | undefined;
   #saving: Promise<boolean> | undefined;
-  /** The save asked for, from its question to its end, if one is. */
-  #saveRequest: Promise<boolean> | undefined;
   #closing = false;
   /** Set when disposed: nothing more is saved or written as a draft. */
   #retired = false;
@@ -817,7 +801,7 @@ export class InkEditorModal extends Modal {
       super.close();
       return;
     }
-    if (this.#saving !== undefined || this.#saveRequest !== undefined) {
+    if (this.#saving !== undefined) {
       this.#announce("Saving…");
       return;
     }
@@ -827,49 +811,33 @@ export class InkEditorModal extends Modal {
       this.#finish();
       return;
     }
-    const discard = {
-      text: "Discard",
-      destructive: true,
-      act: () => {
-        this.#forgetDraft();
-        this.#finish();
-      },
-    };
-    // One question for a shared symbol, rather than one after another.
+    // One question for a symbol used more than once, rather than two.
     const uses = this.#sharedUses();
-    if (uses !== undefined) {
-      const name = this.#displayName;
-      this.#ask(
-        `Save the changes to ${name}?`,
-        `The drawing has changes that are not saved. ${usedText(name, uses)} Replace changes it in all of them. Save as new keeps ${name} as it is and saves this drawing as a new symbol.`,
-        [
-          {
-            text: "Replace",
-            primary: true,
-            act: () => {
-              this.#choseReplace = true;
-              void this.#saveAndClose("replace");
-            },
-          },
-          { text: "Save as new", act: () => void this.#saveAndClose("new") },
-          discard,
-        ],
-        "Keep drawing",
-      );
-      return;
-    }
+    const name = this.#displayName;
     this.#ask(
-      "Save this symbol?",
-      "The drawing has changes that are not saved.",
+      uses === undefined ? "Save this symbol?" : `Save the changes to ${name}?`,
+      uses === undefined
+        ? "The drawing has changes that are not saved."
+        : `The drawing has changes that are not saved. ${usedText(name, uses)} Replace changes it in all of them. For a variant that leaves them as they are, start a new symbol with Copy from instead.`,
       [
         {
-          text: "Save",
+          text: uses === undefined ? "Save" : "Replace",
           primary: true,
           // The question closes at once; a failed save then leaves the editor
           // open and says why.
-          act: () => void this.#saveAndClose(),
+          act: () => {
+            if (uses !== undefined) this.#choseReplace = true;
+            void this.#saveAndClose();
+          },
         },
-        discard,
+        {
+          text: "Discard",
+          destructive: true,
+          act: () => {
+            this.#forgetDraft();
+            this.#finish();
+          },
+        },
       ],
       "Keep drawing",
     );
@@ -2001,7 +1969,7 @@ export class InkEditorModal extends Modal {
       "Undo (Mod+Z) and Redo (Mod+Shift+Z) step through changes. Clear removes the drawing and can be undone.",
       "Paste or drop a picture to trace. Move positions it; the wheel scales it. Make ink converts the visible picture into editable ink. The tracing picture itself is not saved.",
       "Name the symbol, then Save (Mod+Enter). For a new symbol, Next (Mod+Shift+Enter) saves it and starts another. Mod is Ctrl on Windows/Linux, Cmd on macOS.",
-      "Saving a changed symbol that your notes use more than once first asks whether to Replace it everywhere or Save as new, leaving the original as it is.",
+      "Saving a changed symbol that your notes use more than once first asks whether to Replace it everywhere. For a variant, start a new symbol with Copy from instead.",
     ])
       steps.createEl("li", { text });
     content.createEl("h2", { text: "What the guides mean" });
@@ -2426,107 +2394,64 @@ export class InkEditorModal extends Modal {
   }
 
   /**
-   * How the vault's notes use this symbol, when a save must ask first how to
-   * go: for an existing symbol used more than once, whose drawing changed,
+   * How the vault's notes use this symbol, when saving over it must ask
+   * first: for an existing symbol used more than once, whose drawing changed,
    * before Replace was chosen in this editor. Undefined when a save goes over
    * it without asking, as for one used once, where the editor most likely
    * opened it, or a save that only renames it, as links follow a rename.
    */
   #sharedUses(): SymbolUses | undefined {
-    const shared = this.#options.shared;
-    if (shared === undefined || this.#choseReplace) return undefined;
+    const uses = this.#options.uses;
+    if (uses === undefined || this.#choseReplace) return undefined;
     if (!this.#session.dirty && !this.#previewing()) return undefined;
-    const uses = shared.uses();
-    return uses.links > 1 ? uses : undefined;
+    const found = uses();
+    return found.links > 1 ? found : undefined;
   }
 
   /**
-   * How to save: over the symbol, unless {@link #sharedUses} says to ask
-   * whether to replace it everywhere or save the drawing as a new symbol.
-   * Undefined when the answer is to keep editing. A question already open
-   * answers for every save that waits on it.
+   * Whether to go on with a save: at once, unless {@link #sharedUses} says
+   * to ask first whether to change the symbol everywhere, when the answer
+   * says. A question already open answers for every save that waits on it.
    */
-  #howToSave(): Promise<SaveChoice | undefined> {
-    if (this.#askingHow !== undefined) return this.#askingHow;
+  #mayReplace(): Promise<boolean> {
+    if (this.#askingReplace !== undefined) return this.#askingReplace;
     const uses = this.#sharedUses();
-    if (uses === undefined) return Promise.resolve("replace");
+    if (uses === undefined) return Promise.resolve(true);
     const name = this.#displayName;
-    const asking = new Promise<SaveChoice | undefined>((resolve) => {
+    const asking = new Promise<boolean>((resolve) => {
       this.#ask(
         `Change ${name} everywhere?`,
-        `${usedText(name, uses)} Replace changes it in all of them. Save as new keeps ${name} as it is and saves this drawing as a new symbol.`,
+        `${usedText(name, uses)} Replace changes it in all of them. For a variant that leaves them as they are, start a new symbol with Copy from instead.`,
         [
           {
             text: "Replace",
             primary: true,
             act: () => {
               this.#choseReplace = true;
-              resolve("replace");
-            },
-          },
-          {
-            text: "Save as new",
-            act: () => {
-              resolve("new");
+              resolve(true);
             },
           },
         ],
         "Keep editing",
         () => {
-          resolve(undefined);
+          if (!this.#ended()) {
+            this.#announce("Not saved: kept editing");
+            this.#refocus();
+          }
+          resolve(false);
         },
       );
     }).finally(() => {
-      this.#askingHow = undefined;
+      this.#askingReplace = undefined;
     });
-    this.#askingHow = asking;
+    this.#askingReplace = asking;
     return asking;
-  }
-
-  /** Says that a save was not made, as Keep editing chose. */
-  #keptEditing(): void {
-    if (this.#ended()) return;
-    this.#announce("Not saved: kept editing");
-    this.#refocus();
   }
 
   /** Saves, keeping the editor open. */
   async #saveOnly(): Promise<void> {
-    await this.#requestSave();
-  }
-
-  /**
-   * Asks how to save, unless `chosen` says, makes any ink being previewed,
-   * and saves, as one request: a save asked for while one is asked about,
-   * made ready, or written joins it, rather than asking about a symbol that
-   * the request can change, as a save as new does. `resume` saves again after
-   * a question about a change on disk. Resolves to whether it saved.
-   */
-  #requestSave(
-    chosen?: SaveChoice,
-    resume?: (choice: SaveChoice) => void,
-  ): Promise<boolean> {
-    if (this.#saveRequest !== undefined) return this.#saveRequest;
-    const request = (async () => {
-      const choice = chosen ?? (await this.#howToSave());
-      if (choice === undefined) {
-        this.#keptEditing();
-        return false;
-      }
-      if (!(await this.#applyPending())) return false;
-      return this.#save(
-        choice,
-        resume === undefined
-          ? undefined
-          : () => {
-              resume(choice);
-            },
-      );
-    })().finally(() => {
-      this.#saveRequest = undefined;
-    });
-    this.#saveRequest = request;
-    return request;
+    if (!(await this.#mayReplace())) return;
+    if (await this.#applyPending()) await this.#save();
   }
 
   /**
@@ -2556,9 +2481,7 @@ export class InkEditorModal extends Modal {
     this.#advancing = true;
     try {
       if (!(await this.#applyPending())) return;
-      if (!(await this.#save("replace", () => void this.#saveAndNext()))) {
-        return;
-      }
+      if (!(await this.#save(() => void this.#saveAndNext()))) return;
       // Closed meanwhile, as by Save and close or by Inkline being disabled.
       if (this.#closing || this.#retired) return;
       if (this.#unsaved) {
@@ -2585,11 +2508,10 @@ export class InkEditorModal extends Modal {
    * Saves, then closes if nothing changed during the save. Strokes drawn
    * while it ran keep the editor open, since they are not saved yet.
    */
-  async #saveAndClose(chosen?: SaveChoice): Promise<void> {
-    const saved = await this.#requestSave(chosen, (choice) => {
-      void this.#saveAndClose(choice);
-    });
-    if (!saved) return;
+  async #saveAndClose(): Promise<void> {
+    if (!(await this.#mayReplace())) return;
+    if (!(await this.#applyPending())) return;
+    if (!(await this.#save(() => void this.#saveAndClose()))) return;
     if (this.#unsaved) {
       this.#announce(this.#partlySaved);
       return;
@@ -2606,15 +2528,9 @@ export class InkEditorModal extends Modal {
    *
    * The file is read again first. If something else changed it, the editor
    * asks before writing over the change, and `resume` saves again if the
-   * answer is to; a file it cannot read is never written over. Saved as a
-   * new symbol, by `choice`, the drawing goes to a file of its own, which
-   * the editor then edits, and the symbol's own file is neither read nor
-   * written.
+   * answer is to; a file it cannot read is never written over.
    */
-  #save(
-    choice: SaveChoice = "replace",
-    resume: () => void = () => void this.#save(choice),
-  ): Promise<boolean> {
+  #save(resume: () => void = () => void this.#save()): Promise<boolean> {
     if (this.#saving !== undefined) return this.#saving;
     if (this.#retired) return Promise.resolve(false);
     if (this.#session.drawing) {
@@ -2631,11 +2547,7 @@ export class InkEditorModal extends Modal {
           base,
           this.#carried,
         );
-        const shared = this.#options.shared;
-        if (choice === "new" && shared === undefined) {
-          throw new Error("only a symbol that has a file can be saved as new");
-        }
-        const found = choice === "new" ? undefined : await this.#readFile();
+        const found = await this.#readFile();
         if (this.#retired) throw new Error("Inkline was disabled");
         if (found !== undefined) {
           const action = this.#watch.saving(found.reading);
@@ -2650,23 +2562,15 @@ export class InkEditorModal extends Modal {
         const written = await fingerprintOf(bytes);
         this.#keepDraft();
         const typed = this.#typedName;
-        const original = this.#displayName;
-        let named = true;
-        if (choice === "new") {
-          await shared?.writeNew(bytes, typed, () => this.#keepDraft());
-          // The new symbol is used nowhere yet.
-          this.#choseReplace = true;
-        } else {
-          named = await this.#options.write(
-            bytes,
-            record,
-            () => this.#keepDraft(),
-            (fingerprint) => {
-              this.#watch.took(fingerprint);
-            },
-            typed,
-          );
-        }
+        const named = await this.#options.write(
+          bytes,
+          record,
+          () => this.#keepDraft(),
+          (fingerprint) => {
+            this.#watch.took(fingerprint);
+          },
+          typed,
+        );
         // A rename that failed leaves the name typed in the field, unsaved,
         // for the next save to try again.
         this.#notRenamed = !named;
@@ -2679,13 +2583,7 @@ export class InkEditorModal extends Modal {
         if (this.#picture !== undefined) {
           this.#placePicture(movePicture(this.#picture.placement, -left, 0));
         }
-        if (choice === "new") {
-          const made = `Saved as a new symbol, ${this.#savedName}`;
-          this.#announce(made);
-          new Notice(`${made}. ${original} is unchanged.`);
-        } else {
-          this.#announce(this.#notRenamed ? "Saved, but not renamed" : "Saved");
-        }
+        this.#announce(this.#notRenamed ? "Saved, but not renamed" : "Saved");
         return true;
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);

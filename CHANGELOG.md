@@ -20,7 +20,7 @@ Public stable publication remains on hold, as the earlier
 
 ### Changed
 
-- Until the first stable release, every release is an alpha, and the
+- Releases are alphas for now, and until the first stable release the
   [file format](https://viell-dev.github.io/slop-inkline/file-format#compatibility)
   is a draft: a later alpha may change what symbol files hold, and need not open
   files an earlier one saved. The changelog says when that happens; this alpha
@@ -29,11 +29,9 @@ Public stable publication remains on hold, as the earlier
 ### Added
 
 - Saving a changed symbol that your notes use more than once asks first whether
-  to **Replace** it everywhere or **Save as new**, or to keep editing. Save as
-  new makes a new symbol in the same folder, named as you typed or after the
-  original, as `tower 2`, and leaves the original and every note unchanged; the
-  editor goes on with the new symbol. Closing with unsaved changes asks the same
-  in one question, with Discard.
+  to **Replace** it everywhere, or to keep editing. Closing with unsaved changes
+  asks the same in one question, with Discard. For a variant that leaves the
+  symbol as it is, start a new symbol with **Copy from**.
 
 ## 0.2.0-rc.1 - 2026-10-28
 

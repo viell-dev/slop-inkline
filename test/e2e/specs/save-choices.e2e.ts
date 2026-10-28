@@ -1,23 +1,18 @@
 import { browser, expect } from "@wdio/globals";
 import { Key } from "webdriverio";
-import { obsidianPage } from "wdio-obsidian-service";
+
 import { loadModules } from "../support/browser.ts";
 import {
   clickTop,
   createSymbol,
-  delayDecoding,
-  delayVault,
   draw,
   editorOpen,
   recordOf,
-  restoreDecoding,
-  restoreVault,
   startOver,
   storedDrafts,
   symbolFiles,
   topButton,
   waitForEditor,
-  waitForNotice,
   waitForStatus,
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
@@ -121,10 +116,6 @@ async function modals(): Promise<number> {
   );
 }
 
-async function nameField(): Promise<string> {
-  return browser.$(".inkline-editor .inkline-name").getValue();
-}
-
 describe("Saving a symbol used elsewhere", function () {
   before(async function () {
     await loadModules();
@@ -150,7 +141,8 @@ describe("Saving a symbol used elsewhere", function () {
     const asked = await question("Change tower everywhere?");
     await saveScreenshot("save-choices-question");
     expect(asked.text).toContain("tower is used 3 times, in 2 notes.");
-    expect(asked.buttons).toEqual(["Replace", "Save as new", "Keep editing"]);
+    expect(asked.text).toContain("Copy from");
+    expect(asked.buttons).toEqual(["Replace", "Keep editing"]);
     // Replace has the focus, as the default.
     expect(
       await browser.execute(() => document.activeElement?.textContent),
@@ -159,7 +151,6 @@ describe("Saving a symbol used elsewhere", function () {
     await waitForStatus("Not saved: kept editing");
     expect(await editorOpen()).toBe(true);
     expect(await bytesOf(tower)).toBe(before);
-    expect(await symbolFiles()).toEqual([tower]);
     // The drawing stays unsaved, and kept as a draft.
     expect(await storedDrafts()).toHaveLength(1);
     // Esc answers it the same way.
@@ -167,6 +158,7 @@ describe("Saving a symbol used elsewhere", function () {
     await question("Change tower everywhere?");
     await browser.keys([Key.Escape]);
     await waitForStatus("Not saved: kept editing");
+    expect(await editorOpen()).toBe(true);
     expect(await bytesOf(tower)).toBe(before);
   });
 
@@ -192,75 +184,7 @@ describe("Saving a symbol used elsewhere", function () {
     expect(await notesText(Object.keys(uses))).toEqual(notes);
   });
 
-  it("saves the drawing as a new symbol, leaving the original and the notes", async function () {
-    const before = await bytesOf(tower);
-    const notes = await notesText(Object.keys(uses));
-    await editFile(tower);
-    await draw([
-      [0.3, 0.3],
-      [0.6, 0.6],
-    ]);
-    await browser.keys([Key.Ctrl, "s"]);
-    await question("Change tower everywhere?");
-    await clickTop("Save as new");
-    await waitForStatus("Saved as a new symbol, tower 2");
-    await waitForNotice("Saved as a new symbol, tower 2. tower is unchanged.");
-    await saveScreenshot("save-choices-new");
-    expect(await symbolFiles()).toEqual(["Signs/tower 2.ink.png", tower]);
-    expect(await bytesOf(tower)).toBe(before);
-    expect(await strokesIn("Signs/tower 2.ink.png")).toBe(2);
-    expect(await notesText(Object.keys(uses))).toEqual(notes);
-    expect(await nameField()).toBe("tower 2");
-    // The editor goes on with the new symbol, used nowhere: no question.
-    await draw([[0.7, 0.4]]);
-    await browser.keys([Key.Ctrl, "s"]);
-    await browser.waitUntil(
-      async () => (await strokesIn("Signs/tower 2.ink.png")) === 3,
-    );
-    expect(await modals()).toBe(1);
-    expect(await bytesOf(tower)).toBe(before);
-    // Saved, so it closes without asking, and leaves no draft behind.
-    await browser.keys([Key.Escape]);
-    await browser.waitUntil(async () => !(await editorOpen()));
-    expect(await storedDrafts()).toEqual([]);
-  });
-
-  it("names the new symbol as typed, and refuses a name the folder has", async function () {
-    await createSymbol("Signs/gate.ink.png");
-    const before = await bytesOf(tower);
-    await editFile(tower);
-    await draw([
-      [0.3, 0.3],
-      [0.6, 0.6],
-    ]);
-    const field = browser.$(".inkline-editor .inkline-name");
-    // Another symbol's name, in another letter case.
-    await field.setValue("Gate");
-    // Enter in the name field goes back to drawing.
-    await browser.keys([Key.Enter]);
-    await browser.keys([Key.Ctrl, "s"]);
-    await question("Change tower everywhere?");
-    await clickTop("Save as new");
-    await waitForStatus("Not saved: Signs already has a symbol named Gate");
-    expect(await symbolFiles()).toEqual(["Signs/gate.ink.png", tower]);
-    expect(await bytesOf(tower)).toBe(before);
-    expect(await storedDrafts()).toHaveLength(1);
-    await field.setValue("door");
-    await browser.keys([Key.Enter]);
-    await browser.keys([Key.Ctrl, "s"]);
-    await question("Change tower everywhere?");
-    await clickTop("Save as new");
-    await waitForStatus("Saved as a new symbol, door");
-    expect(await symbolFiles()).toEqual([
-      "Signs/door.ink.png",
-      "Signs/gate.ink.png",
-      tower,
-    ]);
-    expect(await bytesOf(tower)).toBe(before);
-    expect(await nameField()).toBe("door");
-  });
-
-  it("asks once when closing with changes: Replace, Save as new, Discard or Keep drawing", async function () {
+  it("asks once when closing with changes: Replace, Discard or Keep drawing", async function () {
     const before = await bytesOf(tower);
     await editFile(tower);
     await draw([
@@ -270,202 +194,27 @@ describe("Saving a symbol used elsewhere", function () {
     await browser.keys([Key.Escape]);
     const asked = await question("Save the changes to tower?");
     expect(asked.text).toContain("tower is used 3 times, in 2 notes.");
-    expect(asked.buttons).toEqual([
-      "Replace",
-      "Save as new",
-      "Discard",
-      "Keep drawing",
-    ]);
-    await clickTop("Save as new");
-    await browser.waitUntil(async () => !(await editorOpen()));
-    expect(await modals()).toBe(0);
-    expect(await symbolFiles()).toEqual(["Signs/tower 2.ink.png", tower]);
-    expect(await bytesOf(tower)).toBe(before);
-    expect(await storedDrafts()).toEqual([]);
-  });
-
-  it("keeps what is drawn while the copy is made with the copy, if Inkline is turned off", async function () {
-    const before = await bytesOf(tower);
-    const copy = "Signs/tower 2.ink.png";
-    await editFile(tower);
-    await draw([
-      [0.3, 0.3],
-      [0.6, 0.6],
-    ]);
-    // The copy is made, but the save waits to hear so.
-    await delayVault("createBinary", 3000);
-    try {
-      await browser.keys([Key.Ctrl, "s"]);
-      await question("Change tower everywhere?");
-      await clickTop("Save as new");
-      await browser.waitUntil(async () => (await bytesOf(copy)) !== undefined);
-      await draw([[0.7, 0.4]]);
-      await obsidianPage.disablePlugin("inkline");
-    } finally {
-      await restoreVault();
-    }
-    await browser.pause(3500);
-    await obsidianPage.enablePlugin("inkline");
-    await loadModules();
-    // The draft holds every stroke, and names the copy it was saving.
-    const drafts = await storedDrafts();
-    expect(drafts).toHaveLength(1);
-    expect(drafts[0]?.target).toMatchObject({
-      kind: "file",
-      path: tower,
-      copy: { path: copy },
-    });
-    expect(drafts[0]?.strokes).toHaveLength(3);
-    expect(await bytesOf(tower)).toBe(before);
-    expect(await strokesIn(copy)).toBe(2);
-    // The copy was made, so the symbol's editor offers nothing, and the
-    // copy's offers the draft.
-    await editFile(tower);
-    await browser.pause(500);
-    expect(await modals()).toBe(1);
+    expect(asked.buttons).toEqual(["Replace", "Discard", "Keep drawing"]);
+    await clickTop("Keep drawing");
+    expect(await editorOpen()).toBe(true);
     await browser.keys([Key.Escape]);
-    await browser.waitUntil(async () => !(await editorOpen()));
-    expect((await storedDrafts())[0]?.target).toEqual({
-      kind: "file",
-      path: copy,
-    });
-    await editFile(copy);
-    await question("Restore the unsaved drawing?");
-    await clickTop("Restore");
-    await browser.keys([Key.Ctrl, Key.Enter]);
-    await browser.waitUntil(async () => !(await editorOpen()));
-    expect(await strokesIn(copy)).toBe(3);
-    expect(await bytesOf(tower)).toBe(before);
-  });
-
-  it("keeps what is drawn with the symbol when the copy fails while Inkline is off", async function () {
-    const before = await bytesOf(tower);
-    await editFile(tower);
-    await draw([
-      [0.3, 0.3],
-      [0.6, 0.6],
-    ]);
-    // Making the copy waits, then fails, writing nothing.
-    await browser.executeObsidian(({ app }) => {
-      Reflect.set(
-        app.vault,
-        "inklineFailing-createBinary",
-        Reflect.get(app.vault, "createBinary"),
-      );
-      Reflect.set(
-        app.vault,
-        "createBinary",
-        () =>
-          new Promise((_resolve, reject) => {
-            Reflect.set(app.vault, "inklineFailCreate", () => {
-              reject(new Error("no room on the disk"));
-            });
-          }),
-      );
-    });
-    try {
-      await browser.keys([Key.Ctrl, "s"]);
-      await question("Change tower everywhere?");
-      await clickTop("Save as new");
-      await browser.waitUntil(() =>
-        browser.executeObsidian(
-          ({ app }) =>
-            typeof Reflect.get(app.vault, "inklineFailCreate") === "function",
-        ),
-      );
-      await draw([[0.7, 0.4]]);
-      await obsidianPage.disablePlugin("inkline");
-      await browser.executeObsidian(({ app }) => {
-        const fail: unknown = Reflect.get(app.vault, "inklineFailCreate");
-        if (typeof fail === "function") Reflect.apply(fail, undefined, []);
-      });
-      await browser.pause(300);
-    } finally {
-      await browser.executeObsidian(({ app }) => {
-        const original: unknown = Reflect.get(
-          app.vault,
-          "inklineFailing-createBinary",
-        );
-        if (typeof original === "function")
-          Reflect.set(app.vault, "createBinary", original);
-        Reflect.deleteProperty(app.vault, "inklineFailing-createBinary");
-        Reflect.deleteProperty(app.vault, "inklineFailCreate");
-      });
-    }
-    await obsidianPage.enablePlugin("inkline");
-    await loadModules();
-    expect(await symbolFiles()).toEqual([tower]);
-    expect(await bytesOf(tower)).toBe(before);
-    // No copy was made, so the symbol's editor offers the draft, whole.
-    await editFile(tower);
-    await question("Restore the unsaved drawing?");
-    const drafts = await storedDrafts();
-    expect(drafts.map((draft) => draft.target)).toEqual([
-      { kind: "file", path: tower },
-    ]);
-    expect(drafts[0]?.strokes).toHaveLength(3);
-    await clickTop("Restore");
-    await browser.keys([Key.Ctrl, "s"]);
-    await question("Change tower everywhere?");
+    await question("Save the changes to tower?");
     await clickTop("Replace");
-    await browser.waitUntil(async () => (await strokesIn(tower)) === 3);
-  });
-
-  it("joins a save as new while Make ink is getting ready, rather than making a second copy", async function () {
+    await browser.waitUntil(async () => !(await editorOpen()));
+    // One question, not a second one after it.
+    expect(await modals()).toBe(0);
+    expect(await strokesIn(tower)).toBe(2);
+    // Discard leaves the symbol as it was saved, with no draft.
+    const saved = await bytesOf(tower);
     await editFile(tower);
-    await draw([
-      [0.3, 0.3],
-      [0.6, 0.6],
-    ]);
-    await browser.execute(async () => {
-      await window.inklineTest.pictures.copyPicture(40, 40, "white", [
-        { x: 10, y: 10, width: 20, height: 20, colour: "black" },
-      ]);
-    });
-    await browser.keys([Key.Ctrl, "v"]);
-    await waitForStatus("Tracing over the picture");
-    await delayVault("createBinary", 2500);
-    try {
-      await browser.keys([Key.Ctrl, "s"]);
-      await question("Change tower everywhere?");
-      await clickTop("Save as new");
-      await waitForStatus("Saving…");
-      // Make ink, then Save again while the picture becomes ink slowly.
-      await browser.keys("i");
-      await delayDecoding(3000);
-      await browser.keys([Key.Ctrl, "s"]);
-      await browser.pause(300);
-      expect(await modals()).toBe(1);
-      await waitForStatus("Saved as a new symbol, tower 2");
-      await browser.pause(4000);
-    } finally {
-      await restoreVault();
-      await restoreDecoding();
-    }
-    expect(await modals()).toBe(1);
-    expect(await symbolFiles()).toEqual(["Signs/tower 2.ink.png", tower]);
-  });
-  it("joins a save as new already running, rather than asking again", async function () {
-    await editFile(tower);
-    await draw([
-      [0.3, 0.3],
-      [0.6, 0.6],
-    ]);
-    await delayVault("createBinary", 2000);
-    try {
-      await browser.keys([Key.Ctrl, "s"]);
-      await question("Change tower everywhere?");
-      await clickTop("Save as new");
-      await waitForStatus("Saving…");
-      await browser.keys([Key.Ctrl, "s"]);
-      await browser.pause(300);
-      expect(await modals()).toBe(1);
-      await waitForStatus("Saved as a new symbol, tower 2");
-    } finally {
-      await restoreVault();
-    }
-    expect(await modals()).toBe(1);
-    expect(await symbolFiles()).toEqual(["Signs/tower 2.ink.png", tower]);
+    await draw([[0.7, 0.4]]);
+    await browser.keys([Key.Escape]);
+    await question("Save the changes to tower?");
+    await clickTop("Discard");
+    await browser.waitUntil(async () => !(await editorOpen()));
+    expect(await bytesOf(tower)).toBe(saved);
+    expect(await storedDrafts()).toEqual([]);
+    expect(before).not.toBe(saved);
   });
 
   it("saves without asking a symbol used once, and a rename alone", async function () {

@@ -7,7 +7,6 @@ import {
   fingerprintOf,
   restoreDraft,
   sameTarget,
-  settledTarget,
   type Draft,
   type VaultStorage,
 } from "../../../src/editor/drafts.ts";
@@ -511,88 +510,5 @@ describe("fingerprintOf", () => {
     expect(await fingerprintOf(new TextEncoder().encode("abc"))).toBe(
       "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
     );
-  });
-});
-
-describe("copies a save as new was making", () => {
-  const copying = {
-    kind: "file",
-    path: "Signs/tower.ink.png",
-    copy: { path: "Signs/tower 2.ink.png", fingerprint: "written" },
-  } as const;
-
-  it("keeps the copy a draft names, and only the copy if it cannot be read", () => {
-    const storage = new MemoryStorage();
-    const store = new DraftStore(storage, () => 5000);
-    store.put(draft({ target: copying }));
-    expect(store.list()[0]?.target).toEqual(copying);
-    const stored: unknown = storage.loadLocalStorage("inkline-draft:a");
-    if (typeof stored !== "string") throw new Error("no stored draft");
-    const value = JSON.parse(stored) as Record<string, unknown>;
-    const broken = JSON.stringify({
-      ...value,
-      target: { ...copying, copy: { path: 3 } },
-    });
-    expect(decodeDraft(broken)?.target).toEqual({
-      kind: "file",
-      path: "Signs/tower.ink.png",
-    });
-  });
-  it("settles with the copy only when it holds what the save wrote", () => {
-    expect(settledTarget(copying, "written")).toEqual({
-      kind: "file",
-      path: "Signs/tower 2.ink.png",
-    });
-    // Never made, or something else at its path.
-    for (const holds of [undefined, "other"]) {
-      expect(settledTarget(copying, holds)).toEqual({
-        kind: "file",
-        path: "Signs/tower.ink.png",
-      });
-    }
-    const plain = { kind: "file", path: "001.ink.png" } as const;
-    expect(settledTarget(plain, undefined)).toBe(plain);
-    const fresh = { kind: "new", note: "Note.md" } as const;
-    expect(settledTarget(fresh, "written")).toBe(fresh);
-  });
-
-  it("settles stored drafts, leaving an open editor's own alone", async () => {
-    const store = new DraftStore(new MemoryStorage(), () => 5000);
-    store.put(draft({ id: "made", target: copying }));
-    store.put(
-      draft({
-        id: "failed",
-        target: { ...copying, copy: { ...copying.copy, fingerprint: "lost" } },
-      }),
-    );
-    store.put(draft({ id: "open", target: copying }));
-    store.hold("open");
-    const asked: string[] = [];
-    await store.settleCopies((path) => {
-      asked.push(path);
-      return Promise.resolve(
-        path === "Signs/tower 2.ink.png" ? "written" : undefined,
-      );
-    });
-    const targets = Object.fromEntries(
-      store.list().map((item) => [item.id, item.target]),
-    );
-    expect(targets.made).toEqual({
-      kind: "file",
-      path: "Signs/tower 2.ink.png",
-    });
-    expect(targets.failed).toEqual({
-      kind: "file",
-      path: "Signs/tower.ink.png",
-    });
-    expect(targets.open).toEqual(copying);
-    expect(asked).toHaveLength(2);
-    // The copy's editor finds the draft, and the symbol's does not.
-    store.release("open");
-    expect(
-      store
-        .forTarget({ kind: "file", path: "Signs/tower 2.ink.png" })
-        .map((item) => item.id),
-    ).toEqual(["made"]);
   });
 });

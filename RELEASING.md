@@ -16,8 +16,9 @@ they lead to:
 
 - **alpha**, as `0.3.0-alpha.1`: features still arrive and change, and the
   [file format](docs/file-format.md#compatibility) is a draft, so a later alpha
-  need not open files an earlier one wrote. By the owner's decision of
-  2026-10-28, every pre-release before the first stable release is an alpha.
+  need not open files an earlier one wrote. Releases are alphas until a stable
+  release goal is agreed with the owner, as below, by the owner's decision of
+  2026-10-28.
 - **beta**, as `1.0.0-beta.1`: the features of the agreed stable release goal
   are complete; fixes and polish follow. A beta that needs a new feature gives
   way to an alpha of the next minor version.

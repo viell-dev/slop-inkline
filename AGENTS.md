@@ -31,12 +31,12 @@ screenshots use synthetic vaults and drawings only.
   files hold or how strokes are drawn updates that document in the same pull
   request. The pinned files in `test/fixtures/` (golden files, stroke outlines,
   and the prototype-format files) pin what files hold and how they look.
-  - Until the first stable release, every release is an alpha and the format is
-    a draft, by the owner's decision of 2026-10-28. A feature may change what
-    files hold or how strokes are drawn, and earlier alphas' files need not keep
-    opening. Such a change updates the pinned files it affects in the same pull
-    request, converts older files where that is cheap, and says in the changelog
-    which files stop opening or look different. It is still reviewed as below.
+  - Until the first stable release, the format is a draft, by the owner's
+    decision of 2026-10-28. A feature may change what files hold or how strokes
+    are drawn, and files written by earlier pre-releases need not keep opening.
+    Such a change updates the pinned files it affects in the same pull request,
+    converts older files where that is cheap, and says in the changelog which
+    files stop opening or look different. It is still reviewed as below.
   - From the first stable release, the pinned files are never changed: users'
     files must keep opening and looking the same, so a new case gets a new
     pinned file, and an update of `perfect-freehand` that changes the pinned

@@ -155,9 +155,9 @@ Saving an edited symbol updates its existing placements in open notes and popout
 windows, in both text-colour and stored-grey modes. Notes keep their text and
 any explicit image sizes; they do not need to be reopened. When your notes use
 the symbol more than once, the first save of a changed drawing asks whether to
-**Replace** it everywhere or **Save as new**, leaving the original as it is;
+**Replace** it everywhere first;
 [Changing a symbol used elsewhere](./recovery.md#changing-a-symbol-used-elsewhere)
-describes both.
+describes the question, and how to make a variant instead.
 
 A save that fails keeps the editor open with the drawing and says why. Closing
 with unsaved changes, by Esc, the close button, or a click outside, asks whether

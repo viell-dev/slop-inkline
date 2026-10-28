@@ -82,10 +82,10 @@ and tables in Live Preview; [Known limits](./limits.md) lists them, with a way
 around each.
 
 Saving the edited symbol changes it in every note that shows it. When your notes
-use it more than once, the first save of a changed drawing asks whether to
-replace it everywhere or save the drawing as a new symbol;
+use it more than once, the first save of a changed drawing asks first whether to
+replace it everywhere;
 [Saving and recovery](./recovery.md#changing-a-symbol-used-elsewhere) describes
-the choices.
+the question, and how to make a variant instead.
 
 ## Names and renames
 

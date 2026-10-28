@@ -40,7 +40,6 @@ import { insertionAt } from "./links.ts";
 import { shownGuides, type Settings } from "../settings.ts";
 import {
   chooseRename,
-  copyName,
   nextNumberName,
   symbolStem,
   type NameChoice,
@@ -396,24 +395,6 @@ function renamedPath(
   const folder = parentPath(file.path);
   claimName(app, folder, name.name, file);
   return pathIn(folder, `${name.name}${inkExtension}`);
-}
-
-/**
- * Where a copy of `file` goes, in its folder: under the name `typed` chooses,
- * unless that keeps the file's own name, and else under the name `copyName`
- * gives, as `tower 2`. Throws if the name is refused, or another symbol
- * there has it.
- */
-function copyPath(app: App, file: TFile, typed: string): string {
-  const folder = parentPath(file.path);
-  const own = symbolStem(file.name) ?? file.basename;
-  const choice = chosen(typed, file);
-  const name =
-    choice.kind === "name" && choice.name !== own
-      ? choice.name
-      : copyName(own, namesIn(app, folder));
-  claimName(app, folder, name);
-  return pathIn(folder, `${name}${inkExtension}`);
 }
 
 /**
@@ -871,14 +852,6 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
   let opened;
   let fingerprint;
   try {
-    // A draft that an interrupted save as new left goes to the symbol it
-    // belongs to, so that this editor offers it if it is this one's.
-    await host.drafts.settleCopies(async (path) => {
-      const copy = app.vault.getFileByPath(path);
-      return copy === null
-        ? undefined
-        : fingerprintOf(new Uint8Array(await app.vault.readBinary(copy)));
-    });
     const bytes = new Uint8Array(await app.vault.readBinary(file));
     opened = await openInk(bytes);
     fingerprint = await fingerprintOf(bytes);
@@ -896,11 +869,6 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
   }
   /** The symbol's file: the one opened, or the one a save made again. */
   let symbol = file;
-  /**
-   * The copy a save as new is making, and what it writes there, until it is
-   * made or fails.
-   */
-  let making: CreatedFile | undefined;
   new InkEditorModal(app, {
     title: "Symbol",
     tools: startingTools(host.settings()),
@@ -915,15 +883,8 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
     fingerprint,
     drafts: {
       store: host.drafts,
-      // The file's path follows renames. While a save as new makes the copy,
-      // drafts name it too: what is drawn meanwhile, kept as when Inkline is
-      // turned off, then comes back with the copy if it was made, and with
-      // this symbol if not.
-      target: () => ({
-        kind: "file",
-        path: symbol.path,
-        ...(making === undefined ? {} : { copy: making }),
-      }),
+      // The file's path follows renames.
+      target: () => ({ kind: "file", path: symbol.path }),
     },
     lifecycle: host.lifecycle,
     file: () => symbolFile(app, symbol.path),
@@ -934,30 +895,6 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
       stillAlive(host);
       return rename(app, symbol, renaming);
     },
-    shared: {
-      uses: () => usesOf(app, symbol.path),
-      // The copy goes beside the symbol, which, with every note, stays as it
-      // is; the editor goes on with the copy.
-      writeNew: async (saved, typed, keepDraft) => {
-        stillAlive(host);
-        const path = copyPath(app, symbol, typed);
-        const fingerprint = await fingerprintOf(saved);
-        stillAlive(host);
-        making = { path, fingerprint };
-        keepDraft();
-        try {
-          const folder = parentPath(path);
-          if (folder !== "" && app.vault.getFolderByPath(folder) === null) {
-            await app.vault.createFolder(folder);
-          }
-          symbol = await app.vault.createBinary(path, toBuffer(saved));
-        } finally {
-          // Made, the copy is the symbol; failed, the draft goes back to the
-          // symbol it was for.
-          making = undefined;
-          keepDraft();
-        }
-      },
-    },
+    uses: () => usesOf(app, symbol.path),
   }).open();
 }

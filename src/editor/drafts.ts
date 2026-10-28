@@ -34,16 +34,10 @@ export interface CreatedFile {
  * The symbol a draft belongs to: a file, or a new one in a note. A new
  * symbol whose first save made its file, or may have, but did not insert its
  * embed names that file too, so that recovering it can finish the save with
- * that file rather than make another. A symbol that a save as new was copying
- * names the copy, made or not, so that the draft can be settled with the copy
- * once that holds what the save wrote, and with the symbol otherwise.
+ * that file rather than make another.
  */
 export type DraftTarget =
-  | {
-      readonly kind: "file";
-      readonly path: string;
-      readonly copy?: CreatedFile;
-    }
+  | { readonly kind: "file"; readonly path: string }
   | {
       readonly kind: "new";
       readonly note: string;
@@ -136,13 +130,7 @@ function parseCreated(value: unknown): CreatedFile | undefined {
 function parseTarget(value: unknown): DraftTarget | undefined {
   if (!isRecord(value)) return undefined;
   if (value.kind === "file" && typeof value.path === "string") {
-    // Only the copy is lost if it cannot be read: the draft stays with the
-    // symbol it was copied from.
-    const copy =
-      value.copy === undefined ? undefined : parseCreated(value.copy);
-    return copy === undefined
-      ? { kind: "file", path: value.path }
-      : { kind: "file", path: value.path, copy };
+    return { kind: "file", path: value.path };
   }
   if (value.kind !== "new" || typeof value.note !== "string") return undefined;
   if (value.file === undefined) return { kind: "new", note: value.note };
@@ -285,22 +273,6 @@ function encodeDraft(draft: Draft, baseKey: string | undefined): string {
     ...(name === undefined ? {} : { name }),
     ink: recordValue({ box: draftBox, strokes }),
   });
-}
-
-/**
- * Where a draft belongs once the save as new that it names a copy for is
- * over: with the copy, if that holds what the save wrote, as `copyHolds`, a
- * fingerprint of what the copy's path holds, says; and otherwise, as when the
- * copy was never made, or something else is at its path, with the symbol it
- * was copied from. A target that names no copy stays as it is.
- */
-export function settledTarget(
-  target: DraftTarget,
-  copyHolds: string | undefined,
-): DraftTarget {
-  if (target.kind !== "file" || target.copy === undefined) return target;
-  const made = copyHolds === target.copy.fingerprint;
-  return { kind: "file", path: made ? target.copy.path : target.path };
 }
 
 /** Whether two targets name the same symbol. */
@@ -477,28 +449,6 @@ export class DraftStore {
 
   release(id: string): void {
     this.#held.delete(id);
-  }
-
-  /**
-   * Settles each draft that a save as new left naming the copy it was
-   * making, as when Inkline was turned off meanwhile, where
-   * {@link settledTarget} says, from what `holds` gives as a fingerprint of
-   * what each copy's path holds, or undefined for no file. An open editor's
-   * own draft is its own to settle. A draft that storage refuses to keep
-   * settled keeps naming the copy, for the next time.
-   */
-  async settleCopies(
-    holds: (path: string) => Promise<string | undefined>,
-  ): Promise<void> {
-    for (const draft of this.list()) {
-      const { target } = draft;
-      if (target.kind !== "file" || target.copy === undefined) continue;
-      if (this.#held.has(draft.id)) continue;
-      const settled = settledTarget(target, await holds(target.copy.path));
-      // An editor may have opened with it meanwhile.
-      if (this.#held.has(draft.id)) continue;
-      this.put({ ...draft, target: settled });
-    }
   }
 
   /**
