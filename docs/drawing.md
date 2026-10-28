@@ -50,6 +50,22 @@ crosshair remains visible instead.
 clearing, copy, and ink made from a picture. **Clear** (Delete, or Backspace)
 takes away the whole drawing, and Undo brings it back.
 
+## Ellipses and circles
+
+**Ellipse** (O) makes dragging draw an ellipse instead of following the pointer:
+drag from one corner of the box it fills to the other, and it is drawn as you
+go. Hold Shift for a circle, as wide as the box's longer side. It draws with the
+pen or the eraser, whichever is chosen, at its brush size, so the eraser takes
+away a ring. Press **Ellipse** again to draw freehand. **Next** keeps it on; an
+editor opened afresh draws freehand.
+
+With the grid on, the box's corners are on the grid, so the ellipse touches its
+lines at its top, bottom, and sides. A circle is on the grid along its longer
+side; across the other it can end between lines, as the grid's rows and columns
+are spaced differently. For a half circle, draw the circle, then erase the half
+you don't want with eraser strokes that end on the line across its middle: on
+the grid, their ends stop flush with that line.
+
 ## Straight lines and the grid
 
 Hold Shift while drawing to make the stroke straight, from where it was when

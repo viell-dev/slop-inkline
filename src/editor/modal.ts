@@ -64,7 +64,12 @@ import {
   type BrushCursor,
 } from "./cursor.ts";
 import { PointerGate } from "./pointer.ts";
-import { brushSizes, DrawingSession, type InputPoint } from "./session.ts";
+import {
+  brushSizes,
+  DrawingSession,
+  type InputPoint,
+  type Shape,
+} from "./session.ts";
 import {
   defaultGridCells,
   fontGrid,
@@ -128,6 +133,8 @@ export interface EditorTools {
   readonly guides: boolean;
   /** Whether the drawing is magnified; Next keeps it so. */
   readonly magnified?: boolean;
+  /** What dragging draws; Next keeps it, and a new editor draws freehand. */
+  readonly shape?: Shape;
   /**
    * The picture being traced over, which the next editor takes over and
    * closes, with its x measured from the middle of the surface, so that it
@@ -508,6 +515,7 @@ export class InkEditorModal extends Modal {
     if (options.tools !== undefined) {
       const { tool, sizeIndex, grid, guides } = options.tools;
       this.#session.tool = tool;
+      this.#session.shape = options.tools.shape ?? "free";
       Object.assign(
         this.#session.sizes,
         options.tools.sizes ?? {
@@ -560,6 +568,17 @@ export class InkEditorModal extends Modal {
     this.#addButton(toolbar, "eraser", "Eraser", "E", () => {
       this.#setTool("eraser");
     });
+    this.#addButton(
+      toolbar,
+      "ellipse",
+      "Ellipse",
+      "O",
+      () => {
+        this.#toggleEllipse();
+      },
+      "Ellipse",
+      "drag across a box to draw an ellipse with the pen or the eraser; hold Shift for a circle",
+    );
     brushSizes.forEach((size, index) => {
       this.#addButton(
         toolbar,
@@ -1122,6 +1141,9 @@ export class InkEditorModal extends Modal {
     key([], "e", () => {
       this.#setTool("eraser");
     });
+    key([], "o", () => {
+      this.#toggleEllipse();
+    });
     key([], "g", () => {
       this.#toggleGuides();
     });
@@ -1280,7 +1302,7 @@ export class InkEditorModal extends Modal {
         typeof event.getCoalescedEvents === "function"
           ? event.getCoalescedEvents()
           : [];
-      // Shift draws a straight segment while it is held.
+      // Shift draws a straight segment, or a circle, while it is held.
       this.#session.extend(
         (events.length > 0 ? events : [event]).map(point),
         event.shiftKey,
@@ -1953,6 +1975,15 @@ export class InkEditorModal extends Modal {
     this.#render();
   }
 
+  /** Switches between drawing ellipses and drawing as the pointer goes. */
+  #toggleEllipse(): void {
+    if (this.#session.drawing) return;
+    this.#session.shape =
+      this.#session.shape === "ellipse" ? "free" : "ellipse";
+    this.#moving = false;
+    this.#updateButtons();
+  }
+
   #setTool(tool: "pen" | "eraser"): void {
     this.#session.tool = tool;
     this.#moving = false;
@@ -1993,6 +2024,7 @@ export class InkEditorModal extends Modal {
     const drawing = !this.#moving;
     pressed("pen", drawing && this.#session.tool === "pen");
     pressed("eraser", drawing && this.#session.tool === "eraser");
+    pressed("ellipse", drawing && this.#session.shape === "ellipse");
     pressed("move", this.#moving);
     const picture = this.#picture !== undefined;
     this.#buttons.get("move")?.setDisabled(!picture);
@@ -2105,6 +2137,7 @@ export class InkEditorModal extends Modal {
     const steps = content.createEl("ul");
     for (const text of [
       "Pen (P) adds ink; Eraser (E) removes it. Sizes S–XL (1–4) are remembered separately until you close the editor, including through Next. The circle shows the brush's diameter.",
+      "Ellipse (O) draws an ellipse with the pen or the eraser: drag across the box it fills, and hold Shift for a circle. Press it again to draw freehand.",
       "Hold Shift while drawing for a straight segment. Grid (Shift+G) shows dots and snaps stroke ends to them. Its rows pass through each guide line the settings choose, and divide the space between lines evenly; the settings also set how many cells span the x-height.",
       "Undo (Mod+Z) and Redo (Mod+Shift+Z) step through changes. Clear removes the drawing and can be undone.",
       "Zoom (Z) shows the drawing twice as large in a taller view, for fine detail; the wheel or the arrow keys move along it, and Fit (F) centres it. Saved symbols stay the same size in notes.",
@@ -2641,6 +2674,7 @@ export class InkEditorModal extends Modal {
         grid: snap,
         guides: this.#guidesShown,
         magnified: this.#view?.magnified === true,
+        shape: this.#session.shape,
         ...(picture === undefined ? {} : { picture }),
       });
     } finally {

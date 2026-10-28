@@ -40,13 +40,14 @@ immediately. Select the name field to type a name; Enter returns to drawing.
 | ------------------------- | ----------- | ------------------------------------------------------- |
 | P                         | Pen         | Draw.                                                   |
 | E                         | Eraser      | Take ink away.                                          |
+| O                         | Ellipse     | Draw ellipses by dragging, or freehand again.           |
 | 1, 2, 3, 4                | S, M, L, XL | Choose the brush size.                                  |
 | Mod+Z                     | Undo        | Undo the last change.                                   |
 | Mod+Shift+Z, or Mod+Y     | Redo        | Redo it.                                                |
 | Delete, or Backspace      | Clear       | Clear the drawing; Undo brings it back.                 |
 | G                         | Guides      | Show or hide the guides.                                |
 | Shift+G                   | Grid        | Show or hide the grid, which snaps the ends of strokes. |
-| Shift, held while drawing |             | Draw a straight line.                                   |
+| Shift, held while drawing |             | Draw a straight line, or a circle with Ellipse.         |
 | V                         | Copy from   | Start a new symbol from a copy of another.              |
 | F                         | Fit         | Fit the drawing in view.                                |
 | Z                         | Zoom        | Show the drawing twice as large, or as usual again.     |
@@ -72,8 +73,8 @@ and returns focus to the drawing area.
 
 - Every control has a label which screen readers read, whether its button shows
   an icon, a name, or both. Toolbar tooltips also include their shortcuts. The
-  pen, the eraser, the brush sizes, the guides, the grid, Move, Make ink, and
-  Light ink say whether they are on.
+  pen, the eraser, Ellipse, the brush sizes, the guides, the grid, Zoom, Move,
+  Make ink, and Light ink say whether they are on.
 - The drawing area keeps its accessible name without a hover tooltip.
 - The editor's status line, such as "Saving…", "Saved", or "Not saved" and why,
   is announced as it changes.

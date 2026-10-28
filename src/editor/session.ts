@@ -235,6 +235,52 @@ function between(from: InputPoint, to: InputPoint, along: number): InputPoint {
   };
 }
 
+/**
+ * The points of an ellipse drawn across the box from `from` to `to`, in
+ * document pixels: a closed loop, clockwise, no more than {@link maxGap}
+ * apart, from the side of the box `from` is on and back to it. That side's x
+ * is `from`'s, a grid column's when the drag started on the grid, so that the
+ * grid a drawing's stroke ends suggest, as when it is opened again, stays
+ * where it was. With `circle`, the box is made square towards `to`, as wide
+ * and as tall as its longer side. A box with no width or no height gives the
+ * line or the point it is.
+ */
+export function ellipsePoints(
+  from: InputPoint,
+  to: InputPoint,
+  circle: boolean,
+): InputPoint[] {
+  let dx = to.x - from.x;
+  let dy = to.y - from.y;
+  if (circle) {
+    const side = Math.max(Math.abs(dx), Math.abs(dy));
+    dx = dx < 0 ? -side : side;
+    dy = dy < 0 ? -side : side;
+  }
+  const rx = Math.abs(dx) / 2;
+  const ry = Math.abs(dy) / 2;
+  if (rx === 0 && ry === 0) return [from];
+  if (rx === 0 || ry === 0) return [from, { x: from.x + dx, y: from.y + dy }];
+  const cx = from.x + dx / 2;
+  const cy = from.y + dy / 2;
+  // Ramanujan's approximation of the perimeter. Points at even angles lie at
+  // most π/2 times the mean distance apart, so half the gap leaves room. A
+  // count in fours puts points on the box's four sides, so that an ellipse
+  // drawn on the grid touches its lines.
+  const h = ((rx - ry) / (rx + ry)) ** 2;
+  const perimeter =
+    Math.PI * (rx + ry) * (1 + (3 * h) / (10 + Math.sqrt(4 - 3 * h)));
+  const count = 4 * Math.max(4, Math.ceil(perimeter / (maxGap / 2) / 4));
+  const start = dx < 0 ? 0 : Math.PI;
+  return Array.from({ length: count + 1 }, (_, step) => {
+    const angle = start + (2 * Math.PI * step) / count;
+    return { x: cx + rx * Math.cos(angle), y: cy + ry * Math.sin(angle) };
+  });
+}
+
+/** What dragging on the drawing area draws: a stroke as drawn, or an ellipse. */
+export type Shape = "free" | "ellipse";
+
 export class DrawingSession {
   readonly #history: History<SessionState>;
   #saved: InkDocument;
@@ -246,7 +292,13 @@ export class DrawingSession {
    * values of its points lead up to there, the start included.
    */
   #anchor: { point: InputPoint; length: number } | undefined;
+  /** Where an ellipse being drawn started: one corner of its box. */
+  #corner: InputPoint | undefined;
+  /** Whether the ellipse being drawn is a circle, as Shift makes it. */
+  #circle = false;
   tool: Tool = "pen";
+  /** What dragging draws, with the pen or the eraser. */
+  shape: Shape = "free";
   /** Each tool keeps its own selected size for the life of the session. */
   readonly sizes: Record<Tool, number> = { pen: 1, eraser: 1 };
 
@@ -389,16 +441,22 @@ export class DrawingSession {
     return cut === undefined ? stroke : { ...stroke, cut };
   }
 
-  /** Starts a stroke with the current brush. */
+  /**
+   * Starts a stroke with the current brush, or an ellipse with one corner of
+   * its box here. An ellipse is a closed loop, with no ends to cut.
+   */
   begin(point: InputPoint): void {
+    const ellipse = this.shape === "ellipse";
     this.#active = {
       tool: this.tool,
       size: this.size,
       points: [],
-      onGrid: this.snap,
+      onGrid: this.snap && !ellipse,
     };
     this.#last = undefined;
     this.#anchor = undefined;
+    this.#corner = ellipse ? this.#snapped(point) : undefined;
+    this.#circle = false;
     this.extend([this.#snapped(point)]);
   }
 
@@ -411,6 +469,24 @@ export class DrawingSession {
   extend(points: readonly InputPoint[], straight = false): void {
     const active = this.#active;
     if (active === undefined) return;
+    const corner = this.#corner;
+    if (corner !== undefined) {
+      // An ellipse is drawn again across its box for its latest corner, a
+      // circle while `straight`, with the corner on the grid when it is on.
+      const latest = points.at(-1);
+      if (latest === undefined) return;
+      this.#circle = straight;
+      active.points.length = 0;
+      for (const point of ellipsePoints(
+        corner,
+        this.#snapped(latest),
+        straight,
+      )) {
+        this.#record(active, point);
+      }
+      this.#last = latest;
+      return;
+    }
     for (const point of points) {
       if (!straight) {
         this.#anchor = undefined;
@@ -456,7 +532,8 @@ export class DrawingSession {
    * `release`, where the pointer was let go, when that is known.
    */
   end(release?: InputPoint): void {
-    const straight = this.#anchor !== undefined;
+    const ellipse = this.#corner !== undefined;
+    const straight = ellipse ? this.#circle : this.#anchor !== undefined;
     // With the grid, the stroke ends on it, at the grid point nearest the
     // release, or else the last point, recorded in the release's place.
     const end = this.snap ? (release ?? this.#last) : release;
@@ -467,9 +544,13 @@ export class DrawingSession {
     const stroke =
       active === undefined
         ? undefined
-        : this.#stroke(active, { start: active.onGrid, end: this.snap });
+        : this.#stroke(active, {
+            start: active.onGrid,
+            end: this.snap && !ellipse,
+          });
     this.#active = undefined;
     this.#anchor = undefined;
+    this.#corner = undefined;
     if (stroke !== undefined && stroke.points.length > 0) {
       // On the grid it was drawn on, which a waiting one then replaces.
       this.#push({
@@ -484,6 +565,7 @@ export class DrawingSession {
   cancel(): void {
     this.#active = undefined;
     this.#anchor = undefined;
+    this.#corner = undefined;
     this.#takeNextGrid();
   }
 
@@ -551,6 +633,9 @@ export class DrawingSession {
     if (this.#anchor !== undefined) {
       const { point } = this.#anchor;
       this.#anchor.point = { ...point, x: point.x + dxPixels };
+    }
+    if (this.#corner !== undefined) {
+      this.#corner = { ...this.#corner, x: this.#corner.x + dxPixels };
     }
   }
 

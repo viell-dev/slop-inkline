@@ -27,6 +27,7 @@ export function isButtonLabels(value: unknown): value is ButtonLabels {
 export const buttonIcons: Readonly<Record<string, string>> = {
   pen: "pencil",
   eraser: "eraser",
+  ellipse: "circle",
   undo: "undo-2",
   redo: "redo-2",
   clear: "trash-2",
