@@ -193,9 +193,9 @@ of the image's size, with the record's coordinates as they are:
    high-quality image smoothing.
 2. Each stroke in order: its outline, filled in the grey, over what is there for
    `"pen"` and removing it for `"eraser"` (the canvas compositing operations
-   `source-over` and `destination-out`). A stroke with a `cut` is filled
-   everywhere except in a box for each cut end, which neither adds nor removes
-   ink.
+   `source-over` and `destination-out`). A stroke with a `cut` is filled in two
+   parts: its outline everywhere except in a box for each cut end, and then,
+   inside those boxes only, the outline of the rest of the stroke, below.
 
 For a cut end at the point (`x / 16`, `y / 16`) pixels, with reach
 `r = size / 16 + 1` pixels, the box spans:
@@ -208,8 +208,14 @@ For a cut end at the point (`x / 16`, `y / 16`) pixels, with reach
 | `"left"`  | `x − r` to `x`     | `y − r` to `y + r` |
 
 The box reaches past the end's round cap, a radius of `size / 32` pixels, with a
-pixel to spare for the soft edge; the rest of the stroke lies on the other side
-of the line, as the stroke comes from there.
+pixel to spare for the soft edge. The end's own ink there is the spill the cut
+removes, but another part of the stroke can pass through the box, as when it
+comes back near its end. So the rest of the stroke is drawn in the boxes again:
+the stroke's points without, from each cut end, those whose distance from it
+along the stroke, point to point, is less than `2 × size` units. It is drawn
+with the same options and its own round ends, which lie clear of the boxes when
+the stroke comes straight into its cut ends, and not at all when no points are
+left.
 
 A stroke's outline is the polygon that
 [perfect-freehand](https://github.com/steveruizok/perfect-freehand) 1.2.3's

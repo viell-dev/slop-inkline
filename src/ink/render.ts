@@ -2,10 +2,12 @@
 // ink and erasers removing it, all in one grey whose alpha is the ink.
 
 import { unitsPerPixel, type Stroke } from "../format/record.ts";
+import type { Bounds } from "./geometry.ts";
 import {
   cutBoxes,
   strokeOutline,
   traceOutline,
+  uncutRest,
   type PathSink,
 } from "./outline.ts";
 
@@ -86,23 +88,40 @@ export function drawInk(
     context.globalCompositeOperation =
       stroke.tool === "pen" ? "source-over" : "destination-out";
     const boxes = cutBoxes(stroke);
-    if (boxes.length > 0) context.save();
-    // Each cut leaves everything but its box to draw in.
+    if (boxes.length === 0) {
+      context.beginPath();
+      traceOutline(strokeOutline(stroke), context);
+      context.fill();
+      continue;
+    }
+    // The whole stroke, everywhere but its cut boxes...
+    context.save();
     for (const box of boxes) {
       context.beginPath();
       context.rect(-everywhere, -everywhere, 2 * everywhere, 2 * everywhere);
-      context.rect(
-        box.left,
-        box.top,
-        box.right - box.left,
-        box.bottom - box.top,
-      );
+      addBox(context, box);
       context.clip("evenodd");
     }
     context.beginPath();
     traceOutline(strokeOutline(stroke), context);
     context.fill();
-    if (boxes.length > 0) context.restore();
+    context.restore();
+    // ...and in them, the rest of it, without the ends cut there.
+    const rest = uncutRest(stroke);
+    if (rest === undefined) continue;
+    context.save();
+    context.beginPath();
+    for (const box of boxes) addBox(context, box);
+    context.clip("nonzero");
+    context.beginPath();
+    traceOutline(strokeOutline(rest), context);
+    context.fill();
+    context.restore();
   }
   context.restore();
+}
+
+/** Adds a box to the path being built. */
+function addBox(context: DrawingContext, box: Bounds): void {
+  context.rect(box.left, box.top, box.right - box.left, box.bottom - box.top);
 }

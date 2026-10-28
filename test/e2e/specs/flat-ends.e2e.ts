@@ -17,6 +17,10 @@ interface Spill {
   readonly saved: number[];
   /** The same, drawn again from the record without its cuts. */
   readonly uncut: number[];
+  /** The same, drawn again from the record's pen strokes alone. */
+  readonly pens: number[];
+  /** Each cut end's tool. */
+  readonly tools: string[];
   /** Pixels whose alpha differs between the saved image and a redraw. */
   readonly redrawn: number;
 }
@@ -82,6 +86,7 @@ async function spill(): Promise<Spill> {
         points,
       })),
     );
+    const pens = redraw(strokes.filter((stroke) => stroke.tool === "pen"));
     const again = redraw(strokes);
     let redrawn = 0;
     for (let at = 3; at < again.length; at += 4) {
@@ -127,6 +132,8 @@ async function spill(): Promise<Spill> {
     return {
       saved: ends.map(([stroke, which]) => past(saved.data, stroke, which)),
       uncut: ends.map(([stroke, which]) => past(uncut, stroke, which)),
+      pens: ends.map(([stroke, which]) => past(pens, stroke, which)),
+      tools: ends.map(([stroke]) => stroke.tool),
       redrawn,
     };
   });
@@ -169,12 +176,12 @@ describe("Flat ends on the grid", function () {
       [0.5, 0.52],
       [0.7, 0.5],
     ]);
-    // A dot, then the eraser down across the line, ending on a row.
+    // A dot, then the eraser down into the stroke, ending on its row.
     await draw([[0.5, 0.25]]);
     await browser.keys("e");
     await draw([
       [0.6, 0.3],
-      [0.6, 0.7],
+      [0.6, 0.5],
     ]);
     await save();
     const strokes = await savedStrokes();
@@ -185,12 +192,88 @@ describe("Flat ends on the grid", function () {
     ]);
     const shown = await spill();
     console.log("Flat", JSON.stringify(shown));
-    // The pen's two ends; the eraser's take ink away, so nothing is there.
+    expect(shown.tools).toEqual(["pen", "pen", "eraser", "eraser"]);
+    // The pen's two ends leave no ink past their columns.
     expect(shown.saved.slice(0, 2)).toEqual([0, 0]);
     for (const count of shown.uncut.slice(0, 2)) {
       expect(count).toBeGreaterThan(20);
     }
+    // Past the row the eraser ends on, the pen's ink is all still there;
+    // a round end would have taken some of it.
+    const [, , , erased = 0] = shown.saved;
+    const [, , , inked = 0] = shown.pens;
+    const [, , , rounded = 0] = shown.uncut;
+    expect(inked).toBeGreaterThan(20);
+    expect(erased).toBe(inked);
+    expect(rounded).toBeLessThan(inked - 20);
     expect(shown.redrawn).toBe(0);
+  });
+
+  it("keeps the rest of a stroke that comes back near a cut end", async function () {
+    // A spiral of the M brush, 12 pixels wide at the editor's 128 pixels per
+    // em, cut below its start; its last stretch passes 8 pixels from it, as in
+    // the independent review of #119.
+    const shown = await browser.execute(() => {
+      const { render } = window.inklineTest;
+      // Corners in pixels, with a point every pixel between, as the editor
+      // records a stroke.
+      const corners = [
+        [64, 64],
+        [64, 32],
+        [96, 32],
+        [96, 96],
+        [56, 96],
+        [56, 48],
+        [32, 48],
+      ];
+      const points: number[] = [];
+      corners.forEach(([x = 0, y = 0], index) => {
+        const [nextX, nextY] = corners[index + 1] ?? [x, y];
+        const steps = Math.max(
+          1,
+          Math.abs((nextX ?? x) - x),
+          Math.abs((nextY ?? y) - y),
+        );
+        for (let step = 0; step < steps; step++) {
+          points.push(
+            (x + (((nextX ?? x) - x) * step) / steps) * 16,
+            (y + (((nextY ?? y) - y) * step) / steps) * 16,
+          );
+        }
+      });
+      const stroke = {
+        tool: "pen" as const,
+        size: 192,
+        pressure: false,
+        points,
+      };
+      const alpha = (cut: boolean): number[][] => {
+        const surface = new OffscreenCanvas(128, 128);
+        const context = surface.getContext("2d");
+        if (context === null) throw new Error("no context");
+        render.drawInk(
+          context,
+          [cut ? { ...stroke, cut: { start: "down" as const } } : stroke],
+          undefined,
+        );
+        const { data } = context.getImageData(0, 0, 128, 128);
+        const at = (x: number, y: number): number =>
+          data[(y * 128 + x) * 4 + 3] ?? 0;
+        return [
+          // Down the middle of the stretch that comes back, past the start.
+          Array.from({ length: 41 }, (_, step) => at(56, 50 + step)),
+          // Below the start, past its row, clear of that stretch.
+          [at(64, 66), at(65, 68)],
+        ];
+      };
+      return { cut: alpha(true), uncut: alpha(false) };
+    });
+    console.log("Spiral", JSON.stringify(shown));
+    const [stretch = [], below = []] = shown.cut;
+    expect(Math.min(...stretch)).toBeGreaterThanOrEqual(250);
+    expect(below).toEqual([0, 0]);
+    // Without the cut, the start's round end would be there.
+    for (const value of shown.uncut[1] ?? []) expect(value).toBeGreaterThan(0);
   });
 
   it("keeps round ends with the grid off", async function () {

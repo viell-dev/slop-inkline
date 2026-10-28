@@ -512,6 +512,14 @@ describe("gridCuts", () => {
     });
   });
 
+  it("measures a short stroke that comes back from its farthest point", () => {
+    // Down and back up, shorter than the reach: both ends are at the top.
+    expect(gridCuts([0, 0, 0, 160, 0, 0], 192, both)).toEqual({
+      start: "up",
+      end: "up",
+    });
+  });
+
   it("cuts only the ends named, and no end of a dot", () => {
     expect(
       gridCuts([0, 0, 0, 160], reach, { start: false, end: true }),
@@ -541,6 +549,18 @@ describe("DrawingSession's cuts", () => {
     session.extend([{ x: 1, y: 80 }]);
     session.end({ x: 0, y: 144 });
     expect(session.document.strokes[1]).not.toHaveProperty("cut");
+  });
+
+  it("cuts both ends of a short stroke drawn out and back on the grid", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.begin({ x: 64, y: 64 });
+    session.extend([{ x: 64, y: 74 }]);
+    session.end({ x: 64, y: 64 });
+    expect(session.document.strokes[0]?.cut).toEqual({
+      start: "up",
+      end: "up",
+    });
   });
 
   it("cuts only the end of a stroke the grid came on for", () => {

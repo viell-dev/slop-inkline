@@ -116,21 +116,33 @@ export function gridCuts(
 ): StrokeCuts | undefined {
   const last = points.length - 2;
   if (last < 2) return undefined;
-  const away = (at: number, from: number): boolean =>
+  const distance = (at: number, from: number): number =>
     Math.hypot(
       (points[at] ?? 0) - (points[from] ?? 0),
       (points[at + 1] ?? 0) - (points[from + 1] ?? 0),
-    ) >= reach;
-  let after = 2;
-  while (after < last && !away(0, after)) after += 2;
-  let before = last - 2;
-  while (before > 0 && !away(last, before)) before -= 2;
-  const moves = (at: number, from: number): boolean =>
-    points[at] !== points[from] || points[at + 1] !== points[from + 1];
-  const start =
-    ends.start && moves(0, after) ? cutAt(points, 0, after) : undefined;
-  const end =
-    ends.end && moves(last, before) ? cutAt(points, last, before) : undefined;
+    );
+  /**
+   * The point the way the end at `at` runs is measured from, stepping by
+   * `step` from it: the first at least `reach` away, or else the farthest,
+   * or undefined if every point is the end's own.
+   */
+  const from = (at: number, step: number): number | undefined => {
+    let farthest: number | undefined;
+    let most = 0;
+    for (let index = at + step; index >= 0 && index <= last; index += step) {
+      const away = distance(at, index);
+      if (away >= reach) return index;
+      if (away > most) {
+        most = away;
+        farthest = index;
+      }
+    }
+    return farthest;
+  };
+  const after = ends.start ? from(0, 2) : undefined;
+  const before = ends.end ? from(last, -2) : undefined;
+  const start = after === undefined ? undefined : cutAt(points, 0, after);
+  const end = before === undefined ? undefined : cutAt(points, last, before);
   if (start === undefined && end === undefined) return undefined;
   return {
     ...(start === undefined ? {} : { start }),

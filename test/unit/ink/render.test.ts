@@ -140,6 +140,44 @@ describe("drawInk", () => {
     ]);
   });
 
+  it("draws the rest of a long cut stroke in its cut boxes again", () => {
+    const context = new RecordingContext();
+    // Down a 2 px brush from (1, 1) to (1, 9) px, cut at its end only.
+    const long: Stroke = {
+      ...pen,
+      points: [16, 16, 16, 144],
+      cut: { end: "down" },
+    };
+    drawInk(context, [long], undefined);
+    const everywhere = 2 ** 24;
+    const all = `rect ${String(-everywhere)} ${String(-everywhere)} ${String(2 * everywhere)} ${String(2 * everywhere)}`;
+    expect(context.calls).toEqual([
+      "save",
+      "translate 0 0",
+      "save",
+      "beginPath",
+      all,
+      "rect -2 9 6 3",
+      "clip evenodd",
+      "beginPath",
+      "moveTo",
+      "closePath",
+      `fill source-over ${inkColor}`,
+      "restore",
+      // Its first point alone is more than 4 px from the cut end.
+      "save",
+      "beginPath",
+      "rect -2 9 6 3",
+      "clip nonzero",
+      "beginPath",
+      "moveTo",
+      "closePath",
+      `fill source-over ${inkColor}`,
+      "restore",
+      "restore",
+    ]);
+  });
+
   it("draws nothing but the state change for an empty drawing", () => {
     const context = new RecordingContext();
     drawInk(context, [], undefined);

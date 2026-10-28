@@ -8,6 +8,7 @@ import {
   outlineInput,
   strokeOutline,
   traceOutline,
+  uncutRest,
   type PathSink,
 } from "../../../src/ink/outline.ts";
 import { pinnedStrokes } from "../../fixtures/outline/strokes.ts";
@@ -167,5 +168,38 @@ describe("cutBoxes", () => {
     expect(
       cutBoxes({ tool: "pen", size: 32, pressure: false, points: [16, 16] }),
     ).toEqual([]);
+  });
+});
+
+describe("uncutRest", () => {
+  // Down a 1 px brush, one point a pixel, for 10 px.
+  const points = Array.from({ length: 11 }, (_, at) => [16, at * 16]).flat();
+  const stroke: Stroke = { tool: "pen", size: 16, pressure: false, points };
+
+  it("leaves out the points within twice the brush's width of each cut end", () => {
+    expect(uncutRest({ ...stroke, cut: { start: "up" } })?.points).toEqual(
+      points.slice(2 * 2),
+    );
+    expect(uncutRest({ ...stroke, cut: { end: "down" } })?.points).toEqual(
+      points.slice(0, -2 * 2),
+    );
+    expect(
+      uncutRest({ ...stroke, cut: { start: "up", end: "down" } }),
+    ).toMatchObject({ tool: "pen", size: 16, points: points.slice(4, -4) });
+  });
+
+  it("keeps a point's pressure, and leaves nothing of a short stroke", () => {
+    const pressed: Stroke = {
+      tool: "eraser",
+      size: 16,
+      pressure: true,
+      points: [0, 0, 9, 0, 32, 9, 0, 64, 9, 0, 96, 9],
+      cut: { start: "up" },
+    };
+    expect(uncutRest(pressed)?.points).toEqual([0, 32, 9, 0, 64, 9, 0, 96, 9]);
+    expect(
+      uncutRest({ ...stroke, size: 96, cut: { start: "up", end: "down" } }),
+    ).toBeUndefined();
+    expect(uncutRest(stroke)).toBeUndefined();
   });
 });
