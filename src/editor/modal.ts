@@ -645,7 +645,7 @@ export class InkEditorModal extends Modal {
       () => {
         chooser.click();
       },
-      "Choose picture",
+      "Choose picture…",
       "open a picture file to trace over",
     );
     this.#addButton(
