@@ -8,6 +8,13 @@ section is also its
 
 ## Unreleased
 
+### Added
+
+- **Zoom** (Z) in the editor shows the drawing twice as large in a taller
+  drawing area, for fine detail, as far as the window has room. The wheel or the
+  left and right arrow keys move along the drawing; Fit centres it; Next keeps
+  the zoom. Saved symbols stay the same size in notes.
+
 ## 0.3.0-alpha.2 - 2026-10-28
 
 This alpha follows the owner's request for a button that opens a picture to

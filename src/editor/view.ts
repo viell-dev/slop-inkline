@@ -50,6 +50,13 @@ export function measureFont(font: FontStyle, doc: Document): FontMetrics {
 export const visibleWidth = 4.5 * lineBox.pxPerEm;
 
 /**
+ * How much a magnified view enlarges the drawing: it shows half the width of
+ * the usual view, so the surface is twice as tall, as far as the window has
+ * room for.
+ */
+export const magnification = 2;
+
+/**
  * How much the surface shows across for a drawing `width` pixels wide: all
  * of it, with half an em to spare on each side, and never less than
  * {@link visibleWidth}.
@@ -108,6 +115,15 @@ export class InkView {
   readonly canvas: HTMLCanvasElement;
   /** How much of the document the surface shows across, in pixels. */
   #across: number;
+  /** What the surface shows across when not magnified, in pixels. */
+  #fitted: number;
+  /** Whether the surface shows the drawing magnified, taller and narrower. */
+  #magnified = false;
+  /**
+   * The tallest the surface may grow when magnified, in CSS pixels, as the
+   * window has room for; it then shows more width rather than grow.
+   */
+  heightLimit = Number.POSITIVE_INFINITY;
   /** CSS pixels per document pixel. */
   #scale = 1;
   /** The document x at the surface's left edge, in pixels. */
@@ -144,16 +160,42 @@ export class InkView {
   constructor(canvas: HTMLCanvasElement, across = visibleWidth) {
     this.canvas = canvas;
     this.#across = across;
+    this.#fitted = across;
   }
 
   /**
-   * Shows a drawing that reaches from document x `left` to `right` whole,
-   * in the middle of the surface. Call {@link resize} after, as the scale
-   * changes.
+   * Shows a drawing that reaches from document x `left` to `right` in the
+   * middle of the surface: whole, or magnified about its middle. Call
+   * {@link resize} after, as the scale changes.
    */
   fit(left: number, right: number): void {
-    this.#across = surfaceWidth(right - left);
+    this.#fitted = surfaceWidth(right - left);
+    if (!this.#magnified) this.#across = this.#fitted;
     this.centerOn((left + right) / 2);
+  }
+
+  /** Whether the surface shows the drawing magnified. */
+  get magnified(): boolean {
+    return this.#magnified;
+  }
+
+  /**
+   * Magnifies the drawing, or shows it as usual again, about the middle of
+   * the surface. Call {@link resize} after, as the scale changes.
+   */
+  set magnified(magnified: boolean) {
+    if (magnified === this.#magnified) return;
+    const center = this.center;
+    this.#magnified = magnified;
+    this.#across = magnified ? visibleWidth / magnification : this.#fitted;
+    this.centerOn(center);
+  }
+
+  /** Moves the view along the drawing by `dx` document pixels. */
+  pan(dx: number): void {
+    if (dx === 0) return;
+    this.#originX = Math.round(this.#originX + dx);
+    this.#shown = undefined;
   }
 
   /** The document x in the middle of the surface, in pixels. */
@@ -181,6 +223,21 @@ export class InkView {
   /** Fits the surface to `cssWidth` CSS pixels across. */
   resize(cssWidth: number, devicePixelRatio: number): void {
     const width = Math.max(1, cssWidth);
+    if (this.#magnified) {
+      // As tall as magnifying makes it, or the window allows, and never
+      // smaller than the usual view; the middle stays where it was.
+      const center = this.center;
+      const usual = width / this.#fitted;
+      const scale = Math.max(
+        usual,
+        Math.min(
+          (width * magnification) / visibleWidth,
+          this.heightLimit / lineBox.height,
+        ),
+      );
+      this.#across = width / scale;
+      this.centerOn(center);
+    }
     this.#scale = width / this.#across;
     this.#ratio = devicePixelRatio;
     const cssHeight = lineBox.height * this.#scale;
