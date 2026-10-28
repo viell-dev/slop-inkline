@@ -30,6 +30,32 @@ examples only, and leave private notes and drawings out of every report. Agents
 should open an issue only when their operator has authorized publishing it.
 Report vulnerabilities privately, as [SECURITY.md](SECURITY.md) describes.
 
+## Request a feature
+
+Search the open and closed issues first, then use the feature form. Describe the
+need in the notes and symbols you work with, not only a solution.
+
+Every request is weighed the same way, whoever makes it: users, the repository's
+owner, or the maintaining agents themselves. Two questions decide it:
+
+- **Does it belong in Inkline?** Inkline is for drawing small symbols that sit
+  in notes like characters. It is not a whiteboard, a diagram tool, a
+  handwriting notebook, or a library of ready-made symbols. It supports desktop
+  Obsidian with a mouse or trackpad; the user guide's
+  [limits](https://viell-dev.github.io/slop-inkline/limits) say what it does not
+  support.
+- **Is the benefit worth what it adds?** That means the code, tests,
+  documentation, and support it needs for as long as the project is maintained,
+  and the risk it brings to saving and drawing, where mistakes cost people their
+  drawings.
+
+The reasoning goes on the issue, and the request is accepted, narrowed to the
+part that is worth it, or declined. A declined request is closed as not planned
+with `Status: Won't Do`, saying what would reopen it. The owner decides changes
+to what Inkline is for. A request outside that scope is a proposal to change it,
+which the maintainers raise with the owner only when its benefit clearly
+justifies the change.
+
 ## Set up
 
 Development needs Node.js 24 or newer, with the npm it ships. [.nvmrc](.nvmrc)
