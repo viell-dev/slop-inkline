@@ -8,6 +8,14 @@ section is also its
 
 ## Unreleased
 
+## 0.2.0-rc.2 - 2026-10-28
+
+This candidate follows the 0.1.1-rc.2 report that saving an edited symbol
+changed it in every note without a choice
+([save choices](https://github.com/viell-dev/slop-inkline/issues/85)). Public
+stable publication remains on hold, as the earlier
+[workflow feedback](https://github.com/viell-dev/slop-inkline/issues/5) records.
+
 ### Added
 
 - Saving a changed symbol that your notes use more than once asks first whether
