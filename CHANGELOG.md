@@ -8,6 +8,21 @@ section is also its
 
 ## Unreleased
 
+## 0.3.0-alpha.2 - 2026-10-28
+
+This alpha follows the owner's request for a button that opens a picture to
+trace over
+([choose picture](https://github.com/viell-dev/slop-inkline/issues/110)). Public
+stable publication remains on hold, as the earlier
+[workflow feedback](https://github.com/viell-dev/slop-inkline/issues/5) records.
+
+### Added
+
+- **Choose picture…** in the editor's picture bar opens your system's file
+  dialog, which reaches files in the vault and outside it, and traces the
+  picture you choose as a pasted one is. The bar's hint now reads "Paste, drop,
+  or choose a picture to trace over it."
+
 ## 0.3.0-alpha.1 - 2026-10-28
 
 This alpha follows the 0.1.1-rc.2 report that saving an edited symbol changed it

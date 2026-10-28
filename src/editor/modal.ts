@@ -162,7 +162,7 @@ const nudge = 1;
 /** How much + and − scale a picture: as much as a notch of the wheel. */
 const keyScale = wheelFactor(-100);
 
-const noPicture = "Paste or drop a picture to trace over it.";
+const noPicture = "Paste, drop, or choose a picture to trace over it.";
 const tracing = "Tracing over a picture, which is not saved.";
 const making = "Making ink of the picture: set the threshold, then Apply.";
 
@@ -618,8 +618,36 @@ export class InkEditorModal extends Modal {
     this.#addButton(toolbar, "help", "Help", undefined, () => {
       this.#help();
     });
-    // A picture to trace over, and what moves or removes it.
+    // A picture to trace over, what chooses it, and what moves or removes it.
     const pictureBar = this.contentEl.createDiv({ cls: "inkline-picture" });
+    // The system's file dialog, which reaches files in the vault and out of
+    // it; the picture chosen is traced as a pasted one is.
+    const chooser = pictureBar.createEl("input", {
+      type: "file",
+      attr: { accept: "image/*", tabindex: "-1", "aria-hidden": "true" },
+    });
+    chooser.hide();
+    chooser.addEventListener("change", () => {
+      const [file] = chooser.files ?? [];
+      // So that choosing the same file again is a change too.
+      chooser.value = "";
+      if (file !== undefined) void this.#trace(file);
+      this.#refocus();
+    });
+    chooser.addEventListener("cancel", () => {
+      this.#refocus();
+    });
+    this.#addButton(
+      pictureBar,
+      "choose",
+      "Choose picture…",
+      undefined,
+      () => {
+        chooser.click();
+      },
+      "Choose picture…",
+      "open a picture file to trace over",
+    );
     this.#addButton(
       pictureBar,
       "move",
@@ -1410,7 +1438,9 @@ export class InkEditorModal extends Modal {
     const picture = this.#picture;
     const view = this.#view;
     if (picture === undefined || view === undefined) {
-      this.#announce("Paste or drop a picture first, to make ink of it");
+      this.#announce(
+        "Paste, drop, or choose a picture first, to make ink of it",
+      );
       return;
     }
     const luma = pictureLuminance(readPixels(picture.image));
@@ -1692,7 +1722,7 @@ export class InkEditorModal extends Modal {
   /** Switches between moving the picture and drawing. */
   #toggleMove(): void {
     if (this.#picture === undefined) {
-      this.#announce("Paste or drop a picture first, to move it");
+      this.#announce("Paste, drop, or choose a picture first, to move it");
       return;
     }
     this.#moving = !this.#moving;
@@ -1967,7 +1997,7 @@ export class InkEditorModal extends Modal {
       "Pen (P) adds ink; Eraser (E) removes it. Sizes S–XL (1–4) are remembered separately until you close the editor, including through Next. The circle shows the brush's diameter.",
       "Hold Shift while drawing for a straight segment. Grid (Shift+G) shows dots and snaps stroke ends to them. Its rows pass through each guide line the settings choose, and divide the space between lines evenly; the settings also set how many cells span the x-height.",
       "Undo (Mod+Z) and Redo (Mod+Shift+Z) step through changes. Clear removes the drawing and can be undone.",
-      "Paste or drop a picture to trace. Move positions it; the wheel scales it. Make ink converts the visible picture into editable ink. The tracing picture itself is not saved.",
+      "Paste, drop, or choose (Choose picture…) a picture to trace. Move positions it; the wheel scales it. Make ink converts the visible picture into editable ink. The tracing picture itself is not saved.",
       "Name the symbol, then Save (Mod+Enter). For a new symbol, Next (Mod+Shift+Enter) saves it and starts another. Mod is Ctrl on Windows/Linux, Cmd on macOS.",
       "Saving a changed symbol that your notes use more than once first asks whether to Replace it everywhere. For a variant, start a new symbol with Copy from instead.",
     ])

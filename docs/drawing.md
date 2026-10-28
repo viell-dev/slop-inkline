@@ -102,10 +102,12 @@ of text.
 
 ## Trace over a picture
 
-Paste a picture with Mod+V, or drop one on the editor, such as a screenshot of a
-symbol in a game, or an image from Obsidian's file explorer. It shows faintly
-under the drawing, as tall as a capital letter, for you to draw over. It is
-never saved, nor kept in drafts.
+Paste a picture with Mod+V, drop one on the editor, or open one with **Choose
+picture…**, such as a screenshot of a symbol in a game, or an image from
+Obsidian's file explorer. Choose picture… opens your system's file dialog, which
+reaches files in the vault and outside it. It shows faintly under the drawing,
+as tall as a capital letter, for you to draw over. It is never saved, nor kept
+in drafts.
 
 **Move** (M) lets you drag the picture and scale it with the wheel; the arrow
 keys move it, and + and − scale it, from the keyboard. Press M again to draw.

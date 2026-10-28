@@ -1,6 +1,6 @@
 {
   "name": "inkline",
-  "version": "0.3.0-alpha.1",
+  "version": "0.3.0-alpha.2",
   "private": true,
   "description": "An Obsidian plugin for drawing symbols that sit inline in your notes like characters.",
   "license": "MIT",

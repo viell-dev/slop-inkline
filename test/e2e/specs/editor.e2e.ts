@@ -3887,7 +3887,7 @@ describe("The editor", function () {
     it("shows a pasted picture faintly, as tall as a capital, outside the drawing", async function () {
       await insert();
       expect(await pictureHint()).toBe(
-        "Paste or drop a picture to trace over it.",
+        "Paste, drop, or choose a picture to trace over it.",
       );
       await pastePicture("red");
       await waitForStatus("Tracing over the picture");
@@ -4230,10 +4230,10 @@ describe("The editor", function () {
         false,
       );
       expect(await pictureHint()).toBe(
-        "Paste or drop a picture to trace over it.",
+        "Paste, drop, or choose a picture to trace over it.",
       );
       await browser.keys(["m"]);
-      await waitForStatus("Paste or drop a picture first, to move it");
+      await waitForStatus("Paste, drop, or choose a picture first, to move it");
       expect(await pressed("move")).toBe("false");
     });
   });
@@ -4242,7 +4242,9 @@ describe("The editor", function () {
     it("makes ink by a threshold, as one step that Undo takes back", async function () {
       await insert();
       await browser.keys(["i"]);
-      await waitForStatus("Paste or drop a picture first, to make ink of it");
+      await waitForStatus(
+        "Paste, drop, or choose a picture first, to make ink of it",
+      );
       expect(await makingInk()).toBe(false);
       await pasteMarked(...squareOn("white", "black"));
       await browser.keys(["i"]);
