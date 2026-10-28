@@ -8,6 +8,32 @@ section is also its
 
 ## Unreleased
 
+## 0.3.0-alpha.5 - 2026-10-28
+
+This alpha follows the owner's comment that a stroke drawn to a grid line spills
+past it in a round end, to be erased by hand
+([flat ends](https://github.com/viell-dev/slop-inkline/issues/117)), and the
+independent review of 0.3.0-alpha.4, which found the pressed buttons' text hard
+to read ([contrast](https://github.com/viell-dev/slop-inkline/issues/118)).
+Public stable publication remains on hold, as the earlier
+[workflow feedback](https://github.com/viell-dev/slop-inkline/issues/5) records.
+
+### Changed
+
+- With the grid on, a stroke's ends stop flush with the grid line they lie on,
+  instead of rounding past it: a row for a stroke that comes in at 45° or
+  steeper, as the legs of an A come down to the baseline, and a column for a
+  flatter one. Dots, and ends drawn with the grid off, stay round; the eraser is
+  cut the same way. Symbols with such strokes record the cuts in a new optional
+  `cut` field; earlier versions show them as saved, but draw those ends round
+  again if they edit the symbol.
+
+### Fixed
+
+- A pressed editor button, such as the chosen tool, draws its text at 4.5:1 or
+  better against its background with Obsidian's accent colours, where the
+  default accent gave 3.43:1 in the light theme.
+
 ## 0.3.0-alpha.4 - 2026-10-28
 
 This alpha follows the 0.1.1-rc.1 suggestion of familiar drawing-tool icons on
