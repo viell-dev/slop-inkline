@@ -18,11 +18,12 @@ publication remains on hold, as the earlier
 
 ### Added
 
-- The editor's buttons show an icon from Obsidian's own set beside their names.
-  **Editor buttons** in the settings shows icons only, which keeps the toolbar
-  to one row in a wide editor, or text only, as before. The brush sizes keep
-  their letters, and the bar that Make ink opens keeps its words. Tooltips and
-  screen readers give each button's name and shortcut under every choice.
+- The editor's buttons show an icon from Obsidian's own set beside their names,
+  by default. **Editor buttons** in the settings chooses **Icons and text**,
+  **Icons only**, which keeps the toolbar to one row in a wide editor, or **Text
+  only**, as before. The brush sizes keep their letters, and the bar that Make
+  ink opens keeps its words. Under every choice, tooltips and screen readers
+  give each button's name, and its shortcut where it has one.
 
 ## 0.3.0-alpha.3 - 2026-10-28
 

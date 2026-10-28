@@ -18,8 +18,9 @@ interface Shown {
   readonly label: string;
   /** Its visible text, without the icon. */
   readonly text: string;
-  /** Whether it shows an icon, drawn, in the button's own colour. */
+  /** Whether it shows an icon: drawn, visible, and stroked. */
   readonly icon: boolean;
+  /** The colour of the icon's stroke, which should be the button's own. */
   readonly iconColour: string | undefined;
   readonly colour: string;
   /** Its place, relative to the editor's content. */
@@ -64,17 +65,26 @@ async function shownButtons(): Promise<Shown[]> {
         }
         const svg = button.querySelector(".inkline-button-icon svg");
         const drawn = svg?.getBoundingClientRect();
+        // The icon's first shape, whose stroke is what shows.
+        const shape = svg?.querySelector("path, circle, rect, line, polyline");
+        const style = svg ? getComputedStyle(svg) : undefined;
+        const stroke = shape ? getComputedStyle(shape) : undefined;
         const rect = button.getBoundingClientRect();
         return {
           id: button.dataset.inklineButton ?? "",
           label: button.getAttribute("aria-label") ?? "",
           text: button.textContent.trim(),
           icon:
-            svg !== null &&
             drawn !== undefined &&
             drawn.width > 0 &&
-            drawn.height > 0,
-          iconColour: svg === null ? undefined : getComputedStyle(svg).color,
+            drawn.height > 0 &&
+            style?.visibility === "visible" &&
+            Number(style.opacity) > 0 &&
+            stroke !== undefined &&
+            Number.parseFloat(stroke.strokeWidth) > 0,
+          // The colour the icon is drawn in, which a transparent stroke
+          // would leave different from the button's.
+          iconColour: stroke?.stroke,
           colour: getComputedStyle(button).color,
           left: rect.left - box.left,
           right: rect.right - box.left,
@@ -115,6 +125,9 @@ describe("Editor buttons", function () {
   before(async function () {
     await startOver();
     await storeLabels("both");
+    await openEditor();
+    usual = labels(await shownButtons());
+    await startOver();
     theme = await browser.execute(() =>
       [...document.body.classList].filter(
         (name) => name === "theme-light" || name === "theme-dark",
@@ -133,6 +146,7 @@ describe("Editor buttons", function () {
   });
 
   it("shows each button's icon beside its text by default", async function () {
+    await storeLabels("both");
     await openEditor();
     const buttons = await shownButtons();
     const withIcons = buttons.filter((button) => button.icon);
@@ -148,12 +162,13 @@ describe("Editor buttons", function () {
       "Pen (P)",
     );
     expect(buttons.find((button) => button.id === "size-0")?.text).toBe("S");
-    usual = labels(buttons);
+    expect(labels(buttons)).toEqual(usual);
     await saveScreenshot("buttons-both", browser.$(".inkline-editor"));
   });
 
   it("shows only icons, keeping names, shortcuts, states and keys", async function () {
     const rowsBefore = await (async () => {
+      await storeLabels("both");
       await openEditor();
       const rows = await toolbarRows();
       await startOver();

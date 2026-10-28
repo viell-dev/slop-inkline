@@ -42,7 +42,8 @@ apply the next time the drawing area redraws.
 as by default; **Icons only**, which keeps the toolbar to one row in a wide
 editor; or **Text only**. The brush sizes keep their letters, and the bar that
 **Make ink** opens keeps its words, under every choice. Each button's tooltip
-still gives its name and shortcut, and screen readers read the same names.
+still gives its name, and its shortcut where it has one, and screen readers read
+the same names.
 
 Settings are kept in the vault's Inkline plugin data and survive reloading
 Obsidian. Unreadable or invalid preferences use defaults. If a write fails, a
