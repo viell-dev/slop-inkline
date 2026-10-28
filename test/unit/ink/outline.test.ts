@@ -3,6 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Stroke } from "../../../src/format/record.ts";
 import {
+  cutBoxes,
   outlineBounds,
   outlineInput,
   strokeOutline,
@@ -143,5 +144,28 @@ describe("traceOutline", () => {
       closePath: () => calls.push("Z"),
     });
     expect(calls).toEqual([]);
+  });
+});
+
+describe("cutBoxes", () => {
+  it("takes a box past the line through each cut end, a brush and a pixel deep", () => {
+    // Right along a 2 px brush from (1, 1) to (5, 1) px, with pressure.
+    const stroke: Stroke = {
+      tool: "pen",
+      size: 32,
+      pressure: true,
+      points: [16, 16, 128, 80, 16, 255],
+      cut: { start: "left", end: "right" },
+    };
+    expect(cutBoxes(stroke)).toEqual([
+      { left: -2, right: 1, top: -2, bottom: 4 },
+      { left: 5, right: 8, top: -2, bottom: 4 },
+    ]);
+  });
+
+  it("takes nothing from a stroke without cuts", () => {
+    expect(
+      cutBoxes({ tool: "pen", size: 32, pressure: false, points: [16, 16] }),
+    ).toEqual([]);
   });
 });

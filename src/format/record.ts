@@ -39,6 +39,23 @@ export const limits = {
 
 export type Tool = "pen" | "eraser";
 
+/**
+ * Which way a stroke's ink is cut away at one of its ends: everything past
+ * the line through that end point, across this direction, within the brush's
+ * reach of it. `down` cuts along the horizontal line through the end and
+ * removes what lies below it, as at a baseline.
+ */
+export type Cut = "up" | "down" | "left" | "right";
+
+/** The directions a stroke can be cut in, for checking a file. */
+export const cuts: readonly Cut[] = ["up", "down", "left", "right"];
+
+/** Where a stroke's ends are cut flat; an end not named keeps its round cap. */
+export interface StrokeCuts {
+  readonly start?: Cut;
+  readonly end?: Cut;
+}
+
 export interface Stroke {
   readonly tool: Tool;
   /** The stroke's diameter, in units. */
@@ -51,6 +68,8 @@ export interface Stroke {
    * from the image's top left corner.
    */
   readonly points: readonly number[];
+  /** The ends cut flat at a grid line, if any. */
+  readonly cut?: StrokeCuts;
 }
 
 /** The image's geometry: the line box it maps to, in pixels. */
@@ -177,7 +196,31 @@ function parseStroke(
       ? integer(point, `${name}.points`, 0, maxPressure)
       : integer(point, `${name}.points`, -limits.coordinate, limits.coordinate),
   );
-  return { tool, size, pressure, points };
+  const cut = parseCuts(stroke.cut, `${name}.cut`);
+  return cut === undefined
+    ? { tool, size, pressure, points }
+    : { tool, size, pressure, points, cut };
+}
+
+/** A stroke's cuts, or undefined when it has none. */
+function parseCuts(value: unknown, name: string): StrokeCuts | undefined {
+  if (value === undefined) return undefined;
+  const fields = object(value, name);
+  const end = (key: "start" | "end"): Cut | undefined => {
+    const direction = fields[key];
+    if (direction === undefined) return undefined;
+    return (
+      cuts.find((known) => known === direction) ??
+      fail(`${name}.${key} is not "up", "down", "left", or "right"`)
+    );
+  };
+  const start = end("start");
+  const last = end("end");
+  if (start === undefined && last === undefined) return undefined;
+  return {
+    ...(start === undefined ? {} : { start }),
+    ...(last === undefined ? {} : { end: last }),
+  };
 }
 
 function fromBase64(text: string, name: string): Uint8Array {
@@ -355,6 +398,19 @@ export function serializeRecord(record: InkRecord): string {
   return JSON.stringify(recordValue(record));
 }
 
+/** A stroke's `cut` field as written, start first, or nothing without cuts. */
+function cutsValue(cut: StrokeCuts | undefined): Record<string, unknown> {
+  const start = cut?.start;
+  const end = cut?.end;
+  if (start === undefined && end === undefined) return {};
+  return {
+    cut: {
+      ...(start === undefined ? {} : { start }),
+      ...(end === undefined ? {} : { end }),
+    },
+  };
+}
+
 /**
  * A record as the JSON value {@link serializeRecord} writes, for embedding in
  * other JSON, which {@link parseRecord} reads back once it is text again.
@@ -370,11 +426,12 @@ export function recordValue(record: InkRecord): Record<string, unknown> {
       height: box.height,
       baseline: box.baseline,
     },
-    strokes: strokes.map(({ tool, size, pressure, points }) => ({
+    strokes: strokes.map(({ tool, size, pressure, points, cut }) => ({
       tool,
       size,
       pressure,
       points,
+      ...cutsValue(cut),
     })),
     ...(base === undefined
       ? {}

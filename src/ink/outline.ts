@@ -48,6 +48,41 @@ export function strokeOutline(stroke: Stroke): Outline {
   );
 }
 
+/**
+ * The boxes a stroke's cuts take away, in pixels: past the line through each
+ * cut end, across the cut's direction, as far as the brush reaches from that
+ * end and a pixel more for its soft edge. The rest of the stroke lies on the
+ * other side of the line, so only that end's round cap goes.
+ */
+export function cutBoxes(stroke: Stroke): Bounds[] {
+  const { cut, points } = stroke;
+  if (cut === undefined) return [];
+  const stride = stroke.pressure ? 3 : 2;
+  const last = points.length - stride;
+  const reach = stroke.size / unitsPerPixel + 1;
+  const boxes: Bounds[] = [];
+  for (const [direction, at] of [
+    [cut.start, 0],
+    [cut.end, last],
+  ] as const) {
+    if (direction === undefined || at < 0) continue;
+    const x = (points[at] ?? 0) / unitsPerPixel;
+    const y = (points[at + 1] ?? 0) / unitsPerPixel;
+    const across = { left: x - reach, right: x + reach };
+    const along = { top: y - reach, bottom: y + reach };
+    boxes.push(
+      direction === "down"
+        ? { ...across, top: y, bottom: y + reach }
+        : direction === "up"
+          ? { ...across, top: y - reach, bottom: y }
+          : direction === "right"
+            ? { ...along, left: x, right: x + reach }
+            : { ...along, left: x - reach, right: x },
+    );
+  }
+  return boxes;
+}
+
 /** The outline's bounding box, or undefined when it has no corners. */
 export function outlineBounds(outline: Outline): Bounds | undefined {
   if (outline.length === 0) return undefined;

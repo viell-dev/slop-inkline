@@ -40,7 +40,7 @@ describe("The file format in Obsidian's renderer", function () {
     expect(result.length).toBeGreaterThan(32 * 1024);
   });
 
-  for (const name of ["v1-strokes", "v1-base"]) {
+  for (const name of ["v1-strokes", "v1-base", "v1-cuts"]) {
     it(`reads the golden file ${name}`, async function () {
       const bytes = await readFile(path.join(fixtures, `${name}.ink.png`));
       const expected = await readFile(

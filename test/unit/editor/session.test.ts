@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DrawingSession,
   brushSizes,
+  gridCuts,
   gridOriginOf,
   plainGrid,
   snapToGrid,
@@ -469,5 +470,99 @@ describe("DrawingSession", () => {
     const session = new DrawingSession(emptyDocument);
     session.clear();
     expect(session.canUndo).toBe(false);
+  });
+});
+
+describe("gridCuts", () => {
+  const reach = 32;
+  const both = { start: true, end: true };
+
+  it("cuts a steep end across its row, away from the stroke", () => {
+    expect(gridCuts([0, 0, 16, 160], reach, both)).toEqual({
+      start: "up",
+      end: "down",
+    });
+    expect(gridCuts([16, 160, 0, 0], reach, both)).toEqual({
+      start: "down",
+      end: "up",
+    });
+    // At 45°, as steep as it is wide, the row still crosses it.
+    expect(gridCuts([0, 0, 64, 64], reach, both)).toEqual({
+      start: "up",
+      end: "down",
+    });
+  });
+
+  it("cuts a shallow end across its column", () => {
+    expect(gridCuts([0, 0, 160, 16], reach, both)).toEqual({
+      start: "left",
+      end: "right",
+    });
+    expect(gridCuts([160, 16, 0, 0], reach, both)).toEqual({
+      start: "right",
+      end: "left",
+    });
+  });
+
+  it("takes the way an end runs from the brush's reach back", () => {
+    // Straight down, then a step right shorter than the reach.
+    expect(gridCuts([0, 0, 0, 160, 16, 160], reach, both)).toEqual({
+      start: "up",
+      end: "down",
+    });
+  });
+
+  it("cuts only the ends named, and no end of a dot", () => {
+    expect(
+      gridCuts([0, 0, 0, 160], reach, { start: false, end: true }),
+    ).toEqual({ end: "down" });
+    expect(
+      gridCuts([0, 0, 0, 160], reach, { start: false, end: false }),
+    ).toBeUndefined();
+    expect(gridCuts([0, 0], reach, both)).toBeUndefined();
+  });
+});
+
+describe("DrawingSession's cuts", () => {
+  it("cuts the ends of a stroke drawn on the grid, and not one drawn off it", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.begin({ x: 0, y: 16 });
+    session.extend([{ x: 1, y: 80 }]);
+    // While it is drawn, only its start is on the grid.
+    expect(session.activeStroke?.cut).toEqual({ start: "up" });
+    session.end({ x: 0, y: 144 });
+    expect(session.document.strokes[0]?.cut).toEqual({
+      start: "up",
+      end: "down",
+    });
+    session.snap = false;
+    session.begin({ x: 0, y: 16 });
+    session.extend([{ x: 1, y: 80 }]);
+    session.end({ x: 0, y: 144 });
+    expect(session.document.strokes[1]).not.toHaveProperty("cut");
+  });
+
+  it("cuts only the end of a stroke the grid came on for", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.tool = "eraser";
+    session.begin({ x: 3, y: 16 });
+    session.extend([{ x: 60, y: 18 }]);
+    session.snap = true;
+    session.end({ x: 64, y: 17 });
+    expect(session.document.strokes[0]?.cut).toEqual({ end: "right" });
+  });
+
+  it("keeps a stroke's cuts through undo and redo", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.begin({ x: 0, y: 16 });
+    session.end({ x: 0, y: 144 });
+    const [stroke] = session.document.strokes;
+    session.undo();
+    expect(session.document.strokes).toEqual([]);
+    session.redo();
+    expect(session.document.strokes).toEqual([stroke]);
+    expect(stroke?.cut).toEqual({ start: "up", end: "down" });
   });
 });

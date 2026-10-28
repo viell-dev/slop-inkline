@@ -83,6 +83,40 @@ describe("serializeRecord and parseRecord", () => {
     );
   });
 
+  it("round-trip strokes cut flat at their ends, writing the start first", () => {
+    const cut: InkRecord = {
+      box: record.box,
+      strokes: [
+        {
+          tool: "pen",
+          size: 32,
+          pressure: false,
+          points: [0, 0, 0, 64],
+          cut: { end: "down", start: "up" },
+        },
+        {
+          tool: "eraser",
+          size: 32,
+          pressure: false,
+          points: [0, 0, 64, 0],
+          cut: { end: "right" },
+        },
+      ],
+    };
+    const text = serializeRecord(cut);
+    expect(text).toContain(
+      '"points":[0,0,0,64],"cut":{"start":"up","end":"down"}',
+    );
+    expect(text).toContain('"cut":{"end":"right"}');
+    expect(parseRecord(text)).toEqual({ ok: true, record: cut });
+  });
+
+  it("write no cut for a stroke without one, and read an empty one as none", () => {
+    expect(serializeRecord(record)).not.toContain("cut");
+    const empty = variant(["strokes", 1, "cut"], {});
+    expect(parseRecord(empty)).toEqual({ ok: true, record: withBase });
+  });
+
   it("ignore fields this version does not know", () => {
     const text = variant(["future"], { anything: true });
     expect(parseRecord(variant(["strokes", 0, "color"], "red")).ok).toBe(true);
@@ -199,6 +233,16 @@ describe("parseRecord refuses", () => {
       "negative pressure",
       variant(["strokes", 0, "points"], [0, 0, -1]),
       "strokes[0].points is not an integer from 0 to 255",
+    ],
+    [
+      "a cut in no direction",
+      variant(["strokes", 1, "cut"], { end: "out" }),
+      'strokes[1].cut.end is not "up", "down", "left", or "right"',
+    ],
+    [
+      "a cut that is not an object",
+      variant(["strokes", 1, "cut"], "down"),
+      "strokes[1].cut is not an object",
     ],
     [
       "a stroke that is null",

@@ -2,7 +2,12 @@
 // ink and erasers removing it, all in one grey whose alpha is the ink.
 
 import { unitsPerPixel, type Stroke } from "../format/record.ts";
-import { strokeOutline, traceOutline, type PathSink } from "./outline.ts";
+import {
+  cutBoxes,
+  strokeOutline,
+  traceOutline,
+  type PathSink,
+} from "./outline.ts";
 
 /**
  * The grey ink is stored in: 126 on 0–255, which balances its contrast
@@ -14,6 +19,9 @@ export const inkGrey = 126;
 
 /** The CSS colour of {@link inkGrey}. */
 export const inkColor = "#7e7e7e";
+
+/** Farther than any drawing reaches, in pixels, for a clip around a cut. */
+const everywhere = 2 ** 24;
 
 /** A base layer decoded for drawing: where it goes and its pixels. */
 export interface DrawableBase {
@@ -44,6 +52,8 @@ export interface DrawingContext extends PathSink {
   save(): void;
   restore(): void;
   translate(x: number, y: number): void;
+  rect(x: number, y: number, width: number, height: number): void;
+  clip(fillRule: CanvasFillRule): void;
 }
 
 /**
@@ -75,9 +85,24 @@ export function drawInk(
   for (const stroke of strokes) {
     context.globalCompositeOperation =
       stroke.tool === "pen" ? "source-over" : "destination-out";
+    const boxes = cutBoxes(stroke);
+    if (boxes.length > 0) context.save();
+    // Each cut leaves everything but its box to draw in.
+    for (const box of boxes) {
+      context.beginPath();
+      context.rect(-everywhere, -everywhere, 2 * everywhere, 2 * everywhere);
+      context.rect(
+        box.left,
+        box.top,
+        box.right - box.left,
+        box.bottom - box.top,
+      );
+      context.clip("evenodd");
+    }
     context.beginPath();
     traceOutline(strokeOutline(stroke), context);
     context.fill();
+    if (boxes.length > 0) context.restore();
   }
   context.restore();
 }

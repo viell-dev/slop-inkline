@@ -2,7 +2,13 @@
 // current brush, and the stroke being drawn. Plain state with no canvas or
 // Obsidian, so that unit tests can drive it.
 
-import { unitsPerPixel, type Stroke, type Tool } from "../format/record.ts";
+import {
+  unitsPerPixel,
+  type Cut,
+  type Stroke,
+  type StrokeCuts,
+  type Tool,
+} from "../format/record.ts";
 import { documentMover, toUnits, type InkDocument } from "../ink/document.ts";
 import { lineBox } from "../ink/geometry.ts";
 import { History } from "../ink/history.ts";
@@ -82,6 +88,62 @@ export function snapToGrid(
   };
 }
 
+/**
+ * The way across a grid line that a stroke leaves through its end at
+ * `points[at]`, from the point `from` it comes from: down or up across the
+ * row through that end when the stroke runs at least as steeply as 45°, as an
+ * A's legs reach the baseline, and else right or left across the column.
+ */
+function cutAt(points: readonly number[], at: number, from: number): Cut {
+  const dx = (points[at] ?? 0) - (points[from] ?? 0);
+  const dy = (points[at + 1] ?? 0) - (points[from + 1] ?? 0);
+  if (Math.abs(dy) >= Math.abs(dx)) return dy > 0 ? "down" : "up";
+  return dx > 0 ? "right" : "left";
+}
+
+/**
+ * Where a stroke drawn on the grid is cut flat, for its `x, y` points in
+ * units: each end named in `ends`, which lies on a grid point, along the grid
+ * line that crosses the stroke most squarely there, on the side away from
+ * the stroke. The way the stroke runs at an end comes from the nearest point
+ * at least `reach` units from it, or the farthest one; a stroke that never
+ * leaves its end, as a dot, is not cut there.
+ */
+export function gridCuts(
+  points: readonly number[],
+  reach: number,
+  ends: { readonly start: boolean; readonly end: boolean },
+): StrokeCuts | undefined {
+  const last = points.length - 2;
+  if (last < 2) return undefined;
+  const away = (at: number, from: number): boolean =>
+    Math.hypot(
+      (points[at] ?? 0) - (points[from] ?? 0),
+      (points[at + 1] ?? 0) - (points[from + 1] ?? 0),
+    ) >= reach;
+  let after = 2;
+  while (after < last && !away(0, after)) after += 2;
+  let before = last - 2;
+  while (before > 0 && !away(last, before)) before -= 2;
+  const moves = (at: number, from: number): boolean =>
+    points[at] !== points[from] || points[at + 1] !== points[from + 1];
+  const start =
+    ends.start && moves(0, after) ? cutAt(points, 0, after) : undefined;
+  const end =
+    ends.end && moves(last, before) ? cutAt(points, last, before) : undefined;
+  if (start === undefined && end === undefined) return undefined;
+  return {
+    ...(start === undefined ? {} : { start }),
+    ...(end === undefined ? {} : { end }),
+  };
+}
+
+/**
+ * The least distance, in units, that the way a stroke runs at a cut end is
+ * measured over: two pixels, or the brush's width if it is wider.
+ */
+const cutReach = 2 * unitsPerPixel;
+
 /** `x`, in pixels, moved by whole spacings to within the first one. */
 function withinSpacing(x: number, spacing: number): number {
   return ((x % spacing) + spacing) % spacing;
@@ -149,6 +211,8 @@ interface ActiveStroke {
   readonly tool: Tool;
   readonly size: number;
   readonly points: number[];
+  /** Whether it started on the grid, and so is cut flat at its start. */
+  readonly onGrid: boolean;
 }
 
 /** The point `along` the way from `from` to `to`. */
@@ -287,22 +351,40 @@ export class DrawingSession {
     return this.#active?.size;
   }
 
-  /** The stroke being drawn, as it would be committed now. */
+  /**
+   * The stroke being drawn, as it would be committed now, before its end
+   * comes to the grid: cut at its start if that is on the grid.
+   */
   get activeStroke(): Stroke | undefined {
     const active = this.#active;
     return active === undefined
       ? undefined
-      : {
-          tool: active.tool,
-          size: active.size,
-          pressure: false,
-          points: [...active.points],
-        };
+      : this.#stroke(active, { start: active.onGrid, end: false });
+  }
+
+  /** `active` as a stroke, cut flat at the ends named, which are on the grid. */
+  #stroke(
+    active: ActiveStroke,
+    ends: { readonly start: boolean; readonly end: boolean },
+  ): Stroke {
+    const stroke: Stroke = {
+      tool: active.tool,
+      size: active.size,
+      pressure: false,
+      points: [...active.points],
+    };
+    const cut = gridCuts(active.points, Math.max(active.size, cutReach), ends);
+    return cut === undefined ? stroke : { ...stroke, cut };
   }
 
   /** Starts a stroke with the current brush. */
   begin(point: InputPoint): void {
-    this.#active = { tool: this.tool, size: this.size, points: [] };
+    this.#active = {
+      tool: this.tool,
+      size: this.size,
+      points: [],
+      onGrid: this.snap,
+    };
     this.#last = undefined;
     this.#anchor = undefined;
     this.extend([this.#snapped(point)]);
@@ -369,7 +451,11 @@ export class DrawingSession {
     if (end !== undefined && this.#active !== undefined) {
       this.extend([this.#snapped(end)], straight);
     }
-    const stroke = this.activeStroke;
+    const active = this.#active;
+    const stroke =
+      active === undefined
+        ? undefined
+        : this.#stroke(active, { start: active.onGrid, end: this.snap });
     this.#active = undefined;
     this.#anchor = undefined;
     if (stroke !== undefined && stroke.points.length > 0) {

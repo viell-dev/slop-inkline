@@ -52,6 +52,14 @@ class RecordingContext implements DrawingContext {
   translate(x: number, y: number): void {
     this.calls.push(`translate ${String(x)} ${String(y)}`);
   }
+  rect(x: number, y: number, width: number, height: number): void {
+    this.calls.push(
+      `rect ${String(x)} ${String(y)} ${String(width)} ${String(height)}`,
+    );
+  }
+  clip(fillRule: CanvasFillRule): void {
+    this.calls.push(`clip ${fillRule}`);
+  }
 }
 
 const pen: Stroke = {
@@ -91,6 +99,43 @@ describe("drawInk", () => {
       "moveTo",
       "closePath",
       `fill source-over ${inkColor}`,
+      "restore",
+    ]);
+  });
+
+  it("draws a cut stroke with its cut boxes clipped away, and only that one", () => {
+    const context = new RecordingContext();
+    // Down a 2 px brush from (1, 1) to (1, 3) px, cut at both ends.
+    const cut: Stroke = {
+      ...pen,
+      points: [16, 16, 16, 48],
+      cut: { start: "up", end: "down" },
+    };
+    drawInk(context, [cut, eraser], undefined);
+    const everywhere = 2 ** 24;
+    const all = `rect ${String(-everywhere)} ${String(-everywhere)} ${String(2 * everywhere)} ${String(2 * everywhere)}`;
+    expect(context.calls).toEqual([
+      "save",
+      "translate 0 0",
+      "save",
+      "beginPath",
+      all,
+      // Above the start, 3 px each way: the brush's width and a pixel more.
+      "rect -2 -2 6 3",
+      "clip evenodd",
+      "beginPath",
+      all,
+      "rect -2 3 6 3",
+      "clip evenodd",
+      "beginPath",
+      "moveTo",
+      "closePath",
+      `fill source-over ${inkColor}`,
+      "restore",
+      "beginPath",
+      "moveTo",
+      "closePath",
+      `fill destination-out ${inkColor}`,
       "restore",
     ]);
   });
