@@ -5,6 +5,7 @@
 import type { Stroke } from "../format/record.ts";
 import { documentSpan, type InkDocument } from "../ink/document.ts";
 import { display, lineBox } from "../ink/geometry.ts";
+import { findInk } from "../ink/canvas.ts";
 import { drawInk, type DrawableBase } from "../ink/render.ts";
 import {
   cropSpan,
@@ -50,6 +51,20 @@ export function measureFont(font: FontStyle, doc: Document): FontMetrics {
 export const visibleWidth = 4.5 * lineBox.pxPerEm;
 
 /**
+ * How much a magnified view enlarges the drawing: it shows half the width of
+ * the usual view, so the surface is twice as tall, as far as the window has
+ * room for.
+ */
+export const magnification = 2;
+
+/**
+ * The widest image the preview shows whole, in document pixels: 32 em, far
+ * wider than any symbol; of a wider one it shows this much about the middle
+ * of the surface, so that it never needs a huge canvas.
+ */
+const maxPreview = 32 * lineBox.pxPerEm;
+
+/**
  * How much the surface shows across for a drawing `width` pixels wide: all
  * of it, with half an em to spare on each side, and never less than
  * {@link visibleWidth}.
@@ -67,34 +82,6 @@ function offscreen2d(
   return context;
 }
 
-/**
- * The columns that hold any ink, from the alpha of `pixels`, as the first
- * and the one past the last, or undefined when none does.
- */
-function inkedColumns(
-  pixels: ImageData,
-): { first: number; end: number } | undefined {
-  const { width, height, data } = pixels;
-  let first = width;
-  let last = -1;
-  for (let y = 0; y < height; y++) {
-    const row = y * width;
-    for (let x = 0; x < first; x++) {
-      if ((data[(row + x) * 4 + 3] ?? 0) > 0) {
-        first = x;
-        break;
-      }
-    }
-    for (let x = width - 1; x > last; x--) {
-      if ((data[(row + x) * 4 + 3] ?? 0) > 0) {
-        last = x;
-        break;
-      }
-    }
-  }
-  return last < first ? undefined : { first, end: last + 1 };
-}
-
 function element2d(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
   const context = canvas.getContext("2d");
   if (context === null) throw new Error("no 2D canvas context");
@@ -108,15 +95,50 @@ export class InkView {
   readonly canvas: HTMLCanvasElement;
   /** How much of the document the surface shows across, in pixels. */
   #across: number;
+  /** What the surface shows across when not magnified, in pixels. */
+  #fitted: number;
+  /** Whether the surface shows the drawing magnified, taller and narrower. */
+  #magnified = false;
+  /**
+   * The tallest the surface may grow when magnified, in CSS pixels, as the
+   * window has room for; it then shows more width rather than grow.
+   */
+  heightLimit = Number.POSITIVE_INFINITY;
   /** CSS pixels per document pixel. */
   #scale = 1;
-  /** The document x at the surface's left edge, in pixels. */
+  /** The document x at the surface's left edge, in whole pixels. */
   #originX = 0;
+  /**
+   * The document x in the middle of the surface, kept exactly, so that
+   * zooming in and out, or resizing, never moves it by rounding.
+   */
+  #center: number;
   #ratio = 1;
   /** The document and base layer that `#committed` shows. */
   #shown: { document: InkDocument; base: DrawableBase | undefined } | undefined;
   #committed = new OffscreenCanvas(1, 1);
   #work = new OffscreenCanvas(1, 1);
+  /** The stroke being drawn, and the text colour, as last rendered. */
+  #active: Stroke | undefined;
+  #colour = "black";
+  #previewWork = new OffscreenCanvas(1, 1);
+  /** The document and base layer whose ink `#inked` measures. */
+  #measured:
+    { document: InkDocument; base: DrawableBase | undefined } | undefined;
+  /**
+   * The committed ink of the preview's span, at one pixel per document
+   * pixel, for the document and span it was drawn for, kept while the stroke
+   * being drawn is added each frame, on `#previewWork`.
+   */
+  #previewInk:
+    | {
+        readonly document: InkDocument;
+        readonly base: DrawableBase | undefined;
+        readonly left: number;
+        readonly right: number;
+        readonly canvas: OffscreenCanvas;
+      }
+    | undefined;
   /** The font's lines, or undefined to draw no guides. */
   lines: readonly Guide[] | undefined;
   /**
@@ -144,21 +166,53 @@ export class InkView {
   constructor(canvas: HTMLCanvasElement, across = visibleWidth) {
     this.canvas = canvas;
     this.#across = across;
+    this.#fitted = across;
+    this.#center = across / 2;
+  }
+
+  /** Puts the surface's left edge where its middle and width say. */
+  #place(): void {
+    this.#originX = Math.round(this.#center - this.#across / 2);
+    this.#shown = undefined;
   }
 
   /**
-   * Shows a drawing that reaches from document x `left` to `right` whole,
-   * in the middle of the surface. Call {@link resize} after, as the scale
-   * changes.
+   * Shows a drawing that reaches from document x `left` to `right` in the
+   * middle of the surface: whole, or magnified about its middle. Call
+   * {@link resize} after, as the scale changes.
    */
   fit(left: number, right: number): void {
-    this.#across = surfaceWidth(right - left);
+    this.#fitted = surfaceWidth(right - left);
+    if (!this.#magnified) this.#across = this.#fitted;
     this.centerOn((left + right) / 2);
+  }
+
+  /** Whether the surface shows the drawing magnified. */
+  get magnified(): boolean {
+    return this.#magnified;
+  }
+
+  /**
+   * Magnifies the drawing, or shows it as usual again, about the middle of
+   * the surface. Call {@link resize} after, as the scale changes.
+   */
+  set magnified(magnified: boolean) {
+    if (magnified === this.#magnified) return;
+    this.#magnified = magnified;
+    this.#across = magnified ? visibleWidth / magnification : this.#fitted;
+    this.#place();
+  }
+
+  /** Moves the view along the drawing by `dx` document pixels. */
+  pan(dx: number): void {
+    if (dx === 0) return;
+    this.#center += dx;
+    this.#place();
   }
 
   /** The document x in the middle of the surface, in pixels. */
   get center(): number {
-    return this.#originX + this.#across / 2;
+    return this.#center;
   }
 
   /** The document's x from the surface's left edge to its right, in pixels. */
@@ -168,19 +222,33 @@ export class InkView {
 
   /** Puts document x `center` in the middle of the surface. */
   centerOn(center: number): void {
-    this.#originX = Math.round(center - this.#across / 2);
-    this.#shown = undefined;
+    this.#center = center;
+    this.#place();
   }
 
   /** Moves the view with a document moved by `dx` pixels, so it stays put. */
   shift(dx: number): void {
-    this.#originX += dx;
-    this.#shown = undefined;
+    this.#center += dx;
+    this.#place();
   }
 
   /** Fits the surface to `cssWidth` CSS pixels across. */
   resize(cssWidth: number, devicePixelRatio: number): void {
     const width = Math.max(1, cssWidth);
+    if (this.#magnified) {
+      // As tall as magnifying makes it, or the window allows, and never
+      // smaller than the usual view; the middle stays where it was.
+      const usual = width / this.#fitted;
+      const scale = Math.max(
+        usual,
+        Math.min(
+          (width * magnification) / visibleWidth,
+          this.heightLimit / lineBox.height,
+        ),
+      );
+      this.#across = width / scale;
+      this.#place();
+    }
     this.#scale = width / this.#across;
     this.#ratio = devicePixelRatio;
     const cssHeight = lineBox.height * this.#scale;
@@ -229,8 +297,9 @@ export class InkView {
    * `active`, the stroke being drawn, on top: erasing it cuts the ink below
    * as it will when committed, never the picture.
    * The image's ends come from the committed ink's pixels inside the line
-   * box, as a save crops to them, read back each time the ink changes, and
-   * from a pen stroke being drawn.
+   * box, as a save crops to them, read back from the whole drawing each time
+   * the ink changes, however much of it the surface shows, and from a pen
+   * stroke being drawn.
    */
   render(
     document: InkDocument,
@@ -238,11 +307,12 @@ export class InkView {
     active: Stroke | undefined,
   ): void {
     const { width, height } = this.canvas;
-    const factor = this.#scale * this.#ratio;
+    if (this.#measured?.document !== document || this.#measured.base !== base) {
+      this.#measure(document, base);
+      this.#measured = { document, base };
+    }
     if (this.#shown?.document !== document || this.#shown.base !== base) {
-      const committed = offscreen2d(this.#committed, {
-        willReadFrequently: true,
-      });
+      const committed = offscreen2d(this.#committed);
       committed.resetTransform();
       committed.clearRect(0, 0, width, height);
       this.#transform(committed);
@@ -252,14 +322,6 @@ export class InkView {
         document.base === undefined ? undefined : base,
       );
       committed.resetTransform();
-      const columns = inkedColumns(committed.getImageData(0, 0, width, height));
-      this.#inked =
-        columns === undefined
-          ? undefined
-          : {
-              left: columns.first / factor + this.#originX,
-              right: columns.end / factor + this.#originX,
-            };
       this.#shown = { document, base };
     }
     this.#image = cropSpan(
@@ -281,6 +343,8 @@ export class InkView {
       work.resetTransform();
     }
     const style = getComputedStyle(this.canvas);
+    this.#active = active;
+    this.#colour = style.color;
     // The ink is shown in the text colour, as it will be in the note.
     work.globalCompositeOperation = "source-in";
     work.fillStyle = style.color;
@@ -367,42 +431,98 @@ export class InkView {
 
   /**
    * Draws the symbol into `target` as it would show in text of `fontSize`
-   * CSS pixels, from what the surface last rendered, in the text colour: the
-   * image, as far as the surface shows it, so that the preview is never wider
-   * than the surface's own rendering.
+   * CSS pixels, in the text colour, as last rendered: the whole image, with
+   * the stroke being drawn, however much of it the surface shows, up to
+   * {@link maxPreview} across about the middle of the surface. Its ink is
+   * put together at one pixel per document pixel, as a save draws it, so
+   * that an eraser cuts it exactly, and then scaled down.
    */
   drawPreview(target: HTMLCanvasElement, fontSize: number): void {
-    const left = Math.max(this.#image.left, this.#originX);
-    const right = Math.max(
-      left + 1,
-      Math.min(this.#image.right, this.#originX + this.#across),
-    );
+    let left = this.#image.left;
+    let right = Math.max(left + 1, this.#image.right);
+    if (right - left > maxPreview) {
+      const middle = Math.min(
+        Math.max(this.#center, left + maxPreview / 2),
+        right - maxPreview / 2,
+      );
+      left = Math.floor(middle - maxPreview / 2);
+      right = left + maxPreview;
+    }
+    const width = Math.max(1, Math.ceil(right - left));
     const scale = fontSize / lineBox.pxPerEm;
-    const heightEm = display({ ...lineBox, width: right - left }).heightEm;
-    const cssWidth = (right - left) * scale;
-    const cssHeight = heightEm * fontSize;
+    const shape = display({ ...lineBox, width });
+    const cssWidth = width * scale;
+    const cssHeight = shape.heightEm * fontSize;
     target.style.width = `${String(cssWidth)}px`;
     target.style.height = `${String(cssHeight)}px`;
-    target.style.verticalAlign = `${String(
-      display({ ...lineBox, width: right - left }).verticalAlignEm,
-    )}em`;
+    target.style.verticalAlign = `${String(shape.verticalAlignEm)}em`;
     target.width = Math.max(1, Math.round(cssWidth * this.#ratio));
     target.height = Math.max(1, Math.round(cssHeight * this.#ratio));
+    // The committed ink, drawn once while the drawing and the span stay.
+    const measured = this.#measured;
+    let ink = this.#previewInk;
+    if (
+      ink === undefined ||
+      ink.document !== measured?.document ||
+      ink.base !== measured.base ||
+      ink.left !== left ||
+      ink.canvas.width !== width
+    ) {
+      const canvas = new OffscreenCanvas(width, lineBox.height);
+      if (measured !== undefined) {
+        drawInk(
+          offscreen2d(canvas),
+          measured.document.strokes,
+          measured.document.base === undefined ? undefined : measured.base,
+          -left,
+        );
+      }
+      ink = {
+        document: measured?.document ?? { strokes: [] },
+        base: measured?.base,
+        left,
+        right: left + width,
+        canvas,
+      };
+      this.#previewInk = ink;
+    }
+    // The stroke being drawn, over a copy, at the same resolution.
+    let image: OffscreenCanvas = ink.canvas;
+    const active = this.#active;
+    if (active !== undefined) {
+      const work = this.#previewWork;
+      work.width = width;
+      work.height = lineBox.height;
+      const drawn = offscreen2d(work);
+      drawn.globalCompositeOperation = "copy";
+      drawn.drawImage(ink.canvas, 0, 0);
+      drawn.globalCompositeOperation = "source-over";
+      drawInk(drawn, [active], undefined, -left);
+      image = work;
+    }
     const context = element2d(target);
     context.clearRect(0, 0, target.width, target.height);
     context.imageSmoothingEnabled = true;
     context.imageSmoothingQuality = "high";
-    const factor = this.#scale * this.#ratio;
-    context.drawImage(
-      this.#work,
-      (left - this.#originX) * factor,
-      0,
-      (right - left) * factor,
-      lineBox.height * factor,
-      0,
-      0,
-      target.width,
-      target.height,
+    context.drawImage(image, 0, 0, target.width, target.height);
+    context.globalCompositeOperation = "source-in";
+    context.fillStyle = this.#colour;
+    context.fillRect(0, 0, target.width, target.height);
+    context.globalCompositeOperation = "source-over";
+  }
+  /**
+   * Finds how far the drawing's ink reaches inside the line box, as a save
+   * crops to it, whatever the surface shows: in tiles, so that geometry far
+   * away or erased costs time but never a huge canvas.
+   */
+  #measure(document: InkDocument, base: DrawableBase | undefined): void {
+    const found = findInk(
+      document,
+      document.base === undefined ? undefined : base,
     );
+    this.#inked =
+      found === undefined
+        ? undefined
+        : { left: found.left, right: found.right };
   }
 }

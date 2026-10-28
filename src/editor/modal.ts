@@ -124,6 +124,8 @@ export interface EditorTools {
   readonly sizes?: Readonly<Record<Tool, number>>;
   readonly grid: boolean;
   readonly guides: boolean;
+  /** Whether the drawing is magnified; Next keeps it so. */
+  readonly magnified?: boolean;
   /**
    * The picture being traced over, which the next editor takes over and
    * closes, with its x measured from the middle of the surface, so that it
@@ -598,6 +600,17 @@ export class InkEditorModal extends Modal {
       this.#fitView();
       this.#render();
     });
+    this.#addButton(
+      toolbar,
+      "zoom",
+      "Zoom",
+      "Z",
+      () => {
+        this.#toggleZoom();
+      },
+      "Zoom",
+      "a taller view of the drawing, twice as large; the wheel or the arrow keys move along it",
+    );
     this.#addButton(toolbar, "save", "Save", "Mod+Enter", () => {
       void this.#saveAndClose();
     });
@@ -764,6 +777,7 @@ export class InkEditorModal extends Modal {
     const view = new InkView(canvas, surfaceWidth(this.#options.width ?? 0));
     this.#view = view;
     view.centerOn(this.#options.center);
+    view.magnified = this.#options.tools?.magnified === true;
     // The editor before this one's picture, where it was on the surface.
     const carried = this.#options.tools?.picture;
     if (carried !== undefined) {
@@ -776,11 +790,13 @@ export class InkEditorModal extends Modal {
     this.#registerKeys();
 
     this.#resize = new ResizeObserver(() => {
-      view.resize(canvas.clientWidth, canvas.win.devicePixelRatio);
+      this.#resizeView();
       this.#render();
     });
     this.#resize.observe(canvas);
-    view.resize(canvas.clientWidth, canvas.win.devicePixelRatio);
+    // A magnified surface's height follows the window's.
+    canvas.win.addEventListener("resize", this.#windowResized);
+    this.#resizeView();
     this.#updateButtons();
     this.#render();
     this.#options.drafts?.store.hold(this.#draftId);
@@ -796,6 +812,7 @@ export class InkEditorModal extends Modal {
     for (const ref of this.#vaultEvents) this.app.vault.offref(ref);
     this.#vaultEvents = [];
     this.#resize?.disconnect();
+    this.#view?.canvas.win.removeEventListener("resize", this.#windowResized);
     this.#view?.canvas.win.removeEventListener("resize", this.#resizeCursor);
     this.#fonts?.removeEventListener("loadingdone", this.#remeasure);
     if (this.#cssChange !== undefined) {
@@ -1105,6 +1122,9 @@ export class InkEditorModal extends Modal {
     key([], "m", () => {
       this.#toggleMove();
     });
+    key([], "z", () => {
+      this.#toggleZoom();
+    });
     key([], "i", () => {
       this.#toggleConvert();
     });
@@ -1117,7 +1137,11 @@ export class InkEditorModal extends Modal {
     ): void => {
       this.scope.register(modifiers, name, () => {
         const picture = this.#picture;
-        if (!this.#moving || picture === undefined) return true;
+        // Otherwise a magnified view moves along the drawing, as Obsidian's
+        // scope runs only the first handler for a key.
+        if (!this.#moving || picture === undefined) {
+          return modifiers.length > 0 || !this.#panKey(name);
+        }
         const focused = activeDocument.activeElement;
         // A text field, or the threshold's slider, keeps its own keys.
         if (typing(focused) || focused?.instanceOf(HTMLInputElement) === true) {
@@ -1257,9 +1281,21 @@ export class InkEditorModal extends Modal {
       (event) => {
         const picture = this.#picture;
         const view = this.#view;
-        if (!this.#moving || picture === undefined || view === undefined) {
+        if (view === undefined) return;
+        // Magnified, and not moving the picture, the wheel moves along the
+        // drawing.
+        if (!this.#moving && view.magnified) {
+          event.preventDefault();
+          const delta = event.deltaX === 0 ? event.deltaY : event.deltaX;
+          const lines = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : 1;
+          const { left, right } = view.visible;
+          view.pan(
+            ((delta * lines) / view.canvas.clientWidth) * (right - left),
+          );
+          this.#render();
           return;
         }
+        if (!this.#moving || picture === undefined) return;
         event.preventDefault();
         const { x, y } = view.toDocument(event.clientX, event.clientY);
         this.#placePicture(
@@ -1756,7 +1792,62 @@ export class InkEditorModal extends Modal {
     const span = documentSpan(document, base?.width);
     if (span === undefined) return;
     view.fit(span.left, span.right);
-    view.resize(view.canvas.clientWidth, view.canvas.win.devicePixelRatio);
+    this.#resizeView();
+  }
+
+  /**
+   * Fits the surface to its width, with a magnified surface no taller than
+   * a little over half the window, so that the controls stay in view.
+   */
+  #resizeView(): void {
+    const view = this.#view;
+    if (view === undefined) return;
+    const { canvas } = view;
+    view.heightLimit = canvas.win.innerHeight * 0.55;
+    view.resize(canvas.clientWidth, canvas.win.devicePixelRatio);
+  }
+
+  readonly #windowResized = (): void => {
+    if (this.#closing || this.#retired || this.#view?.magnified !== true) {
+      return;
+    }
+    this.#resizeView();
+    this.#render();
+  };
+
+  /**
+   * Moves a magnified view along the drawing by a quarter of what the surface
+   * shows, for the left or right arrow key, unless a field has the focus.
+   * Returns whether it did.
+   */
+  #panKey(name: string): boolean {
+    const view = this.#view;
+    const direction =
+      name === "ArrowLeft" ? -1 : name === "ArrowRight" ? 1 : undefined;
+    if (direction === undefined || view?.magnified !== true) return false;
+    const focused = activeDocument.activeElement;
+    if (typing(focused) || focused?.instanceOf(HTMLInputElement) === true) {
+      return false;
+    }
+    const { left, right } = view.visible;
+    view.pan((direction * (right - left)) / 4);
+    this.#render();
+    return true;
+  }
+
+  /** Magnifies the drawing, or shows it as usual again. */
+  #toggleZoom(): void {
+    const view = this.#view;
+    if (view === undefined) return;
+    view.magnified = !view.magnified;
+    this.#resizeView();
+    this.#updateButtons();
+    this.#render();
+    this.#announce(
+      view.magnified
+        ? "Zoomed in: the wheel or the arrow keys move along the drawing"
+        : "Zoomed out",
+    );
   }
 
   #render(): void {
@@ -1903,6 +1994,7 @@ export class InkEditorModal extends Modal {
     this.#view?.canvas.toggleClass("is-moving", this.#moving);
     pressed("guides", this.#guidesShown);
     pressed("grid", this.#session.snap);
+    pressed("zoom", this.#view?.magnified === true);
     brushSizes.forEach((_, index) => {
       pressed(`size-${String(index)}`, this.#session.sizeIndex === index);
     });
@@ -1997,6 +2089,7 @@ export class InkEditorModal extends Modal {
       "Pen (P) adds ink; Eraser (E) removes it. Sizes S–XL (1–4) are remembered separately until you close the editor, including through Next. The circle shows the brush's diameter.",
       "Hold Shift while drawing for a straight segment. Grid (Shift+G) shows dots and snaps stroke ends to them. Its rows pass through each guide line the settings choose, and divide the space between lines evenly; the settings also set how many cells span the x-height.",
       "Undo (Mod+Z) and Redo (Mod+Shift+Z) step through changes. Clear removes the drawing and can be undone.",
+      "Zoom (Z) shows the drawing twice as large in a taller view, for fine detail; the wheel or the arrow keys move along it, and Fit (F) centres it. Saved symbols stay the same size in notes.",
       "Paste, drop, or choose (Choose picture…) a picture to trace. Move positions it; the wheel scales it. Make ink converts the visible picture into editable ink. The tracing picture itself is not saved.",
       "Name the symbol, then Save (Mod+Enter). For a new symbol, Next (Mod+Shift+Enter) saves it and starts another. Mod is Ctrl on Windows/Linux, Cmd on macOS.",
       "Saving a changed symbol that your notes use more than once first asks whether to Replace it everywhere. For a variant, start a new symbol with Copy from instead.",
@@ -2529,6 +2622,7 @@ export class InkEditorModal extends Modal {
         sizes: { ...this.#session.sizes },
         grid: snap,
         guides: this.#guidesShown,
+        magnified: this.#view?.magnified === true,
         ...(picture === undefined ? {} : { picture }),
       });
     } finally {
