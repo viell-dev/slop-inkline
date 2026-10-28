@@ -607,7 +607,7 @@ export async function storedDrafts(): Promise<
   {
     id: string;
     target: unknown;
-    strokes: { points: readonly number[] }[];
+    strokes: { tool: string; points: readonly number[] }[];
     base: string;
     baseX?: number;
     name?: string;
@@ -618,7 +618,10 @@ export async function storedDrafts(): Promise<
     return new drafts.DraftStore(app).list().map((draft) => ({
       id: draft.id,
       target: draft.target,
-      strokes: draft.strokes.map((stroke) => ({ points: stroke.points })),
+      strokes: draft.strokes.map((stroke) => ({
+        tool: stroke.tool,
+        points: stroke.points,
+      })),
       base: draft.base.kind,
       ...(draft.base.kind === "kept" ? { baseX: draft.base.layer.x } : {}),
       ...(draft.name === undefined ? {} : { name: draft.name }),

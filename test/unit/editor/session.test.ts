@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   DrawingSession,
   brushSizes,
+  ellipsePoints,
   gridCuts,
+  maxGap,
   gridOriginOf,
   plainGrid,
   snapToGrid,
@@ -584,5 +586,115 @@ describe("DrawingSession's cuts", () => {
     session.redo();
     expect(session.document.strokes).toEqual([stroke]);
     expect(stroke?.cut).toEqual({ start: "up", end: "down" });
+  });
+});
+
+describe("ellipsePoints", () => {
+  it("goes round the box once from the top, no more than maxGap apart", () => {
+    const points = ellipsePoints({ x: 10, y: 20 }, { x: 70, y: 40 }, false);
+    expect(points[0]).toEqual({ x: 40, y: 20 });
+    const last = points.at(-1);
+    expect(last?.x).toBeCloseTo(40);
+    expect(last?.y).toBeCloseTo(20);
+    // Clockwise on screen: right of the top, the second point is lower.
+    expect(points[1]?.x).toBeGreaterThan(40);
+    const xs = points.map((point) => point.x);
+    const ys = points.map((point) => point.y);
+    expect(Math.min(...xs)).toBeCloseTo(10);
+    expect(Math.max(...xs)).toBeCloseTo(70);
+    expect(Math.min(...ys)).toBeCloseTo(20);
+    expect(Math.max(...ys)).toBeCloseTo(40);
+    for (let index = 1; index < points.length; index++) {
+      const a = points[index - 1];
+      const b = points[index];
+      if (a === undefined || b === undefined) throw new Error("no point");
+      expect(Math.hypot(b.x - a.x, b.y - a.y)).toBeLessThanOrEqual(maxGap);
+    }
+  });
+
+  it("keeps a long, thin ellipse's points within maxGap", () => {
+    const points = ellipsePoints({ x: 0, y: 0 }, { x: 400, y: 4 }, false);
+    for (let index = 1; index < points.length; index++) {
+      const a = points[index - 1];
+      const b = points[index];
+      if (a === undefined || b === undefined) throw new Error("no point");
+      expect(Math.hypot(b.x - a.x, b.y - a.y)).toBeLessThanOrEqual(maxGap);
+    }
+  });
+
+  it("makes a circle as wide as the box's longer side, towards the pointer", () => {
+    const points = ellipsePoints({ x: 50, y: 50 }, { x: 20, y: 90 }, true);
+    const xs = points.map((point) => point.x);
+    const ys = points.map((point) => point.y);
+    expect(Math.min(...xs)).toBeCloseTo(10);
+    expect(Math.max(...xs)).toBeCloseTo(50);
+    expect(Math.min(...ys)).toBeCloseTo(50);
+    expect(Math.max(...ys)).toBeCloseTo(90);
+  });
+
+  it("gives a point or a line for a box without area", () => {
+    expect(ellipsePoints({ x: 5, y: 5 }, { x: 5, y: 5 }, false)).toEqual([
+      { x: 5, y: 5 },
+    ]);
+    expect(ellipsePoints({ x: 5, y: 5 }, { x: 25, y: 5 }, false)).toEqual([
+      { x: 5, y: 5 },
+      { x: 25, y: 5 },
+    ]);
+  });
+});
+
+describe("DrawingSession's ellipses", () => {
+  it("draws an ellipse across the box dragged, as one undoable stroke", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "ellipse";
+    session.begin({ x: 10, y: 20 });
+    session.extend([{ x: 40, y: 30 }]);
+    session.extend([{ x: 70, y: 40 }]);
+    session.end({ x: 70, y: 40 });
+    const [stroke] = session.document.strokes;
+    expect(session.document.strokes).toHaveLength(1);
+    const xs = (stroke?.points ?? []).filter((_, at) => at % 2 === 0);
+    const ys = (stroke?.points ?? []).filter((_, at) => at % 2 === 1);
+    expect([Math.min(...xs), Math.max(...xs)]).toEqual([160, 1120]);
+    expect([Math.min(...ys), Math.max(...ys)]).toEqual([320, 640]);
+    // A closed loop, with no ends to cut.
+    expect(stroke?.points.slice(0, 2)).toEqual(stroke?.points.slice(-2));
+    expect(stroke).not.toHaveProperty("cut");
+    session.undo();
+    expect(session.document.strokes).toEqual([]);
+  });
+
+  it("puts the box's corners on the grid, keeps Shift's circle, and draws a dot for a tap", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "ellipse";
+    session.snap = true;
+    session.tool = "eraser";
+    session.begin({ x: 7, y: 9 });
+    session.extend([{ x: 40, y: 20 }], true);
+    // The release does not say Shift is held; the circle stays a circle.
+    session.end({ x: 41, y: 21 });
+    const [circle] = session.document.strokes;
+    expect(circle?.tool).toBe("eraser");
+    const xs = (circle?.points ?? []).filter((_, at) => at % 2 === 0);
+    const ys = (circle?.points ?? []).filter((_, at) => at % 2 === 1);
+    // From the grid point (0, 16) to (48, 64), 3 columns across.
+    expect([Math.min(...xs), Math.max(...xs)]).toEqual([0, 768]);
+    expect([Math.min(...ys), Math.max(...ys)]).toEqual([256, 1024]);
+    expect(circle).not.toHaveProperty("cut");
+    session.begin({ x: 7, y: 9 });
+    session.end({ x: 7, y: 9 });
+    expect(session.document.strokes[1]?.points).toEqual([0, 256]);
+  });
+
+  it("keeps an ellipse's corner where it was when a save moves the drawing", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "ellipse";
+    session.begin({ x: 10, y: 20 });
+    session.rebase(-5);
+    session.end({ x: 65, y: 40 });
+    const xs = (session.document.strokes[0]?.points ?? []).filter(
+      (_, at) => at % 2 === 0,
+    );
+    expect([Math.min(...xs), Math.max(...xs)]).toEqual([80, 1040]);
   });
 });

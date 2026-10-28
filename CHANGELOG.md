@@ -8,6 +8,21 @@ section is also its
 
 ## Unreleased
 
+## 0.3.0-alpha.6 - 2026-10-28
+
+This alpha brings the first of the shape tools from the 0.1.1-rc.1 feedback
+([shape tools](https://github.com/viell-dev/slop-inkline/issues/73)); the
+straight-sided shapes with sharp corners follow. Public stable publication
+remains on hold, as the earlier
+[workflow feedback](https://github.com/viell-dev/slop-inkline/issues/5) records.
+
+### Added
+
+- **Ellipse** (O) in the editor makes dragging draw an ellipse across the box
+  dragged, with the pen or the eraser at its brush size; hold Shift for a
+  circle. On the grid, the box's corners snap to it. Press it again to draw
+  freehand; **Next** keeps it on. An ellipse is an ordinary stroke in the file.
+
 ## 0.3.0-alpha.5 - 2026-10-28
 
 This alpha follows the owner's comment that a stroke drawn to a grid line spills
