@@ -126,13 +126,30 @@ export class InkView {
   heightLimit = Number.POSITIVE_INFINITY;
   /** CSS pixels per document pixel. */
   #scale = 1;
-  /** The document x at the surface's left edge, in pixels. */
+  /** The document x at the surface's left edge, in whole pixels. */
   #originX = 0;
+  /**
+   * The document x in the middle of the surface, kept exactly, so that
+   * zooming in and out, or resizing, never moves it by rounding.
+   */
+  #center: number;
   #ratio = 1;
   /** The document and base layer that `#committed` shows. */
   #shown: { document: InkDocument; base: DrawableBase | undefined } | undefined;
   #committed = new OffscreenCanvas(1, 1);
   #work = new OffscreenCanvas(1, 1);
+  /**
+   * The whole drawing at one pixel per document pixel, from `#wholeLeft`,
+   * whatever the surface shows, for how far its ink reaches and the preview.
+   */
+  #whole = new OffscreenCanvas(1, 1);
+  #wholeLeft = 0;
+  /** The stroke being drawn, and the text colour, as last rendered. */
+  #active: Stroke | undefined;
+  #colour = "black";
+  /** The document and base layer that `#whole` holds. */
+  #measured:
+    { document: InkDocument; base: DrawableBase | undefined } | undefined;
   /** The font's lines, or undefined to draw no guides. */
   lines: readonly Guide[] | undefined;
   /**
@@ -161,6 +178,13 @@ export class InkView {
     this.canvas = canvas;
     this.#across = across;
     this.#fitted = across;
+    this.#center = across / 2;
+  }
+
+  /** Puts the surface's left edge where its middle and width say. */
+  #place(): void {
+    this.#originX = Math.round(this.#center - this.#across / 2);
+    this.#shown = undefined;
   }
 
   /**
@@ -185,22 +209,21 @@ export class InkView {
    */
   set magnified(magnified: boolean) {
     if (magnified === this.#magnified) return;
-    const center = this.center;
     this.#magnified = magnified;
     this.#across = magnified ? visibleWidth / magnification : this.#fitted;
-    this.centerOn(center);
+    this.#place();
   }
 
   /** Moves the view along the drawing by `dx` document pixels. */
   pan(dx: number): void {
     if (dx === 0) return;
-    this.#originX = Math.round(this.#originX + dx);
-    this.#shown = undefined;
+    this.#center += dx;
+    this.#place();
   }
 
   /** The document x in the middle of the surface, in pixels. */
   get center(): number {
-    return this.#originX + this.#across / 2;
+    return this.#center;
   }
 
   /** The document's x from the surface's left edge to its right, in pixels. */
@@ -210,14 +233,14 @@ export class InkView {
 
   /** Puts document x `center` in the middle of the surface. */
   centerOn(center: number): void {
-    this.#originX = Math.round(center - this.#across / 2);
-    this.#shown = undefined;
+    this.#center = center;
+    this.#place();
   }
 
   /** Moves the view with a document moved by `dx` pixels, so it stays put. */
   shift(dx: number): void {
-    this.#originX += dx;
-    this.#shown = undefined;
+    this.#center += dx;
+    this.#place();
   }
 
   /** Fits the surface to `cssWidth` CSS pixels across. */
@@ -226,7 +249,6 @@ export class InkView {
     if (this.#magnified) {
       // As tall as magnifying makes it, or the window allows, and never
       // smaller than the usual view; the middle stays where it was.
-      const center = this.center;
       const usual = width / this.#fitted;
       const scale = Math.max(
         usual,
@@ -236,7 +258,7 @@ export class InkView {
         ),
       );
       this.#across = width / scale;
-      this.centerOn(center);
+      this.#place();
     }
     this.#scale = width / this.#across;
     this.#ratio = devicePixelRatio;
@@ -286,8 +308,9 @@ export class InkView {
    * `active`, the stroke being drawn, on top: erasing it cuts the ink below
    * as it will when committed, never the picture.
    * The image's ends come from the committed ink's pixels inside the line
-   * box, as a save crops to them, read back each time the ink changes, and
-   * from a pen stroke being drawn.
+   * box, as a save crops to them, read back from the whole drawing each time
+   * the ink changes, however much of it the surface shows, and from a pen
+   * stroke being drawn.
    */
   render(
     document: InkDocument,
@@ -295,11 +318,12 @@ export class InkView {
     active: Stroke | undefined,
   ): void {
     const { width, height } = this.canvas;
-    const factor = this.#scale * this.#ratio;
+    if (this.#measured?.document !== document || this.#measured.base !== base) {
+      this.#measure(document, base);
+      this.#measured = { document, base };
+    }
     if (this.#shown?.document !== document || this.#shown.base !== base) {
-      const committed = offscreen2d(this.#committed, {
-        willReadFrequently: true,
-      });
+      const committed = offscreen2d(this.#committed);
       committed.resetTransform();
       committed.clearRect(0, 0, width, height);
       this.#transform(committed);
@@ -309,14 +333,6 @@ export class InkView {
         document.base === undefined ? undefined : base,
       );
       committed.resetTransform();
-      const columns = inkedColumns(committed.getImageData(0, 0, width, height));
-      this.#inked =
-        columns === undefined
-          ? undefined
-          : {
-              left: columns.first / factor + this.#originX,
-              right: columns.end / factor + this.#originX,
-            };
       this.#shown = { document, base };
     }
     this.#image = cropSpan(
@@ -338,6 +354,8 @@ export class InkView {
       work.resetTransform();
     }
     const style = getComputedStyle(this.canvas);
+    this.#active = active;
+    this.#colour = style.color;
     // The ink is shown in the text colour, as it will be in the note.
     work.globalCompositeOperation = "source-in";
     work.fillStyle = style.color;
@@ -424,16 +442,12 @@ export class InkView {
 
   /**
    * Draws the symbol into `target` as it would show in text of `fontSize`
-   * CSS pixels, from what the surface last rendered, in the text colour: the
-   * image, as far as the surface shows it, so that the preview is never wider
-   * than the surface's own rendering.
+   * CSS pixels, in the text colour, as last rendered: the whole image, with
+   * the stroke being drawn, however much of it the surface shows.
    */
   drawPreview(target: HTMLCanvasElement, fontSize: number): void {
-    const left = Math.max(this.#image.left, this.#originX);
-    const right = Math.max(
-      left + 1,
-      Math.min(this.#image.right, this.#originX + this.#across),
-    );
+    const { left } = this.#image;
+    const right = Math.max(left + 1, this.#image.right);
     const scale = fontSize / lineBox.pxPerEm;
     const heightEm = display({ ...lineBox, width: right - left }).heightEm;
     const cssWidth = (right - left) * scale;
@@ -449,17 +463,55 @@ export class InkView {
     context.clearRect(0, 0, target.width, target.height);
     context.imageSmoothingEnabled = true;
     context.imageSmoothingQuality = "high";
-    const factor = this.#scale * this.#ratio;
-    context.drawImage(
-      this.#work,
-      (left - this.#originX) * factor,
-      0,
-      (right - left) * factor,
-      lineBox.height * factor,
-      0,
-      0,
-      target.width,
-      target.height,
+    // Device pixels per document pixel in the preview.
+    const k = target.height / lineBox.height;
+    context.setTransform(k, 0, 0, k, (this.#wholeLeft - left) * k, 0);
+    context.drawImage(this.#whole, 0, 0);
+    const active = this.#active;
+    if (active !== undefined) {
+      context.setTransform(k, 0, 0, k, -left * k, 0);
+      drawInk(context, [active], undefined);
+    }
+    context.resetTransform();
+    context.globalCompositeOperation = "source-in";
+    context.fillStyle = this.#colour;
+    context.fillRect(0, 0, target.width, target.height);
+    context.globalCompositeOperation = "source-over";
+  }
+
+  /**
+   * Draws the whole drawing into `#whole`, at one pixel per document pixel,
+   * and reads from its pixels how far its ink reaches inside the line box,
+   * as a save crops to it.
+   */
+  #measure(document: InkDocument, base: DrawableBase | undefined): void {
+    const span = documentSpan(document, base?.width);
+    const whole = this.#whole;
+    if (span === undefined) {
+      whole.width = 1;
+      whole.height = 1;
+      this.#wholeLeft = 0;
+      this.#inked = undefined;
+      return;
+    }
+    const left = Math.floor(span.left) - 1;
+    whole.width = Math.max(1, Math.ceil(span.right) + 1 - left);
+    whole.height = lineBox.height;
+    const context = offscreen2d(whole, { willReadFrequently: true });
+    context.setTransform(1, 0, 0, 1, -left, 0);
+    drawInk(
+      context,
+      document.strokes,
+      document.base === undefined ? undefined : base,
     );
+    context.resetTransform();
+    const columns = inkedColumns(
+      context.getImageData(0, 0, whole.width, whole.height),
+    );
+    this.#wholeLeft = left;
+    this.#inked =
+      columns === undefined
+        ? undefined
+        : { left: columns.first + left, right: columns.end + left };
   }
 }

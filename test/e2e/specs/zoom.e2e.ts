@@ -54,6 +54,37 @@ async function tap(x: number, y: number): Promise<{ x: number; y: number }> {
   };
 }
 
+/** How wide the preview shows the symbol, in CSS pixels, and its font size. */
+async function previewWidth(): Promise<{ width: number; fontSize: number }> {
+  return browser.execute(() => {
+    const ink = document.querySelector(".inkline-editor .inkline-preview-ink");
+    const line = document.querySelector(".inkline-editor .inkline-preview");
+    if (!(ink instanceof HTMLCanvasElement) || !(line instanceof HTMLElement)) {
+      throw new Error("no preview");
+    }
+    return {
+      width: Number.parseFloat(ink.style.width),
+      fontSize: Number.parseFloat(getComputedStyle(line).fontSize),
+    };
+  });
+}
+
+/** How many of the preview's pixels hold ink. */
+async function previewInk(): Promise<number> {
+  return browser.execute(() => {
+    const ink = document.querySelector(".inkline-editor .inkline-preview-ink");
+    if (!(ink instanceof HTMLCanvasElement)) throw new Error("no preview");
+    const context = ink.getContext("2d");
+    if (context === null) throw new Error("no context");
+    const { data } = context.getImageData(0, 0, ink.width, ink.height);
+    let count = 0;
+    for (let index = 3; index < data.length; index += 4) {
+      if ((data[index] ?? 0) > 0) count++;
+    }
+    return count;
+  });
+}
+
 describe("Zoom", function () {
   before(async function () {
     await loadModules();
@@ -159,6 +190,73 @@ describe("Zoom", function () {
     expect(Math.abs(middle.x - centre)).toBeLessThanOrEqual(12);
   });
 
+  it("keeps the preview and the image's edges whole when zoomed and moved along", async function () {
+    await openEditor();
+    // Wider than the zoomed view shows.
+    await draw([
+      [0.08, 0.5],
+      [0.5, 0.5],
+      [0.92, 0.5],
+    ]);
+    await browser.waitUntil(async () => (await storedDrafts()).length === 1);
+    await browser.pause(200);
+    const usual = await previewWidth();
+    const inked = await previewInk();
+    await browser.keys("z");
+    await waitForStatus("Zoomed in");
+    await browser.pause(200);
+    expect(Math.abs((await previewWidth()).width - usual.width)).toBeLessThan(
+      1,
+    );
+    for (let step = 0; step < 8; step++) await browser.keys("ArrowRight");
+    await browser.pause(200);
+    const moved = await previewWidth();
+    expect(Math.abs(moved.width - usual.width)).toBeLessThan(1);
+    // Still the whole symbol, not the part in view.
+    expect(await previewInk()).toBeGreaterThan(inked * 0.9);
+    // The saved image is as wide as the preview said.
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    const saved = await browser.executeObsidian(async ({ app }) => {
+      const file = app.vault.getFileByPath("001.ink.png");
+      if (file === null) throw new Error("no saved symbol");
+      const bitmap = await window.inklineTest.canvas.decodePng(
+        new Uint8Array(await app.vault.readBinary(file)),
+      );
+      const { width } = bitmap;
+      bitmap.close();
+      return width;
+    });
+    const expected = (usual.width * lineBox.pxPerEm) / usual.fontSize;
+    expect(Math.abs(saved - expected)).toBeLessThanOrEqual(1.5);
+  });
+
+  it("keeps its middle through repeated zooming", async function () {
+    await openEditor();
+    const start = await tap(0.5, 0.5);
+    for (let step = 0; step < 20; step++) await browser.keys("z");
+    await waitForStatus("Zoomed out");
+    const end = await tap(0.5, 0.5);
+    expect(Math.abs(end.x - start.x)).toBeLessThanOrEqual(1);
+    // Where the window limits the zoom to a width of no whole number of
+    // pixels, as an 803-pixel surface in a 768-pixel window does, rounding
+    // moved the middle a pixel each time: the view alone, a hundred times.
+    const middle = await browser.execute(() => {
+      const view = new window.inklineTest.view.InkView(createEl("canvas"));
+      view.resize(803, 1);
+      const before = view.center;
+      for (let round = 0; round < 100; round++) {
+        view.heightLimit = 768 * 0.55;
+        view.magnified = true;
+        view.resize(803, 1);
+        view.magnified = false;
+        view.resize(803, 1);
+      }
+      return { before, after: view.center };
+    });
+    expect(middle.after).toBe(middle.before);
+  });
+
   it("keeps the zoom for the next symbol", async function () {
     await openEditor();
     await browser.keys("z");
@@ -168,16 +266,33 @@ describe("Zoom", function () {
       [0.4, 0.4],
       [0.6, 0.6],
     ]);
+    await browser.execute(() => {
+      document
+        .querySelector(".inkline-editor")
+        ?.setAttribute("data-inkline-first", "");
+    });
     await browser.keys(["Control", "Shift", "Enter"]);
-    // The first symbol is saved, and a blank editor opens for the next.
+    // The first editor gives way to a blank one for the next symbol.
     await browser.waitUntil(async () =>
-      (await symbolFiles()).includes("001.ink.png"),
+      browser.execute(() => {
+        const editors = document.querySelectorAll(".inkline-editor");
+        return (
+          editors.length === 1 &&
+          !(editors[0]?.hasAttribute("data-inkline-first") ?? true)
+        );
+      }),
     );
-    await waitForEditor();
-    await browser.waitUntil(async () => (await storedDrafts()).length === 0);
-    await browser.waitUntil(async () => (await zoomPressed()) === "true");
+    expect(await symbolFiles()).toEqual(["001.ink.png"]);
+    expect(await zoomPressed()).toBe("true");
     expect(Math.abs((await surfaceSize()).height - zoomed.height)).toBeLessThan(
       2,
     );
+    // And it saves a second symbol.
+    await draw([
+      [0.4, 0.6],
+      [0.6, 0.4],
+    ]);
+    await browser.keys(["Control", "Enter"]);
+    await browser.waitUntil(async () => (await symbolFiles()).length === 2);
   });
 });
