@@ -312,6 +312,11 @@ describe("Zoom", function () {
             saved: { left: saved.left, width: saved.record.box.width },
             any: inkIn(0, preview.width),
             total,
+            size: [preview.width, preview.height],
+            alpha: Array.from(
+              { length: data.length / 4 },
+              (_, pixel) => data[pixel * 4 + 3] ?? 0,
+            ).join(","),
             first: inkIn(0, tenth),
             last: inkIn(preview.width - tenth, preview.width),
           };
@@ -351,8 +356,10 @@ describe("Zoom", function () {
     }
     expect(result.distant.any).toBe(true);
     expect([result.apart.first, result.apart.last]).toEqual([true, true]);
-    // An erased dot leaves nothing behind in the preview, as in a save.
-    expect(result.erased.total).toBe(result.left.total);
+    // An erased dot leaves nothing behind in the preview, pixel for pixel,
+    // as in a save.
+    expect(result.erased.size).toEqual(result.left.size);
+    expect(result.erased.alpha).toBe(result.left.alpha);
   });
 
   it("keeps the zoom for the next symbol", async function () {
