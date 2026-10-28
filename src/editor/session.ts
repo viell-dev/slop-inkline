@@ -183,8 +183,9 @@ export class DrawingSession {
   }
   /** Whether strokes start and end on the grid. */
   snap = false;
-  /** The grid strokes' ends snap to, which the editor lays out on its font. */
-  grid: Grid = plainGrid;
+  #grid: Grid = plainGrid;
+  /** A grid laid out while a stroke was being drawn, for when it ends. */
+  #nextGrid: Grid | undefined;
   /** The last guess at a document's grid, for {@link gridOrigin}. */
   #guessed:
     { document: InkDocument; spacing: number; origin: number } | undefined;
@@ -192,6 +193,32 @@ export class DrawingSession {
   constructor(initial: InkDocument) {
     this.#history = new History({ document: initial, gridOrigin: undefined });
     this.#saved = initial;
+  }
+
+  /** The grid strokes' ends snap to, which the editor lays out on its font. */
+  get grid(): Grid {
+    return this.#grid;
+  }
+
+  /**
+   * Lays out another grid, as when the font is measured again. While a
+   * stroke is being drawn, it waits until the stroke ends, so that a stroke
+   * starts and ends on one grid, and the grid shown is the one it snaps to.
+   */
+  set grid(grid: Grid) {
+    if (this.#active === undefined) {
+      this.#grid = grid;
+      this.#nextGrid = undefined;
+    } else {
+      this.#nextGrid = grid;
+    }
+  }
+
+  /** Takes up a grid laid out while the stroke just ended was drawn. */
+  #takeNextGrid(): void {
+    if (this.#nextGrid === undefined) return;
+    this.#grid = this.#nextGrid;
+    this.#nextGrid = undefined;
   }
 
   /**
@@ -345,17 +372,21 @@ export class DrawingSession {
     const stroke = this.activeStroke;
     this.#active = undefined;
     this.#anchor = undefined;
-    if (stroke === undefined || stroke.points.length === 0) return;
-    this.#push({
-      ...this.document,
-      strokes: [...this.document.strokes, stroke],
-    });
+    if (stroke !== undefined && stroke.points.length > 0) {
+      // On the grid it was drawn on, which a waiting one then replaces.
+      this.#push({
+        ...this.document,
+        strokes: [...this.document.strokes, stroke],
+      });
+    }
+    this.#takeNextGrid();
   }
 
   /** Drops the stroke being drawn, as when the pointer is cancelled. */
   cancel(): void {
     this.#active = undefined;
     this.#anchor = undefined;
+    this.#takeNextGrid();
   }
 
   undo(): boolean {

@@ -416,6 +416,29 @@ describe("DrawingSession", () => {
     expect(points.slice(-2)).toEqual([42 * 16, 144 * 16]);
   });
 
+  it("keeps a stroke on the grid it started on when another is laid out", () => {
+    // As when the font loads while the pointer is down: a tap stays a dot.
+    const before: Grid = { spacing: 12.8125, rows: [96, 102.5, 108] };
+    const after: Grid = { spacing: 14, rows: [95, 101, 109] };
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.grid = before;
+    session.begin({ x: 100, y: 100 });
+    session.grid = after;
+    expect(session.grid).toBe(before);
+    session.end({ x: 100, y: 100 });
+    expect(session.document.strokes[0]?.points).toEqual([
+      102.5 * 16,
+      102.5 * 16,
+    ]);
+    // Then the grid laid out meanwhile takes over.
+    expect(session.grid).toBe(after);
+    session.begin({ x: 100, y: 100 });
+    session.grid = before;
+    session.cancel();
+    expect(session.grid).toBe(before);
+  });
+
   it("lines an opened drawing up with the grid the editor lays out", () => {
     // Taps on columns 14 pixels apart, through 3 pixels: 45 and 59.
     const tap = (x: number) =>
