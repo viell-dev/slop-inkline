@@ -48,6 +48,81 @@ export function strokeOutline(stroke: Stroke): Outline {
   );
 }
 
+/**
+ * The boxes a stroke's cuts take away, in pixels: past the line through each
+ * cut end, across the cut's direction, as far as the brush reaches from that
+ * end and a pixel more for its soft edge. Only the end's own ink goes there:
+ * {@link uncutRest} draws the rest of the stroke in them again.
+ */
+export function cutBoxes(stroke: Stroke): Bounds[] {
+  const { cut, points } = stroke;
+  if (cut === undefined) return [];
+  const stride = stroke.pressure ? 3 : 2;
+  const last = points.length - stride;
+  const reach = stroke.size / unitsPerPixel + 1;
+  const boxes: Bounds[] = [];
+  for (const [direction, at] of [
+    [cut.start, 0],
+    [cut.end, last],
+  ] as const) {
+    if (direction === undefined || at < 0) continue;
+    const x = (points[at] ?? 0) / unitsPerPixel;
+    const y = (points[at + 1] ?? 0) / unitsPerPixel;
+    const across = { left: x - reach, right: x + reach };
+    const along = { top: y - reach, bottom: y + reach };
+    boxes.push(
+      direction === "down"
+        ? { ...across, top: y, bottom: y + reach }
+        : direction === "up"
+          ? { ...across, top: y - reach, bottom: y }
+          : direction === "right"
+            ? { ...along, left: x, right: x + reach }
+            : { ...along, left: x - reach, right: x },
+    );
+  }
+  return boxes;
+}
+
+/**
+ * A cut stroke without the ends that are cut: its points, leaving out from
+ * each cut end those less than twice the brush's width from it along the
+ * stroke, so that what is left, round ends and all, stays clear of the cut
+ * boxes but for other parts of the stroke that pass through them, as when it
+ * comes back near an end. Undefined when nothing is left, or the stroke has
+ * no cuts.
+ */
+export function uncutRest(stroke: Stroke): Stroke | undefined {
+  const { cut, points } = stroke;
+  if (cut === undefined) return undefined;
+  const stride = stroke.pressure ? 3 : 2;
+  const count = points.length / stride;
+  const trim = 2 * stroke.size;
+  /** The first point, stepping by `step` from `at`, at least `trim` along. */
+  const beyond = (at: number, step: number): number => {
+    let along = 0;
+    let index = at;
+    while (along < trim) {
+      const next = index + step;
+      if (next < 0 || next >= count) return next;
+      along += Math.hypot(
+        (points[next * stride] ?? 0) - (points[index * stride] ?? 0),
+        (points[next * stride + 1] ?? 0) - (points[index * stride + 1] ?? 0),
+      );
+      index = next;
+    }
+    return index;
+  };
+  const first = cut.start === undefined ? 0 : beyond(0, 1);
+  const last = cut.end === undefined ? count - 1 : beyond(count - 1, -1);
+  if (first > last || first >= count || last < 0) return undefined;
+  return {
+    tool: stroke.tool,
+    size: stroke.size,
+    pressure: stroke.pressure,
+    points: points.slice(first * stride, (last + 1) * stride),
+  };
+}
+
 /** The outline's bounding box, or undefined when it has no corners. */
 export function outlineBounds(outline: Outline): Bounds | undefined {
   if (outline.length === 0) return undefined;

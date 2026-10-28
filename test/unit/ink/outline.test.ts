@@ -3,10 +3,12 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Stroke } from "../../../src/format/record.ts";
 import {
+  cutBoxes,
   outlineBounds,
   outlineInput,
   strokeOutline,
   traceOutline,
+  uncutRest,
   type PathSink,
 } from "../../../src/ink/outline.ts";
 import { pinnedStrokes } from "../../fixtures/outline/strokes.ts";
@@ -143,5 +145,61 @@ describe("traceOutline", () => {
       closePath: () => calls.push("Z"),
     });
     expect(calls).toEqual([]);
+  });
+});
+
+describe("cutBoxes", () => {
+  it("takes a box past the line through each cut end, a brush and a pixel deep", () => {
+    // Right along a 2 px brush from (1, 1) to (5, 1) px, with pressure.
+    const stroke: Stroke = {
+      tool: "pen",
+      size: 32,
+      pressure: true,
+      points: [16, 16, 128, 80, 16, 255],
+      cut: { start: "left", end: "right" },
+    };
+    expect(cutBoxes(stroke)).toEqual([
+      { left: -2, right: 1, top: -2, bottom: 4 },
+      { left: 5, right: 8, top: -2, bottom: 4 },
+    ]);
+  });
+
+  it("takes nothing from a stroke without cuts", () => {
+    expect(
+      cutBoxes({ tool: "pen", size: 32, pressure: false, points: [16, 16] }),
+    ).toEqual([]);
+  });
+});
+
+describe("uncutRest", () => {
+  // Down a 1 px brush, one point a pixel, for 10 px.
+  const points = Array.from({ length: 11 }, (_, at) => [16, at * 16]).flat();
+  const stroke: Stroke = { tool: "pen", size: 16, pressure: false, points };
+
+  it("leaves out the points within twice the brush's width of each cut end", () => {
+    expect(uncutRest({ ...stroke, cut: { start: "up" } })?.points).toEqual(
+      points.slice(2 * 2),
+    );
+    expect(uncutRest({ ...stroke, cut: { end: "down" } })?.points).toEqual(
+      points.slice(0, -2 * 2),
+    );
+    expect(
+      uncutRest({ ...stroke, cut: { start: "up", end: "down" } }),
+    ).toMatchObject({ tool: "pen", size: 16, points: points.slice(4, -4) });
+  });
+
+  it("keeps a point's pressure, and leaves nothing of a short stroke", () => {
+    const pressed: Stroke = {
+      tool: "eraser",
+      size: 16,
+      pressure: true,
+      points: [0, 0, 9, 0, 32, 9, 0, 64, 9, 0, 96, 9],
+      cut: { start: "up" },
+    };
+    expect(uncutRest(pressed)?.points).toEqual([0, 32, 9, 0, 64, 9, 0, 96, 9]);
+    expect(
+      uncutRest({ ...stroke, size: 96, cut: { start: "up", end: "down" } }),
+    ).toBeUndefined();
+    expect(uncutRest(stroke)).toBeUndefined();
   });
 });

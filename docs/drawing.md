@@ -68,6 +68,14 @@ so cells there are square, and cells between other lines are close to square. No
 even grid could meet every line of every font. In a font such as Inter, at the
 default grid size, the cap height then lies 7 cells above the baseline.
 
+On the grid, a stroke's ends stop flush with the grid line they lie on, instead
+of rounding past it: the line across the stroke, a row for a stroke that comes
+in at 45° or steeper, as the legs of an A come down to the baseline, and a
+column for a flatter one. So a stroke drawn down to the baseline sits on it,
+with nothing below to erase. A dot stays round, as does an end drawn with the
+grid off. The eraser's ends are cut the same way, so erasing up to a line leaves
+a straight edge there.
+
 The grid keeps its place through saves, and on a symbol you open again it lines
 up with most of its strokes, if the grid has the same size as when you drew
 them. While **Move** is on, Shift with an arrow key moves a picture to trace

@@ -138,11 +138,21 @@ Each stroke is an object:
 | `size`     | integer | The stroke's diameter, in units.                                                      |
 | `pressure` | boolean | Whether each point carries pressure, as from a pen in versions before 0.1.1-rc.8.     |
 | `points`   | array   | The points in drawing order, flattened: `x, y` per point, or `x, y, p` with pressure. |
+| `cut`      | object  | Optional. The ends cut flat at a line through them, as below.                         |
 
 Pressure `p` is an integer from 0 to 255. A stroke has at least one point; a
-single point is a dot. Inkline writes `false` for every new stroke, as it no
-longer records pen pressure, but reads and draws strokes with pressure as
-before, and saving a symbol again keeps them as they are.
+single point is a dot.
+
+A stroke's `cut` has an optional `start` and an optional `end`, for its first
+and last point, each `"up"`, `"down"`, `"left"`, or `"right"`: the way from that
+point across the line through it, horizontal for `"up"` and `"down"` and
+vertical for `"left"` and `"right"`, past which the end's ink is cut away.
+Inkline writes them for strokes drawn on its grid, whose ends lie on grid lines,
+so that they stop flush with the line: a stroke that comes down to the baseline
+has the end `"down"`. An empty `cut` is the same as none. Inkline writes `false`
+for every new stroke, as it no longer records pen pressure, but reads and draws
+strokes with pressure as before, and saving a symbol again keeps them as they
+are.
 
 The base layer is an object:
 
@@ -183,7 +193,29 @@ of the image's size, with the record's coordinates as they are:
    high-quality image smoothing.
 2. Each stroke in order: its outline, filled in the grey, over what is there for
    `"pen"` and removing it for `"eraser"` (the canvas compositing operations
-   `source-over` and `destination-out`).
+   `source-over` and `destination-out`). A stroke with a `cut` is filled in two
+   parts: its outline everywhere except in a box for each cut end, and then,
+   inside those boxes only, the outline of the rest of the stroke, below.
+
+For a cut end at the point (`x / 16`, `y / 16`) pixels, with reach
+`r = size / 16 + 1` pixels, the box spans:
+
+| Cut       | Across             | Down               |
+| --------- | ------------------ | ------------------ |
+| `"down"`  | `x − r` to `x + r` | `y` to `y + r`     |
+| `"up"`    | `x − r` to `x + r` | `y − r` to `y`     |
+| `"right"` | `x` to `x + r`     | `y − r` to `y + r` |
+| `"left"`  | `x − r` to `x`     | `y − r` to `y + r` |
+
+The box reaches past the end's round cap, a radius of `size / 32` pixels, with a
+pixel to spare for the soft edge. The end's own ink there is the spill the cut
+removes, but another part of the stroke can pass through the box, as when it
+comes back near its end. So the rest of the stroke is drawn in the boxes again:
+the stroke's points without, from each cut end, those whose distance from it
+along the stroke, point to point, is less than `2 × size` units. It is drawn
+with the same options and its own round ends, which lie clear of the boxes when
+the stroke comes straight into its cut ends, and not at all when no points are
+left.
 
 A stroke's outline is the polygon that
 [perfect-freehand](https://github.com/steveruizok/perfect-freehand) 1.2.3's
@@ -222,10 +254,12 @@ stop opening or look different. From the first stable release on, the rules
 below hold for the format that release writes.
 
 A reader must ignore fields it does not know, so that a later version can add
-optional fields without changing `version`. A change that a version 1 reader
-could not handle correctly increases `version`. A reader must not edit a file
-whose record has a higher version than it knows, since writing it would lose
-what that version recorded; it may still show the file's pixels.
+optional fields without changing `version`. Stroke `cut` was added so, in
+0.3.0-alpha.5: earlier versions open files with it and show their stored pixels,
+but draw those ends round again once they edit the symbol. A change that a
+version 1 reader could not handle correctly increases `version`. A reader must
+not edit a file whose record has a higher version than it knows, since writing
+it would lose what that version recorded; it may still show the file's pixels.
 
 The files in [test/fixtures/format](../test/fixtures/format) pin what files hold
 now, and the tests read them on every change. Until the first stable release, a

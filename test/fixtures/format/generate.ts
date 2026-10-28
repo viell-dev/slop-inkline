@@ -50,6 +50,26 @@ const fixtures: Record<string, InkRecord> = {
     strokes: [{ tool: "eraser", size: 64, pressure: false, points: [64, 64] }],
     base: { x: 160, y: 320, scale: 2, png: baseImage() },
   },
+  // Strokes drawn on the grid, cut flat where they end on it.
+  "v1-cuts": {
+    box: { pxPerEm: 128, width: 48, height: 192, baseline: 144 },
+    strokes: [
+      {
+        tool: "pen",
+        size: 96,
+        pressure: false,
+        points: [128, 512, 128, 2304],
+        cut: { start: "up", end: "down" },
+      },
+      {
+        tool: "eraser",
+        size: 96,
+        pressure: false,
+        points: [0, 1600, 640, 1600],
+        cut: { end: "right" },
+      },
+    ],
+  },
 };
 
 async function exists(file: string): Promise<boolean> {
