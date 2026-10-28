@@ -34,7 +34,8 @@ describes.
 Saving writes over a symbol's file, so every note that shows it shows the new
 drawing. When you edit a symbol that your notes use more than once and change
 its drawing, the first save asks **Change** the symbol **everywhere?**, saying
-how many times and in how many notes it is used:
+how many times and in how many notes it is used, as Obsidian's link index counts
+them; a canvas Obsidian has not indexed yet may be missing from the count:
 
 - **Replace** saves over the symbol, which changes it in every note. The editor
   doesn't ask again until it closes.

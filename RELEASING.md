@@ -128,13 +128,13 @@ On a branch from `main`:
    `manifest.json`. Do it here, not in a pull request of its own: until the
    release, `manifest.json` describes the published version, and the unit tests
    check its numeric compatibility entry when preparing a plain release.
-   Candidates are checked against their declared minimum in the host matrix.
+   Pre-releases are checked against their declared minimum in the host matrix.
 2. Run `npm version <version> --no-git-tag-version`. It sets the version in
    `package.json` and `package-lock.json`, then `scripts/release.ts sync` copies
    it to `manifest.json` and, for a plain release, maps it to the manifest's
    `minAppVersion` in `versions.json`, which Obsidian reads to offer older
-   versions to older apps, and stages both files. RCs do not enter this numeric
-   directory map; earlier releases keep their entries.
+   versions to older apps, and stages both files. Pre-releases do not enter this
+   numeric directory map; earlier releases keep their entries.
 3. Rename `## Unreleased` in `CHANGELOG.md` to `## <version> - <YYYY-MM-DD>`,
    with the planned release date, and add an empty `## Unreleased` above it. The
    section becomes the release notes, so write it for users.

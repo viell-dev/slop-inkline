@@ -2414,9 +2414,9 @@ export class InkEditorModal extends Modal {
    * says. A question already open answers for every save that waits on it.
    */
   #mayReplace(): Promise<boolean> {
-    if (this.#askingReplace !== undefined) return this.#askingReplace;
     const uses = this.#sharedUses();
     if (uses === undefined) return Promise.resolve(true);
+    if (this.#askingReplace !== undefined) return this.#askingReplace;
     const name = this.#displayName;
     const asking = new Promise<boolean>((resolve) => {
       this.#ask(
@@ -2451,7 +2451,9 @@ export class InkEditorModal extends Modal {
   /** Saves, keeping the editor open. */
   async #saveOnly(): Promise<void> {
     if (!(await this.#mayReplace())) return;
-    if (await this.#applyPending()) await this.#save();
+    if (!(await this.#applyPending())) return;
+    // Ink made just now is a change too, if the preview had not shown it yet.
+    if (await this.#mayReplace()) await this.#save();
   }
 
   /**
@@ -2511,6 +2513,7 @@ export class InkEditorModal extends Modal {
   async #saveAndClose(): Promise<void> {
     if (!(await this.#mayReplace())) return;
     if (!(await this.#applyPending())) return;
+    if (!(await this.#mayReplace())) return;
     if (!(await this.#save(() => void this.#saveAndClose()))) return;
     if (this.#unsaved) {
       this.#announce(this.#partlySaved);
