@@ -24,7 +24,10 @@ const uses: Record<string, string> = {
   "Gates.md": "The gate shows ![[Signs/tower.ink.png]].\n",
 };
 
-/** Writes notes, and waits until Obsidian has indexed their links. */
+/**
+ * Writes notes, each linking to symbols already in the vault, and waits until
+ * Obsidian has resolved a link from each, so that a count of uses is ready.
+ */
 async function writeNotes(notes: Record<string, string>): Promise<void> {
   await browser.executeObsidian(async ({ app }, written) => {
     for (const [path, text] of Object.entries(written)) {
@@ -34,8 +37,10 @@ async function writeNotes(notes: Record<string, string>): Promise<void> {
   await browser.waitUntil(() =>
     browser.executeObsidian(
       ({ app }, paths) =>
-        paths.every(
-          (path) => app.metadataCache.resolvedLinks[path] !== undefined,
+        paths.every((path) =>
+          Object.values(app.metadataCache.resolvedLinks[path] ?? {}).some(
+            (count) => count > 0,
+          ),
         ),
       Object.keys(notes),
     ),
