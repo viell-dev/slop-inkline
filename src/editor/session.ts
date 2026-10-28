@@ -92,10 +92,9 @@ function withinSpacing(x: number, spacing: number): number {
  * apart, in pixels within one spacing, from where its strokes start and end;
  * `fallback` for a document with no strokes. Each stroke's start and end,
  * erasers' too, mark the place within a spacing where they lie, a one-point
- * stroke's once. The place
- * marked most often wins; of places marked equally often, the one that
- * reached that count first in stroke order does, so with no place marked
- * twice, it is where the first stroke starts.
+ * stroke's once. The place marked most often wins; of places marked equally
+ * often, the one that reached that count first in stroke order does, so with
+ * no place marked twice, it is where the first stroke starts.
  *
  * Strokes drawn on the grid start and end on its columns, and a save moves
  * the drawing by whole pixels, so a drawing made on the grid lines up with it

@@ -90,6 +90,17 @@ export const defaultGridCells = 5;
 const assumedXHeight = lineBox.pxPerEm / 2;
 
 /**
+ * The x-heights the grid follows, in pixels: from a quarter of an em to a
+ * whole one, which text fonts keep within, so that a font that measures
+ * strangely, as one without an x might, never makes a grid of thousands of
+ * rows, nor one of a single cell.
+ */
+const gridXHeights = {
+  min: lineBox.pxPerEm / 4,
+  max: lineBox.pxPerEm,
+} as const;
+
+/**
  * The grid for a font whose x-height is `xHeight` pixels, with `cells` cells
  * across that height. Its rows pass through the baseline and through each of
  * `lines`, the font's lines chosen to show, and divide the space between two
@@ -97,7 +108,8 @@ const assumedXHeight = lineBox.pxPerEm / 2;
  * own; beyond the outermost, they go on that far apart to the line box's
  * edges. Text-sized symbols can then start and end strokes on every chosen
  * line, which no evenly spaced grid could do for every font. Its columns are
- * as far apart as the x-height's rows, rounded to whole units.
+ * as far apart as the x-height's rows, rounded to whole units. An x-height
+ * outside a quarter of an em to a whole one counts as the nearer of those.
  */
 export function fontGrid(
   lines: readonly Guide[],
@@ -110,9 +122,11 @@ export function fontGrid(
         Math.max(gridCellRange.min, Math.round(cells)),
       )
     : defaultGridCells;
-  const target =
-    (Number.isFinite(xHeight) && xHeight > 0 ? xHeight : assumedXHeight) /
-    count;
+  const followed =
+    Number.isFinite(xHeight) && xHeight > 0
+      ? Math.min(gridXHeights.max, Math.max(gridXHeights.min, xHeight))
+      : assumedXHeight;
+  const target = followed / count;
   const spacing = Math.max(
     1 / unitsPerPixel,
     Math.round(target * unitsPerPixel) / unitsPerPixel,

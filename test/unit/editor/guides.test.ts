@@ -127,6 +127,16 @@ describe("fontGrid", () => {
     expect(fontGrid([], Number.NaN, 5).spacing).toBe(205 / 16);
     expect(fontGrid([], 0, 5).spacing).toBe(205 / 16);
   });
+
+  it("keeps the cells within a quarter of an em to a whole one of x-height", () => {
+    // A font that measures an x-height of a pixel draws no grid of
+    // thousands of rows: it counts as a quarter of an em, 32 pixels.
+    const tiny = fontGrid([{ name: "x-height", y: 143 }], 1, 10);
+    expect(tiny.spacing).toBe(3.1875);
+    expect(tiny.rows.length).toBeLessThanOrEqual(192 / 3 + 2);
+    // And one taller than an em counts as an em.
+    expect(fontGrid([], 400, 2).spacing).toBe(64);
+  });
 });
 
 describe("cropSpan", () => {
