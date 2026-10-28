@@ -53,6 +53,31 @@
   color: var(--text-on-accent);
 }
 
+/*
+ * A button's icon, from Obsidian's own set, beside its text or alone, as the
+ * Editor buttons setting chooses. The icon takes the button's colour, so it
+ * follows the theme and the pressed and disabled states.
+ */
+.inkline-editor button.inkline-with-icon,
+.inkline-editor button.inkline-icon-only {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-4-1);
+}
+
+.inkline-editor button.inkline-icon-only {
+  padding-inline: var(--size-4-2);
+}
+
+.inkline-button-icon {
+  display: flex;
+}
+
+.inkline-button-icon .svg-icon {
+  width: var(--icon-s);
+  height: var(--icon-s);
+}
+
 .inkline-drawing {
   position: relative;
   overflow: hidden;

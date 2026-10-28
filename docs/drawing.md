@@ -6,7 +6,9 @@ The editor opens over the note for a new symbol, from **Inkline: Insert
 symbol**, or for one you have, from **Edit symbol**. Its parts, from the top:
 
 - the **name field**, which holds the symbol's name;
-- the **toolbar**, with each tool's shortcut in its tooltip;
+- the **toolbar**, whose buttons show an icon and a name, with each tool's
+  shortcut in its tooltip; **Editor buttons** in the [settings](./settings.md)
+  shows icons only or text only;
 - the **picture bar**, for a picture you trace over;
 - the **drawing area**, one line of text tall, with its guides;
 - a **line of text** that shows the symbol at its real size as you draw;

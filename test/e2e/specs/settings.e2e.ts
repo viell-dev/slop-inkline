@@ -131,6 +131,7 @@ describe("Inkline settings", function () {
     expect(await setting("Brush size").$("select").getValue()).toBe("1");
     expect(await setting("Symbol size").$("input").getValue()).toBe("100");
     expect(await setting("Grid size").$("input").getValue()).toBe("5");
+    expect(await setting("Editor buttons").$("select").getValue()).toBe("both");
     // Pen pressure was removed with pen-device support (#101).
     expect(await setting("Pen pressure").isExisting()).toBe(false);
     for (const name of [
@@ -203,6 +204,26 @@ describe("Inkline settings", function () {
     await setting("Brush size").$("select").selectByAttribute("value", "2");
     await waitForStored({ brushSize: 2, symbolFolder: "Signs/Script" });
     await closeSettings();
+  });
+
+  it("stores Editor buttons from its dropdown and applies it to a new editor", async function () {
+    await openSettings();
+    const select = setting("Editor buttons").$("select");
+    expect(await select.getValue()).toBe("both");
+    const choices = await select
+      .$$("option")
+      .map(async (option) => option.getText());
+    expect(choices).toEqual(["Icons and text", "Icons only", "Text only"]);
+    await select.selectByAttribute("value", "icons");
+    await waitForStored({ buttonLabels: "icons" });
+    await closeSettings();
+    await openAtMarker("Editor.md", "HERE");
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await waitForEditor();
+    const pen = browser.$('[data-inkline-button="pen"]');
+    expect(await pen.$(".inkline-button-icon svg").isExisting()).toBe(true);
+    expect((await pen.getText()).trim()).toBe("");
+    expect(await pen.getAttribute("aria-label")).toBe("Pen (P)");
   });
 
   it("keeps drawing defaults across reload and applies them to a new editor", async function () {

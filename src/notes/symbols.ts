@@ -610,6 +610,7 @@ function newSymbol(
     tools: tools ?? startingTools(host.settings()),
     guideLines: () => shownGuides(host.settings()),
     gridCells: () => host.settings().gridCells,
+    buttonLabels: host.settings().buttonLabels,
     next: (chosen) => {
       if (after === undefined || !host.alive()) {
         // No editor takes the picture over.
@@ -874,6 +875,7 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
     tools: startingTools(host.settings()),
     guideLines: () => shownGuides(host.settings()),
     gridCells: () => host.settings().gridCells,
+    buttonLabels: host.settings().buttonLabels,
     name: symbolStem(file.name) ?? file.basename,
     document: opened.document,
     ...(opened.base === undefined ? {} : { base: opened.base }),

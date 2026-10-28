@@ -7,6 +7,7 @@ import {
   ConfirmationModal,
   Modal,
   Notice,
+  setIcon,
   type App,
   type EventRef,
   type TAbstractFile,
@@ -55,6 +56,7 @@ import {
   type DraftStore,
   type DraftTarget,
 } from "./drafts.ts";
+import { buttonFace, type ButtonLabels } from "./buttons.ts";
 import { FileWatch, type Reading } from "./disk.ts";
 import {
   contrastBrushCursor,
@@ -341,6 +343,8 @@ export interface EditorOptions {
    * out; {@link defaultGridCells} when undefined.
    */
   readonly gridCells?: () => number;
+  /** What the buttons show, as the editor opens; icons and text if undefined. */
+  readonly buttonLabels?: ButtonLabels;
   /**
    * Asks which symbol to start from and opens it, for a new symbol drawn as
    * a variant of another; resolves to undefined when none is chosen or it
@@ -1043,9 +1047,10 @@ export class InkEditorModal extends Modal {
   }
 
   /**
-   * Adds a toolbar button. Obsidian shows a button's `aria-label` as its
-   * tooltip, so that one attribute is its name and its tooltip: `label`,
-   * which holds the visible `text`, then any `description`, then the
+   * Adds a toolbar button, showing its icon, its `text`, or both, as the
+   * settings choose. Obsidian shows a button's `aria-label` as its tooltip,
+   * so that one attribute is its name and its tooltip under every choice:
+   * `label`, which holds the `text`, then any `description`, then the
    * shortcut.
    */
   #addButton(
@@ -1059,9 +1064,22 @@ export class InkEditorModal extends Modal {
   ): void {
     const name = description === undefined ? label : `${label}: ${description}`;
     const button = new ButtonComponent(parent)
-      .setButtonText(text)
       .setTooltip(shortcut === undefined ? name : `${name} (${shortcut})`)
       .onClick(action);
+    const face = buttonFace(id, this.#options.buttonLabels ?? "both");
+    if (face.icon === undefined) {
+      button.setButtonText(text);
+    } else {
+      button.buttonEl.addClass(
+        face.text ? "inkline-with-icon" : "inkline-icon-only",
+      );
+      const icon = button.buttonEl.createSpan({
+        cls: "inkline-button-icon",
+        attr: { "aria-hidden": "true" },
+      });
+      setIcon(icon, face.icon);
+      if (face.text) button.buttonEl.createSpan({ text });
+    }
     button.buttonEl.dataset.inklineButton = id;
     this.#buttons.set(id, button);
   }

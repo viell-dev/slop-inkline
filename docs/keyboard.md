@@ -70,9 +70,10 @@ and returns focus to the drawing area.
 
 ## Accessibility
 
-- Every control has a label which screen readers read. Toolbar tooltips also
-  include their shortcuts. The pen, the eraser, the brush sizes, the guides, the
-  grid, Move, Make ink, and Light ink say whether they are on.
+- Every control has a label which screen readers read, whether its button shows
+  an icon, a name, or both. Toolbar tooltips also include their shortcuts. The
+  pen, the eraser, the brush sizes, the guides, the grid, Move, Make ink, and
+  Light ink say whether they are on.
 - The drawing area keeps its accessible name without a hover tooltip.
 - The editor's status line, such as "Saving…", "Saved", or "Not saved" and why,
   is announced as it changes.

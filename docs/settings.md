@@ -10,6 +10,7 @@ Open **Settings → Inkline** to change these choices:
 | Symbol folder  | Empty                       | The folder in the vault for new symbols. Empty puts them where new attachments go.        |
 | Brush size     | M, the second of four sizes | The starting size for both Pen and Eraser.                                                |
 | Grid size      | 5 cells                     | How many of the grid's cells span the font's x-height, from 2 to 10.                      |
+| Editor buttons | Icons and text              | What the editor's buttons show: icons and text, icons only, or text only.                 |
 | Guides         | Shown, with every line      | Whether an editor starts with the guides shown, and which font lines they show.           |
 
 Size and colour apply at once to existing symbols in open notes, including
@@ -35,6 +36,13 @@ each font line turned on under **Guides**, whether the guides are shown or not,
 and divide the space between two lines evenly;
 [Drawing](./drawing.md#straight-lines-and-the-grid) explains the grid. Both
 apply the next time the drawing area redraws.
+
+**Editor buttons** chooses what the editor's buttons show when an editor opens:
+**Icons and text**, an icon from Obsidian's own set beside each button's name,
+as by default; **Icons only**, which keeps the toolbar to one row in a wide
+editor; or **Text only**. The brush sizes keep their letters, and the bar that
+**Make ink** opens keeps its words, under every choice. Each button's tooltip
+still gives its name and shortcut, and screen readers read the same names.
 
 Settings are kept in the vault's Inkline plugin data and survive reloading
 Obsidian. Unreadable or invalid preferences use defaults. If a write fails, a
