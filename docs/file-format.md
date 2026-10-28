@@ -214,15 +214,23 @@ canvases, so their grey can vary by a step or two; the alpha is what counts.
 
 ## Compatibility
 
+Until Inkline's first stable release, this format is a draft, as every release
+so far is an alpha. It can change in any way a feature needs, with or without a
+new `version`, and a later alpha need not open files an earlier one wrote;
+Inkline converts them where that is cheap, and the changelog says which files
+stop opening or look different. From the first stable release on, the rules
+below hold for the format that release writes.
+
 A reader must ignore fields it does not know, so that a later version can add
 optional fields without changing `version`. A change that a version 1 reader
 could not handle correctly increases `version`. A reader must not edit a file
 whose record has a higher version than it knows, since writing it would lose
 what that version recorded; it may still show the file's pixels.
 
-Inkline keeps reading every version 1 file. The files in
-[test/fixtures/format](../test/fixtures/format) pin what version 1 files hold,
-and its tests read them on every change.
+The files in [test/fixtures/format](../test/fixtures/format) pin what files hold
+now, and the tests read them on every change. Until the first stable release, a
+change to the format changes them in the same pull request; from then on,
+Inkline keeps reading every file of the format released, and they never change.
 
 A record whose geometry differs from what version 1 writes, as another tool may
 write it, is still valid. Inkline edits it by scaling it to 128 pixels per em

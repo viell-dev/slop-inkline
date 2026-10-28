@@ -25,9 +25,12 @@ limits.
 ## Install the ZIP
 
 1. Open the [releases page](https://github.com/viell-dev/slop-inkline/releases)
-   and download **inkline-&lt;version&gt;.zip** from the release's **Assets**. A
-   version such as `0.1.1-rc.2` is a release candidate for testing. GitHub's
-   **Source code** archives contain source files, not the built plugin.
+   and download **inkline-&lt;version&gt;.zip** from the release's **Assets**.
+   Take the highest version number: GitHub can list a pre-release numbered 10 or
+   more out of order. Every release so far is a pre-release, an alpha such as
+   `0.3.0-alpha.1`: its features and its file format can still change, and a
+   later one may not open symbols an earlier one saved. GitHub's **Source code**
+   archives contain source files, not the built plugin.
 2. Extract the ZIP into your vault's `.obsidian/plugins/` directory. The ZIP
    contains its own `inkline/` folder, so the result must be:
 

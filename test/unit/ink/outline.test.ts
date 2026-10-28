@@ -86,8 +86,9 @@ describe("strokeOutline", () => {
   });
 
   // The pinned outlines change only when perfect-freehand or the options
-  // change, which would change how saved symbols look when reopened. A
-  // deliberate change needs a new pinned file and a format note.
+  // change, which would change how saved symbols look when reopened. Before
+  // the first stable release, a deliberate change updates this file with a
+  // changelog note; from then on, it needs a new pinned file and a format note.
   it("matches the pinned outlines", async () => {
     const pinned: unknown = JSON.parse(
       await readFile(path.join(fixtures, "v1-outlines.json"), "utf8"),

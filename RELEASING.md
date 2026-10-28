@@ -10,17 +10,33 @@ attests their build provenance, and publishes the loose files and ZIP with a
 replaced: a correction gets a new version. The repository's immutable releases
 setting enforces this for published releases.
 
-Use SemVer versions without a `v` prefix or build metadata. Release candidates
-use a suffix such as `0.1.1-rc.1` and the GitHub prerelease flag; plain versions
-such as `0.2.0` are ordinary releases. Number a candidate for the version it
-would become: once candidates add features, not only fixes, the next one moves
-to the next minor version, as `0.1.1-rc.10` was followed by `0.2.0-rc.1`.
+Use SemVer versions without a `v` prefix or build metadata. Pre-releases carry
+the GitHub prerelease flag and the usual SemVer stages, named for the version
+they lead to:
+
+- **alpha**, as `0.3.0-alpha.1`: features still arrive and change, and the
+  [file format](docs/file-format.md#compatibility) is a draft, so a later alpha
+  need not open files an earlier one wrote. By the owner's decision of
+  2026-10-28, every pre-release before the first stable release is an alpha.
+- **beta**, as `1.0.0-beta.1`: the release's features are complete; only fixes
+  follow. A beta that needs a new feature gives way to an alpha of the next
+  minor version.
+- **rc**, as `1.0.0-rc.1`: a build meant to become that release unchanged, for
+  its last checks, including the human pass described below.
+
+Plain versions such as `1.0.0` are stable releases. Versions never go backwards
+in SemVer order: after `0.2.0-rc.1`, the alphas went on as `0.3.0-alpha.1`, as
+`0.2.0-alpha.1` would come before it. The `0.1.1-rc` and `0.2.0-rc` pre-releases
+predate these stages and were alphas in all but name.
+
 GitHub's Releases page and API listed `0.1.1-rc.10` between `rc.4` and `rc.3`,
-although its tag, dates, and SemVer order are right; nothing here relies on that
-order, and the Pages workflow sorts releases by publication time. GitHub-only
-candidates are installed manually from the ZIP, with no third-party installer
-recommendation. The future community-directory release must use a plain `x.y.z`
-version, as Obsidian's
+although its tag, dates, and SemVer order are right, and may do the same with
+any pre-release numbered 10 or more. Nothing here relies on that order: the
+Pages workflow sorts releases by publication time, and the
+[install guide](docs/install.md) tells users to compare version numbers.
+GitHub-only pre-releases are installed manually from the ZIP, with no
+third-party installer recommendation. The future community-directory release
+must use a plain `x.y.z` version, as Obsidian's
 [submission requirements](https://docs.obsidian.md/Plugins/Releasing/Submit%20your%20plugin)
 specify. Directory submission still needs the owner's decision.
 
