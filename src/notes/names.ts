@@ -175,6 +175,28 @@ export function nextNumberName(taken: readonly string[]): string {
 }
 
 /**
+ * The name for a copy of the symbol named `own`, in a folder that holds the
+ * files named `taken`: the next free number for a number name, as `004`; for
+ * another, `own` with the lowest number from 2 after a space that no symbol
+ * there has, in any letter case, as `tower 2`, or the next free number when
+ * that would be too long for a file.
+ */
+export function copyName(own: string, taken: readonly string[]): string {
+  const stems = taken
+    .map((name) => symbolStem(name))
+    .filter((stem): stem is string => stem !== undefined);
+  if (!/^\d+$/.test(own)) {
+    const used = new Set(stems.map((stem) => stem.toLowerCase()));
+    for (let number = 2; ; number++) {
+      const choice = chooseName(`${own} ${String(number)}`);
+      if (choice.kind !== "name") break;
+      if (!used.has(choice.name.toLowerCase())) return choice.name;
+    }
+  }
+  return nextNumberName(stems);
+}
+
+/**
  * An image embed from the link Obsidian generates for a file: the `!` added,
  * and any Markdown alt text or wiki alias removed, since Obsidian reads a
  * number there, such as a symbol named `001`, as a width.

@@ -8,6 +8,15 @@ section is also its
 
 ## Unreleased
 
+### Added
+
+- Saving a changed symbol that your notes use more than once asks first whether
+  to **Replace** it everywhere or **Save as new**, or to keep editing. Save as
+  new makes a new symbol in the same folder, named as you typed or after the
+  original, as `tower 2`, and leaves the original and every note unchanged; the
+  editor goes on with the new symbol. Closing with unsaved changes asks the same
+  in one question, with Discard.
+
 ## 0.2.0-rc.1 - 2026-10-28
 
 This candidate follows the rc.2 report that the grid met the baseline but none

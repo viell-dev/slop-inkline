@@ -24,6 +24,35 @@ a click outside it, asks **Save this symbol?**:
 
 A changed name is a change, and so is ink that Make ink is previewing.
 
+For a symbol your notes use more than once, whose drawing changed, closing asks
+**Save the changes to** the symbol instead, with **Replace**, **Save as new**,
+**Discard**, and **Keep drawing**, as
+[the next section](#changing-a-symbol-used-elsewhere) describes.
+
+## Changing a symbol used elsewhere
+
+Saving writes over a symbol's file, so every note that shows it shows the new
+drawing. When you edit a symbol that your notes use more than once and change
+its drawing, the first save asks **Change** the symbol **everywhere?**, saying
+how many times and in how many notes it is used:
+
+- **Replace** saves over the symbol, which changes it in every note, as before.
+  The editor doesn't ask again until it closes.
+- **Save as new** saves the drawing as a new symbol in the same folder and
+  leaves the original symbol, and every note, as they were. The new symbol takes
+  the name in the name field, if you changed it, or else the original's name
+  with the lowest free number after it, as `tower 2`, or the next number for a
+  numbered symbol. The editor goes on editing the new symbol, and a notice says
+  that the original is unchanged. Nothing is inserted: add the new symbol where
+  you want it with the [insert trigger](./notes.md#insert-a-symbol-you-have) or
+  the library.
+- **Keep editing** saves nothing and goes back to the drawing.
+
+A symbol used once, or not at all, saves without asking, and so does a save that
+only renames a symbol, since links follow a rename. A name that another symbol
+in the folder has, in any letter case, stops the save with the reason, and
+nothing is written.
+
 ## Drafts after a crash
 
 After each finished stroke, undo, redo, or clearing, and each change of name,

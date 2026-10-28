@@ -6,6 +6,7 @@ import {
   chooseRename,
   embedFromLink,
   encodePath,
+  copyName,
   nextNumberName,
   symbolStem,
 } from "../../../src/notes/names.ts";
@@ -15,6 +16,32 @@ describe("symbolStem", () => {
     expect(symbolStem("𐎠.ink.png")).toBe("𐎠");
     expect(symbolStem("Water.INK.PNG")).toBe("Water");
     expect(symbolStem("photo.png")).toBeUndefined();
+  });
+});
+
+describe("copyName", () => {
+  it("numbers a copy after its original, from 2, skipping names taken", () => {
+    expect(copyName("tower", ["tower.ink.png"])).toBe("tower 2");
+    expect(
+      copyName("tower", [
+        "tower.ink.png",
+        "Tower 2.ink.png",
+        "tower 3.INK.PNG",
+      ]),
+    ).toBe("tower 4");
+    // Only symbols count: a note or folder of that name is no symbol.
+    expect(copyName("tower", ["tower 2.md", "tower 2"])).toBe("tower 2");
+    expect(copyName("塔", ["塔.ink.png"])).toBe("塔 2");
+  });
+
+  it("gives a number name's copy the next free number", () => {
+    expect(copyName("002", ["001.ink.png", "002.ink.png"])).toBe("003");
+    expect(copyName("7", ["7.ink.png"])).toBe("001");
+  });
+
+  it("falls back to a number when the numbered name is too long for a file", () => {
+    const long = "a".repeat(247);
+    expect(copyName(long, [`${long}.ink.png`, "001.ink.png"])).toBe("002");
   });
 });
 

@@ -81,6 +81,12 @@ Some of Obsidian's own menus over a symbol have no Edit symbol, as in callouts
 and tables in Live Preview; [Known limits](./limits.md) lists them, with a way
 around each.
 
+Saving the edited symbol changes it in every note that shows it. When your notes
+use it more than once, the first save of a changed drawing asks whether to
+replace it everywhere or save the drawing as a new symbol;
+[Saving and recovery](./recovery.md#changing-a-symbol-used-elsewhere) describes
+the choices.
+
 ## Names and renames
 
 A symbol's name is its file's name, and a name is the place for your current

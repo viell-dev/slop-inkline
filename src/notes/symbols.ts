@@ -26,6 +26,7 @@ import {
   type EditorTools,
   type SymbolCopy,
   type SymbolFile,
+  type SymbolUses,
 } from "../editor/modal.ts";
 import { visibleWidth } from "../editor/view.ts";
 import {
@@ -39,6 +40,7 @@ import { insertionAt } from "./links.ts";
 import { shownGuides, type Settings } from "../settings.ts";
 import {
   chooseRename,
+  copyName,
   nextNumberName,
   symbolStem,
   type NameChoice,
@@ -394,6 +396,40 @@ function renamedPath(
   const folder = parentPath(file.path);
   claimName(app, folder, name.name, file);
   return pathIn(folder, `${name.name}${inkExtension}`);
+}
+
+/**
+ * Where a copy of `file` goes, in its folder: under the name `typed` chooses,
+ * unless that keeps the file's own name, and else under the name `copyName`
+ * gives, as `tower 2`. Throws if the name is refused, or another symbol
+ * there has it.
+ */
+function copyPath(app: App, file: TFile, typed: string): string {
+  const folder = parentPath(file.path);
+  const own = symbolStem(file.name) ?? file.basename;
+  const choice = chosen(typed, file);
+  const name =
+    choice.kind === "name" && choice.name !== own
+      ? choice.name
+      : copyName(own, namesIn(app, folder));
+  claimName(app, folder, name);
+  return pathIn(folder, `${name}${inkExtension}`);
+}
+
+/**
+ * How many links the vault's notes have to the file at `path`, embeds
+ * among them, and how many notes they are in, as Obsidian last indexed them.
+ */
+function usesOf(app: App, path: string): SymbolUses {
+  let links = 0;
+  let notes = 0;
+  for (const targets of Object.values(app.metadataCache.resolvedLinks)) {
+    const count = targets[path] ?? 0;
+    if (count <= 0) continue;
+    links += count;
+    notes++;
+  }
+  return { links, notes };
 }
 
 /**
@@ -877,6 +913,20 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
       symbol = await writeSymbol(app, symbol, saved);
       stillAlive(host);
       return rename(app, symbol, renaming);
+    },
+    shared: {
+      uses: () => usesOf(app, symbol.path),
+      // The copy goes beside the symbol, which, with every note, stays as it
+      // is; the editor goes on with the copy.
+      writeNew: async (saved, typed) => {
+        stillAlive(host);
+        const path = copyPath(app, symbol, typed);
+        const folder = parentPath(path);
+        if (folder !== "" && app.vault.getFolderByPath(folder) === null) {
+          await app.vault.createFolder(folder);
+        }
+        symbol = await app.vault.createBinary(path, toBuffer(saved));
+      },
     },
   }).open();
 }
