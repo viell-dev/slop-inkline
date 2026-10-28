@@ -8,6 +8,29 @@ section is also its
 
 ## Unreleased
 
+## 0.2.0-rc.1 - 2026-10-28
+
+This candidate follows the rc.2 report that the grid met the baseline but none
+of the font's other lines, and could be finer
+([grid](https://github.com/viell-dev/slop-inkline/issues/84)). Candidates now
+number from 0.2.0, as the 0.1.1 candidates since rc.2 have added features as
+well as fixes. Public stable publication remains on hold, as the earlier
+[workflow feedback](https://github.com/viell-dev/slop-inkline/issues/5) records.
+
+### Changed
+
+- The editor's grid is laid out on your note's font: its rows pass through the
+  baseline and each guide line chosen in the settings, and divide the space
+  between two lines evenly, so that strokes can start and end on the x-height
+  and cap height as well as the baseline. It is finer by default, with 5 cells
+  across the x-height where 1/8 em gave just over 4 in a font such as Inter.
+  Shift with an arrow key moves a picture by one column of this grid.
+
+### Added
+
+- A **Grid size** setting chooses how many grid cells span the x-height, from 2
+  to 10.
+
 ## 0.1.1-rc.10 - 2026-10-27
 
 This candidate follows the rc.1 report that the drawing guides were hard to tell

@@ -9,6 +9,7 @@ Open **Settings → Inkline** to change these choices:
 | Insert trigger | `;;`                        | These characters and a few letters of a name list symbols to insert.                      |
 | Symbol folder  | Empty                       | The folder in the vault for new symbols. Empty puts them where new attachments go.        |
 | Brush size     | M, the second of four sizes | The starting size for both Pen and Eraser.                                                |
+| Grid size      | 5 cells                     | How many of the grid's cells span the font's x-height, from 2 to 10.                      |
 | Guides         | Shown, with every line      | Whether an editor starts with the guides shown, and which font lines they show.           |
 
 Size and colour apply at once to existing symbols in open notes, including
@@ -27,6 +28,13 @@ new editor** applies when an editor opens, and **Next** keeps the current
 visibility; G still shows or hides the guides there. One toggle for each font
 line, ascender, cap height, x-height, baseline and descender, chooses whether
 the guides include it, and applies the next time the drawing area redraws.
+
+**Grid size** sets how many cells of the editor's grid span the x-height of your
+note's font: more cells make a finer grid. The grid's rows also pass through
+each font line turned on under **Guides**, whether the guides are shown or not,
+and divide the space between two lines evenly;
+[Drawing](./drawing.md#straight-lines-and-the-grid) explains the grid. Both
+apply the next time the drawing area redraws.
 
 Settings are kept in the vault's Inkline plugin data and survive reloading
 Obsidian. Unreadable or invalid preferences use defaults. If a write fails, a

@@ -3,6 +3,7 @@
 import { browser } from "@wdio/globals";
 import type { ChainablePromiseElement } from "webdriverio";
 import { obsidianPage } from "wdio-obsidian-service";
+import { loadModules } from "./browser.ts";
 
 /** Opens a note in the editor and puts the cursor where `marker` was, removing it. */
 export async function openAtMarker(
@@ -274,6 +275,48 @@ export async function guideRows(): Promise<{
       drawn,
       rows,
     };
+  });
+}
+
+/**
+ * The grid the open editor lays out, in document pixels: from its preview
+ * line's font, measured in the active window, and from Inkline's stored
+ * settings, as `fontGrid` makes it.
+ */
+export async function editorGrid(): Promise<{
+  spacing: number;
+  rows: number[];
+}> {
+  if (!(await browser.execute(() => "inklineTest" in window))) {
+    await loadModules();
+  }
+  return browser.executeObsidian(async ({ app }) => {
+    const { guides, settings, view } = window.inklineTest;
+    const line = activeDocument.querySelector(
+      ".inkline-editor .inkline-preview",
+    );
+    if (line?.instanceOf(HTMLElement) !== true) throw new Error("no preview");
+    const font = activeWindow.getComputedStyle(line);
+    const metrics = view.measureFont(
+      {
+        style: font.fontStyle,
+        weight: font.fontWeight,
+        family: font.fontFamily,
+      },
+      activeDocument,
+    );
+    const path = `${app.vault.configDir}/plugins/inkline/data.json`;
+    const stored: unknown = (await app.vault.adapter.exists(path))
+      ? JSON.parse(await app.vault.adapter.read(path))
+      : undefined;
+    const chosen = settings.readSettings(stored, 4);
+    const shown = settings.shownGuides(chosen);
+    const { spacing, rows } = guides.fontGrid(
+      guides.fontGuides(metrics).filter((guide) => shown.has(guide.name)),
+      metrics.xHeight * 128,
+      chosen.gridCells,
+    );
+    return { spacing, rows: [...rows] };
   });
 }
 

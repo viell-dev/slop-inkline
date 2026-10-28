@@ -7,7 +7,7 @@ import {
   type Plugin,
   type SettingDefinitionItem,
 } from "obsidian";
-import { guideNames, type GuideName } from "./editor/guides.ts";
+import { gridCellRange, guideNames, type GuideName } from "./editor/guides.ts";
 import { brushSizes } from "./editor/session.ts";
 import {
   defaultSettings,
@@ -116,6 +116,20 @@ export class InklineSettingTab extends PluginSettingTab {
           options: Object.fromEntries(
             brushSizes.map((size, index) => [String(index), size.label]),
           ),
+        },
+      },
+      {
+        name: "Grid size",
+        desc: "How many cells of the editor's grid span the x-height of the note's font; more make a finer grid. The grid's rows also pass through each line turned on under Guides.",
+        aliases: ["snap", "cells"],
+        control: {
+          type: "slider",
+          key: "gridCells",
+          defaultValue: defaultSettings.gridCells,
+          min: gridCellRange.min,
+          max: gridCellRange.max,
+          step: 1,
+          displayFormat: (value) => `${String(value)} cells`,
         },
       },
       {

@@ -2,7 +2,12 @@
 // stored for them is read back. A plain module, so that unit tests can check
 // it; settings-tab.ts shows them.
 
-import { guideNames, type GuideName } from "./editor/guides.ts";
+import {
+  defaultGridCells,
+  gridCellRange,
+  guideNames,
+  type GuideName,
+} from "./editor/guides.ts";
 import { chooseFolder } from "./notes/names.ts";
 
 /** Inkline's settings. */
@@ -16,6 +21,8 @@ export interface Settings {
   readonly symbolFolder: string;
   /** The brush a new editor starts with, by its index among the sizes. */
   readonly brushSize: number;
+  /** How many grid cells span the font's x-height in the editor. */
+  readonly gridCells: number;
   /** Whether a new editor starts with its guides shown. */
   readonly guides: boolean;
   /** Which of the font's lines the guides show. */
@@ -35,6 +42,7 @@ export const defaultSettings: Settings = {
   trigger: ";;",
   symbolFolder: "",
   brushSize: 1,
+  gridCells: defaultGridCells,
   guides: true,
   ascenderGuide: true,
   capHeightGuide: true,
@@ -85,6 +93,7 @@ export const settingKeys: readonly SettingKey[] = [
   "trigger",
   "symbolFolder",
   "brushSize",
+  "gridCells",
   "guides",
   "ascenderGuide",
   "capHeightGuide",
@@ -98,7 +107,8 @@ export const settingKeys: readonly SettingKey[] = [
 /**
  * `settings` with `key` set to `value`, or undefined if `value` is not one
  * that `key` can hold: a trigger as {@link triggerProblem} allows, a folder as
- * `chooseFolder` writes it, a brush among `sizes`, a size, or a boolean.
+ * `chooseFolder` writes it, a brush among `sizes`, a count of grid cells, a
+ * size, or a boolean.
  */
 export function withSetting(
   settings: Settings,
@@ -130,6 +140,13 @@ export function withSetting(
         ? { ...settings, brushSize: index }
         : undefined;
     }
+    case "gridCells":
+      return typeof value === "number" &&
+        Number.isInteger(value) &&
+        value >= gridCellRange.min &&
+        value <= gridCellRange.max
+        ? { ...settings, gridCells: value }
+        : undefined;
     case "symbolScale":
       return typeof value === "number" &&
         Number.isInteger(value) &&

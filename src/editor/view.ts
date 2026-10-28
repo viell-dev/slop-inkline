@@ -11,6 +11,7 @@ import {
   guideColourProperty,
   joinSpans,
   type FontMetrics,
+  type Grid,
   type Guide,
   type Span,
 } from "./guides.ts";
@@ -119,10 +120,10 @@ export class InkView {
   /** The font's lines, or undefined to draw no guides. */
   lines: readonly Guide[] | undefined;
   /**
-   * The grid's spacing, and an x its columns pass through, in document
-   * pixels, or undefined to draw no grid.
+   * The grid, and an x its columns pass through, in document pixels, or
+   * undefined to draw no grid.
    */
-  grid: { readonly spacing: number; readonly originX: number } | undefined;
+  grid: (Grid & { readonly originX: number }) | undefined;
   /**
    * A picture to trace over, drawn faintly under the ink where `placement`
    * puts it, or undefined for none. It is not part of the drawing.
@@ -324,11 +325,11 @@ export class InkView {
     if (grid !== undefined) {
       context.fillStyle = colour;
       const dot = Math.max(2, Math.round(this.#ratio * 2));
-      const { spacing, originX } = grid;
+      const { spacing, rows, originX } = grid;
       const first =
         originX + Math.ceil((this.#originX - originX) / spacing) * spacing;
       for (let x = first; x <= this.#originX + this.#across; x += spacing) {
-        for (let y = 0; y <= lineBox.height; y += spacing) {
+        for (const y of rows) {
           context.fillRect(
             Math.round((x - this.#originX) * factor) - dot / 2,
             Math.round(y * factor) - dot / 2,

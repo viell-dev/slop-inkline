@@ -51,10 +51,25 @@ takes away the whole drawing, and Undo brings it back.
 ## Straight lines and the grid
 
 Hold Shift while drawing to make the stroke straight, from where it was when
-Shift went down. **Grid** (Shift+G) shows a grid of 1/8 of the text's size and
-snaps the ends of strokes to it, for scripts built from straight strokes and
-dots; a tap on the grid stays a dot. The grid keeps its place through saves, and
-on a symbol you open again it lines up with most of its strokes.
+Shift went down. **Grid** (Shift+G) shows a grid of dots and snaps the ends of
+strokes to them, for scripts built from straight strokes and dots; a tap on the
+grid stays a dot.
+
+The grid is laid out on your note's font, so that a stroke can start and end on
+its lines. Its rows pass through the baseline and through each font line chosen
+in the [settings](./settings.md), and the space between two neighbouring lines
+is divided evenly into cells as near the size of the x-height's as fits. By
+default 5 cells span the x-height; **Grid size** in the settings changes that,
+from 2 to 10. Above the highest line and below the lowest, rows go on evenly to
+the edges of the drawing area. Columns are as far apart as the x-height's rows,
+so cells there are square, and cells between other lines are close to square. No
+even grid could meet every line of every font. In a font such as Inter, at the
+default grid size, the cap height then lies 7 cells above the baseline.
+
+The grid keeps its place through saves, and on a symbol you open again it lines
+up with most of its strokes, if the grid has the same size as when you drew
+them. While **Move** is on, Shift with an arrow key moves a picture to trace
+over by one column of the grid.
 
 ## Guides, view, and width
 

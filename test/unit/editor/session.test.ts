@@ -3,9 +3,10 @@ import {
   DrawingSession,
   brushSizes,
   gridOriginOf,
-  gridSpacing,
+  plainGrid,
   snapToGrid,
 } from "../../../src/editor/session.ts";
+import type { Grid } from "../../../src/editor/guides.ts";
 import { emptyDocument } from "../../../src/ink/document.ts";
 
 describe("brushSizes", () => {
@@ -254,7 +255,8 @@ describe("DrawingSession", () => {
   });
 
   it("starts and ends strokes on the grid when it is on", () => {
-    expect(gridSpacing).toBe(16);
+    expect(plainGrid.spacing).toBe(16);
+    expect(plainGrid.rows).toHaveLength(13);
     expect(snapToGrid({ x: 7, y: 9 })).toEqual({ x: 0, y: 16 });
     const session = new DrawingSession(emptyDocument);
     session.snap = true;
@@ -396,6 +398,71 @@ describe("DrawingSession", () => {
     session.undo();
     session.undo();
     expect(session.gridOrigin).toBe(13);
+  });
+
+  it("snaps to the nearest of a grid's rows, and the edge rows beyond it", () => {
+    const grid: Grid = { spacing: 14, rows: [6, 20, 35.5, 50.875, 144, 189] };
+    expect(snapToGrid({ x: 22, y: 43 }, grid)).toEqual({ x: 28, y: 35.5 });
+    expect(snapToGrid({ x: 22, y: 44 }, grid, 3)).toEqual({ x: 17, y: 50.875 });
+    expect(snapToGrid({ x: 0, y: -40 }, grid)).toEqual({ x: 0, y: 6 });
+    expect(snapToGrid({ x: 0, y: 400 }, grid)).toEqual({ x: 0, y: 189 });
+    const session = new DrawingSession(emptyDocument);
+    session.grid = grid;
+    session.snap = true;
+    session.begin({ x: 22, y: 43 });
+    session.end({ x: 41, y: 140 });
+    const points = session.document.strokes[0]?.points ?? [];
+    expect(points.slice(0, 2)).toEqual([28 * 16, 35.5 * 16]);
+    expect(points.slice(-2)).toEqual([42 * 16, 144 * 16]);
+  });
+
+  it("keeps a stroke on the grid it started on when another is laid out", () => {
+    // As when the font loads while the pointer is down: a tap stays a dot.
+    const before: Grid = { spacing: 12.8125, rows: [96, 102.5, 108] };
+    const after: Grid = { spacing: 14, rows: [95, 101, 109] };
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.grid = before;
+    session.begin({ x: 100, y: 100 });
+    session.grid = after;
+    expect(session.grid).toBe(before);
+    session.end({ x: 100, y: 100 });
+    expect(session.document.strokes[0]?.points).toEqual([
+      102.5 * 16,
+      102.5 * 16,
+    ]);
+    // Then the grid laid out meanwhile takes over.
+    expect(session.grid).toBe(after);
+    session.begin({ x: 100, y: 100 });
+    session.grid = before;
+    session.cancel();
+    expect(session.grid).toBe(before);
+  });
+
+  it("lines an opened drawing up with the grid the editor lays out", () => {
+    // Taps on columns 14 pixels apart, through 3 pixels: 45 and 59.
+    const tap = (x: number) =>
+      ({
+        tool: "pen",
+        size: 16,
+        pressure: false,
+        points: [x * 16, 0],
+      }) as const;
+    const session = new DrawingSession({ strokes: [tap(45), tap(59), tap(8)] });
+    // On the plain grid, 45 and 59 lie at 13 and 11 within a spacing.
+    expect(session.gridOrigin).toBe(13);
+    session.grid = { spacing: 14, rows: [0] };
+    expect(session.gridOrigin).toBe(3);
+    // A save's move takes the guess with the strokes.
+    session.rebase(-5);
+    expect(session.gridOrigin).toBe(12);
+    // A stroke keeps the grid it was drawn on, whatever the strokes say.
+    session.snap = true;
+    session.begin({ x: 100, y: 0 });
+    session.end();
+    expect(session.document.strokes.at(-1)?.points).toEqual([96 * 16, 0]);
+    session.grid = { spacing: 10, rows: [0] };
+    expect(session.gridOrigin).toBe(2);
   });
 
   it("does not record clearing an empty drawing", () => {

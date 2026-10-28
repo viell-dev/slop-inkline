@@ -62,13 +62,15 @@ import {
   type BrushCursor,
 } from "./cursor.ts";
 import { PointerGate } from "./pointer.ts";
+import { brushSizes, DrawingSession, type InputPoint } from "./session.ts";
 import {
-  brushSizes,
-  DrawingSession,
-  gridSpacing,
-  type InputPoint,
-} from "./session.ts";
-import { fontGuides, type Guide, type GuideName } from "./guides.ts";
+  defaultGridCells,
+  fontGrid,
+  fontGuides,
+  type FontMetrics,
+  type Guide,
+  type GuideName,
+} from "./guides.ts";
 import {
   decodePicture,
   isPicturePath,
@@ -141,10 +143,11 @@ function dragsPicture(event: DragEvent): boolean {
   return types.includes("Files") || types.includes("text/uri-list");
 }
 
-/** How far the arrow keys move a picture, in document pixels. */
+/**
+ * How far the arrow keys move a picture, in document pixels; with Shift
+ * held, they move it one grid spacing.
+ */
 const nudge = 1;
-/** How far they move it with Shift held: one grid spacing. */
-const shiftNudge = gridSpacing;
 /** How much + and − scale a picture: as much as a notch of the wheel. */
 const keyScale = wheelFactor(-100);
 
@@ -314,6 +317,11 @@ export interface EditorOptions {
    */
   readonly guideLines?: () => ReadonlySet<GuideName>;
   /**
+   * How many grid cells span the font's x-height, asked as the grid is laid
+   * out; {@link defaultGridCells} when undefined.
+   */
+  readonly gridCells?: () => number;
+  /**
    * Asks which symbol to start from and opens it, for a new symbol drawn as
    * a variant of another; resolves to undefined when none is chosen or it
    * cannot be opened, and as soon as `closed` aborts, as when the editor
@@ -404,7 +412,8 @@ export class InkEditorModal extends Modal {
   /** Whether the last draft written was kept; storage can refuse one. */
   #draftKept = true;
   #guidesShown = true;
-  /** The note font's lines, measured when the editor opens. */
+  /** The note font's metrics and lines, measured when the editor opens. */
+  #fontMetrics: FontMetrics | undefined;
   #fontGuides: readonly Guide[] = [];
   #previewLine: HTMLElement | undefined;
   #preview: HTMLCanvasElement | undefined;
@@ -1058,11 +1067,12 @@ export class InkEditorModal extends Modal {
       });
     };
     for (const [modifiers, step] of [
-      [[], nudge],
-      [["Shift"], shiftNudge],
+      [[], () => nudge],
+      // One grid spacing, as the grid is laid out now.
+      [["Shift"], () => this.#session.grid.spacing],
     ] as const) {
       const by = (dx: number, dy: number) => (picture: TracedPicture) =>
-        movePicture(picture.placement, dx * step, dy * step);
+        movePicture(picture.placement, dx * step(), dy * step());
       moving([...modifiers], "ArrowLeft", by(-1, 0));
       moving([...modifiers], "ArrowRight", by(1, 0));
       moving([...modifiers], "ArrowUp", by(0, -1));
@@ -1692,12 +1702,11 @@ export class InkEditorModal extends Modal {
     // The surface's own window, which differs from the main one in a popout.
     this.#frame = view.canvas.win.requestAnimationFrame(() => {
       this.#frame = undefined;
-      const shown = this.#options.guideLines?.();
-      view.lines = this.#guidesShown
-        ? this.#fontGuides.filter((guide) => shown?.has(guide.name) ?? true)
-        : undefined;
+      const chosen = this.#chosenLines();
+      view.lines = this.#guidesShown ? chosen : undefined;
+      this.#layOutGrid(chosen);
       view.grid = this.#session.snap
-        ? { spacing: gridSpacing, originX: this.#session.gridOrigin }
+        ? { ...this.#session.grid, originX: this.#session.gridOrigin }
         : undefined;
       view.reference = this.#picture;
       const { document, base } = this.#shown(view);
@@ -1718,15 +1727,37 @@ export class InkEditorModal extends Modal {
     const line = this.#previewLine;
     if (line === undefined) return;
     const font = getComputedStyle(line);
-    this.#fontGuides = fontGuides(
-      measureFont(
-        {
-          style: font.fontStyle,
-          weight: font.fontWeight,
-          family: font.fontFamily,
-        },
-        line.doc,
-      ),
+    const metrics = measureFont(
+      {
+        style: font.fontStyle,
+        weight: font.fontWeight,
+        family: font.fontFamily,
+      },
+      line.doc,
+    );
+    this.#fontMetrics = metrics;
+    this.#fontGuides = fontGuides(metrics);
+    this.#layOutGrid(this.#chosenLines());
+  }
+
+  /** The font's lines that the settings choose to show, whether shown now or not. */
+  #chosenLines(): readonly Guide[] {
+    const chosen = this.#options.guideLines?.();
+    return this.#fontGuides.filter((guide) => chosen?.has(guide.name) ?? true);
+  }
+
+  /**
+   * Lays the grid out on the font's `lines` that the settings choose, shown
+   * or not, so that the guides' key never moves it, with the cells across the
+   * x-height that they choose.
+   */
+  #layOutGrid(lines: readonly Guide[]): void {
+    const { pxPerEm } = lineBox;
+    const xHeight = this.#fontMetrics?.xHeight;
+    this.#session.grid = fontGrid(
+      lines,
+      xHeight === undefined ? Number.NaN : xHeight * pxPerEm,
+      this.#options.gridCells?.() ?? defaultGridCells,
     );
   }
 
@@ -1901,7 +1932,7 @@ export class InkEditorModal extends Modal {
     const steps = content.createEl("ul");
     for (const text of [
       "Pen (P) adds ink; Eraser (E) removes it. Sizes S–XL (1–4) are remembered separately until you close the editor, including through Next. The circle shows the brush's diameter.",
-      "Hold Shift while drawing for a straight segment. Grid (Shift+G) shows dots and snaps stroke ends to them; it does not change the font guides.",
+      "Hold Shift while drawing for a straight segment. Grid (Shift+G) shows dots and snaps stroke ends to them. Its rows pass through each guide line the settings choose, and divide the space between lines evenly; the settings also set how many cells span the x-height.",
       "Undo (Mod+Z) and Redo (Mod+Shift+Z) step through changes. Clear removes the drawing and can be undone.",
       "Paste or drop a picture to trace. Move positions it; the wheel scales it. Make ink converts the visible picture into editable ink. The tracing picture itself is not saved.",
       "Name the symbol, then Save (Mod+Enter). For a new symbol, Next (Mod+Shift+Enter) saves it and starts another. Mod is Ctrl on Windows/Linux, Cmd on macOS.",

@@ -12,9 +12,15 @@ setting enforces this for published releases.
 
 Use SemVer versions without a `v` prefix or build metadata. Release candidates
 use a suffix such as `0.1.1-rc.1` and the GitHub prerelease flag; plain versions
-such as `0.2.0` are ordinary releases. GitHub-only candidates are installed
-manually from the ZIP, with no third-party installer recommendation. The future
-community-directory release must use a plain `x.y.z` version, as Obsidian's
+such as `0.2.0` are ordinary releases. Number a candidate for the version it
+would become: once candidates add features, not only fixes, the next one moves
+to the next minor version, as `0.1.1-rc.10` was followed by `0.2.0-rc.1`.
+GitHub's Releases page and API listed `0.1.1-rc.10` between `rc.4` and `rc.3`,
+although its tag, dates, and SemVer order are right; nothing here relies on that
+order, and the Pages workflow sorts releases by publication time. GitHub-only
+candidates are installed manually from the ZIP, with no third-party installer
+recommendation. The future community-directory release must use a plain `x.y.z`
+version, as Obsidian's
 [submission requirements](https://docs.obsidian.md/Plugins/Releasing/Submit%20your%20plugin)
 specify. Directory submission still needs the owner's decision.
 

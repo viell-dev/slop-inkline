@@ -3,6 +3,7 @@ import { brushSizes } from "../../../src/editor/session.ts";
 import { loadModules } from "../support/browser.ts";
 import {
   draw,
+  editorGrid,
   openAtMarker,
   startOver,
   waitForEditor,
@@ -363,9 +364,12 @@ describe("Brush sizes beside text", function () {
   it("keeps strokes of M a grid spacing apart distinct, for dense symbols", async function () {
     await openEditor();
     await browser.keys("2");
-    // Five level strokes, 16 document pixels apart in a line box 192 tall.
+    // Five level strokes, a default grid spacing apart in a line box 192
+    // tall: 14 document pixels in a font such as Inter.
+    const { spacing } = await editorGrid();
+    console.log("Grid spacing", spacing);
     for (let line = 0; line < 5; line++) {
-      const y = (48 + line * 16) / 192;
+      const y = (48 + line * spacing) / 192;
       await draw([
         [0.3, y],
         [0.5, y],

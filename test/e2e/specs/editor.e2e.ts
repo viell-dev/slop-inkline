@@ -9,6 +9,7 @@ import {
   delayDecoding,
   delayVault,
   draw,
+  editorGrid,
   editorOpen,
   guideRows,
   fillStorage,
@@ -3144,8 +3145,15 @@ describe("The editor", function () {
   it("shows a grid with Shift+G, and snaps strokes' ends to it", async function () {
     await insert();
     await settledSurface();
+    const grid = await editorGrid();
+    // A grid crossing away from every guide: about 2 em across, on the row
+    // a cell above the baseline.
+    const crossing = {
+      x: Math.round(256 / grid.spacing) * grid.spacing,
+      y: grid.rows[grid.rows.indexOf(lineBox.baseline) - 1] ?? 0,
+    };
     const dots = () =>
-      browser.execute(() => {
+      browser.execute(({ x: across, y: down }) => {
         const canvas = document.querySelector(
           ".inkline-editor .inkline-surface",
         );
@@ -3155,11 +3163,10 @@ describe("The editor", function () {
           .getContext("2d")
           ?.getImageData(0, 0, canvas.width, canvas.height);
         const factor = canvas.width / 576;
-        // A grid crossing away from every guide: 2 em across, 2/8 em down.
-        const x = Math.round(256 * factor);
-        const y = Math.round(32 * factor);
+        const x = Math.round(across * factor);
+        const y = Math.round(down * factor);
         return pixels?.data[(y * canvas.width + x) * 4 + 3] ?? 0;
-      });
+      }, crossing);
     expect(await dots()).toBe(0);
     await browser.keys(["Shift", "g"]);
     await browser.waitUntil(async () => (await dots()) > 0);
@@ -3175,9 +3182,12 @@ describe("The editor", function () {
     ]);
     await browser.waitUntil(async () => (await storedDrafts()).length === 1);
     const points = (await storedDrafts())[0]?.strokes[0]?.points ?? [];
-    for (const value of [points[0], points[1], points.at(-2), points.at(-1)]) {
-      expect((value ?? 1) % (16 * 16)).toBe(0);
-    }
+    // On the columns through 0, and on the rows, in units.
+    const spacing = Math.round(grid.spacing * unitsPerPixel);
+    const rows = grid.rows.map((row) => Math.round(row * unitsPerPixel));
+    for (const x of [points[0], points.at(-2)])
+      expect((x ?? 1) % spacing).toBe(0);
+    for (const y of [points[1], points.at(-1)]) expect(rows).toContain(y);
   });
 
   it("keeps a tap on the grid a dot, and the grid in place through a save", async function () {
@@ -3214,16 +3224,18 @@ describe("The editor", function () {
     await browser.keys(["Shift", "g"]);
     await draw([[0.33, 0.45]]);
     await saveScreenshot("editor-grid");
+    const spacing = Math.round((await editorGrid()).spacing * unitsPerPixel);
     await browser.keys(["Control", "Enter"]);
     await waitClosed();
     const { strokes } = JSON.parse(await recordOf("001.ink.png")) as {
       strokes: { points: number[] }[];
     };
-    // Where each stroke drawn on the grid lies within a spacing of 1/8 em,
-    // 256 units.
+    // Where each stroke drawn on the grid lies within a spacing, in units.
     const columns = strokes
       .slice(1)
-      .map((stroke) => (((stroke.points[0] ?? 0) % 256) + 256) % 256);
+      .map(
+        (stroke) => (((stroke.points[0] ?? 0) % spacing) + spacing) % spacing,
+      );
     expect(columns).toHaveLength(3);
     expect(new Set(columns).size).toBe(1);
   });
@@ -3251,9 +3263,10 @@ describe("The editor", function () {
     await browser.waitUntil(
       async () => (await storedDrafts())[0]?.strokes.length === 3,
     );
-    // Where a stroke starts within a spacing of 1/8 em, 256 units.
+    // Where a stroke starts within a spacing, in units.
+    const spacing = Math.round((await editorGrid()).spacing * unitsPerPixel);
     const column = (stroke: { points: readonly number[] } | undefined) =>
-      (((stroke?.points[0] ?? 0) % 256) + 256) % 256;
+      (((stroke?.points[0] ?? 0) % spacing) + spacing) % spacing;
     const restored = (await storedDrafts())[0]?.strokes ?? [];
     expect(column(restored[2])).toBe(column(restored[1]));
     // Undoing the tap and the restore leaves the file, and the grid its
@@ -4079,12 +4092,13 @@ describe("The editor", function () {
       if (wheeled === undefined) throw new Error("no picture");
 
       // The arrow keys move it by a pixel, or by a grid spacing with Shift.
+      const { spacing } = await editorGrid();
       await browser.keys(["ArrowRight"]);
       await browser.keys(["ArrowRight"]);
       // Up, so that the picture stays whole on the surface as it grows.
       await browser.keys(["Shift", "ArrowUp"]);
       const nudged = await waitForPicture((box) =>
-        near(box, moved(wheeled, 2 * factor, -16 * factor)),
+        near(box, moved(wheeled, 2 * factor, -spacing * factor)),
       );
       if (nudged === undefined) throw new Error("no picture");
 
@@ -4420,9 +4434,10 @@ describe("The editor", function () {
     it("says when no part of the picture is on the surface, and fits to the ink", async function () {
       await insert();
       await pasteMarked(...squareOn("white", "black"));
-      // Off the surface to the right: 40 grid spacings, 5 em.
+      // Off the surface to the right: 5 em, in grid spacings.
+      const { spacing } = await editorGrid();
       await browser.keys(["m"]);
-      for (let step = 0; step < 40; step++) {
+      for (let step = 0; step < Math.ceil(640 / spacing); step++) {
         await browser.keys(["Shift", "ArrowRight"]);
       }
       await browser.keys(["i"]);
@@ -4438,9 +4453,9 @@ describe("The editor", function () {
             ) === "apply",
         ),
       );
-      // Back a little, into view at the right edge, then F fits the ink.
+      // Back about 3 em, into view at the right edge, then F fits the ink.
       await browser.keys(["i"]);
-      for (let step = 0; step < 25; step++) {
+      for (let step = 0; step < Math.round(400 / spacing); step++) {
         await browser.keys(["Shift", "ArrowLeft"]);
       }
       await browser.keys(["i"]);

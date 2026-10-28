@@ -74,6 +74,12 @@ describe("withSetting", () => {
           ?.symbolScale,
       ).toBe(symbolScale);
     }
+    expect(defaultSettings.gridCells).toBe(5);
+    for (const gridCells of [2, 5, 8, 10]) {
+      expect(
+        withSetting(defaultSettings, "gridCells", gridCells, sizes)?.gridCells,
+      ).toBe(gridCells);
+    }
   });
 
   it("refuses a value its setting cannot hold", () => {
@@ -100,6 +106,11 @@ describe("withSetting", () => {
       ["symbolScale", "150"],
       ["symbolScale", Number.NaN],
       ["symbolScale", Number.POSITIVE_INFINITY],
+      ["gridCells", 1],
+      ["gridCells", 11],
+      ["gridCells", 4.5],
+      ["gridCells", "5"],
+      ["gridCells", Number.NaN],
     ] as const) {
       expect(withSetting(defaultSettings, key, value, sizes)).toBeUndefined();
     }
@@ -118,6 +129,7 @@ describe("readSettings", () => {
       trigger: "::",
       symbolFolder: "Notes/Signs",
       brushSize: 2,
+      gridCells: 8,
       guides: false,
       ascenderGuide: true,
       capHeightGuide: false,
@@ -138,6 +150,7 @@ describe("readSettings", () => {
         {
           trigger: "a b",
           brushSize: 9,
+          gridCells: 0,
           pressure: false,
           size: 2,
           guides: "no",
