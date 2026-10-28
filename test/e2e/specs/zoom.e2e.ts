@@ -257,6 +257,85 @@ describe("Zoom", function () {
     expect(middle.after).toBe(middle.before);
   });
 
+  it("measures and previews the ink as a save crops it, however far away its erasers go", async function () {
+    const result = await browser.execute(async () => {
+      const { view, canvas, record } = window.inklineTest;
+      const surface = createEl("canvas");
+      document.body.append(surface);
+      try {
+        const dot = (x: number, tool: "pen" | "eraser", size: number) => ({
+          tool,
+          size: size * record.unitsPerPixel,
+          pressure: false,
+          points: [x * record.unitsPerPixel, 100 * record.unitsPerPixel],
+        });
+        /** What the view and a save make of a document, as the editor shows it. */
+        const compare = async (
+          strokes: ReturnType<typeof dot>[],
+          fontSize: number,
+        ) => {
+          const document = { strokes };
+          const ink = new view.InkView(surface);
+          const xs = strokes.map((stroke) => (stroke.points[0] ?? 0) / 16);
+          ink.fit(Math.min(...xs), Math.max(...xs));
+          ink.resize(803, 1);
+          ink.render(document, undefined, undefined);
+          const preview = createEl("canvas");
+          ink.drawPreview(preview, fontSize);
+          const context = preview.getContext("2d");
+          if (context === null) throw new Error("no context");
+          const { data } = context.getImageData(
+            0,
+            0,
+            preview.width,
+            preview.height,
+          );
+          // Ink in the first and the last tenth of the preview's columns.
+          const inkIn = (from: number, to: number) => {
+            for (let y = 0; y < preview.height; y++) {
+              for (let x = from; x < to; x++) {
+                if ((data[(y * preview.width + x) * 4 + 3] ?? 0) > 0) {
+                  return true;
+                }
+              }
+            }
+            return false;
+          };
+          const tenth = Math.max(1, Math.floor(preview.width / 10));
+          const saved = await canvas.saveInk(document, undefined, []);
+          return {
+            image: ink.image,
+            saved: { left: saved.left, width: saved.record.box.width },
+            any: inkIn(0, preview.width),
+            first: inkIn(0, tenth),
+            last: inkIn(preview.width - tenth, preview.width),
+          };
+        };
+        return {
+          // A pen dot, and a tiny eraser a quarter of a million pixels away.
+          distant: await compare(
+            [dot(100, "pen", 10), dot(-262144, "eraser", 1)],
+            16,
+          ),
+          // Two dots far apart, at a size whose preview height is fractional.
+          apart: await compare([dot(100, "pen", 10), dot(2100, "pen", 10)], 17),
+        };
+      } finally {
+        surface.remove();
+      }
+    });
+    for (const [name, found] of Object.entries(result)) {
+      // The edges the view shows are where a save crops.
+      expect([name, found.image.left]).toEqual([name, found.saved.left]);
+      expect([name, found.image.right - found.image.left]).toEqual([
+        name,
+        found.saved.width,
+      ]);
+    }
+    expect(result.distant.any).toBe(true);
+    expect([result.apart.first, result.apart.last]).toEqual([true, true]);
+  });
+
   it("keeps the zoom for the next symbol", async function () {
     await openEditor();
     await browser.keys("z");

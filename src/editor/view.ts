@@ -5,6 +5,7 @@
 import type { Stroke } from "../format/record.ts";
 import { documentSpan, type InkDocument } from "../ink/document.ts";
 import { display, lineBox } from "../ink/geometry.ts";
+import { findInk } from "../ink/canvas.ts";
 import { drawInk, type DrawableBase } from "../ink/render.ts";
 import {
   cropSpan,
@@ -57,6 +58,13 @@ export const visibleWidth = 4.5 * lineBox.pxPerEm;
 export const magnification = 2;
 
 /**
+ * The widest image the preview shows whole, in document pixels: 32 em, far
+ * wider than any symbol; of a wider one it shows this much about the middle
+ * of the surface, so that it never needs a huge canvas.
+ */
+const maxPreview = 32 * lineBox.pxPerEm;
+
+/**
  * How much the surface shows across for a drawing `width` pixels wide: all
  * of it, with half an em to spare on each side, and never less than
  * {@link visibleWidth}.
@@ -72,34 +80,6 @@ function offscreen2d(
   const context = canvas.getContext("2d", options);
   if (context === null) throw new Error("no 2D canvas context");
   return context;
-}
-
-/**
- * The columns that hold any ink, from the alpha of `pixels`, as the first
- * and the one past the last, or undefined when none does.
- */
-function inkedColumns(
-  pixels: ImageData,
-): { first: number; end: number } | undefined {
-  const { width, height, data } = pixels;
-  let first = width;
-  let last = -1;
-  for (let y = 0; y < height; y++) {
-    const row = y * width;
-    for (let x = 0; x < first; x++) {
-      if ((data[(row + x) * 4 + 3] ?? 0) > 0) {
-        first = x;
-        break;
-      }
-    }
-    for (let x = width - 1; x > last; x--) {
-      if ((data[(row + x) * 4 + 3] ?? 0) > 0) {
-        last = x;
-        break;
-      }
-    }
-  }
-  return last < first ? undefined : { first, end: last + 1 };
 }
 
 function element2d(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
@@ -138,18 +118,25 @@ export class InkView {
   #shown: { document: InkDocument; base: DrawableBase | undefined } | undefined;
   #committed = new OffscreenCanvas(1, 1);
   #work = new OffscreenCanvas(1, 1);
-  /**
-   * The whole drawing at one pixel per document pixel, from `#wholeLeft`,
-   * whatever the surface shows, for how far its ink reaches and the preview.
-   */
-  #whole = new OffscreenCanvas(1, 1);
-  #wholeLeft = 0;
   /** The stroke being drawn, and the text colour, as last rendered. */
   #active: Stroke | undefined;
   #colour = "black";
-  /** The document and base layer that `#whole` holds. */
+  /** The document and base layer whose ink `#inked` measures. */
   #measured:
     { document: InkDocument; base: DrawableBase | undefined } | undefined;
+  /**
+   * The committed ink drawn for the preview, for the document, span and size
+   * it was drawn at, kept while the stroke being drawn is added each frame.
+   */
+  #previewInk:
+    | {
+        readonly document: InkDocument;
+        readonly base: DrawableBase | undefined;
+        readonly left: number;
+        readonly right: number;
+        readonly canvas: OffscreenCanvas;
+      }
+    | undefined;
   /** The font's lines, or undefined to draw no guides. */
   lines: readonly Guide[] | undefined;
   /**
@@ -443,36 +430,84 @@ export class InkView {
   /**
    * Draws the symbol into `target` as it would show in text of `fontSize`
    * CSS pixels, in the text colour, as last rendered: the whole image, with
-   * the stroke being drawn, however much of it the surface shows.
+   * the stroke being drawn, however much of it the surface shows, up to
+   * {@link maxPreview} across about the middle of the surface.
    */
   drawPreview(target: HTMLCanvasElement, fontSize: number): void {
-    const { left } = this.#image;
-    const right = Math.max(left + 1, this.#image.right);
+    let { left, right } = this.#image;
+    right = Math.max(left + 1, right);
+    if (right - left > maxPreview) {
+      const middle = Math.min(
+        Math.max(this.#center, left + maxPreview / 2),
+        right - maxPreview / 2,
+      );
+      left = middle - maxPreview / 2;
+      right = middle + maxPreview / 2;
+    }
     const scale = fontSize / lineBox.pxPerEm;
-    const heightEm = display({ ...lineBox, width: right - left }).heightEm;
+    const shape = display({ ...lineBox, width: right - left });
     const cssWidth = (right - left) * scale;
-    const cssHeight = heightEm * fontSize;
+    const cssHeight = shape.heightEm * fontSize;
     target.style.width = `${String(cssWidth)}px`;
     target.style.height = `${String(cssHeight)}px`;
-    target.style.verticalAlign = `${String(
-      display({ ...lineBox, width: right - left }).verticalAlignEm,
-    )}em`;
+    target.style.verticalAlign = `${String(shape.verticalAlignEm)}em`;
     target.width = Math.max(1, Math.round(cssWidth * this.#ratio));
     target.height = Math.max(1, Math.round(cssHeight * this.#ratio));
+    // Device pixels per document pixel, across and down, each from the
+    // target's own rounded size, so that both ends of the image show.
+    const across = target.width / (right - left);
+    const down = target.height / lineBox.height;
+    const place = (context: {
+      setTransform(
+        a: number,
+        b: number,
+        c: number,
+        d: number,
+        e: number,
+        f: number,
+      ): void;
+    }): void => {
+      context.setTransform(across, 0, 0, down, -left * across, 0);
+    };
+    const measured = this.#measured;
+    let ink = this.#previewInk;
+    if (
+      ink === undefined ||
+      ink.document !== measured?.document ||
+      ink.base !== measured.base ||
+      ink.left !== left ||
+      ink.right !== right ||
+      ink.canvas.width !== target.width ||
+      ink.canvas.height !== target.height
+    ) {
+      const canvas = new OffscreenCanvas(target.width, target.height);
+      const drawn = offscreen2d(canvas);
+      if (measured !== undefined) {
+        place(drawn);
+        drawInk(
+          drawn,
+          measured.document.strokes,
+          measured.document.base === undefined ? undefined : measured.base,
+        );
+      }
+      ink = {
+        document: measured?.document ?? { strokes: [] },
+        base: measured?.base,
+        left,
+        right,
+        canvas,
+      };
+      this.#previewInk = ink;
+    }
     const context = element2d(target);
     context.clearRect(0, 0, target.width, target.height);
-    context.imageSmoothingEnabled = true;
-    context.imageSmoothingQuality = "high";
-    // Device pixels per document pixel in the preview.
-    const k = target.height / lineBox.height;
-    context.setTransform(k, 0, 0, k, (this.#wholeLeft - left) * k, 0);
-    context.drawImage(this.#whole, 0, 0);
+    context.drawImage(ink.canvas, 0, 0);
     const active = this.#active;
     if (active !== undefined) {
-      context.setTransform(k, 0, 0, k, -left * k, 0);
+      place(context);
       drawInk(context, [active], undefined);
+      context.resetTransform();
     }
-    context.resetTransform();
     context.globalCompositeOperation = "source-in";
     context.fillStyle = this.#colour;
     context.fillRect(0, 0, target.width, target.height);
@@ -480,38 +515,18 @@ export class InkView {
   }
 
   /**
-   * Draws the whole drawing into `#whole`, at one pixel per document pixel,
-   * and reads from its pixels how far its ink reaches inside the line box,
-   * as a save crops to it.
+   * Finds how far the drawing's ink reaches inside the line box, as a save
+   * crops to it, whatever the surface shows: in tiles, so that geometry far
+   * away or erased costs time but never a huge canvas.
    */
   #measure(document: InkDocument, base: DrawableBase | undefined): void {
-    const span = documentSpan(document, base?.width);
-    const whole = this.#whole;
-    if (span === undefined) {
-      whole.width = 1;
-      whole.height = 1;
-      this.#wholeLeft = 0;
-      this.#inked = undefined;
-      return;
-    }
-    const left = Math.floor(span.left) - 1;
-    whole.width = Math.max(1, Math.ceil(span.right) + 1 - left);
-    whole.height = lineBox.height;
-    const context = offscreen2d(whole, { willReadFrequently: true });
-    context.setTransform(1, 0, 0, 1, -left, 0);
-    drawInk(
-      context,
-      document.strokes,
+    const found = findInk(
+      document,
       document.base === undefined ? undefined : base,
     );
-    context.resetTransform();
-    const columns = inkedColumns(
-      context.getImageData(0, 0, whole.width, whole.height),
-    );
-    this.#wholeLeft = left;
     this.#inked =
-      columns === undefined
+      found === undefined
         ? undefined
-        : { left: columns.first + left, right: columns.end + left };
+        : { left: found.left, right: found.right };
   }
 }

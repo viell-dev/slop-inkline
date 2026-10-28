@@ -339,7 +339,7 @@ function inkAreas(
  * most {@link tileWidth} wide, each with only the strokes that reach it, so
  * that geometry far away or erased costs time but never a huge canvas.
  */
-function findInk(
+export function findInk(
   document: InkDocument,
   base: DrawableBase | undefined,
 ): Bounds | undefined {
