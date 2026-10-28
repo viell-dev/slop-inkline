@@ -24,6 +24,31 @@ a click outside it, asks **Save this symbol?**:
 
 A changed name is a change, and so is ink that Make ink is previewing.
 
+For a symbol your notes use more than once, whose drawing changed, closing asks
+**Save the changes to** the symbol instead, with **Replace**, **Discard**, and
+**Keep drawing**, as [the next section](#changing-a-symbol-used-elsewhere)
+describes.
+
+## Changing a symbol used elsewhere
+
+Saving writes over a symbol's file, so every note that shows it shows the new
+drawing. When you edit a symbol that your notes use more than once and change
+its drawing, the first save asks **Change** the symbol **everywhere?**, saying
+how many times and in how many notes it is used:
+
+- **Replace** saves over the symbol, which changes it in every note. The editor
+  doesn't ask again until it closes.
+- **Keep editing**, or Esc, saves nothing and goes back to the drawing, which
+  stays unsaved and kept as a draft.
+
+To make a variant that leaves the symbol as it is, start a new symbol and use
+[Copy from](./drawing.md#start-from-a-copy) instead: it starts from a copy of
+the symbol's drawing and inserts the new symbol where you are.
+
+A symbol used once, or not at all, saves without asking, and so does a save that
+only renames a symbol, since links follow a rename. The count is Obsidian's link
+index: a note or canvas that Obsidian has not indexed yet is missing from it.
+
 ## Drafts after a crash
 
 After each finished stroke, undo, redo, or clearing, and each change of name,

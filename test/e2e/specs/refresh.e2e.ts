@@ -1,6 +1,7 @@
 import { browser, expect } from "@wdio/globals";
 import { loadModules } from "../support/browser.ts";
 import {
+  clickTop,
   createSymbol,
   draw,
   noteText,
@@ -99,6 +100,8 @@ describe("Saved symbol refresh", function () {
           [0.7, 0.4],
         ]);
         await browser.keys(["Control", "Enter"]);
+        // The note uses it twice, so saving asks whether to change both.
+        await clickTop("Replace");
         await surface().waitForExist({ reverse: true });
         const expected = await savedWidth();
         expect(expected).not.toBe(first.naturalWidth);

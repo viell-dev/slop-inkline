@@ -2,11 +2,36 @@
 
 Notable changes to Inkline, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version numbers are
-SemVer versions, with an `-rc.N` suffix for release candidates. Each release's
+SemVer versions; pre-releases carry a suffix such as `-alpha.N`. Each release's
 section is also its
 [GitHub release](https://github.com/viell-dev/slop-inkline/releases)'s notes.
 
 ## Unreleased
+
+## 0.3.0-alpha.1 - 2026-10-28
+
+This alpha follows the 0.1.1-rc.2 report that saving an edited symbol changed it
+in every note without a choice
+([save choices](https://github.com/viell-dev/slop-inkline/issues/85)).
+Pre-releases are now named as alphas, as their features and file format can
+still change; the version moves to 0.3.0 so that it comes after 0.2.0-rc.1.
+Public stable publication remains on hold, as the earlier
+[workflow feedback](https://github.com/viell-dev/slop-inkline/issues/5) records.
+
+### Changed
+
+- Releases are alphas for now, and until the first stable release the
+  [file format](https://viell-dev.github.io/slop-inkline/file-format#compatibility)
+  is a draft: a later alpha may change what symbol files hold, and need not open
+  files an earlier one saved. The changelog says when that happens; this alpha
+  opens every file the earlier releases saved.
+
+### Added
+
+- Saving a changed symbol that your notes use more than once asks first whether
+  to **Replace** it everywhere, or to keep editing. Closing with unsaved changes
+  asks the same in one question, with Discard. For a variant that leaves the
+  symbol as it is, start a new symbol with **Copy from**.
 
 ## 0.2.0-rc.1 - 2026-10-28
 

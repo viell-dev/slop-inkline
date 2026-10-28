@@ -26,6 +26,7 @@ import {
   type EditorTools,
   type SymbolCopy,
   type SymbolFile,
+  type SymbolUses,
 } from "../editor/modal.ts";
 import { visibleWidth } from "../editor/view.ts";
 import {
@@ -394,6 +395,22 @@ function renamedPath(
   const folder = parentPath(file.path);
   claimName(app, folder, name.name, file);
   return pathIn(folder, `${name.name}${inkExtension}`);
+}
+
+/**
+ * How many links the vault's notes have to the file at `path`, embeds
+ * among them, and how many notes they are in, as Obsidian last indexed them.
+ */
+function usesOf(app: App, path: string): SymbolUses {
+  let links = 0;
+  let notes = 0;
+  for (const targets of Object.values(app.metadataCache.resolvedLinks)) {
+    const count = targets[path] ?? 0;
+    if (count <= 0) continue;
+    links += count;
+    notes++;
+  }
+  return { links, notes };
 }
 
 /**
@@ -878,5 +895,6 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
       stillAlive(host);
       return rename(app, symbol, renaming);
     },
+    uses: () => usesOf(app, symbol.path),
   }).open();
 }

@@ -10,17 +10,41 @@ attests their build provenance, and publishes the loose files and ZIP with a
 replaced: a correction gets a new version. The repository's immutable releases
 setting enforces this for published releases.
 
-Use SemVer versions without a `v` prefix or build metadata. Release candidates
-use a suffix such as `0.1.1-rc.1` and the GitHub prerelease flag; plain versions
-such as `0.2.0` are ordinary releases. Number a candidate for the version it
-would become: once candidates add features, not only fixes, the next one moves
-to the next minor version, as `0.1.1-rc.10` was followed by `0.2.0-rc.1`.
+Use SemVer versions without a `v` prefix or build metadata. Pre-releases carry
+the GitHub prerelease flag and the usual SemVer stages, named for the version
+they lead to:
+
+- **alpha**, as `0.3.0-alpha.1`: features still arrive and change, and the
+  [file format](docs/file-format.md#compatibility) is a draft, so a later alpha
+  need not open files an earlier one wrote. Releases are alphas until a stable
+  release goal is agreed with the owner, as below, by the owner's decision of
+  2026-10-28.
+- **beta**, as `1.0.0-beta.1`: the features of the agreed stable release goal
+  are complete; fixes and polish follow. A beta that needs a new feature gives
+  way to an alpha of the next minor version.
+- **rc**, as `1.0.0-rc.1`: a build meant to become that release unchanged, for
+  its last checks, including the human pass described below.
+
+Leaving alpha needs a stable release goal agreed with the owner: what the first
+stable release supports, its tasks, formats, and platforms, what stays out, and
+when beta, rc, and stable begin. The maintaining agents propose it in an issue
+with `Needs: Owner`, record the agreement there, and link it here. With a goal
+agreed, they move to beta and rc on the evidence, recorded in the release pull
+request; a case the goal does not settle goes back to the owner.
+
+Plain versions such as `1.0.0` are stable releases. Versions never go backwards
+in SemVer order: after `0.2.0-rc.1`, the alphas went on as `0.3.0-alpha.1`, as
+`0.2.0-alpha.1` would come before it. The `0.1.1-rc` and `0.2.0-rc` pre-releases
+predate these stages and were alphas in all but name.
+
 GitHub's Releases page and API listed `0.1.1-rc.10` between `rc.4` and `rc.3`,
-although its tag, dates, and SemVer order are right; nothing here relies on that
-order, and the Pages workflow sorts releases by publication time. GitHub-only
-candidates are installed manually from the ZIP, with no third-party installer
-recommendation. The future community-directory release must use a plain `x.y.z`
-version, as Obsidian's
+although its tag, dates, and SemVer order are right, and may do the same with
+any pre-release numbered 10 or more. Nothing here relies on that order: the
+Pages workflow sorts releases by publication time, and the
+[install guide](docs/install.md) tells users to compare version numbers.
+GitHub-only pre-releases are installed manually from the ZIP, with no
+third-party installer recommendation. The future community-directory release
+must use a plain `x.y.z` version, as Obsidian's
 [submission requirements](https://docs.obsidian.md/Plugins/Releasing/Submit%20your%20plugin)
 specify. Directory submission still needs the owner's decision.
 
@@ -104,13 +128,13 @@ On a branch from `main`:
    `manifest.json`. Do it here, not in a pull request of its own: until the
    release, `manifest.json` describes the published version, and the unit tests
    check its numeric compatibility entry when preparing a plain release.
-   Candidates are checked against their declared minimum in the host matrix.
+   Pre-releases are checked against their declared minimum in the host matrix.
 2. Run `npm version <version> --no-git-tag-version`. It sets the version in
    `package.json` and `package-lock.json`, then `scripts/release.ts sync` copies
    it to `manifest.json` and, for a plain release, maps it to the manifest's
    `minAppVersion` in `versions.json`, which Obsidian reads to offer older
-   versions to older apps, and stages both files. RCs do not enter this numeric
-   directory map; earlier releases keep their entries.
+   versions to older apps, and stages both files. Pre-releases do not enter this
+   numeric directory map; earlier releases keep their entries.
 3. Rename `## Unreleased` in `CHANGELOG.md` to `## <version> - <YYYY-MM-DD>`,
    with the planned release date, and add an empty `## Unreleased` above it. The
    section becomes the release notes, so write it for users.

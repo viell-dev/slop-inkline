@@ -6,8 +6,9 @@ commit used to build it; `version.json` records the same facts for tools.
 
 ## The current release
 
-The default guide describes the newest published release, including release
-candidates. Behavior that has not been released is labelled **Unreleased**; the
+The default guide describes the newest published release, including
+pre-releases. Behavior that has not been released is labelled **Unreleased**;
+the
 [changelog](https://github.com/viell-dev/slop-inkline/blob/main/CHANGELOG.md)
 records those changes too.
 
