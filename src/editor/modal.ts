@@ -303,11 +303,16 @@ export interface EditorOptions {
    * everywhere or save the drawing as a new symbol; and `writeNew`, which
    * writes it as one, beside it, under the name `name` chooses, or a name
    * after it, leaving it and every note as they are. The editor then edits
-   * the new symbol, whose file `file` gives from then on.
+   * the new symbol, whose file `file` gives from then on. `keepDraft` keeps
+   * the editor's draft at once, as when the draft's target changes.
    */
   readonly shared?: {
     readonly uses: () => SymbolUses;
-    readonly writeNew: (bytes: Uint8Array, name: string) => Promise<void>;
+    readonly writeNew: (
+      bytes: Uint8Array,
+      name: string,
+      keepDraft: () => boolean,
+    ) => Promise<void>;
   };
   /**
    * The symbol's file: an existing symbol's, or a new one's once its first
@@ -433,6 +438,8 @@ export class InkEditorModal extends Modal {
   };
   #hover: { pointerId: number; clientX: number; clientY: number } | undefined;
   #saving: Promise<boolean> | undefined;
+  /** How the save running, if any, goes. */
+  #savingAs: SaveChoice = "replace";
   #closing = false;
   /** Set when disposed: nothing more is saved or written as a draft. */
   #retired = false;
@@ -2437,10 +2444,13 @@ export class InkEditorModal extends Modal {
    * How to save: over the symbol, unless {@link #sharedUses} says to ask
    * whether to replace it everywhere or save the drawing as a new symbol.
    * Undefined when the answer is to keep editing. A question already open
-   * answers for every save that waits on it.
+   * answers for every save that waits on it, and a save already running for
+   * one asked meanwhile, which joins it without asking: its symbol can be
+   * another by the time it ends, as after a save as new.
    */
   #howToSave(): Promise<SaveChoice | undefined> {
     if (this.#askingHow !== undefined) return this.#askingHow;
+    if (this.#saving !== undefined) return Promise.resolve(this.#savingAs);
     const uses = this.#sharedUses();
     if (uses === undefined) return Promise.resolve("replace");
     const name = this.#displayName;
@@ -2593,6 +2603,7 @@ export class InkEditorModal extends Modal {
     const document = this.#session.document;
     const base = this.#base;
     this.#announce("Saving…");
+    this.#savingAs = choice;
     this.#saving = (async () => {
       try {
         const { bytes, record, left } = await saveInk(
@@ -2622,7 +2633,7 @@ export class InkEditorModal extends Modal {
         const original = this.#displayName;
         let named = true;
         if (choice === "new") {
-          await shared?.writeNew(bytes, typed);
+          await shared?.writeNew(bytes, typed, () => this.#keepDraft());
           // The new symbol is used nowhere yet.
           this.#choseReplace = true;
         } else {

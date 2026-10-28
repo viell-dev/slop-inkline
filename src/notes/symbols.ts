@@ -888,6 +888,8 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
   }
   /** The symbol's file: the one opened, or the one a save made again. */
   let symbol = file;
+  /** Where a save as new is making the copy, until it is made or fails. */
+  let making: string | undefined;
   new InkEditorModal(app, {
     title: "Symbol",
     tools: startingTools(host.settings()),
@@ -902,8 +904,11 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
     fingerprint,
     drafts: {
       store: host.drafts,
-      // The file's path follows renames.
-      target: () => ({ kind: "file", path: symbol.path }),
+      // The file's path follows renames. While a save as new makes the copy,
+      // drafts name the copy, so that what is drawn meanwhile, kept as when
+      // Inkline is turned off, comes back with it, not with the symbol it
+      // leaves as it was.
+      target: () => ({ kind: "file", path: making ?? symbol.path }),
     },
     lifecycle: host.lifecycle,
     file: () => symbolFile(app, symbol.path),
@@ -918,14 +923,23 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
       uses: () => usesOf(app, symbol.path),
       // The copy goes beside the symbol, which, with every note, stays as it
       // is; the editor goes on with the copy.
-      writeNew: async (saved, typed) => {
+      writeNew: async (saved, typed, keepDraft) => {
         stillAlive(host);
         const path = copyPath(app, symbol, typed);
-        const folder = parentPath(path);
-        if (folder !== "" && app.vault.getFolderByPath(folder) === null) {
-          await app.vault.createFolder(folder);
+        making = path;
+        keepDraft();
+        try {
+          const folder = parentPath(path);
+          if (folder !== "" && app.vault.getFolderByPath(folder) === null) {
+            await app.vault.createFolder(folder);
+          }
+          symbol = await app.vault.createBinary(path, toBuffer(saved));
+        } finally {
+          // Made, the copy is the symbol; failed, the draft goes back to the
+          // symbol it was for.
+          making = undefined;
+          keepDraft();
         }
-        symbol = await app.vault.createBinary(path, toBuffer(saved));
       },
     },
   }).open();
