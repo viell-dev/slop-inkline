@@ -40,9 +40,10 @@ owner, or the maintaining agents themselves. Two questions decide it:
 
 - **Does it belong in Inkline?** Inkline is for drawing small symbols that sit
   in notes like characters. It is not a whiteboard, a diagram tool, a
-  handwriting notebook, or a library of ready-made symbols, and it supports the
-  platforms and inputs that the user guide's
-  [limits](https://viell-dev.github.io/slop-inkline/limits) name.
+  handwriting notebook, or a library of ready-made symbols. It supports desktop
+  Obsidian with a mouse or trackpad; the user guide's
+  [limits](https://viell-dev.github.io/slop-inkline/limits) say what it does not
+  support.
 - **Is the benefit worth what it adds?** That means the code, tests,
   documentation, and support it needs for as long as the project is maintained,
   and the risk it brings to saving and drawing, where mistakes cost people their
