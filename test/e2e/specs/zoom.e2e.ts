@@ -302,11 +302,16 @@ describe("Zoom", function () {
             return false;
           };
           const tenth = Math.max(1, Math.floor(preview.width / 10));
+          let total = 0;
+          for (let index = 3; index < data.length; index += 4) {
+            total += data[index] ?? 0;
+          }
           const saved = await canvas.saveInk(document, undefined, []);
           return {
             image: ink.image,
             saved: { left: saved.left, width: saved.record.box.width },
             any: inkIn(0, preview.width),
+            total,
             first: inkIn(0, tenth),
             last: inkIn(preview.width - tenth, preview.width),
           };
@@ -319,6 +324,18 @@ describe("Zoom", function () {
           ),
           // Two dots far apart, at a size whose preview height is fractional.
           apart: await compare([dot(100, "pen", 10), dot(2100, "pen", 10)], 17),
+          // Three small dots with the middle one erased by a larger eraser,
+          // and the two that are left alone.
+          erased: await compare(
+            [
+              dot(50, "pen", 6),
+              dot(100, "pen", 6),
+              dot(150, "pen", 6),
+              dot(100, "eraser", 12),
+            ],
+            17,
+          ),
+          left: await compare([dot(50, "pen", 6), dot(150, "pen", 6)], 17),
         };
       } finally {
         surface.remove();
@@ -334,6 +351,8 @@ describe("Zoom", function () {
     }
     expect(result.distant.any).toBe(true);
     expect([result.apart.first, result.apart.last]).toEqual([true, true]);
+    // An erased dot leaves nothing behind in the preview, as in a save.
+    expect(result.erased.total).toBe(result.left.total);
   });
 
   it("keeps the zoom for the next symbol", async function () {

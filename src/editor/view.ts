@@ -121,12 +121,14 @@ export class InkView {
   /** The stroke being drawn, and the text colour, as last rendered. */
   #active: Stroke | undefined;
   #colour = "black";
+  #previewWork = new OffscreenCanvas(1, 1);
   /** The document and base layer whose ink `#inked` measures. */
   #measured:
     { document: InkDocument; base: DrawableBase | undefined } | undefined;
   /**
-   * The committed ink drawn for the preview, for the document, span and size
-   * it was drawn at, kept while the stroke being drawn is added each frame.
+   * The committed ink of the preview's span, at one pixel per document
+   * pixel, for the document and span it was drawn for, kept while the stroke
+   * being drawn is added each frame, on `#previewWork`.
    */
   #previewInk:
     | {
@@ -431,44 +433,32 @@ export class InkView {
    * Draws the symbol into `target` as it would show in text of `fontSize`
    * CSS pixels, in the text colour, as last rendered: the whole image, with
    * the stroke being drawn, however much of it the surface shows, up to
-   * {@link maxPreview} across about the middle of the surface.
+   * {@link maxPreview} across about the middle of the surface. Its ink is
+   * put together at one pixel per document pixel, as a save draws it, so
+   * that an eraser cuts it exactly, and then scaled down.
    */
   drawPreview(target: HTMLCanvasElement, fontSize: number): void {
-    let { left, right } = this.#image;
-    right = Math.max(left + 1, right);
+    let left = this.#image.left;
+    let right = Math.max(left + 1, this.#image.right);
     if (right - left > maxPreview) {
       const middle = Math.min(
         Math.max(this.#center, left + maxPreview / 2),
         right - maxPreview / 2,
       );
-      left = middle - maxPreview / 2;
-      right = middle + maxPreview / 2;
+      left = Math.floor(middle - maxPreview / 2);
+      right = left + maxPreview;
     }
+    const width = Math.max(1, Math.ceil(right - left));
     const scale = fontSize / lineBox.pxPerEm;
-    const shape = display({ ...lineBox, width: right - left });
-    const cssWidth = (right - left) * scale;
+    const shape = display({ ...lineBox, width });
+    const cssWidth = width * scale;
     const cssHeight = shape.heightEm * fontSize;
     target.style.width = `${String(cssWidth)}px`;
     target.style.height = `${String(cssHeight)}px`;
     target.style.verticalAlign = `${String(shape.verticalAlignEm)}em`;
     target.width = Math.max(1, Math.round(cssWidth * this.#ratio));
     target.height = Math.max(1, Math.round(cssHeight * this.#ratio));
-    // Device pixels per document pixel, across and down, each from the
-    // target's own rounded size, so that both ends of the image show.
-    const across = target.width / (right - left);
-    const down = target.height / lineBox.height;
-    const place = (context: {
-      setTransform(
-        a: number,
-        b: number,
-        c: number,
-        d: number,
-        e: number,
-        f: number,
-      ): void;
-    }): void => {
-      context.setTransform(across, 0, 0, down, -left * across, 0);
-    };
+    // The committed ink, drawn once while the drawing and the span stay.
     const measured = this.#measured;
     let ink = this.#previewInk;
     if (
@@ -476,44 +466,50 @@ export class InkView {
       ink.document !== measured?.document ||
       ink.base !== measured.base ||
       ink.left !== left ||
-      ink.right !== right ||
-      ink.canvas.width !== target.width ||
-      ink.canvas.height !== target.height
+      ink.canvas.width !== width
     ) {
-      const canvas = new OffscreenCanvas(target.width, target.height);
-      const drawn = offscreen2d(canvas);
+      const canvas = new OffscreenCanvas(width, lineBox.height);
       if (measured !== undefined) {
-        place(drawn);
         drawInk(
-          drawn,
+          offscreen2d(canvas),
           measured.document.strokes,
           measured.document.base === undefined ? undefined : measured.base,
+          -left,
         );
       }
       ink = {
         document: measured?.document ?? { strokes: [] },
         base: measured?.base,
         left,
-        right,
+        right: left + width,
         canvas,
       };
       this.#previewInk = ink;
     }
-    const context = element2d(target);
-    context.clearRect(0, 0, target.width, target.height);
-    context.drawImage(ink.canvas, 0, 0);
+    // The stroke being drawn, over a copy, at the same resolution.
+    let image: OffscreenCanvas = ink.canvas;
     const active = this.#active;
     if (active !== undefined) {
-      place(context);
-      drawInk(context, [active], undefined);
-      context.resetTransform();
+      const work = this.#previewWork;
+      work.width = width;
+      work.height = lineBox.height;
+      const drawn = offscreen2d(work);
+      drawn.globalCompositeOperation = "copy";
+      drawn.drawImage(ink.canvas, 0, 0);
+      drawn.globalCompositeOperation = "source-over";
+      drawInk(drawn, [active], undefined, -left);
+      image = work;
     }
+    const context = element2d(target);
+    context.clearRect(0, 0, target.width, target.height);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(image, 0, 0, target.width, target.height);
     context.globalCompositeOperation = "source-in";
     context.fillStyle = this.#colour;
     context.fillRect(0, 0, target.width, target.height);
     context.globalCompositeOperation = "source-over";
   }
-
   /**
    * Finds how far the drawing's ink reaches inside the line box, as a save
    * crops to it, whatever the surface shows: in tiles, so that geometry far
