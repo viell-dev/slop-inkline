@@ -18,11 +18,18 @@ they lead to:
   [file format](docs/file-format.md#compatibility) is a draft, so a later alpha
   need not open files an earlier one wrote. By the owner's decision of
   2026-10-28, every pre-release before the first stable release is an alpha.
-- **beta**, as `1.0.0-beta.1`: the release's features are complete; only fixes
-  follow. A beta that needs a new feature gives way to an alpha of the next
-  minor version.
+- **beta**, as `1.0.0-beta.1`: the features of the agreed stable release goal
+  are complete; fixes and polish follow. A beta that needs a new feature gives
+  way to an alpha of the next minor version.
 - **rc**, as `1.0.0-rc.1`: a build meant to become that release unchanged, for
   its last checks, including the human pass described below.
+
+Leaving alpha needs a stable release goal agreed with the owner: what the first
+stable release supports, its tasks, formats, and platforms, what stays out, and
+when beta, rc, and stable begin. The maintaining agents propose it in an issue
+with `Needs: Owner`, record the agreement there, and link it here. With a goal
+agreed, they move to beta and rc on the evidence, recorded in the release pull
+request; a case the goal does not settle goes back to the owner.
 
 Plain versions such as `1.0.0` are stable releases. Versions never go backwards
 in SemVer order: after `0.2.0-rc.1`, the alphas went on as `0.3.0-alpha.1`, as

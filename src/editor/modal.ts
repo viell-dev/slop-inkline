@@ -438,8 +438,8 @@ export class InkEditorModal extends Modal {
   };
   #hover: { pointerId: number; clientX: number; clientY: number } | undefined;
   #saving: Promise<boolean> | undefined;
-  /** How the save running, if any, goes. */
-  #savingAs: SaveChoice = "replace";
+  /** The save asked for, from its question to its end, if one is. */
+  #saveRequest: Promise<boolean> | undefined;
   #closing = false;
   /** Set when disposed: nothing more is saved or written as a draft. */
   #retired = false;
@@ -817,7 +817,7 @@ export class InkEditorModal extends Modal {
       super.close();
       return;
     }
-    if (this.#saving !== undefined) {
+    if (this.#saving !== undefined || this.#saveRequest !== undefined) {
       this.#announce("Saving…");
       return;
     }
@@ -2444,13 +2444,10 @@ export class InkEditorModal extends Modal {
    * How to save: over the symbol, unless {@link #sharedUses} says to ask
    * whether to replace it everywhere or save the drawing as a new symbol.
    * Undefined when the answer is to keep editing. A question already open
-   * answers for every save that waits on it, and a save already running for
-   * one asked meanwhile, which joins it without asking: its symbol can be
-   * another by the time it ends, as after a save as new.
+   * answers for every save that waits on it.
    */
   #howToSave(): Promise<SaveChoice | undefined> {
     if (this.#askingHow !== undefined) return this.#askingHow;
-    if (this.#saving !== undefined) return Promise.resolve(this.#savingAs);
     const uses = this.#sharedUses();
     if (uses === undefined) return Promise.resolve("replace");
     const name = this.#displayName;
@@ -2495,12 +2492,41 @@ export class InkEditorModal extends Modal {
 
   /** Saves, keeping the editor open. */
   async #saveOnly(): Promise<void> {
-    const choice = await this.#howToSave();
-    if (choice === undefined) {
-      this.#keptEditing();
-      return;
-    }
-    if (await this.#applyPending()) await this.#save(choice);
+    await this.#requestSave();
+  }
+
+  /**
+   * Asks how to save, unless `chosen` says, makes any ink being previewed,
+   * and saves, as one request: a save asked for while one is asked about,
+   * made ready, or written joins it, rather than asking about a symbol that
+   * the request can change, as a save as new does. `resume` saves again after
+   * a question about a change on disk. Resolves to whether it saved.
+   */
+  #requestSave(
+    chosen?: SaveChoice,
+    resume?: (choice: SaveChoice) => void,
+  ): Promise<boolean> {
+    if (this.#saveRequest !== undefined) return this.#saveRequest;
+    const request = (async () => {
+      const choice = chosen ?? (await this.#howToSave());
+      if (choice === undefined) {
+        this.#keptEditing();
+        return false;
+      }
+      if (!(await this.#applyPending())) return false;
+      return this.#save(
+        choice,
+        resume === undefined
+          ? undefined
+          : () => {
+              resume(choice);
+            },
+      );
+    })().finally(() => {
+      this.#saveRequest = undefined;
+    });
+    this.#saveRequest = request;
+    return request;
   }
 
   /**
@@ -2560,15 +2586,10 @@ export class InkEditorModal extends Modal {
    * while it ran keep the editor open, since they are not saved yet.
    */
   async #saveAndClose(chosen?: SaveChoice): Promise<void> {
-    const choice = chosen ?? (await this.#howToSave());
-    if (choice === undefined) {
-      this.#keptEditing();
-      return;
-    }
-    if (!(await this.#applyPending())) return;
-    if (!(await this.#save(choice, () => void this.#saveAndClose(choice)))) {
-      return;
-    }
+    const saved = await this.#requestSave(chosen, (choice) => {
+      void this.#saveAndClose(choice);
+    });
+    if (!saved) return;
     if (this.#unsaved) {
       this.#announce(this.#partlySaved);
       return;
@@ -2603,7 +2624,6 @@ export class InkEditorModal extends Modal {
     const document = this.#session.document;
     const base = this.#base;
     this.#announce("Saving…");
-    this.#savingAs = choice;
     this.#saving = (async () => {
       try {
         const { bytes, record, left } = await saveInk(

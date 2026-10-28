@@ -871,6 +871,14 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
   let opened;
   let fingerprint;
   try {
+    // A draft that an interrupted save as new left goes to the symbol it
+    // belongs to, so that this editor offers it if it is this one's.
+    await host.drafts.settleCopies(async (path) => {
+      const copy = app.vault.getFileByPath(path);
+      return copy === null
+        ? undefined
+        : fingerprintOf(new Uint8Array(await app.vault.readBinary(copy)));
+    });
     const bytes = new Uint8Array(await app.vault.readBinary(file));
     opened = await openInk(bytes);
     fingerprint = await fingerprintOf(bytes);
@@ -888,8 +896,11 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
   }
   /** The symbol's file: the one opened, or the one a save made again. */
   let symbol = file;
-  /** Where a save as new is making the copy, until it is made or fails. */
-  let making: string | undefined;
+  /**
+   * The copy a save as new is making, and what it writes there, until it is
+   * made or fails.
+   */
+  let making: CreatedFile | undefined;
   new InkEditorModal(app, {
     title: "Symbol",
     tools: startingTools(host.settings()),
@@ -905,10 +916,14 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
     drafts: {
       store: host.drafts,
       // The file's path follows renames. While a save as new makes the copy,
-      // drafts name the copy, so that what is drawn meanwhile, kept as when
-      // Inkline is turned off, comes back with it, not with the symbol it
-      // leaves as it was.
-      target: () => ({ kind: "file", path: making ?? symbol.path }),
+      // drafts name it too: what is drawn meanwhile, kept as when Inkline is
+      // turned off, then comes back with the copy if it was made, and with
+      // this symbol if not.
+      target: () => ({
+        kind: "file",
+        path: symbol.path,
+        ...(making === undefined ? {} : { copy: making }),
+      }),
     },
     lifecycle: host.lifecycle,
     file: () => symbolFile(app, symbol.path),
@@ -926,7 +941,9 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
       writeNew: async (saved, typed, keepDraft) => {
         stillAlive(host);
         const path = copyPath(app, symbol, typed);
-        making = path;
+        const fingerprint = await fingerprintOf(saved);
+        stillAlive(host);
+        making = { path, fingerprint };
         keepDraft();
         try {
           const folder = parentPath(path);
