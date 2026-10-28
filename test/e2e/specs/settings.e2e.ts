@@ -130,6 +130,7 @@ describe("Inkline settings", function () {
     expect(await setting("Symbol folder").$("input").getValue()).toBe("");
     expect(await setting("Brush size").$("select").getValue()).toBe("1");
     expect(await setting("Symbol size").$("input").getValue()).toBe("100");
+    expect(await setting("Grid size").$("input").getValue()).toBe("5");
     // Pen pressure was removed with pen-device support (#101).
     expect(await setting("Pen pressure").isExisting()).toBe(false);
     for (const name of [
@@ -146,6 +147,21 @@ describe("Inkline settings", function () {
       ).toContain("is-enabled");
     }
     await saveScreenshot("settings");
+    await closeSettings();
+  });
+
+  it("stores Grid size from its slider, from 2 to 10 cells", async function () {
+    await openSettings();
+    const slider = setting("Grid size").$("input");
+    await slider.click();
+    await browser.keys(["Home"]);
+    await waitForStored({ gridCells: 2 });
+    await browser.keys(["End"]);
+    await waitForStored({ gridCells: 10 });
+    await browser.keys(["ArrowLeft"]);
+    await browser.keys(["ArrowLeft"]);
+    await waitForStored({ gridCells: 8 });
+    await saveScreenshot("settings-grid-size");
     await closeSettings();
   });
 

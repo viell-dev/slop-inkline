@@ -6,6 +6,7 @@ import { unitsPerPixel, type Stroke, type Tool } from "../format/record.ts";
 import { documentMover, toUnits, type InkDocument } from "../ink/document.ts";
 import { lineBox } from "../ink/geometry.ts";
 import { History } from "../ink/history.ts";
+import type { Grid } from "./guides.ts";
 
 export interface BrushSize {
   /** The button label. */
@@ -43,32 +44,55 @@ export interface InputPoint {
 }
 
 /**
- * The grid's spacing, 1/8 em: 16 pixels, so that the baseline, 9 spacings
- * down, lies on it, and a line box holds 12 spacings.
+ * The grid a session has until its editor lays one out on the note's font:
+ * rows and columns 1/8 em, 16 pixels, apart, the rows from the line box's
+ * top, so that the baseline, 9 spacings down, lies on it.
  */
-export const gridSpacing = lineBox.pxPerEm / 8;
+export const plainGrid: Grid = {
+  spacing: lineBox.pxPerEm / 8,
+  rows: Array.from(
+    { length: lineBox.height / (lineBox.pxPerEm / 8) + 1 },
+    (_, row) => (row * lineBox.pxPerEm) / 8,
+  ),
+};
 
 /**
- * The grid point nearest `point`, on a grid whose columns pass through
- * `originX`; its rows pass through the line box's top.
+ * The grid point nearest `point`, on `grid` with its columns through
+ * `originX`: the nearest column, and the nearest of its rows, so that a point
+ * beyond the line box snaps to the row at its edge.
  */
-export function snapToGrid(point: InputPoint, originX = 0): InputPoint {
+export function snapToGrid(
+  point: InputPoint,
+  grid: Grid = plainGrid,
+  originX = 0,
+): InputPoint {
+  const { spacing, rows } = grid;
+  let y = point.y;
+  let nearest = Infinity;
+  for (const row of rows) {
+    const distance = Math.abs(row - point.y);
+    if (distance < nearest) {
+      nearest = distance;
+      y = row;
+    }
+  }
   return {
-    x: Math.round((point.x - originX) / gridSpacing) * gridSpacing + originX,
-    y: Math.round(point.y / gridSpacing) * gridSpacing,
+    x: Math.round((point.x - originX) / spacing) * spacing + originX,
+    y,
   };
 }
 
 /** `x`, in pixels, moved by whole spacings to within the first one. */
-function withinSpacing(x: number): number {
-  return ((x % gridSpacing) + gridSpacing) % gridSpacing;
+function withinSpacing(x: number, spacing: number): number {
+  return ((x % spacing) + spacing) % spacing;
 }
 
 /**
- * A best guess at where a document's grid columns pass, in pixels within one
- * spacing, from where its strokes start and end; `fallback` for a document
- * with no strokes. Each stroke's start and end, erasers' too, mark the place
- * within a spacing where they lie, a one-point stroke's once. The place
+ * A best guess at where a document's grid columns pass, `columns` pixels
+ * apart, in pixels within one spacing, from where its strokes start and end;
+ * `fallback` for a document with no strokes. Each stroke's start and end,
+ * erasers' too, mark the place within a spacing where they lie, a one-point
+ * stroke's once. The place
  * marked most often wins; of places marked equally often, the one that
  * reached that count first in stroke order does, so with no place marked
  * twice, it is where the first stroke starts.
@@ -78,8 +102,12 @@ function withinSpacing(x: number): number {
  * again, however a save cropped it. Where freehand ends that happen to share
  * a place outnumber the ends drawn on the grid, the guess is theirs.
  */
-export function gridOriginOf(document: InkDocument, fallback = 0): number {
-  const spacing = gridSpacing * unitsPerPixel;
+export function gridOriginOf(
+  document: InkDocument,
+  fallback = 0,
+  columns = plainGrid.spacing,
+): number {
+  const spacing = Math.round(columns * unitsPerPixel);
   const counts = new Map<number, number>();
   let origin: number | undefined;
   let most = 0;
@@ -106,8 +134,12 @@ export function gridOriginOf(document: InkDocument, fallback = 0): number {
 /** What undo and redo step through: the drawing, and where its grid lies. */
 interface SessionState {
   readonly document: InkDocument;
-  /** Where the grid's columns pass, in pixels within one spacing. */
-  readonly gridOrigin: number;
+  /**
+   * An x the grid's columns pass through, in pixels, or undefined where the
+   * document's strokes say, on whatever grid the session has, as for the
+   * drawing it opened with.
+   */
+  readonly gridOrigin: number | undefined;
 }
 
 /**
@@ -152,12 +184,14 @@ export class DrawingSession {
   }
   /** Whether strokes start and end on the grid. */
   snap = false;
+  /** The grid strokes' ends snap to, which the editor lays out on its font. */
+  grid: Grid = plainGrid;
+  /** The last guess at a document's grid, for {@link gridOrigin}. */
+  #guessed:
+    { document: InkDocument; spacing: number; origin: number } | undefined;
 
   constructor(initial: InkDocument) {
-    this.#history = new History({
-      document: initial,
-      gridOrigin: gridOriginOf(initial),
-    });
+    this.#history = new History({ document: initial, gridOrigin: undefined });
     this.#saved = initial;
   }
 
@@ -166,11 +200,20 @@ export class DrawingSession {
    * moves with the drawing when a save moves that, and with a restored one.
    */
   get gridOrigin(): number {
-    return this.#history.present.gridOrigin;
+    const { document, gridOrigin } = this.#history.present;
+    const { spacing } = this.grid;
+    if (gridOrigin !== undefined) return withinSpacing(gridOrigin, spacing);
+    const guessed = this.#guessed;
+    if (guessed?.document === document && guessed.spacing === spacing) {
+      return guessed.origin;
+    }
+    const origin = gridOriginOf(document, 0, spacing);
+    this.#guessed = { document, spacing, origin };
+    return origin;
   }
 
   #snapped(point: InputPoint): InputPoint {
-    return this.snap ? snapToGrid(point, this.gridOrigin) : point;
+    return this.snap ? snapToGrid(point, this.grid, this.gridOrigin) : point;
   }
 
   get document(): InkDocument {
@@ -343,10 +386,10 @@ export class DrawingSession {
    */
   replace(
     document: InkDocument,
-    gridOrigin = gridOriginOf(document, this.gridOrigin),
+    gridOrigin = gridOriginOf(document, this.gridOrigin, this.grid.spacing),
   ): void {
     if (this.#active !== undefined) return;
-    this.#history.push({ document, gridOrigin: withinSpacing(gridOrigin) });
+    this.#history.push({ document, gridOrigin });
   }
 
   /**
@@ -358,11 +401,13 @@ export class DrawingSession {
   rebase(dxPixels: number): void {
     if (dxPixels === 0) return;
     // States share most of their strokes; they still do once moved. The grid
-    // moves with each, so that it stays where each was drawn on it.
+    // moves with each, so that it stays where each was drawn on it, the grid
+    // the strokes say too, which may have no strokes to say it after this.
     const move = documentMover(dxPixels);
+    const { spacing } = this.grid;
     this.#history.map(({ document, gridOrigin }) => ({
       document: move(document),
-      gridOrigin: withinSpacing(gridOrigin + dxPixels),
+      gridOrigin: (gridOrigin ?? gridOriginOf(document, 0, spacing)) + dxPixels,
     }));
     this.#saved = move(this.#saved);
     const active = this.#active;

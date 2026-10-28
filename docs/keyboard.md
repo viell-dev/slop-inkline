@@ -56,10 +56,10 @@ immediately. Select the name field to type a name; Enter returns to drawing.
 | Mod+Shift+Enter           | Next        | Save, insert, and start the symbol that follows.        |
 | Esc                       |             | Close, asking first if something is unsaved.            |
 
-While **Move** is on, the arrow keys move the picture, with Shift in larger
-steps, and + and − scale it. Copy from and Next are only in the editor for a new
-symbol. Make ink's threshold is a slider, which its arrow keys move; **Light
-ink**, **Apply**, and **Cancel** are buttons, as is **Remove picture**.
+While **Move** is on, the arrow keys move the picture, with Shift by one column
+of the grid, and + and − scale it. Copy from and Next are only in the editor for
+a new symbol. Make ink's threshold is a slider, which its arrow keys move;
+**Light ink**, **Apply**, and **Cancel** are buttons, as is **Remove picture**.
 
 The **Help** button opens a quick start and guide explanations. Esc closes Help
 and returns focus to the drawing area.
