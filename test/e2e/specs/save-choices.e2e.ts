@@ -217,6 +217,28 @@ describe("Saving a symbol used elsewhere", function () {
     expect(before).not.toBe(saved);
   });
 
+  it("counts ink that Make ink is previewing as a change, asking once", async function () {
+    await editFile(tower);
+    await browser.execute(async () => {
+      await window.inklineTest.pictures.copyPicture(40, 40, "white", [
+        { x: 10, y: 10, width: 20, height: 20, colour: "black" },
+      ]);
+    });
+    await browser.keys([Key.Ctrl, "v"]);
+    await waitForStatus("Tracing over the picture");
+    // Only the preview: no stroke is drawn.
+    await browser.keys("i");
+    await waitForStatus("Making ink of the picture");
+    await browser.pause(300);
+    await browser.keys([Key.Ctrl, "s"]);
+    await question("Change tower everywhere?");
+    await clickTop("Replace");
+    await waitForStatus("Saved");
+    expect(await modals()).toBe(1);
+    // The ink was made and saved as the symbol's base layer.
+    const record = JSON.parse(await recordOf(tower)) as { base?: unknown };
+    expect(record.base).toBeDefined();
+  });
   it("saves without asking a symbol used once, and a rename alone", async function () {
     await createSymbol("Signs/lone.ink.png");
     await writeNotes({ "Lone.md": "Once ![[Signs/lone.ink.png]].\n" });
