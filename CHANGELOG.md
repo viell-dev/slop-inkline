@@ -8,6 +8,14 @@ section is also its
 
 ## Unreleased
 
+## 0.3.0-alpha.3 - 2026-10-28
+
+This alpha follows the 0.1.1-rc.2 report that detailed symbols are hard to draw
+in the wide, shallow drawing area
+([zoom](https://github.com/viell-dev/slop-inkline/issues/87)). Public stable
+publication remains on hold, as the earlier
+[workflow feedback](https://github.com/viell-dev/slop-inkline/issues/5) records.
+
 ### Added
 
 - **Zoom** (Z) in the editor shows the drawing twice as large in a taller
