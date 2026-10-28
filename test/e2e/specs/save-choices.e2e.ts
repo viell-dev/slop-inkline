@@ -11,7 +11,6 @@ import {
   startOver,
   storedDrafts,
   symbolFiles,
-  topButton,
   waitForEditor,
   waitForStatus,
 } from "../support/editor.ts";
@@ -255,11 +254,11 @@ describe("Saving a symbol used elsewhere", function () {
     await browser.$(".inkline-editor .inkline-name").setValue("spire");
     await browser.keys([Key.Enter]);
     await browser.keys([Key.Ctrl, Key.Enter]);
-    // Obsidian's own question about the links, with no question of Inkline's
-    // before it.
+    // Obsidian's own question about the links, which a question of Inkline's
+    // before it would cover, so that this waits in vain.
     await clickTop("Just once");
-    expect(await topButton("Replace")).toBeUndefined();
     await browser.waitUntil(async () => !(await editorOpen()));
+    expect(await modals()).toBe(0);
     expect(await symbolFiles()).toContain("Signs/spire.ink.png");
     expect(await symbolFiles()).not.toContain(tower);
   });
