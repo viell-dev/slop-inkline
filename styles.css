@@ -46,10 +46,24 @@
   gap: var(--size-4-2);
 }
 
+/*
+ * A pressed button: the accent, moved a third of the way from the text on it,
+ * Obsidian's --text-on-accent, white or black as the accent is dark or light,
+ * so that the text reads at 4.5:1 or better on Obsidian's accents. The colour
+ * is relative in srgb, whose channels run from 0 to 1 in every Chromium these
+ * Obsidian versions use; rgb()'s ran from 0 to 1 in Chromium 120 and from 0 to
+ * 255 later. The plain accent is the fallback where relative colours are not
+ * understood.
+ */
 .inkline-toolbar button[aria-pressed="true"],
 .inkline-picture button[aria-pressed="true"],
 .inkline-convert button[aria-pressed="true"] {
   background-color: var(--interactive-accent);
+  background-color: color-mix(
+    in srgb,
+    var(--interactive-accent) 65%,
+    color(from var(--text-on-accent) srgb calc(1 - r) calc(1 - g) calc(1 - b))
+  );
   color: var(--text-on-accent);
 }
 

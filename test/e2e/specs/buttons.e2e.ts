@@ -116,6 +116,70 @@ async function toolbarRows(): Promise<number> {
   });
 }
 
+/** A pressed button's text and background colours, as sRGB from 0 to 255. */
+interface Pressed {
+  readonly id: string;
+  readonly text: readonly number[];
+  readonly background: readonly number[];
+}
+
+/** The pressed buttons' colours, resolved by drawing each on a canvas. */
+async function pressedColours(): Promise<Pressed[]> {
+  return browser.execute(() => {
+    const context = new OffscreenCanvas(1, 1).getContext("2d", {
+      willReadFrequently: true,
+    });
+    if (context === null) throw new Error("no context");
+    const rgb = (css: string): number[] => {
+      context.clearRect(0, 0, 1, 1);
+      // A canvas keeps its last colour when given one it cannot read.
+      const unread = "#010203";
+      context.fillStyle = unread;
+      context.fillStyle = css;
+      if (context.fillStyle === unread) throw new Error(`unread ${css}`);
+      context.fillRect(0, 0, 1, 1);
+      return [...context.getImageData(0, 0, 1, 1).data.slice(0, 3)];
+    };
+    return [
+      ...activeDocument.querySelectorAll(
+        '.inkline-editor button[aria-pressed="true"]',
+      ),
+    ].map((button) => {
+      const style = getComputedStyle(button);
+      return {
+        id: button.getAttribute("data-inkline-button") ?? "",
+        text: rgb(style.color),
+        background: rgb(style.backgroundColor),
+      };
+    });
+  });
+}
+
+/** WCAG 2.2's contrast ratio between two sRGB colours. */
+function contrast(a: readonly number[], b: readonly number[]): number {
+  const luminance = (colour: readonly number[]): number => {
+    const [r = 0, g = 0, bl = 0] = colour.map((value) => {
+      const c = value / 255;
+      return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+  };
+  const [light, dark] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return ((light ?? 0) + 0.05) / ((dark ?? 0) + 0.05);
+}
+
+/** Sets Obsidian's accent colour, or its default with an empty one. */
+async function setAccent(colour: string): Promise<void> {
+  await browser.executeObsidian(({ app }, accent) => {
+    const appearance = app as unknown as {
+      vault: { setConfig(key: string, value: string): void };
+      updateAccentColor(): void;
+    };
+    appearance.vault.setConfig("accentColor", accent);
+    appearance.updateAccentColor();
+  }, colour);
+}
+
 describe("Editor buttons", function () {
   /** The names under the default, to compare the other choices with. */
   let usual: Record<string, string> = {};
@@ -243,6 +307,42 @@ describe("Editor buttons", function () {
     expect(
       await browser.$(".inkline-editor .inkline-button-icon").isExisting(),
     ).toBe(false);
+  });
+
+  it("keeps a pressed button's text readable on the accent, in both themes", async function () {
+    await storeLabels("both");
+    await openEditor();
+    const measured: string[] = [];
+    try {
+      // Obsidian's default, a light accent it puts black text on, and a
+      // mid blue it puts white text on.
+      for (const accent of ["", "#ffd400", "#3d7be0"]) {
+        await setAccent(accent);
+        for (const name of ["theme-light", "theme-dark"]) {
+          await browser.execute((wanted) => {
+            document.body.removeClass("theme-light", "theme-dark");
+            document.body.addClass(wanted);
+          }, name);
+          const pressed = await pressedColours();
+          // The pen, the M brush and Guides start pressed.
+          expect(pressed.map((button) => button.id)).toEqual([
+            "pen",
+            "size-1",
+            "guides",
+          ]);
+          for (const button of pressed) {
+            const ratio = contrast(button.text, button.background);
+            measured.push(
+              `${accent || "default"} ${name} ${button.id} ${ratio.toFixed(2)}`,
+            );
+            expect(ratio).toBeGreaterThanOrEqual(4.5);
+          }
+        }
+      }
+    } finally {
+      console.log("Pressed contrast", JSON.stringify(measured));
+      await setAccent("");
+    }
   });
 
   for (const choice of ["both", "icons"] as const) {
