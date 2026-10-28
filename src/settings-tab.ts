@@ -7,6 +7,7 @@ import {
   type Plugin,
   type SettingDefinitionItem,
 } from "obsidian";
+import { buttonLabelNames } from "./editor/buttons.ts";
 import { gridCellRange, guideNames, type GuideName } from "./editor/guides.ts";
 import { brushSizes } from "./editor/session.ts";
 import {
@@ -130,6 +131,17 @@ export class InklineSettingTab extends PluginSettingTab {
           max: gridCellRange.max,
           step: 1,
           displayFormat: (value) => `${String(value)} cells`,
+        },
+      },
+      {
+        name: "Editor buttons",
+        desc: "What the editor's buttons show. Icons only keeps the toolbar compact; each button still names itself and its shortcut when pointed at.",
+        aliases: ["icons", "toolbar", "labels"],
+        control: {
+          type: "dropdown",
+          key: "buttonLabels",
+          defaultValue: defaultSettings.buttonLabels,
+          options: { ...buttonLabelNames },
         },
       },
       {

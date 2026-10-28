@@ -8,6 +8,23 @@ section is also its
 
 ## Unreleased
 
+## 0.3.0-alpha.4 - 2026-10-28
+
+This alpha follows the 0.1.1-rc.1 suggestion of familiar drawing-tool icons on
+the editor's buttons
+([icons](https://github.com/viell-dev/slop-inkline/issues/74)). Public stable
+publication remains on hold, as the earlier
+[workflow feedback](https://github.com/viell-dev/slop-inkline/issues/5) records.
+
+### Added
+
+- The editor's buttons show an icon from Obsidian's own set beside their names,
+  by default. **Editor buttons** in the settings chooses **Icons and text**,
+  **Icons only**, which keeps the toolbar to one row in a wide editor, or **Text
+  only**, as before. The brush sizes keep their letters, and the bar that Make
+  ink opens keeps its words. Under every choice, tooltips and screen readers
+  give each button's name, and its shortcut where it has one.
+
 ## 0.3.0-alpha.3 - 2026-10-28
 
 This alpha follows the 0.1.1-rc.2 report that detailed symbols are hard to draw

@@ -2,6 +2,7 @@
 // stored for them is read back. A plain module, so that unit tests can check
 // it; settings-tab.ts shows them.
 
+import { isButtonLabels, type ButtonLabels } from "./editor/buttons.ts";
 import {
   defaultGridCells,
   gridCellRange,
@@ -23,6 +24,8 @@ export interface Settings {
   readonly brushSize: number;
   /** How many grid cells span the font's x-height in the editor. */
   readonly gridCells: number;
+  /** What the editor's buttons show: icons, text, or both. */
+  readonly buttonLabels: ButtonLabels;
   /** Whether a new editor starts with its guides shown. */
   readonly guides: boolean;
   /** Which of the font's lines the guides show. */
@@ -43,6 +46,7 @@ export const defaultSettings: Settings = {
   symbolFolder: "",
   brushSize: 1,
   gridCells: defaultGridCells,
+  buttonLabels: "both",
   guides: true,
   ascenderGuide: true,
   capHeightGuide: true,
@@ -94,6 +98,7 @@ export const settingKeys: readonly SettingKey[] = [
   "symbolFolder",
   "brushSize",
   "gridCells",
+  "buttonLabels",
   "guides",
   "ascenderGuide",
   "capHeightGuide",
@@ -108,7 +113,7 @@ export const settingKeys: readonly SettingKey[] = [
  * `settings` with `key` set to `value`, or undefined if `value` is not one
  * that `key` can hold: a trigger as {@link triggerProblem} allows, a folder as
  * `chooseFolder` writes it, a brush among `sizes`, a count of grid cells, a
- * size, or a boolean.
+ * choice of what buttons show, a size, or a boolean.
  */
 export function withSetting(
   settings: Settings,
@@ -146,6 +151,10 @@ export function withSetting(
         value >= gridCellRange.min &&
         value <= gridCellRange.max
         ? { ...settings, gridCells: value }
+        : undefined;
+    case "buttonLabels":
+      return isButtonLabels(value)
+        ? { ...settings, buttonLabels: value }
         : undefined;
     case "symbolScale":
       return typeof value === "number" &&

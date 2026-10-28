@@ -80,6 +80,13 @@ describe("withSetting", () => {
         withSetting(defaultSettings, "gridCells", gridCells, sizes)?.gridCells,
       ).toBe(gridCells);
     }
+    expect(defaultSettings.buttonLabels).toBe("both");
+    for (const buttonLabels of ["both", "icons", "text"]) {
+      expect(
+        withSetting(defaultSettings, "buttonLabels", buttonLabels, sizes)
+          ?.buttonLabels,
+      ).toBe(buttonLabels);
+    }
   });
 
   it("refuses a value its setting cannot hold", () => {
@@ -111,6 +118,10 @@ describe("withSetting", () => {
       ["gridCells", 4.5],
       ["gridCells", "5"],
       ["gridCells", Number.NaN],
+      ["buttonLabels", "icon"],
+      ["buttonLabels", "Icons only"],
+      ["buttonLabels", ""],
+      ["buttonLabels", true],
     ] as const) {
       expect(withSetting(defaultSettings, key, value, sizes)).toBeUndefined();
     }
@@ -130,6 +141,7 @@ describe("readSettings", () => {
       symbolFolder: "Notes/Signs",
       brushSize: 2,
       gridCells: 8,
+      buttonLabels: "icons",
       guides: false,
       ascenderGuide: true,
       capHeightGuide: false,
@@ -151,6 +163,7 @@ describe("readSettings", () => {
           trigger: "a b",
           brushSize: 9,
           gridCells: 0,
+          buttonLabels: "none",
           pressure: false,
           size: 2,
           guides: "no",
