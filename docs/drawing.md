@@ -60,9 +60,11 @@ away a ring. Press **Ellipse** again to draw freehand. **Next** keeps it on; an
 editor opened afresh draws freehand.
 
 With the grid on, the box's corners are on the grid, so the ellipse touches its
-lines at its top, bottom, and sides. For a half circle, draw the circle, then
-erase the half you don't want with eraser strokes that end on the line across
-its middle: on the grid, their ends stop flush with that line.
+lines at its top, bottom, and sides. A circle is on the grid along its longer
+side; across the other it can end between lines, as the grid's rows and columns
+are spaced differently. For a half circle, draw the circle, then erase the half
+you don't want with eraser strokes that end on the line across its middle: on
+the grid, their ends stop flush with that line.
 
 ## Straight lines and the grid
 

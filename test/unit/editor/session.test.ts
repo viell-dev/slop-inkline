@@ -590,14 +590,19 @@ describe("DrawingSession's cuts", () => {
 });
 
 describe("ellipsePoints", () => {
-  it("goes round the box once from the top, no more than maxGap apart", () => {
+  it("goes round the box once from the side it starts on, no more than maxGap apart", () => {
     const points = ellipsePoints({ x: 10, y: 20 }, { x: 70, y: 40 }, false);
-    expect(points[0]).toEqual({ x: 40, y: 20 });
+    expect(points[0]?.x).toBeCloseTo(10);
+    expect(points[0]?.y).toBeCloseTo(30);
     const last = points.at(-1);
-    expect(last?.x).toBeCloseTo(40);
-    expect(last?.y).toBeCloseTo(20);
-    // Clockwise on screen: right of the top, the second point is lower.
-    expect(points[1]?.x).toBeGreaterThan(40);
+    expect(last?.x).toBeCloseTo(10);
+    expect(last?.y).toBeCloseTo(30);
+    // Clockwise on screen: up from the left side.
+    expect(points[1]?.y).toBeLessThan(30);
+    // Dragged leftwards, it starts on the right side, where the drag began.
+    const leftwards = ellipsePoints({ x: 70, y: 20 }, { x: 10, y: 40 }, false);
+    expect(leftwards[0]?.x).toBeCloseTo(70);
+    expect(leftwards.at(-1)?.x).toBeCloseTo(70);
     const xs = points.map((point) => point.x);
     const ys = points.map((point) => point.y);
     expect(Math.min(...xs)).toBeCloseTo(10);
@@ -684,6 +689,50 @@ describe("DrawingSession's ellipses", () => {
     session.begin({ x: 7, y: 9 });
     session.end({ x: 7, y: 9 });
     expect(session.document.strokes[1]?.points).toEqual([0, 256]);
+  });
+
+  it("leaves the grid where it was for a drawing opened again, however many columns an ellipse spans", () => {
+    for (const [from, to] of [
+      [
+        { x: 0, y: 32 },
+        { x: 48, y: 96 },
+      ],
+      [
+        { x: 48, y: 32 },
+        { x: 0, y: 96 },
+      ],
+    ] as const) {
+      const session = new DrawingSession(emptyDocument);
+      session.shape = "ellipse";
+      session.snap = true;
+      session.begin(from);
+      session.end(to);
+      // Three columns across: its top is between two of them.
+      expect(new DrawingSession(session.document).gridOrigin).toBe(0);
+      session.rebase(5);
+      expect(new DrawingSession(session.document).gridOrigin).toBe(5);
+      // Copy from puts a copy in another editor, whose grid is elsewhere.
+      const copying = new DrawingSession(emptyDocument);
+      copying.replace(session.document);
+      expect(copying.gridOrigin).toBe(5);
+    }
+  });
+
+  it("keeps a circle on the grid along its longer side, where rows and columns are spaced differently", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.grid = { spacing: 13.8125, rows: [0, 52, 75, 88.8125, 102.625] };
+    session.shape = "ellipse";
+    session.snap = true;
+    session.begin({ x: 0, y: 52 });
+    session.extend([{ x: 41.4375, y: 75 }], true);
+    session.end({ x: 41.4375, y: 75 });
+    const points = session.document.strokes[0]?.points ?? [];
+    const xs = points.filter((_, at) => at % 2 === 0);
+    const ys = points.filter((_, at) => at % 2 === 1);
+    // Three columns across, from the grid point it started on, and as tall,
+    // which ends between rows: the circle stays a circle.
+    expect([Math.min(...xs), Math.max(...xs)]).toEqual([0, 663]);
+    expect([Math.min(...ys), Math.max(...ys)]).toEqual([832, 1495]);
   });
 
   it("keeps an ellipse's corner where it was when a save moves the drawing", () => {

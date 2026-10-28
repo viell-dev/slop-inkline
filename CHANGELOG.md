@@ -20,8 +20,9 @@ remains on hold, as the earlier
 
 - **Ellipse** (O) in the editor makes dragging draw an ellipse across the box
   dragged, with the pen or the eraser at its brush size; hold Shift for a
-  circle. On the grid, the box's corners snap to it. Press it again to draw
-  freehand; **Next** keeps it on. An ellipse is an ordinary stroke in the file.
+  circle. On the grid, the box's corners snap to it, a circle's along its longer
+  side. Press it again to draw freehand; **Next** keeps it on. An ellipse is an
+  ordinary stroke in the file.
 
 ## 0.3.0-alpha.5 - 2026-10-28
 

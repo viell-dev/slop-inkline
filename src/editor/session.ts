@@ -237,10 +237,13 @@ function between(from: InputPoint, to: InputPoint, along: number): InputPoint {
 
 /**
  * The points of an ellipse drawn across the box from `from` to `to`, in
- * document pixels: a closed loop from its top, clockwise, no more than
- * {@link maxGap} apart, ending where it began. With `circle`, the box is made
- * square towards `to`, as wide and as tall as its longer side. A box with no
- * width or no height gives the line or the point it is.
+ * document pixels: a closed loop, clockwise, no more than {@link maxGap}
+ * apart, from the side of the box `from` is on and back to it. That side's x
+ * is `from`'s, a grid column's when the drag started on the grid, so that the
+ * grid a drawing's stroke ends suggest, as when it is opened again, stays
+ * where it was. With `circle`, the box is made square towards `to`, as wide
+ * and as tall as its longer side. A box with no width or no height gives the
+ * line or the point it is.
  */
 export function ellipsePoints(
   from: InputPoint,
@@ -268,8 +271,9 @@ export function ellipsePoints(
   const perimeter =
     Math.PI * (rx + ry) * (1 + (3 * h) / (10 + Math.sqrt(4 - 3 * h)));
   const count = 4 * Math.max(4, Math.ceil(perimeter / (maxGap / 2) / 4));
+  const start = dx < 0 ? 0 : Math.PI;
   return Array.from({ length: count + 1 }, (_, step) => {
-    const angle = -Math.PI / 2 + (2 * Math.PI * step) / count;
+    const angle = start + (2 * Math.PI * step) / count;
     return { x: cx + rx * Math.cos(angle), y: cy + ry * Math.sin(angle) };
   });
 }
