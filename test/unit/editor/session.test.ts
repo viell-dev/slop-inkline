@@ -718,6 +718,26 @@ describe("DrawingSession's ellipses", () => {
     }
   });
 
+  it("leaves the grid where it was for a circle taller than the columns it was dragged across", () => {
+    const grid = { spacing: 13.8125, rows: [0, 52, 75, 88.8125, 102.625] };
+    const session = new DrawingSession(emptyDocument);
+    session.grid = grid;
+    session.shape = "ellipse";
+    session.snap = true;
+    // Leftwards one column and down three rows: the circle, as wide as it
+    // is tall, reaches past the column it was dragged to.
+    session.begin({ x: 41.4375, y: 52 });
+    session.extend([{ x: 27.625, y: 102.625 }], true);
+    session.end({ x: 27.625, y: 102.625 });
+    const points = session.document.strokes[0]?.points ?? [];
+    const xs = points.filter((_, at) => at % 2 === 0);
+    expect(Math.min(...xs)).toBe(-147);
+    expect([points[0], points.at(-2)]).toEqual([663, 663]);
+    const reopened = new DrawingSession(session.document);
+    reopened.grid = grid;
+    expect(reopened.gridOrigin).toBe(0);
+  });
+
   it("keeps a circle on the grid along its longer side, where rows and columns are spaced differently", () => {
     const session = new DrawingSession(emptyDocument);
     session.grid = { spacing: 13.8125, rows: [0, 52, 75, 88.8125, 102.625] };
