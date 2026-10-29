@@ -43,6 +43,7 @@ immediately. Select the name field to type a name; Enter returns to drawing.
 | O                         | Ellipse     | Draw ellipses by dragging, or freehand again.           |
 | Y                         | Polygon     | Draw shapes by clicking their corners, or freehand.     |
 | Enter                     |             | End a polygon being drawn, leaving it open.             |
+| B                         | Fill        | Fill ellipses and closed polygons, or not.              |
 | 1, 2, 3, 4                | S, M, L, XL | Choose the brush size.                                  |
 | Mod+Z                     | Undo        | Undo the last change, or a polygon's last corner.       |
 | Mod+Shift+Z, or Mod+Y     | Redo        | Redo it.                                                |
@@ -75,8 +76,8 @@ and returns focus to the drawing area.
 
 - Every control has a label which screen readers read, whether its button shows
   an icon, a name, or both. Toolbar tooltips also include their shortcuts. The
-  pen, the eraser, Ellipse, Polygon, the brush sizes, the guides, the grid,
-  Zoom, Move, Make ink, and Light ink say whether they are on.
+  pen, the eraser, Ellipse, Polygon, Fill, the brush sizes, the guides, the
+  grid, Zoom, Move, Make ink, and Light ink say whether they are on.
 - The drawing area keeps its accessible name without a hover tooltip.
 - The editor's status line, such as "Saving…", "Saved", or "Not saved" and why,
   is announced as it changes.

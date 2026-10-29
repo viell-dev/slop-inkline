@@ -58,7 +58,13 @@ describe("isInkPath", () => {
 });
 
 describe("version 1 golden files", () => {
-  for (const name of ["v1-strokes", "v1-base", "v1-cuts", "v1-polygons"]) {
+  for (const name of [
+    "v1-strokes",
+    "v1-base",
+    "v1-cuts",
+    "v1-polygons",
+    "v1-fill",
+  ]) {
     it(`reads ${name}`, async () => {
       const bytes = await readFile(path.join(fixtures, `${name}.ink.png`));
       const expected = await readFile(

@@ -323,6 +323,11 @@ export class DrawingSession {
   tool: Tool = "pen";
   /** What dragging draws, with the pen or the eraser. */
   shape: Shape = "free";
+  /**
+   * Whether an ellipse, or a polygon closed on its first corner, is drawn
+   * filled, with its edges through its points, as it is drawn and placed.
+   */
+  fill = false;
   /** Each tool keeps its own selected size for the life of the session. */
   readonly sizes: Record<Tool, number> = { pen: 1, eraser: 1 };
 
@@ -454,7 +459,11 @@ export class DrawingSession {
     if (active === undefined) return undefined;
     const next = this.#next;
     if (!active.polygon || next === undefined) {
-      return this.#stroke(active, { start: active.onGrid, end: false });
+      return this.#stroke(
+        active,
+        { start: active.onGrid, end: false },
+        this.#corner !== undefined && this.fill,
+      );
     }
     // A polygon shows what a click where the pointer is would make: a side
     // to its next corner; or closed, on its first corner; or ended, with the
@@ -462,7 +471,7 @@ export class DrawingSession {
     if (this.#closes(active, next)) {
       const closed = { ...active, points: [...active.points] };
       closed.points.push(active.points[0] ?? 0, active.points[1] ?? 0);
-      return this.#stroke(closed, { start: false, end: false });
+      return this.#stroke(closed, { start: false, end: false }, this.fill);
     }
     if (this.#near(active, next, active.points.length - 2)) {
       return this.#stroke(active, this.#cornerCuts());
@@ -472,10 +481,14 @@ export class DrawingSession {
     return this.#stroke(shown, { start: active.onGrid, end: false });
   }
 
-  /** `active` as a stroke, cut flat at the ends named, which are on the grid. */
+  /**
+   * `active` as a stroke, cut flat at the ends named, which are on the grid,
+   * and with `fill`, filled inside, if it has three points to enclose any.
+   */
   #stroke(
     active: ActiveStroke,
     ends: { readonly start: boolean; readonly end: boolean },
+    fill = false,
   ): Stroke {
     const stroke: Stroke = {
       tool: active.tool,
@@ -483,6 +496,7 @@ export class DrawingSession {
       pressure: false,
       points: [...active.points],
       ...(active.polygon ? { kind: "polygon" } : {}),
+      ...(fill && active.points.length >= 6 ? { fill } : {}),
     };
     const cut = gridCuts(active.points, Math.max(active.size, cutReach), ends);
     return cut === undefined ? stroke : { ...stroke, cut };
@@ -616,10 +630,11 @@ export class DrawingSession {
     const stroke =
       active === undefined
         ? undefined
-        : this.#stroke(active, {
-            start: active.onGrid,
-            end: this.snap && !ellipse,
-          });
+        : this.#stroke(
+            active,
+            { start: active.onGrid, end: this.snap && !ellipse },
+            ellipse && this.fill,
+          );
     this.#active = undefined;
     this.#anchor = undefined;
     this.#corner = undefined;
@@ -646,7 +661,7 @@ export class DrawingSession {
     this.#next = release;
     if (this.#closes(active, release)) {
       active.points.push(active.points[0] ?? 0, active.points[1] ?? 0);
-      this.#commit(active, { start: false, end: false });
+      this.#commit(active, { start: false, end: false }, this.fill);
       return;
     }
     const count = active.points.length;
@@ -693,12 +708,16 @@ export class DrawingSession {
     );
   }
 
-  /** Commits a polygon as one undoable step, cut flat at the ends named. */
+  /**
+   * Commits a polygon as one undoable step, cut flat at the ends named, and
+   * with `fill`, filled inside.
+   */
   #commit(
     active: ActiveStroke,
     ends: { readonly start: boolean; readonly end: boolean },
+    fill = false,
   ): void {
-    const stroke = this.#stroke(active, ends);
+    const stroke = this.#stroke(active, ends, fill);
     this.#active = undefined;
     this.#next = undefined;
     this.#starting = false;

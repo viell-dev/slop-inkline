@@ -11,6 +11,14 @@ import {
   type Stroke,
 } from "../format/record.ts";
 import { lineBox } from "./geometry.ts";
+import { cornerReach } from "./outline.ts";
+
+/**
+ * How far a polygon's ink can reach from its corners, in stroke widths: a
+ * sharp corner's cut point, its reach along the bisector and half the width
+ * across it.
+ */
+const polygonReach = Math.hypot(cornerReach, 1 / 2);
 
 export interface InkDocument {
   readonly strokes: readonly Stroke[];
@@ -63,7 +71,8 @@ export function fitsFormat(document: InkDocument): boolean {
 /**
  * How far a document reaches across, in pixels: from the left edge of its
  * leftmost stroke or base layer to the right edge of its rightmost, each
- * stroke widened by its radius. `baseWidth` is the base layer's image width,
+ * stroke widened by its radius, or a polygon by as far as its sharp corners
+ * can reach. `baseWidth` is the base layer's image width,
  * which only its decoded pixels give. Undefined for an empty document.
  */
 export function documentSpan(
@@ -74,7 +83,8 @@ export function documentSpan(
   let right = Number.NEGATIVE_INFINITY;
   for (const stroke of document.strokes) {
     const stride = stroke.pressure ? 3 : 2;
-    const radius = stroke.size / 2;
+    const radius =
+      stroke.kind === "polygon" ? stroke.size * polygonReach : stroke.size / 2;
     for (let index = 0; index < stroke.points.length; index += stride) {
       const x = stroke.points[index] ?? 0;
       left = Math.min(left, x - radius);

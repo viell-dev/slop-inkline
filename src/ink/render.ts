@@ -5,6 +5,7 @@ import { unitsPerPixel, type Stroke } from "../format/record.ts";
 import type { Bounds } from "./geometry.ts";
 import {
   cutBoxes,
+  fillOutline,
   restShape,
   strokeShape,
   traceShape,
@@ -61,8 +62,8 @@ export interface DrawingContext extends PathSink {
 /**
  * Draws a symbol on a cleared canvas, shifted right by `offsetX` pixels. A
  * base layer is drawn first, scaled with smoothing; each stroke then fills
- * its outline, or a polygon's pieces with the nonzero rule, a pen over what
- * is there and an eraser cutting it away.
+ * its outline, or a polygon's pieces with the nonzero rule, or a filled
+ * stroke its inside, a pen over what is there and an eraser cutting it away.
  */
 export function drawInk(
   context: DrawingContext,
@@ -88,37 +89,51 @@ export function drawInk(
   for (const stroke of strokes) {
     context.globalCompositeOperation =
       stroke.tool === "pen" ? "source-over" : "destination-out";
-    const boxes = cutBoxes(stroke);
-    if (boxes.length === 0) {
+    // A filled stroke is its inside alone, with its edges through its
+    // points, so that a filled shape on the grid lies within its lines.
+    const fill = fillOutline(stroke);
+    if (fill === undefined) {
+      drawStroke(context, stroke);
+    } else {
       context.beginPath();
-      traceShape(strokeShape(stroke), context);
+      traceShape({ kind: "pieces", pieces: [fill] }, context);
       context.fill();
-      continue;
     }
-    // The whole stroke, everywhere but its cut boxes...
-    context.save();
-    for (const box of boxes) {
-      context.beginPath();
-      context.rect(-everywhere, -everywhere, 2 * everywhere, 2 * everywhere);
-      addBox(context, box);
-      context.clip("evenodd");
-    }
+  }
+  context.restore();
+}
+
+/** Fills a stroke's outline, or its pieces, cut where it is cut. */
+function drawStroke(context: DrawingContext, stroke: Stroke): void {
+  const boxes = cutBoxes(stroke);
+  if (boxes.length === 0) {
     context.beginPath();
     traceShape(strokeShape(stroke), context);
     context.fill();
-    context.restore();
-    // ...and in them, the rest of it, without the ends cut there.
-    const rest = restShape(stroke);
-    if (rest === undefined) continue;
-    context.save();
-    context.beginPath();
-    for (const box of boxes) addBox(context, box);
-    context.clip("nonzero");
-    context.beginPath();
-    traceShape(rest, context);
-    context.fill();
-    context.restore();
+    return;
   }
+  // The whole stroke, everywhere but its cut boxes...
+  context.save();
+  for (const box of boxes) {
+    context.beginPath();
+    context.rect(-everywhere, -everywhere, 2 * everywhere, 2 * everywhere);
+    addBox(context, box);
+    context.clip("evenodd");
+  }
+  context.beginPath();
+  traceShape(strokeShape(stroke), context);
+  context.fill();
+  context.restore();
+  // ...and in them, the rest of it, without the ends cut there.
+  const rest = restShape(stroke);
+  if (rest === undefined) return;
+  context.save();
+  context.beginPath();
+  for (const box of boxes) addBox(context, box);
+  context.clip("nonzero");
+  context.beginPath();
+  traceShape(rest, context);
+  context.fill();
   context.restore();
 }
 

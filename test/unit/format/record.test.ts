@@ -143,6 +143,40 @@ describe("serializeRecord and parseRecord", () => {
     expect(serializeRecord(record)).not.toContain("kind");
   });
 
+  it("round-trip filled strokes, writing fill after the kind and before a cut", () => {
+    const filled: InkRecord = {
+      box: record.box,
+      strokes: [
+        {
+          tool: "pen",
+          size: 32,
+          pressure: false,
+          points: [0, 0, 160, 0, 160, 160, 0, 0],
+          kind: "polygon",
+          fill: true,
+        },
+        {
+          tool: "eraser",
+          size: 32,
+          pressure: false,
+          points: [0, 0, 64, 0, 64, 64],
+          fill: true,
+          cut: { start: "up" },
+        },
+      ],
+    };
+    const text = serializeRecord(filled);
+    expect(text).toContain('"kind":"polygon","fill":true}');
+    expect(text).toContain('"points":[0,0,64,0,64,64],"fill":true,"cut"');
+    expect(parseRecord(text)).toEqual({ ok: true, record: filled });
+    expect(serializeRecord(record)).not.toContain("fill");
+    // false is the same as no fill.
+    expect(parseRecord(variant(["strokes", 1, "fill"], false))).toEqual({
+      ok: true,
+      record: withBase,
+    });
+  });
+
   it("write no cut for a stroke without one, and read an empty one as none", () => {
     expect(serializeRecord(record)).not.toContain("cut");
     const empty = variant(["strokes", 1, "cut"], {});
@@ -280,6 +314,11 @@ describe("parseRecord refuses", () => {
       "a kind of stroke this version does not know",
       variant(["strokes", 1, "kind"], "spline"),
       'strokes[1].kind is not "polygon"',
+    ],
+    [
+      "a fill that is not a boolean",
+      variant(["strokes", 1, "fill"], "yes"),
+      "strokes[1].fill is not a boolean",
     ],
     [
       "a polygon with pressure",

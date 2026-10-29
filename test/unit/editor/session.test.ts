@@ -768,6 +768,76 @@ describe("DrawingSession's ellipses", () => {
   });
 });
 
+describe("DrawingSession's fill", () => {
+  it("fills an ellipse, and a polygon closed on its first corner, but no other stroke", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.fill = true;
+    session.begin({ x: 0, y: 0 });
+    session.end({ x: 20, y: 20 });
+    expect(session.document.strokes[0]).not.toHaveProperty("fill");
+    session.shape = "ellipse";
+    session.begin({ x: 10, y: 20 });
+    session.extend([{ x: 70, y: 40 }]);
+    expect(session.activeStroke?.fill).toBe(true);
+    session.end({ x: 70, y: 40 });
+    expect(session.document.strokes[1]?.fill).toBe(true);
+    // A tap draws a dot, with nothing inside to fill.
+    session.begin({ x: 5, y: 5 });
+    session.end({ x: 5, y: 5 });
+    expect(session.document.strokes[2]).not.toHaveProperty("fill");
+    session.shape = "polygon";
+    for (const [x, y] of [
+      [10, 20],
+      [40, 20],
+      [25, 50],
+    ] as const) {
+      session.begin({ x, y });
+      session.end({ x, y });
+    }
+    session.end();
+    expect(session.document.strokes[3]).not.toHaveProperty("fill");
+    // Nor when it is ended on its last corner.
+    for (const [x, y] of [
+      [10, 20],
+      [40, 20],
+      [25, 50],
+      [25, 50],
+    ] as const) {
+      session.begin({ x, y });
+      session.end({ x, y });
+    }
+    expect(session.document.strokes[4]?.points).toHaveLength(6);
+    expect(session.document.strokes[4]).not.toHaveProperty("fill");
+  });
+
+  it("fills a closed polygon as Fill is when it closes, and shows it so", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "polygon";
+    for (const [x, y] of [
+      [10, 20],
+      [40, 20],
+      [25, 50],
+    ] as const) {
+      session.begin({ x, y });
+      session.end({ x, y });
+    }
+    session.extend([{ x: 10, y: 20 }]);
+    expect(session.activeStroke).not.toHaveProperty("fill");
+    session.fill = true;
+    expect(session.activeStroke?.fill).toBe(true);
+    // A side to a new corner is not closed, and shows no fill.
+    session.extend([{ x: 60, y: 60 }]);
+    expect(session.activeStroke).not.toHaveProperty("fill");
+    session.begin({ x: 10, y: 20 });
+    session.end({ x: 10, y: 20 });
+    expect(session.document.strokes[0]).toMatchObject({
+      kind: "polygon",
+      fill: true,
+      points: [160, 320, 640, 320, 400, 800, 160, 320],
+    });
+  });
+});
+
 describe("DrawingSession's polygons", () => {
   /** Clicks at a point: a press and a release there. */
   const click = (session: DrawingSession, x: number, y: number): void => {
