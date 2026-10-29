@@ -170,6 +170,21 @@ describe("serializeRecord and parseRecord", () => {
     expect(text).toContain('"points":[0,0,64,0,64,64],"fill":true,"cut"');
     expect(parseRecord(text)).toEqual({ ok: true, record: filled });
     expect(serializeRecord(record)).not.toContain("fill");
+    // false is never written.
+    expect(
+      serializeRecord({
+        box: record.box,
+        strokes: [
+          {
+            tool: "pen",
+            size: 32,
+            pressure: false,
+            points: [0, 0],
+            fill: false,
+          },
+        ],
+      }),
+    ).not.toContain("fill");
     // false is the same as no fill.
     expect(parseRecord(variant(["strokes", 1, "fill"], false))).toEqual({
       ok: true,

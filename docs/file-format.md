@@ -209,8 +209,8 @@ of the image's size, with the record's coordinates as they are:
    compositing operations `source-over` and `destination-out`). A stroke with a
    `cut` is filled in two parts: its outline, or its pieces, everywhere except
    in a box for each cut end, and then, inside those boxes only, those of the
-   rest of the stroke, below. A stroke with `fill` fills its inside instead,
-   below, in the same way.
+   rest of the stroke, below. A stroke with `fill` `true` fills its inside
+   instead, below, in the same way.
 
 For a cut end at the point (`x / 16`, `y / 16`) pixels, with reach
 `r = size / 16 + 1` pixels, the box spans:

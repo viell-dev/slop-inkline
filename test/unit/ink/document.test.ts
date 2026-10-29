@@ -227,8 +227,12 @@ describe("documentSpan", () => {
       kind: "polygon",
     };
     const span = documentSpan({ strokes: [sharp] });
-    const right = strokeBounds(sharp)?.right ?? Infinity;
-    expect(span?.right).toBeGreaterThanOrEqual(right);
-    expect(span?.right).toBeCloseTo(20 + 2 * Math.hypot(2, 0.5), 9);
+    expect(span?.right).toBe(strokeBounds(sharp)?.right);
+    expect(span?.right).toBeCloseTo(24, 1);
+    // Filled, it reaches its corners and no farther, whatever its brush.
+    expect(documentSpan({ strokes: [{ ...sharp, fill: true }] })).toEqual({
+      left: 0,
+      right: 20,
+    });
   });
 });
