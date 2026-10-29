@@ -22,7 +22,7 @@ import {
   type InkDocument,
 } from "./document.ts";
 import { crop, lineBox, type Bounds } from "./geometry.ts";
-import { outlineBounds, strokeOutline } from "./outline.ts";
+import { strokeBounds } from "./outline.ts";
 import {
   inkAlpha,
   inkBounds,
@@ -318,7 +318,7 @@ function inkAreas(
   const areas: Bounds[] = [];
   for (const stroke of document.strokes) {
     if (stroke.tool !== "pen") continue;
-    const bounds = outlineBounds(strokeOutline(stroke));
+    const bounds = strokeBounds(stroke);
     if (bounds !== undefined && inLineBox(bounds.top, bounds.bottom)) {
       areas.push(bounds);
     }
@@ -347,9 +347,7 @@ export function findInk(
   if (areas.length === 0) return undefined;
   const start = Math.floor(Math.min(...areas.map((area) => area.left))) - 2;
   const end = Math.ceil(Math.max(...areas.map((area) => area.right))) + 2;
-  const outlines = document.strokes.map((stroke) =>
-    outlineBounds(strokeOutline(stroke)),
-  );
+  const outlines = document.strokes.map(strokeBounds);
   let found: Bounds | undefined;
   for (let left = start; left < end; left += tileWidth) {
     const width = Math.min(tileWidth, end - left);

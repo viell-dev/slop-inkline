@@ -111,6 +111,38 @@ describe("serializeRecord and parseRecord", () => {
     expect(parseRecord(text)).toEqual({ ok: true, record: cut });
   });
 
+  it("round-trip polygons, writing the kind after the points and before a cut", () => {
+    const polygons: InkRecord = {
+      box: record.box,
+      strokes: [
+        {
+          tool: "pen",
+          size: 32,
+          pressure: false,
+          points: [0, 0, 160, 0, 160, 160, 0, 0],
+          kind: "polygon",
+        },
+        {
+          tool: "eraser",
+          size: 32,
+          pressure: false,
+          points: [0, 0, 0, 64, 64, 64],
+          cut: { end: "right", start: "up" },
+          kind: "polygon",
+        },
+      ],
+    };
+    const text = serializeRecord(polygons);
+    expect(text).toContain(
+      '"points":[0,0,160,0,160,160,0,0],"kind":"polygon"}',
+    );
+    expect(text).toContain(
+      '"points":[0,0,0,64,64,64],"kind":"polygon","cut":{"start":"up","end":"right"}}',
+    );
+    expect(parseRecord(text)).toEqual({ ok: true, record: polygons });
+    expect(serializeRecord(record)).not.toContain("kind");
+  });
+
   it("write no cut for a stroke without one, and read an empty one as none", () => {
     expect(serializeRecord(record)).not.toContain("cut");
     const empty = variant(["strokes", 1, "cut"], {});
@@ -243,6 +275,16 @@ describe("parseRecord refuses", () => {
       "a cut that is not an object",
       variant(["strokes", 1, "cut"], "down"),
       "strokes[1].cut is not an object",
+    ],
+    [
+      "a kind of stroke this version does not know",
+      variant(["strokes", 1, "kind"], "spline"),
+      'strokes[1].kind is not "polygon"',
+    ],
+    [
+      "a polygon with pressure",
+      variant(["strokes", 0, "kind"], "polygon"),
+      "strokes[0] is a polygon with pressure",
     ],
     [
       "a stroke that is null",

@@ -138,10 +138,17 @@ Each stroke is an object:
 | `size`     | integer | The stroke's diameter, in units.                                                      |
 | `pressure` | boolean | Whether each point carries pressure, as from a pen in versions before 0.1.1-rc.8.     |
 | `points`   | array   | The points in drawing order, flattened: `x, y` per point, or `x, y, p` with pressure. |
+| `kind`     | string  | Optional. `"polygon"` for straight sides between the points, as below.                |
 | `cut`      | object  | Optional. The ends cut flat at a line through them, as below.                         |
 
 Pressure `p` is an integer from 0 to 255. A stroke has at least one point; a
-single point is a dot.
+single point is a dot, round, or square for a polygon.
+
+A stroke without `kind` is drawn as the pointer went, smoothly, with round ends.
+With `kind` `"polygon"`, its points are the corners of a polygon, joined by
+straight sides with sharp corners and square ends; one whose last point is its
+first, with at least three corners, is closed. A polygon has no pressure: its
+`pressure` must be `false`. A reader must refuse any other `kind`.
 
 A stroke's `cut` has an optional `start` and an optional `end`, for its first
 and last point, each `"up"`, `"down"`, `"left"`, or `"right"`: the way from that
@@ -191,11 +198,12 @@ of the image's size, with the record's coordinates as they are:
    alpha kept, drawn at (`x / 16`, `y / 16`) pixels at `scale` times its own
    size, `width × scale` by `height × scale` pixels, with the canvas's
    high-quality image smoothing.
-2. Each stroke in order: its outline, filled in the grey, over what is there for
-   `"pen"` and removing it for `"eraser"` (the canvas compositing operations
-   `source-over` and `destination-out`). A stroke with a `cut` is filled in two
-   parts: its outline everywhere except in a box for each cut end, and then,
-   inside those boxes only, the outline of the rest of the stroke, below.
+2. Each stroke in order: its outline, or a polygon's pieces, filled in the grey,
+   over what is there for `"pen"` and removing it for `"eraser"` (the canvas
+   compositing operations `source-over` and `destination-out`). A stroke with a
+   `cut` is filled in two parts: its outline, or its pieces, everywhere except
+   in a box for each cut end, and then, inside those boxes only, those of the
+   rest of the stroke, below.
 
 For a cut end at the point (`x / 16`, `y / 16`) pixels, with reach
 `r = size / 16 + 1` pixels, the box spans:
@@ -215,7 +223,7 @@ the stroke's points without, from each cut end, those whose distance from it
 along the stroke, point to point, is less than `2 × size` units. It is drawn
 with the same options and its own round ends, which lie clear of the boxes when
 the stroke comes straight into its cut ends, and not at all when no points are
-left.
+left. The rest of a polygon is described with polygons, below.
 
 A stroke's outline is the polygon that
 [perfect-freehand](https://github.com/steveruizok/perfect-freehand) 1.2.3's
@@ -236,7 +244,39 @@ these options:
 The polygon is filled as a closed curve: starting at the midpoint of its first
 edge, a quadratic curve to the midpoint of each following edge, with the corner
 between them as the control point, back to the start. A single point draws a
-round dot.
+round dot; a polygon's single corner draws a square, as below.
+
+### Polygons
+
+A polygon `w = size / 16` pixels wide is drawn through its corners at (`x / 16`,
+`y / 16`) pixels, leaving out each point equal to the one before it. It is
+closed if at least four points are left and the last equals the first, which is
+then left out too, and the sides go round from the last corner back to the
+first; otherwise it is open. Its pieces are all filled together, with the
+nonzero rule, each wound the same way, so that the fill covers each piece once:
+
+- Each side is a rectangle `w` wide, centred on the line between its corners. An
+  open polygon's first and last sides reach `w / 2` past its end corners, so
+  that its ends are square.
+- Each corner where two sides meet and turn, every corner of a closed polygon
+  and all but the ends of an open one, has a wedge on the outer side of the
+  turn: from the corner point to the two sides' outer edges, and out along them
+  to where they meet. Where they meet more than `2 × w` from the corner point,
+  as at a corner sharper than about 29°, the wedge stops at a line square to the
+  corner's bisector, `2 × w` from the corner point. A side that doubles back on
+  the one before turns 180°, and its wedge is the rectangle `w` wide from the
+  corner point `2 × w` along the first side.
+- A polygon with a single corner is a square `w` wide, centred on it, with its
+  sides along the axes.
+
+This is the shape of an SVG 2 stroke with `stroke-linejoin: miter-clip`,
+`stroke-miterlimit: 4`, and `stroke-linecap: square`. A closed polygon has no
+ends, so a `cut` on it has no effect. For an open polygon with a `cut`, the rest
+drawn in its cut boxes is the polygon from `2 × size` units along its sides from
+each cut end, drawn by the same rules but with flat ends where it was cut
+(`stroke-linecap: butt`); nothing when no length is left.
+
+### Antialiasing
 
 How a canvas antialiases curves and resamples images is up to each
 implementation, so another renderer, or another version of Chromium, may differ
@@ -256,10 +296,13 @@ below hold for the format that release writes.
 A reader must ignore fields it does not know, so that a later version can add
 optional fields without changing `version`. Stroke `cut` was added so, in
 0.3.0-alpha.5: earlier versions open files with it and show their stored pixels,
-but draw those ends round again once they edit the symbol. A change that a
-version 1 reader could not handle correctly increases `version`. A reader must
-not edit a file whose record has a higher version than it knows, since writing
-it would lose what that version recorded; it may still show the file's pixels.
+but draw those ends round again once they edit the symbol. Stroke `kind` was
+added so too, in 0.3.0-alpha.7: earlier versions show a polygon's stored pixels,
+but draw it as a stroke through its corners, smoothed and with round corners,
+once they edit the symbol. A change that a version 1 reader could not handle
+correctly increases `version`. A reader must not edit a file whose record has a
+higher version than it knows, since writing it would lose what that version
+recorded; it may still show the file's pixels.
 
 The files in [test/fixtures/format](../test/fixtures/format) pin what files hold
 now, and the tests read them on every change. Until the first stable release, a

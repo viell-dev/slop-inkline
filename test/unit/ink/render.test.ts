@@ -26,6 +26,9 @@ class RecordingContext implements DrawingContext {
   moveTo(): void {
     this.calls.push("moveTo");
   }
+  lineTo(): void {
+    this.calls.push("lineTo");
+  }
   quadraticCurveTo(): void {
     // Many per outline; not worth recording.
   }
@@ -174,6 +177,32 @@ describe("drawInk", () => {
       "closePath",
       `fill source-over ${inkColor}`,
       "restore",
+      "restore",
+    ]);
+  });
+
+  it("fills a polygon's pieces with straight sides, together, in one fill", () => {
+    const context = new RecordingContext();
+    // Right 1 px and down 1 px with a 2 px brush: two sides and a corner.
+    const polygon: Stroke = {
+      ...pen,
+      points: [16, 16, 32, 16, 32, 32],
+      kind: "polygon",
+    };
+    drawInk(context, [polygon], undefined);
+    const side = ["moveTo", "lineTo", "lineTo", "lineTo", "closePath"];
+    expect(context.calls).toEqual([
+      "save",
+      "translate 0 0",
+      "beginPath",
+      ...side,
+      ...side,
+      "moveTo",
+      "lineTo",
+      "lineTo",
+      "lineTo",
+      "closePath",
+      `fill source-over ${inkColor}`,
       "restore",
     ]);
   });

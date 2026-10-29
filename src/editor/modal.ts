@@ -133,7 +133,7 @@ export interface EditorTools {
   readonly guides: boolean;
   /** Whether the drawing is magnified; Next keeps it so. */
   readonly magnified?: boolean;
-  /** What dragging draws; Next keeps it, and a new editor draws freehand. */
+  /** What the pointer draws; Next keeps it, and a new editor draws freehand. */
   readonly shape?: Shape;
   /**
    * The picture being traced over, which the next editor takes over and
@@ -579,6 +579,17 @@ export class InkEditorModal extends Modal {
       "Ellipse",
       "drag across a box to draw an ellipse with the pen or the eraser; hold Shift for a circle",
     );
+    this.#addButton(
+      toolbar,
+      "polygon",
+      "Polygon",
+      "Y",
+      () => {
+        this.#togglePolygon();
+      },
+      "Polygon",
+      "click each corner of a shape with straight sides; click the first corner again to close it, or the last to end it",
+    );
     brushSizes.forEach((size, index) => {
       this.#addButton(
         toolbar,
@@ -869,6 +880,14 @@ export class InkEditorModal extends Modal {
       super.close();
       return;
     }
+    // A polygon being placed is dropped first, and the editor stays open.
+    if (this.#session.placing) {
+      this.#session.cancel();
+      this.#announce("Polygon dropped");
+      this.#updateButtons();
+      this.#render();
+      return;
+    }
     if (this.#saving !== undefined) {
       this.#announce("Saving…");
       return;
@@ -1144,6 +1163,19 @@ export class InkEditorModal extends Modal {
     key([], "o", () => {
       this.#toggleEllipse();
     });
+    key([], "y", () => {
+      this.#togglePolygon();
+    });
+    // Enter on the drawing area ends a polygon being placed where it is;
+    // elsewhere it is left to what has the focus, such as a button.
+    this.scope.register([], "Enter", () => {
+      const canvas = this.#view?.canvas;
+      if (!this.#session.placing || activeDocument.activeElement !== canvas) {
+        return true;
+      }
+      this.#endPolygon();
+      return false;
+    });
     key([], "g", () => {
       this.#toggleGuides();
     });
@@ -1288,7 +1320,14 @@ export class InkEditorModal extends Modal {
     });
     canvas.addEventListener("pointermove", (event) => {
       hover(event);
-      if (!this.#gate.owns(event)) return;
+      if (!this.#gate.owns(event)) {
+        // Between clicks, a polygon's next side follows the pointer.
+        if (this.#gate.active === undefined && this.#session.placing) {
+          this.#session.extend([point(event)]);
+          this.#render();
+        }
+        return;
+      }
       // Releasing the drawing button while another is held is a move.
       if (!this.#gate.holds(event)) {
         finish(event);
@@ -1801,6 +1840,7 @@ export class InkEditorModal extends Modal {
       this.#announce("Paste, drop, or choose a picture first, to move it");
       return;
     }
+    this.#endPolygon();
     this.#moving = !this.#moving;
     this.#updateButtons();
   }
@@ -1977,25 +2017,56 @@ export class InkEditorModal extends Modal {
 
   /** Switches between drawing ellipses and drawing as the pointer goes. */
   #toggleEllipse(): void {
-    if (this.#session.drawing) return;
-    this.#session.shape =
-      this.#session.shape === "ellipse" ? "free" : "ellipse";
+    this.#switchShape("ellipse");
+  }
+
+  /** Switches between placing polygons and drawing as the pointer goes. */
+  #togglePolygon(): void {
+    this.#switchShape("polygon");
+  }
+
+  /**
+   * Draws `shape`, or as the pointer goes if it is already chosen. A polygon
+   * being placed ends where it is first; a stroke being dragged keeps the
+   * shape it has.
+   */
+  #switchShape(shape: Shape): void {
+    if (this.#session.drawing && !this.#session.placing) return;
+    this.#endPolygon();
+    this.#session.shape = this.#session.shape === shape ? "free" : shape;
     this.#moving = false;
     this.#updateButtons();
+  }
+
+  /** Ends a polygon being placed with the corners it has, if there is one. */
+  #endPolygon(): void {
+    if (!this.#session.placing) return;
+    this.#session.end();
+    this.#changed();
   }
 
   #setTool(tool: "pen" | "eraser"): void {
     this.#session.tool = tool;
+    this.#session.rebrush();
     this.#moving = false;
     this.#updateButtons();
+    this.#render();
   }
 
   #setSize(index: number): void {
     this.#session.sizeIndex = index;
+    this.#session.rebrush();
     this.#updateButtons();
+    this.#render();
   }
 
+  /** Undoes the last change, or the last corner of a polygon being placed. */
   #undo(): void {
+    if (this.#session.undoCorner()) {
+      this.#updateButtons();
+      this.#render();
+      return;
+    }
     if (this.#session.undo()) this.#changed();
   }
 
@@ -2025,6 +2096,7 @@ export class InkEditorModal extends Modal {
     pressed("pen", drawing && this.#session.tool === "pen");
     pressed("eraser", drawing && this.#session.tool === "eraser");
     pressed("ellipse", drawing && this.#session.shape === "ellipse");
+    pressed("polygon", drawing && this.#session.shape === "polygon");
     pressed("move", this.#moving);
     const picture = this.#picture !== undefined;
     this.#buttons.get("move")?.setDisabled(!picture);
@@ -2048,7 +2120,9 @@ export class InkEditorModal extends Modal {
     brushSizes.forEach((_, index) => {
       pressed(`size-${String(index)}`, this.#session.sizeIndex === index);
     });
-    this.#buttons.get("undo")?.setDisabled(!this.#session.canUndo);
+    this.#buttons
+      .get("undo")
+      ?.setDisabled(!this.#session.canUndo && !this.#session.placing);
     this.#buttons.get("redo")?.setDisabled(!this.#session.canRedo);
     this.#buttons.get("save")?.setDisabled(this.#saving !== undefined);
     this.#buttons.get("next")?.setDisabled(this.#saving !== undefined);
@@ -2138,6 +2212,7 @@ export class InkEditorModal extends Modal {
     for (const text of [
       "Pen (P) adds ink; Eraser (E) removes it. Sizes S–XL (1–4) are remembered separately until you close the editor, including through Next. The circle shows the brush's diameter.",
       "Ellipse (O) draws an ellipse with the pen or the eraser: drag across the box it fills, and hold Shift for a circle. Press it again to draw freehand.",
+      "Polygon (Y) draws a shape with straight sides and sharp corners: click each corner, then click the first corner again to close it, or the last corner, or press Enter, to leave it open. Undo takes back a corner, and Esc drops the shape.",
       "Hold Shift while drawing for a straight segment. Grid (Shift+G) shows dots and snaps stroke ends to them. Its rows pass through each guide line the settings choose, and divide the space between lines evenly; the settings also set how many cells span the x-height.",
       "Undo (Mod+Z) and Redo (Mod+Shift+Z) step through changes. Clear removes the drawing and can be undone.",
       "Zoom (Z) shows the drawing twice as large in a taller view, for fine detail; the wheel or the arrow keys move along it, and Fit (F) centres it. Saved symbols stay the same size in notes.",

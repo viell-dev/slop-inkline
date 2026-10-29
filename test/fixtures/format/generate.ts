@@ -70,6 +70,27 @@ const fixtures: Record<string, InkRecord> = {
       },
     ],
   },
+  // Polygons: a closed triangle, and an open zigzag cut at its start.
+  "v1-polygons": {
+    box: { pxPerEm: 128, width: 64, height: 192, baseline: 144 },
+    strokes: [
+      {
+        tool: "pen",
+        size: 96,
+        pressure: false,
+        points: [128, 2304, 512, 1024, 896, 2304, 128, 2304],
+        kind: "polygon",
+      },
+      {
+        tool: "eraser",
+        size: 48,
+        pressure: false,
+        points: [256, 1280, 512, 1792, 768, 1280],
+        kind: "polygon",
+        cut: { start: "up" },
+      },
+    ],
+  },
 };
 
 async function exists(file: string): Promise<boolean> {

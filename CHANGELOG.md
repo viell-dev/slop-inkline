@@ -8,6 +8,24 @@ section is also its
 
 ## Unreleased
 
+## 0.3.0-alpha.7 - 2026-10-29
+
+This alpha completes the shape tools from the 0.1.1-rc.1 feedback
+([shape tools](https://github.com/viell-dev/slop-inkline/issues/73)) with shapes
+that have straight sides and sharp corners, which the owner asked for with a
+lightning bolt as the example.
+
+### Added
+
+- **Polygon** (Y) in the editor draws shapes with straight sides and sharp
+  corners, such as triangles, rectangles, and lightning bolts: click each
+  corner, then click the first corner again to close the shape, or the last
+  corner, or press Enter, to leave it open. Undo takes back a corner and Esc
+  drops the shape. On the grid, corners snap to it and an open shape's ends stop
+  flush with the grid line. Symbols with polygons record them in a new optional
+  stroke `kind` field; earlier versions show them as saved, but draw a polygon
+  as a smoothed stroke through its corners if they edit the symbol.
+
 ## 0.3.0-alpha.6 - 2026-10-28
 
 This alpha brings the first of the shape tools from the 0.1.1-rc.1 feedback
