@@ -128,12 +128,17 @@ function isClosedPolygon(stroke: Stroke): boolean {
   return stroke.kind === "polygon" && isClosed(polygonCorners(stroke));
 }
 
-/** A polygon's orientation made positive, so that pieces filled together add up. */
+/**
+ * A polygon's orientation made positive, so that pieces filled together add
+ * up. Its area is taken about its first corner, which keeps the sign right
+ * far from the origin.
+ */
 function oriented(outline: Point[]): Point[] {
+  const [ox, oy] = outline[0] ?? [0, 0];
   let area = 0;
   outline.forEach(([x0, y0], index) => {
     const [x1, y1] = outline[(index + 1) % outline.length] ?? [x0, y0];
-    area += x0 * y1 - x1 * y0;
+    area += (x0 - ox) * (y1 - oy) - (x1 - ox) * (y0 - oy);
   });
   return area < 0 ? outline.reverse() : outline;
 }
@@ -227,22 +232,29 @@ export function polygonPieces(
     const [cx, cy] = at(corner);
     const p1: Point = [cx + n1x * half, cy + n1y * half];
     const p2: Point = [cx + n2x * half, cy + n2y * half];
-    // The corner points along the bisector between the sides' outer edges.
-    const spread = Math.hypot(ix - ox, iy - oy);
-    const [ux, uy] = [(ix - ox) / spread, (iy - oy) / spread];
+    // The corner points along the bisector between the sides' outer edges:
+    // between their normals for a gentle turn, and between their directions,
+    // away from the second, for a sharp one, where each sum is well defined.
+    const [bx, by] = dot > 0 ? [n1x + n2x, n1y + n2y] : [ix - ox, iy - oy];
+    const spread = Math.hypot(bx, by);
+    const [ux, uy] = [bx / spread, by / spread];
     const cos = n1x * ux + n1y * uy;
     const tip = cos > 0 ? half / cos : Infinity;
     if (tip <= reach) {
       pieces.push([[cx, cy], p1, [cx + ux * tip, cy + uy * tip], p2]);
       continue;
     }
-    // Each outer edge runs on until it is `reach` along the bisector.
-    const along = ((reach - half * cos) * spread) / (1 - dot);
+    // Each outer edge runs on until it is `reach` along the bisector. A
+    // corner is cut only where the edges meet more than four times as far
+    // out as they start, so both run well out along it.
+    const rest = reach - half * cos;
+    const along1 = rest / (ix * ux + iy * uy);
+    const along2 = rest / -(ox * ux + oy * uy);
     pieces.push([
       [cx, cy],
       p1,
-      [p1[0] + ix * along, p1[1] + iy * along],
-      [p2[0] - ox * along, p2[1] - oy * along],
+      [p1[0] + ix * along1, p1[1] + iy * along1],
+      [p2[0] - ox * along2, p2[1] - oy * along2],
       p2,
     ]);
   }

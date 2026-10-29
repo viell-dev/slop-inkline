@@ -904,6 +904,58 @@ describe("DrawingSession's polygons", () => {
     expect(session.document.strokes[1]).not.toHaveProperty("cut");
   });
 
+  it("cuts the ends that were put on the grid, whatever the grid is when the shape ends", () => {
+    // From the independent review of #121.
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "polygon";
+    click(session, 10, 20);
+    click(session, 40, 20);
+    session.snap = true;
+    session.end();
+    expect(session.document.strokes[0]).not.toHaveProperty("cut");
+    click(session, 1, 15);
+    click(session, 31, 15);
+    session.snap = false;
+    session.end();
+    expect(session.document.strokes[1]?.cut).toEqual({
+      start: "left",
+      end: "right",
+    });
+    // A corner off the grid is still clicked within the brush's radius once
+    // the grid is on, so the shape closes on it.
+    click(session, 10, 20);
+    click(session, 40, 20);
+    session.snap = true;
+    click(session, 33, 47);
+    click(session, 15, 22);
+    expect(session.document.strokes[2]?.points).toEqual([
+      160, 320, 640, 320, 512, 768, 160, 320,
+    ]);
+    expect(session.document.strokes[2]).not.toHaveProperty("cut");
+  });
+
+  it("drops a polygon being placed when the drawing is cleared", () => {
+    // From the independent review of #121.
+    const session = new DrawingSession(emptyDocument);
+    session.begin({ x: 0, y: 0 });
+    session.end({ x: 10, y: 0 });
+    session.shape = "polygon";
+    click(session, 10, 20);
+    click(session, 40, 20);
+    session.clear();
+    expect(session.placing).toBe(false);
+    expect(session.document.strokes).toEqual([]);
+    session.undo();
+    expect(session.document.strokes).toHaveLength(1);
+    // A stroke being dragged keeps everything.
+    session.shape = "free";
+    session.begin({ x: 0, y: 0 });
+    session.clear();
+    expect(session.drawing).toBe(true);
+    session.end({ x: 5, y: 5 });
+    expect(session.document.strokes).toHaveLength(2);
+  });
+
   it("takes back corners one at a time with undoCorner, and the polygon with its first", () => {
     const session = new DrawingSession(emptyDocument);
     session.shape = "polygon";

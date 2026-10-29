@@ -259,6 +259,40 @@ describe("Polygon", function () {
     await waitForStatus("Polygon dropped");
     expect(await browser.$(".inkline-editor").isExisting()).toBe(true);
     expect(await draftStrokes(1)).toHaveLength(1);
+    // Clear, from its key, drops a shape being placed with the drawing.
+    await click([0.6, 0.3], [0.7, 0.5]);
+    await browser.keys("Delete");
+    await draftStrokes(0);
+    await click([0.2, 0.2], [0.2, 0.2]);
+    const [dot] = await draftStrokes(1);
+    expect(dot?.points).toHaveLength(2);
+  });
+
+  it("saves a polygon whose corner barely turns", async function () {
+    // From the independent review of #121: a corner on the line between its
+    // neighbours made infinite pieces, and saving never finished.
+    const saved = await browser.execute(async () => {
+      const { canvas } = window.inklineTest;
+      const { record } = await canvas.saveInk(
+        {
+          strokes: [
+            {
+              tool: "pen",
+              size: 192,
+              pressure: false,
+              points: [400, 800, 416, 944, 656, 3104],
+              kind: "polygon",
+            },
+          ],
+        },
+        undefined,
+        [],
+      );
+      return record.box.width;
+    });
+    // 15 px across, the stroke's 12 px width, and the side bearings.
+    expect(saved).toBeGreaterThan(40);
+    expect(saved).toBeLessThan(60);
   });
 
   it("stops an open shape's ends flush with the grid line they lie on", async function () {

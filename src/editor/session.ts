@@ -308,10 +308,18 @@ export class DrawingSession {
   #corner: InputPoint | undefined;
   /** Whether the ellipse being drawn is a circle, as Shift makes it. */
   #circle = false;
-  /** Where the polygon being placed would have its next corner. */
+  /**
+   * Where the pointer is for the polygon being placed, before snapping: its
+   * next corner goes there, or to the grid point nearest it.
+   */
   #next: InputPoint | undefined;
   /** Whether the press that started the polygon being placed is still down. */
   #starting = false;
+  /**
+   * Whether each corner of the polygon being placed was put on the grid, as
+   * the grid was when it was placed, for its cuts and for clicks on it.
+   */
+  #snaps: boolean[] = [];
   tool: Tool = "pen";
   /** What dragging draws, with the pen or the eraser. */
   shape: Shape = "free";
@@ -451,9 +459,11 @@ export class DrawingSession {
     // when that is its first corner.
     const closing = this.#closes(active, next);
     const shown = { ...active, points: [...active.points] };
-    if (closing)
+    if (closing) {
       shown.points.push(active.points[0] ?? 0, active.points[1] ?? 0);
-    else this.#record(shown, next);
+    } else {
+      this.#record(shown, this.#snapped(next));
+    }
     return this.#stroke(shown, {
       start: active.onGrid && !closing,
       end: false,
@@ -484,7 +494,7 @@ export class DrawingSession {
    */
   begin(point: InputPoint): void {
     if (this.#active?.polygon === true) {
-      this.#next = this.#snapped(point);
+      this.#next = point;
       return;
     }
     const ellipse = this.shape === "ellipse";
@@ -501,6 +511,7 @@ export class DrawingSession {
     this.#corner = ellipse ? this.#snapped(point) : undefined;
     this.#circle = false;
     this.#starting = polygon;
+    this.#snaps = polygon ? [this.snap] : [];
     this.extend([this.#snapped(point)]);
     if (polygon) this.#record(this.#active, this.#snapped(point));
   }
@@ -516,7 +527,7 @@ export class DrawingSession {
     if (active === undefined) return;
     if (active.polygon) {
       const latest = points.at(-1);
-      if (latest !== undefined) this.#next = this.#snapped(latest);
+      if (latest !== undefined) this.#next = latest;
       return;
     }
     const corner = this.#corner;
@@ -585,8 +596,10 @@ export class DrawingSession {
    * has, as when saving.
    */
   end(release?: InputPoint): void {
-    if (this.#active?.polygon === true && release !== undefined) {
-      this.#place(this.#active, this.#snapped(release));
+    const placed = this.#active;
+    if (placed?.polygon === true) {
+      if (release === undefined) this.#commit(placed, this.#cornerCuts());
+      else this.#place(placed, release);
       return;
     }
     const ellipse = this.#corner !== undefined;
@@ -625,42 +638,56 @@ export class DrawingSession {
    * corner, once it has three, closing it; on its last, ending it there, but
    * for the press that started it; anywhere else, adding a corner there.
    */
-  #place(active: ActiveStroke, at: InputPoint): void {
+  #place(active: ActiveStroke, release: InputPoint): void {
     const starting = this.#starting;
     this.#starting = false;
-    this.#next = at;
-    if (this.#closes(active, at)) {
+    this.#next = release;
+    if (this.#closes(active, release)) {
       active.points.push(active.points[0] ?? 0, active.points[1] ?? 0);
       this.#commit(active, { start: false, end: false });
       return;
     }
     const count = active.points.length;
-    if (this.#near(active, at, count - 2)) {
-      if (!starting) {
-        this.#commit(active, { start: active.onGrid, end: this.snap });
-      }
+    if (this.#near(active, release, count - 2)) {
+      if (!starting) this.#commit(active, this.#cornerCuts());
       return;
     }
-    this.#record(active, at);
+    this.#record(active, this.#snapped(release));
+    if (active.points.length > count) this.#snaps.push(this.snap);
   }
 
-  /** Whether a polygon with corners `active` closes at `at`, its first corner. */
-  #closes(active: ActiveStroke, at: InputPoint): boolean {
-    return active.points.length >= 6 && this.#near(active, at, 0);
+  /** Which ends of the polygon being placed are cut: those put on the grid. */
+  #cornerCuts(): { start: boolean; end: boolean } {
+    return { start: this.#snaps[0] === true, end: this.#snaps.at(-1) === true };
   }
 
   /**
-   * Whether `at` is a polygon's corner whose `x` is at `index` in its points:
-   * that point on the grid, or within the brush's radius off it.
+   * Whether a polygon with corners `active` closes at `pointer`, on its first
+   * corner.
    */
-  #near(active: ActiveStroke, at: InputPoint, index: number): boolean {
+  #closes(active: ActiveStroke, pointer: InputPoint): boolean {
+    return active.points.length >= 6 && this.#near(active, pointer, 0);
+  }
+
+  /**
+   * Whether `pointer` is on a polygon's corner whose `x` is at `index` in its
+   * points: snapping to that point, for a corner on the grid while the grid
+   * is on, or else within the brush's radius of it.
+   */
+  #near(active: ActiveStroke, pointer: InputPoint, index: number): boolean {
     const x = active.points[index];
     const y = active.points[index + 1];
     if (x === undefined || y === undefined) return false;
-    if (this.snap) return toUnits(at.x) === x && toUnits(at.y) === y;
+    if (this.snap && this.#snaps[index / 2] === true) {
+      const at = this.#snapped(pointer);
+      return toUnits(at.x) === x && toUnits(at.y) === y;
+    }
     const reach = Math.max(active.size / unitsPerPixel / 2, cornerReachMin);
     return (
-      Math.hypot(at.x - x / unitsPerPixel, at.y - y / unitsPerPixel) <= reach
+      Math.hypot(
+        pointer.x - x / unitsPerPixel,
+        pointer.y - y / unitsPerPixel,
+      ) <= reach
     );
   }
 
@@ -673,6 +700,7 @@ export class DrawingSession {
     this.#active = undefined;
     this.#next = undefined;
     this.#starting = false;
+    this.#snaps = [];
     this.#push({
       ...this.document,
       strokes: [...this.document.strokes, stroke],
@@ -698,6 +726,7 @@ export class DrawingSession {
     const active = this.#active;
     if (active?.polygon !== true) return false;
     active.points.length -= 2;
+    this.#snaps.pop();
     if (active.points.length === 0) this.cancel();
     return true;
   }
@@ -709,6 +738,7 @@ export class DrawingSession {
     this.#corner = undefined;
     this.#next = undefined;
     this.#starting = false;
+    this.#snaps = [];
     this.#takeNextGrid();
   }
 
@@ -720,8 +750,12 @@ export class DrawingSession {
     return this.#active === undefined && this.#history.redo();
   }
 
-  /** Removes every stroke and the base layer, as one undoable step. */
+  /**
+   * Removes every stroke and the base layer, as one undoable step, and drops
+   * a polygon being placed. A stroke being dragged keeps everything.
+   */
   clear(): void {
+    if (this.placing) this.cancel();
     if (this.#active !== undefined) return;
     if (
       this.document.strokes.length === 0 &&

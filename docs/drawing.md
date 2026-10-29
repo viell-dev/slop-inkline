@@ -73,11 +73,11 @@ triangle, a rectangle, or a lightning bolt. Click where each corner goes; the
 next side follows the pointer from the last corner. Click the first corner again
 to close the shape, or click the last corner again, as a double-click does, or
 press Enter, to leave it open. Undo (Mod+Z) takes back the last corner, and Esc
-drops the shape; so does the close button, before it closes the editor. A press
-dragged before its release puts the corner where it is released. The shape draws
-with the pen or the eraser at its brush size; choosing another while placing it
-changes the whole shape. Press **Polygon** again to draw freehand; **Next**
-keeps it on.
+drops the shape; so does the close button, before it closes the editor, and
+Clear, with the rest of the drawing. A press dragged before its release puts the
+corner where it is released. The shape draws with the pen or the eraser at its
+brush size; choosing another while placing it changes the whole shape. Press
+**Polygon** again to draw freehand; **Next** keeps it on.
 
 Its corners are sharp on the outer side. A very sharp corner, under about 29°,
 has its point cut off square twice the stroke's width past the corner, so that

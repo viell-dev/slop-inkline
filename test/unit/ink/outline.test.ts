@@ -327,6 +327,68 @@ describe("polygon strokes", () => {
     );
   });
 
+  it("stay finite and close to their sides where corners barely turn", () => {
+    // From the independent review of #121: a corner on the line between its
+    // neighbours, whose directions' dot product rounds to 1, made infinite
+    // pieces, and saving never finished.
+    const reviewed: Stroke = {
+      tool: "pen",
+      size: 192,
+      pressure: false,
+      points: [0, 0, 16, 144, 256, 2304],
+      kind: "polygon",
+    };
+    const bounds = strokeBounds(reviewed);
+    expect(bounds?.left).toBeCloseTo(-6.626, 3);
+    expect(bounds?.top).toBeCloseTo(-6.626, 3);
+    expect(bounds?.right).toBeCloseTo(22.626, 3);
+    expect(bounds?.bottom).toBeCloseTo(150.626, 3);
+    // Corners in a line, as units put them, every way round.
+    for (let a = -40; a <= 40; a += 3) {
+      for (let b = -40; b <= 40; b += 7) {
+        if (a === 0 && b === 0) continue;
+        for (const k of [2, 3, 16, -1]) {
+          const points = [0, 0, a, b, a * k, b * k];
+          const pieces = piecesOf(
+            strokeShape({ ...reviewed, size: 16, points }),
+          ).flat();
+          const xs = points.filter((_, at) => at % 2 === 0).map((x) => x / 16);
+          const ys = points.filter((_, at) => at % 2 === 1).map((y) => y / 16);
+          // Within the corners' box, grown by what a corner cut at twice the
+          // width can reach along an axis: twice the width along its
+          // bisector, and half the width across it.
+          const grow = Math.hypot(2, 0.5) + 1e-9;
+          for (const [x, y] of pieces) {
+            expect(x).toBeGreaterThanOrEqual(Math.min(...xs) - grow);
+            expect(x).toBeLessThanOrEqual(Math.max(...xs) + grow);
+            expect(y).toBeGreaterThanOrEqual(Math.min(...ys) - grow);
+            expect(y).toBeLessThanOrEqual(Math.max(...ys) + grow);
+          }
+        }
+      }
+    }
+  });
+
+  it("wind every piece one way far from the origin", () => {
+    // From the independent review of #121, within the format's limits.
+    const pieces = polygonPieces(
+      [
+        [1_000_000, 1_000_000],
+        [1_000_001, 1_000_001],
+        [1_000_002, 1_000_002.0625],
+      ],
+      0.0625,
+      { closed: false, start: true, end: true },
+    );
+    expect(pieces).toHaveLength(3);
+    for (const piece of pieces) {
+      const [ox, oy] = piece[0] ?? [0, 0];
+      expect(
+        area(piece.map(([x, y]) => [x - ox, y - oy] as const)),
+      ).toBeGreaterThan(0);
+    }
+  });
+
   it("give nothing for no corners, or a lone corner with flat ends", () => {
     const shape = { closed: false, start: false, end: false };
     expect(polygonPieces([], 2, shape)).toEqual([]);
