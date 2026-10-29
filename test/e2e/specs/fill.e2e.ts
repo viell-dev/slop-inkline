@@ -227,6 +227,49 @@ describe("Fill", function () {
     expect(inked).toBeGreaterThan(200);
   });
 
+  it("fills the middle of a star drawn in one line, by the nonzero rule", async function () {
+    // From the independent review of #123: simple shapes fill the same by
+    // either rule, so only a shape that crosses itself tells them apart.
+    const shown = await browser.execute(() => {
+      const { render } = window.inklineTest;
+      // A five-pointed star, each corner two points on, round a centre at
+      // (50, 50) px, 40 px out: its middle is wound twice.
+      const points = [0, 2, 4, 1, 3, 0].flatMap((step) => {
+        const angle = -Math.PI / 2 + (step * 2 * Math.PI) / 5;
+        return [
+          Math.round((50 + 40 * Math.cos(angle)) * 16),
+          Math.round((50 + 40 * Math.sin(angle)) * 16),
+        ];
+      });
+      const surface = new OffscreenCanvas(100, 100);
+      const context = surface.getContext("2d");
+      if (context === null) throw new Error("no context");
+      render.drawInk(
+        context,
+        [
+          {
+            tool: "pen",
+            size: 16,
+            pressure: false,
+            points,
+            kind: "polygon",
+            fill: true,
+          },
+        ],
+        undefined,
+      );
+      const { data } = context.getImageData(0, 0, 100, 100);
+      const at = (x: number, y: number): number =>
+        data[(y * 100 + x) * 4 + 3] ?? 0;
+      // The middle, a point inside an arm, and one outside between two arms.
+      return [at(50, 52), at(50, 20), at(25, 25)];
+    });
+    console.log("Star", JSON.stringify(shown));
+    expect(shown[0]).toBeGreaterThan(250);
+    expect(shown[1]).toBeGreaterThan(250);
+    expect(shown[2]).toBe(0);
+  });
+
   it("is off while drawing freehand, and Next keeps it", async function () {
     await openEditor();
     const fill = browser.$('[data-inkline-button="fill"]');
