@@ -446,7 +446,8 @@ export class DrawingSession {
 
   /**
    * The stroke being drawn, as it would be committed now, before its end
-   * comes to the grid: cut at its start if that is on the grid.
+   * comes to the grid: cut at its start if that is on the grid. A polygon
+   * being placed is shown as a click where the pointer is would leave it.
    */
   get activeStroke(): Stroke | undefined {
     const active = this.#active;
@@ -455,20 +456,20 @@ export class DrawingSession {
     if (!active.polygon || next === undefined) {
       return this.#stroke(active, { start: active.onGrid, end: false });
     }
-    // A polygon shows the side to where its next corner would go, closed
-    // when that is its first corner, and none on its last, as a click there
-    // would place them.
-    const closing = this.#closes(active, next);
-    const shown = { ...active, points: [...active.points] };
-    if (closing) {
-      shown.points.push(active.points[0] ?? 0, active.points[1] ?? 0);
-    } else if (!this.#near(active, next, active.points.length - 2)) {
-      this.#record(shown, this.#snapped(next));
+    // A polygon shows what a click where the pointer is would make: a side
+    // to its next corner; or closed, on its first corner; or ended, with the
+    // ends cut that were put on the grid, on its last.
+    if (this.#closes(active, next)) {
+      const closed = { ...active, points: [...active.points] };
+      closed.points.push(active.points[0] ?? 0, active.points[1] ?? 0);
+      return this.#stroke(closed, { start: false, end: false });
     }
-    return this.#stroke(shown, {
-      start: active.onGrid && !closing,
-      end: false,
-    });
+    if (this.#near(active, next, active.points.length - 2)) {
+      return this.#stroke(active, this.#cornerCuts());
+    }
+    const shown = { ...active, points: [...active.points] };
+    this.#record(shown, this.#snapped(next));
+    return this.#stroke(shown, { start: active.onGrid, end: false });
   }
 
   /** `active` as a stroke, cut flat at the ends named, which are on the grid. */

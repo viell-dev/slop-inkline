@@ -885,7 +885,11 @@ describe("DrawingSession's polygons", () => {
     click(session, 31, 15);
     click(session, 33, 143);
     // In the last corner's cell, it snaps to that corner and ends there.
+    // Hovering where a click ends it shows it as the click would leave it.
+    session.extend([{ x: 30, y: 140 }]);
+    const preview = session.activeStroke;
     click(session, 30, 140);
+    expect(preview).toEqual(session.document.strokes[0]);
     expect(session.document.strokes[0]).toEqual({
       tool: "pen",
       size: 192,
