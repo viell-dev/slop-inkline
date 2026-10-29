@@ -8,6 +8,13 @@ section is also its
 
 ## Unreleased
 
+## 0.3.0-alpha.8 - 2026-10-29
+
+This alpha fills the shapes from the 0.1.1-rc.1 feedback
+([filled shapes](https://github.com/viell-dev/slop-inkline/issues/122)), which
+the [shape tools](https://github.com/viell-dev/slop-inkline/issues/73) left
+open.
+
 ### Added
 
 - **Fill** (B) in the editor draws ellipses, and polygons closed on their first
