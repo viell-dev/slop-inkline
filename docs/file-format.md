@@ -142,7 +142,7 @@ Each stroke is an object:
 | `cut`      | object  | Optional. The ends cut flat at a line through them, as below.                         |
 
 Pressure `p` is an integer from 0 to 255. A stroke has at least one point; a
-single point is a dot.
+single point is a dot, round, or square for a polygon.
 
 A stroke without `kind` is drawn as the pointer went, smoothly, with round ends.
 With `kind` `"polygon"`, its points are the corners of a polygon, joined by
@@ -201,9 +201,9 @@ of the image's size, with the record's coordinates as they are:
 2. Each stroke in order: its outline, or a polygon's pieces, filled in the grey,
    over what is there for `"pen"` and removing it for `"eraser"` (the canvas
    compositing operations `source-over` and `destination-out`). A stroke with a
-   `cut` is filled in two parts: its outline everywhere except in a box for each
-   cut end, and then, inside those boxes only, the outline of the rest of the
-   stroke, below.
+   `cut` is filled in two parts: its outline, or its pieces, everywhere except
+   in a box for each cut end, and then, inside those boxes only, those of the
+   rest of the stroke, below.
 
 For a cut end at the point (`x / 16`, `y / 16`) pixels, with reach
 `r = size / 16 + 1` pixels, the box spans:
@@ -244,7 +244,7 @@ these options:
 The polygon is filled as a closed curve: starting at the midpoint of its first
 edge, a quadratic curve to the midpoint of each following edge, with the corner
 between them as the control point, back to the start. A single point draws a
-round dot.
+round dot; a polygon's single corner draws a square, as below.
 
 ### Polygons
 

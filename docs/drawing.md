@@ -87,7 +87,9 @@ one.
 
 With the grid on, the corners snap to the grid, and an open shape's ends stop
 flush with the grid line they lie on, as a stroke's do. Off the grid, a click
-within the brush's circle of the first or last corner counts as that corner.
+within the brush's circle of the first or last corner counts as that corner, or
+within 4 of the drawing's pixels for a smaller brush. So does such a click with
+the grid on, for a corner placed before the grid was turned on.
 
 ## Straight lines and the grid
 
