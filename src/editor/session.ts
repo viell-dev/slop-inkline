@@ -456,12 +456,13 @@ export class DrawingSession {
       return this.#stroke(active, { start: active.onGrid, end: false });
     }
     // A polygon shows the side to where its next corner would go, closed
-    // when that is its first corner.
+    // when that is its first corner, and none on its last, as a click there
+    // would place them.
     const closing = this.#closes(active, next);
     const shown = { ...active, points: [...active.points] };
     if (closing) {
       shown.points.push(active.points[0] ?? 0, active.points[1] ?? 0);
-    } else {
+    } else if (!this.#near(active, next, active.points.length - 2)) {
       this.#record(shown, this.#snapped(next));
     }
     return this.#stroke(shown, {

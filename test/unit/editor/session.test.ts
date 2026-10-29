@@ -921,6 +921,16 @@ describe("DrawingSession's polygons", () => {
       start: "left",
       end: "right",
     });
+    // Hovering on the last corner, off the grid, shows no side to where the
+    // grid would put the pointer, as a click there adds none.
+    click(session, 10, 20);
+    click(session, 40, 20);
+    session.snap = true;
+    session.extend([{ x: 40, y: 20 }]);
+    expect(session.activeStroke?.points).toEqual([160, 320, 640, 320]);
+    click(session, 40, 20);
+    expect(session.document.strokes[2]?.points).toEqual([160, 320, 640, 320]);
+    session.snap = false;
     // A corner off the grid is still clicked within the brush's radius once
     // the grid is on, so the shape closes on it.
     click(session, 10, 20);
@@ -928,10 +938,10 @@ describe("DrawingSession's polygons", () => {
     session.snap = true;
     click(session, 33, 47);
     click(session, 15, 22);
-    expect(session.document.strokes[2]?.points).toEqual([
+    expect(session.document.strokes[3]?.points).toEqual([
       160, 320, 640, 320, 512, 768, 160, 320,
     ]);
-    expect(session.document.strokes[2]).not.toHaveProperty("cut");
+    expect(session.document.strokes[3]).not.toHaveProperty("cut");
   });
 
   it("drops a polygon being placed when the drawing is cleared", () => {
