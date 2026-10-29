@@ -135,6 +135,8 @@ export interface EditorTools {
   readonly magnified?: boolean;
   /** What the pointer draws; Next keeps it, and a new editor draws freehand. */
   readonly shape?: Shape;
+  /** Whether shapes are filled; Next keeps it, and a new editor does not fill. */
+  readonly fill?: boolean;
   /**
    * The picture being traced over, which the next editor takes over and
    * closes, with its x measured from the middle of the surface, so that it
@@ -516,6 +518,7 @@ export class InkEditorModal extends Modal {
       const { tool, sizeIndex, grid, guides } = options.tools;
       this.#session.tool = tool;
       this.#session.shape = options.tools.shape ?? "free";
+      this.#session.fill = options.tools.fill === true;
       Object.assign(
         this.#session.sizes,
         options.tools.sizes ?? {
@@ -589,6 +592,17 @@ export class InkEditorModal extends Modal {
       },
       "Polygon",
       "click each corner of a shape with straight sides; click the first corner again to close it, or the last to end it",
+    );
+    this.#addButton(
+      toolbar,
+      "fill",
+      "Fill",
+      "B",
+      () => {
+        this.#toggleFill();
+      },
+      "Fill",
+      "draw an ellipse, or a polygon closed on its first corner, solid, with its edges through its corners, with the pen or the eraser",
     );
     brushSizes.forEach((size, index) => {
       this.#addButton(
@@ -1165,6 +1179,9 @@ export class InkEditorModal extends Modal {
     });
     key([], "y", () => {
       this.#togglePolygon();
+    });
+    key([], "b", () => {
+      this.#toggleFill();
     });
     // Enter on the drawing area ends a polygon being placed where it is;
     // elsewhere it is left to what has the focus, such as a button.
@@ -2038,6 +2055,20 @@ export class InkEditorModal extends Modal {
     this.#updateButtons();
   }
 
+  /**
+   * Fills the shapes drawn from now on, or does not. Only Ellipse and Polygon
+   * fill, so the button is off while drawing freehand, and the key says so.
+   */
+  #toggleFill(): void {
+    if (this.#session.shape === "free") {
+      this.#announce("Fill is for Ellipse and Polygon; choose one first");
+      return;
+    }
+    this.#session.fill = !this.#session.fill;
+    this.#updateButtons();
+    this.#render();
+  }
+
   /** Ends a polygon being placed with the corners it has, if there is one. */
   #endPolygon(): void {
     if (!this.#session.placing) return;
@@ -2097,6 +2128,9 @@ export class InkEditorModal extends Modal {
     pressed("eraser", drawing && this.#session.tool === "eraser");
     pressed("ellipse", drawing && this.#session.shape === "ellipse");
     pressed("polygon", drawing && this.#session.shape === "polygon");
+    const shaped = this.#session.shape !== "free";
+    pressed("fill", shaped && this.#session.fill);
+    this.#buttons.get("fill")?.setDisabled(!shaped);
     pressed("move", this.#moving);
     const picture = this.#picture !== undefined;
     this.#buttons.get("move")?.setDisabled(!picture);
@@ -2213,6 +2247,7 @@ export class InkEditorModal extends Modal {
       "Pen (P) adds ink; Eraser (E) removes it. Sizes S–XL (1–4) are remembered separately until you close the editor, including through Next. The circle shows the brush's diameter.",
       "Ellipse (O) draws an ellipse with the pen or the eraser: drag across the box it fills, and hold Shift for a circle. Press it again to draw freehand.",
       "Polygon (Y) draws a shape with straight sides and sharp corners: click each corner, then click the first corner again to close it, or the last corner, or press Enter, to leave it open. Undo takes back a corner, and Esc drops the shape.",
+      "Fill (B), with Ellipse or Polygon on, draws an ellipse or a closed polygon solid, with its edges through its corners: the pen makes a solid shape, and the eraser a hole of its shape.",
       "Hold Shift while drawing for a straight segment. Grid (Shift+G) shows dots and snaps stroke ends to them. Its rows pass through each guide line the settings choose, and divide the space between lines evenly; the settings also set how many cells span the x-height.",
       "Undo (Mod+Z) and Redo (Mod+Shift+Z) step through changes. Clear removes the drawing and can be undone.",
       "Zoom (Z) shows the drawing twice as large in a taller view, for fine detail; the wheel or the arrow keys move along it, and Fit (F) centres it. Saved symbols stay the same size in notes.",
@@ -2750,6 +2785,7 @@ export class InkEditorModal extends Modal {
         guides: this.#guidesShown,
         magnified: this.#view?.magnified === true,
         shape: this.#session.shape,
+        fill: this.#session.fill,
         ...(picture === undefined ? {} : { picture }),
       });
     } finally {

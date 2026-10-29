@@ -88,10 +88,24 @@ export function strokeShape(stroke: Stroke): StrokeShape {
 
 /** Where a stroke can leave ink, in pixels, or undefined for nowhere. */
 export function strokeBounds(stroke: Stroke): Bounds | undefined {
+  const fill = fillOutline(stroke);
+  if (fill !== undefined) return outlineBounds(fill);
   const shape = strokeShape(stroke);
   return outlineBounds(
     shape.kind === "smooth" ? shape.outline : shape.pieces.flat(),
   );
+}
+
+/**
+ * What a filled stroke fills in place of its outline, in pixels: the polygon
+ * through its points, or a polygon's corners, from the last back to the
+ * first, which the nonzero rule fills. Undefined for a stroke without fill.
+ */
+export function fillOutline(stroke: Stroke): Outline | undefined {
+  if (stroke.fill !== true) return undefined;
+  return stroke.kind === "polygon"
+    ? polygonCorners(stroke)
+    : outlineInput(stroke).map(([x, y]) => [x, y] as const);
 }
 
 /** A polygon stroke's corners, in pixels, with no point repeated in a row. */

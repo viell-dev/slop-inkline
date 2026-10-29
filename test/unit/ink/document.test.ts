@@ -12,6 +12,7 @@ import {
   type InkDocument,
 } from "../../../src/ink/document.ts";
 import { lineBox } from "../../../src/ink/geometry.ts";
+import { strokeBounds } from "../../../src/ink/outline.ts";
 
 const png = Uint8Array.of(137, 80, 78, 71);
 
@@ -213,5 +214,25 @@ describe("documentSpan", () => {
     // A base layer 24 pixels wide, each covering 2: from 30 to 78.
     expect(documentSpan(document, 24)).toEqual({ left: -11, right: 78 });
     expect(documentSpan({ strokes: [] })).toBeUndefined();
+  });
+
+  it("reaches as far as a polygon's sharp corners can", () => {
+    // Out 20 px and back to 2 px below the start, 2 px wide: the corner's
+    // point is cut 4 px past it, and nearly that far out to the right.
+    const sharp: Stroke = {
+      tool: "pen",
+      size: 32,
+      pressure: false,
+      points: [0, 0, 320, 0, 0, 32],
+      kind: "polygon",
+    };
+    const span = documentSpan({ strokes: [sharp] });
+    expect(span?.right).toBe(strokeBounds(sharp)?.right);
+    expect(span?.right).toBeCloseTo(24, 1);
+    // Filled, it reaches its corners and no farther, whatever its brush.
+    expect(documentSpan({ strokes: [{ ...sharp, fill: true }] })).toEqual({
+      left: 0,
+      right: 20,
+    });
   });
 });

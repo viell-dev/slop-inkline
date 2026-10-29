@@ -139,6 +139,7 @@ Each stroke is an object:
 | `pressure` | boolean | Whether each point carries pressure, as from a pen in versions before 0.1.1-rc.8.     |
 | `points`   | array   | The points in drawing order, flattened: `x, y` per point, or `x, y, p` with pressure. |
 | `kind`     | string  | Optional. `"polygon"` for straight sides between the points, as below.                |
+| `fill`     | boolean | Optional. `true` to fill the area the points enclose instead, as below.               |
 | `cut`      | object  | Optional. The ends cut flat at a line through them, as below.                         |
 
 Pressure `p` is an integer from 0 to 255. A stroke has at least one point; a
@@ -149,6 +150,11 @@ With `kind` `"polygon"`, its points are the corners of a polygon, joined by
 straight sides with sharp corners and square ends; one whose last point is its
 first, with at least three corners, is closed. A polygon has no pressure: its
 `pressure` must be `false`. A reader must refuse any other `kind`.
+
+A stroke with `fill` `true` fills the area its points enclose instead of being
+drawn along them: a filled shape whose edges run through its points, or with the
+eraser, a hole of its shape. Its `size` and `cut` then have no effect. `false`
+is the same as no `fill`, which Inkline never writes.
 
 A stroke's `cut` has an optional `start` and an optional `end`, for its first
 and last point, each `"up"`, `"down"`, `"left"`, or `"right"`: the way from that
@@ -203,7 +209,8 @@ of the image's size, with the record's coordinates as they are:
    compositing operations `source-over` and `destination-out`). A stroke with a
    `cut` is filled in two parts: its outline, or its pieces, everywhere except
    in a box for each cut end, and then, inside those boxes only, those of the
-   rest of the stroke, below.
+   rest of the stroke, below. A stroke with `fill` `true` fills its inside
+   instead, below, in the same way.
 
 For a cut end at the point (`x / 16`, `y / 16`) pixels, with reach
 `r = size / 16 + 1` pixels, the box spans:
@@ -276,6 +283,16 @@ drawn in its cut boxes is the polygon from `2 × size` units along its sides fro
 each cut end, drawn by the same rules but with flat ends where it was cut
 (`stroke-linecap: butt`); nothing when no length is left.
 
+### Fill
+
+A filled stroke's inside is the polygon through its points at (`x / 16`,
+`y / 16`) pixels, a polygon's leaving out each point equal to the one before it,
+from the last back to the first, filled with the nonzero rule; nothing is drawn
+along the points. Its edges run through the points, so that a filled shape drawn
+on a grid lies within the lines its corners are on. With fewer than three points
+it encloses nothing and draws nothing. A polygon that crosses itself, such as a
+five-pointed star drawn in one line, fills its middle too.
+
 ### Antialiasing
 
 How a canvas antialiases curves and resamples images is up to each
@@ -299,7 +316,9 @@ optional fields without changing `version`. Stroke `cut` was added so, in
 but draw those ends round again once they edit the symbol. Stroke `kind` was
 added so too, in 0.3.0-alpha.7: earlier versions show a polygon's stored pixels,
 but draw it as a stroke through its corners, smoothed and with round corners,
-once they edit the symbol. A change that a version 1 reader could not handle
+once they edit the symbol. Stroke `fill` was added so in 0.3.0-alpha.8: earlier
+versions show a filled shape's stored pixels, but draw its outline instead once
+they edit the symbol. A change that a version 1 reader could not handle
 correctly increases `version`. A reader must not edit a file whose record has a
 higher version than it knows, since writing it would lose what that version
 recorded; it may still show the file's pixels.

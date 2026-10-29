@@ -8,6 +8,28 @@ section is also its
 
 ## Unreleased
 
+## 0.3.0-alpha.8 - 2026-10-29
+
+This alpha fills the shapes from the 0.1.1-rc.1 feedback
+([filled shapes](https://github.com/viell-dev/slop-inkline/issues/122)), which
+the [shape tools](https://github.com/viell-dev/slop-inkline/issues/73) left
+open.
+
+### Added
+
+- **Fill** (B) in the editor draws ellipses, and polygons closed on their first
+  corner, solid: shapes such as ● ▲ ■ ◆ with the pen, and holes of their shape
+  with the eraser. A filled shape's edges run through its corners, so on the
+  grid it sits within its lines, whatever the brush size. It works with Ellipse
+  and Polygon, and **Next** keeps it. Symbols with filled shapes record them in
+  a new optional stroke `fill` field; earlier versions show them as saved, but
+  draw an outline instead if they edit the symbol.
+
+### Fixed
+
+- **Fit** and the image's edges shown while drawing reach as far as a polygon's
+  sharp corners, which could reach past them.
+
 ## 0.3.0-alpha.7 - 2026-10-29
 
 This alpha completes the shape tools from the 0.1.1-rc.1 feedback

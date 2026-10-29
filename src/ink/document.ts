@@ -11,6 +11,7 @@ import {
   type Stroke,
 } from "../format/record.ts";
 import { lineBox } from "./geometry.ts";
+import { strokeBounds } from "./outline.ts";
 
 export interface InkDocument {
   readonly strokes: readonly Stroke[];
@@ -63,7 +64,9 @@ export function fitsFormat(document: InkDocument): boolean {
 /**
  * How far a document reaches across, in pixels: from the left edge of its
  * leftmost stroke or base layer to the right edge of its rightmost, each
- * stroke widened by its radius. `baseWidth` is the base layer's image width,
+ * stroke widened by its radius; a polygon or a filled stroke, whose ink can
+ * reach farther or less far, by its bounds. `baseWidth` is the base layer's
+ * image width,
  * which only its decoded pixels give. Undefined for an empty document.
  */
 export function documentSpan(
@@ -73,6 +76,14 @@ export function documentSpan(
   let left = Number.POSITIVE_INFINITY;
   let right = Number.NEGATIVE_INFINITY;
   for (const stroke of document.strokes) {
+    if (stroke.kind === "polygon" || stroke.fill === true) {
+      const bounds = strokeBounds(stroke);
+      if (bounds !== undefined) {
+        left = Math.min(left, bounds.left * unitsPerPixel);
+        right = Math.max(right, bounds.right * unitsPerPixel);
+      }
+      continue;
+    }
     const stride = stroke.pressure ? 3 : 2;
     const radius = stroke.size / 2;
     for (let index = 0; index < stroke.points.length; index += stride) {

@@ -91,6 +91,27 @@ const fixtures: Record<string, InkRecord> = {
       },
     ],
   },
+  // Filled shapes: a triangle, and a hole of a square drawn as a loop.
+  "v1-fill": {
+    box: { pxPerEm: 128, width: 64, height: 192, baseline: 144 },
+    strokes: [
+      {
+        tool: "pen",
+        size: 48,
+        pressure: false,
+        points: [128, 2304, 512, 1024, 896, 2304, 128, 2304],
+        kind: "polygon",
+        fill: true,
+      },
+      {
+        tool: "eraser",
+        size: 32,
+        pressure: false,
+        points: [448, 1792, 576, 1792, 576, 2048, 448, 2048, 448, 1792],
+        fill: true,
+      },
+    ],
+  },
 };
 
 async function exists(file: string): Promise<boolean> {

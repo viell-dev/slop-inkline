@@ -207,6 +207,42 @@ describe("drawInk", () => {
     ]);
   });
 
+  it("fills a filled stroke's inside alone, through its points", () => {
+    /** Records where the path goes, too. */
+    class PointsContext extends RecordingContext {
+      override moveTo(x?: number, y?: number): void {
+        this.calls.push(`moveTo ${String(x)} ${String(y)}`);
+      }
+      override lineTo(x?: number, y?: number): void {
+        this.calls.push(`lineTo ${String(x)} ${String(y)}`);
+      }
+    }
+    const context = new PointsContext();
+    // A triangle with a 2 px brush, closed and filled, erasing.
+    const triangle: Stroke = {
+      ...pen,
+      tool: "eraser",
+      points: [16, 16, 160, 16, 88, 144, 16, 16],
+      kind: "polygon",
+      fill: true,
+    };
+    drawInk(context, [triangle], undefined);
+    // One path of the corners, from the last back to the first, and no
+    // outline around it.
+    expect(context.calls).toEqual([
+      "save",
+      "translate 0 0",
+      "beginPath",
+      "moveTo 1 1",
+      "lineTo 10 1",
+      "lineTo 5.5 9",
+      "lineTo 1 1",
+      "closePath",
+      `fill destination-out ${inkColor}`,
+      "restore",
+    ]);
+  });
+
   it("draws nothing but the state change for an empty drawing", () => {
     const context = new RecordingContext();
     drawInk(context, [], undefined);

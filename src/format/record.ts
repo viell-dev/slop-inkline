@@ -80,6 +80,12 @@ export interface Stroke {
    * stroke drawn as the pointer went.
    */
   readonly kind?: StrokeKind;
+  /**
+   * Whether the stroke fills the area its points enclose, its last point
+   * joined back to its first, in place of being drawn along them, as a
+   * filled shape whose edges run through its points.
+   */
+  readonly fill?: boolean;
   /** The ends cut flat at a grid line, if any. */
   readonly cut?: StrokeCuts;
 }
@@ -212,6 +218,10 @@ function parseStroke(
   if (kind !== undefined && pressure) {
     fail(`${name} is a polygon with pressure`);
   }
+  if (stroke.fill !== undefined && typeof stroke.fill !== "boolean") {
+    fail(`${name}.fill is not a boolean`);
+  }
+  const fill = stroke.fill === true;
   const cut = parseCuts(stroke.cut, `${name}.cut`);
   return {
     tool,
@@ -219,6 +229,7 @@ function parseStroke(
     pressure,
     points,
     ...(kind === undefined ? {} : { kind }),
+    ...(fill ? { fill } : {}),
     ...(cut === undefined ? {} : { cut }),
   };
 }
@@ -453,14 +464,17 @@ export function recordValue(record: InkRecord): Record<string, unknown> {
       height: box.height,
       baseline: box.baseline,
     },
-    strokes: strokes.map(({ tool, size, pressure, points, kind, cut }) => ({
-      tool,
-      size,
-      pressure,
-      points,
-      ...(kind === undefined ? {} : { kind }),
-      ...cutsValue(cut),
-    })),
+    strokes: strokes.map(
+      ({ tool, size, pressure, points, kind, fill, cut }) => ({
+        tool,
+        size,
+        pressure,
+        points,
+        ...(kind === undefined ? {} : { kind }),
+        ...(fill === true ? { fill } : {}),
+        ...cutsValue(cut),
+      }),
+    ),
     ...(base === undefined
       ? {}
       : {

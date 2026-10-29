@@ -91,6 +91,18 @@ within the brush's circle of the first or last corner counts as that corner, or
 within 4 of the drawing's pixels for a smaller brush. So does such a click with
 the grid on, for a corner placed before the grid was turned on.
 
+## Filled shapes
+
+**Fill** (B) makes the shapes Ellipse and Polygon draw solid, for shapes such as
+● ▲ ■ ◆: an ellipse, and a polygon closed on its first corner. A filled shape's
+edges run through its corners, or round the box dragged, without the brush's
+width around them, so a filled triangle drawn on the grid sits on the line its
+base lies on, and the brush size makes no difference. An open polygon and a
+freehand stroke are not filled. With the eraser, a filled shape takes away its
+whole area, for a hole of its shape. The button is off while drawing freehand.
+Turning it on or off while placing a polygon decides for that shape, as it
+closes. **Next** keeps it; an editor opened afresh does not fill.
+
 ## Straight lines and the grid
 
 Hold Shift while drawing to make the stroke straight, from where it was when

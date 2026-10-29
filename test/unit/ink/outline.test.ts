@@ -5,6 +5,7 @@ import type { Stroke } from "../../../src/format/record.ts";
 import {
   cornerReach,
   cutBoxes,
+  fillOutline,
   outlineBounds,
   outlineInput,
   polygonPieces,
@@ -491,6 +492,62 @@ describe("polygon strokes", () => {
       { left: -2, right: 1, top: -2, bottom: 4 },
       { left: 5, right: 8, top: -2, bottom: 4 },
     ]);
+  });
+});
+
+describe("fillOutline", () => {
+  it("is the polygon through a filled stroke's points, or a polygon's corners", () => {
+    const corners: Stroke = {
+      ...polygon(
+        [
+          [0, 0],
+          [10, 0],
+          [10, 0],
+          [5, 8],
+          [0, 0],
+        ],
+        2,
+      ),
+      fill: true,
+    };
+    expect(fillOutline(corners)).toEqual([
+      [0, 0],
+      [10, 0],
+      [5, 8],
+      [0, 0],
+    ]);
+    const drawn: Stroke = {
+      tool: "eraser",
+      size: 32,
+      pressure: true,
+      points: [0, 0, 9, 32, 0, 9, 32, 32, 9],
+      fill: true,
+    };
+    expect(fillOutline(drawn)).toEqual([
+      [0, 0],
+      [2, 0],
+      [2, 2],
+    ]);
+    expect(fillOutline({ ...drawn, fill: false })).toBeUndefined();
+    const { fill: _, ...unfilled } = drawn;
+    expect(fillOutline(unfilled)).toBeUndefined();
+  });
+
+  it("bounds a filled stroke by its inside, whatever its brush", () => {
+    // A triangle with a brush 10 px wide, whose fill ends at its corners.
+    const triangle: Stroke = {
+      tool: "pen",
+      size: 160,
+      pressure: false,
+      points: [0, 0, 1600, 0, 800, 1600, 0, 0],
+      fill: true,
+    };
+    expect(strokeBounds(triangle)).toEqual({
+      left: 0,
+      top: 0,
+      right: 100,
+      bottom: 100,
+    });
   });
 });
 
