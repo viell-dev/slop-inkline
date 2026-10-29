@@ -767,3 +767,205 @@ describe("DrawingSession's ellipses", () => {
     expect([Math.min(...xs), Math.max(...xs)]).toEqual([80, 1040]);
   });
 });
+
+describe("DrawingSession's polygons", () => {
+  /** Clicks at a point: a press and a release there. */
+  const click = (session: DrawingSession, x: number, y: number): void => {
+    session.begin({ x, y });
+    session.end({ x, y });
+  };
+
+  it("places a corner at each click, and closes on the first corner as one undoable stroke", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "polygon";
+    click(session, 10, 20);
+    expect(session.placing).toBe(true);
+    expect(session.drawing).toBe(true);
+    expect(session.canUndo).toBe(false);
+    // Between clicks, the next side follows the pointer.
+    session.extend([{ x: 40, y: 22 }]);
+    expect(session.activeStroke).toEqual({
+      tool: "pen",
+      size: 192,
+      pressure: false,
+      points: [160, 320, 640, 352],
+      kind: "polygon",
+    });
+    click(session, 40, 20);
+    click(session, 25, 50);
+    // Near the first corner, the shape shows closed.
+    session.extend([{ x: 12, y: 21 }]);
+    expect(session.activeStroke?.points).toEqual([
+      160, 320, 640, 320, 400, 800, 160, 320,
+    ]);
+    expect(session.document.strokes).toEqual([]);
+    click(session, 12, 21);
+    expect(session.placing).toBe(false);
+    expect(session.document.strokes).toEqual([
+      {
+        tool: "pen",
+        size: 192,
+        pressure: false,
+        points: [160, 320, 640, 320, 400, 800, 160, 320],
+        kind: "polygon",
+      },
+    ]);
+    session.undo();
+    expect(session.document.strokes).toEqual([]);
+  });
+
+  it("ends a polygon open on its last corner, and a dot on a corner clicked twice", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "polygon";
+    click(session, 10, 20);
+    click(session, 40, 20);
+    // A double-click: the second click lands on the last corner.
+    click(session, 40, 20);
+    expect(session.placing).toBe(false);
+    expect(session.document.strokes[0]?.points).toEqual([160, 320, 640, 320]);
+    click(session, 70, 70);
+    click(session, 70, 70);
+    expect(session.document.strokes[1]?.points).toEqual([1120, 1120]);
+  });
+
+  it("closes only with three corners, and adds a corner at the first otherwise", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "polygon";
+    click(session, 10, 20);
+    click(session, 40, 20);
+    click(session, 10, 20);
+    expect(session.placing).toBe(true);
+    session.end();
+    expect(session.document.strokes[0]?.points).toEqual([
+      160, 320, 640, 320, 160, 320,
+    ]);
+  });
+
+  it("draws the first side when the first press is dragged", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "polygon";
+    session.begin({ x: 10, y: 20 });
+    session.extend([{ x: 30, y: 20 }]);
+    session.end({ x: 40, y: 20 });
+    expect(session.placing).toBe(true);
+    expect(session.activeStroke?.points).toEqual([160, 320, 640, 320]);
+  });
+
+  it("ends with the corners it has when ended without a release, as on saving", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "polygon";
+    click(session, 10, 20);
+    click(session, 40, 20);
+    session.extend([{ x: 60, y: 60 }]);
+    session.end();
+    expect(session.placing).toBe(false);
+    expect(session.document.strokes[0]?.points).toEqual([160, 320, 640, 320]);
+  });
+
+  it("reaches the brush's radius off the grid to close or end, and no farther", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "polygon";
+    // M is 12 px wide, so 6 px reaches; a corner 7 px away is a new one.
+    click(session, 10, 20);
+    click(session, 40, 20);
+    click(session, 47, 20);
+    expect(session.placing).toBe(true);
+    click(session, 47, 26);
+    expect(session.placing).toBe(false);
+    expect(session.document.strokes[0]?.points).toEqual([
+      160, 320, 640, 320, 752, 320,
+    ]);
+  });
+
+  it("snaps corners to the grid, and cuts an open polygon's ends there but not a closed one's", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "polygon";
+    session.snap = true;
+    click(session, 1, 15);
+    click(session, 31, 15);
+    click(session, 33, 143);
+    // In the last corner's cell, it snaps to that corner and ends there.
+    click(session, 30, 140);
+    expect(session.document.strokes[0]).toEqual({
+      tool: "pen",
+      size: 192,
+      pressure: false,
+      points: [0, 256, 512, 256, 512, 2304],
+      kind: "polygon",
+      cut: { start: "left", end: "down" },
+    });
+    click(session, 1, 15);
+    click(session, 31, 15);
+    click(session, 33, 47);
+    click(session, 2, 17);
+    expect(session.document.strokes[1]?.points).toEqual([
+      0, 256, 512, 256, 512, 768, 0, 256,
+    ]);
+    expect(session.document.strokes[1]).not.toHaveProperty("cut");
+  });
+
+  it("takes back corners one at a time with undoCorner, and the polygon with its first", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "polygon";
+    expect(session.undoCorner()).toBe(false);
+    click(session, 10, 20);
+    click(session, 40, 20);
+    expect(session.undoCorner()).toBe(true);
+    // The next side still follows the pointer, from the corner before.
+    expect(session.activeStroke?.points).toEqual([160, 320, 640, 320]);
+    click(session, 25, 50);
+    expect(session.undoCorner()).toBe(true);
+    expect(session.undoCorner()).toBe(true);
+    expect(session.placing).toBe(false);
+    expect(session.activeStroke).toBeUndefined();
+    expect(session.document.strokes).toEqual([]);
+    click(session, 10, 20);
+    click(session, 40, 20);
+    session.undoCorner();
+    click(session, 25, 50);
+    click(session, 25, 50);
+    expect(session.document.strokes[0]?.points).toEqual([160, 320, 400, 800]);
+  });
+
+  it("drops a polygon on cancel, and takes a brush chosen while it is placed", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "polygon";
+    click(session, 10, 20);
+    session.cancel();
+    expect(session.placing).toBe(false);
+    click(session, 10, 20);
+    session.tool = "eraser";
+    session.sizeIndex = 3;
+    // Until it is given the brush, it keeps the one it started with.
+    expect(session.activeStroke).toMatchObject({ tool: "pen", size: 192 });
+    session.rebrush();
+    expect(session.activeSize).toBe(384);
+    click(session, 40, 20);
+    click(session, 40, 20);
+    expect(session.document.strokes[0]).toMatchObject({
+      tool: "eraser",
+      size: 384,
+      kind: "polygon",
+    });
+    // A stroke being dragged keeps its own.
+    session.shape = "free";
+    session.tool = "pen";
+    session.begin({ x: 10, y: 20 });
+    session.tool = "eraser";
+    session.rebrush();
+    session.end({ x: 30, y: 20 });
+    expect(session.document.strokes[1]?.tool).toBe("pen");
+  });
+
+  it("keeps its corners and the next where they were when a save moves the drawing", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "polygon";
+    click(session, 10, 20);
+    session.extend([{ x: 40, y: 20 }]);
+    session.rebase(-5);
+    expect(session.activeStroke?.points).toEqual([80, 320, 560, 320]);
+    click(session, 35, 20);
+    click(session, 35, 20);
+    expect(session.document.strokes[0]?.points).toEqual([80, 320, 560, 320]);
+  });
+});

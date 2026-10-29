@@ -66,6 +66,29 @@ are spaced differently. For a half circle, draw the circle, then erase the half
 you don't want with eraser strokes that end on the line across its middle: on
 the grid, their ends stop flush with that line.
 
+## Polygons
+
+**Polygon** (Y) draws a shape with straight sides and sharp corners, such as a
+triangle, a rectangle, or a lightning bolt. Click where each corner goes; the
+next side follows the pointer from the last corner. Click the first corner again
+to close the shape, or click the last corner again, as a double-click does, or
+press Enter, to leave it open. Undo (Mod+Z) takes back the last corner, and Esc
+drops the shape; so does the close button, before it closes the editor. A press
+dragged before its release puts the corner where it is released. The shape draws
+with the pen or the eraser at its brush size; choosing another while placing it
+changes the whole shape. Press **Polygon** again to draw freehand; **Next**
+keeps it on.
+
+Its corners are sharp on the outer side. A very sharp corner, under about 29°,
+has its point cut off square twice the stroke's width past the corner, so that
+it never reaches far beyond. An open shape's ends are square, half the stroke's
+width past its end corners, so that two shapes meeting at a corner make a sharp
+one.
+
+With the grid on, the corners snap to the grid, and an open shape's ends stop
+flush with the grid line they lie on, as a stroke's do. Off the grid, a click
+within the brush's circle of the first or last corner counts as that corner.
+
 ## Straight lines and the grid
 
 Hold Shift while drawing to make the stroke straight, from where it was when

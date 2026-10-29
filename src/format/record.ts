@@ -50,6 +50,12 @@ export type Cut = "up" | "down" | "left" | "right";
 /** The directions a stroke can be cut in, for checking a file. */
 export const cuts: readonly Cut[] = ["up", "down", "left", "right"];
 
+/**
+ * How a stroke's points are joined: by default, as drawn, in a smooth stroke
+ * with round ends; `polygon`, by straight lines meeting at sharp corners.
+ */
+export type StrokeKind = "polygon";
+
 /** Where a stroke's ends are cut flat; an end not named keeps its round cap. */
 export interface StrokeCuts {
   readonly start?: Cut;
@@ -68,6 +74,12 @@ export interface Stroke {
    * from the image's top left corner.
    */
   readonly points: readonly number[];
+  /**
+   * `polygon` for straight lines between the points, with sharp corners and
+   * square ends, closed when the last point is the first; undefined for a
+   * stroke drawn as the pointer went.
+   */
+  readonly kind?: StrokeKind;
   /** The ends cut flat at a grid line, if any. */
   readonly cut?: StrokeCuts;
 }
@@ -196,10 +208,25 @@ function parseStroke(
       ? integer(point, `${name}.points`, 0, maxPressure)
       : integer(point, `${name}.points`, -limits.coordinate, limits.coordinate),
   );
+  const kind = parseKind(stroke.kind, `${name}.kind`);
+  if (kind !== undefined && pressure) {
+    fail(`${name} is a polygon with pressure`);
+  }
   const cut = parseCuts(stroke.cut, `${name}.cut`);
-  return cut === undefined
-    ? { tool, size, pressure, points }
-    : { tool, size, pressure, points, cut };
+  return {
+    tool,
+    size,
+    pressure,
+    points,
+    ...(kind === undefined ? {} : { kind }),
+    ...(cut === undefined ? {} : { cut }),
+  };
+}
+
+/** A stroke's kind, or undefined for a stroke drawn as the pointer went. */
+function parseKind(value: unknown, name: string): StrokeKind | undefined {
+  if (value === undefined) return undefined;
+  return value === "polygon" ? value : fail(`${name} is not "polygon"`);
 }
 
 /** A stroke's cuts, or undefined when it has none. */
@@ -426,11 +453,12 @@ export function recordValue(record: InkRecord): Record<string, unknown> {
       height: box.height,
       baseline: box.baseline,
     },
-    strokes: strokes.map(({ tool, size, pressure, points, cut }) => ({
+    strokes: strokes.map(({ tool, size, pressure, points, kind, cut }) => ({
       tool,
       size,
       pressure,
       points,
+      ...(kind === undefined ? {} : { kind }),
       ...cutsValue(cut),
     })),
     ...(base === undefined

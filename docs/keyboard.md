@@ -41,8 +41,10 @@ immediately. Select the name field to type a name; Enter returns to drawing.
 | P                         | Pen         | Draw.                                                   |
 | E                         | Eraser      | Take ink away.                                          |
 | O                         | Ellipse     | Draw ellipses by dragging, or freehand again.           |
+| Y                         | Polygon     | Draw shapes by clicking their corners, or freehand.     |
+| Enter                     |             | End a polygon being drawn, leaving it open.             |
 | 1, 2, 3, 4                | S, M, L, XL | Choose the brush size.                                  |
-| Mod+Z                     | Undo        | Undo the last change.                                   |
+| Mod+Z                     | Undo        | Undo the last change, or a polygon's last corner.       |
 | Mod+Shift+Z, or Mod+Y     | Redo        | Redo it.                                                |
 | Delete, or Backspace      | Clear       | Clear the drawing; Undo brings it back.                 |
 | G                         | Guides      | Show or hide the guides.                                |
@@ -56,15 +58,15 @@ immediately. Select the name field to type a name; Enter returns to drawing.
 | Mod+Enter                 | Save        | Save and close.                                         |
 | Mod+S                     |             | Save and keep drawing.                                  |
 | Mod+Shift+Enter           | Next        | Save, insert, and start the symbol that follows.        |
-| Esc                       |             | Close, asking first if something is unsaved.            |
+| Esc                       |             | Drop a polygon being drawn, or else close the editor.   |
 
-While **Move** is on, the arrow keys move the picture, with Shift by one column
-of the grid, and + and − scale it. Otherwise, while **Zoom** is on, the left and
-right arrow keys, and the wheel, move along the drawing. Copy from and Next are
-only in the editor for a new symbol. Make ink's threshold is a slider, which its
-arrow keys move; **Light ink**, **Apply**, and **Cancel** are buttons, as are
-**Choose picture…**, which opens the system's file dialog, and **Remove
-picture**.
+Closing the editor with unsaved changes asks first. While **Move** is on, the
+arrow keys move the picture, with Shift by one column of the grid, and + and −
+scale it. Otherwise, while **Zoom** is on, the left and right arrow keys, and
+the wheel, move along the drawing. Copy from and Next are only in the editor for
+a new symbol. Make ink's threshold is a slider, which its arrow keys move;
+**Light ink**, **Apply**, and **Cancel** are buttons, as are **Choose
+picture…**, which opens the system's file dialog, and **Remove picture**.
 
 The **Help** button opens a quick start and guide explanations. Esc closes Help
 and returns focus to the drawing area.
@@ -73,8 +75,8 @@ and returns focus to the drawing area.
 
 - Every control has a label which screen readers read, whether its button shows
   an icon, a name, or both. Toolbar tooltips also include their shortcuts. The
-  pen, the eraser, Ellipse, the brush sizes, the guides, the grid, Zoom, Move,
-  Make ink, and Light ink say whether they are on.
+  pen, the eraser, Ellipse, Polygon, the brush sizes, the guides, the grid,
+  Zoom, Move, Make ink, and Light ink say whether they are on.
 - The drawing area keeps its accessible name without a hover tooltip.
 - The editor's status line, such as "Saving…", "Saved", or "Not saved" and why,
   is announced as it changes.

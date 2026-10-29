@@ -3,13 +3,21 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Stroke } from "../../../src/format/record.ts";
 import {
+  cornerReach,
   cutBoxes,
   outlineBounds,
   outlineInput,
+  polygonPieces,
+  restShape,
+  strokeBounds,
   strokeOutline,
+  strokeShape,
   traceOutline,
+  traceShape,
   uncutRest,
+  type Outline,
   type PathSink,
+  type StrokeShape,
 } from "../../../src/ink/outline.ts";
 import { pinnedStrokes } from "../../fixtures/outline/strokes.ts";
 
@@ -103,6 +111,339 @@ describe("strokeOutline", () => {
   });
 });
 
+/** A polygon stroke through `corners`, in pixels, `width` pixels wide. */
+function polygon(
+  corners: readonly (readonly [number, number])[],
+  width: number,
+  cut?: Stroke["cut"],
+): Stroke {
+  return {
+    tool: "pen",
+    size: width * 16,
+    pressure: false,
+    points: corners.flatMap(([x, y]) => [x * 16, y * 16]),
+    kind: "polygon",
+    ...(cut === undefined ? {} : { cut }),
+  };
+}
+
+/** The pieces of a shape, which a polygon's always is. */
+function piecesOf(shape: StrokeShape | undefined): readonly Outline[] {
+  if (shape?.kind !== "pieces") throw new Error("not a polygon's pieces");
+  return shape.pieces;
+}
+
+/** Twice a polygon's signed area. */
+function area(outline: Outline): number {
+  let sum = 0;
+  outline.forEach(([x0, y0], index) => {
+    const [x1, y1] = outline[(index + 1) % outline.length] ?? [x0, y0];
+    sum += x0 * y1 - x1 * y0;
+  });
+  return sum;
+}
+
+/**
+ * Whether filling the pieces with the nonzero rule covers a point: its
+ * winding number around them all, which are convex and wind one way.
+ */
+function covers(pieces: readonly Outline[], x: number, y: number): boolean {
+  return pieces.some((piece) =>
+    piece.every(([x0, y0], index) => {
+      const [x1, y1] = piece[(index + 1) % piece.length] ?? [x0, y0];
+      return (x1 - x0) * (y - y0) - (y1 - y0) * (x - x0) >= 0;
+    }),
+  );
+}
+
+describe("polygon strokes", () => {
+  it("draw a single corner as a square dot as wide as the stroke", () => {
+    expect(strokeBounds(polygon([[1, 1]], 2))).toEqual({
+      left: 0,
+      top: 0,
+      right: 2,
+      bottom: 2,
+    });
+  });
+
+  it("draw a side with square ends, half the width past each corner", () => {
+    expect(
+      strokeBounds(
+        polygon(
+          [
+            [1, 1],
+            [5, 1],
+          ],
+          2,
+        ),
+      ),
+    ).toEqual({ left: 0, top: 0, right: 6, bottom: 2 });
+  });
+
+  it("make a right-angled corner sharp on its outer side", () => {
+    const pieces = piecesOf(
+      strokeShape(
+        polygon(
+          [
+            [0, 0],
+            [10, 0],
+            [10, 10],
+          ],
+          2,
+        ),
+      ),
+    );
+    // Two sides and the corner's wedge, all wound one way.
+    expect(pieces).toHaveLength(3);
+    for (const piece of pieces) expect(area(piece)).toBeGreaterThan(0);
+    // Round, the corner would not reach (10.9, -0.9), 1.27 from the corner.
+    expect(covers(pieces, 10.9, -0.9)).toBe(true);
+    expect(covers(pieces, 11.1, -0.9)).toBe(false);
+    expect(covers(pieces, 10.9, -1.1)).toBe(false);
+    // Inside the turn, the sides meet without filling past their edges.
+    expect(covers(pieces, 8.9, 1.1)).toBe(false);
+    expect(covers(pieces, 9.1, 0.9)).toBe(true);
+  });
+
+  it("cut a sharper corner's point off twice the width past the corner", () => {
+    // Out 20 px and back to 2 px below the start: a turn of about 174°.
+    const pieces = piecesOf(
+      strokeShape(
+        polygon(
+          [
+            [0, 0],
+            [20, 0],
+            [0, 2],
+          ],
+          2,
+        ),
+      ),
+    );
+    expect(cornerReach).toBe(2);
+    // Uncut, the point would reach 20 px past the corner.
+    expect(outlineBounds(pieces.flat())?.right).toBeCloseTo(24, 1);
+    // Along the corner's bisector, the sides' directions' difference.
+    const [bx, by] = [1 + 20 / Math.hypot(20, 2), -2 / Math.hypot(20, 2)];
+    const length = Math.hypot(bx, by);
+    const reach = Math.max(
+      ...pieces.flat().map(([x, y]) => ((x - 20) * bx + y * by) / length),
+    );
+    expect(reach).toBeCloseTo(4, 9);
+  });
+
+  it("square off a side that doubles back on itself at twice the width", () => {
+    const pieces = piecesOf(
+      strokeShape(
+        polygon(
+          [
+            [0, 0],
+            [10, 0],
+            [0, 0],
+          ],
+          2,
+        ),
+      ),
+    );
+    expect(outlineBounds(pieces.flat())).toEqual({
+      left: -1,
+      top: -1,
+      right: 14,
+      bottom: 1,
+    });
+    expect(covers(pieces, 13.9, 0.9)).toBe(true);
+  });
+
+  it("close a polygon whose last corner is its first, with every corner sharp", () => {
+    const square = polygon(
+      [
+        [0, 0],
+        [10, 0],
+        [10, 10],
+        [0, 10],
+        [0, 0],
+      ],
+      2,
+      { start: "up", end: "up" },
+    );
+    const pieces = piecesOf(strokeShape(square));
+    // Four sides and four corners: no ends.
+    expect(pieces).toHaveLength(8);
+    for (const [x, y] of [
+      [-0.9, -0.9],
+      [10.9, -0.9],
+      [10.9, 10.9],
+      [-0.9, 10.9],
+    ] as const) {
+      expect(covers(pieces, x, y)).toBe(true);
+    }
+    expect(covers(pieces, 5, 5)).toBe(false);
+    expect(covers(pieces, -1.1, 5)).toBe(false);
+    // A closed polygon has no ends to cut.
+    expect(cutBoxes(square)).toEqual([]);
+    expect(restShape(square)).toBeUndefined();
+  });
+
+  it("leave a polygon open when it comes back to its start with two corners", () => {
+    // Out and back: three points, the last the first, but not a shape.
+    const pieces = piecesOf(
+      strokeShape(
+        polygon(
+          [
+            [0, 0],
+            [10, 0],
+            [0, 0],
+          ],
+          2,
+        ),
+      ),
+    );
+    // Its square ends reach past the start.
+    expect(outlineBounds(pieces.flat())?.left).toBe(-1);
+  });
+
+  it("ignore a corner repeated in a row", () => {
+    expect(
+      strokeShape(
+        polygon(
+          [
+            [0, 0],
+            [0, 0],
+            [10, 0],
+            [10, 0],
+          ],
+          2,
+        ),
+      ),
+    ).toEqual(
+      strokeShape(
+        polygon(
+          [
+            [0, 0],
+            [10, 0],
+          ],
+          2,
+        ),
+      ),
+    );
+  });
+
+  it("give nothing for no corners, or a lone corner with flat ends", () => {
+    const shape = { closed: false, start: false, end: false };
+    expect(polygonPieces([], 2, shape)).toEqual([]);
+    expect(polygonPieces([[1, 1]], 2, shape)).toEqual([]);
+  });
+
+  it("leave the rest of a cut polygon in its cut boxes, flat where it was cut", () => {
+    // Down 20 px with a 1 px brush, cut at its end.
+    const down = polygon(
+      [
+        [0, 0],
+        [0, 20],
+      ],
+      1,
+      { end: "down" },
+    );
+    expect(outlineBounds(piecesOf(restShape(down)).flat())).toEqual({
+      left: -0.5,
+      top: -0.5,
+      right: 0.5,
+      bottom: 18,
+    });
+    const both = polygon(
+      [
+        [0, 0],
+        [0, 20],
+      ],
+      1,
+      { start: "up", end: "down" },
+    );
+    expect(outlineBounds(piecesOf(restShape(both)).flat())).toEqual({
+      left: -0.5,
+      top: 2,
+      right: 0.5,
+      bottom: 18,
+    });
+    // Twice the width from each end leaves nothing of 3 px.
+    expect(
+      restShape(
+        polygon(
+          [
+            [0, 0],
+            [0, 3],
+          ],
+          1,
+          { start: "up", end: "down" },
+        ),
+      ),
+    ).toBeUndefined();
+    expect(
+      restShape(
+        polygon(
+          [
+            [0, 0],
+            [0, 20],
+          ],
+          1,
+        ),
+      ),
+    ).toBeUndefined();
+  });
+
+  it("keep the corners of a cut polygon's rest, and its sharp corners", () => {
+    // Down 10 px, right 10 px, and down 10 px again, cut at both ends.
+    const step = polygon(
+      [
+        [0, 0],
+        [0, 10],
+        [10, 10],
+        [10, 20],
+      ],
+      1,
+      { start: "up", end: "down" },
+    );
+    const rest = piecesOf(restShape(step));
+    // Three sides and two corners.
+    expect(rest).toHaveLength(5);
+    expect(outlineBounds(rest.flat())).toEqual({
+      left: -0.5,
+      top: 2,
+      right: 10.5,
+      bottom: 18,
+    });
+    expect(covers(rest, -0.45, 10.45)).toBe(true);
+  });
+
+  it("take its cut boxes from its ends, as a stroke's", () => {
+    expect(
+      cutBoxes(
+        polygon(
+          [
+            [1, 1],
+            [5, 1],
+          ],
+          2,
+          { start: "left", end: "right" },
+        ),
+      ),
+    ).toEqual([
+      { left: -2, right: 1, top: -2, bottom: 4 },
+      { left: 5, right: 8, top: -2, bottom: 4 },
+    ]);
+  });
+});
+
+describe("strokeBounds", () => {
+  it("is the outline's bounds for a stroke drawn as the pointer went", () => {
+    const stroke: Stroke = {
+      tool: "pen",
+      size: 160,
+      pressure: false,
+      points: [0, 800, 1600, 800],
+    };
+    expect(strokeBounds(stroke)).toEqual(outlineBounds(strokeOutline(stroke)));
+  });
+});
+
 describe("outlineBounds", () => {
   it("has none for an empty outline", () => {
     expect(outlineBounds([])).toBeUndefined();
@@ -114,6 +455,7 @@ describe("traceOutline", () => {
     const calls: string[] = [];
     const sink: PathSink = {
       moveTo: (x, y) => calls.push(`M ${String(x)} ${String(y)}`),
+      lineTo: (x, y) => calls.push(`L ${String(x)} ${String(y)}`),
       quadraticCurveTo: (cx, cy, x, y) =>
         calls.push(`Q ${String(cx)} ${String(cy)} ${String(x)} ${String(y)}`),
       closePath: () => calls.push("Z"),
@@ -141,10 +483,51 @@ describe("traceOutline", () => {
     const calls: string[] = [];
     traceOutline([], {
       moveTo: () => calls.push("M"),
+      lineTo: () => calls.push("L"),
       quadraticCurveTo: () => calls.push("Q"),
       closePath: () => calls.push("Z"),
     });
     expect(calls).toEqual([]);
+  });
+});
+
+describe("traceShape", () => {
+  it("draws each of a polygon's pieces with straight sides", () => {
+    const calls: string[] = [];
+    traceShape(
+      {
+        kind: "pieces",
+        pieces: [
+          [
+            [0, 0],
+            [2, 0],
+            [2, 2],
+          ],
+          [],
+          [
+            [5, 5],
+            [6, 5],
+            [6, 6],
+          ],
+        ],
+      },
+      {
+        moveTo: (x, y) => calls.push(`M ${String(x)} ${String(y)}`),
+        lineTo: (x, y) => calls.push(`L ${String(x)} ${String(y)}`),
+        quadraticCurveTo: () => calls.push("Q"),
+        closePath: () => calls.push("Z"),
+      },
+    );
+    expect(calls).toEqual([
+      "M 0 0",
+      "L 2 0",
+      "L 2 2",
+      "Z",
+      "M 5 5",
+      "L 6 5",
+      "L 6 6",
+      "Z",
+    ]);
   });
 });
 
