@@ -8,6 +8,13 @@ section is also its
 
 ## Unreleased
 
+## 0.3.0-alpha.7 - 2026-10-29
+
+This alpha completes the shape tools from the 0.1.1-rc.1 feedback
+([shape tools](https://github.com/viell-dev/slop-inkline/issues/73)) with shapes
+that have straight sides and sharp corners, which the owner asked for with a
+lightning bolt as the example.
+
 ### Added
 
 - **Polygon** (Y) in the editor draws shapes with straight sides and sharp

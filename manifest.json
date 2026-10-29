@@ -1,7 +1,7 @@
 {
   "id": "inkline",
   "name": "Inkline",
-  "version": "0.3.0-alpha.6",
+  "version": "0.3.0-alpha.7",
   "minAppVersion": "1.13.4",
   "description": "Draw symbols that sit inline in your notes like characters, saved as plain PNG images.",
   "author": "Viell",
