@@ -189,10 +189,64 @@ async function editorName(): Promise<string> {
   });
 }
 
+/**
+ * Where the focus is, what menus and modals are open, and where the last
+ * Escape key went and whether anything handled it, as JSON. Watching for
+ * Escape starts with the first call. #78 asks for this if the editor ever
+ * stays open after Escape again.
+ */
+async function escapeState(): Promise<string> {
+  return browser.execute(() => {
+    const root = document.documentElement;
+    const describe = (target: EventTarget | null): string => {
+      if (!(target instanceof Element)) {
+        return target === null ? "none" : target.constructor.name;
+      }
+      const classes = Array.from(target.classList).join(".");
+      return `${target.tagName.toLowerCase()}${classes === "" ? "" : `.${classes}`}`;
+    };
+    if (!root.hasAttribute("data-inkline-escape-watch")) {
+      root.setAttribute("data-inkline-escape-watch", "");
+      window.addEventListener(
+        "keydown",
+        (event) => {
+          if (event.key !== "Escape") return;
+          const target = describe(event.target);
+          // After every handler has had the event.
+          window.setTimeout(() => {
+            root.setAttribute(
+              "data-inkline-last-escape",
+              JSON.stringify({ target, handled: event.defaultPrevented }),
+            );
+          }, 0);
+        },
+        { capture: true },
+      );
+    }
+    return JSON.stringify({
+      focus: describe(document.activeElement),
+      windowFocused: document.hasFocus(),
+      menus: document.querySelectorAll(".menu").length,
+      modals: Array.from(document.querySelectorAll(".modal-container")).map(
+        (container) => describe(container.querySelector(".modal")),
+      ),
+      lastEscape: root.getAttribute("data-inkline-last-escape"),
+    });
+  });
+}
+
 /** Closes the open editor, which has no changes. */
 async function closeEditor(): Promise<void> {
+  const before = await escapeState();
   await browser.keys(["Escape"]);
-  await browser.$(".inkline-editor").waitForExist({ reverse: true });
+  try {
+    await browser.$(".inkline-editor").waitForExist({ reverse: true });
+  } catch (error) {
+    throw new Error(
+      `the editor stayed open after Escape (#78): before ${before}, after ${await escapeState()}`,
+      { cause: error },
+    );
+  }
 }
 
 describe("Editing a symbol from a note", function () {
