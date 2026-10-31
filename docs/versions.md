@@ -14,8 +14,7 @@ records those changes too.
 
 Documentation corrections go through ordinary pull requests to `main` and deploy
 from there. They do not need a separate documentation branch, a new software
-release, or a moved tag. The historical `docs-0.1.0` branch records an earlier
-deployment; it is no longer used for current guide updates.
+release, or a moved tag.
 
 Preparing a new software version can put its guide on main before its download
 exists. The Pages workflow keeps the existing site until that version is

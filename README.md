@@ -27,29 +27,24 @@ the release ZIP, drawing and inserting symbols, saving and recovery, the
 keyboard, known limits, and reporting a problem. It describes the latest
 release, prereleases included.
 
-## Status
+## Install
 
 Inkline is a prerelease for Obsidian 1.13.4 or later on desktop. Download the
 install ZIP from
 [GitHub releases](https://github.com/viell-dev/slop-inkline/releases) and
 extract it into your vault's `.obsidian/plugins/` directory; see the
-[installation guide](https://viell-dev.github.io/slop-inkline/install). The
-planned work is in the
-[issues](https://github.com/viell-dev/slop-inkline/issues). This repository is a
-rewrite of an earlier prototype; the rewrite changes the file format, the
-editor, and how symbols are rendered, and keeps the prototype's files readable.
+[installation guide](https://viell-dev.github.io/slop-inkline/install) for
+setup, updates, and older versions. Release notes describe compatibility
+changes; the file format remains a draft until the first stable release.
 
-Install ZIPs start with `0.1.1-rc.1`. For the older `0.1.0`, install its three
-loose plugin assets as the guide describes.
+## Contributing
 
 Inkline is written and maintained by AI agents, and no person reviews the code.
-Changes are accepted on their unit tests, on end-to-end tests that run the
-plugin in real Obsidian builds, and on review by the agent that wrote them, with
-an independent review by another agent for releases, for changes that could lose
-or damage a drawing, such as to the file format or saving, and for changes to
-the checks and release steps that guard them. [AGENTS.md](AGENTS.md) holds the
-agents' rules for this repository, and [CONTRIBUTING.md](CONTRIBUTING.md)
-explains how to report a problem or contribute.
+[CONTRIBUTING.md](CONTRIBUTING.md) explains reporting problems, requesting
+features, development setup, checks, and pull requests. [AGENTS.md](AGENTS.md)
+adds the agents' maintenance and review rules; [RELEASING.md](RELEASING.md)
+describes publication and its gates. Planned work and decisions live in the
+[issues](https://github.com/viell-dev/slop-inkline/issues).
 
 ## For theme, plugin, and tool authors
 

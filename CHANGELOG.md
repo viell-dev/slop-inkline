@@ -8,6 +8,12 @@ section is also its
 
 ## Unreleased
 
+### Changed
+
+- Simplify documentation navigation and maintenance guidance, clarify the draft
+  format's verification limits, and make the existing stable-publication hold
+  explicit in the release guide.
+
 ## 0.3.0-alpha.8 - 2026-10-29
 
 This alpha fills the shapes from the 0.1.1-rc.1 feedback
