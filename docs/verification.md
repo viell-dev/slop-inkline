@@ -40,8 +40,11 @@ review.
 
 ### Symbol files stay readable, and look the same
 
-A symbol is a PNG with a version 1 record, which every later version reads, and
-saving it again never changes it.
+A symbol is a PNG with a version 1 record. Reopening and saving it in the same
+version preserves its drawing. Until the first stable release the format is a
+draft; later alphas may change it, as
+[Compatibility](./file-format.md#compatibility) explains. From the first stable
+release, later versions must keep released files readable and looking the same.
 
 - Unit tests of the PNG codec, the record, and symbol files:
   [png.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/format/png.test.ts),
@@ -53,7 +56,9 @@ saving it again never changes it.
   [test/fixtures/format](https://github.com/viell-dev/slop-inkline/tree/main/test/fixtures/format),
   read on every change, in Node.js and in Obsidian's own renderer
   ([format.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/format.e2e.ts)).
-  They are never changed: a new case gets a new file.
+  Format changes update affected fixtures while the format is a draft; from the
+  first stable release, existing fixtures stay unchanged and new cases get new
+  files.
 - Pinned stroke outlines in
   [test/fixtures/outline](https://github.com/viell-dev/slop-inkline/tree/main/test/fixtures/outline):
   an update of the stroke library that would change how saved strokes look fails
@@ -257,8 +262,8 @@ Each of these asserts a budget beside its correctness checks:
 ### What this site and the repository say agrees
 
 - The package and manifest versions agree, numeric releases have matching
-  compatibility entries in `versions.json`, RCs stay out of that directory map,
-  and each release has its changelog section
+  compatibility entries in `versions.json`, prereleases stay out of that
+  directory map, and each release has its changelog section
   ([release.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/release.test.ts)).
 - This site's commands, keys, defaults, Obsidian version, links, and example
   embeds agree with the code
@@ -268,19 +273,11 @@ Each of these asserts a budget beside its correctness checks:
 
 ## Checks shown to fail
 
-A check is only evidence if it fails when what it checks breaks. Pull requests
-record where they broke the behaviour on purpose and watched the check fail, or
-ran a check against the code before a fix: among them, the checks of code in
-fences ([#50](https://github.com/viell-dev/slop-inkline/pull/50)), the link
-scanner's budgets against each earlier slow scanner
-([#49](https://github.com/viell-dev/slop-inkline/pull/49)), the test of a failed
-rename with a slow stroke
-([#51](https://github.com/viell-dev/slop-inkline/pull/51)), the harness's waits
-with slowed frames ([#53](https://github.com/viell-dev/slop-inkline/pull/53)),
-the budgets for tagging and for searching a large vault against slow code
-([#54](https://github.com/viell-dev/slop-inkline/pull/54)), and the release's CI
-check against a commit whose CI never ran
-([#55](https://github.com/viell-dev/slop-inkline/pull/55)).
+A check is stronger evidence when it fails on deliberately broken behavior or on
+the code before a fix. The pull request that adds or changes a check records
+that experiment and its limits. Earlier examples are in the
+[verification work linked from #46](https://github.com/viell-dev/slop-inkline/issues/46);
+the individual pull requests hold the inputs, results, and review discussion.
 
 ## Limits of this evidence
 

@@ -31,12 +31,12 @@ screenshots use synthetic vaults and drawings only.
   files hold or how strokes are drawn updates that document in the same pull
   request. The pinned files in `test/fixtures/` (golden files, stroke outlines,
   and the prototype-format files) pin what files hold and how they look.
-  - Until the first stable release, the format is a draft, by the owner's
-    decision of 2026-10-28. A feature may change what files hold or how strokes
-    are drawn, and files written by earlier pre-releases need not keep opening.
-    Such a change updates the pinned files it affects in the same pull request,
-    converts older files where that is cheap, and says in the changelog which
-    files stop opening or look different. It is still reviewed as below.
+  - Until the first stable release, the format is a draft. A feature may change
+    what files hold or how strokes are drawn, and files written by earlier
+    pre-releases need not keep opening. Such a change updates the pinned files
+    it affects in the same pull request, converts older files where that is
+    cheap, and says in the changelog which files stop opening or look different.
+    It is still reviewed as below.
   - From the first stable release, the pinned files are never changed: users'
     files must keep opening and looking the same, so a new case gets a new
     pinned file, and an update of `perfect-freehand` that changes the pinned
@@ -175,9 +175,12 @@ the owner in an issue with `Needs: Owner`.
 ## Releases
 
 [RELEASING.md](RELEASING.md) is the process. The maintaining agents publish a
-release on GitHub once it is ready by those steps, without asking the owner for
-each one. Submitting the plugin to Obsidian's community directory, or changing
-what Inkline is for or where it is distributed, needs the owner's decision.
+prerelease on GitHub once it is ready by those steps, without asking the owner
+for each one. The owner's explicit stable-publication hold in
+[#5](https://github.com/viell-dev/slop-inkline/issues/5) remains binding, as the
+release guide explains. Submitting the plugin to Obsidian's community directory,
+or changing what Inkline is for or where it is distributed, needs the owner's
+decision.
 
 ## The prototype branch
 
@@ -190,13 +193,12 @@ unneeded.
 
 ## The pen-input branch
 
-`pen-input` keeps the pen-device support that `main` removed on the owner's
-decision in [#101](https://github.com/viell-dev/slop-inkline/issues/101): pen
-pressure, a pen's eraser end, palm rejection, and the Pen pressure setting, as
-released in 0.1.1-rc.7. Read it for reference, as with
-`git show pen-input:src/editor/pointer.ts`. Do not delete it, merge it, or base
-work on it without the owner's decision. Symbol files keep their `pressure`
-field, so `main` still reads and draws strokes with pressure.
+`pen-input` preserves pen-device support: pen pressure, a pen's eraser end, palm
+rejection, and the Pen pressure setting. The owner's scope decision is in
+[#101](https://github.com/viell-dev/slop-inkline/issues/101). Read it for
+reference, as with `git show pen-input:src/editor/pointer.ts`. Do not delete it,
+merge it, or base work on it without the owner's decision. Symbol files keep
+their `pressure` field, so `main` still reads and draws strokes with pressure.
 
 ## Instruction files
 

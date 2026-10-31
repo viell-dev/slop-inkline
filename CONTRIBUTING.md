@@ -1,9 +1,9 @@
 # Contributing
 
 Issues and pull requests from people and from agents are welcome. The project is
-maintained by AI agents, as the [README](README.md#status) says, and its owner
-follows it through issue and pull request descriptions rather than code, so
-write them for a reader who has not seen the code. Agents maintaining the
+maintained by AI agents, as the [README](README.md#contributing) says, and its
+owner follows it through issue and pull request descriptions rather than code,
+so write them for a reader who has not seen the code. Agents maintaining the
 repository also follow [AGENTS.md](AGENTS.md). Everyone follows the
 [code of conduct](CODE_OF_CONDUCT.md).
 
@@ -192,20 +192,20 @@ them also get an independent review by another agent, as
   bundles its runtime libraries, which go in `dependencies`; tools go in
   `devDependencies`. Add a runtime library only when the need cannot be met in a
   few lines, and say why in the pull request.
-- CI audits `dependencies`, the code that ships. The test tools carry advisories
-  that only WebdriverIO 10 fixes, which `wdio-obsidian-service` does not support
-  yet; [#9](https://github.com/viell-dev/slop-inkline/issues/9) tracks them.
+- CI audits `dependencies`, the code that ships. Development-tool advisories and
+  their handling are tracked in
+  [#9](https://github.com/viell-dev/slop-inkline/issues/9).
 - `allowScripts` in `package.json` lists which dependencies may run install
   scripts. npm warns about any other; approve one only if the project needs its
   script.
 - Dependabot proposes updates weekly, a week after their publication, with
   development dependencies grouped. Security updates are not delayed.
-- Some updates are held back, with the reason next to each in
-  [dependabot.yml](.github/dependabot.yml): TypeScript 6.1 and later, ESLint 10,
-  and WebdriverIO 10. `package.json` overrides the `obsidian` and `typescript`
-  versions that `eslint-plugin-obsidianmd` asks for with the project's own. The
-  pinned issue [#10](https://github.com/viell-dev/slop-inkline/issues/10) lists
-  every such limit.
+- [dependabot.yml](.github/dependabot.yml) owns the update holds and their
+  reasons; `package.json` owns dependency overrides. The pinned overview
+  [#10](https://github.com/viell-dev/slop-inkline/issues/10) indexes dependency
+  limits, evidence, workarounds, and conditions for removing them. Revalidate a
+  hold before changing it, retaining compatible updates and accounting for any
+  security fixes it suppresses.
 
 ## Releases
 

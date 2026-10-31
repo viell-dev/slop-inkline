@@ -16,9 +16,8 @@ they lead to:
 
 - **alpha**, as `0.3.0-alpha.1`: features still arrive and change, and the
   [file format](docs/file-format.md#compatibility) is a draft, so a later alpha
-  need not open files an earlier one wrote. Releases are alphas until a stable
-  release goal is agreed with the owner, as below, by the owner's decision of
-  2026-10-28.
+  need not open files an earlier one wrote. Releases remain alphas until a
+  stable release goal is agreed with the owner, as below.
 - **beta**, as `1.0.0-beta.1`: the features of the agreed stable release goal
   are complete; fixes and polish follow. A beta that needs a new feature gives
   way to an alpha of the next minor version.
@@ -32,28 +31,28 @@ with `Needs: Owner`, record the agreement there, and link it here. With a goal
 agreed, they move to beta and rc on the evidence, recorded in the release pull
 request; a case the goal does not settle goes back to the owner.
 
-Plain versions such as `1.0.0` are stable releases. Versions never go backwards
-in SemVer order: after `0.2.0-rc.1`, the alphas went on as `0.3.0-alpha.1`, as
-`0.2.0-alpha.1` would come before it. The `0.1.1-rc` and `0.2.0-rc` pre-releases
-predate these stages and were alphas in all but name.
+Plain versions such as `1.0.0` are stable releases. Each new version must be
+higher in SemVer order than every published version. For example, an alpha after
+an RC needs a higher target version: `1.0.0-alpha.1` sorts before `1.0.0-rc.1`.
 
-GitHub's Releases page and API listed `0.1.1-rc.10` between `rc.4` and `rc.3`,
-although its tag, dates, and SemVer order are right, and may do the same with
-any pre-release numbered 10 or more. Nothing here relies on that order: the
-Pages workflow sorts releases by publication time, and the
-[install guide](docs/install.md) tells users to compare version numbers.
+GitHub can list pre-releases numbered 10 or more out of order. Compare version
+numbers rather than the displayed order; the Pages workflow sorts releases by
+publication time, and the [install guide](docs/install.md) explains selection.
 GitHub-only pre-releases are installed manually from the ZIP, with no
 third-party installer recommendation. The future community-directory release
 must use a plain `x.y.z` version, as Obsidian's
 [submission requirements](https://docs.obsidian.md/Plugins/Releasing/Submit%20your%20plugin)
 specify. Directory submission still needs the owner's decision.
 
-The older `0.1.0` release used a numeric tag with GitHub's prerelease flag. It
-is public and immutable: do not rename it, replace assets, or reuse its tag. A
-correction is published under a new version, preserving that record.
-
-The maintaining agents publish a release once it is ready by the steps below,
+The maintaining agents publish prereleases once ready by the steps below,
 without asking the owner for each one: GitHub releases are the plugin's channel.
+**Stable publication is on hold by the owner's explicit instruction in
+[#5](https://github.com/viell-dev/slop-inkline/issues/5).** Passing human
+testing does not lift it. A stable release requires the owner's explicit change
+of direction as well as the agreed goal, human evidence, and blocker
+dispositions below. The release tracker in #5 links the applicable human test
+requests and remaining work.
+
 Submitting the plugin to Obsidian's community directory, or a change of what
 Inkline is for or where it is distributed, needs the owner's decision.
 
