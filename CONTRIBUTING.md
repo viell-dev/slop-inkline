@@ -85,12 +85,9 @@ npm run check
 Prettier, the TypeScript checks of the plugin, the tests, the scripts, and the
 documentation site's configuration, the unit tests, the build, and the
 documentation site's build. `npm run format` applies Prettier. GitHub Actions
-runs `check` on Linux and Windows, and a dependency audit on Linux. Its
-`directory checks` job also runs Obsidian's own action with the rules of the
-directory's scan, which a release must pass; its warnings are annotations on the
-run. The scan is stricter than `check` in places, and the
+runs `check` on Linux and Windows, and a dependency audit on Linux. The
 [plugin's guide](https://github.com/obsidianmd/eslint-plugin/blob/0.5.0/docs/configuration.md#community-plugin-scanner-configuration)
-describes it.
+describes what the directory's scan runs.
 
 ## Tests
 

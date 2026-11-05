@@ -232,13 +232,10 @@ Run the Release workflow from the Actions tab or with
 `publish`, it is a dry run, which changes nothing outside the workflow run:
 
 1. It refuses a commit whose required checks, `verify` on Linux and Windows and
-   the end-to-end tests in both Obsidian versions, or CI's `directory checks`,
-   did not pass, or last passed more than a week ago, when the latest Obsidian
-   release may have changed since. `directory checks` is Obsidian's own action
-   with the rules its directory scans for: the ruleset does not require it of
-   pull requests, so that a new rule of Obsidian's stops a release rather than
-   unrelated work. `node scripts/publish.ts ci <commit>` makes the same check by
-   hand. To refresh a week-old commit, run CI on `main` again with
+   the end-to-end tests in both Obsidian versions, did not pass, or last passed
+   more than a week ago, when the latest Obsidian release may have changed
+   since. `node scripts/publish.ts ci <commit>` makes the same check by hand. To
+   refresh a week-old commit, run CI on `main` again with
    `gh workflow run ci.yml --ref main`.
 2. It runs `npm run check`, and refuses metadata or notes that do not match the
    version, and a version that is not higher than every published one. A version
@@ -405,7 +402,13 @@ and what only the owner can do, and says where the listing material is. The
 steps above already keep a pre-release's version off `main`.
 
 The dashboard's automated review runs after each release and can take a plugin
-out of search, so CI's `directory checks` runs what Obsidian publishes of it.
+out of search. `npm run lint` holds as errors every rule the review's newest
+layer does, in required CI. Obsidian's own action adds checks of the manifest,
+the README, the styles and the bundle, but it cannot run in CI until the
+repository's Actions settings allow it:
+[#155](https://github.com/viell-dev/slop-inkline/issues/155) says what that
+takes and records its results.
+
 The review also rebuilds the plugin and compares the result with the release,
 which no public check reproduces. Obsidian's action looks for a build at
 `dist/main.js` among others, and its plugin's guide treats `dist/` as build

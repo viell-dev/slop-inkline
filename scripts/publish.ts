@@ -31,7 +31,6 @@ import {
 } from "./lib/version.ts";
 import {
   ciProblems,
-  directoryCheck,
   publishRelease,
   requiredChecks,
   type BuiltFile,
@@ -81,7 +80,7 @@ async function ci(commit: string): Promise<void> {
   const ruleset: unknown = JSON.parse(
     await readFile(".github/rulesets/main.json", "utf8"),
   );
-  const required = [...requiredChecks(ruleset), directoryCheck];
+  const required = requiredChecks(ruleset);
   const pages = ghJson([
     "api",
     "--paginate",

@@ -41,27 +41,6 @@ jobs:
       - if: runner.os == 'Linux'
         run: npm audit --omit=dev --audit-level=low
 
-  # Obsidian's own action, with the rules its community directory scans for.
-  # scripts/publish.ts requires this job of a release; the ruleset does not,
-  # so that a new rule of Obsidian's stops a release rather than unrelated
-  # pull requests. `strict` fails on its errors; warnings stay annotations.
-  directory:
-    name: directory checks
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - uses: obsidianmd/obsidian-workflows@8167caed39664214d82c86fdfa32e06d8d55f61d # v1.2.3
-        with:
-          scanner-lint: true
-          strict: true
-
   e2e:
     name: e2e
     runs-on: ubuntu-latest
