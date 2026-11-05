@@ -2,11 +2,33 @@
 
 Notable changes to Inkline, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version numbers are
-SemVer versions; pre-releases carry a suffix such as `-alpha.N`. Each release's
-section is also its
+plain `x.y.z` from 0.9.0 on, where an odd minor version is a pre-release and an
+even one a public release; earlier pre-releases carry a suffix such as
+`-alpha.N`. Each release's section is also its
 [GitHub release](https://github.com/viell-dev/slop-inkline/releases)'s notes.
 
 ## Unreleased
+
+## 0.9.0 - 2026-11-05
+
+This is the first beta of 1.0.0, the first public release, following the owner's
+review of 0.3.0-alpha.8
+([review](https://github.com/viell-dev/slop-inkline/issues/126)). Its features
+are complete; fixes and polish follow. The owner is asked to try it in
+[#150](https://github.com/viell-dev/slop-inkline/issues/150).
+
+From this release on, versions are plain numbers: an odd minor version, as
+0.9.0, is a pre-release, and an even one, as 1.0.0, a public release. Obsidian
+compares versions number by number, so a suffix such as `-rc.1` would have kept
+anyone who installed a candidate from being offered the release
+([version scheme](https://github.com/viell-dev/slop-inkline/issues/141)). 0.9.0
+sorts above every earlier release.
+
+The file format is still a draft until 1.0.0. Polygons saved by 0.3.0-alpha.7 or
+alpha.8 with flat ends show their stored pixels, and draw their ends square if
+you edit them. Symbols drawn on the grid by earlier releases can sit up to a
+sixteenth of a pixel per column off the grid when opened again, as its column
+spacing is now an even number of the file's units.
 
 ### Added
 

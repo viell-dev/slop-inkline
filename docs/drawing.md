@@ -56,10 +56,9 @@ takes away the whole drawing, and Undo brings it back.
 drag from one corner of the box it fills to the other, and it is drawn as you
 go. Hold Shift for a circle, as wide as the box's longer side. It draws with the
 pen or the eraser, whichever is chosen, at its brush size, so the eraser takes
-away a ring. **Unreleased:** a shape drawn with the eraser is tinted red until
-it is done, as it would show nothing where there is no ink to take away. Press
-**Ellipse** again to draw freehand. **Next** keeps it on; an editor opened
-afresh draws freehand.
+away a ring. A shape drawn with the eraser is tinted red until it is done, as it
+would show nothing where there is no ink to take away. Press **Ellipse** again
+to draw freehand. **Next** keeps it on; an editor opened afresh draws freehand.
 
 With the grid on, the box's corners are on the grid, so the ellipse touches its
 lines at its top, bottom, and sides. A circle is on the grid along its longer
@@ -87,26 +86,26 @@ it never reaches far beyond. An open shape's ends are square, half the stroke's
 width past its end corners, so that two shapes meeting at a corner make a sharp
 one.
 
-With the grid on, the corners snap to the grid. **Unreleased:** a shape's ends
-are no longer cut flat on the grid: an open shape keeps its square ends, past
-the line they lie on. Off the grid, a click within the brush's circle of the
-first or last corner counts as that corner, or within 4 of the drawing's pixels
-for a smaller brush. So does such a click with the grid on, for a corner placed
-before the grid was turned on.
+With the grid on, the corners snap to the grid. A shape's ends aren't cut flat
+on the grid: an open shape keeps its square ends, past the line they lie on, and
+**Up** and **Down** can then sit it on the line. Off the grid, a click within
+the brush's circle of the first or last corner counts as that corner, or within
+4 of the drawing's pixels for a smaller brush. So does such a click with the
+grid on, for a corner placed before the grid was turned on.
 
 ## Filled shapes
 
-**Toggle fill** (B), called **Fill** in 0.3.0-alpha.8 (**Unreleased**), is a
-switch for the shapes drawn next, not a tool to click a shape with: it never
-fills what is already drawn. While it is on, Ellipse and Polygon draw solid
-shapes such as ● ▲ ■ ◆: an ellipse, and a polygon closed on its first corner. A
-filled shape's edges run through its corners, or round the box dragged, without
-the brush's width around them, so a filled triangle drawn on the grid sits on
-the line its base lies on, and the brush size makes no difference. An open
-polygon and a freehand stroke are not filled. With the eraser, a filled shape
-takes away its whole area, for a hole of its shape. The button is off while
-drawing freehand. Turning it on or off while placing a polygon decides for that
-shape, as it closes. **Next** keeps it; an editor opened afresh does not fill.
+**Toggle fill** (B) is a switch for the shapes drawn next, not a tool to click a
+shape with: it never fills what is already drawn. While it is on, Ellipse and
+Polygon draw solid shapes such as ● ▲ ■ ◆: an ellipse, and a polygon closed on
+its first corner. A filled shape's edges run through its corners, or round the
+box dragged, without the brush's width around them, so a filled triangle drawn
+on the grid sits on the line its base lies on, and the brush size makes no
+difference. An open polygon and a freehand stroke are not filled. With the
+eraser, a filled shape takes away its whole area, for a hole of its shape. The
+button is off while drawing freehand. Turning it on or off while placing a
+polygon decides for that shape, as it closes. **Next** keeps it; an editor
+opened afresh does not fill.
 
 ## Straight lines and the grid
 
@@ -127,18 +126,17 @@ even grid could meet every line of every font. In a font such as Inter, at the
 default grid size, the cap height then lies 7 cells above the baseline.
 
 **Flat ends** (T), with the grid on, stops a freehand stroke's ends flush with
-the grid line they lie on, instead of rounding past it. **Unreleased:** it is a
-switch, off in a new editor, and **Next** keeps it; from 0.3.0-alpha.5 to
-alpha.8 this always happens with the grid on. The cut runs along the line across
-the stroke: a row for a stroke that comes in at 45° or steeper, as the legs of
-an A come down to the baseline, and a column for a flatter one, judged over the
-last grid cell or two brush widths of what you drew, whichever is longer, and
-leaving out the jumps to the grid points. A stroke that ends on the grid point
-it started on keeps its round ends, as a closed loop has none to cut. So a
-stroke drawn down to the baseline sits on it, with nothing below to erase. A dot
-stays round, as does an end drawn with the grid off. The eraser's ends are cut
-the same way, so erasing up to a line leaves a straight edge there. Shapes are
-never cut: an ellipse has no ends, and a polygon keeps its square ones.
+the grid line they lie on, instead of rounding past it. It is a switch, off in a
+new editor, and **Next** keeps it. The cut runs along the line across the
+stroke: a row for a stroke that comes in at 45° or steeper, as the legs of an A
+come down to the baseline, and a column for a flatter one, judged over the last
+grid cell or two brush widths of what you drew, whichever is longer, and leaving
+out the jumps to the grid points. A stroke that ends on the grid point it
+started on keeps its round ends, as a closed loop has none to cut. So a stroke
+drawn down to the baseline sits on it, with nothing below to erase. A dot stays
+round, as does an end drawn with the grid off. The eraser's ends are cut the
+same way, so erasing up to a line leaves a straight edge there. Shapes are never
+cut: an ellipse has no ends, and a polygon keeps its square ones.
 
 The grid keeps its place through saves, and on a symbol you open again it lines
 up with most of its strokes, if the grid has the same size as when you drew
@@ -152,35 +150,34 @@ x-height, baseline, and descender, measured from the font your vault's text
 uses, and the edges the saved image will have. **Fit** (F) fits the drawing in
 view; a symbol wider than the usual view opens whole.
 
-**Unreleased:** **Up** (ArrowUp) and **Down** (ArrowDown) move the whole drawing
-up or down by a pixel of the drawing, or by a grid cell's width with Shift, in
-Zoom the finer grid's, so that a shape drawn against a line can sit on it. They
-move every stroke and any ink made from a picture, and one Undo takes back moves
-made in a row. Ink moved past the top or bottom of the drawing area stays in the
-drawing and can be moved back, but it isn't in the saved image while it is out
-there. While **Move** is on, the arrow keys move the picture instead, and while
-**Make ink** is open they do nothing to the drawing.
+**Up** (ArrowUp) and **Down** (ArrowDown) move the whole drawing up or down by a
+pixel of the drawing, or by a grid cell's width with Shift, in Zoom the finer
+grid's, so that a shape drawn against a line can sit on it. They move every
+stroke and any ink made from a picture, and one Undo takes back moves made in a
+row. Ink moved past the top or bottom of the drawing area stays in the drawing
+and can be moved back, but it isn't in the saved image while it is out there.
+While **Move** is on, the arrow keys move the picture instead, and while **Make
+ink** is open they do nothing to the drawing.
 
 **Zoom** (Z) shows the drawing twice as large, in a taller drawing area, for
 fine detail; it grows no taller than a little over half the window, or than
 leaves the editor's controls in view, and shows more width instead. The wheel,
 or the left and right arrow keys, move along the drawing, and **Fit** centres it
 while staying zoomed. **Next** keeps the zoom for the following symbol. Zooming
-changes only the view: the symbol is the same size in notes, and the grid and
-brushes stay the same size against it.
+changes only the view: the symbol is the same size in notes, and the brushes
+stay the same size against it.
 
-**Unreleased:** the grid no longer stays the same size against the drawing:
-while zoomed it has twice as many cells each way, so the default 5 cells across
-the x-height become 10, for placing fine detail. Every point of the usual grid
-stays a point of the finer one, so a drawing started in either view lines up in
-the other, and zooming out puts the usual grid back where it was, however much
-you drew while zoomed. A polygon being placed keeps the grid it started on until
-it ends, and Shift with an arrow key moves a picture by a column of the grid
-shown. **Grid size** keeps its range of 2 to 10, and saved symbols are not
-affected. On a symbol you open again, the usual grid follows most of the
-strokes' ends, so after drawing mostly on points of the finer grid alone it can
-lie half a cell from where it was; the finer grid passes through them either
-way.
+The grid, though, has twice as many cells each way while zoomed, so the default
+5 cells across the x-height become 10, for placing fine detail. Every point of
+the usual grid stays a point of the finer one, so a drawing started in either
+view lines up in the other, and zooming out puts the usual grid back where it
+was, however much you drew while zoomed. A polygon being placed keeps the grid
+it started on until it ends, and Shift with an arrow key moves a picture by a
+column of the grid shown. **Grid size** keeps its range of 2 to 10, and saved
+symbols are not affected. On a symbol you open again, the usual grid follows
+most of the strokes' ends, so after drawing mostly on points of the finer grid
+alone it can lie half a cell from where it was; the finer grid passes through
+them either way.
 
 **Help** opens a built-in quick start with an explanation of each guide, the
 grid, drawing, tracing, and saving. Close Help or press Esc to return to the
@@ -242,21 +239,20 @@ enlarged across a wide drawing, it is sampled less finely, down to its own
 pixels. A picture with transparency keeps the soft edges of its own transparency
 when enlarged; see [Limits](./limits.md#files-and-sizes).
 
-**Unreleased:** a dim picture, such as a dark screenshot of a game, gets edges
-as sharp as a bright one's. The ink's edge narrows with the contrast between the
-two sides of the threshold, instead of being as soft as the picture's own edges
-on a picture with little contrast. A few bright pixels elsewhere in the picture
-do not change it, but they can draw the threshold's first position to them: move
-the slider down to the strokes, or move the picture to keep those pixels out.
-Soft strokes come out wider than they were drawn; see
-[Limits](./limits.md#files-and-sizes).
+A dim picture, such as a dark screenshot of a game, gets edges as sharp as a
+bright one's. The ink's edge narrows with the contrast between the two sides of
+the threshold, instead of being as soft as the picture's own edges on a picture
+with little contrast. A few bright pixels elsewhere in the picture do not change
+it, but they can draw the threshold's first position to them: move the slider
+down to the strokes, or move the picture to keep those pixels out. Soft strokes
+come out wider than they were drawn; see [Limits](./limits.md#files-and-sizes).
 
 ## Start from a copy
 
 In the editor for a new symbol, **Copy from** (V) starts it from a copy of
-another symbol's strokes and ink, chosen from a list of the vault's symbols,
-with their pictures from the next release (**Unreleased**), in place of what is
-drawn so far, for scripts whose symbols share parts. Undo takes the copy back.
+another symbol's strokes and ink, chosen from a list of the vault's symbols with
+their pictures, in place of what is drawn so far, for scripts whose symbols
+share parts. Undo takes the copy back.
 
 ## Save
 

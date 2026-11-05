@@ -158,7 +158,7 @@ export function syncMetadata(
   const minAppVersion = manifest.minAppVersion;
   return {
     manifest: { ...manifest, version },
-    // RCs are installed manually; keep the community directory's map numeric.
+    // Pre-releases are installed manually; the map is for public releases.
     versions: isPrerelease(version)
       ? { ...versions }
       : { ...versions, [version]: minAppVersion },

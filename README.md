@@ -35,7 +35,8 @@ install ZIP from
 extract it into your vault's `.obsidian/plugins/` directory; see the
 [installation guide](https://viell-dev.github.io/slop-inkline/install) for
 setup, updates, and older versions. Release notes describe compatibility
-changes; the file format remains a draft until the first stable release.
+changes; the file format remains a draft until the first stable release, 1.0.0.
+The 0.9 releases are its betas.
 
 ## Contributing
 
