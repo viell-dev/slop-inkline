@@ -81,7 +81,7 @@ export function strokeShape(stroke: Stroke): StrokeShape {
     pieces: polygonPieces(
       closed ? corners.slice(0, -1) : corners,
       stroke.size / unitsPerPixel,
-      { closed, start: true, end: true },
+      closed,
     ),
   };
 }
@@ -137,11 +137,6 @@ function isClosed(corners: readonly Point[]): boolean {
   );
 }
 
-/** Whether a stroke is a closed polygon, which has no ends to cut. */
-function isClosedPolygon(stroke: Stroke): boolean {
-  return stroke.kind === "polygon" && isClosed(polygonCorners(stroke));
-}
-
 /**
  * A polygon's orientation made positive, so that pieces filled together add
  * up. Its area is taken about its first corner, which keeps the sign right
@@ -162,21 +157,16 @@ function oriented(outline: Point[]): Point[] {
  * pixels: a rectangle along each side, and at each corner where it turns, a
  * wedge on the outer side out to where the sides' outer edges meet, cut off
  * square across the corner's bisector {@link cornerReach} widths from the
- * corner point. `closed` joins the last corner to the first. Otherwise
- * `start` and `end` say whether those ends are square, reaching half the
- * width past their corner; else they stop flat across at it. A single corner
- * is a square dot as wide as the stroke, if an end there is square. The
- * pieces all wind one way, so that filling them together with the nonzero
- * rule fills everything any of them covers.
+ * corner point. `closed` joins the last corner to the first; otherwise those
+ * ends are square, reaching half the width past their corner. A single corner
+ * is a square dot as wide as the stroke. The pieces all wind one way, so that
+ * filling them together with the nonzero rule fills everything any of them
+ * covers.
  */
 export function polygonPieces(
   corners: readonly Point[],
   width: number,
-  shape: {
-    readonly closed: boolean;
-    readonly start: boolean;
-    readonly end: boolean;
-  },
+  closed: boolean,
 ): Outline[] {
   const points = corners.filter(
     ([x, y], index) =>
@@ -188,7 +178,6 @@ export function polygonPieces(
   const first = points[0];
   if (first === undefined) return [];
   if (points.length === 1) {
-    if (!shape.start && !shape.end) return [];
     const [x, y] = first;
     return [
       oriented([
@@ -199,7 +188,6 @@ export function polygonPieces(
       ]),
     ];
   }
-  const { closed } = shape;
   const count = points.length;
   const sides = closed ? count : count - 1;
   const at = (index: number): Point => points[(index + count) % count] ?? first;
@@ -215,8 +203,8 @@ export function polygonPieces(
     const [dx, dy] = direction(side);
     const [x0, y0] = at(side);
     const [x1, y1] = at(side + 1);
-    const before = !closed && side === 0 && shape.start ? half : 0;
-    const after = !closed && side === sides - 1 && shape.end ? half : 0;
+    const before = !closed && side === 0 ? half : 0;
+    const after = !closed && side === sides - 1 ? half : 0;
     const [ax, ay] = [x0 - dx * before, y0 - dy * before];
     const [bx, by] = [x1 + dx * after, y1 + dy * after];
     const [nx, ny] = [-dy * half, dx * half];
@@ -279,11 +267,12 @@ export function polygonPieces(
  * The boxes a stroke's cuts take away, in pixels: past the line through each
  * cut end, across the cut's direction, as far as the brush reaches from that
  * end and a pixel more for its soft edge. Only the end's own ink goes there:
- * {@link uncutRest} draws the rest of the stroke in them again.
+ * {@link uncutRest} draws the rest of the stroke in them again. A polygon is
+ * never cut: its ends stay square.
  */
 export function cutBoxes(stroke: Stroke): Bounds[] {
   const { cut, points } = stroke;
-  if (cut === undefined || isClosedPolygon(stroke)) return [];
+  if (cut === undefined || stroke.kind === "polygon") return [];
   const stride = stroke.pressure ? 3 : 2;
   const last = points.length - stride;
   const reach = stroke.size / unitsPerPixel + 1;
@@ -352,59 +341,13 @@ export function uncutRest(stroke: Stroke): Stroke | undefined {
 
 /**
  * What a cut stroke fills in its cut boxes: the outline of its
- * {@link uncutRest}, or for a polygon, its sides without the length of
- * twice its width from each cut end, with flat ends there. Undefined when
- * nothing is left, or the stroke has no cuts.
+ * {@link uncutRest}. Undefined when nothing is left, or it has no cuts.
  */
 export function restShape(stroke: Stroke): StrokeShape | undefined {
-  if (stroke.kind !== "polygon") {
-    const rest = uncutRest(stroke);
-    return rest === undefined
-      ? undefined
-      : { kind: "smooth", outline: strokeOutline(rest) };
-  }
-  const { cut } = stroke;
-  if (cut === undefined || isClosedPolygon(stroke)) return undefined;
-  const corners = polygonCorners(stroke);
-  const width = stroke.size / unitsPerPixel;
-  const lengths = corners.slice(1).map(([x1, y1], index) => {
-    const [x0, y0] = corners[index] ?? [x1, y1];
-    return Math.hypot(x1 - x0, y1 - y0);
-  });
-  const total = lengths.reduce((sum, length) => sum + length, 0);
-  const from = cut.start === undefined ? 0 : 2 * width;
-  const to = total - (cut.end === undefined ? 0 : 2 * width);
-  if (from >= to) return undefined;
-  /** The point `distance` along the sides from the first corner. */
-  const pointAt = (distance: number): Point => {
-    let walked = 0;
-    for (const [index, length] of lengths.entries()) {
-      const [x0, y0] = corners[index] ?? [0, 0];
-      const [x1, y1] = corners[index + 1] ?? [x0, y0];
-      if (walked + length >= distance) {
-        const along = length === 0 ? 0 : (distance - walked) / length;
-        return [x0 + (x1 - x0) * along, y0 + (y1 - y0) * along];
-      }
-      walked += length;
-    }
-    return corners.at(-1) ?? [0, 0];
-  };
-  const kept: Point[] = [pointAt(from)];
-  let walked = 0;
-  for (const [index, length] of lengths.entries()) {
-    walked += length;
-    const corner = corners[index + 1];
-    if (corner !== undefined && walked > from && walked < to) kept.push(corner);
-  }
-  kept.push(pointAt(to));
-  return {
-    kind: "pieces",
-    pieces: polygonPieces(kept, width, {
-      closed: false,
-      start: cut.start === undefined,
-      end: cut.end === undefined,
-    }),
-  };
+  const rest = uncutRest(stroke);
+  return rest === undefined
+    ? undefined
+    : { kind: "smooth", outline: strokeOutline(rest) };
 }
 
 /** The outline's bounding box, or undefined when it has no corners. */

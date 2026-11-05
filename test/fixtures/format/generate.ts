@@ -70,7 +70,8 @@ const fixtures: Record<string, InkRecord> = {
       },
     ],
   },
-  // Polygons: a closed triangle, and an open zigzag cut at its start.
+  // Polygons: a closed triangle, and an open zigzag with a cut, which has no
+  // effect on a polygon.
   "v1-polygons": {
     box: { pxPerEm: 128, width: 64, height: 192, baseline: 144 },
     strokes: [
