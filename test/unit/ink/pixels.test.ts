@@ -20,6 +20,7 @@ import {
   otsuThreshold,
   repeatPixels,
   thresholdAlpha,
+  thresholdContrast,
   regionValues,
   thresholdEdge,
   traceInk,
@@ -28,6 +29,7 @@ import {
 } from "../../../src/ink/pixels.ts";
 import { limits } from "../../../src/format/record.ts";
 import { inkGrey } from "../../../src/ink/render.ts";
+import { dimH, dimLevels } from "../../support/dim-picture.ts";
 
 function pixels(width: number, height: number, rgba: number[]): RgbaPixels {
   return { width, height, data: Uint8ClampedArray.from(rgba) };
@@ -204,6 +206,29 @@ describe("thresholdAlpha", () => {
     const half = thresholdEdge / 2;
     const values = Uint8ClampedArray.from([100 - half - 1, 100 + half]);
     expect([...thresholdAlpha(values, 100, false)]).toEqual([255, 0]);
+  });
+});
+
+describe("thresholdContrast", () => {
+  it("is the median at or above the threshold less the median below it", () => {
+    const values = Uint8ClampedArray.from([8, 8, 9, 50, 50, 51]);
+    expect(thresholdContrast(values, 29)).toBe(42);
+    // A value at the threshold is on its light side.
+    expect(thresholdContrast(values, 50)).toBe(42);
+  });
+
+  it("gives a few bright pixels little weight", () => {
+    const values = Uint8ClampedArray.from([8, 8, 8, 50, 50, 50, 255]);
+    expect(thresholdContrast(values, 29)).toBe(42);
+  });
+
+  it("is the whole range with nothing on one side of the threshold", () => {
+    const values = Uint8ClampedArray.from([8, 50]);
+    expect(thresholdContrast(values, 8)).toBe(255);
+    expect(thresholdContrast(values, 51)).toBe(255);
+    expect(thresholdContrast(values, thresholdRange.min)).toBe(255);
+    expect(thresholdContrast(values, thresholdRange.max)).toBe(255);
+    expect(thresholdContrast(new Uint8ClampedArray(), 128)).toBe(255);
   });
 });
 
@@ -584,8 +609,9 @@ describe("enlargedRegion", () => {
     };
     const place = { x: 10, y: 0, scale: 2 };
     const region = { left: 12, top: 0, right: 16, bottom: 4 };
+    const own = regionValues(picture, place, region);
     expect(enlargedRegion(picture, place, region, 1)).toEqual({
-      part: regionValues(picture, place, region),
+      part: { ...own, tones: own?.values },
       place,
       edge: thresholdEdge,
     });
@@ -608,6 +634,7 @@ describe("enlargedRegion", () => {
     expect(enlarged).toEqual({
       part: {
         values: Uint8ClampedArray.from([159, 223, 255, 255]),
+        tones: Uint8ClampedArray.from([255]),
         width: 4,
         height: 1,
         left: 4,
@@ -756,5 +783,122 @@ describe("enlargedRegion", () => {
     const enlarged = enlargedRegion(picture, place, region, 3);
     expect(enlarged?.part.left).toBe(210);
     expect(enlarged?.part.width).toBe(6);
+  });
+});
+
+describe("ink of a dim picture", () => {
+  const side = 38;
+  const place = { x: 0, y: 0, scale: 2.4 };
+  const region = { left: 0, top: 0, right: 92, bottom: 92 };
+
+  /** The finer samples of a picture of `values`, as its enlargement takes. */
+  function samples(values: Uint8ClampedArray) {
+    const picture = { width: side, height: side, values };
+    const factor = enlargeFactor(side, side, place, region);
+    const enlarged = enlargedRegion(picture, place, region, factor);
+    if (enlarged === undefined) throw new Error("no part");
+    return enlarged;
+  }
+
+  /** The ink of a picture of `values` at `threshold`, by its finer samples. */
+  function ink(values: Uint8ClampedArray, threshold: number, light = true) {
+    const { part, place: fine, edge } = samples(values);
+    const traced = traceRegion(part, fine, threshold, light, edge);
+    if (traced === undefined) throw new Error("no ink");
+    return traced.alpha;
+  }
+
+  /** The share of the inked pixels in `alpha` that are partly covered. */
+  function partial(alpha: Uint8ClampedArray): number {
+    const inked = alpha.filter((value) => value > 0);
+    return inked.filter((value) => value < 255).length / inked.length;
+  }
+
+  it("has edges as sharp as the same picture in full contrast", () => {
+    const dim = dimH(side);
+    const defaults = inkDefaults({ values: dim });
+    expect(defaults.light).toBe(true);
+    const bright = dimH(side, { ground: 0, ink: 255 });
+    const { threshold } = inkDefaults({ values: bright });
+    const brightShare = partial(ink(bright, threshold));
+    expect(brightShare).toBeLessThan(0.16);
+    expect(partial(ink(dim, defaults.threshold))).toBeLessThan(
+      brightShare + 0.02,
+    );
+  });
+
+  it("is sharper than the whole ramp, which spans most of its levels", () => {
+    const values = dimH(side);
+    const { threshold } = inkDefaults({ values });
+    const whole = thresholdAlpha(samples(values).part.values, threshold, true);
+    expect(partial(whole)).toBeGreaterThan(0.45);
+    expect(partial(ink(values, threshold))).toBeLessThan(0.16);
+  });
+
+  it("keeps its edges sharp past a bright element, by a threshold set by hand", () => {
+    const values = dimH(side);
+    const middle = (dimLevels.ground + dimLevels.ink) / 2;
+    const plain = partial(ink(values, middle));
+    // A bright label in a corner, which the default threshold would go to.
+    for (let y = 0; y < 3; y++) values.fill(255, y * side, y * side + 6);
+    expect(partial(ink(values, middle))).toBeCloseTo(plain, 2);
+  });
+
+  it("sharpens a picture shown at its own pixels too", () => {
+    const values = dimH(side);
+    const { threshold } = inkDefaults({ values });
+    const traced = traceInk(
+      { width: side, height: side, values },
+      { x: 0, y: 0, scale: 1 },
+      threshold,
+      true,
+      { left: 0, top: 0, right: side, bottom: side },
+    );
+    const whole = thresholdAlpha(values, threshold, true);
+    expect(partial(traced?.alpha ?? new Uint8ClampedArray())).toBeLessThan(
+      partial(whole) / 2,
+    );
+  });
+
+  it("leaves a picture of black and white as the whole ramp makes it", () => {
+    const values = Uint8ClampedArray.from([0, 0, 120, 255, 255, 255, 0, 255]);
+    const picture = { width: 8, height: 1, values };
+    const traced = traceInk(picture, { x: 0, y: 0, scale: 1 }, 128, false, {
+      left: 0,
+      top: 0,
+      right: 8,
+      bottom: 1,
+    });
+    const whole = thresholdAlpha(values, 128, false);
+    expect(traced?.alpha).toEqual(whole.subarray(0, 7));
+  });
+
+  it("keeps the whole ramp for a picture with transparency", () => {
+    // Dim tones, and one within the ramp, in a glyph on a clear ground.
+    const values = Uint8ClampedArray.from([8, 8, 40, 50, 50]);
+    const alpha = Uint8ClampedArray.from([0, 255, 255, 255, 255]);
+    const traced = traceInk(
+      { width: 5, height: 1, values, alpha },
+      { x: 0, y: 0, scale: 1 },
+      29,
+      true,
+      { left: 0, top: 0, right: 5, bottom: 1 },
+    );
+    // A ramp narrowed to the 42 levels' share would make the 40 full ink.
+    expect([...(traced?.alpha ?? [])]).toEqual([219, 255, 255]);
+  });
+
+  it("still gives no ink and all ink at the threshold's ends", () => {
+    const part = {
+      values: dimH(side),
+      width: side,
+      height: side,
+      left: 0,
+      top: 0,
+    };
+    const own = { x: 0, y: 0, scale: 1 };
+    expect(traceRegion(part, own, thresholdRange.max, true)).toBeUndefined();
+    const all = traceRegion(part, own, thresholdRange.min, true);
+    expect(new Set(all?.alpha)).toEqual(new Set([255]));
   });
 });

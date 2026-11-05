@@ -183,9 +183,10 @@ export function lightInk(
 }
 
 /**
- * How many luminance levels a threshold's edge spans: pixels within half of
- * it from the threshold get part of an ink's alpha, so that the edges of a
- * picture's shapes stay as smooth as they were.
+ * How many luminance levels a threshold's edge spans in a picture of black
+ * and white: pixels within half of it from the threshold get part of an ink's
+ * alpha, so that the edges of a picture's shapes stay as smooth as they were.
+ * Less contrast narrows it, as {@link traceRegion} says.
  */
 export const thresholdEdge = 32;
 
@@ -222,6 +223,47 @@ export function thresholdAlpha(
     alpha[index] = table[values[index] ?? 0] ?? 0;
   }
   return alpha;
+}
+
+/**
+ * The middle one of the values from `from` up to `to`, by `counts` of each;
+ * undefined when none lies there.
+ */
+function medianBetween(
+  counts: Uint32Array,
+  from: number,
+  to: number,
+): number | undefined {
+  let total = 0;
+  for (let value = from; value < to; value++) total += counts[value] ?? 0;
+  let seen = 0;
+  for (let value = from; value < to; value++) {
+    seen += counts[value] ?? 0;
+    if (total > 0 && seen * 2 >= total) return value;
+  }
+  return undefined;
+}
+
+/**
+ * How far apart the two sides of `threshold` lie in `values`: the median of
+ * those at or above it less the median of those below it, so that a few
+ * bright pixels far from the shapes being traced count for little. 255 with
+ * none on one side, where there are no two sides to tell apart.
+ */
+export function thresholdContrast(
+  values: Uint8ClampedArray,
+  threshold: number,
+): number {
+  const counts = new Uint32Array(256);
+  // eslint-disable-next-line @typescript-eslint/prefer-for-of -- for...of over a typed array is many times slower in V8
+  for (let index = 0; index < values.length; index++) {
+    const value = values[index] ?? 0;
+    counts[value] = (counts[value] ?? 0) + 1;
+  }
+  const middle = Math.min(256, Math.max(0, Math.ceil(threshold)));
+  const dark = medianBetween(counts, 0, middle);
+  const light = medianBetween(counts, middle, 256);
+  return dark === undefined || light === undefined ? 255 : light - dark;
 }
 
 /**
@@ -441,6 +483,11 @@ export function inkDefaults(part: {
 export interface Region {
   readonly values: Uint8ClampedArray;
   readonly alpha?: Uint8ClampedArray;
+  /**
+   * The picture's own values in this part, where `values` are finer samples
+   * of them: those add values between its tones, not more of them.
+   */
+  readonly tones?: Uint8ClampedArray;
   readonly width: number;
   readonly height: number;
   readonly left: number;
@@ -632,7 +679,8 @@ export function enlargedRegion(
       if (alpha !== undefined) alpha[at] = Math.round(weight);
     }
   }
-  const part = { values, width, height, left, top };
+  const tones = cropAlpha(source, picture.width, coarse);
+  const part = { values, tones, width, height, left, top };
   return {
     part: alpha === undefined ? part : { ...part, alpha },
     place: fine,
@@ -672,7 +720,12 @@ export function traceInk(
 /**
  * The ink of `part` of a picture at `place`, as {@link traceInk} finds it:
  * for a threshold changing while the part stays the same. `edge` is the
- * threshold's ramp, as {@link thresholdAlpha} takes it.
+ * threshold's ramp in a picture of black and white. An opaque picture's ramp
+ * is that share of its {@link thresholdContrast}, so that a dim picture's
+ * edges are as sharp as a bright one's: the whole ramp would span most of the
+ * levels between its ground and its ink, and leave their edges as soft as
+ * they were. A picture with transparency keeps the whole ramp: its own alpha
+ * limits its edges, and its colours mean little where that is low.
  */
 export function traceRegion(
   part: Region,
@@ -681,8 +734,12 @@ export function traceRegion(
   light: boolean,
   edge = thresholdEdge,
 ): TracedInk | undefined {
-  const alpha = thresholdAlpha(part.values, threshold, light, edge);
   const own = part.alpha;
+  const ramp =
+    own === undefined
+      ? (edge * thresholdContrast(part.tones ?? part.values, threshold)) / 255
+      : edge;
+  const alpha = thresholdAlpha(part.values, threshold, light, ramp);
   if (own !== undefined) {
     for (let index = 0; index < alpha.length; index++) {
       alpha[index] = Math.round(
