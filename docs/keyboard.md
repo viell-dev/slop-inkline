@@ -73,9 +73,8 @@ is a slider, which its arrow keys move; **Light ink**, **Apply**, and **Cancel**
 are buttons, as are **Choose picture…**, which opens the system's file dialog,
 and **Remove picture**.
 
-**Unreleased:** **Zoom** also shows the grid with twice as many cells each way,
-so while it is on, Shift with an arrow key moves the picture by a column of that
-finer grid.
+**Zoom** also shows the grid with twice as many cells each way, so while it is
+on, Shift with an arrow key moves the picture by a column of that finer grid.
 
 The **Help** button opens a quick start and guide explanations. Esc closes Help
 and returns focus to the drawing area.

@@ -26,11 +26,14 @@ limits.
 
 1. Open the [releases page](https://github.com/viell-dev/slop-inkline/releases)
    and download **inkline-&lt;version&gt;.zip** from the release's **Assets**.
-   Take the highest version number: GitHub can list a pre-release numbered 10 or
-   more out of order. Every release so far is a pre-release, and the current
-   ones are alphas, such as `0.3.0-alpha.1`: their features and file format can
-   still change, and a later one may not open symbols an earlier one saved.
-   GitHub's **Source code** archives contain source files, not the built plugin.
+   Take the highest version number. Every release so far is a pre-release. From
+   0.9.0 on, a pre-release has an odd minor version, such as `0.9.0` or `1.1.2`,
+   and a public release an even one, such as `1.0.0`; earlier pre-releases have
+   a suffix, such as `0.3.0-alpha.8`. The 0.9 releases are betas and then
+   release candidates of 1.0.0: their features are complete, but the file format
+   can still change until 1.0.0, and a later one may not open symbols an earlier
+   one saved. GitHub's **Source code** archives contain source files, not the
+   built plugin.
 2. Extract the ZIP into your vault's `.obsidian/plugins/` directory. The ZIP
    contains its own `inkline/` folder, so the result must be:
 
