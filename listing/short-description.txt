@@ -1,0 +1,1 @@
+Draw symbols that sit inline in your notes like characters, saved as plain PNG images.
