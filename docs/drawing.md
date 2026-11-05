@@ -95,15 +95,17 @@ the grid on, for a corner placed before the grid was turned on.
 
 ## Filled shapes
 
-**Fill** (B) makes the shapes Ellipse and Polygon draw solid, for shapes such as
-● ▲ ■ ◆: an ellipse, and a polygon closed on its first corner. A filled shape's
-edges run through its corners, or round the box dragged, without the brush's
-width around them, so a filled triangle drawn on the grid sits on the line its
-base lies on, and the brush size makes no difference. An open polygon and a
-freehand stroke are not filled. With the eraser, a filled shape takes away its
-whole area, for a hole of its shape. The button is off while drawing freehand.
-Turning it on or off while placing a polygon decides for that shape, as it
-closes. **Next** keeps it; an editor opened afresh does not fill.
+**Toggle fill** (B), called **Fill** in 0.3.0-alpha.8 (**Unreleased**), is a
+switch for the shapes drawn next, not a tool to click a shape with: it never
+fills what is already drawn. While it is on, Ellipse and Polygon draw solid
+shapes such as ● ▲ ■ ◆: an ellipse, and a polygon closed on its first corner. A
+filled shape's edges run through its corners, or round the box dragged, without
+the brush's width around them, so a filled triangle drawn on the grid sits on
+the line its base lies on, and the brush size makes no difference. An open
+polygon and a freehand stroke are not filled. With the eraser, a filled shape
+takes away its whole area, for a hole of its shape. The button is off while
+drawing freehand. Turning it on or off while placing a polygon decides for that
+shape, as it closes. **Next** keeps it; an editor opened afresh does not fill.
 
 ## Straight lines and the grid
 
@@ -144,11 +146,12 @@ uses, and the edges the saved image will have. **Fit** (F) fits the drawing in
 view; a symbol wider than the usual view opens whole.
 
 **Zoom** (Z) shows the drawing twice as large, in a taller drawing area, for
-fine detail; it grows no taller than a little over half the window, and shows
-more width instead. The wheel, or the left and right arrow keys, move along the
-drawing, and **Fit** centres it while staying zoomed. **Next** keeps the zoom
-for the following symbol. Zooming changes only the view: the symbol is the same
-size in notes, and the grid and brushes stay the same size against it.
+fine detail; it grows no taller than a little over half the window, or than
+leaves the editor's controls in view, and shows more width instead. The wheel,
+or the left and right arrow keys, move along the drawing, and **Fit** centres it
+while staying zoomed. **Next** keeps the zoom for the following symbol. Zooming
+changes only the view: the symbol is the same size in notes, and the grid and
+brushes stay the same size against it.
 
 **Unreleased:** the grid no longer stays the same size against the drawing:
 while zoomed it has twice as many cells each way, so the default 5 cells across
@@ -226,9 +229,9 @@ when enlarged; see [Limits](./limits.md#files-and-sizes).
 ## Start from a copy
 
 In the editor for a new symbol, **Copy from** (V) starts it from a copy of
-another symbol's strokes and ink, chosen from the vault's symbols, in place of
-what is drawn so far, for scripts whose symbols share parts. Undo takes the copy
-back.
+another symbol's strokes and ink, chosen from a list of the vault's symbols,
+with their pictures from the next release (**Unreleased**), in place of what is
+drawn so far, for scripts whose symbols share parts. Undo takes the copy back.
 
 ## Save
 

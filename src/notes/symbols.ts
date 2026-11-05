@@ -10,6 +10,7 @@ import {
   getLinkpath,
   normalizePath,
   type App,
+  type FuzzyMatch,
   type TAbstractFile,
 } from "obsidian";
 import { inkExtension, isInkPath } from "../format/ink-file.ts";
@@ -44,6 +45,7 @@ import {
   symbolStem,
   type NameChoice,
 } from "./names.ts";
+import { renderSymbol } from "./suggest.ts";
 
 /** What the plugin lends the editors it opens. */
 export interface EditorHost {
@@ -778,6 +780,10 @@ class SymbolChoice extends FuzzySuggestModal<TFile> {
 
   override getItemText(file: TFile): string {
     return file.path;
+  }
+
+  override renderSuggestion(match: FuzzyMatch<TFile>, el: HTMLElement): void {
+    renderSymbol(this.app, match.item, el);
   }
 
   override onChooseItem(file: TFile): void {
