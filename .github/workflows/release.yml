@@ -20,6 +20,7 @@ on:
     paths:
       - .github/workflows/release.yml
       - scripts/build.ts
+      - scripts/lib/github.ts
       - scripts/lib/publish.ts
       - scripts/lib/release.ts
       - scripts/lib/settings.ts
