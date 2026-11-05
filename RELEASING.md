@@ -297,7 +297,7 @@ and the Release workflow, about 2:
    `versions.json` with a pull request, so that `main` names the last public
    release again.
 
-A pre-release has no such wait: merging its preparation changes nothing that
+A pre-release has no such wait: merging its preparation changes no version that
 Obsidian reads.
 
 ### When publishing fails part way
@@ -410,8 +410,8 @@ The review also rebuilds the plugin and compares the result with the release,
 which no public check reproduces. Obsidian's action looks for a build at
 `dist/main.js` among others, and its plugin's guide treats `dist/` as build
 output, but only the dashboard's **Review branch** can show that the review does
-too; a clean build of `0.9.0` on Node.js 24 gave the published bytes. Its
-findings appear only in the owner's dashboard.
+too; a clean build of `0.9.0` on Node.js 24 gave the published bytes. The
+review's findings appear only in the owner's dashboard.
 
 Two steps can only happen around the listing, and #141 tracks them: recheck on
 the day that the `inkline` id is free, and watch the first pre-release after

@@ -100,8 +100,7 @@ jobs:
           cat SHA256SUMS
       # The release's own files, in a test vault's plugin folder, where
       # Obsidian loads them, in the oldest and the latest versions the
-      # end-to-end tests use. A pre-release's manifest.json is one the build
-      # wrote, not the commit's own, so these are its first and only test.
+      # end-to-end tests use.
       - name: Resolve the Obsidian versions
         env:
           PRINT_OBSIDIAN_CACHE_KEY: "1"
@@ -208,7 +207,7 @@ jobs:
               --source-digest "$GITHUB_SHA" \
               --signer-workflow "$GH_REPO/.github/workflows/release.yml"
           done
-          jq --exit-status --arg version "$VERSION" '.version == $version' manifest.json
+          grep --fixed-strings --quiet "\"version\": \"$VERSION\"" manifest.json
           unzip -q inkline-*.zip -d extracted
           for file in main.js manifest.json styles.css; do
             cmp "$file" "extracted/inkline/$file"
