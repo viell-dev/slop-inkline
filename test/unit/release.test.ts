@@ -118,12 +118,12 @@ describe("metadataProblems", () => {
   it("reports a minAppVersion raised apart from the release that needs it", () => {
     expect(
       metadataProblems({
-        packageJson: { version: "0.1.0" },
-        manifest: { version: "0.1.0", minAppVersion: "1.14.4" },
-        versions: { "0.1.0": "1.13.4" },
+        packageJson: { version: "1.0.0" },
+        manifest: { version: "1.0.0", minAppVersion: "1.14.4" },
+        versions: { "1.0.0": "1.13.4" },
       }),
     ).toEqual([
-      "versions.json does not map 0.1.0 to the manifest's minAppVersion 1.14.4",
+      "versions.json does not map 1.0.0 to the manifest's minAppVersion 1.14.4",
     ]);
   });
 
@@ -316,13 +316,13 @@ describe("syncMetadata", () => {
   it("copies the version and records its minimum Obsidian version", () => {
     expect(
       syncMetadata(
-        "0.3.0",
+        "0.4.0",
         { id: "inkline", version: "0.2.0", minAppVersion: "1.14.0" },
         { "0.2.0": "1.13.4" },
       ),
     ).toEqual({
-      manifest: { id: "inkline", version: "0.3.0", minAppVersion: "1.14.0" },
-      versions: { "0.2.0": "1.13.4", "0.3.0": "1.14.0" },
+      manifest: { id: "inkline", version: "0.4.0", minAppVersion: "1.14.0" },
+      versions: { "0.2.0": "1.13.4", "0.4.0": "1.14.0" },
     });
   });
 

@@ -2,8 +2,9 @@
 
 Notable changes to Inkline, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Version numbers are
-SemVer versions; pre-releases carry a suffix such as `-alpha.N`. Each release's
-section is also its
+plain `x.y.z` from 0.9.0 on, where an odd minor version is a pre-release and an
+even one a public release; earlier pre-releases carry a suffix such as
+`-alpha.N`. Each release's section is also its
 [GitHub release](https://github.com/viell-dev/slop-inkline/releases)'s notes.
 
 ## Unreleased

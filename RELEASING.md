@@ -10,39 +10,62 @@ attests their build provenance, and publishes the loose files and ZIP with a
 replaced: a correction gets a new version. The repository's immutable releases
 setting enforces this for published releases.
 
-Use SemVer versions without a `v` prefix or build metadata. Pre-releases carry
-the GitHub prerelease flag and the usual SemVer stages, named for the version
-they lead to:
+Versions are plain `x.y.z`, with no `v` prefix, build metadata or prerelease
+suffix. **An odd minor version is a pre-release, and an even one a public
+release:**
 
-- **alpha**, as `0.3.0-alpha.1`: features still arrive and change, and the
+| Versions            | What they are                                     |
+| ------------------- | ------------------------------------------------- |
+| `0.9.0`, `0.9.1`, … | Pre-releases of `1.0.0`, the first public release |
+| `1.0.0`, `1.0.1`, … | Public releases; a patch release is a fix         |
+| `1.1.0`, `1.1.1`, … | Pre-releases of `1.2.0`, the next public release  |
+
+A line of pre-releases counts its builds in the patch number, and leads to the
+next even minor version, or from the last odd minor of a major version to the
+next major. Each pre-release carries GitHub's prerelease flag, and its section
+of the changelog, which is its release notes, opens by saying its stage:
+
+- **alpha:** features still arrive and change, and the
   [file format](docs/file-format.md#compatibility) is a draft, so a later alpha
   need not open files an earlier one wrote. Releases remain alphas until a
   stable release goal is agreed with the owner, as below.
-- **beta**, as `1.0.0-beta.1`: the features of the agreed stable release goal
-  are complete; fixes and polish follow. A beta that needs a new feature gives
-  way to an alpha of the next minor version.
-- **rc**, as `1.0.0-rc.1`: a build meant to become that release unchanged, for
-  its last checks, including the human pass described below.
+- **beta:** the features of the agreed stable release goal are complete; fixes
+  and polish follow. A beta that needs a new feature gives way to an alpha of
+  the next pre-release line.
+- **rc:** a build meant to become the public release unchanged, for its last
+  checks, including the human pass described below.
+
+**This is an exception to the SemVer prerelease convention,** for a host that
+cannot order it. Obsidian compares versions number by number, so its updater
+takes `1.0.0-rc.1` for newer than `1.0.0` and would never offer `1.0.0` to
+someone who installed the rc, and its community directory accepts only `x.y.z`.
+With plain versions, Obsidian, BRAT and SemVer all order releases the same way.
+Users tell a pre-release by its odd minor version and its prerelease flag on
+GitHub. The owner's decision and the evidence are in
+[#141](https://github.com/viell-dev/slop-inkline/issues/141). Revisit it if
+Obsidian orders SemVer prerelease versions correctly, or offers a channel for
+pre-releases. Releases before `0.9.0` carried SemVer suffixes, as
+`0.3.0-alpha.8`, and stay pre-releases; `0.9.0` sorts above all of them, in
+either order.
 
 Leaving alpha needs a stable release goal agreed with the owner: what the first
 stable release supports, its tasks, formats, and platforms, what stays out, and
 when beta, rc, and stable begin. The maintaining agents propose it in an issue
 with `Needs: Owner`, record the agreement there, and link it here. With a goal
 agreed, they move to beta and rc on the evidence, recorded in the release pull
-request; a case the goal does not settle goes back to the owner.
+request; a case the goal does not settle goes back to the owner. The proposed
+goal is [#144](https://github.com/viell-dev/slop-inkline/issues/144); the owner
+decided on 2026-11-05 that the builds after 0.3.0-alpha.8 are betas.
 
-Plain versions such as `1.0.0` are stable releases. Each new version must be
-higher in SemVer order than every published version. For example, an alpha after
-an RC needs a higher target version: `1.0.0-alpha.1` sorts before `1.0.0-rc.1`.
-
-GitHub can list pre-releases numbered 10 or more out of order. Compare version
-numbers rather than the displayed order; the Pages workflow sorts releases by
-publication time, and the [install guide](docs/install.md) explains selection.
-GitHub-only pre-releases are installed manually from the ZIP, with no
-third-party installer recommendation. The future community-directory release
-must use a plain `x.y.z` version, as Obsidian's
-[submission requirements](https://docs.obsidian.md/Plugins/Releasing/Submit%20your%20plugin)
-specify. Directory submission still needs the owner's decision.
+Each new version must be higher than every published version. Every release,
+public or pre-release, is a GitHub release with the install ZIP and the loose
+files: Obsidian's own installer and BRAT download `main.js`, `manifest.json`,
+and `styles.css` by name, and the ZIP is for installing by hand, the route the
+[install guide](docs/install.md) describes. BRAT is an optional alternative,
+never a requirement
+([#149](https://github.com/viell-dev/slop-inkline/issues/149)). The first public
+release, `1.0.0`, is also the first in Obsidian's community directory, which
+lists public releases only.
 
 The maintaining agents publish prereleases once ready by the steps below,
 without asking the owner for each one: GitHub releases are the plugin's channel.
@@ -298,8 +321,11 @@ must be identified explicitly. No documentation branch or tag move is needed;
 ## The community directory
 
 New plugins are submitted through Obsidian's developer dashboard at
-community.obsidian.md, which needs the owner's decision and sign-in: ask in an
-issue with `Needs: Owner`, as [AGENTS.md](AGENTS.md#labels) describes, once the
-release to submit is published. Later versions reach directory users from the
-releases on their own. Before submitting, the plugin must pass the directory's
-review rules, which `npm run lint` applies.
+community.obsidian.md, which needs the owner's decision and sign-in:
+[#141](https://github.com/viell-dev/slop-inkline/issues/141) lists what it takes
+and what only the owner can do. Obsidian offers directory users whatever version
+`manifest.json` on the default branch names, and downloads that release's loose
+files. So before listing, these steps must change so that a pre-release's
+version never reaches `main`: until then, every merged version reaches every
+directory user. `npm run lint` applies the directory review's lint rules, but
+the dashboard's automated review checks more, as #141 describes.

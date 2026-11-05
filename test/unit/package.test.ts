@@ -162,8 +162,28 @@ describe("release candidates", () => {
     },
   );
 
-  it("does not label a numeric 0.x release as a prerelease", () => {
-    expect(isPrerelease("0.2.0")).toBe(false);
+  it("takes an odd minor version for a pre-release, and an even one for a public release", () => {
+    for (const version of ["0.9.0", "0.9.12", "1.1.0", "1.3.2", "0.1.0"]) {
+      expect(isPrerelease(version), version).toBe(true);
+    }
+    for (const version of ["0.2.0", "1.0.0", "1.0.3", "1.2.0", "2.10.1"]) {
+      expect(isPrerelease(version), version).toBe(false);
+    }
+    // The pre-releases before 0.9.0 had suffixes, whatever their minor.
+    expect(isPrerelease("0.2.0-rc.1")).toBe(true);
+    expect(isPrerelease("not a version")).toBe(false);
+  });
+
+  it("keeps a plain pre-release out of the directory's map of versions", () => {
+    const manifest = { version: "0.3.0-alpha.8", minAppVersion: "1.13.4" };
+    const versions = { "0.1.0": "1.13.4" };
+    expect(syncMetadata("0.9.0", manifest, versions).versions).toEqual(
+      versions,
+    );
+    expect(syncMetadata("1.0.0", manifest, versions).versions).toEqual({
+      ...versions,
+      "1.0.0": "1.13.4",
+    });
   });
 
   it.each([
