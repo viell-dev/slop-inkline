@@ -150,6 +150,15 @@ release, later versions must keep released files readable and looking the same.
   symbol's M strokes show within 20% of the text's stems on the screen. Five M
   strokes a grid spacing apart stay separate
   ([pen-weights.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/pen-weights.e2e.ts)).
+- A view that adds each stroke to what it has drawn and measured shows what a
+  new view does, pixel for pixel on the surface and in the preview, and the
+  image's ends are exactly those of a full measurement, and within a pixel of
+  what a save crops to
+  ([#159](https://github.com/viell-dev/slop-inkline/issues/159)). A seeded run
+  checks this after every frame, through strokes of each shape and tool, flat
+  ends, undo, redo, clearing, moving the drawing, saving, restoring, base
+  layers, panning and zooming, on drawings wider than a tile
+  ([long-drawing.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/long-drawing.e2e.ts)).
 
 ### Drawing is never lost
 
@@ -231,14 +240,15 @@ release, later versions must keep released files readable and looking the same.
 
 Each of these asserts a budget beside its correctness checks:
 
-| What                                                                                     | Budget      | Where                                                                                              |
-| ---------------------------------------------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------- |
-| Tagging a thousand symbols in a note, the fastest of five runs                           | 50 ms       | [render.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/render.e2e.ts)  |
-| Searching 5,000 symbols as each letter of a name is typed, each query's fastest of three | 100 ms      | [scale.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/scale.e2e.ts)    |
-| Keeping a draft with a large base layer, after the first                                 | 50 ms each  | [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)  |
-| Previewing the ink of a 4K screenshot                                                    | 300 ms      | [ink.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/ink.e2e.ts)        |
-| Saving, without waiting for the window to be idle                                        | 700 ms each | [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)  |
-| Reading long lines of failed links in one pass                                           | 3 s each    | [links.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/links.test.ts) |
+| What                                                                                            | Budget      | Where                                                                                                         |
+| ----------------------------------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------- |
+| Tagging a thousand symbols in a note, the fastest of five runs                                  | 50 ms       | [render.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/render.e2e.ts)             |
+| Searching 5,000 symbols as each letter of a name is typed, each query's fastest of three        | 100 ms      | [scale.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/scale.e2e.ts)               |
+| Keeping a draft with a large base layer, after the first                                        | 50 ms each  | [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)             |
+| Previewing the ink of a 4K screenshot                                                           | 300 ms      | [ink.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/ink.e2e.ts)                   |
+| Saving, without waiting for the window to be idle                                               | 700 ms each | [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)             |
+| Adding a pen stroke to 3,000 dots, and a frame of one past the image's end, the fastest of nine | 30 ms each  | [long-drawing.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/long-drawing.e2e.ts) |
+| Reading long lines of failed links in one pass                                                  | 3 s each    | [links.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/links.test.ts)            |
 
 ### A release is what was tested
 

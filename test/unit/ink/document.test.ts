@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { InkRecord, Stroke } from "../../../src/format/record.ts";
 import { limits } from "../../../src/format/record.ts";
 import {
+  addedStroke,
   documentFromRecord,
   documentSpan,
   fitsFormat,
@@ -215,6 +216,60 @@ describe("fitsFormat", () => {
     expect(
       fitsFormat({ strokes: [], base: { x: 0, y: 0, scale: 65, png } }),
     ).toBe(false);
+  });
+});
+
+describe("addedStroke", () => {
+  const before: InkDocument = { strokes: [pen] };
+  const layer = { x: 0, y: 0, scale: 1, png };
+
+  it("gives the stroke after the same strokes, of either tool", () => {
+    expect(addedStroke(before, { strokes: [pen, dot] })).toBe(dot);
+    expect(addedStroke({ strokes: [dot] }, { strokes: [dot, pen] })).toBe(pen);
+    expect(addedStroke({ strokes: [] }, { strokes: [pen] })).toBe(pen);
+  });
+
+  it("keeps to a base layer that stays", () => {
+    expect(
+      addedStroke(
+        { strokes: [pen], base: layer },
+        { strokes: [pen, dot], base: layer },
+      ),
+    ).toBe(dot);
+  });
+
+  it("is undefined when nothing changed or a stroke went", () => {
+    expect(addedStroke(before, before)).toBeUndefined();
+    expect(addedStroke(before, { strokes: [pen] })).toBeUndefined();
+    expect(addedStroke({ strokes: [pen, dot] }, before)).toBeUndefined();
+  });
+
+  it("is undefined when more than one stroke came", () => {
+    expect(addedStroke(before, { strokes: [pen, dot, dot] })).toBeUndefined();
+  });
+
+  it("is undefined when an earlier stroke changed, as undoing and drawing does", () => {
+    expect(addedStroke(before, { strokes: [dot, pen] })).toBeUndefined();
+    const other = { strokes: [dot, dot] };
+    expect(addedStroke(before, other)).toBeUndefined();
+  });
+
+  it("is undefined after a move, whose strokes are new ones, even if equal", () => {
+    const moved = moveDocument(before, 0, 0);
+    expect(moved.strokes[0]).toEqual(pen);
+    expect(addedStroke(before, { strokes: [...moved.strokes, dot] })).toBe(
+      undefined,
+    );
+  });
+
+  it("is undefined when the base layer came, went, or moved", () => {
+    const placed = { strokes: [pen], base: layer };
+    const strokes = [pen, dot];
+    expect(addedStroke(before, { strokes, base: layer })).toBeUndefined();
+    expect(addedStroke(placed, { strokes })).toBeUndefined();
+    expect(
+      addedStroke(placed, { strokes, base: { ...layer, x: 16 } }),
+    ).toBeUndefined();
   });
 });
 

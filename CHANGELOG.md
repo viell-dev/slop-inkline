@@ -17,6 +17,17 @@ even one a public release; earlier pre-releases carry a suffix such as
   manual ZIP stays the main route, and nothing needs BRAT. It installs from the
   same GitHub releases, and its **latest** choice follows pre-releases too.
 
+### Changed
+
+- The editor keeps up with very long drawings. It adds a pen stroke to what it
+  has already measured and drawn rather than starting over, and an eraser stroke
+  to what it has drawn: on a drawing of 1,000 dots, the pause after a pen stroke
+  falls from about 130 ms to about 3 ms, and after an eraser stroke to about
+  half. Drawing past the end of the image no longer draws the preview again each
+  frame, which took over 30 ms a frame. Undo and moving the drawing still take
+  as long as before
+  ([#115](https://github.com/viell-dev/slop-inkline/issues/115)).
+
 ## 0.9.0 - 2026-11-05
 
 This is the first beta of 1.0.0, the first public release, following the owner's
