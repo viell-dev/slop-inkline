@@ -108,14 +108,27 @@ describe("Zoom", function () {
     const zoomed = await surfaceSize();
     expect(await zoomPressed()).toBe("true");
     expect(zoomed.width).toBe(usual.width);
-    const limit = await browser.execute(() => window.innerHeight * 0.55);
+    const { limit, scrolls, full } = await browser.execute(() => {
+      const editor = document.querySelector(".inkline-editor");
+      if (!(editor instanceof HTMLElement)) throw new Error("no editor");
+      const most = Number.parseFloat(getComputedStyle(editor).maxHeight);
+      return {
+        limit: window.innerHeight * 0.55,
+        // With a whole pixel of rounding.
+        scrolls: editor.scrollHeight > editor.clientHeight + 1,
+        full: Math.abs(editor.getBoundingClientRect().height - most) < 2,
+      };
+    });
+    // The controls stay in view, without a scrollbar that would narrow it.
+    expect(scrolls).toBe(false);
     // Twice as tall, or as tall as the window allows.
     expect(zoomed.height).toBeLessThanOrEqual(
       Math.max(limit, usual.height) + 1,
     );
     expect(
       Math.abs(zoomed.height - usual.height * 2) < 2 ||
-        Math.abs(zoomed.height - limit) < 2,
+        Math.abs(zoomed.height - limit) < 2 ||
+        full,
     ).toBe(true);
     await saveScreenshot("zoom-in");
     await browser.$('[data-inkline-button="zoom"]').click();

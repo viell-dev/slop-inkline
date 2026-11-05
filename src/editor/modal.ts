@@ -1907,14 +1907,22 @@ export class InkEditorModal extends Modal {
 
   /**
    * Fits the surface to its width, with a magnified surface no taller than
-   * a little over half the window, so that the controls stay in view.
+   * a little over half the window, and less if the editor would then have to
+   * scroll, so that the controls stay in view and the width stays what it was.
    */
   #resizeView(): void {
     const view = this.#view;
     if (view === undefined) return;
     const { canvas } = view;
+    const width = canvas.clientWidth;
+    const ratio = canvas.win.devicePixelRatio;
     view.heightLimit = canvas.win.innerHeight * 0.55;
-    view.resize(canvas.clientWidth, canvas.win.devicePixelRatio);
+    view.resize(width, ratio);
+    if (!view.magnified) return;
+    const over = this.modalEl.scrollHeight - this.modalEl.clientHeight;
+    if (over <= 0) return;
+    view.heightLimit = canvas.clientHeight - over;
+    view.resize(width, ratio);
   }
 
   readonly #windowResized = (): void => {
@@ -2265,7 +2273,7 @@ export class InkEditorModal extends Modal {
       "Toggle fill (B) is a switch, not a tool to click a shape with: while it is on, Ellipse and a closed Polygon draw solid shapes with their edges through their corners. The pen makes a solid shape, and the eraser a hole of its shape.",
       "Hold Shift while drawing for a straight segment. Grid (Shift+G) shows dots and snaps stroke ends to them. Its rows pass through each guide line the settings choose, and divide the space between lines evenly; the settings also set how many cells span the x-height.",
       "Undo (Mod+Z) and Redo (Mod+Shift+Z) step through changes. Clear removes the drawing and can be undone.",
-      "Zoom (Z) shows the drawing twice as large in a taller view, for fine detail; the wheel or the arrow keys move along it, and Fit (F) centres it. Saved symbols stay the same size in notes.",
+      "Zoom (Z) shows the drawing up to twice as large in a taller view, for fine detail; the wheel or the arrow keys move along it, and Fit (F) centres it. Saved symbols stay the same size in notes.",
       "Paste, drop, or choose (Choose picture…) a picture to trace. Move positions it; the wheel scales it. Make ink converts the visible picture into editable ink. The tracing picture itself is not saved.",
       "Name the symbol, then Save (Mod+Enter). For a new symbol, Next (Mod+Shift+Enter) saves it and starts another. Mod is Ctrl on Windows/Linux, Cmd on macOS.",
       "Saving a changed symbol that your notes use more than once first asks whether to Replace it everywhere. For a variant, start a new symbol with Copy from instead.",

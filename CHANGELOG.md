@@ -13,7 +13,8 @@ section is also its
 - **Fill** is now **Toggle fill**, with a new icon, as it is a switch for the
   shapes drawn next and not a paint bucket to click a shape with.
 - The toolbar has three rows: the drawing tools; the brush sizes, Undo, Redo and
-  Clear; then the view and saving.
+  Clear; then the view and saving. Zoom keeps them all in view, growing less
+  tall in a window too short for it.
 - **Next** has the same colour as **Save**, and **Fit**'s tooltip says what it
   does.
 - **Copy from** shows each symbol's picture beside its name, as the list of

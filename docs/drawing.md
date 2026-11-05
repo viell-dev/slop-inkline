@@ -144,11 +144,12 @@ uses, and the edges the saved image will have. **Fit** (F) fits the drawing in
 view; a symbol wider than the usual view opens whole.
 
 **Zoom** (Z) shows the drawing twice as large, in a taller drawing area, for
-fine detail; it grows no taller than a little over half the window, and shows
-more width instead. The wheel, or the left and right arrow keys, move along the
-drawing, and **Fit** centres it while staying zoomed. **Next** keeps the zoom
-for the following symbol. Zooming changes only the view: the symbol is the same
-size in notes, and the grid and brushes stay the same size against it.
+fine detail; it grows no taller than a little over half the window, or than
+leaves the editor's controls in view, and shows more width instead. The wheel,
+or the left and right arrow keys, move along the drawing, and **Fit** centres it
+while staying zoomed. **Next** keeps the zoom for the following symbol. Zooming
+changes only the view: the symbol is the same size in notes, and the grid and
+brushes stay the same size against it.
 
 **Help** opens a built-in quick start with an explanation of each guide, the
 grid, drawing, tracing, and saving. Close Help or press Esc to return to the
