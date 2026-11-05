@@ -121,7 +121,7 @@ export class InklineSettingTab extends PluginSettingTab {
       },
       {
         name: "Grid size",
-        desc: "How many cells of the editor's grid span the x-height of the note's font; more make a finer grid. The grid's rows also pass through each line turned on under Guides.",
+        desc: "How many cells of the editor's grid span the x-height of the note's font; more make a finer grid, and Zoom shows twice as many. The grid's rows also pass through each line turned on under Guides.",
         aliases: ["snap", "cells"],
         control: {
           type: "slider",

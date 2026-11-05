@@ -56,8 +56,10 @@ takes away the whole drawing, and Undo brings it back.
 drag from one corner of the box it fills to the other, and it is drawn as you
 go. Hold Shift for a circle, as wide as the box's longer side. It draws with the
 pen or the eraser, whichever is chosen, at its brush size, so the eraser takes
-away a ring. Press **Ellipse** again to draw freehand. **Next** keeps it on; an
-editor opened afresh draws freehand.
+away a ring. **Unreleased:** a shape drawn with the eraser is tinted red until
+it is done, as it would show nothing where there is no ink to take away. Press
+**Ellipse** again to draw freehand. **Next** keeps it on; an editor opened
+afresh draws freehand.
 
 With the grid on, the box's corners are on the grid, so the ellipse touches its
 lines at its top, bottom, and sides. A circle is on the grid along its longer
@@ -150,6 +152,19 @@ or the left and right arrow keys, move along the drawing, and **Fit** centres it
 while staying zoomed. **Next** keeps the zoom for the following symbol. Zooming
 changes only the view: the symbol is the same size in notes, and the grid and
 brushes stay the same size against it.
+
+**Unreleased:** the grid no longer stays the same size against the drawing:
+while zoomed it has twice as many cells each way, so the default 5 cells across
+the x-height become 10, for placing fine detail. Every point of the usual grid
+stays a point of the finer one, so a drawing started in either view lines up in
+the other, and zooming out puts the usual grid back where it was, however much
+you drew while zoomed. A polygon being placed keeps the grid it started on until
+it ends, and Shift with an arrow key moves a picture by a column of the grid
+shown. **Grid size** keeps its range of 2 to 10, and saved symbols are not
+affected. On a symbol you open again, the usual grid follows most of the
+strokes' ends, so after drawing mostly on points of the finer grid alone it can
+lie half a cell from where it was; the finer grid passes through them either
+way.
 
 **Help** opens a built-in quick start with an explanation of each guide, the
 grid, drawing, tracing, and saving. Close Help or press Esc to return to the

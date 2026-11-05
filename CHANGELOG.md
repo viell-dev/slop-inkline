@@ -8,6 +8,12 @@ section is also its
 
 ## Unreleased
 
+### Fixed
+
+- A shape drawn with the eraser, with Ellipse or Polygon, can now be seen while
+  it is drawn: it is tinted over the drawing, even where there is no ink to take
+  away, and the tint isn't part of the symbol.
+
 ### Changed
 
 - **Fill** is now **Toggle fill**, with a new icon, as it is a switch for the
@@ -22,6 +28,14 @@ section is also its
 - The Grid size slider shows only its number, which had wrapped onto two lines
   with its unit, and the guide settings say "shown in purple" and so on rather
   than "by default", as the colours aren't a choice there.
+- **Zoom** doubles the grid as well as the drawing: while zoomed it has twice as
+  many cells each way, so the default 5 cells across the x-height become 10.
+  Every point of the usual grid stays a point of the finer one, so a drawing
+  started in either view lines up in the other, and the usual grid comes back
+  where it was, however much was drawn while zoomed. **Grid size** keeps its
+  range, and saved symbols are not affected. To keep the finer grid on whole
+  file units, column spacing is now an even number of them, which moves it by at
+  most 1/16 pixel.
 - Simplify documentation navigation and maintenance guidance, clarify the draft
   format's verification limits, and make the existing stable-publication hold
   explicit in the release guide.

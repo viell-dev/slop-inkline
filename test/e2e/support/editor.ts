@@ -279,9 +279,9 @@ export async function guideRows(): Promise<{
 }
 
 /**
- * The grid the open editor lays out, in document pixels: from its preview
- * line's font, measured in the active window, and from Inkline's stored
- * settings, as `fontGrid` makes it.
+ * The open editor's usual grid, zoomed or not, in document pixels: from its
+ * preview line's font, measured in the active window, and from Inkline's
+ * stored settings, as `fontGrid` makes it.
  */
 export async function editorGrid(): Promise<{
   spacing: number;
