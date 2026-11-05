@@ -35,6 +35,7 @@ export const buttonIcons: Readonly<Record<string, string>> = {
   clear: "trash-2",
   guides: "baseline",
   grid: "grid",
+  "flat-ends": "scissors-line-dashed",
   copy: "copy",
   fit: "scan",
   "move-up": "arrow-up",

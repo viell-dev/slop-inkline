@@ -131,6 +131,8 @@ export interface EditorTools {
   /** Both tools' sizes when continuing with Next. */
   readonly sizes?: Readonly<Record<Tool, number>>;
   readonly grid: boolean;
+  /** Whether strokes end flat on the grid; a new editor's round ends. */
+  readonly flatEnds?: boolean;
   readonly guides: boolean;
   /** Whether the drawing is magnified; Next keeps it so. */
   readonly magnified?: boolean;
@@ -528,6 +530,7 @@ export class InkEditorModal extends Modal {
         },
       );
       this.#session.snap = grid;
+      this.#session.flatEnds = options.tools.flatEnds === true;
       this.#guidesShown = guides;
     }
     this.#watch = new FileWatch(options.fingerprint);
@@ -658,6 +661,17 @@ export class InkEditorModal extends Modal {
     this.#addButton(toolbar, "grid", "Grid", "Shift+G", () => {
       this.#toggleGrid();
     });
+    this.#addButton(
+      toolbar,
+      "flat-ends",
+      "Flat ends",
+      "T",
+      () => {
+        this.#toggleFlatEnds();
+      },
+      "Flat ends",
+      "with the grid on, freehand strokes drawn from now on stop flush with the grid line they end on, rather than rounding past it",
+    );
     if (this.#options.copyFrom !== undefined) {
       this.#addButton(
         toolbar,
@@ -1234,6 +1248,9 @@ export class InkEditorModal extends Modal {
     });
     key(["Shift"], "g", () => {
       this.#toggleGrid();
+    });
+    key([], "t", () => {
+      this.#toggleFlatEnds();
     });
     if (this.#options.copyFrom !== undefined) {
       key([], "v", () => {
@@ -2120,6 +2137,27 @@ export class InkEditorModal extends Modal {
     this.#render();
   }
 
+  /** Whether strokes drawn now can end flat: freehand, on the grid. */
+  get #canEndFlat(): boolean {
+    return this.#session.snap && this.#session.shape === "free";
+  }
+
+  /**
+   * Cuts the ends of strokes drawn from now on flat on the grid, or does not.
+   * Only freehand strokes on the grid are cut, so the button is off otherwise,
+   * and the key says so.
+   */
+  #toggleFlatEnds(): void {
+    if (!this.#canEndFlat) {
+      this.#announce(
+        "Flat ends is for freehand strokes on the grid; turn on Grid first, without Ellipse or Polygon",
+      );
+      return;
+    }
+    this.#session.flatEnds = !this.#session.flatEnds;
+    this.#updateButtons();
+  }
+
   /** Switches between drawing ellipses and drawing as the pointer goes. */
   #toggleEllipse(): void {
     this.#switchShape("ellipse");
@@ -2240,6 +2278,8 @@ export class InkEditorModal extends Modal {
     this.#view?.canvas.toggleClass("is-moving", this.#moving);
     pressed("guides", this.#guidesShown);
     pressed("grid", this.#session.snap);
+    pressed("flat-ends", this.#canEndFlat && this.#session.flatEnds);
+    this.#buttons.get("flat-ends")?.setDisabled(!this.#canEndFlat);
     pressed("zoom", this.#view?.magnified === true);
     brushSizes.forEach((_, index) => {
       pressed(`size-${String(index)}`, this.#session.sizeIndex === index);
@@ -2348,6 +2388,7 @@ export class InkEditorModal extends Modal {
       "Polygon (Y) draws a shape with straight sides and sharp corners: click each corner, then click the first corner again to close it, or the last corner, or press Enter, to leave it open. Undo takes back a corner, and Esc drops the shape.",
       "Toggle fill (B) is a switch, not a tool to click a shape with: while it is on, Ellipse and a closed Polygon draw solid shapes with their edges through their corners. The pen makes a solid shape, and the eraser a hole of its shape.",
       "Hold Shift while drawing for a straight segment. Grid (Shift+G) shows dots and snaps stroke ends to them. Its rows pass through each guide line the settings choose, and divide the space between lines evenly; the settings also set how many cells span the x-height.",
+      "Flat ends (T), with the grid on, stops freehand strokes flush with the grid line they end on, rather than rounding past it. It is off until you turn it on, and shapes are never cut.",
       "Undo (Mod+Z) and Redo (Mod+Shift+Z) step through changes. Clear removes the drawing and can be undone.",
       "Up and Down, or the up and down arrow keys, move the whole drawing a pixel at a time, or a grid cell's width with Shift, as to sit a shape on a line. One Undo takes back moves made in a row.",
       "Zoom (Z) shows the drawing up to twice as large in a taller view, for fine detail; the wheel or the arrow keys move along it, and Fit (F) centres it. While zoomed, the grid has twice as many cells each way, and keeps every point of the usual grid. Saved symbols stay the same size in notes.",
@@ -2882,6 +2923,7 @@ export class InkEditorModal extends Modal {
         sizeIndex,
         sizes: { ...this.#session.sizes },
         grid: snap,
+        flatEnds: this.#session.flatEnds,
         guides: this.#guidesShown,
         magnified: this.#view?.magnified === true,
         shape: this.#session.shape,

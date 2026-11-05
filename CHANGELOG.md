@@ -13,9 +13,21 @@ section is also its
 - **Up** and **Down**, and the up and down arrow keys, move the whole drawing by
   a pixel, or by a grid cell's width with Shift, so that a shape drawn against a
   line can sit on it. One Undo takes back moves made in a row.
+- **Flat ends** (T) turns the flat ends of strokes on the grid on and off, and a
+  new editor starts with it off, so that a stroke keeps its round ends unless
+  you ask for them cut. **Next** keeps it. From 0.3.0-alpha.5 to alpha.8, every
+  stroke drawn on the grid was cut.
 
 ### Fixed
 
+- A polygon that ended near one of its own sides lost ink from that side.
+  Polygons are no longer cut at all: an open polygon's ends stay square on the
+  grid, as they are off it. A polygon saved by 0.3.0-alpha.7 or alpha.8 shows
+  its stored pixels, and loses its flat ends if you edit it.
+- A freehand stroke with Flat ends on could be cut along the wrong grid line,
+  when it ended in a short sideways hook or snapped sideways to a grid point at
+  either end. The way it runs is now judged over a longer stretch of what you
+  drew. A stroke that ends on the grid point it started on is no longer cut.
 - `main.js` now carries the licence notice of perfect-freehand, which it
   bundles, and the README credits it. Earlier releases left the notice out.
 - A shape drawn with the eraser, with Ellipse or Polygon, can now be seen while

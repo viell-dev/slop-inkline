@@ -25,20 +25,28 @@ interface Spill {
   readonly redrawn: number;
 }
 
-/** Opens the editor for a new symbol with the XL brush and the grid on. */
-async function openOnGrid(): Promise<void> {
+/** A button's pressed state. */
+async function pressed(id: string): Promise<string | null> {
+  return browser
+    .$(`[data-inkline-button="${id}"]`)
+    .getAttribute("aria-pressed");
+}
+
+/**
+ * Opens the editor for a new symbol with the XL brush and the grid on, and
+ * Flat ends too, unless `flat` is false.
+ */
+async function openOnGrid(flat = true): Promise<void> {
   await openAtMarker("Editor.md", "HERE");
   await browser.executeObsidianCommand("inkline:insert-symbol");
   await waitForEditor();
   await settledSurface();
   await browser.keys("4");
   await browser.keys(["Shift", "g"]);
-  await browser.waitUntil(
-    async () =>
-      (await browser
-        .$('[data-inkline-button="grid"]')
-        .getAttribute("aria-pressed")) === "true",
-  );
+  await browser.waitUntil(async () => (await pressed("grid")) === "true");
+  if (!flat) return;
+  await browser.keys("t");
+  await browser.waitUntil(async () => (await pressed("flat-ends")) === "true");
 }
 
 async function save(): Promise<void> {
@@ -274,6 +282,48 @@ describe("Flat ends on the grid", function () {
     expect(below).toEqual([0, 0]);
     // Without the cut, the start's round end would be there.
     for (const value of shown.uncut[1] ?? []) expect(value).toBeGreaterThan(0);
+  });
+
+  it("keeps round ends on the grid until Flat ends is turned on", async function () {
+    await openOnGrid(false);
+    expect(await pressed("flat-ends")).toBe("false");
+    await draw([
+      [0.5, 0.25],
+      [0.55, 0.75],
+    ]);
+    await save();
+    const [stroke] = await savedStrokes();
+    expect(stroke).not.toHaveProperty("cut");
+  });
+
+  it("offers Flat ends only for freehand strokes on the grid", async function () {
+    await openAtMarker("Editor.md", "HERE");
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await waitForEditor();
+    await settledSurface();
+    const button = browser.$('[data-inkline-button="flat-ends"]');
+    expect(await button.isEnabled()).toBe(false);
+    await browser.keys("t");
+    await browser.waitUntil(async () =>
+      (await browser.$(".inkline-status").getText()).includes(
+        "Flat ends is for freehand strokes on the grid",
+      ),
+    );
+    await browser.keys(["Shift", "g"]);
+    await browser.waitUntil(async () => await button.isEnabled());
+    await browser.keys("t");
+    await browser.waitUntil(
+      async () => (await pressed("flat-ends")) === "true",
+    );
+    // A shape turns it off, and it comes back with freehand.
+    await browser.keys("y");
+    await browser.waitUntil(async () => !(await button.isEnabled()));
+    expect(await pressed("flat-ends")).toBe("false");
+    await browser.keys("y");
+    await browser.waitUntil(
+      async () => (await pressed("flat-ends")) === "true",
+    );
+    await saveScreenshot("flat-ends-on", browser.$(".inkline-editor"));
   });
 
   it("keeps round ends with the grid off", async function () {
