@@ -648,22 +648,28 @@ export class InkEditorModal extends Modal {
       this.#fitView();
       this.#render();
     });
-    for (const [id, text, key, direction, way] of [
-      ["move-up", "Up", "ArrowUp", -1, "up"],
-      ["move-down", "Down", "ArrowDown", 1, "down"],
-    ] as const) {
-      this.#addButton(
-        toolbar,
-        id,
-        text,
-        key,
-        (event) => {
-          this.#moveDrawing(direction, event.shiftKey);
-        },
-        text,
-        `move the whole drawing ${way} a pixel, or with Shift a grid cell`,
-      );
-    }
+    this.#addButton(
+      toolbar,
+      "move-up",
+      "Up",
+      "ArrowUp",
+      (event) => {
+        this.#moveDrawing(-1, event.shiftKey);
+      },
+      "Up",
+      "move the whole drawing up a pixel, or with Shift a grid cell's width",
+    );
+    this.#addButton(
+      toolbar,
+      "move-down",
+      "Down",
+      "ArrowDown",
+      (event) => {
+        this.#moveDrawing(1, event.shiftKey);
+      },
+      "Down",
+      "move the whole drawing down a pixel, or with Shift a grid cell's width",
+    );
     this.#addButton(
       toolbar,
       "zoom",
@@ -1950,16 +1956,21 @@ export class InkEditorModal extends Modal {
 
   /**
    * What an arrow key does when no picture is being moved, unless a field
-   * has the focus: the up and down keys move the drawing, by a grid cell
-   * with `shift`, and the left and right ones move a magnified view along it.
-   * Returns whether it did anything.
+   * has the focus: the up and down keys move the drawing, by a grid cell's
+   * width with `shift`, unless ink is being made of a picture; and the left
+   * and right ones move a magnified view along it. Returns whether it did
+   * anything.
    */
   #arrowKey(name: string, shift: boolean): boolean {
     const direction =
       name === "ArrowUp" ? -1 : name === "ArrowDown" ? 1 : undefined;
     if (direction === undefined) return !shift && this.#panKey(name);
     const focused = activeDocument.activeElement;
-    if (typing(focused) || focused?.instanceOf(HTMLInputElement) === true) {
+    if (
+      this.#converting !== undefined ||
+      typing(focused) ||
+      focused?.instanceOf(HTMLInputElement) === true
+    ) {
       return false;
     }
     this.#moveDrawing(direction, shift);
@@ -1967,8 +1978,8 @@ export class InkEditorModal extends Modal {
   }
 
   /**
-   * Moves the whole drawing up or down by a pixel, or by a column of the grid
-   * with `byCell`, as Shift moves a picture; what is being made ink of stays.
+   * Moves the whole drawing up or down by a pixel, or with `byCell` by a grid
+   * cell's width, as Shift moves a picture.
    */
   #moveDrawing(direction: -1 | 1, byCell: boolean): void {
     if (this.#converting !== undefined) return;
@@ -2206,7 +2217,10 @@ export class InkEditorModal extends Modal {
     for (const id of ["move-up", "move-down"]) {
       this.#buttons
         .get(id)
-        ?.setDisabled(strokes.length === 0 && base === undefined);
+        ?.setDisabled(
+          converting !== undefined ||
+            (strokes.length === 0 && base === undefined),
+        );
     }
     this.#buttons.get("save")?.setDisabled(this.#saving !== undefined);
     this.#buttons.get("next")?.setDisabled(this.#saving !== undefined);
@@ -2300,7 +2314,7 @@ export class InkEditorModal extends Modal {
       "Fill (B), with Ellipse or Polygon on, draws an ellipse or a closed polygon solid, with its edges through its corners: the pen makes a solid shape, and the eraser a hole of its shape.",
       "Hold Shift while drawing for a straight segment. Grid (Shift+G) shows dots and snaps stroke ends to them. Its rows pass through each guide line the settings choose, and divide the space between lines evenly; the settings also set how many cells span the x-height.",
       "Undo (Mod+Z) and Redo (Mod+Shift+Z) step through changes. Clear removes the drawing and can be undone.",
-      "Up and Down, or the up and down arrow keys, move the whole drawing a pixel at a time, or a grid cell with Shift, as to sit a shape on a line. One Undo takes back moves made in a row.",
+      "Up and Down, or the up and down arrow keys, move the whole drawing a pixel at a time, or a grid cell's width with Shift, as to sit a shape on a line. One Undo takes back moves made in a row.",
       "Zoom (Z) shows the drawing twice as large in a taller view, for fine detail; the wheel or the arrow keys move along it, and Fit (F) centres it. Saved symbols stay the same size in notes.",
       "Paste, drop, or choose (Choose picture…) a picture to trace. Move positions it; the wheel scales it. Make ink converts the visible picture into editable ink. The tracing picture itself is not saved.",
       "Name the symbol, then Save (Mod+Enter). For a new symbol, Next (Mod+Shift+Enter) saves it and starts another. Mod is Ctrl on Windows/Linux, Cmd on macOS.",

@@ -348,7 +348,10 @@ export class DrawingSession {
   #grid: Grid = plainGrid;
   /** A grid laid out while a stroke was being drawn, for when it ends. */
   #nextGrid: Grid | undefined;
-  /** What the last {@link moveDrawing} made, as moves in a row are one step. */
+  /**
+   * What the last {@link moveDrawing} made, as moves in a row are one step,
+   * until anything else happens to the history or the saved drawing.
+   */
   #moved: InkDocument | undefined;
   /** The last guess at a document's grid, for {@link gridOrigin}. */
   #guessed:
@@ -771,10 +774,12 @@ export class DrawingSession {
   }
 
   undo(): boolean {
+    this.#moved = undefined;
     return this.#active === undefined && this.#history.undo();
   }
 
   redo(): boolean {
+    this.#moved = undefined;
     return this.#active === undefined && this.#history.redo();
   }
 
@@ -826,6 +831,7 @@ export class DrawingSession {
     gridOrigin = gridOriginOf(document, this.gridOrigin, this.grid.spacing),
   ): void {
     if (this.#active !== undefined) return;
+    this.#moved = undefined;
     this.#history.push({ document, gridOrigin });
   }
 
@@ -836,6 +842,7 @@ export class DrawingSession {
    * up with the file.
    */
   rebase(dxPixels: number): void {
+    this.#moved = undefined;
     if (dxPixels === 0) return;
     // States share most of their strokes; they still do once moved. The grid
     // moves with each, so that it stays where each was drawn on it, the grid
@@ -872,6 +879,7 @@ export class DrawingSession {
   /** Records `document` as saved, so that it is no longer dirty. */
   markSaved(document: InkDocument): void {
     this.#saved = document;
+    this.#moved = undefined;
   }
 
   /** Records `document` as one undoable step, keeping the grid. */

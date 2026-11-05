@@ -511,6 +511,43 @@ describe("DrawingSession's moveDrawing", () => {
     expect(session.document).toBe(drawn);
   });
 
+  it("starts a new step after a save, so that Undo stops at what was saved", () => {
+    // From the independent review of #139.
+    const session = withStroke();
+    session.moveDrawing(16);
+    session.moveDrawing(16);
+    const saved = session.document;
+    session.markSaved(saved);
+    session.moveDrawing(16);
+    expect(session.dirty).toBe(true);
+    session.undo();
+    expect(session.document).toBe(saved);
+    expect(session.dirty).toBe(false);
+    session.redo();
+    expect(session.document).not.toBe(saved);
+  });
+
+  it("starts a new step after Undo and Redo, or a save that moves the drawing", () => {
+    const session = withStroke();
+    session.moveDrawing(16);
+    session.begin({ x: 50, y: 20 });
+    session.end({ x: 60, y: 40 });
+    session.undo();
+    const moved = session.document;
+    session.moveDrawing(16);
+    session.undo();
+    expect(session.document).toBe(moved);
+    session.redo();
+    const again = session.document;
+    session.moveDrawing(16);
+    session.undo();
+    expect(session.document).toBe(again);
+    session.rebase(0);
+    session.moveDrawing(16);
+    session.undo();
+    expect(session.document).toBe(again);
+  });
+
   it("keeps the grid where it was", () => {
     const session = withStroke();
     session.snap = true;

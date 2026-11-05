@@ -63,7 +63,9 @@ describe("Moving the drawing", function () {
     await waitForY(start - 2 * unitsPerPixel);
     const { spacing } = await editorGrid();
     await browser.keys(["Shift", "ArrowDown"]);
-    await waitForY(start - 2 * unitsPerPixel + spacing * unitsPerPixel);
+    await waitForY(
+      start - 2 * unitsPerPixel + Math.round(spacing * unitsPerPixel),
+    );
     await browser.keys(["Control", "z"]);
     await waitForY(start);
   });

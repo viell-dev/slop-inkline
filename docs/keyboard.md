@@ -36,32 +36,32 @@ editor.
 The drawing area has focus as soon as the editor opens, so a shortcut works
 immediately. Select the name field to type a name; Enter returns to drawing.
 
-| Key                       | Button      | What it does                                            |
-| ------------------------- | ----------- | ------------------------------------------------------- |
-| P                         | Pen         | Draw.                                                   |
-| E                         | Eraser      | Take ink away.                                          |
-| O                         | Ellipse     | Draw ellipses by dragging, or freehand again.           |
-| Y                         | Polygon     | Draw shapes by clicking their corners, or freehand.     |
-| Enter                     |             | End a polygon being drawn, leaving it open.             |
-| B                         | Fill        | Fill ellipses and closed polygons, or not.              |
-| 1, 2, 3, 4                | S, M, L, XL | Choose the brush size.                                  |
-| Mod+Z                     | Undo        | Undo the last change, or a polygon's last corner.       |
-| Mod+Shift+Z, or Mod+Y     | Redo        | Redo it.                                                |
-| Delete, or Backspace      | Clear       | Clear the drawing; Undo brings it back.                 |
-| G                         | Guides      | Show or hide the guides.                                |
-| Shift+G                   | Grid        | Show or hide the grid, which snaps the ends of strokes. |
-| Shift, held while drawing |             | Draw a straight line, or a circle with Ellipse.         |
-| V                         | Copy from   | Start a new symbol from a copy of another.              |
-| F                         | Fit         | Fit the drawing in view.                                |
-| ArrowUp                   | Up          | Move the drawing up a pixel, or a grid cell with Shift. |
-| ArrowDown                 | Down        | Move it down the same way.                              |
-| Z                         | Zoom        | Show the drawing twice as large, or as usual again.     |
-| M                         | Move        | Move and scale the picture being traced, or draw again. |
-| I                         | Make ink    | Turn the picture being traced into ink.                 |
-| Mod+Enter                 | Save        | Save and close.                                         |
-| Mod+S                     |             | Save and keep drawing.                                  |
-| Mod+Shift+Enter           | Next        | Save, insert, and start the symbol that follows.        |
-| Esc                       |             | Drop a polygon being drawn, or else close the editor.   |
+| Key                       | Button      | What it does                                             |
+| ------------------------- | ----------- | -------------------------------------------------------- |
+| P                         | Pen         | Draw.                                                    |
+| E                         | Eraser      | Take ink away.                                           |
+| O                         | Ellipse     | Draw ellipses by dragging, or freehand again.            |
+| Y                         | Polygon     | Draw shapes by clicking their corners, or freehand.      |
+| Enter                     |             | End a polygon being drawn, leaving it open.              |
+| B                         | Fill        | Fill ellipses and closed polygons, or not.               |
+| 1, 2, 3, 4                | S, M, L, XL | Choose the brush size.                                   |
+| Mod+Z                     | Undo        | Undo the last change, or a polygon's last corner.        |
+| Mod+Shift+Z, or Mod+Y     | Redo        | Redo it.                                                 |
+| Delete, or Backspace      | Clear       | Clear the drawing; Undo brings it back.                  |
+| G                         | Guides      | Show or hide the guides.                                 |
+| Shift+G                   | Grid        | Show or hide the grid, which snaps the ends of strokes.  |
+| Shift, held while drawing |             | Draw a straight line, or a circle with Ellipse.          |
+| V                         | Copy from   | Start a new symbol from a copy of another.               |
+| F                         | Fit         | Fit the drawing in view.                                 |
+| ArrowUp                   | Up          | Move the drawing up a pixel; Shift, a grid cell's width. |
+| ArrowDown                 | Down        | Move it down the same way.                               |
+| Z                         | Zoom        | Show the drawing twice as large, or as usual again.      |
+| M                         | Move        | Move and scale the picture being traced, or draw again.  |
+| I                         | Make ink    | Turn the picture being traced into ink.                  |
+| Mod+Enter                 | Save        | Save and close.                                          |
+| Mod+S                     |             | Save and keep drawing.                                   |
+| Mod+Shift+Enter           | Next        | Save, insert, and start the symbol that follows.         |
+| Esc                       |             | Drop a polygon being drawn, or else close the editor.    |
 
 Closing the editor with unsaved changes asks first. While **Move** is on, the
 arrow keys move the picture, with Shift by one column of the grid, and + and −
