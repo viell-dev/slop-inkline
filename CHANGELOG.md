@@ -10,6 +10,8 @@ section is also its
 
 ### Fixed
 
+- `main.js` now carries the licence notice of perfect-freehand, which it
+  bundles, and the README credits it. Earlier releases left the notice out.
 - A shape drawn with the eraser, with Ellipse or Polygon, can now be seen while
   it is drawn: it is tinted over the drawing, even where there is no ink to take
   away, and the tint isn't part of the symbol.
