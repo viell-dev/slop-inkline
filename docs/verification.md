@@ -264,7 +264,7 @@ Each of these asserts a budget beside its correctness checks:
 
 ### What this site and the repository say agrees
 
-- The package and manifest versions agree, numeric releases have matching
+- The package and manifest versions agree, public releases have matching
   compatibility entries in `versions.json`, prereleases stay out of that
   directory map, and each release has its changelog section
   ([release.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/release.test.ts)).
