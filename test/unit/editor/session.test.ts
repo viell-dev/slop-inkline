@@ -877,6 +877,22 @@ describe("DrawingSession's cuts", () => {
     });
   });
 
+  it("judges both ends of a line straight from its first move by its ink", () => {
+    // From the third review of #137: the pointer runs at 35°, but the line,
+    // from the grid point the press snapped to, at 56°.
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.flatEnds = true;
+    session.begin({ x: 41.9, y: 72.1 });
+    session.extend([{ x: 87.9, y: 39.9 }], true);
+    expect(session.activeStroke?.cut?.start).toBe("down");
+    session.end({ x: 87.9, y: 39.9 });
+    expect(session.document.strokes[0]?.cut).toEqual({
+      start: "down",
+      end: "up",
+    });
+  });
+
   it("measures a stroke that is straight from its start along its segment", () => {
     const session = new DrawingSession(emptyDocument);
     session.snap = true;

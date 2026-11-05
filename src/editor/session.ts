@@ -333,6 +333,11 @@ export class DrawingSession {
   #pointer: number[] = [];
   /** Whether the last of {@link #pointer} is a straight segment's end. */
   #pointerStraight = false;
+  /**
+   * Whether the stroke being drawn went straight from its first move, from
+   * the grid point it starts on, whose start then goes by its ink.
+   */
+  #straightStart = false;
   /** The last input point of the stroke being drawn, before rounding. */
   #last: InputPoint | undefined;
   /**
@@ -515,7 +520,7 @@ export class DrawingSession {
         active,
         { start: active.onGrid, end: false },
         this.#corner !== undefined && this.fill,
-        { start: this.#path() },
+        { start: this.#straightStart ? undefined : this.#path() },
       );
     }
     // A polygon shows what a click where the pointer is would make: a side
@@ -613,6 +618,7 @@ export class DrawingSession {
     // After the grid point the stroke starts on, which the pointer never was.
     this.#pointer = [toUnits(point.x), toUnits(point.y)];
     this.#pointerStraight = false;
+    this.#straightStart = false;
     if (polygon) this.#record(this.#active, this.#snapped(point));
   }
 
@@ -656,6 +662,7 @@ export class DrawingSession {
         this.#append(active, point);
         continue;
       }
+      if (this.#pointer.length <= 2) this.#straightStart = true;
       if (this.#pointerStraight) this.#pointer.length -= 2;
       this.#pointer.push(toUnits(point.x), toUnits(point.y));
       this.#pointerStraight = true;
@@ -711,8 +718,11 @@ export class DrawingSession {
     const straight = ellipse ? this.#circle : this.#anchor !== undefined;
     // The start goes by the way the pointer went, and so does the end, but
     // for a straight segment, which runs as it does right to its end.
-    const start = this.#path(straight ? undefined : release);
-    const path = { start, end: straight ? undefined : start };
+    const pointer = this.#path(straight ? undefined : release);
+    const path = {
+      start: this.#straightStart ? undefined : pointer,
+      end: straight ? undefined : pointer,
+    };
     // With the grid, the stroke ends on it, at the grid point nearest the
     // release, or else the last point, recorded in the release's place.
     const end = this.snap ? (release ?? this.#last) : release;
