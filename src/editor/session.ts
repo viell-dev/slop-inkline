@@ -142,10 +142,11 @@ function endCut(
  * at least `reach` units from it, or the farthest one; a stroke that never
  * leaves its end, as a dot, is not cut there.
  *
- * `path` is the way the pointer went, from where it was pressed to where it
- * was let go, leaving out the jumps from there to the grid points the stroke
- * starts and ends on, which say nothing of the way it ran. Each end is
- * measured along it, if it got anywhere.
+ * `paths` are the ways each end is measured along, if they got anywhere:
+ * the stroke's own points by default; for a freehand stroke, the way the
+ * pointer went, from where it was pressed to where it was let go, leaving out
+ * the jumps from there to the grid points the stroke starts and ends on,
+ * which say nothing of the way it ran.
  *
  * A stroke that ends on the grid point it started on has no end to cut, as a
  * closed loop has none: two ends cut there could also take a short one whole.
@@ -154,19 +155,22 @@ export function gridCuts(
   points: readonly number[],
   reach: number,
   ends: { readonly start: boolean; readonly end: boolean },
-  path: readonly number[] = points,
+  paths: {
+    readonly start?: readonly number[];
+    readonly end?: readonly number[];
+  } = {},
 ): StrokeCuts | undefined {
   const last = points.length - 2;
   if (last < 2) return undefined;
   if (points[0] === points[last] && points[1] === points[last + 1]) {
     return undefined;
   }
+  const { start: from = points, end: to = points } = paths;
   const start = ends.start
-    ? (endCut(path, 0, 2, reach) ?? endCut(points, 0, 2, reach))
+    ? (endCut(from, 0, 2, reach) ?? endCut(points, 0, 2, reach))
     : undefined;
   const end = ends.end
-    ? (endCut(path, path.length - 2, -2, reach) ??
-      endCut(points, last, -2, reach))
+    ? (endCut(to, to.length - 2, -2, reach) ?? endCut(points, last, -2, reach))
     : undefined;
   if (start === undefined && end === undefined) return undefined;
   return {
@@ -321,8 +325,14 @@ export class DrawingSession {
   readonly #history: History<SessionState>;
   #saved: InkDocument;
   #active: ActiveStroke | undefined;
-  /** Where the stroke being drawn was pressed, before going to the grid. */
-  #press: InputPoint | undefined;
+  /**
+   * The way the pointer went for the stroke being drawn, in units: where it
+   * was pressed and each point it reported, before any went to the grid, with
+   * a straight segment as where the pointer is at its end now.
+   */
+  #pointer: number[] = [];
+  /** Whether the last of {@link #pointer} is a straight segment's end. */
+  #pointerStraight = false;
   /** The last input point of the stroke being drawn, before rounding. */
   #last: InputPoint | undefined;
   /**
@@ -505,7 +515,7 @@ export class DrawingSession {
         active,
         { start: active.onGrid, end: false },
         this.#corner !== undefined && this.fill,
-        this.#anchor === undefined ? this.#path(active) : undefined,
+        { start: this.#path() },
       );
     }
     // A polygon shows what a click where the pointer is would make: a side
@@ -526,19 +536,16 @@ export class DrawingSession {
 
   /**
    * The way the pointer went, in units, as {@link gridCuts} takes it: from
-   * the press to `release`, or as far as it has gone.
+   * the press to `release`, or as far as it has gone; undefined if it
+   * reported nowhere but the press, as for a tap, which then has only its
+   * points to go by.
    */
-  #path(active: ActiveStroke, release?: InputPoint): readonly number[] {
-    const press = this.#press;
-    return [
-      ...(press === undefined
-        ? active.points.slice(0, 2)
-        : [toUnits(press.x), toUnits(press.y)]),
-      ...active.points.slice(2),
-      ...(release === undefined
-        ? []
-        : [toUnits(release.x), toUnits(release.y)]),
-    ];
+  #path(release?: InputPoint): readonly number[] | undefined {
+    if (this.#pointer.length <= 2) return undefined;
+    // A copy, as the stroke's end goes on to change the pointer's own.
+    return release === undefined
+      ? [...this.#pointer]
+      : [...this.#pointer, toUnits(release.x), toUnits(release.y)];
   }
 
   /**
@@ -547,13 +554,16 @@ export class DrawingSession {
    * The way a cut end runs is measured over at least a cell of the grid and
    * twice the brush's width, so that the small turns near an end that a hand
    * makes, and the jump to a grid point at its start, don't decide it;
-   * `path` is the way the pointer went, as for {@link gridCuts}.
+   * `paths` are the ways each end is measured along, as for {@link gridCuts}.
    */
   #stroke(
     active: ActiveStroke,
     ends: { readonly start: boolean; readonly end: boolean },
     fill = false,
-    path?: readonly number[],
+    paths: {
+      readonly start?: readonly number[] | undefined;
+      readonly end?: readonly number[] | undefined;
+    } = {},
   ): Stroke {
     const stroke: Stroke = {
       tool: active.tool,
@@ -564,7 +574,10 @@ export class DrawingSession {
       ...(fill && active.points.length >= 6 ? { fill } : {}),
     };
     const reach = Math.max(2 * active.size, toUnits(this.grid.spacing));
-    const cut = gridCuts(active.points, reach, ends, path);
+    const cut = gridCuts(active.points, reach, ends, {
+      ...(paths.start === undefined ? {} : { start: paths.start }),
+      ...(paths.end === undefined ? {} : { end: paths.end }),
+    });
     return cut === undefined ? stroke : { ...stroke, cut };
   }
 
@@ -590,7 +603,6 @@ export class DrawingSession {
       onGrid: this.snap && flat,
       polygon,
     };
-    this.#press = point;
     this.#last = undefined;
     this.#anchor = undefined;
     this.#corner = ellipse ? this.#snapped(point) : undefined;
@@ -598,6 +610,9 @@ export class DrawingSession {
     this.#starting = polygon;
     this.#snaps = polygon ? [this.snap] : [];
     this.extend([this.#snapped(point)]);
+    // After the grid point the stroke starts on, which the pointer never was.
+    this.#pointer = [toUnits(point.x), toUnits(point.y)];
+    this.#pointerStraight = false;
     if (polygon) this.#record(this.#active, this.#snapped(point));
   }
 
@@ -636,9 +651,14 @@ export class DrawingSession {
     for (const point of points) {
       if (!straight) {
         this.#anchor = undefined;
+        this.#pointer.push(toUnits(point.x), toUnits(point.y));
+        this.#pointerStraight = false;
         this.#append(active, point);
         continue;
       }
+      if (this.#pointerStraight) this.#pointer.length -= 2;
+      this.#pointer.push(toUnits(point.x), toUnits(point.y));
+      this.#pointerStraight = true;
       const anchor = (this.#anchor ??= {
         point: this.#last ?? point,
         length: active.points.length,
@@ -689,11 +709,10 @@ export class DrawingSession {
     }
     const ellipse = this.#corner !== undefined;
     const straight = ellipse ? this.#circle : this.#anchor !== undefined;
-    // A straight segment runs as it does right to its end.
-    const path =
-      placed === undefined || straight
-        ? undefined
-        : this.#path(placed, release);
+    // The start goes by the way the pointer went, and so does the end, but
+    // for a straight segment, which runs as it does right to its end.
+    const start = this.#path(straight ? undefined : release);
+    const path = { start, end: straight ? undefined : start };
     // With the grid, the stroke ends on it, at the grid point nearest the
     // release, or else the last point, recorded in the release's place.
     const end = this.snap ? (release ?? this.#last) : release;
@@ -888,8 +907,8 @@ export class DrawingSession {
         active.points[index] = (active.points[index] ?? 0) + dx;
       }
     }
-    if (this.#press !== undefined) {
-      this.#press = { ...this.#press, x: this.#press.x + dxPixels };
+    for (let index = 0; index < this.#pointer.length; index += 2) {
+      this.#pointer[index] = (this.#pointer[index] ?? 0) + toUnits(dxPixels);
     }
     if (this.#last !== undefined) {
       this.#last = { ...this.#last, x: this.#last.x + dxPixels };

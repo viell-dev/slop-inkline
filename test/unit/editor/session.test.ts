@@ -8,6 +8,7 @@ import {
   gridOriginOf,
   plainGrid,
   snapToGrid,
+  type InputPoint,
 } from "../../../src/editor/session.ts";
 import { finerGrid, type Grid } from "../../../src/editor/guides.ts";
 import { emptyDocument } from "../../../src/ink/document.ts";
@@ -638,11 +639,13 @@ describe("gridCuts", () => {
     // Steep up to where the pointer was let go, then a jump sideways.
     const points = [0, 0, 0, 160, 96, 160];
     const end = { start: false, end: true };
-    expect(gridCuts(points, 64, end, [0, 0, 0, 160])).toEqual({ end: "down" });
+    expect(gridCuts(points, 64, end, { end: [0, 0, 0, 160] })).toEqual({
+      end: "down",
+    });
     // By default, along the stroke.
     expect(gridCuts(points, 64, end)).toEqual({ end: "right" });
     // A path that never left its start has only the jump to go by.
-    expect(gridCuts([0, 0, 96, 16], 64, end, [0, 0, 0, 0])).toEqual({
+    expect(gridCuts([0, 0, 96, 16], 64, end, { end: [0, 0, 0, 0] })).toEqual({
       end: "right",
     });
   });
@@ -819,6 +822,59 @@ describe("DrawingSession's cuts", () => {
     expect(session.activeStroke?.cut?.start).toBe("down");
     session.end(steps.at(-1));
     expect(session.document.strokes[0]?.cut?.start).toBe("down");
+  });
+
+  it("judges the start by the pointer when the stroke ends straight", () => {
+    // From the follow-up review of #137: freehand at 50° for 40 pixels from a
+    // press off the grid point, then straight with Shift to 60.
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.flatEnds = true;
+    const press = { x: 71.8, y: 71.8 };
+    const along = (distance: number): InputPoint => ({
+      x: press.x + distance * Math.cos((50 * Math.PI) / 180),
+      y: press.y - distance * Math.sin((50 * Math.PI) / 180),
+    });
+    session.begin(press);
+    session.extend(
+      Array.from({ length: 20 }, (_, step) => along(step * 2 + 2)),
+    );
+    session.extend([along(50), along(60)], true);
+    expect(session.activeStroke?.cut?.start).toBe("down");
+    session.end(along(60));
+    expect(session.document.strokes[0]?.cut?.start).toBe("down");
+  });
+
+  it("judges a short stroke's end by the pointer, not by the jump from the grid point", () => {
+    // From the follow-up review of #137: pressed off a grid point, which the
+    // stroke jumps from, and 20 pixels up and to the right at 35°, shorter
+    // than the M brush's reach.
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.flatEnds = true;
+    const press = { x: 56.1, y: 56.1 };
+    const along = (distance: number): InputPoint => ({
+      x: press.x + distance * Math.cos((35 * Math.PI) / 180),
+      y: press.y - distance * Math.sin((35 * Math.PI) / 180),
+    });
+    session.begin(press);
+    session.extend(
+      Array.from({ length: 10 }, (_, step) => along(step * 2 + 2)),
+    );
+    session.end(along(20));
+    expect(session.document.strokes[0]?.cut?.end).toBe("right");
+  });
+
+  it("goes by its points for a tap released elsewhere, with no move between", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.flatEnds = true;
+    session.begin({ x: 71.8, y: 71.8 });
+    session.end({ x: 79, y: 64 });
+    expect(session.document.strokes[0]?.cut).toEqual({
+      start: "left",
+      end: "right",
+    });
   });
 
   it("measures a stroke that is straight from its start along its segment", () => {
