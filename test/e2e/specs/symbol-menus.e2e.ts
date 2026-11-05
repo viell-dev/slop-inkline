@@ -7,6 +7,7 @@ import {
   choose,
   closeEditor,
   editorName,
+  escapeState,
   menuItems,
 } from "../support/menus.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
@@ -123,8 +124,22 @@ function editItems(items: readonly string[]): number {
   return items.filter((item) => item === "Edit symbol").length;
 }
 
-/** Closes the open menu. */
+/**
+ * Closes the open menu. No test here is about Escape, and CI once saw a table's
+ * menu stay open after it, as #78 saw the editor do, so a second press follows,
+ * after logging what #78 asks for.
+ */
 async function closeMenu(): Promise<void> {
+  const before = await escapeState();
+  await browser.keys(["Escape"]);
+  const closed = await browser
+    .$(".menu")
+    .waitForExist({ reverse: true, timeout: 3000 })
+    .catch(() => false);
+  if (closed) return;
+  console.log(
+    `A menu stayed open after Escape (#78): before ${before}, after ${await escapeState()}`,
+  );
   await browser.keys(["Escape"]);
   await browser.$(".menu").waitForExist({ reverse: true });
 }

@@ -43,7 +43,7 @@ export async function editorName(): Promise<string> {
  * Escape starts with the first call. #78 asks for this if the editor ever
  * stays open after Escape again.
  */
-async function escapeState(): Promise<string> {
+export async function escapeState(): Promise<string> {
   return browser.execute(() => {
     const root = document.documentElement;
     const describe = (target: EventTarget | null): string => {
