@@ -58,6 +58,13 @@ link would still lead elsewhere by its path in the vault.
   keeps the soft edges of that transparency: they spread across each enlarged
   pixel, while an opaque picture's edges stay sharp
   ([#96](https://github.com/viell-dev/slop-inkline/issues/96)).
+- **Make ink** cannot bring back what a picture has lost. A thin stroke with
+  soft edges, as in a small screenshot, comes out wider than it was drawn: about
+  a third wider for a stroke 2 pixels wide with a pixel of softness. Move the
+  threshold towards the stroke's own tone to thin it. A stroke thinner than its
+  softness also follows the picture's pixels, so that a straight line wavers
+  slightly when enlarged many times. Draw over it, or trace it by hand, where
+  that shows.
 - Every symbol shows in notes at the size and baseline Inkline saves, whatever
   geometry another tool wrote into its file.
 - Images from outside the vault are left as they are, even when their names end

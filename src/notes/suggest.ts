@@ -74,7 +74,7 @@ export function findSymbols(
 }
 
 /** Shows a symbol in a list: its picture, its name, and its folder. */
-function renderSymbol(app: App, file: TFile, el: HTMLElement): void {
+export function renderSymbol(app: App, file: TFile, el: HTMLElement): void {
   // Its picture is text, as the renderer paints symbols in text.
   el.addClass("inkline-suggestion", "inkline-text");
   // Beside its name, the picture says nothing more to a screen reader.

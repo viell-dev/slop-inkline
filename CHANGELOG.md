@@ -25,12 +25,36 @@ section is also its
   when it ended in a short sideways hook or snapped sideways to a grid point at
   either end. The way it runs is now judged over a longer stretch of what you
   drew. A stroke that ends on the grid point it started on is no longer cut.
+- `main.js` now carries the licence notice of perfect-freehand, which it
+  bundles, and the README credits it. Earlier releases left the notice out.
 - A shape drawn with the eraser, with Ellipse or Polygon, can now be seen while
   it is drawn: it is tinted over the drawing, even where there is no ink to take
   away, and the tint isn't part of the symbol.
+- Keep the edges of **Make ink** sharp on a dim picture, such as a dark
+  screenshot of a game
+  ([dim screenshots](https://github.com/viell-dev/slop-inkline/issues/135)). The
+  ink's edge now narrows with the contrast between the two sides of the
+  threshold; its fixed width spanned most of the levels of such a picture, and
+  left its edges as soft as they were. A picture whose ink and ground are mostly
+  pure black and white makes the same ink as before; other pictures, such as
+  screenshots of small text, get slightly sharper edges. A picture with any
+  transparency keeps the whole ramp, and its soft edges. Symbols made before
+  keep their ink; make ink of the picture again to sharpen one.
 
 ### Changed
 
+- **Fill** is now **Toggle fill**, with a new icon, as it is a switch for the
+  shapes drawn next and not a paint bucket to click a shape with.
+- The toolbar has three rows: the drawing tools; the brush sizes, Undo, Redo and
+  Clear; then the view and saving. Zoom keeps them all in view, growing less
+  tall in a window too short for it.
+- **Next** has the same colour as **Save**, and **Fit**'s tooltip says what it
+  does.
+- **Copy from** shows each symbol's picture beside its name, as the list of
+  symbols to insert does.
+- The Grid size slider shows only its number, which had wrapped onto two lines
+  with its unit, and the guide settings say "shown in purple" and so on rather
+  than "by default", as the colours aren't a choice there.
 - **Zoom** doubles the grid as well as the drawing: while zoomed it has twice as
   many cells each way, so the default 5 cells across the x-height become 10.
   Every point of the usual grid stays a point of the finer one, so a drawing

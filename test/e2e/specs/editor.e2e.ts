@@ -1565,6 +1565,16 @@ describe("The editor", function () {
     await tooltip("size-0", "Brush size S (1)");
     await tooltip("pen", "Pen (P)");
     await tooltip("next", "Next: save and draw the next one (Mod+Shift+Enter)");
+    await tooltip(
+      "fit",
+      "Fit: centre the drawing in the view, and show all of it if it is wider; the drawing itself stays as it is (F)",
+    );
+    // Both save, so both look it.
+    for (const id of ["save", "next"]) {
+      expect(
+        await browser.$(`[data-inkline-button="${id}"]`).getAttribute("class"),
+      ).toContain("mod-cta");
+    }
   });
 
   it("saves a stroke still being drawn when saving and closing", async function () {
@@ -3810,6 +3820,32 @@ describe("The editor", function () {
       await createSquare();
       await insert();
       await browser.$('[data-inkline-button="copy"]').click();
+      // The list shows each symbol's picture beside its name.
+      await browser.waitUntil(
+        async () =>
+          await browser.execute(() => {
+            const pictures = [
+              ...document.querySelectorAll<HTMLImageElement>(
+                ".prompt .inkline-suggestion-picture",
+              ),
+            ];
+            return (
+              pictures.length > 0 &&
+              pictures.every(
+                (picture) => picture.complete && picture.naturalWidth > 0,
+              )
+            );
+          }),
+        { timeoutMsg: "no pictures in the list to copy from" },
+      );
+      expect(
+        await browser.execute(() =>
+          [
+            ...document.querySelectorAll(".prompt .inkline-suggestion-name"),
+          ].map((name) => name.textContent),
+        ),
+      ).toContain("square");
+      await saveScreenshot("copy-from-list");
       await chooseSymbol("square");
       await waitForStatus("Started from a copy of square");
       await browser.keys(["Control", "Enter"]);
@@ -4359,9 +4395,9 @@ describe("The editor", function () {
       await setThreshold(200);
       await browser.keys(["Control", "Enter"]);
       await waitClosed();
-      // Three times finer, as in the first test; at 200, well above the grey,
-      // the ink reaches one sample past its edge on each side.
-      expect(await baseSize("001.ink.png")).toEqual([62, 62]);
+      // Three times finer, as in the first test; the ramp between this grey
+      // and white is half as wide, and at 200 the ink stops at the grey's edge.
+      expect(await baseSize("001.ink.png")).toEqual([60, 60]);
     });
 
     it("makes the ink being previewed on Mod+S, and on Next", async function () {

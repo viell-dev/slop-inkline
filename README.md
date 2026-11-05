@@ -55,4 +55,7 @@ file holds, for tools that read or write them.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). The plugin's `main.js` includes
+[perfect-freehand](https://github.com/steveruizok/perfect-freehand), copyright
+2021 Stephen Ruiz Ltd, under the MIT licence; its notice is at the top of that
+file.
