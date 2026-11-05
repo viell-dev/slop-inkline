@@ -64,7 +64,7 @@ lines at its top, bottom, and sides. A circle is on the grid along its longer
 side; across the other it can end between lines, as the grid's rows and columns
 are spaced differently. For a half circle, draw the circle, then erase the half
 you don't want with eraser strokes that end on the line across its middle: on
-the grid, their ends stop flush with that line.
+the grid with **Flat ends** on, their ends stop flush with that line.
 
 ## Polygons
 
@@ -124,16 +124,17 @@ default grid size, the cap height then lies 7 cells above the baseline.
 
 **Flat ends** (T), with the grid on, stops a freehand stroke's ends flush with
 the grid line they lie on, instead of rounding past it. **Unreleased:** it is a
-switch, off in a new editor, and **Next** keeps it; in 0.3.0-alpha.8 this always
-happens with the grid on. The cut runs along the line across the stroke: a row
-for a stroke that comes in at 45° or steeper, as the legs of an A come down to
-the baseline, and a column for a flatter one, judged over the last grid cell or
-two brush widths of what you drew, whichever is longer, and leaving out the jump
-to the grid point. So a stroke drawn down to the baseline sits on it, with
-nothing below to erase. A dot stays round, as does an end drawn with the grid
-off. The eraser's ends are cut the same way, so erasing up to a line leaves a
-straight edge there. Shapes are never cut: an ellipse has no ends, and a polygon
-keeps its square ones.
+switch, off in a new editor, and **Next** keeps it; from 0.3.0-alpha.5 to
+alpha.8 this always happens with the grid on. The cut runs along the line across
+the stroke: a row for a stroke that comes in at 45° or steeper, as the legs of
+an A come down to the baseline, and a column for a flatter one, judged over the
+last grid cell or two brush widths of what you drew, whichever is longer, and
+leaving out the jumps to the grid points. A stroke that ends on the grid point
+it started on keeps its round ends, as a closed loop has none to cut. So a
+stroke drawn down to the baseline sits on it, with nothing below to erase. A dot
+stays round, as does an end drawn with the grid off. The eraser's ends are cut
+the same way, so erasing up to a line leaves a straight edge there. Shapes are
+never cut: an ellipse has no ends, and a polygon keeps its square ones.
 
 The grid keeps its place through saves, and on a symbol you open again it lines
 up with most of its strokes, if the grid has the same size as when you drew

@@ -529,7 +529,7 @@ describe("gridCuts", () => {
 
   it("measures a short stroke that comes back from its farthest point", () => {
     // Down and back up, shorter than the reach: both ends are at the top.
-    expect(gridCuts([0, 0, 0, 160, 0, 0], 192, both)).toEqual({
+    expect(gridCuts([0, 0, 0, 160, 16, 0], 192, both)).toEqual({
       start: "up",
       end: "up",
     });
@@ -625,16 +625,55 @@ describe("DrawingSession's cuts", () => {
     expect(session.document.strokes[1]).not.toHaveProperty("cut");
   });
 
-  it("cuts both ends of a short stroke drawn out and back on the grid", () => {
+  it("leaves a stroke that ends on the grid point it started on uncut", () => {
     const session = new DrawingSession(emptyDocument);
     session.snap = true;
     session.flatEnds = true;
     session.begin({ x: 64, y: 64 });
     session.extend([{ x: 64, y: 74 }]);
     session.end({ x: 64, y: 64 });
+    expect(session.document.strokes[0]).not.toHaveProperty("cut");
+    // From the independent review of #137: a short mark that snaps back to
+    // its start would have been cut away whole, from both sides of the row.
+    session.begin({ x: 71, y: 71 });
+    session.extend([{ x: 71, y: 66 }]);
+    session.end({ x: 71, y: 66 });
+    const mark = session.document.strokes[1];
+    expect(mark?.points.slice(0, 2)).toEqual(mark?.points.slice(-2));
+    expect(mark).not.toHaveProperty("cut");
+  });
+
+  it("judges a stroke's start by the pointer, whatever the jump to its grid point", () => {
+    // From the independent review of #137: pressed 7.8 pixels right of and
+    // below a grid point, up and to the right at 50°, which is steep, though
+    // from the grid point it runs flatter than 45°.
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.flatEnds = true;
+    const press = { x: 71.8, y: 71.8 };
+    session.begin(press);
+    const steps = Array.from({ length: 30 }, (_, step) => ({
+      x: press.x + (step + 1) * 2 * Math.cos((50 * Math.PI) / 180),
+      y: press.y - (step + 1) * 2 * Math.sin((50 * Math.PI) / 180),
+    }));
+    session.extend(steps);
+    // While drawn, as when saved.
+    expect(session.activeStroke?.cut?.start).toBe("down");
+    session.end(steps.at(-1));
+    expect(session.document.strokes[0]?.cut?.start).toBe("down");
+  });
+
+  it("measures a stroke that is straight from its start along its segment", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.flatEnds = true;
+    session.begin({ x: 71, y: 71 });
+    session.extend([{ x: 128, y: 144 }], true);
+    expect(session.activeStroke?.cut?.start).toBe("up");
+    session.end({ x: 128, y: 144 });
     expect(session.document.strokes[0]?.cut).toEqual({
       start: "up",
-      end: "up",
+      end: "down",
     });
   });
 

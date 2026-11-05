@@ -12,8 +12,8 @@ section is also its
 
 - **Flat ends** (T) turns the flat ends of strokes on the grid on and off, and a
   new editor starts with it off, so that a stroke keeps its round ends unless
-  you ask for them cut. **Next** keeps it. In earlier versions, every stroke
-  drawn on the grid was cut.
+  you ask for them cut. **Next** keeps it. From 0.3.0-alpha.5 to alpha.8, every
+  stroke drawn on the grid was cut.
 
 ### Fixed
 
@@ -22,8 +22,9 @@ section is also its
   grid, as they are off it. A polygon saved by 0.3.0-alpha.7 or alpha.8 shows
   its stored pixels, and loses its flat ends if you edit it.
 - A freehand stroke with Flat ends on could be cut along the wrong grid line,
-  when it ended in a short sideways hook or snapped sideways to its grid point.
-  The way it runs is now judged over a longer stretch of what you drew.
+  when it ended in a short sideways hook or snapped sideways to a grid point at
+  either end. The way it runs is now judged over a longer stretch of what you
+  drew. A stroke that ends on the grid point it started on is no longer cut.
 
 ### Changed
 
