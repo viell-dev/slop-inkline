@@ -15,6 +15,16 @@ section is also its
 - A shape drawn with the eraser, with Ellipse or Polygon, can now be seen while
   it is drawn: it is tinted over the drawing, even where there is no ink to take
   away, and the tint isn't part of the symbol.
+- Keep the edges of **Make ink** sharp on a dim picture, such as a dark
+  screenshot of a game
+  ([dim screenshots](https://github.com/viell-dev/slop-inkline/issues/135)). The
+  ink's edge now narrows with the contrast between the two sides of the
+  threshold; its fixed width spanned most of the levels of such a picture, and
+  left its edges as soft as they were. A picture whose ink and ground are mostly
+  pure black and white makes the same ink as before; other pictures, such as
+  screenshots of small text, get slightly sharper edges. A picture with any
+  transparency keeps the whole ramp, and its soft edges. Symbols made before
+  keep their ink; make ink of the picture again to sharpen one.
 
 ### Changed
 
