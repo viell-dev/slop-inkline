@@ -82,7 +82,9 @@ link would still lead elsewhere by its path in the vault.
   glyph. A capture of a window with a wide shadow can fall on that side when all
   of it is in view, and then starts with its ground as the ink: move or scale
   the picture to bring less of the shadow into view
-  ([#148](https://github.com/viell-dev/slop-inkline/issues/148)).
+  ([#148](https://github.com/viell-dev/slop-inkline/issues/148)). The preview of
+  a very large capture with dark ink can show a rim along the window's edge,
+  which Apply does not make.
 - Every symbol shows in notes at the size and baseline Inkline saves, whatever
   geometry another tool wrote into its file.
 - Images from outside the vault are left as they are, even when their names end
