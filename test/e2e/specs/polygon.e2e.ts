@@ -315,6 +315,8 @@ describe("Polygon", function () {
     const side = shown.cut.slice(shown.from, shown.to);
     expect(Math.min(...side)).toBeGreaterThanOrEqual(250);
     expect(shown.cut).toEqual(shown.uncut);
+  });
+
   it("shows an eraser shape while it is placed, and nothing of it after", async function () {
     await openPolygon(false);
     await browser.keys("e");
