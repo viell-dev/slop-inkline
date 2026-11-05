@@ -258,6 +258,13 @@ Each of these asserts a budget beside its correctness checks:
   ([update.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/manual/update.e2e.ts)).
   This runs separately from ordinary CI because it needs both release artifacts;
   the release PR records its inputs and results.
+- Installing and updating through BRAT, an optional third-party route, has a
+  separate check against the published releases. BRAT's own dialog installs the
+  highest release and a chosen one, downloading only the three plugin files, and
+  an update from one to the other keeps the drawing, note and preferences, and
+  an open drawing as a draft
+  ([brat.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/manual/brat.e2e.ts)).
+  It needs BRAT's release and GitHub, so it is run by hand and gates no release.
 - A publication that fails part way can run again without replacing anything
   published: each failure is run against a fake GitHub
   ([publish.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/publish.test.ts)).

@@ -142,6 +142,27 @@ or text drawn by the host, a test may measure the pixels of a screenshot of the
 elements concerned, with stated tolerances. Test vaults in `test/e2e/vaults/`
 and every drawing a test uses are synthetic.
 
+`test/e2e/manual/brat.e2e.ts` checks installing and updating through BRAT
+against the published releases, on both default Obsidian versions. It stays
+outside the suite and gates no release, as it needs BRAT's own release and
+GitHub. Download BRAT's `main.js`, `manifest.json`, and `styles.css` into a new
+directory, name the highest published version and an older one to update from,
+and run it in the Docker image:
+
+```sh
+docker build --file test/e2e/Dockerfile --tag inkline-e2e .
+docker run --rm --init --shm-size=1g \
+  --env E2E_PLUGIN_DIR=/brat \
+  --env E2E_BRAT_LATEST=0.9.0 --env E2E_BRAT_START=0.3.0-alpha.8 \
+  --volume inkline-obsidian-cache:/cache \
+  --volume "$PWD/test-results/e2e:/out" --volume "$PWD/brat:/brat:ro" \
+  inkline-e2e --spec test/e2e/manual/brat.e2e.ts
+```
+
+It uses no GitHub token, so its requests count against the 60 an hour that
+GitHub allows an address: it makes about 16 for each Obsidian version, and
+refuses to start with fewer than 50 left.
+
 CI runs the end-to-end tests on Linux for every pull request, and the Docker
 image weekly and on request.
 

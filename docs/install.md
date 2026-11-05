@@ -5,7 +5,8 @@
 Inkline is distributed through
 [GitHub releases](https://github.com/viell-dev/slop-inkline/releases). It is not
 in Obsidian's community plugin directory. Install the release files manually; no
-separate installer plugin is needed.
+separate installer plugin is needed. If you would rather have updates arrive by
+themselves, [BRAT](#install-with-brat) is an optional alternative.
 
 :::
 
@@ -96,6 +97,47 @@ newer version than the one you have opens with a notice to update Inkline rather
 than in the editor, so that it is never saved over by a version that does not
 understand it.
 
+## Install with BRAT
+
+[BRAT](https://github.com/TfTHacker/obsidian42-brat) is a third-party plugin
+that installs other plugins from their GitHub releases and keeps them updated.
+It is an optional alternative to the steps above, never a requirement, and it
+installs the same `main.js`, `manifest.json`, and `styles.css`. Inkline's tests
+show that it works, not that it is safe to use, and BRAT does not check
+`SHA256SUMS`.
+
+1. Under **Settings → Community plugins**, turn community plugins on if needed,
+   select **Browse**, then install and enable **BRAT**.
+2. Run **BRAT: Plugins: Add a beta plugin for testing (with or without
+   version)** from the command palette.
+3. Enter `viell-dev/slop-inkline` under **Repository** and press Tab. BRAT lists
+   the versions once you leave the field.
+4. Select **Select a version...** and choose **latest**, to follow every new
+   release, or a version number, to stay on that release.
+5. Leave **Enable after installing the plugin** on and **GitHub token** empty,
+   and select **Add plugin**.
+
+**latest** always takes the highest version number, whether or not GitHub marks
+that release as a pre-release: BRAT has no setting to leave pre-releases out.
+Every release so far is a pre-release, so it gives you the newest of them. To
+stay on public releases once there are some, choose a public version, such as
+`1.0.0`, and change it yourself.
+
+With **latest**, BRAT looks for a new version about a minute after Obsidian
+starts, unless you turn off **Auto-update plugins at startup** in its settings,
+and when you run **BRAT: Plugins: Check for updates to all beta plugins and
+UPDATE**. It replaces the three plugin files and reloads Inkline, so you need
+not turn it off first. `data.json` and your drawings stay as they are. An open
+editor closes when Inkline reloads, and keeps its unsaved strokes as a
+[draft](./recovery.md#drafts-after-a-crash), which it offers back when you next
+open that symbol, or a new symbol in the same note. The file format can still
+change until 1.0.0, as [Install the ZIP](#install-the-zip) says, so choose a
+version number if you want to decide when you update.
+
+BRAT never updates a version you chose. To change it, or to move between a
+version and **latest**, repeat steps 2 to 5 with your new choice, and BRAT
+installs it at once.
+
 ## Turn off or remove
 
 Turn Inkline off under **Settings → Community plugins**, or uninstall it there,
@@ -104,3 +146,9 @@ embeds, which Obsidian shows as images, as
 [Without Inkline](./without-inkline.md) describes. Turning Inkline off with an
 editor open keeps its unsaved strokes as a draft, which the editor offers back
 when Inkline is on again.
+
+If you installed Inkline with BRAT, also remove `viell-dev/slop-inkline` from
+the **Beta plugin list** in BRAT's settings, with its **×** button, twice: BRAT
+otherwise installs it again at its next check. Removing it there leaves the
+plugin installed. A plugin added since Obsidian started can be missing from the
+list until you restart Obsidian.
