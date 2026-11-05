@@ -475,6 +475,62 @@ describe("DrawingSession", () => {
   });
 });
 
+describe("DrawingSession's moveDrawing", () => {
+  const withStroke = (): DrawingSession => {
+    const session = new DrawingSession(emptyDocument);
+    session.begin({ x: 10, y: 20 });
+    session.end({ x: 30, y: 40 });
+    return session;
+  };
+
+  it("moves the drawing, taking moves in a row as one step", () => {
+    const session = withStroke();
+    const before = session.document;
+    expect(session.moveDrawing(-16)).toBe(true);
+    session.moveDrawing(-16);
+    session.moveDrawing(16 * 3);
+    const ys = session.document.strokes[0]?.points.filter(
+      (_, index) => index % 2 === 1,
+    );
+    expect(ys?.[0]).toBe(20 * 16 + 16);
+    expect(session.dirty).toBe(true);
+    session.undo();
+    expect(session.document).toBe(before);
+    session.redo();
+    expect(session.document.strokes[0]?.points[1]).toBe(20 * 16 + 16);
+  });
+
+  it("makes a new step after anything else", () => {
+    const session = withStroke();
+    session.moveDrawing(16);
+    session.begin({ x: 50, y: 20 });
+    session.end({ x: 60, y: 40 });
+    const drawn = session.document;
+    session.moveDrawing(16);
+    session.undo();
+    expect(session.document).toBe(drawn);
+  });
+
+  it("keeps the grid where it was", () => {
+    const session = withStroke();
+    session.snap = true;
+    const origin = session.gridOrigin;
+    session.moveDrawing(32);
+    expect(session.gridOrigin).toBe(origin);
+    session.undo();
+    expect(session.gridOrigin).toBe(origin);
+  });
+
+  it("moves nothing while drawing, or with nothing drawn", () => {
+    const empty = new DrawingSession(emptyDocument);
+    expect(empty.moveDrawing(16)).toBe(false);
+    expect(empty.canUndo).toBe(false);
+    const session = withStroke();
+    session.begin({ x: 50, y: 20 });
+    expect(session.moveDrawing(16)).toBe(false);
+  });
+});
+
 describe("gridCuts", () => {
   const reach = 32;
   const both = { start: true, end: true };

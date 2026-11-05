@@ -141,6 +141,14 @@ x-height, baseline, and descender, measured from the font your vault's text
 uses, and the edges the saved image will have. **Fit** (F) fits the drawing in
 view; a symbol wider than the usual view opens whole.
 
+**Unreleased:** **Up** (ArrowUp) and **Down** (ArrowDown) move the whole drawing
+up or down by a pixel of the drawing, or by a column of the grid with Shift, so
+that a shape drawn against a line can sit on it. They move every stroke and any
+ink made from a picture, and one Undo takes back moves made in a row. Ink moved
+past the top or bottom of the drawing area stays in the drawing and can be moved
+back, but it isn't in the saved image while it is out there. While **Move** is
+on, the arrow keys move the picture instead.
+
 **Zoom** (Z) shows the drawing twice as large, in a taller drawing area, for
 fine detail; it grows no taller than a little over half the window, and shows
 more width instead. The wheel, or the left and right arrow keys, move along the

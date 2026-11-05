@@ -8,6 +8,12 @@ section is also its
 
 ## Unreleased
 
+### Added
+
+- **Up** and **Down**, and the up and down arrow keys, move the whole drawing by
+  a pixel, or by a grid cell with Shift, so that a shape drawn against a line
+  can sit on it. One Undo takes back moves made in a row.
+
 ### Changed
 
 - Simplify documentation navigation and maintenance guidance, clarify the draft

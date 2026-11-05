@@ -1,6 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { History } from "../../../src/ink/history.ts";
 
+describe("History's amend", () => {
+  it("changes the present within its step, and forgets what could be redone", () => {
+    const history = new History("a");
+    history.push("b");
+    history.amend("c");
+    expect(history.present).toBe("c");
+    history.undo();
+    expect(history.present).toBe("a");
+    history.redo();
+    expect(history.present).toBe("c");
+    history.push("d");
+    history.undo();
+    history.amend("e");
+    expect(history.canRedo).toBe(false);
+  });
+});
+
 describe("History", () => {
   it("undoes and redoes in order", () => {
     const history = new History("a");

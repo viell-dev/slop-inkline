@@ -9,7 +9,12 @@ import {
   type StrokeCuts,
   type Tool,
 } from "../format/record.ts";
-import { documentMover, toUnits, type InkDocument } from "../ink/document.ts";
+import {
+  documentMover,
+  moveDocument,
+  toUnits,
+  type InkDocument,
+} from "../ink/document.ts";
 import { lineBox } from "../ink/geometry.ts";
 import { History } from "../ink/history.ts";
 import type { Grid } from "./guides.ts";
@@ -343,6 +348,8 @@ export class DrawingSession {
   #grid: Grid = plainGrid;
   /** A grid laid out while a stroke was being drawn, for when it ends. */
   #nextGrid: Grid | undefined;
+  /** What the last {@link moveDrawing} made, as moves in a row are one step. */
+  #moved: InkDocument | undefined;
   /** The last guess at a document's grid, for {@link gridOrigin}. */
   #guessed:
     { document: InkDocument; spacing: number; origin: number } | undefined;
@@ -785,6 +792,28 @@ export class DrawingSession {
       return;
     }
     this.#push({ strokes: [] });
+  }
+
+  /**
+   * Moves the whole drawing up or down by `dyUnits`, as one undoable step
+   * with the moves just before it, so that one undo takes back a key held
+   * down. Returns whether there was a drawing to move: a stroke being drawn
+   * keeps everything.
+   */
+  moveDrawing(dyUnits: number): boolean {
+    const { document } = this;
+    if (
+      this.#active !== undefined ||
+      (document.strokes.length === 0 && document.base === undefined)
+    ) {
+      return false;
+    }
+    const moved = moveDocument(document, 0, dyUnits);
+    const state = { document: moved, gridOrigin: this.gridOrigin };
+    if (document === this.#moved) this.#history.amend(state);
+    else this.#history.push(state);
+    this.#moved = moved;
+    return true;
   }
 
   /**

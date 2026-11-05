@@ -53,6 +53,8 @@ immediately. Select the name field to type a name; Enter returns to drawing.
 | Shift, held while drawing |             | Draw a straight line, or a circle with Ellipse.         |
 | V                         | Copy from   | Start a new symbol from a copy of another.              |
 | F                         | Fit         | Fit the drawing in view.                                |
+| ArrowUp                   | Up          | Move the drawing up a pixel, or a grid cell with Shift. |
+| ArrowDown                 | Down        | Move it down the same way.                              |
 | Z                         | Zoom        | Show the drawing twice as large, or as usual again.     |
 | M                         | Move        | Move and scale the picture being traced, or draw again. |
 | I                         | Make ink    | Turn the picture being traced into ink.                 |
@@ -63,11 +65,12 @@ immediately. Select the name field to type a name; Enter returns to drawing.
 
 Closing the editor with unsaved changes asks first. While **Move** is on, the
 arrow keys move the picture, with Shift by one column of the grid, and + and −
-scale it. Otherwise, while **Zoom** is on, the left and right arrow keys, and
-the wheel, move along the drawing. Copy from and Next are only in the editor for
-a new symbol. Make ink's threshold is a slider, which its arrow keys move;
-**Light ink**, **Apply**, and **Cancel** are buttons, as are **Choose
-picture…**, which opens the system's file dialog, and **Remove picture**.
+scale it. Otherwise, the up and down arrow keys move the drawing, and while
+**Zoom** is on, the left and right arrow keys, and the wheel, move along it.
+Copy from and Next are only in the editor for a new symbol. Make ink's threshold
+is a slider, which its arrow keys move; **Light ink**, **Apply**, and **Cancel**
+are buttons, as are **Choose picture…**, which opens the system's file dialog,
+and **Remove picture**.
 
 The **Help** button opens a quick start and guide explanations. Esc closes Help
 and returns focus to the drawing area.

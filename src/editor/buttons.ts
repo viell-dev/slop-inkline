@@ -37,6 +37,8 @@ export const buttonIcons: Readonly<Record<string, string>> = {
   grid: "grid",
   copy: "copy",
   fit: "scan",
+  "move-up": "arrow-up",
+  "move-down": "arrow-down",
   zoom: "zoom-in",
   save: "save",
   next: "arrow-right",
