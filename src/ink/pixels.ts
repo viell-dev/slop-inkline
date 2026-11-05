@@ -247,8 +247,10 @@ function medianBetween(
 /**
  * How far apart the two sides of `threshold` lie in `values`: the median of
  * those at or above it less the median of those below it, so that a few
- * bright pixels far from the shapes being traced count for little. 255 with
- * none on one side, where there are no two sides to tell apart.
+ * bright pixels far from the shapes being traced count for little. With none
+ * on one side, as for a threshold past all of them, the distance from the
+ * threshold to the other side's median, so that moving it on past them fades
+ * the ink rather than making more; 255 for no values. From 1 to 255.
  */
 export function thresholdContrast(
   values: Uint8ClampedArray,
@@ -263,7 +265,15 @@ export function thresholdContrast(
   const middle = Math.min(256, Math.max(0, Math.ceil(threshold)));
   const dark = medianBetween(counts, 0, middle);
   const light = medianBetween(counts, middle, 256);
-  return dark === undefined || light === undefined ? 255 : light - dark;
+  const apart =
+    dark === undefined
+      ? light === undefined
+        ? 255
+        : light - threshold
+      : light === undefined
+        ? threshold - dark
+        : light - dark;
+  return Math.min(255, Math.max(1, apart));
 }
 
 /**

@@ -222,13 +222,43 @@ describe("thresholdContrast", () => {
     expect(thresholdContrast(values, 29)).toBe(42);
   });
 
-  it("is the whole range with nothing on one side of the threshold", () => {
+  it("is how far the threshold is from the other side with nothing on one", () => {
+    // From the independent review of #146: 255 there made a threshold moved
+    // past the ink's brightest level make more ink, not less.
     const values = Uint8ClampedArray.from([8, 50]);
-    expect(thresholdContrast(values, 8)).toBe(255);
-    expect(thresholdContrast(values, 51)).toBe(255);
-    expect(thresholdContrast(values, thresholdRange.min)).toBe(255);
+    expect(thresholdContrast(values, 51)).toBe(43);
+    expect(thresholdContrast(values, 100)).toBe(92);
+    expect(thresholdContrast(values, thresholdRange.min)).toBe(
+      8 - thresholdRange.min,
+    );
+    // At least 1, and at most the whole range.
+    expect(thresholdContrast(values, 8)).toBe(1);
     expect(thresholdContrast(values, thresholdRange.max)).toBe(255);
     expect(thresholdContrast(new Uint8ClampedArray(), 128)).toBe(255);
+  });
+
+  it("fades the ink as the threshold moves past its brightest level", () => {
+    // Light strokes on a dark ground, dim, with soft edges.
+    const picture = {
+      width: 8,
+      height: 1,
+      values: Uint8ClampedArray.from([8, 8, 20, 40, 50, 50, 40, 20]),
+    };
+    const place = { x: 0, y: 0, scale: 4 };
+    const region = { left: 0, top: 0, right: 32, bottom: 1 };
+    const enlarged = enlargedRegion(picture, place, region, 4);
+    if (enlarged === undefined) throw new Error("no part");
+    const ink = (threshold: number): number =>
+      [
+        ...(traceRegion(enlarged.part, enlarged.place, threshold, true)
+          ?.alpha ?? []),
+      ].reduce((sum, value) => sum + value, 0);
+    let before = ink(30);
+    for (let threshold = 31; threshold <= 80; threshold++) {
+      const now = ink(threshold);
+      expect(now, `threshold ${String(threshold)}`).toBeLessThanOrEqual(before);
+      before = now;
+    }
   });
 });
 
