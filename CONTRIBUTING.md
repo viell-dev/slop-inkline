@@ -160,7 +160,7 @@ docker run --rm --init --shm-size=1g \
 ```
 
 It uses no GitHub token, so its requests count against the 60 an hour that
-GitHub allows an address: it makes about 25 for each Obsidian version, and
+GitHub allows an address: it makes about 16 for each Obsidian version, and
 refuses to start with fewer than 50 left.
 
 CI runs the end-to-end tests on Linux for every pull request, and the Docker

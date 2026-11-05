@@ -283,7 +283,7 @@ describe("Installing and updating through BRAT", function () {
       await download("https://api.github.com/rate_limit"),
     ) as { resources: { core: { remaining: number } } };
     const { remaining } = limits.resources.core;
-    // Each Obsidian version's run makes about 25 of them.
+    // A run on both Obsidian versions makes about 32 of them.
     if (remaining < 50) {
       throw new Error(
         `GitHub allows ${String(remaining)} more unauthenticated requests this hour; wait for its limit to reset`,
