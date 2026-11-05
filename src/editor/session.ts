@@ -102,59 +102,70 @@ function cutAt(points: readonly number[], at: number, from: number): Cut {
 }
 
 /**
+ * The cut for the end at `at` in `points`, stepping by `step` from it along
+ * the stroke: measured from the first point at least `reach` units from it,
+ * or else the farthest. Undefined if every point is the end's own.
+ */
+function endCut(
+  points: readonly number[],
+  at: number,
+  step: number,
+  reach: number,
+): Cut | undefined {
+  const away = (index: number): number =>
+    Math.hypot(
+      (points[at] ?? 0) - (points[index] ?? 0),
+      (points[at + 1] ?? 0) - (points[index + 1] ?? 0),
+    );
+  let farthest: number | undefined;
+  let most = 0;
+  for (
+    let index = at + step;
+    index >= 0 && index < points.length;
+    index += step
+  ) {
+    const distance = away(index);
+    if (distance >= reach) return cutAt(points, at, index);
+    if (distance > most) {
+      most = distance;
+      farthest = index;
+    }
+  }
+  return farthest === undefined ? undefined : cutAt(points, at, farthest);
+}
+
+/**
  * Where a stroke drawn on the grid is cut flat, for its `x, y` points in
  * units: each end named in `ends`, which lies on a grid point, along the grid
  * line that crosses the stroke most squarely there, on the side away from
  * the stroke. The way the stroke runs at an end comes from the nearest point
  * at least `reach` units from it, or the farthest one; a stroke that never
  * leaves its end, as a dot, is not cut there.
+ *
+ * `path` is the way the pointer went, up to where it was let go, leaving out
+ * any jump from there to the grid point the stroke ends on, which says
+ * nothing of the way it ran. The last end is measured along it, if it got
+ * anywhere.
  */
 export function gridCuts(
   points: readonly number[],
   reach: number,
   ends: { readonly start: boolean; readonly end: boolean },
+  path: readonly number[] = points,
 ): StrokeCuts | undefined {
   const last = points.length - 2;
   if (last < 2) return undefined;
-  const distance = (at: number, from: number): number =>
-    Math.hypot(
-      (points[at] ?? 0) - (points[from] ?? 0),
-      (points[at + 1] ?? 0) - (points[from + 1] ?? 0),
-    );
-  /**
-   * The point the way the end at `at` runs is measured from, stepping by
-   * `step` from it: the first at least `reach` away, or else the farthest,
-   * or undefined if every point is the end's own.
-   */
-  const from = (at: number, step: number): number | undefined => {
-    let farthest: number | undefined;
-    let most = 0;
-    for (let index = at + step; index >= 0 && index <= last; index += step) {
-      const away = distance(at, index);
-      if (away >= reach) return index;
-      if (away > most) {
-        most = away;
-        farthest = index;
-      }
-    }
-    return farthest;
-  };
-  const after = ends.start ? from(0, 2) : undefined;
-  const before = ends.end ? from(last, -2) : undefined;
-  const start = after === undefined ? undefined : cutAt(points, 0, after);
-  const end = before === undefined ? undefined : cutAt(points, last, before);
+  const start = ends.start ? endCut(points, 0, 2, reach) : undefined;
+  const end = ends.end
+    ? (endCut(path, path.length - 2, -2, reach) ??
+      endCut(points, last, -2, reach))
+    : undefined;
   if (start === undefined && end === undefined) return undefined;
   return {
     ...(start === undefined ? {} : { start }),
     ...(end === undefined ? {} : { end }),
   };
 }
-
-/**
- * The least distance, in units, that the way a stroke runs at a cut end is
- * measured over: two pixels, or the brush's width if it is wider.
- */
-const cutReach = 2 * unitsPerPixel;
 
 /** `x`, in pixels, moved by whole spacings to within the first one. */
 function withinSpacing(x: number, spacing: number): number {
@@ -223,6 +234,8 @@ interface ActiveStroke {
   readonly tool: Tool;
   readonly size: number;
   readonly points: number[];
+  /** Whether its ends are cut flat where they lie on the grid. */
+  readonly flat: boolean;
   /** Whether it started on the grid, and so is cut flat at its start. */
   readonly onGrid: boolean;
   /** Whether it is a polygon, whose points are the corners placed so far. */
@@ -280,6 +293,9 @@ export function ellipsePoints(
   });
 }
 
+/** Neither end of a stroke is cut, as for a polygon. */
+const uncut = { start: false, end: false } as const;
+
 /**
  * What the pointer draws on the drawing area: a stroke as it goes, an
  * ellipse across the box dragged, or a polygon with a corner at each click.
@@ -317,7 +333,7 @@ export class DrawingSession {
   #starting = false;
   /**
    * Whether each corner of the polygon being placed was put on the grid, as
-   * the grid was when it was placed, for its cuts and for clicks on it.
+   * the grid was when it was placed, for clicks on it.
    */
   #snaps: boolean[] = [];
   tool: Tool = "pen";
@@ -340,6 +356,12 @@ export class DrawingSession {
   }
   /** Whether strokes start and end on the grid. */
   snap = false;
+  /**
+   * Whether strokes drawn as the pointer goes from now on stop flush with the
+   * grid line at an end on the grid, rather than rounding past it. Shapes
+   * never do: an ellipse has no ends, and a polygon keeps its square ones.
+   */
+  flatEnds = false;
   #grid: Grid = plainGrid;
   /** A grid laid out while a stroke was being drawn, for when it ends. */
   #nextGrid: Grid | undefined;
@@ -466,29 +488,34 @@ export class DrawingSession {
       );
     }
     // A polygon shows what a click where the pointer is would make: a side
-    // to its next corner; or closed, on its first corner; or ended, with the
-    // ends cut that were put on the grid, on its last.
+    // to its next corner; or closed, on its first corner; or ended, on its
+    // last.
     if (this.#closes(active, next)) {
       const closed = { ...active, points: [...active.points] };
       closed.points.push(active.points[0] ?? 0, active.points[1] ?? 0);
-      return this.#stroke(closed, { start: false, end: false }, this.fill);
+      return this.#stroke(closed, uncut, this.fill);
     }
     if (this.#near(active, next, active.points.length - 2)) {
-      return this.#stroke(active, this.#cornerCuts());
+      return this.#stroke(active, uncut);
     }
     const shown = { ...active, points: [...active.points] };
     this.#record(shown, this.#snapped(next));
-    return this.#stroke(shown, { start: active.onGrid, end: false });
+    return this.#stroke(shown, uncut);
   }
 
   /**
    * `active` as a stroke, cut flat at the ends named, which are on the grid,
    * and with `fill`, filled inside, if it has three points to enclose any.
+   * The way a cut end runs is measured over at least a cell of the grid and
+   * twice the brush's width, so that the small turns near an end that a hand
+   * makes, and the jump to a grid point at its start, don't decide it;
+   * `path` is the way the pointer went, as for {@link gridCuts}.
    */
   #stroke(
     active: ActiveStroke,
     ends: { readonly start: boolean; readonly end: boolean },
     fill = false,
+    path?: readonly number[],
   ): Stroke {
     const stroke: Stroke = {
       tool: active.tool,
@@ -498,7 +525,8 @@ export class DrawingSession {
       ...(active.polygon ? { kind: "polygon" } : {}),
       ...(fill && active.points.length >= 6 ? { fill } : {}),
     };
-    const cut = gridCuts(active.points, Math.max(active.size, cutReach), ends);
+    const reach = Math.max(2 * active.size, toUnits(this.grid.spacing));
+    const cut = gridCuts(active.points, reach, ends, path);
     return cut === undefined ? stroke : { ...stroke, cut };
   }
 
@@ -515,11 +543,13 @@ export class DrawingSession {
     }
     const ellipse = this.shape === "ellipse";
     const polygon = this.shape === "polygon";
+    const flat = this.flatEnds && this.shape === "free";
     this.#active = {
       tool: this.tool,
       size: this.size,
       points: [],
-      onGrid: this.snap && !ellipse,
+      flat,
+      onGrid: this.snap && flat,
       polygon,
     };
     this.#last = undefined;
@@ -614,12 +644,23 @@ export class DrawingSession {
   end(release?: InputPoint): void {
     const placed = this.#active;
     if (placed?.polygon === true) {
-      if (release === undefined) this.#commit(placed, this.#cornerCuts());
+      if (release === undefined) this.#commit(placed);
       else this.#place(placed, release);
       return;
     }
     const ellipse = this.#corner !== undefined;
     const straight = ellipse ? this.#circle : this.#anchor !== undefined;
+    // The way the pointer went, up to the release, from where the stroke may
+    // jump to the grid. A straight segment runs as it does right to its end.
+    const path =
+      placed === undefined || straight
+        ? undefined
+        : [
+            ...placed.points,
+            ...(release === undefined
+              ? []
+              : [toUnits(release.x), toUnits(release.y)]),
+          ];
     // With the grid, the stroke ends on it, at the grid point nearest the
     // release, or else the last point, recorded in the release's place.
     const end = this.snap ? (release ?? this.#last) : release;
@@ -632,8 +673,9 @@ export class DrawingSession {
         ? undefined
         : this.#stroke(
             active,
-            { start: active.onGrid, end: this.snap && !ellipse },
+            { start: active.onGrid, end: this.snap && active.flat },
             ellipse && this.fill,
+            path,
           );
     this.#active = undefined;
     this.#anchor = undefined;
@@ -661,21 +703,16 @@ export class DrawingSession {
     this.#next = release;
     if (this.#closes(active, release)) {
       active.points.push(active.points[0] ?? 0, active.points[1] ?? 0);
-      this.#commit(active, { start: false, end: false }, this.fill);
+      this.#commit(active, this.fill);
       return;
     }
     const count = active.points.length;
     if (this.#near(active, release, count - 2)) {
-      if (!starting) this.#commit(active, this.#cornerCuts());
+      if (!starting) this.#commit(active);
       return;
     }
     this.#record(active, this.#snapped(release));
     if (active.points.length > count) this.#snaps.push(this.snap);
-  }
-
-  /** Which ends of the polygon being placed are cut: those put on the grid. */
-  #cornerCuts(): { start: boolean; end: boolean } {
-    return { start: this.#snaps[0] === true, end: this.#snaps.at(-1) === true };
   }
 
   /**
@@ -708,16 +745,9 @@ export class DrawingSession {
     );
   }
 
-  /**
-   * Commits a polygon as one undoable step, cut flat at the ends named, and
-   * with `fill`, filled inside.
-   */
-  #commit(
-    active: ActiveStroke,
-    ends: { readonly start: boolean; readonly end: boolean },
-    fill = false,
-  ): void {
-    const stroke = this.#stroke(active, ends, fill);
+  /** Commits a polygon as one undoable step, with `fill`, filled inside. */
+  #commit(active: ActiveStroke, fill = false): void {
+    const stroke = this.#stroke(active, uncut, fill);
     this.#active = undefined;
     this.#next = undefined;
     this.#starting = false;

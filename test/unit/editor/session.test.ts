@@ -476,6 +476,19 @@ describe("DrawingSession", () => {
 });
 
 describe("gridCuts", () => {
+  it("measures the last end along the pointer's path, if it got anywhere", () => {
+    // Steep up to where the pointer was let go, then a jump sideways.
+    const points = [0, 0, 0, 160, 96, 160];
+    const end = { start: false, end: true };
+    expect(gridCuts(points, 64, end, [0, 0, 0, 160])).toEqual({ end: "down" });
+    // By default, along the stroke.
+    expect(gridCuts(points, 64, end)).toEqual({ end: "right" });
+    // A path that never left its start has only the jump to go by.
+    expect(gridCuts([0, 0, 96, 16], 64, end, [0, 0, 0, 0])).toEqual({
+      end: "right",
+    });
+  });
+
   const reach = 32;
   const both = { start: true, end: true };
 
@@ -534,9 +547,68 @@ describe("gridCuts", () => {
 });
 
 describe("DrawingSession's cuts", () => {
+  it("leaves every end round until Flat ends is turned on", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.begin({ x: 0, y: 16 });
+    session.extend([{ x: 1, y: 80 }]);
+    expect(session.activeStroke).not.toHaveProperty("cut");
+    session.end({ x: 0, y: 144 });
+    expect(session.document.strokes[0]).not.toHaveProperty("cut");
+  });
+
+  it("takes Flat ends as it was when the stroke began", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.flatEnds = true;
+    session.begin({ x: 0, y: 16 });
+    session.flatEnds = false;
+    session.end({ x: 0, y: 144 });
+    expect(session.document.strokes[0]?.cut).toEqual({
+      start: "up",
+      end: "down",
+    });
+    session.begin({ x: 0, y: 16 });
+    session.flatEnds = true;
+    session.end({ x: 0, y: 144 });
+    expect(session.document.strokes[1]).not.toHaveProperty("cut");
+  });
+
+  it("cuts a steep leg across its row, whatever the jump to the grid point it ends on", () => {
+    // The owner's §3: a leg down to the baseline, released left of a grid
+    // point, so that the stroke jumps sideways to it at the end.
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.flatEnds = true;
+    session.begin({ x: 0, y: 16 });
+    session.extend([
+      { x: 2, y: 60 },
+      { x: 4, y: 100 },
+      { x: 6, y: 140 },
+    ]);
+    session.end({ x: 7, y: 142 });
+    const [stroke] = session.document.strokes;
+    expect(stroke?.points.slice(-2)).toEqual([0, 144 * 16]);
+    expect(stroke?.cut?.end).toBe("down");
+    // From the same path, the grid point to its right, and a hook there the
+    // hand made, which a brush's width alone would take for the way it ran.
+    session.begin({ x: 0, y: 16 });
+    session.extend([
+      { x: 2, y: 60 },
+      { x: 4, y: 100 },
+      { x: 6, y: 138 },
+      { x: 12, y: 140 },
+    ]);
+    session.end({ x: 15, y: 143 });
+    const hooked = session.document.strokes[1];
+    expect(hooked?.points.slice(-2)).toEqual([16 * 16, 144 * 16]);
+    expect(hooked?.cut?.end).toBe("down");
+  });
+
   it("cuts the ends of a stroke drawn on the grid, and not one drawn off it", () => {
     const session = new DrawingSession(emptyDocument);
     session.snap = true;
+    session.flatEnds = true;
     session.begin({ x: 0, y: 16 });
     session.extend([{ x: 1, y: 80 }]);
     // While it is drawn, only its start is on the grid.
@@ -556,6 +628,7 @@ describe("DrawingSession's cuts", () => {
   it("cuts both ends of a short stroke drawn out and back on the grid", () => {
     const session = new DrawingSession(emptyDocument);
     session.snap = true;
+    session.flatEnds = true;
     session.begin({ x: 64, y: 64 });
     session.extend([{ x: 64, y: 74 }]);
     session.end({ x: 64, y: 64 });
@@ -567,6 +640,7 @@ describe("DrawingSession's cuts", () => {
 
   it("cuts only the end of a stroke the grid came on for", () => {
     const session = new DrawingSession(emptyDocument);
+    session.flatEnds = true;
     session.tool = "eraser";
     session.begin({ x: 3, y: 16 });
     session.extend([{ x: 60, y: 18 }]);
@@ -578,6 +652,7 @@ describe("DrawingSession's cuts", () => {
   it("keeps a stroke's cuts through undo and redo", () => {
     const session = new DrawingSession(emptyDocument);
     session.snap = true;
+    session.flatEnds = true;
     session.begin({ x: 0, y: 16 });
     session.end({ x: 0, y: 144 });
     const [stroke] = session.document.strokes;
@@ -947,10 +1022,11 @@ describe("DrawingSession's polygons", () => {
     ]);
   });
 
-  it("snaps corners to the grid, and cuts an open polygon's ends there but not a closed one's", () => {
+  it("snaps corners to the grid and is never cut, even with Flat ends on", () => {
     const session = new DrawingSession(emptyDocument);
     session.shape = "polygon";
     session.snap = true;
+    session.flatEnds = true;
     click(session, 1, 15);
     click(session, 31, 15);
     click(session, 33, 143);
@@ -966,7 +1042,6 @@ describe("DrawingSession's polygons", () => {
       pressure: false,
       points: [0, 256, 512, 256, 512, 2304],
       kind: "polygon",
-      cut: { start: "left", end: "down" },
     });
     click(session, 1, 15);
     click(session, 31, 15);
@@ -978,7 +1053,7 @@ describe("DrawingSession's polygons", () => {
     expect(session.document.strokes[1]).not.toHaveProperty("cut");
   });
 
-  it("cuts the ends that were put on the grid, whatever the grid is when the shape ends", () => {
+  it("treats its corners as they were put, whatever the grid is when the shape ends", () => {
     // From the independent review of #121.
     const session = new DrawingSession(emptyDocument);
     session.shape = "polygon";
@@ -986,15 +1061,11 @@ describe("DrawingSession's polygons", () => {
     click(session, 40, 20);
     session.snap = true;
     session.end();
-    expect(session.document.strokes[0]).not.toHaveProperty("cut");
     click(session, 1, 15);
     click(session, 31, 15);
     session.snap = false;
     session.end();
-    expect(session.document.strokes[1]?.cut).toEqual({
-      start: "left",
-      end: "right",
-    });
+    expect(session.document.strokes).toHaveLength(2);
     // Hovering on the last corner, off the grid, shows no side to where the
     // grid would put the pointer, as a click there adds none.
     click(session, 10, 20);
@@ -1015,7 +1086,6 @@ describe("DrawingSession's polygons", () => {
     expect(session.document.strokes[3]?.points).toEqual([
       160, 320, 640, 320, 512, 768, 160, 320,
     ]);
-    expect(session.document.strokes[3]).not.toHaveProperty("cut");
   });
 
   it("drops a polygon being placed when the drawing is cleared", () => {

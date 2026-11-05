@@ -9,7 +9,6 @@ import {
   outlineBounds,
   outlineInput,
   polygonPieces,
-  restShape,
   strokeBounds,
   strokeOutline,
   strokeShape,
@@ -281,7 +280,6 @@ describe("polygon strokes", () => {
     expect(covers(pieces, -1.1, 5)).toBe(false);
     // A closed polygon has no ends to cut.
     expect(cutBoxes(square)).toEqual([]);
-    expect(restShape(square)).toBeUndefined();
   });
 
   it("leave a polygon open when it comes back to its start with two corners", () => {
@@ -379,7 +377,7 @@ describe("polygon strokes", () => {
         [1_000_002, 1_000_002.0625],
       ],
       0.0625,
-      { closed: false, start: true, end: true },
+      false,
     );
     expect(pieces).toHaveLength(3);
     for (const piece of pieces) {
@@ -391,107 +389,18 @@ describe("polygon strokes", () => {
   });
 
   it("give nothing for no corners, or a lone corner with flat ends", () => {
-    const shape = { closed: false, start: false, end: false };
-    expect(polygonPieces([], 2, shape)).toEqual([]);
-    expect(polygonPieces([[1, 1]], 2, shape)).toEqual([]);
+    expect(polygonPieces([], 2, false)).toEqual([]);
   });
 
-  it("leave the rest of a cut polygon in its cut boxes, flat where it was cut", () => {
-    // Down 20 px with a 1 px brush, cut at its end.
-    const down = polygon(
-      [
-        [0, 0],
-        [0, 20],
-      ],
-      1,
-      { end: "down" },
-    );
-    expect(outlineBounds(piecesOf(restShape(down)).flat())).toEqual({
-      left: -0.5,
-      top: -0.5,
-      right: 0.5,
-      bottom: 18,
-    });
-    const both = polygon(
-      [
-        [0, 0],
-        [0, 20],
-      ],
-      1,
-      { start: "up", end: "down" },
-    );
-    expect(outlineBounds(piecesOf(restShape(both)).flat())).toEqual({
-      left: -0.5,
-      top: 2,
-      right: 0.5,
-      bottom: 18,
-    });
-    // Twice the width from each end leaves nothing of 3 px.
-    expect(
-      restShape(
-        polygon(
-          [
-            [0, 0],
-            [0, 3],
-          ],
-          1,
-          { start: "up", end: "down" },
-        ),
-      ),
-    ).toBeUndefined();
-    expect(
-      restShape(
-        polygon(
-          [
-            [0, 0],
-            [0, 20],
-          ],
-          1,
-        ),
-      ),
-    ).toBeUndefined();
-  });
-
-  it("keep the corners of a cut polygon's rest, and its sharp corners", () => {
-    // Down 10 px, right 10 px, and down 10 px again, cut at both ends.
-    const step = polygon(
-      [
-        [0, 0],
-        [0, 10],
-        [10, 10],
-        [10, 20],
-      ],
-      1,
-      { start: "up", end: "down" },
-    );
-    const rest = piecesOf(restShape(step));
-    // Three sides and two corners.
-    expect(rest).toHaveLength(5);
-    expect(outlineBounds(rest.flat())).toEqual({
-      left: -0.5,
-      top: 2,
-      right: 10.5,
-      bottom: 18,
-    });
-    expect(covers(rest, -0.45, 10.45)).toBe(true);
-  });
-
-  it("take its cut boxes from its ends, as a stroke's", () => {
-    expect(
-      cutBoxes(
-        polygon(
-          [
-            [1, 1],
-            [5, 1],
-          ],
-          2,
-          { start: "left", end: "right" },
-        ),
-      ),
-    ).toEqual([
-      { left: -2, right: 1, top: -2, bottom: 4 },
-      { left: 5, right: 8, top: -2, bottom: 4 },
-    ]);
+  it("are never cut: a cut has no effect on one, open or closed", () => {
+    const corners: [number, number][] = [
+      [0, 0],
+      [0, 20],
+      [20, 20],
+    ];
+    const cut = polygon(corners, 2, { start: "up", end: "right" });
+    expect(cutBoxes(cut)).toEqual([]);
+    expect(strokeShape(cut)).toEqual(strokeShape(polygon(corners, 2)));
   });
 });
 

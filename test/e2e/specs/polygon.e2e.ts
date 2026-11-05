@@ -88,7 +88,7 @@ async function savedStrokes(): Promise<Stroke[]> {
  * The saved symbol's alpha at points out from each corner of its first
  * stroke, a polygon, `near` and `far` widths out along each axis, away from
  * the middle of its corners; and how many pixels differ from a redraw of its
- * record, with and without its cuts, past the lines its cut ends lie on.
+ * record.
  */
 async function savedInk(
   near: number,
@@ -97,7 +97,6 @@ async function savedInk(
   near: number[];
   far: number[];
   redrawn: number;
-  spill: { saved: number[]; uncut: number[] };
 }> {
   return browser.executeObsidian(
     async ({ app }, near, far) => {
@@ -142,51 +141,10 @@ async function savedInk(
             y + Math.sign(y - middleY) * widths * stroke,
           );
         });
-      // Inked pixels wholly past the line through each cut end, within the
-      // brush's width of it.
-      const uncut = redraw(
-        strokes.map((each) => ({
-          tool: each.tool,
-          size: each.size,
-          pressure: each.pressure,
-          points: each.points,
-          ...(each.kind === undefined ? {} : { kind: each.kind }),
-        })),
-      );
-      const spill = (data: Uint8ClampedArray): number[] =>
-        strokes.flatMap((each) =>
-          (["start", "end"] as const).flatMap((which) => {
-            const direction = each.cut?.[which];
-            if (direction === undefined) return [];
-            const at = which === "start" ? 0 : each.points.length - 2;
-            const x = (each.points[at] ?? 0) / 16;
-            const y = (each.points[at + 1] ?? 0) / 16;
-            const reach = each.size / 16;
-            let count = 0;
-            for (let row = 0; row < height; row++) {
-              for (let column = 0; column < width; column++) {
-                const beyond =
-                  direction === "down"
-                    ? row >= Math.ceil(y)
-                    : direction === "up"
-                      ? row + 1 <= Math.floor(y)
-                      : direction === "right"
-                        ? column >= Math.ceil(x)
-                        : column + 1 <= Math.floor(x);
-                const near =
-                  Math.abs(column + 0.5 - x) <= reach &&
-                  Math.abs(row + 0.5 - y) <= reach;
-                if (beyond && near && alpha(data, column, row) > 0) count++;
-              }
-            }
-            return [count];
-          }),
-        );
       return {
         near: out(near),
         far: out(far),
         redrawn,
-        spill: { saved: spill(saved.data), uncut: spill(uncut) },
       };
     },
     near,
@@ -295,7 +253,7 @@ describe("Polygon", function () {
     expect(saved).toBeLessThan(60);
   });
 
-  it("stops an open shape's ends flush with the grid line they lie on", async function () {
+  it("keeps an open shape's square ends on the grid, uncut", async function () {
     await openPolygon(true);
     // Up from one point and down to another, as the legs of an A, ended on
     // the last corner.
@@ -305,13 +263,58 @@ describe("Polygon", function () {
     expect(legs?.points).toHaveLength(6);
     await save();
     const [saved] = await savedStrokes();
-    expect(saved?.cut).toEqual({ start: "down", end: "down" });
+    expect(saved).not.toHaveProperty("cut");
     const ink = await savedInk(0.4, 0.6);
     console.log("Legs", JSON.stringify(ink));
-    expect(ink.spill.saved).toEqual([0, 0]);
-    // Without the cuts, the square ends would reach past the row.
-    for (const count of ink.spill.uncut) expect(count).toBeGreaterThan(20);
     expect(ink.redrawn).toBe(0);
+  });
+
+  it("draws a polygon that ends beside its first side whole", async function () {
+    // The owner's pentagon from #126, as 0.3.0-alpha.8 saved it: its end one
+    // cell along its first side, cut there, which took ink from that side.
+    const shown = await browser.execute(() => {
+      const { render } = window.inklineTest;
+      const cell = 14 * 16;
+      const baseline = 144 * 16;
+      const start = 80 * 16;
+      const points = [
+        [0, 0],
+        [-3, 0],
+        [-4, 2],
+        [-2, 4],
+        [0, 2],
+        [-1, 0],
+      ].flatMap(([column = 0, row = 0]) => [
+        start + column * cell,
+        baseline - row * cell,
+      ]);
+      const stroke = {
+        tool: "pen" as const,
+        size: 192,
+        pressure: false,
+        points,
+        kind: "polygon" as const,
+      };
+      const row = (drawn: typeof stroke): number[] => {
+        const surface = new OffscreenCanvas(128, 192);
+        const context = surface.getContext("2d");
+        if (context === null) throw new Error("no context");
+        render.drawInk(context, [drawn], undefined);
+        const { data } = context.getImageData(0, 150 - 1, 128, 1);
+        return Array.from({ length: 128 }, (_, x) => data[x * 4 + 3] ?? 0);
+      };
+      return {
+        cut: row({ ...stroke, cut: { start: "right", end: "down" } } as never),
+        uncut: row(stroke),
+        from: Math.round((start - 3 * cell) / 16),
+        to: Math.round(start / 16),
+      };
+    });
+    console.log("Pentagon", JSON.stringify({ ...shown, cut: undefined }));
+    // A row 5 pixels below the baseline, inside the first side's lower half.
+    const side = shown.cut.slice(shown.from, shown.to);
+    expect(Math.min(...side)).toBeGreaterThanOrEqual(250);
+    expect(shown.cut).toEqual(shown.uncut);
   });
 
   it("takes the eraser chosen while placing, and keeps Polygon on through Next", async function () {

@@ -169,8 +169,9 @@ describe("Fill", function () {
     expect(shown.alpha[0]).toBeGreaterThan(200);
     expect(shown.alpha[1]).toBe(0);
     // The triangle sits on the row its base lies on, the baseline, with
-    // nothing below; the wedge's legs are cut flush with it too.
-    expect(shown.below).toEqual([0, 0]);
+    // nothing below; the wedge's legs keep their square ends past it.
+    expect(shown.below[0]).toBe(0);
+    expect(shown.below[1]).toBeGreaterThan(0);
     expect(shown.redrawn).toBe(0);
   });
 

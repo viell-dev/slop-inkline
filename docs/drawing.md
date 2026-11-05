@@ -85,11 +85,12 @@ it never reaches far beyond. An open shape's ends are square, half the stroke's
 width past its end corners, so that two shapes meeting at a corner make a sharp
 one.
 
-With the grid on, the corners snap to the grid, and an open shape's ends stop
-flush with the grid line they lie on, as a stroke's do. Off the grid, a click
-within the brush's circle of the first or last corner counts as that corner, or
-within 4 of the drawing's pixels for a smaller brush. So does such a click with
-the grid on, for a corner placed before the grid was turned on.
+With the grid on, the corners snap to the grid. **Unreleased:** a shape's ends
+are no longer cut flat on the grid: an open shape keeps its square ends, past
+the line they lie on. Off the grid, a click within the brush's circle of the
+first or last corner counts as that corner, or within 4 of the drawing's pixels
+for a smaller brush. So does such a click with the grid on, for a corner placed
+before the grid was turned on.
 
 ## Filled shapes
 
@@ -121,13 +122,18 @@ so cells there are square, and cells between other lines are close to square. No
 even grid could meet every line of every font. In a font such as Inter, at the
 default grid size, the cap height then lies 7 cells above the baseline.
 
-On the grid, a stroke's ends stop flush with the grid line they lie on, instead
-of rounding past it: the line across the stroke, a row for a stroke that comes
-in at 45° or steeper, as the legs of an A come down to the baseline, and a
-column for a flatter one. So a stroke drawn down to the baseline sits on it,
-with nothing below to erase. A dot stays round, as does an end drawn with the
-grid off. The eraser's ends are cut the same way, so erasing up to a line leaves
-a straight edge there.
+**Flat ends** (T), with the grid on, stops a freehand stroke's ends flush with
+the grid line they lie on, instead of rounding past it. **Unreleased:** it is a
+switch, off in a new editor, and **Next** keeps it; in 0.3.0-alpha.8 this always
+happens with the grid on. The cut runs along the line across the stroke: a row
+for a stroke that comes in at 45° or steeper, as the legs of an A come down to
+the baseline, and a column for a flatter one, judged over the last grid cell or
+two brush widths of what you drew, whichever is longer, and leaving out the jump
+to the grid point. So a stroke drawn down to the baseline sits on it, with
+nothing below to erase. A dot stays round, as does an end drawn with the grid
+off. The eraser's ends are cut the same way, so erasing up to a line leaves a
+straight edge there. Shapes are never cut: an ellipse has no ends, and a polygon
+keeps its square ones.
 
 The grid keeps its place through saves, and on a symbol you open again it lines
 up with most of its strokes, if the grid has the same size as when you drew
