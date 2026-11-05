@@ -113,25 +113,30 @@ function mapPoints(
   );
 }
 
-/** Moves a document by a whole number of pixels, which loses nothing. */
+/**
+ * Moves a document across by a whole number of pixels, and up or down by a
+ * whole number of units, which loses nothing.
+ */
 export function moveDocument(
   document: InkDocument,
   dxPixels: number,
+  dyUnits = 0,
 ): InkDocument {
-  return documentMover(dxPixels)(document);
+  return documentMover(dxPixels, dyUnits)(document);
 }
 
 /**
- * A function that moves documents by a whole number of pixels, as
- * {@link moveDocument} does, keeping what they share shared: a stroke or base
- * layer in several documents is moved once, and the same document always
- * moves to the same one, so that moving a whole history copies each stroke
- * once.
+ * A function that moves documents as {@link moveDocument} does, keeping what
+ * they share shared: a stroke or base layer in several documents is moved
+ * once, and the same document always moves to the same one, so that moving a
+ * whole history copies each stroke once.
  */
 export function documentMover(
   dxPixels: number,
+  dyUnits = 0,
 ): (document: InkDocument) => InkDocument {
   if (!Number.isInteger(dxPixels)) throw new Error("moves are in whole pixels");
+  if (!Number.isInteger(dyUnits)) throw new Error("moves are in whole units");
   const dx = dxPixels * unitsPerPixel;
   const documents = new Map<InkDocument, InkDocument>();
   const strokes = new Map<Stroke, Stroke>();
@@ -144,7 +149,7 @@ export function documentMover(
         points: mapPoints(
           stroke,
           (value) => value + dx,
-          (value) => value,
+          (value) => value + dyUnits,
         ),
       };
       strokes.set(stroke, moved);
@@ -154,7 +159,7 @@ export function documentMover(
   const moveBase = (base: BaseLayer): BaseLayer => {
     let moved = bases.get(base);
     if (moved === undefined) {
-      moved = { ...base, x: base.x + dx };
+      moved = { ...base, x: base.x + dx, y: base.y + dyUnits };
       bases.set(base, moved);
     }
     return moved;
