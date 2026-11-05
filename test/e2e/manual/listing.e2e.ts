@@ -252,16 +252,25 @@ async function waitForReading(): Promise<void> {
 /** Takes a screenshot, once nothing is passing, and checks it fits the form. */
 async function shoot(name: string): Promise<void> {
   await browser.$(".notice").waitForExist({ reverse: true });
-  await browser.execute(
-    () =>
-      new Promise<void>((resolve) => {
+  // A transition still running would differ from one run to the next.
+  await browser.execute(async () => {
+    await Promise.allSettled(
+      document
+        .getAnimations()
+        .filter(
+          (animation) =>
+            animation.effect?.getComputedTiming().iterations !== Infinity,
+        )
+        .map((animation) => animation.finished),
+    );
+    await new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => {
         window.requestAnimationFrame(() => {
-          window.requestAnimationFrame(() => {
-            resolve();
-          });
+          resolve();
         });
-      }),
-  );
+      });
+    });
+  });
   await saveScreenshot(name);
   const run = `${browser.getObsidianVersion()}-${browser.getObsidianInstallerVersion()}`;
   const bytes = readFileSync(
