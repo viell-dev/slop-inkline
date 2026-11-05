@@ -247,20 +247,13 @@ it, but they can draw the threshold's first position to them: move the slider
 down to the strokes, or move the picture to keep those pixels out. Soft strokes
 come out wider than they were drawn; see [Limits](./limits.md#files-and-sizes).
 
-**Unreleased:** a small part of a picture off to one side, much brighter or
-darker than the rest, such as a label in a screenshot, no longer draws the
-threshold's first position to it, so that the strokes show at once. That takes a
-picture of two clear tones apart from that part, with thin strokes that stay
-within the picture. The label becomes ink along with the strokes: move the
-picture to keep it out. See [Limits](./limits.md#files-and-sizes) for what can
-still mislead it.
-
-**Unreleased:** a picture with transparency only around it, such as a capture of
-a window with rounded corners or a shadow, makes ink as an opaque picture does:
-the ink is the smaller part, its edges are as sharp, and its clear corners and
-shadow stay empty. This goes by what the drawing area shows: at least two thirds
-of that must be fairly opaque. Before, a single pixel that was not fully opaque
-made the ground of such a picture the ink, with soft edges.
+**Unreleased:** a capture of a window, with rounded corners or a shadow around
+it, makes ink as an opaque picture does: the ink is the smaller part, its edges
+are as sharp, and its clear corners and shadow stay empty. Before, a single
+pixel that was not fully opaque made the ground of such a picture the ink, with
+soft edges. A glyph on a transparent ground keeps its soft edges, however much
+of the picture it fills; see [Limits](./limits.md#files-and-sizes) for what
+counts as a capture.
 
 ## Start from a copy
 

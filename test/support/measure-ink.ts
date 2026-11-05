@@ -1,13 +1,14 @@
-// Prints what Make ink's defaults make of the pictures in ink-pictures.ts, by
-// the code of a commit to compare with and by this checkout's:
+// Prints what Make ink makes of the pictures in ink-pictures.ts, by the code of
+// a commit to compare with and by this checkout's:
 //
 //   node test/support/measure-ink.ts <commit> [pictures a group] [seed]
 //
 // It lists the pictures one by one, then counts the random pictures of each
-// group: how many gave the ink wanted before and after, how many changed their
-// default, how many it fixed and harmed, and how many of those lost wanted ink,
-// rather than gaining other ink. Reading `src/ink/pixels.ts` from
-// the commit keeps the comparison honest as the code moves on.
+// group, then moves the slider over every threshold of each: how many pictures
+// make more ink as it moves away from their ink, and how many have more partly
+// covered pixels at any threshold than the commit gave them. Reading
+// `src/ink/pixels.ts` from the commit keeps the comparison honest as the code
+// moves on.
 
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -16,10 +17,12 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import * as current from "../../src/ink/pixels.ts";
 import {
+  inkGrowth,
   inkPictures,
   madeInk,
   measureInk,
   randomGroups,
+  sweepInk,
   type InkCode,
   type InkResult,
 } from "./ink-pictures.ts";
@@ -54,7 +57,7 @@ function start({ threshold, light }: InkResult): string {
   return `${String(threshold)} ${light ? "light" : "dark"}`;
 }
 
-const [commit, count = "300", seed = "20261105"] = process.argv.slice(2);
+const [commit, count = "100", seed = "20261106"] = process.argv.slice(2);
 if (commit === undefined) {
   console.error("usage: measure-ink.ts <commit> [pictures a group] [seed]");
   process.exit(1);
@@ -82,16 +85,22 @@ console.log();
 console.log(`Random pictures, seed ${seed}, ${count} a group:`);
 console.log();
 console.log(
-  "| Group | Ink wanted before | after | Default changed | Fixed | Harmed | Of those, lost ink |",
+  "| Group | Ink wanted before | after | Default changed | Fixed | Harmed | Grew on the slider before | after | Largest growth before | after | Softer anywhere |",
 );
-console.log("| --- | --- | --- | --- | --- | --- | --- |");
+console.log(
+  "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+);
 for (const [group, pictures] of randomGroups(Number(count), Number(seed))) {
   let wasGood = 0;
   let nowGood = 0;
   let changed = 0;
   let fixed = 0;
   let harmed = 0;
-  let lost = 0;
+  let grewBefore = 0;
+  let grewAfter = 0;
+  let mostBefore = 0;
+  let mostAfter = 0;
+  let softer = 0;
   for (const picture of pictures()) {
     const was = measureInk(before, picture);
     const now = measureInk(current, picture);
@@ -99,12 +108,26 @@ for (const [group, pictures] of randomGroups(Number(count), Number(seed))) {
     if (madeInk(now)) nowGood++;
     if (was.threshold !== now.threshold || was.light !== now.light) changed++;
     if (!madeInk(was) && madeInk(now)) fixed++;
-    if (madeInk(was) && !madeInk(now)) {
-      harmed++;
-      if (now.found < was.found - 0.02) lost++;
+    if (madeInk(was) && !madeInk(now)) harmed++;
+    let grewThen = 0;
+    let growsNow = 0;
+    let anySofter = false;
+    for (const light of [true, false]) {
+      const then = sweepInk(before, picture, light);
+      const here = sweepInk(current, picture, light);
+      grewThen = Math.max(grewThen, inkGrowth(then.ink, light));
+      growsNow = Math.max(growsNow, inkGrowth(here.ink, light));
+      anySofter ||= here.partial.some(
+        (value, at) => value > (then.partial[at] ?? 0),
+      );
     }
+    if (grewThen > 0) grewBefore++;
+    if (growsNow > 0) grewAfter++;
+    mostBefore = Math.max(mostBefore, grewThen);
+    mostAfter = Math.max(mostAfter, growsNow);
+    if (anySofter) softer++;
   }
   console.log(
-    `| ${group.name} | ${String(wasGood)} | ${String(nowGood)} | ${String(changed)} | ${String(fixed)} | ${String(harmed)} | ${String(lost)} |`,
+    `| ${group.name} | ${String(wasGood)} | ${String(nowGood)} | ${String(changed)} | ${String(fixed)} | ${String(harmed)} | ${String(grewBefore)} | ${String(grewAfter)} | ${mostBefore.toFixed(1)} | ${mostAfter.toFixed(1)} | ${String(softer)} |`,
   );
 }

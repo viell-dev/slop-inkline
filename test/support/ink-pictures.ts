@@ -50,8 +50,6 @@ interface Scene {
   readonly soft?: number;
   /** How many levels of noise there are, each way. */
   readonly noise?: number;
-  /** Parts of the ground in a second tone, under the strokes. */
-  readonly panels?: readonly Patch[];
   /** Other things on top, which are not what is being traced. */
   readonly blocks?: readonly Patch[];
   readonly label?: {
@@ -162,10 +160,7 @@ function drawn(scene: Scene): InkPicture {
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const at = y * width + x;
-      let under = typeof ground === "number" ? ground : ground(x, y);
-      for (const panel of scene.panels ?? []) {
-        if (inPatch(panel, x, y)) under = panel.level;
-      }
+      const under = typeof ground === "number" ? ground : ground(x, y);
       let level = under + (ink - under) * (shape[at] ?? 0);
       wanted[at] = (hard[at] ?? 0) >= 0.5 ? 1 : 0;
       const labelled = label?.[at] ?? 0;
@@ -190,21 +185,42 @@ function drawn(scene: Scene): InkPicture {
   return { name, kind, width, height, data, wanted, either };
 }
 
-/** A glyph on a transparent ground: its shape is its alpha. */
-function clearGlyph(glyph: {
+interface Glyph {
   readonly name: string;
   readonly kind: string;
   readonly width: number;
   readonly height: number;
-  readonly strokes: readonly Stroke[];
-  readonly thick: number;
   /** Its level, throughout or at each pixel. */
   readonly colour: number | ((x: number, y: number) => number);
   readonly soft?: number;
   readonly opacity?: number;
-}): InkPicture {
+}
+
+/** A glyph of strokes on a transparent ground: its shape is its alpha. */
+function clearGlyph(
+  glyph: Glyph & {
+    readonly strokes: readonly Stroke[];
+    readonly thick: number;
+  },
+): InkPicture {
+  const { width, height } = glyph;
+  return alphaGlyph(glyph, coverage(width, height, glyph.strokes, glyph.thick));
+}
+
+/** A glyph of any `shape`, which gives each pixel's alpha, from 0 to 1. */
+function shapedGlyph(
+  glyph: Glyph & { readonly shape: (x: number, y: number) => number },
+): InkPicture {
+  const { width, height, shape } = glyph;
+  const alpha = Float64Array.from({ length: width * height }, (_, at) =>
+    shape(at % width, Math.floor(at / width)),
+  );
+  return alphaGlyph(glyph, alpha);
+}
+
+/** A glyph whose `hard` alpha is softened as it says. */
+function alphaGlyph(glyph: Glyph, hard: Float64Array): InkPicture {
   const { name, kind, width, height, colour } = glyph;
-  const hard = coverage(width, height, glyph.strokes, glyph.thick);
   const shape = soften(hard, width, height, glyph.soft ?? 0);
   const wanted = new Uint8Array(width * height);
   const data = new Uint8ClampedArray(width * height * 4);
@@ -273,11 +289,11 @@ function captured(
   return { name, kind: "Captures", width, height, data, wanted, either };
 }
 
-/** A disc or tile on a clear ground, with a mark of another tone on it. */
+/** A tile on a clear ground with corners of `corner`, and a mark on it. */
 function badge(
   name: string,
   side: number,
-  shape: "disc" | "tile",
+  corner: number,
   plate: number,
   mark: number,
 ): InkPicture {
@@ -290,7 +306,6 @@ function badge(
   const data = new Uint8ClampedArray(side * side * 4);
   const wanted = new Uint8Array(side * side);
   const middle = side / 2;
-  const corner = shape === "disc" ? middle : side / 6;
   for (let y = 0; y < side; y++) {
     for (let x = 0; x < side; x++) {
       const at = y * side + x;
@@ -367,7 +382,6 @@ function lettering(
 
 const side = 96;
 const dim = { ground: 8, ink: 50 };
-const wide = { width: 320, height: 96 };
 const square = { width: side, height: side };
 const letter = letterH(side * 0.3, side * 0.1, side * 0.4, side * 0.72);
 const glyph = rune(side * 0.25, side * 0.1, side * 0.5, side * 0.72);
@@ -380,12 +394,50 @@ function corner(share: number, level: number): readonly Patch[] {
   return [{ x: 0, y: side - height, width, height, level }];
 }
 
+/** The dense shapes a tightly cropped glyph can take, in `width` × `height`. */
+function denseShapes(
+  width: number,
+  height: number,
+): readonly (readonly [string, (x: number, y: number) => number])[] {
+  const across = (x: number) => x / width;
+  const down = (y: number) => y / height;
+  const fromSide = (x: number) => Math.min(x, width - 1 - x);
+  const fromEnd = (y: number) => Math.min(y, height - 1 - y);
+  const shorter = Math.min(width, height);
+  const middleX = (width - 1) / 2;
+  const middleY = (height - 1) / 2;
+  return [
+    [
+      "bold H",
+      (x, y) => {
+        const stems = across(x) < 0.38 || across(x) >= 0.62;
+        return stems || (down(y) >= 0.4 && down(y) < 0.6) ? 1 : 0;
+      },
+    ],
+    [
+      "block with a counter",
+      (x, y) => {
+        const middle = (at: number) => at >= 0.42 && at < 0.58;
+        return middle(across(x)) && middle(down(y)) ? 0 : 1;
+      },
+    ],
+    [
+      "block with a notch",
+      (x, y) => (across(x) >= 0.4 && across(x) < 0.6 && down(y) < 0.18 ? 0 : 1),
+    ],
+    ["octagon", (x, y) => (fromSide(x) + fromEnd(y) < shorter * 0.2 ? 0 : 1)],
+    [
+      "disc",
+      (x, y) => (Math.hypot(x - middleX, y - middleY) <= shorter / 2 ? 1 : 0),
+    ],
+  ];
+}
+
 /** The pictures that the table of results lists, kind by kind. */
 export function inkPictures(): InkPicture[] {
   const pictures: InkPicture[] = [];
-  const bright = "A small bright element";
   const dimH = {
-    kind: bright,
+    kind: "A small bright element",
     ...square,
     ...dim,
     strokes: letter,
@@ -393,22 +445,16 @@ export function inkPictures(): InkPicture[] {
     soft: 1,
     noise: 1,
   };
-  const dimRune = { ...dimH, strokes: glyph, thick: 3 };
-  for (const share of [0.003, 0.006, 0.012, 0.025, 0.05]) {
-    const percent = (share * 100).toFixed(1);
-    pictures.push(
-      drawn({
-        ...dimH,
-        name: `Dim H, white block of ${percent}%`,
-        blocks: corner(share, 255),
-      }),
-    );
-  }
   const words = lettering(side * 0.08, side * 0.87, 3, 6);
   pictures.push(
     drawn({
-      ...dimRune,
-      name: "Dim rune, white block of 1.2%",
+      ...dimH,
+      name: "Dim H, white block of 0.3%",
+      blocks: corner(0.003, 255),
+    }),
+    drawn({
+      ...dimH,
+      name: "Dim H, white block of 1.2%",
       blocks: corner(0.012, 255),
     }),
     drawn({
@@ -416,45 +462,8 @@ export function inkPictures(): InkPicture[] {
       name: "Dim H, label of white letters",
       label: { strokes: words, thick: 1.5, level: 255 },
     }),
-    drawn({
-      ...dimRune,
-      name: "Dim rune, label of white letters",
-      label: { strokes: words, thick: 1.5, level: 255 },
-    }),
-    drawn({
-      ...dimH,
-      name: "Dim H of 24 levels, white block of 1.2%",
-      ground: 20,
-      ink: 44,
-      blocks: corner(0.012, 255),
-    }),
-    drawn({
-      ...dimH,
-      name: "Pale H on white, black block of 1.2%",
-      ground: 247,
-      ink: 205,
-      blocks: corner(0.012, 0),
-    }),
-    drawn({
-      ...dimH,
-      name: "Dim H, noise ±6, white block of 1.2%",
-      noise: 6,
-      blocks: corner(0.012, 255),
-    }),
-    drawn({
-      ...dimH,
-      name: "Dim H, one stem off the picture, white block of 1.2%",
-      strokes: [...letter, [side * 0.7, 0, side * 0.7, side * 0.1]],
-      blocks: corner(0.012, 255),
-    }),
-    drawn({
-      ...dimH,
-      name: "Dim H, white block beside the strokes",
-      blocks: [{ x: 44, y: 34, width: 8, height: 6, level: 255 }],
-    }),
   );
-  const ordinary = "Ordinary pictures";
-  const plain = { kind: ordinary, ...square };
+  const plain = { kind: "Ordinary pictures", ...square };
   for (const [name, ground, ink] of [
     ["Black on white", 255, 0],
     ["Grey on white", 255, 128],
@@ -485,165 +494,31 @@ export function inkPictures(): InkPicture[] {
       }),
     );
   }
-  const noisy = "Noisy backgrounds";
   for (const noise of [3, 12, 20]) {
-    pictures.push(
-      drawn({
-        kind: noisy,
-        name: `Dark on light, noise ±${String(noise)}`,
-        ...square,
-        ground: 235,
-        ink: 20,
-        strokes: letter,
-        thick: 8,
-        soft: 1,
-        noise,
-      }),
-      drawn({
-        kind: noisy,
-        name: `Dim, noise ±${String(noise)}`,
-        ...square,
-        ...dim,
-        strokes: letter,
-        thick: 8,
-        soft: 1,
-        noise,
-      }),
-    );
-  }
-  const sparse = "Small ink on one tone";
-  const small = letterH(150, 30, 20, 36);
-  const atSide = letterH(10, 30, 20, 36);
-  for (const [name, strokes, ground, ink, noise] of [
-    ["Small and dark on white", small, 255, 0, 0],
-    ["Small and light on black", small, 0, 255, 0],
-    ["Small and dark on white, noise ±6", small, 240, 10, 6],
-    ["Small and dim, noise ±2", small, 8, 50, 2],
-    ["Small, at the side, on white", atSide, 255, 0, 0],
-    ["Small, at the side, on black, noise ±6", atSide, 12, 240, 6],
-    ["Small, at the side, dim, noise ±2", atSide, 8, 50, 2],
-  ] as const) {
-    pictures.push(
-      drawn({
-        kind: sparse,
-        name,
-        ...wide,
-        ground,
-        ink,
-        strokes,
-        thick: 2,
-        soft: 1,
-        noise,
-      }),
-    );
-  }
-  pictures.push(
-    drawn({
-      kind: sparse,
-      name: "Small and dark, at the side, on a gradient",
-      ...wide,
-      ground: (x) => 200 + (x / wide.width) * 40,
-      ink: 10,
-      strokes: atSide,
-      thick: 2,
-      soft: 1,
-      noise: 1,
-    }),
-    drawn({
-      kind: sparse,
-      name: "Dim, on a dark vignette",
+    const noisy = {
+      kind: "Noisy backgrounds",
       ...square,
-      ground: (x, y) => 6 + 18 * Math.hypot(x / side - 0.5, y / side - 0.5),
-      ink: 60,
       strokes: letter,
       thick: 8,
       soft: 1,
-      noise: 1,
-    }),
-  );
-  const toned = "A small symbol on two tones";
-  const centred = rune(140, 20, 40, 56);
-  const scene = {
-    kind: toned,
-    ...wide,
-    ink: 255,
-    strokes: centred,
-    thick: 3,
-    soft: 1,
-    noise: 1,
+      noise,
+    };
+    pictures.push(
+      drawn({
+        ...noisy,
+        name: `Dark on light, noise ±${String(noise)}`,
+        ground: 235,
+        ink: 20,
+      }),
+      drawn({ ...noisy, name: `Dim, noise ±${String(noise)}`, ...dim }),
+    );
+  }
+  const onClear = {
+    kind: "Transparent grounds",
+    ...square,
+    strokes: letter,
+    thick: 8,
   };
-  const lines: readonly Patch[] = [
-    { x: 40, y: 0, width: 3, height: 96, level: 40 },
-    { x: 100, y: 0, width: 3, height: 96, level: 40 },
-    { x: 220, y: 0, width: 3, height: 96, level: 40 },
-    { x: 280, y: 0, width: 3, height: 96, level: 40 },
-  ];
-  const outline = (x: number, y: number, wide: number, tall: number) =>
-    [
-      { x, y, width: wide, height: 3, level: 40 },
-      { x, y: y + tall - 3, width: wide, height: 3, level: 40 },
-      { x, y, width: 3, height: tall, level: 40 },
-      { x: x + wide - 3, y, width: 3, height: tall, level: 40 },
-    ] as const;
-  pictures.push(
-    drawn({
-      ...scene,
-      name: "White symbol in a dark panel",
-      ground: 50,
-      panels: [{ x: 110, y: 8, width: 100, height: 80, level: 12 }],
-    }),
-    drawn({
-      ...scene,
-      name: "White symbol among dim lines",
-      ground: 8,
-      panels: lines,
-    }),
-    drawn({
-      ...scene,
-      name: "White symbol in a dim outline",
-      ground: 8,
-      panels: outline(120, 10, 80, 76),
-    }),
-    drawn({
-      ...scene,
-      name: "White symbol at the side of dim lines",
-      strokes: rune(280, 50, 30, 40),
-      ground: 8,
-      panels: lines,
-    }),
-    drawn({
-      ...scene,
-      name: "White symbol at the side of one dim line",
-      strokes: rune(280, 50, 30, 40),
-      ground: 8,
-      panels: [{ x: 0, y: 30, width: 320, height: 3, level: 40 }],
-    }),
-    drawn({
-      ...scene,
-      name: "White symbol at the side of a dim outline",
-      strokes: rune(280, 50, 30, 40),
-      ground: 8,
-      panels: outline(110, 12, 100, 72),
-    }),
-    drawn({
-      ...scene,
-      name: "White symbol at the side of a wide band",
-      strokes: rune(270, 50, 30, 40),
-      ground: 12,
-      panels: [{ x: 0, y: 30, width: 320, height: 18, level: 40 }],
-    }),
-    drawn({
-      ...scene,
-      name: "Black symbol at the side of a wide panel",
-      strokes: rune(270, 50, 30, 40),
-      ink: 0,
-      ground: 255,
-      panels: [{ x: 40, y: 8, width: 200, height: 80, level: 225 }],
-    }),
-  );
-  const clear = "Transparent grounds";
-  const onClear = { kind: clear, ...square, strokes: letter, thick: 8 };
-  const oneColour = "Glyphs of one colour";
   pictures.push(
     clearGlyph({ ...onClear, name: "Black glyph", colour: 0 }),
     clearGlyph({ ...onClear, name: "White glyph", colour: 255 }),
@@ -680,7 +555,7 @@ export function inkPictures(): InkPicture[] {
     pictures.push(
       clearGlyph({
         ...onClear,
-        kind: oneColour,
+        kind: "Glyphs of one colour",
         name: `Glyph of grey ${String(grey)}`,
         colour: grey,
         strokes: glyph,
@@ -688,14 +563,60 @@ export function inkPictures(): InkPicture[] {
       }),
     );
   }
+  const dense = "Dense glyphs, tightly cropped";
+  for (const size of [10, 100]) {
+    for (const [name, colour] of [
+      ["White", 255],
+      ["Black", 0],
+    ] as const) {
+      pictures.push(
+        shapedGlyph({
+          name: `${name} bar of ${String(size)}, alpha 64 at each side`,
+          kind: dense,
+          width: size,
+          height: size,
+          shape: (x) => (x === 0 || x === size - 1 ? 64 / 255 : 1),
+          colour,
+        }),
+      );
+    }
+  }
+  for (const [name, shape] of denseShapes(side, side)) {
+    pictures.push(
+      shapedGlyph({
+        name: `${name}, soft edges`,
+        kind: dense,
+        ...square,
+        shape,
+        colour: 40,
+        soft: 1,
+      }),
+      shapedGlyph({
+        name: `${name}, two tones`,
+        kind: dense,
+        ...square,
+        shape,
+        colour: (x) => (x < side / 2 ? 60 : 200),
+      }),
+    );
+  }
+  pictures.push(
+    shapedGlyph({
+      name: "Rectangle of two tones, alpha 64 all round",
+      kind: dense,
+      ...square,
+      shape: (x, y) =>
+        Math.min(x, y, side - 1 - x, side - 1 - y) === 0 ? 64 / 255 : 1,
+      colour: (x) => (x < side / 2 ? 60 : 200),
+    }),
+  );
   const windowSize = { width: 240, height: 160 };
   const windowH = letterH(72, 24, 96, 112);
-  const windows = [
+  for (const [name, ground, ink] of [
     ["Dim light ink", 8, 50],
     ["Dark ink on light", 240, 30],
     ["Dim dark ink", 50, 8],
-  ] as const;
-  for (const [name, ground, ink] of windows) {
+  ] as const) {
     const window = drawn({
       kind: "Captures",
       name,
@@ -715,8 +636,9 @@ export function inkPictures(): InkPicture[] {
     );
   }
   pictures.push(
-    badge("Disc with a light mark", side, "disc", 30, 220),
-    badge("Tile with a dark mark", side, "tile", 220, 30),
+    badge("Tile with a dark mark, small corners", side, side / 12, 220, 30),
+    badge("Tile with a dark mark, large corners", side, side / 6, 220, 30),
+    badge("Disc with a light mark", side, side / 2, 30, 220),
   );
   return pictures;
 }
@@ -830,6 +752,59 @@ export function measureInk(code: InkCode, picture: InkPicture): InkResult {
     stray: stray / Math.max(1, other),
     partial: soft / Math.max(1, inked.length),
   };
+}
+
+/** What every position of the slider makes of a picture at its own pixels. */
+export interface InkSweep {
+  /** The ink at each threshold, from the slider's low end, in full pixels. */
+  readonly ink: readonly number[];
+  /** How many pixels are partly covered at each. */
+  readonly partial: readonly number[];
+}
+
+/** Sweeps the slider over `picture`, by `code`, with light ink or dark. */
+export function sweepInk(
+  code: InkCode,
+  picture: InkPicture,
+  light: boolean,
+): InkSweep {
+  const { width, height } = picture;
+  const own = { x: 0, y: 0, scale: 1 };
+  const part = code.regionValues(code.pictureLuminance(picture), own, {
+    left: 0,
+    top: 0,
+    right: width,
+    bottom: height,
+  });
+  if (part === undefined) throw new Error("no part");
+  const ink: number[] = [];
+  const partial: number[] = [];
+  for (let threshold = -16; threshold <= 272; threshold++) {
+    const alpha = code.traceRegion(part, own, threshold, light)?.alpha ?? [];
+    let sum = 0;
+    let soft = 0;
+    for (const value of alpha) {
+      sum += value / 255;
+      if (value > 0 && value < 255) soft++;
+    }
+    ink.push(sum);
+    partial.push(soft);
+  }
+  return { ink, partial };
+}
+
+/**
+ * The most that ink grows in one step as the slider moves away from it: up for
+ * light ink, down for dark.
+ */
+export function inkGrowth(ink: readonly number[], light: boolean): number {
+  let most = 0;
+  for (let at = 1; at < ink.length; at++) {
+    const before = ink[at - 1] ?? 0;
+    const after = ink[at] ?? 0;
+    most = Math.max(most, light ? after - before : before - after);
+  }
+  return most;
 }
 
 /** Whether a result is the ink wanted: nearly all of it, and little else. */
@@ -1059,137 +1034,6 @@ function randomNoisy(dice: Dice, index: number): InkPicture {
   });
 }
 
-/** Small ink anywhere in a picture of one tone, flat or graded. */
-function randomSparse(dice: Dice, index: number): InkPicture {
-  const { width, height } = dice.pick(sizes);
-  const [ground, ink] = dice.pick([
-    ...plainTones,
-    [8, 50],
-    [20, 44],
-    [247, 205],
-  ]);
-  const size = Math.min(width, height) * dice.between(0.1, 0.22);
-  const x = dice.between(0.02, 0.98) * (width - size);
-  const y = dice.between(0.02, 0.98) * (height - size);
-  const way = ground > 128 ? -1 : 1;
-  const kind = dice.pick(["flat", "flat", "ramp", "vignette"]);
-  const graded = (px: number, py: number) =>
-    clamp(
-      ground +
-        way *
-          40 *
-          (kind === "ramp"
-            ? px / width
-            : Math.hypot(px / width - 0.5, py / height - 0.5)),
-      0,
-      255,
-    );
-  return drawn({
-    name: `Sparse ${String(index)}`,
-    kind: "Sparse",
-    width,
-    height,
-    ground: kind === "flat" ? ground : graded,
-    ink,
-    strokes: randomGlyph(dice, x, y, size, size),
-    thick: dice.pick([1.5, 2, 3]),
-    noise: dice.pick([0, 1, 2, 4, 8]),
-    soft: dice.pick([0, 1]),
-    seed: index + 1,
-  });
-}
-
-/**
- * A small symbol on a ground of two tones: in wide panels, in thin lines
- * running through the picture, or in thin outlines within it.
- */
-function randomToned(
-  dice: Dice,
-  index: number,
-  centred: boolean,
-  tone: "panels" | "lines" | "outlines",
-): InkPicture {
-  const { width, height } = dice.pick(sizes);
-  const [ground, panel, ink] = dice.pick([
-    [8, 30, 255],
-    [12, 50, 255],
-    [50, 12, 255],
-    [40, 80, 255],
-    [247, 205, 0],
-    [205, 247, 0],
-    [255, 225, 0],
-    [240, 200, 20],
-  ] as const);
-  const size = Math.min(width, height) * dice.between(0.22, 0.4);
-  const x = centred
-    ? (width - size) / 2 + dice.between(-0.08, 0.08) * width
-    : dice.pick([dice.between(0.02, 0.14), dice.between(0.7, 0.82)]) * width;
-  const y = centred
-    ? (height - size) / 2 + dice.between(-0.08, 0.08) * height
-    : dice.pick([dice.between(0.02, 0.12), dice.between(0.62, 0.74)]) * height;
-  const panels: Patch[] = [];
-  const count = tone === "lines" ? 2 + dice.whole(5) : 1 + dice.whole(2);
-  for (let part = 0; part < count; part++) {
-    if (tone === "outlines") {
-      const across = dice.pick([2, 3]);
-      const left = Math.round(width * dice.between(0.08, 0.3));
-      const top = Math.round(height * dice.between(0.08, 0.3));
-      const wide = Math.round(width * dice.between(0.3, 0.55));
-      const tall = Math.round(height * dice.between(0.3, 0.55));
-      const level = panel;
-      panels.push(
-        { x: left, y: top, width: wide, height: across, level },
-        { x: left, y: top + tall, width: wide, height: across, level },
-        { x: left, y: top, width: across, height: tall, level },
-        { x: left + wide, y: top, width: across, height: tall, level },
-      );
-    } else if (tone === "lines") {
-      const across = dice.pick([2, 3, 4]);
-      panels.push(
-        dice.next() < 0.5
-          ? {
-              x: Math.round(width * dice.between(0.15, 0.85)),
-              y: 0,
-              width: across,
-              height,
-              level: panel,
-            }
-          : {
-              x: 0,
-              y: Math.round(height * dice.between(0.15, 0.85)),
-              width,
-              height: across,
-              level: panel,
-            },
-      );
-    } else {
-      const wide = Math.round(width * dice.between(0.3, 0.9));
-      const tall = Math.round(height * dice.between(0.3, 0.9));
-      panels.push({
-        x: dice.whole(width - wide + 1),
-        y: dice.whole(height - tall + 1),
-        width: wide,
-        height: tall,
-        level: panel,
-      });
-    }
-  }
-  return drawn({
-    name: `Toned ${String(index)}`,
-    kind: "Toned",
-    width,
-    height,
-    ground,
-    ink,
-    strokes: randomGlyph(dice, x, y, size, size),
-    thick: dice.pick([2, 3, 4]),
-    noise: dice.pick([0, 1, 3]),
-    soft: dice.pick([0, 1]),
-    seed: index + 1,
-    panels,
-  });
-}
-
 /** A glyph on a transparent ground, of one colour or several. */
 function randomClear(dice: Dice, index: number): InkPicture {
   const { width, height } = dice.pick(sizes);
@@ -1219,65 +1063,79 @@ function randomClear(dice: Dice, index: number): InkPicture {
   });
 }
 
+/** A glyph that fills most of its crop, of one colour or several. */
+function randomDense(dice: Dice, index: number): InkPicture {
+  const { width, height } = dice.pick(sizes);
+  const [name, shape] = dice.pick(denseShapes(width, height));
+  const tones = dice.pick(["one", "one", "two", "gradient"]);
+  const grey = dice.pick([0, 20, 128, 230, 255]);
+  return shapedGlyph({
+    name: `Dense ${String(index)}, ${name}`,
+    kind: "Dense",
+    width,
+    height,
+    shape,
+    colour:
+      tones === "one"
+        ? grey
+        : tones === "two"
+          ? (x) => (x < width / 2 ? 40 : 200)
+          : (_, y) => 30 + (y / height) * 180,
+    soft: dice.pick([0, 0, 1]),
+  });
+}
+
+/** A window with a symbol in it, with rounded corners and perhaps a shadow. */
+function randomCapture(dice: Dice, index: number): InkPicture {
+  const { width, height } = dice.pick(sizes);
+  const [ground, ink] = dice.pick(plainTones);
+  const shorter = Math.min(width, height);
+  const window = drawn({
+    name: `Window ${String(index)}`,
+    kind: "Window",
+    width,
+    height,
+    ground,
+    ink,
+    strokes: randomGlyph(
+      dice,
+      width * 0.2,
+      height * 0.15,
+      width * 0.6,
+      height * 0.7,
+    ),
+    thick: dice.pick([3, 4, 6]),
+    noise: dice.pick([0, 1, 2]),
+    soft: dice.pick([0, 1]),
+    seed: index + 1,
+  });
+  return captured(
+    window,
+    `Capture ${String(index)}`,
+    Math.floor(dice.between(0, shorter / 10)),
+    dice.pick([0, 0, 6, 16, 32]),
+  );
+}
+
 /** A group of random pictures, which `make` draws one at a time. */
 export interface RandomGroup {
   readonly name: string;
-  /**
-   * Whether its pictures can be the same as those of a dim symbol with a
-   * bright label, so that going by those means going wrong by these.
-   */
-  readonly ambiguous: boolean;
+  /** Whether its pictures are glyphs, which make what they always made. */
+  readonly glyphs: boolean;
   make(dice: Dice, index: number): InkPicture;
 }
 
 const groups: readonly RandomGroup[] = [
+  { name: "Ordinary dark and light", glyphs: false, make: randomOrdinary },
+  { name: "Noisy backgrounds", glyphs: false, make: randomNoisy },
   {
     name: "A dim symbol, something bright to one side",
-    ambiguous: false,
+    glyphs: false,
     make: randomLabelled,
   },
-  { name: "Ordinary dark and light", ambiguous: false, make: randomOrdinary },
-  { name: "Noisy backgrounds", ambiguous: false, make: randomNoisy },
-  {
-    name: "Transparent grounds and one colour",
-    ambiguous: false,
-    make: randomClear,
-  },
-  {
-    name: "Small ink anywhere on one tone",
-    ambiguous: false,
-    make: randomSparse,
-  },
-  {
-    name: "Wide panels, symbol in the middle",
-    ambiguous: false,
-    make: (dice, index) => randomToned(dice, index, true, "panels"),
-  },
-  {
-    name: "Thin lines, symbol in the middle",
-    ambiguous: false,
-    make: (dice, index) => randomToned(dice, index, true, "lines"),
-  },
-  {
-    name: "Wide panels, symbol to one side",
-    ambiguous: false,
-    make: (dice, index) => randomToned(dice, index, false, "panels"),
-  },
-  {
-    name: "Thin lines, symbol to one side",
-    ambiguous: false,
-    make: (dice, index) => randomToned(dice, index, false, "lines"),
-  },
-  {
-    name: "A thin outline, symbol in the middle",
-    ambiguous: false,
-    make: (dice, index) => randomToned(dice, index, true, "outlines"),
-  },
-  {
-    name: "A thin outline, symbol to one side",
-    ambiguous: true,
-    make: (dice, index) => randomToned(dice, index, false, "outlines"),
-  },
+  { name: "Transparent grounds", glyphs: true, make: randomClear },
+  { name: "Dense glyphs", glyphs: true, make: randomDense },
+  { name: "Captures of windows", glyphs: false, make: randomCapture },
 ];
 
 /**

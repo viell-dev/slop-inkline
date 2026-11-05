@@ -94,9 +94,10 @@ tested in Obsidian's renderer: an end-to-end spec calls `loadModules()` from
 `test/e2e/support/browser.ts`, which bundles `test/e2e/browser/entry.ts` and
 makes the plugin's modules available there as `window.inklineTest`.
 
-`node test/support/measure-ink.ts <commit>` prints what **Make ink** starts from
-and the ink that gives on synthetic pictures of known ink, by that commit's code
-and this checkout's. A change to how Make ink starts puts those tables in its
+`node test/support/measure-ink.ts <commit>` prints what **Make ink** starts
+from, the ink that gives on synthetic pictures of known ink, and how the ink
+moves over every position of its slider, by that commit's code and this
+checkout's. A change to how Make ink starts or traces puts those tables in its
 pull request.
 
 End-to-end tests live in `test/e2e/` and run the built plugin in real Obsidian

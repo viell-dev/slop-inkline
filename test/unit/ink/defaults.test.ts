@@ -1,178 +1,272 @@
-// Where Make ink starts, measured on synthetic pictures whose ink is known.
-// measure-ink.ts prints the same pictures' results against an earlier commit.
+// What Make ink makes of synthetic pictures whose ink is known, and of every
+// position of its slider. measure-ink.ts prints these against an earlier commit.
 
 import { describe, expect, it } from "vitest";
 import * as pixels from "../../../src/ink/pixels.ts";
-import { dimH, dimLevels, labelledDimH } from "../../support/dim-picture.ts";
 import {
+  inkGrowth,
   inkPictures,
   madeInk,
   measureInk,
-  randomFrom,
   randomGroups,
+  sweepInk,
   type InkCode,
   type InkPicture,
 } from "../../support/ink-pictures.ts";
 
-const { inkDefaults, otsuThreshold } = pixels;
+const {
+  alphaBounds,
+  cropAlpha,
+  enlargeFactor,
+  enlargedRegion,
+  pictureLuminance,
+  regionValues,
+  thresholdAlpha,
+  thresholdContrast,
+  thresholdEdge,
+  traceRegion,
+} = pixels;
 
 /** Pictures that the defaults are known not to make the ink wanted of. */
 const limits = new Set([
-  // Too near the strokes to tell from them.
-  "Dim H, white block beside the strokes",
+  // A small bright element draws the threshold to it (#147).
+  "Dim H, white block of 1.2%",
+  "Dim H, label of white letters",
   // Its alpha limits the ink, which #96 keeps.
   "Glyph of 50% opacity",
-  // The threshold splits the glyph's two tones.
+  // The threshold splits a glyph of two tones, as it always has.
   "Bold glyph of two tones",
-  // More than a third of each is shadow, so its transparency is its ground.
-  "Dim light ink, corners and a shadow of 28",
-  "Dark ink on light, corners and a shadow of 28",
-  "Dim dark ink, corners and a shadow of 28",
-  // The same picture as a dim outline with a label beside it: the symbol
-  // stays whole, and the outline becomes ink too.
-  "White symbol at the side of a dim outline",
+  "bold H, two tones",
+  "block with a counter, two tones",
+  "block with a notch, two tones",
+  "octagon, two tones",
+  "disc, two tones",
+  "Rectangle of two tones, alpha 64 all round",
+  // Round, so not a window: its plate stays the ink.
+  "Disc with a light mark",
 ]);
 
-/** The pictures whose first threshold is Otsu's, as it always was. */
-function keepsOtsu(picture: InkPicture): boolean {
-  return ["Ordinary pictures", "Noisy backgrounds"].includes(picture.kind);
+describe("what Make ink makes of known pictures", () => {
+  for (const picture of inkPictures()) {
+    it(`${picture.kind}: ${picture.name}`, () => {
+      expect(madeInk(measureInk(pixels, picture))).toBe(
+        !limits.has(picture.name),
+      );
+    });
+  }
+});
+
+/** The part of `picture` in view, at `scale`, with what it takes to trace it. */
+function inView(
+  picture: InkPicture,
+  scale: number,
+  region = {
+    left: 0,
+    top: 0,
+    right: Math.ceil(picture.width * scale),
+    bottom: Math.ceil(picture.height * scale),
+  },
+) {
+  const luma = pictureLuminance(picture);
+  const place = { x: 0, y: 0, scale };
+  const factor = enlargeFactor(luma.width, luma.height, place, region);
+  if (factor > 1) {
+    const fine = enlargedRegion(luma, place, region, factor);
+    if (fine === undefined) throw new Error("no samples");
+    return fine;
+  }
+  const part = regionValues(luma, place, region);
+  if (part === undefined) throw new Error("no part");
+  return { part, place, edge: thresholdEdge };
 }
 
-/** Making ink as it was: Otsu's method, on an opaque picture. */
-const otsuOnly: InkCode = {
+/** Ink as a glyph on a transparent ground makes it: its alpha, whole ramp. */
+function glyphInk(
+  { part, edge }: ReturnType<typeof inView>,
+  threshold: number,
+  light: boolean,
+) {
+  const ramp = thresholdAlpha(part.values, threshold, light, edge);
+  const alpha = ramp.map((value, index) =>
+    Math.round((value * (part.alpha?.[index] ?? 0)) / 255),
+  );
+  const bounds = alphaBounds(alpha, part.width);
+  return bounds && cropAlpha(alpha, part.width, bounds);
+}
+
+/** Whether two images hold the same values: quicker than `toEqual` on them. */
+function sameValues(
+  a: Uint8ClampedArray | undefined,
+  b: Uint8ClampedArray | undefined,
+): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return a.length === b.length && a.every((value, at) => value === b[at]);
+}
+
+/** Checks that `picture` is left as a glyph, at each scale and selection. */
+function expectGlyph(picture: InkPicture): void {
+  const luma = pictureLuminance(picture);
+  expect(luma.ownGround, picture.name).toBeUndefined();
+  // Not one pixel of its alpha is changed.
+  const alpha = picture.data.filter((_, index) => index % 4 === 3);
+  expect(sameValues(luma.alpha, alpha), picture.name).toBe(true);
+  const { width, height } = picture;
+  for (const scale of [1, 2.4]) {
+    const right = Math.ceil(width * scale);
+    const bottom = Math.ceil(height * scale);
+    for (const region of [
+      { left: 0, top: 0, right, bottom },
+      { left: 0, top: 0, right: Math.ceil(right / 2), bottom },
+      {
+        left: Math.floor(right / 4),
+        top: Math.floor(bottom / 4),
+        right: Math.ceil((right * 3) / 4),
+        bottom: Math.ceil((bottom * 3) / 4),
+      },
+    ]) {
+      const shown = inView(picture, scale, region);
+      expect(shown.part.ownGround).toBeUndefined();
+      for (const [threshold, light] of [
+        [64, true],
+        [128, false],
+      ] as const) {
+        const ink = traceRegion(
+          shown.part,
+          shown.place,
+          threshold,
+          light,
+          shown.edge,
+        );
+        expect(
+          sameValues(ink?.alpha, glyphInk(shown, threshold, light)),
+          `${picture.name} at ${String(scale)}`,
+        ).toBe(true);
+      }
+    }
+  }
+}
+
+describe("glyphs are not taken for captures", () => {
+  const dense = inkPictures().filter(({ kind }) =>
+    ["Dense glyphs, tightly cropped", "Transparent grounds"].includes(kind),
+  );
+  for (const picture of dense) {
+    it(`keeps its alpha at each size and selection: ${picture.name}`, () => {
+      expectGlyph(picture);
+    });
+  }
+
+  for (const [group, pictures] of randomGroups(6, 20261106)) {
+    if (!group.glyphs) continue;
+    it(`keeps its alpha at each size and selection: ${group.name}`, () => {
+      for (const picture of pictures()) expectGlyph(picture);
+    });
+  }
+
+  // From the independent review of #161, which found them cut away.
+  it("keeps the edges of a dense bar at its own pixels", () => {
+    const bar = inkPictures().find(
+      ({ name }) => name === "White bar of 10, alpha 64 at each side",
+    );
+    if (bar === undefined) throw new Error("no bar");
+    const { part, place, edge } = inView(bar, 1);
+    const { threshold, light } = pixels.inkDefaults(part);
+    const ink = traceRegion(part, place, threshold, light, edge);
+    expect([ink?.width, ink?.height]).toEqual([10, 10]);
+    expect(ink?.alpha.subarray(0, 10)).toEqual(
+      Uint8ClampedArray.from([64, ...new Array<number>(8).fill(255), 64]),
+    );
+  });
+
+  it("keeps the edges of a dense bar enlarged", () => {
+    const bar = inkPictures().find(
+      ({ name }) => name === "White bar of 100, alpha 64 at each side",
+    );
+    if (bar === undefined) throw new Error("no bar");
+    const { part, place, edge } = inView(bar, 2.4);
+    const { threshold, light } = pixels.inkDefaults(part);
+    const ink = traceRegion(part, place, threshold, light, edge);
+    expect(ink?.width).toBe(part.width);
+    expect(ink?.alpha[0]).toBe(64);
+  });
+
+  it("keeps the edge of a dense bar when part of it is selected", () => {
+    const bar = inkPictures().find(
+      ({ name }) => name === "White bar of 100, alpha 64 at each side",
+    );
+    if (bar === undefined) throw new Error("no bar");
+    const region = { left: 0, top: 20, right: 40, bottom: 60 };
+    const { part, place, edge } = inView(bar, 1, region);
+    const { threshold, light } = pixels.inkDefaults(part);
+    const ink = traceRegion(part, place, threshold, light, edge);
+    expect([ink?.width, ink?.height]).toEqual([40, 40]);
+    expect(ink?.alpha[0]).toBe(64);
+  });
+});
+
+/** Making ink with the ramp every threshold's contrast alone would give it. */
+const ownRamps: InkCode = {
   ...pixels,
-  inkDefaults(part) {
-    if (part.alpha !== undefined) return inkDefaults(part);
-    const threshold = otsuThreshold(part.values);
-    return { threshold, light: pixels.lightInk(part.values, threshold) };
+  traceRegion(part, place, threshold, light, edge = thresholdEdge) {
+    const tones =
+      part.alpha === undefined || part.ownGround === true
+        ? (part.tones ?? part.values)
+        : undefined;
+    const ramp =
+      tones === undefined
+        ? edge
+        : (edge * thresholdContrast(tones, threshold)) / 255;
+    const alpha = thresholdAlpha(part.values, threshold, light, ramp).map(
+      (value, index) =>
+        part.alpha === undefined
+          ? value
+          : Math.round((value * (part.alpha[index] ?? 0)) / 255),
+    );
+    const bounds = alphaBounds(alpha, part.width);
+    if (bounds === undefined) return undefined;
+    return {
+      alpha: cropAlpha(alpha, part.width, bounds),
+      width: bounds.right - bounds.left,
+      height: bounds.bottom - bounds.top,
+      x: place.x + (part.left + bounds.left) * place.scale,
+      y: place.y + (part.top + bounds.top) * place.scale,
+    };
   },
 };
 
-describe("where Make ink starts", () => {
-  for (const picture of inkPictures()) {
-    it(`${picture.kind}: ${picture.name}`, () => {
-      const result = measureInk(pixels, picture);
-      expect(madeInk(result)).toBe(!limits.has(picture.name));
-      if (keepsOtsu(picture)) {
-        const before = measureInk(otsuOnly, picture);
-        expect(result.threshold).toBe(before.threshold);
-        expect(result.light).toBe(before.light);
+describe("every position of the slider", () => {
+  const listed = inkPictures().filter(({ kind }) =>
+    ["A small bright element", "Ordinary pictures", "Captures"].includes(kind),
+  );
+
+  it("shows what it guards against: a threshold's own ramp makes ink grow", () => {
+    const grown = listed.some(
+      (picture) => inkGrowth(sweepInk(ownRamps, picture, true).ink, true) > 100,
+    );
+    expect(grown).toBe(true);
+  });
+
+  for (const picture of listed.filter((_, index) => index % 4 === 0)) {
+    it(`only fades ink as it moves away: ${picture.name}`, () => {
+      for (const light of [true, false]) {
+        expect(inkGrowth(sweepInk(pixels, picture, light).ink, light)).toBe(0);
       }
     });
   }
 
-  it("keeps a symbol whole where it takes it for a label", () => {
-    const picture = inkPictures().find(
-      ({ name }) => name === "White symbol at the side of a dim outline",
-    );
-    if (picture === undefined) throw new Error("no picture");
-    const result = measureInk(pixels, picture);
-    expect(result.found).toBe(1);
-    expect(result.stray).toBeGreaterThan(0.02);
-  });
-});
-
-describe("random pictures", () => {
-  // Few enough for every run; measure-ink.ts takes as many as are wanted.
-  for (const [group, pictures] of randomGroups(15, 20261105)) {
-    it(`${group.name}: harms none${group.ambiguous ? " of its ink" : ""}`, () => {
-      let harmed = 0;
-      let lost = 0;
+  for (const [group, pictures] of randomGroups(2, 20261106)) {
+    it(`only fades ink, and softens no edge: ${group.name}`, () => {
       for (const picture of pictures()) {
-        const before = measureInk(otsuOnly, picture);
-        const after = measureInk(pixels, picture);
-        if (madeInk(before) && !madeInk(after)) harmed++;
-        if (after.found < before.found - 0.02) lost++;
+        for (const light of [true, false]) {
+          const sweep = sweepInk(pixels, picture, light);
+          expect(inkGrowth(sweep.ink, light)).toBe(0);
+          const own = sweepInk(ownRamps, picture, light);
+          const softer = sweep.partial.filter(
+            (partial, at) => partial > (own.partial[at] ?? 0),
+          );
+          expect(softer).toEqual([]);
+        }
       }
-      expect(lost).toBe(0);
-      if (!group.ambiguous) expect(harmed).toBe(0);
     }, 30_000);
   }
-
-  it("fixes most pictures of a dim symbol with something bright aside", () => {
-    const group = randomGroups(30, 20261105)[0];
-    if (group === undefined) throw new Error("no group");
-    let failed = 0;
-    let fixed = 0;
-    for (const picture of group[1]()) {
-      if (madeInk(measureInk(otsuOnly, picture))) continue;
-      failed++;
-      if (madeInk(measureInk(pixels, picture))) fixed++;
-    }
-    expect(failed).toBeGreaterThan(10);
-    expect(fixed / failed).toBeGreaterThan(0.6);
-  }, 30_000);
-});
-
-describe("a label off to one side", () => {
-  const side = 48;
-
-  it("does not draw the threshold from the strokes", () => {
-    const values = labelledDimH(side);
-    expect(otsuThreshold(values)).toBeGreaterThan(dimLevels.ink);
-    const { threshold, light } = inkDefaults({ values, width: side });
-    expect(threshold).toBeGreaterThan(dimLevels.ground);
-    expect(threshold).toBeLessThan(dimLevels.ink);
-    expect(light).toBe(true);
-  });
-
-  it("is found the same way among a capture's opaque pixels", () => {
-    const values = labelledDimH(side);
-    const alpha = new Uint8ClampedArray(values.length).fill(255);
-    alpha[0] = 0;
-    const { threshold, light } = inkDefaults({ values, width: side, alpha });
-    expect(threshold).toBeLessThan(dimLevels.ink);
-    expect(light).toBe(true);
-  });
-
-  it("is smaller than a sixteenth of the picture", () => {
-    // The same corner block, grown past a sixteenth of the picture: still
-    // clear of the strokes, it is no longer taken for a label.
-    const values = labelledDimH(side);
-    const across = 13;
-    for (let y = side - across; y < side; y++) {
-      values.fill(255, y * side + side - across, (y + 1) * side);
-    }
-    expect(across * across).toBeGreaterThan((side * side) / 16);
-    const { threshold } = inkDefaults({ values, width: side });
-    expect(threshold).toBe(otsuThreshold(values));
-  });
-
-  it("is not looked for where the rest is only noise", () => {
-    // Noise within a flat border, which no strokes or tones make clean, and a
-    // bright block in a corner: the noise could pass for thin strokes.
-    const values = labelledDimH(side).fill(dimLevels.ground);
-    const random = randomFrom(5);
-    for (let y = 2; y < side - 2; y++) {
-      for (let x = 2; x < side - 2; x++) {
-        values[y * side + x] = 20 + Math.round(random() * 30);
-      }
-    }
-    for (let y = side - 2; y < side; y++) {
-      values.fill(255, y * side + side - 20, (y + 1) * side);
-    }
-    const { threshold } = inkDefaults({ values, width: side });
-    expect(threshold).toBe(otsuThreshold(values));
-  });
-
-  it("is not looked for past strokes that run off the picture", () => {
-    // An H as tall as the picture, its stems crossing its border four times:
-    // it could be lines behind a small symbol.
-    const values = dimH(side);
-    for (let y = side - 4; y < side; y++) {
-      values.fill(255, y * side + side - 8, (y + 1) * side);
-    }
-    const { threshold } = inkDefaults({ values, width: side });
-    expect(threshold).toBe(otsuThreshold(values));
-  });
-
-  it("is not looked for in a picture of one value or two", () => {
-    const flat = new Uint8ClampedArray(64).fill(90);
-    expect(inkDefaults({ values: flat, width: 8 }).threshold).toBe(128);
-    const two = new Uint8ClampedArray(64).fill(10);
-    two[0] = 200;
-    expect(inkDefaults({ values: two, width: 8 }).threshold).toBe(
-      otsuThreshold(two),
-    );
-  });
 });

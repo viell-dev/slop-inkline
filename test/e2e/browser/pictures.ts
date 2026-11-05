@@ -2,7 +2,7 @@
 // system clipboard or dropped on the surface, and found again in the
 // surface's pixels.
 
-import { dimH, labelledDimH } from "../../support/dim-picture.ts";
+import { dimH } from "../../support/dim-picture.ts";
 
 /** A rectangle drawn on a picture, in its pixels and a CSS colour. */
 export interface Mark {
@@ -37,14 +37,10 @@ export async function picture(
 
 /**
  * A dim H, `side` pixels square, as `dimH` gives it, as a PNG. With `corners`,
- * it is a capture of a window: clear outside corners of that radius. With
- * `labelled`, it is the picture `labelledDimH` gives.
+ * it is a capture of a window: clear outside corners of that radius.
  */
-export async function dimPicture(
-  side: number,
-  { corners = 0, labelled = false } = {},
-): Promise<Blob> {
-  const values = labelled ? labelledDimH(side) : dimH(side);
+export async function dimPicture(side: number, corners = 0): Promise<Blob> {
+  const values = dimH(side);
   const data = new Uint8ClampedArray(side * side * 4).fill(255);
   values.forEach((value, index) => {
     data.fill(value, index * 4, index * 4 + 3);
@@ -59,6 +55,23 @@ export async function dimPicture(
     context.roundRect(0, 0, side, side, corners);
     context.fill();
   }
+  return canvas.convertToBlob({ type: "image/png" });
+}
+
+/**
+ * A white bar `side` pixels square with soft sides, each column at the edge
+ * at an alpha of 64, as a PNG: a dense glyph, cropped tightly.
+ */
+export async function softBar(side: number): Promise<Blob> {
+  const data = new Uint8ClampedArray(side * side * 4).fill(255);
+  for (let y = 0; y < side; y++) {
+    data[y * side * 4 + 3] = 64;
+    data[(y * side + side - 1) * 4 + 3] = 64;
+  }
+  const canvas = new OffscreenCanvas(side, side);
+  const context = canvas.getContext("2d");
+  if (context === null) throw new Error("no 2D canvas context");
+  context.putImageData(new ImageData(data, side), 0, 0);
   return canvas.convertToBlob({ type: "image/png" });
 }
 
