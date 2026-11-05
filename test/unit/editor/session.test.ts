@@ -9,7 +9,7 @@ import {
   plainGrid,
   snapToGrid,
 } from "../../../src/editor/session.ts";
-import type { Grid } from "../../../src/editor/guides.ts";
+import { finerGrid, type Grid } from "../../../src/editor/guides.ts";
 import { emptyDocument } from "../../../src/ink/document.ts";
 
 describe("brushSizes", () => {
@@ -466,6 +466,164 @@ describe("DrawingSession", () => {
     expect(session.document.strokes.at(-1)?.points).toEqual([96 * 16, 0]);
     session.grid = { spacing: 10, rows: [0] };
     expect(session.gridOrigin).toBe(2);
+  });
+
+  describe("on a grid finer than the usual one, as in Zoom", () => {
+    const usual: Grid = { spacing: 14, rows: [0, 14, 28, 42, 56] };
+    const fine = finerGrid(usual);
+    /** A session on the usual grid, with its columns through 9 pixels. */
+    const onGrid = (): DrawingSession => {
+      const session = new DrawingSession(emptyDocument);
+      session.snap = true;
+      session.grid = usual;
+      session.replace(emptyDocument, 9);
+      return session;
+    };
+    const stroke = (session: DrawingSession, x: number): void => {
+      session.begin({ x, y: 7 });
+      session.end({ x: x + 30, y: 7 });
+    };
+
+    it("snaps to points of the finer grid, among those of the usual one", () => {
+      const session = onGrid();
+      session.grid = fine;
+      // Columns through 9, 7 pixels apart: 30 is one of the finer grid's
+      // alone, and 23 is one of the usual grid's as well.
+      session.begin({ x: 31, y: 8 });
+      session.end({ x: 24, y: 20 });
+      const points = session.document.strokes[0]?.points ?? [];
+      expect(points.slice(0, 2)).toEqual([30 * 16, 7 * 16]);
+      expect(points.slice(-2)).toEqual([23 * 16, 21 * 16]);
+      // A point drawn on the usual grid stays one.
+      const point = snapToGrid({ x: 23, y: 14 }, usual, session.gridOrigin);
+      expect(snapToGrid(point, fine, session.gridOrigin)).toEqual(point);
+    });
+
+    it("leaves the usual grid's columns where they were, however many strokes it draws", () => {
+      const session = onGrid();
+      session.grid = fine;
+      // 9 is past the finer spacing: kept within that, the usual grid's
+      // columns would come back half a cell away.
+      expect(session.gridOrigin).toBe(9);
+      for (const x of [20, 30, 40]) stroke(session, x);
+      expect(session.gridOrigin).toBe(9);
+      session.grid = usual;
+      expect(session.gridOrigin).toBe(9);
+      session.begin({ x: 8, y: 0 });
+      session.end({ x: 8, y: 0 });
+      expect(session.document.strokes.at(-1)?.points).toEqual([9 * 16, 0]);
+    });
+
+    it("keeps them through undo and redo across the views", () => {
+      const session = onGrid();
+      stroke(session, 20);
+      session.grid = fine;
+      stroke(session, 30);
+      stroke(session, 40);
+      session.grid = usual;
+      for (const step of ["undo", "undo", "undo", "redo", "redo"] as const) {
+        session[step]();
+        expect(session.gridOrigin).toBe(9);
+      }
+      session.grid = fine;
+      session.undo();
+      expect(session.gridOrigin).toBe(9);
+      session.grid = usual;
+      session.redo();
+      expect(session.gridOrigin).toBe(9);
+    });
+
+    it("keeps them through a save's move", () => {
+      const session = onGrid();
+      stroke(session, 20);
+      session.grid = fine;
+      stroke(session, 30);
+      // A save cropped 11 pixels on the left, while zoomed.
+      session.rebase(-11);
+      expect(session.gridOrigin).toBe(12);
+      session.grid = usual;
+      expect(session.gridOrigin).toBe(12);
+      session.undo();
+      expect(session.gridOrigin).toBe(12);
+      session.grid = fine;
+      session.undo();
+      expect(session.gridOrigin).toBe(12);
+    });
+
+    it("guesses an opened drawing's columns by the usual grid's spacing", () => {
+      const tap = (x: number) =>
+        ({
+          tool: "pen",
+          size: 16,
+          pressure: false,
+          points: [x * 16, 0],
+        }) as const;
+      // Taps on columns 14 pixels apart, through 11 pixels, which is more
+      // than the finer grid's spacing: 39 and 53, with one at 8.
+      const opened = { strokes: [tap(39), tap(53), tap(8)] };
+      const session = new DrawingSession(opened);
+      session.grid = usual;
+      expect(session.gridOrigin).toBe(11);
+      session.grid = fine;
+      expect(session.gridOrigin).toBe(11);
+      // A save's move while zoomed takes the guess with the strokes.
+      session.rebase(-5);
+      expect(session.gridOrigin).toBe(6);
+      session.grid = usual;
+      expect(session.gridOrigin).toBe(6);
+      // And so does a drawing put in place while zoomed.
+      session.grid = fine;
+      session.replace(opened);
+      session.grid = usual;
+      expect(session.gridOrigin).toBe(11);
+    });
+
+    it("waits until a stroke ends, whichever way the view changes", () => {
+      const session = onGrid();
+      session.begin({ x: 31, y: 8 });
+      session.grid = fine;
+      expect(session.grid).toBe(usual);
+      session.end({ x: 31, y: 8 });
+      expect(session.document.strokes[0]?.points).toEqual([37 * 16, 14 * 16]);
+      expect(session.grid).toBe(fine);
+      session.begin({ x: 31, y: 8 });
+      session.grid = usual;
+      expect(session.grid).toBe(fine);
+      session.end({ x: 31, y: 8 });
+      expect(session.document.strokes[1]?.points).toEqual([30 * 16, 7 * 16]);
+      expect(session.grid).toBe(usual);
+    });
+
+    it("keeps a polygon on the grid it started on until it ends", () => {
+      const session = onGrid();
+      session.shape = "polygon";
+      session.begin({ x: 9, y: 0 });
+      session.end({ x: 9, y: 0 });
+      // Zoom goes on with a corner placed: the view changes, the grid waits.
+      session.grid = fine;
+      expect(session.grid).toBe(usual);
+      expect(session.placing).toBe(true);
+      session.begin({ x: 31, y: 8 });
+      session.end({ x: 31, y: 8 });
+      const corners = [9 * 16, 0, 37 * 16, 14 * 16];
+      expect(session.activeStroke?.points).toEqual(corners);
+      // A click on that last corner ends it, on the same grid.
+      session.begin({ x: 31, y: 8 });
+      session.end({ x: 31, y: 8 });
+      expect(session.placing).toBe(false);
+      expect(session.grid).toBe(fine);
+      expect(session.document.strokes[0]?.points).toEqual(corners);
+      expect(session.gridOrigin).toBe(9);
+      // And one started zoomed keeps its finer grid when zoomed out.
+      session.begin({ x: 31, y: 8 });
+      session.end({ x: 31, y: 8 });
+      expect(session.activeStroke?.points).toEqual([30 * 16, 7 * 16]);
+      session.grid = usual;
+      expect(session.grid).toBe(fine);
+      session.undoCorner();
+      expect(session.placing).toBe(false);
+      expect(session.grid).toBe(usual);
+    });
   });
 
   it("does not record clearing an empty drawing", () => {

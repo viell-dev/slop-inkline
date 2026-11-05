@@ -379,19 +379,29 @@ export class DrawingSession {
   }
 
   /**
-   * Where the grid's columns pass, in document pixels within one spacing. It
-   * moves with the drawing when a save moves that, and with a restored one.
+   * How far apart the usual grid's columns are, on a finer grid too: the
+   * spacing that {@link gridOrigin} is kept within, so that it means the same
+   * in either view, and strokes on a finer grid leave the usual one in place.
+   */
+  get #period(): number {
+    return this.grid.period ?? this.grid.spacing;
+  }
+
+  /**
+   * Where the grid's columns pass, in document pixels within one spacing of
+   * the usual grid, as columns of a finer one pass there too. It moves with
+   * the drawing when a save moves that, and with a restored one.
    */
   get gridOrigin(): number {
     const { document, gridOrigin } = this.#history.present;
-    const { spacing } = this.grid;
-    if (gridOrigin !== undefined) return withinSpacing(gridOrigin, spacing);
+    const period = this.#period;
+    if (gridOrigin !== undefined) return withinSpacing(gridOrigin, period);
     const guessed = this.#guessed;
-    if (guessed?.document === document && guessed.spacing === spacing) {
+    if (guessed?.document === document && guessed.spacing === period) {
       return guessed.origin;
     }
-    const origin = gridOriginOf(document, 0, spacing);
-    this.#guessed = { document, spacing, origin };
+    const origin = gridOriginOf(document, 0, period);
+    this.#guessed = { document, spacing: period, origin };
     return origin;
   }
 
@@ -794,7 +804,7 @@ export class DrawingSession {
    */
   replace(
     document: InkDocument,
-    gridOrigin = gridOriginOf(document, this.gridOrigin, this.grid.spacing),
+    gridOrigin = gridOriginOf(document, this.gridOrigin, this.#period),
   ): void {
     if (this.#active !== undefined) return;
     this.#history.push({ document, gridOrigin });
@@ -812,10 +822,10 @@ export class DrawingSession {
     // moves with each, so that it stays where each was drawn on it, the grid
     // the strokes say too, which may have no strokes to say it after this.
     const move = documentMover(dxPixels);
-    const { spacing } = this.grid;
+    const period = this.#period;
     this.#history.map(({ document, gridOrigin }) => ({
       document: move(document),
-      gridOrigin: (gridOrigin ?? gridOriginOf(document, 0, spacing)) + dxPixels,
+      gridOrigin: (gridOrigin ?? gridOriginOf(document, 0, period)) + dxPixels,
     }));
     this.#saved = move(this.#saved);
     const active = this.#active;
