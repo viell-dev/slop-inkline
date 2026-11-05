@@ -25,6 +25,7 @@ import {
   thresholdEdge,
   traceInk,
   traceRegion,
+  type Luminance,
   type RgbaPixels,
 } from "../../../src/ink/pixels.ts";
 import { limits } from "../../../src/format/record.ts";
@@ -466,11 +467,11 @@ describe("inkDefaults", () => {
   it("takes the smaller part of an opaque picture as the ink", () => {
     const darkOnLight = Uint8ClampedArray.from([0, 255, 255, 255]);
     const lightOnDark = Uint8ClampedArray.from([255, 0, 0, 0]);
-    expect(inkDefaults({ values: darkOnLight })).toEqual({
+    expect(inkDefaults({ values: darkOnLight, width: 4 })).toEqual({
       threshold: 128,
       light: false,
     });
-    expect(inkDefaults({ values: lightOnDark }).light).toBe(true);
+    expect(inkDefaults({ values: lightOnDark, width: 4 }).light).toBe(true);
   });
 
   it("takes a transparent picture's opaque pixels as the ink", () => {
@@ -480,12 +481,16 @@ describe("inkDefaults", () => {
     expect(
       inkDefaults({
         values: Uint8ClampedArray.from([250, 255, 255, 255]),
+        width: 4,
         alpha,
       }).light,
     ).toBe(true);
     expect(
-      inkDefaults({ values: Uint8ClampedArray.from([5, 255, 255, 255]), alpha })
-        .light,
+      inkDefaults({
+        values: Uint8ClampedArray.from([5, 255, 255, 255]),
+        width: 4,
+        alpha,
+      }).light,
     ).toBe(false);
   });
 });
@@ -517,7 +522,7 @@ describe("inkDefaults for a glyph of one grey", () => {
     const alpha = Uint8ClampedArray.from([255, 255, 0, 0]);
     for (const grey of [40, 128, 200]) {
       const values = Uint8ClampedArray.from([grey, grey + 3, 255, 255]);
-      const { threshold, light } = inkDefaults({ values, alpha });
+      const { threshold, light } = inkDefaults({ values, width: 4, alpha });
       const ink = thresholdAlpha(values.subarray(0, 2), threshold, light);
       expect([...ink]).toEqual([255, 255]);
     }
@@ -846,10 +851,10 @@ describe("ink of a dim picture", () => {
 
   it("has edges as sharp as the same picture in full contrast", () => {
     const dim = dimH(side);
-    const defaults = inkDefaults({ values: dim });
+    const defaults = inkDefaults({ values: dim, width: side });
     expect(defaults.light).toBe(true);
     const bright = dimH(side, { ground: 0, ink: 255 });
-    const { threshold } = inkDefaults({ values: bright });
+    const { threshold } = inkDefaults({ values: bright, width: side });
     const brightShare = partial(ink(bright, threshold));
     expect(brightShare).toBeLessThan(0.16);
     expect(partial(ink(dim, defaults.threshold))).toBeLessThan(
@@ -859,7 +864,7 @@ describe("ink of a dim picture", () => {
 
   it("is sharper than the whole ramp, which spans most of its levels", () => {
     const values = dimH(side);
-    const { threshold } = inkDefaults({ values });
+    const { threshold } = inkDefaults({ values, width: side });
     const whole = thresholdAlpha(samples(values).part.values, threshold, true);
     expect(partial(whole)).toBeGreaterThan(0.45);
     expect(partial(ink(values, threshold))).toBeLessThan(0.16);
@@ -876,7 +881,7 @@ describe("ink of a dim picture", () => {
 
   it("sharpens a picture shown at its own pixels too", () => {
     const values = dimH(side);
-    const { threshold } = inkDefaults({ values });
+    const { threshold } = inkDefaults({ values, width: side });
     const traced = traceInk(
       { width: side, height: side, values },
       { x: 0, y: 0, scale: 1 },
@@ -903,16 +908,16 @@ describe("ink of a dim picture", () => {
     expect(traced?.alpha).toEqual(whole.subarray(0, 7));
   });
 
-  it("keeps the whole ramp for a picture with transparency", () => {
+  it("keeps the whole ramp for a picture whose ground is its transparency", () => {
     // Dim tones, and one within the ramp, in a glyph on a clear ground.
-    const values = Uint8ClampedArray.from([8, 8, 40, 50, 50]);
-    const alpha = Uint8ClampedArray.from([0, 255, 255, 255, 255]);
+    const values = Uint8ClampedArray.from([8, 8, 8, 8, 8, 40, 50, 50]);
+    const alpha = Uint8ClampedArray.from([0, 0, 0, 0, 255, 255, 255, 255]);
     const traced = traceInk(
-      { width: 5, height: 1, values, alpha },
+      { width: 8, height: 1, values, alpha },
       { x: 0, y: 0, scale: 1 },
       29,
       true,
-      { left: 0, top: 0, right: 5, bottom: 1 },
+      { left: 0, top: 0, right: 8, bottom: 1 },
     );
     // A ramp narrowed to the 42 levels' share would make the 40 full ink.
     expect([...(traced?.alpha ?? [])]).toEqual([219, 255, 255]);
@@ -930,5 +935,265 @@ describe("ink of a dim picture", () => {
     expect(traceRegion(part, own, thresholdRange.max, true)).toBeUndefined();
     const all = traceRegion(part, own, thresholdRange.min, true);
     expect(new Set(all?.alpha)).toEqual(new Set([255]));
+  });
+});
+
+describe("a part with a ground of its own", () => {
+  const side = 38;
+  const own = { x: 0, y: 0, scale: 1 };
+  const whole = { left: 0, top: 0, right: side, bottom: side };
+
+  /** `values`, `width` a row, with each pixel's alpha from `alphaAt`. */
+  function capture(
+    values: Uint8ClampedArray,
+    width: number,
+    alphaAt: (x: number, y: number) => number,
+  ): Luminance {
+    const height = values.length / width;
+    const data = new Uint8ClampedArray(values.length * 4);
+    values.forEach((value, index) => {
+      data.fill(value, index * 4, index * 4 + 3);
+      data[index * 4 + 3] = alphaAt(index % width, Math.floor(index / width));
+    });
+    return pictureLuminance({ width, height, data });
+  }
+
+  /** Clear outside corners of `radius` of a picture `size` pixels square. */
+  function corners(size: number, radius: number) {
+    return (x: number, y: number): number => {
+      const across = Math.max(0, radius - Math.min(x, size - 1 - x) - 0.5);
+      const down = Math.max(0, radius - Math.min(y, size - 1 - y) - 0.5);
+      return Math.hypot(across, down) > radius ? 0 : 255;
+    };
+  }
+
+  function defaults(picture: Luminance) {
+    const part = regionValues(picture, own, whole);
+    if (part === undefined) throw new Error("no part");
+    return inkDefaults(part);
+  }
+
+  it("starts as the same picture does opaque, whatever lies around it", () => {
+    const pictures = [
+      dimH(side),
+      dimH(side, { ground: 50, ink: 8 }),
+      dimH(side, { ground: 240, ink: 30 }),
+    ];
+    for (const values of pictures) {
+      const opaque = inkDefaults({ values, width: side });
+      // From the review of #146: one pixel used to turn all this off, and so
+      // made the ground the ink.
+      const oneNearlyOpaque = capture(values, side, (x, y) =>
+        x === 0 && y === 0 ? 254 : 255,
+      );
+      expect(defaults(oneNearlyOpaque)).toEqual(opaque);
+      expect(defaults(capture(values, side, corners(side, 4)))).toEqual(opaque);
+    }
+  });
+
+  it("makes the same ink as the same picture opaque", () => {
+    const values = dimH(side);
+    const opaque = traceInk(
+      { width: side, height: side, values },
+      own,
+      29,
+      true,
+      whole,
+    );
+    const rounded = capture(values, side, corners(side, 4));
+    expect(traceInk(rounded, own, 29, true, whole)).toEqual(opaque);
+  });
+
+  it("makes the same ink as the same picture opaque where it is enlarged", () => {
+    const values = dimH(side);
+    const place = { x: 0, y: 0, scale: 2.4 };
+    const region = { left: 0, top: 0, right: 92, bottom: 92 };
+    const factor = enlargeFactor(side, side, place, region);
+    const ink = (picture: Luminance) => {
+      const enlarged = enlargedRegion(picture, place, region, factor);
+      if (enlarged === undefined) throw new Error("no part");
+      const { part, place: fine, edge } = enlarged;
+      return traceRegion(part, fine, 29, true, edge);
+    };
+    expect(ink(capture(values, side, corners(side, 4)))).toEqual(
+      ink({ width: side, height: side, values }),
+    );
+  });
+
+  it("keeps a part of it clear of the ink where the picture is clear", () => {
+    // Dark ink on a light window: its clear corners hold black, which would
+    // be ink if the alpha stopped limiting it.
+    const values = dimH(side, { ground: 240, ink: 30 });
+    const alpha = corners(side, 6);
+    const rounded = capture(
+      values.map((value, index) =>
+        alpha(index % side, Math.floor(index / side)) === 0 ? 0 : value,
+      ),
+      side,
+      alpha,
+    );
+    const { threshold, light } = defaults(rounded);
+    expect(light).toBe(false);
+    const ink = traceInk(rounded, own, threshold, light, whole);
+    if (ink === undefined) throw new Error("no ink");
+    // The H's own bounds, not the whole picture's.
+    expect(ink.width).toBeLessThan(side);
+    expect(ink.height).toBe(side);
+    expect(ink.x).toBeGreaterThan(0);
+  });
+
+  it("makes no ink of the shadow around it", () => {
+    // A light window in a black shadow.
+    const window = 60;
+    const margin = 4;
+    const size = window + 2 * margin;
+    const inside = (at: number) => at >= margin && at < margin + window;
+    const values = new Uint8ClampedArray(size * size);
+    const glyph = dimH(window, { ground: 240, ink: 30 });
+    for (let y = 0; y < window; y++) {
+      for (let x = 0; x < window; x++) {
+        values[(y + margin) * size + x + margin] = glyph[y * window + x] ?? 0;
+      }
+    }
+    const shadowed = capture(values, size, (x, y) =>
+      inside(x) && inside(y) ? 255 : 100,
+    );
+    const place = { left: 0, top: 0, right: size, bottom: size };
+    const part = regionValues(shadowed, own, place);
+    if (part === undefined) throw new Error("no part");
+    const { threshold, light } = inkDefaults(part);
+    expect(light).toBe(false);
+    const ink = traceRegion(part, own, threshold, light);
+    if (ink === undefined) throw new Error("no ink");
+    expect(ink.x).toBeGreaterThanOrEqual(margin);
+    expect(ink.y).toBeGreaterThanOrEqual(margin);
+    expect(ink.x + ink.width).toBeLessThanOrEqual(margin + window);
+    expect(ink.y + ink.height).toBeLessThanOrEqual(margin + window);
+  });
+
+  it("keeps a shadow's colour out of the edge of a window enlarged", () => {
+    // Samples between the window's light edge and the black shadow around it
+    // would read as dark ink, drawing a rim around the window.
+    const window = 60;
+    const margin = 4;
+    const size = window + 2 * margin;
+    const inside = (at: number) => at >= margin && at < margin + window;
+    const values = new Uint8ClampedArray(size * size);
+    const glyph = dimH(window, { ground: 240, ink: 30 });
+    for (let y = 0; y < window; y++) {
+      for (let x = 0; x < window; x++) {
+        values[(y + margin) * size + x + margin] = glyph[y * window + x] ?? 0;
+      }
+    }
+    const shadowed = capture(values, size, (x, y) =>
+      inside(x) && inside(y) ? 255 : 100,
+    );
+    const place = { x: 0, y: 0, scale: 3 };
+    const region = { left: 0, top: 0, right: size * 3, bottom: size * 3 };
+    const enlarged = enlargedRegion(shadowed, place, region, 3);
+    if (enlarged === undefined) throw new Error("no part");
+    const { part, place: fine, edge } = enlarged;
+    const ink = traceRegion(part, fine, 128, false, edge);
+    if (ink === undefined) throw new Error("no ink");
+    // The H's stems start a quarter of the way across the window.
+    expect(ink.x / 3).toBeGreaterThan(margin + window / 4 - 3);
+    expect((ink.x + ink.width) / 3).toBeLessThan(margin + (window * 3) / 4 + 3);
+  });
+
+  it("measures its contrast among its fairly opaque pixels alone", () => {
+    // White that is clear would make the light side's median 255, and so a
+    // ramp too wide to make the 40 full ink.
+    const values = Uint8ClampedArray.from([
+      ...new Array<number>(5).fill(255),
+      ...new Array<number>(8).fill(8),
+      40,
+      50,
+      50,
+    ]);
+    const picture = capture(values, 16, (x) => (x < 5 ? 0 : 255));
+    const ink = traceInk(picture, own, 29, true, {
+      left: 0,
+      top: 0,
+      right: 16,
+      bottom: 1,
+    });
+    expect([...(ink?.alpha ?? [])]).toEqual([255, 255, 255]);
+  });
+
+  it("is judged by the part in view, not the whole picture", () => {
+    // A window filling the middle of a picture that is mostly clear.
+    const size = 3 * side;
+    const values = new Uint8ClampedArray(size * size);
+    const glyph = dimH(side);
+    for (let y = 0; y < side; y++) {
+      for (let x = 0; x < side; x++) {
+        values[(y + side) * size + x + side] = glyph[y * side + x] ?? 0;
+      }
+    }
+    const inside = (at: number) => at >= side && at < 2 * side;
+    const picture = capture(values, size, (x, y) =>
+      inside(x) && inside(y) ? 255 : 0,
+    );
+    const window = regionValues(picture, own, {
+      left: side,
+      top: side,
+      right: 2 * side,
+      bottom: 2 * side,
+    });
+    if (window === undefined) throw new Error("no part");
+    expect(window.tones).toBeDefined();
+    expect(inkDefaults(window).light).toBe(true);
+    const all = regionValues(picture, own, {
+      left: 0,
+      top: 0,
+      right: size,
+      bottom: size,
+    });
+    expect(all?.tones).toBeUndefined();
+  });
+
+  it("starts from a third clear, and a glyph's ground stays transparent", () => {
+    const row = (clear: number, solid: number) =>
+      capture(
+        Uint8ClampedArray.from([
+          ...new Array<number>(clear).fill(0),
+          ...new Array<number>(solid - 2).fill(40),
+          200,
+          200,
+        ]),
+        clear + solid,
+        (x) => (x < clear ? 0 : 255),
+      );
+    const smaller = (picture: Luminance) => {
+      const region = {
+        left: 0,
+        top: 0,
+        right: picture.width,
+        bottom: picture.height,
+      };
+      const part = regionValues(picture, own, region);
+      if (part === undefined) throw new Error("no part");
+      return inkDefaults(part).light;
+    };
+    // Two tones, mostly dark: the light part is the ink if the ground is there.
+    expect(smaller(row(3, 6))).toBe(true);
+    // With more of it clear, it is all ink, and mostly dark.
+    expect(smaller(row(4, 6))).toBe(false);
+  });
+
+  it("keeps a heavy glyph of one colour whole", () => {
+    const values = new Uint8ClampedArray(100).fill(40);
+    const picture = capture(values, 10, (x) => (x < 2 ? 0 : 255));
+    const part = regionValues(picture, own, {
+      left: 0,
+      top: 0,
+      right: 10,
+      bottom: 10,
+    });
+    if (part === undefined) throw new Error("no part");
+    const { threshold, light } = inkDefaults(part);
+    const ink = traceRegion(part, own, threshold, light);
+    expect(new Set(ink?.alpha)).toEqual(new Set([255]));
+    expect(ink?.width).toBe(8);
   });
 });

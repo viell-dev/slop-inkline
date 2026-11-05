@@ -120,32 +120,43 @@ export function luminance(pixels: RgbaPixels): Uint8ClampedArray {
   return values;
 }
 
-/**
- * The threshold that best splits `values` into dark and light, by Otsu's
- * method: the one that makes the two groups' means lie furthest apart,
- * weighted by their sizes. Values below it are dark. Where thresholds split
- * equally well, as all between two values with none in between do, the
- * middle one wins, so that the picture's edges ramp evenly across it. A
- * picture of one value throughout gives the middle, 128.
- */
-export function otsuThreshold(values: Uint8ClampedArray): number {
+/** How many of `values` there are of each level. */
+function valueCounts(values: Uint8ClampedArray): Uint32Array {
   const counts = new Uint32Array(256);
   // eslint-disable-next-line @typescript-eslint/prefer-for-of -- for...of over a typed array is many times slower in V8
   for (let index = 0; index < values.length; index++) {
     const value = values[index] ?? 0;
     counts[value] = (counts[value] ?? 0) + 1;
   }
-  const total = values.length;
+  return counts;
+}
+
+/**
+ * Otsu's split of the values from `from` up to `to`, by `counts` of each, as
+ * {@link otsuThreshold} says; with how cleanly it splits them, from 0 to 1: the
+ * share of their variance that lies between the two groups. Values of two
+ * tones split at nearly 1, and noise or a gradient at about 0.75.
+ */
+function otsuSplit(
+  counts: Uint32Array,
+  from = 0,
+  to = 256,
+): { threshold: number; clean: number } {
+  let total = 0;
   let sum = 0;
-  for (let value = 0; value < 256; value++) {
-    sum += value * (counts[value] ?? 0);
+  let squares = 0;
+  for (let value = from; value < to; value++) {
+    const count = counts[value] ?? 0;
+    total += count;
+    sum += value * count;
+    squares += value * value * count;
   }
   let darkCount = 0;
   let darkSum = 0;
   let best = -1;
   let first = 128;
   let last = 128;
-  for (let value = 0; value < 255; value++) {
+  for (let value = from; value < to - 1; value++) {
     darkCount += counts[value] ?? 0;
     darkSum += value * (counts[value] ?? 0);
     const lightCount = total - darkCount;
@@ -162,7 +173,23 @@ export function otsuThreshold(values: Uint8ClampedArray): number {
       last = value + 1;
     }
   }
-  return Math.round((first + last) / 2);
+  const variance = total * squares - sum * sum;
+  return {
+    threshold: Math.round((first + last) / 2),
+    clean: best > 0 && variance > 0 ? best / variance : 0,
+  };
+}
+
+/**
+ * The threshold that best splits `values` into dark and light, by Otsu's
+ * method: the one that makes the two groups' means lie furthest apart,
+ * weighted by their sizes. Values below it are dark. Where thresholds split
+ * equally well, as all between two values with none in between do, the
+ * middle one wins, so that the picture's edges ramp evenly across it. A
+ * picture of one value throughout gives the middle, 128.
+ */
+export function otsuThreshold(values: Uint8ClampedArray): number {
+  return otsuSplit(valueCounts(values)).threshold;
 }
 
 /**
@@ -256,12 +283,7 @@ export function thresholdContrast(
   values: Uint8ClampedArray,
   threshold: number,
 ): number {
-  const counts = new Uint32Array(256);
-  // eslint-disable-next-line @typescript-eslint/prefer-for-of -- for...of over a typed array is many times slower in V8
-  for (let index = 0; index < values.length; index++) {
-    const value = values[index] ?? 0;
-    counts[value] = (counts[value] ?? 0) + 1;
-  }
+  const counts = valueCounts(values);
   const middle = Math.min(256, Math.max(0, Math.ceil(threshold)));
   const dark = medianBetween(counts, 0, middle);
   const light = medianBetween(counts, middle, 256);
@@ -339,6 +361,50 @@ export interface Luminance {
    * no more opaque than it is, so that a transparent ground stays empty.
    */
   readonly alpha?: Uint8ClampedArray;
+}
+
+/** How opaque a pixel must be to count as part of what a picture shows. */
+const fairlyOpaque = 128;
+
+/**
+ * How much of a part of a picture must be fairly opaque for it to have a
+ * ground of its own, as {@link ownGround} says. A capture of a window has only
+ * rounded corners or a shadow around it, while a glyph on a transparent ground
+ * leaves much of its bounding box clear.
+ */
+const ownGroundShare = 2 / 3;
+
+/** The `values` of the pixels that `alpha` says are fairly opaque. */
+function fairlyOpaqueValues(
+  values: Uint8ClampedArray,
+  alpha: Uint8ClampedArray,
+): Uint8ClampedArray {
+  let count = 0;
+  // eslint-disable-next-line @typescript-eslint/prefer-for-of -- for...of over a typed array is many times slower in V8
+  for (let index = 0; index < alpha.length; index++) {
+    if ((alpha[index] ?? 0) >= fairlyOpaque) count++;
+  }
+  const solid = new Uint8ClampedArray(count);
+  let at = 0;
+  for (let index = 0; index < alpha.length; index++) {
+    if ((alpha[index] ?? 0) >= fairlyOpaque) solid[at++] = values[index] ?? 0;
+  }
+  return solid;
+}
+
+/**
+ * The fairly opaque ones of `values`, where those are so much of a part of a
+ * picture that they hold its ground as well as its ink, as an opaque picture's
+ * values do: its transparency lies only around it, as with the rounded corners
+ * or the shadow of a window's capture. Undefined where the transparency is the
+ * ground and they are all ink, as around a glyph.
+ */
+function ownGround(
+  values: Uint8ClampedArray,
+  alpha: Uint8ClampedArray,
+): Uint8ClampedArray | undefined {
+  const solid = fairlyOpaqueValues(values, alpha);
+  return solid.length >= alpha.length * ownGroundShare ? solid : undefined;
 }
 
 /**
@@ -427,34 +493,153 @@ export function shrinkLuminance(picture: Luminance, factor: number): Luminance {
 }
 
 /**
- * Where to start making ink of part of a picture: the threshold by Otsu's
- * method, and whether the ink is light. On an opaque picture the ink is the
- * smaller part, as {@link lightInk} judges. Where the picture has
- * transparency, its fairly opaque pixels are the ink, and their own
- * luminance says whether it is light.
+ * How small a share of a picture a part must be for {@link inkThreshold} to
+ * ask whether it is only a label.
+ */
+const labelShare = 1 / 16;
+
+/**
+ * How cleanly the rest of a picture must split for {@link inkThreshold} to go
+ * by that split, as {@link otsuSplit} measures it: more than its noise or a
+ * gradient across it would.
+ */
+const cleanSplit = 0.8;
+
+/**
+ * How much further from a picture's middle a label lies on average than the
+ * strokes it drew the threshold from, as {@link labelAside} measures it.
+ */
+const labelSpread = 1.5;
+
+/**
+ * How wide strokes are at most on average, as a share of the picture's shorter
+ * side; a tone wider than that is a panel behind the ink.
+ */
+const strokeShare = 1 / 6;
+
+/**
+ * Whether the tone between thresholds `first` and `second` of a picture is
+ * strokes with a label off to one side: `second` is the rest of the picture's
+ * split, and the label the part beyond `first`. The picture is framed around
+ * what is to be traced, so that a label lies further from its middle than the
+ * strokes do, on average, measuring each axis by the picture's size. Strokes
+ * are thin, which a panel behind a glyph is not, and at most one runs off the
+ * picture, while a line behind a glyph runs through it, crossing its border
+ * twice. Only the fairly opaque pixels count, where `alpha` is given.
+ */
+function labelAside(
+  values: Uint8ClampedArray,
+  width: number,
+  alpha: Uint8ClampedArray | undefined,
+  first: number,
+  second: number,
+): boolean {
+  const height = values.length / width;
+  const low = Math.min(first, second);
+  const high = Math.max(first, second);
+  const solid = (index: number) =>
+    alpha === undefined || (alpha[index] ?? 0) >= fairlyOpaque;
+  let labelCount = 0;
+  let labelFar = 0;
+  let toneCount = 0;
+  let toneFar = 0;
+  let toneOnBorder = 0;
+  let labelEdges = 0;
+  let toneEdges = 0;
+  const pair = (value: number, index: number) => {
+    if (!solid(index)) return;
+    const other = values[index] ?? 0;
+    if (value < first !== other < first) labelEdges++;
+    if (value < second !== other < second) toneEdges++;
+  };
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const index = y * width + x;
+      if (!solid(index)) continue;
+      const value = values[index] ?? 0;
+      const far =
+        ((2 * x + 1) / width - 1) ** 2 + ((2 * y + 1) / height - 1) ** 2;
+      if (value >= low && value < high) {
+        toneCount++;
+        toneFar += far;
+        if (x === 0 || y === 0 || x === width - 1 || y === height - 1) {
+          toneOnBorder++;
+        }
+      } else if (first > second ? value >= first : value < first) {
+        labelCount++;
+        labelFar += far;
+      }
+      if (x + 1 < width) pair(value, index + 1);
+      if (y + 1 < height) pair(value, index + width);
+    }
+  }
+  // Its edges at `second`, but for those it shares with the label.
+  const outline = toneEdges - labelEdges;
+  if (toneCount === 0 || labelCount === 0 || outline <= 0) return false;
+  // A stroke's area is its width times half of its outline.
+  const across = (2 * toneCount) / outline;
+  return (
+    across <= strokeShare * Math.min(width, height) &&
+    toneOnBorder < 1.5 * across &&
+    labelFar / labelCount >= (labelSpread * toneFar) / toneCount
+  );
+}
+
+/**
+ * The threshold to start from on a picture with a ground in its own values,
+ * `width` a row, among the fairly opaque ones where `alpha` is given: Otsu's,
+ * unless that only splits off a small label, far brighter or darker than the
+ * strokes, which would leave them no ink. A few such pixels outweigh many
+ * dim ones, as Otsu's method squares how far values lie apart. Then it is the
+ * split of the rest of the picture, if that is clean, as {@link labelAside}
+ * tells it from a small symbol on a ground of two tones.
+ */
+function inkThreshold(
+  values: Uint8ClampedArray,
+  width: number,
+  alpha?: Uint8ClampedArray,
+): number {
+  const solid =
+    alpha === undefined ? values : fairlyOpaqueValues(values, alpha);
+  const counts = valueCounts(solid);
+  const { threshold } = otsuSplit(counts);
+  let dark = 0;
+  for (let value = 0; value < threshold; value++) dark += counts[value] ?? 0;
+  const light = solid.length - dark;
+  if (Math.min(dark, light) >= solid.length * labelShare) return threshold;
+  const rest =
+    light < dark
+      ? otsuSplit(counts, 0, threshold)
+      : otsuSplit(counts, threshold);
+  return rest.clean >= cleanSplit &&
+    labelAside(values, width, alpha, threshold, rest.threshold)
+    ? rest.threshold
+    : threshold;
+}
+
+/**
+ * Where to start making ink of part of a picture, `width` values a row: the
+ * threshold, and whether the ink is light. On an opaque picture the threshold
+ * is {@link inkThreshold}'s and the ink the smaller part, as {@link lightInk}
+ * judges, and so among the fairly opaque pixels of a part with a ground of its
+ * own, as {@link ownGround} says. Where the transparency is the ground, those
+ * pixels are all ink: Otsu's method splits them, and their own luminance says
+ * whether the ink is light.
  */
 export function inkDefaults(part: {
   readonly values: Uint8ClampedArray;
+  readonly width: number;
   readonly alpha?: Uint8ClampedArray;
 }): { threshold: number; light: boolean } {
-  const { values, alpha } = part;
+  const { values, width, alpha } = part;
   if (alpha === undefined) {
-    const threshold = otsuThreshold(values);
+    const threshold = inkThreshold(values, width);
     return { threshold, light: lightInk(values, threshold) };
   }
-  let count = 0;
-  // eslint-disable-next-line @typescript-eslint/prefer-for-of -- for...of over a typed array is many times slower in V8
-  for (let index = 0; index < alpha.length; index++) {
-    if ((alpha[index] ?? 0) >= 128) count++;
-  }
-  if (count === 0) {
+  const ink = fairlyOpaqueValues(values, alpha);
+  if (ink.length === 0) {
     const threshold = otsuThreshold(values);
     return { threshold, light: lightInk(values, threshold) };
-  }
-  const ink = new Uint8ClampedArray(count);
-  let at = 0;
-  for (let index = 0; index < alpha.length; index++) {
-    if ((alpha[index] ?? 0) >= 128) ink[at++] = values[index] ?? 0;
   }
   let darkest = 255;
   let lightest = 0;
@@ -484,8 +669,12 @@ export function inkDefaults(part: {
           light,
         };
   }
-  const threshold = otsuThreshold(ink);
+  if (ink.length >= alpha.length * ownGroundShare) {
+    const threshold = inkThreshold(values, width, alpha);
+    return { threshold, light: lightInk(ink, threshold) };
+  }
   // The ink is all there is: light if most of it is.
+  const threshold = otsuThreshold(ink);
   return { threshold, light: !lightInk(ink, threshold) };
 }
 
@@ -494,8 +683,10 @@ export interface Region {
   readonly values: Uint8ClampedArray;
   readonly alpha?: Uint8ClampedArray;
   /**
-   * The picture's own values in this part, where `values` are finer samples
-   * of them: those add values between its tones, not more of them.
+   * The picture's own values that say how much contrast this part has: its
+   * pixels, where `values` are finer samples of them, which add values between
+   * its tones, not more of them; and only the fairly opaque ones of a part
+   * with transparency and a ground of its own, as {@link ownGround} says.
    */
   readonly tones?: Uint8ClampedArray;
   readonly width: number;
@@ -557,9 +748,15 @@ export function regionValues(
   const width = right - left;
   const values = cropAlpha(picture.values, picture.width, bounds);
   const part = { values, width, height: bottom - top, left, top };
-  return picture.alpha === undefined
-    ? part
-    : { ...part, alpha: cropAlpha(picture.alpha, picture.width, bounds) };
+  if (picture.alpha === undefined) return part;
+  const alpha = cropAlpha(picture.alpha, picture.width, bounds);
+  const tones = ownGround(values, alpha);
+  if (tones === undefined) return { ...part, alpha };
+  return {
+    ...part,
+    alpha: alpha.map((value) => (value < fairlyOpaque ? 0 : value)),
+    tones,
+  };
 }
 
 /**
@@ -656,6 +853,14 @@ export function enlargedRegion(
   const rows = samplesAlong(top, bottom, factor, picture.height);
   const source = picture.values;
   const own = picture.alpha;
+  const pixels = cropAlpha(source, picture.width, coarse);
+  const tones =
+    own === undefined
+      ? pixels
+      : ownGround(pixels, cropAlpha(own, picture.width, coarse));
+  // Around a ground of its own, what is mostly clear is a shadow: left among
+  // the samples, its colour would darken the ground's edge.
+  const least = tones === undefined ? 0 : fairlyOpaque;
   const values = new Uint8ClampedArray(width * height);
   const alpha =
     own === undefined ? undefined : new Uint8ClampedArray(width * height);
@@ -673,10 +878,14 @@ export function enlargedRegion(
       let c = (1 - across) * down;
       let d = across * down;
       if (own !== undefined) {
-        a *= own[upper + near] ?? 0;
-        b *= own[upper + far] ?? 0;
-        c *= own[lower + near] ?? 0;
-        d *= own[lower + far] ?? 0;
+        const opaqueA = own[upper + near] ?? 0;
+        const opaqueB = own[upper + far] ?? 0;
+        const opaqueC = own[lower + near] ?? 0;
+        const opaqueD = own[lower + far] ?? 0;
+        a *= opaqueA < least ? 0 : opaqueA;
+        b *= opaqueB < least ? 0 : opaqueB;
+        c *= opaqueC < least ? 0 : opaqueC;
+        d *= opaqueD < least ? 0 : opaqueD;
       }
       const weight = a + b + c + d;
       const sum =
@@ -689,10 +898,10 @@ export function enlargedRegion(
       if (alpha !== undefined) alpha[at] = Math.round(weight);
     }
   }
-  const tones = cropAlpha(source, picture.width, coarse);
-  const part = { values, tones, width, height, left, top };
+  const part = { values, width, height, left, top };
+  const toned = tones === undefined ? part : { ...part, tones };
   return {
-    part: alpha === undefined ? part : { ...part, alpha },
+    part: alpha === undefined ? toned : { ...toned, alpha },
     place: fine,
     // Between two pixels' centres, values change by at most 255 over
     // `factor` samples: a ramp no wider than that keeps an edge to about one
@@ -734,8 +943,10 @@ export function traceInk(
  * is that share of its {@link thresholdContrast}, so that a dim picture's
  * edges are as sharp as a bright one's: the whole ramp would span most of the
  * levels between its ground and its ink, and leave their edges as soft as
- * they were. A picture with transparency keeps the whole ramp: its own alpha
- * limits its edges, and its colours mean little where that is low.
+ * they were. So is the ramp of a part with a ground of its own, by the contrast
+ * of its {@link Region.tones}. A part whose ground is its transparency keeps
+ * the whole ramp: its own alpha limits its edges, and its colours mean little
+ * where that is low.
  */
 export function traceRegion(
   part: Region,
@@ -745,10 +956,11 @@ export function traceRegion(
   edge = thresholdEdge,
 ): TracedInk | undefined {
   const own = part.alpha;
+  const tones = own === undefined ? (part.tones ?? part.values) : part.tones;
   const ramp =
-    own === undefined
-      ? (edge * thresholdContrast(part.tones ?? part.values, threshold)) / 255
-      : edge;
+    tones === undefined
+      ? edge
+      : (edge * thresholdContrast(tones, threshold)) / 255;
   const alpha = thresholdAlpha(part.values, threshold, light, ramp);
   if (own !== undefined) {
     for (let index = 0; index < alpha.length; index++) {

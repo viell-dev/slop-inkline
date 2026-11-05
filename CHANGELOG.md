@@ -17,6 +17,28 @@ even one a public release; earlier pre-releases carry a suffix such as
   manual ZIP stays the main route, and nothing needs BRAT. It installs from the
   same GitHub releases, and its **latest** choice follows pre-releases too.
 
+### Changed
+
+- **Make ink** no longer starts with no ink of the strokes where a small part of
+  the picture off to one side, much brighter or darker than the rest, such as a
+  label in a screenshot of a game, drew the threshold to it. The first threshold
+  now goes by the rest of the picture, when that has two clear tones and thin
+  strokes within it, and the label becomes ink with them. In the measurements no
+  other kind of picture changes its first threshold, but for one that looks the
+  same: a small symbol off to one side of a dim thin shape is taken for a label,
+  and the shape becomes ink too
+  ([#147](https://github.com/viell-dev/slop-inkline/issues/147)).
+
+### Fixed
+
+- **Make ink** of a picture with transparency only around it, such as a capture
+  of a window with rounded corners or a shadow, or a disc or tile with a mark on
+  it, no longer makes its ground the ink. One pixel that was not fully opaque
+  used to do that and keep its edges soft. Such a picture now makes ink as an
+  opaque one does, its clear corners and shadow stay empty, and glyphs on a
+  transparent ground keep their soft edges
+  ([#148](https://github.com/viell-dev/slop-inkline/issues/148)).
+
 ## 0.9.0 - 2026-11-05
 
 This is the first beta of 1.0.0, the first public release, following the owner's

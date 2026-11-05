@@ -1,4 +1,5 @@
 import { browser, expect } from "@wdio/globals";
+import { dimLevels } from "../../support/dim-picture.ts";
 import { loadModules } from "../support/browser.ts";
 import { openAtMarker, startOver, waitForEditor } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
@@ -27,6 +28,22 @@ describe("Enlarged picture conversion", function () {
   for (const side of [38, 18, 12]) {
     it(`keeps a dim ${String(side)}-pixel H's edges narrow in the preview, zoomed in, and saved`, async function () {
       await checkDimClarity(side);
+    });
+  }
+
+  // The same H as a window's capture, with clear rounded corners, which used
+  // to make its ground the ink and keep its edges soft (#148).
+  for (const side of [38, 18]) {
+    it(`keeps a dim ${String(side)}-pixel H's strokes as its ink, with narrow edges, past rounded corners`, async function () {
+      await checkDimClarity(side, { corners: 3 });
+    });
+  }
+
+  // A white label in a corner, which used to draw the threshold to it and
+  // leave the strokes no ink (#147).
+  for (const side of [48, 96]) {
+    it(`starts at the strokes of a dim ${String(side)}-pixel H with a bright label`, async function () {
+      await checkDimClarity(side, { labelled: true });
     });
   }
 });
@@ -87,31 +104,57 @@ function expectNarrowOnSurface({ row, scale }: ShownRow): void {
 }
 
 /**
- * Drops a dim H, `side` pixels square, makes ink of it at the default
- * threshold, and checks the preview, zoomed in and as usual, the ink applied,
- * the saved symbol's row through its stems, and that reopening draws it the
- * same.
+ * Drops a dim H, `side` pixels square, with `options` as
+ * `pictures.dimPicture` says, makes ink of it at the default threshold, and
+ * checks that it starts between the H's ground and strokes with light ink, the
+ * preview, zoomed in and as usual, the ink applied, the saved symbol's row
+ * through its stems, and that reopening draws it the same.
  */
-async function checkDimClarity(side: number): Promise<void> {
-  await browser.execute(async (n) => {
-    const surface = document.querySelector(".inkline-surface");
-    if (!(surface instanceof HTMLCanvasElement)) throw new Error("no surface");
-    const { pictures } = window.inklineTest;
-    pictures.drop(
-      surface,
-      new File([await pictures.dimPicture(n)], "dim-h.png", {
-        type: "image/png",
-      }),
-    );
-  }, side);
+async function checkDimClarity(
+  side: number,
+  options: { corners?: number; labelled?: boolean } = {},
+): Promise<void> {
+  const kind =
+    options.corners !== undefined
+      ? "capture"
+      : options.labelled === true
+        ? "labelled"
+        : "dim";
+  const name = `${kind}-conversion`;
+  await browser.execute(
+    async (n, wanted) => {
+      const surface = document.querySelector(".inkline-surface");
+      if (!(surface instanceof HTMLCanvasElement))
+        throw new Error("no surface");
+      const { pictures } = window.inklineTest;
+      pictures.drop(
+        surface,
+        new File([await pictures.dimPicture(n, wanted)], "dim-h.png", {
+          type: "image/png",
+        }),
+      );
+    },
+    side,
+    options,
+  );
   await browser.$('[data-inkline-button="ink"]').waitForEnabled();
   await browser.$('[data-inkline-button="ink"]').click();
   await browser.$('[data-inkline-button="apply"]').waitForEnabled();
+  expect(
+    await browser
+      .$('[data-inkline-button="light"]')
+      .getAttribute("aria-pressed"),
+  ).toBe("true");
+  const start = Number(
+    await browser.$(".inkline-convert input[type=range]").getValue(),
+  );
+  expect(start).toBeGreaterThan(dimLevels.ground);
+  expect(start).toBeLessThan(dimLevels.ink);
   const preview = await shownRow();
-  await saveScreenshot(`dim-conversion-preview-${String(side)}`);
+  await saveScreenshot(`${name}-preview-${String(side)}`);
   await browser.$('[data-inkline-button="zoom"]').click();
   const zoomed = await shownRow({ not: preview.scale });
-  await saveScreenshot(`dim-conversion-zoomed-${String(side)}`);
+  await saveScreenshot(`${name}-zoomed-${String(side)}`);
   await browser.$('[data-inkline-button="zoom"]').click();
   await shownRow({ scale: preview.scale });
   await browser.$('[data-inkline-button="apply"]').click();
@@ -119,7 +162,7 @@ async function checkDimClarity(side: number): Promise<void> {
     .$('[data-inkline-button="apply"]')
     .waitForDisplayed({ reverse: true });
   const applied = await shownRow({ scale: preview.scale });
-  await saveScreenshot(`dim-conversion-applied-${String(side)}`);
+  await saveScreenshot(`${name}-applied-${String(side)}`);
   await browser.keys(["Control", "Enter"]);
   await browser.$(".inkline-editor").waitForExist({ reverse: true });
   const result = await browser.executeObsidian(async ({ app }) => {
@@ -154,7 +197,7 @@ async function checkDimClarity(side: number): Promise<void> {
   });
   const edges = partialRuns(result.row);
   console.log(
-    `Dim ${String(side)}-pixel H`,
+    `${name} of a ${String(side)}-pixel H`,
     JSON.stringify({
       saved: edges,
       preview: partialRuns(preview.row),

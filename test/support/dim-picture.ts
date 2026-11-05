@@ -57,3 +57,26 @@ export function dimH(
   }
   return values;
 }
+
+/**
+ * A dim picture `side` pixels square with a label: a dim H within it, and a
+ * small white block in a corner, as a screenshot of a game might have.
+ */
+export function labelledDimH(side: number): Uint8ClampedArray {
+  const margin = Math.round(side / 16);
+  const inner = side - 2 * margin;
+  const glyph = dimH(inner);
+  const values = new Uint8ClampedArray(side * side).fill(dimLevels.ground);
+  for (let y = 0; y < inner; y++) {
+    values.set(
+      glyph.subarray(y * inner, (y + 1) * inner),
+      (y + margin) * side + margin,
+    );
+  }
+  const width = Math.round(side / 6);
+  const height = Math.round(side / 10);
+  for (let y = side - height; y < side; y++) {
+    values.fill(255, y * side + side - width, (y + 1) * side);
+  }
+  return values;
+}

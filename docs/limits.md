@@ -65,6 +65,24 @@ link would still lead elsewhere by its path in the vault.
   softness also follows the picture's pixels, so that a straight line wavers
   slightly when enlarged many times. Draw over it, or trace it by hand, where
   that shows.
+- **Make ink** chooses the threshold's first position from the picture alone,
+  which cannot say what you want traced, so move the slider where it is wrong. A
+  small bright element can draw it away from dim strokes, leaving them no ink
+  ([#147](https://github.com/viell-dev/slop-inkline/issues/147)).
+  **Unreleased:** that now happens mainly where the element is larger or lies
+  close to the strokes, where the strokes are thick or run off the picture's
+  edge, or where noise blurs the picture's two tones. The opposite mistake is
+  also possible, as the two look the same: a small symbol off to one side of a
+  dim thin shape, such as an outline, is taken for a label beside strokes. The
+  symbol stays whole and the shape becomes ink too. Move the slider towards the
+  symbol's own tone to leave the shape out, or move the picture so that the
+  symbol is in the middle.
+- **Unreleased:** **Make ink** counts a picture's transparency as its ground
+  where more than a third of what the drawing area shows is clear, as around a
+  glyph. A capture of a window with a wide shadow can fall on that side when all
+  of it is in view, and then starts with its ground as the ink: move or scale
+  the picture to bring less of the shadow into view
+  ([#148](https://github.com/viell-dev/slop-inkline/issues/148)).
 - Every symbol shows in notes at the size and baseline Inkline saves, whatever
   geometry another tool wrote into its file.
 - Images from outside the vault are left as they are, even when their names end

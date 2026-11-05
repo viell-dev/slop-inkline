@@ -142,6 +142,19 @@ release, later versions must keep released files readable and looking the same.
   narrows for large enlargements and for little contrast, and its bounds of a
   million samples and a base layer's sides
   ([pixels.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/ink/pixels.test.ts)).
+- **Make ink**'s first threshold and the ink it gives are measured on synthetic
+  pictures whose ink is known: ordinary, noisy, transparent and one-colour
+  pictures, small ink on one tone, small symbols on two tones, captures of
+  windows, and dim symbols with something bright off to one side
+  ([defaults.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/ink/defaults.test.ts)).
+  Seeded random pictures of each kind check that the default changes only for
+  the last of these, and for one case it cannot tell from them, where the ink
+  wanted stays whole.
+  [measure-ink.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/support/measure-ink.ts)
+  prints those pictures' results against an earlier commit. A dim H with a
+  bright label and one with transparent rounded corners go through the preview,
+  Apply, saving, and reopening in real Obsidian
+  ([conversion-clarity.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/conversion-clarity.e2e.ts)).
 - Each brush size, drawn with a mouse and measured in the saved symbol, is as
   wide as its size. M is within 15% of the stems of regular text, L lies between
   1.3 times regular and 1.1 times bold, and XL is at least about as heavy as
