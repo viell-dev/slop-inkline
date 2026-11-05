@@ -43,7 +43,7 @@ immediately. Select the name field to type a name; Enter returns to drawing.
 | O                         | Ellipse     | Draw ellipses by dragging, or freehand again.            |
 | Y                         | Polygon     | Draw shapes by clicking their corners, or freehand.      |
 | Enter                     |             | End a polygon being drawn, leaving it open.              |
-| B                         | Fill        | Fill ellipses and closed polygons, or not.               |
+| B                         | Toggle fill | Fill ellipses and closed polygons, or not.               |
 | 1, 2, 3, 4                | S, M, L, XL | Choose the brush size.                                   |
 | Mod+Z                     | Undo        | Undo the last change, or a polygon's last corner.        |
 | Mod+Shift+Z, or Mod+Y     | Redo        | Redo it.                                                 |
@@ -52,7 +52,7 @@ immediately. Select the name field to type a name; Enter returns to drawing.
 | Shift+G                   | Grid        | Show or hide the grid, which snaps the ends of strokes.  |
 | Shift, held while drawing |             | Draw a straight line, or a circle with Ellipse.          |
 | V                         | Copy from   | Start a new symbol from a copy of another.               |
-| F                         | Fit         | Fit the drawing in view.                                 |
+| F                         | Fit         | Centre the drawing, showing all of it if it is wider.    |
 | ArrowUp                   | Up          | Move the drawing up a pixel; Shift, a grid cell's width. |
 | ArrowDown                 | Down        | Move it down the same way.                               |
 | Z                         | Zoom        | Show the drawing twice as large, or as usual again.      |
@@ -72,6 +72,10 @@ is a slider, which its arrow keys move; **Light ink**, **Apply**, and **Cancel**
 are buttons, as are **Choose picture…**, which opens the system's file dialog,
 and **Remove picture**.
 
+**Unreleased:** **Zoom** also shows the grid with twice as many cells each way,
+so while it is on, Shift with an arrow key moves the picture by a column of that
+finer grid.
+
 The **Help** button opens a quick start and guide explanations. Esc closes Help
 and returns focus to the drawing area.
 
@@ -79,8 +83,8 @@ and returns focus to the drawing area.
 
 - Every control has a label which screen readers read, whether its button shows
   an icon, a name, or both. Toolbar tooltips also include their shortcuts. The
-  pen, the eraser, Ellipse, Polygon, Fill, the brush sizes, the guides, the
-  grid, Zoom, Move, Make ink, and Light ink say whether they are on.
+  pen, the eraser, Ellipse, Polygon, Toggle fill, the brush sizes, the guides,
+  the grid, Zoom, Move, Make ink, and Light ink say whether they are on.
 - The drawing area keeps its accessible name without a hover tooltip.
 - The editor's status line, such as "Saving…", "Saved", or "Not saved" and why,
   is announced as it changes.

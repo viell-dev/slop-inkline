@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   cropSpan,
+  finerGrid,
   fontGrid,
   fontGuides,
   joinSpans,
+  type FontMetrics,
+  type Grid,
   type Guide,
 } from "../../../src/editor/guides.ts";
 
@@ -55,9 +58,9 @@ describe("fontGrid", () => {
     // The cap height, 23 pixels above the x-height, is 2 cells above it.
     expect(cells(rows, 144, at(inter, "cap height"))).toBe(7);
     expect(cells(rows, 144, at(inter, "descender"))).toBe(2);
-    // The columns are as far apart as the x-height's rows, in whole units.
+    // The columns are as far apart as the x-height's rows, in even units.
     expect(spacing).toBe(14);
-    expect(Math.abs(spacing - xHeight / 5)).toBeLessThan(1 / 32);
+    expect(Math.abs(spacing - xHeight / 5)).toBeLessThanOrEqual(1 / 16);
     expect(cells(fontGrid(inter, xHeight, 8).rows, 144, 74.125)).toBe(8);
   });
 
@@ -123,19 +126,131 @@ describe("fontGrid", () => {
     expect(cells(fontGrid(inter, xHeight, Number.NaN).rows, 144, 74.125)).toBe(
       5,
     );
-    // Half an em, 64 pixels, over 5 cells: 12.8, in whole units.
-    expect(fontGrid([], Number.NaN, 5).spacing).toBe(205 / 16);
-    expect(fontGrid([], 0, 5).spacing).toBe(205 / 16);
+    // Half an em, 64 pixels, over 5 cells: 12.8, in even units.
+    expect(fontGrid([], Number.NaN, 5).spacing).toBe(204 / 16);
+    expect(fontGrid([], 0, 5).spacing).toBe(204 / 16);
+  });
+
+  it("keeps its columns an even number of units apart, within 1/16 pixel", () => {
+    for (let xHeight = 32; xHeight <= 128; xHeight += 0.3) {
+      for (let count = 2; count <= 10; count++) {
+        const units = fontGrid([], xHeight, count).spacing * 16;
+        expect(units % 2).toBe(0);
+        expect(Math.abs(units / 16 - xHeight / count)).toBeLessThan(
+          1 / 16 + 1e-9,
+        );
+      }
+    }
   });
 
   it("keeps the cells within a quarter of an em to a whole one of x-height", () => {
     // A font that measures an x-height of a pixel draws no grid of
     // thousands of rows: it counts as a quarter of an em, 32 pixels.
     const tiny = fontGrid([{ name: "x-height", y: 143 }], 1, 10);
-    expect(tiny.spacing).toBe(3.1875);
+    expect(tiny.spacing).toBe(3.25);
     expect(tiny.rows.length).toBeLessThanOrEqual(192 / 3 + 2);
     // And one taller than an em counts as an em.
     expect(fontGrid([], 400, 2).spacing).toBe(64);
+  });
+});
+
+describe("finerGrid", () => {
+  const usualFont: FontMetrics = {
+    ascent: 0.97,
+    descent: 0.24,
+    capHeight: 0.73,
+    xHeight: 0.546,
+  };
+  /** Fonts of many x-heights, odd ones and one measured strangely too. */
+  const fonts: readonly FontMetrics[] = [
+    usualFont,
+    { ascent: 0.9, descent: 0.21, capHeight: 0.66, xHeight: 0.449 },
+    { ascent: 1.1, descent: 0.3, capHeight: 0.8, xHeight: 0.61 },
+    { ascent: 1.3, descent: 0.4, capHeight: 0.71, xHeight: 0.5117 },
+    { ascent: 0.8, descent: 0.2, capHeight: 0.8, xHeight: 0.8 },
+    { ascent: 0.8, descent: 0.2, capHeight: 0.1, xHeight: 0.0078 },
+  ];
+  const lineChoices = (metrics: FontMetrics): readonly Guide[][] => {
+    const lines = fontGuides(metrics);
+    return [
+      lines,
+      [],
+      lines.filter((line) => line.name !== "x-height"),
+      lines.filter((line) => line.name === "cap height"),
+    ];
+  };
+  const eachGrid = (check: (usual: Grid, fine: Grid) => void): void => {
+    for (const metrics of fonts) {
+      for (const lines of lineChoices(metrics)) {
+        for (let count = 2; count <= 10; count++) {
+          const usual = fontGrid(lines, metrics.xHeight * 128, count);
+          check(usual, finerGrid(usual));
+        }
+      }
+    }
+  };
+
+  it("has twice the cells between two lines, whatever the grid size", () => {
+    const lines = fontGuides(usualFont);
+    const y = (name: string): number =>
+      lines.find((line) => line.name === name)?.y ?? Number.NaN;
+    const cells = (rows: readonly number[], name: string) =>
+      Math.abs(rows.indexOf(144) - rows.indexOf(y(name)));
+    for (let count = 2; count <= 10; count++) {
+      const usual = fontGrid(lines, 144 - y("x-height"), count);
+      const { rows } = finerGrid(usual);
+      expect(cells(usual.rows, "x-height")).toBe(count);
+      expect(cells(rows, "x-height")).toBe(count * 2);
+      expect(cells(rows, "cap height")).toBe(
+        cells(usual.rows, "cap height") * 2,
+      );
+      expect(cells(rows, "descender")).toBe(cells(usual.rows, "descender") * 2);
+    }
+  });
+
+  it("keeps every point of the usual grid", () => {
+    eachGrid((usual, fine) => {
+      for (const y of usual.rows) expect(fine.rows).toContain(y);
+      // Columns: two steps of the fine grid are exactly one of the usual.
+      expect(fine.spacing * 2).toBe(usual.spacing);
+    });
+  });
+
+  it("keeps ends snapped to it whole, in units", () => {
+    eachGrid((_usual, fine) => {
+      expect(Number.isInteger(fine.spacing * 16)).toBe(true);
+    });
+  });
+
+  it("puts one row midway between two, and stays in the line box, in order", () => {
+    eachGrid((usual, fine) => {
+      expect(fine.rows).toEqual([...new Set(fine.rows)].sort((a, b) => a - b));
+      expect(fine.rows[0]).toBeGreaterThanOrEqual(0);
+      expect(fine.rows.at(-1)).toBeLessThanOrEqual(192);
+      for (const [index, y] of usual.rows.slice(1).entries()) {
+        const above = usual.rows[index] ?? 0;
+        const between = fine.rows.filter((row) => row > above && row < y);
+        expect(between).toEqual([(above + y) / 2]);
+      }
+    });
+  });
+
+  it("goes on past the outermost row only as far as the line box has room", () => {
+    const fine = (rows: readonly number[]) =>
+      finerGrid({ spacing: 14, rows }).rows;
+    expect(fine([20, 34])).toEqual([13, 20, 27, 34, 41]);
+    expect(fine([6, 20])).toEqual([6, 13, 20, 27]);
+    expect(fine([7, 185])).toEqual([0, 7, 96, 185, 192]);
+    expect(fine([6, 186])).toEqual([6, 96, 186]);
+    expect(fine([])).toEqual([]);
+  });
+
+  it("remembers how far apart the usual grid's columns are", () => {
+    expect(finerGrid({ spacing: 14, rows: [0] })).toMatchObject({
+      spacing: 7,
+      period: 14,
+    });
+    expect(finerGrid({ spacing: 7, period: 14, rows: [0] }).period).toBe(14);
   });
 });
 

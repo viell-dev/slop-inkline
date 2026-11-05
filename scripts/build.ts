@@ -4,6 +4,7 @@
 import { copyFile, mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import esbuild, { type Plugin } from "esbuild";
+import { bundleBanner } from "./lib/notices.ts";
 
 const watch = process.argv.includes("--watch");
 const outdir = "dist";
@@ -33,6 +34,10 @@ const staticFilesPlugin: Plugin = {
   },
 };
 
+const manifest = JSON.parse(await readFile("package.json", "utf8")) as {
+  dependencies: Record<string, string>;
+};
+
 const context = await esbuild.context({
   entryPoints: [entryPoint],
   outfile: path.join(outdir, "main.js"),
@@ -44,8 +49,9 @@ const context = await esbuild.context({
   // out on purpose, so that importing one fails the build: the plugin keeps
   // to web APIs, which mobile Obsidian also has.
   external: ["obsidian", "@codemirror/*", "@lezer/*"],
+  // Everything in `dependencies` is bundled, so its licence goes with it.
   banner: {
-    js: "/* Inkline, built from https://github.com/viell-dev/slop-inkline. */",
+    js: await bundleBanner(process.cwd(), Object.keys(manifest.dependencies)),
   },
   sourcemap: watch ? "inline" : false,
   // Unminified, so that a release can be read and reviewed as shipped.

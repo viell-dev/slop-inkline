@@ -252,9 +252,9 @@ describe("Editor buttons", function () {
         expect(button.text).not.toBe("");
       }
     }
-    // The toolbar fits in one row at the usual width, where text wraps it.
-    expect(await toolbarRows()).toBe(1);
-    expect(rowsBefore).toBeGreaterThan(1);
+    // Each of the toolbar's three rows fits at the usual width.
+    expect(await toolbarRows()).toBe(3);
+    expect(rowsBefore).toBeGreaterThanOrEqual(3);
     // The pen is chosen, and Undo has nothing to undo.
     const pen = browser.$('[data-inkline-button="pen"]');
     const undo = browser.$('[data-inkline-button="undo"]');

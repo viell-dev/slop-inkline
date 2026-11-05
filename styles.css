@@ -22,6 +22,11 @@
   margin-bottom: var(--size-4-3);
 }
 
+/* The toolbar's rows sit as close together as a row that wraps does. */
+.inkline-toolbar:has(+ .inkline-toolbar) {
+  margin-bottom: var(--size-4-2);
+}
+
 /*
  * A picture to trace over: Move, Make ink, Remove picture, and what is being
  * traced; then, while making ink, the threshold and what applies it.
@@ -117,6 +122,8 @@
   --inkline-guide-x-height: var(--color-green);
   --inkline-guide-baseline: var(--color-orange);
   --inkline-guide-descender: var(--color-pink);
+  /* A shape being drawn with the eraser, which shows while it is drawn only. */
+  --inkline-erasing: var(--color-red);
   display: block;
   width: 100%;
   height: var(--inkline-surface-height, 288px);
