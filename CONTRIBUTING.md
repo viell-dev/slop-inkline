@@ -168,8 +168,17 @@ It uses no GitHub token, so its requests count against the 60 an hour that
 GitHub allows an address: it makes about 16 for each Obsidian version, and
 refuses to start with fewer than 50 left.
 
+`test/e2e/manual/listing.e2e.ts` also stays outside the suite: it makes the
+pictures for Obsidian's community directory listing, as
+[listing/README.md](listing/README.md) says.
+
 CI runs the end-to-end tests on Linux for every pull request, and the Docker
 image weekly and on request.
+
+The Directory checks workflow runs Obsidian's own action on every pull request,
+which checks the plugin much as the community directory does. It is not a
+required check, so that a new rule of Obsidian's doesn't stop unrelated pull
+requests, but a failure there needs fixing before a public release.
 
 ## Documentation
 
