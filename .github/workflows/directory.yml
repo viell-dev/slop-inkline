@@ -1,0 +1,34 @@
+name: Directory checks
+
+# Obsidian's own action, which checks a plugin much as its community directory
+# does. It is a workflow of its own, as a third-party action that fails to
+# start would otherwise stop CI's required checks from starting too (#155).
+# The repository allows this one action, by the pattern
+# obsidianmd/obsidian-workflows@*, and requires it pinned to a commit.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  directory:
+    name: directory checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: obsidianmd/obsidian-workflows@8167caed39664214d82c86fdfa32e06d8d55f61d # v1.2.3
+        with:
+          scanner-lint: true
+          strict: true
