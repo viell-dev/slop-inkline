@@ -8,6 +8,11 @@ section is also its
 
 ## Unreleased
 
+### Fixed
+
+- `main.js` now carries the licence notice of perfect-freehand, which it
+  bundles, and the README credits it. Earlier releases left the notice out.
+
 ### Changed
 
 - Simplify documentation navigation and maintenance guidance, clarify the draft
