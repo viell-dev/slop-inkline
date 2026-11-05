@@ -91,6 +91,9 @@ function element2d(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
 /** How opaque a picture to trace over is drawn: faint, under the ink. */
 const referenceAlpha = 0.35;
 
+/** How opaque the shape an eraser is drawing is shown, over everything. */
+const erasingAlpha = 0.5;
+
 export class InkView {
   readonly canvas: HTMLCanvasElement;
   /** How much of the document the surface shows across, in pixels. */
@@ -295,7 +298,9 @@ export class InkView {
   /**
    * Draws any picture to trace over, the line box, and the document, with
    * `active`, the stroke being drawn, on top: erasing it cuts the ink below
-   * as it will when committed, never the picture.
+   * as it will when committed, never the picture. With `erasing`, for a
+   * shape drawn with the eraser, which shows nothing where there is no ink
+   * to cut, `active` is also tinted over it all, as only a preview.
    * The image's ends come from the committed ink's pixels inside the line
    * box, as a save crops to them, read back from the whole drawing each time
    * the ink changes, however much of it the surface shows, and from a pen
@@ -305,6 +310,7 @@ export class InkView {
     document: InkDocument,
     base: DrawableBase | undefined,
     active: Stroke | undefined,
+    erasing = false,
   ): void {
     const { width, height } = this.canvas;
     if (this.#measured?.document !== document || this.#measured.base !== base) {
@@ -371,6 +377,20 @@ export class InkView {
     }
     this.#drawLineBox(visible, style);
     visible.drawImage(this.#work, 0, 0);
+    if (erasing && active !== undefined) {
+      work.globalCompositeOperation = "source-over";
+      work.clearRect(0, 0, width, height);
+      this.#transform(work);
+      drawInk(work, [{ ...active, tool: "pen" }], undefined);
+      work.resetTransform();
+      work.globalCompositeOperation = "source-in";
+      work.fillStyle =
+        style.getPropertyValue("--inkline-erasing").trim() || style.color;
+      work.fillRect(0, 0, width, height);
+      visible.globalAlpha = erasingAlpha;
+      visible.drawImage(this.#work, 0, 0);
+      visible.globalAlpha = 1;
+    }
   }
 
   /**

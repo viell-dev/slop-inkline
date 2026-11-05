@@ -72,6 +72,7 @@ import {
 } from "./session.ts";
 import {
   defaultGridCells,
+  finerGrid,
   fontGrid,
   fontGuides,
   type FontMetrics,
@@ -671,7 +672,7 @@ export class InkEditorModal extends Modal {
         this.#toggleZoom();
       },
       "Zoom",
-      "a taller view of the drawing, twice as large; the wheel or the arrow keys move along it",
+      "a taller view of the drawing, twice as large, with twice as many grid cells each way; the wheel or the arrow keys move along it",
     );
     this.#addButton(toolbar, "save", "Save", "Mod+Enter", () => {
       void this.#saveAndClose();
@@ -1954,6 +1955,7 @@ export class InkEditorModal extends Modal {
     const view = this.#view;
     if (view === undefined) return;
     view.magnified = !view.magnified;
+    this.#layOutGrid(this.#chosenLines());
     this.#resizeView();
     this.#updateButtons();
     this.#render();
@@ -1978,7 +1980,13 @@ export class InkEditorModal extends Modal {
         : undefined;
       view.reference = this.#picture;
       const { document, base } = this.#shown(view);
-      view.render(document, base, this.#session.activeStroke);
+      const { activeStroke, shape, tool } = this.#session;
+      view.render(
+        document,
+        base,
+        activeStroke,
+        tool === "eraser" && shape !== "free",
+      );
       this.#updateCursor();
       const line = this.#previewLine;
       if (this.#preview !== undefined && line !== undefined) {
@@ -2017,16 +2025,18 @@ export class InkEditorModal extends Modal {
   /**
    * Lays the grid out on the font's `lines` that the settings choose, shown
    * or not, so that the guides' key never moves it, with the cells across the
-   * x-height that they choose.
+   * x-height that they choose, and twice as many each way in a magnified view.
    */
   #layOutGrid(lines: readonly Guide[]): void {
     const { pxPerEm } = lineBox;
     const xHeight = this.#fontMetrics?.xHeight;
-    this.#session.grid = fontGrid(
+    const grid = fontGrid(
       lines,
       xHeight === undefined ? Number.NaN : xHeight * pxPerEm,
       this.#options.gridCells?.() ?? defaultGridCells,
     );
+    this.#session.grid =
+      this.#view?.magnified === true ? finerGrid(grid) : grid;
   }
 
   /** Measures the font again and redraws, as after a font loads. */
@@ -2285,13 +2295,13 @@ export class InkEditorModal extends Modal {
     const steps = content.createEl("ul");
     for (const text of [
       "Pen (P) adds ink; Eraser (E) removes it. Sizes S–XL (1–4) are remembered separately until you close the editor, including through Next. The circle shows the brush's diameter.",
-      "Ellipse (O) draws an ellipse with the pen or the eraser: drag across the box it fills, and hold Shift for a circle. Press it again to draw freehand.",
+      "Ellipse (O) draws an ellipse with the pen or the eraser: drag across the box it fills, and hold Shift for a circle. Press it again to draw freehand. A shape drawn with the eraser is tinted until it is done.",
       "Polygon (Y) draws a shape with straight sides and sharp corners: click each corner, then click the first corner again to close it, or the last corner, or press Enter, to leave it open. Undo takes back a corner, and Esc drops the shape.",
       "Fill (B), with Ellipse or Polygon on, draws an ellipse or a closed polygon solid, with its edges through its corners: the pen makes a solid shape, and the eraser a hole of its shape.",
       "Hold Shift while drawing for a straight segment. Grid (Shift+G) shows dots and snaps stroke ends to them. Its rows pass through each guide line the settings choose, and divide the space between lines evenly; the settings also set how many cells span the x-height.",
       "Flat ends (T), with the grid on, stops freehand strokes flush with the grid line they end on, rather than rounding past it. It is off until you turn it on, and shapes are never cut.",
       "Undo (Mod+Z) and Redo (Mod+Shift+Z) step through changes. Clear removes the drawing and can be undone.",
-      "Zoom (Z) shows the drawing twice as large in a taller view, for fine detail; the wheel or the arrow keys move along it, and Fit (F) centres it. Saved symbols stay the same size in notes.",
+      "Zoom (Z) shows the drawing twice as large in a taller view, for fine detail; the wheel or the arrow keys move along it, and Fit (F) centres it. While zoomed, the grid has twice as many cells each way, and keeps every point of the usual grid. Saved symbols stay the same size in notes.",
       "Paste, drop, or choose (Choose picture…) a picture to trace. Move positions it; the wheel scales it. Make ink converts the visible picture into editable ink. The tracing picture itself is not saved.",
       "Name the symbol, then Save (Mod+Enter). For a new symbol, Next (Mod+Shift+Enter) saves it and starts another. Mod is Ctrl on Windows/Linux, Cmd on macOS.",
       "Saving a changed symbol that your notes use more than once first asks whether to Replace it everywhere. For a variant, start a new symbol with Copy from instead.",

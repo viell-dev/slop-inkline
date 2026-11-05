@@ -76,6 +76,13 @@ export interface Grid {
    * outermost lines are as far apart.
    */
   readonly spacing: number;
+  /**
+   * How far apart the usual grid's columns are, on a grid finer than that:
+   * how often the place of the columns repeats, in either view, so that
+   * drawing on this grid leaves the usual one where it was. Without it, this
+   * is the usual grid, and that is its `spacing`.
+   */
+  readonly period?: number;
   /** Where its rows are, top to bottom, in the line box's pixels. */
   readonly rows: readonly number[];
 }
@@ -108,8 +115,9 @@ const gridXHeights = {
  * own; beyond the outermost, they go on that far apart to the line box's
  * edges. Text-sized symbols can then start and end strokes on every chosen
  * line, which no evenly spaced grid could do for every font. Its columns are
- * as far apart as the x-height's rows, rounded to whole units. An x-height
- * outside a quarter of an em to a whole one counts as the nearer of those.
+ * as far apart as the x-height's rows, rounded to an even number of units, so
+ * that {@link finerGrid} can halve them. An x-height outside a quarter of an
+ * em to a whole one counts as the nearer of those.
  */
 export function fontGrid(
   lines: readonly Guide[],
@@ -128,8 +136,8 @@ export function fontGrid(
       : assumedXHeight;
   const target = followed / count;
   const spacing = Math.max(
-    1 / unitsPerPixel,
-    Math.round(target * unitsPerPixel) / unitsPerPixel,
+    2 / unitsPerPixel,
+    (Math.round((target * unitsPerPixel) / 2) * 2) / unitsPerPixel,
   );
   const { height, baseline } = lineBox;
   const anchors = [...lines.map((line) => line.y), baseline]
@@ -151,6 +159,30 @@ export function fontGrid(
   });
   for (let y = last + spacing; y <= height; y += spacing) rows.push(y);
   return { spacing, rows };
+}
+
+/**
+ * The grid of a magnified view: `grid` with twice as many cells each way, its
+ * columns half as far apart, and a row midway between each two of its rows and
+ * past the outermost where the line box has room. Every point of `grid` is a
+ * point of this one, so that a drawing started in either view lines up in the
+ * other, which a grid laid out anew with twice the cells would not promise, as
+ * spacings and the cells between lines are rounded.
+ */
+export function finerGrid(grid: Grid): Grid {
+  const { spacing, rows } = grid;
+  const half = spacing / 2;
+  const fine = rows.flatMap((y, index) => {
+    const next = rows[index + 1];
+    return next === undefined ? [y] : [y, (y + next) / 2];
+  });
+  const first = rows[0];
+  const last = rows.at(-1);
+  if (first !== undefined && first - half >= 0) fine.unshift(first - half);
+  if (last !== undefined && last + half <= lineBox.height) {
+    fine.push(last + half);
+  }
+  return { spacing: half, period: grid.period ?? spacing, rows: fine };
 }
 
 /**

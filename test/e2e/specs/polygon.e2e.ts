@@ -315,6 +315,42 @@ describe("Polygon", function () {
     const side = shown.cut.slice(shown.from, shown.to);
     expect(Math.min(...side)).toBeGreaterThanOrEqual(250);
     expect(shown.cut).toEqual(shown.uncut);
+  it("shows an eraser shape while it is placed, and nothing of it after", async function () {
+    await openPolygon(false);
+    await browser.keys("e");
+    /** Pixels of the surface that aren't its usual ones, away from the guides. */
+    const tinted = async (): Promise<number> =>
+      browser.execute(() => {
+        const canvas = document.querySelector(".inkline-surface");
+        if (!(canvas instanceof HTMLCanvasElement))
+          throw new Error("no surface");
+        const { width, height } = canvas;
+        const data = canvas.getContext("2d")?.getImageData(0, 0, width, height);
+        let count = 0;
+        // The eraser's red, far from the guides' colours and the ink's grey.
+        for (let at = 0; at < (data?.data.length ?? 0); at += 4) {
+          const [red = 0, green = 0, blue = 0, alpha = 0] =
+            data?.data.slice(at, at + 4) ?? [];
+          if (alpha > 0 && red > green + 40 && red > blue + 40) count++;
+        }
+        return count;
+      });
+    const before = await tinted();
+    await click([0.3, 0.4], [0.6, 0.4]);
+    // The XL brush's side, 24 document pixels wide, in red over no ink.
+    await browser.waitUntil(async () => (await tinted()) > before + 500, {
+      timeoutMsg: "no sign of the shape being placed",
+    });
+    await saveScreenshot(
+      "polygon-eraser-placing",
+      browser.$(".inkline-editor"),
+    );
+    await click([0.6, 0.4]);
+    const [erased] = await draftStrokes(1);
+    expect(erased?.tool).toBe("eraser");
+    await browser.waitUntil(async () => (await tinted()) === before, {
+      timeoutMsg: "the shape's tint stayed after it was done",
+    });
   });
 
   it("takes the eraser chosen while placing, and keeps Polygon on through Next", async function () {

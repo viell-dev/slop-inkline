@@ -37,6 +37,10 @@ and divide the space between two lines evenly;
 [Drawing](./drawing.md#straight-lines-and-the-grid) explains the grid. Both
 apply the next time the drawing area redraws.
 
+**Unreleased:** while **Zoom** is on, the grid has twice as many cells each way
+as **Grid size** says, so 5 cells across the x-height become 10. The setting
+keeps its range of 2 to 10.
+
 **Editor buttons** chooses what the editor's buttons show when an editor opens:
 **Icons and text**, an icon from Obsidian's own set beside each button's name,
 as by default; **Icons only**, which keeps the toolbar to one row in a wide
