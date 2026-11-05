@@ -310,19 +310,26 @@ function inLineBox(top: number, bottom: number): boolean {
   return bottom > 0 && top < lineBox.height;
 }
 
-/** Where pen strokes and the base layer could leave ink, in pixels. */
+/**
+ * Where pen strokes and the base layer could leave ink, in pixels, from
+ * `outlines`, each stroke's bounds in turn.
+ */
 function inkAreas(
   document: InkDocument,
+  outlines: readonly (Bounds | undefined)[],
   base: DrawableBase | undefined,
 ): Bounds[] {
   const areas: Bounds[] = [];
-  for (const stroke of document.strokes) {
-    if (stroke.tool !== "pen") continue;
-    const bounds = strokeBounds(stroke);
-    if (bounds !== undefined && inLineBox(bounds.top, bounds.bottom)) {
+  document.strokes.forEach((stroke, index) => {
+    const bounds = outlines[index];
+    if (
+      stroke.tool === "pen" &&
+      bounds !== undefined &&
+      inLineBox(bounds.top, bounds.bottom)
+    ) {
       areas.push(bounds);
     }
-  }
+  });
   if (base !== undefined) {
     const left = base.x / unitsPerPixel;
     const top = base.y / unitsPerPixel;
@@ -343,11 +350,11 @@ export function findInk(
   document: InkDocument,
   base: DrawableBase | undefined,
 ): Bounds | undefined {
-  const areas = inkAreas(document, base);
+  const outlines = document.strokes.map(strokeBounds);
+  const areas = inkAreas(document, outlines, base);
   if (areas.length === 0) return undefined;
   const start = Math.floor(Math.min(...areas.map((area) => area.left))) - 2;
   const end = Math.ceil(Math.max(...areas.map((area) => area.right))) + 2;
-  const outlines = document.strokes.map(strokeBounds);
   let found: Bounds | undefined;
   for (let left = start; left < end; left += tileWidth) {
     const width = Math.min(tileWidth, end - left);
