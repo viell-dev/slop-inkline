@@ -12,6 +12,7 @@ says how to run them.
 | `verify (ubuntu-latest)`  | `npm run check`: ESLint with Obsidian's directory rules, Prettier, types, the unit tests, the build, and this site's build                                                  | GitHub Actions, Linux; required                                                               |
 | `verify (windows-latest)` | The same                                                                                                                                                                    | GitHub Actions, Windows; required                                                             |
 | `e2e`                     | The end-to-end suite in real Obsidian: 1.13.4, the manifest's minimum, on the oldest installer that runs it, and the latest public release                                  | GitHub Actions, Linux, under Xvfb; required                                                   |
+| `directory checks`        | Obsidian's own action, with the lint rules its community directory scans for, over the manifest, README, licence and a build                                                | GitHub Actions, Linux; required of a release, not of a pull request                           |
 | `e2e in Docker`           | The same suite in the image `npm run test:e2e:docker` builds                                                                                                                | Weekly and on request                                                                         |
 | Weekly CI                 | Every check above, so that a new Obsidian release is tested within a week                                                                                                   | Mondays                                                                                       |
 | Settings                  | The live labels and rulesets against their files, and every issue's labels                                                                                                  | Weekly and on request                                                                         |
@@ -271,10 +272,14 @@ Each of these asserts a budget beside its correctness checks:
 
 ### What this site and the repository say agrees
 
-- The package and manifest versions agree, public releases have matching
-  compatibility entries in `versions.json`, prereleases stay out of that
-  directory map, and each release has its changelog section
+- A public release's package and manifest versions agree and it has a matching
+  compatibility entry in `versions.json`, a pre-release's version reaches
+  neither file, though a build's manifest names it, and each release has its
+  changelog section
   ([release.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/release.test.ts)).
+- A new version is higher than every published one in SemVer's order and in
+  Obsidian's
+  ([version.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/version.test.ts)).
 - This site's commands, keys, defaults, Obsidian version, links, and example
   embeds agree with the code
   ([docs.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/docs.test.ts)),

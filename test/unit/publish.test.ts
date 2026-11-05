@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   ciProblems,
+  directoryCheck,
   draftListingWait,
   draftListings,
   holdsBuild,
@@ -35,6 +36,12 @@ describe("requiredChecks", () => {
       { context: "verify (windows-latest)", integrationId: actions },
       { context: "e2e", integrationId: actions },
     ]);
+  });
+
+  it("names a job that CI runs for the directory's check", () => {
+    const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
+    expect(workflow).toContain(`name: ${directoryCheck.context}\n`);
+    expect(directoryCheck.integrationId).toBe(actions);
   });
 
   it("reads none from a ruleset without them", () => {

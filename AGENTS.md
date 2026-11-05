@@ -180,7 +180,9 @@ for each one. The owner's explicit stable-publication hold in
 [#5](https://github.com/viell-dev/slop-inkline/issues/5) remains binding, as the
 release guide explains. Submitting the plugin to Obsidian's community directory,
 or changing what Inkline is for or where it is distributed, needs the owner's
-decision.
+decision. `manifest.json` on `main` is what Obsidian offers, so a pre-release's
+version stays out of it; see
+[RELEASING.md](RELEASING.md#where-a-version-is-recorded).
 
 ## The prototype branch
 

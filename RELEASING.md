@@ -57,12 +57,19 @@ request; a case the goal does not settle goes back to the owner. The proposed
 goal is [#144](https://github.com/viell-dev/slop-inkline/issues/144); the owner
 decided on 2026-11-05 that the builds after 0.3.0-alpha.8 are betas.
 
-Each new version must be higher than every published version. Every release,
-public or pre-release, is a GitHub release with the install ZIP and the loose
-files: Obsidian's own installer and BRAT download `main.js`, `manifest.json`,
-and `styles.css` by name, and the ZIP is for installing by hand, the route the
-[install guide](docs/install.md) describes. BRAT is an optional alternative,
-never a requirement
+Each new version must be higher than every published version, in SemVer's order
+and in Obsidian's, or someone on that version is never offered it. The two
+differ on the old suffixes: Obsidian reads `0.3.0-alpha.8` as the numbers 0, 3,
+0, 8, and so ranks it above `0.3.0`. `node scripts/publish.ts order <version>`
+checks both against the published releases, and the Release workflow runs it.
+This covers public releases too: once `1.1.0` is published, a fix for the public
+line is `1.2.0`, not `1.0.1`.
+
+Every release, public or pre-release, is a GitHub release with the install ZIP
+and the loose files: Obsidian's own installer and BRAT download `main.js`,
+`manifest.json`, and `styles.css` by name, and the ZIP is for installing by
+hand, the route the [install guide](docs/install.md) describes. BRAT is an
+optional alternative, never a requirement
 ([#149](https://github.com/viell-dev/slop-inkline/issues/149)). The first public
 release, `1.0.0`, is also the first in Obsidian's community directory, which
 lists public releases only.
@@ -78,6 +85,41 @@ requests and remaining work.
 
 Submitting the plugin to Obsidian's community directory, or a change of what
 Inkline is for or where it is distributed, needs the owner's decision.
+
+## Where a version is recorded
+
+Obsidian reads `manifest.json` from the head of `main`, offers the version it
+names to everyone with Inkline from the directory, and downloads that release's
+loose files, whatever GitHub's prerelease flag says. So `manifest.json` on
+`main` only ever names a public release, and `package.json` names the release a
+commit builds. Every pre-release takes the same path, so the steps a listing
+depends on are in use before it:
+
+| What                 | Preparing a pre-release            | Preparing a public release        |
+| -------------------- | ---------------------------------- | --------------------------------- |
+| `package.json`       | The new version                    | The new version                   |
+| `manifest.json`      | Unchanged: the last public release | The new version                   |
+| `versions.json`      | Unchanged                          | Maps it to `minAppVersion`        |
+| `CHANGELOG.md`       | `## <version> - <date>`            | `## <version> - <date>`           |
+| The guide's footer   | That version, once published       | That version, once published      |
+| `dist/manifest.json` | That version, from `package.json`  | The same bytes as `manifest.json` |
+
+`npm run build` writes `dist/manifest.json` from the repository's manifest with
+the version in `package.json`, and the release's `manifest.json` and ZIP are
+that file. So a pre-release's assets name its own version, as BRAT and an
+installation by hand need, though the commit it tags has an earlier
+`manifest.json`. Nothing else differs, and `main.js` and `styles.css` hold no
+version. The version comes from the tagged commit rather than from the
+workflow's input, so building that commit gives the same bytes, and the
+attestations name that commit.
+
+Until `1.0.0`, `manifest.json` stays at `0.9.0`, the last pre-release to reach
+it. It has no public release to name, nothing reads it while nothing is listed,
+and Obsidian's review refuses `0.0.0` as a placeholder.
+
+`versions.json` is what Obsidian falls back on for an app older than the
+manifest's `minAppVersion`: it takes the highest version there that the app can
+run. Only public releases belong in it, and it is empty until `1.0.0`.
 
 ## Human release testing
 
@@ -147,16 +189,18 @@ sense.
 On a branch from `main`:
 
 1. If the release needs a newer Obsidian, raise `minAppVersion` in
-   `manifest.json`. Do it here, not in a pull request of its own: until the
-   release, `manifest.json` describes the published version, and the unit tests
-   check its compatibility entry when preparing a public release. Pre-releases
-   are checked against their declared minimum in the host matrix.
+   `manifest.json`. Do it here, not in a pull request of its own: until then
+   `manifest.json` describes the published version, and the unit tests check its
+   compatibility entry when preparing a public release. Pre-releases are checked
+   against their declared minimum in the host matrix. A pre-release's raised
+   minimum reaches `main` ahead of the public release, which is safe: an older
+   app falls back on `versions.json`, which still maps that release to the
+   minimum it was published with.
 2. Run `npm version <version> --no-git-tag-version`. It sets the version in
-   `package.json` and `package-lock.json`, then `scripts/release.ts sync` copies
-   it to `manifest.json` and, for a public release, maps it to the manifest's
-   `minAppVersion` in `versions.json`, which Obsidian reads to offer older
-   versions to older apps, and stages both files. Pre-releases do not enter this
-   directory map; earlier releases keep their entries.
+   `package.json` and `package-lock.json`. For a public release,
+   `scripts/release.ts sync` then copies it to `manifest.json`, maps it to the
+   manifest's `minAppVersion` in `versions.json`, and stages both files. For a
+   pre-release it changes neither, as [above](#where-a-version-is-recorded).
 3. Rename `## Unreleased` in `CHANGELOG.md` to `## <version> - <YYYY-MM-DD>`,
    with the planned release date, and add an empty `## Unreleased` above it. The
    section becomes the release notes, so write it for users.
@@ -165,9 +209,14 @@ On a branch from `main`:
    path. `test/unit/docs.test.ts` fails until they no longer say there is no
    release. Remove **Unreleased** labels only from behavior included in this
    release; retain labels for later work.
-5. Run `node scripts/release.ts check <version>`, which the workflow runs too:
-   it checks that the metadata files agree and that the changelog section
-   exists.
+5. Run `node scripts/release.ts check <version>` and
+   `node scripts/publish.ts order <version>`, which the workflow runs too. The
+   first checks that `package.json` names the version, that the changelog
+   section exists, and that the metadata files agree: a public version is in
+   `manifest.json` and `versions.json`, and a pre-release is in neither, with
+   `manifest.json` no higher than it. The unit tests hold every commit to the
+   same rules, so a pre-release's version cannot reach `main`'s manifest. The
+   second needs GitHub, and `GH_TOKEN` if the CLI is not signed in.
 6. Have another agent review the release pull request, as
    [AGENTS.md](AGENTS.md#review) requires: everything since the previous
    release, not only the version change. That covers the changes, the open
@@ -183,13 +232,18 @@ Run the Release workflow from the Actions tab or with
 `publish`, it is a dry run, which changes nothing outside the workflow run:
 
 1. It refuses a commit whose required checks, `verify` on Linux and Windows and
-   the end-to-end tests in both Obsidian versions, did not pass, or last passed
-   more than a week ago, when the latest Obsidian release may have changed
-   since. `node scripts/publish.ts ci <commit>` makes the same check by hand. To
-   refresh a week-old commit, run CI on `main` again with
+   the end-to-end tests in both Obsidian versions, or CI's `directory checks`,
+   did not pass, or last passed more than a week ago, when the latest Obsidian
+   release may have changed since. `directory checks` is Obsidian's own action
+   with the rules its directory scans for: the ruleset does not require it of
+   pull requests, so that a new rule of Obsidian's stops a release rather than
+   unrelated work. `node scripts/publish.ts ci <commit>` makes the same check by
+   hand. To refresh a week-old commit, run CI on `main` again with
    `gh workflow run ci.yml --ref main`.
 2. It runs `npm run check`, and refuses metadata or notes that do not match the
-   version.
+   version, and a version that is not higher than every published one. A version
+   already published passes this step, so that a publication can resume; the
+   publish step then accepts only that same build.
 3. It builds the files, makes a reproducible install ZIP, verifies its exact
    layout and bytes, and records checksums for all four assets.
 4. It extracts the ZIP with the system archive tool and puts its `inkline/`
@@ -205,7 +259,9 @@ Run the Release workflow from the Actions tab or with
 
 With no version, it builds `main` as it is, with the `Unreleased` notes. Pull
 requests that change the release steps run the dry run too, without step 1, as
-their own CI is still running.
+their own CI is still running. To rehearse a prepared version on its pull
+request, once that head's CI has passed, run the workflow on the branch with
+`gh workflow run release.yml --ref <branch> -f version=<version>`.
 
 ## Publish
 
@@ -224,6 +280,25 @@ can list a new draft a few seconds late, so while its list shows no draft at
 all, the check lists again, waiting up to 20 seconds in all; any draft it lists
 is checked at once. Pre-releases, by their odd minor version or a suffix, get
 GitHub's prerelease flag; public releases become the latest release.
+
+### Publish a public release straight after it merges
+
+Once Inkline is listed, merging a public release makes `main` offer a version
+that has no release yet, and Obsidian's update fails for anyone who tries it
+until the release exists. The wait is CI on the merge commit, about 10 minutes,
+and the Release workflow, about 2:
+
+1. Finish the review and rehearse the version on the pull request's head, as
+   [above](#prepare-without-publishing), before merging.
+2. Merge nothing else until the release is out: each merge makes a new commit
+   that needs its own CI.
+3. Run the publish command as soon as the merge commit's checks pass.
+4. If it cannot finish soon, revert the change to `manifest.json` and
+   `versions.json` with a pull request, so that `main` names the last public
+   release again.
+
+A pre-release has no such wait: merging its preparation changes nothing that
+Obsidian reads.
 
 ### When publishing fails part way
 
@@ -262,11 +337,14 @@ so record the defect and release a new version. To check by hand:
 
 ```sh
 gh release download <version> --repo viell-dev/slop-inkline --dir check
-gh attestation verify check/main.js --repo viell-dev/slop-inkline
+gh attestation verify check/main.js --repo viell-dev/slop-inkline \
+  --source-digest "$(git rev-parse <version>^{commit})"
 ```
 
-After publication the workflow also extracts the verified downloaded ZIP and
-compares every installed file with the loose release assets. Verify the manual
+The commit matters most for a pre-release's `manifest.json`, which differs from
+the file in that commit by its version. The job checks that version too. After
+publication the workflow also extracts the verified downloaded ZIP and compares
+every installed file with the loose release assets. Verify the manual
 installation and update journey in a clean synthetic vault on both supported
 Obsidian hosts:
 
@@ -323,9 +401,19 @@ must be identified explicitly. No documentation branch or tag move is needed;
 New plugins are submitted through Obsidian's developer dashboard at
 community.obsidian.md, which needs the owner's decision and sign-in:
 [#141](https://github.com/viell-dev/slop-inkline/issues/141) lists what it takes
-and what only the owner can do. Obsidian offers directory users whatever version
-`manifest.json` on the default branch names, and downloads that release's loose
-files. So before listing, these steps must change so that a pre-release's
-version never reaches `main`: until then, every merged version reaches every
-directory user. `npm run lint` applies the directory review's lint rules, but
-the dashboard's automated review checks more, as #141 describes.
+and what only the owner can do, and says where the listing material is. The
+steps above already keep a pre-release's version off `main`.
+
+The dashboard's automated review runs after each release and can take a plugin
+out of search, so CI's `directory checks` runs what Obsidian publishes of it.
+The review also rebuilds the plugin and compares the result with the release,
+which no public check reproduces. Obsidian's action looks for a build at
+`dist/main.js` among others, and its plugin's guide treats `dist/` as build
+output, but only the dashboard's **Review branch** can show that the review does
+too; a clean build of `0.9.0` on Node.js 24 gave the published bytes. Its
+findings appear only in the owner's dashboard.
+
+Two steps can only happen around the listing, and #141 tracks them: recheck on
+the day that the `inkline` id is free, and watch the first pre-release after
+listing, as whether a GitHub pre-release of a listed plugin starts a scan is not
+documented.

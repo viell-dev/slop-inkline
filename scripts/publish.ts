@@ -4,6 +4,9 @@
 //                                             .github/rulesets/main.json
 //                                             requires passed on <commit>,
 //                                             within the last week
+//   node scripts/publish.ts order <version>   fail unless <version> is higher
+//                                             than every published version,
+//                                             in SemVer's and Obsidian's order
 //   node scripts/publish.ts publish <version> <directory>
 //                                             publish <directory>'s files,
 //                                             listed in its SHA256SUMS, as
@@ -20,9 +23,15 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { isRecord } from "./lib/settings.ts";
-import { installArchiveName, isPrerelease } from "./lib/version.ts";
+import {
+  installArchiveName,
+  isPrerelease,
+  releaseVersionPattern,
+  versionOrderProblems,
+} from "./lib/version.ts";
 import {
   ciProblems,
+  directoryCheck,
   publishRelease,
   requiredChecks,
   type BuiltFile,
@@ -72,7 +81,7 @@ async function ci(commit: string): Promise<void> {
   const ruleset: unknown = JSON.parse(
     await readFile(".github/rulesets/main.json", "utf8"),
   );
-  const required = requiredChecks(ruleset);
+  const required = [...requiredChecks(ruleset), directoryCheck];
   const pages = ghJson([
     "api",
     "--paginate",
@@ -108,6 +117,44 @@ async function ci(commit: string): Promise<void> {
   }
   console.log(
     `${commit} passed ${required.map((check) => check.context).join(", ")} within the last week.`,
+  );
+}
+
+/** Every release, drafts included when the token may see them. */
+function releases(): readonly unknown[] {
+  const pages = ghJson([
+    "api",
+    "--paginate",
+    "--slurp",
+    `repos/${repository}/releases?per_page=100`,
+  ]);
+  return (Array.isArray(pages) ? pages : []).flatMap(
+    (page: unknown): readonly unknown[] => {
+      if (!Array.isArray(page)) return [];
+      const listed: readonly unknown[] = page;
+      return listed;
+    },
+  );
+}
+
+function order(version: string): void {
+  const published = releases().flatMap((release) => {
+    const fields = record(release);
+    const tag = fields?.tag_name;
+    return fields?.draft === false &&
+      typeof tag === "string" &&
+      releaseVersionPattern.test(tag)
+      ? [tag]
+      : [];
+  });
+  const problems = versionOrderProblems(version, published);
+  if (problems.length > 0) {
+    fail(`${version} cannot be released:\n${problems.join("\n")}`);
+  }
+  console.log(
+    published.includes(version)
+      ? `${version} is published already; publishing resumes that build or refuses this one.`
+      : `${version} is higher than all ${String(published.length)} published versions.`,
   );
 }
 
@@ -219,21 +266,8 @@ function host(
       );
     },
     drafts: (version) => {
-      const pages = ghJson([
-        "api",
-        "--paginate",
-        "--slurp",
-        `repos/${repository}/releases?per_page=100`,
-      ]);
-      const releases = (Array.isArray(pages) ? pages : []).flatMap(
-        (page: unknown): readonly unknown[] => {
-          if (!Array.isArray(page)) return [];
-          const listed: readonly unknown[] = page;
-          return listed;
-        },
-      );
       const drafts: Draft[] = [];
-      for (const release of releases) {
+      for (const release of releases()) {
         const fields = record(release);
         if (fields?.draft !== true || fields.tag_name !== version) continue;
         if (typeof fields.id !== "number") continue;
@@ -349,6 +383,12 @@ switch (command) {
     await ci(commit);
     break;
   }
+  case "order": {
+    const [version] = rest;
+    if (version === undefined) fail("usage: publish.ts order <version>");
+    order(version);
+    break;
+  }
   case "publish": {
     const [version, directory] = rest;
     if (version === undefined || directory === undefined) {
@@ -368,5 +408,7 @@ switch (command) {
     break;
   }
   default:
-    fail("usage: publish.ts ci <commit> | publish <version> <directory>");
+    fail(
+      "usage: publish.ts ci <commit> | order <version> | publish <version> <directory>",
+    );
 }

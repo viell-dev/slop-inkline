@@ -19,6 +19,7 @@ on:
   pull_request:
     paths:
       - .github/workflows/release.yml
+      - scripts/build.ts
       - scripts/lib/publish.ts
       - scripts/lib/release.ts
       - scripts/lib/settings.ts
@@ -67,6 +68,7 @@ jobs:
       - run: npm run check
       - name: Check the version and write the notes
         env:
+          GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
           PUBLISH: ${{ inputs.publish }}
         run: |
@@ -82,6 +84,7 @@ jobs:
           fi
           if [ -n "$VERSION" ]; then
             node scripts/release.ts check "$VERSION"
+            node scripts/publish.ts order "$VERSION"
             node scripts/release.ts notes "$VERSION" > release-notes.md
           elif ! node scripts/release.ts notes Unreleased > release-notes.md; then
             echo "No unreleased changes." > release-notes.md
@@ -97,7 +100,8 @@ jobs:
           cat SHA256SUMS
       # The release's own files, in a test vault's plugin folder, where
       # Obsidian loads them, in the oldest and the latest versions the
-      # end-to-end tests use.
+      # end-to-end tests use. A pre-release's manifest.json is one the build
+      # wrote, not the commit's own, so these are its first and only test.
       - name: Resolve the Obsidian versions
         env:
           PRINT_OBSIDIAN_CACHE_KEY: "1"
@@ -197,9 +201,14 @@ jobs:
           gh release download "$VERSION" --dir published
           cd published
           sha256sum --check SHA256SUMS
+          # The commit is what ties each file to its source: a pre-release's
+          # manifest.json differs from the file in that commit.
           for file in main.js manifest.json styles.css inkline-*.zip; do
-            gh attestation verify "$file" --repo "$GH_REPO"
+            gh attestation verify "$file" --repo "$GH_REPO" \
+              --source-digest "$GITHUB_SHA" \
+              --signer-workflow "$GH_REPO/.github/workflows/release.yml"
           done
+          jq --exit-status --arg version "$VERSION" '.version == $version' manifest.json
           unzip -q inkline-*.zip -d extracted
           for file in main.js manifest.json styles.css; do
             cmp "$file" "extracted/inkline/$file"

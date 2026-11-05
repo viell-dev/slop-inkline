@@ -1,5 +1,6 @@
 // node scripts/package.ts <directory> [output-directory]: package and verify
-// the three raw plugin files, adding inkline-<version>.zip to the output.
+// the three raw plugin files, adding inkline-<version>.zip to the output. The
+// manifest must name the version in package.json, as a build's does.
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -26,6 +27,14 @@ if (
   typeof manifest.version !== "string"
 ) {
   throw new Error("The package manifest must identify inkline and its version");
+}
+const packageJson: unknown = JSON.parse(
+  await readFile(new URL("../package.json", import.meta.url), "utf8"),
+);
+if (!isRecord(packageJson) || packageJson.version !== manifest.version) {
+  throw new Error(
+    `The package manifest names ${manifest.version}, which is not the version in package.json`,
+  );
 }
 const archive = createInstallZip(files);
 verifyInstallZip(archive, files);

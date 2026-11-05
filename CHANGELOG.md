@@ -17,6 +17,16 @@ even one a public release; earlier pre-releases carry a suffix such as
   manual ZIP stays the main route, and nothing needs BRAT. It installs from the
   same GitHub releases, and its **latest** choice follows pre-releases too.
 
+### Changed
+
+- A pre-release's version no longer reaches the repository's `manifest.json`, so
+  that it can never be offered to everyone once Inkline is in Obsidian's
+  community directory. Each release's own `manifest.json` and install ZIP still
+  name its version, and installing by hand or with BRAT works as before. See
+  [the release guide](https://github.com/viell-dev/slop-inkline/blob/main/RELEASING.md#where-a-version-is-recorded).
+- A release is refused unless its version is higher than every published one,
+  both in SemVer's order and in the number-only order Obsidian uses.
+
 ## 0.9.0 - 2026-11-05
 
 This is the first beta of 1.0.0, the first public release, following the owner's

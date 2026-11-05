@@ -16,6 +16,17 @@ export interface RequiredCheck {
   readonly integrationId: number | undefined;
 }
 
+/**
+ * Obsidian's own checks of the plugin, which CI runs. A release needs them as
+ * it needs the ruleset's: Obsidian scans every release, and takes one that
+ * fails out of its directory's search. The ruleset leaves them out so that a
+ * new rule of Obsidian's stops a release rather than unrelated pull requests.
+ */
+export const directoryCheck: RequiredCheck = {
+  context: "directory checks",
+  integrationId: 15368,
+};
+
 /** A check run on a commit, as GitHub's checks API gives it. */
 export interface CheckRun {
   readonly name: string;
