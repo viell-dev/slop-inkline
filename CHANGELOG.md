@@ -9,6 +9,14 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Added
+
+- The
+  [install guide](https://viell-dev.github.io/slop-inkline/install#install-with-brat)
+  now describes BRAT as an optional way to install and update Inkline. The
+  manual ZIP stays the main route, and nothing needs BRAT. It installs from the
+  same GitHub releases, and its **latest** choice follows pre-releases too.
+
 ## 0.9.0 - 2026-11-05
 
 This is the first beta of 1.0.0, the first public release, following the owner's

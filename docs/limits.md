@@ -5,8 +5,8 @@ The [issues](https://github.com/viell-dev/slop-inkline/issues) track each one.
 
 ## Not there yet
 
-- **Prerelease.** Install manually from GitHub releases; Inkline is not in
-  Obsidian's community directory. See [Install](./install.md).
+- **Prerelease.** Install from GitHub releases, by hand or with BRAT; Inkline is
+  not in Obsidian's community directory. See [Install](./install.md).
 - **Desktop only.** Obsidian's mobile apps do not offer Inkline. The host tests
   run on Linux; Windows and macOS should work but are not tested.
 - **Mouse or trackpad.** A drawing tablet's pen or a touchscreen draws as a
