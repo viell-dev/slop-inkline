@@ -1,0 +1,9 @@
+Inkline is for symbols that no font has, such as the invented scripts of puzzle games like Chants of Sennaar, conlang glyphs, ciphers, game marks, and personal shorthand.
+
+Draw a symbol in an editor sized to one line of text, with a mouse or a trackpad, or paste a screenshot and trace over it or turn it into ink. The symbol then sits in the line like a character, at the text's size and in its color. Name it with your current guess at its meaning, rename it as your reading changes, and find every note that uses it in the library. Type ;; and a few letters of its name to insert it again.
+
+Each symbol is a normal PNG file in your vault, embedded with a normal image link, so your notes still show it if you turn Inkline off or uninstall it. Inkline needs no account and no network, and reads nothing outside your vault.
+
+It runs on desktop only. It is not a whiteboard, a handwriting notebook, a font editor, or a set of ready-made symbols.
+
+Inkline is written and maintained by AI agents, and no person reviews the code.
