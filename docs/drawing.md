@@ -93,17 +93,17 @@ the grid on, for a corner placed before the grid was turned on.
 
 ## Filled shapes
 
-**Toggle fill** (B) is a switch for the shapes drawn next, not a tool to click a
-shape with: it never fills what is already drawn. While it is on, Ellipse and
-Polygon draw solid shapes such as ● ▲ ■ ◆: an ellipse, and a polygon closed on
-its first corner. A filled shape's edges run through its corners, or round the
-box dragged, without the brush's width around them, so a filled triangle drawn
-on the grid sits on the line its base lies on, and the brush size makes no
-difference. An open polygon and a freehand stroke are not filled. With the
-eraser, a filled shape takes away its whole area, for a hole of its shape. The
-button is off while drawing freehand. Turning it on or off while placing a
-polygon decides for that shape, as it closes. **Next** keeps it; an editor
-opened afresh does not fill.
+**Toggle fill** (B), called **Fill** in 0.3.0-alpha.8 (**Unreleased**), is a
+switch for the shapes drawn next, not a tool to click a shape with: it never
+fills what is already drawn. While it is on, Ellipse and Polygon draw solid
+shapes such as ● ▲ ■ ◆: an ellipse, and a polygon closed on its first corner. A
+filled shape's edges run through its corners, or round the box dragged, without
+the brush's width around them, so a filled triangle drawn on the grid sits on
+the line its base lies on, and the brush size makes no difference. An open
+polygon and a freehand stroke are not filled. With the eraser, a filled shape
+takes away its whole area, for a hole of its shape. The button is off while
+drawing freehand. Turning it on or off while placing a polygon decides for that
+shape, as it closes. **Next** keeps it; an editor opened afresh does not fill.
 
 ## Straight lines and the grid
 
@@ -213,9 +213,9 @@ when enlarged; see [Limits](./limits.md#files-and-sizes).
 ## Start from a copy
 
 In the editor for a new symbol, **Copy from** (V) starts it from a copy of
-another symbol's strokes and ink, chosen from a list of the vault's symbols with
-their pictures, in place of what is drawn so far, for scripts whose symbols
-share parts. Undo takes the copy back.
+another symbol's strokes and ink, chosen from a list of the vault's symbols,
+with their pictures from the next release (**Unreleased**), in place of what is
+drawn so far, for scripts whose symbols share parts. Undo takes the copy back.
 
 ## Save
 
