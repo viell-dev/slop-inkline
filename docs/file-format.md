@@ -160,12 +160,12 @@ A stroke's `cut` has an optional `start` and an optional `end`, for its first
 and last point, each `"up"`, `"down"`, `"left"`, or `"right"`: the way from that
 point across the line through it, horizontal for `"up"` and `"down"` and
 vertical for `"left"` and `"right"`, past which the end's ink is cut away.
-Inkline writes them for strokes drawn on its grid, whose ends lie on grid lines,
-so that they stop flush with the line: a stroke that comes down to the baseline
-has the end `"down"`. An empty `cut` is the same as none. Inkline writes `false`
-for every new stroke, as it no longer records pen pressure, but reads and draws
-strokes with pressure as before, and saving a symbol again keeps them as they
-are.
+Inkline writes them for strokes drawn on its grid with Flat ends on, whose ends
+lie on grid lines, so that they stop flush with the line: a stroke that comes
+down to the baseline has the end `"down"`. An empty `cut` is the same as none,
+and a `cut` on a polygon has no effect. Inkline writes `false` for every new
+stroke, as it no longer records pen pressure, but reads and draws strokes with
+pressure as before, and saving a symbol again keeps them as they are.
 
 The base layer is an object:
 
@@ -207,10 +207,10 @@ of the image's size, with the record's coordinates as they are:
 2. Each stroke in order: its outline, or a polygon's pieces, filled in the grey,
    over what is there for `"pen"` and removing it for `"eraser"` (the canvas
    compositing operations `source-over` and `destination-out`). A stroke with a
-   `cut` is filled in two parts: its outline, or its pieces, everywhere except
-   in a box for each cut end, and then, inside those boxes only, those of the
-   rest of the stroke, below. A stroke with `fill` `true` fills its inside
-   instead, below, in the same way.
+   `cut` is filled in two parts: its outline everywhere except in a box for each
+   cut end, and then, inside those boxes only, that of the rest of the stroke,
+   below. A stroke with `fill` `true` fills its inside instead, below, in the
+   same way.
 
 For a cut end at the point (`x / 16`, `y / 16`) pixels, with reach
 `r = size / 16 + 1` pixels, the box spans:
@@ -230,7 +230,7 @@ the stroke's points without, from each cut end, those whose distance from it
 along the stroke, point to point, is less than `2 × size` units. It is drawn
 with the same options and its own round ends, which lie clear of the boxes when
 the stroke comes straight into its cut ends, and not at all when no points are
-left. The rest of a polygon is described with polygons, below.
+left.
 
 A stroke's outline is the polygon that
 [perfect-freehand](https://github.com/steveruizok/perfect-freehand) 1.2.3's
@@ -277,11 +277,7 @@ nonzero rule, each wound the same way, so that the fill covers each piece once:
   sides along the axes.
 
 This is the shape of an SVG 2 stroke with `stroke-linejoin: miter-clip`,
-`stroke-miterlimit: 4`, and `stroke-linecap: square`. A closed polygon has no
-ends, so a `cut` on it has no effect. For an open polygon with a `cut`, the rest
-drawn in its cut boxes is the polygon from `2 × size` units along its sides from
-each cut end, drawn by the same rules but with flat ends where it was cut
-(`stroke-linecap: butt`); nothing when no length is left.
+`stroke-miterlimit: 4`, and `stroke-linecap: square`.
 
 ### Fill
 
@@ -318,10 +314,12 @@ added so too, in 0.3.0-alpha.7: earlier versions show a polygon's stored pixels,
 but draw it as a stroke through its corners, smoothed and with round corners,
 once they edit the symbol. Stroke `fill` was added so in 0.3.0-alpha.8: earlier
 versions show a filled shape's stored pixels, but draw its outline instead once
-they edit the symbol. A change that a version 1 reader could not handle
-correctly increases `version`. A reader must not edit a file whose record has a
-higher version than it knows, since writing it would lose what that version
-recorded; it may still show the file's pixels.
+they edit the symbol. A `cut` on a polygon had an effect in 0.3.0-alpha.7 and
+alpha.8 only: later versions show such a polygon's stored pixels, but draw its
+ends square once they edit the symbol. A change that a version 1 reader could
+not handle correctly increases `version`. A reader must not edit a file whose
+record has a higher version than it knows, since writing it would lose what that
+version recorded; it may still show the file's pixels.
 
 The files in [test/fixtures/format](../test/fixtures/format) pin what files hold
 now, and the tests read them on every change. Until the first stable release, a

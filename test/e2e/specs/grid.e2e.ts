@@ -311,7 +311,15 @@ describe("Grid", function () {
     // A save moves the drawing, and with it the columns, here to 8 pixels or
     // so past one, where this stroke's flat start crops to: at least half a
     // spacing in any text font, where strokes drawn in Zoom could take them
-    // back by the finer spacing, half a cell.
+    // back by the finer spacing, half a cell. Its start is flat with Flat
+    // ends on.
+    await browser.keys("t");
+    await browser.waitUntil(
+      async () =>
+        (await browser
+          .$('[data-inkline-button="flat-ends"]')
+          .getAttribute("aria-pressed")) === "true",
+    );
     await draw([
       [0.45, 0.5],
       [0.55, 0.5],

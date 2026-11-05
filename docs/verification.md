@@ -135,9 +135,12 @@ release, later versions must keep released files readable and looking the same.
   at most two partly covered document pixels at each edge of the saved symbol,
   and the reopened symbol draws the same pixels
   ([conversion-clarity.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/conversion-clarity.e2e.ts)).
-  Unit tests pin the finer sampling, its alpha weighting, the threshold ramp it
-  narrows for large enlargements, and its bounds of a million samples and a base
-  layer's sides
+  **Unreleased:** so does a dim H of soft strokes, 42 levels from its ground to
+  its ink, enlarged from about 2.4 to 7.7 times, and the surface shows at most
+  three document pixels at each edge in the preview, zoomed in, and once
+  applied. Unit tests pin the finer sampling, its alpha weighting, the threshold
+  ramp it narrows for large enlargements and for little contrast, and its bounds
+  of a million samples and a base layer's sides
   ([pixels.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/ink/pixels.test.ts)).
 - Each brush size, drawn with a mouse and measured in the saved symbol, is as
   wide as its size. M is within 15% of the stems of regular text, L lies between

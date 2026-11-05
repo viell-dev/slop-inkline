@@ -50,6 +50,7 @@ immediately. Select the name field to type a name; Enter returns to drawing.
 | Delete, or Backspace      | Clear       | Clear the drawing; Undo brings it back.                 |
 | G                         | Guides      | Show or hide the guides.                                |
 | Shift+G                   | Grid        | Show or hide the grid, which snaps the ends of strokes. |
+| T                         | Flat ends   | End freehand strokes flat on the grid, or round.        |
 | Shift, held while drawing |             | Draw a straight line, or a circle with Ellipse.         |
 | V                         | Copy from   | Start a new symbol from a copy of another.              |
 | F                         | Fit         | Centre the drawing, showing all of it if it is wider.   |

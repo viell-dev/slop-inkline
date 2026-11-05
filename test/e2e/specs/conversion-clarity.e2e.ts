@@ -21,7 +21,160 @@ describe("Enlarged picture conversion", function () {
       await checkClarity(side);
     });
   }
+
+  // A dim H of soft, thin strokes, as in a screenshot of a game: enlarged
+  // about 2.4, 5.1 and 7.7 times.
+  for (const side of [38, 18, 12]) {
+    it(`keeps a dim ${String(side)}-pixel H's edges narrow in the preview, zoomed in, and saved`, async function () {
+      await checkDimClarity(side);
+    });
+  }
 });
+
+/** The lengths of the runs of partly covered pixels in `row`. */
+function partialRuns(row: readonly number[]): number[] {
+  return row
+    .map((value) => (value > 12 && value < 243 ? "p" : " "))
+    .join("")
+    .split(" ")
+    .filter((run) => run !== "")
+    .map((run) => run.length);
+}
+
+/** The ink the surface shows along a row, and device pixels per document's. */
+interface ShownRow {
+  readonly row: number[];
+  readonly scale: number;
+}
+
+/**
+ * The ink the surface shows, in a row through the H's stems: above the
+ * x-height's guide, which runs a quarter of the way down the H. Waits for the
+ * surface to show it at `scale`, or at another scale than `not`.
+ */
+async function shownRow(
+  wanted?: { scale: number } | { not: number },
+): Promise<ShownRow> {
+  let found: ShownRow | undefined;
+  await browser.waitUntil(async () => {
+    const shown = await browser.execute(() => {
+      const surface = document.querySelector(".inkline-surface");
+      if (!(surface instanceof HTMLCanvasElement))
+        throw new Error("no surface");
+      return window.inklineTest.pictures.inkRow(surface, 62, 0.35);
+    });
+    found = shown;
+    const scaled =
+      wanted === undefined ||
+      ("scale" in wanted
+        ? shown.scale === wanted.scale
+        : shown.scale !== wanted.not);
+    return scaled && shown.row.some((value) => value > 200);
+  });
+  if (found === undefined) throw new Error("no ink on the surface");
+  return found;
+}
+
+/**
+ * Checks the ink's edges in what the surface shows: at most four, and at
+ * most three document pixels each, as the surface enlarges a sample of the
+ * base layer with smoothing.
+ */
+function expectNarrowOnSurface({ row, scale }: ShownRow): void {
+  const edges = partialRuns(row);
+  expect(edges.length).toBeLessThanOrEqual(4);
+  expect(Math.max(...edges)).toBeLessThanOrEqual(Math.ceil(3 * scale));
+}
+
+/**
+ * Drops a dim H, `side` pixels square, makes ink of it at the default
+ * threshold, and checks the preview, zoomed in and as usual, the ink applied,
+ * the saved symbol's row through its stems, and that reopening draws it the
+ * same.
+ */
+async function checkDimClarity(side: number): Promise<void> {
+  await browser.execute(async (n) => {
+    const surface = document.querySelector(".inkline-surface");
+    if (!(surface instanceof HTMLCanvasElement)) throw new Error("no surface");
+    const { pictures } = window.inklineTest;
+    pictures.drop(
+      surface,
+      new File([await pictures.dimPicture(n)], "dim-h.png", {
+        type: "image/png",
+      }),
+    );
+  }, side);
+  await browser.$('[data-inkline-button="ink"]').waitForEnabled();
+  await browser.$('[data-inkline-button="ink"]').click();
+  await browser.$('[data-inkline-button="apply"]').waitForEnabled();
+  const preview = await shownRow();
+  await saveScreenshot(`dim-conversion-preview-${String(side)}`);
+  await browser.$('[data-inkline-button="zoom"]').click();
+  const zoomed = await shownRow({ not: preview.scale });
+  await saveScreenshot(`dim-conversion-zoomed-${String(side)}`);
+  await browser.$('[data-inkline-button="zoom"]').click();
+  await shownRow({ scale: preview.scale });
+  await browser.$('[data-inkline-button="apply"]').click();
+  await browser
+    .$('[data-inkline-button="apply"]')
+    .waitForDisplayed({ reverse: true });
+  const applied = await shownRow({ scale: preview.scale });
+  await saveScreenshot(`dim-conversion-applied-${String(side)}`);
+  await browser.keys(["Control", "Enter"]);
+  await browser.$(".inkline-editor").waitForExist({ reverse: true });
+  const result = await browser.executeObsidian(async ({ app }) => {
+    const file = app.vault.getFileByPath("001.ink.png");
+    if (file === null) throw new Error("no saved ink");
+    const bytes = new Uint8Array(await app.vault.readBinary(file));
+    const { canvas, render } = window.inklineTest;
+    const opened = await canvas.openInk(bytes);
+    if (opened.kind !== "editable" || opened.base === undefined)
+      throw new Error("no base");
+    const saved = await canvas.decodePng(bytes);
+    const pixels = canvas.readPixels(saved);
+    saved.close();
+    const y = Math.floor(
+      opened.base.y / 16 + (opened.base.height * opened.base.scale) / 4,
+    );
+    const profile = (data: Uint8ClampedArray, width: number) => {
+      const row = [];
+      for (let x = 0; x < width; x++)
+        row.push(data[(y * width + x) * 4 + 3] ?? 0);
+      return row;
+    };
+    const surface = new OffscreenCanvas(pixels.width, pixels.height);
+    const context = surface.getContext("2d");
+    if (context === null) throw new Error("no context");
+    render.drawInk(context, opened.document.strokes, opened.base);
+    const reopened = context.getImageData(0, 0, pixels.width, pixels.height);
+    return {
+      row: profile(pixels.data, pixels.width),
+      reopened: profile(reopened.data, pixels.width),
+    };
+  });
+  const edges = partialRuns(result.row);
+  console.log(
+    `Dim ${String(side)}-pixel H`,
+    JSON.stringify({
+      saved: edges,
+      preview: partialRuns(preview.row),
+      previewScale: preview.scale,
+      zoomed: partialRuns(zoomed.row),
+      zoomedScale: zoomed.scale,
+      applied: partialRuns(applied.row),
+      row: result.row,
+    }),
+  );
+  expect(result.reopened).toEqual(result.row);
+  // Four vertical edges, at most two antialiased document pixels each, as a
+  // black H on white has.
+  expect(edges.length).toBeLessThanOrEqual(4);
+  expect(Math.max(...edges)).toBeLessThanOrEqual(2);
+  expect(result.row.filter((value) => value === 255).length).toBeGreaterThan(8);
+  expectNarrowOnSurface(preview);
+  expectNarrowOnSurface(zoomed);
+  expectNarrowOnSurface(applied);
+}
 
 /**
  * Drops a black H on white, `side` pixels square, makes ink of it, and checks

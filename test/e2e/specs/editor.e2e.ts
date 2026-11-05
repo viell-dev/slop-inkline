@@ -4395,9 +4395,9 @@ describe("The editor", function () {
       await setThreshold(200);
       await browser.keys(["Control", "Enter"]);
       await waitClosed();
-      // Three times finer, as in the first test; at 200, well above the grey,
-      // the ink reaches one sample past its edge on each side.
-      expect(await baseSize("001.ink.png")).toEqual([62, 62]);
+      // Three times finer, as in the first test; the ramp between this grey
+      // and white is half as wide, and at 200 the ink stops at the grey's edge.
+      expect(await baseSize("001.ink.png")).toEqual([60, 60]);
     });
 
     it("makes the ink being previewed on Mod+S, and on Next", async function () {

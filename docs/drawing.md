@@ -66,7 +66,7 @@ lines at its top, bottom, and sides. A circle is on the grid along its longer
 side; across the other it can end between lines, as the grid's rows and columns
 are spaced differently. For a half circle, draw the circle, then erase the half
 you don't want with eraser strokes that end on the line across its middle: on
-the grid, their ends stop flush with that line.
+the grid with **Flat ends** on, their ends stop flush with that line.
 
 ## Polygons
 
@@ -87,11 +87,12 @@ it never reaches far beyond. An open shape's ends are square, half the stroke's
 width past its end corners, so that two shapes meeting at a corner make a sharp
 one.
 
-With the grid on, the corners snap to the grid, and an open shape's ends stop
-flush with the grid line they lie on, as a stroke's do. Off the grid, a click
-within the brush's circle of the first or last corner counts as that corner, or
-within 4 of the drawing's pixels for a smaller brush. So does such a click with
-the grid on, for a corner placed before the grid was turned on.
+With the grid on, the corners snap to the grid. **Unreleased:** a shape's ends
+are no longer cut flat on the grid: an open shape keeps its square ends, past
+the line they lie on. Off the grid, a click within the brush's circle of the
+first or last corner counts as that corner, or within 4 of the drawing's pixels
+for a smaller brush. So does such a click with the grid on, for a corner placed
+before the grid was turned on.
 
 ## Filled shapes
 
@@ -125,13 +126,19 @@ so cells there are square, and cells between other lines are close to square. No
 even grid could meet every line of every font. In a font such as Inter, at the
 default grid size, the cap height then lies 7 cells above the baseline.
 
-On the grid, a stroke's ends stop flush with the grid line they lie on, instead
-of rounding past it: the line across the stroke, a row for a stroke that comes
-in at 45° or steeper, as the legs of an A come down to the baseline, and a
-column for a flatter one. So a stroke drawn down to the baseline sits on it,
-with nothing below to erase. A dot stays round, as does an end drawn with the
-grid off. The eraser's ends are cut the same way, so erasing up to a line leaves
-a straight edge there.
+**Flat ends** (T), with the grid on, stops a freehand stroke's ends flush with
+the grid line they lie on, instead of rounding past it. **Unreleased:** it is a
+switch, off in a new editor, and **Next** keeps it; from 0.3.0-alpha.5 to
+alpha.8 this always happens with the grid on. The cut runs along the line across
+the stroke: a row for a stroke that comes in at 45° or steeper, as the legs of
+an A come down to the baseline, and a column for a flatter one, judged over the
+last grid cell or two brush widths of what you drew, whichever is longer, and
+leaving out the jumps to the grid points. A stroke that ends on the grid point
+it started on keeps its round ends, as a closed loop has none to cut. So a
+stroke drawn down to the baseline sits on it, with nothing below to erase. A dot
+stays round, as does an end drawn with the grid off. The eraser's ends are cut
+the same way, so erasing up to a line leaves a straight edge there. Shapes are
+never cut: an ellipse has no ends, and a polygon keeps its square ones.
 
 The grid keeps its place through saves, and on a symbol you open again it lines
 up with most of its strokes, if the grid has the same size as when you drew
@@ -225,6 +232,15 @@ enlarged pixel. Where that would take too many samples, as for a large picture
 enlarged across a wide drawing, it is sampled less finely, down to its own
 pixels. A picture with transparency keeps the soft edges of its own transparency
 when enlarged; see [Limits](./limits.md#files-and-sizes).
+
+**Unreleased:** a dim picture, such as a dark screenshot of a game, gets edges
+as sharp as a bright one's. The ink's edge narrows with the contrast between the
+two sides of the threshold, instead of being as soft as the picture's own edges
+on a picture with little contrast. A few bright pixels elsewhere in the picture
+do not change it, but they can draw the threshold's first position to them: move
+the slider down to the strokes, or move the picture to keep those pixels out.
+Soft strokes come out wider than they were drawn; see
+[Limits](./limits.md#files-and-sizes).
 
 ## Start from a copy
 

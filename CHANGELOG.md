@@ -9,13 +9,38 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Added
+
+- **Flat ends** (T) turns the flat ends of strokes on the grid on and off, and a
+  new editor starts with it off, so that a stroke keeps its round ends unless
+  you ask for them cut. **Next** keeps it. From 0.3.0-alpha.5 to alpha.8, every
+  stroke drawn on the grid was cut.
+
 ### Fixed
 
+- A polygon that ended near one of its own sides lost ink from that side.
+  Polygons are no longer cut at all: an open polygon's ends stay square on the
+  grid, as they are off it. A polygon saved by 0.3.0-alpha.7 or alpha.8 shows
+  its stored pixels, and loses its flat ends if you edit it.
+- A freehand stroke with Flat ends on could be cut along the wrong grid line,
+  when it ended in a short sideways hook or snapped sideways to a grid point at
+  either end. The way it runs is now judged over a longer stretch of what you
+  drew. A stroke that ends on the grid point it started on is no longer cut.
 - `main.js` now carries the licence notice of perfect-freehand, which it
   bundles, and the README credits it. Earlier releases left the notice out.
 - A shape drawn with the eraser, with Ellipse or Polygon, can now be seen while
   it is drawn: it is tinted over the drawing, even where there is no ink to take
   away, and the tint isn't part of the symbol.
+- Keep the edges of **Make ink** sharp on a dim picture, such as a dark
+  screenshot of a game
+  ([dim screenshots](https://github.com/viell-dev/slop-inkline/issues/135)). The
+  ink's edge now narrows with the contrast between the two sides of the
+  threshold; its fixed width spanned most of the levels of such a picture, and
+  left its edges as soft as they were. A picture whose ink and ground are mostly
+  pure black and white makes the same ink as before; other pictures, such as
+  screenshots of small text, get slightly sharper edges. A picture with any
+  transparency keeps the whole ramp, and its soft edges. Symbols made before
+  keep their ink; make ink of the picture again to sharpen one.
 
 ### Changed
 
