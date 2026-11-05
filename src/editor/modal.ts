@@ -1979,10 +1979,12 @@ export class InkEditorModal extends Modal {
 
   /**
    * Moves the whole drawing up or down by a pixel, or with `byCell` by a grid
-   * cell's width, as Shift moves a picture.
+   * cell's width, as Shift moves a picture. Not while a save is running: it
+   * has read the drawing, and a move in the same undo step as that one would
+   * leave no way back to what was saved.
    */
   #moveDrawing(direction: -1 | 1, byCell: boolean): void {
-    if (this.#converting !== undefined) return;
+    if (this.#converting !== undefined || this.#saving !== undefined) return;
     const step = byCell ? this.#session.grid.spacing : nudge;
     if (this.#session.moveDrawing(direction * toUnits(step))) this.#changed();
   }
