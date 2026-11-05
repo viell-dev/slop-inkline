@@ -314,7 +314,9 @@ added so too, in 0.3.0-alpha.7: earlier versions show a polygon's stored pixels,
 but draw it as a stroke through its corners, smoothed and with round corners,
 once they edit the symbol. Stroke `fill` was added so in 0.3.0-alpha.8: earlier
 versions show a filled shape's stored pixels, but draw its outline instead once
-they edit the symbol. A change that a version 1 reader could not handle
+they edit the symbol. A `cut` on a polygon had an effect in 0.3.0-alpha.7 and
+alpha.8 only: later versions show such a polygon's stored pixels, but draw its
+ends square once they edit the symbol. A change that a version 1 reader could not handle
 correctly increases `version`. A reader must not edit a file whose record has a
 higher version than it knows, since writing it would lose what that version
 recorded; it may still show the file's pixels.
