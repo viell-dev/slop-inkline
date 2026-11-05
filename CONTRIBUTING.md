@@ -151,7 +151,12 @@ and run it in the Docker image:
 
 ```sh
 docker build --file test/e2e/Dockerfile --tag inkline-e2e .
-docker run --rm --init --shm-size=1g   --env E2E_PLUGIN_DIR=/brat   --env E2E_BRAT_LATEST=0.9.0 --env E2E_BRAT_START=0.3.0-alpha.8   --volume inkline-obsidian-cache:/cache   --volume "$PWD/test-results/e2e:/out" --volume "$PWD/brat:/brat:ro"   inkline-e2e --spec test/e2e/manual/brat.e2e.ts
+docker run --rm --init --shm-size=1g \
+  --env E2E_PLUGIN_DIR=/brat \
+  --env E2E_BRAT_LATEST=0.9.0 --env E2E_BRAT_START=0.3.0-alpha.8 \
+  --volume inkline-obsidian-cache:/cache \
+  --volume "$PWD/test-results/e2e:/out" --volume "$PWD/brat:/brat:ro" \
+  inkline-e2e --spec test/e2e/manual/brat.e2e.ts
 ```
 
 It uses no GitHub token, so its requests count against the 60 an hour that
