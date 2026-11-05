@@ -67,6 +67,10 @@ describe("manual install ZIP", () => {
     }).toThrow("changed main.js");
   });
 
+  // It starts PowerShell twice on Windows, where Expand-Archive alone takes 1.5
+  // to 1.9 seconds on a busy machine (#93): the time is the process and module
+  // starting, so Vitest's five seconds were too few. It promises nothing about
+  // speed; only the archive's bytes and what survives an update are checked.
   it("extracts with the platform's archive tool directly into plugins", async () => {
     const folder = await mkdtemp(join(tmpdir(), "inkline-install-"));
     try {
@@ -136,7 +140,7 @@ describe("manual install ZIP", () => {
     } finally {
       await rm(folder, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 });
 
 describe("release candidates", () => {
