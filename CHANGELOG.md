@@ -16,6 +16,14 @@ section is also its
 
 ### Changed
 
+- **Zoom** doubles the grid as well as the drawing: while zoomed it has twice as
+  many cells each way, so the default 5 cells across the x-height become 10.
+  Every point of the usual grid stays a point of the finer one, so a drawing
+  started in either view lines up in the other, and the usual grid comes back
+  where it was, however much was drawn while zoomed. **Grid size** keeps its
+  range, and saved symbols are not affected. To keep the finer grid on whole
+  file units, column spacing is now an even number of them, which moves it by at
+  most 1/16 pixel.
 - Simplify documentation navigation and maintenance guidance, clarify the draft
   format's verification limits, and make the existing stable-publication hold
   explicit in the release guide.
