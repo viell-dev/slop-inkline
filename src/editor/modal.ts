@@ -1961,7 +1961,13 @@ export class InkEditorModal extends Modal {
         : undefined;
       view.reference = this.#picture;
       const { document, base } = this.#shown(view);
-      view.render(document, base, this.#session.activeStroke);
+      const { activeStroke, shape, tool } = this.#session;
+      view.render(
+        document,
+        base,
+        activeStroke,
+        tool === "eraser" && shape !== "free",
+      );
       this.#updateCursor();
       const line = this.#previewLine;
       if (this.#preview !== undefined && line !== undefined) {
@@ -2245,7 +2251,7 @@ export class InkEditorModal extends Modal {
     const steps = content.createEl("ul");
     for (const text of [
       "Pen (P) adds ink; Eraser (E) removes it. Sizes S–XL (1–4) are remembered separately until you close the editor, including through Next. The circle shows the brush's diameter.",
-      "Ellipse (O) draws an ellipse with the pen or the eraser: drag across the box it fills, and hold Shift for a circle. Press it again to draw freehand.",
+      "Ellipse (O) draws an ellipse with the pen or the eraser: drag across the box it fills, and hold Shift for a circle. Press it again to draw freehand. A shape drawn with the eraser is tinted until it is done.",
       "Polygon (Y) draws a shape with straight sides and sharp corners: click each corner, then click the first corner again to close it, or the last corner, or press Enter, to leave it open. Undo takes back a corner, and Esc drops the shape.",
       "Fill (B), with Ellipse or Polygon on, draws an ellipse or a closed polygon solid, with its edges through its corners: the pen makes a solid shape, and the eraser a hole of its shape.",
       "Hold Shift while drawing for a straight segment. Grid (Shift+G) shows dots and snaps stroke ends to them. Its rows pass through each guide line the settings choose, and divide the space between lines evenly; the settings also set how many cells span the x-height.",
