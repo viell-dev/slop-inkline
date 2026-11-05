@@ -8,6 +8,12 @@ section is also its
 
 ## Unreleased
 
+### Fixed
+
+- A shape drawn with the eraser, with Ellipse or Polygon, can now be seen while
+  it is drawn: it is tinted over the drawing, even where there is no ink to take
+  away, and the tint isn't part of the symbol.
+
 ### Changed
 
 - Simplify documentation navigation and maintenance guidance, clarify the draft

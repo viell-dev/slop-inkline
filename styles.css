@@ -117,6 +117,8 @@
   --inkline-guide-x-height: var(--color-green);
   --inkline-guide-baseline: var(--color-orange);
   --inkline-guide-descender: var(--color-pink);
+  /* A shape being drawn with the eraser, which shows while it is drawn only. */
+  --inkline-erasing: var(--color-red);
   display: block;
   width: 100%;
   height: var(--inkline-surface-height, 288px);
