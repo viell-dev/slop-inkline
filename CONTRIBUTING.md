@@ -170,6 +170,11 @@ pictures for Obsidian's community directory listing, as
 CI runs the end-to-end tests on Linux for every pull request, and the Docker
 image weekly and on request.
 
+The Directory checks workflow runs Obsidian's own action on every pull request,
+which checks the plugin much as the community directory does. It is not a
+required check, so that a new rule of Obsidian's doesn't stop unrelated pull
+requests, but a failure there needs fixing before a public release.
+
 ## Documentation
 
 The user guide and the reference are a [VitePress](https://vitepress.dev/) site
