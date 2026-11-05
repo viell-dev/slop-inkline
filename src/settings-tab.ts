@@ -29,13 +29,13 @@ const guideLabels: Readonly<Record<GuideName, string>> = {
   descender: "Descender line",
 };
 
-/** What each line marks, and its colour, as the theme gives it by default. */
+/** What each line marks, and the colour the editor draws it in. */
 const guideDescriptions: Readonly<Record<GuideName, string>> = {
-  ascender: "The font's upper extent, purple by default.",
-  "cap height": "The top of a capital such as H, blue by default.",
-  "x-height": "The top of a lowercase letter such as x, green by default.",
-  baseline: "Where letters sit, solid, orange by default.",
-  descender: "The font's lower extent, pink by default.",
+  ascender: "The font's upper extent, shown in purple.",
+  "cap height": "The top of a capital such as H, shown in blue.",
+  "x-height": "The top of a lowercase letter such as x, shown in green.",
+  baseline: "Where letters sit, shown as a solid orange line.",
+  descender: "The font's lower extent, shown in pink.",
 };
 
 /** What the tab needs of the plugin: its settings, and a way to change one. */
@@ -130,7 +130,6 @@ export class InklineSettingTab extends PluginSettingTab {
           min: gridCellRange.min,
           max: gridCellRange.max,
           step: 1,
-          displayFormat: (value) => `${String(value)} cells`,
         },
       },
       {

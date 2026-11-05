@@ -564,15 +564,17 @@ export class InkEditorModal extends Modal {
   override onOpen(): void {
     this.modalEl.addClass("inkline-editor");
     this.#addNameField();
-    const toolbar = this.contentEl.createDiv({ cls: "inkline-toolbar" });
-    this.#addButton(toolbar, "pen", "Pen", "P", () => {
+    // Three rows: what draws; its size and the history; then the view and
+    // what ends the editor. Each row wraps by itself in a narrow window.
+    const tools = this.contentEl.createDiv({ cls: "inkline-toolbar" });
+    this.#addButton(tools, "pen", "Pen", "P", () => {
       this.#setTool("pen");
     });
-    this.#addButton(toolbar, "eraser", "Eraser", "E", () => {
+    this.#addButton(tools, "eraser", "Eraser", "E", () => {
       this.#setTool("eraser");
     });
     this.#addButton(
-      toolbar,
+      tools,
       "ellipse",
       "Ellipse",
       "O",
@@ -583,7 +585,7 @@ export class InkEditorModal extends Modal {
       "drag across a box to draw an ellipse with the pen or the eraser; hold Shift for a circle",
     );
     this.#addButton(
-      toolbar,
+      tools,
       "polygon",
       "Polygon",
       "Y",
@@ -594,19 +596,20 @@ export class InkEditorModal extends Modal {
       "click each corner of a shape with straight sides; click the first corner again to close it, or the last to end it",
     );
     this.#addButton(
-      toolbar,
+      tools,
       "fill",
-      "Fill",
+      "Toggle fill",
       "B",
       () => {
         this.#toggleFill();
       },
-      "Fill",
-      "draw an ellipse, or a polygon closed on its first corner, solid, with its edges through its corners, with the pen or the eraser",
+      "Toggle fill",
+      "while on, Ellipse, and Polygon closed on its first corner, draw solid shapes, with the pen or the eraser; it doesn't fill what is already drawn",
     );
+    const history = this.contentEl.createDiv({ cls: "inkline-toolbar" });
     brushSizes.forEach((size, index) => {
       this.#addButton(
-        toolbar,
+        history,
         `size-${String(index)}`,
         size.label,
         String(index + 1),
@@ -616,15 +619,16 @@ export class InkEditorModal extends Modal {
         `Brush size ${size.label}`,
       );
     });
-    this.#addButton(toolbar, "undo", "Undo", "Mod+Z", () => {
+    this.#addButton(history, "undo", "Undo", "Mod+Z", () => {
       this.#undo();
     });
-    this.#addButton(toolbar, "redo", "Redo", "Mod+Shift+Z", () => {
+    this.#addButton(history, "redo", "Redo", "Mod+Shift+Z", () => {
       this.#redo();
     });
-    this.#addButton(toolbar, "clear", "Clear", "Delete", () => {
+    this.#addButton(history, "clear", "Clear", "Delete", () => {
       this.#clear();
     });
+    const toolbar = this.contentEl.createDiv({ cls: "inkline-toolbar" });
     this.#addButton(toolbar, "guides", "Guides", "G", () => {
       this.#toggleGuides();
     });
@@ -644,10 +648,18 @@ export class InkEditorModal extends Modal {
         "start from a copy of another symbol",
       );
     }
-    this.#addButton(toolbar, "fit", "Fit", "F", () => {
-      this.#fitView();
-      this.#render();
-    });
+    this.#addButton(
+      toolbar,
+      "fit",
+      "Fit",
+      "F",
+      () => {
+        this.#fitView();
+        this.#render();
+      },
+      "Fit",
+      "centre the drawing in the view, and show all of it if it is wider; the drawing itself stays as it is",
+    );
     this.#addButton(
       toolbar,
       "zoom",
@@ -675,6 +687,7 @@ export class InkEditorModal extends Modal {
         "Next",
         "save and draw the next one",
       );
+      this.#buttons.get("next")?.setCta();
     }
     this.#addButton(toolbar, "help", "Help", undefined, () => {
       this.#help();
@@ -2061,7 +2074,9 @@ export class InkEditorModal extends Modal {
    */
   #toggleFill(): void {
     if (this.#session.shape === "free") {
-      this.#announce("Fill is for Ellipse and Polygon; choose one first");
+      this.#announce(
+        "Toggle fill is for Ellipse and Polygon; choose one first",
+      );
       return;
     }
     this.#session.fill = !this.#session.fill;
@@ -2247,7 +2262,7 @@ export class InkEditorModal extends Modal {
       "Pen (P) adds ink; Eraser (E) removes it. Sizes S–XL (1–4) are remembered separately until you close the editor, including through Next. The circle shows the brush's diameter.",
       "Ellipse (O) draws an ellipse with the pen or the eraser: drag across the box it fills, and hold Shift for a circle. Press it again to draw freehand.",
       "Polygon (Y) draws a shape with straight sides and sharp corners: click each corner, then click the first corner again to close it, or the last corner, or press Enter, to leave it open. Undo takes back a corner, and Esc drops the shape.",
-      "Fill (B), with Ellipse or Polygon on, draws an ellipse or a closed polygon solid, with its edges through its corners: the pen makes a solid shape, and the eraser a hole of its shape.",
+      "Toggle fill (B) is a switch, not a tool to click a shape with: while it is on, Ellipse and a closed Polygon draw solid shapes with their edges through their corners. The pen makes a solid shape, and the eraser a hole of its shape.",
       "Hold Shift while drawing for a straight segment. Grid (Shift+G) shows dots and snaps stroke ends to them. Its rows pass through each guide line the settings choose, and divide the space between lines evenly; the settings also set how many cells span the x-height.",
       "Undo (Mod+Z) and Redo (Mod+Shift+Z) step through changes. Clear removes the drawing and can be undone.",
       "Zoom (Z) shows the drawing twice as large in a taller view, for fine detail; the wheel or the arrow keys move along it, and Fit (F) centres it. Saved symbols stay the same size in notes.",
@@ -2262,11 +2277,11 @@ export class InkEditorModal extends Modal {
     });
     const guides = content.createEl("ul");
     for (const text of [
-      "Ascender (purple by default): the font's upper extent.",
-      "Cap height (blue by default): the top of a capital such as H.",
-      "x-height (green by default): the top of a lowercase letter such as x.",
-      "Baseline (orange by default, solid): where letters sit.",
-      "Descender (pink by default): the font's lower extent, for parts below the baseline.",
+      "Ascender (purple): the font's upper extent.",
+      "Cap height (blue): the top of a capital such as H.",
+      "x-height (green): the top of a lowercase letter such as x.",
+      "Baseline (orange, solid): where letters sit.",
+      "Descender (pink): the font's lower extent, for parts below the baseline.",
       "Vertical dashed lines: the saved image's left and right edges, including spacing. They follow the ink as you draw.",
     ])
       guides.createEl("li", { text });

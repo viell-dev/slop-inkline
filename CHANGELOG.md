@@ -10,6 +10,17 @@ section is also its
 
 ### Changed
 
+- **Fill** is now **Toggle fill**, with a new icon, as it is a switch for the
+  shapes drawn next and not a paint bucket to click a shape with.
+- The toolbar has three rows: the drawing tools; the brush sizes, Undo, Redo and
+  Clear; then the view and saving.
+- **Next** has the same colour as **Save**, and **Fit**'s tooltip says what it
+  does.
+- **Copy from** shows each symbol's picture beside its name, as the list of
+  symbols to insert does.
+- The Grid size slider shows only its number, which had wrapped onto two lines
+  with its unit, and the guide settings say "shown in purple" and so on rather
+  than "by default", as the colours aren't a choice there.
 - Simplify documentation navigation and maintenance guidance, clarify the draft
   format's verification limits, and make the existing stable-publication hold
   explicit in the release guide.

@@ -1565,6 +1565,16 @@ describe("The editor", function () {
     await tooltip("size-0", "Brush size S (1)");
     await tooltip("pen", "Pen (P)");
     await tooltip("next", "Next: save and draw the next one (Mod+Shift+Enter)");
+    await tooltip(
+      "fit",
+      "Fit: centre the drawing in the view, and show all of it if it is wider; the drawing itself stays as it is (F)",
+    );
+    // Both save, so both look it.
+    for (const id of ["save", "next"]) {
+      expect(
+        await browser.$(`[data-inkline-button="${id}"]`).getAttribute("class"),
+      ).toContain("mod-cta");
+    }
   });
 
   it("saves a stroke still being drawn when saving and closing", async function () {
@@ -3810,6 +3820,32 @@ describe("The editor", function () {
       await createSquare();
       await insert();
       await browser.$('[data-inkline-button="copy"]').click();
+      // The list shows each symbol's picture beside its name.
+      await browser.waitUntil(
+        async () =>
+          await browser.execute(() => {
+            const pictures = [
+              ...document.querySelectorAll<HTMLImageElement>(
+                ".prompt .inkline-suggestion-picture",
+              ),
+            ];
+            return (
+              pictures.length > 0 &&
+              pictures.every(
+                (picture) => picture.complete && picture.naturalWidth > 0,
+              )
+            );
+          }),
+        { timeoutMsg: "no pictures in the list to copy from" },
+      );
+      expect(
+        await browser.execute(() =>
+          [
+            ...document.querySelectorAll(".prompt .inkline-suggestion-name"),
+          ].map((name) => name.textContent),
+        ),
+      ).toContain("square");
+      await saveScreenshot("copy-from-list");
       await chooseSymbol("square");
       await waitForStatus("Started from a copy of square");
       await browser.keys(["Control", "Enter"]);
