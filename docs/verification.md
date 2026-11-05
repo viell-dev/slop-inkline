@@ -151,13 +151,15 @@ release, later versions must keep released files readable and looking the same.
   strokes a grid spacing apart stay separate
   ([pen-weights.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/pen-weights.e2e.ts)).
 - A view that adds each stroke to what it has drawn and measured shows what a
-  new view does, pixel for pixel on the surface and in the preview, and the
-  image's ends are exactly those of a full measurement, and within a pixel of
-  what a save crops to
+  new view does, pixel for pixel on the surface and in the preview, at full size
+  and at 16 px, and the image's ends are exactly those of a full measurement,
+  and within a pixel of what a save crops to
   ([#159](https://github.com/viell-dev/slop-inkline/issues/159)). A seeded run
   checks this after every frame, through strokes of each shape and tool, flat
   ends, undo, redo, clearing, moving the drawing, saving, restoring, base
-  layers, panning and zooming, on drawings wider than a tile
+  layers, panning and zooming, on drawings wider than a tile and with strokes
+  across a tile's edge. The preview in text also stays as it is as a stroke
+  starts
   ([long-drawing.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/long-drawing.e2e.ts)).
 
 ### Drawing is never lost

@@ -7,7 +7,13 @@ import type { BaseLayer, Stroke, Tool } from "../../../src/format/record.ts";
 import { cropSpan, joinSpans, type Span } from "../../../src/editor/guides.ts";
 import { DrawingSession, type Shape } from "../../../src/editor/session.ts";
 import { InkView } from "../../../src/editor/view.ts";
-import { baseFromPicture, findInk, saveInk } from "../../../src/ink/canvas.ts";
+import {
+  baseFromPicture,
+  findInk,
+  measureAdded,
+  measureInk,
+  saveInk,
+} from "../../../src/ink/canvas.ts";
 import {
   addedStroke,
   documentSpan,
@@ -17,9 +23,16 @@ import {
 import { lineBox } from "../../../src/ink/geometry.ts";
 import type { DrawableBase } from "../../../src/ink/render.ts";
 import { picture } from "./pictures.ts";
+import { straddling } from "./straddling.ts";
 
 /** How wide the surfaces are, in CSS pixels. */
 const surfaceWidth = 803;
+
+/** How wide a full measurement's tiles are, in pixels. */
+const tileWidth = 4096;
+
+/** A font size a preview is usually shown at, in CSS pixels. */
+const textSize = 16;
 
 /** What a seeded run did, and the first difference it found, if any. */
 export interface SequenceReport {
@@ -52,21 +65,19 @@ function context2d(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
   return context;
 }
 
-/** Where two canvases differ, in size or in any byte of a pixel, if at all. */
-function difference(
-  a: HTMLCanvasElement,
-  b: HTMLCanvasElement,
-): string | undefined {
+function pixelsOf(canvas: HTMLCanvasElement): ImageData {
+  return context2d(canvas).getImageData(0, 0, canvas.width, canvas.height);
+}
+
+/** Where two images differ, in size or in any byte of a pixel, if at all. */
+function difference(a: ImageData, b: ImageData): string | undefined {
   if (a.width !== b.width || a.height !== b.height) {
     return `${String(a.width)}×${String(a.height)} against ${String(b.width)}×${String(b.height)}`;
   }
-  const { width, height } = a;
-  const first = context2d(a).getImageData(0, 0, width, height).data;
-  const second = context2d(b).getImageData(0, 0, width, height).data;
-  for (let index = 0; index < first.length; index++) {
-    if (first[index] !== second[index]) {
+  for (let index = 0; index < a.data.length; index++) {
+    if (a.data[index] !== b.data[index]) {
       const pixel = Math.floor(index / 4);
-      return `at ${String(pixel % width)},${String(Math.floor(pixel / width))}: ${String(first[index])} against ${String(second[index])}`;
+      return `at ${String(pixel % a.width)},${String(Math.floor(pixel / a.width))}: ${String(a.data[index])} against ${String(b.data[index])}`;
     }
   }
   return undefined;
@@ -105,18 +116,21 @@ function sameSpan(a: Span, b: Span): boolean {
  * drawn over several frames, and some operations together in one frame, as
  * they come when a frame is late. A view kept all along shows each frame, and
  * each must have exactly the ends of a full measurement and show the same
- * pixels, on the surface and in the preview at full size, as a new view does.
- * Every few frames with no stroke being drawn, a save must crop to those ends,
- * or a pixel from them: it measures again in the file's coordinates, where the
- * edge of the ink can fall a column over, however the view measured it (#159).
- * It ends with a pen stroke right across. The run stops at the first
- * difference.
+ * pixels as a new view does, on the surface and in the preview, at full size
+ * and in text. With no stroke being drawn, a stroke that shows nothing must
+ * leave the preview in text as it was. Every few such frames, a save must crop
+ * to those ends, or a pixel from them: it measures again in the file's
+ * coordinates, where the edge of the ink can fall a column over, however the
+ * view measured it (#159). It starts, with `straddles`, with a dot far left
+ * and that many strokes across the edge between the first two tiles, and it
+ * ends with a pen stroke right across. The run stops at the first difference.
  */
 export async function runSequence(
   seed: number,
   steps: number,
   reach: number,
   ratio: number,
+  straddles: number,
 ): Promise<SequenceReport> {
   const random = seeded(seed);
   const chance = (odds: number): boolean => random() < odds;
@@ -125,13 +139,16 @@ export async function runSequence(
   const whole = (low: number, high: number): number =>
     Math.floor(between(low, high + 1));
 
-  const canvases = Array.from({ length: 4 }, () => createEl("canvas"));
-  const [keptSurface, keptPreview, newSurface, newPreview] = canvases;
+  const canvases = Array.from({ length: 6 }, () => createEl("canvas"));
+  const [keptSurface, keptPreview, keptText, newSurface, newPreview, newText] =
+    canvases;
   if (
     keptSurface === undefined ||
     keptPreview === undefined ||
+    keptText === undefined ||
     newSurface === undefined ||
-    newPreview === undefined
+    newPreview === undefined ||
+    newText === undefined
   ) {
     throw new Error("no canvases");
   }
@@ -190,6 +207,7 @@ export async function runSequence(
 
     kept.render(document, base, active, erasing);
     kept.drawPreview(keptPreview, fullSize);
+    kept.drawPreview(keptText, textSize);
     const fresh = new InkView(newSurface);
     fresh.fit(fitted.left, fitted.right);
     fresh.magnified = kept.magnified;
@@ -197,6 +215,7 @@ export async function runSequence(
     fresh.centerOn(kept.center);
     fresh.render(document, base, active, erasing);
     fresh.drawPreview(newPreview, fullSize);
+    fresh.drawPreview(newText, textSize);
 
     const at = `seed ${String(seed)}, after ${recent.slice(-6).join(", ")}`;
     const image = kept.image;
@@ -209,15 +228,40 @@ export async function runSequence(
       mismatch = `${at}: the views show ${JSON.stringify(kept.visible)} and ${JSON.stringify(fresh.visible)}`;
       return;
     }
-    const surface = difference(keptSurface, newSurface);
+    const surface = difference(pixelsOf(keptSurface), pixelsOf(newSurface));
     if (surface !== undefined) {
       mismatch = `${at}: the surface differs ${surface}`;
       return;
     }
-    const preview = difference(keptPreview, newPreview);
+    const preview = difference(pixelsOf(keptPreview), pixelsOf(newPreview));
     if (preview !== undefined) {
       mismatch = `${at}: the preview differs ${preview}`;
       return;
+    }
+    const inText = pixelsOf(keptText);
+    const text = difference(inText, pixelsOf(newText));
+    if (text !== undefined) {
+      mismatch = `${at}: the preview in text differs ${text}`;
+      return;
+    }
+    if (active === undefined) {
+      // A dot above the line box, within the ink, so that it shows nothing.
+      const dot: Stroke = {
+        tool: "pen",
+        size: toUnits(1),
+        pressure: false,
+        points: [toUnits((image.left + image.right) / 2), toUnits(-100)],
+      };
+      kept.render(document, base, dot);
+      if (sameSpan(kept.image, image)) {
+        kept.drawPreview(keptText, textSize);
+        const started = difference(inText, pixelsOf(keptText));
+        if (started !== undefined) {
+          mismatch = `${at}: the preview in text changes as a stroke starts ${started}`;
+          return;
+        }
+      }
+      kept.render(document, base, undefined);
     }
     // A save takes longer than all of that, so it is every few frames.
     if (active !== undefined || frames % 5 !== 0) return;
@@ -278,6 +322,36 @@ export async function runSequence(
     session.end();
   };
 
+  /** A pen dot far left of the image's right end, unless it is already wide. */
+  const farDot = (): void => {
+    const { left, right } = kept.image;
+    if (right - left > 3500) return;
+    brush("free");
+    session.tool = "pen";
+    const at = { x: right - between(500, 4100), y: between(40, 150) };
+    session.begin(at);
+    session.end(at);
+  };
+
+  /** A pen stroke across the edge between a full measurement's first tiles. */
+  const straddle = (): void => {
+    const { document } = session;
+    const origin = measureInk(document, placed(document))?.origin ?? 0;
+    brush("free");
+    session.tool = "pen";
+    let at = {
+      x: origin + tileWidth - between(0, 40),
+      y: between(20, lineBox.height - 20),
+    };
+    session.begin(at);
+    const moves = whole(1, 12);
+    for (let move = 0; move < moves; move++) {
+      at = { x: at.x + between(0, 12), y: at.y + between(-8, 8) };
+      session.extend([at]);
+    }
+    session.end(at);
+  };
+
   const ellipse = async (): Promise<void> => {
     brush("ellipse");
     const from = place();
@@ -317,6 +391,20 @@ export async function runSequence(
       0.5,
       () => {
         across();
+      },
+    ],
+    [
+      "far dot",
+      0.5,
+      () => {
+        farDot();
+      },
+    ],
+    [
+      "straddle",
+      2,
+      () => {
+        straddle();
       },
     ],
     ["ellipse", 4, ellipse],
@@ -413,6 +501,14 @@ export async function runSequence(
 
   try {
     await frame();
+    if (straddles > 0) {
+      farDot();
+      await frame();
+    }
+    for (let stroke = 0; stroke < straddles; stroke++) {
+      straddle();
+      await frame();
+    }
     for (let step = 0; step < steps && mismatch === undefined; step++) {
       const [name, , operate] = choose();
       recent.push(name);
@@ -437,6 +533,51 @@ export async function runSequence(
     savesAPixelOff,
     ...(mismatch === undefined ? {} : { mismatch }),
   };
+}
+
+/** How {@link measureAdded} did on strokes that are hard to measure alone. */
+export interface StraddlingReport {
+  readonly cases: number;
+  /** Where it differed from a full measurement, which it never should. */
+  readonly differences: readonly string[];
+  /** How many a stroke on a tile of its own would have got wrong. */
+  readonly wrongAlone: number;
+}
+
+/**
+ * Measures each of the {@link straddling} strokes, added to its far dot, as the
+ * editor does, and fully.
+ */
+export function measureStraddling(): StraddlingReport {
+  const differences: string[] = [];
+  let wrongAlone = 0;
+  for (const { far, stroke } of straddling) {
+    const dot: Stroke = {
+      tool: "pen",
+      size: toUnits(12),
+      pressure: false,
+      points: [far, toUnits(100)],
+    };
+    const before = measureInk({ strokes: [dot] }, undefined);
+    const full = measureInk({ strokes: [dot, stroke] }, undefined);
+    if (before === undefined || full === undefined) {
+      throw new Error("a stroke leaves no ink");
+    }
+    const added = measureAdded(before, stroke);
+    if (JSON.stringify(added) !== JSON.stringify(full)) {
+      differences.push(
+        `${JSON.stringify(added)} against ${JSON.stringify(full)}`,
+      );
+    }
+    const alone = findInk({ strokes: [stroke] }, undefined);
+    if (
+      Math.max(alone?.right ?? -Infinity, before.ink?.right ?? -Infinity) !==
+      full.ink?.right
+    ) {
+      wrongAlone++;
+    }
+  }
+  return { cases: straddling.length, differences, wrongAlone };
 }
 
 /** What adding to a long drawing took, in ms, and whether its ends agree. */

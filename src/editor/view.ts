@@ -9,8 +9,8 @@ import {
   emptyDocument,
   type InkDocument,
 } from "../ink/document.ts";
-import { display, lineBox, type Bounds } from "../ink/geometry.ts";
-import { findInk } from "../ink/canvas.ts";
+import { display, lineBox } from "../ink/geometry.ts";
+import { measureAdded, measureInk, type InkMeasure } from "../ink/canvas.ts";
 import { drawInk, type DrawableBase } from "../ink/render.ts";
 import {
   cropSpan,
@@ -74,7 +74,9 @@ const maxPreview = 32 * lineBox.pxPerEm;
  * pixels, so that the image's ends can move, as a stroke runs past them, with
  * nothing drawn again until they cross one. Where it starts follows from the
  * span alone: a canvas's pixels depend a little on where a shape falls on it,
- * and this way a stroke added to it gives what drawing everything would.
+ * and this way a stroke added to it gives what drawing everything would. When
+ * the ends cross one, the ink is drawn again from another place, which can
+ * change an edge pixel by a few levels, too little to see once scaled down.
  */
 const previewStep = 1024;
 
@@ -122,13 +124,6 @@ function strokeOver(drawn: Drawn | undefined, now: Drawn): Stroke | undefined {
   return drawn !== undefined && drawn.base === now.base
     ? addedStroke(drawn.document, now.document)
     : undefined;
-}
-
-/** How far ink found in a drawing reaches across, if there is any. */
-function acrossInk(found: Bounds | undefined): Span | undefined {
-  return found === undefined
-    ? undefined
-    : { left: found.left, right: found.right };
 }
 
 export class InkView {
@@ -192,7 +187,7 @@ export class InkView {
       }
     | undefined;
   /** How far the committed ink reaches, from its pixels, in document pixels. */
-  #inked: Span | undefined;
+  #inked: InkMeasure | undefined;
   /** Where the saved image would start and end, as of the last render. */
   #image: Span = cropSpan(undefined);
 
@@ -369,7 +364,7 @@ export class InkView {
     }
     this.#image = cropSpan(
       joinSpans(
-        this.#inked,
+        this.#inked?.ink,
         active?.tool === "pen"
           ? documentSpan({ strokes: [active] })
           : undefined,
@@ -492,7 +487,9 @@ export class InkView {
    * the stroke being drawn, however much of it the surface shows, up to
    * {@link maxPreview} across about the middle of the surface. Its ink is
    * put together at one pixel per document pixel, as a save draws it, so
-   * that an eraser cuts it exactly, and then scaled down.
+   * that an eraser cuts it exactly, and then scaled down. That is always from
+   * a canvas of the image's own width: scaling samples from a canvas's left
+   * edge, so any other would shift the ink's edges when a stroke starts.
    */
   drawPreview(target: HTMLCanvasElement, fontSize: number): void {
     let left = this.#image.left;
@@ -516,37 +513,22 @@ export class InkView {
     target.width = Math.max(1, Math.round(cssWidth * this.#ratio));
     target.height = Math.max(1, Math.round(cssHeight * this.#ratio));
     const ink = this.#previewCommitted(left, width);
-    // The stroke being drawn, over a copy, at the same resolution.
-    let image: OffscreenCanvas = ink.canvas;
-    let imageLeft = left - ink.left;
+    // A copy of the image's part, with the stroke being drawn over it, at the
+    // same resolution.
+    const work = this.#previewWork;
+    work.width = width;
+    work.height = lineBox.height;
+    const drawn = offscreen2d(work);
+    drawn.globalCompositeOperation = "copy";
+    drawn.drawImage(ink.canvas, ink.left - left, 0);
+    drawn.globalCompositeOperation = "source-over";
     const active = this.#active;
-    if (active !== undefined) {
-      const work = this.#previewWork;
-      work.width = width;
-      work.height = lineBox.height;
-      const drawn = offscreen2d(work);
-      drawn.globalCompositeOperation = "copy";
-      drawn.drawImage(ink.canvas, -imageLeft, 0);
-      drawn.globalCompositeOperation = "source-over";
-      drawInk(drawn, [active], undefined, -left);
-      image = work;
-      imageLeft = 0;
-    }
+    if (active !== undefined) drawInk(drawn, [active], undefined, -left);
     const context = element2d(target);
     context.clearRect(0, 0, target.width, target.height);
     context.imageSmoothingEnabled = true;
     context.imageSmoothingQuality = "high";
-    context.drawImage(
-      image,
-      imageLeft,
-      0,
-      width,
-      lineBox.height,
-      0,
-      0,
-      target.width,
-      target.height,
-    );
+    context.drawImage(work, 0, 0, target.width, target.height);
     context.globalCompositeOperation = "source-in";
     context.fillStyle = this.#colour;
     context.fillRect(0, 0, target.width, target.height);
@@ -592,21 +574,18 @@ export class InkView {
    * Finds how far the drawing's ink reaches inside the line box, as a save
    * crops to it, whatever the surface shows: in tiles, so that geometry far
    * away or erased costs time but never a huge canvas. A pen stroke added to
-   * what was measured is measured alone: a pen only adds ink, and the ink it
-   * adds is its own. Anything else can take ink away, so all of it is
+   * what was measured is measured alone, where a full measurement would draw
+   * it, if it can be. Anything else can take ink away, so all of it is
    * measured again.
    */
   #measure(now: Drawn): void {
     const { document, base } = now;
     const added = strokeOver(this.#measured, now);
+    const inked = this.#inked;
     this.#inked =
-      added?.tool === "pen"
-        ? joinSpans(
-            this.#inked,
-            acrossInk(findInk({ strokes: [added] }, undefined)),
-          )
-        : acrossInk(
-            findInk(document, document.base === undefined ? undefined : base),
-          );
+      (added?.tool === "pen" && inked !== undefined
+        ? measureAdded(inked, added)
+        : undefined) ??
+      measureInk(document, document.base === undefined ? undefined : base);
   }
 }

@@ -6,17 +6,21 @@ import { browser, expect } from "@wdio/globals";
 import { loadModules } from "../support/browser.ts";
 
 /**
- * Each run's seed, how far across it draws, and its screen's device pixels to
- * a CSS pixel: a symbol, a long drawing, and one wider than the preview shows
- * at once and than the widest tile measured.
+ * Each run's seed, how far across it draws, its screen's device pixels to a CSS
+ * pixel, and how many strokes it starts with across the edge between two
+ * tiles: a symbol, a long drawing, and one wider than the preview shows at
+ * once and than the widest tile measured, and then a dot and a tile's width
+ * away from it, strokes across that edge.
  */
 const runs = [
-  { seed: 115, reach: 500, ratio: 1 },
-  { seed: 116, reach: 500, ratio: 2 },
-  { seed: 117, reach: 3000, ratio: 1 },
-  { seed: 118, reach: 3000, ratio: 1.5 },
-  { seed: 119, reach: 5000, ratio: 1 },
-  { seed: 120, reach: 5000, ratio: 2 },
+  { seed: 115, reach: 500, ratio: 1, straddles: 0 },
+  { seed: 116, reach: 500, ratio: 2, straddles: 0 },
+  { seed: 117, reach: 3000, ratio: 1, straddles: 0 },
+  { seed: 118, reach: 3000, ratio: 1.5, straddles: 0 },
+  { seed: 119, reach: 5000, ratio: 1, straddles: 0 },
+  { seed: 120, reach: 5000, ratio: 2, straddles: 0 },
+  { seed: 121, reach: 500, ratio: 1, straddles: 60 },
+  { seed: 122, reach: 500, ratio: 2, straddles: 60 },
 ] as const;
 
 const steps = 80;
@@ -27,7 +31,7 @@ const span = 3000;
 
 /**
  * The most the fastest of nine may take, for each kind of change, in ms. In
- * Docker on Windows 11, beside other jobs, it was at most 7 ms in Obsidian
+ * Docker on Windows 11, beside other jobs, it was at most 9 ms in Obsidian
  * 1.15.0 and 1.13.4. Doing it all again took about 300 ms for a stroke and
  * about 100 ms for a frame: the budget guards against work that grows with the
  * drawing, not a constant slowdown of two or three times.
@@ -51,14 +55,21 @@ describe("A long drawing", function () {
     let addedEraser = 0;
     let saves = 0;
     let savesAPixelOff = 0;
-    for (const { seed, reach, ratio } of runs) {
+    for (const { seed, reach, ratio, straddles } of runs) {
       const report = await browser.execute(
-        (seed, steps, reach, ratio) =>
-          window.inklineTest.longDrawing.runSequence(seed, steps, reach, ratio),
+        (seed, steps, reach, ratio, straddles) =>
+          window.inklineTest.longDrawing.runSequence(
+            seed,
+            steps,
+            reach,
+            ratio,
+            straddles,
+          ),
         seed,
         steps,
         reach,
         ratio,
+        straddles,
       );
       expect(report.mismatch).toBeUndefined();
       for (const [name, times] of Object.entries(report.operations)) {
@@ -81,6 +92,7 @@ describe("A long drawing", function () {
       "clear",
       "drop the base layer",
       "ellipse",
+      "far dot",
       "fit",
       "freehand",
       "move",
@@ -89,6 +101,7 @@ describe("A long drawing", function () {
       "redo",
       "restore",
       "save",
+      "straddle",
       "undo",
       "zoom",
     ]);
@@ -96,6 +109,42 @@ describe("A long drawing", function () {
     expect(addedEraser).toBeGreaterThan(20);
     // A save a pixel from a full measurement is the rare exception (#159).
     expect(savesAPixelOff).toBeLessThan(saves / 20);
+  });
+
+  it("measures an added stroke as a full measurement does, across a tile's edge", async function () {
+    const result = await browser.execute(() =>
+      window.inklineTest.longDrawing.measureStraddling(),
+    );
+    console.log(
+      `${String(result.cases)} strokes across a tile's edge, ${String(result.wrongAlone)} a pixel off if measured on a tile of their own`,
+    );
+    expect(result.differences).toEqual([]);
+  });
+
+  it("measures everything again for a stroke that would move the tiles, and nothing for one outside the line box", async function () {
+    const result = await browser.execute(() => {
+      const { canvas, record } = window.inklineTest;
+      const dot = (x: number, y: number) => ({
+        tool: "pen" as const,
+        size: 12 * record.unitsPerPixel,
+        pressure: false,
+        points: [x * record.unitsPerPixel, y * record.unitsPerPixel],
+      });
+      const measure = canvas.measureInk({ strokes: [dot(100, 96)] }, undefined);
+      if (measure === undefined) throw new Error("no ink");
+      return {
+        left: canvas.measureAdded(measure, dot(50, 96)) === undefined,
+        outside: canvas.measureAdded(measure, dot(50, -100)) === measure,
+        right: canvas.measureAdded(measure, dot(200, 96))?.ink?.right,
+        full: canvas.findInk(
+          { strokes: [dot(100, 96), dot(200, 96)] },
+          undefined,
+        )?.right,
+      };
+    });
+    expect(result.left).toBe(true);
+    expect(result.outside).toBe(true);
+    expect(result.right).toBe(result.full);
   });
 
   it("adds to a long drawing in about the same time however long it is", async function () {
