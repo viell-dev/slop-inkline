@@ -14,11 +14,11 @@ Versions are plain `x.y.z`, with no `v` prefix, build metadata or prerelease
 suffix. **An odd minor version is a pre-release, and an even one a public
 release:**
 
-| Versions            | What they are                                     |
-| ------------------- | ------------------------------------------------- |
-| `0.9.0`, `0.9.1`, … | Pre-releases of `1.0.0`, the first public release |
-| `1.0.0`, `1.0.1`, … | Public releases; a patch release is a fix         |
-| `1.1.0`, `1.1.1`, … | Pre-releases of `1.2.0`, the next public release  |
+| Versions            | What they are                                                                |
+| ------------------- | ---------------------------------------------------------------------------- |
+| `0.9.0`, `0.9.1`, … | Pre-releases of `1.0.0`, the first public release                            |
+| `1.0.0`, `1.0.1`, … | Public releases; a patch is a fix, until `1.1.0` is published                |
+| `1.1.0`, `1.1.1`, … | Pre-releases of `1.2.0`, the next public release, which is also the next fix |
 
 A line of pre-releases counts its builds in the patch number, and leads to the
 next even minor version, or from the last odd minor of a major version to the
@@ -62,8 +62,12 @@ and in Obsidian's, or someone on that version is never offered it. The two
 differ on the old suffixes: Obsidian reads `0.3.0-alpha.8` as the numbers 0, 3,
 0, 8, and so ranks it above `0.3.0`. `node scripts/publish.ts order <version>`
 checks both against the published releases, and the Release workflow runs it.
-This covers public releases too: once `1.1.0` is published, a fix for the public
-line is `1.2.0`, not `1.0.1`.
+
+This covers public releases too. A patch such as `1.0.1` is a fix only until the
+next pre-release line starts: once `1.1.0` is published, `1.0.1` is lower than
+it and is refused, so a fix for the public line is the next public release,
+`1.2.0`. Releases come from `main` alone, so a `1.0.1` built then would hold
+`1.1.x` anyway.
 
 Every release, public or pre-release, is a GitHub release with the install ZIP
 and the loose files: Obsidian's own installer and BRAT download `main.js`,
@@ -285,14 +289,14 @@ that has no release yet, and Obsidian's update fails for anyone who tries it
 until the release exists. The wait is CI on the merge commit, about 10 minutes,
 and the Release workflow, about 2:
 
-1. Finish the review and rehearse the version on the pull request's head, as
+1. Finish the review, check that the Directory checks workflow passed on the
+   pull request's head, and rehearse the version there, as
    [above](#prepare-without-publishing), before merging.
 2. Merge nothing else until the release is out: each merge makes a new commit
    that needs its own CI.
 3. Run the publish command as soon as the merge commit's checks pass.
-4. If it cannot finish soon, revert the change to `manifest.json` and
-   `versions.json` with a pull request, so that `main` names the last public
-   release again.
+4. If it cannot finish soon,
+   [roll back](#if-a-public-release-cannot-be-published).
 
 A pre-release has no such wait: merging its preparation changes no version that
 Obsidian reads.
@@ -322,7 +326,49 @@ installed; the next run for that version deletes it, or remove it by hand with
 only the draft while the version has no tag.
 
 `test/unit/publish.test.ts` runs these cases against a fake GitHub, failing at
-each step.
+each step, and `test/unit/publish-cli.test.ts` runs them down to the exact `gh`
+commands, as no dry run sends them.
+
+### If a public release cannot be published
+
+Run the command again first. If that cannot finish soon, take `main` back to the
+last public release, so that Obsidian offers a version that exists.
+
+Revert the whole release pull request, not only its manifest. `package.json`
+names the release a commit builds, and the unit tests refuse a public version
+there that `manifest.json` and `versions.json` do not carry, so a partial revert
+could not merge. Reverting the merge brings back the files that passed CI before
+it: `package.json` and the lockfile with the version they had, `manifest.json`,
+`versions.json`, the changelog, and the guide. On a new branch, where
+`<merge-commit>` is the release pull request's merge:
+
+```sh
+git switch --create revert-<version> origin/main
+git revert -m 1 <merge-commit>
+```
+
+Merge that as an ordinary pull request. It changes files on `main` only:
+published versions, their tags, and their assets stay as they are, and a draft
+left behind has no tag, and is replaced by the next run for that version.
+
+To go on with the release, fix what stopped it, then bring the preparation back
+on a new branch. Merging the old branch again would change nothing, as Git
+counts it as merged, so revert the revert, where `<revert-commit>` is the commit
+the revert made:
+
+```sh
+git switch --create prepare-<version>-again origin/main
+git revert <revert-commit>
+```
+
+That restores the whole preparation. Update the changelog's date, and go on from
+step 5 of [the release pull request](#prepare-the-release-pull-request), with a
+review of what changed. The version stays free while it has no tag. If it turns
+out to have one, it is published and `publish.ts` refuses it, so prepare the
+next version instead.
+
+`test/unit/rollback.test.ts` runs these commands as they stand here, in a
+synthetic repository, and puts each state through the checks CI runs.
 
 ## Verify
 
@@ -398,16 +444,17 @@ must be identified explicitly. No documentation branch or tag move is needed;
 New plugins are submitted through Obsidian's developer dashboard at
 community.obsidian.md, which needs the owner's decision and sign-in:
 [#141](https://github.com/viell-dev/slop-inkline/issues/141) lists what it takes
-and what only the owner can do, and says where the listing material is. The
-steps above already keep a pre-release's version off `main`.
+and what only the owner can do. [listing/](listing/README.md) holds what the
+listing form asks for, and the steps above keep a pre-release's version off
+`main`.
 
 The dashboard's automated review runs after each release and can take a plugin
 out of search. `npm run lint` holds as errors every rule the review's newest
-layer does, in required CI. Obsidian's own action adds checks of the manifest,
-the README, the styles and the bundle, but it cannot run in CI until the
-repository's Actions settings allow it:
-[#155](https://github.com/viell-dev/slop-inkline/issues/155) says what that
-takes and records its results.
+layer does, in required CI. The Directory checks workflow runs Obsidian's own
+action on every pull request, adding checks of the manifest, the README, the
+styles, and the bundle. It is not a required check, so that a new rule of
+Obsidian's stops no unrelated work, but a failure there needs fixing before a
+public release.
 
 The review also rebuilds the plugin and compares the result with the release,
 which no public check reproduces. Obsidian's action looks for a build at
