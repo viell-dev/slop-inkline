@@ -38,6 +38,8 @@ export const buttonIcons: Readonly<Record<string, string>> = {
   "flat-ends": "scissors-line-dashed",
   copy: "copy",
   fit: "scan",
+  "move-up": "arrow-up",
+  "move-down": "arrow-down",
   zoom: "zoom-in",
   save: "save",
   next: "arrow-right",

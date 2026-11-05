@@ -11,6 +11,9 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ### Added
 
+- **Up** and **Down**, and the up and down arrow keys, move the whole drawing by
+  a pixel, or by a grid cell's width with Shift, so that a shape drawn against a
+  line can sit on it. One Undo takes back moves made in a row.
 - **Flat ends** (T) turns the flat ends of strokes on the grid on and off, and a
   new editor starts with it off, so that a stroke keeps its round ends unless
   you ask for them cut. **Next** keeps it. From 0.3.0-alpha.5 to alpha.8, every

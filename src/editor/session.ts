@@ -9,7 +9,12 @@ import {
   type StrokeCuts,
   type Tool,
 } from "../format/record.ts";
-import { documentMover, toUnits, type InkDocument } from "../ink/document.ts";
+import {
+  documentMover,
+  moveDocument,
+  toUnits,
+  type InkDocument,
+} from "../ink/document.ts";
 import { lineBox } from "../ink/geometry.ts";
 import { History } from "../ink/history.ts";
 import type { Grid } from "./guides.ts";
@@ -390,6 +395,11 @@ export class DrawingSession {
   #grid: Grid = plainGrid;
   /** A grid laid out while a stroke was being drawn, for when it ends. */
   #nextGrid: Grid | undefined;
+  /**
+   * What the last {@link moveDrawing} made, as moves in a row are one step,
+   * until anything else happens to the history or the saved drawing.
+   */
+  #moved: InkDocument | undefined;
   /** The last guess at a document's grid, for {@link gridOrigin}. */
   #guessed:
     { document: InkDocument; spacing: number; origin: number } | undefined;
@@ -856,10 +866,12 @@ export class DrawingSession {
   }
 
   undo(): boolean {
+    this.#moved = undefined;
     return this.#active === undefined && this.#history.undo();
   }
 
   redo(): boolean {
+    this.#moved = undefined;
     return this.#active === undefined && this.#history.redo();
   }
 
@@ -880,6 +892,28 @@ export class DrawingSession {
   }
 
   /**
+   * Moves the whole drawing up or down by `dyUnits`, as one undoable step
+   * with the moves just before it, so that one undo takes back a key held
+   * down. Returns whether there was a drawing to move: a stroke being drawn
+   * keeps everything.
+   */
+  moveDrawing(dyUnits: number): boolean {
+    const { document } = this;
+    if (
+      this.#active !== undefined ||
+      (document.strokes.length === 0 && document.base === undefined)
+    ) {
+      return false;
+    }
+    const moved = moveDocument(document, 0, dyUnits);
+    const state = { document: moved, gridOrigin: this.gridOrigin };
+    if (document === this.#moved) this.#history.amend(state);
+    else this.#history.push(state);
+    this.#moved = moved;
+    return true;
+  }
+
+  /**
    * Replaces the document as one undoable step, as when restoring a draft,
    * with the grid's columns through `gridOrigin`, or by default where the
    * document's strokes suggest. Undoing the step puts the grid back too.
@@ -889,6 +923,7 @@ export class DrawingSession {
     gridOrigin = gridOriginOf(document, this.gridOrigin, this.#period),
   ): void {
     if (this.#active !== undefined) return;
+    this.#moved = undefined;
     this.#history.push({ document, gridOrigin });
   }
 
@@ -899,6 +934,7 @@ export class DrawingSession {
    * up with the file.
    */
   rebase(dxPixels: number): void {
+    this.#moved = undefined;
     if (dxPixels === 0) return;
     // States share most of their strokes; they still do once moved. The grid
     // moves with each, so that it stays where each was drawn on it, the grid
@@ -938,6 +974,7 @@ export class DrawingSession {
   /** Records `document` as saved, so that it is no longer dirty. */
   markSaved(document: InkDocument): void {
     this.#saved = document;
+    this.#moved = undefined;
   }
 
   /** Records `document` as one undoable step, keeping the grid. */

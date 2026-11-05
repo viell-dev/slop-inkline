@@ -28,7 +28,7 @@ import {
   saveInk,
   type EditableInk,
 } from "../ink/canvas.ts";
-import { documentSpan, type InkDocument } from "../ink/document.ts";
+import { documentSpan, toUnits, type InkDocument } from "../ink/document.ts";
 import { lineBox, type Bounds } from "../ink/geometry.ts";
 import {
   enlargeFactor,
@@ -632,6 +632,28 @@ export class InkEditorModal extends Modal {
     this.#addButton(history, "clear", "Clear", "Delete", () => {
       this.#clear();
     });
+    this.#addButton(
+      history,
+      "move-up",
+      "Up",
+      "ArrowUp",
+      (event) => {
+        this.#moveDrawing(-1, event.shiftKey);
+      },
+      "Up",
+      "move the whole drawing up a pixel, or with Shift a grid cell's width",
+    );
+    this.#addButton(
+      history,
+      "move-down",
+      "Down",
+      "ArrowDown",
+      (event) => {
+        this.#moveDrawing(1, event.shiftKey);
+      },
+      "Down",
+      "move the whole drawing down a pixel, or with Shift a grid cell's width",
+    );
     const toolbar = this.contentEl.createDiv({ cls: "inkline-toolbar" });
     this.#addButton(toolbar, "guides", "Guides", "G", () => {
       this.#toggleGuides();
@@ -1138,7 +1160,7 @@ export class InkEditorModal extends Modal {
     id: string,
     text: string,
     shortcut: string | undefined,
-    action: () => void,
+    action: (event: MouseEvent) => void,
     label = text,
     description?: string,
   ): void {
@@ -1260,7 +1282,7 @@ export class InkEditorModal extends Modal {
         // Otherwise a magnified view moves along the drawing, as Obsidian's
         // scope runs only the first handler for a key.
         if (!this.#moving || picture === undefined) {
-          return modifiers.length > 0 || !this.#panKey(name);
+          return !this.#arrowKey(name, modifiers.length > 0);
         }
         const focused = activeDocument.activeElement;
         // A text field, or the threshold's slider, keeps its own keys.
@@ -1971,6 +1993,41 @@ export class InkEditorModal extends Modal {
     return true;
   }
 
+  /**
+   * What an arrow key does when no picture is being moved, unless a field
+   * has the focus: the up and down keys move the drawing, by a grid cell's
+   * width with `shift`, unless ink is being made of a picture; and the left
+   * and right ones move a magnified view along it. Returns whether it did
+   * anything.
+   */
+  #arrowKey(name: string, shift: boolean): boolean {
+    const direction =
+      name === "ArrowUp" ? -1 : name === "ArrowDown" ? 1 : undefined;
+    if (direction === undefined) return !shift && this.#panKey(name);
+    const focused = activeDocument.activeElement;
+    if (
+      this.#converting !== undefined ||
+      typing(focused) ||
+      focused?.instanceOf(HTMLInputElement) === true
+    ) {
+      return false;
+    }
+    this.#moveDrawing(direction, shift);
+    return true;
+  }
+
+  /**
+   * Moves the whole drawing up or down by a pixel, or with `byCell` by a grid
+   * cell's width, as Shift moves a picture. Not while a save is running: it
+   * has read the drawing, and a move in the same undo step as that one would
+   * leave no way back to what was saved.
+   */
+  #moveDrawing(direction: -1 | 1, byCell: boolean): void {
+    if (this.#converting !== undefined || this.#saving !== undefined) return;
+    const step = byCell ? this.#session.grid.spacing : nudge;
+    if (this.#session.moveDrawing(direction * toUnits(step))) this.#changed();
+  }
+
   /** Magnifies the drawing, or shows it as usual again. */
   #toggleZoom(): void {
     const view = this.#view;
@@ -2231,6 +2288,15 @@ export class InkEditorModal extends Modal {
       .get("undo")
       ?.setDisabled(!this.#session.canUndo && !this.#session.placing);
     this.#buttons.get("redo")?.setDisabled(!this.#session.canRedo);
+    const { strokes, base } = this.#session.document;
+    for (const id of ["move-up", "move-down"]) {
+      this.#buttons
+        .get(id)
+        ?.setDisabled(
+          converting !== undefined ||
+            (strokes.length === 0 && base === undefined),
+        );
+    }
     this.#buttons.get("save")?.setDisabled(this.#saving !== undefined);
     this.#buttons.get("next")?.setDisabled(this.#saving !== undefined);
     this.#updateCursor();
@@ -2324,6 +2390,7 @@ export class InkEditorModal extends Modal {
       "Hold Shift while drawing for a straight segment. Grid (Shift+G) shows dots and snaps stroke ends to them. Its rows pass through each guide line the settings choose, and divide the space between lines evenly; the settings also set how many cells span the x-height.",
       "Flat ends (T), with the grid on, stops freehand strokes flush with the grid line they end on, rather than rounding past it. It is off until you turn it on, and shapes are never cut.",
       "Undo (Mod+Z) and Redo (Mod+Shift+Z) step through changes. Clear removes the drawing and can be undone.",
+      "Up and Down, or the up and down arrow keys, move the whole drawing a pixel at a time, or a grid cell's width with Shift, as to sit a shape on a line. One Undo takes back moves made in a row.",
       "Zoom (Z) shows the drawing up to twice as large in a taller view, for fine detail; the wheel or the arrow keys move along it, and Fit (F) centres it. While zoomed, the grid has twice as many cells each way, and keeps every point of the usual grid. Saved symbols stay the same size in notes.",
       "Paste, drop, or choose (Choose picture…) a picture to trace. Move positions it; the wheel scales it. Make ink converts the visible picture into editable ink. The tracing picture itself is not saved.",
       "Name the symbol, then Save (Mod+Enter). For a new symbol, Next (Mod+Shift+Enter) saves it and starts another. Mod is Ctrl on Windows/Linux, Cmd on macOS.",

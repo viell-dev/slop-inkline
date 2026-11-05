@@ -41,6 +41,16 @@ export class History<State> {
     this.#future = [];
   }
 
+  /**
+   * Makes `state` the present within the step that made the one before it,
+   * so that one undo takes back both, forgetting anything that could be
+   * redone.
+   */
+  amend(state: State): void {
+    this.#present = state;
+    this.#future = [];
+  }
+
   /** Steps back, returning whether there was a step to undo. */
   undo(): boolean {
     const previous = this.#past.pop();

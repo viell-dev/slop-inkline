@@ -40,6 +40,23 @@ describe("toUnits and toPressure", () => {
 });
 
 describe("moveDocument", () => {
+  it("moves strokes and the base layer up or down by whole units", () => {
+    const base = { x: 16, y: 32, scale: 1, png: new Uint8Array() };
+    const moved = moveDocument(
+      {
+        strokes: [{ tool: "pen", size: 16, pressure: true, points: [1, 2, 3] }],
+        base,
+      },
+      0,
+      -5,
+    );
+    expect(moved.strokes[0]?.points).toEqual([1, -3, 3]);
+    expect(moved.base).toEqual({ ...base, y: 27 });
+    expect(() => moveDocument(moved, 0, 0.5)).toThrow(
+      "moves are in whole units",
+    );
+  });
+
   it("moves strokes and the base layer by whole pixels, keeping pressure", () => {
     const document: InkDocument = {
       strokes: [pen, dot],

@@ -634,6 +634,99 @@ describe("DrawingSession", () => {
   });
 });
 
+describe("DrawingSession's moveDrawing", () => {
+  const withStroke = (): DrawingSession => {
+    const session = new DrawingSession(emptyDocument);
+    session.begin({ x: 10, y: 20 });
+    session.end({ x: 30, y: 40 });
+    return session;
+  };
+
+  it("moves the drawing, taking moves in a row as one step", () => {
+    const session = withStroke();
+    const before = session.document;
+    expect(session.moveDrawing(-16)).toBe(true);
+    session.moveDrawing(-16);
+    session.moveDrawing(16 * 3);
+    const ys = session.document.strokes[0]?.points.filter(
+      (_, index) => index % 2 === 1,
+    );
+    expect(ys?.[0]).toBe(20 * 16 + 16);
+    expect(session.dirty).toBe(true);
+    session.undo();
+    expect(session.document).toBe(before);
+    session.redo();
+    expect(session.document.strokes[0]?.points[1]).toBe(20 * 16 + 16);
+  });
+
+  it("makes a new step after anything else", () => {
+    const session = withStroke();
+    session.moveDrawing(16);
+    session.begin({ x: 50, y: 20 });
+    session.end({ x: 60, y: 40 });
+    const drawn = session.document;
+    session.moveDrawing(16);
+    session.undo();
+    expect(session.document).toBe(drawn);
+  });
+
+  it("starts a new step after a save, so that Undo stops at what was saved", () => {
+    // From the independent review of #139.
+    const session = withStroke();
+    session.moveDrawing(16);
+    session.moveDrawing(16);
+    const saved = session.document;
+    session.markSaved(saved);
+    session.moveDrawing(16);
+    expect(session.dirty).toBe(true);
+    session.undo();
+    expect(session.document).toBe(saved);
+    expect(session.dirty).toBe(false);
+    session.redo();
+    expect(session.document).not.toBe(saved);
+  });
+
+  it("starts a new step after Undo and Redo, or a save that moves the drawing", () => {
+    const session = withStroke();
+    session.moveDrawing(16);
+    session.begin({ x: 50, y: 20 });
+    session.end({ x: 60, y: 40 });
+    session.undo();
+    const moved = session.document;
+    session.moveDrawing(16);
+    session.undo();
+    expect(session.document).toBe(moved);
+    session.redo();
+    const again = session.document;
+    session.moveDrawing(16);
+    session.undo();
+    expect(session.document).toBe(again);
+    session.rebase(0);
+    session.moveDrawing(16);
+    session.undo();
+    expect(session.document).toBe(again);
+  });
+
+  it("keeps the grid where it was", () => {
+    const session = withStroke();
+    session.snap = true;
+    const origin = session.gridOrigin;
+    session.moveDrawing(32);
+    expect(session.gridOrigin).toBe(origin);
+    session.undo();
+    expect(session.gridOrigin).toBe(origin);
+  });
+
+  it("moves nothing while drawing, or with nothing drawn", () => {
+    const empty = new DrawingSession(emptyDocument);
+    expect(empty.moveDrawing(16)).toBe(false);
+    expect(empty.canUndo).toBe(false);
+    const session = withStroke();
+    session.begin({ x: 50, y: 20 });
+    expect(session.moveDrawing(16)).toBe(false);
+  });
+});
+
 describe("gridCuts", () => {
   it("measures the last end along the pointer's path, if it got anywhere", () => {
     // Steep up to where the pointer was let go, then a jump sideways.
