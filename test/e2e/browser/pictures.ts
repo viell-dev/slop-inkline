@@ -2,6 +2,8 @@
 // system clipboard or dropped on the surface, and found again in the
 // surface's pixels.
 
+import { dimH } from "../../support/dim-picture.ts";
+
 /** A rectangle drawn on a picture, in its pixels and a CSS colour. */
 export interface Mark {
   readonly x: number;
@@ -30,6 +32,20 @@ export async function picture(
     context.fillStyle = mark.colour;
     context.fillRect(mark.x, mark.y, mark.width, mark.height);
   }
+  return canvas.convertToBlob({ type: "image/png" });
+}
+
+/** A dim H, `side` pixels square, as `dimH` gives it, as a PNG. */
+export async function dimPicture(side: number): Promise<Blob> {
+  const values = dimH(side);
+  const data = new Uint8ClampedArray(side * side * 4).fill(255);
+  values.forEach((value, index) => {
+    data.fill(value, index * 4, index * 4 + 3);
+  });
+  const canvas = new OffscreenCanvas(side, side);
+  const context = canvas.getContext("2d");
+  if (context === null) throw new Error("no 2D canvas context");
+  context.putImageData(new ImageData(data, side), 0, 0);
   return canvas.convertToBlob({ type: "image/png" });
 }
 
@@ -223,6 +239,35 @@ export function guideIn(
     if (a > 0 && among(guides, r, g, b)) count++;
   }
   return count;
+}
+
+/**
+ * The opacity of the ink the surface shows over a picture, from 0 to 255, for
+ * each device pixel of the row at document `y`, with the device pixels a
+ * document pixel takes. The picture shows through at `pictureAlpha`, so that
+ * an opacity of that is no ink, and a guide's colour counts as none.
+ */
+export function inkRow(
+  canvas: HTMLCanvasElement,
+  y: number,
+  pictureAlpha: number,
+): { row: number[]; scale: number } {
+  const context = canvas.getContext("2d");
+  if (context === null) throw new Error("no 2D canvas context");
+  const { width, height } = canvas;
+  const scale = height / 192;
+  const { data } = context.getImageData(0, Math.round(y * scale), width, 1);
+  const guides = guideColours(canvas);
+  const under = pictureAlpha * 255;
+  const row: number[] = [];
+  for (let at = 0; at < data.length; at += 4) {
+    const [r = 0, g = 0, b = 0, a = 0] = data.subarray(at, at + 4);
+    const guide = among(guides, r, g, b);
+    row.push(
+      guide ? 0 : Math.round(Math.max(0, (a - under) / (255 - under)) * 255),
+    );
+  }
+  return { row, scale };
 }
 
 /**

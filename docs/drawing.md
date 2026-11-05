@@ -235,6 +235,15 @@ enlarged across a wide drawing, it is sampled less finely, down to its own
 pixels. A picture with transparency keeps the soft edges of its own transparency
 when enlarged; see [Limits](./limits.md#files-and-sizes).
 
+**Unreleased:** a dim picture, such as a dark screenshot of a game, gets edges
+as sharp as a bright one's. The ink's edge narrows with the contrast between the
+two sides of the threshold, instead of being as soft as the picture's own edges
+on a picture with little contrast. A few bright pixels elsewhere in the picture
+do not change it, but they can draw the threshold's first position to them: move
+the slider down to the strokes, or move the picture to keep those pixels out.
+Soft strokes come out wider than they were drawn; see
+[Limits](./limits.md#files-and-sizes).
+
 ## Start from a copy
 
 In the editor for a new symbol, **Copy from** (V) starts it from a copy of
