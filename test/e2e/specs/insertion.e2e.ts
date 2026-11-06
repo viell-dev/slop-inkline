@@ -100,7 +100,6 @@ async function waitForFile(path: string, text: string): Promise<void> {
   }
 }
 
-/** Waits for the active note's editor to read `text`. */
 /**
  * How long to leave after the setup's edit, in milliseconds: the editor joins
  * changes made within half a second into one undo step, which a person drawing
@@ -108,6 +107,7 @@ async function waitForFile(path: string, text: string): Promise<void> {
  */
 const undoGroup = 600;
 
+/** Waits for the active note's editor to read `text`. */
 async function waitForNote(text: string): Promise<void> {
   let read = "";
   try {
