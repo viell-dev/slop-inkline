@@ -32,7 +32,15 @@ again.
 
 **"… is saved, but could not be renamed: …"** The drawing is saved under the old
 name, and the new name stays in the editor's name field, for the next save to
-try again.
+try again. **Unreleased:** when the reason is that a note could not be saved
+first, Obsidian says why too. Nothing was renamed, and the note keeps its text
+in its editor: deal with what stopped the save, and save the symbol again.
+
+**"Check the symbol's embed in …: it may still have the old name."**
+**Unreleased:** the symbol was renamed, but the note's editor had not taken the
+new name five seconds later, as on a very slow disk. Inkline leaves the note's
+text alone. Look at the embed in that note, and if it still has the old name,
+change it by hand.
 
 **"The note changed where the symbol was going, so it was added at the end of
 …"** The text around the place where you started the symbol changed too much to

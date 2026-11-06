@@ -196,6 +196,30 @@ release, later versions must keep released files readable and looking the same.
   Type to insert lists nothing in code or front matter, and the links it writes
   lead back to their symbols
   ([suggest.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/suggest.e2e.ts)).
+- **Unreleased:** the cursor lands after a symbol from every route that inserts
+  one, and typing goes on there: Save, Mod+S, a run from Next, both lists, and
+  the library, past a link or an address, after the note's changes moved the
+  place or took it away, in the pane the symbol started in or the one that took
+  it, and through a rename, however Obsidian's question is answered. The same
+  holds in a table cell in Live Preview, with real keys, including when a change
+  on disk takes the cell's editor away. A selection's text stays, one undo takes
+  the symbol back, and a discarded last drawing leaves the cursor after the run.
+  A note in Reading view or closed takes the symbol through its file, whose line
+  endings stay as they are while the place is found from either kind, in both
+  directions, and **Insert existing symbol** places a symbol as the other routes
+  do. A rename while the note holds unsaved text writes the new name once and
+  keeps the text, however Obsidian's question is answered, in a plain note, two
+  panes, a table cell, a closed note, and Reading view, with the cursor and the
+  place of a run from Next surviving a reload, and with the text arriving during
+  the question or an editor's own save falling due in it. Every rename, by Save,
+  the library, or an existing symbol's editor, saves the open notes first, and
+  is refused with nothing changed if one cannot be saved. A reload held past the
+  editor's own save loses no text, and running out of time writes nothing
+  ([insertion.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/insertion.e2e.ts),
+  [library-renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-renaming.e2e.ts),
+  [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts),
+  and
+  [insertion.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/insertion.test.ts)).
 - Names and renames: what a file name cannot hold, names a folder already has,
   renames that fail, names given elsewhere during saving or hashing, and the
   reported outcome when an external rename follows a successful native rename

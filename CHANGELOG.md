@@ -21,6 +21,39 @@ holding such a stroke is no longer offered back.
   than across it is no longer cut along a column, which took a corner out of it,
   and stays round, so that a line drawn along the baseline stays whole
   ([#168](https://github.com/viell-dev/slop-inkline/issues/168)).
+- A symbol saved while its note had gone to Reading view reaches the note. Its
+  embed went into the editor that Reading view keeps out of sight and was lost,
+  which left the symbol's file with nothing showing it
+  ([#170](https://github.com/viell-dev/slop-inkline/issues/170)).
+- A symbol saved into a note that is closed or in Reading view finds its place
+  when the file's line endings differ from those the place was taken with, in
+  either direction, rather than going at the end of the note. The file keeps its
+  own line endings, and a symbol that does go at the end uses them too
+  ([#174](https://github.com/viell-dev/slop-inkline/pull/174)).
+- A symbol renamed just after it went into a table cell in Live Preview no
+  longer gets its new name twice in the embed, when Obsidian updates the links
+  too ([#174](https://github.com/viell-dev/slop-inkline/pull/174)).
+- A symbol renamed just after it went in no longer spoils a note that holds
+  other unsaved text. Its embed could get the new name twice, or part of it at
+  the start of the note, and the text could go from the editor. The embed now
+  takes the new name once, with the link updates on or off, in one pane or two,
+  and in a table cell
+  ([#180](https://github.com/viell-dev/slop-inkline/issues/180)).
+- A rename no longer lets Obsidian write the new link over other text, which was
+  lost for good. It happened when a note embedding the symbol saved itself while
+  Obsidian's question about the links was open. Every rename, from the editor or
+  the library, now saves the open notes first, and is refused with nothing
+  changed if one cannot be saved. Text that reaches a note during the question,
+  from another window or a plugin, stays exposed, as with any file in Obsidian
+  ([#182](https://github.com/viell-dev/slop-inkline/issues/182)).
+- A long name no longer runs off the symbol library and gives it a horizontal
+  scroll bar. It wraps onto a second line and then shortens, as a long folder
+  shortens, and a tooltip on the row has the whole of both. A long note name
+  listed under a symbol wraps too
+  ([#175](https://github.com/viell-dev/slop-inkline/issues/175)).
+- A very long name with no spaces breaks within its row in the symbol lists,
+  rather than giving the list a sideways scroll bar
+  ([#178](https://github.com/viell-dev/slop-inkline/issues/178)).
 
 ### Changed
 
@@ -43,21 +76,20 @@ holding such a stroke is no longer offered back.
   symbol**, **Copy from**, and the symbol library, as each picture has a column
   of its own. A symbol wider than the column shows whole, at a smaller size
   ([#171](https://github.com/viell-dev/slop-inkline/issues/171)).
+- The cursor now lands just after a symbol that **Save** or **Next** inserts, as
+  after a typed character, so that typing goes on after it, in a table cell in
+  Live Preview too. **Next** still puts a run of symbols in the order they were
+  drawn, and the cursor ends after the last, also when the last drawing is
+  discarded after the note changed on disk. Selected text stays as it was
+  ([#170](https://github.com/viell-dev/slop-inkline/issues/170)).
+- **Inkline: Insert existing symbol** places a symbol as the other routes do:
+  just after a link or embed the cursor is inside, rather than splitting it, and
+  beside selected text, rather than replacing it
+  ([#173](https://github.com/viell-dev/slop-inkline/issues/173)).
 - A row of the symbol library keeps its picture, name, and buttons on one line
   in the default sidebar, however long the name is. The name has the room the
   row's narrower buttons leave, and they line up across rows. In a sidebar
   narrower than about 275 pixels, they drop below the name together.
-
-### Fixed
-
-- A long name no longer runs off the symbol library and gives it a horizontal
-  scroll bar. It wraps onto a second line and then shortens, as a long folder
-  shortens, and a tooltip on the row has the whole of both. A long note name
-  listed under a symbol wraps too
-  ([#175](https://github.com/viell-dev/slop-inkline/issues/175)).
-- A very long name with no spaces breaks within its row in the symbol lists,
-  rather than giving the list a sideways scroll bar
-  ([#178](https://github.com/viell-dev/slop-inkline/issues/178)).
 
 ## 0.9.1 - 2026-11-06
 
