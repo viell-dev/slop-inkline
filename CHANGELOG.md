@@ -21,22 +21,6 @@ holding such a stroke is no longer offered back.
   than across it is no longer cut along a column, which took a corner out of it,
   and stays round, so that a line drawn along the baseline stays whole
   ([#168](https://github.com/viell-dev/slop-inkline/issues/168)).
-
-### Changed
-
-- The cursor now lands just after a symbol that **Save** or **Next** inserts, as
-  after a typed character, so that typing goes on after it, in a table cell in
-  Live Preview too. **Next** still puts a run of symbols in the order they were
-  drawn, and the cursor ends after the last, also when the last drawing is
-  discarded after the note changed on disk. Selected text stays as it was
-  ([#170](https://github.com/viell-dev/slop-inkline/issues/170)).
-- **Inkline: Insert existing symbol** places a symbol as the other routes do:
-  just after a link or embed the cursor is inside, rather than splitting it, and
-  beside selected text, rather than replacing it
-  ([#173](https://github.com/viell-dev/slop-inkline/issues/173)).
-
-### Fixed
-
 - A symbol saved while its note had gone to Reading view reaches the note. Its
   embed went into the editor that Reading view keeps out of sight and was lost,
   which left the symbol's file with nothing showing it
@@ -49,6 +33,9 @@ holding such a stroke is no longer offered back.
 - A symbol renamed just after it went into a table cell in Live Preview no
   longer gets its new name twice in the embed, when Obsidian updates the links
   too ([#174](https://github.com/viell-dev/slop-inkline/pull/174)).
+
+### Changed
+
 - The grid is now a guide, and snaps only while Shift is held, for the pen, the
   eraser, Ellipse, and Polygon. A click between its dots stays where you
   clicked, and a stroke's ends stay where you pressed and let go, so that you
@@ -68,6 +55,16 @@ holding such a stroke is no longer offered back.
   symbol**, **Copy from**, and the symbol library, as each picture has a column
   of its own. A symbol wider than the column shows whole, at a smaller size
   ([#171](https://github.com/viell-dev/slop-inkline/issues/171)).
+- The cursor now lands just after a symbol that **Save** or **Next** inserts, as
+  after a typed character, so that typing goes on after it, in a table cell in
+  Live Preview too. **Next** still puts a run of symbols in the order they were
+  drawn, and the cursor ends after the last, also when the last drawing is
+  discarded after the note changed on disk. Selected text stays as it was
+  ([#170](https://github.com/viell-dev/slop-inkline/issues/170)).
+- **Inkline: Insert existing symbol** places a symbol as the other routes do:
+  just after a link or embed the cursor is inside, rather than splitting it, and
+  beside selected text, rather than replacing it
+  ([#173](https://github.com/viell-dev/slop-inkline/issues/173)).
 
 ## 0.9.1 - 2026-11-06
 
