@@ -225,6 +225,20 @@ describe("links as Obsidian reads them", () => {
     }
   });
 
+  it("reads a file's Windows line endings as the editor's", () => {
+    const text = "first\r\nSee [[Wel come]] and on.\r\n\r\n[[Next]]\r\n";
+    const inside = text.indexOf("come");
+    expect(insertionAt(text, inside)).toEqual({
+      at: text.indexOf(" and on."),
+      before: "",
+    });
+    const address = "See https://example.com/page\r\nand on.\r\n";
+    expect(insertionAt(address, address.indexOf("page"))).toEqual({
+      at: address.indexOf("\r\nand"),
+      before: " ",
+    });
+  });
+
   it("puts a space before what follows a bare address", () => {
     const text = "See https://example.com/path now, [[gate]].";
     // Inside the address, at its end, and at its start.

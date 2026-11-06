@@ -33,7 +33,9 @@ import { visibleWidth } from "../editor/view.ts";
 import {
   capturePoint,
   findPoint,
+  lineAtEnd,
   replacedBefore,
+  writeAt,
   type InsertionPoint,
 } from "./insertion.ts";
 import { embedFor } from "./embeds.ts";
@@ -45,7 +47,7 @@ import {
   symbolStem,
   type NameChoice,
 } from "./names.ts";
-import { renderSymbol } from "./suggest.ts";
+import { renderSymbol, SymbolSearch } from "./suggest.ts";
 
 /** What the plugin lends the editors it opens. */
 export interface EditorHost {
@@ -237,16 +239,39 @@ function appendedNotice(file: TFile): void {
 }
 
 /**
+ * The point `end` in the text of `view`'s editor just after a change to it,
+ * as that read `was` before. Obsidian passes a change inside a table cell that
+ * Live Preview is editing to the cell's own editor, which takes it on a timer
+ * of its window, and can pad the table's columns as it does, moving what lay
+ * around the point: the note's cursor says where it is then.
+ */
+async function pointAfterChange(
+  view: MarkdownView,
+  was: string,
+  end: number,
+): Promise<InsertionPoint> {
+  const { editor } = view;
+  if (editor.getValue() !== was) return capturePoint(editor.getValue(), end);
+  await new Promise((resolve) => {
+    view.containerEl.win.setTimeout(resolve);
+  });
+  return capturePoint(
+    editor.getValue(),
+    editor.posToOffset(editor.getCursor()),
+  );
+}
+
+/**
  * Inserts an embed into the target note at the position found again from its
  * surrounding text: through a live editor of the note when there is one,
- * since it may hold changes not yet on disk, otherwise into the note's file.
- * A position inside a link or embed moves to just past it, so that the embed
- * never splits one, with a space first after a bare web address, which only
- * a space ends. When the position cannot be found, the embed goes at the
- * end of the note, and a notice says so. As after a typed character, the
- * cursor of the editor that took the embed lands just after it; the text of
- * a selection stays, as the embed goes beside it. Returns the point just
- * after the embed, where the next symbol's embed goes.
+ * since it may hold changes not yet on disk, otherwise into the note's file,
+ * whose line breaks stay as they are. A position inside a link or embed moves
+ * to just past it, so that the embed never splits one, with a space first
+ * after a bare web address, which only a space ends. When the position cannot
+ * be found, the embed goes at the end of the note, and a notice says so. As
+ * after a typed character, the cursor of the editor that took the embed lands
+ * just after it; the text of a selection stays, as the embed goes beside it.
+ * Returns the point just after the embed, where the next symbol's embed goes.
  */
 async function insertEmbed(
   app: App,
@@ -263,17 +288,17 @@ async function insertEmbed(
     const place = found === undefined ? undefined : insertionAt(text, found);
     if (place !== undefined) {
       const inserted = place.before + embed;
-      const end = place.at + inserted.length;
-      editor.replaceRange(inserted, editor.offsetToPos(place.at));
-      editor.setCursor(editor.offsetToPos(end));
-      return capturePoint(editor.getValue(), end);
+      writeAt(editor, place.at, inserted);
+      return pointAfterChange(view, text, place.at + inserted.length);
     }
-    const gap = text === "" || text.endsWith("\n") ? "" : "\n";
-    const end = text.length + gap.length + embed.length;
-    editor.replaceRange(`${gap}${embed}\n`, editor.offsetToPos(text.length));
-    editor.setCursor(editor.offsetToPos(end));
+    const { before, after } = lineAtEnd(text);
+    writeAt(editor, text.length, before + embed, after);
     appendedNotice(file);
-    return capturePoint(editor.getValue(), end);
+    return pointAfterChange(
+      view,
+      text,
+      text.length + before.length + embed.length,
+    );
   }
   const outcome: { appended: boolean; after?: InsertionPoint } = {
     appended: false,
@@ -288,11 +313,11 @@ async function insertEmbed(
       return inserted;
     }
     outcome.appended = true;
-    const gap = text === "" || text.endsWith("\n") ? "" : "\n";
-    const appended = `${text}${gap}${embed}\n`;
+    const { before, after } = lineAtEnd(text);
+    const appended = `${text}${before}${embed}${after}`;
     outcome.after = capturePoint(
       appended,
-      text.length + gap.length + embed.length,
+      text.length + before.length + embed.length,
     );
     return appended;
   });
@@ -341,10 +366,16 @@ async function followRename(
     const found = locate(editor.getValue());
     if (found === undefined) return undefined;
     if (found.old) {
+      // Obsidian may have rewritten the embed in the file already, before the
+      // editor heard of it. It merges the file into an editor that differs
+      // from it, which doubles a change both made, and a table cell's editor
+      // would pad the table a moment later. So this goes straight into the
+      // note's text, marked as Obsidian's own reload marks its changes.
       editor.replaceRange(
         now,
         editor.offsetToPos(found.start),
         editor.offsetToPos(found.start + was.length),
+        "set",
       );
     }
     return capturePoint(editor.getValue(), found.start + now.length);
@@ -556,16 +587,70 @@ async function existingEmbed(
  * than make another, and inserts the embed once.
  */
 export function insertSymbol(host: EditorHost, view: MarkdownView): void {
-  const note = view.file;
-  if (note === null) return;
-  const editor = view.editor;
-  newSymbol(host, {
+  const target = targetOf(view);
+  if (target !== undefined) newSymbol(host, target);
+}
+
+/** Where a symbol inserted at the cursor of `view`'s note goes. */
+function targetOf(view: MarkdownView): Target | undefined {
+  const { file, editor } = view;
+  if (file === null) return undefined;
+  return {
     view,
-    file: note,
+    file,
     point: capturePoint(
       editor.getValue(),
       editor.posToOffset(editor.getCursor()),
     ),
+  };
+}
+
+/**
+ * Lists the vault's symbols to search, and inserts the one chosen in the note
+ * `view` shows, as a new symbol's embed goes in: at its cursor now, found
+ * again once the choice is made, since the note can change meanwhile.
+ */
+export function insertExistingSymbol(app: App, view: MarkdownView): void {
+  const target = targetOf(view);
+  if (target === undefined) return;
+  new SymbolSearch(app, target.file.path, (embed) => {
+    insertEmbed(app, target, embed)
+      .then(() => {
+        returnFocus(app, target);
+      })
+      .catch((error: unknown) => {
+        new Notice(`The symbol could not be inserted: ${message(error)}`);
+      });
+  }).open();
+}
+
+/**
+ * Puts the cursor of a live editor of the target note back at its point, as
+ * when a run from Next ends without another symbol: the note can have changed
+ * on disk meanwhile, which takes the cursor away from the last symbol.
+ */
+function returnCursor(app: App, target: Target): void {
+  const view = liveView(app, target.file, target.view);
+  if (view === undefined) return;
+  const { editor } = view;
+  const at = findPoint(editor.getValue(), target.point);
+  if (at !== undefined) editor.setCursor(editor.offsetToPos(at));
+}
+
+/**
+ * Gives a live editor of the target note the focus, once a modal over it has
+ * closed, if that found nothing to give it back to: when a note changes on
+ * disk, Obsidian takes away the editor of a table cell. Setting the cursor
+ * where it is opens that cell again, around it.
+ */
+function returnFocus(app: App, target: Target): void {
+  const view = liveView(app, target.file, target.view);
+  if (view === undefined) return;
+  const { containerEl, editor } = view;
+  containerEl.win.setTimeout(() => {
+    if (containerEl.doc.activeElement !== containerEl.doc.body) return;
+    editor.focus();
+    editor.setCursor(editor.getCursor());
   });
 }
 
@@ -666,7 +751,16 @@ function newSymbol(
             : { ...created, file: found };
       },
     },
-    lifecycle: host.lifecycle,
+    lifecycle: {
+      ...host.lifecycle,
+      closed: (editor) => {
+        host.lifecycle.closed(editor);
+        if (!host.alive() || (tools === undefined && !inserted)) return;
+        // Following another, this one's point is just after that symbol.
+        if (!inserted) returnCursor(app, target);
+        returnFocus(app, target);
+      },
+    },
     copyFrom: (closed) => copySymbol(host, closed),
     file: () => made && symbolFile(app, made.file.path),
     // Until the embed is inserted, the draft is kept before each write, so

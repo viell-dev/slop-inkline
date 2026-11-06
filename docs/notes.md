@@ -47,10 +47,12 @@ The embed goes where the cursor was when you ran the command:
   comes first.
 
 **Unreleased:** the cursor then lands just after the symbol, as after a typed
-character, so you can type on at once. Text you had selected stays as it was.
-With **Next**, each symbol goes after the one before, in the order you drew
-them, and the cursor ends after the last. A note that has gone to Reading view
-meanwhile takes the symbol too, through its file.
+character, so you can type on at once, in a table cell in Live Preview too. Text
+you had selected stays as it was. With **Next**, each symbol goes after the one
+before, in the order you drew them, and the cursor ends after the last, also
+when you discard the drawing you were on. A note that has gone to Reading view
+meanwhile takes the symbol too, through its file, which keeps its line endings,
+Windows ones included.
 
 ## Insert a symbol you have
 
@@ -68,6 +70,11 @@ matter lists nothing: it is the note's own text there.
 
 **Inkline: Insert existing symbol** opens the same list as a search, and inserts
 the chosen symbol at the cursor.
+
+**Unreleased:** it places the symbol as **Inkline: Insert symbol** does: just
+after a link or embed the cursor is inside, so that no link is split, and beside
+selected text, which stays. If the note changes while the search is open, the
+symbol still goes where the cursor was.
 
 **Unreleased:** these lists, [Copy from](./drawing.md#start-from-a-copy), and
 the library give each picture a column of its own, so that names line up

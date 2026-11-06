@@ -12,10 +12,15 @@ even one a public release; earlier pre-releases carry a suffix such as
 ### Changed
 
 - The cursor now lands just after a symbol that **Save** or **Next** inserts, as
-  after a typed character, so that typing goes on after it. **Next** still puts
-  a run of symbols in the order they were drawn, and the cursor ends after the
-  last. Selected text stays as it was
+  after a typed character, so that typing goes on after it, in a table cell in
+  Live Preview too. **Next** still puts a run of symbols in the order they were
+  drawn, and the cursor ends after the last, also when the last drawing is
+  discarded after the note changed on disk. Selected text stays as it was
   ([#170](https://github.com/viell-dev/slop-inkline/issues/170)).
+- **Inkline: Insert existing symbol** places a symbol as the other routes do:
+  just after a link or embed the cursor is inside, rather than splitting it, and
+  beside selected text, rather than replacing it
+  ([#173](https://github.com/viell-dev/slop-inkline/issues/173)).
 
 ### Fixed
 
@@ -23,6 +28,14 @@ even one a public release; earlier pre-releases carry a suffix such as
   embed went into the editor that Reading view keeps out of sight and was lost,
   which left the symbol's file with nothing showing it
   ([#170](https://github.com/viell-dev/slop-inkline/issues/170)).
+- A symbol saved into a note that is closed or in Reading view finds its place
+  when the file's line endings differ from those the place was taken with, in
+  either direction, rather than going at the end of the note. The file keeps its
+  own line endings, and a symbol that does go at the end uses them too
+  ([#174](https://github.com/viell-dev/slop-inkline/pull/174)).
+- A symbol renamed just after it went into a table cell in Live Preview no
+  longer gets its new name twice in the embed, when Obsidian updates the links
+  too ([#174](https://github.com/viell-dev/slop-inkline/pull/174)).
 - Names now line up across rows in the `;;` list, **Inkline: Insert existing
   symbol**, **Copy from**, and the symbol library, as each picture has a column
   of its own. A symbol wider than the column shows whole, at a smaller size

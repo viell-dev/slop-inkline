@@ -156,6 +156,23 @@ async function rewrite(
   await waitForNote(text);
 }
 
+/**
+ * Has Obsidian update links without asking, or ask. It asks only once its
+ * cache knows the embed, which depends on how soon a test gets there, so a
+ * test that a question would stop answers none.
+ */
+async function setLinkUpdates(always: boolean): Promise<void> {
+  await browser.executeObsidian(({ app }, value) => {
+    const vault: object = app.vault;
+    const settable = (
+      candidate: object,
+    ): candidate is { setConfig(key: string, value: unknown): void } =>
+      "setConfig" in candidate && typeof candidate.setConfig === "function";
+    if (!settable(vault)) throw new Error("no vault settings");
+    vault.setConfig("alwaysUpdateLinks", value);
+  }, always);
+}
+
 /** Opens a second pane on the note at `path`, leaving the focus where it is. */
 async function openBeside(path: string): Promise<void> {
   await browser.executeObsidian(async ({ app }, file) => {
@@ -186,6 +203,127 @@ async function moveOn(path: string, other: string): Promise<void> {
   );
 }
 
+/** Makes the note at `path`, with `text` exactly as given. */
+async function createNote(path: string, text: string): Promise<void> {
+  await browser.executeObsidian(
+    async ({ app }, file, written) => {
+      await app.vault.create(file, written);
+    },
+    path,
+    text,
+  );
+}
+
+/** Writes `text` to the note's file as it is, as another program would. */
+async function writeFile(path: string, text: string): Promise<void> {
+  await browser.executeObsidian(
+    async ({ app }, file, written) => {
+      const note = app.vault.getFileByPath(file);
+      if (note === null) throw new Error(`no ${file}`);
+      await app.vault.modify(note, written);
+    },
+    path,
+    text,
+  );
+}
+
+/** Closes every tab of the note at `path`. */
+async function closeTabs(path: string): Promise<void> {
+  await browser.executeObsidian(({ app, obsidian }, file) => {
+    for (const leaf of app.workspace.getLeavesOfType("markdown")) {
+      if (
+        leaf.view instanceof obsidian.MarkdownView &&
+        leaf.view.file?.path === file
+      ) {
+        leaf.detach();
+      }
+    }
+  }, path);
+}
+
+/** Opens the search for a symbol, and chooses the one `name` finds. */
+async function chooseExisting(name: string): Promise<void> {
+  await searchExisting(name);
+  await browser.keys(["Enter"]);
+}
+
+/** Opens the search for a symbol, and types `name` in it. */
+async function searchExisting(name: string): Promise<void> {
+  await browser.executeObsidianCommand("inkline:insert-existing-symbol");
+  await browser.$(".prompt-input").waitForDisplayed();
+  await type(name);
+  await browser.$(".suggestion-item").waitForExist();
+}
+
+/** Selects `text` in the active note. */
+async function selectText(text: string): Promise<void> {
+  await browser.executeObsidian(({ app, obsidian }, wanted) => {
+    const editor = app.workspace.getActiveViewOfType(
+      obsidian.MarkdownView,
+    )?.editor;
+    if (editor === undefined) throw new Error("no note editor");
+    const start = editor.getValue().indexOf(wanted);
+    editor.setSelection(
+      editor.offsetToPos(start),
+      editor.offsetToPos(start + wanted.length),
+    );
+  }, text);
+}
+
+const table = "| A | B |\n| --- | --- |\n| same | same |\n| same | same |\n";
+
+/**
+ * Opens the note `table` holds in Live Preview, clicks the first cell of its
+ * last row, and takes the cursor to the end of that cell with a real key.
+ */
+async function intoCell(path: string): Promise<void> {
+  await createNote(path, table);
+  await browser.executeObsidian(async ({ app }, file) => {
+    const note = app.vault.getFileByPath(file);
+    if (note === null) throw new Error(`no ${file}`);
+    await app.workspace.getLeaf(false).openFile(note);
+  }, path);
+  const cell = browser.$(
+    ".workspace-leaf.mod-active .cm-table-widget tbody tr:last-child td:first-child",
+  );
+  await cell.waitForExist();
+  await cell.click();
+  await browser
+    .$(".workspace-leaf.mod-active .table-cell-wrapper .cm-content")
+    .waitForExist();
+  await browser.keys(["End"]);
+}
+
+/**
+ * Waits for the last row of the table in `Table.md` to read `row`, whatever
+ * its padding, with `|` not marking anything here.
+ */
+async function waitForLastRow(row: string): Promise<void> {
+  let read = "";
+  try {
+    await browser.waitUntil(async () => {
+      read = await browser.executeObsidian(({ app, obsidian }) => {
+        const leaf = app.workspace
+          .getLeavesOfType("markdown")
+          .find(
+            ({ view }) =>
+              view instanceof obsidian.MarkdownView &&
+              view.file?.path === "Table.md",
+          );
+        if (!(leaf?.view instanceof obsidian.MarkdownView)) return "no note";
+        const lines = leaf.view.editor.getValue().trimEnd().split("\n");
+        return (lines.at(-1) ?? "").replace(/ +/g, " ");
+      });
+      return read === row;
+    });
+  } catch (error) {
+    throw new Error(
+      `waited for ${JSON.stringify(row)}, but the row read ${JSON.stringify(read)}`,
+      { cause: error },
+    );
+  }
+}
+
 /** Switches every tab of the note at `path` to Reading view or back. */
 async function showAs(path: string, mode: "preview" | "source"): Promise<void> {
   await browser.executeObsidian(
@@ -211,6 +349,7 @@ describe("Where the cursor lands after a symbol", function () {
 
   beforeEach(async function () {
     await startOver();
+    await setLinkUpdates(false);
   });
 
   it("lands after a new symbol that Save inserts, and typing goes on there", async function () {
@@ -280,19 +419,51 @@ describe("Where the cursor lands after a symbol", function () {
     );
   });
 
+  it("returns to the last of a run when the note changed before the discard", async function () {
+    await insert();
+    await draw(zigzag);
+    await next(1);
+    // Obsidian takes the cursor to the start of the note here.
+    await rewrite("Editor.md", (text) => `Prefix\n${text}`);
+    await browser.keys(["Escape"]);
+    await waitClosed();
+    expect(await marked("Editor.md")).toEqual([
+      "Prefix\nThe door is marked with ![[001.ink.png]]| which means return.\n",
+    ]);
+    await type("xy");
+    await waitForNote(
+      "Prefix\nThe door is marked with ![[001.ink.png]]xy which means return.\n",
+    );
+  });
+
+  it("returns there when strokes are discarded too, and inserts nothing", async function () {
+    await insert();
+    await draw(zigzag);
+    await next(1);
+    await draw([[0.5, 0.5]]);
+    await rewrite("Editor.md", (text) => `Prefix\n${text}`);
+    await browser.keys(["Escape"]);
+    await clickTop("Discard");
+    await waitClosed();
+    expect(await marked("Editor.md")).toEqual([
+      "Prefix\nThe door is marked with ![[001.ink.png]]| which means return.\n",
+    ]);
+    expect(await symbolFiles()).toHaveLength(1);
+  });
+
+  it("leaves the cursor alone at a run's end once the place is gone", async function () {
+    await insert();
+    await draw(zigzag);
+    await next(1);
+    await rewrite("Editor.md", () => "Line one.\nLine two.\n");
+    await browser.keys(["Escape"]);
+    await waitClosed();
+    expect(await marked("Editor.md")).toEqual(["|Line one.\nLine two.\n"]);
+  });
+
   it("leaves a selection's text, and lands past the symbol beside it", async function () {
     await openAtMarker("Editor.md", "HERE");
-    await browser.executeObsidian(({ app, obsidian }) => {
-      const editor = app.workspace.getActiveViewOfType(
-        obsidian.MarkdownView,
-      )?.editor;
-      if (editor === undefined) throw new Error("no note editor");
-      const start = editor.getValue().indexOf("door");
-      editor.setSelection(
-        editor.offsetToPos(start),
-        editor.offsetToPos(start + "door".length),
-      );
-    });
+    await selectText("door");
     await browser.executeObsidianCommand("inkline:insert-symbol");
     await waitForEditor();
     await draw(zigzag);
@@ -375,6 +546,19 @@ describe("Where the cursor lands after a symbol", function () {
     );
   });
 
+  it("lands on a line of its own at the end of a note with no last line break", async function () {
+    await insert();
+    await draw(zigzag);
+    await rewrite("Editor.md", () => "Line one.\nLine two.");
+    await save();
+    await waitForNotice("it was added at the end of Editor");
+    expect(await marked("Editor.md")).toEqual([
+      "Line one.\nLine two.\n![[001.ink.png]]|\n",
+    ]);
+    await type("xy");
+    await waitForNote("Line one.\nLine two.\n![[001.ink.png]]xy\n");
+  });
+
   it("moves only the cursor of the pane the symbol started in", async function () {
     await insert();
     await draw(zigzag);
@@ -426,6 +610,7 @@ describe("Where the cursor lands after a symbol", function () {
   });
 
   it("stays after the embed when a later save renames the symbol", async function () {
+    await setLinkUpdates(true);
     await insert();
     await draw(zigzag);
     await browser.keys(["Control", "s"]);
@@ -476,6 +661,7 @@ describe("Where the cursor lands after a symbol", function () {
   }
 
   it("keeps the following symbol after one renamed on its way", async function () {
+    await setLinkUpdates(true);
     await insert();
     await draw(zigzag);
     await browser.keys(["Control", "s"]);
@@ -526,11 +712,7 @@ describe("Where the cursor lands after a symbol", function () {
       await app.vault.create("Chosen.md", "The door reads HERE today.\n");
     });
     await openAtMarker("Chosen.md", "HERE");
-    await browser.executeObsidianCommand("inkline:insert-existing-symbol");
-    await browser.$(".prompt-input").waitForDisplayed();
-    await type("gat");
-    await browser.$(".suggestion-item").waitForExist();
-    await browser.keys(["Enter"]);
+    await chooseExisting("gat");
     await waitForNote("The door reads ![[gate.ink.png]] today.\n");
     expect(await marked("Chosen.md")).toEqual([
       "The door reads ![[gate.ink.png]]| today.\n",
@@ -538,5 +720,372 @@ describe("Where the cursor lands after a symbol", function () {
     await type("xy");
     await waitForNote("The door reads ![[gate.ink.png]]xy today.\n");
     await saveScreenshot("cursor-after-existing-symbol");
+  });
+
+  it("puts a symbol from Insert existing symbol past a link it would split", async function () {
+    await createSymbol("gate.ink.png");
+    await createNote("Link.md", "See [[Wel HEREcome]] and on.\n");
+    await openAtMarker("Link.md", "HERE");
+    await chooseExisting("gat");
+    await waitForNote("See [[Wel come]]![[gate.ink.png]] and on.\n");
+    expect(await marked("Link.md")).toEqual([
+      "See [[Wel come]]![[gate.ink.png]]| and on.\n",
+    ]);
+    await type("xy");
+    await waitForNote("See [[Wel come]]![[gate.ink.png]]xy and on.\n");
+  });
+
+  it("puts one past an embed, and a space after a bare address", async function () {
+    await createSymbol("gate.ink.png");
+    await createNote("Embed.md", "See ![[Wel HEREcome.png]] and on.\n");
+    await createNote(
+      "Address.md",
+      "See https://example.com/HEREpage and on.\n",
+    );
+    await openAtMarker("Embed.md", "HERE");
+    await chooseExisting("gat");
+    await waitForNote("See ![[Wel come.png]]![[gate.ink.png]] and on.\n");
+    await openAtMarker("Address.md", "HERE");
+    await chooseExisting("gat");
+    await waitForNote(
+      "See https://example.com/page ![[gate.ink.png]] and on.\n",
+    );
+    expect(await marked("Address.md")).toEqual([
+      "See https://example.com/page ![[gate.ink.png]]| and on.\n",
+    ]);
+  });
+
+  it("keeps a selection's text with Insert existing symbol", async function () {
+    await createSymbol("gate.ink.png");
+    await createNote("Selected.md", "HEREKeep both words.\n");
+    await openAtMarker("Selected.md", "HERE");
+    await selectText("Keep both");
+    await chooseExisting("gat");
+    await waitForNote("Keep both![[gate.ink.png]] words.\n");
+    expect(await marked("Selected.md")).toEqual([
+      "Keep both![[gate.ink.png]]| words.\n",
+    ]);
+    // Typed over the selection, this would take "Keep both" with it.
+    await type("xy");
+    await waitForNote("Keep both![[gate.ink.png]]xy words.\n");
+  });
+
+  it("follows the note's changes during Insert existing symbol's search", async function () {
+    await createSymbol("gate.ink.png");
+    await createNote("Chosen.md", "The door reads HERE today.\n");
+    await openAtMarker("Chosen.md", "HERE");
+    await searchExisting("gat");
+    // Obsidian takes the cursor to the start of the note here.
+    await rewrite("Chosen.md", (text) => `A new first line.\n${text}`);
+    await browser.keys(["Enter"]);
+    await waitForNote(
+      "A new first line.\nThe door reads ![[gate.ink.png]] today.\n",
+    );
+    expect(await marked("Chosen.md")).toEqual([
+      "A new first line.\nThe door reads ![[gate.ink.png]]| today.\n",
+    ]);
+  });
+
+  it("reaches a note gone to Reading view during that search", async function () {
+    await createSymbol("gate.ink.png");
+    await createNote("Chosen.md", "The door reads HERE today.\n");
+    await openAtMarker("Chosen.md", "HERE");
+    await searchExisting("gat");
+    await showAs("Chosen.md", "preview");
+    await browser.keys(["Enter"]);
+    await waitForFile("Chosen.md", "The door reads ![[gate.ink.png]] today.\n");
+  });
+});
+
+describe("Symbols in a table cell in Live Preview", function () {
+  before(async function () {
+    await loadModules();
+  });
+
+  beforeEach(async function () {
+    await startOver();
+    await setLinkUpdates(false);
+  });
+
+  it("lands after a symbol that Save inserts, and typing goes on there", async function () {
+    await intoCell("Table.md");
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await waitForEditor();
+    await draw(zigzag);
+    await save();
+    await waitForLastRow("| same![[001.ink.png]] | same |");
+    await type("xy");
+    await waitForLastRow("| same![[001.ink.png]]xy | same |");
+    await saveScreenshot("cursor-after-symbol-in-table-cell");
+  });
+
+  it("keeps a run from Next in order, in rows that read the same", async function () {
+    await intoCell("Table.md");
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await waitForEditor();
+    await draw(zigzag);
+    await next(1);
+    await waitForLastRow("| same![[001.ink.png]] | same |");
+    await draw([[0.5, 0.5]]);
+    await next(2);
+    await waitForLastRow("| same![[001.ink.png]]![[002.ink.png]] | same |");
+    await draw([[0.4, 0.3]]);
+    await save();
+    await waitForLastRow(
+      "| same![[001.ink.png]]![[002.ink.png]]![[003.ink.png]] | same |",
+    );
+    await type("xy");
+    await waitForLastRow(
+      "| same![[001.ink.png]]![[002.ink.png]]![[003.ink.png]]xy | same |",
+    );
+    // The row above reads the same, and stays as it was.
+    const rows = (await noteText()).split("\n");
+    expect(rows[2]?.replace(/ +/g, " ")).toBe("| same | same |");
+  });
+
+  it("stays after the last of a run when the last editor is discarded", async function () {
+    await intoCell("Table.md");
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await waitForEditor();
+    await draw(zigzag);
+    await next(1);
+    await browser.keys(["Escape"]);
+    await waitClosed();
+    await type("xy");
+    await waitForLastRow("| same![[001.ink.png]]xy | same |");
+  });
+
+  for (const answer of ["Just once", "Do not update"]) {
+    it(`stays after the embed through a rename, with ${answer}`, async function () {
+      await intoCell("Table.md");
+      await browser.executeObsidianCommand("inkline:insert-symbol");
+      await waitForEditor();
+      await draw(zigzag);
+      await browser.keys(["Control", "s"]);
+      await waitForStatus("Saved");
+      await waitForLink("Table.md", "001.ink.png");
+      await browser
+        .$(".inkline-editor .inkline-name")
+        .setValue("the long gate");
+      await browser.keys(["Control", "Enter"]);
+      await clickTop(answer);
+      await waitClosed();
+      await waitForLastRow("| same![[the long gate.ink.png]] | same |");
+      await type("xy");
+      await waitForLastRow("| same![[the long gate.ink.png]]xy | same |");
+      // Saved like any edit, and written once.
+      await browser.waitUntil(async () =>
+        (
+          await browser.executeObsidian(async ({ app }) => {
+            const note = app.vault.getFileByPath("Table.md");
+            if (note === null) throw new Error("no note");
+            return app.vault.read(note);
+          })
+        ).includes("| same![[the long gate.ink.png]]xy"),
+      );
+    });
+  }
+
+  it("keeps a run in order after a symbol renamed on its way", async function () {
+    await setLinkUpdates(true);
+    await intoCell("Table.md");
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await waitForEditor();
+    await draw(zigzag);
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    await browser.$(".inkline-editor .inkline-name").setValue("the long gate");
+    await next(1);
+    await waitForLastRow("| same![[the long gate.ink.png]] | same |");
+    await draw([[0.5, 0.5]]);
+    await save();
+    await waitForLastRow(
+      "| same![[the long gate.ink.png]]![[001.ink.png]] | same |",
+    );
+    await type("xy");
+    await waitForLastRow(
+      "| same![[the long gate.ink.png]]![[001.ink.png]]xy | same |",
+    );
+  });
+
+  it("lands after a symbol from Insert existing symbol", async function () {
+    await createSymbol("gate.ink.png");
+    await intoCell("Table.md");
+    await chooseExisting("gat");
+    await waitForLastRow("| same![[gate.ink.png]] | same |");
+    await type("xy");
+    await waitForLastRow("| same![[gate.ink.png]]xy | same |");
+  });
+
+  it("lands after a symbol from the ;; list", async function () {
+    await createSymbol("gate.ink.png");
+    await intoCell("Table.md");
+    await type(";;gat");
+    await browser.$(".suggestion-item").waitForExist();
+    await browser.keys(["Enter"]);
+    await waitForLastRow("| same![[gate.ink.png]] | same |");
+    await type("xy");
+    await waitForLastRow("| same![[gate.ink.png]]xy | same |");
+  });
+
+  it("writes successive symbols from the library in order", async function () {
+    await createSymbol("gate.ink.png");
+    await createSymbol("path.ink.png");
+    await intoCell("Table.md");
+    await browser.executeObsidianCommand("inkline:show-library");
+    const row = (name: string) =>
+      browser.$(
+        `//div[contains(@class, "inkline-library-symbol")][.//div[contains(@class, "inkline-library-name")][text()="${name}"]]`,
+      );
+    await row("gate").waitForExist();
+    await row("gate").$(".inkline-library-picture").click();
+    await waitForLastRow("| same![[gate.ink.png]] | same |");
+    await row("path").$(".inkline-library-picture").click();
+    await waitForLastRow("| same![[gate.ink.png]]![[path.ink.png]] | same |");
+    await browser.executeObsidian(({ app }) => {
+      app.workspace.detachLeavesOfType("inkline-library");
+    });
+  });
+
+  it("types on after a disk edit took the cell's editor away", async function () {
+    await intoCell("Table.md");
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await waitForEditor();
+    await draw(zigzag);
+    await rewrite("Table.md", (text) => `Prefix\n\n${text}`);
+    await save();
+    await waitForLastRow("| same![[001.ink.png]] | same |");
+    await type("xy");
+    await waitForLastRow("| same![[001.ink.png]]xy | same |");
+  });
+
+  it("types on after that when a run ends without another symbol", async function () {
+    await intoCell("Table.md");
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await waitForEditor();
+    await draw(zigzag);
+    await next(1);
+    await rewrite("Table.md", (text) => `Prefix\n\n${text}`);
+    await browser.keys(["Escape"]);
+    await waitClosed();
+    await type("xy");
+    await waitForLastRow("| same![[001.ink.png]]xy | same |");
+  });
+
+  it("types on after that during Insert existing symbol's search", async function () {
+    await createSymbol("gate.ink.png");
+    await intoCell("Table.md");
+    await searchExisting("gat");
+    await rewrite("Table.md", (text) => `Prefix\n\n${text}`);
+    await browser.keys(["Enter"]);
+    await waitForLastRow("| same![[gate.ink.png]] | same |");
+    await type("xy");
+    await waitForLastRow("| same![[gate.ink.png]]xy | same |");
+  });
+});
+
+describe("Line endings a note's file changes to", function () {
+  before(async function () {
+    await loadModules();
+  });
+
+  beforeEach(async function () {
+    await startOver();
+  });
+
+  const lf = "first\nleft  right\nlast\n";
+  const crlf = lf.replaceAll("\n", "\r\n");
+
+  /** Opens the editor for a symbol between `left ` and ` right`. */
+  async function insertBetween(path: string): Promise<void> {
+    await createNote(path, lf.replace("  right", " HERE right"));
+    await openAtMarker(path, "HERE");
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await waitForEditor();
+    await draw(zigzag);
+  }
+
+  // The note's editor takes no symbol in either: the file does.
+  const away = {
+    "in Reading view": (path: string) => showAs(path, "preview"),
+    closed: closeTabs,
+  };
+
+  for (const [state, leave] of Object.entries(away)) {
+    it(`finds a place taken with \\n in a file ${state} with \\r\\n`, async function () {
+      await insertBetween("Ends.md");
+      await leave("Ends.md");
+      await writeFile("Ends.md", crlf);
+      await save();
+      await waitForFile(
+        "Ends.md",
+        "first\r\nleft ![[001.ink.png]] right\r\nlast\r\n",
+      );
+    });
+
+    it(`finds a place taken with \\r\\n in a file ${state} with \\n`, async function () {
+      await insertBetween("Ends.md");
+      await leave("Ends.md");
+      await writeFile("Ends.md", crlf);
+      // Taken from that file's text, just after the first symbol.
+      await next(1);
+      await waitForFile(
+        "Ends.md",
+        "first\r\nleft ![[001.ink.png]] right\r\nlast\r\n",
+      );
+      await writeFile("Ends.md", "first\nleft ![[001.ink.png]] right\nlast\n");
+      await draw([[0.5, 0.5]]);
+      await save();
+      await waitForFile(
+        "Ends.md",
+        "first\nleft ![[001.ink.png]]![[002.ink.png]] right\nlast\n",
+      );
+    });
+
+    it(`keeps every line ending of a file ${state} with both kinds`, async function () {
+      await insertBetween("Ends.md");
+      await leave("Ends.md");
+      await writeFile("Ends.md", "first\nleft  right\r\nlast\n\r\nend");
+      await save();
+      await waitForFile(
+        "Ends.md",
+        "first\nleft ![[001.ink.png]] right\r\nlast\n\r\nend",
+      );
+    });
+
+    it(`adds a line in the file's own ending once its place is gone, ${state}`, async function () {
+      await insertBetween("Ends.md");
+      await leave("Ends.md");
+      await writeFile("Ends.md", "Line one.\r\nLine two.");
+      await next(1);
+      await waitForNotice("it was added at the end of Ends");
+      await waitForFile(
+        "Ends.md",
+        "Line one.\r\nLine two.\r\n![[001.ink.png]]\r\n",
+      );
+      await draw([[0.5, 0.5]]);
+      await save();
+      await waitForFile(
+        "Ends.md",
+        "Line one.\r\nLine two.\r\n![[001.ink.png]]![[002.ink.png]]\r\n",
+      );
+    });
+  }
+
+  it("finds a place taken from a file with \\r\\n in the note's editor", async function () {
+    await insertBetween("Ends.md");
+    await showAs("Ends.md", "preview");
+    await writeFile("Ends.md", crlf);
+    await next(1);
+    await showAs("Ends.md", "source");
+    await waitForNote("first\nleft ![[001.ink.png]] right\nlast\n");
+    await draw([[0.5, 0.5]]);
+    await save();
+    await waitForNote(
+      "first\nleft ![[001.ink.png]]![[002.ink.png]] right\nlast\n",
+    );
+    expect(await marked("Ends.md")).toEqual([
+      "first\nleft ![[001.ink.png]]![[002.ink.png]]| right\nlast\n",
+    ]);
   });
 });
