@@ -35,6 +35,7 @@ import {
   findPoint,
   lineAtEnd,
   replacedBefore,
+  sameText,
   writeAt,
   type InsertionPoint,
 } from "./insertion.ts";
@@ -48,6 +49,12 @@ import {
   type NameChoice,
 } from "./names.ts";
 import { renderSymbol, SymbolSearch } from "./suggest.ts";
+
+/** How long, in milliseconds, a rewritten file can take to reach an editor. */
+const reloadLimit = 1000;
+
+/** How often, in milliseconds, to look for it there. */
+const reloadCheck = 10;
 
 /** What the plugin lends the editors it opens. */
 export interface EditorHost {
@@ -327,12 +334,74 @@ async function insertEmbed(
 }
 
 /**
+ * Writes what `view`'s editor holds to its file. A failed save stops nothing:
+ * Obsidian reports it itself, and the editor keeps the text.
+ */
+async function saveQuietly(view: MarkdownView): Promise<void> {
+  try {
+    await view.save();
+  } catch {
+    // As above.
+  }
+}
+
+/**
+ * Saves a live editor of the target note, if it holds text its file lacks and
+ * its file has the embed `was`, which Obsidian is about to rewrite there for a
+ * rename. Obsidian notes where a note's links are when a rename starts, and
+ * writes at those offsets once its question is answered, so a save landing in
+ * between, as an editor's own does two seconds after an edit, puts the new link
+ * over other text. Saved first, the editor also reads as the file does, so that
+ * {@link followRename} can bring it level with no merge. An embed not in the
+ * file yet stays unsaved: Obsidian has nothing to rewrite, and would ask about
+ * it if it were saved.
+ */
+async function saveForRename(
+  app: App,
+  target: Target,
+  was: string,
+): Promise<void> {
+  const view = liveView(app, target.file, target.view);
+  if (view === undefined) return;
+  const saved = await app.vault.read(target.file);
+  if (saved.includes(was) && !sameText(saved, view.editor.getValue())) {
+    await saveQuietly(view);
+  }
+}
+
+/**
+ * Waits for `done`, or for as long as Obsidian could need to bring a rewritten
+ * file into an editor. There is no event for that, and an edit while it is
+ * under way can lose text: it reads the file, and a save that starts meanwhile,
+ * as one does when the editor loses the focus to a modal, has it take the file
+ * as it is rather than merge it.
+ */
+async function reloaded(
+  view: MarkdownView,
+  done: () => boolean,
+): Promise<void> {
+  const until = Date.now() + reloadLimit;
+  while (!done() && Date.now() < until) {
+    await new Promise((resolve) => {
+      view.containerEl.win.setTimeout(resolve, reloadCheck);
+    });
+  }
+}
+
+/**
  * Has the embed Inkline inserted just before `point` in the target note
  * follow its symbol's rename, from `was` to `now`: puts `now` in place of
  * `was` if Obsidian left it, or finds where `now` ends if Obsidian already
  * rewrote it. Works through a live editor of the note when there is one,
  * otherwise in the note's file. Returns the point just after the embed, where
  * the next symbol's goes, or undefined if neither is there any more.
+ *
+ * Only one of the two may rewrite it. Obsidian merges a rewritten file into an
+ * editor that differs from it, and a merge makes a change that both hold a
+ * second time, so an editor with text the file lacks gets the embed from that
+ * merge alone. The rewrite goes into any other editor by hand, because the
+ * merge would come after the modal closes, or not at all if the editor reads as
+ * the file does, and when Obsidian left the embed, there is none to wait for.
  */
 async function followRename(
   app: App,
@@ -360,35 +429,47 @@ async function followRename(
     }
     return undefined;
   };
+  /** `text` with the old embed at `start` made the new one. */
+  const replaced = (text: string, start: number): string =>
+    text.slice(0, start) + now + text.slice(start + was.length);
   const view = liveView(app, file, target.view);
   if (view !== undefined) {
     const editor = view.editor;
-    const found = locate(editor.getValue());
+    const saved = await app.vault.read(file);
+    const text = editor.getValue();
+    const found = locate(text);
     if (found === undefined) return undefined;
-    if (found.old) {
-      // Obsidian may have rewritten the embed in the file already, before the
-      // editor heard of it. It merges the file into an editor that differs
-      // from it, which doubles a change both made, and a table cell's editor
-      // would pad the table a moment later. So this goes straight into the
-      // note's text, marked as Obsidian's own reload marks its changes.
-      editor.replaceRange(
-        now,
-        editor.offsetToPos(found.start),
-        editor.offsetToPos(found.start + was.length),
-        "set",
-      );
+    const end = found.start + now.length;
+    if (!found.old) return capturePoint(text, end);
+    const rewritten = saved.includes(now);
+    if (rewritten && !sameText(replaced(text, found.start), saved)) {
+      await reloaded(view, () => locate(editor.getValue())?.old === false);
+      const merged = editor.getValue();
+      const landed = locate(merged);
+      return landed?.old === false
+        ? capturePoint(merged, landed.start + now.length)
+        : moved;
     }
-    return capturePoint(editor.getValue(), found.start + now.length);
+    // Marked as Obsidian's own reload marks its changes: a table cell's editor
+    // would take any other a moment later, and pad the table as it did.
+    editor.replaceRange(
+      now,
+      editor.offsetToPos(found.start),
+      editor.offsetToPos(found.start + was.length),
+      "set",
+    );
+    const after = capturePoint(editor.getValue(), end);
+    // Such a change does not save itself.
+    if (!rewritten) await saveQuietly(view);
+    return after;
   }
   let after: InsertionPoint | undefined;
   await app.vault.process(file, (text) => {
     const found = locate(text);
     if (found === undefined) return text;
-    const replaced = found.old
-      ? text.slice(0, found.start) + now + text.slice(found.start + was.length)
-      : text;
-    after = capturePoint(replaced, found.start + now.length);
-    return replaced;
+    const renamed = found.old ? replaced(text, found.start) : text;
+    after = capturePoint(renamed, found.start + now.length);
+    return renamed;
   });
   return after;
 }
@@ -625,16 +706,18 @@ export function insertExistingSymbol(app: App, view: MarkdownView): void {
 }
 
 /**
- * Puts the cursor of a live editor of the target note back at its point, as
- * when a run from Next ends without another symbol: the note can have changed
- * on disk meanwhile, which takes the cursor away from the last symbol.
+ * Puts the cursor of a live editor of the target note back at its point, once
+ * an editor over it closes: the note can have changed on disk or in another
+ * pane meanwhile, which takes the cursor away from the last symbol. A cursor
+ * already there stays as it is, as a table cell's editor may have it.
  */
 function returnCursor(app: App, target: Target): void {
   const view = liveView(app, target.file, target.view);
   if (view === undefined) return;
   const { editor } = view;
   const at = findPoint(editor.getValue(), target.point);
-  if (at !== undefined) editor.setCursor(editor.offsetToPos(at));
+  if (at === undefined || at === editor.posToOffset(editor.getCursor())) return;
+  editor.setCursor(editor.offsetToPos(at));
 }
 
 /**
@@ -757,7 +840,7 @@ function newSymbol(
         host.lifecycle.closed(editor);
         if (!host.alive() || (tools === undefined && !inserted)) return;
         // Following another, this one's point is just after that symbol.
-        if (!inserted) returnCursor(app, target);
+        returnCursor(app, { ...target, point: after ?? target.point });
         returnFocus(app, target);
       },
     },
@@ -825,6 +908,7 @@ function newSymbol(
           // the symbol it was inserted for, and the next symbol goes after it.
           const was = inserted ? embedFor(app, made.file, note.path) : "";
           const from = made.file.path;
+          if (inserted) await saveForRename(app, target, was);
           stillAlive(host);
           named = await rename(app, made.file, renaming);
           // A rename that failed left the file, and its embed, as they were.

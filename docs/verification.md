@@ -207,7 +207,11 @@ release, later versions must keep released files readable and looking the same.
   A note in Reading view or closed takes the symbol through its file, whose line
   endings stay as they are while the place is found from either kind, in both
   directions, and **Insert existing symbol** places a symbol as the other routes
-  do
+  do. A rename while the note holds unsaved text writes the new name once and
+  keeps the text, however Obsidian's question is answered, in a plain note, two
+  panes, a table cell, a closed note, and Reading view, with the cursor and the
+  place of a run from Next surviving a reload, and with the text arriving during
+  the question or an editor's own save falling due in it
   ([insertion.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/insertion.e2e.ts)
   and
   [insertion.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/insertion.test.ts)).

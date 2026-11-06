@@ -336,3 +336,7 @@ Changing the name of a symbol that has a file renames the file when you save,
 through Obsidian, so that the links to it follow as Obsidian's settings say. If
 the rename fails, the drawing is saved anyway, and the editor stays open with
 the name for the next save to try.
+
+**Unreleased:** a new symbol's embed always takes its new name, whatever
+Obsidian's settings say about links, and the cursor stays just after it. Any
+text in the note that was not saved yet is saved first, and stays.

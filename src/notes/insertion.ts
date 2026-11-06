@@ -25,6 +25,11 @@ function plain(text: string): string {
   return text.replace(lineBreaks, "\n");
 }
 
+/** Whether `a` and `b` read the same, whichever line breaks each has. */
+export function sameText(a: string, b: string): boolean {
+  return plain(a) === plain(b);
+}
+
 /** The offset in `text` of `offset` in its {@link plain} form. */
 function fromPlain(text: string, offset: number): number {
   let pairs = 0;

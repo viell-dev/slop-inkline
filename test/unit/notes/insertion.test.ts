@@ -5,6 +5,7 @@ import {
   lineAtEnd,
   positionAfter,
   replacedBefore,
+  sameText,
 } from "../../../src/notes/insertion.ts";
 
 const note = "The door is marked with  which means return.\n";
@@ -118,6 +119,18 @@ describe("findPoint across line endings", () => {
     expect(findPoint(after, replacedBefore(point, was, now))).toBe(
       after.indexOf(" and on."),
     );
+  });
+});
+
+describe("sameText", () => {
+  it("reads text the same whichever line breaks it has", () => {
+    expect(sameText("one\ntwo\n", "one\r\ntwo\r\n")).toBe(true);
+    expect(sameText("one\rtwo", "one\ntwo")).toBe(true);
+  });
+
+  it("tells apart text that differs in anything else", () => {
+    expect(sameText("one\ntwo", "one\ntwo\n")).toBe(false);
+    expect(sameText("one two", "one\ntwo")).toBe(false);
   });
 });
 

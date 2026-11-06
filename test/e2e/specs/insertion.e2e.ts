@@ -9,6 +9,7 @@ import {
   openAtMarker,
   startOver,
   symbolFiles,
+  topButton,
   waitForEditor,
   waitForNext,
   waitForNotice,
@@ -225,6 +226,66 @@ async function writeFile(path: string, text: string): Promise<void> {
     path,
     text,
   );
+}
+
+/**
+ * Adds `text` at the start or end of the note at `path`, through its editor in
+ * `pane`, in the workspace's order, and leaves it unsaved. Waits for every
+ * editor of the note to have it, as Obsidian passes it on a moment later.
+ */
+async function addUnsaved(
+  path: string,
+  text: string,
+  place: "start" | "end",
+  pane = 0,
+): Promise<void> {
+  const wanted = await browser.executeObsidian(
+    ({ app, obsidian }, file, added, end, index) => {
+      const editors = [];
+      for (const { view } of app.workspace.getLeavesOfType("markdown")) {
+        if (view instanceof obsidian.MarkdownView && view.file?.path === file) {
+          editors.push(view.editor);
+        }
+      }
+      const editor = editors[index];
+      if (editor === undefined) throw new Error(`no pane ${index} of ${file}`);
+      const at = end ? editor.getValue().length : 0;
+      editor.replaceRange(added, editor.offsetToPos(at));
+      return editor.getValue();
+    },
+    path,
+    text,
+    place === "end",
+    pane,
+  );
+  await waitForPanes(path, wanted);
+}
+
+/** Waits for every editor of the note at `path` to read `text`. */
+async function waitForPanes(path: string, text: string): Promise<void> {
+  let read: string[] = [];
+  try {
+    await browser.waitUntil(async () => {
+      read = await browser.executeObsidian(({ app, obsidian }, file) => {
+        const shown: string[] = [];
+        for (const { view } of app.workspace.getLeavesOfType("markdown")) {
+          if (
+            view instanceof obsidian.MarkdownView &&
+            view.file?.path === file
+          ) {
+            shown.push(view.editor.getValue());
+          }
+        }
+        return shown;
+      }, path);
+      return read.length > 0 && read.every((shown) => shown === text);
+    });
+  } catch (error) {
+    throw new Error(
+      `waited for ${JSON.stringify(text)}, but ${path} read ${JSON.stringify(read)}`,
+      { cause: error },
+    );
+  }
 }
 
 /** Closes every tab of the note at `path`. */
@@ -984,6 +1045,248 @@ describe("Symbols in a table cell in Live Preview", function () {
   });
 });
 
+describe("A rename while the note holds unsaved text", function () {
+  before(async function () {
+    await loadModules();
+  });
+
+  beforeEach(async function () {
+    await startOver();
+    await setLinkUpdates(false);
+  });
+
+  const opening = "Opening unsaved line.\n";
+  const closing = "Other unsaved text.";
+  const renamed = "![[the long gate.ink.png]]";
+
+  /** The note with the unsaved text, with `sign` as the door's sign. */
+  function withText(sign: string): string {
+    return `${opening}The door is marked with ${sign} which means return.\n${closing}`;
+  }
+
+  /** Inserts a symbol with Mod+S, and waits for Obsidian's cache to know it. */
+  async function insertAndIndex(): Promise<void> {
+    await insert();
+    await draw(zigzag);
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    await waitForLink("Editor.md", "001.ink.png");
+  }
+
+  /** Adds unsaved text on both sides of the symbol. */
+  async function addBoth(path: string, pane = 0): Promise<void> {
+    await addUnsaved(path, opening, "start", pane);
+    await addUnsaved(path, closing, "end", pane);
+  }
+
+  async function nameIt(): Promise<void> {
+    await browser.$(".inkline-editor .inkline-name").setValue("the long gate");
+  }
+
+  /** Saves the editor under the new name, answering Obsidian if it asks. */
+  async function saveRenamed(answer: string | undefined): Promise<void> {
+    await nameIt();
+    await browser.keys(["Control", "Enter"]);
+    if (answer !== undefined) await clickTop(answer);
+    await waitClosed();
+  }
+
+  // How the links are to update: by the setting, or by the answer to Obsidian's
+  // question. With Do not update, Inkline's embed follows on its own.
+  const ways: readonly (readonly [string, string | undefined])[] = [
+    ["automatic link updates", undefined],
+    ["Just once", "Just once"],
+    ["Do not update", "Do not update"],
+  ];
+
+  for (const [how, answer] of ways) {
+    describe(`with ${how}`, function () {
+      beforeEach(async function () {
+        await setLinkUpdates(answer === undefined);
+      });
+
+      it("writes the new name once and keeps the text, in a plain note", async function () {
+        await insertAndIndex();
+        await addBoth("Editor.md");
+        await saveRenamed(answer);
+        await waitForPanes("Editor.md", withText(renamed));
+        await waitForFile("Editor.md", withText(renamed));
+        expect(await marked("Editor.md")).toEqual([withText(`${renamed}|`)]);
+        await type("xy");
+        await waitForNote(withText(`${renamed}xy`));
+        await waitForFile("Editor.md", withText(`${renamed}xy`));
+      });
+
+      for (const [pane, which] of [
+        [0, "the pane that took the symbol"],
+        [1, "another pane"],
+      ] as const) {
+        it(`does so in two panes, with the text from ${which}`, async function () {
+          await insertAndIndex();
+          await openBeside("Editor.md");
+          await addBoth("Editor.md", pane);
+          await saveRenamed(answer);
+          await waitForPanes("Editor.md", withText(renamed));
+          await waitForFile("Editor.md", withText(renamed));
+          expect((await marked("Editor.md"))[0]).toBe(withText(`${renamed}|`));
+          await type("xy");
+          await waitForPanes("Editor.md", withText(`${renamed}xy`));
+          await waitForFile("Editor.md", withText(`${renamed}xy`));
+        });
+      }
+
+      it("does so once the note is closed", async function () {
+        await insertAndIndex();
+        await addBoth("Editor.md");
+        await closeTabs("Editor.md");
+        await saveRenamed(answer);
+        await waitForFile("Editor.md", withText(renamed));
+      });
+
+      it("does so in Reading view", async function () {
+        await insertAndIndex();
+        await addBoth("Editor.md");
+        await showAs("Editor.md", "preview");
+        await saveRenamed(answer);
+        await waitForFile("Editor.md", withText(renamed));
+        await showAs("Editor.md", "source");
+        await waitForNote(withText(renamed));
+      });
+
+      it("does so in a table cell", async function () {
+        await intoCell("Table.md");
+        await browser.executeObsidianCommand("inkline:insert-symbol");
+        await waitForEditor();
+        await draw(zigzag);
+        await browser.keys(["Control", "s"]);
+        await waitForStatus("Saved");
+        await waitForLink("Table.md", "001.ink.png");
+        await addUnsaved("Table.md", opening, "start");
+        await saveRenamed(answer);
+        await waitForLastRow(`| same${renamed} | same |`);
+        await type("xy");
+        await waitForLastRow(`| same${renamed}xy | same |`);
+        const note = await noteText();
+        expect(note.startsWith(opening)).toBe(true);
+        expect(note.split("![[")).toHaveLength(2);
+      });
+
+      it("keeps the next symbol's place, through a reload", async function () {
+        await insertAndIndex();
+        await addBoth("Editor.md");
+        await nameIt();
+        await markEditor();
+        await browser.keys(["Control", "Shift", "Enter"]);
+        if (answer !== undefined) await clickTop(answer);
+        await waitForNext(1);
+        await waitForPanes("Editor.md", withText(renamed));
+        // Obsidian takes the cursor away from the embed here.
+        await rewrite("Editor.md", (text) => `A new first line.\n${text}`);
+        await draw([[0.5, 0.5]]);
+        await save();
+        const both = `${renamed}![[001.ink.png]]`;
+        await waitForNote(`A new first line.\n${withText(both)}`);
+        expect(await marked("Editor.md")).toEqual([
+          `A new first line.\n${withText(`${both}|`)}`,
+        ]);
+        await type("xy");
+        await waitForNote(`A new first line.\n${withText(`${both}xy`)}`);
+      });
+    });
+  }
+
+  // The modal over the note stops typing, but not another window or a plugin,
+  // so text can arrive once the note was saved, with Obsidian's question open.
+  for (const answer of ["Just once", "Do not update"]) {
+    describe(`when text arrives during the question, with ${answer}`, function () {
+      async function askAndAdd(keys: string[]): Promise<void> {
+        await nameIt();
+        await browser.keys(keys);
+        await browser.waitUntil(
+          async () => (await topButton(answer)) !== undefined,
+        );
+        await addBoth("Editor.md");
+        await clickTop(answer);
+      }
+
+      it("writes the new name once and keeps the text", async function () {
+        await insertAndIndex();
+        await askAndAdd(["Control", "Enter"]);
+        await waitClosed();
+        await waitForNote(withText(renamed));
+        await waitForFile("Editor.md", withText(renamed));
+        expect(await marked("Editor.md")).toEqual([withText(`${renamed}|`)]);
+        await type("xy");
+        await waitForNote(withText(`${renamed}xy`));
+      });
+
+      it("keeps the next symbol's place", async function () {
+        await insertAndIndex();
+        await markEditor();
+        await askAndAdd(["Control", "Shift", "Enter"]);
+        await waitForNext(1);
+        await waitForNote(withText(renamed));
+        await draw([[0.5, 0.5]]);
+        await save();
+        const both = `${renamed}![[001.ink.png]]`;
+        await waitForNote(withText(both));
+        expect(await marked("Editor.md")).toEqual([withText(`${both}|`)]);
+      });
+    });
+  }
+
+  it("writes the new name once with text only after it, in two panes", async function () {
+    await setLinkUpdates(true);
+    await insertAndIndex();
+    await openBeside("Editor.md");
+    await addUnsaved("Editor.md", `\n${closing}`, "end");
+    await saveRenamed(undefined);
+    const text = `The door is marked with ${renamed} which means return.\n\n${closing}`;
+    await waitForPanes("Editor.md", text);
+    await waitForFile("Editor.md", text);
+  });
+
+  // Obsidian holds the offsets of the note's links from before the question,
+  // and writes at them after it, whatever an editor's own save did meanwhile.
+  it("keeps the text when the note would have saved itself during the question", async function () {
+    await insertAndIndex();
+    await addUnsaved("Editor.md", opening, "start");
+    await nameIt();
+    await browser.keys(["Control", "Enter"]);
+    await browser.waitUntil(
+      async () => (await topButton("Just once")) !== undefined,
+    );
+    // An editor saves itself two seconds after an edit.
+    await browser.pause(2500);
+    await clickTop("Just once");
+    await waitClosed();
+    const text = `${opening}The door is marked with ${renamed} which means return.\n`;
+    await waitForFile("Editor.md", text);
+    await waitForNote(text);
+    expect(await marked("Editor.md")).toEqual([
+      `${opening}The door is marked with ${renamed}| which means return.\n`,
+    ]);
+  });
+
+  it("takes the rename and the text back one undo at a time", async function () {
+    await setLinkUpdates(true);
+    await insertAndIndex();
+    await addBoth("Editor.md");
+    await saveRenamed(undefined);
+    await waitForNote(withText(renamed));
+    const steps = [
+      withText("![[001.ink.png]]"),
+      `${opening}The door is marked with ![[001.ink.png]] which means return.\n`,
+      "The door is marked with ![[001.ink.png]] which means return.\n",
+      "The door is marked with  which means return.\n",
+    ];
+    for (const step of steps) {
+      await browser.keys(["Control", "z"]);
+      await waitForNote(step);
+    }
+  });
+});
+
 describe("Line endings a note's file changes to", function () {
   before(async function () {
     await loadModules();
@@ -1071,6 +1374,40 @@ describe("Line endings a note's file changes to", function () {
       );
     });
   }
+
+  it("keeps a file's line endings through a rename with nothing unsaved", async function () {
+    await browser.executeObsidian(({ app }) => {
+      const vault: object = app.vault;
+      if ("setConfig" in vault && typeof vault.setConfig === "function") {
+        vault.setConfig("alwaysUpdateLinks", true);
+      }
+    });
+    await insertBetween("Ends.md");
+    await showAs("Ends.md", "preview");
+    await writeFile("Ends.md", crlf);
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    await waitForFile(
+      "Ends.md",
+      "first\r\nleft ![[001.ink.png]] right\r\nlast\r\n",
+    );
+    await showAs("Ends.md", "source");
+    await waitForNote("first\nleft ![[001.ink.png]] right\nlast\n");
+    await browser.waitUntil(async () =>
+      browser.executeObsidian(
+        ({ app }) =>
+          (app.metadataCache.resolvedLinks["Ends.md"]?.["001.ink.png"] ?? 0) >
+          0,
+      ),
+    );
+    await browser.$(".inkline-editor .inkline-name").setValue("the long gate");
+    await save();
+    await waitForNote("first\nleft ![[the long gate.ink.png]] right\nlast\n");
+    await waitForFile(
+      "Ends.md",
+      "first\r\nleft ![[the long gate.ink.png]] right\r\nlast\r\n",
+    );
+  });
 
   it("finds a place taken from a file with \\r\\n in the note's editor", async function () {
     await insertBetween("Ends.md");

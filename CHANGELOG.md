@@ -33,6 +33,14 @@ holding such a stroke is no longer offered back.
 - A symbol renamed just after it went into a table cell in Live Preview no
   longer gets its new name twice in the embed, when Obsidian updates the links
   too ([#174](https://github.com/viell-dev/slop-inkline/pull/174)).
+- A symbol renamed just after it went in no longer spoils a note that holds
+  other unsaved text. Its embed could get the new name twice, or part of it at
+  the start of the note, and the text could go from the editor. The note is now
+  saved before the rename, and the embed takes the new name once, with the link
+  updates on or off, in one pane or two, and in a table cell. If the note would
+  have saved itself while Obsidian's question about the links was open, Obsidian
+  also wrote the new link over other text, which saving first prevents too
+  ([#180](https://github.com/viell-dev/slop-inkline/issues/180)).
 - A long name no longer runs off the symbol library and gives it a horizontal
   scroll bar. It wraps onto a second line and then shortens, as a long folder
   shortens, and a tooltip on the row has the whole of both. A long note name
