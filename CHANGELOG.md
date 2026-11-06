@@ -55,6 +55,9 @@ holding such a stroke is no longer offered back.
   shortens, and a tooltip on the row has the whole of both. A long note name
   listed under a symbol wraps too
   ([#175](https://github.com/viell-dev/slop-inkline/issues/175)).
+- A very long name with no spaces breaks within its row in the symbol lists,
+  rather than giving the list a sideways scroll bar
+  ([#178](https://github.com/viell-dev/slop-inkline/issues/178)).
 
 ## 0.9.1 - 2026-11-06
 
