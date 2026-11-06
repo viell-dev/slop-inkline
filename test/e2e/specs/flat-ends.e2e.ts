@@ -3,9 +3,12 @@ import type { Stroke } from "../../../src/format/record.ts";
 import { loadModules } from "../support/browser.ts";
 import {
   draw,
+  drawHoldingShift,
+  drawShifted,
   openAtMarker,
   recordOf,
   settledSurface,
+  shiftClick,
   startOver,
   waitForEditor,
 } from "../support/editor.ts";
@@ -118,11 +121,7 @@ async function spill(): Promise<Spill> {
           const beyond =
             direction === "down"
               ? row >= Math.ceil(y)
-              : direction === "up"
-                ? row + 1 <= Math.floor(y)
-                : direction === "right"
-                  ? column >= Math.ceil(x)
-                  : column + 1 <= Math.floor(x);
+              : row + 1 <= Math.floor(y);
           const near =
             Math.abs(column + 0.5 - x) <= reach &&
             Math.abs(row + 0.5 - y) <= reach;
@@ -147,6 +146,57 @@ async function spill(): Promise<Spill> {
   });
 }
 
+/**
+ * For each saved stroke that runs level, the inked pixels of the saved image
+ * past each of its ends, within the brush's reach, and in its middle those
+ * below the line through its points, which a cut along it would take away.
+ */
+async function levelInk(): Promise<
+  { start: number; end: number; below: number }[]
+> {
+  return browser.executeObsidian(async ({ app }) => {
+    const file = app.vault.getFileByPath("001.ink.png");
+    if (file === null) throw new Error("no saved ink");
+    const bytes = new Uint8Array(await app.vault.readBinary(file));
+    const { canvas } = window.inklineTest;
+    const opened = await canvas.openInk(bytes);
+    if (opened.kind !== "editable") throw new Error("not editable");
+    const bitmap = await canvas.decodePng(bytes);
+    const { data, width, height } = canvas.readPixels(bitmap);
+    bitmap.close();
+    return opened.document.strokes.map(({ points, size }) => {
+      const left = Math.min(points[0] ?? 0, points.at(-2) ?? 0) / 16;
+      const right = Math.max(points[0] ?? 0, points.at(-2) ?? 0) / 16;
+      const y = (points[1] ?? 0) / 16;
+      const reach = size / 16;
+      const count = (inside: (column: number, row: number) => boolean) => {
+        let inked = 0;
+        for (let row = 0; row < height; row++) {
+          for (let column = 0; column < width; column++) {
+            if (
+              inside(column, row) &&
+              (data[(row * width + column) * 4 + 3] ?? 0) > 0
+            ) {
+              inked++;
+            }
+          }
+        }
+        return inked;
+      };
+      const level = (row: number): boolean => Math.abs(row + 0.5 - y) <= reach;
+      const middle = (left + right) / 2;
+      return {
+        start: count((column, row) => column + 1 <= left && level(row)),
+        end: count((column, row) => column >= right && level(row)),
+        below: count(
+          (column, row) =>
+            Math.abs(column - middle) <= 4 && row >= y && level(row),
+        ),
+      };
+    });
+  });
+}
+
 describe("Flat ends on the grid", function () {
   before(async function () {
     await loadModules();
@@ -158,13 +208,47 @@ describe("Flat ends on the grid", function () {
     await startOver();
   });
 
+  it("leaves a line along the baseline whole, with round ends", async function () {
+    await openOnGrid();
+    // The owner's simplest case in #150: left to right along the baseline.
+    await draw([
+      [0.3, 0.75],
+      [0.7, 0.75],
+    ]);
+    // The same along another row, with its ends placed on the grid by Shift.
+    await drawShifted([
+      { at: [0.3, 0.45], shift: true },
+      { at: [0.7, 0.45], shift: true },
+    ]);
+    await saveScreenshot("flat-ends-baseline", browser.$(".inkline-editor"));
+    await save();
+    const strokes = await savedStrokes();
+    const shown = await levelInk();
+    console.log(
+      "Along a row",
+      JSON.stringify({ cuts: strokes.map(({ cut }) => cut), shown }),
+    );
+    for (const stroke of strokes) expect(stroke).not.toHaveProperty("cut");
+    // Round ends of the XL brush, 24 pixels wide, reach past both ends, and
+    // the half of the line below its middle is all there.
+    for (const { start, end, below } of shown) {
+      expect(start).toBeGreaterThan(100);
+      expect(end).toBeGreaterThan(100);
+      expect(below).toBeGreaterThan(50);
+    }
+  });
+
   it("stops a steep stroke flush with the rows it starts and ends on", async function () {
     await openOnGrid();
-    await draw([
-      [0.5, 0.25],
-      [0.52, 0.5],
-      [0.55, 0.75],
-    ]);
+    // Freehand between two ends that Shift places.
+    await drawShifted(
+      [
+        { at: [0.5, 0.25], shift: true },
+        { at: [0.52, 0.5], shift: false },
+        { at: [0.55, 0.75], shift: false },
+      ],
+      true,
+    );
     await saveScreenshot("flat-ends-steep", browser.$(".inkline-editor"));
     await save();
     const [stroke] = await savedStrokes();
@@ -177,40 +261,35 @@ describe("Flat ends on the grid", function () {
     expect(shown.redrawn).toBe(0);
   });
 
-  it("stops a flat stroke at its columns, and an eraser's too, but keeps a dot round", async function () {
+  it("keeps a level stroke and a dot round, and stops an eraser on the row it ends on", async function () {
     await openOnGrid();
-    await draw([
+    await drawHoldingShift([
       [0.3, 0.5],
       [0.5, 0.52],
       [0.7, 0.5],
     ]);
     // A dot, then the eraser down into the stroke, ending on its row.
-    await draw([[0.5, 0.25]]);
+    await shiftClick([0.5, 0.25]);
     await browser.keys("e");
-    await draw([
+    await drawHoldingShift([
       [0.6, 0.3],
       [0.6, 0.5],
     ]);
     await save();
     const strokes = await savedStrokes();
     expect(strokes.map((stroke) => stroke.cut)).toEqual([
-      { start: "left", end: "right" },
+      undefined,
       undefined,
       { start: "up", end: "down" },
     ]);
     const shown = await spill();
     console.log("Flat", JSON.stringify(shown));
-    expect(shown.tools).toEqual(["pen", "pen", "eraser", "eraser"]);
-    // The pen's two ends leave no ink past their columns.
-    expect(shown.saved.slice(0, 2)).toEqual([0, 0]);
-    for (const count of shown.uncut.slice(0, 2)) {
-      expect(count).toBeGreaterThan(20);
-    }
+    expect(shown.tools).toEqual(["eraser", "eraser"]);
     // Past the row the eraser ends on, the pen's ink is all still there;
     // a round end would have taken some of it.
-    const [, , , erased = 0] = shown.saved;
-    const [, , , inked = 0] = shown.pens;
-    const [, , , rounded = 0] = shown.uncut;
+    const [, erased = 0] = shown.saved;
+    const [, inked = 0] = shown.pens;
+    const [, rounded = 0] = shown.uncut;
     expect(inked).toBeGreaterThan(20);
     expect(erased).toBe(inked);
     expect(rounded).toBeLessThan(inked - 20);
@@ -287,13 +366,42 @@ describe("Flat ends on the grid", function () {
   it("keeps round ends on the grid until Flat ends is turned on", async function () {
     await openOnGrid(false);
     expect(await pressed("flat-ends")).toBe("false");
-    await draw([
+    await drawHoldingShift([
       [0.5, 0.25],
       [0.55, 0.75],
     ]);
     await save();
     const [stroke] = await savedStrokes();
     expect(stroke).not.toHaveProperty("cut");
+  });
+
+  it("keeps a freehand end round with Flat ends on: only ends Shift placed are cut", async function () {
+    await openOnGrid();
+    // Neither end placed with Shift, then only the start, then only the end.
+    const stroke: readonly (readonly [number, number])[] = [
+      [0.3, 0.25],
+      [0.32, 0.75],
+    ];
+    await draw(stroke);
+    await drawShifted([
+      { at: [0.5, 0.25], shift: true },
+      { at: [0.52, 0.75], shift: false },
+    ]);
+    await drawShifted(
+      [
+        { at: [0.7, 0.25], shift: false },
+        { at: [0.72, 0.75], shift: false },
+      ],
+      true,
+    );
+    await save();
+    const strokes = await savedStrokes();
+    console.log("Shift's ends", JSON.stringify(strokes.map(({ cut }) => cut)));
+    expect(strokes.map(({ cut }) => cut)).toEqual([
+      undefined,
+      { start: "up" },
+      { end: "down" },
+    ]);
   });
 
   it("offers Flat ends only for freehand strokes on the grid", async function () {
@@ -332,7 +440,7 @@ describe("Flat ends on the grid", function () {
     await waitForEditor();
     await settledSurface();
     await browser.keys("4");
-    await draw([
+    await drawHoldingShift([
       [0.5, 0.25],
       [0.55, 0.75],
     ]);

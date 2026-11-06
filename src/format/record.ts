@@ -41,14 +41,14 @@ export type Tool = "pen" | "eraser";
 
 /**
  * Which way a stroke's ink is cut away at one of its ends: everything past
- * the line through that end point, across this direction, within the brush's
- * reach of it. `down` cuts along the horizontal line through the end and
- * removes what lies below it, as at a baseline.
+ * the horizontal line through that end point, in this direction, within the
+ * brush's reach of it. `down` removes what lies below the line, as at a
+ * baseline.
  */
-export type Cut = "up" | "down" | "left" | "right";
+export type Cut = "up" | "down";
 
 /** The directions a stroke can be cut in, for checking a file. */
-export const cuts: readonly Cut[] = ["up", "down", "left", "right"];
+export const cuts: readonly Cut[] = ["up", "down"];
 
 /**
  * How a stroke's points are joined: by default, as drawn, in a smooth stroke
@@ -249,7 +249,7 @@ function parseCuts(value: unknown, name: string): StrokeCuts | undefined {
     if (direction === undefined) return undefined;
     return (
       cuts.find((known) => known === direction) ??
-      fail(`${name}.${key} is not "up", "down", "left", or "right"`)
+      fail(`${name}.${key} is not "up" or "down"`)
     );
   };
   const start = end("start");

@@ -157,15 +157,15 @@ eraser, a hole of its shape. Its `size` and `cut` then have no effect. `false`
 is the same as no `fill`, which Inkline never writes.
 
 A stroke's `cut` has an optional `start` and an optional `end`, for its first
-and last point, each `"up"`, `"down"`, `"left"`, or `"right"`: the way from that
-point across the line through it, horizontal for `"up"` and `"down"` and
-vertical for `"left"` and `"right"`, past which the end's ink is cut away.
-Inkline writes them for strokes drawn on its grid with Flat ends on, whose ends
-lie on grid lines, so that they stop flush with the line: a stroke that comes
-down to the baseline has the end `"down"`. An empty `cut` is the same as none,
-and a `cut` on a polygon has no effect. Inkline writes `false` for every new
-stroke, as it no longer records pen pressure, but reads and draws strokes with
-pressure as before, and saving a symbol again keeps them as they are.
+and last point, each `"up"` or `"down"`: the way from that point across the
+horizontal line through it, past which the end's ink is cut away. Inkline writes
+them with Flat ends on for ends that Shift put on its grid and that cross the
+row through them at 45° or steeper, so that they stop flush with the row: a
+stroke that comes down to the baseline has the end `"down"`. An empty `cut` is
+the same as none, and a `cut` on a polygon has no effect. Inkline writes `false`
+for every new stroke, as it no longer records pen pressure, but reads and draws
+strokes with pressure as before, and saving a symbol again keeps them as they
+are.
 
 The base layer is an object:
 
@@ -215,12 +215,10 @@ of the image's size, with the record's coordinates as they are:
 For a cut end at the point (`x / 16`, `y / 16`) pixels, with reach
 `r = size / 16 + 1` pixels, the box spans:
 
-| Cut       | Across             | Down               |
-| --------- | ------------------ | ------------------ |
-| `"down"`  | `x − r` to `x + r` | `y` to `y + r`     |
-| `"up"`    | `x − r` to `x + r` | `y − r` to `y`     |
-| `"right"` | `x` to `x + r`     | `y − r` to `y + r` |
-| `"left"`  | `x − r` to `x`     | `y − r` to `y + r` |
+| Cut      | Across             | Down           |
+| -------- | ------------------ | -------------- |
+| `"down"` | `x − r` to `x + r` | `y` to `y + r` |
+| `"up"`   | `x − r` to `x + r` | `y − r` to `y` |
 
 The box reaches past the end's round cap, a radius of `size / 32` pixels, with a
 pixel to spare for the soft edge. The end's own ink there is the spill the cut

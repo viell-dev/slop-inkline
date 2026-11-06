@@ -6,6 +6,7 @@ import {
   openAtMarker,
   recordOf,
   settledSurface,
+  shiftClick,
   startOver,
   storedDrafts,
   surface,
@@ -152,8 +153,8 @@ describe("Fill", function () {
     await browser.keys("b");
     expect(await pressed("fill")).toBe("true");
     // A triangle, closed; then a wedge left open, ended with Enter.
-    await click([0.25, 0.75], [0.35, 0.3], [0.45, 0.75], [0.25, 0.75]);
-    await click([0.6, 0.75], [0.7, 0.3], [0.8, 0.75]);
+    await shiftClick([0.25, 0.75], [0.35, 0.3], [0.45, 0.75], [0.25, 0.75]);
+    await shiftClick([0.6, 0.75], [0.7, 0.3], [0.8, 0.75]);
     await browser.keys("Enter");
     await draftStrokes(2);
     await saveScreenshot("fill", browser.$(".inkline-editor"));
