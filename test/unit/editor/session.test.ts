@@ -362,12 +362,10 @@ describe("DrawingSession", () => {
     const onGrid = line(48, row, 48 + 512, other);
     expect(gridOriginOf({ strokes: [freehand, freehand, onGrid] })).toBe(3);
     // Halfway between two rows, as Zoom's finer grid puts an end, counts too.
-    const half = line(48, (row + other) / 2 - 16, 48 + 512, row);
-    expect(
-      gridOriginOf({
-        strokes: [freehand, freehand, half],
-      }),
-    ).toBe(3);
+    const halfway =
+      (((plainGrid.rows[3] ?? 0) + (plainGrid.rows[4] ?? 0)) / 2) * 16;
+    const half = line(48, halfway, 48 + 512, halfway);
+    expect(gridOriginOf({ strokes: [freehand, freehand, half] })).toBe(3);
     // With no end on a row, the most shared place, as ever.
     expect(gridOriginOf({ strokes: [freehand, freehand] })).toBe(5);
   });
@@ -381,6 +379,18 @@ describe("DrawingSession", () => {
     // Let go 9 px further on, past the middle of a cell, with no move between.
     session.end({ x: 41, y: 73 }, false);
     expect(session.document.strokes[0]?.points.slice(-2)).toEqual(shown);
+  });
+
+  it("keeps a polygon's corner where it was shown, too", () => {
+    const polygon = new DrawingSession(emptyDocument);
+    polygon.snap = true;
+    polygon.shape = "polygon";
+    polygon.begin({ x: 7, y: 9 }, true);
+    polygon.end({ x: 7, y: 9 }, true);
+    polygon.begin({ x: 47, y: 66 }, true);
+    // Let go past the middle of a cell, Shift up, with no move between.
+    polygon.end({ x: 41, y: 73 }, false);
+    expect(polygon.activeStroke?.points.slice(-2)).toEqual([48 * 16, 64 * 16]);
   });
 
   it("picks the most shared place for the grid, the first of a tie", () => {

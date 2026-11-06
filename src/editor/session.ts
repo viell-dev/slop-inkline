@@ -17,7 +17,7 @@ import {
 } from "../ink/document.ts";
 import { lineBox } from "../ink/geometry.ts";
 import { History } from "../ink/history.ts";
-import type { Grid } from "./guides.ts";
+import { finerGrid, type Grid } from "./guides.ts";
 
 export interface BrushSize {
   /** The button label. */
@@ -216,26 +216,21 @@ function withinSpacing(x: number, spacing: number): number {
  *
  * Ends that Shift put on the grid lie on its columns, and a save moves the
  * drawing by whole pixels, so a drawing made on the grid lines up with it
- * again, however a save cropped it. They lie on its `rows` too, or halfway
- * between two as on a finer grid, which a freehand end almost never does. So
- * only such ends mark places, and a drawing with none has all its ends mark
- * them: freehand ends would otherwise outvote a few on the grid by chance.
+ * again, however a save cropped it. They lie on the rows of `grid` too, or
+ * of its finer grid, where Zoom may have put them, which a freehand end almost
+ * never does. So only such ends mark places, and a drawing with none has all
+ * its ends mark them: freehand ends would otherwise outvote a few on the grid
+ * by chance.
  */
 export function gridOriginOf(
   document: InkDocument,
   fallback = 0,
   columns = plainGrid.spacing,
-  rows: readonly number[] = plainGrid.rows,
+  grid: Grid = plainGrid,
 ): number {
   const spacing = Math.round(columns * unitsPerPixel);
-  const onRows = new Set(
-    rows.flatMap((row, index) => {
-      const next = rows[index + 1];
-      return next === undefined
-        ? [toUnits(row)]
-        : [toUnits(row), toUnits((row + next) / 2)];
-    }),
-  );
+  const { rows } = grid.period === undefined ? finerGrid(grid) : grid;
+  const onRows = new Set(rows.map(toUnits));
   const ends: { readonly x: number; readonly y: number }[] = [];
   for (const { points, pressure } of document.strokes) {
     const stride = pressure ? 3 : 2;
@@ -499,17 +494,19 @@ export class DrawingSession {
     const { document, gridOrigin } = this.#history.present;
     const period = this.#period;
     if (gridOrigin !== undefined) return withinSpacing(gridOrigin, period);
-    const { rows } = this.grid;
+    const { grid } = this;
     const guessed = this.#guessed;
+    // The editor lays out an equal grid afresh for every frame it renders.
     if (
       guessed?.document === document &&
       guessed.spacing === period &&
-      guessed.rows === rows
+      guessed.rows.length === grid.rows.length &&
+      guessed.rows.every((row, index) => row === grid.rows[index])
     ) {
       return guessed.origin;
     }
-    const origin = gridOriginOf(document, 0, period, rows);
-    this.#guessed = { document, spacing: period, rows, origin };
+    const origin = gridOriginOf(document, 0, period, grid);
+    this.#guessed = { document, spacing: period, rows: grid.rows, origin };
     return origin;
   }
 
@@ -784,17 +781,18 @@ export class DrawingSession {
    * Shift counts as held for the release if `shift` says it is down, or if it
    * was at the last press or move: with no move since, what is drawn is what
    * Shift drew, and a hand letting go of the key an instant before the button
-   * should not knock it off the grid, so it ends where it was last shown. A
-   * move without Shift ends that, so a stroke carried on past a Shift let go
-   * ends where the pointer does.
+   * should not knock it off the grid, so on the grid it ends where it was last
+   * shown, a polygon's corner too. A move without Shift ends that, so a stroke
+   * carried on past a Shift let go ends where the pointer does.
    */
   end(release?: InputPoint, shift = false): void {
     this.#shift ||= shift;
     const held = this.#shift;
+    const remembered = held && !shift && this.snap;
     const placed = this.#active;
     if (placed?.polygon === true) {
       if (release === undefined) this.#commit(placed);
-      else this.#place(placed, release);
+      else this.#place(placed, remembered ? (this.#next ?? release) : release);
       return;
     }
     const ellipse = this.#corner !== undefined;
@@ -809,8 +807,8 @@ export class DrawingSession {
     // On the grid, the stroke ends at the grid point nearest the release, or
     // else the last point, recorded in the release's place.
     const onGrid = held && this.snap;
-    const shown = onGrid && !shift ? this.#last : undefined;
-    const end = onGrid ? (shown ?? release ?? this.#last) : release;
+    const shown = remembered ? this.#last : undefined;
+    const end = shown ?? (onGrid ? (release ?? this.#last) : release);
     if (end !== undefined && this.#active !== undefined) {
       this.extend([this.#placed(end)], straight);
     }
@@ -1002,7 +1000,7 @@ export class DrawingSession {
       document,
       this.gridOrigin,
       this.#period,
-      this.grid.rows,
+      this.grid,
     ),
   ): void {
     if (this.#active !== undefined) return;
@@ -1024,11 +1022,11 @@ export class DrawingSession {
     // the strokes say too, which may have no strokes to say it after this.
     const move = documentMover(dxPixels);
     const period = this.#period;
-    const { rows } = this.grid;
+    const { grid } = this;
     this.#history.map(({ document, gridOrigin }) => ({
       document: move(document),
       gridOrigin:
-        (gridOrigin ?? gridOriginOf(document, 0, period, rows)) + dxPixels,
+        (gridOrigin ?? gridOriginOf(document, 0, period, grid)) + dxPixels,
     }));
     this.#saved = move(this.#saved);
     const active = this.#active;
