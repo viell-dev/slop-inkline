@@ -288,6 +288,32 @@ async function waitForPanes(path: string, text: string): Promise<void> {
   }
 }
 
+/**
+ * Holds back how the note's editors take a change on disk by `delay`
+ * milliseconds, as a slow disk would. Obsidian keeps that step in the view's
+ * private `loadFileInternal`, and the view goes with the test.
+ */
+async function slowReload(path: string, delay: number): Promise<void> {
+  await browser.executeObsidian(
+    ({ app, obsidian }, file, wait) => {
+      for (const { view } of app.workspace.getLeavesOfType("markdown")) {
+        if (!(view instanceof obsidian.MarkdownView)) continue;
+        if (view.file?.path !== file) continue;
+        const load: unknown = Reflect.get(view, "loadFileInternal");
+        if (typeof load !== "function") throw new Error("no reload to hold");
+        Reflect.set(view, "loadFileInternal", async (...args: unknown[]) => {
+          await new Promise((resolve) => {
+            window.setTimeout(resolve, wait);
+          });
+          return Reflect.apply(load, view, args);
+        });
+      }
+    },
+    path,
+    delay,
+  );
+}
+
 /** Closes every tab of the note at `path`. */
 async function closeTabs(path: string): Promise<void> {
   await browser.executeObsidian(({ app, obsidian }, file) => {
@@ -1234,6 +1260,67 @@ describe("A rename while the note holds unsaved text", function () {
       });
     });
   }
+
+  // Until the reload lands, an editor holding other text still shows the old
+  // embed, and writing it there too would double it. The editor's blur as a
+  // modal closes saves the note, which a reload under way would then undo.
+  describe("when Obsidian is slow to reload the note", function () {
+    async function askAndHold(keys: string[]): Promise<void> {
+      await insertAndIndex();
+      await markEditor();
+      await slowReload("Editor.md", 300);
+      // An edit's save comes two seconds after the first edit since the last
+      // one. Past that of the insertion, none falls in the reload here.
+      await browser.pause(2100);
+      await nameIt();
+      await browser.keys(keys);
+      await browser.waitUntil(
+        async () => (await topButton("Just once")) !== undefined,
+      );
+      await addBoth("Editor.md");
+      await clickTop("Just once");
+    }
+
+    it("leaves the embed to it, and keeps the text", async function () {
+      await askAndHold(["Control", "Enter"]);
+      await waitClosed();
+      await waitForNote(withText(renamed));
+      await waitForFile("Editor.md", withText(renamed));
+      expect(await marked("Editor.md")).toEqual([withText(`${renamed}|`)]);
+      await type("xy");
+      await waitForNote(withText(`${renamed}xy`));
+    });
+
+    it("writes the embed itself once a save undid Obsidian's", async function () {
+      await browser.executeObsidian(({ app, obsidian }) => {
+        const saves = app.vault.on("modify", (file) => {
+          if (file.path !== "Editor.md") return;
+          app.vault.offref(saves);
+          for (const { view } of app.workspace.getLeavesOfType("markdown")) {
+            if (view instanceof obsidian.MarkdownView) void view.save();
+          }
+        });
+        Reflect.set(window, "inklineTestSaves", saves);
+      });
+      await askAndHold(["Control", "Enter"]);
+      await waitClosed();
+      await waitForNote(withText(renamed));
+      await waitForFile("Editor.md", withText(renamed));
+      expect(await marked("Editor.md")).toEqual([withText(`${renamed}|`)]);
+    });
+
+    it("keeps the text and the next symbol's place through Next", async function () {
+      await askAndHold(["Control", "Shift", "Enter"]);
+      await waitForNext(1);
+      await waitForNote(withText(renamed));
+      await waitForFile("Editor.md", withText(renamed));
+      await draw([[0.5, 0.5]]);
+      await save();
+      const both = `${renamed}![[001.ink.png]]`;
+      await waitForNote(withText(both));
+      expect(await marked("Editor.md")).toEqual([withText(`${both}|`)]);
+    });
+  });
 
   it("writes the new name once with text only after it, in two panes", async function () {
     await setLinkUpdates(true);

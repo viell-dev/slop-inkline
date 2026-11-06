@@ -370,25 +370,6 @@ async function saveForRename(
 }
 
 /**
- * Waits for `done`, or for as long as Obsidian could need to bring a rewritten
- * file into an editor. There is no event for that, and an edit while it is
- * under way can lose text: it reads the file, and a save that starts meanwhile,
- * as one does when the editor loses the focus to a modal, has it take the file
- * as it is rather than merge it.
- */
-async function reloaded(
-  view: MarkdownView,
-  done: () => boolean,
-): Promise<void> {
-  const until = Date.now() + reloadLimit;
-  while (!done() && Date.now() < until) {
-    await new Promise((resolve) => {
-      view.containerEl.win.setTimeout(resolve, reloadCheck);
-    });
-  }
-}
-
-/**
  * Has the embed Inkline inserted just before `point` in the target note
  * follow its symbol's rename, from `was` to `now`: puts `now` in place of
  * `was` if Obsidian left it, or finds where `now` ends if Obsidian already
@@ -398,10 +379,15 @@ async function reloaded(
  *
  * Only one of the two may rewrite it. Obsidian merges a rewritten file into an
  * editor that differs from it, and a merge makes a change that both hold a
- * second time, so an editor with text the file lacks gets the embed from that
- * merge alone. The rewrite goes into any other editor by hand, because the
- * merge would come after the modal closes, or not at all if the editor reads as
- * the file does, and when Obsidian left the embed, there is none to wait for.
+ * second time, so an editor with text the file lacks waits for that merge. It
+ * is the one write with no event, and text can go if the wait is cut short: a
+ * save starting during the merge, as one does when the editor loses the focus
+ * to a modal, has the editor take the file as it is. That save, or the one an
+ * edit makes on a timer, can also put the old embed back over Obsidian's.
+ *
+ * So Inkline writes the embed only where no merge can follow: into an editor
+ * that then reads as the file does, or with a save at once, which stops one,
+ * when the file has no new embed or the merge has not come in time.
  */
 async function followRename(
   app: App,
@@ -435,33 +421,33 @@ async function followRename(
   const view = liveView(app, file, target.view);
   if (view !== undefined) {
     const editor = view.editor;
-    const saved = await app.vault.read(file);
-    const text = editor.getValue();
-    const found = locate(text);
-    if (found === undefined) return undefined;
-    const end = found.start + now.length;
-    if (!found.old) return capturePoint(text, end);
-    const rewritten = saved.includes(now);
-    if (rewritten && !sameText(replaced(text, found.start), saved)) {
-      await reloaded(view, () => locate(editor.getValue())?.old === false);
-      const merged = editor.getValue();
-      const landed = locate(merged);
-      return landed?.old === false
-        ? capturePoint(merged, landed.start + now.length)
-        : moved;
+    const until = Date.now() + reloadLimit;
+    for (;;) {
+      const saved = await app.vault.read(file);
+      const text = editor.getValue();
+      const found = locate(text);
+      if (found === undefined) return undefined;
+      const end = found.start + now.length;
+      if (!found.old) return capturePoint(text, end);
+      const level = sameText(replaced(text, found.start), saved);
+      if (level || !saved.includes(now) || Date.now() >= until) {
+        // Marked as Obsidian's own reload marks its changes: a table cell's
+        // editor would take any other a moment later, and pad the table as it
+        // did. Such a change does not save itself.
+        editor.replaceRange(
+          now,
+          editor.offsetToPos(found.start),
+          editor.offsetToPos(found.start + was.length),
+          "set",
+        );
+        const after = capturePoint(editor.getValue(), end);
+        if (!level) await saveQuietly(view);
+        return after;
+      }
+      await new Promise((resolve) => {
+        view.containerEl.win.setTimeout(resolve, reloadCheck);
+      });
     }
-    // Marked as Obsidian's own reload marks its changes: a table cell's editor
-    // would take any other a moment later, and pad the table as it did.
-    editor.replaceRange(
-      now,
-      editor.offsetToPos(found.start),
-      editor.offsetToPos(found.start + was.length),
-      "set",
-    );
-    const after = capturePoint(editor.getValue(), end);
-    // Such a change does not save itself.
-    if (!rewritten) await saveQuietly(view);
-    return after;
   }
   let after: InsertionPoint | undefined;
   await app.vault.process(file, (text) => {
