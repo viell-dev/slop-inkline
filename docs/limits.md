@@ -81,8 +81,7 @@ link would still lead elsewhere by its path in the vault.
   edges can stay softer than an opaque picture's. With dark ink, a shadow stays
   as faint ink around the window at any threshold that keeps the strokes: bring
   only the inside of the window into view. A capture without transparency has
-  neither limit
-  ([#148](https://github.com/viell-dev/slop-inkline/issues/148)).
+  neither limit ([#148](https://github.com/viell-dev/slop-inkline/issues/148)).
 - Every symbol shows in notes at the size and baseline Inkline saves, whatever
   geometry another tool wrote into its file.
 - Images from outside the vault are left as they are, even when their names end
