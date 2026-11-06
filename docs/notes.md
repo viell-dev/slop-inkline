@@ -81,6 +81,21 @@ Some of Obsidian's own menus over a symbol have no Edit symbol, as in callouts
 and tables in Live Preview; [Known limits](./limits.md) lists them, with a way
 around each.
 
+**Unreleased:** right-clicking a symbol offers Edit symbol wherever the symbol
+is:
+
+- in a callout or a table in Live Preview, in Obsidian's menu for the block,
+  beside its own items;
+- on a canvas, in the canvas's menu for a text card or a note that is not
+  focused, or for several selected cards, beside its own items;
+- in a focused card on a canvas, in the menu Inkline shows, where Obsidian would
+  open its image viewer. That menu takes the place of the card's, so right-click
+  beside the symbol for the card's menu;
+- in a canvas text card's own editor, in the same menus as in a note. The
+  command **Inkline: Edit symbol** works there too.
+
+Right-clicking anywhere else in a block shows its menu as before.
+
 Saving the edited symbol changes it in every note that shows it. When your notes
 use it more than once, the first save of a changed drawing asks first whether to
 replace it everywhere;

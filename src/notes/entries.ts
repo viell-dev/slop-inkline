@@ -1,6 +1,6 @@
 // Where a symbol in a note can be opened for editing from: the embed at the
-// cursor, for a command, and a symbol's image, for a menu where Obsidian
-// shows none. editSymbol in symbols.ts opens it.
+// cursor, for a command, and a symbol's image, for a right-click, wherever it
+// is. editSymbol in symbols.ts opens it.
 
 import {
   Menu,
@@ -10,6 +10,7 @@ import {
   type WorkspaceLeaf,
 } from "obsidian";
 import { isInkPath } from "../format/ink-file.ts";
+import { symbolClass } from "../render/symbols.ts";
 import { embedAt } from "./links.ts";
 import { insideCodeBlock } from "./search.ts";
 
@@ -57,6 +58,76 @@ export function symbolOfImage(
         isInkPath(file.path) &&
         withoutQuery(app.vault.getResourcePath(file)) === address,
     );
+}
+
+/** `node` if it is a symbol's image, which Inkline has tagged. */
+function asSymbol(node: Node | null): HTMLImageElement | undefined {
+  // Not `instanceof`: a popout window's notes are drawn with the main
+  // window's classes, and its own elements have the popout's.
+  return node?.instanceOf(HTMLImageElement) === true &&
+    node.hasClass(symbolClass)
+    ? node
+    : undefined;
+}
+
+/**
+ * The note around `image`, rendered or in an editor. A list of symbols, as
+ * type to insert shows, is in neither.
+ */
+function noteAround(image: HTMLImageElement): Element | null {
+  return image.closest(".markdown-preview-view, .markdown-source-view");
+}
+
+/**
+ * The symbol right-clicked in a rendered note, as in Reading view, an
+ * embedded note, or a focused canvas card, if any.
+ */
+export function symbolInRenderedNote(
+  event: MouseEvent,
+): HTMLImageElement | undefined {
+  const image = asSymbol(event.targetNode);
+  if (image === undefined) return undefined;
+  return noteAround(image)?.hasClass("markdown-preview-view") === true
+    ? image
+    : undefined;
+}
+
+/**
+ * The symbol right-clicked through the sheet a canvas keeps over a card that
+ * is not focused, which takes the pointer, so that the event never names the
+ * image. The symbol is the one at the pointer within that card alone: another
+ * card can lie beneath it. Without such a sheet, as if Obsidian renames it,
+ * there is none, and the canvas's menu stays as it is.
+ */
+function symbolUnderCardSheet(event: MouseEvent): HTMLImageElement | undefined {
+  const sheet = event.targetNode;
+  if (
+    sheet?.instanceOf(HTMLElement) !== true ||
+    !sheet.hasClass("canvas-node-content-blocker")
+  ) {
+    return undefined;
+  }
+  const card = sheet.parentElement;
+  for (const found of sheet.doc.elementsFromPoint(
+    event.clientX,
+    event.clientY,
+  )) {
+    const image = asSymbol(found);
+    if (image !== undefined && card?.contains(image) === true) return image;
+  }
+  return undefined;
+}
+
+/**
+ * The symbol right-clicked where Obsidian may build a menu of its own, if
+ * any: in an editor, and under a canvas card's sheet.
+ */
+export function symbolInBlock(event: MouseEvent): HTMLImageElement | undefined {
+  const image = asSymbol(event.targetNode);
+  if (image === undefined) return symbolUnderCardSheet(event);
+  return noteAround(image)?.hasClass("markdown-source-view") === true
+    ? image
+    : undefined;
 }
 
 /** The leaf whose view holds `element`, if any, as a hover preview has none. */

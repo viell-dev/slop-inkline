@@ -16,6 +16,22 @@ even one a public release; earlier pre-releases carry a suffix such as
   now describes BRAT as an optional way to install and update Inkline. The
   manual ZIP stays the main route, and nothing needs BRAT. It installs from the
   same GitHub releases, and its **latest** choice follows pre-releases too.
+- Right-clicking a symbol now offers **Edit symbol** in the menus that had none:
+  Obsidian's menus for a callout or a table in Live Preview, and the canvas's
+  menus for a text card, a note, or several selected cards. Each menu keeps its
+  own items. A focused card keeps showing the symbol's menu on the symbol, with
+  the card's beside it
+  ([#40](https://github.com/viell-dev/slop-inkline/issues/40)).
+
+### Fixed
+
+- The command **Inkline: Edit symbol** works in a canvas text card's own editor,
+  where it was not offered
+  ([#40](https://github.com/viell-dev/slop-inkline/issues/40)).
+- A symbol added in a canvas text card's own editor shows as a character at
+  once, rather than as a large picture until the editor was opened again, and
+  that editor follows the symbol size and colour settings
+  ([#40](https://github.com/viell-dev/slop-inkline/issues/40)).
 
 ## 0.9.0 - 2026-11-05
 

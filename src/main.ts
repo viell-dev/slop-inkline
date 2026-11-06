@@ -1,9 +1,15 @@
-import { MarkdownView, Notice, Platform, Plugin, TFile } from "obsidian";
+import { MarkdownView, Menu, Notice, Platform, Plugin, TFile } from "obsidian";
 import { DraftStore } from "./editor/drafts.ts";
 import type { InkEditorModal } from "./editor/modal.ts";
 import { isInkPath } from "./format/ink-file.ts";
 import { libraryViewType, SymbolLibraryView } from "./library/view.ts";
-import { showSymbolMenu, symbolAt, symbolOfImage } from "./notes/entries.ts";
+import {
+  showSymbolMenu,
+  symbolAt,
+  symbolInBlock,
+  symbolInRenderedNote,
+  symbolOfImage,
+} from "./notes/entries.ts";
 import { SymbolSearch, SymbolSuggest } from "./notes/suggest.ts";
 import { editSymbol, insertSymbol, type EditorHost } from "./notes/symbols.ts";
 import { SymbolRenderer } from "./render/symbols.ts";
@@ -22,8 +28,10 @@ export default class InklinePlugin extends Plugin {
   readonly #editors = new Set<InkEditorModal>();
   /** Shows symbols in notes as characters, in every window. */
   readonly #renderer = new SymbolRenderer(Platform.resourcePathPrefix);
-  /** The documents whose right-clicks on symbols Inkline answers. */
-  readonly #menuDocuments = new WeakSet<Document>();
+  /** What stops Inkline answering right-clicks, in each document it does. */
+  readonly #menuDocuments = new Map<Document, AbortController>();
+  /** The menus that hold Edit symbol already. */
+  readonly #menusWithEdit = new WeakSet<Menu>();
   #drafts: DraftStore | undefined;
   #loaded = false;
   #settings: Settings = defaultSettings;
@@ -124,7 +132,12 @@ export default class InklinePlugin extends Plugin {
       // Offered only with the cursor on a symbol embed, which it edits.
       name: "Edit symbol",
       editorCheckCallback: (checking, editor, info) => {
-        const note = info.file;
+        // A canvas text card's editor has no file of its own: its links lead
+        // from the canvas, which is the active file. No other editor without
+        // a file has a place to resolve its links from.
+        const active = this.app.workspace.getActiveFile();
+        const note =
+          info.file ?? (active?.extension === "canvas" ? active : null);
         if (note === null) return false;
         const file = symbolAt(
           this.app,
@@ -173,15 +186,21 @@ export default class InklinePlugin extends Plugin {
     this.registerEvent(
       this.app.workspace.on("file-menu", (menu, file) => {
         if (!(file instanceof TFile) || !isInkPath(file.path)) return;
-        menu.addItem((item) =>
-          item
-            .setTitle("Edit symbol")
-            .setIcon("pencil")
-            .onClick(() => {
-              void this.editSymbol(file);
-            }),
-        );
+        this.#addEditItem(menu, file);
       }),
+    );
+  }
+
+  /** Puts Edit symbol for `file` in `menu`. */
+  #addEditItem(menu: Menu, file: TFile): void {
+    this.#menusWithEdit.add(menu);
+    menu.addItem((item) =>
+      item
+        .setTitle("Edit symbol")
+        .setIcon("pencil")
+        .onClick(() => {
+          void this.editSymbol(file);
+        }),
     );
   }
 
@@ -193,57 +212,82 @@ export default class InklinePlugin extends Plugin {
     this.#loaded = false;
     // Symbols show as the plain images they are once Inkline is off.
     this.#renderer.stop();
+    for (const stop of this.#menuDocuments.values()) stop.abort();
+    this.#menuDocuments.clear();
     for (const editor of [...this.#editors]) editor.dispose();
   }
 
   /**
-   * Shows a symbol's menu where a symbol in a note is right-clicked and
-   * Obsidian shows no menu for an image: in rendered notes, as in Reading
-   * view and embedded notes, and in Live Preview if nothing answered. Where
-   * Obsidian shows one, as in Live Preview, its menu holds Edit symbol
-   * already. Once for each window's document.
+   * Answers a right-click on a symbol in a note, so that every symbol offers
+   * Edit symbol. Where Obsidian builds a menu, for the image or for a block
+   * around it, that menu takes the item; where it shows none, Inkline shows
+   * the symbol's. Once for each document, for as long as it lasts: a canvas
+   * card's editor makes a new one each time it opens.
    */
   #offerMenus(doc: Document): void {
-    if (this.#menuDocuments.has(doc)) return;
-    this.#menuDocuments.add(doc);
-    /** Shows the menu if `event` is on a symbol, rendered or not as `inNote`. */
-    const offer = (event: MouseEvent, inNote: boolean) => {
-      if (event.defaultPrevented) return;
-      // Not `instanceof`: a popout window's notes are drawn with the main
-      // window's classes, and its own elements have the popout's.
-      const image = event.targetNode;
-      if (
-        image?.instanceOf(HTMLImageElement) !== true ||
-        !image.hasClass("inkline-symbol")
-      ) {
-        return;
-      }
-      // In a note only, not in a list of symbols, as type to insert shows.
-      const note = image.closest(
-        ".markdown-preview-view, .markdown-source-view",
-      );
-      if (note?.hasClass("markdown-preview-view") !== inNote) return;
-      const file = symbolOfImage(this.app, image);
-      if (file === undefined) return;
-      event.preventDefault();
-      showSymbolMenu(this.app, file, image, event);
-    };
+    const view = doc.defaultView;
+    if (this.#menuDocuments.has(doc) || view === null || view.closed) return;
+    const stop = new AbortController();
+    this.#menuDocuments.set(doc, stop);
+    const { signal } = stop;
     // A rendered note opens Obsidian's image viewer on a right-click unless
     // its default is prevented by then, so Inkline answers a symbol's
-    // right-click there before the note sees it.
-    const capture = { capture: true };
-    this.registerDomEvent(
-      doc,
+    // right-click there before the note sees it. Preventing it also stops a
+    // focused canvas card's own menu, which stays on the rest of the card.
+    doc.addEventListener(
       "contextmenu",
       (event) => {
-        offer(event, true);
+        if (event.defaultPrevented) return;
+        const image = symbolInRenderedNote(event);
+        const file = image && symbolOfImage(this.app, image);
+        if (image === undefined || file === undefined) return;
+        event.preventDefault();
+        showSymbolMenu(this.app, file, image, event);
       },
-      capture,
+      { capture: true, signal },
     );
-    // Elsewhere Obsidian's own menu for an image comes first.
-    this.registerDomEvent(doc, "contextmenu", (event) => {
-      offer(event, false);
-    });
+    // Elsewhere Obsidian's own menu comes first: by now the image, callout,
+    // table, or canvas card has built it, unless nothing is going to.
+    doc.addEventListener(
+      "contextmenu",
+      (event) => {
+        const image = symbolInBlock(event);
+        const file = image && symbolOfImage(this.app, image);
+        if (image === undefined || file === undefined) return;
+        if (!event.defaultPrevented) {
+          event.preventDefault();
+          showSymbolMenu(this.app, file, image, event);
+          return;
+        }
+        // One menu for each event, shown once the event is over, so that it
+        // still takes an item, unless `file-menu` gave it one.
+        const menu = Menu.forEvent(event);
+        if (!this.#menusWithEdit.has(menu)) this.#addEditItem(menu, file);
+      },
+      { signal },
+    );
+    // A canvas card's own editor is a document in a frame, which no workspace
+    // event names, and which takes the focus as it opens.
+    doc.addEventListener(
+      "focusin",
+      (event) => {
+        const frame = event.targetNode;
+        if (frame?.instanceOf(HTMLIFrameElement) !== true) return;
+        const inner = frame.contentDocument;
+        if (inner === null) return;
+        this.#renderer.watch(inner);
+        this.#offerMenus(inner);
+      },
+      { signal },
+    );
+    // Both, as Chromium is phasing `unload` out, and a frame left in the map
+    // stays in memory until the plugin unloads.
+    const forget = (): void => {
+      stop.abort();
+      this.#menuDocuments.delete(doc);
+    };
+    view.addEventListener("pagehide", forget, { once: true, signal });
+    view.addEventListener("unload", forget, { once: true, signal });
   }
 
   /** Sets and stores one setting; false if it cannot hold `value`. */

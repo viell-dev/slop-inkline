@@ -21,6 +21,10 @@ The [issues](https://github.com/viell-dev/slop-inkline/issues) track each one.
 
 ## Menus without Edit symbol
 
+**Unreleased:** these menus all offer **Edit symbol** in the next release, as
+[Edit a symbol](./notes.md#edit-a-symbol) describes, and this limit goes. Until
+then:
+
 Where one of Obsidian's own menus takes a right-click on a symbol, that menu has
 no **Edit symbol** ([#40](https://github.com/viell-dev/slop-inkline/issues/40)):
 
