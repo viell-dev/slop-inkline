@@ -33,6 +33,11 @@ holding such a stroke is no longer offered back.
 - A symbol renamed just after it went into a table cell in Live Preview no
   longer gets its new name twice in the embed, when Obsidian updates the links
   too ([#174](https://github.com/viell-dev/slop-inkline/pull/174)).
+- A long name no longer runs off the symbol library and gives it a horizontal
+  scroll bar. It wraps onto a second line and then shortens, as a long folder
+  shortens, and a tooltip on the row has the whole of both. A long note name
+  listed under a symbol wraps too
+  ([#175](https://github.com/viell-dev/slop-inkline/issues/175)).
 
 ### Changed
 
@@ -69,14 +74,6 @@ holding such a stroke is no longer offered back.
   in the default sidebar, however long the name is. The name has the room the
   row's narrower buttons leave, and they line up across rows. In a sidebar
   narrower than about 275 pixels, they drop below the name together.
-
-### Fixed
-
-- A long name no longer runs off the symbol library and gives it a horizontal
-  scroll bar. It wraps onto a second line and then shortens, as a long folder
-  shortens, and a tooltip on the row has the whole of both. A long note name
-  listed under a symbol wraps too
-  ([#175](https://github.com/viell-dev/slop-inkline/issues/175)).
 
 ## 0.9.1 - 2026-11-06
 
