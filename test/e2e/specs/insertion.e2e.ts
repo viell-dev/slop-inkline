@@ -1192,6 +1192,9 @@ describe("A rename while the note holds unsaved text", function () {
           await waitForPanes("Editor.md", withText(renamed));
           await waitForFile("Editor.md", withText(renamed));
           expect((await marked("Editor.md"))[0]).toBe(withText(`${renamed}|`));
+          // Past the other pane's own save. Falling due during typing here, it
+          // has Obsidian merge a character twice, with no symbol involved.
+          await browser.pause(2100);
           await type("xy");
           await waitForPanes("Editor.md", withText(`${renamed}xy`));
           await waitForFile("Editor.md", withText(`${renamed}xy`));
