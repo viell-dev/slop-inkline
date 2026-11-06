@@ -15,6 +15,18 @@ even one a public release; earlier pre-releases carry a suffix such as
   symbol**, **Copy from**, and the symbol library, as each picture has a column
   of its own. A symbol wider than the column shows whole, at a smaller size
   ([#171](https://github.com/viell-dev/slop-inkline/issues/171)).
+- A row of the symbol library keeps its picture, name, and buttons on one line
+  in the default sidebar, however long the name is. The name has the room the
+  row's narrower buttons leave, and they line up across rows. In a sidebar
+  narrower than about 275 pixels, they drop below the name together.
+
+### Fixed
+
+- A long name no longer runs off the symbol library and gives it a horizontal
+  scroll bar. It wraps onto a second line and then shortens, as a long folder
+  shortens, and a tooltip on the row has the whole of both. A long note name
+  listed under a symbol wraps too
+  ([#175](https://github.com/viell-dev/slop-inkline/issues/175)).
 
 ## 0.9.1 - 2026-11-06
 
