@@ -207,13 +207,12 @@ release, later versions must keep released files readable and looking the same.
 - Edit symbol only where the cursor or the pointer is on a symbol, in every
   entry point
   ([entry.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/entry.e2e.ts)).
-- **Unreleased:** a right-click on a symbol offers Edit symbol, once, and opens
-  that symbol, in callouts and tables in Live Preview, in canvas cards focused
-  or not, in a note on a canvas, in several selected cards, in a popout window,
-  and in a text card's own editor, where the command works too; the block's own
-  menu keeps its items and works, on the symbol and off it; a card over a symbol
-  adds nothing; and if the canvas's sheet over a card is renamed, its menu stays
-  as it is
+- A right-click on a symbol offers Edit symbol, once, and opens that symbol, in
+  callouts and tables in Live Preview, in canvas cards focused or not, in a note
+  on a canvas, in several selected cards, in a popout window, and in a text
+  card's own editor, where the command works too; the block's own menu keeps its
+  items and works, on the symbol and off it; a card over a symbol adds nothing;
+  and if the canvas's sheet over a card is renamed, its menu stays as it is
   ([symbol-menus.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-menus.e2e.ts)).
 - The library lists symbols and their referring notes, filters by name and
   folder, follows file and link changes, and inserts successive symbols without

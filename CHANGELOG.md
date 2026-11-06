@@ -9,19 +9,26 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+## 0.9.1 - 2026-11-06
+
+This is the second beta of 1.0.0. It clears the work left after 0.9.0, and the
+owner's test moves to it, in
+[#150](https://github.com/viell-dev/slop-inkline/issues/150). The file format
+has not changed.
+
 ### Added
 
-- The
-  [install guide](https://viell-dev.github.io/slop-inkline/install#install-with-brat)
-  now describes BRAT as an optional way to install and update Inkline. The
-  manual ZIP stays the main route, and nothing needs BRAT. It installs from the
-  same GitHub releases, and its **latest** choice follows pre-releases too.
 - Right-clicking a symbol now offers **Edit symbol** in the menus that had none:
   Obsidian's menus for a callout or a table in Live Preview, and the canvas's
   menus for a text card, a note, or several selected cards. Each menu keeps its
   own items. A focused card keeps showing the symbol's menu on the symbol, with
   the card's beside it
   ([#40](https://github.com/viell-dev/slop-inkline/issues/40)).
+- The
+  [install guide](https://viell-dev.github.io/slop-inkline/install#install-with-brat)
+  now describes BRAT as an optional way to install and update Inkline. The
+  manual ZIP stays the main route, and nothing needs BRAT. It installs from the
+  same GitHub releases, and its **latest** choice follows pre-releases too.
 
 ### Fixed
 
@@ -32,6 +39,10 @@ even one a public release; earlier pre-releases carry a suffix such as
   once, rather than as a large picture until the editor was opened again, and
   that editor follows the symbol size and colour settings
   ([#40](https://github.com/viell-dev/slop-inkline/issues/40)).
+- **Make ink**'s ink no longer comes back for a moment as the slider moves away
+  from it, as it could wherever the contrast at the threshold jumped from one
+  level to the next. No edge gets softer for it; near the slider's ends, some
+  get sharper ([#160](https://github.com/viell-dev/slop-inkline/issues/160)).
 
 ### Changed
 
@@ -43,9 +54,6 @@ even one a public release; earlier pre-releases carry a suffix such as
   the image no longer draws the preview again each frame, which took over 30 ms
   a frame. Undo and moving the drawing still take as long as before
   ([#115](https://github.com/viell-dev/slop-inkline/issues/115)).
-
-### Changed
-
 - A pre-release's version no longer reaches the repository's `manifest.json`, so
   that it can never be offered to everyone once Inkline is in Obsidian's
   community directory. Each release's own `manifest.json` and install ZIP still
@@ -53,13 +61,6 @@ even one a public release; earlier pre-releases carry a suffix such as
   [the release guide](https://github.com/viell-dev/slop-inkline/blob/main/RELEASING.md#where-a-version-is-recorded).
 - A release is refused unless its version is higher than every published one,
   both in SemVer's order and in the number-only order Obsidian uses.
-
-### Fixed
-
-- **Make ink**'s ink no longer comes back for a moment as the slider moves away
-  from it, as it could wherever the contrast at the threshold jumped from one
-  level to the next. No edge gets softer for it; near the slider's ends, some
-  get sharper ([#160](https://github.com/viell-dev/slop-inkline/issues/160)).
 
 ## 0.9.0 - 2026-11-05
 
