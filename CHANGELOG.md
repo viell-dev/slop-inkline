@@ -9,6 +9,13 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Changed
+
+- Names now line up across rows in the `;;` list, **Inkline: Insert existing
+  symbol**, **Copy from**, and the symbol library, as each picture has a column
+  of its own. A symbol wider than the column shows whole, at a smaller size
+  ([#171](https://github.com/viell-dev/slop-inkline/issues/171)).
+
 ## 0.9.1 - 2026-11-06
 
 This is the second beta of 1.0.0. It clears the work left after 0.9.0, and the
