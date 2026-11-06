@@ -78,9 +78,10 @@ link would still lead elsewhere by its path in the vault.
   as a transparent picture, so it can start with the ink inverted: the window's
   ground as the ink, and its strokes as holes. Press **Light ink** to swap them,
   then set the threshold with the slider, which cannot swap them by itself. Its
-  edges stay softer than an opaque picture's. With dark ink, a shadow stays as
-  faint ink around the window whatever the threshold: bring only the inside of
-  the window into view. A capture without transparency has neither limit
+  edges can stay softer than an opaque picture's. With dark ink, a shadow stays
+  as faint ink around the window at any threshold that keeps the strokes: bring
+  only the inside of the window into view. A capture without transparency has
+  neither limit
   ([#148](https://github.com/viell-dev/slop-inkline/issues/148)).
 - Every symbol shows in notes at the size and baseline Inkline saves, whatever
   geometry another tool wrote into its file.
