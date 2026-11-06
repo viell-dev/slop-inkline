@@ -339,8 +339,9 @@ it started from, so one still queued or running would publish after the rollback
 merges, and nothing in it would notice.
 
 1. List every Release run that has not finished, whatever its state, as one
-   waiting behind another shows as `pending`, not `queued`:
-   `gh run list --workflow release.yml --json databaseId,status --jq '.[] | select(.status != "completed")'`.
+   waiting behind another shows as `pending`, not `queued`, and through every
+   page, as `gh run list` stops at the newest few:
+   `gh api --paginate repos/viell-dev/slop-inkline/actions/workflows/release.yml/runs --jq '.workflow_runs[] | select(.status != "completed") | .id'`.
    Cancel each with `gh run cancel <run>`, then list them again, until none are
    left: cancelling one lets the next start. Cancelling cannot take back a
    request GitHub has already accepted, which is why the next step comes after
