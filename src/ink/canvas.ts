@@ -23,6 +23,7 @@ import {
 } from "../format/record.ts";
 import {
   fitsFormat,
+  moveDocument,
   recordFromDocument,
   type InkDocument,
 } from "./document.ts";
@@ -485,6 +486,33 @@ export function measureAdded(
 /** How far past a trial crop to look for ink, in pixels. */
 const cropMargin = 64;
 
+/** The widest canvas a save draws on, in pixels. */
+const widestDraw = 16384;
+
+/**
+ * Where a save draws a record, in pixels from the image's left edge: all of
+ * `width` and the margin, and every stroke that reaches the line box. A browser
+ * flattens a curve differently where a canvas's side cuts it, so a side that
+ * moved with the crop would change the pixels of strokes an edit left alone,
+ * such as a line whose far end was erased, which runs past the image's edge.
+ * A drawing too wide for this keeps to the crop. The record alone decides, so
+ * that saving it again draws it just the same.
+ */
+function drawnSpan(
+  strokes: readonly Stroke[],
+  width: number,
+): { from: number; to: number } {
+  const cropped = { from: 0, to: width + cropMargin };
+  let { from, to } = cropped;
+  for (const stroke of strokes) {
+    const bounds = strokeBounds(stroke);
+    if (bounds === undefined || !inLineBox(bounds.top, bounds.bottom)) continue;
+    from = Math.min(from, Math.floor(bounds.left) - 2);
+    to = Math.max(to, Math.ceil(bounds.right) + 2);
+  }
+  return to - from > widestDraw ? cropped : { from, to };
+}
+
 /**
  * Saves a document: crops it to its ink with a side bearing on each side,
  * draws the image from the cropped record itself, so that its pixels are what
@@ -533,19 +561,26 @@ export async function saveInk(
         "a stroke lies so far from the ink that cropping would move it past the format's coordinate limit",
       );
     }
-    const placed =
+    const { from, to } = drawnSpan(record.strokes, width);
+    const { context } = canvas(to - from, lineBox.height);
+    // The strokes move, rather than the canvas's origin, so that a shape past
+    // the image's edge has the same 32-bit coordinates wherever the crop lies.
+    drawInk(
+      context,
+      moveDocument(record, -from).strokes,
       reduced === undefined
         ? undefined
-        : { ...reduced, x: reduced.x - left * unitsPerPixel };
-    const { surface, context } = canvas(width + cropMargin, lineBox.height);
-    drawInk(context, record.strokes, placed, 0);
+        : { ...reduced, x: reduced.x - (left + from) * unitsPerPixel },
+    );
     const next = crop(
-      inkBounds(context.getImageData(0, 0, surface.width, surface.height)),
+      inkBounds(
+        context.getImageData(-from, 0, width + cropMargin, lineBox.height),
+      ),
     );
     // The ink is where the trial crop expects it, or the search has not
     // settled, which keeps the last crop: its pixels still match its record.
     if ((next.left === 0 && next.width === width) || attempt === 3) {
-      const image = context.getImageData(0, 0, width, lineBox.height);
+      const image = context.getImageData(-from, 0, width, lineBox.height);
       greyInk(image.data);
       const bytes = await writeInkFile(
         await encodePixels(image),

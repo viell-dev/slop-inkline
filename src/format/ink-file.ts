@@ -5,6 +5,7 @@ import {
   deflate,
   imageHeader,
   inflate,
+  maxChunks,
   readChunks,
   writeChunks,
   type Chunk,
@@ -33,9 +34,13 @@ export const recordChunkType = "inKL";
 /** How many bytes open the record chunk with the format version. */
 const versionBytes = 4;
 
-/** Whether a file name or path names a symbol file, in any letter case. */
+/**
+ * Whether a file name or path names a symbol file, in any case of its ASCII
+ * letters. No other letter counts, such as the Kelvin sign, which lowercases
+ * to `k`: a reader comparing ASCII letters would not take that file for one.
+ */
 export function isInkPath(path: string): boolean {
-  return path.toLowerCase().endsWith(inkExtension);
+  return /\.ink\.png$/i.test(path);
 }
 
 /**
@@ -200,9 +205,10 @@ async function recordChunk(text: string): Promise<Chunk> {
  * types only where the PNG has none of its own.
  *
  * Throws `PngError` when the bytes are not a well-formed PNG, and
- * {@link RecordError} when the image is not one a symbol can be or readers
- * would refuse the record, such as for being longer than the text limit: a
- * file this returns can always be read back.
+ * {@link RecordError} when the image is not one a symbol can be, readers would
+ * refuse the record, such as for being longer than the text limit, or the file
+ * would hold more chunks than {@link readChunks} takes: a file this returns can
+ * always be read back.
  */
 export async function writeInkFile(
   png: Uint8Array,
@@ -259,12 +265,18 @@ export async function writeInkFile(
     )
     .map(({ chunk: each }) => each);
   const lastData = rest.findLastIndex((each) => each.type === "IDAT");
-  return writeChunks([
+  const written = [
     header,
     chunk,
     ...before,
     ...rest.slice(0, lastData + 1),
     ...after,
     ...rest.slice(lastData + 1),
-  ]);
+  ];
+  if (written.length > maxChunks) {
+    throw new RecordError(
+      `the file would hold more than ${String(maxChunks)} chunks`,
+    );
+  }
+  return writeChunks(written);
 }

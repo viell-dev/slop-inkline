@@ -12,7 +12,7 @@ import {
   type EventRef,
   type TAbstractFile,
 } from "obsidian";
-import { inkExtension, type CarriedChunk } from "../format/ink-file.ts";
+import type { CarriedChunk } from "../format/ink-file.ts";
 import {
   parseRecord,
   serializeRecord,
@@ -48,7 +48,7 @@ import {
   type Region,
 } from "../ink/pixels.ts";
 import type { DrawableBase } from "../ink/render.ts";
-import { chooseRename } from "../notes/names.ts";
+import { chooseRename, symbolStem } from "../notes/names.ts";
 import {
   draftBase,
   fingerprintOf,
@@ -1135,9 +1135,7 @@ export class InkEditorModal extends Modal {
   #fileName(): string | undefined {
     const path = this.#options.file?.()?.path;
     const file = path?.slice(path.lastIndexOf("/") + 1);
-    return file?.toLowerCase().endsWith(inkExtension) === true
-      ? file.slice(0, -inkExtension.length)
-      : undefined;
+    return file === undefined ? undefined : symbolStem(file);
   }
 
   /**

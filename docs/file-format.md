@@ -29,8 +29,8 @@ W3C Recommendation of 24 June 2025.
 
 ## The file
 
-A file is a PNG whose name ends in `.ink.png`, in any letter case. Its image is
-192 pixels high and from 1 to 4096 pixels wide.
+A file is a PNG whose name ends in `.ink.png`, comparing ASCII letters without
+regard to case. Its image is 192 pixels high and from 1 to 4096 pixels wide.
 
 A writer must write the image as 8-bit RGBA (colour type 6), not interlaced,
 with no `gAMA`, `cHRM`, `sRGB`, `iCCP`, `cICP`, `mDCV`, `cLLI`, `sBIT`, `bKGD`,
@@ -64,12 +64,14 @@ an editor edits. A writer must make the image a rendering of the record, as
 record from the record alone, and does not read the image's pixels to do it.
 
 An edit leaves alone what it does not touch. An editor must keep each stroke it
-was not asked to change as it was, and on its own may move a whole record only
-by a whole number of pixels, as cropping the image does. A shape depends only on
-where its stroke's points lie from one another, so such a stroke keeps its shape
-exactly, in the same place on the grid of pixels. The image is still drawn
-again, so that stroke's pixels can differ only as two renderings of one shape
-can, as [Antialiasing](#antialiasing) describes.
+was not asked to change as it was, in its order. A base layer it was not asked
+to change must keep its place, its size, and the alpha of every pixel of its
+image, however that image is encoded. On its own, an editor may move a whole
+record only across, by a whole number of pixels, as cropping the image does. A
+shape depends only on where its stroke's points lie from one another, so such a
+stroke keeps its shape exactly, in the same place on the grid of pixels. The
+image is still drawn again, so that stroke's pixels can differ only as two
+renderings of one shape can, as [Antialiasing](#antialiasing) describes.
 
 [The record chunk](#the-record-chunk) is marked so that a program that changes
 the image data drops it, but that does not stop the two disagreeing. PNG lets a
@@ -153,8 +155,9 @@ same record always gives the same text.
 
 Coordinates and sizes are integers in _units_ of one sixteenth of an image
 pixel. The origin is the image's top left corner, with x to the right and y
-downwards. Coordinates may lie outside the image, as where an eraser stroke
-starts beyond its edge.
+downwards. The pixel in column `i` and row `j` of the image is the unit square
+from (`i`, `j`) to (`i + 1`, `j + 1`) pixels. Coordinates may lie outside the
+image, as where an eraser stroke starts beyond its edge.
 
 ### Fields
 
@@ -367,7 +370,7 @@ edge. The end's own ink there is what the cut removes, but another part of the
 stroke can pass through the box, as when it comes back near its end. So a cut
 stroke's shape is two parts together:
 
-1. Its outline, everywhere outside its boxes.
+1. Its shape without cuts, everywhere outside its boxes.
 2. Inside its boxes, the shape of the rest of the stroke, if there is any.
 
 The rest is a smooth stroke of the same `tool` and `size`, without cuts, through
@@ -474,8 +477,8 @@ any version of Inkline.
 These hold for every version of this format, now and later, so that a reader of
 any version can recognise a file of any other:
 
-- A file is a PNG whose name ends in `.ink.png`, in any letter case, and whose
-  image shows the symbol.
+- A file is a PNG whose name ends in `.ink.png`, comparing ASCII letters without
+  regard to case, and whose image shows the symbol.
 - Its image is shown in text as [Geometry](#geometry) says, 1.5 em tall with the
   text's baseline 0.375 em above its bottom, whatever its size in pixels, as a
   program that only shows it reads no version.
@@ -575,24 +578,30 @@ as whole pixels allow to 48 pixels, so that a dot stays easy to click. A drawing
 with no ink is 48 pixels wide. It looks for the ink by drawing at most 4096
 pixels across at a time, so that strokes far away cost no large canvas, each
 stroke once for every such span it reaches. It then draws the image from the
-cropped record, and adjusts the crop until that drawing confirms it or four
-attempts have gone by, which keeps the last, so that opening and saving a file
-Inkline saved, in the same browser, changes neither its record nor its pixels. A
-file from another writer takes this crop on its first save, which can change its
-width, and show ink its image had cut off. A base layer drawn smaller than its
-image is first brought down to the whole pixels it falls on, each the exact mean
-of the area it covers, as no browser's smoothing can be relied on to take in
-what it covers; this is done separately each way, and a way it is not smaller
-keeps its pixels. Strokes that leave no visible ink stay in the record. A crop
-wider than the image can be is refused, and so is one that would move a stroke
-past the coordinate limit.
+cropped record on a canvas of its own, as the next paragraph says, and adjusts
+the crop until that drawing confirms it or four attempts have gone by, which
+keeps the last, so that opening and saving a file Inkline saved, in the same
+browser, changes neither its record nor its pixels. A file from another writer
+takes this crop on its first save, which can change its width, and show ink its
+image had cut off. A base layer drawn smaller than its image is first brought
+down to the whole pixels it falls on, each the exact mean of the area it covers,
+as no browser's smoothing can be relied on to take in what it covers; this is
+done separately each way, and a way it is not smaller keeps its pixels. Strokes
+that leave no visible ink stay in the record. A crop wider than the image can be
+is refused, and so is one that would move a stroke past the coordinate limit.
 
 Every save draws the whole image again, so an edit that moves the crop moves the
-strokes it left alone. Their shapes stay the same and their pixels nearly so: a
-browser's rendering of a shape depends a little on where it falls, as it works
-in 32-bit numbers and splits a curve where a canvas's edge cuts it. Most saves
-change no pixel of those strokes, and the rest change a few along their edges,
-slightly. A different browser version can change them the same way.
+strokes it left alone. Their shapes stay the same and their pixels nearly so. A
+browser flattens a curve differently where a canvas's side cuts it, so Inkline
+draws on a canvas that holds every stroke reaching the line, up to 16,384 pixels
+across; a wider drawing keeps to the crop. The canvas starts at the image's left
+edge, or at the stroke furthest past it, such as a line whose far end was
+erased. While that stroke stays furthest, or when an edit moves only the image's
+right edge, the strokes keep their place on the canvas and their pixels do not
+change at all. Otherwise, as a browser works in 32-bit numbers, a shape's
+rendering depends a little on where it falls: most saves change no pixel of
+those strokes, and the rest change a few along their edges by a few levels. A
+different browser version can change them more.
 
 Inkline sets no limit on how long drawing may take, and does not decline a
 record for its cost. A record built to be costly keeps the editor's window busy
@@ -604,9 +613,10 @@ safe to copy that the new image does not have, each on the side of the image
 data it was on, other than `eXIf`, which can turn an image, and chunks with a
 bad CRC. It places the ones that come before the image data after the record.
 
-Inkline declines a file or a base layer's PNG of more than 65,536 chunks. It
-ignores any `eXIf` chunk and colour chunks when it decodes an image, and bytes
-after a file's `IEND`.
+Inkline declines a file or a base layer's PNG of more than 65,536 chunks, and
+does not save a file that would have more, which leaves the old file as it was.
+It ignores any `eXIf` chunk and colour chunks when it decodes an image, and
+bytes after a file's `IEND`.
 
 A file whose record is unusable or from a later version does not open for
 editing. Copy from can start a new symbol from an unusable one's image.

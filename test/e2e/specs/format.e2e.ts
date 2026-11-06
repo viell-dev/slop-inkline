@@ -38,13 +38,14 @@ const baseTolerance = { ...tolerance, share: 0.3 };
 
 /**
  * The most a save may change a pixel of a stroke it did not touch, when an edit
- * moves the crop. Chromium's rendering depends a little on where a shape falls:
- * over 300 seeded saves on each of Chromium 120 and 150, 273 changed no pixel
- * and the worst changed one by 7 levels. A pointer-drawn eraser stroke that the
- * image's left edge cuts changed one by 19, as Chromium splits a curve there.
- * A stroke that takes another shape changes pixels by all 255.
+ * moves the strokes across a save's canvas. Chromium works in 32-bit numbers,
+ * so its rendering depends a little on where a shape falls: over 600 seeded
+ * saves of each kind on each of Chromium 120 and 150, at least 95% changed no
+ * pixel and the worst changed one by 8 levels. A stroke that takes another
+ * shape changes pixels by all 255. An edit that leaves the strokes where they
+ * are on the canvas must change no pixel at all.
  */
-const movedLevels = { strokes: 16, cutByTheEdge: 32 };
+const movedLevels = 16;
 
 /** The chunks of a plain image, for a symbol built by hand. */
 function encodeImage(): ReturnType<typeof readChunks> {
@@ -535,20 +536,39 @@ describe("The file format in Obsidian's renderer", function () {
       return { left: saved.left, worst };
     });
     expect(result.left).toBe(16);
-    expect(result.worst).toBeLessThanOrEqual(movedLevels.strokes);
+    expect(result.worst).toBeLessThanOrEqual(movedLevels);
   });
 
   // A dot away from the ink moves the crop, and every stroke in the record with
-  // it, which must leave those strokes as they were.
-  const editCases: [string, number, boolean][] = [
-    ["a stroke on a tie", 0, false],
-    ["pens, polygons, fills, and cuts", 12, false],
-    ["an eraser stroke the image's edge cuts", 12, true],
+  // it, which must leave those strokes as they were. A mark on the left moves
+  // the strokes across the canvas, unless a stroke past the image's left edge
+  // holds them; one on the right moves only the image's right edge, and with it
+  // where a canvas of the crop would end. The number is how far a pixel may
+  // change, in levels.
+  const editCases: [string, number, string, number, "left" | "right"][] = [
+    ["a stroke on a tie", 0, "tie", movedLevels, "left"],
+    ["pens, polygons, fills, and cuts", 12, "strokes", movedLevels, "left"],
+    ["pens, polygons, fills, and cuts", 12, "strokes", 0, "right"],
+    ["strokes as the editor records them", 12, "recorded", movedLevels, "left"],
+    ["an eraser stroke the image's edge cuts", 12, "eraser", 0, "left"],
+    [
+      "an eraser stroke nearly as far as a canvas goes",
+      3,
+      "far eraser",
+      0,
+      "left",
+    ],
+    ["a pen with its left end erased", 12, "left", 0, "left"],
+    ["a pen with its right end erased", 12, "right", movedLevels, "left"],
+    ["a pen with its right end erased", 12, "right", 0, "right"],
+    ["a pen with both ends erased", 12, "both", 0, "left"],
+    ["a pen of few points with both ends erased", 12, "sparse", 0, "left"],
+    ["a pen of few points with both ends erased", 12, "sparse", 0, "right"],
   ];
-  for (const [name, drawings, erasing] of editCases) {
-    it(`leaves ${name} alone when a separate mark moves the crop`, async function () {
+  for (const [name, drawings, kind, levels, side] of editCases) {
+    it(`leaves ${name} alone when a separate mark on the ${side} moves the crop`, async function () {
       const result = await browser.execute(
-        async (drawings, erasing) => {
+        async (drawings, kind, side) => {
           const { canvas } = window.inklineTest;
           let seed = 0x2468ace;
           const next = (range: number): number => {
@@ -586,8 +606,8 @@ describe("The file format in Obsidian's renderer", function () {
             }
           };
           /** An eraser stroke as a pointer draws it, from past the left edge. */
-          const eraser = (): InkRecord["strokes"][number] => {
-            let [x, y] = [-1600, 600 + next(1600)];
+          const eraser = (start = -1600): InkRecord["strokes"][number] => {
+            let [x, y] = [start, 600 + next(1600)];
             const points: number[] = [];
             while (x < 1600) {
               points.push(x, y);
@@ -595,6 +615,93 @@ describe("The file format in Obsidian's renderer", function () {
               y += next(33) - 16;
             }
             return { tool: "eraser", size: 64 + next(200), points };
+          };
+          /**
+           * A pen line from `from` to `to`, in pixels, as the editor records
+           * one: pointer samples `gap` pixels apart on a path that wanders,
+           * with the gaps between filled to at most 2 pixels.
+           */
+          const recordedPen = (
+            from: number,
+            to: number,
+            gap: number,
+          ): InkRecord["strokes"][number] => {
+            const points: number[] = [];
+            const record = (x: number, y: number): void => {
+              const [unitX, unitY] = [Math.round(x * 16), Math.round(y * 16)];
+              if (points.at(-2) === unitX && points.at(-1) === unitY) return;
+              points.push(unitX, unitY);
+            };
+            let [x, y, turn] = [from, 70 + next(50), 0];
+            while (x < to) {
+              turn = Math.max(-1, Math.min(1, turn + (next(100) - 50) / 150));
+              const nextX = x + (gap * (70 + next(60))) / 100;
+              const nextY = Math.max(24, Math.min(170, y + gap * 0.5 * turn));
+              const steps = Math.ceil(Math.hypot(nextX - x, nextY - y) / 2);
+              for (let step = 1; step <= steps; step++) {
+                record(
+                  x + ((nextX - x) * step) / steps,
+                  y + ((nextY - y) * step) / steps,
+                );
+              }
+              [x, y] = [nextX, nextY];
+            }
+            return { tool: "pen", size: 96 * (1 + next(4)), points };
+          };
+          /** A straight eraser from `from` to `to`, in pixels, the full height. */
+          const strip = (
+            from: number,
+            to: number,
+          ): InkRecord["strokes"][number] => ({
+            tool: "eraser",
+            kind: "fill",
+            points: [from, -125, to, -125, to, 312, from, 312].map(
+              (value) => value * 16,
+            ),
+          });
+          const gap = (): number => [8, 20, 60][next(3)] ?? 8;
+          /**
+           * A pen line of points 125 pixels apart, as only another program
+           * writes, whose curves are long enough to reach past a canvas's
+           * margin into the image.
+           */
+          const sparsePen = (): InkRecord["strokes"][number] => {
+            const points: number[] = [];
+            for (let x = -400; x < 900; x += 125) {
+              points.push(x * 16, (40 + next(110)) * 16);
+            }
+            return { tool: "pen", size: 96 * (1 + next(4)), points };
+          };
+          const drawing = (): InkRecord["strokes"] => {
+            switch (kind) {
+              case "recorded":
+                return Array.from({ length: 2 + next(3) }, () =>
+                  recordedPen(10 + next(100), 200 + next(150), gap()),
+                );
+              case "left":
+                return [
+                  recordedPen(-400, 200, gap()),
+                  strip(-600, 25 + next(100)),
+                ];
+              case "right":
+                return [
+                  recordedPen(100 + next(100), 900, gap()),
+                  strip(240 + next(200), 1100),
+                ];
+              case "both":
+              case "sparse":
+                return [
+                  kind === "both" ? recordedPen(-400, 900, gap()) : sparsePen(),
+                  strip(-600, 25 + next(100)),
+                  strip(240 + next(200), 1100),
+                ];
+              default:
+                return [
+                  ...Array.from({ length: 2 + next(4) }, stroke),
+                  ...(kind === "eraser" ? [eraser()] : []),
+                  ...(kind === "far eraser" ? [eraser(-240_000)] : []),
+                ];
+            }
           };
           const pixelsOf = async (bytes: Uint8Array) => {
             const bitmap = await canvas.decodePng(bytes);
@@ -613,23 +720,31 @@ describe("The file format in Obsidian's renderer", function () {
                     },
                   ],
                 ]
-              : Array.from({ length: drawings }, () => [
-                  ...Array.from({ length: 2 + next(4) }, stroke),
-                  ...(erasing ? [eraser()] : []),
-                ]);
+              : Array.from({ length: drawings }, drawing);
           let saves = 0;
           let worst = 0;
           let moved = 0;
+          let unchanged = 0;
           for (const strokes of documents) {
             const first = await canvas.saveInk({ strokes }, undefined);
             const opened = await canvas.openInk(first.bytes);
             if (opened.kind !== "editable") throw new Error(opened.kind);
             const before = await pixelsOf(first.bytes);
+            const again = await canvas.saveInk(opened.document, undefined);
+            if (
+              again.bytes.length === first.bytes.length &&
+              again.bytes.every((byte, at) => byte === first.bytes[at])
+            ) {
+              unchanged++;
+            }
             for (const away of [1, 8, 40]) {
               const mark: InkRecord["strokes"][number] = {
                 tool: "pen",
                 size: 32,
-                points: [-away * 16, 64],
+                points: [
+                  (side === "left" ? -away : before.width + away) * 16,
+                  64,
+                ],
               };
               const edited = await canvas.saveInk(
                 { strokes: [...opened.document.strokes, mark] },
@@ -637,31 +752,96 @@ describe("The file format in Obsidian's renderer", function () {
               );
               const after = await pixelsOf(edited.bytes);
               saves++;
-              if (edited.left !== 0) moved++;
-              // The mark is at the top, left of what the first image shows.
+              if (edited.left !== 0 || edited.width !== first.width) moved++;
+              // The mark is at the top, beside what the first image shows.
               for (let y = 0; y < 192; y++) {
                 for (let x = 0; x < before.width; x++) {
                   const was = before.data[(y * before.width + x) * 4 + 3] ?? 0;
-                  const at = (y * after.width + x - edited.left) * 4 + 3;
-                  worst = Math.max(
-                    worst,
-                    Math.abs(was - (after.data[at] ?? 0)),
-                  );
+                  // An image can end before this column: nothing is there.
+                  const column = x - edited.left;
+                  const at = (y * after.width + column) * 4 + 3;
+                  const now =
+                    column >= 0 && column < after.width
+                      ? (after.data[at] ?? 0)
+                      : 0;
+                  worst = Math.max(worst, Math.abs(was - now));
                 }
               }
             }
           }
-          return { saves, moved, worst };
+          return {
+            saves,
+            moved,
+            worst,
+            unchanged,
+            documents: documents.length,
+          };
         },
         drawings,
-        erasing,
+        kind,
+        side,
       );
       expect(result.moved).toBe(result.saves);
-      expect(result.worst).toBeLessThanOrEqual(
-        erasing ? movedLevels.cutByTheEdge : movedLevels.strokes,
-      );
+      expect(result.unchanged).toBe(result.documents);
+      expect(result.worst).toBeLessThanOrEqual(levels);
     });
   }
+
+  it("saves a drawing past the widest canvas it draws on", async function () {
+    const result = await browser.execute(async () => {
+      const { canvas } = window.inklineTest;
+      // An eraser half a million pixels away, which no canvas could hold.
+      const strokes: InkRecord["strokes"] = [
+        { tool: "pen", size: 96, points: [1600, 1600, 3200, 1760] },
+        { tool: "eraser", size: 96, points: [-8_388_608, 1600] },
+      ];
+      const first = await canvas.saveInk({ strokes }, undefined);
+      const opened = await canvas.openInk(first.bytes);
+      if (opened.kind !== "editable") throw new Error(opened.kind);
+      const again = await canvas.saveInk(opened.document, undefined);
+      return {
+        width: first.width,
+        same:
+          again.bytes.length === first.bytes.length &&
+          again.bytes.every((byte, at) => byte === first.bytes[at]),
+      };
+    });
+    expect(result.width).toBeGreaterThan(100);
+    expect(result.width).toBeLessThan(130);
+    expect(result.same).toBe(true);
+  });
+
+  it("refuses a save that its reader would refuse", async function () {
+    const message = await browser.execute(async () => {
+      const { canvas, inkFile, png } = window.inklineTest;
+      const text = {
+        type: "tEXt",
+        data: new TextEncoder().encode("Comment\0"),
+      };
+      // A picture at the limit, which adding the record takes over it.
+      const chunks = png.readChunks(
+        await canvas.encodePixels(new ImageData(48, 192)),
+      );
+      const [header, ...rest] = chunks;
+      if (header === undefined) throw new Error("no header");
+      const picture = png.writeChunks([
+        header,
+        ...new Array<typeof text>(png.maxChunks - chunks.length).fill(text),
+        ...rest,
+      ]);
+      const opened = await canvas.openInk(picture);
+      if (opened.kind !== "editable") throw new Error(opened.kind);
+      try {
+        await canvas.saveInk(opened.document, opened.base, opened.carried);
+        return "saved";
+      } catch (error) {
+        return error instanceof inkFile.RecordError
+          ? error.message
+          : String(error);
+      }
+    });
+    expect(message).toContain("more than 65536 chunks");
+  });
 
   it("crops a stroke that repeats a point until its steps vanish", async function () {
     const widths = await browser.execute(async () => {

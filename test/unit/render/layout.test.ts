@@ -23,6 +23,7 @@ describe("isSymbolUrl", () => {
     expect(isSymbolUrl("app://a1b2/home/me/Vault/tower.INK.PNG", vault)).toBe(
       true,
     );
+    expect(isSymbolUrl("app://a1b2/V/a.inK.png", vault)).toBe(false);
   });
 
   it("decodes the path, and survives a stray %", () => {

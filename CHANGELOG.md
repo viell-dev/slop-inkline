@@ -149,12 +149,23 @@ holding such a stroke is no longer offered back.
   stroke lay, so that adding a mark elsewhere could redraw it pixels away. Such
   a stroke in a symbol saved earlier can look different the next time it is
   drawn.
+- A line whose far end you erased keeps its pixels when an edit moves saving's
+  crop. The line runs past the image's edge, and the browser drew its curve a
+  little differently wherever the crop put that edge, so that about half of such
+  saves changed some of its pixels
+  ([#186](https://github.com/viell-dev/slop-inkline/issues/186)).
 - A stroke that repeats a point hundreds of times keeps its end, and saving such
   a symbol no longer cuts most of it off. Inkline does not draw such a stroke,
   but another program could write one.
 - A symbol whose base layer has incomplete or wrong image data, which only a
   faulty program writes, does not open in any supported Obsidian. One version
   used to open it with the missing rows empty, and the next save kept them so.
+- A picture with so many metadata chunks that adding the strokes would take it
+  past the 65,536 Inkline reads is not saved, and stays as it was. Saving used
+  to write a symbol that then would not open.
+- A file is a symbol only if its name ends in the ASCII letters of `.ink.png`,
+  in any case. A letter that only lowercases to one of them, such as the Kelvin
+  sign, no longer counts.
 
 ## 0.9.1 - 2026-11-06
 

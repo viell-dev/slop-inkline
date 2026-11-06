@@ -70,9 +70,11 @@ must keep released files readable and looking the same, as
 - Moving a stroke by whole units moves its outline exactly, over seeded strokes
   built to turn on a tie
   ([outline.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/ink/outline.test.ts)).
-  In Obsidian, a separate mark that moves saving's crop leaves no pixel of the
-  other strokes more than 16 levels of 255 away, or 32 for an eraser stroke that
-  the image's edge cuts
+  In Obsidian, on seeded drawings, a separate mark that moves saving's crop
+  changes no pixel when the strokes keep their place on saving's canvas, as with
+  a mark to their right, or a stroke past the image's left edge such as a pen
+  line with its far end erased. Otherwise it leaves no pixel more than 16 levels
+  of 255 away. The same drawings save again unchanged
   ([format.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/format.e2e.ts)).
 - In Obsidian, saving a symbol again after reopening it gives the same bytes,
   however far the drawing sits from the origin, and the pixels the browser

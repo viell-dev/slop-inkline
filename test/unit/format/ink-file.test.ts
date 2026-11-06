@@ -12,6 +12,7 @@ import {
 } from "../../../src/format/ink-file.ts";
 import {
   PngError,
+  maxChunks,
   readChunks,
   writeChunks,
   type Chunk,
@@ -85,6 +86,14 @@ describe("isInkPath", () => {
     expect(isInkPath("a.png")).toBe(false);
     expect(isInkPath("a.ink.png.bak")).toBe(false);
     expect(isInkPath("ink.png")).toBe(false);
+  });
+
+  it("compares ASCII letters only", () => {
+    // The Kelvin sign lowercases to k, and a dotless i uppercases to I.
+    expect(isInkPath("a.in\u212A.png")).toBe(false);
+    expect(isInkPath("a.\u0131nk.png")).toBe(false);
+    expect(isInkPath("\u212A.ink.png")).toBe(true);
+    expect(isInkPath("a.ink.png\n")).toBe(false);
   });
 });
 
@@ -241,6 +250,46 @@ describe("writeInkFile", () => {
     await expect(writeInkFile(Uint8Array.of(1, 2, 3), record)).rejects.toThrow(
       PngError,
     );
+  });
+
+  describe("against the reader's chunk limit", () => {
+    const text: Chunk = {
+      type: "tEXt",
+      data: new TextEncoder().encode("Comment\0"),
+    };
+    const texts = (count: number): Chunk[] =>
+      new Array<Chunk>(count).fill(text);
+    const carried = (count: number) =>
+      texts(count).map((chunk) => ({ chunk, afterData: false }));
+    // What the image and the record leave for carried chunks.
+    const room = maxChunks - readChunks(image).length - 1;
+    const tooMany = `more than ${String(maxChunks)} chunks`;
+
+    it("writes as many chunks as it can read back", async () => {
+      const file = await writeInkFile(image, record, carried(room));
+      expect(readChunks(file)).toHaveLength(maxChunks);
+      expect(await readInkFile(file)).toEqual(asRead);
+    });
+
+    it("refuses one more among what it carries", async () => {
+      const refused = writeInkFile(image, record, carried(room + 1));
+      await expect(refused).rejects.toThrow(RecordError);
+      await expect(refused).rejects.toThrow(tooMany);
+    });
+
+    it("refuses a full file that the record would take over", async () => {
+      const full = withChunks(texts(room + 1));
+      expect(readChunks(full)).toHaveLength(maxChunks);
+      await expect(writeInkFile(full, record)).rejects.toThrow(tooMany);
+    });
+
+    it("counts a record it replaces once", async () => {
+      const full = withChunks([recordChunk(1), ...texts(room)]);
+      expect(readChunks(full)).toHaveLength(maxChunks);
+      const file = await writeInkFile(full, record);
+      expect(readChunks(file)).toHaveLength(maxChunks);
+      expect(await readInkFile(file)).toEqual(asRead);
+    });
   });
 });
 
