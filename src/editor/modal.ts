@@ -678,7 +678,7 @@ export class InkEditorModal extends Modal {
         this.#toggleFlatEnds();
       },
       "Flat ends",
-      "with the grid on, freehand ends that Shift puts on a row stop flush with it, rather than rounding past it",
+      "with the grid on, freehand ends that Shift puts on a row, coming in at 45° or steeper, stop flush with it, rather than rounding past it",
     );
     if (this.#options.copyFrom !== undefined) {
       this.#addButton(

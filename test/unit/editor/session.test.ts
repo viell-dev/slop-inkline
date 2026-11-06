@@ -347,6 +347,42 @@ describe("DrawingSession", () => {
     expect(session.document.strokes[1]?.points).toEqual([2328 + 256, 0]);
   });
 
+  it("goes by the ends on the grid's rows, however many others share a place", () => {
+    const line = (...points: number[]) => ({
+      tool: "pen" as const,
+      size: 24,
+      pressure: false,
+      points,
+    });
+    // Three freehand ends share a place 5 px into a cell, off every row, and
+    // a line put on the grid has both ends 3 px into one, on rows.
+    const row = (plainGrid.rows[3] ?? 0) * 16;
+    const other = (plainGrid.rows[5] ?? 0) * 16;
+    const freehand = line(80, 101, 80 + 256, 133, 80, 171);
+    const onGrid = line(48, row, 48 + 512, other);
+    expect(gridOriginOf({ strokes: [freehand, freehand, onGrid] })).toBe(3);
+    // Halfway between two rows, as Zoom's finer grid puts an end, counts too.
+    const half = line(48, (row + other) / 2 - 16, 48 + 512, row);
+    expect(
+      gridOriginOf({
+        strokes: [freehand, freehand, half],
+      }),
+    ).toBe(3);
+    // With no end on a row, the most shared place, as ever.
+    expect(gridOriginOf({ strokes: [freehand, freehand] })).toBe(5);
+  });
+
+  it("keeps a stroke where it was shown when Shift lifts just before the button", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.begin({ x: 16, y: 64 }, true);
+    session.extend([{ x: 47, y: 66 }], true);
+    const shown = session.activeStroke?.points.slice(-2);
+    // Let go 9 px further on, past the middle of a cell, with no move between.
+    session.end({ x: 41, y: 73 }, false);
+    expect(session.document.strokes[0]?.points.slice(-2)).toEqual(shown);
+  });
+
   it("picks the most shared place for the grid, the first of a tie", () => {
     const stroke = (...xs: number[]) => ({
       tool: "pen" as const,
@@ -1342,9 +1378,9 @@ describe("DrawingSession's ellipses", () => {
     expect(shape?.tool).toBe("eraser");
     const xs = (shape?.points ?? []).filter((_, at) => at % 2 === 0);
     const ys = (shape?.points ?? []).filter((_, at) => at % 2 === 1);
-    // From the grid point (0, 16) to (48, 80): wider or taller as dragged.
+    // From the grid point (0, 16) to (48, 64), as the last move showed it.
     expect([Math.min(...xs), Math.max(...xs)]).toEqual([0, 768]);
-    expect([Math.min(...ys), Math.max(...ys)]).toEqual([256, 1280]);
+    expect([Math.min(...ys), Math.max(...ys)]).toEqual([256, 1024]);
     expect(shape).not.toHaveProperty("cut");
     session.begin({ x: 7, y: 9 }, true);
     session.end({ x: 7, y: 9 }, true);

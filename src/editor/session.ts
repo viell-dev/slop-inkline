@@ -216,34 +216,47 @@ function withinSpacing(x: number, spacing: number): number {
  *
  * Ends that Shift put on the grid lie on its columns, and a save moves the
  * drawing by whole pixels, so a drawing made on the grid lines up with it
- * again, however a save cropped it. Freehand ends rarely share a place, so
- * two ends put on the grid outvote them; where they do share one and outnumber
- * the ends on the grid, the guess is theirs.
+ * again, however a save cropped it. They lie on its `rows` too, or halfway
+ * between two as on a finer grid, which a freehand end almost never does. So
+ * only such ends mark places, and a drawing with none has all its ends mark
+ * them: freehand ends would otherwise outvote a few on the grid by chance.
  */
 export function gridOriginOf(
   document: InkDocument,
   fallback = 0,
   columns = plainGrid.spacing,
+  rows: readonly number[] = plainGrid.rows,
 ): number {
   const spacing = Math.round(columns * unitsPerPixel);
+  const onRows = new Set(
+    rows.flatMap((row, index) => {
+      const next = rows[index + 1];
+      return next === undefined
+        ? [toUnits(row)]
+        : [toUnits(row), toUnits((row + next) / 2)];
+    }),
+  );
+  const ends: { readonly x: number; readonly y: number }[] = [];
+  for (const { points, pressure } of document.strokes) {
+    const stride = pressure ? 3 : 2;
+    const last = points.length - stride;
+    for (const at of last > 0 ? [0, last] : [0]) {
+      const x = points[at];
+      const y = points[at + 1];
+      if (x !== undefined && y !== undefined) ends.push({ x, y });
+    }
+  }
+  const placed = ends.filter(({ y }) => onRows.has(y));
   const counts = new Map<number, number>();
   let origin: number | undefined;
   let most = 0;
-  for (const { points, pressure } of document.strokes) {
-    const stride = pressure ? 3 : 2;
-    const ends =
-      points.length > stride
-        ? [points[0], points[points.length - stride]]
-        : [points[0]];
-    for (const x of ends) {
-      if (x === undefined) continue;
-      const phase = ((x % spacing) + spacing) % spacing;
-      const count = (counts.get(phase) ?? 0) + 1;
-      counts.set(phase, count);
-      if (count > most) {
-        most = count;
-        origin = phase;
-      }
+  for (const { x } of placed.length > 0 ? placed : ends) {
+    const phase = ((x % spacing) + spacing) % spacing;
+    const count = (counts.get(phase) ?? 0) + 1;
+    counts.set(phase, count);
+    if (count > most) {
+      most = count;
+      origin = phase;
     }
   }
   return origin === undefined ? fallback : origin / unitsPerPixel;
@@ -429,7 +442,13 @@ export class DrawingSession {
   #moved: InkDocument | undefined;
   /** The last guess at a document's grid, for {@link gridOrigin}. */
   #guessed:
-    { document: InkDocument; spacing: number; origin: number } | undefined;
+    | {
+        document: InkDocument;
+        spacing: number;
+        readonly rows: readonly number[];
+        origin: number;
+      }
+    | undefined;
 
   constructor(initial: InkDocument) {
     this.#history = new History({ document: initial, gridOrigin: undefined });
@@ -480,12 +499,17 @@ export class DrawingSession {
     const { document, gridOrigin } = this.#history.present;
     const period = this.#period;
     if (gridOrigin !== undefined) return withinSpacing(gridOrigin, period);
+    const { rows } = this.grid;
     const guessed = this.#guessed;
-    if (guessed?.document === document && guessed.spacing === period) {
+    if (
+      guessed?.document === document &&
+      guessed.spacing === period &&
+      guessed.rows === rows
+    ) {
       return guessed.origin;
     }
-    const origin = gridOriginOf(document, 0, period);
-    this.#guessed = { document, spacing: period, origin };
+    const origin = gridOriginOf(document, 0, period, rows);
+    this.#guessed = { document, spacing: period, rows, origin };
     return origin;
   }
 
@@ -760,8 +784,9 @@ export class DrawingSession {
    * Shift counts as held for the release if `shift` says it is down, or if it
    * was at the last press or move: with no move since, what is drawn is what
    * Shift drew, and a hand letting go of the key an instant before the button
-   * should not knock it off the grid. A move without Shift ends that, so a
-   * stroke carried on past a Shift let go ends where the pointer does.
+   * should not knock it off the grid, so it ends where it was last shown. A
+   * move without Shift ends that, so a stroke carried on past a Shift let go
+   * ends where the pointer does.
    */
   end(release?: InputPoint, shift = false): void {
     this.#shift ||= shift;
@@ -784,7 +809,8 @@ export class DrawingSession {
     // On the grid, the stroke ends at the grid point nearest the release, or
     // else the last point, recorded in the release's place.
     const onGrid = held && this.snap;
-    const end = onGrid ? (release ?? this.#last) : release;
+    const shown = onGrid && !shift ? this.#last : undefined;
+    const end = onGrid ? (shown ?? release ?? this.#last) : release;
     if (end !== undefined && this.#active !== undefined) {
       this.extend([this.#placed(end)], straight);
     }
@@ -972,7 +998,12 @@ export class DrawingSession {
    */
   replace(
     document: InkDocument,
-    gridOrigin = gridOriginOf(document, this.gridOrigin, this.#period),
+    gridOrigin = gridOriginOf(
+      document,
+      this.gridOrigin,
+      this.#period,
+      this.grid.rows,
+    ),
   ): void {
     if (this.#active !== undefined) return;
     this.#moved = undefined;
@@ -993,9 +1024,11 @@ export class DrawingSession {
     // the strokes say too, which may have no strokes to say it after this.
     const move = documentMover(dxPixels);
     const period = this.#period;
+    const { rows } = this.grid;
     this.#history.map(({ document, gridOrigin }) => ({
       document: move(document),
-      gridOrigin: (gridOrigin ?? gridOriginOf(document, 0, period)) + dxPixels,
+      gridOrigin:
+        (gridOrigin ?? gridOriginOf(document, 0, period, rows)) + dxPixels,
     }));
     this.#saved = move(this.#saved);
     const active = this.#active;
