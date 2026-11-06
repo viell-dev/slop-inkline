@@ -1,3 +1,4 @@
+import { loadavg } from "node:os";
 import { describe, expect, it } from "vitest";
 import {
   PngError,
@@ -532,7 +533,11 @@ describe("encodeRgba", () => {
     stretches.push(performance.now() - last);
     expect(stretches.length).toBeGreaterThan(1);
     // A slice is 12 ms and a batch more; a frozen encoder would take all of it.
-    expect(Math.max(...stretches)).toBeLessThan(100);
+    // The message holds what #124 asks for, should this ever fail again.
+    expect(
+      Math.max(...stretches),
+      `stretches ${stretches.map((ms) => ms.toFixed(1)).join(", ")} ms, load ${loadavg().join(", ")}`,
+    ).toBeLessThan(100);
     // The image data spans chunks of at most 64 KiB, each checksummed.
     const chunks = readChunks(bytes);
     const parts = chunks.filter((chunk) => chunk.type === "IDAT");
