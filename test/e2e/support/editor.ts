@@ -1,7 +1,7 @@
 // Steps for driving the editor in end-to-end tests.
 
 import { browser } from "@wdio/globals";
-import type { ChainablePromiseElement } from "webdriverio";
+import { Key, type ChainablePromiseElement } from "webdriverio";
 import { obsidianPage } from "wdio-obsidian-service";
 import { loadModules } from "./browser.ts";
 
@@ -164,6 +164,114 @@ export async function draw(
   for (const point of rest) action.move({ ...at(point), duration: 20 });
   action.up();
   await action.perform();
+}
+
+/** How to reach a fraction of the surface in an action with several sources. */
+async function surfaceOffsets() {
+  const { width, height } = await settledSurface();
+  const canvas = await surface().getElement();
+  return ([x, y]: readonly [number, number]) => ({
+    origin: canvas,
+    // Offsets are from the element's centre.
+    x: Math.round((x - 0.5) * width),
+    y: Math.round((y - 0.5) * height),
+  });
+}
+
+/** A point of {@link drawShifted}, and whether Shift is down at it. */
+export interface ShiftedPoint {
+  /** Fractions of the surface's width and height from its top left corner. */
+  readonly at: readonly [number, number];
+  readonly shift: boolean;
+}
+
+/**
+ * Draws with a mouse as {@link draw} does, with Shift down or up at each
+ * point: pressed at the first, moved through the rest, and let go at the last
+ * with Shift as `release` says, by default as it is there. Shift changes in a
+ * step of its own before the pointer's, so that no pointer event comes between
+ * the change and the event that reports it. It is up again afterwards.
+ */
+export async function drawShifted(
+  points: readonly ShiftedPoint[],
+  release = points.at(-1)?.shift ?? false,
+): Promise<void> {
+  const [first, ...rest] = points;
+  if (first === undefined) return;
+  const at = await surfaceOffsets();
+  const keys = browser.action("key");
+  const pointer = browser.action("pointer", {
+    parameters: { pointerType: "mouse" },
+  });
+  let held = false;
+  /** Brings Shift to `wanted`, while the pointer waits. */
+  const shift = (wanted: boolean): void => {
+    if (wanted === held) return;
+    held = wanted;
+    if (wanted) keys.down(Key.Shift);
+    else keys.up(Key.Shift);
+    pointer.pause(10);
+  };
+  /** Keeps the keys in step with the pointer's next action. */
+  const step = (): void => {
+    keys.pause(10);
+  };
+  shift(first.shift);
+  step();
+  pointer.move(at(first.at));
+  step();
+  pointer.down();
+  for (const point of rest) {
+    shift(point.shift);
+    step();
+    pointer.move({ ...at(point.at), duration: 20 });
+  }
+  shift(release);
+  step();
+  pointer.up();
+  shift(false);
+  await browser.actions([keys, pointer]);
+}
+
+/** Clicks at each point, as fractions of the surface, with Shift held. */
+export async function shiftClick(
+  ...points: readonly (readonly [number, number])[]
+): Promise<void> {
+  for (const at of points) await drawShifted([{ at, shift: true }]);
+}
+
+/**
+ * Draws through points as {@link draw} does, with Shift held from before the
+ * press until after the release, so that with the grid on the stroke starts
+ * and ends on it.
+ */
+export async function drawHoldingShift(
+  points: readonly (readonly [number, number])[],
+): Promise<void> {
+  await drawShifted(points.map((at) => ({ at, shift: true })));
+}
+
+/**
+ * Moves a mouse to a point on the surface with no button down, with Shift
+ * down or up as it says, and up again after.
+ */
+export async function hoverShifted({ at, shift }: ShiftedPoint): Promise<void> {
+  const place = await surfaceOffsets();
+  const keys = browser.action("key");
+  const pointer = browser.action("pointer", {
+    parameters: { pointerType: "mouse" },
+  });
+  if (shift) {
+    keys.down(Key.Shift);
+    pointer.pause(10);
+  }
+  keys.pause(10);
+  pointer.move({ ...place(at), duration: 20 });
+  if (shift) {
+    keys.up(Key.Shift);
+    pointer.pause(10);
+  }
+  await browser.actions([keys, pointer]);
 }
 
 /**

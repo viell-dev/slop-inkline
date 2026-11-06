@@ -9,6 +9,37 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+The file format is still a draft until 1.0.0, and it changes here: a stroke's
+`cut` is now only `"up"` or `"down"`. A symbol saved by 0.9.1 or earlier with
+**Flat ends** cut along a column no longer reads as strokes: it still shows its
+stored pixels, and the editor opens those as a picture to draw over. A draft
+holding such a stroke is no longer offered back.
+
+### Fixed
+
+- **Flat ends** only ever cuts along a row. An end running more along the row
+  than across it is no longer cut along a column, which took a corner out of it,
+  and stays round, so that a line drawn along the baseline stays whole
+  ([#168](https://github.com/viell-dev/slop-inkline/issues/168)).
+
+### Changed
+
+- The grid is now a guide, and snaps only while Shift is held, for the pen, the
+  eraser, Ellipse, and Polygon. A click between its dots stays where you
+  clicked, and a stroke's ends stay where you pressed and let go, so that you
+  can keep the grid on just to judge distances. Each thing you place goes by
+  Shift at that moment: a stroke's start at the press, its end at the release,
+  an ellipse's corners likewise, and each polygon corner at its click. With the
+  grid on, Shift on Ellipse snaps instead of making a circle; with the grid off,
+  it still makes one
+  ([#169](https://github.com/viell-dev/slop-inkline/issues/169)).
+- **Flat ends** applies to ends that Shift put on the grid. A freehand end is
+  not on a grid line, and stays round. The button is available as before
+  ([#169](https://github.com/viell-dev/slop-inkline/issues/169)).
+- On a symbol you open again, the grid lines up with the ends you put on it with
+  Shift, as freehand ends no longer lie on it
+  ([#169](https://github.com/viell-dev/slop-inkline/issues/169)).
+
 ## 0.9.1 - 2026-11-06
 
 This is the second beta of 1.0.0. It clears the work left after 0.9.0, and the

@@ -64,6 +64,12 @@ immediately. Select the name field to type a name; Enter returns to drawing.
 | Mod+Shift+Enter           | Next        | Save, insert, and start the symbol that follows.         |
 | Esc                       |             | Drop a polygon being drawn, or else close the editor.    |
 
+**Unreleased:** the grid is a guide, and Shift held while drawing snaps to it:
+at a press, a release, and each polygon corner you click. With the grid on,
+Shift with Ellipse snaps the box's corners rather than making a circle.
+[Drawing](./drawing.md#straight-lines-and-the-grid) says what Shift does at each
+moment.
+
 Closing the editor with unsaved changes asks first. While **Move** is on, the
 arrow keys move the picture, with Shift by one column of the grid, and + and −
 scale it. Otherwise, the up and down arrow keys move the drawing, and while

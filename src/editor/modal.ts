@@ -586,7 +586,7 @@ export class InkEditorModal extends Modal {
         this.#toggleEllipse();
       },
       "Ellipse",
-      "drag across a box to draw an ellipse with the pen or the eraser; hold Shift for a circle",
+      "drag across a box to draw an ellipse with the pen or the eraser; hold Shift for a circle, or with the grid on to snap to it",
     );
     this.#addButton(
       tools,
@@ -597,7 +597,7 @@ export class InkEditorModal extends Modal {
         this.#togglePolygon();
       },
       "Polygon",
-      "click each corner of a shape with straight sides; click the first corner again to close it, or the last to end it",
+      "click each corner of a shape with straight sides; click the first corner again to close it, or the last to end it; hold Shift to snap a corner to the grid",
     );
     this.#addButton(
       tools,
@@ -658,9 +658,17 @@ export class InkEditorModal extends Modal {
     this.#addButton(toolbar, "guides", "Guides", "G", () => {
       this.#toggleGuides();
     });
-    this.#addButton(toolbar, "grid", "Grid", "Shift+G", () => {
-      this.#toggleGrid();
-    });
+    this.#addButton(
+      toolbar,
+      "grid",
+      "Grid",
+      "Shift+G",
+      () => {
+        this.#toggleGrid();
+      },
+      "Grid",
+      "show a grid of dots as a guide; hold Shift while drawing to snap to it",
+    );
     this.#addButton(
       toolbar,
       "flat-ends",
@@ -670,7 +678,7 @@ export class InkEditorModal extends Modal {
         this.#toggleFlatEnds();
       },
       "Flat ends",
-      "with the grid on, freehand strokes drawn from now on stop flush with the grid line they end on, rather than rounding past it",
+      "with the grid on, freehand ends that Shift puts on a row stop flush with it, rather than rounding past it",
     );
     if (this.#options.copyFrom !== undefined) {
       this.#addButton(
@@ -1369,7 +1377,7 @@ export class InkEditorModal extends Modal {
       if (event.type === "pointercancel") this.#session.cancel();
       // A release, unlike a lost capture, says where the pointer ended.
       else if (event.type === "lostpointercapture") this.#session.end();
-      else this.#session.end(point(event));
+      else this.#session.end(point(event), event.shiftKey);
       this.#changed();
     };
     canvas.addEventListener("pointerdown", (event) => {
@@ -1384,16 +1392,17 @@ export class InkEditorModal extends Modal {
         canvas.addClass("is-dragging");
         return;
       }
-      this.#session.begin(point(event));
+      this.#session.begin(point(event), event.shiftKey);
       hover(event);
       this.#render();
     });
     canvas.addEventListener("pointermove", (event) => {
       hover(event);
       if (!this.#gate.owns(event)) {
-        // Between clicks, a polygon's next side follows the pointer.
+        // Between clicks, a polygon's next side follows the pointer, to the
+        // grid while Shift is held.
         if (this.#gate.active === undefined && this.#session.placing) {
-          this.#session.extend([point(event)]);
+          this.#session.extend([point(event)], event.shiftKey);
           this.#render();
         }
         return;
@@ -1411,7 +1420,8 @@ export class InkEditorModal extends Modal {
         typeof event.getCoalescedEvents === "function"
           ? event.getCoalescedEvents()
           : [];
-      // Shift draws a straight segment, or a circle, while it is held.
+      // Shift draws a straight segment, or a circle, while it is held, and
+      // what it places goes on the grid while that is on.
       this.#session.extend(
         (events.length > 0 ? events : [event]).map(point),
         event.shiftKey,
@@ -2130,7 +2140,7 @@ export class InkEditorModal extends Modal {
     this.#render();
   }
 
-  /** Shows the grid, and snaps strokes' ends to it, or neither. */
+  /** Shows the grid, which is a guide until Shift snaps to it, or hides it. */
   #toggleGrid(): void {
     this.#session.snap = !this.#session.snap;
     this.#updateButtons();
@@ -2384,11 +2394,11 @@ export class InkEditorModal extends Modal {
     const steps = content.createEl("ul");
     for (const text of [
       "Pen (P) adds ink; Eraser (E) removes it. Sizes S–XL (1–4) are remembered separately until you close the editor, including through Next. The circle shows the brush's diameter.",
-      "Ellipse (O) draws an ellipse with the pen or the eraser: drag across the box it fills, and hold Shift for a circle. Press it again to draw freehand. A shape drawn with the eraser is tinted until it is done.",
-      "Polygon (Y) draws a shape with straight sides and sharp corners: click each corner, then click the first corner again to close it, or the last corner, or press Enter, to leave it open. Undo takes back a corner, and Esc drops the shape.",
+      "Ellipse (O) draws an ellipse with the pen or the eraser: drag across the box it fills, and hold Shift for a circle, or with the grid on to put the box's corners on the grid. Press it again to draw freehand. A shape drawn with the eraser is tinted until it is done.",
+      "Polygon (Y) draws a shape with straight sides and sharp corners: click each corner, then click the first corner again to close it, or the last corner, or press Enter, to leave it open. With the grid on, hold Shift as you click to put that corner on the grid. Undo takes back a corner, and Esc drops the shape.",
       "Toggle fill (B) is a switch, not a tool to click a shape with: while it is on, Ellipse and a closed Polygon draw solid shapes with their edges through their corners. The pen makes a solid shape, and the eraser a hole of its shape.",
-      "Hold Shift while drawing for a straight segment. Grid (Shift+G) shows dots and snaps stroke ends to them. Its rows pass through each guide line the settings choose, and divide the space between lines evenly; the settings also set how many cells span the x-height.",
-      "Flat ends (T), with the grid on, stops freehand strokes flush with the grid line they end on, rather than rounding past it. It is off until you turn it on, and shapes are never cut.",
+      "Hold Shift while drawing for a straight segment. Grid (Shift+G) shows dots as a guide, and nothing goes to them unless you hold Shift: then each stroke end or corner you place goes to the nearest dot. Its rows pass through each guide line the settings choose, and divide the space between lines evenly; the settings also set how many cells span the x-height.",
+      "Flat ends (T), with the grid on, stops a freehand end that Shift put on a row flush with that row, rather than rounding past it, if it comes in at 45° or steeper; one running along the row stays round. It is off until you turn it on, and shapes are never cut.",
       "Undo (Mod+Z) and Redo (Mod+Shift+Z) step through changes. Clear removes the drawing and can be undone.",
       "Up and Down, or the up and down arrow keys, move the whole drawing a pixel at a time, or a grid cell's width with Shift, as to sit a shape on a line. One Undo takes back moves made in a row.",
       "Zoom (Z) shows the drawing up to twice as large in a taller view, for fine detail; the wheel or the arrow keys move along it, and Fit (F) centres it. While zoomed, the grid has twice as many cells each way, and keeps every point of the usual grid. Saved symbols stay the same size in notes.",

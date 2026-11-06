@@ -93,30 +93,44 @@ export function snapToGrid(
   };
 }
 
-/**
- * The way across a grid line that a stroke leaves through its end at
- * `points[at]`, from the point `from` it comes from: down or up across the
- * row through that end when the stroke runs at least as steeply as 45°, as an
- * A's legs reach the baseline, and else right or left across the column.
- */
-function cutAt(points: readonly number[], at: number, from: number): Cut {
-  const dx = (points[at] ?? 0) - (points[from] ?? 0);
-  const dy = (points[at + 1] ?? 0) - (points[from + 1] ?? 0);
-  if (Math.abs(dy) >= Math.abs(dx)) return dy > 0 ? "down" : "up";
-  return dx > 0 ? "right" : "left";
+/** The way a stroke runs out through one of its ends, in units. */
+interface EndRun {
+  readonly dx: number;
+  readonly dy: number;
+}
+
+/** The way from the point at `from` in `points` to the end at `at`. */
+function runTo(points: readonly number[], at: number, from: number): EndRun {
+  return {
+    dx: (points[at] ?? 0) - (points[from] ?? 0),
+    dy: (points[at + 1] ?? 0) - (points[from + 1] ?? 0),
+  };
 }
 
 /**
- * The cut for the end at `at` in `points`, stepping by `step` from it along
- * the stroke: measured from the first point at least `reach` units from it,
- * or else the farthest. Undefined if every point is the end's own.
+ * The cut for an end that runs out by `run`: down or up across the row
+ * through it when it runs at least as steeply as 45°, as an A's legs reach the
+ * baseline. An end running more along the row than across it has none, as
+ * Flat ends only ever cuts along a row: a line drawn along the baseline stays
+ * whole, with its round ends.
  */
-function endCut(
+function cutOf({ dx, dy }: EndRun): Cut | undefined {
+  if (Math.abs(dy) < Math.abs(dx)) return undefined;
+  return dy > 0 ? "down" : "up";
+}
+
+/**
+ * The way the stroke runs out through its end at `at` in `points`, stepping
+ * by `step` from it along the stroke: measured from the first point at least
+ * `reach` units from it, or else the farthest. Undefined if every point is
+ * the end's own.
+ */
+function endRun(
   points: readonly number[],
   at: number,
   step: number,
   reach: number,
-): Cut | undefined {
+): EndRun | undefined {
   const away = (index: number): number =>
     Math.hypot(
       (points[at] ?? 0) - (points[index] ?? 0),
@@ -130,22 +144,22 @@ function endCut(
     index += step
   ) {
     const distance = away(index);
-    if (distance >= reach) return cutAt(points, at, index);
+    if (distance >= reach) return runTo(points, at, index);
     if (distance > most) {
       most = distance;
       farthest = index;
     }
   }
-  return farthest === undefined ? undefined : cutAt(points, at, farthest);
+  return farthest === undefined ? undefined : runTo(points, at, farthest);
 }
 
 /**
- * Where a stroke drawn on the grid is cut flat, for its `x, y` points in
- * units: each end named in `ends`, which lies on a grid point, along the grid
- * line that crosses the stroke most squarely there, on the side away from
- * the stroke. The way the stroke runs at an end comes from the nearest point
- * at least `reach` units from it, or the farthest one; a stroke that never
- * leaves its end, as a dot, is not cut there.
+ * Where a stroke is cut flat, for its `x, y` points in units: each end named
+ * in `ends`, which lies on a grid point, along the row through it, on the side
+ * away from the stroke, if it crosses that row at 45° or steeper. The way the
+ * stroke runs at an end comes from the nearest point at least `reach` units
+ * from it, or the farthest one; a stroke that never leaves its end, as a dot,
+ * is not cut there.
  *
  * `paths` are the ways each end is measured along, if they got anywhere:
  * the stroke's own points by default; for a freehand stroke, the way the
@@ -171,12 +185,14 @@ export function gridCuts(
     return undefined;
   }
   const { start: from = points, end: to = points } = paths;
-  const start = ends.start
-    ? (endCut(from, 0, 2, reach) ?? endCut(points, 0, 2, reach))
+  const startRun = ends.start
+    ? (endRun(from, 0, 2, reach) ?? endRun(points, 0, 2, reach))
     : undefined;
-  const end = ends.end
-    ? (endCut(to, to.length - 2, -2, reach) ?? endCut(points, last, -2, reach))
+  const lastRun = ends.end
+    ? (endRun(to, to.length - 2, -2, reach) ?? endRun(points, last, -2, reach))
     : undefined;
+  const start = startRun === undefined ? undefined : cutOf(startRun);
+  const end = lastRun === undefined ? undefined : cutOf(lastRun);
   if (start === undefined && end === undefined) return undefined;
   return {
     ...(start === undefined ? {} : { start }),
@@ -198,10 +214,11 @@ function withinSpacing(x: number, spacing: number): number {
  * often, the one that reached that count first in stroke order does, so with
  * no place marked twice, it is where the first stroke starts.
  *
- * Strokes drawn on the grid start and end on its columns, and a save moves
- * the drawing by whole pixels, so a drawing made on the grid lines up with it
- * again, however a save cropped it. Where freehand ends that happen to share
- * a place outnumber the ends drawn on the grid, the guess is theirs.
+ * Ends that Shift put on the grid lie on its columns, and a save moves the
+ * drawing by whole pixels, so a drawing made on the grid lines up with it
+ * again, however a save cropped it. Freehand ends rarely share a place, so
+ * two ends put on the grid outvote them; where they do share one and outnumber
+ * the ends on the grid, the guess is theirs.
  */
 export function gridOriginOf(
   document: InkDocument,
@@ -251,9 +268,9 @@ interface ActiveStroke {
   readonly tool: Tool;
   readonly size: number;
   readonly points: number[];
-  /** Whether its ends are cut flat where they lie on the grid. */
+  /** Whether its ends are cut flat where Shift put them on the grid. */
   readonly flat: boolean;
-  /** Whether it started on the grid, and so is cut flat at its start. */
+  /** Whether Shift started it on the grid, so that its start is cut flat. */
   readonly onGrid: boolean;
   /** Whether it is a polygon, whose points are the corners placed so far. */
   readonly polygon: boolean;
@@ -355,15 +372,21 @@ export class DrawingSession {
   /** Whether the ellipse being drawn is a circle, as Shift makes it. */
   #circle = false;
   /**
+   * Whether Shift was down at the last press or move, which decides whether
+   * the point that reported goes on the grid while the grid is on. Each
+   * pointer event says for itself, so nothing can be left stuck down.
+   */
+  #shift = false;
+  /**
    * Where the pointer is for the polygon being placed, before snapping: its
-   * next corner goes there, or to the grid point nearest it.
+   * next corner goes there, or with Shift to the grid point nearest it.
    */
   #next: InputPoint | undefined;
   /** Whether the press that started the polygon being placed is still down. */
   #starting = false;
   /**
-   * Whether each corner of the polygon being placed was put on the grid, as
-   * the grid was when it was placed, for clicks on it.
+   * Whether Shift put each corner of the polygon being placed on the grid, for
+   * clicks on it.
    */
   #snaps: boolean[] = [];
   tool: Tool = "pen";
@@ -384,12 +407,16 @@ export class DrawingSession {
   set sizeIndex(index: number) {
     this.sizes[this.tool] = index;
   }
-  /** Whether strokes start and end on the grid. */
+  /**
+   * Whether the grid is on: a guide, which points go to only with Shift down.
+   * With it, Shift puts a point on the grid rather than making a circle.
+   */
   snap = false;
   /**
    * Whether strokes drawn as the pointer goes from now on stop flush with the
-   * grid line at an end on the grid, rather than rounding past it. Shapes
-   * never do: an ellipse has no ends, and a polygon keeps its square ones.
+   * row through an end that Shift put on the grid, rather than rounding past
+   * it. Shapes never do: an ellipse has no ends, and a polygon keeps its
+   * square ones.
    */
   flatEnds = false;
   #grid: Grid = plainGrid;
@@ -409,7 +436,7 @@ export class DrawingSession {
     this.#saved = initial;
   }
 
-  /** The grid strokes' ends snap to, which the editor lays out on its font. */
+  /** The grid that Shift snaps to, which the editor lays out on its font. */
   get grid(): Grid {
     return this.#grid;
   }
@@ -464,6 +491,11 @@ export class DrawingSession {
 
   #snapped(point: InputPoint): InputPoint {
     return this.snap ? snapToGrid(point, this.grid, this.gridOrigin) : point;
+  }
+
+  /** Where `point` goes: on the grid with Shift down, and else where it is. */
+  #placed(point: InputPoint): InputPoint {
+    return this.#shift ? this.#snapped(point) : point;
   }
 
   get document(): InkDocument {
@@ -545,7 +577,7 @@ export class DrawingSession {
       return this.#stroke(active, uncut);
     }
     const shown = { ...active, points: [...active.points] };
-    this.#record(shown, this.#snapped(next));
+    this.#record(shown, this.#placed(next));
     return this.#stroke(shown, uncut);
   }
 
@@ -598,49 +630,57 @@ export class DrawingSession {
 
   /**
    * Starts a stroke with the current brush, an ellipse with one corner of its
-   * box here, or a polygon with its first corner here. An ellipse is a closed
-   * loop, with no ends to cut. While a polygon is being placed, a press only
-   * moves where its next corner would go, which its release places.
+   * box here, or a polygon with its first corner here, on the grid if `shift`
+   * says Shift is down. An ellipse is a closed loop, with no ends to cut. While
+   * a polygon is being placed, a press only moves where its next corner would
+   * go, which its release places.
    */
-  begin(point: InputPoint): void {
+  begin(point: InputPoint, shift = false): void {
     if (this.#active?.polygon === true) {
       this.#next = point;
+      this.#shift = shift;
       return;
     }
     const ellipse = this.shape === "ellipse";
     const polygon = this.shape === "polygon";
     const flat = this.flatEnds && this.shape === "free";
+    const onGrid = this.snap && shift;
+    this.#shift = shift;
+    const start = this.#placed(point);
     this.#active = {
       tool: this.tool,
       size: this.size,
       points: [],
       flat,
-      onGrid: this.snap && flat,
+      onGrid: onGrid && flat,
       polygon,
     };
     this.#last = undefined;
     this.#anchor = undefined;
-    this.#corner = ellipse ? this.#snapped(point) : undefined;
+    this.#corner = ellipse ? start : undefined;
     this.#circle = false;
     this.#starting = polygon;
-    this.#snaps = polygon ? [this.snap] : [];
-    this.extend([this.#snapped(point)]);
+    this.#snaps = polygon ? [onGrid] : [];
+    this.extend([start]);
+    this.#shift = shift;
     // After the grid point the stroke starts on, which the pointer never was.
     this.#pointer = [toUnits(point.x), toUnits(point.y)];
     this.#pointerStraight = false;
     this.#straightStart = false;
-    if (polygon) this.#record(this.#active, this.#snapped(point));
+    if (polygon) this.#record(this.#active, start);
   }
 
   /**
    * Adds points to the stroke being drawn, filling gaps longer than
-   * {@link maxGap} and skipping exact repeats. While `straight`, as with
-   * Shift held, the stroke runs straight from where it was when that began
-   * to the latest point, which snaps to the grid when the grid is on.
+   * {@link maxGap} and skipping exact repeats. While `shift` says Shift is
+   * down, the stroke runs straight from where it was when that began to the
+   * latest point, which snaps to the grid when the grid is on; what it drew
+   * before stays as it is, and so does the segment once Shift is up.
    */
-  extend(points: readonly InputPoint[], straight = false): void {
+  extend(points: readonly InputPoint[], shift = false): void {
     const active = this.#active;
     if (active === undefined) return;
+    this.#shift = shift;
     if (active.polygon) {
       const latest = points.at(-1);
       if (latest !== undefined) this.#next = latest;
@@ -648,16 +688,16 @@ export class DrawingSession {
     }
     const corner = this.#corner;
     if (corner !== undefined) {
-      // An ellipse is drawn again across its box for its latest corner, a
-      // circle while `straight`, with the corner on the grid when it is on.
+      // An ellipse is drawn again across its box for its latest corner. Shift
+      // puts that corner on the grid, or with the grid off makes a circle.
       const latest = points.at(-1);
       if (latest === undefined) return;
-      this.#circle = straight;
+      this.#circle = shift && !this.snap;
       active.points.length = 0;
       for (const point of ellipsePoints(
         corner,
-        this.#snapped(latest),
-        straight,
+        this.#placed(latest),
+        this.#circle,
       )) {
         this.#record(active, point);
       }
@@ -665,7 +705,7 @@ export class DrawingSession {
       return;
     }
     for (const point of points) {
-      if (!straight) {
+      if (!shift) {
         this.#anchor = undefined;
         this.#pointer.push(toUnits(point.x), toUnits(point.y));
         this.#pointerStraight = false;
@@ -716,8 +756,16 @@ export class DrawingSession {
    * being placed takes a release as a corner, and commits only when that
    * closes or ends it; without a release, it commits with the corners it
    * has, as when saving.
+   *
+   * Shift counts as held for the release if `shift` says it is down, or if it
+   * was at the last press or move: with no move since, what is drawn is what
+   * Shift drew, and a hand letting go of the key an instant before the button
+   * should not knock it off the grid. A move without Shift ends that, so a
+   * stroke carried on past a Shift let go ends where the pointer does.
    */
-  end(release?: InputPoint): void {
+  end(release?: InputPoint, shift = false): void {
+    this.#shift ||= shift;
+    const held = this.#shift;
     const placed = this.#active;
     if (placed?.polygon === true) {
       if (release === undefined) this.#commit(placed);
@@ -733,11 +781,12 @@ export class DrawingSession {
       start: this.#straightStart ? undefined : pointer,
       end: straight ? undefined : pointer,
     };
-    // With the grid, the stroke ends on it, at the grid point nearest the
-    // release, or else the last point, recorded in the release's place.
-    const end = this.snap ? (release ?? this.#last) : release;
+    // On the grid, the stroke ends at the grid point nearest the release, or
+    // else the last point, recorded in the release's place.
+    const onGrid = held && this.snap;
+    const end = onGrid ? (release ?? this.#last) : release;
     if (end !== undefined && this.#active !== undefined) {
-      this.extend([this.#snapped(end)], straight);
+      this.extend([this.#placed(end)], straight);
     }
     const active = this.#active;
     const stroke =
@@ -745,7 +794,7 @@ export class DrawingSession {
         ? undefined
         : this.#stroke(
             active,
-            { start: active.onGrid, end: this.snap && active.flat },
+            { start: active.onGrid, end: onGrid && active.flat },
             ellipse && this.fill,
             path,
           );
@@ -783,8 +832,10 @@ export class DrawingSession {
       if (!starting) this.#commit(active);
       return;
     }
-    this.#record(active, this.#snapped(release));
-    if (active.points.length > count) this.#snaps.push(this.snap);
+    this.#record(active, this.#placed(release));
+    if (active.points.length > count) {
+      this.#snaps.push(this.#shift && this.snap);
+    }
   }
 
   /**
@@ -797,14 +848,15 @@ export class DrawingSession {
 
   /**
    * Whether `pointer` is on a polygon's corner whose `x` is at `index` in its
-   * points: snapping to that point, for a corner on the grid while the grid
-   * is on, or else within the brush's radius of it.
+   * points: snapping to that point, with Shift down, for a corner that Shift
+   * put on the grid while the grid is on, or else within the brush's radius of
+   * it.
    */
   #near(active: ActiveStroke, pointer: InputPoint, index: number): boolean {
     const x = active.points[index];
     const y = active.points[index + 1];
     if (x === undefined || y === undefined) return false;
-    if (this.snap && this.#snaps[index / 2] === true) {
+    if (this.#shift && this.snap && this.#snaps[index / 2] === true) {
       const at = this.#snapped(pointer);
       return toUnits(at.x) === x && toUnits(at.y) === y;
     }

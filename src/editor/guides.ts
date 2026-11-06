@@ -68,7 +68,7 @@ export function fontGuides(metrics: FontMetrics): Guide[] {
   );
 }
 
-/** The grid that strokes' ends snap to, in document pixels. */
+/** The grid that Shift snaps to, in document pixels. */
 export interface Grid {
   /**
    * How far apart its columns are, a whole number of units so that ends

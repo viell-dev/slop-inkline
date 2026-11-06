@@ -18,6 +18,7 @@ import {
 } from "../../../src/format/png.ts";
 import {
   limits,
+  recordValue,
   serializeRecord,
   type InkRecord,
 } from "../../../src/format/record.ts";
@@ -174,6 +175,32 @@ describe("readInkFile", () => {
       kind: "pixels",
       reason: "invalid",
       detail: "version is not an integer from 1 to 9007199254740991",
+    });
+  });
+
+  it("reports a stroke cut along a column, as Inkline no longer writes", async () => {
+    const value = recordValue(record);
+    const file = withChunks([
+      await textChunk(
+        "inkline",
+        JSON.stringify({
+          ...value,
+          strokes: [
+            {
+              tool: "pen",
+              size: 32,
+              pressure: false,
+              points: [0, 0, 64, 0],
+              cut: { end: "right" },
+            },
+          ],
+        }),
+      ),
+    ]);
+    expect(await readInkFile(file)).toMatchObject({
+      kind: "pixels",
+      reason: "invalid",
+      detail: 'strokes[0].cut.end is not "up" or "down"',
     });
   });
 

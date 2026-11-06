@@ -398,7 +398,7 @@ describe("polygon strokes", () => {
       [0, 20],
       [20, 20],
     ];
-    const cut = polygon(corners, 2, { start: "up", end: "right" });
+    const cut = polygon(corners, 2, { start: "up", end: "down" });
     expect(cutBoxes(cut)).toEqual([]);
     expect(strokeShape(cut)).toEqual(strokeShape(polygon(corners, 2)));
   });
@@ -561,17 +561,17 @@ describe("traceShape", () => {
 
 describe("cutBoxes", () => {
   it("takes a box past the line through each cut end, a brush and a pixel deep", () => {
-    // Right along a 2 px brush from (1, 1) to (5, 1) px, with pressure.
+    // Down a 2 px brush from (1, 1) to (1, 5) px, with pressure.
     const stroke: Stroke = {
       tool: "pen",
       size: 32,
       pressure: true,
-      points: [16, 16, 128, 80, 16, 255],
-      cut: { start: "left", end: "right" },
+      points: [16, 16, 128, 16, 80, 255],
+      cut: { start: "up", end: "down" },
     };
     expect(cutBoxes(stroke)).toEqual([
-      { left: -2, right: 1, top: -2, bottom: 4 },
-      { left: 5, right: 8, top: -2, bottom: 4 },
+      { left: -2, right: 4, top: -2, bottom: 1 },
+      { left: -2, right: 4, top: 5, bottom: 8 },
     ]);
   });
 
