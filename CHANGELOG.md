@@ -16,6 +16,43 @@ even one a public release; earlier pre-releases carry a suffix such as
   now describes BRAT as an optional way to install and update Inkline. The
   manual ZIP stays the main route, and nothing needs BRAT. It installs from the
   same GitHub releases, and its **latest** choice follows pre-releases too.
+- Right-clicking a symbol now offers **Edit symbol** in the menus that had none:
+  Obsidian's menus for a callout or a table in Live Preview, and the canvas's
+  menus for a text card, a note, or several selected cards. Each menu keeps its
+  own items. A focused card keeps showing the symbol's menu on the symbol, with
+  the card's beside it
+  ([#40](https://github.com/viell-dev/slop-inkline/issues/40)).
+
+### Fixed
+
+- The command **Inkline: Edit symbol** works in a canvas text card's own editor,
+  where it was not offered
+  ([#40](https://github.com/viell-dev/slop-inkline/issues/40)).
+- A symbol added in a canvas text card's own editor shows as a character at
+  once, rather than as a large picture until the editor was opened again, and
+  that editor follows the symbol size and colour settings
+  ([#40](https://github.com/viell-dev/slop-inkline/issues/40)).
+
+### Changed
+
+- The editor keeps up with very long drawings. It adds a pen stroke to what it
+  has already measured and drawn rather than starting over, and an eraser stroke
+  to what it has drawn: on a drawing of 1,000 dots, the pause after a pen stroke
+  falls from about 130 ms to about 10 ms, and after an eraser stroke, or a pen
+  stroke past the left end of the image, to about half. Drawing past the end of
+  the image no longer draws the preview again each frame, which took over 30 ms
+  a frame. Undo and moving the drawing still take as long as before
+  ([#115](https://github.com/viell-dev/slop-inkline/issues/115)).
+
+### Changed
+
+- A pre-release's version no longer reaches the repository's `manifest.json`, so
+  that it can never be offered to everyone once Inkline is in Obsidian's
+  community directory. Each release's own `manifest.json` and install ZIP still
+  name its version, and installing by hand or with BRAT works as before. See
+  [the release guide](https://github.com/viell-dev/slop-inkline/blob/main/RELEASING.md#where-a-version-is-recorded).
+- A release is refused unless its version is higher than every published one,
+  both in SemVer's order and in the number-only order Obsidian uses.
 
 ### Fixed
 

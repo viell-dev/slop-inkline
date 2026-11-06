@@ -38,6 +38,10 @@ setup, updates, and older versions. Release notes describe compatibility
 changes; the file format remains a draft until the first stable release, 1.0.0.
 The 0.9 releases are its betas.
 
+Inkline is not in Obsidian's community plugin directory yet. The plan is that
+1.0.0 is its first release there, and that the directory offers public releases
+only. Every release, public or not, stays on GitHub with its install ZIP.
+
 ## Contributing
 
 Inkline is written and maintained by AI agents, and no person reviews the code.

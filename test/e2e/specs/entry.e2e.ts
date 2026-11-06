@@ -3,6 +3,12 @@ import { obsidianPage } from "wdio-obsidian-service";
 import { encodePng } from "../../support/png.ts";
 import { toBase64 } from "../support/browser.ts";
 import { draw, openAtMarker, waitForEditor } from "../support/editor.ts";
+import {
+  choose,
+  closeEditor,
+  editorName,
+  menuItems,
+} from "../support/menus.ts";
 
 /** Opens `path` in the active leaf, in Live Preview, source, or Reading view. */
 async function open(
@@ -46,15 +52,6 @@ async function rightClickSymbol(
   );
   await browser.pause(500);
   await image.click({ button: "right" });
-}
-
-/** The titles of the menu that is open, top first. */
-async function menuItems(): Promise<string[]> {
-  return browser.execute(() =>
-    Array.from(document.querySelectorAll(".menu .menu-item-title")).map(
-      (item) => item.textContent,
-    ),
-  );
 }
 
 /**
@@ -165,90 +162,6 @@ async function viewerOpen(): Promise<boolean> {
   return browser.execute(() => document.querySelector(".lightbox") !== null);
 }
 
-/** Chooses the open menu's item `title`. */
-async function choose(title: string): Promise<void> {
-  const chosen = await browser.execute((wanted) => {
-    const item = Array.from(
-      document.querySelectorAll(".menu .menu-item-title"),
-    ).find((found) => found.textContent === wanted);
-    const button = item?.closest(".menu-item");
-    if (!button?.instanceOf(HTMLElement)) return false;
-    button.click();
-    return true;
-  }, title);
-  if (!chosen) throw new Error(`no menu item "${title}"`);
-}
-
-/** The name of the symbol the open editor edits, from its title. */
-async function editorName(): Promise<string> {
-  await waitForEditor();
-  return browser.execute(() => {
-    const title = document.querySelector(".inkline-editor .modal-title");
-    const field = title?.querySelector("input");
-    return field?.value ?? title?.textContent ?? "";
-  });
-}
-
-/**
- * Where the focus is, what menus and modals are open, and where the last
- * Escape key went and whether anything handled it, as JSON. Watching for
- * Escape starts with the first call. #78 asks for this if the editor ever
- * stays open after Escape again.
- */
-async function escapeState(): Promise<string> {
-  return browser.execute(() => {
-    const root = document.documentElement;
-    const describe = (target: EventTarget | null): string => {
-      if (!(target instanceof Element)) {
-        return target === null ? "none" : target.constructor.name;
-      }
-      const classes = Array.from(target.classList).join(".");
-      return `${target.tagName.toLowerCase()}${classes === "" ? "" : `.${classes}`}`;
-    };
-    if (!root.hasAttribute("data-inkline-escape-watch")) {
-      root.setAttribute("data-inkline-escape-watch", "");
-      window.addEventListener(
-        "keydown",
-        (event) => {
-          if (event.key !== "Escape") return;
-          const target = describe(event.target);
-          // After every handler has had the event.
-          window.setTimeout(() => {
-            root.setAttribute(
-              "data-inkline-last-escape",
-              JSON.stringify({ target, handled: event.defaultPrevented }),
-            );
-          }, 0);
-        },
-        { capture: true },
-      );
-    }
-    return JSON.stringify({
-      focus: describe(document.activeElement),
-      windowFocused: document.hasFocus(),
-      menus: document.querySelectorAll(".menu").length,
-      modals: Array.from(document.querySelectorAll(".modal-container")).map(
-        (container) => describe(container.querySelector(".modal")),
-      ),
-      lastEscape: root.getAttribute("data-inkline-last-escape"),
-    });
-  });
-}
-
-/** Closes the open editor, which has no changes. */
-async function closeEditor(): Promise<void> {
-  const before = await escapeState();
-  await browser.keys(["Escape"]);
-  try {
-    await browser.$(".inkline-editor").waitForExist({ reverse: true });
-  } catch (error) {
-    throw new Error(
-      `the editor stayed open after Escape (#78): before ${before}, after ${await escapeState()}`,
-      { cause: error },
-    );
-  }
-}
-
 describe("Editing a symbol from a note", function () {
   // A menu, editor, or image viewer a test leaves open would take the next
   // one's clicks.
@@ -306,8 +219,11 @@ describe("Editing a symbol from a note", function () {
     await browser.waitUntil(async () =>
       (await menuItems()).includes("Edit symbol"),
     );
-    // Obsidian's menu, which Inkline neither replaces nor builds one under.
-    expect(await menuItems()).toContain("Copy image");
+    // Obsidian's menu, which Inkline neither replaces nor builds one under,
+    // and which holds the item once though it could take another.
+    const items = await menuItems();
+    expect(items).toContain("Copy image");
+    expect(items.filter((item) => item === "Edit symbol")).toHaveLength(1);
     expect(await menuSources()).toEqual(["link-context-menu"]);
     await choose("Edit symbol");
     expect(await editorName()).toBe("001");

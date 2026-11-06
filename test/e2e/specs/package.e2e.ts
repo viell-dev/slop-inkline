@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { browser, expect } from "@wdio/globals";
+import packageJson from "../../../package.json" with { type: "json" };
 import {
   draw,
   noteText,
@@ -89,6 +90,8 @@ describe("The installed plugin", function () {
         ? Reflect.get(manifest, "version")
         : undefined,
     );
+    // Not the repository's manifest.json, which a pre-release never reaches.
+    expect(loaded.version).toBe(packageJson.version);
     expect([...loaded.ids].sort()).toEqual([
       "inkline:edit-symbol-at-cursor",
       "inkline:insert-existing-symbol",

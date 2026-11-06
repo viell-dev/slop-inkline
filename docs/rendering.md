@@ -19,6 +19,11 @@ images as Obsidian adds them or changes their address or size. Closing a window
 stops its observer and removes its display settings. Disabling Inkline removes
 every tag, and symbols show as the plain images they are.
 
+**Unreleased:** Inkline also watches a document in a frame from when the frame
+takes the focus, as a canvas text card's own editor does as it opens. So a
+card's editor already open as Inkline starts shows plain images until it takes
+the focus again. Frames from another origin stay out of its reach.
+
 When a symbol file changes, Inkline refreshes its tagged images in every watched
 document. The image source and mask use a fresh resource URL, including a cache
 key so that consecutive saves with the same file timestamp still reload. Note
