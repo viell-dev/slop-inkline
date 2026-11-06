@@ -6,10 +6,12 @@ import { defaultSettings, type Settings } from "../../../src/settings.ts";
 import { loadModules } from "../support/browser.ts";
 import {
   draw,
+  drawHoldingShift,
   editorGrid,
   openAtMarker,
   recordOf,
   settledSurface,
+  shiftClick,
   startOver,
   storedDrafts,
   symbolFiles,
@@ -171,10 +173,13 @@ function steps(values: readonly number[]): number[] {
   return values.slice(1).map((value, index) => value - (values[index] ?? 0));
 }
 
-/** Taps at a fraction of the drawing area, and returns where the dot went. */
+/**
+ * Taps with Shift at a fraction of the drawing area, and returns where the
+ * dot went.
+ */
 async function tap(x: number, y: number): Promise<{ x: number; y: number }> {
   const before = (await storedDrafts())[0]?.strokes.length ?? 0;
-  await draw([[x, y]]);
+  await shiftClick([x, y]);
   await browser.waitUntil(
     async () => ((await storedDrafts())[0]?.strokes.length ?? 0) > before,
   );
@@ -271,9 +276,9 @@ describe("Grid", function () {
     }
   });
 
-  it("snaps strokes' ends to the dots it shows, with the guides hidden or shown", async function () {
+  it("snaps strokes' ends with Shift to the dots it shows, with the guides hidden or shown", async function () {
     const shown = await openWithGrid();
-    await draw([
+    await drawHoldingShift([
       [0.31, 0.27],
       [0.52, 0.41],
       [0.69, 0.73],
@@ -294,7 +299,7 @@ describe("Grid", function () {
     }
     // Showing the guides leaves the grid where it was.
     await browser.keys("g");
-    await draw([[0.31, 0.27]]);
+    await shiftClick([0.31, 0.27]);
     await browser.waitUntil(
       async () => (await storedDrafts())[0]?.strokes.length === 2,
     );
@@ -308,20 +313,14 @@ describe("Grid", function () {
     const xHeight = usual.lines["x-height"] ?? 0;
     expect(rowsBetween(usual.rows, lineBox.baseline, xHeight)).toBe(4);
 
-    // A save moves the drawing, and with it the columns, here to 8 pixels or
-    // so past one, where this stroke's flat start crops to: at least half a
-    // spacing in any text font, where strokes drawn in Zoom could take them
-    // back by the finer spacing, half a cell. Its start is flat with Flat
-    // ends on.
-    await browser.keys("t");
-    await browser.waitUntil(
-      async () =>
-        (await browser
-          .$('[data-inkline-button="flat-ends"]')
-          .getAttribute("aria-pressed")) === "true",
-    );
+    // A save moves the drawing, and with it the columns, here to 9 pixels or
+    // so past one, as this freehand stroke's round start, 6 pixels wide, lies
+    // a pixel to the left of a column: at least half a spacing in any text
+    // font, where strokes drawn in Zoom could take them back by the finer
+    // spacing, half a cell.
+    const edge = Math.round((0.45 * usual.across) / spacing) * spacing;
     await draw([
-      [0.45, 0.5],
+      [(edge + 5) / usual.across, 0.5],
       [0.55, 0.5],
     ]);
     await browser.waitUntil(async () => (await storedDrafts()).length === 1);
@@ -361,7 +360,7 @@ describe("Grid", function () {
       Math.round((0.35 * zoomed.across) / spacing) * spacing +
       spacing / 2;
     const fineY = ((rows[row] ?? 0) + (rows[row + 1] ?? 0)) / 2;
-    await draw([[0.2, 0.3], fractions(zoomed, left, fineX, fineY)]);
+    await drawHoldingShift([[0.2, 0.3], fractions(zoomed, left, fineX, fineY)]);
     await browser.waitUntil(
       async () => (await storedDrafts())[0]?.strokes.length === 2,
     );
@@ -405,7 +404,7 @@ describe("Grid", function () {
     const { spacing, rows } = await editorGrid();
     const xHeight = usual.lines["x-height"] ?? 0;
     await browser.keys("y");
-    await draw([[0.4, 0.3]]);
+    await shiftClick([0.4, 0.3]);
     const held = await zoom("Zoomed in");
     expect(rowsBetween(held.rows, lineBox.baseline, xHeight)).toBe(4);
     // A click where the finer grid would have a point of its own.
@@ -414,7 +413,7 @@ describe("Grid", function () {
     const x =
       (Math.round((left + 0.6 * held.across) / spacing) + 0.5) * spacing;
     const y = ((rows[row] ?? 0) + (rows[row + 1] ?? 0)) / 2;
-    await draw([fractions(held, left, x, y)]);
+    await shiftClick(fractions(held, left, x, y));
     await browser.keys("Enter");
     await browser.waitUntil(
       async () => (await storedDrafts())[0]?.strokes.length === 1,

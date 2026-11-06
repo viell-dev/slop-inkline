@@ -335,7 +335,8 @@ export async function runSequence(
     brush("free");
     const straight = chance(0.2);
     let at = place();
-    session.begin(at);
+    // With the grid on, Shift places the ends, as the grid only snaps to it.
+    session.begin(at, session.snap);
     const moves = whole(0, 24);
     for (let move = 0; move < moves; move++) {
       at = { x: at.x + between(-16, 24), y: at.y + between(-12, 12) };
@@ -343,7 +344,7 @@ export async function runSequence(
       if (chance(0.15)) await frame();
     }
     if (chance(0.1)) session.cancel();
-    else session.end(at);
+    else session.end(at, session.snap);
   };
 
   /** A straight stroke right across, wider than a tile on a wide drawing. */
@@ -351,7 +352,7 @@ export async function runSequence(
     brush("free");
     if (tool !== undefined) session.tool = tool;
     const y = between(0, lineBox.height);
-    session.begin({ x: 0, y });
+    session.begin({ x: 0, y }, session.snap);
     session.extend([{ x: reach, y: between(0, lineBox.height) }], true);
     session.end();
   };
@@ -363,8 +364,8 @@ export async function runSequence(
     brush("free");
     session.tool = "pen";
     const at = { x: right - between(500, 4100), y: between(40, 150) };
-    session.begin(at);
-    session.end(at);
+    session.begin(at, session.snap);
+    session.end(at, session.snap);
   };
 
   /** A pen stroke across the edge between a full measurement's first tiles. */
@@ -377,43 +378,43 @@ export async function runSequence(
       x: origin + tileWidth - between(0, 40),
       y: between(20, lineBox.height - 20),
     };
-    session.begin(at);
+    session.begin(at, session.snap);
     const moves = whole(1, 12);
     for (let move = 0; move < moves; move++) {
       at = { x: at.x + between(0, 12), y: at.y + between(-8, 8) };
       session.extend([at]);
     }
-    session.end(at);
+    session.end(at, session.snap);
   };
 
   const ellipse = async (): Promise<void> => {
     brush("ellipse");
     const from = place();
     const to = { x: from.x + between(-120, 120), y: from.y + between(-90, 90) };
-    session.begin(from);
+    session.begin(from, session.snap);
     session.extend([to], chance(0.3));
     if (chance(0.3)) await frame();
-    session.end(to);
+    session.end(to, session.snap);
   };
 
   const polygon = async (): Promise<void> => {
     brush("polygon");
     const first = place();
-    session.begin(first);
-    session.end(first);
+    session.begin(first, session.snap);
+    session.end(first, session.snap);
     let at = first;
     const corners = whole(2, 5);
     for (let corner = 0; corner < corners && session.placing; corner++) {
       at = { x: at.x + between(-80, 80), y: at.y + between(-60, 60) };
-      session.begin(at);
-      session.end(at);
+      session.begin(at, session.snap);
+      session.end(at, session.snap);
       if (chance(0.3)) await frame();
     }
     // Closed on its first corner, ended on its last, or just left there.
     const end = chance(0.5) ? first : at;
     if (session.placing) {
-      session.begin(end);
-      session.end(end);
+      session.begin(end, session.snap);
+      session.end(end, session.snap);
     }
     if (session.placing) session.end();
   };

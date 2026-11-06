@@ -5,6 +5,7 @@ import {
   openAtMarker,
   recordOf,
   settledSurface,
+  shiftClick,
   startOver,
   storedDrafts,
   surface,
@@ -165,10 +166,10 @@ describe("Polygon", function () {
 
   it("closes a rectangle on its first corner, with sharp corners in the saved image", async function () {
     await openPolygon(true);
-    await click([0.35, 0.3], [0.65, 0.3], [0.65, 0.7], [0.35, 0.7]);
+    await shiftClick([0.35, 0.3], [0.65, 0.3], [0.65, 0.7], [0.35, 0.7]);
     // Nothing is committed until the shape is closed or ended.
     expect((await storedDrafts())[0]?.strokes ?? []).toEqual([]);
-    await click([0.35, 0.3]);
+    await shiftClick([0.35, 0.3]);
     await saveScreenshot("polygon", browser.$(".inkline-editor"));
     const [rectangle] = await draftStrokes(1);
     expect(rectangle?.kind).toBe("polygon");
@@ -256,7 +257,7 @@ describe("Polygon", function () {
     await openPolygon(true);
     // Up from one point and down to another, as the legs of an A, ended on
     // the last corner.
-    await click([0.4, 0.75], [0.5, 0.25], [0.6, 0.75], [0.6, 0.75]);
+    await shiftClick([0.4, 0.75], [0.5, 0.25], [0.6, 0.75], [0.6, 0.75]);
     const [legs] = await draftStrokes(1);
     expect(legs?.kind).toBe("polygon");
     expect(legs?.points).toHaveLength(6);
@@ -302,7 +303,7 @@ describe("Polygon", function () {
         return Array.from({ length: 128 }, (_, x) => data[x * 4 + 3] ?? 0);
       };
       return {
-        cut: row({ ...stroke, cut: { start: "right", end: "down" } } as never),
+        cut: row({ ...stroke, cut: { start: "down", end: "down" } } as never),
         uncut: row(stroke),
         from: Math.round((start - 3 * cell) / 16),
         to: Math.round(start / 16),

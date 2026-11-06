@@ -572,16 +572,16 @@ describe("traceShape", () => {
 
 describe("cutBoxes", () => {
   it("takes a box past the line through each cut end, a brush and a pixel deep", () => {
-    // Right along a 2 px brush from (1, 1) to (5, 1) px.
+    // Down a 2 px brush from (1, 1) to (1, 5) px.
     const stroke: Stroke = {
       tool: "pen",
       size: 32,
-      points: [16, 16, 80, 16],
-      cut: { start: "left", end: "right" },
+      points: [16, 16, 16, 80],
+      cut: { start: "up", end: "down" },
     };
     expect(cutBoxes(stroke)).toEqual([
-      { left: -2, right: 1, top: -2, bottom: 4 },
-      { left: 5, right: 8, top: -2, bottom: 4 },
+      { left: -2, right: 4, top: -2, bottom: 1 },
+      { left: -2, right: 4, top: 5, bottom: 8 },
     ]);
   });
 

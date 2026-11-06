@@ -114,7 +114,7 @@ export const straddling: readonly {
         15664, 2777, 15690, 2767, 15715, 2757, 15741, 2747, 15716, 2761, 15691,
         2775, 15666, 2789, 15641, 2802, 15616, 2816,
       ],
-      cut: { start: "left", end: "right" },
+      cut: { start: "up", end: "down" },
     },
   },
   {
@@ -150,7 +150,7 @@ export const straddling: readonly {
         42294, 1956, 42321, 1971, 42301, 1990, 42281, 2009, 42260, 2029, 42240,
         2048,
       ],
-      cut: { start: "right", end: "right" },
+      cut: { start: "down", end: "up" },
     },
   },
   {

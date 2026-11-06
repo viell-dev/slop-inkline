@@ -26,26 +26,45 @@ even one a public release; earlier pre-releases carry a suffix such as
   from** starts a new symbol from what it shows.
 - A symbol's image is 192 pixels high and at most 4096 wide, down from 8192, and
   a record holds no other geometry. Strokes record no pressure. A fill has no
-  brush size, and only a smooth stroke's ends can be cut.
+  brush size, and only a smooth stroke's ends can be cut, `"up"` or `"down"`.
 - A single click draws a round dot exactly as wide as the brush, centred on the
   click, rather than a short stroke a little wider, running down and right.
 - Every pixel of a symbol's image holds the same grey, however transparent, so
   that a viewer that scales the image shows no dark fringe.
 - How a stroke's outline is drawn is now specified in full and kept in Inkline's
   own source, so that it no longer depends on the perfect-freehand package.
+- The grid is now a guide, and snaps only while Shift is held, for the pen, the
+  eraser, Ellipse, and Polygon. A click between its dots stays where you
+  clicked, and a stroke's ends stay where you pressed and let go, so that you
+  can keep the grid on just to judge distances. Each thing you place goes by
+  Shift at that moment: a stroke's start at the press, its end at the release,
+  an ellipse's corners likewise, and each polygon corner at its click. With the
+  grid on, Shift on Ellipse snaps instead of making a circle; with the grid off,
+  it still makes one
+  ([#169](https://github.com/viell-dev/slop-inkline/issues/169)).
+- **Flat ends** applies to ends that Shift put on the grid. A freehand end is
+  not on a grid line, and stays round. The button is available as before
+  ([#169](https://github.com/viell-dev/slop-inkline/issues/169)).
+- On a symbol you open again, the grid lines up with the ends you put on it with
+  Shift, as freehand ends no longer lie on it
+  ([#169](https://github.com/viell-dev/slop-inkline/issues/169)).
+- Names now line up across rows in the `;;` list, **Inkline: Insert existing
+  symbol**, **Copy from**, and the symbol library, as each picture has a column
+  of its own. A symbol wider than the column shows whole, at a smaller size
+  ([#171](https://github.com/viell-dev/slop-inkline/issues/171)).
 
 ### Fixed
 
+- **Flat ends** only ever cuts along a row. An end running more along the row
+  than across it is no longer cut along a column, which took a corner out of it,
+  and stays round, so that a line drawn along the baseline stays whole
+  ([#168](https://github.com/viell-dev/slop-inkline/issues/168)).
 - A flat-ended stroke whose only ink in the line came from the part drawn again
   at its cut end was left out when saving, which could save a blank symbol.
 - A picture with an orientation in its metadata is no longer turned on opening,
   and turned again in notes. Saving a symbol drops that metadata.
 - A file with a damaged chunk that the image does not depend on opens as it
   shows, and one with a critical chunk that PNG does not define does not open.
-- Names now line up across rows in the `;;` list, **Inkline: Insert existing
-  symbol**, **Copy from**, and the symbol library, as each picture has a column
-  of its own. A symbol wider than the column shows whole, at a smaller size
-  ([#171](https://github.com/viell-dev/slop-inkline/issues/171)).
 
 ## 0.9.1 - 2026-11-06
 

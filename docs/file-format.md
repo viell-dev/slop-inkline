@@ -155,9 +155,9 @@ else it holds:
 | `"fill"`    | The area inside its points | None     | None     | 3 or more |
 
 `size` is the stroke's width, in units. `cut` is an object with `start` or `end`
-or both, for the stroke's first and last point, each `"up"`, `"down"`, `"left"`,
-or `"right"`: the way from that point across a line through it, past which the
-end's ink is cut away, as [Cut ends](#cut-ends) describes.
+or both, for the stroke's first and last point, each `"up"` or `"down"`: the way
+from that point across the horizontal line through it, past which the end's ink
+is cut away, as [Cut ends](#cut-ends) describes.
 
 The base layer is an object:
 
@@ -302,16 +302,15 @@ Steve Ruiz, under the MIT licence.
 
 ### Cut ends
 
-A stroke's `cut` makes its ends flat, for strokes that stop on a line. Each cut
-end takes away what lies past the line through it, in a box. For an end at (`X`,
-`Y`) pixels, with `r = size / 16 + 1` pixels, the box spans:
+A stroke's `cut` makes its ends flat, for strokes that stop on a horizontal
+line, such as the baseline. Each cut end takes away what lies past the
+horizontal line through it, in a box. For an end at (`X`, `Y`) pixels, with
+`r = size / 16 + 1` pixels, the box spans:
 
-| Cut       | Across             | Down               |
-| --------- | ------------------ | ------------------ |
-| `"down"`  | `X - r` to `X + r` | `Y` to `Y + r`     |
-| `"up"`    | `X - r` to `X + r` | `Y - r` to `Y`     |
-| `"right"` | `X` to `X + r`     | `Y - r` to `Y + r` |
-| `"left"`  | `X - r` to `X`     | `Y - r` to `Y + r` |
+| Cut      | Across             | Down           |
+| -------- | ------------------ | -------------- |
+| `"down"` | `X - r` to `X + r` | `Y` to `Y + r` |
+| `"up"`   | `X - r` to `X + r` | `Y - r` to `Y` |
 
 The box reaches past the end's round cap, with a pixel to spare for the soft
 edge. The end's own ink there is what the cut removes, but another part of the
@@ -461,6 +460,11 @@ than its image does.
 
 This section is informative: it describes Inkline's own choices, which another
 program need not share.
+
+With Flat ends on, Inkline cuts an end that Shift put on its grid and that
+crosses the row through it at 45° or steeper, so that it stops flush with the
+row: a stroke that comes down to the baseline has the end `"down"`. Every other
+end stays round, so a line along the baseline stays whole.
 
 Inkline saves symbols with a width of whatever the ink needs. It crops the image
 to the columns that hold ink inside the line, adds a side bearing of 8 pixels on

@@ -266,6 +266,17 @@ describe("readInkFile", () => {
     expect(await readInkFile(file)).toEqual(asRead);
   });
 
+  it("refuses a stroke cut along a column, which version 1 does not have", async () => {
+    const file = withChunks([
+      textChunk(
+        '{"strokes":[{"tool":"pen","size":32,"points":[0,0,64,0],"cut":{"end":"right"}}]}',
+      ),
+    ]);
+    expect(await damagedBecause(file)).toBe(
+      'strokes[0].cut.end is not "up" or "down"',
+    );
+  });
+
   it("throws on bytes that are not a PNG", async () => {
     await expect(
       readInkFile(new TextEncoder().encode("hello")),

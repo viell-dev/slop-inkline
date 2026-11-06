@@ -101,7 +101,7 @@ describe("serializeRecord and parseRecord", () => {
         {
           tool: "eraser",
           size: 32,
-          points: [0, 0, 64, 0],
+          points: [64, 64, 64, 0],
           cut: { end: "up" },
         },
       ],
@@ -228,7 +228,17 @@ describe("parseRecord refuses", () => {
     [
       "a cut in no direction",
       variant(["strokes", 1, "cut"], { end: "out" }),
-      'strokes[1].cut.end is not "up", "down", "left", or "right"',
+      'strokes[1].cut.end is not "up" or "down"',
+    ],
+    [
+      "a cut along a column at a stroke's start",
+      variant(["strokes", 1, "cut"], { start: "left" }),
+      'strokes[1].cut.start is not "up" or "down"',
+    ],
+    [
+      "a cut along a column at a stroke's end",
+      variant(["strokes", 1, "cut"], { end: "right" }),
+      'strokes[1].cut.end is not "up" or "down"',
     ],
     [
       "a cut that is not an object",

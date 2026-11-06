@@ -9,6 +9,7 @@ import {
   delayDecoding,
   delayVault,
   draw,
+  drawHoldingShift,
   editorGrid,
   editorOpen,
   guideRows,
@@ -23,6 +24,7 @@ import {
   storedDrafts,
   waitForEditor,
   waitForNotice,
+  shiftClick,
   startOver,
   surface,
   symbolFiles,
@@ -1570,6 +1572,10 @@ describe("The editor", function () {
     await tooltip("size-0", "Brush size S (1)");
     await tooltip("pen", "Pen (P)");
     await tooltip("next", "Next: save and draw the next one (Mod+Shift+Enter)");
+    await tooltip(
+      "grid",
+      "Grid: show a grid of dots as a guide; hold Shift while drawing to snap to it (Shift+G)",
+    );
     await tooltip(
       "fit",
       "Fit: centre the drawing in the view, and show all of it if it is wider; the drawing itself stays as it is (F)",
@@ -3226,7 +3232,7 @@ describe("The editor", function () {
     }
   });
 
-  it("shows a grid with Shift+G, and snaps strokes' ends to it", async function () {
+  it("shows a grid with Shift+G, which Shift snaps strokes' ends to", async function () {
     await insert();
     await settledSurface();
     const grid = await editorGrid();
@@ -3259,7 +3265,7 @@ describe("The editor", function () {
         .$('[data-inkline-button="grid"]')
         .getAttribute("aria-pressed"),
     ).toBe("true");
-    await draw([
+    await drawHoldingShift([
       [0.31, 0.27],
       [0.52, 0.41],
       [0.69, 0.73],
@@ -3278,14 +3284,14 @@ describe("The editor", function () {
     await insert();
     await settledSurface();
     await browser.keys(["Shift", "g"]);
-    await draw([[0.31, 0.27]]);
+    await shiftClick([0.31, 0.27]);
     await browser.waitUntil(async () => (await storedDrafts()).length === 1);
     // One point: no spur out to where the pointer was and back.
     expect((await storedDrafts())[0]?.strokes[0]?.points).toHaveLength(2);
     await browser.keys(["Control", "s"]);
     await waitForStatus("Saved");
     // The same place on screen, after the save moved the drawing.
-    await draw([[0.31, 0.27]]);
+    await shiftClick([0.31, 0.27]);
     await browser.waitUntil(
       async () => (await storedDrafts())[0]?.strokes.length === 2,
     );
@@ -3299,14 +3305,14 @@ describe("The editor", function () {
     await draw(zigzag);
     await settledSurface();
     await browser.keys(["Shift", "g"]);
-    await draw([[0.62, 0.27]]);
-    await draw([[0.7, 0.6]]);
+    await shiftClick([0.62, 0.27]);
+    await shiftClick([0.7, 0.6]);
     await browser.keys(["Control", "Enter"]);
     await waitClosed();
     await editFile("001.ink.png");
     await settledSurface();
     await browser.keys(["Shift", "g"]);
-    await draw([[0.33, 0.45]]);
+    await shiftClick([0.33, 0.45]);
     await saveScreenshot("editor-grid");
     const spacing = Math.round((await editorGrid()).spacing * unitsPerPixel);
     await browser.keys(["Control", "Enter"]);
@@ -3332,7 +3338,7 @@ describe("The editor", function () {
     await waitForStatus("Saved");
     await browser.keys(["Shift", "g"]);
     // One tap, which the zigzag's two ends outvote.
-    await draw([[0.62, 0.27]]);
+    await shiftClick([0.62, 0.27]);
     await browser.waitUntil(
       async () => (await storedDrafts())[0]?.strokes.length === 2,
     );
@@ -3343,7 +3349,7 @@ describe("The editor", function () {
     await clickTop("Restore");
     await settledSurface();
     await browser.keys(["Shift", "g"]);
-    await draw([[0.33, 0.45]]);
+    await shiftClick([0.33, 0.45]);
     await browser.waitUntil(
       async () => (await storedDrafts())[0]?.strokes.length === 3,
     );
@@ -3358,7 +3364,7 @@ describe("The editor", function () {
     await browser.keys(["Control", "z"]);
     await browser.keys(["Control", "z"]);
     await browser.waitUntil(async () => (await storedDrafts()).length === 0);
-    await draw([[0.33, 0.45]]);
+    await shiftClick([0.33, 0.45]);
     await browser.waitUntil(
       async () => (await storedDrafts())[0]?.strokes.length === 2,
     );
