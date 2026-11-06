@@ -379,15 +379,15 @@ async function saveForRename(
  *
  * Only one of the two may rewrite it. Obsidian merges a rewritten file into an
  * editor that differs from it, and a merge makes a change that both hold a
- * second time, so an editor with text the file lacks waits for that merge. It
- * is the one write with no event, and text can go if the wait is cut short: a
- * save starting during the merge, as one does when the editor loses the focus
- * to a modal, has the editor take the file as it is. That save, or the one an
- * edit makes on a timer, can also put the old embed back over Obsidian's.
+ * second time, so an editor with text the file lacks waits for that merge,
+ * which no event announces. Going on before it lands can cost the text: a save
+ * that starts meanwhile, as one does when the editor loses the focus to a modal,
+ * has the editor take the file as it is. A save can also put the old embed back
+ * over Obsidian's, which is why the file is read again each time.
  *
- * So Inkline writes the embed only where no merge can follow: into an editor
- * that then reads as the file does, or with a save at once, which stops one,
- * when the file has no new embed or the merge has not come in time.
+ * So Inkline writes the embed only where no merge can double it: into an editor
+ * that then reads as the file does, or, when the file has no new embed or the
+ * merge has not come in time, with a save at once, as a save rules a merge out.
  */
 async function followRename(
   app: App,

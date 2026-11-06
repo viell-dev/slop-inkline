@@ -248,7 +248,8 @@ async function addUnsaved(
         }
       }
       const editor = editors[index];
-      if (editor === undefined) throw new Error(`no pane ${index} of ${file}`);
+      if (editor === undefined)
+        throw new Error(`no pane ${String(index)} of ${file}`);
       const at = end ? editor.getValue().length : 0;
       editor.replaceRange(added, editor.offsetToPos(at));
       return editor.getValue();
@@ -301,12 +302,13 @@ async function slowReload(path: string, delay: number): Promise<void> {
         if (view.file?.path !== file) continue;
         const load: unknown = Reflect.get(view, "loadFileInternal");
         if (typeof load !== "function") throw new Error("no reload to hold");
-        Reflect.set(view, "loadFileInternal", async (...args: unknown[]) => {
+        const held = async (...args: unknown[]): Promise<unknown> => {
           await new Promise((resolve) => {
             window.setTimeout(resolve, wait);
           });
-          return Reflect.apply(load, view, args);
-        });
+          return Reflect.apply(load, view, args) as unknown;
+        };
+        Reflect.set(view, "loadFileInternal", held);
       }
     },
     path,
@@ -323,7 +325,6 @@ async function slowCachedRead(delay: number): Promise<() => Promise<void>> {
   await browser.executeObsidian(({ app }, wait) => {
     const { vault } = app;
     const read = vault.cachedRead.bind(vault);
-    Reflect.set(window, "inklineTestCachedRead", read);
     vault.cachedRead = async (file) => {
       const text = await read(file);
       await new Promise((resolve) => {
@@ -334,10 +335,7 @@ async function slowCachedRead(delay: number): Promise<() => Promise<void>> {
   }, delay);
   return async () => {
     await browser.executeObsidian(({ app }) => {
-      const read: unknown = Reflect.get(window, "inklineTestCachedRead");
-      if (typeof read === "function") {
-        Reflect.deleteProperty(app.vault, "cachedRead");
-      }
+      Reflect.deleteProperty(app.vault, "cachedRead");
     });
   };
 }
@@ -1336,7 +1334,6 @@ describe("A rename while the note holds unsaved text", function () {
             if (view instanceof obsidian.MarkdownView) void view.save();
           }
         });
-        Reflect.set(window, "inklineTestSaves", saves);
       });
       await askAndHold(["Control", "Enter"]);
       await waitClosed();
@@ -1521,12 +1518,7 @@ describe("Line endings a note's file changes to", function () {
   }
 
   it("keeps a file's line endings through a rename with nothing unsaved", async function () {
-    await browser.executeObsidian(({ app }) => {
-      const vault: object = app.vault;
-      if ("setConfig" in vault && typeof vault.setConfig === "function") {
-        vault.setConfig("alwaysUpdateLinks", true);
-      }
-    });
+    await setLinkUpdates(true);
     await insertBetween("Ends.md");
     // Past the save that taking the marker away set off, which writes \n.
     await browser.pause(2100);
