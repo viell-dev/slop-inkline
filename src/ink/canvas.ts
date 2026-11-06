@@ -14,6 +14,7 @@ import {
   unitsPerPixel,
   type BaseLayer,
   type InkRecord,
+  type Stroke,
 } from "../format/record.ts";
 import {
   documentFromRecord,
@@ -310,19 +311,26 @@ function inLineBox(top: number, bottom: number): boolean {
   return bottom > 0 && top < lineBox.height;
 }
 
-/** Where pen strokes and the base layer could leave ink, in pixels. */
+/**
+ * Where pen strokes and the base layer could leave ink, in pixels, from
+ * `outlines`, each stroke's bounds in turn.
+ */
 function inkAreas(
   document: InkDocument,
+  outlines: readonly (Bounds | undefined)[],
   base: DrawableBase | undefined,
 ): Bounds[] {
   const areas: Bounds[] = [];
-  for (const stroke of document.strokes) {
-    if (stroke.tool !== "pen") continue;
-    const bounds = strokeBounds(stroke);
-    if (bounds !== undefined && inLineBox(bounds.top, bounds.bottom)) {
+  document.strokes.forEach((stroke, index) => {
+    const bounds = outlines[index];
+    if (
+      stroke.tool === "pen" &&
+      bounds !== undefined &&
+      inLineBox(bounds.top, bounds.bottom)
+    ) {
       areas.push(bounds);
     }
-  }
+  });
   if (base !== undefined) {
     const left = base.x / unitsPerPixel;
     const top = base.y / unitsPerPixel;
@@ -334,22 +342,46 @@ function inkAreas(
   return areas;
 }
 
+/** What measuring a drawing found, and how it was measured. */
+export interface InkMeasure {
+  /** The ink the drawing leaves in the line box, if any. */
+  readonly ink: Bounds | undefined;
+  /** The document x its tiles start from, every {@link tileWidth} pixels. */
+  readonly origin: number;
+}
+
+/** `found` with the ink of a tile `left` pixels along the document. */
+function joinInk(
+  found: Bounds | undefined,
+  tile: Bounds | undefined,
+  left: number,
+): Bounds | undefined {
+  if (tile === undefined) return found;
+  return {
+    left: Math.min(found?.left ?? Infinity, tile.left + left),
+    top: Math.min(found?.top ?? Infinity, tile.top),
+    right: Math.max(found?.right ?? -Infinity, tile.right + left),
+    bottom: Math.max(found?.bottom ?? -Infinity, tile.bottom),
+  };
+}
+
 /**
- * Finds the ink a document leaves in the line box, drawing it in tiles at
+ * Measures the ink a document leaves in the line box, drawing it in tiles at
  * most {@link tileWidth} wide, each with only the strokes that reach it, so
  * that geometry far away or erased costs time but never a huge canvas.
+ * Undefined when nothing in it could leave ink there.
  */
-export function findInk(
+export function measureInk(
   document: InkDocument,
   base: DrawableBase | undefined,
-): Bounds | undefined {
-  const areas = inkAreas(document, base);
-  if (areas.length === 0) return undefined;
-  const start = Math.floor(Math.min(...areas.map((area) => area.left))) - 2;
-  const end = Math.ceil(Math.max(...areas.map((area) => area.right))) + 2;
+): InkMeasure | undefined {
   const outlines = document.strokes.map(strokeBounds);
-  let found: Bounds | undefined;
-  for (let left = start; left < end; left += tileWidth) {
+  const areas = inkAreas(document, outlines, base);
+  if (areas.length === 0) return undefined;
+  const origin = Math.floor(Math.min(...areas.map((area) => area.left))) - 2;
+  const end = Math.ceil(Math.max(...areas.map((area) => area.right))) + 2;
+  let ink: Bounds | undefined;
+  for (let left = origin; left < end; left += tileWidth) {
     const width = Math.min(tileWidth, end - left);
     const reaching = document.strokes.filter((_, index) => {
       const bounds = outlines[index];
@@ -361,18 +393,59 @@ export function findInk(
     });
     const { surface, context } = canvas(width, lineBox.height);
     drawInk(context, reaching, base, -left);
-    const tile = inkBounds(
-      context.getImageData(0, 0, surface.width, surface.height),
+    ink = joinInk(
+      ink,
+      inkBounds(context.getImageData(0, 0, surface.width, surface.height)),
+      left,
     );
-    if (tile === undefined) continue;
-    found = {
-      left: Math.min(found?.left ?? Infinity, tile.left + left),
-      top: Math.min(found?.top ?? Infinity, tile.top),
-      right: Math.max(found?.right ?? -Infinity, tile.right + left),
-      bottom: Math.max(found?.bottom ?? -Infinity, tile.bottom),
-    };
   }
-  return found;
+  return { ink, origin };
+}
+
+/** The ink a document leaves in the line box, as {@link measureInk} finds it. */
+export function findInk(
+  document: InkDocument,
+  base: DrawableBase | undefined,
+): Bounds | undefined {
+  return measureInk(document, base)?.ink;
+}
+
+/**
+ * What {@link measureInk} would find with a pen stroke added last to the
+ * drawing `measure` is of, without drawing the rest: a pen only adds ink, so
+ * the ink is what it was and what the stroke leaves. The stroke is drawn just
+ * where a full measurement would draw it, at the same place in the same tiles,
+ * as a shape's edge pixels depend a little on where it falls on a canvas; one
+ * measured on a tile of its own could end a pixel away. Undefined when the
+ * stroke reaches left of where the tiles start, which would move them all.
+ */
+export function measureAdded(
+  measure: InkMeasure,
+  stroke: Stroke,
+): InkMeasure | undefined {
+  const bounds = strokeBounds(stroke);
+  if (bounds === undefined || !inLineBox(bounds.top, bounds.bottom)) {
+    return measure;
+  }
+  const { origin } = measure;
+  const start = Math.floor(bounds.left) - 2;
+  if (start < origin) return undefined;
+  const end = Math.ceil(bounds.right) + 2;
+  const first = origin + Math.floor((start - origin) / tileWidth) * tileWidth;
+  let { ink } = measure;
+  for (let left = first; left < end; left += tileWidth) {
+    const width = Math.min(tileWidth, end - left);
+    const { context } = canvas(width, lineBox.height);
+    drawInk(context, [stroke], undefined, -left);
+    // Only the part of the tile that the stroke can reach.
+    const from = Math.max(0, start - left);
+    ink = joinInk(
+      ink,
+      inkBounds(context.getImageData(from, 0, width - from, lineBox.height)),
+      left + from,
+    );
+  }
+  return { ink, origin };
 }
 
 /** How far past a trial crop to look for ink, in pixels. */
