@@ -692,31 +692,27 @@ export function insertExistingSymbol(app: App, view: MarkdownView): void {
 }
 
 /**
- * Puts the cursor of a live editor of the target note back at its point, once
- * an editor over it closes: the note can have changed on disk or in another
- * pane meanwhile, which takes the cursor away from the last symbol. A cursor
- * already there stays as it is, as a table cell's editor may have it.
- */
-function returnCursor(app: App, target: Target): void {
-  const view = liveView(app, target.file, target.view);
-  if (view === undefined) return;
-  const { editor } = view;
-  const at = findPoint(editor.getValue(), target.point);
-  if (at === undefined || at === editor.posToOffset(editor.getCursor())) return;
-  editor.setCursor(editor.offsetToPos(at));
-}
-
-/**
  * Gives a live editor of the target note the focus, once a modal over it has
  * closed, if that found nothing to give it back to: when a note changes on
  * disk, Obsidian takes away the editor of a table cell. Setting the cursor
  * where it is opens that cell again, around it.
+ *
+ * With `point`, the cursor goes back there first, as the note can have changed
+ * on disk or in another pane meanwhile, which takes it away from the last
+ * symbol. That waits for the modal too: Obsidian refocuses the note after a
+ * modal's close. A cursor already there stays as it is, as a table cell's
+ * editor may have it.
  */
-function returnFocus(app: App, target: Target): void {
+function returnFocus(app: App, target: Target, point?: InsertionPoint): void {
   const view = liveView(app, target.file, target.view);
   if (view === undefined) return;
   const { containerEl, editor } = view;
   containerEl.win.setTimeout(() => {
+    const at =
+      point === undefined ? undefined : findPoint(editor.getValue(), point);
+    if (at !== undefined && at !== editor.posToOffset(editor.getCursor())) {
+      editor.setCursor(editor.offsetToPos(at));
+    }
     if (containerEl.doc.activeElement !== containerEl.doc.body) return;
     editor.focus();
     editor.setCursor(editor.getCursor());
@@ -826,8 +822,7 @@ function newSymbol(
         host.lifecycle.closed(editor);
         if (!host.alive() || (tools === undefined && !inserted)) return;
         // Following another, this one's point is just after that symbol.
-        returnCursor(app, { ...target, point: after ?? target.point });
-        returnFocus(app, target);
+        returnFocus(app, target, after ?? target.point);
       },
     },
     copyFrom: (closed) => copySymbol(host, closed),

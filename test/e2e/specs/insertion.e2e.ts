@@ -314,6 +314,34 @@ async function slowReload(path: string, delay: number): Promise<void> {
   );
 }
 
+/**
+ * Holds what reads a note through `vault.cachedRead` by `delay` milliseconds
+ * after the read, with the text it read, as Obsidian's reload does while it
+ * writes the file. Returns what takes that back.
+ */
+async function slowCachedRead(delay: number): Promise<() => Promise<void>> {
+  await browser.executeObsidian(({ app }, wait) => {
+    const { vault } = app;
+    const read = vault.cachedRead.bind(vault);
+    Reflect.set(window, "inklineTestCachedRead", read);
+    vault.cachedRead = async (file) => {
+      const text = await read(file);
+      await new Promise((resolve) => {
+        window.setTimeout(resolve, wait);
+      });
+      return text;
+    };
+  }, delay);
+  return async () => {
+    await browser.executeObsidian(({ app }) => {
+      const read: unknown = Reflect.get(window, "inklineTestCachedRead");
+      if (typeof read === "function") {
+        Reflect.deleteProperty(app.vault, "cachedRead");
+      }
+    });
+  };
+}
+
 /** Closes every tab of the note at `path`. */
 async function closeTabs(path: string): Promise<void> {
   await browser.executeObsidian(({ app, obsidian }, file) => {
@@ -1099,6 +1127,17 @@ describe("A rename while the note holds unsaved text", function () {
     await waitForLink("Editor.md", "001.ink.png");
   }
 
+  /**
+   * {@link insertAndIndex}, and waits past the save that set off, which comes
+   * two seconds after the first edit since the last one. Text that arrives
+   * during Obsidian's question is out of Inkline's reach, so a test of it keeps
+   * that save from landing in the question or in the reload after it.
+   */
+  async function insertAndWait(): Promise<void> {
+    await insertAndIndex();
+    await browser.pause(2100);
+  }
+
   /** Adds unsaved text on both sides of the symbol. */
   async function addBoth(path: string, pane = 0): Promise<void> {
     await addUnsaved(path, opening, "start", pane);
@@ -1236,7 +1275,7 @@ describe("A rename while the note holds unsaved text", function () {
       }
 
       it("writes the new name once and keeps the text", async function () {
-        await insertAndIndex();
+        await insertAndWait();
         await askAndAdd(["Control", "Enter"]);
         await waitClosed();
         await waitForNote(withText(renamed));
@@ -1247,7 +1286,7 @@ describe("A rename while the note holds unsaved text", function () {
       });
 
       it("keeps the next symbol's place", async function () {
-        await insertAndIndex();
+        await insertAndWait();
         await markEditor();
         await askAndAdd(["Control", "Shift", "Enter"]);
         await waitForNext(1);
@@ -1266,12 +1305,9 @@ describe("A rename while the note holds unsaved text", function () {
   // modal closes saves the note, which a reload under way would then undo.
   describe("when Obsidian is slow to reload the note", function () {
     async function askAndHold(keys: string[]): Promise<void> {
-      await insertAndIndex();
+      await insertAndWait();
       await markEditor();
       await slowReload("Editor.md", 300);
-      // An edit's save comes two seconds after the first edit since the last
-      // one. Past that of the insertion, none falls in the reload here.
-      await browser.pause(2100);
       await nameIt();
       await browser.keys(keys);
       await browser.waitUntil(
@@ -1307,6 +1343,28 @@ describe("A rename while the note holds unsaved text", function () {
       await waitForNote(withText(renamed));
       await waitForFile("Editor.md", withText(renamed));
       expect(await marked("Editor.md")).toEqual([withText(`${renamed}|`)]);
+    });
+
+    // A save that starts once the reload has read the file has it take that
+    // file as it is, and the editor's blur makes one as the next editor opens.
+    it("keeps the text when the next editor takes the focus", async function () {
+      const restore = await slowCachedRead(300);
+      try {
+        await insertAndWait();
+        await markEditor();
+        await nameIt();
+        await browser.keys(["Control", "Shift", "Enter"]);
+        await browser.waitUntil(
+          async () => (await topButton("Just once")) !== undefined,
+        );
+        await addBoth("Editor.md");
+        await clickTop("Just once");
+        await waitForNext(1);
+        await waitForNote(withText(renamed));
+        await waitForFile("Editor.md", withText(renamed));
+      } finally {
+        await restore();
+      }
     });
 
     it("keeps the text and the next symbol's place through Next", async function () {
@@ -1470,6 +1528,8 @@ describe("Line endings a note's file changes to", function () {
       }
     });
     await insertBetween("Ends.md");
+    // Past the save that taking the marker away set off, which writes \n.
+    await browser.pause(2100);
     await showAs("Ends.md", "preview");
     await writeFile("Ends.md", crlf);
     await browser.keys(["Control", "s"]);
