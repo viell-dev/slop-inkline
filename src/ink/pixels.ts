@@ -120,17 +120,6 @@ export function luminance(pixels: RgbaPixels): Uint8ClampedArray {
   return values;
 }
 
-/** How many of `values` there are of each level. */
-function valueCounts(values: Uint8ClampedArray): Uint32Array {
-  const counts = new Uint32Array(256);
-  // eslint-disable-next-line @typescript-eslint/prefer-for-of -- for...of over a typed array is many times slower in V8
-  for (let index = 0; index < values.length; index++) {
-    const value = values[index] ?? 0;
-    counts[value] = (counts[value] ?? 0) + 1;
-  }
-  return counts;
-}
-
 /**
  * The threshold that best splits `values` into dark and light, by Otsu's
  * method: the one that makes the two groups' means lie furthest apart,
@@ -140,7 +129,12 @@ function valueCounts(values: Uint8ClampedArray): Uint32Array {
  * picture of one value throughout gives the middle, 128.
  */
 export function otsuThreshold(values: Uint8ClampedArray): number {
-  const counts = valueCounts(values);
+  const counts = new Uint32Array(256);
+  // eslint-disable-next-line @typescript-eslint/prefer-for-of -- for...of over a typed array is many times slower in V8
+  for (let index = 0; index < values.length; index++) {
+    const value = values[index] ?? 0;
+    counts[value] = (counts[value] ?? 0) + 1;
+  }
   const total = values.length;
   let sum = 0;
   for (let value = 0; value < 256; value++) {
@@ -265,6 +259,17 @@ export function thresholdContrast(
   return contrastOf(valueCounts(values), threshold);
 }
 
+/** How many of `values` there are of each level. */
+function valueCounts(values: Uint8ClampedArray): Uint32Array {
+  const counts = new Uint32Array(256);
+  // eslint-disable-next-line @typescript-eslint/prefer-for-of -- for...of over a typed array is many times slower in V8
+  for (let index = 0; index < values.length; index++) {
+    const value = values[index] ?? 0;
+    counts[value] = (counts[value] ?? 0) + 1;
+  }
+  return counts;
+}
+
 /** {@link thresholdContrast} of the values `counts` holds. */
 function contrastOf(counts: Uint32Array, threshold: number): number {
   const middle = Math.min(256, Math.max(0, Math.ceil(threshold)));
@@ -320,13 +325,12 @@ export function thresholdRamp(
 }
 
 /**
- * The smallest rectangle holding every value of at least `least` in `alpha`,
- * one value per pixel of an image `width` pixels wide, if any is.
+ * The smallest rectangle holding every value above zero in `alpha`, one
+ * value per pixel of an image `width` pixels wide, if any is.
  */
 export function alphaBounds(
   alpha: Uint8ClampedArray,
   width: number,
-  least = 1,
 ): Bounds | undefined {
   const height = width === 0 ? 0 : Math.floor(alpha.length / width);
   let left = width;
@@ -335,7 +339,7 @@ export function alphaBounds(
   let bottom = -1;
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      if ((alpha[y * width + x] ?? 0) < least) continue;
+      if ((alpha[y * width + x] ?? 0) === 0) continue;
       left = Math.min(left, x);
       right = Math.max(right, x);
       top = Math.min(top, y);
@@ -383,87 +387,6 @@ export interface Luminance {
    * no more opaque than it is, so that a transparent ground stays empty.
    */
   readonly alpha?: Uint8ClampedArray;
-  /**
-   * Whether its ground is in its own colours, not its transparency, as in a
-   * capture of a window, as {@link holdsItsGround} says.
-   */
-  readonly ownGround?: true;
-}
-
-/** How opaque a pixel must be to count as part of what a picture shows. */
-const fairlyOpaque = 128;
-
-/** The shortest side of a rectangle taken for a window, in pixels. */
-const shortestWindow = 16;
-
-/** How far a window's rounded corners reach, as a share of its shorter side. */
-const cornerReach = 1 / 8;
-
-/** The darkest a pixel can be without being black, as a shadow is. */
-const shadowLevel = 16;
-
-/** The `values` of the pixels that `alpha` says are fairly opaque. */
-function fairlyOpaqueValues(
-  values: Uint8ClampedArray,
-  alpha: Uint8ClampedArray,
-): Uint8ClampedArray {
-  let count = 0;
-  // eslint-disable-next-line @typescript-eslint/prefer-for-of -- for...of over a typed array is many times slower in V8
-  for (let index = 0; index < alpha.length; index++) {
-    if ((alpha[index] ?? 0) >= fairlyOpaque) count++;
-  }
-  const solid = new Uint8ClampedArray(count);
-  let at = 0;
-  for (let index = 0; index < alpha.length; index++) {
-    if ((alpha[index] ?? 0) >= fairlyOpaque) solid[at++] = values[index] ?? 0;
-  }
-  return solid;
-}
-
-/**
- * Whether a picture with transparency has its ground in its own colours, as a
- * capture of a window does: its fairly opaque pixels fill a rectangle but for
- * its corners, nothing around that is anything but clear or a shadow, and it
- * holds more than one tone. How much of the picture is opaque says nothing, as
- * a bold glyph cropped tightly can cover as much as a window. A glyph has clear
- * parts away from its corners, or soft edges of its own colour, or one colour,
- * as a bar has, and keeps the alpha it was drawn with. So does anything too
- * small to be a window.
- */
-function holdsItsGround(
-  values: Uint8ClampedArray,
-  alpha: Uint8ClampedArray,
-  width: number,
-): boolean {
-  const solid = alphaBounds(alpha, width, fairlyOpaque);
-  if (solid === undefined) return false;
-  const { left, top, right, bottom } = solid;
-  const shorter = Math.min(right - left, bottom - top);
-  if (shorter < shortestWindow) return false;
-  const corner = shorter * cornerReach;
-  const height = alpha.length / width;
-  let darkest = 255;
-  let lightest = 0;
-  for (let y = 0; y < height; y++) {
-    const fromEnd = Math.min(y - top, bottom - 1 - y);
-    for (let x = 0; x < width; x++) {
-      const index = y * width + x;
-      const opacity = alpha[index] ?? 0;
-      const value = values[index] ?? 0;
-      if (opacity >= fairlyOpaque) {
-        darkest = Math.min(darkest, value);
-        lightest = Math.max(lightest, value);
-        continue;
-      }
-      const fromSide = Math.min(x - left, right - 1 - x);
-      if (fromSide < 0 || fromEnd < 0) {
-        if (opacity > 0 && value >= shadowLevel) return false;
-      } else if (fromSide >= corner || fromEnd >= corner) {
-        return false;
-      }
-    }
-  }
-  return lightest - darkest >= thresholdEdge;
 }
 
 /**
@@ -471,8 +394,7 @@ function holdsItsGround(
  * pixel's alpha, as {@link traceInk} takes them. With alpha, the luminance
  * is each pixel's own colour's, not laid on white, since the alpha limits
  * the ink by itself: an anti-aliased edge is the glyph's colour, part
- * opaque. A capture of a window loses its shadow here, once for all that
- * follows.
+ * opaque.
  */
 export function pictureLuminance(pixels: RgbaPixels): Luminance {
   const { width, height, data } = pixels;
@@ -493,18 +415,7 @@ export function pictureLuminance(pixels: RgbaPixels): Luminance {
         0.0722 * (data[offset + 2] ?? 0),
     );
   }
-  if (!holdsItsGround(values, alpha, width)) {
-    return { width, height, values, alpha };
-  }
-  // A shadow is mostly clear and black. It is no part of the window, and left
-  // in, it would read as dark ink around it, and darken its edge in any copy
-  // or finer sample. Other soft edges keep their alpha.
-  for (let index = 0; index < alpha.length; index++) {
-    if ((alpha[index] ?? 0) < fairlyOpaque) {
-      if ((values[index] ?? 0) < shadowLevel) alpha[index] = 0;
-    }
-  }
-  return { width, height, values, alpha, ownGround: true };
+  return { width, height, values, alpha };
 }
 
 /**
@@ -558,38 +469,40 @@ export function shrinkLuminance(picture: Luminance, factor: number): Luminance {
         alpha[y * width + x] = Math.round(weight / count);
     }
   }
-  if (alpha === undefined) return { width, height, values };
-  return picture.ownGround === true
-    ? { width, height, values, alpha, ownGround: true }
+  return alpha === undefined
+    ? { width, height, values }
     : { width, height, values, alpha };
 }
 
 /**
  * Where to start making ink of part of a picture: the threshold by Otsu's
  * method, and whether the ink is light. On an opaque picture the ink is the
- * smaller part, as {@link lightInk} judges, and so it is among the fairly
- * opaque pixels of a picture with a ground of its own. Where the picture's
- * ground is its transparency, its fairly opaque pixels are the ink, and their
- * own luminance says whether it is light.
+ * smaller part, as {@link lightInk} judges. Where the picture has
+ * transparency, its fairly opaque pixels are the ink, and their own
+ * luminance says whether it is light.
  */
 export function inkDefaults(part: {
   readonly values: Uint8ClampedArray;
   readonly alpha?: Uint8ClampedArray;
-  readonly ownGround?: true;
 }): { threshold: number; light: boolean } {
   const { values, alpha } = part;
   if (alpha === undefined) {
     const threshold = otsuThreshold(values);
     return { threshold, light: lightInk(values, threshold) };
   }
-  const ink = fairlyOpaqueValues(values, alpha);
-  if (ink.length === 0) {
+  let count = 0;
+  // eslint-disable-next-line @typescript-eslint/prefer-for-of -- for...of over a typed array is many times slower in V8
+  for (let index = 0; index < alpha.length; index++) {
+    if ((alpha[index] ?? 0) >= 128) count++;
+  }
+  if (count === 0) {
     const threshold = otsuThreshold(values);
     return { threshold, light: lightInk(values, threshold) };
   }
-  if (part.ownGround === true) {
-    const threshold = otsuThreshold(ink);
-    return { threshold, light: lightInk(ink, threshold) };
+  const ink = new Uint8ClampedArray(count);
+  let at = 0;
+  for (let index = 0; index < alpha.length; index++) {
+    if ((alpha[index] ?? 0) >= 128) ink[at++] = values[index] ?? 0;
   }
   let darkest = 255;
   let lightest = 0;
@@ -628,13 +541,9 @@ export function inkDefaults(part: {
 export interface Region {
   readonly values: Uint8ClampedArray;
   readonly alpha?: Uint8ClampedArray;
-  /** As {@link Luminance.ownGround}, of the picture it is part of. */
-  readonly ownGround?: true;
   /**
-   * The picture's own values that say how much contrast this part has: its
-   * pixels, where `values` are finer samples of them, which add values between
-   * its tones, not more of them; and only the fairly opaque ones where it has
-   * transparency and a ground of its own.
+   * The picture's own values in this part, where `values` are finer samples
+   * of them: those add values between its tones, not more of them.
    */
   readonly tones?: Uint8ClampedArray;
   readonly width: number;
@@ -696,16 +605,9 @@ export function regionValues(
   const width = right - left;
   const values = cropAlpha(picture.values, picture.width, bounds);
   const part = { values, width, height: bottom - top, left, top };
-  if (picture.alpha === undefined) return part;
-  const alpha = cropAlpha(picture.alpha, picture.width, bounds);
-  return picture.ownGround === true
-    ? {
-        ...part,
-        alpha,
-        ownGround: true,
-        tones: fairlyOpaqueValues(values, alpha),
-      }
-    : { ...part, alpha };
+  return picture.alpha === undefined
+    ? part
+    : { ...part, alpha: cropAlpha(picture.alpha, picture.width, bounds) };
 }
 
 /**
@@ -835,19 +737,10 @@ export function enlargedRegion(
       if (alpha !== undefined) alpha[at] = Math.round(weight);
     }
   }
-  const pixels = cropAlpha(source, picture.width, coarse);
-  const tones =
-    own !== undefined && picture.ownGround === true
-      ? fairlyOpaqueValues(pixels, cropAlpha(own, picture.width, coarse))
-      : pixels;
+  const tones = cropAlpha(source, picture.width, coarse);
   const part = { values, tones, width, height, left, top };
   return {
-    part:
-      alpha === undefined
-        ? part
-        : picture.ownGround === true
-          ? { ...part, alpha, ownGround: true }
-          : { ...part, alpha },
+    part: alpha === undefined ? part : { ...part, alpha },
     place: fine,
     // Between two pixels' centres, values change by at most 255 over
     // `factor` samples: a ramp no wider than that keeps an edge to about one
@@ -888,10 +781,8 @@ export function traceInk(
  * threshold's ramp in a picture of black and white. An opaque picture's ramp
  * is {@link thresholdRamp}'s, as the whole ramp would span most of the levels
  * between a dim picture's ground and its ink, and leave their edges as soft as
- * they were. So is that of a picture with a ground of its own, by its
- * {@link Region.tones}. Where the transparency is the ground, it keeps the
- * whole ramp: its own alpha limits its edges, and its colours mean little where
- * that is low.
+ * they were. A picture with transparency keeps the whole ramp: its own alpha
+ * limits its edges, and its colours mean little where that is low.
  */
 export function traceRegion(
   part: Region,
@@ -902,7 +793,7 @@ export function traceRegion(
 ): TracedInk | undefined {
   const own = part.alpha;
   const ramp =
-    own === undefined || part.ownGround === true
+    own === undefined
       ? thresholdRamp(part.tones ?? part.values, threshold, edge)
       : edge;
   const alpha = thresholdAlpha(part.values, threshold, light, ramp);

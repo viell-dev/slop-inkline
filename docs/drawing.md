@@ -247,14 +247,6 @@ it, but they can draw the threshold's first position to them: move the slider
 down to the strokes, or move the picture to keep those pixels out. Soft strokes
 come out wider than they were drawn; see [Limits](./limits.md#files-and-sizes).
 
-**Unreleased:** a capture of a window, with rounded corners or a shadow around
-it, makes ink as an opaque picture does: the ink is the smaller part, its edges
-are as sharp, and its clear corners and shadow stay empty. Before, a single
-pixel that was not fully opaque made the ground of such a picture the ink, with
-soft edges. A glyph on a transparent ground keeps its soft edges, however much
-of the picture it fills; see [Limits](./limits.md#files-and-sizes) for what
-counts as a capture.
-
 ## Start from a copy
 
 In the editor for a new symbol, **Copy from** (V) starts it from a copy of

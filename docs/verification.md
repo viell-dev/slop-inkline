@@ -142,19 +142,10 @@ release, later versions must keep released files readable and looking the same.
   narrows for large enlargements and for little contrast, and its bounds of a
   million samples and a base layer's sides
   ([pixels.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/ink/pixels.test.ts)).
-- **Make ink** is measured on synthetic pictures whose ink is known: ordinary,
-  noisy and labelled pictures, glyphs on a transparent ground, dense glyphs
-  cropped tightly, and captures of windows
-  ([defaults.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/ink/defaults.test.ts)).
-  Glyphs keep their alpha at their own pixels, enlarged, and with part of them
-  selected, and seeded random pictures of each kind check that ink only fades as
-  the slider moves away from it, at every threshold, and that no edge is softer
-  than the contrast there alone would make it.
-  [measure-ink.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/support/measure-ink.ts)
-  prints these results against an earlier commit. A capture with transparent
-  rounded corners and a dense glyph with soft sides go through Apply and saving
-  in real Obsidian
-  ([conversion-clarity.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/conversion-clarity.e2e.ts)).
+  At every position of the slider, no pixel of a synthetic picture gains ink as
+  it moves away from the ink, and no edge is softer than the contrast there
+  alone would make it
+  ([threshold-ramp.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/ink/threshold-ramp.test.ts)).
 - Each brush size, drawn with a mouse and measured in the saved symbol, is as
   wide as its size. M is within 15% of the stems of regular text, L lies between
   1.3 times regular and 1.1 times bold, and XL is at least about as heavy as

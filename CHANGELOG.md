@@ -19,18 +19,10 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ### Fixed
 
-- **Make ink** of a capture of a window, with rounded corners or a shadow around
-  it, no longer makes its ground the ink. One pixel that was not fully opaque
-  used to do that, and to keep its edges soft. Such a picture now makes ink as
-  an opaque one does, and its clear corners and shadow stay empty. So does any
-  other sharp rectangle of several tones with transparency around it, such as a
-  card with a mark on it, whose mark becomes the ink rather than its ground.
-  Glyphs on a transparent ground make what they did, with their soft edges
-  ([#148](https://github.com/viell-dev/slop-inkline/issues/148)).
-- **Make ink**'s ink no longer grows for a moment as the slider moves away from
-  it, as it could wherever the contrast at the threshold jumped from one level
-  to the next. No edge gets softer for it; towards the slider's ends, some get
-  sharper ([#160](https://github.com/viell-dev/slop-inkline/issues/160)).
+- **Make ink**'s ink no longer comes back for a moment as the slider moves away
+  from it, as it could wherever the contrast at the threshold jumped from one
+  level to the next. No edge gets softer for it; near the slider's ends, some
+  get sharper ([#160](https://github.com/viell-dev/slop-inkline/issues/160)).
 
 ## 0.9.0 - 2026-11-05
 

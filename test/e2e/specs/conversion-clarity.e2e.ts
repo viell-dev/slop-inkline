@@ -1,5 +1,4 @@
 import { browser, expect } from "@wdio/globals";
-import { dimLevels } from "../../support/dim-picture.ts";
 import { loadModules } from "../support/browser.ts";
 import { openAtMarker, startOver, waitForEditor } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
@@ -30,74 +29,6 @@ describe("Enlarged picture conversion", function () {
       await checkDimClarity(side);
     });
   }
-
-  // The same H as a window's capture, with clear rounded corners, which used
-  // to make its ground the ink and keep its edges soft (#148).
-  for (const side of [38, 18]) {
-    it(`keeps a dim ${String(side)}-pixel H's strokes as its ink, with narrow edges, past rounded corners`, async function () {
-      await checkDimClarity(side, 3);
-    });
-  }
-
-  // A dense glyph is no window, however much of its crop it covers: its soft
-  // sides stay in the saved symbol (#96, #148).
-  it("keeps the soft sides of a dense bar through Apply and save", async function () {
-    await browser.execute(async () => {
-      const surface = document.querySelector(".inkline-surface");
-      if (!(surface instanceof HTMLCanvasElement))
-        throw new Error("no surface");
-      const { pictures } = window.inklineTest;
-      pictures.drop(
-        surface,
-        new File([await pictures.softBar(20)], "soft-bar.png", {
-          type: "image/png",
-        }),
-      );
-    });
-    await browser.$('[data-inkline-button="ink"]').waitForEnabled();
-    await browser.$('[data-inkline-button="ink"]').click();
-    await browser.$('[data-inkline-button="apply"]').waitForEnabled();
-    expect(
-      await browser
-        .$('[data-inkline-button="light"]')
-        .getAttribute("aria-pressed"),
-    ).toBe("true");
-    await saveScreenshot("soft-bar-preview");
-    await browser.$('[data-inkline-button="apply"]').click();
-    await browser
-      .$('[data-inkline-button="apply"]')
-      .waitForDisplayed({ reverse: true });
-    await browser.keys(["Control", "Enter"]);
-    await browser.$(".inkline-editor").waitForExist({ reverse: true });
-    const row = await browser.executeObsidian(async ({ app }) => {
-      const file = app.vault.getFileByPath("001.ink.png");
-      if (file === null) throw new Error("no saved ink");
-      const bytes = new Uint8Array(await app.vault.readBinary(file));
-      const { canvas } = window.inklineTest;
-      const opened = await canvas.openInk(bytes);
-      if (opened.kind !== "editable" || opened.base === undefined)
-        throw new Error("no base");
-      const saved = await canvas.decodePng(bytes);
-      const pixels = canvas.readPixels(saved);
-      saved.close();
-      const y = Math.floor(
-        opened.base.y / 16 + (opened.base.height * opened.base.scale) / 2,
-      );
-      const values = [];
-      for (let x = 0; x < pixels.width; x++) {
-        values.push(pixels.data[(y * pixels.width + x) * 4 + 3] ?? 0);
-      }
-      return values;
-    });
-    console.log("Soft bar", JSON.stringify(row));
-    // Each side starts at the alpha of its own edge column, not from nothing.
-    const inked = row.filter((value) => value > 0);
-    expect(inked[0]).toBeGreaterThan(48);
-    expect(inked[0]).toBeLessThan(80);
-    expect(inked[inked.length - 1]).toBeGreaterThan(48);
-    expect(inked[inked.length - 1]).toBeLessThan(80);
-    expect(row.filter((value) => value === 255).length).toBeGreaterThan(8);
-  });
 });
 
 /** The lengths of the runs of partly covered pixels in `row`. */
@@ -156,48 +87,31 @@ function expectNarrowOnSurface({ row, scale }: ShownRow): void {
 }
 
 /**
- * Drops a dim H, `side` pixels square, with `corners` as
- * `pictures.dimPicture` says, makes ink of it at the default threshold, and
- * checks that it starts between the H's ground and strokes with light ink, the
- * preview, zoomed in and as usual, the ink applied, the saved symbol's row
- * through its stems, and that reopening draws it the same.
+ * Drops a dim H, `side` pixels square, makes ink of it at the default
+ * threshold, and checks the preview, zoomed in and as usual, the ink applied,
+ * the saved symbol's row through its stems, and that reopening draws it the
+ * same.
  */
-async function checkDimClarity(side: number, corners = 0): Promise<void> {
-  const name = `${corners > 0 ? "capture" : "dim"}-conversion`;
-  await browser.execute(
-    async (n, radius) => {
-      const surface = document.querySelector(".inkline-surface");
-      if (!(surface instanceof HTMLCanvasElement))
-        throw new Error("no surface");
-      const { pictures } = window.inklineTest;
-      pictures.drop(
-        surface,
-        new File([await pictures.dimPicture(n, radius)], "dim-h.png", {
-          type: "image/png",
-        }),
-      );
-    },
-    side,
-    corners,
-  );
+async function checkDimClarity(side: number): Promise<void> {
+  await browser.execute(async (n) => {
+    const surface = document.querySelector(".inkline-surface");
+    if (!(surface instanceof HTMLCanvasElement)) throw new Error("no surface");
+    const { pictures } = window.inklineTest;
+    pictures.drop(
+      surface,
+      new File([await pictures.dimPicture(n)], "dim-h.png", {
+        type: "image/png",
+      }),
+    );
+  }, side);
   await browser.$('[data-inkline-button="ink"]').waitForEnabled();
   await browser.$('[data-inkline-button="ink"]').click();
   await browser.$('[data-inkline-button="apply"]').waitForEnabled();
-  expect(
-    await browser
-      .$('[data-inkline-button="light"]')
-      .getAttribute("aria-pressed"),
-  ).toBe("true");
-  const start = Number(
-    await browser.$(".inkline-convert input[type=range]").getValue(),
-  );
-  expect(start).toBeGreaterThan(dimLevels.ground);
-  expect(start).toBeLessThan(dimLevels.ink);
   const preview = await shownRow();
-  await saveScreenshot(`${name}-preview-${String(side)}`);
+  await saveScreenshot(`dim-conversion-preview-${String(side)}`);
   await browser.$('[data-inkline-button="zoom"]').click();
   const zoomed = await shownRow({ not: preview.scale });
-  await saveScreenshot(`${name}-zoomed-${String(side)}`);
+  await saveScreenshot(`dim-conversion-zoomed-${String(side)}`);
   await browser.$('[data-inkline-button="zoom"]').click();
   await shownRow({ scale: preview.scale });
   await browser.$('[data-inkline-button="apply"]').click();
@@ -205,7 +119,7 @@ async function checkDimClarity(side: number, corners = 0): Promise<void> {
     .$('[data-inkline-button="apply"]')
     .waitForDisplayed({ reverse: true });
   const applied = await shownRow({ scale: preview.scale });
-  await saveScreenshot(`${name}-applied-${String(side)}`);
+  await saveScreenshot(`dim-conversion-applied-${String(side)}`);
   await browser.keys(["Control", "Enter"]);
   await browser.$(".inkline-editor").waitForExist({ reverse: true });
   const result = await browser.executeObsidian(async ({ app }) => {
@@ -240,7 +154,7 @@ async function checkDimClarity(side: number, corners = 0): Promise<void> {
   });
   const edges = partialRuns(result.row);
   console.log(
-    `${name} of a ${String(side)}-pixel H`,
+    `Dim ${String(side)}-pixel H`,
     JSON.stringify({
       saved: edges,
       preview: partialRuns(preview.row),

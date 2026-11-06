@@ -70,13 +70,13 @@ link would still lead elsewhere by its path in the vault.
   from dim strokes, leaving them no ink: move the slider down to the strokes, or
   move the picture to keep the element out
   ([#147](https://github.com/viell-dev/slop-inkline/issues/147)).
-- **Unreleased:** **Make ink** takes a picture with transparency for a capture
-  of a window when its fairly opaque pixels fill a rectangle at least 16 pixels
-  a side, with small corners, in more than one tone, and nothing but clear or
-  black lies around it. A window with large corners, or a soft edge or glow of
-  its own colour, stays a glyph, and starts with its ground as the ink: turn
-  **Light ink** the other way. A sharp card of several tones counts as a window,
-  so its smaller part becomes the ink: do the same to get its ground
+- **Make ink** counts a capture of a window with transparent corners or a shadow
+  as a transparent picture, so it can start with the ink inverted: the window's
+  ground as the ink, and its strokes as holes. Press **Light ink** to swap them,
+  then set the threshold with the slider, which cannot swap them by itself. Its
+  edges stay softer than an opaque picture's. With dark ink, a shadow stays as
+  faint ink around the window whatever the threshold: bring only the inside of
+  the window into view. A capture without transparency has neither limit
   ([#148](https://github.com/viell-dev/slop-inkline/issues/148)).
 - Every symbol shows in notes at the size and baseline Inkline saves, whatever
   geometry another tool wrote into its file.

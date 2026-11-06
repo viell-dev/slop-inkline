@@ -35,39 +35,13 @@ export async function picture(
   return canvas.convertToBlob({ type: "image/png" });
 }
 
-/**
- * A dim H, `side` pixels square, as `dimH` gives it, as a PNG. With `corners`,
- * it is a capture of a window: clear outside corners of that radius.
- */
-export async function dimPicture(side: number, corners = 0): Promise<Blob> {
+/** A dim H, `side` pixels square, as `dimH` gives it, as a PNG. */
+export async function dimPicture(side: number): Promise<Blob> {
   const values = dimH(side);
   const data = new Uint8ClampedArray(side * side * 4).fill(255);
   values.forEach((value, index) => {
     data.fill(value, index * 4, index * 4 + 3);
   });
-  const canvas = new OffscreenCanvas(side, side);
-  const context = canvas.getContext("2d");
-  if (context === null) throw new Error("no 2D canvas context");
-  context.putImageData(new ImageData(data, side), 0, 0);
-  if (corners > 0) {
-    context.globalCompositeOperation = "destination-in";
-    context.beginPath();
-    context.roundRect(0, 0, side, side, corners);
-    context.fill();
-  }
-  return canvas.convertToBlob({ type: "image/png" });
-}
-
-/**
- * A white bar `side` pixels square with soft sides, each column at the edge
- * at an alpha of 64, as a PNG: a dense glyph, cropped tightly.
- */
-export async function softBar(side: number): Promise<Blob> {
-  const data = new Uint8ClampedArray(side * side * 4).fill(255);
-  for (let y = 0; y < side; y++) {
-    data[y * side * 4 + 3] = 64;
-    data[(y * side + side - 1) * 4 + 3] = 64;
-  }
   const canvas = new OffscreenCanvas(side, side);
   const context = canvas.getContext("2d");
   if (context === null) throw new Error("no 2D canvas context");
