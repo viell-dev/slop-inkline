@@ -64,18 +64,20 @@ async function resolve(): Promise<void> {
   if (refType !== "branch" && refType !== "tag") {
     fail(`REF_TYPE is ${String(refType)}, not branch or tag`);
   }
-  const manifest: unknown = JSON.parse(
-    await readFile(new URL("../manifest.json", import.meta.url), "utf8"),
+  // package.json, as manifest.json keeps the last public release through a
+  // line of pre-releases, and the guide describes the newest of them.
+  const packageJson: unknown = JSON.parse(
+    await readFile(new URL("../package.json", import.meta.url), "utf8"),
   );
-  if (!isRecord(manifest) || typeof manifest.version !== "string") {
-    fail("the manifest has no version");
+  if (!isRecord(packageJson) || typeof packageJson.version !== "string") {
+    fail("package.json has no version");
   }
   const request: DocsRequest = {
     event,
     ref,
     refType,
     releases: tags,
-    version: manifest.version,
+    version: packageJson.version,
   };
   const source = docsSource(request);
   if (!source.deploy) {

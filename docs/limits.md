@@ -6,7 +6,7 @@ The [issues](https://github.com/viell-dev/slop-inkline/issues) track each one.
 ## Not there yet
 
 - **Prerelease.** Install from GitHub releases, by hand or with BRAT; Inkline is
-  not in Obsidian's community directory. See [Install](./install.md).
+  not in Obsidian's community directory yet. See [Install](./install.md).
 - **Desktop only.** Obsidian's mobile apps do not offer Inkline. The host tests
   run on Linux; Windows and macOS should work but are not tested.
 - **Mouse or trackpad.** A drawing tablet's pen or a touchscreen draws as a
@@ -20,6 +20,10 @@ The [issues](https://github.com/viell-dev/slop-inkline/issues) track each one.
   [PDF export](./notes.md#export-a-note-to-pdf) is verified on Linux.
 
 ## Menus without Edit symbol
+
+**Unreleased:** these menus all offer **Edit symbol** in the next release, as
+[Edit a symbol](./notes.md#edit-a-symbol) describes, and this limit goes. Until
+then:
 
 Where one of Obsidian's own menus takes a right-click on a symbol, that menu has
 no **Edit symbol** ([#40](https://github.com/viell-dev/slop-inkline/issues/40)):

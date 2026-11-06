@@ -12,6 +12,7 @@ says how to run them.
 | `verify (ubuntu-latest)`  | `npm run check`: ESLint with Obsidian's directory rules, Prettier, types, the unit tests, the build, and this site's build                                                  | GitHub Actions, Linux; required                                                               |
 | `verify (windows-latest)` | The same                                                                                                                                                                    | GitHub Actions, Windows; required                                                             |
 | `e2e`                     | The end-to-end suite in real Obsidian: 1.13.4, the manifest's minimum, on the oldest installer that runs it, and the latest public release                                  | GitHub Actions, Linux, under Xvfb; required                                                   |
+| `directory checks`        | Obsidian's own action, with the rules its community directory scans for: the manifest, README, licence, styles, a build, and the bundle                                     | GitHub Actions, Linux; on every pull request, not required                                    |
 | `e2e in Docker`           | The same suite in the image `npm run test:e2e:docker` builds                                                                                                                | Weekly and on request                                                                         |
 | Weekly CI                 | Every check above, so that a new Obsidian release is tested within a week                                                                                                   | Mondays                                                                                       |
 | Settings                  | The live labels and rulesets against their files, and every issue's labels                                                                                                  | Weekly and on request                                                                         |
@@ -150,6 +151,17 @@ release, later versions must keep released files readable and looking the same.
   symbol's M strokes show within 20% of the text's stems on the screen. Five M
   strokes a grid spacing apart stay separate
   ([pen-weights.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/pen-weights.e2e.ts)).
+- A view that adds each stroke to what it has drawn and measured shows what a
+  new view does, pixel for pixel on the surface and in the preview, at full size
+  and at 16 px, and the image's ends are exactly those of a full measurement,
+  and within a pixel of what a save crops to
+  ([#159](https://github.com/viell-dev/slop-inkline/issues/159)). A seeded run
+  checks this after every frame, through strokes of each shape and tool, flat
+  ends, undo, redo, clearing, moving the drawing, saving, restoring, base
+  layers, panning and zooming, on drawings wider than a tile and with strokes
+  across a tile's edge. The preview in text also stays as it is as a stroke
+  starts
+  ([long-drawing.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/long-drawing.e2e.ts)).
 
 ### Drawing is never lost
 
@@ -191,6 +203,14 @@ release, later versions must keep released files readable and looking the same.
 - Edit symbol only where the cursor or the pointer is on a symbol, in every
   entry point
   ([entry.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/entry.e2e.ts)).
+- **Unreleased:** a right-click on a symbol offers Edit symbol, once, and opens
+  that symbol, in callouts and tables in Live Preview, in canvas cards focused
+  or not, in a note on a canvas, in several selected cards, in a popout window,
+  and in a text card's own editor, where the command works too; the block's own
+  menu keeps its items and works, on the symbol and off it; a card over a symbol
+  adds nothing; and if the canvas's sheet over a card is renamed, its menu stays
+  as it is
+  ([symbol-menus.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-menus.e2e.ts)).
 - The library lists symbols and their referring notes, filters by name and
   folder, follows file and link changes, and inserts successive symbols without
   replacing selected text or splitting a link
@@ -231,14 +251,15 @@ release, later versions must keep released files readable and looking the same.
 
 Each of these asserts a budget beside its correctness checks:
 
-| What                                                                                     | Budget      | Where                                                                                              |
-| ---------------------------------------------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------- |
-| Tagging a thousand symbols in a note, the fastest of five runs                           | 50 ms       | [render.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/render.e2e.ts)  |
-| Searching 5,000 symbols as each letter of a name is typed, each query's fastest of three | 100 ms      | [scale.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/scale.e2e.ts)    |
-| Keeping a draft with a large base layer, after the first                                 | 50 ms each  | [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)  |
-| Previewing the ink of a 4K screenshot                                                    | 300 ms      | [ink.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/ink.e2e.ts)        |
-| Saving, without waiting for the window to be idle                                        | 700 ms each | [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)  |
-| Reading long lines of failed links in one pass                                           | 3 s each    | [links.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/links.test.ts) |
+| What                                                                                            | Budget      | Where                                                                                                         |
+| ----------------------------------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------- |
+| Tagging a thousand symbols in a note, the fastest of five runs                                  | 50 ms       | [render.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/render.e2e.ts)             |
+| Searching 5,000 symbols as each letter of a name is typed, each query's fastest of three        | 100 ms      | [scale.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/scale.e2e.ts)               |
+| Keeping a draft with a large base layer, after the first                                        | 50 ms each  | [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)             |
+| Previewing the ink of a 4K screenshot                                                           | 300 ms      | [ink.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/ink.e2e.ts)                   |
+| Saving, without waiting for the window to be idle                                               | 700 ms each | [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)             |
+| Adding a pen stroke to 3,000 dots, and a frame of one past the image's end, the fastest of nine | 30 ms each  | [long-drawing.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/long-drawing.e2e.ts) |
+| Reading long lines of failed links in one pass                                                  | 3 s each    | [links.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/links.test.ts)            |
 
 ### A release is what was tested
 
@@ -267,14 +288,25 @@ Each of these asserts a budget beside its correctness checks:
   It needs BRAT's release and GitHub, so it is run by hand and gates no release.
 - A publication that fails part way can run again without replacing anything
   published: each failure is run against a fake GitHub
-  ([publish.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/publish.test.ts)).
+  ([publish.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/publish.test.ts)),
+  and against a fake of the GitHub CLI, with the exact commands that publish a
+  public release and a pre-release
+  ([publish-cli.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/publish-cli.test.ts)).
+- A public release that cannot be published can be rolled back and resumed: the
+  release guide's own commands run in a synthetic repository, and each state
+  passes the checks CI runs
+  ([rollback.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/rollback.test.ts)).
 
 ### What this site and the repository say agrees
 
-- The package and manifest versions agree, public releases have matching
-  compatibility entries in `versions.json`, prereleases stay out of that
-  directory map, and each release has its changelog section
+- A public release's package and manifest versions agree and it has a matching
+  compatibility entry in `versions.json`, a pre-release's version reaches
+  neither file, though a build's manifest names it, and each release has its
+  changelog section
   ([release.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/release.test.ts)).
+- A new version is higher than every published one in SemVer's order and in
+  Obsidian's
+  ([version.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/version.test.ts)).
 - This site's commands, keys, defaults, Obsidian version, links, and example
   embeds agree with the code
   ([docs.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/docs.test.ts)),

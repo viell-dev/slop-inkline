@@ -3,9 +3,14 @@
 // the document. It also draws the preview of the symbol at its size in text.
 
 import type { Stroke } from "../format/record.ts";
-import { documentSpan, type InkDocument } from "../ink/document.ts";
+import {
+  addedStroke,
+  documentSpan,
+  emptyDocument,
+  type InkDocument,
+} from "../ink/document.ts";
 import { display, lineBox } from "../ink/geometry.ts";
-import { findInk } from "../ink/canvas.ts";
+import { measureAdded, measureInk, type InkMeasure } from "../ink/canvas.ts";
 import { drawInk, type DrawableBase } from "../ink/render.ts";
 import {
   cropSpan,
@@ -65,6 +70,17 @@ export const magnification = 2;
 const maxPreview = 32 * lineBox.pxPerEm;
 
 /**
+ * The preview's ink is drawn from and to whole multiples of this, in document
+ * pixels, so that the image's ends can move, as a stroke runs past them, with
+ * nothing drawn again until they cross one. Where it starts follows from the
+ * span alone: a canvas's pixels depend a little on where a shape falls on it,
+ * and this way a stroke added to it gives what drawing everything would. When
+ * the ends cross one, the ink is drawn again from another place, which can
+ * change an edge pixel by a few levels, too little to see once scaled down.
+ */
+const previewStep = 1024;
+
+/**
  * How much the surface shows across for a drawing `width` pixels wide: all
  * of it, with half an em to spare on each side, and never less than
  * {@link visibleWidth}.
@@ -94,6 +110,22 @@ const referenceAlpha = 0.35;
 /** How opaque the shape an eraser is drawing is shown, over everything. */
 const erasingAlpha = 0.5;
 
+/** A document and its decoded base layer, as last drawn or measured. */
+interface Drawn {
+  readonly document: InkDocument;
+  readonly base: DrawableBase | undefined;
+}
+
+/**
+ * The stroke that makes `now` of `drawn`, if that is all that changed, so
+ * that it can be drawn over what is there rather than everything again.
+ */
+function strokeOver(drawn: Drawn | undefined, now: Drawn): Stroke | undefined {
+  return drawn !== undefined && drawn.base === now.base
+    ? addedStroke(drawn.document, now.document)
+    : undefined;
+}
+
 export class InkView {
   readonly canvas: HTMLCanvasElement;
   /** How much of the document the surface shows across, in pixels. */
@@ -118,7 +150,7 @@ export class InkView {
   #center: number;
   #ratio = 1;
   /** The document and base layer that `#committed` shows. */
-  #shown: { document: InkDocument; base: DrawableBase | undefined } | undefined;
+  #shown: Drawn | undefined;
   #committed = new OffscreenCanvas(1, 1);
   #work = new OffscreenCanvas(1, 1);
   /** The stroke being drawn, and the text colour, as last rendered. */
@@ -126,21 +158,14 @@ export class InkView {
   #colour = "black";
   #previewWork = new OffscreenCanvas(1, 1);
   /** The document and base layer whose ink `#inked` measures. */
-  #measured:
-    { document: InkDocument; base: DrawableBase | undefined } | undefined;
+  #measured: Drawn | undefined;
   /**
-   * The committed ink of the preview's span, at one pixel per document
-   * pixel, for the document and span it was drawn for, kept while the stroke
-   * being drawn is added each frame, on `#previewWork`.
+   * The committed ink around the preview's span, from document x `left`, at
+   * one pixel per document pixel, kept while the stroke being drawn is added
+   * each frame, on `#previewWork`.
    */
   #previewInk:
-    | {
-        readonly document: InkDocument;
-        readonly base: DrawableBase | undefined;
-        readonly left: number;
-        readonly right: number;
-        readonly canvas: OffscreenCanvas;
-      }
+    | (Drawn & { readonly left: number; readonly canvas: OffscreenCanvas })
     | undefined;
   /** The font's lines, or undefined to draw no guides. */
   lines: readonly Guide[] | undefined;
@@ -162,7 +187,7 @@ export class InkView {
       }
     | undefined;
   /** How far the committed ink reaches, from its pixels, in document pixels. */
-  #inked: Span | undefined;
+  #inked: InkMeasure | undefined;
   /** Where the saved image would start and end, as of the last render. */
   #image: Span = cropSpan(undefined);
 
@@ -302,9 +327,9 @@ export class InkView {
    * shape drawn with the eraser, which shows nothing where there is no ink
    * to cut, `active` is also tinted over it all, as only a preview.
    * The image's ends come from the committed ink's pixels inside the line
-   * box, as a save crops to them, read back from the whole drawing each time
-   * the ink changes, however much of it the surface shows, and from a pen
-   * stroke being drawn.
+   * box, as a save crops to them, read back each time the ink changes,
+   * however much of it the surface shows, and from a pen stroke being drawn.
+   * A stroke added to what is shown is drawn over it, as it is last anyway.
    */
   render(
     document: InkDocument,
@@ -313,26 +338,33 @@ export class InkView {
     erasing = false,
   ): void {
     const { width, height } = this.canvas;
+    const now = { document, base };
     if (this.#measured?.document !== document || this.#measured.base !== base) {
-      this.#measure(document, base);
-      this.#measured = { document, base };
+      this.#measure(now);
+      this.#measured = now;
     }
     if (this.#shown?.document !== document || this.#shown.base !== base) {
       const committed = offscreen2d(this.#committed);
+      const added = strokeOver(this.#shown, now);
       committed.resetTransform();
-      committed.clearRect(0, 0, width, height);
-      this.#transform(committed);
-      drawInk(
-        committed,
-        document.strokes,
-        document.base === undefined ? undefined : base,
-      );
+      if (added === undefined) {
+        committed.clearRect(0, 0, width, height);
+        this.#transform(committed);
+        drawInk(
+          committed,
+          document.strokes,
+          document.base === undefined ? undefined : base,
+        );
+      } else {
+        this.#transform(committed);
+        drawInk(committed, [added], undefined);
+      }
       committed.resetTransform();
-      this.#shown = { document, base };
+      this.#shown = now;
     }
     this.#image = cropSpan(
       joinSpans(
-        this.#inked,
+        this.#inked?.ink,
         active?.tool === "pen"
           ? documentSpan({ strokes: [active] })
           : undefined,
@@ -455,7 +487,9 @@ export class InkView {
    * the stroke being drawn, however much of it the surface shows, up to
    * {@link maxPreview} across about the middle of the surface. Its ink is
    * put together at one pixel per document pixel, as a save draws it, so
-   * that an eraser cuts it exactly, and then scaled down.
+   * that an eraser cuts it exactly, and then scaled down. That is always from
+   * a canvas of the image's own width: scaling samples from a canvas's left
+   * edge, so any other would shift the ink's edges when a stroke starts.
    */
   drawPreview(target: HTMLCanvasElement, fontSize: number): void {
     let left = this.#image.left;
@@ -478,71 +512,80 @@ export class InkView {
     target.style.verticalAlign = `${String(shape.verticalAlignEm)}em`;
     target.width = Math.max(1, Math.round(cssWidth * this.#ratio));
     target.height = Math.max(1, Math.round(cssHeight * this.#ratio));
-    // The committed ink, drawn once while the drawing and the span stay.
-    const measured = this.#measured;
-    let ink = this.#previewInk;
-    if (
-      ink === undefined ||
-      ink.document !== measured?.document ||
-      ink.base !== measured.base ||
-      ink.left !== left ||
-      ink.canvas.width !== width
-    ) {
-      const canvas = new OffscreenCanvas(width, lineBox.height);
-      if (measured !== undefined) {
-        drawInk(
-          offscreen2d(canvas),
-          measured.document.strokes,
-          measured.document.base === undefined ? undefined : measured.base,
-          -left,
-        );
-      }
-      ink = {
-        document: measured?.document ?? { strokes: [] },
-        base: measured?.base,
-        left,
-        right: left + width,
-        canvas,
-      };
-      this.#previewInk = ink;
-    }
-    // The stroke being drawn, over a copy, at the same resolution.
-    let image: OffscreenCanvas = ink.canvas;
+    const ink = this.#previewCommitted(left, width);
+    // A copy of the image's part, with the stroke being drawn over it, at the
+    // same resolution.
+    const work = this.#previewWork;
+    work.width = width;
+    work.height = lineBox.height;
+    const drawn = offscreen2d(work);
+    drawn.globalCompositeOperation = "copy";
+    drawn.drawImage(ink.canvas, ink.left - left, 0);
+    drawn.globalCompositeOperation = "source-over";
     const active = this.#active;
-    if (active !== undefined) {
-      const work = this.#previewWork;
-      work.width = width;
-      work.height = lineBox.height;
-      const drawn = offscreen2d(work);
-      drawn.globalCompositeOperation = "copy";
-      drawn.drawImage(ink.canvas, 0, 0);
-      drawn.globalCompositeOperation = "source-over";
-      drawInk(drawn, [active], undefined, -left);
-      image = work;
-    }
+    if (active !== undefined) drawInk(drawn, [active], undefined, -left);
     const context = element2d(target);
     context.clearRect(0, 0, target.width, target.height);
     context.imageSmoothingEnabled = true;
     context.imageSmoothingQuality = "high";
-    context.drawImage(image, 0, 0, target.width, target.height);
+    context.drawImage(work, 0, 0, target.width, target.height);
     context.globalCompositeOperation = "source-in";
     context.fillStyle = this.#colour;
     context.fillRect(0, 0, target.width, target.height);
     context.globalCompositeOperation = "source-over";
   }
+
+  /**
+   * The committed ink around the span from `left`, `width` pixels across,
+   * drawn once while the drawing stays and the span stays near, with only a
+   * stroke added drawn over it.
+   */
+  #previewCommitted(
+    left: number,
+    width: number,
+  ): { readonly left: number; readonly canvas: OffscreenCanvas } {
+    const now = this.#measured ?? { document: emptyDocument, base: undefined };
+    const { document, base } = now;
+    const from = Math.floor(left / previewStep) * previewStep;
+    const across = Math.ceil((left + width) / previewStep) * previewStep - from;
+    const last = this.#previewInk;
+    const fits = last?.left === from && last.canvas.width === across;
+    if (fits && last.document === document && last.base === base) return last;
+    const added = strokeOver(last, now);
+    let canvas: OffscreenCanvas;
+    if (fits && added !== undefined) {
+      canvas = last.canvas;
+      drawInk(offscreen2d(canvas), [added], undefined, -from);
+    } else {
+      canvas = new OffscreenCanvas(across, lineBox.height);
+      drawInk(
+        offscreen2d(canvas),
+        document.strokes,
+        document.base === undefined ? undefined : base,
+        -from,
+      );
+    }
+    const ink = { document, base, left: from, canvas };
+    this.#previewInk = ink;
+    return ink;
+  }
+
   /**
    * Finds how far the drawing's ink reaches inside the line box, as a save
    * crops to it, whatever the surface shows: in tiles, so that geometry far
-   * away or erased costs time but never a huge canvas.
+   * away or erased costs time but never a huge canvas. A pen stroke added to
+   * what was measured is measured alone, where a full measurement would draw
+   * it, if it can be. Anything else can take ink away, so all of it is
+   * measured again.
    */
-  #measure(document: InkDocument, base: DrawableBase | undefined): void {
-    const found = findInk(
-      document,
-      document.base === undefined ? undefined : base,
-    );
+  #measure(now: Drawn): void {
+    const { document, base } = now;
+    const added = strokeOver(this.#measured, now);
+    const inked = this.#inked;
     this.#inked =
-      found === undefined
-        ? undefined
-        : { left: found.left, right: found.right };
+      (added?.tool === "pen" && inked !== undefined
+        ? measureAdded(inked, added)
+        : undefined) ??
+      measureInk(document, document.base === undefined ? undefined : base);
   }
 }

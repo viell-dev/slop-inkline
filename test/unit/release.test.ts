@@ -1,8 +1,11 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import manifest from "../../manifest.json" with { type: "json" };
 import packageJson from "../../package.json" with { type: "json" };
 import versions from "../../versions.json" with { type: "json" };
 import {
+  builtManifest,
+  lastManifestPrerelease,
   metadataProblems,
   releaseNotes,
   releaseProblems,
@@ -13,8 +16,11 @@ import {
 const released: Metadata = {
   packageJson: { version: "0.2.0" },
   manifest: { version: "0.2.0", minAppVersion: "1.13.4" },
-  versions: { "0.1.0": "1.13.4", "0.2.0": "1.13.4" },
+  versions: { "0.0.9": "1.13.4", "0.2.0": "1.13.4" },
 };
+
+/** A pre-release in preparation: main still offers the public release. */
+const prepared: Metadata = { ...released, packageJson: { version: "0.3.1" } };
 
 const changelog = [
   "# Changelog",
@@ -46,6 +52,11 @@ describe("the repository's release metadata", () => {
     expect(manifest.id).toBe("inkline");
     expect(manifest.isDesktopOnly).toBe(true);
   });
+
+  it("ships the committed manifest unchanged when it names this version", () => {
+    const committed = readFileSync("manifest.json", "utf8");
+    expect(builtManifest(committed, manifest.version)).toBe(committed);
+  });
 });
 
 describe("metadataProblems", () => {
@@ -74,12 +85,79 @@ describe("metadataProblems", () => {
     ]);
   });
 
+  it("reports a public version that has not reached the manifest", () => {
+    expect(
+      metadataProblems({ ...released, packageJson: { version: "0.4.0" } }),
+    ).toEqual([
+      "manifest.json version 0.2.0 differs from package.json version 0.4.0",
+      "versions.json does not map 0.4.0 to the manifest's minAppVersion 1.13.4",
+    ]);
+  });
+
+  it("accepts a pre-release that has not reached the manifest", () => {
+    expect(metadataProblems(prepared)).toEqual([]);
+  });
+
+  it("accepts the pre-releases that follow the last one the manifest named", () => {
+    expect(
+      metadataProblems({
+        packageJson: { version: "0.9.1" },
+        manifest: {
+          version: lastManifestPrerelease,
+          minAppVersion: "1.13.4",
+        },
+        versions: {},
+      }),
+    ).toEqual([]);
+  });
+
+  it("reports a pre-release's version in the manifest", () => {
+    for (const version of ["0.3.1", "0.3.0-rc.1"]) {
+      const problems = metadataProblems({
+        ...prepared,
+        packageJson: { version },
+        manifest: { version, minAppVersion: "1.13.4" },
+      });
+      expect(problems, version).toEqual([
+        version.includes("-")
+          ? `manifest.json version ${version} is not x.y.z`
+          : `manifest.json version ${version} is a pre-release, which Obsidian would offer to every user`,
+      ]);
+    }
+  });
+
+  it("reports a manifest that is ahead of the version being prepared", () => {
+    expect(
+      metadataProblems({ ...released, packageJson: { version: "0.1.5" } }),
+    ).toEqual([
+      "manifest.json version 0.2.0 is higher than package.json version 0.1.5",
+    ]);
+  });
+
+  it("reports a pre-release in the map that Obsidian falls back on", () => {
+    expect(
+      metadataProblems({
+        ...released,
+        versions: { ...(released.versions as object), "0.1.0": "1.13.4" },
+      }),
+    ).toEqual(["versions.json key 0.1.0 is a pre-release"]);
+  });
+
   it("reports a release missing from versions.json", () => {
     expect(
-      metadataProblems({ ...released, versions: { "0.1.0": "1.13.4" } }),
+      metadataProblems({ ...released, versions: { "0.0.9": "1.13.4" } }),
     ).toEqual([
       "versions.json does not map 0.2.0 to the manifest's minAppVersion 1.13.4",
     ]);
+  });
+
+  it("lets a pre-release raise the manifest's minimum ahead of the map", () => {
+    expect(
+      metadataProblems({
+        ...prepared,
+        manifest: { version: "0.2.0", minAppVersion: "1.15.0" },
+      }),
+    ).toEqual([]);
   });
 
   it("reports invalid release identifiers and non-numeric app versions", () => {
@@ -303,12 +381,52 @@ describe("releaseProblems", () => {
   it("refuses a release without notes", () => {
     const empty: Metadata = {
       packageJson: { version: "0.1.0" },
-      manifest: { version: "0.1.0", minAppVersion: "1.13.4" },
-      versions: { "0.1.0": "1.13.4" },
+      manifest: { version: "0.0.8", minAppVersion: "1.13.4" },
+      versions: {},
     };
     expect(releaseProblems(empty, changelog, "0.1.0")).toEqual([
       'CHANGELOG.md has no non-empty "## 0.1.0 - YYYY-MM-DD" section',
     ]);
+  });
+
+  it("accepts a prepared pre-release that the manifest does not name", () => {
+    const notes = "## 0.3.1 - 2026-11-06\n\n- A pre-release.\n";
+    expect(releaseProblems(prepared, notes, "0.3.1")).toEqual([]);
+  });
+
+  it("refuses a public release that the manifest does not name", () => {
+    const notes = "## 0.4.0 - 2026-11-06\n\n- A public release.\n";
+    expect(
+      releaseProblems(
+        { ...released, packageJson: { version: "0.4.0" } },
+        notes,
+        "0.4.0",
+      ),
+    ).toEqual([
+      "manifest.json version 0.2.0 differs from package.json version 0.4.0",
+      "versions.json does not map 0.4.0 to the manifest's minAppVersion 1.13.4",
+    ]);
+  });
+});
+
+describe("builtManifest", () => {
+  const committed = `${JSON.stringify(
+    { id: "inkline", version: "1.0.0", minAppVersion: "1.13.4" },
+    null,
+    2,
+  )}\n`;
+
+  it("names the version, changing nothing else and keeping the order", () => {
+    const built = builtManifest(committed, "1.1.0");
+    expect(built).toBe(committed.replace('"1.0.0"', '"1.1.0"'));
+  });
+
+  it("gives back the same text for the version the file names", () => {
+    expect(builtManifest(committed, "1.0.0")).toBe(committed);
+  });
+
+  it("refuses a manifest that is not an object", () => {
+    expect(() => builtManifest("[]", "1.0.0")).toThrow("must be an object");
   });
 });
 
@@ -326,13 +444,22 @@ describe("syncMetadata", () => {
     });
   });
 
+  it("changes neither file for a pre-release, as Obsidian reads both from main", () => {
+    const listed = { id: "inkline", version: "1.0.0", minAppVersion: "1.14.0" };
+    const versions = { "1.0.0": "1.14.0" };
+    expect(syncMetadata("1.1.0", listed, versions)).toEqual({
+      manifest: listed,
+      versions,
+    });
+  });
+
   it("keeps earlier releases' minimums when a release raises its own", () => {
     const synced = syncMetadata(
       "0.2.0",
-      { version: "0.1.0", minAppVersion: "1.14.4" },
-      { "0.1.0": "1.13.4" },
+      { version: "0.0.9", minAppVersion: "1.14.4" },
+      { "0.0.9": "1.13.4" },
     );
-    expect(synced.versions).toEqual({ "0.1.0": "1.13.4", "0.2.0": "1.14.4" });
+    expect(synced.versions).toEqual({ "0.0.9": "1.13.4", "0.2.0": "1.14.4" });
     expect(
       metadataProblems({ packageJson: { version: "0.2.0" }, ...synced }),
     ).toEqual([]);

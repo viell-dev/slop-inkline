@@ -3,10 +3,11 @@
 // E2E_UPDATE_ZIP is the verified new ZIP; E2E_PREVIOUS_VERSION names the old
 // release. Missing inputs fail rather than silently skipping this check.
 import { execFileSync } from "node:child_process";
-import { readFileSync, realpathSync } from "node:fs";
+import { realpathSync } from "node:fs";
 import path from "node:path";
 import { browser, expect } from "@wdio/globals";
 import { obsidianPage } from "wdio-obsidian-service";
+import packageJson from "../../../package.json" with { type: "json" };
 import {
   draw,
   noteText,
@@ -21,19 +22,11 @@ const previous = process.env.E2E_PREVIOUS_VERSION;
 if (zip === undefined || previous === undefined) {
   throw new Error("E2E_UPDATE_ZIP and E2E_PREVIOUS_VERSION are required");
 }
-const manifest: unknown = JSON.parse(
-  readFileSync(new URL("../../../manifest.json", import.meta.url), "utf8"),
-);
-if (
-  typeof manifest !== "object" ||
-  manifest === null ||
-  !("version" in manifest) ||
-  typeof manifest.version !== "string" ||
-  manifest.version === previous
-) {
+// package.json, as a pre-release's version never reaches manifest.json.
+const version = packageJson.version;
+if (version === previous) {
   throw new Error("The checkout must name a different, new release version");
 }
-const version = manifest.version;
 
 async function loadedVersion(): Promise<string> {
   return browser.executeObsidian(

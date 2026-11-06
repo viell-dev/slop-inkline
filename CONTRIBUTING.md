@@ -71,6 +71,8 @@ npm run build
 The build writes `main.js`, `manifest.json`, and `styles.css` to `dist/`. To try
 it, copy them into `.obsidian/plugins/inkline/` in a test vault and enable
 Inkline in Settings, Community plugins. `npm run dev` rebuilds on every change.
+The built manifest names the version in `package.json`, which can be newer than
+the root `manifest.json`, as [RELEASING.md](RELEASING.md) explains.
 
 ## Checks
 
@@ -83,7 +85,9 @@ npm run check
 Prettier, the TypeScript checks of the plugin, the tests, the scripts, and the
 documentation site's configuration, the unit tests, the build, and the
 documentation site's build. `npm run format` applies Prettier. GitHub Actions
-runs `check` on Linux and Windows, and a dependency audit on Linux.
+runs `check` on Linux and Windows, and a dependency audit on Linux. The
+[plugin's guide](https://github.com/obsidianmd/eslint-plugin/blob/0.5.0/docs/configuration.md#community-plugin-scanner-configuration)
+describes what the directory's scan runs.
 
 ## Tests
 

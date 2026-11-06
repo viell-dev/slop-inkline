@@ -102,6 +102,30 @@ export function documentSpan(
     : { left: left / unitsPerPixel, right: right / unitsPerPixel };
 }
 
+/**
+ * The stroke `next` adds to `previous`, when that is all that changed: the
+ * same base layer and the very same strokes in order, with one more after
+ * them. Anything else gives undefined, however it came about, as an undo, a
+ * move, which makes new strokes, or a replaced document all do. Strokes draw
+ * in order, so this stroke drawn over what `previous` left is what `next`
+ * leaves.
+ */
+export function addedStroke(
+  previous: InkDocument,
+  next: InkDocument,
+): Stroke | undefined {
+  const { strokes } = next;
+  if (
+    next.base !== previous.base ||
+    strokes.length !== previous.strokes.length + 1
+  ) {
+    return undefined;
+  }
+  return previous.strokes.every((stroke, index) => stroke === strokes[index])
+    ? strokes.at(-1)
+    : undefined;
+}
+
 function mapPoints(
   stroke: Stroke,
   x: (value: number) => number,

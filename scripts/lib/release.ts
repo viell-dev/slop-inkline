@@ -3,6 +3,7 @@
 
 import { fromMarkdown } from "mdast-util-from-markdown";
 import {
+  compareSemver,
   isPrerelease,
   releaseVersionPattern,
   stableVersionPattern,
@@ -10,6 +11,13 @@ import {
 
 /** The version a repository has before its first release. */
 export const unreleasedVersion = "0.0.0";
+
+/**
+ * The one pre-release manifest.json may name: the last before pre-releases
+ * stopped reaching it, as nothing is listed until 1.0.0 replaces it. It cannot
+ * be 0.0.0 until then, which Obsidian's review refuses as a placeholder.
+ */
+export const lastManifestPrerelease = "0.9.0";
 
 export interface Metadata {
   /** Parsed `package.json`. */
@@ -30,6 +38,38 @@ function stringField(value: unknown, key: string): string | undefined {
   return typeof field === "string" ? field : undefined;
 }
 
+/**
+ * What is wrong with manifest.json while package.json names `version`, a
+ * pre-release. Obsidian offers every user the version that manifest.json names
+ * on main, so a pre-release's version stays out of it, and a build gets it
+ * from package.json instead.
+ */
+function prereleaseManifestProblems(
+  version: string,
+  manifestVersion: string | undefined,
+): string[] {
+  if (
+    manifestVersion === undefined ||
+    !stableVersionPattern.test(manifestVersion)
+  ) {
+    return [`manifest.json version ${String(manifestVersion)} is not x.y.z`];
+  }
+  if (
+    isPrerelease(manifestVersion) &&
+    manifestVersion !== lastManifestPrerelease
+  ) {
+    return [
+      `manifest.json version ${manifestVersion} is a pre-release, which Obsidian would offer to every user`,
+    ];
+  }
+  if (compareSemver(manifestVersion, version) > 0) {
+    return [
+      `manifest.json version ${manifestVersion} is higher than package.json version ${version}`,
+    ];
+  }
+  return [];
+}
+
 /** Lists every way the package, manifest, and versions files disagree. */
 export function metadataProblems(metadata: Metadata): string[] {
   const problems: string[] = [];
@@ -42,7 +82,9 @@ export function metadataProblems(metadata: Metadata): string[] {
       `package.json version ${String(version)} is not a release version`,
     );
   }
-  if (manifestVersion !== version) {
+  if (version !== undefined && isPrerelease(version)) {
+    problems.push(...prereleaseManifestProblems(version, manifestVersion));
+  } else if (manifestVersion !== version) {
     problems.push(
       `manifest.json version ${String(manifestVersion)} differs from package.json version ${String(version)}`,
     );
@@ -62,6 +104,8 @@ export function metadataProblems(metadata: Metadata): string[] {
   for (const [release, appVersion] of Object.entries(metadata.versions)) {
     if (!stableVersionPattern.test(release)) {
       problems.push(`versions.json key ${release} is not x.y.z`);
+    } else if (isPrerelease(release)) {
+      problems.push(`versions.json key ${release} is a pre-release`);
     }
     if (
       typeof appVersion !== "string" ||
@@ -129,7 +173,7 @@ export function releaseProblems(
   version: string,
 ): string[] {
   const problems = metadataProblems(metadata);
-  if (!releaseVersionPattern.test(version) || version === unreleasedVersion) {
+  if (!stableVersionPattern.test(version) || version === unreleasedVersion) {
     problems.push(`${version} is not a releasable version`);
   }
   const packageVersion = stringField(metadata.packageJson, "version");
@@ -148,19 +192,32 @@ export function releaseProblems(
 
 /**
  * Returns the manifest and versions map updated for `version`, which `npm
- * version` has already written to package.json.
+ * version` has already written to package.json. Only a public release changes
+ * them: Obsidian reads both from main, and a pre-release must not reach it.
  */
 export function syncMetadata(
   version: string,
   manifest: Record<string, unknown>,
   versions: Record<string, unknown>,
 ): { manifest: Record<string, unknown>; versions: Record<string, unknown> } {
-  const minAppVersion = manifest.minAppVersion;
+  if (isPrerelease(version)) {
+    return { manifest: { ...manifest }, versions: { ...versions } };
+  }
   return {
     manifest: { ...manifest, version },
-    // Pre-releases are installed manually; the map is for public releases.
-    versions: isPrerelease(version)
-      ? { ...versions }
-      : { ...versions, [version]: minAppVersion },
+    versions: { ...versions, [version]: manifest.minAppVersion },
   };
+}
+
+/**
+ * The manifest.json a build ships, from the text of the repository's file: the
+ * same, naming `version`, the one package.json gives. So the version of a
+ * build comes from its commit, whether or not it is a public release, and for
+ * one that is, the two files are the same bytes.
+ */
+export function builtManifest(manifest: string, version: string): string {
+  const parsed: unknown = JSON.parse(manifest);
+  if (!isRecord(parsed)) throw new Error("manifest.json must be an object");
+  return `${JSON.stringify({ ...parsed, version }, null, 2)}
+`;
 }

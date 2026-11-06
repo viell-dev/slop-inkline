@@ -145,13 +145,15 @@ describe("manual install ZIP", () => {
 
 describe("release candidates", () => {
   it.each(["0.1.1-rc.1", "1.0.0-beta.2", "0.2.0-alpha", "1.2.3-0"])(
-    "accepts and flags %s",
+    "flags the suffix of %s as a pre-release, which no new release may have",
     (version) => {
-      const synced = syncMetadata(
-        version,
-        { id: "inkline", minAppVersion: "1.13.4" },
-        { "0.1.0": "1.13.4" },
-      );
+      const manifest = {
+        id: "inkline",
+        version: "0.0.8",
+        minAppVersion: "1.13.4",
+      };
+      const versions = { "0.0.8": "1.13.4" };
+      const synced = syncMetadata(version, manifest, versions);
       const metadata = { packageJson: { version }, ...synced };
       expect(metadataProblems(metadata)).toEqual([]);
       expect(
@@ -160,8 +162,8 @@ describe("release candidates", () => {
           `## ${version} - 2026-10-25\n\n- Synthetic candidate.\n`,
           version,
         ),
-      ).toEqual([]);
-      expect(synced.versions).toEqual({ "0.1.0": "1.13.4" });
+      ).toEqual([`${version} is not a releasable version`]);
+      expect(synced).toEqual({ manifest, versions });
       expect(isPrerelease(version)).toBe(true);
     },
   );
@@ -179,13 +181,12 @@ describe("release candidates", () => {
   });
 
   it("keeps a plain pre-release out of the directory's map of versions", () => {
-    const manifest = { version: "0.3.0-alpha.8", minAppVersion: "1.13.4" };
-    const versions = { "0.1.0": "1.13.4" };
-    expect(syncMetadata("0.9.0", manifest, versions).versions).toEqual(
+    const manifest = { version: "0.9.0", minAppVersion: "1.13.4" };
+    const versions = {};
+    expect(syncMetadata("0.9.1", manifest, versions).versions).toEqual(
       versions,
     );
     expect(syncMetadata("1.0.0", manifest, versions).versions).toEqual({
-      ...versions,
       "1.0.0": "1.13.4",
     });
   });
