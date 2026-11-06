@@ -15,9 +15,9 @@ import path from "node:path";
 import { browser, expect } from "@wdio/globals";
 import { encodePng } from "../../support/png.ts";
 import {
-  baseAlpha,
-  baseSide,
   goldenFiles,
+  goldenImages,
+  type GoldenImage,
 } from "../../fixtures/format/records.ts";
 import { loadModules, toBase64 } from "../support/browser.ts";
 import { outputDirectory } from "../support/harness.ts";
@@ -28,15 +28,15 @@ const output = path.join(
   "golden",
 );
 
-/** The golden base layer's image: grey ink with {@link baseAlpha}. */
-function baseImage(): Uint8Array {
-  const data = new Uint8Array(baseSide * baseSide * 4);
-  for (let y = 0; y < baseSide; y++) {
-    for (let x = 0; x < baseSide; x++) {
-      data.set([126, 126, 126, baseAlpha(x, y)], (y * baseSide + x) * 4);
+/** A golden base layer's image: grey ink with its alpha. */
+function baseImage({ side, alpha }: GoldenImage): Uint8Array {
+  const data = new Uint8Array(side * side * 4);
+  for (let y = 0; y < side; y++) {
+    for (let x = 0; x < side; x++) {
+      data.set([126, 126, 126, alpha(x, y)], (y * side + x) * 4);
     }
   }
-  return encodePng({ width: baseSide, height: baseSide, data });
+  return encodePng({ width: side, height: side, data });
 }
 
 describe("The golden files", function () {
@@ -47,6 +47,7 @@ describe("The golden files", function () {
 
   for (const [name, drawing] of Object.entries(goldenFiles)) {
     it(`saves ${name}`, async function () {
+      const image = goldenImages[name];
       const saved = await browser.execute(
         async (strokes, place, png) => {
           const { canvas, record } = window.inklineTest;
@@ -66,7 +67,7 @@ describe("The golden files", function () {
         },
         drawing.strokes,
         drawing.base ?? null,
-        toBase64(baseImage()),
+        image === undefined ? "" : toBase64(baseImage(image)),
       );
       await writeFile(
         path.join(output, `${name}.ink.png`),

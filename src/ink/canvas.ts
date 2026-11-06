@@ -300,6 +300,33 @@ function placedBase(
       };
 }
 
+/**
+ * A base layer for drawing into a saved image: its image halved until it is at
+ * most twice the size it is drawn at, so that the final draw takes in every
+ * source pixel, as the format requires, whatever a browser's smoothing does.
+ * Chromium's own does not always: reducing five times, 120's "high" samples a
+ * few pixels and misses most of a thin line, where 150's averages them.
+ */
+export function reducedBase(base: DrawableBase): DrawableBase {
+  const most = (drawn: number): number => (2 * drawn) / unitsPerPixel;
+  let { image } = base;
+  for (;;) {
+    const halved = (size: number, drawn: number): number =>
+      size > most(drawn) ? Math.ceil(size / 2) : size;
+    const width = halved(image.width, base.width);
+    const height = halved(image.height, base.height);
+    if (width === image.width && height === image.height) {
+      return { ...base, image };
+    }
+    const { surface, context } = canvas(width, height);
+    // Plain bilinear: at half the size, each pixel is the mean of those four.
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "low";
+    context.drawImage(image, 0, 0, width, height);
+    image = surface;
+  }
+}
+
 /** Whether a vertical span in pixels reaches into the line box. */
 function inLineBox(top: number, bottom: number): boolean {
   return bottom > 0 && top < lineBox.height;
@@ -482,9 +509,10 @@ export async function saveInk(
   }
   // The document says where its base layer is; the decoded layer supplies
   // only its pixels.
-  let { left, width } = crop(
-    findInk(document, placedBase(base, document.base)),
-  );
+  const placedAtFirst = placedBase(base, document.base);
+  const reduced =
+    placedAtFirst === undefined ? undefined : reducedBase(placedAtFirst);
+  let { left, width } = crop(findInk(document, reduced));
   for (let attempt = 0; ; attempt++) {
     if (width > limits.width) {
       throw new RangeError(
@@ -497,7 +525,7 @@ export async function saveInk(
         "a stroke lies so far from the ink that cropping would move it past the format's coordinate limit",
       );
     }
-    const placed = placedBase(base, record.base);
+    const placed = placedBase(reduced, record.base);
     const { surface, context } = canvas(width + cropMargin, lineBox.height);
     drawInk(context, record.strokes, placed, 0);
     const next = crop(

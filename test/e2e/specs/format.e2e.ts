@@ -8,10 +8,12 @@ import { loadModules, toBase64 } from "../support/browser.ts";
 const fixtures = path.resolve(import.meta.dirname, "../../fixtures/format");
 
 /**
- * How far a redraw may differ from a golden file's stored alpha. Strokes, cuts,
- * polygons, and fills differ by a level or so between the Chromium versions
- * tested, so these limits leave room for another renderer's antialiasing and
- * little else.
+ * How far a redraw may differ from a golden file's stored alpha, from one
+ * Chromium to another: strokes, cuts, polygons, and fills differ by a level or
+ * so between the versions tested. They are a check on this code, not a promise
+ * about other renderers, which can differ by more at an edge, as the format's
+ * Antialiasing section says: an exact renderer differs by up to 128 levels
+ * along a cut.
  */
 const tolerance = {
   /** How many alpha levels mark a pixel as different. */
@@ -23,9 +25,10 @@ const tolerance = {
 };
 
 /**
- * The same for a base layer, whose resampling is up to the renderer: Chromium
- * 120 and 150 differ by up to 45 levels on this image's harsh pattern, in about
- * a fifth of its pixels with ink.
+ * The same for an enlarged base layer, whose resampling is up to the renderer:
+ * Chromium 120 and 150 differ by up to 45 levels on `v1-base`'s harsh pattern,
+ * in about a fifth of its pixels with ink. A reduced one needs no such room, as
+ * a save halves its image first: they differ there by 11 levels at most.
  */
 const baseTolerance = { ...tolerance, share: 0.3 };
 
@@ -97,7 +100,13 @@ describe("The file format in Obsidian's renderer", function () {
           const surface = new OffscreenCanvas(stored.width, stored.height);
           const context = surface.getContext("2d");
           if (context === null) throw new Error("no context");
-          render.drawInk(context, opened.document.strokes, opened.base);
+          render.drawInk(
+            context,
+            opened.document.strokes,
+            opened.base === undefined
+              ? undefined
+              : canvas.reducedBase(opened.base),
+          );
           const { data: drawn } = context.getImageData(
             0,
             0,
@@ -146,8 +155,7 @@ describe("The file format in Obsidian's renderer", function () {
         tolerance.levels,
       );
       console.log(`${name} against its pixels`, JSON.stringify(result));
-      const { share, worst } =
-        goldenFiles[name]?.base === undefined ? tolerance : baseTolerance;
+      const { share, worst } = name === "v1-base" ? baseTolerance : tolerance;
       expect(result.ink).toBeGreaterThan(100);
       expect(result.differing).toBeLessThanOrEqual(result.ink * share);
       expect(result.worst).toBeLessThanOrEqual(worst);
@@ -156,6 +164,111 @@ describe("The file format in Obsidian's renderer", function () {
       expect(result.moved).toBeLessThanOrEqual(result.ink * share);
     });
   }
+
+  it("refuses a record with anything after its zlib stream", async function () {
+    const result = await browser.execute(async () => {
+      const { inkFile, png } = window.inklineTest;
+      const image = new Uint8ClampedArray(48 * 192 * 4);
+      const whole = await inkFile.writeInkFile(
+        await window.inklineTest.canvas.encodePixels({
+          width: 48,
+          height: 192,
+          data: image,
+        }),
+        { strokes: [{ tool: "pen", size: 16, points: [16, 32] }] },
+      );
+      const [header, chunk, ...rest] = png.readChunks(whole);
+      if (header === undefined || chunk === undefined) {
+        throw new Error("no chunks");
+      }
+      const data = new Uint8Array(chunk.data.length + 4);
+      data.set(chunk.data);
+      const longer = png.writeChunks([
+        header,
+        { type: chunk.type, data },
+        ...rest,
+      ]);
+      const source = await inkFile.readInkFile(longer);
+      return source.kind === "pixels" ? source.reason : source.kind;
+    });
+    expect(result).toBe("damaged");
+  });
+
+  it("opens a record over damaged image data, and draws the image again", async function () {
+    const result = await browser.execute(async () => {
+      const { canvas, inkFile, png } = window.inklineTest;
+      const written = {
+        strokes: [{ tool: "pen", size: 160, points: [800, 800, 1200, 800] }],
+      } as const;
+      const whole = await canvas.saveInk(written, undefined);
+      const chunks = png.readChunks(whole.bytes);
+      const damaged = png.writeChunks(
+        chunks.map((chunk) =>
+          chunk.type === "IDAT"
+            ? { type: "IDAT", data: Uint8Array.of(1, 2, 3) }
+            : chunk,
+        ),
+      );
+      const decodes = await canvas.decodePng(damaged).then(
+        () => true,
+        () => false,
+      );
+      const opened = await canvas.openInk(damaged);
+      if (opened.kind !== "editable") throw new Error(opened.kind);
+      const saved = await canvas.saveInk(
+        opened.document,
+        opened.base,
+        opened.carried,
+      );
+      const source = await inkFile.readInkFile(saved.bytes);
+      return {
+        decodes,
+        kind: source.kind,
+        ink: canvas
+          .readPixels(await canvas.decodePng(saved.bytes))
+          .data.filter((_, at) => at % 4 === 3 && _ > 0).length,
+      };
+    });
+    expect(result.decodes).toBe(false);
+    expect(result.kind).toBe("record");
+    expect(result.ink).toBeGreaterThan(100);
+  });
+
+  it("widens a file another writer clipped, on saving, to the ink its record has", async function () {
+    const result = await browser.execute(async () => {
+      const { canvas, inkFile, render } = window.inklineTest;
+      // Two dots, the second past the right edge of a 48-pixel image.
+      const record = {
+        strokes: [
+          { tool: "pen", size: 96, points: [384, 1280] },
+          { tool: "pen", size: 96, points: [1280, 1280] },
+        ],
+      } as const;
+      const surface = new OffscreenCanvas(48, 192);
+      const context = surface.getContext("2d");
+      if (context === null) throw new Error("no context");
+      render.drawInk(context, record.strokes, undefined);
+      const file = await inkFile.writeInkFile(
+        await canvas.encodePixels(context.getImageData(0, 0, 48, 192)),
+        record,
+      );
+      const opened = await canvas.openInk(file);
+      if (opened.kind !== "editable") throw new Error(opened.kind);
+      const saved = await canvas.saveInk(opened.document, opened.base);
+      const again = await canvas.openInk(saved.bytes);
+      if (again.kind !== "editable") throw new Error(again.kind);
+      const resaved = await canvas.saveInk(again.document, again.base);
+      return {
+        opened: opened.width,
+        saved: saved.width,
+        resaved: resaved.width,
+      };
+    });
+    expect(result.opened).toBe(48);
+    expect(result.saved).toBeGreaterThan(48);
+    // From there, saving changes nothing.
+    expect(result.resaved).toBe(result.saved);
+  });
 
   it("ignores a picture's orientation metadata, and drops it on saving", async function () {
     const result = await browser.execute(async () => {

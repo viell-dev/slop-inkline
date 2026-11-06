@@ -10,8 +10,7 @@ The [issues](https://github.com/viell-dev/slop-inkline/issues) track each one.
 - **Desktop only.** Obsidian's mobile apps do not offer Inkline. The host tests
   run on Linux; Windows and macOS should work but are not tested.
 - **Mouse or trackpad.** A drawing tablet's pen or a touchscreen draws as a
-  mouse does: pen pressure and a pen's eraser end are not supported. Symbols
-  drawn with pressure in earlier versions keep it.
+  mouse does: pen pressure and a pen's eraser end are not supported.
 - **Large libraries** show every matching symbol at once, without paging. Filter
   by name or folder to narrow the list.
 - **Library insertion needs a sidebar.** If the library's tab is dragged into
@@ -31,9 +30,13 @@ link would still lead elsewhere by its path in the vault.
 ## Files and sizes
 
 - A symbol is at most 4096 pixels wide, 32 times the height of its text.
-- Tools that change or recompress a symbol's image drop the strokes it keeps,
-  leaving a picture; see
+- Tools that change or recompress a symbol's image can drop the strokes it
+  keeps, leaving a picture; see
   [Without Inkline](./without-inkline.md#editing-them-elsewhere).
+- **Unreleased:** a symbol holds at most 250,000 points across its strokes,
+  erased ones included. That is minutes of unbroken drawing with the fastest
+  mice, and saving past it fails with a message, keeping your drawing as a
+  draft.
 - A picture to trace over is scaled down to 4096 pixels on its longer side. A
   file opened from its pixels can be up to 4096 pixels a side, and its ink must
   fit within 8 MiB, the largest base layer a symbol can store.

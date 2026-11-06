@@ -30,7 +30,7 @@ import {
   encodePng,
   pixelChunks,
 } from "../../support/png.ts";
-import { goldenFiles } from "../../fixtures/format/records.ts";
+import { goldenFiles, goldenImages } from "../../fixtures/format/records.ts";
 
 const fixtures = path.resolve(import.meta.dirname, "../../fixtures/format");
 
@@ -137,6 +137,41 @@ describe("version 1 golden files", () => {
       expect([...header.subarray(8, 13)]).toEqual([8, 6, 0, 0, 0]);
     });
   }
+});
+
+describe("a base layer drawn smaller than its image", () => {
+  it("takes in every source pixel it covers, in the golden file's pixels", async () => {
+    const name = "v1-base-reduced";
+    const image = goldenImages[name];
+    const bytes = await readFile(path.join(fixtures, `${name}.ink.png`));
+    const source = await readInkFile(new Uint8Array(bytes));
+    if (source.kind !== "record" || source.record.base === undefined) {
+      throw new Error("no base layer");
+    }
+    if (image === undefined) throw new Error("no image");
+    const { x, y, width: drawn } = source.record.base;
+    const { width, data } = decodeRgba(new Uint8Array(bytes));
+    const scale = image.side / (drawn / 16);
+    const [left, top] = [x / 16, y / 16];
+    let worst = 0;
+    // Away from the rectangle's edge, each pixel against the exact mean of the
+    // source pixels it covers. A filter that samples four source pixels puts a
+    // line it lands on at full strength and misses the others, by 200 levels.
+    for (let row = 4; row < 188; row++) {
+      for (let column = 4; column < drawn / 16 - 4; column++) {
+        let sum = 0;
+        for (let v = row * scale; v < (row + 1) * scale; v++) {
+          for (let u = column * scale; u < (column + 1) * scale; u++) {
+            sum += image.alpha(u, v);
+          }
+        }
+        const mean = sum / (scale * scale);
+        const at = ((row + top) * width + column + left) * 4 + 3;
+        worst = Math.max(worst, Math.abs((data[at] ?? 0) - mean));
+      }
+    }
+    expect(worst).toBeLessThan(110);
+  });
 });
 
 describe("writeInkFile", () => {
@@ -283,6 +318,36 @@ describe("readInkFile", () => {
     ).rejects.toThrow(PngError);
   });
 
+  it("reads a record whatever the image data holds, as reading never decodes it", async () => {
+    const [header, ...rest] = pixelChunks(blank(width, imageHeight));
+    if (header === undefined) throw new Error("no header");
+    const others = rest.filter(({ type }) => type !== "IDAT");
+    const payloads = [
+      // Empty, not a zlib stream, and a stream that stops rows short.
+      new Uint8Array(0),
+      Uint8Array.of(1, 2, 3),
+      deflateSync(new Uint8Array(10)),
+    ];
+    for (const data of payloads) {
+      const file = writeChunks([
+        header,
+        recordChunk(1),
+        { type: "IDAT", data },
+        ...others,
+      ]);
+      expect(await readInkFile(file)).toEqual(asRead);
+    }
+  });
+
+  it("passes over an ancillary chunk with PNG's reserved letter in lower case", async () => {
+    // PNG says such a file does not conform, and also that an unknown chunk is
+    // no error unless it is critical, so a reader goes on.
+    const odd = { type: "abcl", data: new Uint8Array(0) };
+    expect(await readInkFile(withChunks([recordChunk(1), odd]))).toEqual(
+      asRead,
+    );
+  });
+
   it("throws on a critical chunk PNG does not define, even with a record", async () => {
     const file = withChunks([
       recordChunk(1),
@@ -389,6 +454,21 @@ describe("readInkFile reports a record that cannot be used", () => {
     await damagedBecause(withChunks([recordChunk(1, text)]));
   });
 
+  it("with anything after the stream's end", async () => {
+    const payload = deflateSync(serializeRecord(record));
+    const longer = new Uint8Array(payload.length + 4);
+    longer.set(payload);
+    expect(
+      await damagedBecause(withChunks([recordChunk(1, longer)])),
+    ).toBeTruthy();
+    const twice = new Uint8Array(payload.length * 2);
+    twice.set(payload);
+    twice.set(payload, payload.length);
+    expect(
+      await damagedBecause(withChunks([recordChunk(1, twice)])),
+    ).toBeTruthy();
+  });
+
   it("that stops short", async () => {
     const whole = deflateSync(serializeRecord(record));
     await damagedBecause(withChunks([recordChunk(1, whole.subarray(0, 4))]));
@@ -449,8 +529,27 @@ function findChunk(file: Uint8Array, type: string): number {
 
 describe("writeInkFile writes only what readers accept", () => {
   it("refuses a record whose text is longer than the limit", async () => {
-    const points = new Array<number>(2 * limits.points).fill(limits.coordinate);
-    const long: InkRecord = { strokes: [{ tool: "pen", size: 16, points }] };
+    // Only the largest of everything together reaches it: all the points, in
+    // as many strokes as a record can have, on the largest base layer.
+    const [header, , end] = pixelChunks(blank(1, 1));
+    if (header === undefined || end === undefined) throw new Error("no PNG");
+    const data = new Uint8Array(limits.baseBytes - 64);
+    const each = (2 * limits.points) / limits.strokes;
+    const long: InkRecord = {
+      strokes: Array.from({ length: limits.strokes }, () => ({
+        tool: "eraser",
+        size: limits.strokeSize,
+        points: new Array<number>(each).fill(-limits.coordinate),
+        cut: { start: "down", end: "down" },
+      })),
+      base: {
+        x: 0,
+        y: 0,
+        width: 16,
+        height: 16,
+        png: writeChunks([header, { type: "IDAT", data }, end]),
+      },
+    };
     expect(serializeRecord(long).length).toBeGreaterThan(limits.text);
     await expect(writeInkFile(image, long)).rejects.toThrow(
       new RecordError("record text is too long"),

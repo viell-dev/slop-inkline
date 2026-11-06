@@ -32,6 +32,9 @@ class RecordingContext implements DrawingContext {
   quadraticCurveTo(): void {
     // Many per outline; not worth recording.
   }
+  arc(): void {
+    // A dot's outline, as the curves are a stroke's: traceShape's own test.
+  }
   closePath(): void {
     this.calls.push("closePath");
   }
@@ -81,7 +84,7 @@ describe("drawInk", () => {
       width: 320,
       height: 160,
       // The recording context never looks at the image.
-      image: {} as CanvasImageSource,
+      image: {} as OffscreenCanvas,
     };
     drawInk(context, [pen, eraser, pen], base, 7);
     expect(context.calls).toEqual([

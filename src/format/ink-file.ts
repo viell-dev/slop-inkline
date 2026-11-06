@@ -24,8 +24,8 @@ export const inkExtension = ".ink.png";
 /**
  * The type of the chunk that holds the record: ancillary, so that programs
  * that do not know it still show the image; private; and unsafe to copy, as
- * the record describes the image, so that a program that changes the image
- * drops it rather than leave it describing something else.
+ * the record describes the image, so that a program that changes a critical
+ * chunk drops it rather than leave it describing something else.
  */
 export const recordChunkType = "inKL";
 
@@ -166,8 +166,9 @@ export async function readInk(chunks: readonly Chunk[]): Promise<InkSource> {
 }
 
 /**
- * Reads what a PNG file holds. Throws `PngError` when the bytes are not a
- * well-formed PNG; anything wrong with the record only makes it unusable.
+ * Reads what a PNG file holds. Throws `PngError` when the bytes fail the
+ * format's check of a PNG's structure; anything wrong with the record only
+ * makes it unusable, and the image data is not looked at.
  */
 export async function readInkFile(bytes: Uint8Array): Promise<InkSource> {
   return await readInk(readChunks(bytes));

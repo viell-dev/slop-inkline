@@ -32,7 +32,7 @@ export interface DrawableBase {
   readonly y: number;
   readonly width: number;
   readonly height: number;
-  readonly image: CanvasImageSource;
+  readonly image: OffscreenCanvas;
 }
 
 /** The subset of a 2D canvas context that drawing uses. */

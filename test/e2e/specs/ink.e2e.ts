@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { browser, expect } from "@wdio/globals";
+import { decodeRgba } from "../../support/png.ts";
 import { loadModules, toBase64 } from "../support/browser.ts";
 
 const pictures = path.resolve(import.meta.dirname, "../../fixtures/pictures");
@@ -312,7 +313,7 @@ describe("The drawing core in Obsidian's renderer", function () {
 
   it("draws a base layer in grey whatever its own colours", async function () {
     const result = await browser.execute(async () => {
-      const { canvas, inkFile } = window.inklineTest;
+      const { canvas, inkFile, record } = window.inklineTest;
       const red = await canvas.encodePixels({
         width: 1,
         height: 1,
@@ -339,26 +340,29 @@ describe("The drawing core in Obsidian's renderer", function () {
       const opened = await canvas.openInk(file);
       if (opened.kind !== "editable") throw new Error(opened.kind);
       const saved = await canvas.saveInk(opened.document, opened.base);
-      const pixels = canvas.readPixels(await canvas.decodePng(saved.bytes));
-      const baseX = (saved.record.base?.x ?? 0) / 16;
-      const at = (x: number, y: number): number[] => [
-        ...pixels.data.subarray(
-          (y * pixels.width + x) * 4,
-          (y * pixels.width + x) * 4 + 4,
-        ),
-      ];
       return {
-        base: at(baseX + 5, 12),
-        erased: at(baseX + 7, 15),
-        dot: at(baseX + 1, 15),
+        file: record.toBase64(saved.bytes),
+        baseX: (saved.record.base?.x ?? 0) / 16,
       };
     });
-    expect(result.base).toEqual([126, 126, 126, 255]);
-    expect(result.erased[3]).toBe(0);
+    // The bytes stored, as a canvas's premultiplied alpha would round a
+    // partly covered pixel's grey by a level.
+    const pixels = decodeRgba(
+      new Uint8Array(Buffer.from(result.file, "base64")),
+    );
+    const at = (x: number, y: number): number[] => [
+      ...pixels.data.subarray(
+        (y * pixels.width + x) * 4,
+        (y * pixels.width + x) * 4 + 4,
+      ),
+    ];
+    expect(at(result.baseX + 5, 12)).toEqual([126, 126, 126, 255]);
+    expect(at(result.baseX + 7, 15)[3]).toBe(0);
     // A dot 2 px wide on the corner of this pixel covers a quarter of its
     // circle, π / 4 of the pixel, where the eraser left nothing.
-    expect(result.dot.slice(0, 3)).toEqual([126, 126, 126]);
-    expect(result.dot[3]).toBeGreaterThan(180);
+    const dot = at(result.baseX + 1, 15);
+    expect(dot.slice(0, 3)).toEqual([126, 126, 126]);
+    expect(dot[3]).toBeGreaterThan(180);
   });
 
   it("opens and saves pictures only one or two pixels high", async function () {

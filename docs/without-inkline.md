@@ -28,12 +28,13 @@ Any image viewer or editor opens a symbol, and notes show what its pixels hold.
 Inkline's editor, though, draws a symbol from the strokes it keeps in a chunk
 inside the PNG, which is marked as depending on the image. A program that
 changes the image drops that chunk, as PNG's rules ask, and so do many image
-editors, and optimisers that recompress a file, even when it looks the same.
-That leaves a picture that Inkline opens as pixels you can draw on and erase, as
-[Saving and recovery](./recovery.md#pictures-without-strokes) describes. The
-symbol looks as the program left it, and its strokes are gone. A program that
-breaks those rules and keeps the chunk leaves strokes that no longer match the
-image; Inkline's editor shows the strokes, and saving there replaces the image.
+editors, and some optimisers that recompress a file, even when it looks the
+same. That leaves a picture that Inkline opens as pixels you can draw on and
+erase, as [Saving and recovery](./recovery.md#pictures-without-strokes)
+describes. The symbol looks as the program left it, and its strokes are gone. A
+program that keeps the chunk while changing how the image shows, as by adding an
+orientation to its metadata, leaves strokes that no longer match it; Inkline's
+editor shows the strokes, and saving there replaces the image.
 
 The [file format](./file-format.md) specifies the pixels and the chunk, for
 anyone writing a tool that reads or writes symbols.

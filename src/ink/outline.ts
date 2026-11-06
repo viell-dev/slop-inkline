@@ -9,19 +9,20 @@ import {
   type SmoothStroke,
   type Stroke,
 } from "../format/record.ts";
-import { freehandOutline, type Point } from "./freehand.ts";
+import { freehandShape, type FreehandShape, type Point } from "./freehand.ts";
 import type { Bounds } from "./geometry.ts";
 
 /** A polygon's corners, in pixels. */
 export type Outline = readonly Point[];
 
 /**
- * What a stroke fills, in pixels: one outline traced as a smooth curve, as
- * for a stroke drawn as the pointer went, or straight-sided pieces filled
- * together, which make a polygon stroke.
+ * What a stroke fills, in pixels: for a stroke drawn as the pointer went, one
+ * outline traced as a smooth curve, or a circle if its path never got away from
+ * its first point; or straight-sided pieces filled together, which make a
+ * polygon stroke.
  */
 export type StrokeShape =
-  | { readonly kind: "smooth"; readonly outline: Outline }
+  | FreehandShape
   | { readonly kind: "pieces"; readonly pieces: readonly Outline[] };
 
 /**
@@ -43,22 +44,20 @@ export function strokePoints(stroke: Stroke): Point[] {
   return points;
 }
 
-/** The outline of a stroke drawn as the pointer went. */
-export function strokeOutline(stroke: SmoothStroke): Outline {
-  return freehandOutline(strokePoints(stroke), stroke.size / unitsPerPixel);
+/** What a stroke drawn as the pointer went fills. */
+export function smoothShape(stroke: SmoothStroke): FreehandShape {
+  return freehandShape(strokePoints(stroke), stroke.size / unitsPerPixel);
 }
 
 /**
- * What a stroke fills: its outline, a polygon's pieces, or a filled stroke's
- * inside, as a single piece that the nonzero rule fills.
+ * What a stroke fills: a smooth stroke's outline or dot, a polygon's pieces,
+ * or a filled stroke's inside, as a single piece that the nonzero rule fills.
  */
 export function strokeShape(stroke: Stroke): StrokeShape {
   if (stroke.kind === "fill") {
     return { kind: "pieces", pieces: [corners(stroke)] };
   }
-  if (stroke.kind !== "polygon") {
-    return { kind: "smooth", outline: strokeOutline(stroke) };
-  }
+  if (stroke.kind !== "polygon") return smoothShape(stroke);
   const points = corners(stroke);
   const closed = isClosed(points);
   return {
@@ -73,6 +72,16 @@ export function strokeShape(stroke: Stroke): StrokeShape {
 
 /** Where a shape's ink can go, or undefined for nowhere. */
 function shapeBounds(shape: StrokeShape): Bounds | undefined {
+  if (shape.kind === "dot") {
+    const { center, radius } = shape;
+    const [x, y] = center;
+    return {
+      left: x - radius,
+      top: y - radius,
+      right: x + radius,
+      bottom: y + radius,
+    };
+  }
   return outlineBounds(
     shape.kind === "smooth" ? shape.outline : shape.pieces.flat(),
   );
@@ -319,10 +328,11 @@ export function uncutRest(stroke: SmoothStroke): SmoothStroke | undefined {
     while (along < trim) {
       const next = index + step;
       if (next < 0 || next >= count) return next;
-      along += Math.hypot(
-        (points[next * 2] ?? 0) - (points[index * 2] ?? 0),
-        (points[next * 2 + 1] ?? 0) - (points[index * 2 + 1] ?? 0),
-      );
+      const dx = (points[next * 2] ?? 0) - (points[index * 2] ?? 0);
+      const dy = (points[next * 2 + 1] ?? 0) - (points[index * 2 + 1] ?? 0);
+      // Not `Math.hypot`, which rounds differently from one engine to another:
+      // a walk can land exactly on `trim`, and this decides which point it is.
+      along += Math.sqrt(dx * dx + dy * dy);
       index = next;
     }
     return index;
@@ -344,9 +354,7 @@ export function uncutRest(stroke: SmoothStroke): SmoothStroke | undefined {
 export function restShape(stroke: Stroke): StrokeShape | undefined {
   if (stroke.kind !== undefined) return undefined;
   const rest = uncutRest(stroke);
-  return rest === undefined
-    ? undefined
-    : { kind: "smooth", outline: strokeOutline(rest) };
+  return rest === undefined ? undefined : smoothShape(rest);
 }
 
 /** The outline's bounding box, or undefined when it has no corners. */
@@ -370,6 +378,13 @@ export interface PathSink {
   moveTo(x: number, y: number): void;
   lineTo(x: number, y: number): void;
   quadraticCurveTo(cpx: number, cpy: number, x: number, y: number): void;
+  arc(
+    x: number,
+    y: number,
+    radius: number,
+    startAngle: number,
+    endAngle: number,
+  ): void;
   closePath(): void;
 }
 
@@ -400,11 +415,18 @@ export function traceOutline(outline: Outline, path: PathSink): void {
 
 /**
  * Adds what a stroke fills to a path: its outline as {@link traceOutline}
- * does, or each of a polygon's pieces with straight sides.
+ * does, its circle, or each of a polygon's pieces with straight sides.
  */
 export function traceShape(shape: StrokeShape, path: PathSink): void {
   if (shape.kind === "smooth") {
     traceOutline(shape.outline, path);
+    return;
+  }
+  if (shape.kind === "dot") {
+    const [x, y] = shape.center;
+    path.moveTo(x + shape.radius, y);
+    path.arc(x, y, shape.radius, 0, 2 * Math.PI);
+    path.closePath();
     return;
   }
   for (const piece of shape.pieces) {

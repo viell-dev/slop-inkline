@@ -63,8 +63,9 @@ must keep released files readable and looking the same, as
   get new files.
 - Pinned stroke outlines in
   [test/fixtures/outline](https://github.com/viell-dev/slop-inkline/tree/main/test/fixtures/outline),
-  one for each path through the algorithm the format specifies: a change that
-  would change how saved strokes look fails
+  one for each path through the algorithm the format specifies, with turns on
+  and either side of a tie, and the pieces of polygons and of cut strokes: a
+  change that would change how saved strokes look fails
   [outline.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/ink/outline.test.ts).
 - In Obsidian, saving a symbol again after reopening it gives the same bytes,
   however far the drawing sits from the origin, and the pixels the browser

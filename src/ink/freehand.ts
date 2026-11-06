@@ -7,8 +7,14 @@
 // MIT licence in freehand.LICENSE.txt, for the one set of options the format
 // uses: a constant width, round ends, and no tapers. It lives here so that no
 // package update can change what a saved symbol looks like. It differs from
-// that version in one way: a stroke that never leaves its first point is a
-// round dot on that point.
+// that version in two ways. A stroke that never leaves its first point is a
+// round dot on that point. And every comparison below comes out the same in any
+// reader, as docs/file-format.md requires: a length is a plain square root
+// rather than `Math.hypot`, a vector is divided by its length rather than
+// multiplied by a reciprocal, and a side's place after a half circle is not
+// worked out with a sine. Keep those operations, and their order, as the steps
+// there give them. Only `Math.sin` and `Math.cos` may differ between engines,
+// and no comparison depends on them.
 
 /** A point, in pixels. */
 export type Point = readonly [number, number];
@@ -28,9 +34,6 @@ const roundSteps = 13;
 /** Steps in the turn and a half that draws the stroke's end. */
 const endSteps = 29;
 
-/** Corners of the polygon that stands for a dot's circle. */
-const dotCorners = 16;
-
 function add([ax, ay]: Point, [bx, by]: Point): Point {
   return [ax + bx, ay + by];
 }
@@ -47,6 +50,11 @@ function dot([ax, ay]: Point, [bx, by]: Point): number {
   return ax * bx + ay * by;
 }
 
+/** The vector's length, as the format's steps compute it. */
+function length(vector: Point): number {
+  return Math.sqrt(dot(vector, vector));
+}
+
 /** The vector turned a quarter turn. */
 function perpendicular([x, y]: Point): Point {
   return [y, -x];
@@ -58,8 +66,8 @@ function between(from: Point, to: Point, along: number): Point {
 }
 
 function squaredDistance(a: Point, b: Point): number {
-  const [x, y] = subtract(a, b);
-  return x * x + y * y;
+  const away = subtract(a, b);
+  return dot(away, away);
 }
 
 /** `point` turned about `center` by `angle` radians. */
@@ -103,13 +111,14 @@ function smoothedPath(input: readonly Point[], size: number): Sample[] {
     const point = index === last ? target : between(previous, target, pull);
     if (point[0] === previous[0] && point[1] === previous[1]) continue;
     const away = subtract(previous, point);
-    const distance = Math.hypot(away[1], away[0]);
+    const distance = length(away);
     running += distance;
     if (index < last && !steady) {
       if (running < size) continue;
       steady = true;
     }
-    path.push({ point, vector: times(away, 1 / distance), running });
+    const vector: Point = [away[0] / distance, away[1] / distance];
+    path.push({ point, vector, running });
     previous = point;
   }
   // The first point has no point before it: it goes the way the second does.
@@ -119,36 +128,31 @@ function smoothedPath(input: readonly Point[], size: number): Sample[] {
     : [{ point: start, vector: next.vector, running: 0 }, ...path.slice(1)];
 }
 
-/**
- * The circle a stroke that stays on one point draws. Its corners lie just
- * outside the circle, so that the curve through its sides' midpoints lies on
- * it.
- */
-function circle(center: Point, radius: number): Point[] {
-  const reach = radius / Math.cos(Math.PI / dotCorners);
-  return Array.from({ length: dotCorners }, (_, index) => {
-    const angle = (2 * Math.PI * index) / dotCorners;
-    return add(center, [reach * Math.cos(angle), reach * Math.sin(angle)]);
-  });
-}
+/** What a stroke drawn as the pointer went fills. */
+export type FreehandShape =
+  /** A circle: the stroke's path never got away from its first point. */
+  | { readonly kind: "dot"; readonly center: Point; readonly radius: number }
+  /**
+   * A polygon, to be traced as a closed curve through its sides' midpoints,
+   * and filled with the nonzero rule, since an outline crosses itself wherever
+   * its stroke does. Empty without points.
+   */
+  | { readonly kind: "smooth"; readonly outline: readonly Point[] };
 
-/**
- * The polygon a stroke `size` pixels wide fills along `points`, in pixels, to
- * be traced as a closed curve through its sides' midpoints, and filled with
- * the nonzero rule, since an outline crosses itself wherever its stroke does.
- * Empty without points.
- */
-export function freehandOutline(
+/** What a stroke `size` pixels wide fills along `points`, in pixels. */
+export function freehandShape(
   points: readonly Point[],
   size: number,
-): Point[] {
+): FreehandShape {
   const path = smoothedPath(points, size);
   const start = path[0];
   const end = path.at(-1);
-  if (start === undefined || end === undefined) return [];
+  if (start === undefined || end === undefined) {
+    return { kind: "smooth", outline: [] };
+  }
   const radius = size / 2;
-  if (path.length === 1) return circle(start.point, radius);
-  const nearest = radius ** 2;
+  if (path.length === 1) return { kind: "dot", center: start.point, radius };
+  const nearest = radius * radius;
   const left: Point[] = [];
   const right: Point[] = [];
   let previousVector = start.vector;
@@ -167,11 +171,13 @@ export function freehandOutline(
       const offset = times(perpendicular(previousVector), radius);
       for (let step = 0; step <= roundSteps; step++) {
         const angle = (halfTurn * step) / roundSteps;
-        previousLeft = rotated(subtract(point, offset), point, angle);
-        previousRight = rotated(add(point, offset), point, -angle);
-        left.push(previousLeft);
-        right.push(previousRight);
+        left.push(rotated(subtract(point, offset), point, angle));
+        right.push(rotated(add(point, offset), point, -angle));
       }
+      // Where each side's half circle ended, near enough: the distance from
+      // here decides what comes next, which must not depend on a sine.
+      previousLeft = add(point, offset);
+      previousRight = subtract(point, offset);
       if (nextCorner) afterCorner = true;
       return;
     }
@@ -209,5 +215,8 @@ export function freehandOutline(
   const endCap = Array.from({ length: endSteps }, (_, step) =>
     rotated(tip, end.point, (3 * halfTurn * (step + 1)) / endSteps),
   );
-  return [...left, ...endCap, ...right.reverse(), ...startCap];
+  return {
+    kind: "smooth",
+    outline: [...left, ...endCap, ...right.reverse(), ...startCap],
+  };
 }

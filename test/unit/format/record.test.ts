@@ -372,7 +372,20 @@ describe("parseRecord refuses", () => {
     expect(parseRecord(variant(["strokes"], [stroke])).ok).toBe(true);
     expect(
       invalid(parseRecord(variant(["strokes"], [stroke, stroke, stroke]))),
-    ).toBe("more than 1000000 points");
+    ).toBe("more than 250000 points");
+  });
+
+  it("a base image with bytes after its end", () => {
+    const png = encodePng(blank(1, 1));
+    const longer = new Uint8Array(png.length + 3);
+    longer.set(png);
+    expect(
+      invalid(
+        parseRecord(
+          variant(["base", "png"], btoa(String.fromCharCode(...longer))),
+        ),
+      ),
+    ).toBe("base.png holds bytes after its end");
   });
 
   it("a base image beyond the size limit", () => {
@@ -428,6 +441,22 @@ describe("parseRecord holds the text to the format's own JSON", () => {
   it("does not take a string's contents for structure", () => {
     const text = '{"strokes":[],"note":"[[[[{{{{ 1.5 \\"strokes\\": 1e3 -0"}';
     expect(parseRecord(text).ok).toBe(true);
+  });
+
+  it("refuses a number no reader can hold exactly, even in unknown fields", () => {
+    const largest = "9007199254740991";
+    for (const number of [largest, `-${largest}`]) {
+      expect(parseRecord(`{"strokes":[],"note":${number}}`).ok).toBe(true);
+    }
+    for (const number of [
+      "9007199254740992",
+      "-9007199254740992",
+      "123456789012345678901234567890",
+    ]) {
+      expect(invalid(parseRecord(`{"strokes":[],"note":${number}}`))).toBe(
+        "a number is too large",
+      );
+    }
   });
 
   it("refuses numbers that are not integers in plain digits, even in unknown fields", () => {

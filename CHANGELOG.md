@@ -26,7 +26,9 @@ even one a public release; earlier pre-releases carry a suffix such as
   from** starts a new symbol from what it shows.
 - A symbol's image is 192 pixels high and at most 4096 wide, down from 8192, and
   a record holds no other geometry. Strokes record no pressure. A fill has no
-  brush size, and only a smooth stroke's ends can be cut, `"up"` or `"down"`.
+  brush size, and only a smooth stroke's ends can be cut, `"up"` or `"down"`. A
+  symbol holds at most 250,000 points, down from 1,000,000, as a file of a few
+  kilobytes at the old limit could tie up the editor for minutes.
 - A single click draws a round dot exactly as wide as the brush, centred on the
   click, rather than a short stroke a little wider, running down and right.
 - Every pixel of a symbol's image holds the same grey, however transparent, so

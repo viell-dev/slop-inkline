@@ -2,7 +2,13 @@
 // edited again without loss. docs/file-format.md specifies it; this module
 // writes it and checks it, treating every file as untrusted input.
 
-import { PngError, imageHeader, readChunks, type Chunk } from "./png.ts";
+import {
+  PngError,
+  imageHeader,
+  pngSignature,
+  readChunks,
+  type Chunk,
+} from "./png.ts";
 
 /** The format version this code writes, and the newest it reads. */
 export const formatVersion = 1;
@@ -18,8 +24,13 @@ export const limits = {
   /** The widest image, in pixels. */
   width: 4096,
   strokes: 10_000,
-  /** Points across all strokes. */
-  points: 1_000_000,
+  /**
+   * Points across all strokes. This is what bounds the work of drawing a
+   * record, as a smooth stroke that doubles back at every point has 28 corners
+   * of outline for each one, from a few kilobytes of compressed text. It is
+   * still minutes of unbroken drawing at the fastest pointers' rate.
+   */
+  points: 250_000,
   /** Largest absolute coordinate, in units. */
   coordinate: 2 ** 24,
   /** Largest stroke diameter, in units. */
@@ -242,6 +253,12 @@ function checkBasePng(png: Uint8Array): void {
   }
   const other = chunks.find((chunk) => !baseChunks.has(chunk.type));
   if (other !== undefined) fail(`base.png holds a ${other.type} chunk`);
+  // Bytes after `IEND` would otherwise ride along in the record for ever.
+  const end = chunks.reduce(
+    (total, chunk) => total + 12 + chunk.data.length,
+    pngSignature.length,
+  );
+  if (end !== png.length) fail("base.png holds bytes after its end");
 }
 
 /** A base layer's PNG from its base64 text, checked as a record's is. */
@@ -348,6 +365,13 @@ function integerEnd(text: string, start: number): number {
   // A leading zero is not JSON, and `-0` is not an integer's plain spelling.
   const zero = text[digits] === "0" && (end > digits + 1 || digits > start);
   if (fraction || zero) fail("a number is not an integer in plain digits");
+  // Fifteen digits cannot pass it, so that ordinary numbers cost no parsing.
+  if (
+    end - digits > 15 &&
+    Math.abs(Number(text.slice(start, end))) > Number.MAX_SAFE_INTEGER
+  ) {
+    fail("a number is too large");
+  }
   return end;
 }
 
@@ -364,8 +388,9 @@ function decodedName(raw: string): string {
  * Checks what the format asks of the record's text beyond JSON, which parsing
  * it would not show or would let a crafted file get past: that objects and
  * arrays nest no deeper than the limit, that no object repeats a name, however
- * it is spelled, and that every number is an integer in plain digits. Anything
- * else wrong with the text is left for the parser to find.
+ * it is spelled, and that every number is an integer in plain digits that any
+ * reader can hold exactly. Anything else wrong with the text is left for the
+ * parser to find.
  */
 function checkText(text: string): void {
   /** An object's names so far, or undefined for an array, for each one open. */

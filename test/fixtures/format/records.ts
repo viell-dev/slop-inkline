@@ -7,6 +7,12 @@
 
 import type { Stroke } from "../../../src/format/record.ts";
 
+/** A golden base layer's image: how many pixels a side, and their alpha. */
+export interface GoldenImage {
+  readonly side: number;
+  readonly alpha: (x: number, y: number) => number;
+}
+
 /** A drawing, with where a base layer's image goes, if it has one. */
 export interface GoldenDrawing {
   readonly strokes: readonly Stroke[];
@@ -18,16 +24,29 @@ export interface GoldenDrawing {
   };
 }
 
-/** The side of a golden base layer's image, in pixels. */
-export const baseSide = 8;
+/**
+ * A base layer for enlarging: a ramp across a shape that the edges of the image
+ * cut, so that its scaling shows.
+ */
+const rampImage: GoldenImage = {
+  side: 8,
+  alpha: (x, y) => ((x + y) % 3 === 0 ? 0 : Math.round(((x + 1) * 255) / 8)),
+};
 
 /**
- * The alpha of a golden base layer's image at a pixel: a ramp across a shape
- * that the edges of the image cut, so that its scaling shows.
+ * A base layer for reducing: lines a pixel wide, far enough apart that a filter
+ * that samples only a few source pixels misses most of them.
  */
-export function baseAlpha(x: number, y: number): number {
-  return (x + y) % 3 === 0 ? 0 : Math.round(((x + 1) * 255) / baseSide);
-}
+const linesImage: GoldenImage = {
+  side: 960,
+  alpha: (x, y) => (x % 13 === 0 || y % 17 === 0 ? 255 : 0),
+};
+
+/** The image of each golden file with a base layer. */
+export const goldenImages: Readonly<Record<string, GoldenImage>> = {
+  "v1-base": rampImage,
+  "v1-base-reduced": linesImage,
+};
 
 export const goldenFiles: Readonly<Record<string, GoldenDrawing>> = {
   // Strokes of each tool: a curve, a dot, a loop that crosses itself, which
@@ -154,5 +173,11 @@ export const goldenFiles: Readonly<Record<string, GoldenDrawing>> = {
       { tool: "pen", size: 96, points: [200, 1800, 1500, 1800] },
     ],
     base: { x: 160, y: 800, width: 1170, height: 1170 },
+  },
+  // A base layer drawn smaller than its image, as a large picture is opened: a
+  // fifth of its size, the whole height of the line box.
+  "v1-base-reduced": {
+    strokes: [],
+    base: { x: 0, y: 0, width: 3072, height: 3072 },
   },
 };

@@ -8,8 +8,8 @@ import {
   outlineBounds,
   restShape,
   polygonPieces,
+  smoothShape,
   strokeBounds,
-  strokeOutline,
   strokePoints,
   strokeShape,
   traceOutline,
@@ -19,9 +19,16 @@ import {
   type PathSink,
   type StrokeShape,
 } from "../../../src/ink/outline.ts";
-import { pinnedStrokes } from "../../fixtures/outline/strokes.ts";
+import { pinnedOutlines, pinnedPieces } from "../../fixtures/outline/pinned.ts";
 
 const fixtures = path.resolve(import.meta.dirname, "../../fixtures/outline");
+
+/** The outline of a smooth stroke that is not a dot. */
+function outlineOf(stroke: SmoothStroke): Outline {
+  const shape = smoothShape(stroke);
+  if (shape.kind !== "smooth") throw new Error("a dot has no outline");
+  return shape.outline;
+}
 
 describe("strokePoints", () => {
   it("converts units to pixels", () => {
@@ -37,53 +44,42 @@ describe("strokePoints", () => {
   });
 });
 
-describe("strokeOutline", () => {
-  /** How far the curve an outline traces lies from a point, as it goes. */
-  function radii(outline: Outline, x: number, y: number): number[] {
-    const distances: number[] = [];
-    let from: readonly [number, number] = [0, 0];
-    const sink: PathSink = {
-      moveTo: (startX, startY) => {
-        from = [startX, startY];
-      },
-      lineTo: () => undefined,
-      closePath: () => undefined,
-      quadraticCurveTo: (cx, cy, toX, toY) => {
-        for (const t of [0, 0.25, 0.5, 0.75, 1]) {
-          const u = 1 - t;
-          distances.push(
-            Math.hypot(
-              u * u * from[0] + 2 * u * t * cx + t * t * toX - x,
-              u * u * from[1] + 2 * u * t * cy + t * t * toY - y,
-            ),
-          );
-        }
-        from = [toX, toY];
-      },
-    };
-    traceOutline(outline, sink);
-    return distances;
-  }
-
+describe("smoothShape", () => {
   it("draws a single point as a circle on it, as wide as the stroke", () => {
-    for (const size of [16, 96, 160, 1024]) {
-      const outline = strokeOutline({ tool: "pen", size, points: [800, 800] });
-      for (const radius of radii(outline, 50, 50)) {
-        expect(radius / (size / 32)).toBeCloseTo(1, 3);
-      }
+    for (const size of [1, 16, 96, 160, 1024, 65_536]) {
+      expect(smoothShape({ tool: "pen", size, points: [800, 816] })).toEqual({
+        kind: "dot",
+        center: [50, 51],
+        radius: size / 32,
+      });
     }
   });
 
   it("draws points that are all one point as the same circle", () => {
-    const one = strokeOutline({ tool: "pen", size: 96, points: [800, 800] });
+    const one = smoothShape({ tool: "pen", size: 96, points: [800, 800] });
     for (const count of [2, 3, 7]) {
       const points = new Array<number[]>(count).fill([800, 800]).flat();
-      expect(strokeOutline({ tool: "pen", size: 96, points })).toEqual(one);
+      expect(smoothShape({ tool: "pen", size: 96, points })).toEqual(one);
     }
   });
 
+  it("draws a stroke whose path comes back to its start as that dot", () => {
+    // Out and back, within its own width: the middle point is left out to
+    // steady the stroke, and the last is where it began.
+    const out = {
+      tool: "pen",
+      size: 320,
+      points: [800, 800, 960, 800, 800, 800],
+    };
+    expect(smoothShape(out as SmoothStroke)).toEqual({
+      kind: "dot",
+      center: [50, 50],
+      radius: 10,
+    });
+  });
+
   it("keeps the size of a stroke without pressure", () => {
-    const outline = strokeOutline({
+    const outline = outlineOf({
       tool: "pen",
       size: 160,
       points: [0, 800, 1600, 800, 3200, 800],
@@ -92,19 +88,53 @@ describe("strokeOutline", () => {
     expect((bounds?.bottom ?? 0) - (bounds?.top ?? 0)).toBeCloseTo(10, 0);
   });
 
-  // The pinned outlines change only when the outline's algorithm changes,
-  // which would change how saved symbols look when reopened. Before the first
-  // stable release, a deliberate change updates this file with a changelog
-  // note; from then on, it needs a new pinned file and a format note.
+  // The pinned shapes change only when the steps change, which would change
+  // how saved symbols look when reopened. Before the first stable release, a
+  // deliberate change updates these files with a changelog note; from then on,
+  // it needs a new pinned file and a format note.
   it("matches the pinned outlines", async () => {
     const pinned: unknown = JSON.parse(
       await readFile(path.join(fixtures, "v1-outlines.json"), "utf8"),
     );
-    const round = (value: number): number => Math.round(value * 1000) / 1000;
-    const outlines = pinnedStrokes.map((stroke) =>
-      strokeOutline(stroke).map(([x, y]) => [round(x), round(y)]),
+    expect(pinnedOutlines()).toEqual(pinned);
+  });
+
+  it("matches the pinned polygon pieces and cut strokes' rests", async () => {
+    const pinned: unknown = JSON.parse(
+      await readFile(path.join(fixtures, "v1-pieces.json"), "utf8"),
     );
-    expect(outlines).toEqual(pinned);
+    expect(pinnedPieces()).toEqual(pinned);
+  });
+
+  it("settles a turn of exactly a right angle by the format's arithmetic", () => {
+    // The samples either side of the middle one are exactly at right angles,
+    // so the comparison that chooses a half circle is a tie. Multiplying by
+    // a reciprocal, rather than dividing, rounds the product to just below
+    // zero and draws a shape about 6 pixels away from this one.
+    const size = 192;
+    const corners = (x: number): number =>
+      outlineOf({
+        tool: "pen",
+        size,
+        points: [3840, 256, x, 2496, 160, 2096],
+      }).length;
+    expect(corners(4160)).toBe(48);
+    expect(corners(4161)).toBe(74);
+    expect(corners(4159)).toBe(48);
+  });
+
+  it("has at most 28 corners for a point, however it doubles back", () => {
+    // The worst a record can ask for, which is what limits.points bounds: every
+    // point a sharp corner, with a half circle on each side, and the two ends.
+    for (const count of [10, 1000, 5000]) {
+      const points = Array.from({ length: count }, (_, index) => [
+        index % 2 === 0 ? 0 : 1024,
+        1024,
+      ]).flat();
+      const outline = outlineOf({ tool: "pen", size: 16, points });
+      expect(outline.length).toBeGreaterThan(26 * count);
+      expect(outline.length).toBeLessThanOrEqual(28 * count + 42);
+    }
   });
 });
 
@@ -420,14 +450,34 @@ describe("a filled stroke", () => {
   });
 });
 
+describe("uncutRest", () => {
+  it("stops a walk that lands exactly on twice the brush's width", () => {
+    // Steps of exactly 5 units, by 3 and 4 across and down, so the sum meets
+    // twice the width of 5 on the second step, and no rounding may change it.
+    const rest = uncutRest({
+      tool: "pen",
+      size: 5,
+      points: [0, 0, 3, 4, 6, 8, 9, 12, 12, 16],
+      cut: { start: "up" },
+    });
+    expect(rest?.points).toEqual([6, 8, 9, 12, 12, 16]);
+  });
+});
+
 describe("strokeBounds", () => {
+  it("is exactly the circle's for a dot", () => {
+    expect(
+      strokeBounds({ tool: "pen", size: 160, points: [800, 800] }),
+    ).toEqual({ left: 45, top: 45, right: 55, bottom: 55 });
+  });
+
   it("is the outline's bounds for a stroke drawn as the pointer went", () => {
     const stroke: Stroke = {
       tool: "pen",
       size: 160,
       points: [0, 800, 1600, 800],
     };
-    expect(strokeBounds(stroke)).toEqual(outlineBounds(strokeOutline(stroke)));
+    expect(strokeBounds(stroke)).toEqual(outlineBounds(outlineOf(stroke)));
   });
 });
 
@@ -442,7 +492,7 @@ describe("strokeBounds of a cut stroke", () => {
   };
 
   it("takes in what the rest of it draws inside its cut boxes", () => {
-    const whole = outlineBounds(strokeOutline(stroke));
+    const whole = outlineBounds(outlineOf(stroke));
     const bounds = strokeBounds(stroke);
     const [box] = cutBoxes(stroke);
     const rest = restShape(stroke);
@@ -466,7 +516,7 @@ describe("strokeBounds of a cut stroke", () => {
 
   it("takes in nothing of the rest beyond its cut boxes", () => {
     const [box] = cutBoxes(stroke);
-    const whole = outlineBounds(strokeOutline(stroke));
+    const whole = outlineBounds(outlineOf(stroke));
     const bounds = strokeBounds(stroke);
     if (box === undefined || whole === undefined || bounds === undefined) {
       throw new Error("no shape");
@@ -479,7 +529,7 @@ describe("strokeBounds of a cut stroke", () => {
 
   it("is the outline's alone for a stroke without cuts", () => {
     const { cut: _, ...plain } = stroke;
-    expect(strokeBounds(plain)).toEqual(outlineBounds(strokeOutline(plain)));
+    expect(strokeBounds(plain)).toEqual(outlineBounds(outlineOf(plain)));
   });
 });
 
@@ -497,6 +547,7 @@ describe("traceOutline", () => {
       lineTo: (x, y) => calls.push(`L ${String(x)} ${String(y)}`),
       quadraticCurveTo: (cx, cy, x, y) =>
         calls.push(`Q ${String(cx)} ${String(cy)} ${String(x)} ${String(y)}`),
+      arc: () => calls.push("A"),
       closePath: () => calls.push("Z"),
     };
     traceOutline(
@@ -524,6 +575,7 @@ describe("traceOutline", () => {
       moveTo: () => calls.push("M"),
       lineTo: () => calls.push("L"),
       quadraticCurveTo: () => calls.push("Q"),
+      arc: () => calls.push("A"),
       closePath: () => calls.push("Z"),
     });
     expect(calls).toEqual([]);
@@ -531,6 +583,24 @@ describe("traceOutline", () => {
 });
 
 describe("traceShape", () => {
+  it("draws a dot as a circle, not a curve near one", () => {
+    const calls: string[] = [];
+    traceShape(
+      { kind: "dot", center: [3, 4], radius: 2 },
+      {
+        moveTo: (x, y) => calls.push(`M ${String(x)} ${String(y)}`),
+        lineTo: () => calls.push("L"),
+        quadraticCurveTo: () => calls.push("Q"),
+        arc: (x, y, radius, start, end) =>
+          calls.push(
+            `A ${String(x)} ${String(y)} ${String(radius)} ${String(start)} ${String(end / Math.PI)}`,
+          ),
+        closePath: () => calls.push("Z"),
+      },
+    );
+    expect(calls).toEqual(["M 5 4", "A 3 4 2 0 2", "Z"]);
+  });
+
   it("draws each of a polygon's pieces with straight sides", () => {
     const calls: string[] = [];
     traceShape(
@@ -554,6 +624,7 @@ describe("traceShape", () => {
         moveTo: (x, y) => calls.push(`M ${String(x)} ${String(y)}`),
         lineTo: (x, y) => calls.push(`L ${String(x)} ${String(y)}`),
         quadraticCurveTo: () => calls.push("Q"),
+        arc: () => calls.push("A"),
         closePath: () => calls.push("Z"),
       },
     );
