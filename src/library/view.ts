@@ -19,6 +19,7 @@ import {
 import { isInkPath } from "../format/ink-file.ts";
 import { embedFor } from "../notes/embeds.ts";
 import { showLinkMenu } from "../notes/entries.ts";
+import { writeAt } from "../notes/insertion.ts";
 import { insertionAt } from "../notes/links.ts";
 import { symbolStem } from "../notes/names.ts";
 import { renameSymbol } from "../notes/symbols.ts";
@@ -491,8 +492,6 @@ export class SymbolLibraryView extends ItemView {
     const embed = embedFor(this.app, file, view.file.path);
     const text = editor.getValue();
     const place = insertionAt(text, editor.posToOffset(editor.getCursor()));
-    const inserted = place.before + embed;
-    editor.replaceRange(inserted, editor.offsetToPos(place.at));
-    editor.setCursor(editor.offsetToPos(place.at + inserted.length));
+    writeAt(editor, place.at, place.before + embed);
   }
 }

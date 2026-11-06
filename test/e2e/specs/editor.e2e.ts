@@ -6,15 +6,18 @@ import { unitsPerPixel } from "../../../src/format/record.ts";
 import { lineBox } from "../../../src/ink/geometry.ts";
 import { loadModules } from "../support/browser.ts";
 import {
+  addUnsaved,
   delayDecoding,
   delayVault,
   draw,
   drawHoldingShift,
   editorGrid,
   editorOpen,
+  failSaves,
   guideRows,
   fillStorage,
   freeStorage,
+  markEditor,
   noteText,
   openAtMarker,
   recordOf,
@@ -23,7 +26,9 @@ import {
   settledSurface,
   storedDrafts,
   waitForEditor,
+  waitForNext,
   waitForNotice,
+  waitForPanes,
   shiftClick,
   startOver,
   surface,
@@ -337,31 +342,6 @@ async function changeElsewhere(
 async function strokeCount(path: string): Promise<number> {
   const record = JSON.parse(await recordOf(path)) as { strokes?: unknown[] };
   return record.strokes?.length ?? -1;
-}
-
-/** Marks the open editor, so that {@link waitForNext} can tell it apart. */
-async function markEditor(): Promise<void> {
-  await browser.execute(() => {
-    for (const editor of document.querySelectorAll(".inkline-editor")) {
-      editor.setAttribute("data-inkline-test-before", "");
-    }
-  });
-}
-
-/**
- * Waits for the next editor after Next: `count` symbol files saved, and an
- * editor that {@link markEditor} did not mark, whose status is still empty.
- */
-async function waitForNext(count: number): Promise<void> {
-  const fresh = ".inkline-editor:not([data-inkline-test-before])";
-  await browser.waitUntil(
-    async () =>
-      (await symbolFiles()).length === count &&
-      (await browser.$(fresh).isExisting()) &&
-      (await browser.$(`${fresh} .inkline-status`).getText()) === "",
-    { timeoutMsg: `no editor after ${String(count)} symbols` },
-  );
-  await waitForEditor();
 }
 
 /** Whether a toolbar button shows itself pressed. */
@@ -1298,6 +1278,63 @@ describe("The editor", function () {
     expect(await strokeCount("tower.ink.png")).toBe(3);
   });
 
+  describe("renaming a symbol that an open note holding unsaved text embeds", function () {
+    const saved =
+      "The door is marked with ![[001.ink.png]] which means return.\n";
+    const opening = "Opening unsaved line.\n";
+    const renamed = `${opening}The door is marked with ![[tower.ink.png]] which means return.\n`;
+
+    /** Opens the editor of a symbol that `Editor.md` embeds, and adds text. */
+    async function editWithText(): Promise<void> {
+      await saveOne();
+      await waitForLink("Editor.md", "001.ink.png");
+      await editFile("001.ink.png");
+      await addUnsaved("Editor.md", opening, "start");
+      await nameSymbol("tower");
+    }
+
+    it("keeps the text when the note's own save falls due during Obsidian's question", async function () {
+      await editWithText();
+      await browser.keys(["Control", "Enter"]);
+      await browser.$("button=Just once").waitForDisplayed();
+      // An editor saves itself two seconds after an edit.
+      await browser.pause(2500);
+      await browser.$("button=Just once").click();
+      await waitClosed();
+      await waitForPanes("Editor.md", renamed);
+      await browser.waitUntil(
+        async () => (await noteOnDisk("Editor.md")) === renamed,
+      );
+    });
+
+    it("refuses the rename if the note cannot be saved, and keeps the name to try", async function () {
+      await editWithText();
+      const restore = await failSaves();
+      try {
+        await browser.keys(["Control", "Enter"]);
+        await waitForNotice(
+          "001.ink.png is saved, but could not be renamed: the note Editor could not be saved first",
+        );
+        await waitForStatus("Saved, but not renamed");
+      } finally {
+        await restore();
+      }
+      expect(await editorOpen()).toBe(true);
+      expect((await nameField()).value).toBe("tower");
+      expect(await symbolFiles()).toEqual(["001.ink.png"]);
+      expect(await noteOnDisk("Editor.md")).toBe(saved);
+      await waitForPanes("Editor.md", `${opening}${saved}`);
+      await browser.keys(["Control", "Enter"]);
+      await browser.$("button=Just once").waitForDisplayed();
+      await browser.$("button=Just once").click();
+      await waitClosed();
+      await waitForPanes("Editor.md", renamed);
+      await browser.waitUntil(
+        async () => (await noteOnDisk("Editor.md")) === renamed,
+      );
+    });
+  });
+
   it("says only that it saved when the symbol was renamed elsewhere meanwhile", async function () {
     await saveOne();
     await editFile("001.ink.png");
@@ -1460,29 +1497,23 @@ describe("The editor", function () {
   });
 
   it("renames a new symbol saved under a number once it is named", async function () {
-    // Obsidian's cache learns of the embed just inserted only once the note
-    // is saved, which this holds back, so that the rename comes before it,
-    // as it can when a symbol is named straight after its first save.
-    await delayVault("modify", 5000, "before");
     await insert();
     await draw(zigzag);
     await browser.keys(["Control", "s"]);
     await waitForStatus("Saved");
     expect(await nameField()).toEqual({ value: "001", placeholder: "001" });
-    // Obsidian then updates no link, and asks nothing; Inkline updates the
-    // embed itself.
+    // Named straight after its first save, the note is saved first, and
+    // Obsidian waits for its cache to take that in, so it knows the embed and
+    // asks. Inkline updates the embed itself if the answer leaves it.
     await nameSymbol("gate");
     await browser.keys(["Control", "Enter"]);
+    await clickTop("Do not update");
     await waitClosed();
     expect(await symbolFiles()).toEqual(["gate.ink.png"]);
-    expect(await noteText()).toBe(
-      "The door is marked with ![[gate.ink.png]] which means return.\n",
-    );
-    // And the note is saved as it reads, once Obsidian saves it.
-    await browser.waitUntil(
-      async () => (await noteOnDisk("Editor.md")).includes("![[gate.ink.png]]"),
-      { timeout: 30_000 },
-    );
+    const text =
+      "The door is marked with ![[gate.ink.png]] which means return.\n";
+    expect(await noteText()).toBe(text);
+    expect(await noteOnDisk("Editor.md")).toBe(text);
   });
 
   it("keeps the editor open with the drawing when saving fails", async function () {

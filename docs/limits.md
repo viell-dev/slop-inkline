@@ -27,6 +27,40 @@ can lead nowhere or to another file
 every embed it inserts: it writes such a `%` as `%25`, and names a symbol whose
 link would still lead elsewhere by its path in the vault.
 
+## Renames and Obsidian's question
+
+When a file is renamed, Obsidian notes where the links to it are, asks whether
+to update them, and after your answer writes at those places without checking
+what is there now. If a note changed in between, the new link goes over other
+text, which is lost. A note's own save, two seconds after an edit, is enough.
+Obsidian does this with any file
+([#10](https://github.com/viell-dev/slop-inkline/issues/10)).
+
+**Unreleased:** Inkline's own renames save every open note first, which leaves
+that save nothing to do, and refuse to go on if one cannot be saved
+([#182](https://github.com/viell-dev/slop-inkline/issues/182)). What stays out
+of Inkline's reach:
+
+- **Text that arrives during the question,** from another window or a plugin, if
+  the note saves itself before you answer. Answer the question first.
+- **Renames outside Inkline,** as in Obsidian's file explorer, which save
+  nothing first. Use the library or the symbol's editor to rename a symbol while
+  its notes are open, or close them.
+- **Notes edited inside a Canvas card,** which Inkline cannot reach to save.
+- **A disk that stalls for seconds.** Obsidian's own save can then meet its
+  reload of the same note and take unsaved text out of the editor, with no
+  symbol involved. After a rename by Inkline the text usually comes back once
+  the file has been read again, and if the note has still not settled after five
+  seconds, a notice asks you to check the embed. If a read held up by the stall
+  lands last, the text leaves the editor for good, with no notice. The file
+  still holds it then, until the next save, so if lines vanish after a stall,
+  undo or reopen the note before typing.
+
+A note that starts with a byte order mark, which Obsidian does not support, has
+any rename's links written one character early, which loses the character before
+each one ([#185](https://github.com/viell-dev/slop-inkline/issues/185)). Remove
+the mark before renaming what it links to.
+
 ## Files and sizes
 
 - A symbol is at most 4096 pixels wide, 32 times the height of its text.

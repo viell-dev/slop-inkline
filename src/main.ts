@@ -10,8 +10,13 @@ import {
   symbolInRenderedNote,
   symbolOfImage,
 } from "./notes/entries.ts";
-import { SymbolSearch, SymbolSuggest } from "./notes/suggest.ts";
-import { editSymbol, insertSymbol, type EditorHost } from "./notes/symbols.ts";
+import { SymbolSuggest } from "./notes/suggest.ts";
+import {
+  editSymbol,
+  insertExistingSymbol,
+  insertSymbol,
+  type EditorHost,
+} from "./notes/symbols.ts";
 import { SymbolRenderer } from "./render/symbols.ts";
 import { brushSizes } from "./editor/session.ts";
 import { InklineSettingTab } from "./settings-tab.ts";
@@ -161,14 +166,11 @@ export default class InklinePlugin extends Plugin {
         const view = this.app.workspace.getActiveViewOfType(MarkdownView);
         if (!view?.file || view.getMode() !== "source") return false;
         if (!checking) {
-          const { editor } = view;
           if (!this.app.vault.getFiles().some((file) => isInkPath(file.path))) {
             new Notice("There are no symbols to insert yet.");
             return true;
           }
-          new SymbolSearch(this.app, view.file.path, (embed) => {
-            editor.replaceSelection(embed);
-          }).open();
+          insertExistingSymbol(this.app, view);
         }
         return true;
       },

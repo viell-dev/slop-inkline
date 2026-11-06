@@ -141,6 +141,31 @@ export async function waitForEditor(): Promise<void> {
   );
 }
 
+/** Marks the open editor, so that {@link waitForNext} can tell it apart. */
+export async function markEditor(): Promise<void> {
+  await browser.execute(() => {
+    for (const editor of document.querySelectorAll(".inkline-editor")) {
+      editor.setAttribute("data-inkline-test-before", "");
+    }
+  });
+}
+
+/**
+ * Waits for the next editor after Next: `count` symbol files saved, and an
+ * editor that {@link markEditor} did not mark, whose status is still empty.
+ */
+export async function waitForNext(count: number): Promise<void> {
+  const fresh = ".inkline-editor:not([data-inkline-test-before])";
+  await browser.waitUntil(
+    async () =>
+      (await symbolFiles()).length === count &&
+      (await browser.$(fresh).isExisting()) &&
+      (await browser.$(`${fresh} .inkline-status`).getText()) === "",
+    { timeoutMsg: `no editor after ${String(count)} symbols` },
+  );
+  await waitForEditor();
+}
+
 /**
  * Draws through points on the surface with a mouse, as fractions of its
  * width and height from its top left corner.
@@ -509,6 +534,82 @@ export async function clickTop(text: string): Promise<void> {
     timeoutMsg: `no "${text}" button`,
   });
   await (await topButton(text))?.click();
+}
+
+/**
+ * Adds `text` at the start or end of the note at `path`, through its editor in
+ * `pane`, in the workspace's order, and leaves it unsaved. Waits for every
+ * editor of the note to have it, as Obsidian passes it on a moment later.
+ */
+export async function addUnsaved(
+  path: string,
+  text: string,
+  place: "start" | "end",
+  pane = 0,
+): Promise<void> {
+  const wanted = await browser.executeObsidian(
+    ({ app, obsidian }, file, added, end, index) => {
+      const editors = [];
+      for (const { view } of app.workspace.getLeavesOfType("markdown")) {
+        if (view instanceof obsidian.MarkdownView && view.file?.path === file) {
+          editors.push(view.editor);
+        }
+      }
+      const editor = editors[index];
+      if (editor === undefined)
+        throw new Error(`no pane ${String(index)} of ${file}`);
+      const at = end ? editor.getValue().length : 0;
+      editor.replaceRange(added, editor.offsetToPos(at));
+      return editor.getValue();
+    },
+    path,
+    text,
+    place === "end",
+    pane,
+  );
+  await waitForPanes(path, wanted);
+}
+
+/** Waits for every editor of the note at `path` to read `text`. */
+export async function waitForPanes(path: string, text: string): Promise<void> {
+  let read: string[] = [];
+  try {
+    await browser.waitUntil(async () => {
+      read = await browser.executeObsidian(({ app, obsidian }, file) => {
+        const shown: string[] = [];
+        for (const { view } of app.workspace.getLeavesOfType("markdown")) {
+          if (
+            view instanceof obsidian.MarkdownView &&
+            view.file?.path === file
+          ) {
+            shown.push(view.editor.getValue());
+          }
+        }
+        return shown;
+      }, path);
+      return read.length > 0 && read.every((shown) => shown === text);
+    });
+  } catch (error) {
+    throw new Error(
+      `waited for ${JSON.stringify(text)}, but ${path} read ${JSON.stringify(read)}`,
+      { cause: error },
+    );
+  }
+}
+
+/**
+ * Has saving a note fail, as on a full disk, until what it returns is called.
+ * A symbol's file is written another way, so that goes on working.
+ */
+export async function failSaves(): Promise<() => Promise<void>> {
+  await browser.executeObsidian(({ app }) => {
+    app.vault.modify = () => Promise.reject(new Error("the disk is full"));
+  });
+  return async () => {
+    await browser.executeObsidian(({ app }) => {
+      Reflect.deleteProperty(app.vault, "modify");
+    });
+  };
 }
 
 /**
