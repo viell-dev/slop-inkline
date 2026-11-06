@@ -196,6 +196,14 @@ release, later versions must keep released files readable and looking the same.
   Type to insert lists nothing in code or front matter, and the links it writes
   lead back to their symbols
   ([suggest.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/suggest.e2e.ts)).
+- **Unreleased:** the cursor lands after a symbol from every route that inserts
+  one, and typing goes on there: Save, Mod+S, a run from Next, and both lists,
+  past a link or an address, after the note's changes moved the place or took it
+  away, in the pane the symbol started in or the one that took it, and through a
+  rename, however Obsidian's question is answered. A selection's text stays, one
+  undo takes the symbol back, and a note in Reading view takes the symbol
+  through its file
+  ([insertion.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/insertion.e2e.ts)).
 - Names and renames: what a file name cannot hold, names a folder already has,
   renames that fail, names given elsewhere during saving or hashing, and the
   reported outcome when an external rename follows a successful native rename

@@ -9,6 +9,21 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Changed
+
+- The cursor now lands just after a symbol that **Save** or **Next** inserts, as
+  after a typed character, so that typing goes on after it. **Next** still puts
+  a run of symbols in the order they were drawn, and the cursor ends after the
+  last. Selected text stays as it was
+  ([#170](https://github.com/viell-dev/slop-inkline/issues/170)).
+
+### Fixed
+
+- A symbol saved while its note had gone to Reading view reaches the note. Its
+  embed went into the editor that Reading view keeps out of sight and was lost,
+  which left the symbol's file with nothing showing it
+  ([#170](https://github.com/viell-dev/slop-inkline/issues/170)).
+
 ## 0.9.1 - 2026-11-06
 
 This is the second beta of 1.0.0. It clears the work left after 0.9.0, and the

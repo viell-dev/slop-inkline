@@ -14,6 +14,7 @@ import {
   guideRows,
   fillStorage,
   freeStorage,
+  markEditor,
   noteText,
   openAtMarker,
   recordOf,
@@ -22,6 +23,7 @@ import {
   settledSurface,
   storedDrafts,
   waitForEditor,
+  waitForNext,
   waitForNotice,
   startOver,
   surface,
@@ -335,31 +337,6 @@ async function changeElsewhere(
 async function strokeCount(path: string): Promise<number> {
   const record = JSON.parse(await recordOf(path)) as { strokes?: unknown[] };
   return record.strokes?.length ?? -1;
-}
-
-/** Marks the open editor, so that {@link waitForNext} can tell it apart. */
-async function markEditor(): Promise<void> {
-  await browser.execute(() => {
-    for (const editor of document.querySelectorAll(".inkline-editor")) {
-      editor.setAttribute("data-inkline-test-before", "");
-    }
-  });
-}
-
-/**
- * Waits for the next editor after Next: `count` symbol files saved, and an
- * editor that {@link markEditor} did not mark, whose status is still empty.
- */
-async function waitForNext(count: number): Promise<void> {
-  const fresh = ".inkline-editor:not([data-inkline-test-before])";
-  await browser.waitUntil(
-    async () =>
-      (await symbolFiles()).length === count &&
-      (await browser.$(fresh).isExisting()) &&
-      (await browser.$(`${fresh} .inkline-status`).getText()) === "",
-    { timeoutMsg: `no editor after ${String(count)} symbols` },
-  );
-  await waitForEditor();
 }
 
 /** Whether a toolbar button shows itself pressed. */

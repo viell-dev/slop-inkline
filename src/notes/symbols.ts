@@ -208,8 +208,10 @@ interface Target {
 }
 
 /**
- * A Markdown view showing `file`, preferring `preferred`. A closed tab's view
- * can still name its file, so only views still in the workspace count.
+ * A Markdown view showing `file` in an editor, preferring `preferred`. A closed
+ * tab's view can still name its file, so only views still in the workspace
+ * count. A view in Reading view keeps an editor out of sight, whose changes
+ * never reach the note, so it does not count either.
  */
 function liveView(
   app: App,
@@ -221,7 +223,9 @@ function liveView(
     .map((leaf) => leaf.view)
     .filter(
       (view): view is MarkdownView =>
-        view instanceof MarkdownView && view.file === file,
+        view instanceof MarkdownView &&
+        view.file === file &&
+        view.getMode() === "source",
     );
   return views.find((view) => view === preferred) ?? views[0];
 }
@@ -239,8 +243,10 @@ function appendedNotice(file: TFile): void {
  * A position inside a link or embed moves to just past it, so that the embed
  * never splits one, with a space first after a bare web address, which only
  * a space ends. When the position cannot be found, the embed goes at the
- * end of the note, and a notice says so. Returns the point just after the
- * embed, where the next symbol's embed goes.
+ * end of the note, and a notice says so. As after a typed character, the
+ * cursor of the editor that took the embed lands just after it; the text of
+ * a selection stays, as the embed goes beside it. Returns the point just
+ * after the embed, where the next symbol's embed goes.
  */
 async function insertEmbed(
   app: App,
@@ -257,16 +263,17 @@ async function insertEmbed(
     const place = found === undefined ? undefined : insertionAt(text, found);
     if (place !== undefined) {
       const inserted = place.before + embed;
+      const end = place.at + inserted.length;
       editor.replaceRange(inserted, editor.offsetToPos(place.at));
-      return capturePoint(editor.getValue(), place.at + inserted.length);
+      editor.setCursor(editor.offsetToPos(end));
+      return capturePoint(editor.getValue(), end);
     }
     const gap = text === "" || text.endsWith("\n") ? "" : "\n";
+    const end = text.length + gap.length + embed.length;
     editor.replaceRange(`${gap}${embed}\n`, editor.offsetToPos(text.length));
+    editor.setCursor(editor.offsetToPos(end));
     appendedNotice(file);
-    return capturePoint(
-      editor.getValue(),
-      text.length + gap.length + embed.length,
-    );
+    return capturePoint(editor.getValue(), end);
   }
   const outcome: { appended: boolean; after?: InsertionPoint } = {
     appended: false,

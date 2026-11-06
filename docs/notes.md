@@ -46,6 +46,12 @@ The embed goes where the cursor was when you ran the command:
   link is split. After a bare web address, which only a space ends, a space
   comes first.
 
+**Unreleased:** the cursor then lands just after the symbol, as after a typed
+character, so you can type on at once. Text you had selected stays as it was.
+With **Next**, each symbol goes after the one before, in the order you drew
+them, and the cursor ends after the last. A note that has gone to Reading view
+meanwhile takes the symbol too, through its file.
+
 ## Insert a symbol you have
 
 Type `;;` and a few letters of a symbol's name, in any script, to list the

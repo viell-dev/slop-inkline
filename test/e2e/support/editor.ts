@@ -141,6 +141,31 @@ export async function waitForEditor(): Promise<void> {
   );
 }
 
+/** Marks the open editor, so that {@link waitForNext} can tell it apart. */
+export async function markEditor(): Promise<void> {
+  await browser.execute(() => {
+    for (const editor of document.querySelectorAll(".inkline-editor")) {
+      editor.setAttribute("data-inkline-test-before", "");
+    }
+  });
+}
+
+/**
+ * Waits for the next editor after Next: `count` symbol files saved, and an
+ * editor that {@link markEditor} did not mark, whose status is still empty.
+ */
+export async function waitForNext(count: number): Promise<void> {
+  const fresh = ".inkline-editor:not([data-inkline-test-before])";
+  await browser.waitUntil(
+    async () =>
+      (await symbolFiles()).length === count &&
+      (await browser.$(fresh).isExisting()) &&
+      (await browser.$(`${fresh} .inkline-status`).getText()) === "",
+    { timeoutMsg: `no editor after ${String(count)} symbols` },
+  );
+  await waitForEditor();
+}
+
 /**
  * Draws through points on the surface with a mouse, as fractions of its
  * width and height from its top left corner.
