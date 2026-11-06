@@ -5,8 +5,9 @@
 //
 // It lists the pictures one by one, then counts the random pictures of each
 // group, then moves the slider over every threshold of each: how many pictures
-// make more ink as it moves away from their ink, and how many have more partly
-// covered pixels at any threshold than the commit gave them. Reading
+// make other ink than the commit did at any threshold, how many make more ink as
+// it moves away from their ink, and how many have more partly covered pixels at
+// any threshold than the commit gave them. Reading
 // `src/ink/pixels.ts` from the commit keeps the comparison honest as the code
 // moves on.
 
@@ -85,10 +86,10 @@ console.log();
 console.log(`Random pictures, seed ${seed}, ${count} a group:`);
 console.log();
 console.log(
-  "| Group | Ink wanted before | after | Default changed | Fixed | Harmed | Grew on the slider before | after | Largest growth before | after | Softer anywhere |",
+  "| Group | Ink wanted before | after | Default changed | Fixed | Harmed | Ink differs at any threshold | Grew on the slider before | after | Largest growth before | after | Softer anywhere |",
 );
 console.log(
-  "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+  "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
 );
 for (const [group, pictures] of randomGroups(Number(count), Number(seed))) {
   let wasGood = 0;
@@ -101,6 +102,7 @@ for (const [group, pictures] of randomGroups(Number(count), Number(seed))) {
   let mostBefore = 0;
   let mostAfter = 0;
   let softer = 0;
+  let differs = 0;
   for (const picture of pictures()) {
     const was = measureInk(before, picture);
     const now = measureInk(current, picture);
@@ -112,6 +114,7 @@ for (const [group, pictures] of randomGroups(Number(count), Number(seed))) {
     let grewThen = 0;
     let growsNow = 0;
     let anySofter = false;
+    let anyDiffers = false;
     for (const light of [true, false]) {
       const then = sweepInk(before, picture, light);
       const here = sweepInk(current, picture, light);
@@ -120,14 +123,16 @@ for (const [group, pictures] of randomGroups(Number(count), Number(seed))) {
       anySofter ||= here.partial.some(
         (value, at) => value > (then.partial[at] ?? 0),
       );
+      anyDiffers ||= here.ink.some((value, at) => value !== then.ink[at]);
     }
     if (grewThen > 0) grewBefore++;
     if (growsNow > 0) grewAfter++;
     mostBefore = Math.max(mostBefore, grewThen);
     mostAfter = Math.max(mostAfter, growsNow);
     if (anySofter) softer++;
+    if (anyDiffers) differs++;
   }
   console.log(
-    `| ${group.name} | ${String(wasGood)} | ${String(nowGood)} | ${String(changed)} | ${String(fixed)} | ${String(harmed)} | ${String(grewBefore)} | ${String(grewAfter)} | ${mostBefore.toFixed(1)} | ${mostAfter.toFixed(1)} | ${String(softer)} |`,
+    `| ${group.name} | ${String(wasGood)} | ${String(nowGood)} | ${String(changed)} | ${String(fixed)} | ${String(harmed)} | ${String(differs)} | ${String(grewBefore)} | ${String(grewAfter)} | ${mostBefore.toFixed(1)} | ${mostAfter.toFixed(1)} | ${String(softer)} |`,
   );
 }
