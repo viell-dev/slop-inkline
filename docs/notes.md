@@ -77,12 +77,7 @@ It is offered:
 - as the command **Inkline: Edit symbol**, with the cursor on a symbol's embed,
   outside code and front matter.
 
-Some of Obsidian's own menus over a symbol have no Edit symbol, as in callouts
-and tables in Live Preview; [Known limits](./limits.md) lists them, with a way
-around each.
-
-**Unreleased:** right-clicking a symbol offers Edit symbol wherever the symbol
-is:
+Right-clicking a symbol offers Edit symbol wherever else the symbol is:
 
 - in a callout or a table in Live Preview, in Obsidian's menu for the block,
   beside its own items;

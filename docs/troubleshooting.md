@@ -13,10 +13,8 @@ view, Live Preview or source mode, where there is a cursor to insert at; Reading
 view has none.
 
 **Edit symbol is not offered.** The command needs the cursor on a symbol's
-embed, outside code and front matter. Some of Obsidian's own menus have no Edit
-symbol; [Known limits](./limits.md#menus-without-edit-symbol) lists them and
-what to use instead. **Unreleased:** right-clicking a symbol offers it in those
-menus too, and the command works in a canvas text card's own editor.
+embed, outside code and front matter. A right-click on the symbol itself offers
+it, as [Edit a symbol](./notes.md#edit-a-symbol) lists.
 
 **Typing `;;` lists nothing.** The list does not open in code or front matter,
 nor when a space follows `;;` straight away. With no symbols in the vault yet,

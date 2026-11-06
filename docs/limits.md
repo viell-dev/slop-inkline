@@ -19,28 +19,6 @@ The [issues](https://github.com/viell-dev/slop-inkline/issues) track each one.
 - **Physical printing** has not been checked. Native
   [PDF export](./notes.md#export-a-note-to-pdf) is verified on Linux.
 
-## Menus without Edit symbol
-
-**Unreleased:** these menus all offer **Edit symbol** in the next release, as
-[Edit a symbol](./notes.md#edit-a-symbol) describes, and this limit goes. Until
-then:
-
-Where one of Obsidian's own menus takes a right-click on a symbol, that menu has
-no **Edit symbol** ([#40](https://github.com/viell-dev/slop-inkline/issues/40)):
-
-- **Callouts and tables in Live Preview**, where Obsidian shows its menu for the
-  callout or the table;
-- **A text card on a canvas that is not selected**, where the canvas shows its
-  menu for the card. Click the card once, and a right-click on the symbol then
-  shows the symbol's menu;
-- **A canvas text card's own editor**, which does not offer the command
-  **Inkline: Edit symbol**.
-
-Instead, right-click the symbol in Reading view, or its file in the file
-explorer, or put the cursor on its embed in the note and run **Inkline: Edit
-symbol**. A symbol placed on a canvas as a file card has Edit symbol in the
-canvas's menu for that file.
-
 ## Links Obsidian writes
 
 With **Use \[\[Wikilinks\]\]** off, Obsidian writes Markdown links, and leaves a
