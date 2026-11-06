@@ -69,6 +69,11 @@ matter lists nothing: it is the note's own text there.
 **Inkline: Insert existing symbol** opens the same list as a search, and inserts
 the chosen symbol at the cursor.
 
+**Unreleased:** these lists, [Copy from](./drawing.md#start-from-a-copy), and
+the library give each picture a column of its own, so that names line up
+whatever each symbol's width. A symbol wider than the column shows whole, at a
+smaller size.
+
 ## Edit a symbol
 
 **Edit symbol** opens a symbol in the editor again, with every stroke as drawn.

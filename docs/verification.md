@@ -228,6 +228,12 @@ release, later versions must keep released files readable and looking the same.
   ([catalog.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/library/catalog.test.ts)
   and
   [library.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library.e2e.ts)).
+- **Unreleased:** names line up in the `;;` list, Insert existing symbol, Copy
+  from, and the library, in both themes: every name and folder starts at the
+  same x, at the ends of the Symbol size setting, and beside a very long name or
+  a picture that will not load. A symbol as wide as the editor's surface, or
+  wider, shows whole and in proportion, in the text colour and its stored colour
+  ([symbol-lists.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-lists.e2e.ts)).
 - Renaming in a library row: links follow, PNG bytes stay identical, names in
   other scripts work, errors keep the entered name for retry, a deleted and
   replaced file is refused, and repeated submission starts only one rename
