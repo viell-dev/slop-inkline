@@ -39,8 +39,6 @@ holding such a stroke is no longer offered back.
 - On a symbol you open again, the grid lines up with the ends you put on it with
   Shift, as freehand ends no longer lie on it
   ([#169](https://github.com/viell-dev/slop-inkline/issues/169)).
-### Changed
-
 - Names now line up across rows in the `;;` list, **Inkline: Insert existing
   symbol**, **Copy from**, and the symbol library, as each picture has a column
   of its own. A symbol wider than the column shows whole, at a smaller size
