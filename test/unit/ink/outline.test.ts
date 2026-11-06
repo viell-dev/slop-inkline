@@ -1,16 +1,16 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import type { Stroke } from "../../../src/format/record.ts";
+import type { SmoothStroke, Stroke } from "../../../src/format/record.ts";
 import {
   cornerReach,
   cutBoxes,
-  fillOutline,
   outlineBounds,
-  outlineInput,
+  restShape,
   polygonPieces,
   strokeBounds,
   strokeOutline,
+  strokePoints,
   strokeShape,
   traceOutline,
   traceShape,
@@ -23,82 +23,79 @@ import { pinnedStrokes } from "../../fixtures/outline/strokes.ts";
 
 const fixtures = path.resolve(import.meta.dirname, "../../fixtures/outline");
 
-describe("outlineInput", () => {
-  it("converts units to pixels and pressure to 0–1", () => {
+describe("strokePoints", () => {
+  it("converts units to pixels", () => {
     const stroke: Stroke = {
       tool: "pen",
       size: 32,
-      pressure: true,
-      points: [16, 32, 255, -8, 0, 0],
+      points: [16, 32, -8, 0],
     };
-    expect(outlineInput(stroke)).toEqual([
-      [1, 2, 1],
-      [-0.5, 0, 0],
+    expect(strokePoints(stroke)).toEqual([
+      [1, 2],
+      [-0.5, 0],
     ]);
-  });
-
-  it("gives strokes without pressure the middle pressure", () => {
-    const stroke: Stroke = {
-      tool: "pen",
-      size: 32,
-      pressure: false,
-      points: [16, 16],
-    };
-    expect(outlineInput(stroke)).toEqual([[1, 1, 0.5]]);
   });
 });
 
 describe("strokeOutline", () => {
-  it("draws a round dot for a single point, about as wide as the stroke", () => {
-    const bounds = outlineBounds(
-      strokeOutline({
-        tool: "pen",
-        size: 160,
-        pressure: false,
-        points: [800, 800],
-      }),
-    );
-    if (bounds === undefined) throw new Error("no outline");
-    const width = bounds.right - bounds.left;
-    const height = bounds.bottom - bounds.top;
-    // perfect-freehand's dots run a little wider than the stroke: 12 px here.
-    expect(width).toBeGreaterThanOrEqual(10);
-    expect(width).toBeLessThanOrEqual(12.5);
-    expect(height).toBeCloseTo(width, 0);
-    expect((bounds.left + bounds.right) / 2).toBeCloseTo(50, 0);
+  /** How far the curve an outline traces lies from a point, as it goes. */
+  function radii(outline: Outline, x: number, y: number): number[] {
+    const distances: number[] = [];
+    let from: readonly [number, number] = [0, 0];
+    const sink: PathSink = {
+      moveTo: (startX, startY) => {
+        from = [startX, startY];
+      },
+      lineTo: () => undefined,
+      closePath: () => undefined,
+      quadraticCurveTo: (cx, cy, toX, toY) => {
+        for (const t of [0, 0.25, 0.5, 0.75, 1]) {
+          const u = 1 - t;
+          distances.push(
+            Math.hypot(
+              u * u * from[0] + 2 * u * t * cx + t * t * toX - x,
+              u * u * from[1] + 2 * u * t * cy + t * t * toY - y,
+            ),
+          );
+        }
+        from = [toX, toY];
+      },
+    };
+    traceOutline(outline, sink);
+    return distances;
+  }
+
+  it("draws a single point as a circle on it, as wide as the stroke", () => {
+    for (const size of [16, 96, 160, 1024]) {
+      const outline = strokeOutline({ tool: "pen", size, points: [800, 800] });
+      for (const radius of radii(outline, 50, 50)) {
+        expect(radius / (size / 32)).toBeCloseTo(1, 3);
+      }
+    }
+  });
+
+  it("draws points that are all one point as the same circle", () => {
+    const one = strokeOutline({ tool: "pen", size: 96, points: [800, 800] });
+    for (const count of [2, 3, 7]) {
+      const points = new Array<number[]>(count).fill([800, 800]).flat();
+      expect(strokeOutline({ tool: "pen", size: 96, points })).toEqual(one);
+    }
   });
 
   it("keeps the size of a stroke without pressure", () => {
     const outline = strokeOutline({
       tool: "pen",
       size: 160,
-      pressure: false,
       points: [0, 800, 1600, 800, 3200, 800],
     });
     const bounds = outlineBounds(outline);
     expect((bounds?.bottom ?? 0) - (bounds?.top ?? 0)).toBeCloseTo(10, 0);
   });
 
-  it("narrows a light pen stroke", () => {
-    const at = (pressure: number): number => {
-      const bounds = outlineBounds(
-        strokeOutline({
-          tool: "pen",
-          size: 160,
-          pressure: true,
-          points: [0, 800, pressure, 1600, 800, pressure, 3200, 800, pressure],
-        }),
-      );
-      return (bounds?.bottom ?? 0) - (bounds?.top ?? 0);
-    };
-    expect(at(0)).toBeLessThan(at(128));
-    expect(at(128)).toBeLessThan(at(255));
-  });
-
-  // The pinned outlines change only when perfect-freehand or the options
-  // change, which would change how saved symbols look when reopened. Before
-  // the first stable release, a deliberate change updates this file with a
-  // changelog note; from then on, it needs a new pinned file and a format note.
+  // The pinned outlines change only when the outline's algorithm changes,
+  // which would change how saved symbols look when reopened. Before the first
+  // stable release, a deliberate change updates this file with a changelog
+  // note; from then on, it needs a new pinned file and a format note.
   it("matches the pinned outlines", async () => {
     const pinned: unknown = JSON.parse(
       await readFile(path.join(fixtures, "v1-outlines.json"), "utf8"),
@@ -115,15 +112,12 @@ describe("strokeOutline", () => {
 function polygon(
   corners: readonly (readonly [number, number])[],
   width: number,
-  cut?: Stroke["cut"],
 ): Stroke {
   return {
     tool: "pen",
     size: width * 16,
-    pressure: false,
     points: corners.flatMap(([x, y]) => [x * 16, y * 16]),
     kind: "polygon",
-    ...(cut === undefined ? {} : { cut }),
   };
 }
 
@@ -263,7 +257,6 @@ describe("polygon strokes", () => {
         [0, 0],
       ],
       2,
-      { start: "up", end: "up" },
     );
     const pieces = piecesOf(strokeShape(square));
     // Four sides and four corners: no ends.
@@ -333,7 +326,6 @@ describe("polygon strokes", () => {
     const reviewed: Stroke = {
       tool: "pen",
       size: 192,
-      pressure: false,
       points: [0, 0, 16, 144, 256, 2304],
       kind: "polygon",
     };
@@ -391,65 +383,33 @@ describe("polygon strokes", () => {
   it("give nothing for no corners, or a lone corner with flat ends", () => {
     expect(polygonPieces([], 2, false)).toEqual([]);
   });
-
-  it("are never cut: a cut has no effect on one, open or closed", () => {
-    const corners: [number, number][] = [
-      [0, 0],
-      [0, 20],
-      [20, 20],
-    ];
-    const cut = polygon(corners, 2, { start: "up", end: "right" });
-    expect(cutBoxes(cut)).toEqual([]);
-    expect(strokeShape(cut)).toEqual(strokeShape(polygon(corners, 2)));
-  });
 });
 
-describe("fillOutline", () => {
-  it("is the polygon through a filled stroke's points, or a polygon's corners", () => {
-    const corners: Stroke = {
-      ...polygon(
+describe("a filled stroke", () => {
+  it("is one piece through its points, leaving out repeated ones", () => {
+    const filled: Stroke = {
+      tool: "eraser",
+      points: [0, 0, 160, 0, 160, 0, 80, 128, 0, 0],
+      kind: "fill",
+    };
+    expect(strokeShape(filled)).toEqual({
+      kind: "pieces",
+      pieces: [
         [
           [0, 0],
-          [10, 0],
           [10, 0],
           [5, 8],
           [0, 0],
         ],
-        2,
-      ),
-      fill: true,
-    };
-    expect(fillOutline(corners)).toEqual([
-      [0, 0],
-      [10, 0],
-      [5, 8],
-      [0, 0],
-    ]);
-    const drawn: Stroke = {
-      tool: "eraser",
-      size: 32,
-      pressure: true,
-      points: [0, 0, 9, 32, 0, 9, 32, 32, 9],
-      fill: true,
-    };
-    expect(fillOutline(drawn)).toEqual([
-      [0, 0],
-      [2, 0],
-      [2, 2],
-    ]);
-    expect(fillOutline({ ...drawn, fill: false })).toBeUndefined();
-    const { fill: _, ...unfilled } = drawn;
-    expect(fillOutline(unfilled)).toBeUndefined();
+      ],
+    });
   });
 
-  it("bounds a filled stroke by its inside, whatever its brush", () => {
-    // A triangle with a brush 10 px wide, whose fill ends at its corners.
+  it("reaches its corners and no farther", () => {
     const triangle: Stroke = {
       tool: "pen",
-      size: 160,
-      pressure: false,
       points: [0, 0, 1600, 0, 800, 1600, 0, 0],
-      fill: true,
+      kind: "fill",
     };
     expect(strokeBounds(triangle)).toEqual({
       left: 0,
@@ -465,10 +425,61 @@ describe("strokeBounds", () => {
     const stroke: Stroke = {
       tool: "pen",
       size: 160,
-      pressure: false,
       points: [0, 800, 1600, 800],
     };
     expect(strokeBounds(stroke)).toEqual(outlineBounds(strokeOutline(stroke)));
+  });
+});
+
+describe("strokeBounds of a cut stroke", () => {
+  // Up, then a short way back: what is left once its end is cut is drawn
+  // again in the box, and reaches past the whole stroke's outline.
+  const stroke: SmoothStroke = {
+    tool: "pen",
+    size: 320,
+    points: [16000, 5728, 16800, 2528, 16640, 3328],
+    cut: { end: "up" },
+  };
+
+  it("takes in what the rest of it draws inside its cut boxes", () => {
+    const whole = outlineBounds(strokeOutline(stroke));
+    const bounds = strokeBounds(stroke);
+    const [box] = cutBoxes(stroke);
+    const rest = restShape(stroke);
+    if (
+      whole === undefined ||
+      bounds === undefined ||
+      box === undefined ||
+      rest?.kind !== "smooth"
+    ) {
+      throw new Error("no shape");
+    }
+    const reach = outlineBounds(rest.outline);
+    if (reach === undefined) throw new Error("no rest");
+    // The rest runs right through the box, and past the whole stroke's top,
+    // which on its own would put the stroke below the line box.
+    expect(reach.top).toBeLessThan(box.top);
+    expect(whole.top).toBeGreaterThan(192);
+    expect(bounds.top).toBe(box.top);
+    expect(bounds.top).toBeLessThan(192);
+  });
+
+  it("takes in nothing of the rest beyond its cut boxes", () => {
+    const [box] = cutBoxes(stroke);
+    const whole = outlineBounds(strokeOutline(stroke));
+    const bounds = strokeBounds(stroke);
+    if (box === undefined || whole === undefined || bounds === undefined) {
+      throw new Error("no shape");
+    }
+    expect(bounds.top).toBeGreaterThanOrEqual(Math.min(whole.top, box.top));
+    expect(bounds.bottom).toBeLessThanOrEqual(
+      Math.max(whole.bottom, box.bottom),
+    );
+  });
+
+  it("is the outline's alone for a stroke without cuts", () => {
+    const { cut: _, ...plain } = stroke;
+    expect(strokeBounds(plain)).toEqual(outlineBounds(strokeOutline(plain)));
   });
 });
 
@@ -561,12 +572,11 @@ describe("traceShape", () => {
 
 describe("cutBoxes", () => {
   it("takes a box past the line through each cut end, a brush and a pixel deep", () => {
-    // Right along a 2 px brush from (1, 1) to (5, 1) px, with pressure.
+    // Right along a 2 px brush from (1, 1) to (5, 1) px.
     const stroke: Stroke = {
       tool: "pen",
       size: 32,
-      pressure: true,
-      points: [16, 16, 128, 80, 16, 255],
+      points: [16, 16, 80, 16],
       cut: { start: "left", end: "right" },
     };
     expect(cutBoxes(stroke)).toEqual([
@@ -576,16 +586,14 @@ describe("cutBoxes", () => {
   });
 
   it("takes nothing from a stroke without cuts", () => {
-    expect(
-      cutBoxes({ tool: "pen", size: 32, pressure: false, points: [16, 16] }),
-    ).toEqual([]);
+    expect(cutBoxes({ tool: "pen", size: 32, points: [16, 16] })).toEqual([]);
   });
 });
 
 describe("uncutRest", () => {
   // Down a 1 px brush, one point a pixel, for 10 px.
   const points = Array.from({ length: 11 }, (_, at) => [16, at * 16]).flat();
-  const stroke: Stroke = { tool: "pen", size: 16, pressure: false, points };
+  const stroke: SmoothStroke = { tool: "pen", size: 16, points };
 
   it("leaves out the points within twice the brush's width of each cut end", () => {
     expect(uncutRest({ ...stroke, cut: { start: "up" } })?.points).toEqual(
@@ -599,15 +607,7 @@ describe("uncutRest", () => {
     ).toMatchObject({ tool: "pen", size: 16, points: points.slice(4, -4) });
   });
 
-  it("keeps a point's pressure, and leaves nothing of a short stroke", () => {
-    const pressed: Stroke = {
-      tool: "eraser",
-      size: 16,
-      pressure: true,
-      points: [0, 0, 9, 0, 32, 9, 0, 64, 9, 0, 96, 9],
-      cut: { start: "up" },
-    };
-    expect(uncutRest(pressed)?.points).toEqual([0, 32, 9, 0, 64, 9, 0, 96, 9]);
+  it("leaves nothing of a short stroke, or of one without cuts", () => {
     expect(
       uncutRest({ ...stroke, size: 96, cut: { start: "up", end: "down" } }),
     ).toBeUndefined();

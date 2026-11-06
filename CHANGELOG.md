@@ -9,6 +9,40 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Changed
+
+- The file format is rewritten for the first public release, after a review of
+  every rule in it, and [its specification](docs/file-format.md) now stands
+  alone. **Symbols saved by earlier versions open as pictures, without their
+  strokes**, and look as they did; saving one stores strokes again from then on.
+  Unsaved drafts from earlier versions are dropped.
+- The record moves to a chunk of its own, `inKL`, marked as depending on the
+  image, so that a program that changes the image drops it and leaves a picture,
+  rather than leave strokes behind that bring the old image back. The format
+  version comes first in it, outside the compression, so that any later version
+  is recognised whatever else it holds.
+- A symbol whose strokes cannot be read is no longer opened as a picture, which
+  replaced them on saving: it does not open, a notice says why, and **Copy
+  from** starts a new symbol from what it shows.
+- A symbol's image is 192 pixels high and at most 4096 wide, down from 8192, and
+  a record holds no other geometry. Strokes record no pressure. A fill has no
+  brush size, and only a smooth stroke's ends can be cut.
+- A single click draws a round dot exactly as wide as the brush, centred on the
+  click, rather than a short stroke a little wider, running down and right.
+- Every pixel of a symbol's image holds the same grey, however transparent, so
+  that a viewer that scales the image shows no dark fringe.
+- How a stroke's outline is drawn is now specified in full and kept in Inkline's
+  own source, so that it no longer depends on the perfect-freehand package.
+
+### Fixed
+
+- A flat-ended stroke whose only ink in the line came from the part drawn again
+  at its cut end was left out when saving, which could save a blank symbol.
+- A picture with an orientation in its metadata is no longer turned on opening,
+  and turned again in notes. Saving a symbol drops that metadata.
+- A file with a damaged chunk that the image does not depend on opens as it
+  shows, and one with a critical chunk that PNG does not define does not open.
+
 ## 0.9.1 - 2026-11-06
 
 This is the second beta of 1.0.0. It clears the work left after 0.9.0, and the

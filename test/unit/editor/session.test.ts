@@ -48,7 +48,7 @@ describe("DrawingSession", () => {
     session.extend([{ x: 10.5, y: 21 }]);
     session.end();
     expect(session.document.strokes).toEqual([
-      { tool: "pen", size: 288, pressure: false, points: [160, 320, 168, 336] },
+      { tool: "pen", size: 288, points: [160, 320, 168, 336] },
     ]);
   });
 
@@ -58,7 +58,6 @@ describe("DrawingSession", () => {
     session.extend([{ x: 1, y: 0 }]);
     session.end();
     expect(session.document.strokes[0]).toMatchObject({
-      pressure: false,
       points: [0, 0, 16, 0],
     });
   });
@@ -154,7 +153,7 @@ describe("DrawingSession", () => {
   it("replaces the document as one undoable change", () => {
     const session = new DrawingSession(emptyDocument);
     const restored = {
-      strokes: [{ tool: "pen", size: 16, pressure: false, points: [0, 0] }],
+      strokes: [{ tool: "pen", size: 16, points: [0, 0] }],
     } as const;
     session.replace(restored);
     expect(session.document).toBe(restored);
@@ -188,7 +187,7 @@ describe("DrawingSession", () => {
     const png = Uint8Array.of(1);
     const session = new DrawingSession({
       strokes: [],
-      base: { x: 0, y: 0, scale: 1, png },
+      base: { x: 0, y: 0, width: 16, height: 16, png },
     });
     for (let index = 0; index < 50; index++) {
       session.begin({ x: index, y: 0 });
@@ -204,7 +203,7 @@ describe("DrawingSession", () => {
     expect(new Set(first.slice(0, -1)).size).toBe(1);
     expect(first[0]?.points.slice(0, 2)).toEqual([-80, 0]);
     expect(new Set(bases).size).toBe(1);
-    expect(bases[0]).toEqual({ x: -80, y: 0, scale: 1, png });
+    expect(bases[0]).toEqual({ x: -80, y: 0, width: 16, height: 16, png });
     expect(session.saved).toBe(states.at(-1));
   });
 
@@ -321,25 +320,24 @@ describe("DrawingSession", () => {
   });
 
   it("lines the grid up with where an opened drawing's strokes end", () => {
-    const stroke = (pressure: boolean, ...xs: number[]) => ({
+    const stroke = (...xs: number[]) => ({
       tool: "pen" as const,
       size: 16,
-      pressure,
-      points: xs.flatMap((x) => (pressure ? [x, 0, 128] : [x, 0])),
+      points: xs.flatMap((x) => [x, 0]),
     });
     expect(gridOriginOf(emptyDocument)).toBe(0);
     // With no end shared, where the first stroke starts: 145.5 and -2.5
     // pixels.
-    expect(gridOriginOf({ strokes: [stroke(false, 2328, 100)] })).toBe(1.5);
-    expect(gridOriginOf({ strokes: [stroke(false, -40)] })).toBe(13.5);
+    expect(gridOriginOf({ strokes: [stroke(2328, 100)] })).toBe(1.5);
+    expect(gridOriginOf({ strokes: [stroke(-40)] })).toBe(13.5);
     // A first stroke drawn without the grid, 6.25 and 14.5 pixels into a
     // spacing, then one on the grid, both ends 1.5 pixels into one.
     expect(
       gridOriginOf({
-        strokes: [stroke(false, 100, 1000), stroke(true, 280, 300, 536)],
+        strokes: [stroke(100, 1000), stroke(280, 300, 536)],
       }),
     ).toBe(1.5);
-    const session = new DrawingSession({ strokes: [stroke(false, 2328)] });
+    const session = new DrawingSession({ strokes: [stroke(2328)] });
     session.snap = true;
     // Nearest to 161.5, one spacing on from the first stroke's start.
     session.begin({ x: 160, y: 0 });
@@ -351,7 +349,6 @@ describe("DrawingSession", () => {
     const stroke = (...xs: number[]) => ({
       tool: "pen" as const,
       size: 16,
-      pressure: false,
       points: xs.flatMap((x) => [x, 0]),
     });
     // A tap on the grid at 16 pixels, and a freehand stroke that starts and
@@ -376,7 +373,7 @@ describe("DrawingSession", () => {
 
   it("puts the grid where a restored drawing has it, and back on undo", () => {
     const stroke = (x: number) =>
-      ({ tool: "pen", size: 16, pressure: false, points: [x, 0] }) as const;
+      ({ tool: "pen", size: 16, points: [x, 0] }) as const;
     // 145.5 pixels, so 1.5 into a spacing.
     const session = new DrawingSession({ strokes: [stroke(2328)] });
     session.replace({ strokes: [stroke(0)] }, 11);
@@ -449,7 +446,6 @@ describe("DrawingSession", () => {
       ({
         tool: "pen",
         size: 16,
-        pressure: false,
         points: [x * 16, 0],
       }) as const;
     const session = new DrawingSession({ strokes: [tap(45), tap(59), tap(8)] });
@@ -556,7 +552,6 @@ describe("DrawingSession", () => {
         ({
           tool: "pen",
           size: 16,
-          pressure: false,
           points: [x * 16, 0],
         }) as const;
       // Taps on columns 14 pixels apart, through 11 pixels, which is more
@@ -1211,17 +1206,17 @@ describe("DrawingSession's fill", () => {
     session.fill = true;
     session.begin({ x: 0, y: 0 });
     session.end({ x: 20, y: 20 });
-    expect(session.document.strokes[0]).not.toHaveProperty("fill");
+    expect(session.document.strokes[0]?.kind).toBeUndefined();
     session.shape = "ellipse";
     session.begin({ x: 10, y: 20 });
     session.extend([{ x: 70, y: 40 }]);
-    expect(session.activeStroke?.fill).toBe(true);
+    expect(session.activeStroke?.kind).toBe("fill");
     session.end({ x: 70, y: 40 });
-    expect(session.document.strokes[1]?.fill).toBe(true);
+    expect(session.document.strokes[1]?.kind).toBe("fill");
     // A tap draws a dot, with nothing inside to fill.
     session.begin({ x: 5, y: 5 });
     session.end({ x: 5, y: 5 });
-    expect(session.document.strokes[2]).not.toHaveProperty("fill");
+    expect(session.document.strokes[2]?.kind).toBeUndefined();
     session.shape = "polygon";
     for (const [x, y] of [
       [10, 20],
@@ -1259,17 +1254,16 @@ describe("DrawingSession's fill", () => {
       session.end({ x, y });
     }
     session.extend([{ x: 10, y: 20 }]);
-    expect(session.activeStroke).not.toHaveProperty("fill");
+    expect(session.activeStroke?.kind).toBe("polygon");
     session.fill = true;
-    expect(session.activeStroke?.fill).toBe(true);
+    expect(session.activeStroke?.kind).toBe("fill");
     // A side to a new corner is not closed, and shows no fill.
     session.extend([{ x: 60, y: 60 }]);
-    expect(session.activeStroke).not.toHaveProperty("fill");
+    expect(session.activeStroke?.kind).toBe("polygon");
     session.begin({ x: 10, y: 20 });
     session.end({ x: 10, y: 20 });
     expect(session.document.strokes[0]).toMatchObject({
-      kind: "polygon",
-      fill: true,
+      kind: "fill",
       points: [160, 320, 640, 320, 400, 800, 160, 320],
     });
   });
@@ -1294,7 +1288,6 @@ describe("DrawingSession's polygons", () => {
     expect(session.activeStroke).toEqual({
       tool: "pen",
       size: 192,
-      pressure: false,
       points: [160, 320, 640, 352],
       kind: "polygon",
     });
@@ -1312,7 +1305,6 @@ describe("DrawingSession's polygons", () => {
       {
         tool: "pen",
         size: 192,
-        pressure: false,
         points: [160, 320, 640, 320, 400, 800, 160, 320],
         kind: "polygon",
       },
@@ -1401,7 +1393,6 @@ describe("DrawingSession's polygons", () => {
     expect(session.document.strokes[0]).toEqual({
       tool: "pen",
       size: 192,
-      pressure: false,
       points: [0, 256, 512, 256, 512, 2304],
       kind: "polygon",
     });

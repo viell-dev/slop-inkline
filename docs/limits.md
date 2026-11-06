@@ -30,8 +30,9 @@ link would still lead elsewhere by its path in the vault.
 
 ## Files and sizes
 
-- A symbol's pixels changed by another program that keeps Inkline's chunk do not
-  show in Inkline's editor, which draws the strokes; see
+- A symbol is at most 4096 pixels wide, 32 times the height of its text.
+- Tools that change or recompress a symbol's image drop the strokes it keeps,
+  leaving a picture; see
   [Without Inkline](./without-inkline.md#editing-them-elsewhere).
 - A picture to trace over is scaled down to 4096 pixels on its longer side. A
   file opened from its pixels can be up to 4096 pixels a side, and its ink must
@@ -60,7 +61,5 @@ link would still lead elsewhere by its path in the vault.
   as faint ink around the window at any threshold that keeps the strokes: bring
   only the inside of the window into view. A capture without transparency has
   neither limit ([#148](https://github.com/viell-dev/slop-inkline/issues/148)).
-- Every symbol shows in notes at the size and baseline Inkline saves, whatever
-  geometry another tool wrote into its file.
 - Images from outside the vault are left as they are, even when their names end
   in `.ink.png`.

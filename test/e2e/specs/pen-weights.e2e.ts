@@ -276,7 +276,6 @@ describe("Brush sizes beside text", function () {
             return {
               tool: "pen" as const,
               size,
-              pressure: false,
               points: [x, 800, x, 2000],
             };
           }),

@@ -16,7 +16,6 @@ import {
   type Stroke,
 } from "../format/record.ts";
 import type { InkDocument } from "../ink/document.ts";
-import { lineBox } from "../ink/geometry.ts";
 
 /** A file a new symbol's first save made, or was making. */
 export interface CreatedFile {
@@ -85,7 +84,7 @@ export interface Draft {
 export const draftLifetime = 30 * 24 * 60 * 60 * 1000;
 
 /** The version of the stored draft's layout. */
-const draftVersion = 1;
+const draftVersion = 2;
 const indexKey = "inkline-drafts";
 const draftPrefix = "inkline-draft:";
 const baseIndexKey = "inkline-draft-bases";
@@ -105,7 +104,8 @@ interface StoredLayer {
   readonly key: string;
   readonly x: number;
   readonly y: number;
-  readonly scale: number;
+  readonly width: number;
+  readonly height: number;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -151,19 +151,17 @@ function coordinate(value: unknown): value is number {
 /** A kept base layer's place, within the format's limits. */
 function parseLayer(value: unknown): StoredLayer | undefined {
   if (!isRecord(value)) return undefined;
-  const { key, x, y, scale } = value;
+  const { key, x, y, width, height } = value;
   return typeof key === "string" &&
     coordinate(x) &&
     coordinate(y) &&
-    typeof scale === "number" &&
-    scale >= limits.baseScale.min &&
-    scale <= limits.baseScale.max
-    ? { key, x, y, scale }
+    coordinate(width) &&
+    coordinate(height) &&
+    width >= 1 &&
+    height >= 1
+    ? { key, x, y, width, height }
     : undefined;
 }
-
-/** The box a draft's strokes are stored in; it does not limit them. */
-const draftBox = { ...lineBox, width: lineBox.height };
 
 interface Decoded {
   readonly draft: Draft;
@@ -228,9 +226,12 @@ function decode(
   const png = bases(place.key);
   if (png === undefined)
     return { draft: { ...common, base: { kind: "lost" } } };
-  const { x, y, scale } = place;
+  const { x, y, width, height } = place;
   return {
-    draft: { ...common, base: { kind: "kept", layer: { x, y, scale, png } } },
+    draft: {
+      ...common,
+      base: { kind: "kept", layer: { x, y, width, height, png } },
+    },
     baseKey: place.key,
   };
 }
@@ -258,7 +259,8 @@ function encodeDraft(draft: Draft, baseKey: string | undefined): string {
             key: baseKey,
             x: base.layer.x,
             y: base.layer.y,
-            scale: base.layer.scale,
+            width: base.layer.width,
+            height: base.layer.height,
           },
         }
       : { base: base.kind === "kept" ? "lost" : base.kind };
@@ -271,7 +273,7 @@ function encodeDraft(draft: Draft, baseKey: string | undefined): string {
     savedAt,
     ...(gridOrigin === undefined ? {} : { gridOrigin }),
     ...(name === undefined ? {} : { name }),
-    ink: recordValue({ box: draftBox, strokes }),
+    ink: recordValue({ strokes }),
   });
 }
 
@@ -298,7 +300,8 @@ export function draftBase(
     samePng(held.png, layer.png) &&
     held.x === layer.x &&
     held.y === layer.y &&
-    held.scale === layer.scale
+    held.width === layer.width &&
+    held.height === layer.height
     ? { kind: "file" }
     : { kind: "kept", layer };
 }

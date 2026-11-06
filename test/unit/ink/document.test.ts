@@ -1,18 +1,15 @@
 import { describe, expect, it } from "vitest";
-import type { InkRecord, Stroke } from "../../../src/format/record.ts";
+import type { Stroke } from "../../../src/format/record.ts";
 import { limits } from "../../../src/format/record.ts";
 import {
   addedStroke,
-  documentFromRecord,
   documentSpan,
   fitsFormat,
   moveDocument,
   recordFromDocument,
-  toPressure,
   toUnits,
   type InkDocument,
 } from "../../../src/ink/document.ts";
-import { lineBox } from "../../../src/ink/geometry.ts";
 import { strokeBounds } from "../../../src/ink/outline.ts";
 
 const png = Uint8Array.of(137, 80, 78, 71);
@@ -20,55 +17,53 @@ const png = Uint8Array.of(137, 80, 78, 71);
 const pen: Stroke = {
   tool: "pen",
   size: 64,
-  pressure: true,
-  points: [160, 320, 200, 480, 640, 100],
+  points: [160, 320, 480, 640],
 };
 const dot: Stroke = {
   tool: "eraser",
   size: 32,
-  pressure: false,
   points: [-16, 48],
 };
 
-describe("toUnits and toPressure", () => {
-  it("round to the format's integers", () => {
+describe("toUnits", () => {
+  it("rounds to the format's integers", () => {
     expect(toUnits(1.53)).toBe(24);
     expect(toUnits(-0.02)).toBe(-0);
-    expect(toPressure(0.5)).toBe(128);
-    expect(toPressure(1.7)).toBe(255);
-    expect(toPressure(-1)).toBe(0);
   });
 });
 
 describe("moveDocument", () => {
   it("moves strokes and the base layer up or down by whole units", () => {
-    const base = { x: 16, y: 32, scale: 1, png: new Uint8Array() };
+    const base = {
+      x: 16,
+      y: 32,
+      width: 16,
+      height: 16,
+      png: new Uint8Array(),
+    };
     const moved = moveDocument(
-      {
-        strokes: [{ tool: "pen", size: 16, pressure: true, points: [1, 2, 3] }],
-        base,
-      },
+      { strokes: [{ tool: "pen", size: 16, points: [1, 2, 3, 4] }], base },
       0,
       -5,
     );
-    expect(moved.strokes[0]?.points).toEqual([1, -3, 3]);
+    expect(moved.strokes[0]?.points).toEqual([1, -3, 3, -1]);
     expect(moved.base).toEqual({ ...base, y: 27 });
     expect(() => moveDocument(moved, 0, 0.5)).toThrow(
       "moves are in whole units",
     );
   });
 
-  it("moves strokes and the base layer by whole pixels, keeping pressure", () => {
+  it("moves strokes and the base layer by whole pixels", () => {
     const document: InkDocument = {
       strokes: [pen, dot],
-      base: { x: 0, y: 32, scale: 1, png },
+      base: { x: 0, y: 32, width: 16, height: 16, png },
     };
     expect(moveDocument(document, -10)).toEqual({
       strokes: [
-        { ...pen, points: [0, 320, 200, 320, 640, 100] },
+        { ...pen, points: [0, 320, 320, 640] },
         { ...dot, points: [-176, 48] },
       ],
-      base: { x: -160, y: 32, scale: 1, png },
+      base: { x: -160, y: 32, width: 16, height: 16, png },
     });
   });
 
@@ -79,121 +74,37 @@ describe("moveDocument", () => {
   });
 });
 
-describe("recordFromDocument and documentFromRecord", () => {
-  it("round-trip a document cropped at any whole pixel", () => {
+describe("recordFromDocument", () => {
+  it("moves a document so that the crop starts at 0, losing nothing", () => {
     const document: InkDocument = {
       strokes: [pen, dot],
-      base: { x: 48, y: 0, scale: 0.5, png },
+      base: { x: 48, y: 0, width: 8, height: 8, png },
     };
-    const record = recordFromDocument(document, -30, 90);
-    expect(record.box).toEqual({ ...lineBox, width: 90 });
-    const reopened = documentFromRecord(record);
-    if (reopened === undefined) throw new Error("not workable");
-    expect(moveDocument(reopened, -30)).toEqual(document);
-  });
-
-  it("use a record in the line box exactly", () => {
-    const record: InkRecord = {
-      box: { ...lineBox, width: 50 },
-      strokes: [pen],
-    };
-    expect(documentFromRecord(record)).toEqual({ strokes: [pen] });
-  });
-
-  it("scale a record with another geometry to the line box", () => {
-    // 64 px per em with the baseline 10 px above a 96 px box: half scale,
-    // and the baseline moves from 86 to 172, so everything moves up 28 px.
-    const record: InkRecord = {
-      box: { pxPerEm: 64, width: 40, height: 96, baseline: 86 },
-      strokes: [
-        { tool: "pen", size: 33, pressure: false, points: [160, 1376] },
-      ],
-      base: { x: 16, y: 0, scale: 1, png },
-    };
-    expect(documentFromRecord(record)).toEqual({
-      strokes: [
-        { tool: "pen", size: 66, pressure: false, points: [320, 2304] },
-      ],
-      base: { x: 32, y: -448, scale: 2, png },
-    });
-  });
-});
-
-describe("documentFromRecord stays within the format's limits", () => {
-  const box = { pxPerEm: 64, width: 48, height: 192, baseline: 72 };
-
-  it("refuses a conversion that would make a stroke too large", () => {
-    const record: InkRecord = {
-      box,
-      strokes: [
-        { tool: "eraser", size: 40_000, pressure: false, points: [0, 0] },
-      ],
-    };
-    expect(documentFromRecord(record)).toBeUndefined();
-  });
-
-  it("refuses a conversion that would move a point out of range", () => {
-    const record: InkRecord = {
-      box,
-      strokes: [
-        {
-          tool: "eraser",
-          size: 16,
-          pressure: false,
-          points: [0, limits.coordinate],
-        },
-      ],
-    };
-    expect(documentFromRecord(record)).toBeUndefined();
-  });
-
-  it("refuses a conversion that would scale the base layer below the limit", () => {
-    const record: InkRecord = {
-      box: { pxPerEm: 1024, width: 48, height: 192, baseline: 144 },
-      strokes: [],
-      base: { x: 0, y: 0, scale: 1 / 64, png },
-    };
-    expect(documentFromRecord(record)).toBeUndefined();
-  });
-
-  it("opens any valid record in the line box, however far its strokes reach", () => {
-    // What a crop of a pen at 100 px with an eraser 4 Mi units to its left
-    // saves: it must open again as it was saved.
-    const record: InkRecord = {
-      box: { ...lineBox, width: 48 },
-      strokes: [
-        { tool: "pen", size: 160, pressure: false, points: [384, 1600] },
-        {
-          tool: "eraser",
-          size: 16,
-          pressure: false,
-          points: [-4_195_520, 1600],
-        },
-        {
-          tool: "eraser",
-          size: 16,
-          pressure: false,
-          points: [-limits.coordinate, 0],
-        },
-      ],
-    };
-    expect(documentFromRecord(record)).toEqual({ strokes: record.strokes });
+    const record = recordFromDocument(document, -30);
+    expect(record.strokes[1]?.points).toEqual([464, 48]);
+    expect(moveDocument(record, -30)).toEqual(document);
   });
 });
 
 describe("fitsFormat", () => {
-  it("accepts the limits themselves and pressure values", () => {
+  it("accepts the limits themselves", () => {
     expect(
       fitsFormat({
         strokes: [
           {
             tool: "pen",
             size: limits.strokeSize,
-            pressure: true,
-            points: [limits.coordinate, -limits.coordinate, 255],
+            points: [limits.coordinate, -limits.coordinate],
           },
+          { tool: "pen", points: [0, 0, 1, 1, 2, 0], kind: "fill" },
         ],
-        base: { x: 0, y: 0, scale: limits.baseScale.max, png },
+        base: {
+          x: 0,
+          y: 0,
+          width: limits.coordinate,
+          height: 1,
+          png,
+        },
       }),
     ).toBe(true);
   });
@@ -202,7 +113,6 @@ describe("fitsFormat", () => {
     const stroke = {
       tool: "pen",
       size: 16,
-      pressure: false,
       points: [0, 0],
     } as const;
     expect(
@@ -214,14 +124,23 @@ describe("fitsFormat", () => {
       fitsFormat({ strokes: [{ ...stroke, size: limits.strokeSize + 1 }] }),
     ).toBe(false);
     expect(
-      fitsFormat({ strokes: [], base: { x: 0, y: 0, scale: 65, png } }),
+      fitsFormat({
+        strokes: [],
+        base: { x: 0, y: 0, width: limits.coordinate + 1, height: 1, png },
+      }),
+    ).toBe(false);
+    expect(
+      fitsFormat({
+        strokes: [],
+        base: { x: 0, y: 0, width: 1, height: 0, png },
+      }),
     ).toBe(false);
   });
 });
 
 describe("addedStroke", () => {
   const before: InkDocument = { strokes: [pen] };
-  const layer = { x: 0, y: 0, scale: 1, png };
+  const layer = { x: 0, y: 0, width: 16, height: 16, png };
 
   it("gives the stroke after the same strokes, of either tool", () => {
     expect(addedStroke(before, { strokes: [pen, dot] })).toBe(dot);
@@ -277,14 +196,17 @@ describe("documentSpan", () => {
   it("reaches across every stroke, widened by its radius, and the base layer", () => {
     const document: InkDocument = {
       strokes: [
-        { tool: "pen", size: 64, pressure: false, points: [160, 0, 320, 16] },
-        { tool: "eraser", size: 32, pressure: true, points: [-160, 0, 255] },
+        { tool: "pen", size: 64, points: [160, 0, 320, 16] },
+        { tool: "eraser", size: 32, points: [-160, 0] },
       ],
-      base: { x: 480, y: 0, scale: 2, png: new Uint8Array(0) },
+      // Drawn 48 pixels wide: from 30 to 78.
+      base: { x: 480, y: 0, width: 768, height: 16, png: new Uint8Array(0) },
     };
-    expect(documentSpan(document)).toEqual({ left: -11, right: 22 });
-    // A base layer 24 pixels wide, each covering 2: from 30 to 78.
-    expect(documentSpan(document, 24)).toEqual({ left: -11, right: 78 });
+    expect(documentSpan(document)).toEqual({ left: -11, right: 78 });
+    expect(documentSpan({ strokes: document.strokes })).toEqual({
+      left: -11,
+      right: 22,
+    });
     expect(documentSpan({ strokes: [] })).toBeUndefined();
   });
 
@@ -294,17 +216,18 @@ describe("documentSpan", () => {
     const sharp: Stroke = {
       tool: "pen",
       size: 32,
-      pressure: false,
       points: [0, 0, 320, 0, 0, 32],
       kind: "polygon",
     };
     const span = documentSpan({ strokes: [sharp] });
     expect(span?.right).toBe(strokeBounds(sharp)?.right);
     expect(span?.right).toBeCloseTo(24, 1);
-    // Filled, it reaches its corners and no farther, whatever its brush.
-    expect(documentSpan({ strokes: [{ ...sharp, fill: true }] })).toEqual({
-      left: 0,
-      right: 20,
-    });
+    // Filled, it reaches its corners and no farther.
+    const filled: Stroke = {
+      tool: "pen",
+      points: sharp.points,
+      kind: "fill",
+    };
+    expect(documentSpan({ strokes: [filled] })).toEqual({ left: 0, right: 20 });
   });
 });

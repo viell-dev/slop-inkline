@@ -1,8 +1,8 @@
 // Writes v1-outlines.json: the outlines of the strokes in strokes.ts, rounded
 // to thousandths of a pixel, which test/unit/ink/outline.test.ts compares
-// with every change. The file is never replaced: if the outlines must change,
-// pin the new ones under a new name and describe the change in
-// docs/file-format.md.
+// with every change. From the first stable release the file is never replaced:
+// if the outlines must change, that is a new format version, with the new ones
+// pinned under a new name.
 //
 //   node test/fixtures/outline/generate.ts
 

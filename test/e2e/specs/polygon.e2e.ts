@@ -231,13 +231,12 @@ describe("Polygon", function () {
     // neighbours made infinite pieces, and saving never finished.
     const saved = await browser.execute(async () => {
       const { canvas } = window.inklineTest;
-      const { record } = await canvas.saveInk(
+      const { width } = await canvas.saveInk(
         {
           strokes: [
             {
               tool: "pen",
               size: 192,
-              pressure: false,
               points: [400, 800, 416, 944, 656, 3104],
               kind: "polygon",
             },
@@ -246,7 +245,7 @@ describe("Polygon", function () {
         undefined,
         [],
       );
-      return record.box.width;
+      return width;
     });
     // 15 px across, the stroke's 12 px width, and the side bearings.
     expect(saved).toBeGreaterThan(40);
@@ -291,7 +290,6 @@ describe("Polygon", function () {
       const stroke = {
         tool: "pen" as const,
         size: 192,
-        pressure: false,
         points,
         kind: "polygon" as const,
       };

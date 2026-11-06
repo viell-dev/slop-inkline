@@ -205,10 +205,11 @@ async function plantKeptDraft(): Promise<void> {
     const kept = new drafts.DraftStore(app).put({
       id: "planted",
       target: { kind: "new", note: "Editor.md" },
-      strokes: [
-        { tool: "pen", size: 256, pressure: false, points: [1600, 1600] },
-      ],
-      base: { kind: "kept", layer: { x: 0, y: 0, scale: 8, png } },
+      strokes: [{ tool: "pen", size: 256, points: [1600, 1600] }],
+      base: {
+        kind: "kept",
+        layer: { x: 0, y: 0, width: 3072, height: 3072, png },
+      },
       savedAt: Date.now(),
     });
     if (!kept) throw new Error("the draft was not kept");
@@ -310,7 +311,6 @@ async function changeElsewhere(
       const dot = (x: number) => ({
         tool: "pen" as const,
         size: 256,
-        pressure: false,
         points: [x, 1600],
       });
       const { bytes } = await canvas.saveInk(
@@ -382,7 +382,6 @@ async function writeSymbol(path: string, xs: readonly number[]): Promise<void> {
           strokes: starts.map((x) => ({
             tool: "pen" as const,
             size: 256,
-            pressure: false,
             points: [x, 800, x + 400, 2000],
           })),
         },
@@ -413,10 +412,19 @@ async function carriedIn(path: string): Promise<number> {
   return browser.executeObsidian(async ({ app }, filePath) => {
     const file = app.vault.getFileByPath(filePath);
     if (file === null) throw new Error(`no ${filePath}`);
-    const { inkFile } = window.inklineTest;
+    const { inkFile, png } = window.inklineTest;
     return inkFile.preservableChunks(
-      new Uint8Array(await app.vault.readBinary(file)),
+      png.readChunks(new Uint8Array(await app.vault.readBinary(file))),
     ).length;
+  }, path);
+}
+
+/** A file's bytes, as numbers, to compare from outside the renderer. */
+async function bytesOfFile(path: string): Promise<number[]> {
+  return browser.executeObsidian(async ({ app }, filePath) => {
+    const file = app.vault.getFileByPath(filePath);
+    if (file === null) throw new Error(`no ${filePath}`);
+    return [...new Uint8Array(await app.vault.readBinary(file))];
   }, path);
 }
 
@@ -827,14 +835,11 @@ describe("The editor", function () {
     );
     const record: unknown = JSON.parse(await recordOf("001.ink.png"));
     expect(record).toMatchObject({
-      format: "inkline",
-      box: { pxPerEm: 128, height: 192, baseline: 144 },
       // The default size, M.
       strokes: [
         {
           tool: "pen",
           size: (brushSizes[1]?.em ?? 0) * lineBox.pxPerEm * unitsPerPixel,
-          pressure: false,
         },
       ],
     });
@@ -1801,6 +1806,76 @@ describe("The editor", function () {
     expect(record.strokes).toHaveLength(1);
   });
 
+  /** Writes a symbol whose record chunk holds `chunk`, over plain pixels. */
+  async function writeWithRecord(
+    name: string,
+    chunk: readonly number[],
+  ): Promise<void> {
+    await browser.executeObsidian(
+      async ({ app }, fileName, data) => {
+        const { canvas, inkFile, png } = window.inklineTest;
+        const pixels = new Uint8ClampedArray(48 * 192 * 4);
+        for (let at = 3; at < pixels.length; at += 4) pixels[at] = 200;
+        const image = await canvas.encodePixels({
+          width: 48,
+          height: 192,
+          data: pixels,
+        });
+        const [header, ...rest] = png.readChunks(image);
+        if (header === undefined) throw new Error("no header");
+        const file = png.writeChunks([
+          header,
+          { type: inkFile.recordChunkType, data: Uint8Array.from(data) },
+          ...rest,
+        ]);
+        await app.vault.createBinary(fileName, file.slice().buffer);
+      },
+      name,
+      [...chunk],
+    );
+  }
+
+  /** Asks to edit a symbol that is not expected to open. */
+  async function tryToEdit(path: string): Promise<void> {
+    await browser.executeObsidian(async ({ app, plugins }, filePath) => {
+      const file = app.vault.getFileByPath(filePath);
+      if (file === null) throw new Error(`no ${filePath}`);
+      await plugins.inkline.editSymbol(file);
+    }, path);
+  }
+
+  it("does not open a symbol from a later version, and says so", async function () {
+    await writeWithRecord("later.ink.png", [0, 0, 0, 2]);
+    await tryToEdit("later.ink.png");
+    await browser.$(".notice*=saved by a newer version").waitForExist();
+    expect(await editorOpen()).toBe(false);
+  });
+
+  it("does not open a symbol whose strokes cannot be read, and says so", async function () {
+    await writeWithRecord("harmed.ink.png", [0, 0, 0, 1, 0xff, 0xff]);
+    await tryToEdit("harmed.ink.png");
+    await browser.$(".notice*=The strokes in harmed").waitForExist();
+    expect(await editorOpen()).toBe(false);
+  });
+
+  it("starts a copy from what a symbol shows when its strokes cannot be read", async function () {
+    await writeWithRecord("harmed.ink.png", [0, 0, 0, 1, 0xff, 0xff]);
+    const before = await bytesOfFile("harmed.ink.png");
+    await insert();
+    await browser.keys(["v"]);
+    await chooseSymbol("harmed");
+    await waitForStatus("Started from a copy of harmed");
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    const copy = JSON.parse(await recordOf("001.ink.png")) as {
+      base?: unknown;
+      strokes: unknown[];
+    };
+    expect(copy.base).toBeDefined();
+    expect(copy.strokes).toEqual([]);
+    expect(await bytesOfFile("harmed.ink.png")).toEqual(before);
+  });
+
   it("reports a symbol file that cannot be read", async function () {
     await browser.executeObsidian(async ({ app, plugins }) => {
       const file = await app.vault.createBinary(
@@ -2050,10 +2125,10 @@ describe("The editor", function () {
     await browser.keys(["Control", "Enter"]);
     await waitClosed();
     const restored = JSON.parse(await recordOf("square.ink.png")) as {
-      base?: { scale: number };
+      base?: { height: number };
     };
-    // The 24-pixel square, scaled to the line box's 192 pixels.
-    expect(restored.base?.scale).toBe(8);
+    // The 24-pixel square, scaled to the line box's 192 pixels, in units.
+    expect(restored.base?.height).toBe(192 * 16);
   });
 
   it("says when a draft cannot be kept, and keeps the last one until one can", async function () {
@@ -2170,9 +2245,7 @@ describe("The editor", function () {
       const note = app.vault.getFileByPath("Editor.md");
       if (note === null) throw new Error("no Editor.md");
       const drawing = {
-        strokes: [
-          { tool: "pen", size: 256, pressure: false, points: [1600, 1600] },
-        ],
+        strokes: [{ tool: "pen", size: 256, points: [1600, 1600] }],
       } as const;
       const { bytes } = await canvas.saveInk(drawing, undefined);
       await app.vault.createBinary("001.ink.png", bytes.slice().buffer);
@@ -2227,10 +2300,11 @@ describe("The editor", function () {
       new drafts.DraftStore(app).put({
         id: "planted",
         target: { kind: "new", note: "Editor.md" },
-        strokes: [
-          { tool: "pen", size: 256, pressure: false, points: [1600, 1600] },
-        ],
-        base: { kind: "kept", layer: { x: 0, y: 0, scale: 8, png: broken } },
+        strokes: [{ tool: "pen", size: 256, points: [1600, 1600] }],
+        base: {
+          kind: "kept",
+          layer: { x: 0, y: 0, width: 3072, height: 3072, png: broken },
+        },
         savedAt: Date.now(),
       });
     });
@@ -2271,7 +2345,6 @@ describe("The editor", function () {
       const stroke = {
         tool: "pen",
         size: 256,
-        pressure: false,
         points: [1600, 1600],
       } as const;
       const times: number[] = [];
@@ -2281,7 +2354,10 @@ describe("The editor", function () {
           id: "timed",
           target: { kind: "new", note: "Timing.md" },
           strokes: Array.from({ length: count }, () => stroke),
-          base: { kind: "kept", layer: { x: 0, y: 0, scale: 0.1875, png } },
+          base: {
+            kind: "kept",
+            layer: { x: 0, y: 0, width: 3072, height: 3072, png },
+          },
           savedAt: Date.now(),
         });
         times.push(kept ? performance.now() - start : Number.POSITIVE_INFINITY);
@@ -2446,10 +2522,10 @@ describe("The editor", function () {
         await browser.keys(["Control", "Enter"]);
         await waitClosed();
         const record = JSON.parse(await recordOf("square.ink.png")) as {
-          base?: { scale: number };
+          base?: { height: number };
           strokes: unknown[];
         };
-        expect(record.base?.scale).toBe(8);
+        expect(record.base?.height).toBe(192 * 16);
         expect(record.strokes).toHaveLength(stroke ? 1 : 0);
       });
     }
@@ -2580,7 +2656,6 @@ describe("The editor", function () {
         ({
           tool: "pen",
           size: 256,
-          pressure: false,
           points: [x * 16, 1600, x * 16, 1920],
         }) as const;
       const { bytes } = await canvas.saveInk(
@@ -2737,7 +2812,6 @@ describe("The editor", function () {
         ({
           tool: "pen",
           size: 256,
-          pressure: false,
           points: [x * 16, 1600, x * 16, 1920],
         }) as const;
       const { bytes } = await canvas.saveInk(
@@ -3458,7 +3532,6 @@ describe("The editor", function () {
               {
                 tool: "pen",
                 size: 256,
-                pressure: false,
                 points: [800, 800, 1600, 2000],
               },
             ],

@@ -133,9 +133,7 @@ async function checkDimClarity(side: number): Promise<void> {
     const saved = await canvas.decodePng(bytes);
     const pixels = canvas.readPixels(saved);
     saved.close();
-    const y = Math.floor(
-      opened.base.y / 16 + (opened.base.height * opened.base.scale) / 4,
-    );
+    const y = Math.floor(opened.base.y / 16 + opened.base.height / 16 / 4);
     const profile = (data: Uint8ClampedArray, width: number) => {
       const row = [];
       for (let x = 0; x < width; x++)
@@ -225,9 +223,7 @@ async function checkClarity(side: number): Promise<void> {
     const saved = await canvas.decodePng(bytes);
     const pixels = canvas.readPixels(saved);
     saved.close();
-    const y = Math.floor(
-      opened.base.y / 16 + (opened.base.height * opened.base.scale) / 4,
-    );
+    const y = Math.floor(opened.base.y / 16 + opened.base.height / 16 / 4);
     const profile = (data: Uint8ClampedArray, width: number) => {
       const row = [];
       for (let x = 0; x < width; x++)
@@ -244,7 +240,6 @@ async function checkClarity(side: number): Promise<void> {
       row,
       reopened: profile(reopened.data, pixels.width),
       partial: row.filter((v) => v > 0 && v < 255).length,
-      scale: opened.base.scale,
       width: opened.base.width,
     };
   });

@@ -269,8 +269,8 @@ describe("Inkline settings", function () {
       return opened.document.strokes;
     });
     expect(strokes).toHaveLength(1);
-    // A pen draws as a mouse does: pen pressure is no longer recorded (#101).
-    expect(strokes[0]?.pressure).toBe(false);
+    // A pen draws as a mouse does: symbols record no pen pressure (#101).
+    expect(strokes[0]).not.toHaveProperty("pressure");
   });
 
   it("applies size and stored colour to open notes while preserving explicit sizes", async function () {

@@ -15,11 +15,10 @@ import type { InkDocument } from "../../../src/ink/document.ts";
 import { blank, encodePng } from "../../support/png.ts";
 
 const png = encodePng(blank(2, 2));
-const layer: BaseLayer = { x: 0, y: 0, scale: 1, png };
+const layer: BaseLayer = { x: 0, y: 0, width: 32, height: 32, png };
 const stroke = {
   tool: "pen",
   size: 256,
-  pressure: false,
   points: [16, 32],
 } as const;
 
@@ -307,7 +306,10 @@ describe("DraftStore", () => {
   it("reads a kept base layer in another session, or marks it lost", () => {
     const storage = new MemoryStorage();
     const written = draft({
-      base: { kind: "kept", layer: { x: -160, y: 32, scale: 2, png } },
+      base: {
+        kind: "kept",
+        layer: { x: -160, y: 32, width: 64, height: 64, png },
+      },
     });
     new DraftStore(storage, () => 5000).put(written);
     expect(new DraftStore(storage, () => 5000).list()).toEqual([written]);
@@ -371,7 +373,7 @@ describe("decodeDraft", () => {
       good,
       "not JSON",
       "[]",
-      variant({ version: 2 }),
+      variant({ version: 1 }),
       variant({ id: 1 }),
       variant({ target: { kind: "file" } }),
       variant({ target: { kind: "new", note: "a.md", file: { path: "x" } } }),
@@ -386,7 +388,7 @@ describe("decodeDraft", () => {
       // A kept base layer has a place, and only it does.
       variant({ base: "file" }),
       variant({ layer: undefined }),
-      variant({ layer: { ...good.layer, scale: 0 } }),
+      variant({ layer: { ...good.layer, width: 0 } }),
       variant({ layer: { ...good.layer, x: 0.5 } }),
       variant({ savedAt: Number.NaN }),
       variant({ fingerprint: 5 }),
@@ -396,7 +398,7 @@ describe("decodeDraft", () => {
       variant({
         ink: {
           ...good.ink,
-          base: { x: 0, y: 0, scale: 1, png: "iVBORw0KGgo=" },
+          base: { x: 0, y: 0, width: 1, height: 1, png: "iVBORw0KGgo=" },
         },
       }),
     ]) {

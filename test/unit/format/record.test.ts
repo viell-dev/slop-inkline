@@ -10,10 +10,9 @@ import { blank, encodePng, header, pixelChunks } from "../../support/png.ts";
 import { pngSignature, writeChunks } from "../../../src/format/png.ts";
 
 const record: InkRecord = {
-  box: { pxPerEm: 128, width: 64, height: 192, baseline: 144 },
   strokes: [
-    { tool: "pen", size: 160, pressure: true, points: [0, 0, 0, -16, 32, 255] },
-    { tool: "eraser", size: 32, pressure: false, points: [10, 20] },
+    { tool: "pen", size: 160, points: [0, 0, 0, -16] },
+    { tool: "eraser", size: 32, points: [10, 20] },
   ],
 };
 
@@ -22,7 +21,8 @@ const withBase: InkRecord = {
   base: {
     x: -32,
     y: 16,
-    scale: 1.5,
+    width: 24,
+    height: 48,
     png: encodePng(blank(1, 1)),
   },
 };
@@ -47,7 +47,7 @@ function variant(path: readonly (string | number)[], value: unknown): string {
 }
 
 function invalid(result: ParseResult): string {
-  if (result.ok || result.reason !== "invalid") {
+  if (result.ok) {
     throw new Error(
       `expected an invalid record, got ${JSON.stringify(result)}`,
     );
@@ -66,7 +66,7 @@ describe("serializeRecord and parseRecord", () => {
   });
 
   it("round-trip an empty drawing", () => {
-    const empty: InkRecord = { box: record.box, strokes: [] };
+    const empty: InkRecord = { strokes: [] };
     expect(parseRecord(serializeRecord(empty))).toEqual({
       ok: true,
       record: empty,
@@ -75,31 +75,34 @@ describe("serializeRecord and parseRecord", () => {
 
   it("write fields in a fixed order", () => {
     const shuffled: InkRecord = {
-      strokes: [{ points: [1, 2], pressure: false, size: 3, tool: "pen" }],
-      box: { baseline: 1, height: 2, width: 3, pxPerEm: 128 },
+      strokes: [{ points: [1, 2], size: 3, tool: "pen" }],
     };
     expect(serializeRecord(shuffled)).toBe(
-      '{"format":"inkline","version":1,"box":{"pxPerEm":128,"width":3,"height":2,"baseline":1},"strokes":[{"tool":"pen","size":3,"pressure":false,"points":[1,2]}]}',
+      '{"strokes":[{"tool":"pen","size":3,"points":[1,2]}]}',
+    );
+    const placed: InkRecord = {
+      strokes: [],
+      base: { png: encodePng(blank(1, 1)), height: 4, width: 3, y: 2, x: 1 },
+    };
+    expect(serializeRecord(placed)).toMatch(
+      /^\{"strokes":\[\],"base":\{"x":1,"y":2,"width":3,"height":4,"png":"/,
     );
   });
 
   it("round-trip strokes cut flat at their ends, writing the start first", () => {
     const cut: InkRecord = {
-      box: record.box,
       strokes: [
         {
           tool: "pen",
           size: 32,
-          pressure: false,
           points: [0, 0, 0, 64],
           cut: { end: "down", start: "up" },
         },
         {
           tool: "eraser",
           size: 32,
-          pressure: false,
           points: [0, 0, 64, 0],
-          cut: { end: "right" },
+          cut: { end: "up" },
         },
       ],
     };
@@ -107,108 +110,67 @@ describe("serializeRecord and parseRecord", () => {
     expect(text).toContain(
       '"points":[0,0,0,64],"cut":{"start":"up","end":"down"}',
     );
-    expect(text).toContain('"cut":{"end":"right"}');
+    expect(text).toContain('"cut":{"end":"up"}');
     expect(parseRecord(text)).toEqual({ ok: true, record: cut });
   });
 
-  it("round-trip polygons, writing the kind after the points and before a cut", () => {
+  it("round-trip polygons, writing the kind after the points", () => {
     const polygons: InkRecord = {
-      box: record.box,
       strokes: [
         {
           tool: "pen",
           size: 32,
-          pressure: false,
           points: [0, 0, 160, 0, 160, 160, 0, 0],
-          kind: "polygon",
-        },
-        {
-          tool: "eraser",
-          size: 32,
-          pressure: false,
-          points: [0, 0, 0, 64, 64, 64],
-          cut: { end: "right", start: "up" },
           kind: "polygon",
         },
       ],
     };
     const text = serializeRecord(polygons);
     expect(text).toContain(
-      '"points":[0,0,160,0,160,160,0,0],"kind":"polygon"}',
-    );
-    expect(text).toContain(
-      '"points":[0,0,0,64,64,64],"kind":"polygon","cut":{"start":"up","end":"right"}}',
+      '"size":32,"points":[0,0,160,0,160,160,0,0],"kind":"polygon"}',
     );
     expect(parseRecord(text)).toEqual({ ok: true, record: polygons });
     expect(serializeRecord(record)).not.toContain("kind");
   });
 
-  it("round-trip filled strokes, writing fill after the kind and before a cut", () => {
+  it("round-trip fills, which have no size", () => {
     const filled: InkRecord = {
-      box: record.box,
       strokes: [
-        {
-          tool: "pen",
-          size: 32,
-          pressure: false,
-          points: [0, 0, 160, 0, 160, 160, 0, 0],
-          kind: "polygon",
-          fill: true,
-        },
-        {
-          tool: "eraser",
-          size: 32,
-          pressure: false,
-          points: [0, 0, 64, 0, 64, 64],
-          fill: true,
-          cut: { start: "up" },
-        },
+        { tool: "pen", points: [0, 0, 160, 0, 160, 160, 0, 0], kind: "fill" },
+        { tool: "eraser", points: [0, 0, 64, 0, 64, 64], kind: "fill" },
       ],
     };
     const text = serializeRecord(filled);
-    expect(text).toContain('"kind":"polygon","fill":true}');
-    expect(text).toContain('"points":[0,0,64,0,64,64],"fill":true,"cut"');
+    expect(text).toContain('{"tool":"eraser","points":[0,0,64,0,64,64],"kind"');
+    expect(text).not.toContain("size");
     expect(parseRecord(text)).toEqual({ ok: true, record: filled });
-    expect(serializeRecord(record)).not.toContain("fill");
-    // false is never written.
-    expect(
-      serializeRecord({
-        box: record.box,
-        strokes: [
-          {
-            tool: "pen",
-            size: 32,
-            pressure: false,
-            points: [0, 0],
-            fill: false,
-          },
-        ],
-      }),
-    ).not.toContain("fill");
-    // false is the same as no fill.
-    expect(parseRecord(variant(["strokes", 1, "fill"], false))).toEqual({
-      ok: true,
-      record: withBase,
-    });
   });
 
-  it("write no cut for a stroke without one, and read an empty one as none", () => {
+  it("write no cut for a stroke without one", () => {
     expect(serializeRecord(record)).not.toContain("cut");
-    const empty = variant(["strokes", 1, "cut"], {});
-    expect(parseRecord(empty)).toEqual({ ok: true, record: withBase });
   });
 
-  it("ignore fields this version does not know", () => {
+  it("ignore fields this version does not know, and do not keep them", () => {
     const text = variant(["future"], { anything: true });
     expect(parseRecord(variant(["strokes", 0, "color"], "red")).ok).toBe(true);
-    expect(parseRecord(text)).toEqual({ ok: true, record: withBase });
+    expect(parseRecord(variant(["base", "note"], "kept?")).ok).toBe(true);
+    const parsed = parseRecord(text);
+    expect(parsed).toEqual({ ok: true, record: withBase });
+    if (!parsed.ok) throw new Error(parsed.detail);
+    expect(serializeRecord(parsed.record)).not.toContain("future");
   });
 
-  it("report a record from a later version", () => {
-    expect(parseRecord(variant(["version"], 2))).toEqual({
-      ok: false,
-      reason: "newer-version",
-      detail: "version 2 is newer than 1",
+  it("read fields in any order, with white space", () => {
+    const text = ` { "base" : null , "strokes" : [ ] } `.replace(
+      '"base" : null , ',
+      "",
+    );
+    expect(parseRecord(text)).toEqual({ ok: true, record: { strokes: [] } });
+    expect(
+      parseRecord('{"strokes":[{"points":[0,0],"size":1,"tool":"pen"}]}'),
+    ).toEqual({
+      ok: true,
+      record: { strokes: [{ tool: "pen", size: 1, points: [0, 0] }] },
     });
   });
 });
@@ -217,47 +179,15 @@ describe("parseRecord refuses", () => {
   const cases: [string, string, string][] = [
     ["text that is not JSON", "{", "not JSON"],
     ["a list", "[]", "record is not an object"],
-    ["another format", variant(["format"], "other"), "format is not inkline"],
-    [
-      "a missing version",
-      variant(["version"], undefined),
-      "version is not an integer",
-    ],
-    ["version 0", variant(["version"], 0), "version is not an integer"],
-    [
-      "a fractional version",
-      variant(["version"], 1.5),
-      "version is not an integer",
-    ],
-    ["a missing box", variant(["box"], undefined), "box is not an object"],
-    [
-      "a tiny em",
-      variant(["box", "pxPerEm"], 15),
-      "box.pxPerEm is not an integer",
-    ],
-    [
-      "a zero width",
-      variant(["box", "width"], 0),
-      "box.width is not an integer",
-    ],
-    [
-      "a huge height",
-      variant(["box", "height"], 8193),
-      "box.height is not an integer",
-    ],
-    [
-      "a baseline below the box",
-      variant(["box", "baseline"], 193),
-      "box.baseline is not an integer",
-    ],
-    [
-      "a string size",
-      variant(["box", "width"], "64"),
-      "box.width is not an integer",
-    ],
+    ["a byte order mark", `\uFEFF${serializeRecord(record)}`, "not JSON"],
     [
       "strokes that are not a list",
       variant(["strokes"], {}),
+      "strokes is not a list",
+    ],
+    [
+      "a missing list of strokes",
+      variant(["strokes"], undefined),
       "strokes is not a list",
     ],
     [
@@ -276,44 +206,24 @@ describe("parseRecord refuses", () => {
       "strokes[0].size is not an integer",
     ],
     [
-      "a missing pressure flag",
-      variant(["strokes", 1, "pressure"], undefined),
-      "strokes[1].pressure is not a boolean",
+      "a missing size",
+      variant(["strokes", 1, "size"], undefined),
+      "strokes[1].size is not an integer",
     ],
     [
       "no points",
       variant(["strokes", 1, "points"], []),
-      "strokes[1].points is not a non-empty list of 2-number points",
-    ],
-    [
-      "a point without pressure",
-      variant(["strokes", 0, "points"], [1, 2]),
-      "strokes[0].points is not a non-empty list of 3-number points",
+      "strokes[1].points is not a non-empty list of x, y points",
     ],
     [
       "half a point",
       variant(["strokes", 1, "points"], [1, 2, 3]),
-      "strokes[1].points is not a non-empty list of 2-number points",
-    ],
-    [
-      "a fractional coordinate",
-      variant(["strokes", 1, "points"], [1.5, 2]),
-      "strokes[1].points is not an integer",
+      "strokes[1].points is not a non-empty list of x, y points",
     ],
     [
       "a coordinate out of range",
       variant(["strokes", 1, "points"], [limits.coordinate + 1, 0]),
       "strokes[1].points is not an integer",
-    ],
-    [
-      "pressure above the maximum",
-      variant(["strokes", 0, "points"], [0, 0, 256]),
-      "strokes[0].points is not an integer from 0 to 255",
-    ],
-    [
-      "negative pressure",
-      variant(["strokes", 0, "points"], [0, 0, -1]),
-      "strokes[0].points is not an integer from 0 to 255",
     ],
     [
       "a cut in no direction",
@@ -326,19 +236,59 @@ describe("parseRecord refuses", () => {
       "strokes[1].cut is not an object",
     ],
     [
+      "a cut with no ends",
+      variant(["strokes", 1, "cut"], {}),
+      "strokes[1].cut is empty",
+    ],
+    [
       "a kind of stroke this version does not know",
       variant(["strokes", 1, "kind"], "spline"),
-      'strokes[1].kind is not "polygon"',
+      'strokes[1].kind is not "polygon" or "fill"',
     ],
     [
-      "a fill that is not a boolean",
-      variant(["strokes", 1, "fill"], "yes"),
-      "strokes[1].fill is not a boolean",
+      "a cut on a polygon",
+      JSON.stringify({
+        strokes: [
+          {
+            tool: "pen",
+            size: 1,
+            points: [0, 0, 1, 1],
+            kind: "polygon",
+            cut: { end: "up" },
+          },
+        ],
+      }),
+      "strokes[0].cut is on a polygon",
     ],
     [
-      "a polygon with pressure",
-      variant(["strokes", 0, "kind"], "polygon"),
-      "strokes[0] is a polygon with pressure",
+      "a cut on a fill",
+      JSON.stringify({
+        strokes: [
+          {
+            tool: "pen",
+            points: [0, 0, 1, 1, 2, 0],
+            kind: "fill",
+            cut: { end: "up" },
+          },
+        ],
+      }),
+      "strokes[0].cut is on a fill",
+    ],
+    [
+      "a size on a fill",
+      JSON.stringify({
+        strokes: [
+          { tool: "pen", size: 1, points: [0, 0, 1, 1, 2, 0], kind: "fill" },
+        ],
+      }),
+      "strokes[0].size is on a fill",
+    ],
+    [
+      "a fill of fewer than three points",
+      JSON.stringify({
+        strokes: [{ tool: "pen", points: [0, 0, 1, 1], kind: "fill" }],
+      }),
+      "strokes[0] fills fewer than three points",
     ],
     [
       "a stroke that is null",
@@ -346,19 +296,19 @@ describe("parseRecord refuses", () => {
       "strokes[0] is not an object",
     ],
     [
-      "a fractional base position",
-      variant(["base", "x"], 0.5),
+      "a base position that is not a number",
+      variant(["base", "x"], "0"),
       "base.x is not an integer",
     ],
     [
-      "a zero base scale",
-      variant(["base", "scale"], 0),
-      "base.scale is out of range",
+      "a base with no width",
+      variant(["base", "width"], 0),
+      "base.width is not an integer",
     ],
     [
-      "an infinite base scale",
-      variant(["base", "scale"], "Infinity"),
-      "base.scale is out of range",
+      "a base taller than the limit",
+      variant(["base", "height"], limits.coordinate + 1),
+      "base.height is not an integer",
     ],
     [
       "a base image that is not text",
@@ -380,6 +330,7 @@ describe("parseRecord refuses", () => {
       variant(["base"], "png"),
       "base is not an object",
     ],
+    ["a base that is null", variant(["base"], null), "base is not an object"],
     [
       "a base image that is not a PNG",
       variant(["base", "png"], "R0lGODlh"),
@@ -399,7 +350,6 @@ describe("parseRecord refuses", () => {
       Array.from({ length: limits.strokes + 1 }, () => ({
         tool: "pen",
         size: 1,
-        pressure: false,
         points: [0, 0],
       })),
     );
@@ -408,7 +358,7 @@ describe("parseRecord refuses", () => {
 
   it("more points than the limit, across strokes", () => {
     const half = new Array<number>(limits.points).fill(0);
-    const stroke = { tool: "pen", size: 1, pressure: false, points: half };
+    const stroke = { tool: "pen", size: 1, points: half };
     expect(parseRecord(variant(["strokes"], [stroke])).ok).toBe(true);
     expect(
       invalid(parseRecord(variant(["strokes"], [stroke, stroke, stroke]))),
@@ -424,9 +374,105 @@ describe("parseRecord refuses", () => {
   });
 });
 
+describe("parseRecord holds the text to the format's own JSON", () => {
+  const stroke = (body: string): string => `{"strokes":[${body}]}`;
+  const plain = '{"tool":"pen","size":1,"points":[0,0]}';
+
+  it("refuses a repeated name in any object", () => {
+    expect(invalid(parseRecord('{"strokes":[],"strokes":[]}'))).toContain(
+      "repeated",
+    );
+    expect(
+      invalid(
+        parseRecord(
+          stroke('{"tool":"eraser","tool":"pen","size":1,"points":[0,0]}'),
+        ),
+      ),
+    ).toContain('"tool"');
+    expect(
+      invalid(
+        parseRecord(
+          stroke('{"tool":"pen","size":1,"points":[0,0],"points":[9,9]}'),
+        ),
+      ),
+    ).toContain('"points"');
+    expect(invalid(parseRecord('{"strokes":[],"x":{"a":1,"a":2}}'))).toContain(
+      '"a"',
+    );
+  });
+
+  it("compares names as they decode, however they are spelled", () => {
+    expect(invalid(parseRecord('{"strokes":[],"strok\\u0065s":[]}'))).toContain(
+      "repeated",
+    );
+    expect(
+      invalid(parseRecord('{"strokes":[],"a\\"":1,"a\\u0022":2}')),
+    ).toContain("repeated");
+  });
+
+  it("allows the same name in different objects", () => {
+    expect(parseRecord(stroke(`${plain},${plain}`)).ok).toBe(true);
+    expect(parseRecord('{"strokes":[],"a":{"b":1},"c":{"b":2}}').ok).toBe(true);
+  });
+
+  it("does not take a string's contents for structure", () => {
+    const text = '{"strokes":[],"note":"[[[[{{{{ 1.5 \\"strokes\\": 1e3 -0"}';
+    expect(parseRecord(text).ok).toBe(true);
+  });
+
+  it("refuses numbers that are not integers in plain digits, even in unknown fields", () => {
+    for (const number of ["1.0", "1e0", "1E0", "1.6e2", "-0", "-0.0", "0.5"]) {
+      expect(
+        invalid(
+          parseRecord(stroke(`{"tool":"pen","size":${number},"points":[0,0]}`)),
+        ),
+      ).toBe("a number is not an integer in plain digits");
+      expect(invalid(parseRecord(`{"strokes":[],"future":${number}}`))).toBe(
+        "a number is not an integer in plain digits",
+      );
+    }
+  });
+
+  it("refuses leading zeros", () => {
+    expect(invalid(parseRecord('{"strokes":[],"a":01}'))).toBe(
+      "a number is not an integer in plain digits",
+    );
+  });
+
+  it("accepts negative integers and zero", () => {
+    expect(
+      parseRecord(stroke('{"tool":"pen","size":1,"points":[-16,0]}')).ok,
+    ).toBe(true);
+  });
+
+  /** A record with an unknown field nested to `depth` in all. */
+  const nested = (depth: number): string =>
+    `{"strokes":[],"a":${"[".repeat(depth - 1)}${"]".repeat(depth - 1)}}`;
+
+  it("allows the deepest nesting of the limit and refuses one more", () => {
+    expect(parseRecord(nested(limits.depth)).ok).toBe(true);
+    expect(invalid(parseRecord(nested(limits.depth + 1)))).toBe(
+      "nested more than 16 deep",
+    );
+  });
+
+  it("refuses deep nesting before parsing it", () => {
+    expect(invalid(parseRecord(nested(400_000)))).toBe(
+      "nested more than 16 deep",
+    );
+  });
+});
+
 describe("parseRecord checks the base image", () => {
   const base64 = (bytes: Uint8Array): string =>
     btoa(String.fromCharCode(...bytes));
+  const chunks = pixelChunks(blank(1, 1));
+  const [ihdr, idat, iend] = chunks;
+  if (ihdr === undefined || idat === undefined || iend === undefined) {
+    throw new Error("no chunks");
+  }
+  const end = iend;
+  const start = ihdr;
 
   it("refuses a PNG signature alone", () => {
     const text = variant(["base", "png"], base64(pngSignature));
@@ -436,26 +482,51 @@ describe("parseRecord checks the base image", () => {
   });
 
   it("refuses an image larger than the limit", () => {
-    const [, idat, iend] = pixelChunks(blank(1, 1));
-    if (idat === undefined || iend === undefined) throw new Error("no chunks");
     const huge = writeChunks([header(100_000, 100_000), idat, iend]);
     expect(invalid(parseRecord(variant(["base", "png"], base64(huge))))).toBe(
       "base.png is larger than 4096 pixels a side",
     );
   });
 
-  /** A valid PNG padded with an ancillary chunk to exactly `size` bytes. */
-  function paddedPng(size: number): Uint8Array {
-    const [ihdr, idat, iend] = pixelChunks(blank(1, 1));
-    if (ihdr === undefined || idat === undefined || iend === undefined) {
-      throw new Error("no chunks");
+  it("refuses anything but 8-bit RGBA without interlacing", () => {
+    const variants: [string, number[]][] = [
+      ["grey", [8, 0, 0, 0, 0]],
+      ["grey with alpha", [8, 4, 0, 0, 0]],
+      ["16-bit", [16, 6, 0, 0, 0]],
+      ["interlaced", [8, 6, 0, 0, 1]],
+    ];
+    for (const [name, fields] of variants) {
+      const data = ihdr.data.slice();
+      data.set(fields, 8);
+      const png = writeChunks([{ type: "IHDR", data }, idat, iend]);
+      expect(
+        invalid(parseRecord(variant(["base", "png"], base64(png)))),
+        name,
+      ).toBe("base.png is not 8-bit RGBA without interlacing");
     }
-    const used = writeChunks([ihdr, idat, iend]).length + 12;
+  });
+
+  it("refuses any chunk but the image's own", () => {
+    for (const type of ["gAMA", "eXIf", "tEXt", "inKL"]) {
+      const png = writeChunks([
+        ihdr,
+        { type, data: new Uint8Array(4) },
+        idat,
+        iend,
+      ]);
+      expect(invalid(parseRecord(variant(["base", "png"], base64(png))))).toBe(
+        `base.png holds a ${type} chunk`,
+      );
+    }
+  });
+
+  /** A valid PNG whose image data is padded to make it exactly `size` bytes. */
+  function paddedPng(size: number): Uint8Array {
+    const used = writeChunks([start, end]).length + 12;
     return writeChunks([
-      ihdr,
-      { type: "zzZz", data: new Uint8Array(size - used) },
-      idat,
-      iend,
+      start,
+      { type: "IDAT", data: new Uint8Array(size - used) },
+      end,
     ]);
   }
 
@@ -488,17 +559,14 @@ describe("parseRecord bounds the text", () => {
 
   /** An empty record with an ignored field holding `filler`. */
   const padded = (filler: string): string =>
-    serializeRecord({ box: record.box, strokes: [] }).replace(
-      /}$/,
-      `,"extra":"${filler}"}`,
-    );
+    serializeRecord({ strokes: [] }).replace(/}$/, `,"extra":"${filler}"}`);
 
   it("counts the limit in UTF-8 bytes, not characters", () => {
     // Three bytes each in UTF-8, one code unit each in JavaScript.
-    const over = padded("\u0800".repeat(6 * 1024 * 1024));
+    const over = padded("ࠀ".repeat(6 * 1024 * 1024));
     expect(over.length).toBeLessThan(limits.text);
     expect(invalid(parseRecord(over))).toBe("record text is too long");
-    expect(parseRecord(padded("\u0800".repeat(5 * 1024 * 1024))).ok).toBe(true);
+    expect(parseRecord(padded("ࠀ".repeat(5 * 1024 * 1024))).ok).toBe(true);
   });
 
   it("counts a surrogate pair as four bytes", () => {

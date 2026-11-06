@@ -3,16 +3,14 @@ import { describe, expect, it } from "vitest";
 import {
   PngError,
   crc32,
-  decodeInternationalText,
   deflate,
-  encodeInternationalText,
   encodeRgba,
   imageHeader,
+  maxChunks,
   inflate,
   isPng,
   pngSignature,
   readChunks,
-  textKeyword,
   writeChunks,
   type Chunk,
 } from "../../../src/format/png.ts";
@@ -144,88 +142,72 @@ describe("deflate and inflate", () => {
   });
 });
 
-describe("international text chunks", () => {
-  it("round-trip compressed Unicode text", async () => {
-    const chunk = await encodeInternationalText({
-      keyword: "inkline",
-      text: '{"name":"𐎠 ᚠ ä"}',
-    });
-    expect(chunk.type).toBe("iTXt");
-    expect(textKeyword(chunk)).toBe("inkline");
-    expect(await decodeInternationalText(chunk)).toEqual({
-      keyword: "inkline",
-      text: '{"name":"𐎠 ᚠ ä"}',
-    });
-  });
+describe("readChunks and ancillary chunks", () => {
+  const [ihdr, idat, iend] = pixelChunks(blank(1, 1));
+  if (ihdr === undefined || idat === undefined || iend === undefined) {
+    throw new Error("no chunks");
+  }
+  const note: Chunk = { type: "tEXt", data: ascii("Note\0x") };
 
-  it("write the layout PNG specifies", async () => {
-    const chunk = await encodeInternationalText({ keyword: "k", text: "t" });
-    // Keyword, null, compression flag 1, method 0, empty language tag and
-    // translated keyword, then zlib data.
-    expect([...chunk.data.subarray(0, 6)]).toEqual([0x6b, 0, 1, 0, 0, 0]);
-    expect(await inflate(chunk.data.subarray(6))).toEqual(ascii("t"));
-  });
-
-  it("read uncompressed text with a language tag", async () => {
-    const data = new Uint8Array([
-      ...ascii("Title"),
-      0,
-      0,
-      0,
-      ...ascii("en"),
-      0,
-      ...ascii("Titel"),
-      0,
-      ...new TextEncoder().encode("Ünïcode"),
+  it("passes over a damaged ancillary chunk, marking it", () => {
+    const png = writeChunks([ihdr, note, idat, iend]);
+    // The last byte of the text.
+    png[8 + 25 + 8 + note.data.length - 1] = 0x79;
+    const chunks = readChunks(png);
+    expect(chunks.map((chunk) => chunk.type)).toEqual([
+      "IHDR",
+      "tEXt",
+      "IDAT",
+      "IEND",
     ]);
-    expect(await decodeInternationalText({ type: "iTXt", data })).toEqual({
-      keyword: "Title",
-      text: "Ünïcode",
-    });
+    expect(chunks[1]?.damaged).toBe(true);
+    expect(chunks[2]?.damaged).toBeUndefined();
   });
 
-  it("refuse invalid keywords", async () => {
-    for (const keyword of [
-      "",
-      " lead",
-      "trail ",
-      "two  spaces",
-      "x".repeat(80),
-    ]) {
-      await expect(
-        encodeInternationalText({ keyword, text: "" }),
-      ).rejects.toThrow(PngError);
+  it("marks nothing in a file that is whole", () => {
+    const chunks = readChunks(writeChunks([ihdr, note, idat, iend]));
+    expect(chunks.every((chunk) => chunk.damaged === undefined)).toBe(true);
+  });
+
+  it("refuses a damaged critical chunk", () => {
+    const png = writeChunks([ihdr, idat, iend]);
+    // The first byte of the image data.
+    png[8 + 25 + 8] = (png[8 + 25 + 8] ?? 0) ^ 1;
+    expect(() => readChunks(png)).toThrow("bad CRC in IDAT chunk");
+  });
+
+  it("refuses a critical chunk PNG does not define, with a good CRC", () => {
+    for (const type of ["ABCD", "AbCD", "Inkl"]) {
+      const png = writeChunks([
+        ihdr,
+        { type, data: new Uint8Array(1) },
+        idat,
+        iend,
+      ]);
+      expect(() => readChunks(png)).toThrow(`unknown critical chunk ${type}`);
     }
   });
 
-  it("reject malformed chunks", async () => {
-    const malformed = [
-      ascii("nonull"),
-      new Uint8Array([...ascii("k"), 0, 2, 0, 0, 0]),
-      new Uint8Array([...ascii("k"), 0, 1, 1, 0, 0]),
-      new Uint8Array([...ascii("k"), 0, 0, 0, 0]),
-      new Uint8Array([...ascii("k"), 0, 0, 0, 0, 0, 0xff, 0xfe]),
-    ];
-    for (const data of malformed) {
-      await expect(
-        decodeInternationalText({ type: "iTXt", data }),
-      ).rejects.toThrow();
-    }
-  });
-
-  it("look for a keyword only where one can be", async () => {
-    const long = new Uint8Array(200_000).fill(0x41);
-    long[150_000] = 0;
-    const chunk = { type: "iTXt", data: long };
-    expect(textKeyword(chunk)).toBeUndefined();
-    await expect(decodeInternationalText(chunk)).rejects.toThrow(
-      "malformed iTXt chunk",
+  it("keeps ancillary chunks it does not know", () => {
+    const unknown: Chunk = { type: "abCd", data: new Uint8Array(1) };
+    expect(readChunks(writeChunks([ihdr, unknown, idat, iend]))).toHaveLength(
+      4,
     );
   });
 
-  it("finds no keyword in other chunks", () => {
-    expect(textKeyword({ type: "tEXt", data: ascii("k\0v") })).toBeUndefined();
-    expect(textKeyword({ type: "iTXt", data: ascii("\0") })).toBeUndefined();
+  it("reads as many chunks as the limit, and refuses one more", () => {
+    const empty: Chunk = { type: "abCd", data: new Uint8Array(0) };
+    const fill = (count: number): Uint8Array =>
+      writeChunks([ihdr, ...new Array<Chunk>(count).fill(empty), idat, iend]);
+    expect(readChunks(fill(maxChunks - 3))).toHaveLength(maxChunks);
+    expect(() => readChunks(fill(maxChunks - 2))).toThrow(
+      `more than ${String(maxChunks)} chunks`,
+    );
+  });
+
+  it("gives views of the file, not copies", () => {
+    const png = writeChunks([ihdr, note, idat, iend]);
+    expect(readChunks(png)[1]?.data.buffer).toBe(png.buffer);
   });
 });
 
@@ -379,40 +361,6 @@ describe("readChunks checks the critical chunks", () => {
     expect(() =>
       readChunks(writeChunks([{ type: "IHDR", data }, idat, iend])),
     ).toThrow("IHDR has an invalid method");
-  });
-});
-
-describe("uncompressed international text", () => {
-  const uncompressed = (method: number, text: string): Chunk => ({
-    type: "iTXt",
-    data: new Uint8Array([...ascii("k"), 0, 0, method, 0, 0, ...ascii(text)]),
-  });
-
-  it("ignores the compression method, as decoders must", async () => {
-    expect(await decodeInternationalText(uncompressed(255, "{}"))).toEqual({
-      keyword: "k",
-      text: "{}",
-    });
-  });
-
-  it("refuses text longer than the limit", async () => {
-    await expect(
-      decodeInternationalText(uncompressed(0, "12345"), 4),
-    ).rejects.toThrow("text is longer than 4 bytes");
-    expect(await decodeInternationalText(uncompressed(0, "1234"), 4)).toEqual({
-      keyword: "k",
-      text: "1234",
-    });
-  });
-
-  it("applies the limit to compressed text too", async () => {
-    const chunk = await encodeInternationalText({
-      keyword: "k",
-      text: "12345",
-    });
-    await expect(decodeInternationalText(chunk, 4)).rejects.toThrow(
-      "data expands beyond 4 bytes",
-    );
   });
 });
 

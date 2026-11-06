@@ -3,7 +3,7 @@ import path from "node:path";
 import { browser, expect } from "@wdio/globals";
 import { loadModules, toBase64 } from "../support/browser.ts";
 
-const legacy = path.resolve(import.meta.dirname, "../../fixtures/legacy");
+const pictures = path.resolve(import.meta.dirname, "../../fixtures/pictures");
 
 /** WCAG contrast between two sRGB colours. */
 function contrast(a: readonly number[], b: readonly number[]): number {
@@ -33,7 +33,6 @@ describe("The drawing core in Obsidian's renderer", function () {
             {
               tool: "pen",
               size: 160,
-              pressure: false,
               points: [320, 1600, 960, 1600],
             },
           ],
@@ -53,7 +52,7 @@ describe("The drawing core in Obsidian's renderer", function () {
       const [x0 = 0, , x1 = 0] = saved.record.strokes[0]?.points ?? [];
       const middleX = Math.round((x0 + x1) / 2 / 16);
       return {
-        box: saved.record.box,
+        width: saved.width,
         points: saved.record.strokes[0]?.points,
         startX: x0 / 16,
         size: [pixels.width, pixels.height],
@@ -62,29 +61,22 @@ describe("The drawing core in Obsidian's renderer", function () {
         grey: render.inkGrey,
         opened:
           opened.kind === "editable"
-            ? { from: opened.from, strokes: opened.document.strokes }
+            ? { strokes: opened.document.strokes }
             : opened,
         sideBearing: geometry.sideBearing,
       };
     });
-    expect(result.box.height).toBe(192);
-    expect(result.box.baseline).toBe(144);
-    expect(result.size).toEqual([result.box.width, 192]);
+    expect(result.size).toEqual([result.width, 192]);
     // The ink runs from 15 to 65 px, the line plus its round caps, and the
     // crop adds a side bearing on each side: the line starts 5 px plus the
     // bearing from the left, rounded to whole pixels.
-    expect(result.box.width).toBeGreaterThanOrEqual(
-      50 + 2 * result.sideBearing,
-    );
-    expect(result.box.width).toBeLessThanOrEqual(52 + 2 * result.sideBearing);
+    expect(result.width).toBeGreaterThanOrEqual(50 + 2 * result.sideBearing);
+    expect(result.width).toBeLessThanOrEqual(52 + 2 * result.sideBearing);
     expect(result.startX).toBeCloseTo(5 + result.sideBearing, 0);
     expect(result.middle).toEqual([result.grey, result.grey, result.grey, 255]);
     expect(result.above[3]).toBe(0);
     expect(result.opened).toEqual({
-      from: "record",
-      strokes: [
-        { tool: "pen", size: 160, pressure: false, points: result.points },
-      ],
+      strokes: [{ tool: "pen", size: 160, points: result.points }],
     });
   });
 
@@ -97,13 +89,11 @@ describe("The drawing core in Obsidian's renderer", function () {
             {
               tool: "pen",
               size: 160,
-              pressure: false,
               points: [320, 1600, 1600, 1600],
             },
             {
               tool: "eraser",
               size: 160,
-              pressure: false,
               points: [960, 1200, 960, 2000],
             },
           ],
@@ -130,12 +120,9 @@ describe("The drawing core in Obsidian's renderer", function () {
             {
               tool: "pen",
               size: 192,
-              pressure: true,
-              points: [
-                400, 2000, 40, 800, 1200, 160, 1400, 600, 255, 2000, 400, 90,
-              ],
+              points: [400, 2000, 800, 1200, 1400, 600, 2000, 400],
             },
-            { tool: "eraser", size: 64, pressure: false, points: [800, 1100] },
+            { tool: "eraser", size: 64, points: [800, 1100] },
           ],
         },
         undefined,
@@ -157,11 +144,11 @@ describe("The drawing core in Obsidian's renderer", function () {
   });
 
   for (const [name, height] of [
-    ["prototype-192.ink.png", 192],
-    ["prototype-288.ink.png", 288],
+    ["opaque-192.ink.png", 192],
+    ["opaque-288.ink.png", 288],
   ] as const) {
-    it(`opens the prototype's ${name} as a base layer of its own pixels`, async function () {
-      const bytes = await readFile(path.join(legacy, name));
+    it(`opens ${name}, an opaque picture, as a base layer of its own pixels`, async function () {
+      const bytes = await readFile(path.join(pictures, name));
       const result = await browser.execute(async (base64: string) => {
         const { canvas } = window.inklineTest;
         const data = Uint8Array.from(atob(base64), (char) =>
@@ -182,18 +169,21 @@ describe("The drawing core in Obsidian's renderer", function () {
         }
         const saved = await canvas.saveInk(opened.document, opened.base);
         return {
-          from: opened.from,
-          scale: opened.document.base.scale,
+          drawn: [opened.document.base.width, opened.document.base.height],
           x: opened.document.base.x,
           size: [base.width, base.height],
           originalSize: [original.width, original.height],
           mismatches,
-          savedWidth: saved.record.box.width,
+          savedWidth: saved.width,
           savedBase: saved.record.base !== undefined,
         };
       }, toBase64(bytes));
-      expect(result.from).toBe("none");
-      expect(result.scale).toBe(192 / height);
+      // As tall as the line box, in proportion, in units.
+      const [wide = 0] = result.originalSize;
+      expect(result.drawn).toEqual([
+        Math.round(((wide * 192) / height) * 16),
+        192 * 16,
+      ]);
       expect(result.x).toBe(0);
       expect(result.size).toEqual(result.originalSize);
       expect(result.mismatches).toBe(0);
@@ -234,31 +224,26 @@ describe("The drawing core in Obsidian's renderer", function () {
         height: 192,
         data: new Uint8ClampedArray(48 * 192 * 4),
       });
-      const chunk = await png.encodeInternationalText({
-        keyword: "inkline",
-        text: '{"format":"inkline","version":2}',
-      });
+      const chunk = {
+        type: inkFile.recordChunkType,
+        data: Uint8Array.of(0, 0, 0, 2),
+      };
       const [header, ...rest] = png.readChunks(image);
       if (header === undefined) throw new Error("no header");
       const file = png.writeChunks([header, chunk, ...rest]);
       const opened = await canvas.openInk(file);
-      const refused = await inkFile
-        .writeInkFile(file, {
-          box: { pxPerEm: 128, width: 48, height: 192, baseline: 144 },
-          strokes: [],
-        })
-        .then(
-          () => "written",
-          (error: unknown) => String(error),
-        );
+      const refused = await inkFile.writeInkFile(file, { strokes: [] }).then(
+        () => "written",
+        (error: unknown) => String(error),
+      );
       return { kind: opened.kind, refused };
     });
     expect(result.kind).toBe("newer-version");
-    expect(result.refused).toContain("a record from a later version");
+    expect(result.refused).toContain("version 2 is newer than 1");
   });
 
-  it("opens the pixels when a record's base layer does not decode", async function () {
-    const from = await browser.execute(async () => {
+  it("does not open a record whose base layer does not decode", async function () {
+    const kind = await browser.execute(async () => {
       const { canvas, inkFile, png } = window.inklineTest;
       const image = await canvas.encodePixels({
         width: 48,
@@ -284,14 +269,12 @@ describe("The drawing core in Obsidian's renderer", function () {
         end,
       ]);
       const file = await inkFile.writeInkFile(image, {
-        box: { pxPerEm: 128, width: 48, height: 192, baseline: 144 },
         strokes: [],
-        base: { x: 0, y: 0, scale: 1, png: broken },
+        base: { x: 0, y: 0, width: 16, height: 16, png: broken },
       });
-      const opened = await canvas.openInk(file);
-      return opened.kind === "editable" ? opened.from : opened.kind;
+      return (await canvas.openInk(file)).kind;
     });
-    expect(from).toBe("undecodable-base");
+    expect(kind).toBe("damaged");
   });
 
   it("saves the same file again however far the drawing sits from the origin", async function () {
@@ -305,8 +288,7 @@ describe("The drawing core in Obsidian's renderer", function () {
               {
                 tool: "pen",
                 size: 187,
-                pressure: true,
-                points: [8937 + shift, 1245, 103, 9675 + shift, 2250, 70],
+                points: [8937 + shift, 1245, 9675 + shift, 2250],
               },
             ],
           },
@@ -344,17 +326,15 @@ describe("The drawing core in Obsidian's renderer", function () {
       // A 10 px red square at (10, 10), an eraser through its middle row, and
       // a pen dot after the eraser on its left edge.
       const file = await inkFile.writeInkFile(image, {
-        box: { pxPerEm: 128, width: 48, height: 192, baseline: 144 },
         strokes: [
           {
             tool: "eraser",
             size: 32,
-            pressure: false,
             points: [160, 240, 320, 240],
           },
-          { tool: "pen", size: 32, pressure: false, points: [176, 240] },
+          { tool: "pen", size: 32, points: [176, 240] },
         ],
-        base: { x: 160, y: 160, scale: 10, png: red },
+        base: { x: 160, y: 160, width: 160, height: 160, png: red },
       });
       const opened = await canvas.openInk(file);
       if (opened.kind !== "editable") throw new Error(opened.kind);
@@ -375,13 +355,16 @@ describe("The drawing core in Obsidian's renderer", function () {
     });
     expect(result.base).toEqual([126, 126, 126, 255]);
     expect(result.erased[3]).toBe(0);
-    expect(result.dot).toEqual([126, 126, 126, 255]);
+    // A dot 2 px wide on the corner of this pixel covers a quarter of its
+    // circle, π / 4 of the pixel, where the eraser left nothing.
+    expect(result.dot.slice(0, 3)).toEqual([126, 126, 126]);
+    expect(result.dot[3]).toBeGreaterThan(180);
   });
 
   it("opens and saves pictures only one or two pixels high", async function () {
     const results = await browser.execute(async () => {
       const { canvas } = window.inklineTest;
-      const outcomes: { scale: number; size: number[]; width: number }[] = [];
+      const outcomes: { drawn: number[]; size: number[]; width: number }[] = [];
       for (const height of [1, 2]) {
         const picture = await canvas.encodePixels({
           width: 1,
@@ -397,17 +380,17 @@ describe("The drawing core in Obsidian's renderer", function () {
         const saved = await canvas.saveInk(opened.document, opened.base);
         const base = await canvas.decodePng(opened.document.base.png);
         outcomes.push({
-          scale: opened.document.base.scale,
+          drawn: [opened.document.base.width, opened.document.base.height],
           size: [base.width, base.height],
-          width: saved.record.box.width,
+          width: saved.width,
         });
       }
       return outcomes;
     });
     expect(results).toEqual([
-      // 3 × 3 at scale 64 fills 192 px, plus the side bearings.
-      { scale: 64, size: [3, 3], width: 208 },
-      { scale: 48, size: [2, 4], width: 112 },
+      // 1 × 1, stretched to fill 192 px, plus the side bearings.
+      { drawn: [3072, 3072], size: [1, 1], width: 208 },
+      { drawn: [1536, 3072], size: [1, 2], width: 112 },
     ]);
   });
 
@@ -420,14 +403,12 @@ describe("The drawing core in Obsidian's renderer", function () {
             {
               tool: "pen",
               size: 160,
-              pressure: false,
               // 80 px long, with ink from -5 to 85 px.
               points: [0, 1600, 1280, 1600],
             },
             {
               tool: "pen",
               size: 160,
-              pressure: false,
               points: [160000, 16000],
             },
           ],
@@ -440,13 +421,11 @@ describe("The drawing core in Obsidian's renderer", function () {
             {
               tool: "pen",
               size: 160,
-              pressure: false,
               points: [0, 1600, 160000, 1600],
             },
             {
               tool: "eraser",
               size: 640,
-              pressure: false,
               points: [-800, 1600, 161000, 1600],
             },
           ],
@@ -454,9 +433,9 @@ describe("The drawing core in Obsidian's renderer", function () {
         undefined,
       );
       return {
-        offBox: offBox.record.box.width,
+        offBox: offBox.width,
         kept: offBox.record.strokes.length,
-        erased: erased.record.box.width,
+        erased: erased.width,
       };
     });
     // The visible line and its bearings, not the dot 10,000 px away below
@@ -472,9 +451,7 @@ describe("The drawing core in Obsidian's renderer", function () {
       const { canvas, png } = window.inklineTest;
       const first = await canvas.saveInk(
         {
-          strokes: [
-            { tool: "pen", size: 160, pressure: false, points: [320, 1600] },
-          ],
+          strokes: [{ tool: "pen", size: 160, points: [320, 1600] }],
         },
         undefined,
       );
@@ -506,11 +483,10 @@ describe("The drawing core in Obsidian's renderer", function () {
       const first = await canvas.saveInk(
         {
           strokes: [
-            { tool: "pen", size: 160, pressure: false, points: [1600, 1600] },
+            { tool: "pen", size: 160, points: [1600, 1600] },
             {
               tool: "eraser",
               size: 16,
-              pressure: false,
               points: [-4194304, 1600],
             },
           ],
@@ -523,7 +499,6 @@ describe("The drawing core in Obsidian's renderer", function () {
       const pixels = async (bytes: Uint8Array): Promise<string> =>
         canvas.readPixels(await canvas.decodePng(bytes)).data.join(",");
       return {
-        from: opened.from,
         strokes: opened.document.strokes.length,
         sameRecord:
           record.serializeRecord(first.record) ===
@@ -533,7 +508,6 @@ describe("The drawing core in Obsidian's renderer", function () {
       };
     });
     expect(result).toEqual({
-      from: "record",
       strokes: 2,
       sameRecord: true,
       samePixels: true,
@@ -547,11 +521,10 @@ describe("The drawing core in Obsidian's renderer", function () {
         .saveInk(
           {
             strokes: [
-              { tool: "pen", size: 160, pressure: false, points: [1600, 1600] },
+              { tool: "pen", size: 160, points: [1600, 1600] },
               {
                 tool: "eraser",
                 size: 16,
-                pressure: false,
                 points: [-record.limits.coordinate + 100, 1600],
               },
             ],
@@ -566,25 +539,33 @@ describe("The drawing core in Obsidian's renderer", function () {
     expect(message).toContain("past the format's coordinate limit");
   });
 
-  it("opens the pixels of a record that cannot be scaled to the line box", async function () {
-    const from = await browser.execute(async () => {
-      const { canvas, inkFile } = window.inklineTest;
-      const image = await canvas.encodePixels({
-        width: 48,
-        height: 192,
-        data: new Uint8ClampedArray(48 * 192 * 4),
-      });
-      // At 64 px per em, the eraser's size doubles past the limit.
-      const file = await inkFile.writeInkFile(image, {
-        box: { pxPerEm: 64, width: 48, height: 192, baseline: 72 },
-        strokes: [
-          { tool: "eraser", size: 40000, pressure: false, points: [0, 0] },
-        ],
-      });
-      const opened = await canvas.openInk(file);
-      return opened.kind === "editable" ? opened.from : opened.kind;
+  it("keeps a cut stroke's ink where only the rest of it reaches", async function () {
+    // Up and a short way back, with its end cut: what the rest of it draws in
+    // the cut box lies outside the whole stroke's outline, and is all the ink
+    // there is in the line box.
+    const result = await browser.execute(async () => {
+      const { canvas } = window.inklineTest;
+      const stroke = {
+        tool: "pen",
+        size: 320,
+        points: [16000, 5728, 16800, 2528, 16640, 3328],
+        cut: { end: "up" },
+      } as const;
+      const saved = await canvas.saveInk({ strokes: [stroke] }, undefined);
+      const pixels = canvas.readPixels(await canvas.decodePng(saved.bytes));
+      const surface = new OffscreenCanvas(1200, 192);
+      const context = surface.getContext("2d");
+      if (context === null) throw new Error("no context");
+      window.inklineTest.render.drawInk(context, [stroke], undefined);
+      const count = (data: Uint8ClampedArray): number =>
+        data.filter((value, index) => index % 4 === 3 && value > 0).length;
+      return {
+        drawn: count(context.getImageData(0, 0, 1200, 192).data),
+        saved: count(pixels.data),
+      };
     });
-    expect(from).toBe("unworkable");
+    expect(result.drawn).toBeGreaterThan(0);
+    expect(result.saved).toBe(result.drawn);
   });
 
   it("saves a base layer where the document puts it, reusing its decoded pixels", async function () {
@@ -603,7 +584,10 @@ describe("The drawing core in Obsidian's renderer", function () {
       const variants = [
         document.moveDocument(opened.document, 300),
         document.moveDocument(opened.document, -300),
-        { strokes: [], base: { ...base, scale: base.scale / 2 } },
+        {
+          strokes: [],
+          base: { ...base, width: base.width / 2, height: base.height / 2 },
+        },
       ];
       const outcomes: { width: number; middle: number }[] = [];
       for (const variant of variants) {
@@ -612,7 +596,7 @@ describe("The drawing core in Obsidian's renderer", function () {
         const middle =
           (60 * pixels.width + Math.floor(pixels.width / 2)) * 4 + 3;
         outcomes.push({
-          width: saved.record.box.width,
+          width: saved.width,
           middle: pixels.data[middle] ?? -1,
         });
       }
@@ -761,11 +745,15 @@ describe("The drawing core in Obsidian's renderer", function () {
           if (data[at] !== render.inkGrey) grey = false;
         }
         return {
-          layer: { x: layer.x, y: layer.y, scale: layer.scale },
+          layer: {
+            x: layer.x,
+            y: layer.y,
+            width: layer.width,
+            height: layer.height,
+          },
           preview: {
             x: preview.x,
             y: preview.y,
-            scale: preview.scale,
             width: preview.width,
             height: preview.height,
           },
@@ -796,8 +784,8 @@ describe("The drawing core in Obsidian's renderer", function () {
     });
     // At (100 + 10 × 2, 50 + 10 × 2) pixels, in units of 1/16 pixel.
     const square = {
-      layer: { x: 1920, y: 1120, scale: 2 },
-      preview: { x: 1920, y: 1120, scale: 2, width: 20, height: 20 },
+      layer: { x: 1920, y: 1120, width: 640, height: 640 },
+      preview: { x: 1920, y: 1120, width: 640, height: 640 },
       width: 20,
       height: 20,
       full: 400,
@@ -806,8 +794,8 @@ describe("The drawing core in Obsidian's renderer", function () {
     expect(result.dark).toEqual(square);
     expect(result.light).toEqual(square);
     expect(result.cut).toEqual({
-      layer: { x: 320, y: 0, scale: 2 },
-      preview: { x: 320, y: 0, scale: 2, width: 20, height: 15 },
+      layer: { x: 320, y: 0, width: 640, height: 480 },
+      preview: { x: 320, y: 0, width: 640, height: 480 },
       width: 20,
       height: 15,
       full: 300,

@@ -552,7 +552,13 @@ export class InkEditorModal extends Modal {
     if (this.#placed?.layer !== layer) {
       this.#placed = {
         layer,
-        drawable: { ...drawable, x: layer.x, y: layer.y, scale: layer.scale },
+        drawable: {
+          ...drawable,
+          x: layer.x,
+          y: layer.y,
+          width: layer.width,
+          height: layer.height,
+        },
       };
     }
     return this.#placed.drawable;
@@ -1781,7 +1787,8 @@ export class InkEditorModal extends Modal {
               base: {
                 x: base.x,
                 y: base.y,
-                scale: base.scale,
+                width: base.width,
+                height: base.height,
                 png: new Uint8Array(),
               },
             };
@@ -1938,8 +1945,8 @@ export class InkEditorModal extends Modal {
     const view = this.#view;
     if (view === undefined) return;
     // What the surface shows: the drawing, or the ink being made.
-    const { document, base } = this.#shown(view);
-    const span = documentSpan(document, base?.width);
+    const { document } = this.#shown(view);
+    const span = documentSpan(document);
     if (span === undefined) return;
     view.fit(span.left, span.right);
     this.#resizeView();

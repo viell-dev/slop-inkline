@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { bundleBanner } from "../../scripts/lib/notices.ts";
+import { bundleBanner, copiedCode } from "../../scripts/lib/notices.ts";
 
 describe("bundleBanner", () => {
   let root: string;
@@ -20,8 +20,8 @@ describe("bundleBanner", () => {
     await writeFile(path.join(directory, "LICENSE"), text);
   };
 
-  it("holds the licence of the package the plugin really bundles", async () => {
-    const banner = await bundleBanner(process.cwd(), ["perfect-freehand"]);
+  it("holds the licence of the code the plugin really copies", async () => {
+    const banner = await bundleBanner(process.cwd(), [], copiedCode);
     expect(banner).toContain("Includes perfect-freehand:");
     expect(banner).toContain("Copyright (c) 2021 Stephen Ruiz Ltd");
     expect(banner).toContain("Permission is hereby granted");
@@ -34,6 +34,20 @@ describe("bundleBanner", () => {
     await licence("b", "B's licence\n");
     await licence("a", "A's licence\n");
     const banner = await bundleBanner(root, ["b", "a"]);
+    expect(banner.indexOf("Includes a:")).toBeLessThan(
+      banner.indexOf("Includes b:"),
+    );
+    expect(banner).toContain("A's licence");
+  });
+
+  it("names copied code among the packages, in order", async () => {
+    await licence("b", "B's licence\n");
+    await writeFile(path.join(root, "A-LICENSE"), "A's licence\n");
+    const banner = await bundleBanner(
+      root,
+      ["b"],
+      [{ name: "a", licence: "A-LICENSE" }],
+    );
     expect(banner.indexOf("Includes a:")).toBeLessThan(
       banner.indexOf("Includes b:"),
     );

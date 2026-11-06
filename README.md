@@ -60,7 +60,8 @@ file holds, for tools that read or write them.
 
 ## License
 
-[MIT](LICENSE). The plugin's `main.js` includes
+[MIT](LICENSE). The outline of a stroke is adapted from
 [perfect-freehand](https://github.com/steveruizok/perfect-freehand), copyright
-2021 Stephen Ruiz Ltd, under the MIT licence; its notice is at the top of that
-file.
+2021 Stephen Ruiz Ltd, under the MIT licence; its notice is in
+[src/ink/freehand.LICENSE.txt](src/ink/freehand.LICENSE.txt) and at the top of
+the plugin's `main.js`.

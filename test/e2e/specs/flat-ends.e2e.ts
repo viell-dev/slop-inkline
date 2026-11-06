@@ -87,12 +87,11 @@ async function spill(): Promise<Spill> {
     };
     const strokes = opened.document.strokes;
     const uncut = redraw(
-      strokes.map(({ tool, size, pressure, points }) => ({
-        tool,
-        size,
-        pressure,
-        points,
-      })),
+      strokes.map((stroke) =>
+        stroke.kind === undefined
+          ? { tool: stroke.tool, size: stroke.size, points: stroke.points }
+          : stroke,
+      ),
     );
     const pens = redraw(strokes.filter((stroke) => stroke.tool === "pen"));
     const again = redraw(strokes);
@@ -111,7 +110,7 @@ async function spill(): Promise<Spill> {
       const at = which === "start" ? 0 : stroke.points.length - 2;
       const x = (stroke.points[at] ?? 0) / 16;
       const y = (stroke.points[at + 1] ?? 0) / 16;
-      const reach = stroke.size / 16;
+      const reach = (stroke.size ?? 0) / 16;
       let count = 0;
       for (let row = 0; row < height; row++) {
         for (let column = 0; column < width; column++) {
@@ -252,7 +251,6 @@ describe("Flat ends on the grid", function () {
       const stroke = {
         tool: "pen" as const,
         size: 192,
-        pressure: false,
         points,
       };
       const alpha = (cut: boolean): number[][] => {

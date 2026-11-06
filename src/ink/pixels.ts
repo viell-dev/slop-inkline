@@ -35,9 +35,9 @@ export function inkBounds(pixels: RgbaPixels): Bounds | undefined {
 
 /**
  * The ink a picture holds, as one alpha value per pixel. A picture with any
- * transparency keeps its alpha. A fully opaque one, such as the prototype's
- * files or a screenshot, is dark ink on a light ground: its alpha is 255
- * minus its luminance, so white becomes empty and black full ink.
+ * transparency keeps its alpha. A fully opaque one, such as a screenshot, is
+ * dark ink on a light ground: its alpha is 255 minus its luminance, so white
+ * becomes empty and black full ink.
  */
 export function inkAlpha(pixels: RgbaPixels): Uint8ClampedArray {
   const { width, height, data } = pixels;
@@ -65,6 +65,19 @@ export function inkAlpha(pixels: RgbaPixels): Uint8ClampedArray {
   return alpha;
 }
 
+/**
+ * Sets every pixel's colour to the ink's grey, in place, keeping its alpha:
+ * what a canvas holds varies with its rounding, and is black where it is
+ * transparent, but a symbol's pixels are all of one grey.
+ */
+export function greyInk(data: Uint8ClampedArray): void {
+  for (let index = 0; index < data.length; index += 4) {
+    data[index] = inkGrey;
+    data[index + 1] = inkGrey;
+    data[index + 2] = inkGrey;
+  }
+}
+
 /** RGBA pixels of grey ink with the given alpha, ready to encode as PNG. */
 export function inkPixels(
   width: number,
@@ -76,28 +89,6 @@ export function inkPixels(
     data[index * 4 + 3] = alpha[index] ?? 0;
   }
   return data;
-}
-
-/**
- * Repeats each pixel of a one-value-per-pixel image `factor` times across and
- * down, which enlarges it without changing what it shows.
- */
-export function repeatPixels(
-  values: Uint8ClampedArray,
-  width: number,
-  height: number,
-  factor: number,
-): Uint8ClampedArray {
-  if (factor === 1) return values;
-  const wide = width * factor;
-  const output = new Uint8ClampedArray(wide * height * factor);
-  for (let y = 0; y < height * factor; y++) {
-    const source = Math.floor(y / factor) * width;
-    for (let x = 0; x < wide; x++) {
-      output[y * wide + x] = values[source + Math.floor(x / factor)] ?? 0;
-    }
-  }
-  return output;
 }
 
 /**

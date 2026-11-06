@@ -6,7 +6,7 @@
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import esbuild, { type Plugin } from "esbuild";
-import { bundleBanner } from "./lib/notices.ts";
+import { bundleBanner, copiedCode } from "./lib/notices.ts";
 import { builtManifest } from "./lib/release.ts";
 
 const watch = process.argv.includes("--watch");
@@ -16,11 +16,11 @@ const watchedFiles = ["manifest.json", "package.json", "styles.css"];
 
 async function readPackage(): Promise<{
   version: string;
-  dependencies: Record<string, string>;
+  dependencies?: Record<string, string>;
 }> {
   return JSON.parse(await readFile("package.json", "utf8")) as {
     version: string;
-    dependencies: Record<string, string>;
+    dependencies?: Record<string, string>;
   };
 }
 
@@ -63,11 +63,13 @@ const context = await esbuild.context({
   // out on purpose, so that importing one fails the build: the plugin keeps
   // to web APIs, which mobile Obsidian also has.
   external: ["obsidian", "@codemirror/*", "@lezer/*"],
-  // Everything in `dependencies` is bundled, so its licence goes with it.
+  // Everything in `dependencies` is bundled, so its licence goes with it, as
+  // does that of code copied into the source.
   banner: {
     js: await bundleBanner(
       process.cwd(),
-      Object.keys((await readPackage()).dependencies),
+      Object.keys((await readPackage()).dependencies ?? {}),
+      copiedCode,
     ),
   },
   sourcemap: watch ? "inline" : false,

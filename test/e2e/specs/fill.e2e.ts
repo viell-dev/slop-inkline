@@ -159,9 +159,9 @@ describe("Fill", function () {
     await saveScreenshot("fill", browser.$(".inkline-editor"));
     await save();
     const [triangle, wedge] = await savedStrokes();
-    expect(triangle).toMatchObject({ kind: "polygon", fill: true });
+    expect(triangle).toMatchObject({ kind: "fill" });
+    expect(triangle).not.toHaveProperty("size");
     expect(wedge?.kind).toBe("polygon");
-    expect(wedge).not.toHaveProperty("fill");
     const shown = await middles();
     console.log("Filled", JSON.stringify(shown));
     // The triangle's middle is inked; the open wedge's, between its legs,
@@ -195,7 +195,7 @@ describe("Fill", function () {
       [0.58, 0.6],
     ]);
     const [block, hole] = await draftStrokes(2);
-    expect(block?.kind).toBe("polygon");
+    expect(block?.kind).toBe("fill");
     expect(hole?.tool).toBe("eraser");
     await save();
     const shown = await middles();
@@ -250,11 +250,8 @@ describe("Fill", function () {
         [
           {
             tool: "pen",
-            size: 16,
-            pressure: false,
             points,
-            kind: "polygon",
-            fill: true,
+            kind: "fill",
           },
         ],
         undefined,
@@ -307,6 +304,6 @@ describe("Fill", function () {
     expect(await pressed("ellipse")).toBe("true");
     expect(await pressed("fill")).toBe("true");
     const [ellipse] = await savedStrokes();
-    expect(ellipse?.fill).toBe(true);
+    expect(ellipse?.kind).toBe("fill");
   });
 });

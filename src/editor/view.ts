@@ -504,7 +504,7 @@ export class InkView {
     }
     const width = Math.max(1, Math.ceil(right - left));
     const scale = fontSize / lineBox.pxPerEm;
-    const shape = display({ ...lineBox, width });
+    const shape = display();
     const cssWidth = width * scale;
     const cssHeight = shape.heightEm * fontSize;
     target.style.width = `${String(cssWidth)}px`;

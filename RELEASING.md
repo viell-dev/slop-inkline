@@ -26,9 +26,9 @@ next major. Each pre-release carries GitHub's prerelease flag, and its section
 of the changelog, which is its release notes, opens by saying its stage:
 
 - **alpha:** features still arrive and change, and the
-  [file format](docs/file-format.md#compatibility) is a draft, so a later alpha
-  need not open files an earlier one wrote. Releases remain alphas until a
-  stable release goal is agreed with the owner, as below.
+  [file format](docs/file-format.md#versions) is a draft, so a later alpha need
+  not open files an earlier one wrote. Releases remain alphas until a stable
+  release goal is agreed with the owner, as below.
 - **beta:** the features of the agreed stable release goal are complete; fixes
   and polish follow. A beta that needs a new feature gives way to an alpha of
   the next pre-release line.
