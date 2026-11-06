@@ -101,6 +101,13 @@ async function waitForFile(path: string, text: string): Promise<void> {
 }
 
 /** Waits for the active note's editor to read `text`. */
+/**
+ * How long to leave after the setup's edit, in milliseconds: the editor joins
+ * changes made within half a second into one undo step, which a person drawing
+ * a symbol never does, but a fast test run can.
+ */
+const undoGroup = 600;
+
 async function waitForNote(text: string): Promise<void> {
   let read = "";
   try {
@@ -739,6 +746,7 @@ describe("Where the cursor lands after a symbol", function () {
   });
 
   it("takes a saved symbol back in one undo, with the note as it was", async function () {
+    await browser.pause(undoGroup);
     await insert();
     await draw(zigzag);
     await save();
@@ -1467,6 +1475,7 @@ describe("A rename while the note holds unsaved text", function () {
   });
 
   it("takes the rename and the text back one undo at a time", async function () {
+    await browser.pause(undoGroup);
     await setLinkUpdates(true);
     await insertAndIndex();
     await addBoth("Editor.md");
