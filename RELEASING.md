@@ -338,10 +338,11 @@ last public release, so that Obsidian offers a version that exists.
 it started from, so one still queued or running would publish after the rollback
 merges, and nothing in it would notice.
 
-1. List the Release workflow's runs with
-   `gh run list --workflow release.yml --status queued` and again with
-   `--status in_progress`. Cancel each with `gh run cancel <run>`, and wait
-   until `gh run view <run>` shows it finished. Cancelling cannot take back a
+1. List every Release run that has not finished, whatever its state, as one
+   waiting behind another shows as `pending`, not `queued`:
+   `gh run list --workflow release.yml --json databaseId,status --jq '.[] | select(.status != "completed")'`.
+   Cancel each with `gh run cancel <run>`, then list them again, until none are
+   left: cancelling one lets the next start. Cancelling cannot take back a
    request GitHub has already accepted, which is why the next step comes after
    it.
 2. Ask whether the version has a tag, as only a published release has one:
