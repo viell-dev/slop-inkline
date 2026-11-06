@@ -104,9 +104,9 @@ grid on, for a corner placed before the grid was turned on.
 
 **Unreleased:** a corner goes on the grid only if Shift is held as you click it,
 so one shape can have some corners on the grid and some off it. The next side
-shows where a click would put the corner. A click counts as the first or last
-corner within the brush's circle, as off the grid, or with Shift held on any
-click that snaps to that corner, if Shift put it on the grid.
+shows where a click would put the corner. A click within the brush's circle of
+the first or last corner counts as that corner, as off the grid. So does a click
+with Shift held that snaps to such a corner, if Shift put it on the grid.
 
 ## Filled shapes
 
@@ -177,8 +177,8 @@ cut: an ellipse has no ends, and a polygon keeps its square ones.
 Shift put on the grid. An end that comes in at 45° or steeper stops flush with
 the row through it. One running more along the row than across it is not cut, so
 a line drawn along the baseline stays whole with round ends. A freehand end is
-not on a grid line, and stays round. The button is available whenever the grid
-is on, as before.
+not on a grid line, and stays round. The button is available as before: with the
+grid on, while drawing freehand.
 
 The grid keeps its place through saves, and on a symbol you open again it lines
 up with most of its strokes, if the grid has the same size as when you drew
