@@ -247,17 +247,36 @@ img.inkline-symbol:not([width], [height]) {
   display: none;
 }
 
-/* A symbol in a list of them: its picture, as tall as the text, and names. */
+/*
+ * A symbol in a list of them: its picture in a column of its own, then its
+ * name, so that names line up whatever each symbol's width. The image's box is
+ * the column, 3 em wide, and the picture starts at its left. A symbol wider
+ * than the box shrinks to fit, whole and in proportion, rather than being cut
+ * or pushing its name along. The mask of a symbol in the text colour and the
+ * image of one in its stored colour both fit the box rather than fill it.
+ */
 .inkline-suggestion {
   display: flex;
   align-items: center;
   gap: var(--size-4-3);
 }
 
-.inkline-suggestion-picture {
+.inkline-suggestion img.inkline-suggestion-picture,
+.inkline-library img.inkline-library-picture {
   flex: none;
-  width: auto;
-  height: 1.5em;
+  object-fit: contain;
+  mask-size: contain;
+  mask-position: 0 50%;
+}
+
+.inkline-stored-color .inkline-suggestion img.inkline-suggestion-picture,
+.inkline-stored-color .inkline-library img.inkline-library-picture {
+  object-position: 0 50%;
+}
+
+.inkline-suggestion img.inkline-suggestion-picture {
+  width: calc(3em * var(--inkline-scale, 1));
+  height: calc(1.5em * var(--inkline-scale, 1));
 }
 
 .inkline-suggestion-folder {
@@ -318,8 +337,7 @@ img.inkline-symbol:not([width], [height]) {
 
 /* Larger than in text, to tell symbols apart, and painted as they are. */
 .inkline-library img.inkline-library-picture {
-  flex: none;
-  width: auto;
+  width: 3em;
   height: 2em;
 }
 
