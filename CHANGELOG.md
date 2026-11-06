@@ -42,6 +42,10 @@ even one a public release; earlier pre-releases carry a suffix such as
   and turned again in notes. Saving a symbol drops that metadata.
 - A file with a damaged chunk that the image does not depend on opens as it
   shows, and one with a critical chunk that PNG does not define does not open.
+- Names now line up across rows in the `;;` list, **Inkline: Insert existing
+  symbol**, **Copy from**, and the symbol library, as each picture has a column
+  of its own. A symbol wider than the column shows whole, at a smaller size
+  ([#171](https://github.com/viell-dev/slop-inkline/issues/171)).
 
 ## 0.9.1 - 2026-11-06
 
