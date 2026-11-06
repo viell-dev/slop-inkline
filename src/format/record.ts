@@ -5,6 +5,7 @@
 import {
   PngError,
   imageHeader,
+  inflate,
   pngSignature,
   readChunks,
   type Chunk,
@@ -297,6 +298,47 @@ export function basePngProblem(png: Uint8Array): string | undefined {
     if (error instanceof InvalidRecord) return error.message;
     throw error;
   }
+}
+
+/** The highest filter type PNG defines for a row. */
+const lastFilterType = 4;
+
+/**
+ * Why the image data of a base layer's PNG breaks the format, or undefined when
+ * it does not, for a PNG {@link basePngProblem} passes. The format settles this
+ * rather than a browser's decoder, as those differ: Chromium 120 draws rows that
+ * are missing as empty, and Chromium 120 and 150 both pass a wrong Adler-32.
+ * It costs what decoding the image does, at most 64 MiB of rows.
+ */
+export async function baseImageProblem(
+  png: Uint8Array,
+): Promise<string | undefined> {
+  const chunks = readChunks(png);
+  const { width, height } = imageHeader(chunks);
+  const parts = chunks.filter(({ type }) => type === "IDAT");
+  const data = new Uint8Array(
+    parts.reduce((total, { data: part }) => total + part.length, 0),
+  );
+  let filled = 0;
+  for (const { data: part } of parts) {
+    data.set(part, filled);
+    filled += part.length;
+  }
+  const rowBytes = 1 + 4 * width;
+  const size = height * rowBytes;
+  let rows: Uint8Array;
+  try {
+    rows = await inflate(data, { limit: size });
+  } catch (error) {
+    return `base.png's image data is not one whole stream: ${String(error)}`;
+  }
+  if (rows.length !== size) return "base.png's image data stops short";
+  for (let row = 0; row < size; row += rowBytes) {
+    if ((rows[row] ?? 0) > lastFilterType) {
+      return "base.png has a row with an undefined filter type";
+    }
+  }
+  return undefined;
 }
 
 /**

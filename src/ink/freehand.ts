@@ -7,14 +7,15 @@
 // MIT licence in freehand.LICENSE.txt, for the one set of options the format
 // uses: a constant width, round ends, and no tapers. It lives here so that no
 // package update can change what a saved symbol looks like. It differs from
-// that version in two ways. A stroke that never leaves its first point is a
-// round dot on that point. And every comparison below comes out the same in any
+// that version in three ways. A stroke that never leaves its first point is a
+// round dot on that point. Every comparison below comes out the same in any
 // reader, as docs/file-format.md requires: a length is a plain square root
 // rather than `Math.hypot`, a vector is divided by its length rather than
 // multiplied by a reciprocal, and a side's place after a half circle is not
-// worked out with a sine. Keep those operations, and their order, as the steps
-// there give them. Only `Math.sin` and `Math.cos` may differ between engines,
-// and no comparison depends on them.
+// worked out with a sine. And the steps run from the stroke's first point, so
+// that a comparison comes out the same wherever the stroke lies. Keep those
+// operations, and their order, as the steps there give them. Only `Math.sin`
+// and `Math.cos` may differ between engines, and no comparison depends on them.
 
 /** A point, in pixels. */
 export type Point = readonly [number, number];
@@ -109,9 +110,11 @@ function smoothedPath(input: readonly Point[], size: number): Sample[] {
   for (let index = 1; index <= last; index++) {
     const target = points[index] ?? start;
     const point = index === last ? target : between(previous, target, pull);
-    if (point[0] === previous[0] && point[1] === previous[1]) continue;
     const away = subtract(previous, point);
     const distance = length(away);
+    // The length, not the points: squaring a tiny step can underflow to 0
+    // between points that differ, and dividing by that gives no direction.
+    if (distance === 0) continue;
     running += distance;
     if (index < last && !steady) {
       if (running < size) continue;
@@ -139,8 +142,32 @@ export type FreehandShape =
    */
   | { readonly kind: "smooth"; readonly outline: readonly Point[] };
 
-/** What a stroke `size` pixels wide fills along `points`, in pixels. */
+/**
+ * What a stroke `size` pixels wide fills along `points`, in pixels. The steps
+ * run on the points measured from the first, which is exact, and the result
+ * moves back at the end, so that no rounding in them depends on where the
+ * stroke lies: moving it, as saving's crop does, cannot change its shape.
+ */
 export function freehandShape(
+  points: readonly Point[],
+  size: number,
+): FreehandShape {
+  const [origin] = points;
+  if (origin === undefined) return { kind: "smooth", outline: [] };
+  const shape = shapeFromOrigin(
+    points.map((point) => subtract(point, origin)),
+    size,
+  );
+  return shape.kind === "dot"
+    ? { ...shape, center: add(shape.center, origin) }
+    : {
+        kind: "smooth",
+        outline: shape.outline.map((corner) => add(corner, origin)),
+      };
+}
+
+/** What {@link freehandShape} finds, from points measured from the first. */
+function shapeFromOrigin(
   points: readonly Point[],
   size: number,
 ): FreehandShape {

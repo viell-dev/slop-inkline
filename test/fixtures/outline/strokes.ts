@@ -61,6 +61,24 @@ export const pinnedStrokes: readonly SmoothStroke[] = [
   { tool: "pen", size: 192, points: [3840, 256, 4160, 2496, 160, 2096] },
   { tool: "pen", size: 192, points: [3840, 256, 4161, 2496, 160, 2096] },
   { tool: "pen", size: 192, points: [3840, 256, 4159, 2496, 160, 2096] },
+  // A tie that only working from the stroke's first point settles the same way
+  // wherever the stroke lies: 48 corners, where working from the image's origin
+  // gives 74 here and 48 sixteen pixels to the left.
+  { tool: "pen", size: 192, points: [1014, 2044, 214, 2364, 490, 2068] },
+  // A point level with the first, repeated until the step towards it is too
+  // small to square: its length is 0 between points that differ, and a stroke
+  // that divides by that loses its end.
+  {
+    tool: "pen",
+    size: 96,
+    points: [
+      320,
+      320,
+      480,
+      800,
+      ...new Array<number[]>(600).fill([480, 320]).flat(),
+    ],
+  },
   // A point about the brush's radius from where a half circle ended, whose
   // side point stays or goes by how that distance is taken.
   {

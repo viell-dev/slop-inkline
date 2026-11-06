@@ -42,18 +42,35 @@ function partialRuns(row: readonly number[]): number[] {
 }
 
 /**
+ * Where `shown` holds other ink than a saved row: at any pixel the saved row has
+ * empty or full, which is every pixel no edge crosses. The two may differ only
+ * at a pixel an edge crosses, as the format's Antialiasing section says, so
+ * this allows no room in position: an edge that moves or spreads changes a
+ * pixel beside it.
+ */
+function inkChanged(
+  shown: readonly number[],
+  row: readonly number[],
+): { x: number; shown: number; saved: number }[] {
+  return row.flatMap((saved, x) => {
+    const value = shown[x] ?? 0;
+    const crossed = saved > 0 && saved < 255;
+    return crossed || value === saved ? [] : [{ x, shown: value, saved }];
+  });
+}
+
+/**
  * That the editor's own drawing of a base layer, which leaves scaling to the
- * browser, shows the ink a save stored: the two differ only along an edge,
- * where each pixel lies between what the save has on either side of it.
+ * browser, shows the ink a save stored, and that this check would see the two
+ * ways of getting that wrong: this same row blurred, or moved by a pixel.
  */
 function expectSameInk(shown: readonly number[], row: readonly number[]): void {
-  const off = shown.flatMap((value, x) => {
-    const around = row.slice(Math.max(0, x - 1), x + 2);
-    return value < Math.min(...around) - 1 || value > Math.max(...around) + 1
-      ? [{ x, value, around }]
-      : [];
-  });
-  expect(off).toEqual([]);
+  expect(inkChanged(shown, row)).toEqual([]);
+  const blurred = row.map((value, x) =>
+    Math.round(((row[x - 1] ?? 0) + value + (row[x + 1] ?? 0)) / 3),
+  );
+  expect(inkChanged(blurred, row)).not.toEqual([]);
+  expect(inkChanged([0, ...row.slice(0, -1)], row)).not.toEqual([]);
 }
 
 /** The ink the surface shows along a row, and device pixels per document's. */
@@ -180,6 +197,7 @@ async function checkDimClarity(side: number): Promise<void> {
       zoomedScale: zoomed.scale,
       applied: partialRuns(applied.row),
       row: result.row,
+      shown: result.shown,
     }),
   );
   expect(result.reopened).toEqual(result.row);

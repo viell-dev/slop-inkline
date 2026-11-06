@@ -1,8 +1,12 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { deflateSync } from "node:zlib";
 import { browser, expect } from "@wdio/globals";
-import type { InkRecord } from "../../../src/format/record.ts";
+import { recordChunkType } from "../../../src/format/ink-file.ts";
+import { readChunks, writeChunks } from "../../../src/format/png.ts";
+import { serializeRecord, type InkRecord } from "../../../src/format/record.ts";
 import { goldenFiles } from "../../fixtures/format/records.ts";
+import { encodePng, blank, header } from "../../support/png.ts";
 import { loadModules, toBase64 } from "../support/browser.ts";
 
 const fixtures = path.resolve(import.meta.dirname, "../../fixtures/format");
@@ -31,6 +35,21 @@ const tolerance = {
  * as a save works out its pixels without the renderer's help.
  */
 const baseTolerance = { ...tolerance, share: 0.3 };
+
+/**
+ * The most a save may change a pixel of a stroke it did not touch, when an edit
+ * moves the crop. Chromium's rendering depends a little on where a shape falls:
+ * over 300 seeded saves on each of Chromium 120 and 150, 273 changed no pixel
+ * and the worst changed one by 7 levels. A pointer-drawn eraser stroke that the
+ * image's left edge cuts changed one by 19, as Chromium splits a curve there.
+ * A stroke that takes another shape changes pixels by all 255.
+ */
+const movedLevels = { strokes: 16, cutByTheEdge: 32 };
+
+/** The chunks of a plain image, for a symbol built by hand. */
+function encodeImage(): ReturnType<typeof readChunks> {
+  return readChunks(encodePng(blank(48, 192)));
+}
 
 describe("The file format in Obsidian's renderer", function () {
   before(async function () {
@@ -487,6 +506,253 @@ describe("The file format in Obsidian's renderer", function () {
     expect(result.kind).toBe("damaged");
     expect(result.strokes).toBe(0);
     expect(result.hasBase).toBe(true);
+  });
+
+  it("keeps a stroke's shape through the crop of its first save", async function () {
+    const result = await browser.execute(async () => {
+      const { canvas, render } = window.inklineTest;
+      // A turn on a tie, which rounding in its place in the file could settle
+      // either way: this stroke took another shape when cropped by 16 pixels.
+      const strokes: InkRecord["strokes"] = [
+        { tool: "pen", size: 192, points: [1014, 2044, 214, 2364, 490, 2068] },
+      ];
+      const saved = await canvas.saveInk({ strokes }, undefined);
+      const bitmap = await canvas.decodePng(saved.bytes);
+      const stored = canvas.readPixels(bitmap);
+      bitmap.close();
+      const surface = new OffscreenCanvas(saved.width, 192);
+      const context = surface.getContext("2d");
+      if (context === null) throw new Error("no context");
+      render.drawInk(context, strokes, undefined, -saved.left);
+      const { data } = context.getImageData(0, 0, saved.width, 192);
+      let worst = 0;
+      for (let at = 3; at < data.length; at += 4) {
+        worst = Math.max(
+          worst,
+          Math.abs((data[at] ?? 0) - (stored.data[at] ?? 0)),
+        );
+      }
+      return { left: saved.left, worst };
+    });
+    expect(result.left).toBe(16);
+    expect(result.worst).toBeLessThanOrEqual(movedLevels.strokes);
+  });
+
+  // A dot away from the ink moves the crop, and every stroke in the record with
+  // it, which must leave those strokes as they were.
+  const editCases: [string, number, boolean][] = [
+    ["a stroke on a tie", 0, false],
+    ["pens, polygons, fills, and cuts", 12, false],
+    ["an eraser stroke the image's edge cuts", 12, true],
+  ];
+  for (const [name, drawings, erasing] of editCases) {
+    it(`leaves ${name} alone when a separate mark moves the crop`, async function () {
+      const result = await browser.execute(
+        async (drawings, erasing) => {
+          const { canvas } = window.inklineTest;
+          let seed = 0x2468ace;
+          const next = (range: number): number => {
+            seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff;
+            return (seed >>> 8) % range;
+          };
+          const pointerPath = (): number[] => {
+            let [x, y] = [800 + next(2400), 500 + next(1800)];
+            const points = [x, y];
+            for (let left = 2 + next(24); left > 0; left--) {
+              x = Math.max(320, Math.min(4000, x + next(401) - 200));
+              y = Math.max(320, Math.min(2700, y + next(401) - 200));
+              points.push(x, y);
+            }
+            return points;
+          };
+          const stroke = (): InkRecord["strokes"][number] => {
+            const tool = "pen";
+            const size = 32 + next(300);
+            const points = pointerPath();
+            switch (next(4)) {
+              case 0:
+                return { tool, size, points, kind: "polygon" };
+              case 1:
+                return { tool, points, kind: "fill" };
+              case 2:
+                return {
+                  tool,
+                  size,
+                  points,
+                  cut: { start: "up", end: "down" },
+                };
+              default:
+                return { tool, size, points };
+            }
+          };
+          /** An eraser stroke as a pointer draws it, from past the left edge. */
+          const eraser = (): InkRecord["strokes"][number] => {
+            let [x, y] = [-1600, 600 + next(1600)];
+            const points: number[] = [];
+            while (x < 1600) {
+              points.push(x, y);
+              x += 48 + next(80);
+              y += next(33) - 16;
+            }
+            return { tool: "eraser", size: 64 + next(200), points };
+          };
+          const pixelsOf = async (bytes: Uint8Array) => {
+            const bitmap = await canvas.decodePng(bytes);
+            const pixels = canvas.readPixels(bitmap);
+            bitmap.close();
+            return pixels;
+          };
+          const documents: InkRecord["strokes"][] =
+            drawings === 0
+              ? [
+                  [
+                    {
+                      tool: "pen",
+                      size: 192,
+                      points: [1014, 2044, 214, 2364, 490, 2068],
+                    },
+                  ],
+                ]
+              : Array.from({ length: drawings }, () => [
+                  ...Array.from({ length: 2 + next(4) }, stroke),
+                  ...(erasing ? [eraser()] : []),
+                ]);
+          let saves = 0;
+          let worst = 0;
+          let moved = 0;
+          for (const strokes of documents) {
+            const first = await canvas.saveInk({ strokes }, undefined);
+            const opened = await canvas.openInk(first.bytes);
+            if (opened.kind !== "editable") throw new Error(opened.kind);
+            const before = await pixelsOf(first.bytes);
+            for (const away of [1, 8, 40]) {
+              const mark: InkRecord["strokes"][number] = {
+                tool: "pen",
+                size: 32,
+                points: [-away * 16, 64],
+              };
+              const edited = await canvas.saveInk(
+                { strokes: [...opened.document.strokes, mark] },
+                undefined,
+              );
+              const after = await pixelsOf(edited.bytes);
+              saves++;
+              if (edited.left !== 0) moved++;
+              // The mark is at the top, left of what the first image shows.
+              for (let y = 0; y < 192; y++) {
+                for (let x = 0; x < before.width; x++) {
+                  const was = before.data[(y * before.width + x) * 4 + 3] ?? 0;
+                  const at = (y * after.width + x - edited.left) * 4 + 3;
+                  worst = Math.max(
+                    worst,
+                    Math.abs(was - (after.data[at] ?? 0)),
+                  );
+                }
+              }
+            }
+          }
+          return { saves, moved, worst };
+        },
+        drawings,
+        erasing,
+      );
+      expect(result.moved).toBe(result.saves);
+      expect(result.worst).toBeLessThanOrEqual(
+        erasing ? movedLevels.cutByTheEdge : movedLevels.strokes,
+      );
+    });
+  }
+
+  it("crops a stroke that repeats a point until its steps vanish", async function () {
+    const widths = await browser.execute(async () => {
+      const { canvas } = window.inklineTest;
+      const stroke = (repeats: number): InkRecord["strokes"][number] => ({
+        tool: "pen",
+        size: 96,
+        points: [
+          128,
+          1600,
+          16048,
+          1760,
+          ...new Array<number[]>(repeats).fill([16048, 1600]).flat(),
+        ],
+      });
+      const widthOf = async (repeats: number): Promise<number> =>
+        (await canvas.saveInk({ strokes: [stroke(repeats)] }, undefined)).width;
+      // Past about 440 repeats a step squares to 0, between points that differ.
+      return [await widthOf(300), await widthOf(600)];
+    });
+    // The whole stroke, not what is left of a crop that found no ink: a vanishing
+    // step's direction is a little long, which rounds the end out by a pixel.
+    expect(widths[0]).toBeGreaterThan(1000);
+    expect(Math.abs((widths[1] ?? 0) - (widths[0] ?? 0))).toBeLessThanOrEqual(
+      1,
+    );
+  });
+
+  describe("a base layer's image data", function () {
+    const side = 8;
+    const rowBytes = 1 + 4 * side;
+    const rows = (count: number): Uint8Array =>
+      new Uint8Array(count * rowBytes)
+        .fill(255)
+        .map((value, at) => (at % rowBytes === 0 ? 0 : value));
+    const whole = deflateSync(rows(side));
+    const wrongChecksum = Uint8Array.from(whole);
+    wrongChecksum[wrongChecksum.length - 1] =
+      (wrongChecksum.at(-1) ?? 0) ^ 0xff;
+    const undefinedFilter = rows(side);
+    undefinedFilter[3 * rowBytes] = 9;
+
+    /** A symbol whose record's base layer has `data` for its image data. */
+    function symbolWith(data: Uint8Array): string {
+      const png = writeChunks([
+        header(side, side),
+        { type: "IDAT", data },
+        { type: "IEND", data: new Uint8Array(0) },
+      ]);
+      const text = serializeRecord({
+        strokes: [],
+        base: { x: 0, y: 0, width: 128, height: 128, png },
+      });
+      const compressed = deflateSync(text);
+      const chunk = new Uint8Array(4 + compressed.length);
+      chunk[3] = 1;
+      chunk.set(compressed, 4);
+      const [start, ...rest] = encodeImage();
+      if (start === undefined) throw new Error("no chunks");
+      return toBase64(
+        writeChunks([start, { type: recordChunkType, data: chunk }, ...rest]),
+      );
+    }
+
+    const opensIn = async (symbol: string): Promise<string> =>
+      browser.execute(async (text) => {
+        const bytes = Uint8Array.from(atob(text), (char) => char.charCodeAt(0));
+        return (await window.inklineTest.canvas.openInk(bytes)).kind;
+      }, symbol);
+
+    it("opens one stream of exactly the image's rows", async function () {
+      expect(await opensIn(symbolWith(whole))).toBe("editable");
+    });
+
+    // Each of these the browser's own decoder can pass, or passes on one
+    // Chromium and not on another: Chromium 120 draws missing rows as empty.
+    const broken: [string, Uint8Array][] = [
+      ["half its rows", deflateSync(rows(4))],
+      ["its last row missing", deflateSync(rows(7))],
+      ["rows left over", deflateSync(rows(12))],
+      ["a wrong Adler-32", wrongChecksum],
+      ["bytes after the stream", Uint8Array.from([...whole, 0, 0])],
+      ["an undefined filter", deflateSync(undefinedFilter)],
+      ["data that is not zlib", new Uint8Array(40).fill(7)],
+      ["a stream cut off", whole.subarray(0, -6)],
+    ];
+    for (const [name, data] of broken) {
+      it(`refuses a record whose base layer has ${name}`, async function () {
+        expect(await opensIn(symbolWith(data))).toBe("damaged");
+      });
+    }
   });
 
   it("adds a record to a PNG the canvas encodes and reads it back", async function () {

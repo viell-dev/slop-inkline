@@ -67,6 +67,13 @@ must keep released files readable and looking the same, as
   and either side of a tie, and the pieces of polygons and of cut strokes: a
   change that would change how saved strokes look fails
   [outline.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/ink/outline.test.ts).
+- Moving a stroke by whole units moves its outline exactly, over seeded strokes
+  built to turn on a tie
+  ([outline.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/ink/outline.test.ts)).
+  In Obsidian, a separate mark that moves saving's crop leaves no pixel of the
+  other strokes more than 16 levels of 255 away, or 32 for an eraser stroke that
+  the image's edge cuts
+  ([format.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/format.e2e.ts)).
 - In Obsidian, saving a symbol again after reopening it gives the same bytes,
   however far the drawing sits from the origin, and the pixels the browser
   decodes are exactly those encoded
@@ -137,7 +144,10 @@ must keep released files readable and looking the same, as
   latency or establish performance on every device.
 - **Make ink** of a synthetic H, enlarged from about 1.2 to 11.5 times, leaves
   at most two partly covered document pixels at each edge of the saved symbol,
-  and the reopened symbol draws the same pixels
+  and the reopened symbol draws the same pixels. The editor's own redraw, which
+  leaves scaling to the browser, differs from them only at pixels an edge
+  crosses, and each run checks that this would catch the same row blurred or
+  moved by a pixel
   ([conversion-clarity.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/conversion-clarity.e2e.ts)).
   So does a dim H of soft strokes, 42 levels from its ground to its ink,
   enlarged from about 2.4 to 7.7 times, and the surface shows at most three

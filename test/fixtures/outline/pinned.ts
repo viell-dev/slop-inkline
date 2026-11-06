@@ -1,14 +1,15 @@
 // What the pinned shape files hold, computed afresh, for generate.ts to write
 // and test/unit/ink/outline.test.ts to compare with them.
 
-import type { Stroke } from "../../../src/format/record.ts";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { parseRecord, type Stroke } from "../../../src/format/record.ts";
 import {
   restShape,
   smoothShape,
   strokeShape,
   type Outline,
 } from "../../../src/ink/outline.ts";
-import { goldenFiles } from "../format/records.ts";
 import { pinnedStrokes } from "./strokes.ts";
 
 type Rounded = number[][];
@@ -28,9 +29,15 @@ export function pinnedOutlines(): Rounded[] {
   });
 }
 
-/** Every stroke of a golden file, by that file's name. */
+/** Every stroke a golden file's record holds, by that file's name. */
 function strokesOf(name: string): readonly Stroke[] {
-  return goldenFiles[name]?.strokes ?? [];
+  const text = readFileSync(
+    path.join(import.meta.dirname, "../format", `${name}.json`),
+    "utf8",
+  );
+  const parsed = parseRecord(text);
+  if (!parsed.ok) throw new Error(parsed.detail);
+  return parsed.record.strokes;
 }
 
 /** What {@link pinnedPieces} holds. */
@@ -45,9 +52,10 @@ export interface PinnedPieces {
 }
 
 /**
- * The polygon pieces and the cut strokes' rests of the golden files. The order
- * of a polygon's pieces, and of each piece's corners, is this code's: the
- * format defines only what they cover.
+ * The polygon pieces and the cut strokes' rests of the golden files, from the
+ * records they hold, so where a save's crop put them. The order of a polygon's
+ * pieces, and of each piece's corners, is this code's: the format defines only
+ * what they cover.
  */
 export function pinnedPieces(): PinnedPieces {
   return {

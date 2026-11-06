@@ -10,6 +10,7 @@ import {
   type Chunk,
 } from "./png.ts";
 import {
+  baseImageProblem,
   formatVersion,
   imageHeight,
   limits,
@@ -160,15 +161,21 @@ export async function readInk(chunks: readonly Chunk[]): Promise<InkSource> {
     return damaged(String(error));
   }
   const parsed = parseRecord(text);
-  return parsed.ok
-    ? { kind: "record", record: parsed.record, width }
-    : damaged(parsed.detail);
+  if (!parsed.ok) return damaged(parsed.detail);
+  const { record } = parsed;
+  const problem =
+    record.base === undefined
+      ? undefined
+      : await baseImageProblem(record.base.png);
+  return problem === undefined
+    ? { kind: "record", record, width }
+    : damaged(problem);
 }
 
 /**
  * Reads what a PNG file holds. Throws `PngError` when the bytes fail the
  * format's check of a PNG's structure; anything wrong with the record only
- * makes it unusable, and the image data is not looked at.
+ * makes it unusable, and the file's own image data is not looked at.
  */
 export async function readInkFile(bytes: Uint8Array): Promise<InkSource> {
   return await readInk(readChunks(bytes));
@@ -220,6 +227,13 @@ export async function writeInkFile(
   const check = parseRecord(text);
   if (!check.ok) {
     throw new RecordError(`record breaks the format: ${check.detail}`);
+  }
+  const problem =
+    record.base === undefined
+      ? undefined
+      : await baseImageProblem(record.base.png);
+  if (problem !== undefined) {
+    throw new RecordError(`record breaks the format: ${problem}`);
   }
   const chunk = await recordChunk(text);
   const [header, ...rest] = chunks.filter((each) => !isRecordChunk(each));

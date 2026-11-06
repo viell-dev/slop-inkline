@@ -244,8 +244,8 @@ describe("The drawing core in Obsidian's renderer", function () {
   });
 
   it("does not open a record whose base layer does not decode", async function () {
-    const kind = await browser.execute(async () => {
-      const { canvas, inkFile, png } = window.inklineTest;
+    const result = await browser.execute(async () => {
+      const { canvas, inkFile, png, record } = window.inklineTest;
       const image = await canvas.encodePixels({
         width: 48,
         height: 192,
@@ -269,13 +269,33 @@ describe("The drawing core in Obsidian's renderer", function () {
         { type: "IDAT", data: new Uint8Array([1, 2, 3, 4]) },
         end,
       ]);
-      const file = await inkFile.writeInkFile(image, {
+      const written = {
         strokes: [],
         base: { x: 0, y: 0, width: 16, height: 16, png: broken },
-      });
-      return (await canvas.openInk(file)).kind;
+      };
+      const refused = await inkFile.writeInkFile(image, written).then(
+        () => undefined,
+        (error: unknown) => String(error),
+      );
+      // Inkline will not write this, so the record goes in by hand, as another
+      // program's might.
+      const compressed = await png.deflate(
+        new TextEncoder().encode(record.serializeRecord(written)),
+      );
+      const data = new Uint8Array(4 + compressed.length);
+      data[3] = 1;
+      data.set(compressed, 4);
+      const [first, ...rest] = png.readChunks(image);
+      if (first === undefined) throw new Error("no chunks");
+      const file = png.writeChunks([
+        first,
+        { type: inkFile.recordChunkType, data },
+        ...rest,
+      ]);
+      return { refused, kind: (await canvas.openInk(file)).kind };
     });
-    expect(kind).toBe("damaged");
+    expect(result.refused).toContain("record breaks the format");
+    expect(result.kind).toBe("damaged");
   });
 
   it("saves the same file again however far the drawing sits from the origin", async function () {

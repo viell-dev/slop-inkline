@@ -24,7 +24,8 @@ The words "must", "must not", "should", and "may" are used as in
 not failed, and the file may still be shown.
 
 Everything here is normative, except the sections marked informative. PNG means
-the [PNG specification](https://www.w3.org/TR/png-3/), ISO/IEC 15948.
+the third edition of the [PNG specification](https://www.w3.org/TR/png-3/), the
+W3C Recommendation of 24 June 2025.
 
 ## The file
 
@@ -61,6 +62,14 @@ The image is what a symbol looks like wherever it is shown. The record is what
 an editor edits. A writer must make the image a rendering of the record, as
 [Drawing the strokes](#drawing-the-strokes) specifies. An editor draws a usable
 record from the record alone, and does not read the image's pixels to do it.
+
+An edit leaves alone what it does not touch. An editor must keep each stroke it
+was not asked to change as it was, and on its own may move a whole record only
+by a whole number of pixels, as cropping the image does. A shape depends only on
+where its stroke's points lie from one another, so such a stroke keeps its shape
+exactly, in the same place on the grid of pixels. The image is still drawn
+again, so that stroke's pixels can differ only as two renderings of one shape
+can, as [Antialiasing](#antialiasing) describes.
 
 [The record chunk](#the-record-chunk) is marked so that a program that changes
 the image data drops it, but that does not stop the two disagreeing. PNG lets a
@@ -185,8 +194,11 @@ The base layer is an object:
 `png` follows [RFC 4648](https://www.rfc-editor.org/rfc/rfc4648), section 4,
 with no line breaks, and the bits its padding leaves over zero. Its PNG must be
 8-bit RGBA (colour type 6), not interlaced, with a correct CRC on every chunk,
-and hold only `IHDR`, `IDAT`, and `IEND` chunks, with nothing after `IEND`. Only
-its alpha channel is read.
+and hold only `IHDR`, `IDAT`, and `IEND` chunks, with nothing after `IEND`. For
+an image `w` by `h` pixels, the data of its `IDAT` chunks, joined, must be one
+zlib stream, as in [the record chunk](#the-record-chunk), that ends where they
+end and decompresses to exactly `h × (1 + 4 × w)` bytes: `h` rows, each starting
+with a filter type from 0 to 4. Only its alpha channel is read.
 
 ### Limits
 
@@ -219,9 +231,9 @@ counts.
 
 1. The base layer, if any: its image's alpha, stretched over the rectangle from
    (`x / 16`, `y / 16`) pixels, `width / 16` by `height / 16` pixels in size. It
-   is sampled by bilinear interpolation or a smoother method. Each way it is
-   drawn smaller than its image, each pixel must take in all the source pixels
-   it covers, as area averaging does.
+   is sampled by bilinear interpolation or a smoother method. In each direction,
+   across or down, in which it is drawn smaller than its image, each pixel must
+   take in all the source pixels it covers, as area averaging does.
 2. Each stroke in order: a pen stroke over what is there, and an eraser stroke
    removing what is there by its own alpha (the compositing operations
    `source-over` and `destination-out`). A stroke's shape counts once, however
@@ -230,9 +242,15 @@ counts.
 ### Smooth strokes
 
 A stroke without a `kind` is drawn as a pointer went, smoothly, with round ends.
-Its outline follows from its points, `P`, in pixels, and `w = size / 16`, by the
-steps below. With `(x, y)` points, each operation on a point applying to `x` and
-`y` in turn:
+Its outline follows from `w = size / 16` and its points, `P`, by the steps
+below. The steps measure the points from the stroke's first point, in pixels:
+with that point at (`x0`, `y0`) units, a point at (`x`, `y`) units is at
+(`(x - x0) / 16`, `(y - y0) / 16`), so that `P[0]` is (0, 0). When the steps are
+done, every corner of the outline, or a dot's centre, moves by (`x0 / 16`,
+`y0 / 16`). So no rounding in them depends on where a stroke lies, and moving
+its points by whole units moves its shape and changes nothing else about it.
+
+With `(x, y)` points, each operation on a point applying to `x` and `y` in turn:
 
 - `(ax, ay) · (bx, by) = ax × bx + ay × by`
 - `|a| = sqrt(a · a)`
@@ -252,12 +270,13 @@ S = [ { p: Q[0], v: (0, 0), run: 0 } ]
 prev = Q[0];  run = 0;  steady = false
 for i = 1 to m:
     q = Q[m] if i = m, otherwise lerp(prev, Q[i], 0.575)
-    if q = prev: go on to the next i
-    run = run + |prev - q|
+    d = |prev - q|
+    if d = 0: go on to the next i
+    run = run + d
     if i < m and not steady:
         if run < w: go on to the next i, keeping run
         steady = true
-    append { p: q, v: (prev - q) / |prev - q|, run: run } to S
+    append { p: q, v: (prev - q) / d, run: run } to S
     prev = q
 if S has a second sample: S[0].v = S[1].v
 ```
@@ -352,13 +371,14 @@ stroke's shape is two parts together:
 2. Inside its boxes, the shape of the rest of the stroke, if there is any.
 
 The rest is a smooth stroke of the same `tool` and `size`, without cuts, through
-the stroke's points between its two ends. An end that is not cut is the stroke's
-own. A cut end's is found by walking in from it: starting at the cut end, step
-from point to point, adding up each step's length `|a|` in units, in the
-arithmetic of [Smooth strokes](#smooth-strokes), until the sum is at least
-`2 × size`; the point reached is that end of the rest. Points outside the two
-ends are dropped. There is no rest if a walk runs off the far end of the stroke,
-or if the two walks pass one another.
+the stroke's points between its two ends, and its steps start from its own first
+point. An end that is not cut is the stroke's own. A cut end's is found by
+walking in from it: starting at the cut end, step from point to point, adding up
+each step's length `|a|` in units, in the arithmetic of
+[Smooth strokes](#smooth-strokes), until the sum is at least `2 × size`; the
+point reached is that end of the rest. Points outside the two ends are dropped.
+There is no rest if a walk runs off the far end of the stroke, or if the two
+walks pass one another.
 
 ### Polygons
 
@@ -409,11 +429,12 @@ A reader takes these steps in order, on any PNG it is given:
 
 1. **Check the PNG's structure.** It must have PNG's signature; every chunk a
    length that fits and a type of four letters; one valid `IHDR` first, with a
-   correct CRC; `PLTE` where PNG requires it and nowhere PNG forbids it;
-   consecutive `IDAT`; an empty `IEND` last; and no critical chunk PNG does not
-   define. A PNG that fails any of this, as one cut short does, holds no symbol,
-   and nothing is read from it. An ancillary chunk a reader does not know is not
-   a failure, whatever its letters, and bytes after `IEND` are ignored.
+   correct CRC; `PLTE` where PNG requires it and nowhere PNG forbids it; at
+   least one `IDAT`, all of them consecutive; an empty `IEND` last; and no
+   critical chunk PNG does not define. A PNG that fails any of this, as one cut
+   short does, holds no symbol, and nothing is read from it. An ancillary chunk
+   a reader does not know is not a failure, whatever its letters, and bytes
+   after `IEND` are ignored.
 2. **Find the record.** With no `inKL` chunk, the PNG has no record: its image
    is all there is.
 3. **Read the version.** If any `inKL` chunk whose CRC is correct has at least
@@ -424,21 +445,24 @@ A reader takes these steps in order, on any PNG it is given:
    chunk, if the chunk has a bad CRC, holds fewer than four bytes, or has
    version 0, if the image is not 192 pixels high and at most 4096 wide, if the
    text does not decompress, does not end where the chunk ends, is longer than
-   its limit, or is not UTF-8, if it breaks [The record text](#the-record-text),
-   or if the base layer's image does not decode as PNG specifies.
+   its limit, or is not UTF-8, or if it breaks
+   [The record text](#the-record-text), which includes a base layer's image
+   data.
 
-A reader does not decode the image data, and must not treat damage to it as a
-fault in the record, whether or not that damage leaves a wrong CRC on a critical
-chunk other than `IHDR`. So a record, which has a CRC of its own, outlives an
-image that can no longer be shown, and the next edit draws one again.
+A reader does not decode the file's own image data, and must not treat damage to
+it as a fault in the record, whether or not that damage leaves a wrong CRC on a
+critical chunk other than `IHDR`. So a record, which has a CRC of its own,
+outlives an image that can no longer be shown, and the next edit draws one
+again.
 
 A PNG with no record may be opened as a picture, and saving it adds a record.
 
 A record from a later version, or an unusable one, holds something the reader
-cannot see, or may hold it: the strokes in a damaged file may yet be recovered.
-An editor must therefore not replace it. A program may still show the image, and
-an editor may offer to make a new file from the image, leaving the original as
-it is.
+cannot see, or may hold it: the strokes in a damaged file may yet be recovered,
+as may those of a file that failed step 1, since a file cut short can still hold
+its whole record. An editor must therefore not replace any of these. A program
+may still show the image, and an editor may offer to make a new file from the
+image, leaving the original as it is.
 
 ## Versions
 
@@ -450,8 +474,8 @@ any version of Inkline.
 These hold for every version of this format, now and later, so that a reader of
 any version can recognise a file of any other:
 
-- A file is a PNG whose name ends in `.ink.png`, and whose image shows the
-  symbol.
+- A file is a PNG whose name ends in `.ink.png`, in any letter case, and whose
+  image shows the symbol.
 - Its image is shown in text as [Geometry](#geometry) says, 1.5 em tall with the
   text's baseline 0.375 em above its bottom, whatever its size in pixels, as a
   program that only shows it reads no version.
@@ -520,9 +544,9 @@ distance or length can prevent it, and a limit on turns would have to be defined
 by these drawing steps.
 
 A program should expect that when it draws a file it did not make, and should
-not build every stroke's outline at once. A program may decline a record it
-judges too costly to draw. It then treats that record like an unusable one, so
-an editor must not replace it.
+not build every stroke's outline at once. A program may decline a file it judges
+too costly to read or draw. It then treats the file like one with an unusable
+record, so an editor must not replace it.
 
 A record keeps every stroke and all of the base layer, including ink that later
 strokes erased or that lies outside the image, so sharing a file can show more
@@ -553,15 +577,22 @@ pixels across at a time, so that strokes far away cost no large canvas, each
 stroke once for every such span it reaches. It then draws the image from the
 cropped record, and adjusts the crop until that drawing confirms it or four
 attempts have gone by, which keeps the last, so that opening and saving a file
-Inkline saved changes neither its record nor its pixels. A file from another
-writer takes this crop on its first save, which can change its width, and show
-ink its image had cut off. A base layer drawn smaller than its image is first
-brought down to the whole pixels it falls on, each the exact mean of the area it
-covers, as no browser's smoothing can be relied on to take in what it covers;
-this is done separately each way, and a way it is not smaller keeps its pixels.
-Strokes that leave no visible ink stay in the record. A crop wider than the
-image can be is refused, and so is one that would move a stroke past the
-coordinate limit.
+Inkline saved, in the same browser, changes neither its record nor its pixels. A
+file from another writer takes this crop on its first save, which can change its
+width, and show ink its image had cut off. A base layer drawn smaller than its
+image is first brought down to the whole pixels it falls on, each the exact mean
+of the area it covers, as no browser's smoothing can be relied on to take in
+what it covers; this is done separately each way, and a way it is not smaller
+keeps its pixels. Strokes that leave no visible ink stay in the record. A crop
+wider than the image can be is refused, and so is one that would move a stroke
+past the coordinate limit.
+
+Every save draws the whole image again, so an edit that moves the crop moves the
+strokes it left alone. Their shapes stay the same and their pixels nearly so: a
+browser's rendering of a shape depends a little on where it falls, as it works
+in 32-bit numbers and splits a curve where a canvas's edge cuts it. Most saves
+change no pixel of those strokes, and the rest change a few along their edges,
+slightly. A different browser version can change them the same way.
 
 Inkline sets no limit on how long drawing may take, and does not decline a
 record for its cost. A record built to be costly keeps the editor's window busy
@@ -573,7 +604,7 @@ safe to copy that the new image does not have, each on the side of the image
 data it was on, other than `eXIf`, which can turn an image, and chunks with a
 bad CRC. It places the ones that come before the image data after the record.
 
-Inkline reads at most 65,536 chunks from a file or a base layer's PNG. It
+Inkline declines a file or a base layer's PNG of more than 65,536 chunks. It
 ignores any `eXIf` chunk and colour chunks when it decodes an image, and bytes
 after a file's `IEND`.
 

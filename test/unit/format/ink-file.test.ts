@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { deflateSync, inflateSync } from "node:zlib";
+import { deflateRawSync, deflateSync, inflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import {
   RecordError,
@@ -29,6 +29,7 @@ import {
   blank,
   decodeRgba,
   encodePng,
+  header,
   pixelChunks,
 } from "../../support/png.ts";
 import { goldenFiles, goldenImages } from "../../fixtures/format/records.ts";
@@ -723,4 +724,93 @@ describe("carrying chunks through a save", () => {
     ]);
     expect(await readInkFile(file)).toEqual(asRead);
   });
+});
+
+describe("a base layer's image data", () => {
+  const side = 8;
+  const rowBytes = 1 + 4 * side;
+  const rows = (count: number): Uint8Array => new Uint8Array(count * rowBytes);
+
+  /** A base layer's PNG with `parts` for the data of its `IDAT` chunks. */
+  function basePng(...parts: readonly Uint8Array[]): Uint8Array {
+    return writeChunks([
+      header(side, side),
+      ...parts.map((data) => ({ type: "IDAT", data })),
+      { type: "IEND", data: new Uint8Array(0) },
+    ]);
+  }
+
+  const withBase = (png: Uint8Array): InkRecord => ({
+    strokes: [],
+    base: { x: 0, y: 0, width: 128, height: 128, png },
+  });
+
+  /** A file holding a record whose base layer is `png`. */
+  const fileWith = (png: Uint8Array): Uint8Array =>
+    withChunks([recordChunk(1, deflateSync(serializeRecord(withBase(png))))]);
+
+  const whole = deflateSync(rows(side));
+  const wrongChecksum = Uint8Array.from(whole);
+  wrongChecksum[wrongChecksum.length - 1] = (wrongChecksum.at(-1) ?? 0) ^ 0xff;
+  const withFilter = (type: number, row: number): Uint8Array => {
+    const data = rows(side);
+    data[row * rowBytes] = type;
+    return deflateSync(data);
+  };
+
+  it("is read when it is one stream of exactly the image's rows", async () => {
+    const png = basePng(whole);
+    expect(await readInkFile(fileWith(png))).toEqual({
+      kind: "record",
+      record: withBase(png),
+      width,
+    });
+  });
+
+  it("may span several chunks, and use every filter PNG defines", async () => {
+    const split = basePng(whole.subarray(0, 3), whole.subarray(3));
+    expect((await readInkFile(fileWith(split))).kind).toBe("record");
+    const data = rows(side);
+    for (let row = 0; row < side; row++) data[row * rowBytes] = row % 5;
+    const filtered = basePng(deflateSync(data));
+    expect((await readInkFile(fileWith(filtered))).kind).toBe("record");
+  });
+
+  const broken: [string, Uint8Array, string][] = [
+    ["fewer rows than its image", deflateSync(rows(4)), "stops short"],
+    ["one row too few", deflateSync(rows(7)), "stops short"],
+    ["one byte too few", deflateSync(rows(8).subarray(1)), "stops short"],
+    ["more rows than its image", deflateSync(rows(12)), "one whole stream"],
+    ["one byte too many", deflateSync(new Uint8Array(265)), "one whole stream"],
+    ["a wrong Adler-32", wrongChecksum, "one whole stream"],
+    [
+      "bytes after the stream",
+      Uint8Array.from([...whole, 0, 0, 0]),
+      "one whole stream",
+    ],
+    ["a stream cut off", whole.subarray(0, -6), "one whole stream"],
+    ["no zlib wrapper", deflateRawSync(rows(side)), "one whole stream"],
+    ["data that is not zlib", new Uint8Array(40).fill(7), "one whole stream"],
+    ["a filter type of 5", withFilter(5, 0), "undefined filter type"],
+    ["a filter type of 9 in its last row", withFilter(9, 7), "filter type"],
+  ];
+  for (const [name, data, reason] of broken) {
+    it(`makes a record unusable with ${name}`, async () => {
+      expect(await readInkFile(fileWith(basePng(data)))).toEqual({
+        kind: "pixels",
+        reason: "damaged",
+        detail: expect.stringContaining(reason) as string,
+      });
+    });
+
+    it(`is neither replaced nor written with ${name}`, async () => {
+      const png = basePng(data);
+      await expect(writeInkFile(fileWith(png), record)).rejects.toThrow(
+        "the file's record is unusable",
+      );
+      await expect(writeInkFile(image, withBase(png))).rejects.toThrow(
+        "record breaks the format",
+      );
+    });
+  }
 });

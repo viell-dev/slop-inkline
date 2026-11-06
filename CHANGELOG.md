@@ -88,6 +88,17 @@ even one a public release; earlier pre-releases carry a suffix such as
   saving it draws the image again.
 - A large picture drawn smaller keeps its thin lines when saved, whatever its
   size, as each saved pixel is now the exact mean of the pixels it covers.
+- A stroke that turns through almost exactly a right angle keeps its shape when
+  saving's crop or the arrow keys shift it. Rounding used to depend on where the
+  stroke lay, so that adding a mark elsewhere could redraw it pixels away. Such
+  a stroke in a symbol saved earlier can look different the next time it is
+  drawn.
+- A stroke that repeats a point hundreds of times keeps its end, and saving such
+  a symbol no longer cuts most of it off. Inkline does not draw such a stroke,
+  but another program could write one.
+- A symbol whose base layer has incomplete or wrong image data, which only a
+  faulty program writes, does not open in any supported Obsidian. One version
+  used to open it with the missing rows empty, and the next save kept them so.
 
 ## 0.9.1 - 2026-11-06
 
