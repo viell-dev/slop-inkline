@@ -1,8 +1,9 @@
 // Release steps that read or write the repository's files:
 //
-//   node scripts/release.ts sync              after `npm version`, copy the
-//                                             version to manifest.json and
-//                                             versions.json
+//   node scripts/release.ts sync              after `npm version`, copy a
+//                                             public version to manifest.json
+//                                             and versions.json; a pre-release
+//                                             changes neither
 //   node scripts/release.ts check <version>   fail unless <version> can be
 //                                             released from this checkout
 //   node scripts/release.ts notes <section>   print a changelog section, a

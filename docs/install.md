@@ -4,9 +4,11 @@
 
 Inkline is distributed through
 [GitHub releases](https://github.com/viell-dev/slop-inkline/releases). It is not
-in Obsidian's community plugin directory. Install the release files manually; no
-separate installer plugin is needed. If you would rather have updates arrive by
-themselves, [BRAT](#install-with-brat) is an optional alternative.
+in Obsidian's community plugin directory yet; see
+[the plan for 1.0.0](#the-community-directory). Install the release files
+manually; no separate installer plugin is needed. If you would rather have
+updates arrive by themselves, [BRAT](#install-with-brat) is an optional
+alternative.
 
 :::
 
@@ -137,6 +139,24 @@ version number if you want to decide when you update.
 BRAT never updates a version you chose. To change it, or to move between a
 version and **latest**, repeat steps 2 to 5 with your new choice, and BRAT
 installs it at once.
+
+## The community directory
+
+**Planned, not available yet.** The plan is that 1.0.0, the first public
+release, is also the first release in Obsidian's community plugin directory, so
+that you can install it under **Settings → Community plugins → Browse** and
+Obsidian offers its updates.
+
+The directory will offer public releases only, those with an even minor version.
+Pre-releases stay on the
+[releases page](https://github.com/viell-dev/slop-inkline/releases), where every
+release keeps its ZIP and loose files, and BRAT remains an optional way to
+follow them.
+
+Obsidian offers its updates to every installed plugin with a directory entry,
+however you installed it. Someone on a 0.9 pre-release will be offered 1.0.0.
+Someone on a later pre-release, such as `1.1.0`, stays on it until a public
+release is higher, such as `1.2.0`.
 
 ## Turn off or remove
 
