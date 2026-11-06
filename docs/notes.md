@@ -132,6 +132,13 @@ by folder, the top folder first, then by name, with numbers in order.
   link settings. Esc or **Cancel** keeps the old name. An empty name also keeps
   the old name. The same name rules apply as in the drawing editor.
 
+**Unreleased:** a row keeps its picture, name, and buttons on one line in the
+default sidebar. A long name wraps onto a second line and then shortens, and a
+long folder shortens, rather than running off the sidebar. Hold the pointer over
+the symbol for its whole name and folder. **Rename** also shows the whole name,
+without the pointer. In a sidebar narrower than about 275 pixels, the buttons
+drop below the name.
+
 If a name is refused or a rename fails, the entered name stays for correction or
 retry. Save or cancel it before filtering again; the list then catches up with
 any files and links that changed while you typed. Renaming changes the file's

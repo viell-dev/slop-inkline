@@ -36,17 +36,48 @@ const inFolders: readonly Sample[] = [
 
 const symbols = [...narrow, surface, wider, ...inFolders];
 
+/** A name that shares the line with a row's buttons in the default sidebar. */
+const midLength = "past tense";
+
+const long =
+  "a name long enough to go on past the end of the list and wrap onto a line of its own there";
+
+/** As long, with nowhere to wrap but inside the word. */
+const unbroken = "x".repeat(90);
+
+/** A folder too long for the row, and the name of the symbol in it. */
+const deepFolder = "Glyphs/Deep/Deeper/Deepest/Deeper still/Deepest of all";
+const deepName = "deep down";
+
+/** Rows that ask the most of the library's, beside those of `symbols`. */
+const demanding: readonly Sample[] = [
+  [`${midLength}.ink.png`, [400, 1600]],
+  [`${long}.ink.png`, [400, 4000, 8600]],
+  [`${unbroken}.ink.png`, [400]],
+  [`${deepFolder}/${deepName}.ink.png`, [400, 4000, 8600]],
+];
+
+/** Obsidian's default for a sidebar, and the narrowest it can be dragged to. */
+const defaultSidebar = 300;
+const narrowestSidebar = 200;
+
+/** How much narrower the library's list is than its sidebar. */
+const sidebarPadding = 24;
+
 /** A list of symbols, and how to show it. */
 interface List {
   readonly name: string;
   /** The list's rows. */
   readonly rows: string;
+  /** What holds them, which must not scroll sideways. */
+  readonly holder: string;
   readonly open: () => Promise<void>;
 }
 
 const insertExisting: List = {
   name: "Insert existing symbol",
   rows: ".prompt .suggestion-item",
+  holder: ".prompt-results",
   open: async () => {
     await openAtMarker("List.md", "HERE");
     await browser.executeObsidianCommand("inkline:insert-existing-symbol");
@@ -56,6 +87,7 @@ const insertExisting: List = {
 const library: List = {
   name: "the library",
   rows: ".inkline-library-symbol",
+  holder: ".inkline-library-list",
   open: async () => {
     await browser.executeObsidianCommand("inkline:show-library");
   },
@@ -65,6 +97,7 @@ const lists: readonly List[] = [
   {
     name: "the ;; list",
     rows: ".suggestion-container .suggestion-item",
+    holder: ".suggestion-container",
     open: async () => {
       await openAtMarker("List.md", "HERE");
       await browser.keys([";"]);
@@ -75,6 +108,7 @@ const lists: readonly List[] = [
   {
     name: "Copy from",
     rows: ".prompt .suggestion-item",
+    holder: ".prompt-results",
     open: async () => {
       await openAtMarker("List.md", "HERE");
       await browser.executeObsidianCommand("inkline:insert-symbol");
@@ -183,6 +217,162 @@ function expectLinedUp(rows: readonly Row[], count: number): void {
       expect(Math.abs(row.folderLeft - row.nameLeft)).toBeLessThan(0.5);
     }
   }
+}
+
+/** Sets the right sidebar's width, as dragging its edge does. */
+async function useSidebar(width: number): Promise<void> {
+  await browser.executeObsidian(({ app }, size) => {
+    const sidebar = app.workspace.rightSplit;
+    const setSize: unknown = Reflect.get(sidebar, "setSize");
+    if (typeof setSize !== "function") throw new Error("no sidebar size");
+    Reflect.apply(setSize, sidebar, [size]);
+  }, width);
+}
+
+/** How wide `selector` is, and how far what it holds reaches. */
+async function widthsOf(
+  selector: string,
+): Promise<{ client: number; scroll: number }> {
+  return browser.execute((holder) => {
+    const found = activeDocument.querySelector(holder);
+    if (found === null) throw new Error(`no ${holder}`);
+    return { client: found.clientWidth, scroll: found.scrollWidth };
+  }, selector);
+}
+
+/** Sets the sidebar's width, and waits for the library's list to take it. */
+async function resizeLibrary(width: number): Promise<void> {
+  await useSidebar(width);
+  await browser.waitUntil(
+    async () =>
+      (await widthsOf(library.holder)).client === width - sidebarPadding,
+  );
+}
+
+/** An element's edges, in pixels. */
+interface Box {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+/** Where a row of the library puts its parts. */
+interface LibraryRow {
+  name: string;
+  /** Whether part of its name or folder is out of sight. */
+  shortened: boolean;
+  insert: Box;
+  label: Box;
+  uses: Box;
+  rename: Box;
+}
+
+/** The library as it sits in its sidebar. */
+interface Library {
+  list: Box;
+  /** The widths of the list and the view around it, and what they hold. */
+  listWidth: { client: number; scroll: number };
+  viewWidth: { client: number; scroll: number };
+  /** Whether the view scrolls down, and so shows a scroll bar. */
+  scrolls: boolean;
+  rows: LibraryRow[];
+}
+
+/** Measures the library as it shows now. */
+async function measureLibrary(): Promise<Library> {
+  return browser.execute(() => {
+    const required = (element: Element | null, what: string): Element => {
+      if (element === null) throw new Error(`no ${what}`);
+      return element;
+    };
+    const edges = (element: Element): Box => {
+      const { left, right, top, bottom } = element.getBoundingClientRect();
+      return { left, right, top, bottom };
+    };
+    const list = required(
+      activeDocument.querySelector(".inkline-library-list"),
+      "list",
+    );
+    const view = required(
+      activeDocument.querySelector(".inkline-library"),
+      "view",
+    );
+    return {
+      list: edges(list),
+      listWidth: { client: list.clientWidth, scroll: list.scrollWidth },
+      viewWidth: { client: view.clientWidth, scroll: view.scrollWidth },
+      scrolls: view.scrollHeight > view.clientHeight,
+      rows: Array.from(list.querySelectorAll(".inkline-library-symbol")).map(
+        (row) => {
+          const part = (selector: string) =>
+            required(row.querySelector(selector), selector);
+          const label = part(".inkline-library-name");
+          const folder = row.querySelector(".inkline-library-folder-name");
+          return {
+            name: label.textContent,
+            shortened: [label, folder].some(
+              (text) =>
+                text !== null &&
+                (text.scrollHeight > text.clientHeight ||
+                  text.scrollWidth > text.clientWidth),
+            ),
+            insert: edges(part(".inkline-library-insert")),
+            label: edges(label),
+            uses: edges(part(".inkline-library-uses")),
+            rename: edges(part(".inkline-library-rename")),
+          };
+        },
+      ),
+    };
+  });
+}
+
+/** Checks that nothing in the library runs off it or scrolls it sideways. */
+function expectInsideSidebar(shown: Library): void {
+  expect(shown.listWidth.scroll).toBeLessThanOrEqual(shown.listWidth.client);
+  expect(shown.viewWidth.scroll).toBeLessThanOrEqual(shown.viewWidth.client);
+  for (const row of shown.rows) {
+    expect(row.label.right).toBeLessThanOrEqual(row.insert.right + 0.5);
+    expect(row.insert.right).toBeLessThanOrEqual(shown.list.right + 0.5);
+    expect(row.rename.right).toBeLessThanOrEqual(shown.list.right + 0.5);
+  }
+}
+
+/** Checks that both of a row's buttons follow its name, on the name's line. */
+function expectOneLine(row: LibraryRow): void {
+  for (const button of [row.uses, row.rename]) {
+    expect(button.left).toBeGreaterThanOrEqual(row.insert.right);
+    expect(button.top).toBeLessThan(row.label.bottom);
+    expect(button.bottom).toBeGreaterThan(row.label.top);
+  }
+}
+
+/** The library's row for the symbol at `path`. */
+function libraryRow(path: string): ReturnType<typeof browser.$> {
+  return browser.$(`.inkline-library-symbol[data-inkline-path="${path}"]`);
+}
+
+/** Holds the pointer over a row's symbol until `wanted` shows as a tooltip. */
+async function tooltipOver(path: string, wanted: string): Promise<Box> {
+  await libraryRow(path).$(".inkline-library-insert").moveTo();
+  let shown = "";
+  try {
+    await browser.waitUntil(async () => {
+      shown = await browser.execute(
+        () => activeDocument.querySelector(".tooltip")?.textContent ?? "",
+      );
+      return shown === wanted;
+    });
+  } catch (error) {
+    throw new Error(`the tooltip reads ${shown}`, { cause: error });
+  }
+  return browser.execute(() => {
+    const tooltip = activeDocument.querySelector(".tooltip");
+    if (tooltip === null) throw new Error("no tooltip");
+    const { left, right, top, bottom } = tooltip.getBoundingClientRect();
+    return { left, right, top, bottom };
+  });
 }
 
 /** What shows of a symbol, in pixels, read from a screenshot of its image. */
@@ -332,6 +522,7 @@ describe("Lists of symbols", function () {
 
   afterEach(async function () {
     await useTheme("moonstone");
+    await useSidebar(defaultSidebar);
     await browser.execute(() => {
       const root = document.documentElement;
       root.removeClass("inkline-stored-color");
@@ -426,17 +617,227 @@ describe("Lists of symbols", function () {
     }
   });
 
-  it("keep names in line beside a very long one", async function () {
-    const long =
-      "a name long enough to go on past the end of the list and wrap onto a line of its own there";
-    await createSymbol(`${long}.ink.png`, [400, 4000, 8600]);
-    for (const list of [insertExisting, library]) {
+  for (const list of lists) {
+    it(`keep names in line beside a very long one in ${list.name}`, async function () {
+      await createSymbol(`${long}.ink.png`, [400, 4000, 8600]);
       await list.open();
       await waitForRows(list.rows, symbols.length + 1);
       expectLinedUp(await rowsOf(list.rows), symbols.length + 1);
+      const { client, scroll } = await widthsOf(list.holder);
+      expect(scroll).toBeLessThanOrEqual(client);
       await saveScreenshot(`symbol-list-long-name-${list.name}`);
-      await browser.keys(["Escape"]);
-      await browser.$(".prompt").waitForExist({ reverse: true });
+    });
+  }
+
+  describe("in the library's sidebar", function () {
+    const count = symbols.length + demanding.length;
+
+    beforeEach(async function () {
+      for (const [path, xs] of demanding) await createSymbol(path, xs);
+    });
+
+    for (const theme of themes) {
+      it(`keep each row on one line by default, in the ${theme} theme`, async function () {
+        await useTheme(theme);
+        await library.open();
+        await waitForRows(library.rows, count);
+        const shown = await measureLibrary();
+        expectInsideSidebar(shown);
+        expectLinedUp(await rowsOf(library.rows), count);
+        for (const row of shown.rows) expectOneLine(row);
+        await expectWhole(library.rows, surface);
+        await expectWhole(library.rows, wider);
+        await saveScreenshot(`symbol-library-rows-${theme}`);
+      });
     }
+
+    it("show a mid-length name whole, on its buttons' line", async function () {
+      await library.open();
+      await waitForRows(library.rows, count);
+      const { rows } = await measureLibrary();
+      const row = rows.find(({ name }) => name === midLength);
+      const dot = rows.find(({ name }) => name === "dot");
+      if (row === undefined || dot === undefined) throw new Error("no row");
+      expectOneLine(row);
+      expect(row.shortened).toBe(false);
+      // One line of text, as tall as the shortest name's.
+      expect(row.label.bottom - row.label.top).toBe(
+        dot.label.bottom - dot.label.top,
+      );
+    });
+
+    it("line up the rows' buttons, whatever their text", async function () {
+      await browser.executeObsidian(async ({ app }) => {
+        await app.vault.create("Uses.md", "![[dot.ink.png]]\n");
+      });
+      await library.open();
+      await waitForRows(library.rows, count);
+      await browser.waitUntil(
+        async () =>
+          (await libraryRow("dot.ink.png")
+            .$(".inkline-library-uses")
+            .getText()) === "1 note",
+      );
+      const { rows } = await measureLibrary();
+      expect(spread(rows.map(({ uses }) => uses.left))).toBeLessThan(0.5);
+      expect(spread(rows.map(({ rename }) => rename.left))).toBeLessThan(0.5);
+      expect(spread(rows.map(({ insert }) => insert.right))).toBeLessThan(0.5);
+    });
+
+    it("keep rows on one line beside a scroll bar", async function () {
+      await browser.executeObsidian(async ({ app }) => {
+        const dot = app.vault.getFileByPath("dot.ink.png");
+        if (dot === null) throw new Error("no dot");
+        const bytes = await app.vault.readBinary(dot);
+        for (let copy = 0; copy < 30; copy++) {
+          await app.vault.createBinary(`copy ${String(copy)}.ink.png`, bytes);
+        }
+      });
+      await library.open();
+      await waitForRows(library.rows, count + 30);
+      const shown = await measureLibrary();
+      expect(shown.scrolls).toBe(true);
+      expect(shown.listWidth.client).toBeLessThan(
+        defaultSidebar - sidebarPadding,
+      );
+      expectInsideSidebar(shown);
+      for (const row of shown.rows) expectOneLine(row);
+      await saveScreenshot("symbol-library-rows-scroll-bar");
+    });
+
+    for (const width of [narrowestSidebar, 260]) {
+      it(`drop a row's buttons together in a sidebar ${String(width)} pixels wide`, async function () {
+        await library.open();
+        await waitForRows(library.rows, count);
+        await resizeLibrary(width);
+        const shown = await measureLibrary();
+        expectInsideSidebar(shown);
+        expectLinedUp(await rowsOf(library.rows), count);
+        for (const row of shown.rows) {
+          // Side by side on the row's next line, at the row's end.
+          expect(row.uses.top).toBeGreaterThanOrEqual(row.insert.bottom);
+          expect(row.rename.top).toBe(row.uses.top);
+          expect(row.rename.left).toBeGreaterThanOrEqual(row.uses.right);
+          expect(Math.abs(row.rename.right - shown.list.right)).toBeLessThan(
+            0.5,
+          );
+        }
+        await saveScreenshot(`symbol-library-rows-${String(width)}`);
+      });
+    }
+
+    it("give a wide sidebar's room to the names", async function () {
+      await library.open();
+      await waitForRows(library.rows, count);
+      const widest = ({ rows }: Library) =>
+        Math.max(...rows.map(({ label }) => label.right - label.left));
+      const before = widest(await measureLibrary());
+      await resizeLibrary(450);
+      const shown = await measureLibrary();
+      expectInsideSidebar(shown);
+      expectLinedUp(await rowsOf(library.rows), count);
+      for (const row of shown.rows) expectOneLine(row);
+      expect(widest(shown)).toBeGreaterThan(before + 100);
+      await saveScreenshot("symbol-library-rows-wide");
+    });
+
+    it("keep the whole of a shortened name and folder in a tooltip", async function () {
+      await library.open();
+      await waitForRows(library.rows, count);
+      const { rows } = await measureLibrary();
+      expect(
+        rows
+          .filter(({ shortened }) => shortened)
+          .map(({ name }) => name)
+          .sort(),
+      ).toEqual([deepName, long, unbroken].sort());
+      // A long name wraps onto a second line before it shortens.
+      const height = (wanted: string): number => {
+        const row = rows.find(({ name }) => name === wanted);
+        if (row === undefined) throw new Error(`no ${wanted}`);
+        return row.label.bottom - row.label.top;
+      };
+      expect(height(long)).toBe(2 * height("dot"));
+      expect(height(unbroken)).toBe(2 * height("dot"));
+      const width = await browser.execute(() => activeWindow.innerWidth);
+      for (const [path, tooltip] of [
+        [`${long}.ink.png`, long],
+        [`${unbroken}.ink.png`, unbroken],
+        [`${deepFolder}/${deepName}.ink.png`, `${deepFolder}/${deepName}`],
+      ] as const) {
+        const box = await tooltipOver(path, tooltip);
+        expect(box.left).toBeGreaterThanOrEqual(0);
+        expect(box.right).toBeLessThanOrEqual(width);
+      }
+      await saveScreenshot("symbol-library-rows-tooltip");
+      // A screen reader has the whole of it too.
+      expect(
+        await libraryRow(`${long}.ink.png`)
+          .$(".inkline-library-insert")
+          .getAttribute("aria-label"),
+      ).toBe(long);
+    });
+
+    it("keep a long-named row's buttons, the filter and renaming working", async function () {
+      const path = `${long}.ink.png`;
+      const noteName = "y".repeat(90);
+      await browser.executeObsidian(
+        async ({ app }, symbol, note) => {
+          await app.vault.create(`${note}.md`, `![[${symbol}]]\n`);
+        },
+        path,
+        noteName,
+      );
+      await openAtMarker("List.md", "HERE");
+      await library.open();
+      await waitForRows(library.rows, count);
+      const row = libraryRow(path);
+      const uses = row.$(".inkline-library-uses");
+      await browser.waitUntil(async () => (await uses.getText()) === "1 note");
+
+      // The row's symbol inserts it, under its whole name.
+      await row.$(".inkline-library-insert").click();
+      await browser.waitUntil(async () =>
+        browser.executeObsidian(
+          ({ app, obsidian }, name) =>
+            app.workspace
+              .getLeavesOfType("markdown")
+              .some(
+                ({ view }) =>
+                  view instanceof obsidian.MarkdownView &&
+                  view.editor.getValue().includes(name),
+              ),
+          long,
+        ),
+      );
+
+      // Its count lists its note, whose unbroken name stays in the sidebar.
+      await uses.click();
+      const note = libraryRow(path).$(".inkline-library-note");
+      await note.waitForExist();
+      expect(await note.getProperty("textContent")).toBe(noteName);
+      expectInsideSidebar(await measureLibrary());
+      await saveScreenshot("symbol-library-rows-notes");
+
+      // The filter finds it by words that the row has shortened away.
+      const search = browser.$(".inkline-library-search");
+      await search.setValue("of its own there");
+      await browser.waitUntil(
+        async () => (await measureLibrary()).rows.length === 1,
+      );
+
+      // Rename shows the whole name, and renames it.
+      await libraryRow(path).$(".inkline-library-rename").click();
+      const field = browser.$(".inkline-library-rename-form input");
+      await field.waitForDisplayed();
+      expect(await field.getValue()).toBe(long);
+      await field.setValue("shorter now");
+      await browser.keys(["Enter"]);
+      await browser.$("button=Just once").click();
+      await browser.waitUntil(async () => search.isEnabled());
+      await search.setValue("shorter");
+      await libraryRow("shorter now.ink.png").waitForExist();
+      expect(await libraryRow(path).isExisting()).toBe(false);
+    });
   });
 });
