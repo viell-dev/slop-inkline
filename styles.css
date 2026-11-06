@@ -279,6 +279,12 @@ img.inkline-symbol:not([width], [height]) {
   height: calc(1.5em * var(--inkline-scale, 1));
 }
 
+/* A name with no spaces breaks too, rather than widen the list. */
+.inkline-suggestion-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .inkline-suggestion-folder {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
@@ -310,15 +316,22 @@ img.inkline-symbol:not([width], [height]) {
   min-width: 0;
 }
 
+/*
+ * A row: the button with its picture and name, then the others, on one line.
+ * That button takes what they leave, and it asks the line for the picture and
+ * a few words of name, however long the name is, so that the name wraps in its
+ * cell rather than pushing them down. They drop together, to the row's end,
+ * only in a sidebar too narrow for that much.
+ */
 .inkline-library-symbol {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--size-4-1) var(--size-4-2);
+  gap: var(--size-4-1);
 }
 
 .inkline-library-insert {
-  flex: 1 1 auto;
+  flex: 1 1 10em;
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -341,30 +354,62 @@ img.inkline-symbol:not([width], [height]) {
   height: 2em;
 }
 
+/* Obsidian's buttons keep their text on one line, which this one must not. */
 .inkline-library-text {
   min-width: 0;
   overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+/*
+ * Two lines of name and one of folder at most, so that a long one leaves the
+ * row about as tall as its neighbours. The row's tooltip has the whole of it.
+ */
+.inkline-library-name,
+.inkline-library-folder-name {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .inkline-library-folder-name {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
+  -webkit-line-clamp: 1;
 }
 
+.inkline-library-actions {
+  flex: none;
+  display: flex;
+  gap: var(--size-4-1);
+  margin-inline-start: auto;
+}
+
+/*
+ * Narrower than Obsidian's own padding, to leave the name room. The count is
+ * as wide as its longest usual text, so that every row's name has the same
+ * room, and every row's buttons drop at the same width.
+ */
 .inkline-library-uses,
 .inkline-library-rename {
-  flex: none;
   height: auto;
+  padding-inline: var(--size-4-1);
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   background: none;
   box-shadow: none;
 }
 
+.inkline-library-uses {
+  min-width: 5.5em;
+}
+
 .inkline-library-notes {
   flex-basis: 100%;
   margin: 0;
   padding-inline-start: var(--size-4-8);
+  overflow-wrap: anywhere;
   list-style: none;
 }
 

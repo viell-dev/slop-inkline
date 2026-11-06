@@ -228,6 +228,14 @@ must keep released files readable and looking the same, as
   a picture that will not load. A symbol as wide as the editor's surface, or
   wider, shows whole and in proportion, in the text colour and its stored colour
   ([symbol-lists.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-lists.e2e.ts)).
+- **Unreleased:** in the library, in both themes, the list never scrolls
+  sideways, in a sidebar from the narrowest Obsidian allows to a wide one, with
+  90-character names with and without spaces, a deep folder, and wide symbols.
+  In the default sidebar every row keeps its name and buttons on one line, even
+  beside a scroll bar, and a mid-length name shows whole. A shortened name and
+  folder are whole in a tooltip, and a long-named row's buttons, the filter, and
+  renaming work
+  ([symbol-lists.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-lists.e2e.ts)).
 - Renaming in a library row: links follow, PNG bytes stay identical, names in
   other scripts work, errors keep the entered name for retry, a deleted and
   replaced file is refused, and repeated submission starts only one rename

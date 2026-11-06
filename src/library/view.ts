@@ -11,6 +11,7 @@ import {
   Keymap,
   MarkdownView,
   Notice,
+  setTooltip,
   type TAbstractFile,
   type TFile,
   type Vault,
@@ -309,6 +310,11 @@ export class SymbolLibraryView extends ItemView {
         text: entry.folder,
       });
     }
+    // The row can shorten a long name or folder: this has the whole of both.
+    setTooltip(
+      insert,
+      entry.folder === "" ? entry.name : `${entry.folder}/${entry.name}`,
+    );
     insert.addEventListener("click", () => {
       this.#insert(file);
     });
@@ -327,7 +333,8 @@ export class SymbolLibraryView extends ItemView {
       showLinkMenu(this.app, file, this.leaf, event);
     });
     const expanded = this.#expanded.has(entry.path);
-    const uses = row.createEl("button", {
+    const actions = row.createDiv({ cls: "inkline-library-actions" });
+    const uses = actions.createEl("button", {
       cls: "inkline-library-uses",
       text: usesLabel(entry.notes.length),
       attr: {
@@ -335,7 +342,7 @@ export class SymbolLibraryView extends ItemView {
         "aria-expanded": String(expanded && entry.notes.length > 0),
       },
     });
-    const rename = row.createEl("button", {
+    const rename = actions.createEl("button", {
       cls: "inkline-library-rename",
       text: "Rename",
       attr: {
