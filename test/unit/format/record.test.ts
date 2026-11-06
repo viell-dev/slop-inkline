@@ -336,6 +336,26 @@ describe("parseRecord refuses", () => {
       "base.png is not base64",
     ],
     [
+      "base64 with a padding bit set before two equals signs",
+      variant(["base", "png"], "QR=="),
+      "base.png has padding bits set",
+    ],
+    [
+      "base64 with a padding bit set before one equals sign",
+      variant(["base", "png"], "QUF="),
+      "base.png has padding bits set",
+    ],
+    [
+      "base64 without its padding bits set, which is not a PNG either",
+      variant(["base", "png"], "QQ=="),
+      "base.png is not a valid PNG: not a PNG file",
+    ],
+    [
+      "the same before one equals sign",
+      variant(["base", "png"], "QUE="),
+      "base.png is not a valid PNG: not a PNG file",
+    ],
+    [
       "a base that is not an object",
       variant(["base"], "png"),
       "base is not an object",
@@ -422,6 +442,20 @@ describe("parseRecord holds the text to the format's own JSON", () => {
     expect(invalid(parseRecord('{"strokes":[],"x":{"a":1,"a":2}}'))).toContain(
       '"a"',
     );
+  });
+
+  it("refuses half of a surrogate pair, in a name or a value", () => {
+    for (const text of [
+      '{"strokes":[],"extra":"\\ud83d"}',
+      '{"strokes":[],"extra":"a\\ude00b"}',
+      '{"strokes":[],"\\ud83d":1}',
+    ]) {
+      expect(invalid(parseRecord(text))).toBe("a string is not valid Unicode");
+    }
+    expect(parseRecord('{"strokes":[],"extra":"\\ud83d\\ude00"}').ok).toBe(
+      true,
+    );
+    expect(parseRecord('{"strokes":[],"extra":"😀"}').ok).toBe(true);
   });
 
   it("compares names as they decode, however they are spelled", () => {

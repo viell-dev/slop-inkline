@@ -169,11 +169,21 @@ describe("readChunks and ancillary chunks", () => {
     expect(chunks.every((chunk) => chunk.damaged === undefined)).toBe(true);
   });
 
-  it("refuses a damaged critical chunk", () => {
+  it("marks damaged image data, for decoding to find out what it did", () => {
     const png = writeChunks([ihdr, idat, iend]);
     // The first byte of the image data.
     png[8 + 25 + 8] = (png[8 + 25 + 8] ?? 0) ^ 1;
-    expect(() => readChunks(png)).toThrow("bad CRC in IDAT chunk");
+    expect(readChunks(png).map((chunk) => chunk.damaged)).toEqual([
+      undefined,
+      true,
+      undefined,
+    ]);
+  });
+
+  it("marks a wrong CRC on IEND", () => {
+    const png = writeChunks([ihdr, idat, iend]);
+    png[png.length - 1] = (png[png.length - 1] ?? 0) ^ 1;
+    expect(readChunks(png).at(-1)?.damaged).toBe(true);
   });
 
   it("refuses a critical chunk PNG does not define, with a good CRC", () => {

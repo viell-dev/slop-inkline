@@ -29,10 +29,12 @@ import {
 import { crop, lineBox, type Bounds } from "./geometry.ts";
 import { strokeBounds } from "./outline.ts";
 import {
+  baseIsReduced,
   greyInk,
   inkAlpha,
   inkBounds,
   inkPixels,
+  reduceBaseAlpha,
   type RgbaPixels,
   type TracedInk,
 } from "./pixels.ts";
@@ -301,30 +303,36 @@ function placedBase(
 }
 
 /**
- * A base layer for drawing into a saved image: its image halved until it is at
- * most twice the size it is drawn at, so that the final draw takes in every
- * source pixel, as the format requires, whatever a browser's smoothing does.
- * Chromium's own does not always: reducing five times, 120's "high" samples a
- * few pixels and misses most of a thin line, where 150's averages them.
+ * A base layer for drawing into a saved image: where it is drawn smaller than
+ * its image, that image brought down to the pixels it falls on, so that each
+ * takes in every source pixel it covers, as the format requires. A browser's
+ * smoothing does not: Chromium 120's "high" misses most of a thin line reduced
+ * five times, and bilinear halving leaves out pixels at an odd size. The
+ * layer's place grows to whole pixels, where a draw copies them as they are,
+ * and it stays right through a move by whole pixels, as saving's crop is.
  */
 export function reducedBase(base: DrawableBase): DrawableBase {
-  const most = (drawn: number): number => (2 * drawn) / unitsPerPixel;
-  let { image } = base;
-  for (;;) {
-    const halved = (size: number, drawn: number): number =>
-      size > most(drawn) ? Math.ceil(size / 2) : size;
-    const width = halved(image.width, base.width);
-    const height = halved(image.height, base.height);
-    if (width === image.width && height === image.height) {
-      return { ...base, image };
-    }
-    const { surface, context } = canvas(width, height);
-    // Plain bilinear: at half the size, each pixel is the mean of those four.
-    context.imageSmoothingEnabled = true;
-    context.imageSmoothingQuality = "low";
-    context.drawImage(image, 0, 0, width, height);
-    image = surface;
-  }
+  const { image, x, y, width, height } = base;
+  const across = { size: image.width, start: x, length: width };
+  const down = { size: image.height, start: y, length: height };
+  if (!baseIsReduced(across, down)) return base;
+  const reduced = reduceBaseAlpha(readPixels(image), across, down);
+  const { surface, context } = canvas(reduced.width, reduced.height);
+  context.putImageData(
+    new ImageData(
+      inkPixels(reduced.width, reduced.height, reduced.alpha),
+      reduced.width,
+    ),
+    0,
+    0,
+  );
+  return {
+    x: reduced.across.start,
+    y: reduced.down.start,
+    width: reduced.across.length,
+    height: reduced.down.length,
+    image: surface,
+  };
 }
 
 /** Whether a vertical span in pixels reaches into the line box. */
@@ -525,7 +533,10 @@ export async function saveInk(
         "a stroke lies so far from the ink that cropping would move it past the format's coordinate limit",
       );
     }
-    const placed = placedBase(reduced, record.base);
+    const placed =
+      reduced === undefined
+        ? undefined
+        : { ...reduced, x: reduced.x - left * unitsPerPixel };
     const { surface, context } = canvas(width + cropMargin, lineBox.height);
     drawInk(context, record.strokes, placed, 0);
     const next = crop(

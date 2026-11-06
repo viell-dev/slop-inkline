@@ -14,6 +14,8 @@ import {
 } from "obsidian";
 import { inkExtension, type CarriedChunk } from "../format/ink-file.ts";
 import {
+  parseRecord,
+  serializeRecord,
   unitsPerPixel,
   type BaseLayer,
   type InkRecord,
@@ -2477,7 +2479,9 @@ export class InkEditorModal extends Modal {
     if (!kept && this.#draftKept) {
       this.#announce("Draft not kept");
       new Notice(
-        "Inkline could not keep a draft of the latest changes, because the vault's local storage refused it. Save the symbol to keep them.",
+        parseRecord(serializeRecord(document)).ok
+          ? "Inkline could not keep a draft of the latest changes, because the vault's local storage refused it. Save the symbol to keep them."
+          : "Inkline could not keep a draft of the latest changes, because they take the drawing past what a symbol can hold. Undo them to save it.",
       );
     } else if (
       kept &&

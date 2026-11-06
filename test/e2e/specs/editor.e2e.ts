@@ -2166,6 +2166,24 @@ describe("The editor", function () {
     expect(await browser.$(".inkline-status").getText()).toBe("Draft kept");
   });
 
+  it("says when a drawing has gone past what a symbol can hold", async function () {
+    await browser.executeObsidian(async ({ app }) => {
+      const { canvas } = window.inklineTest;
+      // As many points as a symbol can hold, all in one dot.
+      const points = new Array<number>(500_000).fill(800);
+      const saved = await canvas.saveInk(
+        { strokes: [{ tool: "pen", size: 96, points }] },
+        undefined,
+      );
+      await app.vault.createBinary("full.ink.png", saved.bytes.slice().buffer);
+    });
+    await editFile("full.ink.png");
+    await draw(zigzag);
+    await browser.$(".notice*=past what a symbol can hold").waitForExist();
+    expect(await browser.$(".inkline-status").getText()).toBe("Draft not kept");
+    expect(await storedDrafts()).toEqual([]);
+  });
+
   it("keeps an offered draft when the restored drawing's own cannot be kept", async function () {
     await insert();
     await draw(zigzag);

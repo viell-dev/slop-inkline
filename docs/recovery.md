@@ -103,7 +103,10 @@ elsewhere, by sync, another app, or another editor, is not lost to a save:
   file as it is.
 - **A file that changed on disk to something this version cannot read** is never
   saved over: the editor says so, and keeps your drawing open.
-- **A file that is not a valid PNG** does not open, and a notice says why.
+- **A file that is not a valid PNG**, as one cut short by a failed copy, does
+  not open, and a notice says why.
+- **Unreleased:** a symbol whose image is damaged, but whose strokes are whole,
+  opens as usual, and saving it draws the image again.
 
 ## Pictures without strokes
 

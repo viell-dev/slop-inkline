@@ -19,16 +19,22 @@ export const unitsPerPixel = 16;
 /** The height of every symbol's image, in pixels. */
 export const imageHeight = 192;
 
-/** Limits that keep a crafted file from exhausting memory or time. */
+/**
+ * Limits that bound what a crafted file can make a reader hold in memory. They
+ * do not bound how long drawing it takes: see the format's security
+ * considerations.
+ */
 export const limits = {
   /** The widest image, in pixels. */
   width: 4096,
   strokes: 10_000,
   /**
-   * Points across all strokes. This is what bounds the work of drawing a
-   * record, as a smooth stroke that doubles back at every point has 28 corners
-   * of outline for each one, from a few kilobytes of compressed text. It is
-   * still minutes of unbroken drawing at the fastest pointers' rate.
+   * Points across all strokes. This bounds the size of the outlines a record
+   * asks for, as a smooth stroke that doubles back at every point has 28
+   * corners of outline for each one, from a few kilobytes of compressed text.
+   * It does not bound the time to fill them, which can grow with the square of
+   * a stroke's points. It is still minutes of unbroken drawing at the fastest
+   * pointers' rate.
    */
   points: 250_000,
   /** Largest absolute coordinate, in units. */
@@ -216,6 +222,10 @@ function fromBase64(text: string, name: string): Uint8Array {
   if (!/^[A-Za-z0-9+/]*={0,2}$/.test(text) || text.length % 4 !== 0) {
     fail(`${name} is not base64`);
   }
+  // The bits padding leaves over are zero, so that bytes have one spelling.
+  if (/(?:[^AQgw]==|[^AEIMQUYcgkosw048=]=)$/.test(text.slice(-3))) {
+    fail(`${name} has padding bits set`);
+  }
   const binary = atob(text);
   return Uint8Array.from(binary, (char) => char.charCodeAt(0));
 }
@@ -253,6 +263,8 @@ function checkBasePng(png: Uint8Array): void {
   }
   const other = chunks.find((chunk) => !baseChunks.has(chunk.type));
   if (other !== undefined) fail(`base.png holds a ${other.type} chunk`);
+  const wrong = chunks.find((chunk) => chunk.damaged === true);
+  if (wrong !== undefined) fail(`base.png has a bad CRC in ${wrong.type}`);
   // Bytes after `IEND` would otherwise ride along in the record for ever.
   const end = chunks.reduce(
     (total, chunk) => total + 12 + chunk.data.length,
@@ -375,8 +387,8 @@ function integerEnd(text: string, start: number): number {
   return end;
 }
 
-/** An object member's name, from its JSON string with its escapes. */
-function decodedName(raw: string): string {
+/** A JSON string's text, with its escapes decoded. */
+function decodedString(raw: string): string {
   try {
     return JSON.parse(raw) as string;
   } catch {
@@ -388,9 +400,9 @@ function decodedName(raw: string): string {
  * Checks what the format asks of the record's text beyond JSON, which parsing
  * it would not show or would let a crafted file get past: that objects and
  * arrays nest no deeper than the limit, that no object repeats a name, however
- * it is spelled, and that every number is an integer in plain digits that any
- * reader can hold exactly. Anything else wrong with the text is left for the
- * parser to find.
+ * it is spelled, that no string holds half of a surrogate pair, and that every
+ * number is an integer in plain digits that any reader can hold exactly.
+ * Anything else wrong with the text is left for the parser to find.
  */
 function checkText(text: string): void {
   /** An object's names so far, or undefined for an array, for each one open. */
@@ -399,14 +411,16 @@ function checkText(text: string): void {
     const char = text[at];
     if (char === '"') {
       const end = stringEnd(text, at);
+      const raw = text.slice(at, end + 1);
+      const value = raw.includes("\\") ? decodedString(raw) : raw.slice(1, -1);
+      // With the `u` flag, a pair is one character, which this does not match.
+      if (/[\uD800-\uDFFF]/u.test(value)) fail("a string is not valid Unicode");
       const names = open.at(-1);
       let next = end + 1;
       while (isSpace(text.charCodeAt(next))) next++;
       if (names !== undefined && text[next] === ":") {
-        const raw = text.slice(at, end + 1);
-        const name = raw.includes("\\") ? decodedName(raw) : raw.slice(1, -1);
-        if (names.has(name)) fail(`the name ${raw} is repeated`);
-        names.add(name);
+        if (names.has(value)) fail(`the name ${raw} is repeated`);
+        names.add(value);
       }
       at = end;
     } else if (char === "{" || char === "[") {

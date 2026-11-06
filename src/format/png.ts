@@ -10,8 +10,8 @@ export interface Chunk {
   readonly type: string;
   readonly data: Uint8Array;
   /**
-   * Set on an ancillary chunk whose CRC is wrong, which PNG lets a reader pass
-   * over: what it holds cannot be trusted.
+   * Set on a chunk whose CRC is wrong: what it holds cannot be trusted. Only
+   * `IHDR`, which a reader depends on, is refused for that.
    */
   readonly damaged?: true;
 }
@@ -154,13 +154,14 @@ function checkStructure(chunks: readonly Chunk[]): void {
 
 /**
  * Splits a PNG file into its chunks, checking the signature, each chunk's
- * length and type, and the critical chunks' CRCs and structure: one valid
- * `IHDR` first, a `PLTE` where needed, consecutive `IDAT`, an empty `IEND`
- * last, and no critical chunk PNG does not define, whose effect on the image
- * cannot be known. An ancillary chunk with a wrong CRC comes back marked
- * `damaged`, as the image does not depend on it. Bytes after `IEND` are
- * ignored, as PNG decoders do. Pixels are not decoded, and the chunks' data
- * are views of `bytes`, not copies.
+ * length and type, and the critical chunks' structure: one valid `IHDR` first,
+ * with a correct CRC, a `PLTE` where needed, consecutive `IDAT`, an empty
+ * `IEND` last, and no critical chunk PNG does not define, whose effect on the
+ * image cannot be known. Any other chunk with a wrong CRC comes back marked
+ * `damaged`, so that damage to the image data leaves the rest of a file
+ * readable; decoding the image is what finds out what that damage did. Bytes
+ * after `IEND` are ignored, as PNG decoders do. Pixels are not decoded, and
+ * the chunks' data are views of `bytes`, not copies.
  */
 export function readChunks(bytes: Uint8Array): Chunk[] {
   if (!isPng(bytes)) throw new PngError("not a PNG file");
@@ -186,8 +187,8 @@ export function readChunks(bytes: Uint8Array): Chunk[] {
     const data = bytes.subarray(dataStart, dataEnd);
     const crc = crc32(bytes.subarray(typeStart, dataStart), data);
     const intact = crc === view.getUint32(dataEnd);
-    if (!intact && !isAncillary(type)) {
-      throw new PngError(`bad CRC in ${type} chunk`);
+    if (!intact && type === "IHDR") {
+      throw new PngError("bad CRC in IHDR chunk");
     }
     if (chunks.length === 0 && type !== "IHDR") {
       throw new PngError("first chunk is not IHDR");

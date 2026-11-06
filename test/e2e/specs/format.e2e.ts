@@ -27,8 +27,8 @@ const tolerance = {
 /**
  * The same for an enlarged base layer, whose resampling is up to the renderer:
  * Chromium 120 and 150 differ by up to 45 levels on `v1-base`'s harsh pattern,
- * in about a fifth of its pixels with ink. A reduced one needs no such room, as
- * a save halves its image first: they differ there by 11 levels at most.
+ * in about a fifth of its pixels with ink. A reduced one needs no room at all,
+ * as a save works out its pixels without the renderer's help.
  */
 const baseTolerance = { ...tolerance, share: 0.3 };
 
@@ -155,6 +155,7 @@ describe("The file format in Obsidian's renderer", function () {
         tolerance.levels,
       );
       console.log(`${name} against its pixels`, JSON.stringify(result));
+      if (name === "v1-base-reduced") expect(result.worst).toBe(0);
       const { share, worst } = name === "v1-base" ? baseTolerance : tolerance;
       expect(result.ink).toBeGreaterThan(100);
       expect(result.differing).toBeLessThanOrEqual(result.ink * share);
@@ -232,6 +233,154 @@ describe("The file format in Obsidian's renderer", function () {
     expect(result.decodes).toBe(false);
     expect(result.kind).toBe("record");
     expect(result.ink).toBeGreaterThan(100);
+  });
+
+  it("opens a record over image data with a wrong CRC, as damage leaves it", async function () {
+    const result = await browser.execute(async () => {
+      const { canvas, inkFile, png } = window.inklineTest;
+      const written = {
+        strokes: [{ tool: "pen", size: 160, points: [800, 800, 1200, 800] }],
+      } as const;
+      const whole = await canvas.saveInk(written, undefined);
+      const flipped = whole.bytes.slice();
+      // One bit of the last byte of `IDAT`'s data, its CRC left as it was.
+      const end = flipped.length - 12 - 4 - 1;
+      flipped[end] = (flipped[end] ?? 0) ^ 1;
+      const opened = await canvas.openInk(flipped);
+      if (opened.kind !== "editable") throw new Error(opened.kind);
+      const saved = await canvas.saveInk(
+        opened.document,
+        opened.base,
+        opened.carried,
+      );
+      const source = await inkFile.readInkFile(saved.bytes);
+      return {
+        wrong: png
+          .readChunks(flipped)
+          .flatMap((chunk) => (chunk.damaged === true ? [chunk.type] : [])),
+        strokes: opened.document.strokes.length,
+        kind: source.kind,
+        same: saved.bytes.length === whole.bytes.length,
+      };
+    });
+    expect(result.wrong).toEqual(["IDAT"]);
+    expect(result.strokes).toBe(1);
+    expect(result.kind).toBe("record");
+    expect(result.same).toBe(true);
+  });
+
+  it("takes in a source pixel in the saved pixel that covers it", async function () {
+    const result = await browser.execute(async () => {
+      const { canvas } = window.inklineTest;
+      const alpha = [0, 0, 0, 0, 0, 255, 0, 0, 0];
+      const png = await canvas.encodePixels({
+        width: alpha.length,
+        height: 1,
+        data: Uint8ClampedArray.from(
+          alpha.flatMap((value) => [126, 126, 126, value]),
+        ),
+      });
+      // Nine pixels drawn three wide, so that the middle one covers the fourth
+      // to the sixth, and the sixth holds all the ink.
+      const layer = { x: 160, y: 800, width: 48, height: 16, png };
+      const saved = await canvas.saveInk(
+        { strokes: [], base: layer },
+        await canvas.drawableBase(layer),
+      );
+      const { width, data } = canvas.readPixels(
+        await canvas.decodePng(saved.bytes),
+      );
+      const left = (saved.record.base?.x ?? 0) / 16;
+      const pixel = (x: number): number =>
+        data[(50 * width + left + x) * 4 + 3] ?? 0;
+      return [pixel(0), pixel(1), pixel(2)];
+    });
+    expect(result).toEqual([0, 85, 0]);
+  });
+
+  for (const [wide, column] of [
+    [511, 255],
+    [512, 256],
+  ] as const) {
+    it(`keeps a line's ink through a ${String(wide)}-pixel-wide picture`, async function () {
+      const total = await browser.execute(
+        async (width: number, line: number) => {
+          const { canvas } = window.inklineTest;
+          const height = 768;
+          const data = new Uint8ClampedArray(width * height * 4);
+          for (let y = 0; y < height; y++) {
+            data[(y * width + line) * 4 + 3] = 255;
+          }
+          const opened = await canvas.openPicture(
+            await canvas.encodePixels({ width, height, data }),
+          );
+          const saved = await canvas.saveInk(
+            opened.document,
+            opened.base,
+            opened.carried,
+          );
+          const image = canvas.readPixels(await canvas.decodePng(saved.bytes));
+          let sum = 0;
+          for (let x = 0; x < image.width; x++) {
+            sum += image.data[(96 * image.width + x) * 4 + 3] ?? 0;
+          }
+          return sum;
+        },
+        wide,
+        column,
+      );
+      // The line is a quarter of a pixel wide once drawn, so a row holds 63.75
+      // levels of ink, with a rounding on each pixel it meets.
+      expect(Math.abs(total - 63.75)).toBeLessThanOrEqual(1);
+    });
+  }
+
+  it("reduces each way on its own, and saves the result again unchanged", async function () {
+    const result = await browser.execute(async () => {
+      const { canvas, record } = window.inklineTest;
+      // Stripes reduced across and enlarged down, placed off the pixel grid.
+      const width = 257;
+      const height = 3;
+      const data = new Uint8ClampedArray(width * height * 4);
+      let source = 0;
+      for (let at = 0; at < width * height; at++) {
+        const alpha = (at % width) % 5 === 0 ? 255 : 0;
+        data[at * 4 + 3] = alpha;
+        source += alpha;
+      }
+      const png = await canvas.encodePixels({ width, height, data });
+      const layer = { x: 165, y: 803, width: 1021, height: 1501, png };
+      const saved = await canvas.saveInk(
+        { strokes: [], base: layer },
+        await canvas.drawableBase(layer),
+      );
+      const image = canvas.readPixels(await canvas.decodePng(saved.bytes));
+      let drawn = 0;
+      for (let at = 3; at < image.data.length; at += 4) {
+        drawn += image.data[at] ?? 0;
+      }
+      const opened = await canvas.openInk(saved.bytes);
+      if (opened.kind !== "editable") throw new Error(opened.kind);
+      const again = await canvas.saveInk(
+        opened.document,
+        opened.base,
+        opened.carried,
+      );
+      const resaved = canvas.readPixels(await canvas.decodePng(again.bytes));
+      return {
+        // The same ink, spread over the rectangle's area.
+        expected: (source * 1021 * 1501) / (width * height * 256),
+        drawn,
+        sameRecord:
+          record.serializeRecord(again.record) ===
+          record.serializeRecord(saved.record),
+        samePixels: resaved.data.every((value, at) => value === image.data[at]),
+      };
+    });
+    // All the ink across, and what an enlarging filter leaves down.
+    expect(Math.abs(result.drawn / result.expected - 1)).toBeLessThan(0.02);
+    expect(result.sameRecord).toBe(true);
+    expect(result.samePixels).toBe(true);
   });
 
   it("widens a file another writer clipped, on saving, to the ink its record has", async function () {

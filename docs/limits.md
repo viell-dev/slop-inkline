@@ -35,8 +35,13 @@ link would still lead elsewhere by its path in the vault.
   [Without Inkline](./without-inkline.md#editing-them-elsewhere).
 - **Unreleased:** a symbol holds at most 250,000 points across its strokes,
   erased ones included. That is minutes of unbroken drawing with the fastest
-  mice, and saving past it fails with a message, keeping your drawing as a
-  draft.
+  mice. Saving past it fails with a message, and the draft stops at the last
+  stroke within it, so undo what took the drawing over.
+- **Unreleased:** a symbol file made to be slow to draw, by a stroke that turns
+  back at nearly every point, can keep Obsidian busy for a long time when you
+  open it in the editor, hours for the worst of them, from a file of a few
+  kilobytes. Close Obsidian if it stops answering: no file has changed, and the
+  note shows the symbol as before. Drawing by hand does not come near this.
 - A picture to trace over is scaled down to 4096 pixels on its longer side. A
   file opened from its pixels can be up to 4096 pixels a side, and its ink must
   fit within 8 MiB, the largest base layer a symbol can store.

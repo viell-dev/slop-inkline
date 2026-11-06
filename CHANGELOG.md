@@ -27,8 +27,10 @@ even one a public release; earlier pre-releases carry a suffix such as
 - A symbol's image is 192 pixels high and at most 4096 wide, down from 8192, and
   a record holds no other geometry. Strokes record no pressure. A fill has no
   brush size, and only a smooth stroke's ends can be cut, `"up"` or `"down"`. A
-  symbol holds at most 250,000 points, down from 1,000,000, as a file of a few
-  kilobytes at the old limit could tie up the editor for minutes.
+  symbol holds at most 250,000 points, down from 1,000,000, which keeps the
+  memory a small crafted file can ask for lower. It does not bound how long such
+  a file can keep the editor busy, as
+  [Known limits](docs/limits.md#files-and-sizes) says.
 - A single click draws a round dot exactly as wide as the brush, centred on the
   click, rather than a short stroke a little wider, running down and right.
 - Every pixel of a symbol's image holds the same grey, however transparent, so
@@ -82,6 +84,10 @@ even one a public release; earlier pre-releases carry a suffix such as
   and turned again in notes. Saving a symbol drops that metadata.
 - A file with a damaged chunk that the image does not depend on opens as it
   shows, and one with a critical chunk that PNG does not define does not open.
+- A symbol whose image data is damaged opens if its strokes are whole, and
+  saving it draws the image again.
+- A large picture drawn smaller keeps its thin lines when saved, whatever its
+  size, as each saved pixel is now the exact mean of the pixels it covers.
 
 ## 0.9.1 - 2026-11-06
 

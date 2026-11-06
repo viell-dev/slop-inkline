@@ -20,6 +20,7 @@ import {
   formatVersion,
   imageHeight,
   limits,
+  parseRecord,
   serializeRecord,
   type InkRecord,
 } from "../../../src/format/record.ts";
@@ -155,8 +156,9 @@ describe("a base layer drawn smaller than its image", () => {
     const [left, top] = [x / 16, y / 16];
     let worst = 0;
     // Away from the rectangle's edge, each pixel against the exact mean of the
-    // source pixels it covers. A filter that samples four source pixels puts a
-    // line it lands on at full strength and misses the others, by 200 levels.
+    // source pixels it covers, which is what a save stores, to the rounding. A
+    // filter that samples four source pixels puts a line it lands on at full
+    // strength and misses the others, by 200 levels.
     for (let row = 4; row < 188; row++) {
       for (let column = 4; column < drawn / 16 - 4; column++) {
         let sum = 0;
@@ -170,7 +172,7 @@ describe("a base layer drawn smaller than its image", () => {
         worst = Math.max(worst, Math.abs((data[at] ?? 0) - mean));
       }
     }
-    expect(worst).toBeLessThan(110);
+    expect(worst).toBeLessThanOrEqual(0.5);
   });
 });
 
@@ -428,6 +430,19 @@ describe("readInkFile reports a record that cannot be used", () => {
     expect(
       await damagedBecause(withChunks([recordChunk(1), recordChunk(1)])),
     ).toBe("more than one record chunk");
+  });
+
+  it("whose base layer's PNG has a wrong CRC, in its image data too", () => {
+    const base = writeChunks(pixelChunks(blank(2, 2)));
+    const lastData = base.length - 12 - 1 - 4;
+    base[lastData] = (base[lastData] ?? 0) ^ 1;
+    const text = serializeRecord({
+      strokes: [],
+      base: { x: 0, y: 0, width: 16, height: 16, png: base },
+    });
+    const parsed = parseRecord(text);
+    expect(parsed.ok).toBe(false);
+    if (!parsed.ok) expect(parsed.detail).toContain("bad CRC in IDAT");
   });
 
   it("whose chunk has a wrong CRC, without trusting its version", async () => {

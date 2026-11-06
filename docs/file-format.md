@@ -59,8 +59,8 @@ leaves the symbol the same size in em, with its baseline on the text's.
 
 The image is what a symbol looks like wherever it is shown. The record is what
 an editor edits. A writer must make the image a rendering of the record, as
-[Drawing the strokes](#drawing-the-strokes) specifies. An editor draws from the
-record and never reads the image's pixels.
+[Drawing the strokes](#drawing-the-strokes) specifies. An editor draws a usable
+record from the record alone, and does not read the image's pixels to do it.
 
 [The record chunk](#the-record-chunk) is marked so that a program that changes
 the image data drops it, but that does not stop the two disagreeing. PNG lets a
@@ -111,6 +111,8 @@ which apply to all of it, including fields a reader does not know:
 - It is a single object, with no byte order mark.
 - No object holds two members of the same name, compared after decoding their
   escapes.
+- No string holds half of a surrogate pair, as an escape such as `\ud83d` can
+  spell, since readers would make different text of it.
 - Every number is an integer in plain decimal digits, with a leading `-` if it
   is negative, and no fraction or exponent. `-0` is not allowed. It lies between
   -9,007,199,254,740,991 and 9,007,199,254,740,991, which every reader's numbers
@@ -155,8 +157,9 @@ The record has these fields:
 | `base`    | object | Optional. Imported ink that strokes draw on.         |
 
 Each stroke is an object with a `tool`, `"pen"` to add ink or `"eraser"` to
-remove it, and `points`, its points in order, flattened as `x, y, x, y, …`, with
-at least one point. Its `kind` says what it is, and what else it holds:
+remove it, and `points`, its points in order, flattened as `x, y, x, y, …`, an
+even number of integers, at least two. Its `kind` says what it is, and what else
+it holds:
 
 | `kind`      | Is                         | `size`   | `cut`    | Points    |
 | ----------- | -------------------------- | -------- | -------- | --------- |
@@ -180,7 +183,8 @@ The base layer is an object:
 | `png`    | string  | Its image: a PNG file, in base64 with padding. |
 
 `png` follows [RFC 4648](https://www.rfc-editor.org/rfc/rfc4648), section 4,
-with no line breaks. Its PNG must be 8-bit RGBA (colour type 6), not interlaced,
+with no line breaks, and the bits its padding leaves over zero. Its PNG must be
+8-bit RGBA (colour type 6), not interlaced, with a correct CRC on every chunk,
 and hold only `IHDR`, `IDAT`, and `IEND` chunks, with nothing after `IEND`. Only
 its alpha channel is read.
 
@@ -215,9 +219,9 @@ counts.
 
 1. The base layer, if any: its image's alpha, stretched over the rectangle from
    (`x / 16`, `y / 16`) pixels, `width / 16` by `height / 16` pixels in size. It
-   is sampled by bilinear interpolation or a smoother method; where it is drawn
-   smaller than its image, each pixel must take in all the source pixels it
-   covers, as area averaging or mipmaps do.
+   is sampled by bilinear interpolation or a smoother method. Each way it is
+   drawn smaller than its image, each pixel must take in all the source pixels
+   it covers, as area averaging does.
 2. Each stroke in order: a pen stroke over what is there, and an eraser stroke
    removing what is there by its own alpha (the compositing operations
    `source-over` and `destination-out`). A stroke's shape counts once, however
@@ -308,14 +312,15 @@ quadratic curve to the midpoint of each following edge, with the corner between
 them as the control point, and so back to the start. The curve crosses itself
 wherever the stroke does, and the nonzero rule fills it solid.
 
-Every number in these steps must be an IEEE 754 binary64 value. Each `+`, `-`,
-`×`, `/`, and `sqrt` must be one correctly rounded operation, taken in the order
-written, left to right with the usual precedence, and never carried at higher
-precision or fused with another. A comparison can land on a tie, as when a
-stroke turns through exactly a right angle, and a single rounding there chooses
-between shapes pixels apart, so these rules make every comparison come out the
-same in every reader. `sin` and `cos` are the exception: no comparison depends
-on them, and any accurate implementation will do.
+Every number in these steps must be an IEEE 754 binary64 value, and a constant
+such as `0.575`, `0.0001`, or `π` is the nearest one. Each `+`, `-`, `×`, `/`,
+and `sqrt` must be one correctly rounded operation, taken in the order written,
+left to right with the usual precedence, and never carried at higher precision
+or fused with another. A comparison can land on a tie, as when a stroke turns
+through exactly a right angle, and a single rounding there chooses between
+shapes pixels apart, so these rules make every comparison come out the same in
+every reader. `sin` and `cos` are the exception: no comparison depends on them,
+and any accurate implementation will do.
 
 The files in
 [test/fixtures/outline](https://github.com/viell-dev/slop-inkline/tree/main/test/fixtures/outline)
@@ -347,12 +352,13 @@ stroke's shape is two parts together:
 2. Inside its boxes, the shape of the rest of the stroke, if there is any.
 
 The rest is a smooth stroke of the same `tool` and `size`, without cuts, through
-the stroke's points between two points found by walking in from each cut end.
-Starting at the cut end, step from point to point, adding up each step's length
-`|a|` in units, in the arithmetic of [Smooth strokes](#smooth-strokes), until
-the sum is at least `2 × size`; the point reached is that end of the rest.
-Points outside those two are dropped. There is no rest if a walk runs off the
-far end of the stroke, or if the two walks pass one another.
+the stroke's points between its two ends. An end that is not cut is the stroke's
+own. A cut end's is found by walking in from it: starting at the cut end, step
+from point to point, adding up each step's length `|a|` in units, in the
+arithmetic of [Smooth strokes](#smooth-strokes), until the sum is at least
+`2 × size`; the point reached is that end of the rest. Points outside the two
+ends are dropped. There is no rest if a walk runs off the far end of the stroke,
+or if the two walks pass one another.
 
 ### Polygons
 
@@ -402,12 +408,12 @@ pixel.
 A reader takes these steps in order, on any PNG it is given:
 
 1. **Check the PNG's structure.** It must have PNG's signature; every chunk a
-   length that fits and a type of four letters; every critical chunk a correct
-   CRC; one valid `IHDR` first; `PLTE` where PNG requires it and nowhere PNG
-   forbids it; consecutive `IDAT`; an empty `IEND` last; and no critical chunk
-   PNG does not define. A PNG that fails any of this holds no symbol, and
-   nothing is read from it. An ancillary chunk a reader does not know is not a
-   failure, whatever its letters, and bytes after `IEND` are ignored.
+   length that fits and a type of four letters; one valid `IHDR` first, with a
+   correct CRC; `PLTE` where PNG requires it and nowhere PNG forbids it;
+   consecutive `IDAT`; an empty `IEND` last; and no critical chunk PNG does not
+   define. A PNG that fails any of this, as one cut short does, holds no symbol,
+   and nothing is read from it. An ancillary chunk a reader does not know is not
+   a failure, whatever its letters, and bytes after `IEND` are ignored.
 2. **Find the record.** With no `inKL` chunk, the PNG has no record: its image
    is all there is.
 3. **Read the version.** If any `inKL` chunk whose CRC is correct has at least
@@ -419,11 +425,12 @@ A reader takes these steps in order, on any PNG it is given:
    version 0, if the image is not 192 pixels high and at most 4096 wide, if the
    text does not decompress, does not end where the chunk ends, is longer than
    its limit, or is not UTF-8, if it breaks [The record text](#the-record-text),
-   or if the base layer's image does not decode.
+   or if the base layer's image does not decode as PNG specifies.
 
 A reader does not decode the image data, and must not treat damage to it as a
-fault in the record, so that a record outlives an image that can no longer be
-shown, and the next edit draws one again.
+fault in the record, whether or not that damage leaves a wrong CRC on a critical
+chunk other than `IHDR`. So a record, which has a CRC of its own, outlives an
+image that can no longer be shown, and the next edit draws one again.
 
 A PNG with no record may be opened as a picture, and saving it adds a record.
 
@@ -443,7 +450,11 @@ any version of Inkline.
 These hold for every version of this format, now and later, so that a reader of
 any version can recognise a file of any other:
 
-- A file is a PNG whose image shows the symbol.
+- A file is a PNG whose name ends in `.ink.png`, and whose image shows the
+  symbol.
+- Its image is shown in text as [Geometry](#geometry) says, 1.5 em tall with the
+  text's baseline 0.375 em above its bottom, whatever its size in pixels, as a
+  program that only shows it reads no version.
 - Its record is in the `inKL` chunk, marked unsafe to copy.
 - The first four bytes of that chunk's data are its version, a big-endian
   unsigned integer from 1, that no two versions share.
@@ -455,9 +466,9 @@ four bytes, however large it gets.
 
 The version must increase for any change that a reader of an earlier version
 would get wrong by ignoring it. That is any change to how an existing record
-draws or where a symbol sits in a line of text, to the meaning, type, or range
-of a field, or to a limit, any new value of `tool`, `kind`, or `cut`, and any
-new information that must survive editing.
+draws or to the space a symbol takes up in a line of text, to the meaning, type,
+or range of a field, or to a limit, any new value of `tool`, `kind`, or `cut`,
+and any new information that must survive editing.
 
 Without changing the version, a later revision of this document may add only a
 field that changes nothing about how a record draws or how its symbol sits in
@@ -496,11 +507,22 @@ memory. A reader should stop decompressing as soon as the text passes its limit,
 should check the text's nesting depth before parsing it, and should read a base
 layer's width and height from its `IHDR` before decoding it.
 
-Drawing costs more than reading. A smooth stroke that doubles back at every
-point has about 28 corners of outline for each of them, so a record of a few
-kilobytes at the limit on points asks a renderer for millions of corners. A
-program should expect that when it draws a file it did not make, and should not
-build every stroke's outline at once.
+Drawing costs more than reading, and the limits do not bound how long it takes.
+A smooth stroke that doubles back at every point has about 28 corners of outline
+for each of them, so the limit on points bounds the size of what a renderer
+builds, at millions of corners from a record of a few kilobytes. It does not
+bound the time to fill that. A stroke or polygon that turns back at nearly every
+point crosses itself many times in the same few rows, and a renderer can take
+time that grows with the square of its points, wherever they lie: hours at the
+limit on points, even in a patch a few pixels wide. Ordinary drawing does not
+come near this, as a pointer does not turn back at every point. So no limit on
+distance or length can prevent it, and a limit on turns would have to be defined
+by these drawing steps.
+
+A program should expect that when it draws a file it did not make, and should
+not build every stroke's outline at once. A program may decline a record it
+judges too costly to draw. It then treats that record like an unusable one, so
+an editor must not replace it.
 
 A record keeps every stroke and all of the base layer, including ink that later
 strokes erased or that lies outside the image, so sharing a file can show more
@@ -527,21 +549,29 @@ to the columns that hold ink inside the line, adds a side bearing of 8 pixels on
 each side, as a font spaces its glyphs, and widens a narrower result as evenly
 as whole pixels allow to 48 pixels, so that a dot stays easy to click. A drawing
 with no ink is 48 pixels wide. It looks for the ink by drawing at most 4096
-pixels across at a time, so that strokes far away cost no large canvas, then
-draws the image from the cropped record, and adjusts the crop until that drawing
-confirms it, so that opening and saving a file Inkline saved changes neither its
-record nor its pixels. A file from another writer takes this crop on its first
-save, which can change its width, and show ink its image had cut off. A base
-layer drawn at under half its image's size is halved first, until it is at most
-twice that size, as not every browser's smoothing takes in what it covers.
+pixels across at a time, so that strokes far away cost no large canvas, each
+stroke once for every such span it reaches. It then draws the image from the
+cropped record, and adjusts the crop until that drawing confirms it or four
+attempts have gone by, which keeps the last, so that opening and saving a file
+Inkline saved changes neither its record nor its pixels. A file from another
+writer takes this crop on its first save, which can change its width, and show
+ink its image had cut off. A base layer drawn smaller than its image is first
+brought down to the whole pixels it falls on, each the exact mean of the area it
+covers, as no browser's smoothing can be relied on to take in what it covers;
+this is done separately each way, and a way it is not smaller keeps its pixels.
 Strokes that leave no visible ink stay in the record. A crop wider than the
 image can be is refused, and so is one that would move a stroke past the
 coordinate limit.
 
-When it saves over a file, Inkline keeps the chunks PNG marks safe to copy, such
-as text, each on the side of the image data it was on, other than `eXIf`, which
-can turn an image, and chunks with a bad CRC. It places the ones that come
-before the image data after the record.
+Inkline sets no limit on how long drawing may take, and does not decline a
+record for its cost. A record built to be costly keeps the editor's window busy
+until it is done or closed, which changes no file. Notes show the image and do
+not draw the record, so only opening such a file for editing does this.
+
+When it saves over a file, Inkline keeps text chunks, and other chunks PNG marks
+safe to copy that the new image does not have, each on the side of the image
+data it was on, other than `eXIf`, which can turn an image, and chunks with a
+bad CRC. It places the ones that come before the image data after the record.
 
 Inkline reads at most 65,536 chunks from a file or a base layer's PNG. It
 ignores any `eXIf` chunk and colour chunks when it decodes an image, and bytes

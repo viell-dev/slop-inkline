@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   alphaBounds,
+  baseIsReduced,
   enlargeFactor,
   enlargedRegion,
   inkDefaults,
@@ -8,6 +9,7 @@ import {
   pictureLuminance,
   previewFactor,
   previewShrink,
+  reduceBaseAlpha,
   regionBounds,
   shrinkLuminance,
   thresholdRange,
@@ -24,6 +26,7 @@ import {
   thresholdEdge,
   traceInk,
   traceRegion,
+  type BaseSpan,
   type RgbaPixels,
 } from "../../../src/ink/pixels.ts";
 import { limits } from "../../../src/format/record.ts";
@@ -154,6 +157,128 @@ describe("otsuThreshold", () => {
 
   it("gives the middle for a picture of one value", () => {
     expect(otsuThreshold(Uint8ClampedArray.from([90, 90, 90]))).toBe(128);
+  });
+});
+
+describe("reduceBaseAlpha", () => {
+  const image = (width: number, alpha: readonly number[]): RgbaPixels => ({
+    width,
+    height: alpha.length / width,
+    data: Uint8ClampedArray.from(
+      alpha.flatMap((value) => [126, 126, 126, value]),
+    ),
+  });
+  /** A row of `size` pixels, all empty but one. */
+  const impulse = (size: number, at: number): RgbaPixels =>
+    image(
+      size,
+      Array.from({ length: size }, (_, index) => (index === at ? 255 : 0)),
+    );
+  const oneRow = { size: 1, start: 0, length: 16 };
+  /** How much of a span's source pixel a whole pixel covers, in that pixel. */
+  const overlap = (
+    { size, start, length }: BaseSpan,
+    source: number,
+    pixel: number,
+  ): number => {
+    const from = (start + (source * length) / size) / 16;
+    const to = (start + ((source + 1) * length) / size) / 16;
+    return Math.max(0, Math.min(to, pixel + 1) - Math.max(from, pixel));
+  };
+
+  it("takes in a source pixel at an odd size", () => {
+    const reduced = reduceBaseAlpha(
+      image(9, [0, 0, 0, 0, 0, 255, 0, 0, 0]),
+      { size: 9, start: 160, length: 48 },
+      oneRow,
+    );
+    expect([...reduced.alpha]).toEqual([0, 85, 0]);
+    expect(reduced.across).toEqual({ start: 160, length: 48 });
+  });
+
+  it("shares a source pixel between the pixels it falls on", () => {
+    // Five pixels drawn three wide: the second spans 0.6 to 1.2.
+    const reduced = reduceBaseAlpha(
+      impulse(5, 1),
+      { size: 5, start: 0, length: 48 },
+      oneRow,
+    );
+    expect([...reduced.alpha]).toEqual([102, 51, 0]);
+  });
+
+  it("gives every pixel the mean of what it covers, whatever the sizes", () => {
+    let worst = 0;
+    let checked = 0;
+    for (let size = 2; size <= 24; size++) {
+      for (const length of [16, 23, 16 * size - 1, 8 * size + 3, 5 * size]) {
+        if (length >= 16 * size) continue;
+        for (const start of [0, 5, 16, -37]) {
+          const span = { size, start, length };
+          for (let at = 0; at < size; at++) {
+            const { width, alpha, across } = reduceBaseAlpha(
+              impulse(size, at),
+              span,
+              oneRow,
+            );
+            expect(across.length).toBe(16 * width);
+            for (let x = 0; x < width; x++) {
+              const covered = overlap(span, at, across.start / 16 + x) * 255;
+              worst = Math.max(worst, Math.abs((alpha[x] ?? 0) - covered));
+              checked++;
+            }
+          }
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(10_000);
+    expect(worst).toBeLessThan(0.5001);
+  });
+
+  it("counts a pixel the rectangle only partly covers for that part", () => {
+    // Four full pixels drawn a pixel and a half wide, from a quarter of the way
+    // into one: three quarters of the first, and three quarters of the second.
+    const reduced = reduceBaseAlpha(
+      image(4, [255, 255, 255, 255]),
+      { size: 4, start: 4, length: 24 },
+      oneRow,
+    );
+    expect([...reduced.alpha]).toEqual([191, 191]);
+    expect(reduced.across).toEqual({ start: 0, length: 32 });
+  });
+
+  it("reduces each way on its own", () => {
+    const stripes = image(4, [255, 0, 255, 0, 0, 0, 0, 0]);
+    const across = { size: 4, start: 3, length: 32 };
+    const down = { size: 2, start: 5, length: 160 };
+    const reduced = reduceBaseAlpha(stripes, across, down);
+    expect(reduced.height).toBe(2);
+    expect(reduced.down).toMatchObject({ start: 5, length: 160 });
+    expect(reduced.across).toEqual({ start: 0, length: 48 });
+    expect(reduced.width).toBe(3);
+    // A source pixel is half a pixel wide, starting 3 sixteenths along.
+    expect([...reduced.alpha]).toEqual([128, 128, 0, 0, 0, 0]);
+  });
+
+  it("knows when neither way is reduced", () => {
+    const same = { size: 4, start: 3, length: 64 };
+    const smaller = { size: 4, start: 3, length: 63 };
+    expect(baseIsReduced(same, same)).toBe(false);
+    expect(baseIsReduced(same, smaller)).toBe(true);
+    expect(baseIsReduced(smaller, same)).toBe(true);
+  });
+
+  it("stays exact at the largest image, on a base layer at the limit", () => {
+    const size = 4096;
+    const row = new Array<number>(size).fill(255);
+    const reduced = reduceBaseAlpha(
+      image(size, row),
+      { size, start: 2 ** 24 - 65_535, length: 65_535 },
+      oneRow,
+    );
+    expect(reduced.width).toBe(4096);
+    // Fifteen sixteenths of the first pixel, and all of the rest.
+    expect(reduced.alpha[0]).toBe(239);
+    expect(reduced.alpha.slice(1).every((value) => value === 255)).toBe(true);
   });
 });
 
