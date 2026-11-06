@@ -54,6 +54,13 @@ even one a public release; earlier pre-releases carry a suffix such as
 - A release is refused unless its version is higher than every published one,
   both in SemVer's order and in the number-only order Obsidian uses.
 
+### Fixed
+
+- **Make ink**'s ink no longer comes back for a moment as the slider moves away
+  from it, as it could wherever the contrast at the threshold jumped from one
+  level to the next. No edge gets softer for it; near the slider's ends, some
+  get sharper ([#160](https://github.com/viell-dev/slop-inkline/issues/160)).
+
 ## 0.9.0 - 2026-11-05
 
 This is the first beta of 1.0.0, the first public release, following the owner's

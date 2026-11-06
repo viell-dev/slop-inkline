@@ -69,6 +69,19 @@ link would still lead elsewhere by its path in the vault.
   softness also follows the picture's pixels, so that a straight line wavers
   slightly when enlarged many times. Draw over it, or trace it by hand, where
   that shows.
+- **Make ink** chooses the threshold's first position from the picture alone,
+  which cannot say what you want traced. A small bright element can draw it away
+  from dim strokes, leaving them no ink: move the slider down to the strokes, or
+  move the picture to keep the element out
+  ([#147](https://github.com/viell-dev/slop-inkline/issues/147)).
+- **Make ink** counts a capture of a window with transparent corners or a shadow
+  as a transparent picture, so it can start with the ink inverted: the window's
+  ground as the ink, and its strokes as holes. Press **Light ink** to swap them,
+  then set the threshold with the slider, which cannot swap them by itself. Its
+  edges can stay softer than an opaque picture's. With dark ink, a shadow stays
+  as faint ink around the window at any threshold that keeps the strokes: bring
+  only the inside of the window into view. A capture without transparency has
+  neither limit ([#148](https://github.com/viell-dev/slop-inkline/issues/148)).
 - Every symbol shows in notes at the size and baseline Inkline saves, whatever
   geometry another tool wrote into its file.
 - Images from outside the vault are left as they are, even when their names end

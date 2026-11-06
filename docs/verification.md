@@ -143,6 +143,10 @@ release, later versions must keep released files readable and looking the same.
   narrows for large enlargements and for little contrast, and its bounds of a
   million samples and a base layer's sides
   ([pixels.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/ink/pixels.test.ts)).
+  At every position of the slider, no pixel of a synthetic picture gains ink as
+  it moves away from the ink, and no edge is softer than the contrast there
+  alone would make it
+  ([threshold-ramp.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/ink/threshold-ramp.test.ts)).
 - Each brush size, drawn with a mouse and measured in the saved symbol, is as
   wide as its size. M is within 15% of the stems of regular text, L lies between
   1.3 times regular and 1.1 times bold, and XL is at least about as heavy as

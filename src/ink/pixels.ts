@@ -256,12 +256,22 @@ export function thresholdContrast(
   values: Uint8ClampedArray,
   threshold: number,
 ): number {
+  return contrastOf(valueCounts(values), threshold);
+}
+
+/** How many of `values` there are of each level. */
+function valueCounts(values: Uint8ClampedArray): Uint32Array {
   const counts = new Uint32Array(256);
   // eslint-disable-next-line @typescript-eslint/prefer-for-of -- for...of over a typed array is many times slower in V8
   for (let index = 0; index < values.length; index++) {
     const value = values[index] ?? 0;
     counts[value] = (counts[value] ?? 0) + 1;
   }
+  return counts;
+}
+
+/** {@link thresholdContrast} of the values `counts` holds. */
+function contrastOf(counts: Uint32Array, threshold: number): number {
   const middle = Math.min(256, Math.max(0, Math.ceil(threshold)));
   const dark = medianBetween(counts, 0, middle);
   const light = medianBetween(counts, middle, 256);
@@ -274,6 +284,44 @@ export function thresholdContrast(
         ? threshold - dark
         : light - dark;
   return Math.min(255, Math.max(1, apart));
+}
+
+/**
+ * How many levels a ramp can differ by from the next threshold's. Then each half
+ * of it changes by no more than the level the threshold moves, so that ink only
+ * ever fades as the slider moves away from it.
+ */
+const rampStep = 2;
+
+/**
+ * The ramp of `threshold` in a part of a picture with these `values`, where
+ * `edge` is its ramp in a picture of black and white: that share of its
+ * {@link thresholdContrast}, so that a dim picture's edges are as sharp as a
+ * bright one's. Contrast can jump from one threshold to the next, as past the
+ * brightest of some strokes, with only a label left on the light side, and the
+ * jump would make a trace of the strokes come back as the slider moves away
+ * from them. So a ramp is also at most {@link rampStep} levels a step wider than
+ * those of the thresholds around it. That only ever narrows it, so that no edge
+ * is softer for it.
+ */
+export function thresholdRamp(
+  values: Uint8ClampedArray,
+  threshold: number,
+  edge: number,
+): number {
+  const counts = valueCounts(values);
+  const own = (edge * contrastOf(counts, threshold)) / 255;
+  const reach = Math.ceil(own / rampStep);
+  let ramp = own;
+  for (
+    let other = Math.ceil(threshold) - reach;
+    other <= threshold + reach;
+    other++
+  ) {
+    const there = (edge * contrastOf(counts, other)) / 255;
+    ramp = Math.min(ramp, there + rampStep * Math.abs(threshold - other));
+  }
+  return ramp;
 }
 
 /**
@@ -731,9 +779,8 @@ export function traceInk(
  * The ink of `part` of a picture at `place`, as {@link traceInk} finds it:
  * for a threshold changing while the part stays the same. `edge` is the
  * threshold's ramp in a picture of black and white. An opaque picture's ramp
- * is that share of its {@link thresholdContrast}, so that a dim picture's
- * edges are as sharp as a bright one's: the whole ramp would span most of the
- * levels between its ground and its ink, and leave their edges as soft as
+ * is {@link thresholdRamp}'s, as the whole ramp would span most of the levels
+ * between a dim picture's ground and its ink, and leave their edges as soft as
  * they were. A picture with transparency keeps the whole ramp: its own alpha
  * limits its edges, and its colours mean little where that is low.
  */
@@ -747,7 +794,7 @@ export function traceRegion(
   const own = part.alpha;
   const ramp =
     own === undefined
-      ? (edge * thresholdContrast(part.tones ?? part.values, threshold)) / 255
+      ? thresholdRamp(part.tones ?? part.values, threshold, edge)
       : edge;
   const alpha = thresholdAlpha(part.values, threshold, light, ramp);
   if (own !== undefined) {
