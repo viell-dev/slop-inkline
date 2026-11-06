@@ -396,7 +396,7 @@ img.inkline-symbol:not([width], [height]) {
 }
 
 .inkline-library-uses {
-  min-width: 5em;
+  min-width: 5.5em;
 }
 
 .inkline-library-notes {
