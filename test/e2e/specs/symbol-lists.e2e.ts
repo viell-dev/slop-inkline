@@ -620,9 +620,10 @@ describe("Lists of symbols", function () {
   for (const list of lists) {
     it(`keep names in line beside a very long one in ${list.name}`, async function () {
       await createSymbol(`${long}.ink.png`, [400, 4000, 8600]);
+      await createSymbol(`${unbroken}.ink.png`, [400, 4000, 8600]);
       await list.open();
-      await waitForRows(list.rows, symbols.length + 1);
-      expectLinedUp(await rowsOf(list.rows), symbols.length + 1);
+      await waitForRows(list.rows, symbols.length + 2);
+      expectLinedUp(await rowsOf(list.rows), symbols.length + 2);
       const { client, scroll } = await widthsOf(list.holder);
       expect(scroll).toBeLessThanOrEqual(client);
       await saveScreenshot(`symbol-list-long-name-${list.name}`);

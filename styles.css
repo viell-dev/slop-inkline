@@ -279,6 +279,12 @@ img.inkline-symbol:not([width], [height]) {
   height: calc(1.5em * var(--inkline-scale, 1));
 }
 
+/* A name with no spaces breaks too, rather than widen the list. */
+.inkline-suggestion-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .inkline-suggestion-folder {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
