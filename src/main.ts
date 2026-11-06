@@ -133,8 +133,11 @@ export default class InklinePlugin extends Plugin {
       name: "Edit symbol",
       editorCheckCallback: (checking, editor, info) => {
         // A canvas text card's editor has no file of its own: its links lead
-        // from the canvas, which is the active file.
-        const note = info.file ?? this.app.workspace.getActiveFile();
+        // from the canvas, which is the active file. No other editor without
+        // a file has a place to resolve its links from.
+        const active = this.app.workspace.getActiveFile();
+        const note =
+          info.file ?? (active?.extension === "canvas" ? active : null);
         if (note === null) return false;
         const file = symbolAt(
           this.app,
@@ -277,14 +280,14 @@ export default class InklinePlugin extends Plugin {
       },
       { signal },
     );
-    view.addEventListener(
-      "unload",
-      () => {
-        stop.abort();
-        this.#menuDocuments.delete(doc);
-      },
-      { once: true, signal },
-    );
+    // Both, as Chromium is phasing `unload` out, and a frame left in the map
+    // stays in memory until the plugin unloads.
+    const forget = (): void => {
+      stop.abort();
+      this.#menuDocuments.delete(doc);
+    };
+    view.addEventListener("pagehide", forget, { once: true, signal });
+    view.addEventListener("unload", forget, { once: true, signal });
   }
 
   /** Sets and stores one setting; false if it cannot hold `value`. */

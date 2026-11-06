@@ -112,10 +112,16 @@ async function click(point: Point): Promise<void> {
     .perform();
 }
 
-/** The titles of the menu a right-click at `point` opens. */
+/**
+ * The titles of the menu a right-click at `point` opens, which must be the only
+ * one: a menu of Inkline's beside the block's would read as one list.
+ */
 async function menuAt(point: Point): Promise<string[]> {
   await rightClick(point);
   await browser.waitUntil(async () => (await menuItems()).length > 0);
+  // Inkline's own would show once the event is over.
+  await browser.pause(100);
+  expect(await browser.$$(".menu").length).toBe(1);
   return menuItems();
 }
 
