@@ -1,6 +1,16 @@
 import { browser, expect } from "@wdio/globals";
 import { loadModules } from "../support/browser.ts";
-import { createSymbol, startOver, waitForNotice } from "../support/editor.ts";
+import {
+  addUnsaved,
+  clickTop,
+  createSymbol,
+  failSaves,
+  startOver,
+  symbolFiles,
+  topButton,
+  waitForNotice,
+  waitForPanes,
+} from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 
 const nameField = () => browser.$(".inkline-library-rename-form input");
@@ -46,6 +56,18 @@ async function waitForError(text: string): Promise<void> {
   expect(await nameField().getProperty("readOnly")).toBe(false);
 }
 
+/** Has Obsidian update links without asking, or ask. */
+async function setLinkUpdates(always: boolean): Promise<void> {
+  await browser.executeObsidian(({ app }, value) => {
+    const configurable = (
+      candidate: object,
+    ): candidate is { setConfig(key: string, value: unknown): void } =>
+      "setConfig" in candidate && typeof candidate.setConfig === "function";
+    if (!configurable(app.vault)) throw new Error("no vault settings");
+    app.vault.setConfig("alwaysUpdateLinks", value);
+  }, always);
+}
+
 describe("Renaming in the symbol library", function () {
   before(async function () {
     await loadModules();
@@ -55,13 +77,8 @@ describe("Renaming in the symbol library", function () {
     await startOver();
     await browser.executeObsidian(({ app }) => {
       app.workspace.detachLeavesOfType("inkline-library");
-      const configurable = (
-        candidate: object,
-      ): candidate is { setConfig(key: string, value: unknown): void } =>
-        "setConfig" in candidate && typeof candidate.setConfig === "function";
-      if (!configurable(app.vault)) throw new Error("no vault settings");
-      app.vault.setConfig("alwaysUpdateLinks", true);
     });
+    await setLinkUpdates(true);
   });
 
   after(async function () {
@@ -315,5 +332,78 @@ describe("Renaming in the symbol library", function () {
         Reflect.deleteProperty(app.fileManager, "inklineRenameCalls");
       });
     }
+  });
+
+  describe("with a note holding unsaved text", function () {
+    const saved = "The door  ![[gate.ink.png]] today.\n";
+    const opening = "Opening unsaved line.\n";
+    const renamed = `${opening}The door  ![[lintel.ink.png]] today.\n`;
+
+    /**
+     * Opens a note that embeds the symbol, begins renaming it in the library
+     * with Obsidian set to ask about links, and adds unsaved text to the note.
+     * The text comes last, as the note's blur saves what it holds by then.
+     */
+    async function renameWithText(): Promise<void> {
+      await createSymbol("gate.ink.png");
+      await setLinkUpdates(false);
+      await browser.executeObsidian(async ({ app }, text) => {
+        const note = await app.vault.create("Uses.md", text);
+        await app.workspace.getLeaf(false).openFile(note);
+      }, saved);
+      await browser.waitUntil(async () =>
+        browser.executeObsidian(
+          ({ app }) =>
+            (app.metadataCache.resolvedLinks["Uses.md"]?.["gate.ink.png"] ??
+              0) > 0,
+        ),
+      );
+      await showLibrary();
+      await beginRename("gate", "lintel");
+      await addUnsaved("Uses.md", opening, "start");
+    }
+
+    /** The note's text on disk. */
+    async function onDisk(): Promise<string> {
+      return browser.executeObsidian(async ({ app }) => {
+        const note = app.vault.getFileByPath("Uses.md");
+        if (note === null) throw new Error("no note");
+        return app.vault.read(note);
+      });
+    }
+
+    it("keeps the text when the note's own save falls due during Obsidian's question", async function () {
+      await renameWithText();
+      await browser.keys(["Enter"]);
+      await browser.waitUntil(
+        async () => (await topButton("Just once")) !== undefined,
+      );
+      // An editor saves itself two seconds after an edit.
+      await browser.pause(2500);
+      await clickTop("Just once");
+      await waitForName("lintel");
+      await waitForPanes("Uses.md", renamed);
+      await browser.waitUntil(async () => (await onDisk()) === renamed);
+    });
+
+    it("refuses the rename if the note cannot be saved, and changes nothing", async function () {
+      await renameWithText();
+      const restore = await failSaves();
+      try {
+        await browser.keys(["Enter"]);
+        await waitForError("the note Uses could not be saved first");
+      } finally {
+        await restore();
+      }
+      expect(await nameField().getValue()).toBe("lintel");
+      expect(await symbolFiles()).toEqual(["gate.ink.png"]);
+      expect(await onDisk()).toBe(saved);
+      await waitForPanes("Uses.md", `${opening}${saved}`);
+      await browser.keys(["Enter"]);
+      await clickTop("Just once");
+      await waitForName("lintel");
+      await waitForPanes("Uses.md", renamed);
+      await browser.waitUntil(async () => (await onDisk()) === renamed);
+    });
   });
 });

@@ -1,9 +1,12 @@
 import { browser, expect } from "@wdio/globals";
 import { loadModules } from "../support/browser.ts";
 import {
+  addUnsaved,
   clickTop,
   createSymbol,
+  delayVault,
   draw,
+  failSaves,
   markEditor,
   noteText,
   openAtMarker,
@@ -13,6 +16,7 @@ import {
   waitForEditor,
   waitForNext,
   waitForNotice,
+  waitForPanes,
   waitForStatus,
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
@@ -226,67 +230,6 @@ async function writeFile(path: string, text: string): Promise<void> {
     path,
     text,
   );
-}
-
-/**
- * Adds `text` at the start or end of the note at `path`, through its editor in
- * `pane`, in the workspace's order, and leaves it unsaved. Waits for every
- * editor of the note to have it, as Obsidian passes it on a moment later.
- */
-async function addUnsaved(
-  path: string,
-  text: string,
-  place: "start" | "end",
-  pane = 0,
-): Promise<void> {
-  const wanted = await browser.executeObsidian(
-    ({ app, obsidian }, file, added, end, index) => {
-      const editors = [];
-      for (const { view } of app.workspace.getLeavesOfType("markdown")) {
-        if (view instanceof obsidian.MarkdownView && view.file?.path === file) {
-          editors.push(view.editor);
-        }
-      }
-      const editor = editors[index];
-      if (editor === undefined)
-        throw new Error(`no pane ${String(index)} of ${file}`);
-      const at = end ? editor.getValue().length : 0;
-      editor.replaceRange(added, editor.offsetToPos(at));
-      return editor.getValue();
-    },
-    path,
-    text,
-    place === "end",
-    pane,
-  );
-  await waitForPanes(path, wanted);
-}
-
-/** Waits for every editor of the note at `path` to read `text`. */
-async function waitForPanes(path: string, text: string): Promise<void> {
-  let read: string[] = [];
-  try {
-    await browser.waitUntil(async () => {
-      read = await browser.executeObsidian(({ app, obsidian }, file) => {
-        const shown: string[] = [];
-        for (const { view } of app.workspace.getLeavesOfType("markdown")) {
-          if (
-            view instanceof obsidian.MarkdownView &&
-            view.file?.path === file
-          ) {
-            shown.push(view.editor.getValue());
-          }
-        }
-        return shown;
-      }, path);
-      return read.length > 0 && read.every((shown) => shown === text);
-    });
-  } catch (error) {
-    throw new Error(
-      `waited for ${JSON.stringify(text)}, but ${path} read ${JSON.stringify(read)}`,
-      { cause: error },
-    );
-  }
 }
 
 /**
@@ -1347,24 +1290,69 @@ describe("A rename while the note holds unsaved text", function () {
 
     // A save that starts once the reload has read the file has it take that
     // file as it is, and the editor's blur makes one as the next editor opens.
-    it("keeps the text when the next editor takes the focus", async function () {
-      const restore = await slowCachedRead(300);
-      try {
-        await insertAndWait();
-        await markEditor();
-        await nameIt();
-        await browser.keys(["Control", "Shift", "Enter"]);
-        await browser.waitUntil(
-          async () => (await topButton("Just once")) !== undefined,
-        );
-        await addBoth("Editor.md");
-        await clickTop("Just once");
-        await waitForNext(1);
-        await waitForNote(withText(renamed));
-        await waitForFile("Editor.md", withText(renamed));
-      } finally {
-        await restore();
+    // A reload held past two seconds meets the editor's own save the same way,
+    // with nothing of Inkline's taking part: the text leaves the editor until
+    // the reload that the fresh file sets off lands, so the last look waits.
+    for (const hold of [300, 3000]) {
+      for (const [how, keys, gone] of [
+        [
+          "the next editor takes the focus",
+          ["Control", "Shift", "Enter"],
+          () => waitForNext(1),
+        ],
+        ["the editor closes", ["Control", "Enter"], waitClosed],
+      ] as const) {
+        it(`keeps the text when ${how}, with the reload held ${String(hold)} ms`, async function () {
+          const restore = await slowCachedRead(hold);
+          try {
+            await insertAndWait();
+            await markEditor();
+            await nameIt();
+            await browser.keys([...keys]);
+            await browser.waitUntil(
+              async () => (await topButton("Just once")) !== undefined,
+            );
+            await addBoth("Editor.md");
+            await clickTop("Just once");
+            await gone();
+            await waitForNote(withText(renamed));
+            await waitForFile("Editor.md", withText(renamed));
+            await browser.pause(2 * hold + 1000);
+            expect(await noteText()).toBe(withText(renamed));
+            await waitForFile("Editor.md", withText(renamed));
+          } finally {
+            await restore();
+          }
+        });
       }
+    }
+
+    // With the reload and the editor's own save both held past the time Inkline
+    // gives them, nothing settles it. Writing or saving then would cost the text.
+    it("writes nothing when nothing settles it in time, and says so", async function () {
+      const old = "![[001.ink.png]]";
+      await insertAndWait();
+      await delayVault("modify", 6000, "before");
+      await slowReload("Editor.md", 9000);
+      await nameIt();
+      await browser.keys(["Control", "Enter"]);
+      await browser.waitUntil(
+        async () => (await topButton("Just once")) !== undefined,
+      );
+      await addBoth("Editor.md");
+      await clickTop("Just once");
+      await waitForNotice("Check the symbol's embed in Editor");
+      await waitClosed();
+      expect(await noteText()).toBe(withText(old));
+      await waitForFile(
+        "Editor.md",
+        `The door is marked with ${renamed} which means return.\n`,
+      );
+      // The editor's own save lands, and the reload after it finds nothing to
+      // do. That loses the rename step, as the notice says, and never the text.
+      await waitForFile("Editor.md", withText(old));
+      await browser.pause(3000);
+      expect(await noteText()).toBe(withText(old));
     });
 
     it("keeps the text and the next symbol's place through Next", async function () {
@@ -1411,6 +1399,67 @@ describe("A rename while the note holds unsaved text", function () {
     expect(await marked("Editor.md")).toEqual([
       `${opening}The door is marked with ${renamed}| which means return.\n`,
     ]);
+  });
+
+  it("refuses a rename if the note cannot be saved, and changes nothing", async function () {
+    const old = "![[001.ink.png]]";
+    await insertAndWait();
+    await addBoth("Editor.md");
+    const restore = await failSaves();
+    try {
+      await nameIt();
+      await browser.keys(["Control", "s"]);
+      await waitForNotice(
+        "001.ink.png is saved, but could not be renamed: the note Editor could not be saved first",
+      );
+      await waitForStatus("Saved, but not renamed");
+    } finally {
+      await restore();
+    }
+    expect(await symbolFiles()).toEqual(["001.ink.png"]);
+    expect(await noteText()).toBe(withText(old));
+    await waitForFile(
+      "Editor.md",
+      `The door is marked with ${old} which means return.\n`,
+    );
+    // The name stays in the field, for the next save to try.
+    await browser.keys(["Control", "Enter"]);
+    await clickTop("Just once");
+    await waitClosed();
+    await waitForNote(withText(renamed));
+    await waitForFile("Editor.md", withText(renamed));
+  });
+
+  // On Obsidian 1.13 a save that comes during another returns before its text
+  // is written, and the rename is refused. 1.15 waits for it, and goes on.
+  it("never renames past a save still under way", async function () {
+    const answerable = async (): Promise<boolean> =>
+      (await topButton("Just once")) !== undefined;
+    await insertAndWait();
+    await addUnsaved("Editor.md", opening, "start");
+    await delayVault("modify", 1500, "before");
+    await browser.executeObsidian(({ app, obsidian }) => {
+      void app.workspace.getActiveViewOfType(obsidian.MarkdownView)?.save();
+    });
+    await addUnsaved("Editor.md", closing, "end");
+    await nameIt();
+    await browser.keys(["Control", "Enter"]);
+    await browser.waitUntil(
+      async () =>
+        (await answerable()) ||
+        (await browser.$(".inkline-status").getText()).includes("not renamed"),
+    );
+    if (!(await answerable())) {
+      await waitForFile("Editor.md", withText("![[001.ink.png]]"));
+      await browser.keys(["Control", "Enter"]);
+      await browser.waitUntil(answerable);
+    }
+    // Past every save that was under way, as offsets taken too soon show then.
+    await browser.pause(3500);
+    await clickTop("Just once");
+    await waitClosed();
+    await waitForFile("Editor.md", withText(renamed));
+    await waitForNote(withText(renamed));
   });
 
   it("takes the rename and the text back one undo at a time", async function () {

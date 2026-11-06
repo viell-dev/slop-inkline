@@ -211,8 +211,13 @@ release, later versions must keep released files readable and looking the same.
   keeps the text, however Obsidian's question is answered, in a plain note, two
   panes, a table cell, a closed note, and Reading view, with the cursor and the
   place of a run from Next surviving a reload, and with the text arriving during
-  the question or an editor's own save falling due in it
-  ([insertion.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/insertion.e2e.ts)
+  the question or an editor's own save falling due in it. Every rename, by Save,
+  the library, or an existing symbol's editor, saves the open notes first, and
+  is refused with nothing changed if one cannot be saved. A reload held past the
+  editor's own save loses no text, and running out of time writes nothing
+  ([insertion.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/insertion.e2e.ts),
+  [library-renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-renaming.e2e.ts),
+  [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts),
   and
   [insertion.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/insertion.test.ts)).
 - Names and renames: what a file name cannot hold, names a folder already has,

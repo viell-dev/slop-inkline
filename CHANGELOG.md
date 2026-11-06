@@ -35,12 +35,17 @@ holding such a stroke is no longer offered back.
   too ([#174](https://github.com/viell-dev/slop-inkline/pull/174)).
 - A symbol renamed just after it went in no longer spoils a note that holds
   other unsaved text. Its embed could get the new name twice, or part of it at
-  the start of the note, and the text could go from the editor. The note is now
-  saved before the rename, and the embed takes the new name once, with the link
-  updates on or off, in one pane or two, and in a table cell. If the note would
-  have saved itself while Obsidian's question about the links was open, Obsidian
-  also wrote the new link over other text, which saving first prevents too
+  the start of the note, and the text could go from the editor. The embed now
+  takes the new name once, with the link updates on or off, in one pane or two,
+  and in a table cell
   ([#180](https://github.com/viell-dev/slop-inkline/issues/180)).
+- A rename no longer lets Obsidian write the new link over other text, which was
+  lost for good. It happened when a note embedding the symbol saved itself while
+  Obsidian's question about the links was open. Every rename, from the editor or
+  the library, now saves the open notes first, and is refused with nothing
+  changed if one cannot be saved. Text that reaches a note during the question,
+  from another window or a plugin, stays exposed, as with any file in Obsidian
+  ([#182](https://github.com/viell-dev/slop-inkline/issues/182)).
 - A long name no longer runs off the symbol library and gives it a horizontal
   scroll bar. It wraps onto a second line and then shortens, as a long folder
   shortens, and a tooltip on the row has the whole of both. A long note name

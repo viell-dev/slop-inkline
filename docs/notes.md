@@ -158,6 +158,10 @@ any files and links that changed while you typed. Renaming changes the file's
 name, leaving its drawing's bytes as they are. A symbol deleted and replaced
 while its name is being edited cannot rename the replacement.
 
+**Unreleased:** **Rename** first saves every open note that holds unsaved text,
+as [renaming in the editor](./drawing.md#the-name) does. If a note cannot be
+saved, the row says which one, and nothing is renamed.
+
 The list follows files and their links as they change. Obsidian's backlinks for
 the symbol file also list the notes that link to it.
 
