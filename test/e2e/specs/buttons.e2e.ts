@@ -291,6 +291,10 @@ describe("Editor buttons", function () {
     await browser
       .$(".tooltip")
       .waitForDisplayed({ timeoutMsg: "no tooltip over Zoom" });
+    // WebDriver reads no text while Obsidian's tooltip is still fading in.
+    await browser.waitUntil(
+      async () => (await browser.$(".tooltip").getText()) !== "",
+    );
     expect(await browser.$(".tooltip").getText()).toBe(usual.zoom);
     await saveScreenshot("buttons-icons", browser.$(".inkline-editor"));
   });

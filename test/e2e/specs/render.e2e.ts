@@ -1,3 +1,4 @@
+import { loadavg } from "node:os";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { browser, expect } from "@wdio/globals";
@@ -826,7 +827,7 @@ describe("Symbols in notes", function () {
       return { runs, tagged, found };
     });
     console.log(
-      `Tagging 1,000 symbols, five runs: ${result.runs.map((ms) => ms.toFixed(1)).join(", ")} ms`,
+      `Tagging 1,000 symbols, five runs: ${result.runs.map((ms) => ms.toFixed(1)).join(", ")} ms, load ${loadavg().join(", ")}`,
     );
     // Every run tags them all: nothing is remembered from one to the next.
     expect(result.tagged).toEqual([1000, 1000, 1000, 1000, 1000]);
