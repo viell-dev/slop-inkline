@@ -620,6 +620,10 @@ describe("Where the cursor lands after a symbol", function () {
     await draw(zigzag);
     await openBeside("Editor.md");
     await save();
+    // Obsidian passes the change to the other pane a moment later.
+    await browser.waitUntil(async () =>
+      (await marked("Editor.md")).every((text) => text.includes("001.ink.png")),
+    );
     expect(await marked("Editor.md")).toEqual([
       "The door is marked with ![[001.ink.png]]| which means return.\n",
       "|The door is marked with ![[001.ink.png]] which means return.\n",

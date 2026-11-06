@@ -50,9 +50,12 @@ of Inkline's reach:
 - **Notes edited inside a Canvas card,** which Inkline cannot reach to save.
 - **A disk that stalls for seconds.** Obsidian's own save can then meet its
   reload of the same note and take unsaved text out of the editor, with no
-  symbol involved. After a rename by Inkline the text comes back once the file
-  has been read again; if the note has still not settled after five seconds, a
-  notice asks you to check the embed.
+  symbol involved. After a rename by Inkline the text usually comes back once
+  the file has been read again, and if the note has still not settled after five
+  seconds, a notice asks you to check the embed. If a read held up by the stall
+  lands last, the text leaves the editor for good, with no notice. The file
+  still holds it then, until the next save, so if lines vanish after a stall,
+  undo or reopen the note before typing.
 
 A note that starts with a byte order mark, which Obsidian does not support, has
 any rename's links written one character early, which loses the character before
