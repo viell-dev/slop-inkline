@@ -334,6 +334,26 @@ commands, as no dry run sends them.
 Run the command again first. If that cannot finish soon, take `main` back to the
 last public release, so that Obsidian offers a version that exists.
 
+**Stop every attempt first, and find out what it did.** A run keeps the commit
+it started from, so one still queued or running would publish after the rollback
+merges, and nothing in it would notice.
+
+1. List the Release workflow's runs with
+   `gh run list --workflow release.yml --status queued` and again with
+   `--status in_progress`. Cancel each with `gh run cancel <run>`, and wait
+   until `gh run view <run>` shows it finished. Cancelling cannot take back a
+   request GitHub has already accepted, which is why the next step comes after
+   it.
+2. Ask whether the version has a tag, as only a published release has one:
+   `git ls-remote --tags origin refs/tags/<version>`.
+   - **It has one:** the release is published, so `main` names a version that
+     exists and there is nothing to roll back. Go on to [verify](#verify) that
+     build. A defect in it gets a new version.
+   - **It has none:** the version is still free. Go on below.
+   - **GitHub cannot say:** roll back all the same, as a version that exists is
+     what users need, but treat the version as possibly published, and ask again
+     before going on with it.
+
 Revert the whole release pull request, not only its manifest. `package.json`
 names the release a commit builds, and the unit tests refuse a public version
 there that `manifest.json` and `versions.json` do not carry, so a partial revert
@@ -363,9 +383,9 @@ git revert <revert-commit>
 
 That restores the whole preparation. Update the changelog's date, and go on from
 step 5 of [the release pull request](#prepare-the-release-pull-request), with a
-review of what changed. The version stays free while it has no tag. If it turns
-out to have one, it is published and `publish.ts` refuses it, so prepare the
-next version instead.
+review of what changed. The version stays free while it has no tag, so ask again
+as in step 2 before starting. If it turns out to have one, it is published and
+`publish.ts` refuses it, so prepare the next version instead.
 
 `test/unit/rollback.test.ts` runs these commands as they stand here, in a
 synthetic repository, and puts each state through the checks CI runs.
