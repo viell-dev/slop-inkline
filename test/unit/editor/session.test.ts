@@ -258,20 +258,20 @@ describe("DrawingSession", () => {
     expect(points.slice(-2)).toEqual([0, 96]);
   });
 
-  it("starts and ends strokes on the grid when it is on", () => {
+  it("starts and ends strokes on the grid with Shift held, while it is on", () => {
     expect(plainGrid.spacing).toBe(16);
     expect(plainGrid.rows).toHaveLength(13);
     expect(snapToGrid({ x: 7, y: 9 })).toEqual({ x: 0, y: 16 });
     const session = new DrawingSession(emptyDocument);
     session.snap = true;
-    session.begin({ x: 7, y: 9 });
-    session.extend([{ x: 20, y: 18 }]);
-    session.end();
+    session.begin({ x: 7, y: 9 }, true);
+    session.extend([{ x: 20, y: 18 }], true);
+    session.end(undefined, true);
     const points = session.document.strokes[0]?.points ?? [];
     expect(points.slice(0, 2)).toEqual([0, 256]);
     expect(points.slice(-2)).toEqual([256, 256]);
     // A straight segment's end follows the grid as it is drawn.
-    session.begin({ x: 0, y: 0 });
+    session.begin({ x: 0, y: 0 }, true);
     session.extend([{ x: 25, y: 2 }], true);
     expect(session.activeStroke?.points.slice(-2)).toEqual([512, 0]);
   });
@@ -279,13 +279,13 @@ describe("DrawingSession", () => {
   it("records a tap on the grid as one point, with the pen or the eraser", () => {
     const session = new DrawingSession(emptyDocument);
     session.snap = true;
-    session.begin({ x: 7, y: 9 });
-    session.end({ x: 7, y: 9 });
-    session.begin({ x: 7, y: 9 });
-    session.end({ x: 7.4, y: 9.2 });
+    session.begin({ x: 7, y: 9 }, true);
+    session.end({ x: 7, y: 9 }, true);
+    session.begin({ x: 7, y: 9 }, true);
+    session.end({ x: 7.4, y: 9.2 }, true);
     session.tool = "eraser";
-    session.begin({ x: 7, y: 9 });
-    session.end({ x: 7, y: 9 });
+    session.begin({ x: 7, y: 9 }, true);
+    session.end({ x: 7, y: 9 }, true);
     expect(session.document.strokes.map((stroke) => stroke.points)).toEqual([
       [0, 256],
       [0, 256],
@@ -296,14 +296,14 @@ describe("DrawingSession", () => {
   it("keeps the grid's place in the drawing when a save moves it", () => {
     const session = new DrawingSession(emptyDocument);
     session.snap = true;
-    session.begin({ x: 7, y: 9 });
-    session.end({ x: 7, y: 9 });
+    session.begin({ x: 7, y: 9 }, true);
+    session.end({ x: 7, y: 9 }, true);
     // A save cropped 5 pixels on the left, so everything moves left by 5.
     session.rebase(-5);
     expect(session.gridOrigin).toBe(11);
     // The same place on screen is now 5 pixels further left.
-    session.begin({ x: 2, y: 9 });
-    session.end({ x: 2, y: 9 });
+    session.begin({ x: 2, y: 9 }, true);
+    session.end({ x: 2, y: 9 }, true);
     const [first, second] = session.document.strokes;
     expect(second?.points).toEqual(first?.points);
     expect(first?.points).toEqual([-80, 256]);
@@ -342,9 +342,55 @@ describe("DrawingSession", () => {
     const session = new DrawingSession({ strokes: [stroke(false, 2328)] });
     session.snap = true;
     // Nearest to 161.5, one spacing on from the first stroke's start.
-    session.begin({ x: 160, y: 0 });
+    session.begin({ x: 160, y: 0 }, true);
     session.end();
     expect(session.document.strokes[1]?.points).toEqual([2328 + 256, 0]);
+  });
+
+  it("goes by the ends on the grid's rows, however many others share a place", () => {
+    const line = (...points: number[]) => ({
+      tool: "pen" as const,
+      size: 24,
+      pressure: false,
+      points,
+    });
+    // Three freehand ends share a place 5 px into a cell, off every row, and
+    // a line put on the grid has both ends 3 px into one, on rows.
+    const row = (plainGrid.rows[3] ?? 0) * 16;
+    const other = (plainGrid.rows[5] ?? 0) * 16;
+    const freehand = line(80, 101, 80 + 256, 133, 80, 171);
+    const onGrid = line(48, row, 48 + 512, other);
+    expect(gridOriginOf({ strokes: [freehand, freehand, onGrid] })).toBe(3);
+    // Halfway between two rows, as Zoom's finer grid puts an end, counts too.
+    const halfway =
+      (((plainGrid.rows[3] ?? 0) + (plainGrid.rows[4] ?? 0)) / 2) * 16;
+    const half = line(48, halfway, 48 + 512, halfway);
+    expect(gridOriginOf({ strokes: [freehand, freehand, half] })).toBe(3);
+    // With no end on a row, the most shared place, as ever.
+    expect(gridOriginOf({ strokes: [freehand, freehand] })).toBe(5);
+  });
+
+  it("keeps a stroke where it was shown when Shift lifts just before the button", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.begin({ x: 16, y: 64 }, true);
+    session.extend([{ x: 47, y: 66 }], true);
+    const shown = session.activeStroke?.points.slice(-2);
+    // Let go 9 px further on, past the middle of a cell, with no move between.
+    session.end({ x: 41, y: 73 }, false);
+    expect(session.document.strokes[0]?.points.slice(-2)).toEqual(shown);
+  });
+
+  it("keeps a polygon's corner where it was shown, too", () => {
+    const polygon = new DrawingSession(emptyDocument);
+    polygon.snap = true;
+    polygon.shape = "polygon";
+    polygon.begin({ x: 7, y: 9 }, true);
+    polygon.end({ x: 7, y: 9 }, true);
+    polygon.begin({ x: 47, y: 66 }, true);
+    // Let go past the middle of a cell, Shift up, with no move between.
+    polygon.end({ x: 41, y: 73 }, false);
+    expect(polygon.activeStroke?.points.slice(-2)).toEqual([48 * 16, 64 * 16]);
   });
 
   it("picks the most shared place for the grid, the first of a tie", () => {
@@ -413,8 +459,8 @@ describe("DrawingSession", () => {
     const session = new DrawingSession(emptyDocument);
     session.grid = grid;
     session.snap = true;
-    session.begin({ x: 22, y: 43 });
-    session.end({ x: 41, y: 140 });
+    session.begin({ x: 22, y: 43 }, true);
+    session.end({ x: 41, y: 140 }, true);
     const points = session.document.strokes[0]?.points ?? [];
     expect(points.slice(0, 2)).toEqual([28 * 16, 35.5 * 16]);
     expect(points.slice(-2)).toEqual([42 * 16, 144 * 16]);
@@ -427,17 +473,17 @@ describe("DrawingSession", () => {
     const session = new DrawingSession(emptyDocument);
     session.snap = true;
     session.grid = before;
-    session.begin({ x: 100, y: 100 });
+    session.begin({ x: 100, y: 100 }, true);
     session.grid = after;
     expect(session.grid).toBe(before);
-    session.end({ x: 100, y: 100 });
+    session.end({ x: 100, y: 100 }, true);
     expect(session.document.strokes[0]?.points).toEqual([
       102.5 * 16,
       102.5 * 16,
     ]);
     // Then the grid laid out meanwhile takes over.
     expect(session.grid).toBe(after);
-    session.begin({ x: 100, y: 100 });
+    session.begin({ x: 100, y: 100 }, true);
     session.grid = before;
     session.cancel();
     expect(session.grid).toBe(before);
@@ -462,7 +508,7 @@ describe("DrawingSession", () => {
     expect(session.gridOrigin).toBe(12);
     // A stroke keeps the grid it was drawn on, whatever the strokes say.
     session.snap = true;
-    session.begin({ x: 100, y: 0 });
+    session.begin({ x: 100, y: 0 }, true);
     session.end();
     expect(session.document.strokes.at(-1)?.points).toEqual([96 * 16, 0]);
     session.grid = { spacing: 10, rows: [0] };
@@ -481,8 +527,8 @@ describe("DrawingSession", () => {
       return session;
     };
     const stroke = (session: DrawingSession, x: number): void => {
-      session.begin({ x, y: 7 });
-      session.end({ x: x + 30, y: 7 });
+      session.begin({ x, y: 7 }, true);
+      session.end({ x: x + 30, y: 7 }, true);
     };
 
     it("snaps to points of the finer grid, among those of the usual one", () => {
@@ -490,8 +536,8 @@ describe("DrawingSession", () => {
       session.grid = fine;
       // Columns through 9, 7 pixels apart: 30 is one of the finer grid's
       // alone, and 23 is one of the usual grid's as well.
-      session.begin({ x: 31, y: 8 });
-      session.end({ x: 24, y: 20 });
+      session.begin({ x: 31, y: 8 }, true);
+      session.end({ x: 24, y: 20 }, true);
       const points = session.document.strokes[0]?.points ?? [];
       expect(points.slice(0, 2)).toEqual([30 * 16, 7 * 16]);
       expect(points.slice(-2)).toEqual([23 * 16, 21 * 16]);
@@ -510,8 +556,8 @@ describe("DrawingSession", () => {
       expect(session.gridOrigin).toBe(9);
       session.grid = usual;
       expect(session.gridOrigin).toBe(9);
-      session.begin({ x: 8, y: 0 });
-      session.end({ x: 8, y: 0 });
+      session.begin({ x: 8, y: 0 }, true);
+      session.end({ x: 8, y: 0 }, true);
       expect(session.document.strokes.at(-1)?.points).toEqual([9 * 16, 0]);
     });
 
@@ -581,16 +627,16 @@ describe("DrawingSession", () => {
 
     it("waits until a stroke ends, whichever way the view changes", () => {
       const session = onGrid();
-      session.begin({ x: 31, y: 8 });
+      session.begin({ x: 31, y: 8 }, true);
       session.grid = fine;
       expect(session.grid).toBe(usual);
-      session.end({ x: 31, y: 8 });
+      session.end({ x: 31, y: 8 }, true);
       expect(session.document.strokes[0]?.points).toEqual([37 * 16, 14 * 16]);
       expect(session.grid).toBe(fine);
-      session.begin({ x: 31, y: 8 });
+      session.begin({ x: 31, y: 8 }, true);
       session.grid = usual;
       expect(session.grid).toBe(fine);
-      session.end({ x: 31, y: 8 });
+      session.end({ x: 31, y: 8 }, true);
       expect(session.document.strokes[1]?.points).toEqual([30 * 16, 7 * 16]);
       expect(session.grid).toBe(usual);
     });
@@ -598,26 +644,26 @@ describe("DrawingSession", () => {
     it("keeps a polygon on the grid it started on until it ends", () => {
       const session = onGrid();
       session.shape = "polygon";
-      session.begin({ x: 9, y: 0 });
-      session.end({ x: 9, y: 0 });
+      session.begin({ x: 9, y: 0 }, true);
+      session.end({ x: 9, y: 0 }, true);
       // Zoom goes on with a corner placed: the view changes, the grid waits.
       session.grid = fine;
       expect(session.grid).toBe(usual);
       expect(session.placing).toBe(true);
-      session.begin({ x: 31, y: 8 });
-      session.end({ x: 31, y: 8 });
+      session.begin({ x: 31, y: 8 }, true);
+      session.end({ x: 31, y: 8 }, true);
       const corners = [9 * 16, 0, 37 * 16, 14 * 16];
       expect(session.activeStroke?.points).toEqual(corners);
       // A click on that last corner ends it, on the same grid.
-      session.begin({ x: 31, y: 8 });
-      session.end({ x: 31, y: 8 });
+      session.begin({ x: 31, y: 8 }, true);
+      session.end({ x: 31, y: 8 }, true);
       expect(session.placing).toBe(false);
       expect(session.grid).toBe(fine);
       expect(session.document.strokes[0]?.points).toEqual(corners);
       expect(session.gridOrigin).toBe(9);
       // And one started zoomed keeps its finer grid when zoomed out.
-      session.begin({ x: 31, y: 8 });
-      session.end({ x: 31, y: 8 });
+      session.begin({ x: 31, y: 8 }, true);
+      session.end({ x: 31, y: 8 }, true);
       expect(session.activeStroke?.points).toEqual([30 * 16, 7 * 16]);
       session.grid = usual;
       expect(session.grid).toBe(fine);
@@ -727,6 +773,156 @@ describe("DrawingSession's moveDrawing", () => {
   });
 });
 
+describe("DrawingSession with the grid on", () => {
+  /** A session with the plain grid on, 16 pixels between its points. */
+  const onGrid = (): DrawingSession => {
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    return session;
+  };
+  /** The first and last point of the session's latest stroke, in pixels. */
+  const ends = (session: DrawingSession): number[] => {
+    const points = session.document.strokes.at(-1)?.points ?? [];
+    return [points[0], points[1], points.at(-2), points.at(-1)].map(
+      (value) => (value ?? 0) / 16,
+    );
+  };
+
+  it("snaps nothing without Shift, with the pen or the eraser: the grid is a guide", () => {
+    const session = onGrid();
+    // A click in the middle of four grid points, as in #150.
+    session.begin({ x: 8, y: 8 });
+    session.end({ x: 8, y: 8 });
+    expect(session.document.strokes[0]?.points).toEqual([128, 128]);
+    session.tool = "eraser";
+    session.begin({ x: 7, y: 9 });
+    session.extend([{ x: 20, y: 25 }]);
+    session.end({ x: 41, y: 71 });
+    expect(ends(session)).toEqual([7, 9, 41, 71]);
+    // Without a release to go by, it stops at its last point.
+    session.begin({ x: 7, y: 9 });
+    session.extend([{ x: 41, y: 71 }]);
+    session.end();
+    expect(ends(session)).toEqual([7, 9, 41, 71]);
+  });
+
+  it("puts the press on the grid by Shift at the press alone", () => {
+    const session = onGrid();
+    session.begin({ x: 7, y: 9 }, true);
+    session.extend([{ x: 41, y: 71 }]);
+    session.end({ x: 41, y: 71 });
+    expect(ends(session)).toEqual([0, 16, 41, 71]);
+    session.begin({ x: 7, y: 9 });
+    session.extend([{ x: 20, y: 25 }], true);
+    // It stays where it was pressed, as Shift came after.
+    expect(session.activeStroke?.points.slice(0, 2)).toEqual([7 * 16, 9 * 16]);
+    session.end({ x: 20, y: 25 }, true);
+    expect(ends(session)).toEqual([7, 9, 16, 32]);
+  });
+
+  it("keeps what was drawn when Shift comes part way, and snaps from there on", () => {
+    const session = onGrid();
+    session.begin({ x: 7, y: 9 });
+    session.extend([{ x: 21, y: 9 }]);
+    session.extend([{ x: 41, y: 71 }], true);
+    const points = session.activeStroke?.points ?? [];
+    // Freehand to where Shift came, then straight from there to a grid point.
+    expect(points.slice(0, 2)).toEqual([7 * 16, 9 * 16]);
+    expect(points).toContain(21 * 16);
+    expect(points.slice(-2)).toEqual([48 * 16, 64 * 16]);
+    session.end({ x: 41, y: 71 }, true);
+    expect(ends(session)).toEqual([7, 9, 48, 64]);
+  });
+
+  it("keeps a straight part on the grid when Shift goes part way, and goes on freehand", () => {
+    const session = onGrid();
+    session.begin({ x: 7, y: 9 }, true);
+    session.extend([{ x: 41, y: 9 }], true);
+    session.extend([{ x: 45, y: 13 }]);
+    const points = session.activeStroke?.points ?? [];
+    // Along the row to the grid point, then on to the pointer.
+    expect(points.slice(0, 2)).toEqual([0, 16 * 16]);
+    expect(points).toContain(48 * 16);
+    expect(points.slice(-2)).toEqual([45 * 16, 13 * 16]);
+    session.end({ x: 45, y: 13 });
+    expect(ends(session)).toEqual([0, 16, 45, 13]);
+  });
+
+  it("counts a Shift let go just before the button as held, with no move since", () => {
+    const session = onGrid();
+    // Up with no move between: the line stays on the grid it was drawn on.
+    session.begin({ x: 7, y: 9 }, true);
+    session.extend([{ x: 41, y: 71 }], true);
+    session.end({ x: 41, y: 71 });
+    expect(ends(session)).toEqual([0, 16, 48, 64]);
+    // A tap stays a dot on its grid point.
+    session.begin({ x: 7, y: 9 }, true);
+    session.end({ x: 7, y: 9 });
+    expect(session.document.strokes.at(-1)?.points).toEqual([0, 256]);
+    // Up with a move since, however small: the stroke goes where the pointer
+    // does, and it is not held.
+    session.begin({ x: 7, y: 9 }, true);
+    session.extend([{ x: 41, y: 71 }], true);
+    session.extend([{ x: 41.5, y: 71 }]);
+    session.end({ x: 41.5, y: 71 });
+    expect(ends(session)).toEqual([0, 16, 41.5, 71]);
+  });
+
+  it("puts a freehand stroke's end on the grid by a Shift that comes just before the button", () => {
+    const session = onGrid();
+    session.begin({ x: 7, y: 9 });
+    session.extend([{ x: 41, y: 71 }]);
+    session.end({ x: 41, y: 71 }, true);
+    expect(ends(session)).toEqual([7, 9, 48, 64]);
+  });
+
+  it("starts each stroke afresh, whatever Shift did at the last", () => {
+    const session = onGrid();
+    session.begin({ x: 7, y: 9 }, true);
+    session.end({ x: 7, y: 9 }, true);
+    session.begin({ x: 7, y: 9 });
+    session.end({ x: 7, y: 9 });
+    expect(session.document.strokes.at(-1)?.points).toEqual([7 * 16, 9 * 16]);
+  });
+
+  it("does nothing different with the grid off, wherever Shift comes", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.flatEnds = true;
+    session.begin({ x: 7, y: 9 }, true);
+    session.end({ x: 7, y: 9 }, true);
+    expect(session.document.strokes[0]?.points).toEqual([7 * 16, 9 * 16]);
+    session.begin({ x: 7, y: 9 });
+    session.extend([{ x: 41, y: 71 }]);
+    session.end({ x: 41, y: 71 }, true);
+    expect(ends(session)).toEqual([7, 9, 41, 71]);
+    expect(session.document.strokes[1]).not.toHaveProperty("cut");
+    session.begin({ x: 7, y: 9 }, true);
+    session.extend([{ x: 41, y: 71 }], true);
+    session.end({ x: 41, y: 71 }, true);
+    expect(ends(session)).toEqual([7, 9, 41, 71]);
+    expect(session.document.strokes[2]).not.toHaveProperty("cut");
+  });
+
+  it("keeps the grid's place through strokes off it, undo, and a save's move", () => {
+    const session = onGrid();
+    session.replace(emptyDocument, 5);
+    // Strokes off the grid say nothing of where it lies, while it is open.
+    session.begin({ x: 7, y: 9 });
+    session.extend([{ x: 41, y: 71 }]);
+    session.end({ x: 41, y: 71 });
+    expect(session.gridOrigin).toBe(5);
+    session.undo();
+    expect(session.gridOrigin).toBe(5);
+    session.redo();
+    expect(session.gridOrigin).toBe(5);
+    session.rebase(-3);
+    expect(session.gridOrigin).toBe(2);
+    session.begin({ x: 3, y: 9 }, true);
+    session.end({ x: 3, y: 9 }, true);
+    expect(session.document.strokes.at(-1)?.points).toEqual([2 * 16, 16 * 16]);
+  });
+});
+
 describe("gridCuts", () => {
   it("measures the last end along the pointer's path, if it got anywhere", () => {
     // Steep up to where the pointer was let go, then a jump sideways.
@@ -735,12 +931,23 @@ describe("gridCuts", () => {
     expect(gridCuts(points, 64, end, { end: [0, 0, 0, 160] })).toEqual({
       end: "down",
     });
-    // By default, along the stroke.
-    expect(gridCuts(points, 64, end)).toEqual({ end: "right" });
+    // By default, along the stroke, whose jump runs along the row.
+    expect(gridCuts(points, 64, end)).toBeUndefined();
     // A path that never left its start has only the jump to go by.
-    expect(gridCuts([0, 0, 96, 16], 64, end, { end: [0, 0, 0, 0] })).toEqual({
-      end: "right",
+    expect(gridCuts([0, 0, 16, 96], 64, end, { end: [0, 0, 0, 0] })).toEqual({
+      end: "down",
     });
+  });
+
+  it("leaves an end the pointer ran along the row uncut, however its points run", () => {
+    // A way that says "not cut" is an answer: the points don't get a say.
+    const both = { start: true, end: true };
+    expect(
+      gridCuts([0, 0, 16, 96], 64, both, {
+        start: [0, 0, 160, 16],
+        end: [0, 0, 160, 16],
+      }),
+    ).toBeUndefined();
   });
 
   const reach = 32;
@@ -762,14 +969,19 @@ describe("gridCuts", () => {
     });
   });
 
-  it("cuts a shallow end across its column", () => {
-    expect(gridCuts([0, 0, 160, 16], reach, both)).toEqual({
-      start: "left",
-      end: "right",
+  it("never cuts along a column: an end running along its row keeps its round end", () => {
+    expect(gridCuts([0, 0, 160, 16], reach, both)).toBeUndefined();
+    expect(gridCuts([160, 16, 0, 0], reach, both)).toBeUndefined();
+    // Level, as along the baseline, either way.
+    expect(gridCuts([0, 2304, 640, 2304], reach, both)).toBeUndefined();
+    expect(gridCuts([640, 2304, 0, 2304], reach, both)).toBeUndefined();
+    // Just short of 45°, and the same stroke's other end if it is steep.
+    expect(gridCuts([0, 0, 65, 64], reach, both)).toBeUndefined();
+    expect(gridCuts([0, 0, 0, 160, 160, 170], reach, both)).toEqual({
+      start: "up",
     });
-    expect(gridCuts([160, 16, 0, 0], reach, both)).toEqual({
-      start: "right",
-      end: "left",
+    expect(gridCuts([160, 170, 0, 160, 0, 0], reach, both)).toEqual({
+      end: "up",
     });
   });
 
@@ -804,10 +1016,10 @@ describe("DrawingSession's cuts", () => {
   it("leaves every end round until Flat ends is turned on", () => {
     const session = new DrawingSession(emptyDocument);
     session.snap = true;
-    session.begin({ x: 0, y: 16 });
+    session.begin({ x: 0, y: 16 }, true);
     session.extend([{ x: 1, y: 80 }]);
     expect(session.activeStroke).not.toHaveProperty("cut");
-    session.end({ x: 0, y: 144 });
+    session.end({ x: 0, y: 144 }, true);
     expect(session.document.strokes[0]).not.toHaveProperty("cut");
   });
 
@@ -815,16 +1027,16 @@ describe("DrawingSession's cuts", () => {
     const session = new DrawingSession(emptyDocument);
     session.snap = true;
     session.flatEnds = true;
-    session.begin({ x: 0, y: 16 });
+    session.begin({ x: 0, y: 16 }, true);
     session.flatEnds = false;
-    session.end({ x: 0, y: 144 });
+    session.end({ x: 0, y: 144 }, true);
     expect(session.document.strokes[0]?.cut).toEqual({
       start: "up",
       end: "down",
     });
-    session.begin({ x: 0, y: 16 });
+    session.begin({ x: 0, y: 16 }, true);
     session.flatEnds = true;
-    session.end({ x: 0, y: 144 });
+    session.end({ x: 0, y: 144 }, true);
     expect(session.document.strokes[1]).not.toHaveProperty("cut");
   });
 
@@ -834,64 +1046,115 @@ describe("DrawingSession's cuts", () => {
     const session = new DrawingSession(emptyDocument);
     session.snap = true;
     session.flatEnds = true;
-    session.begin({ x: 0, y: 16 });
+    session.begin({ x: 0, y: 16 }, true);
     session.extend([
       { x: 2, y: 60 },
       { x: 4, y: 100 },
       { x: 6, y: 140 },
     ]);
-    session.end({ x: 7, y: 142 });
+    session.end({ x: 7, y: 142 }, true);
     const [stroke] = session.document.strokes;
     expect(stroke?.points.slice(-2)).toEqual([0, 144 * 16]);
     expect(stroke?.cut?.end).toBe("down");
     // From the same path, the grid point to its right, and a hook there the
     // hand made, which a brush's width alone would take for the way it ran.
-    session.begin({ x: 0, y: 16 });
+    session.begin({ x: 0, y: 16 }, true);
     session.extend([
       { x: 2, y: 60 },
       { x: 4, y: 100 },
       { x: 6, y: 138 },
       { x: 12, y: 140 },
     ]);
-    session.end({ x: 15, y: 143 });
+    session.end({ x: 15, y: 143 }, true);
     const hooked = session.document.strokes[1];
     expect(hooked?.points.slice(-2)).toEqual([16 * 16, 144 * 16]);
     expect(hooked?.cut?.end).toBe("down");
   });
 
-  it("cuts the ends of a stroke drawn on the grid, and not one drawn off it", () => {
+  it("cuts the ends Shift put on the grid, and not one drawn off it", () => {
     const session = new DrawingSession(emptyDocument);
     session.snap = true;
     session.flatEnds = true;
-    session.begin({ x: 0, y: 16 });
+    session.begin({ x: 0, y: 16 }, true);
     session.extend([{ x: 1, y: 80 }]);
     // While it is drawn, only its start is on the grid.
     expect(session.activeStroke?.cut).toEqual({ start: "up" });
-    session.end({ x: 0, y: 144 });
+    session.end({ x: 0, y: 144 }, true);
     expect(session.document.strokes[0]?.cut).toEqual({
       start: "up",
       end: "down",
     });
     session.snap = false;
+    session.begin({ x: 0, y: 16 }, true);
+    session.extend([{ x: 1, y: 80 }]);
+    session.end({ x: 0, y: 144 }, true);
+    expect(session.document.strokes[1]).not.toHaveProperty("cut");
+  });
+
+  it("leaves a freehand end round, as Shift did not put it on a grid line", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.flatEnds = true;
+    // On a grid point both, as it happens, but not put there by Shift.
     session.begin({ x: 0, y: 16 });
     session.extend([{ x: 1, y: 80 }]);
+    expect(session.activeStroke).not.toHaveProperty("cut");
     session.end({ x: 0, y: 144 });
-    expect(session.document.strokes[1]).not.toHaveProperty("cut");
+    expect(session.document.strokes[0]).not.toHaveProperty("cut");
+    // Shift at the press alone cuts the start, and at the release the end.
+    session.begin({ x: 3, y: 18 }, true);
+    session.extend([{ x: 1, y: 80 }]);
+    session.end({ x: 3, y: 141 });
+    session.begin({ x: 3, y: 18 });
+    session.extend([{ x: 1, y: 80 }]);
+    session.end({ x: 3, y: 141 }, true);
+    expect(session.document.strokes[1]?.cut).toEqual({ start: "up" });
+    expect(session.document.strokes[2]?.cut).toEqual({ end: "down" });
+  });
+
+  it("leaves a line along a row uncut, with Shift or without", () => {
+    // The owner's simplest case in #150: along the baseline, left to right.
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.flatEnds = true;
+    session.begin({ x: 34, y: 142 });
+    session.extend([{ x: 80, y: 144 }]);
+    session.end({ x: 126, y: 143 });
+    session.begin({ x: 34, y: 142 }, true);
+    session.extend([{ x: 126, y: 143 }], true);
+    session.end({ x: 126, y: 143 }, true);
+    const [plain, shifted] = session.document.strokes;
+    expect(plain).not.toHaveProperty("cut");
+    expect(shifted).not.toHaveProperty("cut");
+    expect(shifted?.points.slice(0, 2)).toEqual([32 * 16, 144 * 16]);
+    expect(shifted?.points.slice(-2)).toEqual([128 * 16, 144 * 16]);
+  });
+
+  it("cuts a leg's steep end and leaves its foot, flaring along the row, round", () => {
+    // As an A's foot: down to the row, then a stretch along it.
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.flatEnds = true;
+    session.begin({ x: 0, y: 16 }, true);
+    session.extend([{ x: 0, y: 144 }], true);
+    session.extend([{ x: 48, y: 145 }]);
+    session.end({ x: 64, y: 144 }, true);
+    expect(session.document.strokes[0]?.cut).toEqual({ start: "up" });
   });
 
   it("leaves a stroke that ends on the grid point it started on uncut", () => {
     const session = new DrawingSession(emptyDocument);
     session.snap = true;
     session.flatEnds = true;
-    session.begin({ x: 64, y: 64 });
+    session.begin({ x: 64, y: 64 }, true);
     session.extend([{ x: 64, y: 74 }]);
-    session.end({ x: 64, y: 64 });
+    session.end({ x: 64, y: 64 }, true);
     expect(session.document.strokes[0]).not.toHaveProperty("cut");
     // From the independent review of #137: a short mark that snaps back to
     // its start would have been cut away whole, from both sides of the row.
-    session.begin({ x: 71, y: 71 });
+    session.begin({ x: 71, y: 71 }, true);
     session.extend([{ x: 71, y: 66 }]);
-    session.end({ x: 71, y: 66 });
+    session.end({ x: 71, y: 66 }, true);
     const mark = session.document.strokes[1];
     expect(mark?.points.slice(0, 2)).toEqual(mark?.points.slice(-2));
     expect(mark).not.toHaveProperty("cut");
@@ -905,7 +1168,7 @@ describe("DrawingSession's cuts", () => {
     session.snap = true;
     session.flatEnds = true;
     const press = { x: 71.8, y: 71.8 };
-    session.begin(press);
+    session.begin(press, true);
     const steps = Array.from({ length: 30 }, (_, step) => ({
       x: press.x + (step + 1) * 2 * Math.cos((50 * Math.PI) / 180),
       y: press.y - (step + 1) * 2 * Math.sin((50 * Math.PI) / 180),
@@ -913,7 +1176,7 @@ describe("DrawingSession's cuts", () => {
     session.extend(steps);
     // While drawn, as when saved.
     expect(session.activeStroke?.cut?.start).toBe("down");
-    session.end(steps.at(-1));
+    session.end(steps.at(-1), true);
     expect(session.document.strokes[0]?.cut?.start).toBe("down");
   });
 
@@ -928,13 +1191,13 @@ describe("DrawingSession's cuts", () => {
       x: press.x + distance * Math.cos((50 * Math.PI) / 180),
       y: press.y - distance * Math.sin((50 * Math.PI) / 180),
     });
-    session.begin(press);
+    session.begin(press, true);
     session.extend(
       Array.from({ length: 20 }, (_, step) => along(step * 2 + 2)),
     );
     session.extend([along(50), along(60)], true);
     expect(session.activeStroke?.cut?.start).toBe("down");
-    session.end(along(60));
+    session.end(along(60), true);
     expect(session.document.strokes[0]?.cut?.start).toBe("down");
   });
 
@@ -950,23 +1213,29 @@ describe("DrawingSession's cuts", () => {
       x: press.x + distance * Math.cos((35 * Math.PI) / 180),
       y: press.y - distance * Math.sin((35 * Math.PI) / 180),
     });
-    session.begin(press);
+    session.begin(press, true);
     session.extend(
       Array.from({ length: 10 }, (_, step) => along(step * 2 + 2)),
     );
-    session.end(along(20));
-    expect(session.document.strokes[0]?.cut?.end).toBe("right");
+    session.end(along(20), true);
+    // From grid point to grid point it runs at 45°, which would be cut.
+    const [stroke] = session.document.strokes;
+    expect(stroke?.points.slice(0, 2)).toEqual([64 * 16, 64 * 16]);
+    expect(stroke?.points.slice(-2)).toEqual([80 * 16, 48 * 16]);
+    expect(stroke).not.toHaveProperty("cut");
   });
 
   it("goes by its points for a tap released elsewhere, with no move between", () => {
     const session = new DrawingSession(emptyDocument);
     session.snap = true;
     session.flatEnds = true;
-    session.begin({ x: 71.8, y: 71.8 });
-    session.end({ x: 79, y: 64 });
+    // The pointer went more across than down, and the grid points straight
+    // down, which is what there is to go by.
+    session.begin({ x: 71.8, y: 71.8 }, true);
+    session.end({ x: 64, y: 79 }, true);
     expect(session.document.strokes[0]?.cut).toEqual({
-      start: "left",
-      end: "right",
+      start: "up",
+      end: "down",
     });
   });
 
@@ -976,10 +1245,10 @@ describe("DrawingSession's cuts", () => {
     const session = new DrawingSession(emptyDocument);
     session.snap = true;
     session.flatEnds = true;
-    session.begin({ x: 41.9, y: 72.1 });
+    session.begin({ x: 41.9, y: 72.1 }, true);
     session.extend([{ x: 87.9, y: 39.9 }], true);
     expect(session.activeStroke?.cut?.start).toBe("down");
-    session.end({ x: 87.9, y: 39.9 });
+    session.end({ x: 87.9, y: 39.9 }, true);
     expect(session.document.strokes[0]?.cut).toEqual({
       start: "down",
       end: "up",
@@ -990,10 +1259,10 @@ describe("DrawingSession's cuts", () => {
     const session = new DrawingSession(emptyDocument);
     session.snap = true;
     session.flatEnds = true;
-    session.begin({ x: 71, y: 71 });
+    session.begin({ x: 71, y: 71 }, true);
     session.extend([{ x: 128, y: 144 }], true);
     expect(session.activeStroke?.cut?.start).toBe("up");
-    session.end({ x: 128, y: 144 });
+    session.end({ x: 128, y: 144 }, true);
     expect(session.document.strokes[0]?.cut).toEqual({
       start: "up",
       end: "down",
@@ -1004,19 +1273,19 @@ describe("DrawingSession's cuts", () => {
     const session = new DrawingSession(emptyDocument);
     session.flatEnds = true;
     session.tool = "eraser";
-    session.begin({ x: 3, y: 16 });
-    session.extend([{ x: 60, y: 18 }]);
+    session.begin({ x: 3, y: 16 }, true);
+    session.extend([{ x: 4, y: 60 }]);
     session.snap = true;
-    session.end({ x: 64, y: 17 });
-    expect(session.document.strokes[0]?.cut).toEqual({ end: "right" });
+    session.end({ x: 3, y: 64 }, true);
+    expect(session.document.strokes[0]?.cut).toEqual({ end: "down" });
   });
 
   it("keeps a stroke's cuts through undo and redo", () => {
     const session = new DrawingSession(emptyDocument);
     session.snap = true;
     session.flatEnds = true;
-    session.begin({ x: 0, y: 16 });
-    session.end({ x: 0, y: 144 });
+    session.begin({ x: 0, y: 16 }, true);
+    session.end({ x: 0, y: 144 }, true);
     const [stroke] = session.document.strokes;
     session.undo();
     expect(session.document.strokes).toEqual([]);
@@ -1106,26 +1375,93 @@ describe("DrawingSession's ellipses", () => {
     expect(session.document.strokes).toEqual([]);
   });
 
-  it("puts the box's corners on the grid, keeps Shift's circle, and draws a dot for a tap", () => {
+  it("puts the box's corners on the grid with Shift, makes no circle, and draws a dot for a tap", () => {
     const session = new DrawingSession(emptyDocument);
     session.shape = "ellipse";
     session.snap = true;
     session.tool = "eraser";
-    session.begin({ x: 7, y: 9 });
-    session.extend([{ x: 40, y: 20 }], true);
-    // The release does not say Shift is held; the circle stays a circle.
-    session.end({ x: 41, y: 21 });
-    const [circle] = session.document.strokes;
-    expect(circle?.tool).toBe("eraser");
-    const xs = (circle?.points ?? []).filter((_, at) => at % 2 === 0);
-    const ys = (circle?.points ?? []).filter((_, at) => at % 2 === 1);
-    // From the grid point (0, 16) to (48, 64), 3 columns across.
+    session.begin({ x: 7, y: 9 }, true);
+    session.extend([{ x: 40, y: 70 }], true);
+    // The release does not say Shift is held, but no move has come since.
+    session.end({ x: 41, y: 75 });
+    const [shape] = session.document.strokes;
+    expect(shape?.tool).toBe("eraser");
+    const xs = (shape?.points ?? []).filter((_, at) => at % 2 === 0);
+    const ys = (shape?.points ?? []).filter((_, at) => at % 2 === 1);
+    // From the grid point (0, 16) to (48, 64), as the last move showed it.
     expect([Math.min(...xs), Math.max(...xs)]).toEqual([0, 768]);
     expect([Math.min(...ys), Math.max(...ys)]).toEqual([256, 1024]);
-    expect(circle).not.toHaveProperty("cut");
-    session.begin({ x: 7, y: 9 });
-    session.end({ x: 7, y: 9 });
+    expect(shape).not.toHaveProperty("cut");
+    session.begin({ x: 7, y: 9 }, true);
+    session.end({ x: 7, y: 9 }, true);
     expect(session.document.strokes[1]?.points).toEqual([0, 256]);
+  });
+
+  it("takes each of the box's corners by Shift at it, on the grid", () => {
+    const box = (session: DrawingSession, at: number): number[] => {
+      const points = session.document.strokes[at]?.points ?? [];
+      const xs = points.filter((_, index) => index % 2 === 0);
+      const ys = points.filter((_, index) => index % 2 === 1);
+      return [
+        Math.min(...xs) / 16,
+        Math.min(...ys) / 16,
+        Math.max(...xs) / 16,
+        Math.max(...ys) / 16,
+      ];
+    };
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "ellipse";
+    session.snap = true;
+    // Neither: a guide alone.
+    session.begin({ x: 7, y: 9 });
+    session.extend([{ x: 41, y: 71 }]);
+    session.end({ x: 41, y: 71 });
+    expect(box(session, 0)).toEqual([7, 9, 41, 71]);
+    // The first, with Shift let go part way, which the second then follows.
+    session.begin({ x: 7, y: 9 }, true);
+    session.extend([{ x: 30, y: 40 }], true);
+    session.extend([{ x: 41, y: 71 }]);
+    session.end({ x: 41, y: 71 });
+    expect(box(session, 1)).toEqual([0, 16, 41, 71]);
+    // The second, with Shift pressed part way: the first stays where it is.
+    session.begin({ x: 7, y: 9 });
+    session.extend([{ x: 30, y: 40 }]);
+    session.extend([{ x: 41, y: 71 }], true);
+    session.end({ x: 41, y: 71 }, true);
+    expect(box(session, 2)).toEqual([7, 9, 48, 64]);
+    // The corner goes back to the pointer as soon as Shift is up, until the
+    // release, as an ellipse is drawn again at every move.
+    session.begin({ x: 7, y: 9 });
+    session.extend([{ x: 41, y: 71 }], true);
+    session.extend([{ x: 42, y: 72 }]);
+    session.end({ x: 42, y: 72 });
+    expect(box(session, 3)).toEqual([7, 9, 42, 72]);
+  });
+
+  it("makes a circle with Shift only with the grid off, as it goes", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "ellipse";
+    const circle = (): { across: number; down: number } => {
+      const points = session.activeStroke?.points ?? [];
+      const xs = points.filter((_, at) => at % 2 === 0);
+      const ys = points.filter((_, at) => at % 2 === 1);
+      return {
+        across: Math.max(...xs) - Math.min(...xs),
+        down: Math.max(...ys) - Math.min(...ys),
+      };
+    };
+    session.begin({ x: 10, y: 10 });
+    session.extend([{ x: 70, y: 30 }], true);
+    expect(circle()).toEqual({ across: 960, down: 960 });
+    session.extend([{ x: 70, y: 30 }]);
+    expect(circle()).toEqual({ across: 960, down: 320 });
+    session.extend([{ x: 70, y: 30 }], true);
+    // The release keeps it, whatever it says of Shift.
+    session.end({ x: 70, y: 30 });
+    expect(session.document.strokes[0]?.points.length).toBeGreaterThan(8);
+    const points = session.document.strokes[0]?.points ?? [];
+    const ys = points.filter((_, at) => at % 2 === 1);
+    expect(Math.max(...ys) - Math.min(...ys)).toBe(960);
   });
 
   it("leaves the grid where it was for a drawing opened again, however many columns an ellipse spans", () => {
@@ -1142,8 +1478,8 @@ describe("DrawingSession's ellipses", () => {
       const session = new DrawingSession(emptyDocument);
       session.shape = "ellipse";
       session.snap = true;
-      session.begin(from);
-      session.end(to);
+      session.begin(from, true);
+      session.end(to, true);
       // Three columns across: its top is between two of them.
       expect(new DrawingSession(session.document).gridOrigin).toBe(0);
       session.rebase(5);
@@ -1153,43 +1489,6 @@ describe("DrawingSession's ellipses", () => {
       copying.replace(session.document);
       expect(copying.gridOrigin).toBe(5);
     }
-  });
-
-  it("leaves the grid where it was for a circle taller than the columns it was dragged across", () => {
-    const grid = { spacing: 13.8125, rows: [0, 52, 75, 88.8125, 102.625] };
-    const session = new DrawingSession(emptyDocument);
-    session.grid = grid;
-    session.shape = "ellipse";
-    session.snap = true;
-    // Leftwards one column and down three rows: the circle, as wide as it
-    // is tall, reaches past the column it was dragged to.
-    session.begin({ x: 41.4375, y: 52 });
-    session.extend([{ x: 27.625, y: 102.625 }], true);
-    session.end({ x: 27.625, y: 102.625 });
-    const points = session.document.strokes[0]?.points ?? [];
-    const xs = points.filter((_, at) => at % 2 === 0);
-    expect(Math.min(...xs)).toBe(-147);
-    expect([points[0], points.at(-2)]).toEqual([663, 663]);
-    const reopened = new DrawingSession(session.document);
-    reopened.grid = grid;
-    expect(reopened.gridOrigin).toBe(0);
-  });
-
-  it("keeps a circle on the grid along its longer side, where rows and columns are spaced differently", () => {
-    const session = new DrawingSession(emptyDocument);
-    session.grid = { spacing: 13.8125, rows: [0, 52, 75, 88.8125, 102.625] };
-    session.shape = "ellipse";
-    session.snap = true;
-    session.begin({ x: 0, y: 52 });
-    session.extend([{ x: 41.4375, y: 75 }], true);
-    session.end({ x: 41.4375, y: 75 });
-    const points = session.document.strokes[0]?.points ?? [];
-    const xs = points.filter((_, at) => at % 2 === 0);
-    const ys = points.filter((_, at) => at % 2 === 1);
-    // Three columns across, from the grid point it started on, and as tall,
-    // which ends between rows: the circle stays a circle.
-    expect([Math.min(...xs), Math.max(...xs)]).toEqual([0, 663]);
-    expect([Math.min(...ys), Math.max(...ys)]).toEqual([832, 1495]);
   });
 
   it("keeps an ellipse's corner where it was when a save moves the drawing", () => {
@@ -1276,10 +1575,15 @@ describe("DrawingSession's fill", () => {
 });
 
 describe("DrawingSession's polygons", () => {
-  /** Clicks at a point: a press and a release there. */
-  const click = (session: DrawingSession, x: number, y: number): void => {
-    session.begin({ x, y });
-    session.end({ x, y });
+  /** Clicks at a point: a press and a release there, with Shift or not. */
+  const click = (
+    session: DrawingSession,
+    x: number,
+    y: number,
+    shift = false,
+  ): void => {
+    session.begin({ x, y }, shift);
+    session.end({ x, y }, shift);
   };
 
   it("places a corner at each click, and closes on the first corner as one undoable stroke", () => {
@@ -1389,14 +1693,14 @@ describe("DrawingSession's polygons", () => {
     session.shape = "polygon";
     session.snap = true;
     session.flatEnds = true;
-    click(session, 1, 15);
-    click(session, 31, 15);
-    click(session, 33, 143);
+    click(session, 1, 15, true);
+    click(session, 31, 15, true);
+    click(session, 33, 143, true);
     // In the last corner's cell, it snaps to that corner and ends there.
     // Hovering where a click ends it shows it as the click would leave it.
-    session.extend([{ x: 30, y: 140 }]);
+    session.extend([{ x: 30, y: 140 }], true);
     const preview = session.activeStroke;
-    click(session, 30, 140);
+    click(session, 30, 140, true);
     expect(preview).toEqual(session.document.strokes[0]);
     expect(session.document.strokes[0]).toEqual({
       tool: "pen",
@@ -1405,10 +1709,10 @@ describe("DrawingSession's polygons", () => {
       points: [0, 256, 512, 256, 512, 2304],
       kind: "polygon",
     });
-    click(session, 1, 15);
-    click(session, 31, 15);
-    click(session, 33, 47);
-    click(session, 2, 17);
+    click(session, 1, 15, true);
+    click(session, 31, 15, true);
+    click(session, 33, 47, true);
+    click(session, 2, 17, true);
     expect(session.document.strokes[1]?.points).toEqual([
       0, 256, 512, 256, 512, 768, 0, 256,
     ]);
@@ -1423,8 +1727,8 @@ describe("DrawingSession's polygons", () => {
     click(session, 40, 20);
     session.snap = true;
     session.end();
-    click(session, 1, 15);
-    click(session, 31, 15);
+    click(session, 1, 15, true);
+    click(session, 31, 15, true);
     session.snap = false;
     session.end();
     expect(session.document.strokes).toHaveLength(2);
@@ -1433,9 +1737,9 @@ describe("DrawingSession's polygons", () => {
     click(session, 10, 20);
     click(session, 40, 20);
     session.snap = true;
-    session.extend([{ x: 40, y: 20 }]);
+    session.extend([{ x: 40, y: 20 }], true);
     expect(session.activeStroke?.points).toEqual([160, 320, 640, 320]);
-    click(session, 40, 20);
+    click(session, 40, 20, true);
     expect(session.document.strokes[2]?.points).toEqual([160, 320, 640, 320]);
     session.snap = false;
     // A corner off the grid is still clicked within the brush's radius once
@@ -1443,11 +1747,135 @@ describe("DrawingSession's polygons", () => {
     click(session, 10, 20);
     click(session, 40, 20);
     session.snap = true;
-    click(session, 33, 47);
-    click(session, 15, 22);
+    click(session, 33, 47, true);
+    click(session, 15, 22, true);
     expect(session.document.strokes[3]?.points).toEqual([
       160, 320, 640, 320, 512, 768, 160, 320,
     ]);
+  });
+
+  it("takes each corner by Shift at its click, one by one, on the grid", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "polygon";
+    session.snap = true;
+    click(session, 7, 9);
+    click(session, 41, 9, true);
+    click(session, 41, 71);
+    click(session, 7, 71, true);
+    session.end();
+    expect(session.document.strokes[0]?.points).toEqual([
+      7 * 16,
+      9 * 16,
+      48 * 16,
+      16 * 16,
+      41 * 16,
+      71 * 16,
+      0,
+      64 * 16,
+    ]);
+  });
+
+  it("shows the next corner as a click there would put it, by Shift at the last move", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "polygon";
+    session.snap = true;
+    click(session, 7, 9);
+    session.extend([{ x: 41, y: 71 }]);
+    expect(session.activeStroke?.points.slice(-2)).toEqual([41 * 16, 71 * 16]);
+    session.extend([{ x: 41, y: 71 }], true);
+    expect(session.activeStroke?.points.slice(-2)).toEqual([48 * 16, 64 * 16]);
+    // A press says Shift for itself, ahead of its release.
+    session.begin({ x: 41, y: 71 });
+    expect(session.activeStroke?.points.slice(-2)).toEqual([41 * 16, 71 * 16]);
+    session.end({ x: 41, y: 71 });
+  });
+
+  it("puts a corner by its release, or by a Shift let go in its click", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "polygon";
+    session.snap = true;
+    click(session, 7, 9);
+    // Pressed with Shift, and let go an instant before the button.
+    session.begin({ x: 41, y: 9 }, true);
+    session.end({ x: 41, y: 9 });
+    // Pressed without it, and with it by the release.
+    session.begin({ x: 41, y: 71 });
+    session.end({ x: 41, y: 71 }, true);
+    // A press dragged on without Shift puts it where it is let go.
+    session.begin({ x: 90, y: 9 }, true);
+    session.extend([{ x: 100, y: 71 }]);
+    session.end({ x: 100, y: 71 });
+    session.end();
+    expect(session.document.strokes[0]?.points).toEqual([
+      7 * 16,
+      9 * 16,
+      48 * 16,
+      16 * 16,
+      48 * 16,
+      64 * 16,
+      100 * 16,
+      71 * 16,
+    ]);
+  });
+
+  it("closes on a corner by the brush's reach without Shift, and by its grid point with it", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "polygon";
+    session.snap = true;
+    // M is 12 px wide, so 6 px reaches. Without Shift, a click 7 px off the
+    // corner on the grid is a new corner, though it would snap to it.
+    click(session, 16, 16, true);
+    click(session, 64, 16, true);
+    click(session, 64, 64, true);
+    click(session, 23, 16);
+    expect(session.placing).toBe(true);
+    expect(session.activeStroke?.points).toHaveLength(8);
+    // With Shift, the same click snaps to it and closes.
+    session.undoCorner();
+    click(session, 23, 16, true);
+    expect(session.placing).toBe(false);
+    expect(session.document.strokes[0]?.points).toEqual([
+      256, 256, 1024, 256, 1024, 1024, 256, 256,
+    ]);
+    // Without Shift, a click within reach of it closes.
+    click(session, 16, 16, true);
+    click(session, 64, 16, true);
+    click(session, 64, 64, true);
+    click(session, 20, 18);
+    expect(session.placing).toBe(false);
+    expect(session.document.strokes[1]?.points).toEqual([
+      256, 256, 1024, 256, 1024, 1024, 256, 256,
+    ]);
+    // And hovering there shows what the click would do.
+    click(session, 16, 16, true);
+    click(session, 64, 16, true);
+    click(session, 64, 64, true);
+    session.extend([{ x: 23, y: 16 }]);
+    expect(session.activeStroke?.points).toHaveLength(8);
+    expect(session.activeStroke?.points.slice(-2)).toEqual([23 * 16, 256]);
+    session.extend([{ x: 23, y: 16 }], true);
+    expect(session.activeStroke?.points.slice(-2)).toEqual([256, 256]);
+  });
+
+  it("reaches a corner placed without Shift by the brush's radius, Shift held or not", () => {
+    // Off the grid, no click snaps to such a corner, so only reach can.
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "polygon";
+    session.snap = true;
+    click(session, 10, 20);
+    click(session, 40, 20);
+    click(session, 25, 50);
+    click(session, 12, 21, true);
+    expect(session.placing).toBe(false);
+    expect(session.document.strokes[0]?.points).toEqual([
+      160, 320, 640, 320, 400, 800, 160, 320,
+    ]);
+    // And the last corner the same way, which ends it there.
+    click(session, 10, 20);
+    click(session, 40, 20);
+    click(session, 42, 21, true);
+    expect(session.placing).toBe(false);
+    expect(session.document.strokes[1]?.points).toEqual([160, 320, 640, 320]);
   });
 
   it("drops a polygon being placed when the drawing is cleared", () => {

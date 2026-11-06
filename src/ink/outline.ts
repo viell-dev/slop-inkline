@@ -264,9 +264,9 @@ export function polygonPieces(
 }
 
 /**
- * The boxes a stroke's cuts take away, in pixels: past the line through each
- * cut end, across the cut's direction, as far as the brush reaches from that
- * end and a pixel more for its soft edge. Only the end's own ink goes there:
+ * The boxes a stroke's cuts take away, in pixels: past the horizontal line
+ * through each cut end, as far as the brush reaches from that end and a pixel
+ * more for its soft edge. Only the end's own ink goes there:
  * {@link uncutRest} draws the rest of the stroke in them again. A polygon is
  * never cut: its ends stay square.
  */
@@ -285,15 +285,10 @@ export function cutBoxes(stroke: Stroke): Bounds[] {
     const x = (points[at] ?? 0) / unitsPerPixel;
     const y = (points[at + 1] ?? 0) / unitsPerPixel;
     const across = { left: x - reach, right: x + reach };
-    const along = { top: y - reach, bottom: y + reach };
     boxes.push(
       direction === "down"
         ? { ...across, top: y, bottom: y + reach }
-        : direction === "up"
-          ? { ...across, top: y - reach, bottom: y }
-          : direction === "right"
-            ? { ...along, left: x, right: x + reach }
-            : { ...along, left: x - reach, right: x },
+        : { ...across, top: y - reach, bottom: y },
     );
   }
   return boxes;

@@ -3,6 +3,7 @@ import { Key } from "webdriverio";
 import { loadModules } from "../support/browser.ts";
 import {
   draw,
+  drawHoldingShift,
   editorGrid,
   openAtMarker,
   settledSurface,
@@ -174,7 +175,7 @@ describe("Ellipse", function () {
     await browser.keys("e");
     expect(await pressed("ellipse")).toBe("true");
     expect(await pressed("eraser")).toBe("true");
-    await draw([
+    await drawHoldingShift([
       [0.31, 0.27],
       [0.5, 0.5],
       [0.62, 0.73],

@@ -67,6 +67,15 @@ are spaced differently. For a half circle, draw the circle, then erase the half
 you don't want with eraser strokes that end on the line across its middle: on
 the grid with **Flat ends** on, their ends stop flush with that line.
 
+**Unreleased:** nothing goes on the grid unless Shift is held, so each corner of
+the box is on the grid only if Shift is held as you place it: the first as you
+press, the second as you let go. With the grid on, Shift does this instead of
+making a circle, and no circle is drawn; with the grid off, it still makes one.
+The second corner follows the pointer, and goes back to it if you let go of
+Shift while dragging. For the half circle above, bring the eraser strokes up or
+down to the row across its middle, and hold Shift as they end, as flat ends only
+cut along a row.
+
 ## Polygons
 
 **Polygon** (Y) draws a shape with straight sides and sharp corners, such as a
@@ -93,6 +102,12 @@ the brush's circle of the first or last corner counts as that corner, or within
 4 of the drawing's pixels for a smaller brush. So does such a click with the
 grid on, for a corner placed before the grid was turned on.
 
+**Unreleased:** a corner goes on the grid only if Shift is held as you click it,
+so one shape can have some corners on the grid and some off it. The next side
+shows where a click would put the corner. A click within the brush's circle of
+the first or last corner counts as that corner, as off the grid. So does a click
+with Shift held that snaps to such a corner, if Shift put it on the grid.
+
 ## Filled shapes
 
 **Toggle fill** (B) is a switch for the shapes drawn next, not a tool to click a
@@ -113,6 +128,26 @@ Hold Shift while drawing to make the stroke straight, from where it was when
 Shift went down. **Grid** (Shift+G) shows a grid of dots and snaps the ends of
 strokes to them, for scripts built from straight strokes and dots; a tap on the
 grid stays a dot.
+
+**Unreleased:** the grid is a guide, and nothing snaps to it unless Shift is
+held, for every tool. You can keep it on to judge distances and still draw
+freely: a click between its dots stays where you clicked, and a stroke starts
+and ends where you pressed and let go. With the grid on, holding Shift puts what
+you place at that moment on the nearest dot:
+
+- Held as you press, it puts the stroke's start on the grid. A tap stays a dot
+  there.
+- Pressed part way, it makes the stroke straight from where it has got to, and
+  the end of that straight part follows the dots. What you drew before stays
+  where it is, including the stroke's start.
+- Let go part way, it leaves the straight part as it is, ending on its dot, and
+  the stroke follows the pointer again from there.
+- Held as you let go of the mouse button, it puts the stroke's end on the grid.
+  Letting go of Shift just before the button counts as holding it, unless the
+  pointer has moved since; if it has, the stroke ends where the pointer does.
+
+Held all the way through a stroke, Shift draws a straight line from one dot to
+another. With the grid off, it only makes the stroke straight, as above.
 
 The grid is laid out on your note's font, so that a stroke can start and end on
 its lines. Its rows pass through the baseline and through each font line chosen
@@ -138,10 +173,22 @@ round, as does an end drawn with the grid off. The eraser's ends are cut the
 same way, so erasing up to a line leaves a straight edge there. Shapes are never
 cut: an ellipse has no ends, and a polygon keeps its square ones.
 
+**Unreleased:** **Flat ends** only ever cuts along a row, and only ends that
+Shift put on the grid. An end that comes in at 45° or steeper stops flush with
+the row through it. One running more along the row than across it is not cut, so
+a line drawn along the baseline stays whole with round ends. A freehand end is
+not on a grid line, and stays round. The button is available as before: with the
+grid on, while drawing freehand.
+
 The grid keeps its place through saves, and on a symbol you open again it lines
 up with most of its strokes, if the grid has the same size as when you drew
 them. While **Move** is on, Shift with an arrow key moves a picture to trace
 over by one column of the grid.
+
+**Unreleased:** on a symbol you open again, the grid lines up with the ends you
+put on it with Shift, however few there are, if the grid has the same rows as
+when you drew them. A symbol with none lines up with the ends that share a place
+within a cell, and else with the start of the first stroke.
 
 ## Guides, view, and width
 

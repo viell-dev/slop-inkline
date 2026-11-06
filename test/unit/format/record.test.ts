@@ -98,8 +98,8 @@ describe("serializeRecord and parseRecord", () => {
           tool: "eraser",
           size: 32,
           pressure: false,
-          points: [0, 0, 64, 0],
-          cut: { end: "right" },
+          points: [64, 64, 64, 0],
+          cut: { end: "up" },
         },
       ],
     };
@@ -107,7 +107,7 @@ describe("serializeRecord and parseRecord", () => {
     expect(text).toContain(
       '"points":[0,0,0,64],"cut":{"start":"up","end":"down"}',
     );
-    expect(text).toContain('"cut":{"end":"right"}');
+    expect(text).toContain('"cut":{"end":"up"}');
     expect(parseRecord(text)).toEqual({ ok: true, record: cut });
   });
 
@@ -127,7 +127,7 @@ describe("serializeRecord and parseRecord", () => {
           size: 32,
           pressure: false,
           points: [0, 0, 0, 64, 64, 64],
-          cut: { end: "right", start: "up" },
+          cut: { end: "down", start: "up" },
           kind: "polygon",
         },
       ],
@@ -137,7 +137,7 @@ describe("serializeRecord and parseRecord", () => {
       '"points":[0,0,160,0,160,160,0,0],"kind":"polygon"}',
     );
     expect(text).toContain(
-      '"points":[0,0,0,64,64,64],"kind":"polygon","cut":{"start":"up","end":"right"}}',
+      '"points":[0,0,0,64,64,64],"kind":"polygon","cut":{"start":"up","end":"down"}}',
     );
     expect(parseRecord(text)).toEqual({ ok: true, record: polygons });
     expect(serializeRecord(record)).not.toContain("kind");
@@ -318,7 +318,17 @@ describe("parseRecord refuses", () => {
     [
       "a cut in no direction",
       variant(["strokes", 1, "cut"], { end: "out" }),
-      'strokes[1].cut.end is not "up", "down", "left", or "right"',
+      'strokes[1].cut.end is not "up" or "down"',
+    ],
+    [
+      "a cut along a column at a stroke's start",
+      variant(["strokes", 1, "cut"], { start: "left" }),
+      'strokes[1].cut.start is not "up" or "down"',
+    ],
+    [
+      "a cut along a column at a stroke's end",
+      variant(["strokes", 1, "cut"], { end: "right" }),
+      'strokes[1].cut.end is not "up" or "down"',
     ],
     [
       "a cut that is not an object",
