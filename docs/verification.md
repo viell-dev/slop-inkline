@@ -283,8 +283,11 @@ must keep released files readable and looking the same, as
   read and its write: two from libraries keep both fields, or refuse the later
   of two to one field with what is there; a library's that goes first stops an
   editor's until it asks; and an editor's that goes first has the library's
-  build on it. A change that lands during a save is seen by the bytes, not by a
-  date or a size. A program outside Inkline that writes after the last read is
+  build on it. None is lost to a file renamed, or deleted and put back, while a
+  save waits, with saves asked for under the old name and the new, and two
+  editors saving a deleted file make it once, with the other asking. A change
+  that lands during a save is seen by the bytes, not by a date or a size. A
+  program outside Inkline that writes after the last read is
   [a limit](./limits.md#a-file-written-at-the-moment-inkline-saves), which this
   does not cover
   ([symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts)

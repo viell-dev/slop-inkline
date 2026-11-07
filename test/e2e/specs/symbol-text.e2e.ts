@@ -313,8 +313,17 @@ async function atNextWrite(
       app.vault.modifyBinary = async (...args) => {
         app.vault.modifyBinary = write;
         if (which === "fields") {
-          document
-            .querySelector<HTMLFormElement>(".inkline-library-text-form")
+          // The fields still to save, if another library's are busy.
+          [
+            ...document.querySelectorAll<HTMLFormElement>(
+              ".inkline-library-text-form",
+            ),
+          ]
+            .find(
+              (form) =>
+                form.querySelector<HTMLButtonElement>("button[type=submit]")
+                  ?.disabled === false,
+            )
             ?.requestSubmit();
         } else {
           document
@@ -327,6 +336,108 @@ async function atNextWrite(
     },
     other,
     ms,
+  );
+}
+
+/** Has the next read of `file` wait for {@link letReadGo}. */
+async function holdNextRead(file: string): Promise<void> {
+  await browser.executeObsidian(({ app }, wanted) => {
+    const held = app.vault.getFileByPath(wanted);
+    if (held === null) throw new Error(`no ${wanted}`);
+    const read = app.vault.readBinary.bind(app.vault);
+    let go = (): void => undefined;
+    const gate = new Promise<void>((resolve) => {
+      go = resolve;
+    });
+    Reflect.set(window, "inklineLetReadGo", () => {
+      go();
+    });
+    app.vault.readBinary = async (asked) => {
+      if (asked !== held) return read(asked);
+      app.vault.readBinary = read;
+      await gate;
+      return read(asked);
+    };
+  }, file);
+}
+
+/** Lets go a read that {@link holdNextRead} held. */
+async function letReadGo(): Promise<void> {
+  await browser.execute(() => {
+    const go: unknown = Reflect.get(window, "inklineLetReadGo");
+    if (typeof go !== "function") throw new Error("no held read");
+    Reflect.apply(go, undefined, []);
+  });
+}
+
+/**
+ * Opens a second library, and in it the fields of `file` as it is now, under an
+ * editor or not, and sets `field`'s value. The library is new so that its row is
+ * for what is at the path now, and the first library's fields, which are saving,
+ * stay as they are.
+ */
+async function fieldsInSecondLibrary(
+  file: string,
+  field: "reading" | "translation",
+  text: string,
+): Promise<void> {
+  await browser.executeObsidian(async ({ app }) => {
+    await app.workspace
+      .getLeaf("split")
+      .setViewState({ type: "inkline-library", active: false });
+  });
+  const button = `.inkline-library-symbol[data-inkline-path="${file}"] [data-inkline-role="text"]`;
+  await browser.waitUntil(async () =>
+    browser.execute((selector) => {
+      const found = document.querySelector<HTMLElement>(selector);
+      found?.click();
+      return found !== null;
+    }, button),
+  );
+  const unsaved = async (): Promise<boolean> =>
+    browser.execute(
+      (name, value) => {
+        const form = [
+          ...document.querySelectorAll<HTMLFormElement>(
+            ".inkline-library-text-form",
+          ),
+        ].find(
+          (each) =>
+            each.querySelector<HTMLButtonElement>("button[type=submit]")
+              ?.disabled === false,
+        );
+        const area = form?.querySelector<HTMLTextAreaElement>(
+          `textarea[data-inkline-field="${name}"]`,
+        );
+        if (area === null || area === undefined) return false;
+        area.value = value;
+        area.dispatchEvent(new Event("input", { bubbles: true }));
+        return true;
+      },
+      field,
+      text,
+    );
+  await browser.waitUntil(unsaved);
+}
+
+/** How many of the library's fields are open. */
+async function openForms(): Promise<number> {
+  return browser.$$(".inkline-library-text-form").length;
+}
+
+/**
+ * Answers Keep mine for as long as the editor asks, until it closes. In one step
+ * in the page, as a modal that closes under a driver's element holds it up.
+ */
+async function keepMineUntilClosed(): Promise<void> {
+  await browser.waitUntil(async () =>
+    browser.execute(() => {
+      const top = [...document.querySelectorAll(".modal-container")].at(-1);
+      [...(top?.querySelectorAll("button") ?? [])]
+        .find((button) => button.textContent === "Keep mine")
+        ?.click();
+      return document.querySelector(".inkline-editor") === null;
+    }),
   );
 }
 
@@ -1122,6 +1233,186 @@ describe("A symbol's readings and translations", function () {
         translation: ["field"],
       });
       expect(await recordOf("Editor first.ink.png")).not.toBe(before);
+    });
+
+    /**
+     * Has a library's save of `file` hold the line for writes, on its read, with
+     * an editor's save of a new stroke waiting behind it. Returns the record the
+     * file had. Runs `meanwhile` as they wait, then the read goes on.
+     */
+    async function saveBehindLibrary(
+      file: string,
+      field: "reading" | "translation",
+      text: string,
+      meanwhile: () => Promise<void>,
+    ): Promise<string> {
+      await showLibrary();
+      await openFields(file);
+      await fill(field, text);
+      await editFile(file);
+      await draw([
+        [0.5, 0.3],
+        [0.7, 0.6],
+      ]);
+      const before = await recordOf(file);
+      await holdNextRead(file);
+      await browser.execute(saveFields);
+      await browser.execute(saveEditor);
+      await waitForStatus("Saving");
+      // Long enough for the drawing to be encoded and the save to join the line.
+      await browser.pause(500);
+      await meanwhile();
+      await letReadGo();
+      return before;
+    }
+
+    it("keeps a library's save of a file put back while the editor's waited", async function () {
+      const file = "Replaced.ink.png";
+      await symbolWith(file, { reading: ["TA"], translation: ["field"] });
+      const before = await saveBehindLibrary(
+        file,
+        "translation",
+        "goes with the old file",
+        async () => {
+          // As sync can: the file goes, and the same bytes come back as a new one.
+          await browser.executeObsidian(async ({ app }, wanted) => {
+            const old = app.vault.getFileByPath(wanted);
+            if (old === null) throw new Error(`no ${wanted}`);
+            const bytes = await app.vault.adapter.readBinary(wanted);
+            await app.fileManager.trashFile(old);
+            while (app.vault.getFileByPath(wanted) !== null) {
+              await new Promise((resolve) => window.setTimeout(resolve, 10));
+            }
+            await app.vault.createBinary(wanted, bytes);
+          }, file);
+          await fieldsInSecondLibrary(file, "reading", "typed");
+          // As the editor starts to write, the second library saves too.
+          await atNextWrite("fields", 300);
+        },
+      );
+      await browser.$(".inkline-editor").waitForExist({ reverse: true });
+      await browser.waitUntil(async () => (await openForms()) === 1);
+      // The first library's save was of the file that went, so it is refused.
+      expect(await formError().getText()).toContain("no longer in the vault");
+      expect(await fieldsOf(file)).toEqual({
+        reading: ["typed"],
+        translation: ["field"],
+      });
+      expect(await recordOf(file)).not.toBe(before);
+    });
+
+    it("loses no save to a rename while saves wait, under either name", async function () {
+      const file = "Before.ink.png";
+      const moved = "After.ink.png";
+      await symbolWith(file, { reading: ["TA"], translation: ["field"] });
+      const before = await saveBehindLibrary(
+        file,
+        "translation",
+        "FIRST",
+        async () => {
+          await browser.executeObsidian(
+            async ({ app }, from, to) => {
+              const found = app.vault.getFileByPath(from);
+              if (found === null) throw new Error(`no ${from}`);
+              await app.vault.rename(found, to);
+            },
+            file,
+            moved,
+          );
+          await fieldsInSecondLibrary(moved, "reading", "SECOND");
+          // Long enough for either to read before the other writes, if it can.
+          await delayVault("modifyBinary", 300, "before");
+          await browser.execute(() => {
+            [
+              ...document.querySelectorAll<HTMLFormElement>(
+                ".inkline-library-text-form",
+              ),
+            ]
+              .find(
+                (form) =>
+                  form.querySelector<HTMLButtonElement>("button[type=submit]")
+                    ?.disabled === false,
+              )
+              ?.requestSubmit();
+          });
+        },
+      );
+      // The first library's save goes ahead of the editor's, which asks.
+      await keepMineUntilClosed();
+      await waitForClosedForm();
+      await restoreVault();
+      expect(await symbolFiles()).toEqual([moved]);
+      expect(await fieldsOf(moved)).toEqual({
+        reading: ["SECOND"],
+        translation: ["FIRST"],
+      });
+      expect(await recordOf(moved)).not.toBe(before);
+    });
+
+    it("makes a deleted file once for two editors, and the other asks", async function () {
+      const file = "Symbols/Twice.ink.png";
+      await browser.executeObsidian(async ({ app }) => {
+        await app.vault.createFolder("Symbols");
+      });
+      await symbolWith(file, { reading: ["TA"] });
+      await editFile(file);
+      await draw([
+        [0.5, 0.3],
+        [0.7, 0.6],
+      ]);
+      await browser.executeObsidian(({ app, plugins }, wanted) => {
+        const found = app.vault.getFileByPath(wanted);
+        if (found === null) throw new Error(`no ${wanted}`);
+        void plugins.inkline.editSymbol(found);
+      }, file);
+      await browser.waitUntil(
+        async () => (await browser.$$(".inkline-editor").length) === 2,
+      );
+      // The later editor changes a value, as its surface is under no pointer.
+      await browser.execute(() => {
+        [...document.querySelectorAll<HTMLElement>(".inkline-text-toggle")]
+          .at(-1)
+          ?.click();
+      });
+      await browser.waitUntil(async () =>
+        browser.execute(() => {
+          const area = [
+            ...document.querySelectorAll<HTMLTextAreaElement>(
+              'textarea[data-inkline-field="reading"]',
+            ),
+          ].at(-1);
+          if (area === undefined) return false;
+          area.value = "LATER";
+          area.dispatchEvent(new Event("input", { bubbles: true }));
+          return true;
+        }),
+      );
+      const before = await recordOf(file);
+      await browser.executeObsidian(async ({ app }) => {
+        await app.vault.adapter.rmdir("Symbols", true);
+      });
+      await browser.waitUntil(
+        async () => !(await symbolFiles()).includes(file),
+      );
+      await browser.execute(() => {
+        for (const button of document.querySelectorAll<HTMLElement>(
+          '[data-inkline-button="save"]',
+        )) {
+          button.click();
+        }
+      });
+      await browser.waitUntil(
+        async () => (await topButton("Keep mine")) !== undefined,
+      );
+      // Whichever got there first made the file, and the other wrote nothing.
+      expect(await symbolFiles()).toEqual([file]);
+      const drawnFirst = (await recordOf(file)) !== before;
+      expect((await fieldsOf(file)).reading).toEqual(
+        drawnFirst ? ["TA"] : ["LATER"],
+      );
+      await keepMineUntilClosed();
+      expect(await symbolFiles()).toEqual([file]);
+      expect((await fieldsOf(file)).reading).toEqual(["LATER"]);
     });
 
     it("says so when the file goes while its fields are open", async function () {

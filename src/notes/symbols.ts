@@ -45,8 +45,9 @@ import { embedFor } from "./embeds.ts";
 import {
   changedText,
   changeFile,
-  FileQueue,
+  saveFile,
   unreadableText,
+  WriteQueue,
   type FileAccess,
 } from "./file-writes.ts";
 import { insertionAt } from "./links.ts";
@@ -78,11 +79,11 @@ const settleCheck = 20;
 
 /**
  * Every write over a symbol's file, from the library and the editor alike, so
- * that one's read, check, and write cannot fall between another's. By the
- * vault's file, which follows a rename. A file a first save makes has nothing
- * to go between: it was not there to read.
+ * that one's read, check, and write cannot fall between another's, whatever
+ * happens to the file meanwhile. A file a first save makes has nothing to go
+ * between: it was not there to read.
  */
-const writes = new FileQueue<TFile>();
+const writes = new WriteQueue();
 
 /** What the plugin lends the editors it opens. */
 export interface EditorHost {
@@ -597,7 +598,7 @@ export async function writeSymbolText(
     read: async (symbol) => new Uint8Array(await app.vault.readBinary(symbol)),
     write: (symbol, bytes) => app.vault.modifyBinary(symbol, bytes),
   };
-  await writes.run(file, () =>
+  await writes.run(() =>
     changeFile(access, file, (bytes) => changedText(bytes, changes, seen)),
   );
 }
@@ -627,11 +628,12 @@ async function rename(
 }
 
 /**
- * Writes a symbol's bytes to its file, or, once that was deleted, to a new
- * file at its path, with the folders it needs; returns the file written, which
- * a search finds by what it now says at once, ahead of whatever else is waiting
- * to be read. `check` goes first, in the file's turn, so that no other save of
- * Inkline's can come between it and the write, and rejects to write nothing.
+ * Writes a symbol's bytes to its file, wherever a rename took it, or, once that
+ * was deleted, to what is at its path, or a new file there, with the folders it
+ * needs; returns the file written, which a search finds by what it now says at
+ * once, ahead of whatever else is waiting to be read. `check` goes first, in the
+ * write's turn, so that no other save of Inkline's can come between it and the
+ * write, and rejects to write nothing.
  */
 async function writeSymbol(
   host: EditorHost,
@@ -641,22 +643,21 @@ async function writeSymbol(
 ): Promise<TFile> {
   const { app } = host;
   const buffer = toBuffer(bytes);
-  /** The file at its path now, which can be another since a delete. */
-  const current = (): TFile | null =>
-    present(app, file) ? file : app.vault.getFileByPath(file.path);
-  const written = await writes.run(current() ?? file, async () => {
-    await check();
-    const now = current();
-    if (now !== null) {
-      await app.vault.modifyBinary(now, buffer);
-      return now;
-    }
-    const folder = parentPath(file.path);
-    if (folder !== "" && app.vault.getAbstractFileByPath(folder) === null) {
-      await app.vault.createFolder(folder);
-    }
-    return app.vault.createBinary(file.path, buffer);
-  });
+  const written = await writes.run(() =>
+    saveFile({
+      current: () =>
+        present(app, file) ? file : app.vault.getFileByPath(file.path),
+      check,
+      write: (now) => app.vault.modifyBinary(now, buffer),
+      create: async () => {
+        const folder = parentPath(file.path);
+        if (folder !== "" && app.vault.getAbstractFileByPath(folder) === null) {
+          await app.vault.createFolder(folder);
+        }
+        return app.vault.createBinary(file.path, buffer);
+      },
+    }),
+  );
   await host.texts.refresh(written);
   return written;
 }

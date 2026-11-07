@@ -318,6 +318,56 @@ describe("finding a value", () => {
     expect(found(text([value]), value)).toBe(value);
   });
 
+  it.each([
+    ["a stress mark before its breve", "и\u0301\u0306", "и", "й"],
+    ["a stress mark after its breve", "и\u0306\u0301", "и", "й"],
+    ["a stress mark after the composed letter", "й\u0301", "и", "й"],
+    ["a capital with a stress mark first", "И\u0301\u0306", "и", "й"],
+    ["a grave before its breve", "и\u0300\u0306", "и", "й"],
+    ["two stress marks before its breve", "и\u0301\u0300\u0306", "и", "й"],
+    ["a mark below before its breve", "и\u0323\u0306", "и", "й"],
+    ["a mark below after its breve", "и\u0306\u0323", "и", "й"],
+    ["a mark below and a stress mark", "и\u0301\u0323\u0306", "и", "й"],
+    ["a titlo, which stays, before a breve", "и\u0483\u0306", "и", "й\u0483"],
+    ["a stress mark before a diaeresis", "е\u0301\u0308", "е", "ё"],
+    ["a stress mark before a macron", "у\u0301\u0304", "у", "ӯ"],
+    ["a breve before the acute of a gje", "г\u0306\u0301", "г", "ѓ"],
+    ["a word around the letter", "тои\u0301\u0306ка", "тои", "той"],
+  ])("keeps the letter through %s", (_, value, plain, letter) => {
+    expect(found(text([value]), plain)).toBeUndefined();
+    expect(found(text([value]), letter)).toBe(value);
+  });
+
+  it("reads a letter's marks alike, whichever comes first", () => {
+    const orders = ["и\u0301\u0306", "и\u0306\u0301", "й\u0301"];
+    for (const value of orders) {
+      for (const typed of orders)
+        expect(found(text([value]), typed)).toBe(value);
+    }
+    // Typed with its stress, it asks for that, as with any accent.
+    expect(found(text(["й"]), "и\u0301\u0306")).toBeUndefined();
+  });
+
+  it("takes the first of two marks that each make a letter", () => {
+    expect(found(text(["и\u0306\u0308"]), "й")).toBe("и\u0306\u0308");
+    expect(found(text(["и\u0308\u0306"]), "ӥ")).toBe("и\u0308\u0306");
+    expect(found(text(["и\u0306\u0308"]), "и")).toBeUndefined();
+    expect(found(text(["и\u0308\u0306"]), "и")).toBeUndefined();
+  });
+
+  it.each([
+    ["one stress mark", "а\u0301", "а"],
+    ["two of them", "а\u0301\u0300", "а"],
+    [
+      "a grave and an acute on a letter with no such form",
+      "и\u0300\u0301",
+      "и",
+    ],
+    ["a mark below", "а\u0323\u0301", "а"],
+  ])("still lets go of marks that make no letter: %s", (_, value, plain) => {
+    expect(found(text([value]), plain)).toBe(value);
+  });
+
   it("finds a letter that a voiced one goes before or after", () => {
     expect(found(text(["はな"]), "は")).toBe("はな");
     expect(found(text(["ばは"]), "は")).toBe("ばは");

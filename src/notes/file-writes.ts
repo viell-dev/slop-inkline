@@ -1,7 +1,7 @@
 // Changing a symbol's file as one step. A read, a change, and a write are three
 // steps to the vault, and a save writes the whole file, so two saves that both
 // read before either writes would lose the first one's change without a word.
-// So Inkline's writes to a file wait for one another, and each looks at the file
+// So Inkline's writes wait for one another, and each finds and looks at its file
 // inside its turn. Plain, so that unit tests can interleave them; symbols.ts gives
 // them the vault.
 
@@ -14,6 +14,8 @@ import { textFields, type TextChanges } from "./text-fields.ts";
  * save gives up, which leaves it alone.
  */
 const attempts = 3;
+
+const keepsChanging = "The file keeps changing, so it was left as it is.";
 
 /** Thrown by {@link changedText} when a field changed since it was read. */
 export class TextMoved extends Error {
@@ -35,23 +37,27 @@ export function unreadableText(error: unknown): unknown {
 }
 
 /**
- * Runs what is asked of a file one at a time, in the order it was asked, and
- * goes on past one that fails. Nothing given to it may wait for a person, or
- * every save of that file would wait too: a question is asked once its turn is
- * over.
+ * Runs what is asked of it one at a time, in the order it was asked, and goes on
+ * past one that fails. Nothing given to it may wait for a person, or every save
+ * would wait too: a question is asked once its turn is over.
+ *
+ * There is one line for all of Inkline's writes, not one for each file, as
+ * nothing names a file for as long as a save waits and runs. The vault's file
+ * stays with a rename, and is another after a delete and a new file at its path;
+ * a path is the other way round. Either way two saves of what is on the disk can
+ * hold different keys and run together. A person starts each save, and an
+ * ordinary one takes milliseconds, so nobody sees one wait for another file's.
+ * What it costs is that a write the vault never finishes holds up every save.
  */
-export class FileQueue<File> {
-  /** What each busy file's last task ends with, which never rejects. */
-  readonly #last = new Map<File, Promise<void>>();
+export class WriteQueue {
+  /** What the last task ends with, which never rejects. */
+  #last: Promise<void> = Promise.resolve();
 
-  /** Runs `task` once everything asked of `file` before it has finished. */
-  run<T>(file: File, task: () => Promise<T>): Promise<T> {
-    const result = (this.#last.get(file) ?? Promise.resolve()).then(task);
-    const ended = (): void => {
-      if (this.#last.get(file) === last) this.#last.delete(file);
-    };
-    const last: Promise<void> = result.then(ended, ended);
-    this.#last.set(file, last);
+  /** Runs `task` once everything asked before it has finished. */
+  run<T>(task: () => Promise<T>): Promise<T> {
+    const result = this.#last.then(task);
+    const ended = (): void => undefined;
+    this.#last = result.then(ended, ended);
     return result;
   }
 }
@@ -78,7 +84,7 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
 
 /**
  * Writes what `change` makes of `file`'s bytes, unless it returns them as they
- * were. Run this in a {@link FileQueue}, which keeps Inkline's own saves out.
+ * were. Run this in a {@link WriteQueue}, which keeps Inkline's own saves out.
  *
  * The vault cannot write a binary file only if it is unchanged, so a program
  * outside Inkline, as a sync tool, can always write first. This keeps that gap
@@ -99,11 +105,45 @@ export async function changeFile<File>(
     if (changed === bytes) return;
     const buffer = changed.slice().buffer;
     access.check(file);
-    if (!sameBytes(await access.read(file), bytes)) continue;
+    const last = await access.read(file);
+    // Once more, as the read can end with another file at this one's path.
+    access.check(file);
+    if (!sameBytes(last, bytes)) continue;
     await access.write(file, buffer);
     return;
   }
-  throw new Error("The file keeps changing, so it was left as it is.");
+  throw new Error(keepsChanging);
+}
+
+/** A save of a whole file, as {@link saveFile} goes about it. */
+export interface WholeFile<File> {
+  /** The file to save over now, or null when there is none. */
+  readonly current: () => File | null;
+  /** Rejects to stop the save, with nothing written. */
+  readonly check: () => Promise<void>;
+  readonly write: (file: File) => Promise<void>;
+  /** Makes the file, as there is none to save over. */
+  readonly create: () => Promise<File>;
+}
+
+/**
+ * Saves a whole file, and returns the file saved. Run this in a
+ * {@link WriteQueue}: waiting for a turn can end with the file renamed, deleted,
+ * or replaced by another at its path, so what to save over is found here, in the
+ * turn. It is found again after `check`, whose look at one file says nothing of
+ * another, and a file that is not the one looked at is looked at in its turn.
+ */
+export async function saveFile<File>(save: WholeFile<File>): Promise<File> {
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const checked = save.current();
+    await save.check();
+    const file = save.current();
+    if (file !== checked) continue;
+    if (file === null) return save.create();
+    await save.write(file);
+    return file;
+  }
+  throw new Error(keepsChanging);
 }
 
 /**

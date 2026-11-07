@@ -320,8 +320,9 @@ export interface EditorOptions {
    * that the editor goes on comparing the file with that. `name` is what the
    * name field holds, as typed, for the file to take as its name.
    * `check` looks at the file once more: the host calls it just before it
-   * writes over a file, where no other save can come between them, and writes
-   * nothing if it rejects, which it does to ask about a change or refuse one.
+   * writes over a file, where no other save can come between them, and again
+   * if another file took that one's place meanwhile. It writes nothing if
+   * `check` rejects, which it does to ask about a change or refuse one.
    * Resolves to whether that name was kept or applied. False means only the
    * rename failed: the drawing is saved, and the name stays for a retry.
    */
@@ -3125,7 +3126,7 @@ export class InkEditorModal extends Modal {
    * save must not go on: it asks first about a change made elsewhere, and
    * `resume` saves again if the answer is to; a file it cannot read is never
    * written over. It only starts the question, as the host calls this in the
-   * file's turn, which every other save of the file waits for.
+   * save's turn, which every other save waits for.
    */
   async #checkBeforeWriting(resume: () => void): Promise<void> {
     const found = await this.#readFile();

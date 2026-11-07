@@ -138,13 +138,37 @@ const selectors = /\p{Variation_Selector}/gu;
  */
 const spacedVoicing = / ([\u3099\u309a])/gu;
 
+/** A Cyrillic letter with the marks on it. */
+const cyrillicMarked = /\p{Script=Cyrillic}\p{M}+/gu;
+
 /**
- * A Cyrillic letter with a mark, which comes apart like an accented one but is a
- * letter of its own: `й` is not `и`, nor `ў` `у`, and each has its key. A stress
- * mark on a vowel makes no such letter, and neither does the grave of `ѐ` and
- * `ѝ`, which is only stress, so those still go.
+ * The marks that can make a Cyrillic letter of another. The grave of `ѐ` and `ѝ`
+ * is only stress, so it is not among them.
  */
-const cyrillicLetter = /\p{Script=Cyrillic}[\u0301-\u030f]/gu;
+const letterMaking = /[\u0301-\u030f]/u;
+
+/**
+ * A Cyrillic letter with a mark comes apart like an accented one but is a letter
+ * of its own: `й` is not `и`, nor `ў` `у`, and each has its key. So each of
+ * `marked`'s marks is tried on the letter, in the canonical order that `folded`
+ * leaves them in, and those that make no letter stay after it: a stress mark on
+ * a vowel, which still goes. Marks of one class stay in the order they were
+ * written, and one blocks another from composing, so `normalize` alone keeps the
+ * `й` of `и` with a breve and then a stress mark, and loses it the other way.
+ * Of two that each make a letter, the first does.
+ */
+function composedLetter(marked: string): string {
+  const [base = "", ...marks] = marked;
+  let letter = base;
+  const others = marks.filter((mark) => {
+    const joined = letter + mark;
+    const composed = joined.normalize("NFC");
+    if (!letterMaking.test(mark) || composed === joined) return true;
+    letter = composed;
+    return false;
+  });
+  return letter + others.join("");
+}
 
 /**
  * `text` as a search compares it: in one form, and in one letter case. The
@@ -159,7 +183,7 @@ function folded(text: string): string {
     .toLowerCase()
     .replace(selectors, "")
     .replace(spacedVoicing, "$1")
-    .replace(cyrillicLetter, (letter) => letter.normalize("NFC"));
+    .replace(cyrillicMarked, composedLetter);
 }
 
 /**

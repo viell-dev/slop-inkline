@@ -30,16 +30,20 @@ link would still lead elsewhere by its path in the vault.
 
 ## A file written at the moment Inkline saves
 
-**Unreleased:** Inkline's own saves of a symbol go one at a time, whether from
+**Unreleased:** Inkline's own saves of symbols go one at a time, whether from
 the editor or the library, and each reads the file first, so that two of them
-cannot undo each other. It cannot do the same with another program. Obsidian
-writes a binary file only as a whole, with no way to write it only if it has not
-changed since it was read, so a sync tool that writes the file in the moment
-between Inkline's last read and its write can have that change replaced. Inkline
-keeps that moment short, with the read straight before the write, and it does
-not rule it out. A change made before that read is noticed: the editor asks, and
-the library shows it. Your sync tool's own history is the way back from a change
-lost like this.
+cannot undo each other, even if the file is renamed or replaced while one waits.
+It also means that a save Obsidian never finishes, as on a drive that stops
+answering, holds up every later save until Obsidian restarts. The editor keeps
+your strokes in its draft meanwhile.
+
+Inkline cannot do the same with another program. Obsidian writes a binary file
+only as a whole, with no way to write it only if it has not changed since it was
+read, so a sync tool that writes the file in the moment between Inkline's last
+read and its write can have that change replaced. Inkline keeps that moment
+short, with the read straight before the write, and it does not rule it out. A
+change made before that read is noticed: the editor asks, and the library shows
+it. Your sync tool's own history is the way back from a change lost like this.
 
 ## Renames and Obsidian's question
 
