@@ -104,6 +104,13 @@ the mark before renaming what it links to.
   answering while it works: about a second for a file of 1.5 MB, and four to
   five for one near the limit. A symbol drawn by hand takes milliseconds
   ([#200](https://github.com/viell-dev/slop-inkline/issues/200)).
+  **Unreleased:** Obsidian keeps answering all through such a save, which takes
+  two or three seconds near the limit. What remains is a pause of up to about a
+  quarter of a second just after you ask to save, while Inkline keeps a copy of
+  the base layer for a draft, in one write that it cannot divide.
+- Opening such a symbol in the editor stops Obsidian answering too, while
+  Inkline reads it: about half a second for a file of 1.5 MB, and two to three
+  near the limit ([#202](https://github.com/viell-dev/slop-inkline/issues/202)).
 - **Unreleased:** a symbol file made to be slow to draw, by a stroke that turns
   back at nearly every point, can keep Obsidian busy for a long time when you
   open it in the editor, hours for the worst of them, from a file of a few

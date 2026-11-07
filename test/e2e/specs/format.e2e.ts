@@ -130,7 +130,7 @@ describe("The file format in Obsidian's renderer", function () {
             opened.document.strokes,
             opened.base === undefined
               ? undefined
-              : canvas.reducedBase(opened.base),
+              : await canvas.reducedBase(opened.base),
           );
           const { data: drawn } = context.getImageData(
             0,

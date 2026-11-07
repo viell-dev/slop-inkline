@@ -20,6 +20,35 @@ export class PngError extends Error {
   override name = "PngError";
 }
 
+/**
+ * Lets the page run, between slices of long work. Awaiting something else does
+ * not: a stream's read that is ready goes on as a microtask, inside the same
+ * task, so that seconds of promises still freeze the page.
+ */
+export type Pause = () => Promise<void>;
+
+/** For work that can be long: what lets the page run between its slices. */
+export interface Pausing {
+  readonly pause?: Pause | undefined;
+}
+
+/** How long work goes on before it pauses, in milliseconds. */
+const sliceMilliseconds = 12;
+
+/**
+ * A function to call between pieces of work: it awaits `pause` once the work
+ * since the last pause has taken more than {@link sliceMilliseconds}.
+ */
+export function slicer(pause: Pause | undefined): () => Promise<void> {
+  let started = performance.now();
+  return async () => {
+    if (pause === undefined) return;
+    if (performance.now() - started <= sliceMilliseconds) return;
+    await pause();
+    started = performance.now();
+  };
+}
+
 const crcTable = (() => {
   const table = new Uint32Array(256);
   for (let n = 0; n < 256; n++) {
@@ -32,12 +61,35 @@ const crcTable = (() => {
   return table;
 })();
 
+/** A CRC-32 under way, taken on through `part`. */
+function extendCrc(start: number, part: Uint8Array): number {
+  let crc = start;
+  for (const byte of part) {
+    crc = (crcTable[(crc ^ byte) & 0xff] ?? 0) ^ (crc >>> 8);
+  }
+  return crc;
+}
+
 /** The CRC-32 that PNG uses, over the given byte sequences in order. */
 export function crc32(...parts: readonly Uint8Array[]): number {
   let crc = 0xffffffff;
+  for (const part of parts) crc = extendCrc(crc, part);
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+/** How many bytes a CRC takes in at a time, under a millisecond's work. */
+const crcSliceBytes = 32 * 1024;
+
+/** {@link crc32}, calling `breather` between pieces of the work. */
+async function slicedCrc(
+  parts: readonly Uint8Array[],
+  breather: () => Promise<void>,
+): Promise<number> {
+  let crc = 0xffffffff;
   for (const part of parts) {
-    for (const byte of part) {
-      crc = (crcTable[(crc ^ byte) & 0xff] ?? 0) ^ (crc >>> 8);
+    for (let offset = 0; offset < part.length; offset += crcSliceBytes) {
+      crc = extendCrc(crc, part.subarray(offset, offset + crcSliceBytes));
+      await breather();
     }
   }
   return (crc ^ 0xffffffff) >>> 0;
@@ -207,6 +259,30 @@ export function readChunks(
     }
   }
 }
+
+/**
+ * The first of `chunks` whose CRC is wrong, if any, for chunks that
+ * {@link readChunks} took from `bytes` and did not check, so that a large file
+ * can be checked in slices.
+ */
+export async function firstDamaged(
+  bytes: Uint8Array,
+  chunks: readonly Chunk[],
+  { pause }: Pausing = {},
+): Promise<Chunk | undefined> {
+  const breather = slicer(pause);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  for (const chunk of chunks) {
+    const dataStart = chunk.data.byteOffset - bytes.byteOffset;
+    const crc = await slicedCrc(
+      [bytes.subarray(dataStart - 4, dataStart), chunk.data],
+      breather,
+    );
+    if (crc !== view.getUint32(dataStart + chunk.data.length)) return chunk;
+  }
+  return undefined;
+}
+
 /** A chunk with its CRC already computed. */
 interface SealedChunk extends Chunk {
   readonly crc: number;
@@ -239,6 +315,20 @@ function joinChunks(chunks: readonly SealedChunk[]): Uint8Array<ArrayBuffer> {
 /** Joins chunks into a PNG file, computing each length and CRC. */
 export function writeChunks(chunks: readonly Chunk[]): Uint8Array<ArrayBuffer> {
   return joinChunks(chunks.map(seal));
+}
+
+/** {@link writeChunks} for a large file, working out each CRC in slices. */
+export async function writeChunksSliced(
+  chunks: readonly Chunk[],
+  { pause }: Pausing = {},
+): Promise<Uint8Array<ArrayBuffer>> {
+  const breather = slicer(pause);
+  const sealed: SealedChunk[] = [];
+  for (const chunk of chunks) {
+    const crc = await slicedCrc([typeBytes(chunk.type), chunk.data], breather);
+    sealed.push({ ...chunk, crc });
+  }
+  return joinChunks(sealed);
 }
 
 /** The bytes of several parts, one after another. */
@@ -316,7 +406,7 @@ export const maxInflatedBytes = 16 * 1024 * 1024;
  */
 const sliceBytes = 1024;
 
-export interface StreamOptions {
+export interface StreamOptions extends Pausing {
   /** The most output to accept, in bytes. */
   readonly limit?: number;
   /** Called with the input bytes consumed so far, after each slice. */
@@ -326,15 +416,16 @@ export interface StreamOptions {
 async function transform(
   bytes: Uint8Array,
   stream: CompressionStream | DecompressionStream,
-  { limit = Infinity, onInput }: StreamOptions,
+  { limit = Infinity, onInput, pause }: StreamOptions,
 ): Promise<Uint8Array> {
+  const breather = slicer(pause);
   let consumed = 0;
   // The input is handed over a slice at a time, only as the stream asks for
   // more, which it does only once its output has been read: stopping reading
   // stops the work.
   const input = new ReadableStream<BufferSource>(
     {
-      pull(controller) {
+      async pull(controller) {
         if (consumed >= bytes.length) {
           controller.close();
           return;
@@ -344,6 +435,9 @@ async function transform(
         controller.enqueue(bytes.slice(consumed, end));
         consumed = end;
         onInput?.(consumed);
+        // The stream asks for no more until this ends. Its work happens in
+        // microtasks, whatever its reads wait for, so here is where it stops.
+        await breather();
       },
     },
     { highWaterMark: 0 },
@@ -361,12 +455,22 @@ async function transform(
     }
     parts.push(value);
   }
-  return joinBytes(parts);
+  const output = new Uint8Array(total);
+  let filled = 0;
+  for (const part of parts) {
+    output.set(part, filled);
+    filled += part.length;
+    await breather();
+  }
+  return output;
 }
 
 /** Compresses with zlib, the only compression method PNG defines. */
-export function deflate(bytes: Uint8Array): Promise<Uint8Array> {
-  return transform(bytes, new CompressionStream("deflate"), {});
+export function deflate(
+  bytes: Uint8Array,
+  options: Pausing = {},
+): Promise<Uint8Array> {
+  return transform(bytes, new CompressionStream("deflate"), options);
 }
 
 /**
@@ -376,10 +480,11 @@ export function deflate(bytes: Uint8Array): Promise<Uint8Array> {
  */
 export function inflate(
   bytes: Uint8Array,
-  { limit = maxInflatedBytes, onInput }: StreamOptions = {},
+  { limit = maxInflatedBytes, onInput, pause }: StreamOptions = {},
 ): Promise<Uint8Array> {
   return transform(bytes, new DecompressionStream("deflate"), {
     limit,
+    pause,
     ...(onInput === undefined ? {} : { onInput }),
   });
 }
@@ -465,9 +570,6 @@ function filterRow(
 /** How many filtered bytes go to the compressor at a time, about. */
 const batchBytes = 64 * 1024;
 
-/** How long the encoder works before it pauses, in milliseconds. */
-const sliceMilliseconds = 12;
-
 /**
  * The largest `IDAT` chunk the encoder writes. PNG lets the image data span
  * many, and a short chunk keeps each checksum short work.
@@ -488,20 +590,6 @@ async function readParts(
 }
 
 /**
- * A function to call between pieces of work: it awaits `pause` once the work
- * since the last pause has taken more than {@link sliceMilliseconds}.
- */
-function slicer(pause: (() => Promise<void>) | undefined): () => Promise<void> {
-  let started = performance.now();
-  return async () => {
-    if (pause === undefined) return;
-    if (performance.now() - started <= sliceMilliseconds) return;
-    await pause();
-    started = performance.now();
-  };
-}
-
-/**
  * Encodes 8-bit RGBA pixels, row by row, as a PNG: colour type 6, not
  * interlaced, with no colour chunks. Each row takes the filter that leaves
  * the smallest bytes, the usual guess at what compresses best, and the rows
@@ -516,7 +604,7 @@ export async function encodeRgba(
   width: number,
   height: number,
   data: Uint8Array | Uint8ClampedArray,
-  { pause }: { readonly pause?: () => Promise<void> } = {},
+  { pause }: Pausing = {},
 ): Promise<Uint8Array> {
   if (
     !Number.isInteger(width) ||

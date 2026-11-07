@@ -1,6 +1,7 @@
 // Pixel rules that need no canvas: where the ink is, and how a picture's
 // pixels become ink when a file without a record is opened.
 
+import { slicer, type Pausing } from "../format/png.ts";
 import { limits, unitsPerPixel } from "../format/record.ts";
 import type { Bounds } from "./geometry.ts";
 import { inkGrey } from "./render.ts";
@@ -555,38 +556,44 @@ export function baseIsReduced(across: BaseSpan, down: BaseSpan): boolean {
  * covers, in whole-number arithmetic, so that no source pixel is left out and
  * every browser stores the same values. A way it is not reduced keeps the
  * image's own pixels, and its place, for drawing to enlarge as it does.
+ *
+ * `row` gives one of the image's rows as RGBA, by its number from the top, so
+ * that a large image, of up to 64 MiB of pixels, is read a little at a time,
+ * with `pause` awaited every few milliseconds to let the page run.
  */
-export function reduceBaseAlpha(
-  image: RgbaPixels,
+export async function reduceBaseAlpha(
+  row: (index: number) => Uint8ClampedArray,
   across: BaseSpan,
   down: BaseSpan,
-): ReducedBase {
+  { pause }: Pausing = {},
+): Promise<ReducedBase> {
+  const breather = slicer(pause);
   const columns = isReduced(across)
     ? reducedPixels(across)
-    : ownPixels(image.width);
-  const rows = isReduced(down) ? reducedPixels(down) : ownPixels(image.height);
+    : ownPixels(across.size);
+  const rows = isReduced(down) ? reducedPixels(down) : ownPixels(down.size);
   const whole =
     (isReduced(across) ? unitsPerPixel * across.size : 1) *
     (isReduced(down) ? unitsPerPixel * down.size : 1);
   const alpha = new Uint8ClampedArray(columns.length * rows.length);
   const sums = new Float64Array(columns.length);
-  rows.forEach(({ first: top, parts: rowParts }, y) => {
+  for (const [y, { first: top, parts: rowParts }] of rows.entries()) {
     sums.fill(0);
-    rowParts.forEach((rowPart, row) => {
-      const line = (top + row) * image.width;
+    for (const [index, rowPart] of rowParts.entries()) {
+      const line = row(top + index);
       columns.forEach(({ first, parts }, x) => {
         let sum = 0;
         for (let at = 0; at < parts.length; at++) {
-          const pixel = (line + first + at) * 4 + 3;
-          sum += (parts[at] ?? 0) * (image.data[pixel] ?? 0);
+          sum += (parts[at] ?? 0) * (line[(first + at) * 4 + 3] ?? 0);
         }
         sums[x] = (sums[x] ?? 0) + rowPart * sum;
       });
-    });
+      await breather();
+    }
     sums.forEach((sum, x) => {
       alpha[y * columns.length + x] = Math.round(sum / whole);
     });
-  });
+  }
   return {
     width: columns.length,
     height: rows.length,

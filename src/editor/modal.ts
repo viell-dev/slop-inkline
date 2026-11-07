@@ -12,8 +12,7 @@ import {
   type EventRef,
   type TAbstractFile,
 } from "obsidian";
-import { preservableChunks, type CarriedChunk } from "../format/ink-file.ts";
-import { readChunks } from "../format/png.ts";
+import { carriedChunks, type CarriedChunk } from "../format/ink-file.ts";
 import {
   parseRecord,
   serializeRecord,
@@ -25,6 +24,7 @@ import {
 import {
   baseFromInk,
   drawableBase,
+  nextTask,
   openInk,
   previewInk,
   readPixels,
@@ -3204,6 +3204,12 @@ export class InkEditorModal extends Modal {
     this.#announce("Saving…");
     this.#saving = (async () => {
       try {
+        // Ready for the draft that goes with the write below, which can't pause.
+        if (document.base !== undefined) {
+          await this.#options.drafts?.store.keepBase(document.base.png, {
+            pause: nextTask,
+          });
+        }
         const {
           bytes: drawn,
           record,
@@ -3242,7 +3248,7 @@ export class InkEditorModal extends Modal {
         this.#named(this.#notRenamed ? undefined : typed);
         // The next save starts from what this one wrote, which may be more
         // than the chunks it carried.
-        this.#carried = preservableChunks(readChunks(bytes));
+        this.#carried = carriedChunks(bytes);
         this.#textFields?.saved(changes, typedText);
         this.#showTextSummary();
         this.#watch.took(written);
