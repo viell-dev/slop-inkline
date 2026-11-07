@@ -580,15 +580,72 @@ describe("A symbol's readings and translations", function () {
       // A row with none is as tall as one was before this feature.
       expect(await rowHeight("past tense.ink.png")).toBeLessThan(40);
       expect(await row("Said.ink.png").$("bdi").getText()).toBe("TA");
-      await saveScreenshot("text-library-light");
-      await browser.executeObsidian(({ app }) => {
-        Reflect.get(app, "changeTheme").call(app, "obsidian");
-      });
-      await saveScreenshot("text-library-dark");
-      await browser.executeObsidian(({ app }) => {
-        Reflect.get(app, "changeTheme").call(app, "moonstone");
-      });
     });
+
+    for (const theme of ["moonstone", "obsidian"]) {
+      it(`stays inside the default sidebar in the ${theme} theme`, async function () {
+        await browser.executeObsidian(({ app }, wanted) => {
+          const change: unknown = Reflect.get(app, "changeTheme");
+          if (typeof change !== "function") throw new Error("no themes");
+          change.call(app, wanted);
+        }, theme);
+        await symbolWith("past tense.ink.png", {});
+        await symbolWith("a name long enough to wrap in its row.ink.png", {
+          reading: ["TA", "DA", "ta-a", "THA", "dha", "ṭa", "ḍa", "tʰa", "d̪a"],
+          translation: ["a very long translation that the row must shorten"],
+        });
+        await symbolWith("Said.ink.png", {
+          reading: ["KA"],
+          translation: ["rice field", "שלום"],
+        });
+        await showLibrary();
+        await waitForValues("Said.ink.png", "Reading: KA");
+        await waitForValues(
+          "a name long enough to wrap in its row.ink.png",
+          "and 1 more",
+        );
+        const sizes = await browser.execute(() => {
+          const list = document.querySelector(".inkline-library-list");
+          const view = document.querySelector(".inkline-library");
+          return {
+            list: [list?.scrollWidth ?? 0, list?.clientWidth ?? 0],
+            view: [view?.scrollWidth ?? 0, view?.clientWidth ?? 0],
+          };
+        });
+        expect(sizes.list[0]).toBeLessThanOrEqual(sizes.list[1] ?? 0);
+        expect(sizes.view[0]).toBeLessThanOrEqual(sizes.view[1] ?? 0);
+        await saveScreenshot(`text-library-${theme}`);
+        await browser.$(".inkline-library-search").setValue("rice");
+        await browser.waitUntil(
+          async () =>
+            (await browser.$$(".inkline-library-symbol").length) === 1,
+        );
+        await saveScreenshot(`text-library-found-${theme}`);
+        await browser.$(".inkline-library-search").click();
+        await browser.keys(["Control", "a"]);
+        await browser.keys(["Delete"]);
+        await openFields("Said.ink.png");
+        await saveScreenshot(`text-library-form-${theme}`);
+        await browser.keys(["Escape"]);
+        await waitForClosedForm();
+        await editFile("Said.ink.png");
+        await saveScreenshot(`text-editor-values-${theme}`);
+        await showFields();
+        await saveScreenshot(`text-editor-open-${theme}`);
+        await browser.keys(["Escape"]);
+        await browser.$(".inkline-editor").waitForExist({ reverse: true });
+        await openAtMarker(noteFile, "HERE");
+        await type(";;rice");
+        await waitForRow("Said");
+        await saveScreenshot(`text-suggest-${theme}`);
+        await browser.keys(["Escape"]);
+        await browser.executeObsidian(({ app }) => {
+          const change: unknown = Reflect.get(app, "changeTheme");
+          if (typeof change !== "function") throw new Error("no themes");
+          change.call(app, "moonstone");
+        });
+      });
+    }
 
     it("changes only the text chunks, and no note", async function () {
       await symbolWith("Guess.ink.png", { reading: ["TA"] });
@@ -924,16 +981,22 @@ describe("A symbol's readings and translations", function () {
       });
       await showLibrary();
       const rowCount = () => browser.$$(".inkline-library-symbol").length;
-      await browser.waitUntil(async () => (await rowCount()) === 100);
-      const more = browser.$(".inkline-library-more");
-      expect(await more.getText()).toBe("Show more: 150 left");
-      await more.click();
-      await browser.waitUntil(async () => (await rowCount()) === 200);
-      await more.click();
-      await browser.waitUntil(async () => (await rowCount()) === 250);
-      expect(await more.isExisting()).toBe(false);
+      const waitForCount = async (count: number): Promise<void> => {
+        await browser.waitUntil(async () => (await rowCount()) === count, {
+          timeoutMsg: `not ${String(count)} rows, but ${String(await rowCount())}`,
+        });
+      };
+      const more = () => browser.$(".inkline-library-more");
+      await waitForCount(100);
+      expect(await more().getText()).toBe("Show more: 150 left");
+      await more().click();
+      await waitForCount(200);
+      expect(await more().getText()).toBe("Show more: 50 left");
+      await more().click();
+      await waitForCount(250);
+      expect(await more().isExisting()).toBe(false);
       await browser.$(".inkline-library-search").setValue("last");
-      await browser.waitUntil(async () => (await rowCount()) === 1);
+      await waitForCount(1);
     });
 
     it("lets a name and a reading disagree, through a rename too", async function () {
