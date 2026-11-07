@@ -972,6 +972,22 @@ describe("A symbol's readings and translations", function () {
         });
       });
 
+      it("shows every value saving replaces, however many there are", async function () {
+        await symbolWith(file, { reading: ["TA"] });
+        await editFile(file);
+        await showFields();
+        await fill("reading", "typed");
+        const theirs = Array.from(
+          { length: 12 },
+          (_, index) => `theirs${String(index)}`,
+        );
+        await changeOnDisk(file, { reading: theirs });
+        await waitForStatus("saving replaces what it now says");
+        const said = await note().getText();
+        for (const value of theirs) expect(said).toContain(value);
+        expect(said).not.toContain("more");
+      });
+
       it("drops the note once the typing no longer replaces anything", async function () {
         await symbolWith(file, { reading: ["TA"] });
         await editFile(file);

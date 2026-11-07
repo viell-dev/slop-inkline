@@ -571,6 +571,7 @@ img.inkline-symbol:not([width], [height]) {
 }
 
 .inkline-text-note {
+  user-select: text;
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   overflow-wrap: anywhere;

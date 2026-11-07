@@ -96,12 +96,15 @@ export function fieldLabel(field: TextField, count: number): string {
  * Shows a field's values in `parent` on a line of their own, each in its own
  * `bdi`, as a value can hold bidirectional controls, which must not reorder what
  * follows it. `found`, a value a search matched, comes first, and stands out.
+ * Only the first `limit` show, with how many more there are: a warning that a
+ * save replaces these values passes no limit, as what it hides would be lost.
  */
 export function showValues(
   parent: HTMLElement,
   field: TextField,
   values: readonly string[],
   found?: string,
+  limit = shownValues,
 ): void {
   const line = parent.createDiv({ cls: "inkline-values" });
   line.createSpan({
@@ -112,12 +115,12 @@ export function showValues(
     found === undefined
       ? values
       : [found, ...values.filter((value) => value !== found)];
-  ordered.slice(0, shownValues).forEach((value, index) => {
+  ordered.slice(0, limit).forEach((value, index) => {
     if (index > 0) line.appendText(", ");
     const shown = line.createEl("bdi", { text: value });
     if (value === found) shown.addClass("inkline-value-found");
   });
-  const more = ordered.length - shownValues;
+  const more = ordered.length - limit;
   if (more > 0) line.appendText(`, and ${String(more)} more`);
 }
 
@@ -278,8 +281,9 @@ export class TextFields {
     });
     for (const field of this.#replacing) {
       const now = this.#given[field];
-      if (now.length > 0) showValues(this.#note, field, now);
-      else this.#note.createDiv({ text: `${fieldLabel(field, 2)}: none` });
+      if (now.length > 0) {
+        showValues(this.#note, field, now, undefined, now.length);
+      } else this.#note.createDiv({ text: `${fieldLabel(field, 2)}: none` });
     }
   }
 
