@@ -184,7 +184,7 @@ async function checkDimClarity(side: number): Promise<void> {
     };
     return {
       row: profile(pixels.data, pixels.width),
-      reopened: drawn(canvas.reducedBase(opened.base)),
+      reopened: drawn(await canvas.reducedBase(opened.base)),
       shown: drawn(opened.base),
     };
   });
@@ -281,7 +281,7 @@ async function checkClarity(side: number): Promise<void> {
     const row = profile(pixels.data, pixels.width);
     return {
       row,
-      reopened: drawn(canvas.reducedBase(opened.base)),
+      reopened: drawn(await canvas.reducedBase(opened.base)),
       shown: drawn(opened.base),
       partial: row.filter((v) => v > 0 && v < 255).length,
       width: opened.base.width,

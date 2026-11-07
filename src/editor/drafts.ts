@@ -5,13 +5,16 @@
 // keeps is stored once, apart from it, since it does not change as strokes
 // are drawn.
 
+import type { Pausing } from "../format/png.ts";
 import {
   basePngProblem,
   limits,
   parseRecord,
   readBasePng,
   recordValue,
+  slicedBasePngProblem,
   toBase64,
+  toBase64Sliced,
   type BaseLayer,
   type Stroke,
 } from "../format/record.ts";
@@ -413,6 +416,11 @@ export class DraftStore {
    */
   #write(key: string, text: string, index: string, id: string): boolean {
     this.#storage.saveLocalStorage(key, text);
+    return this.#kept(key, text, index, id);
+  }
+
+  /** Reads back what {@link #write} wrote, and lists it. */
+  #kept(key: string, text: string, index: string, id: string): boolean {
     if (this.#storage.loadLocalStorage(key) !== text) return false;
     const ids = this.#list(index);
     if (ids.includes(id)) return true;
@@ -433,6 +441,15 @@ export class DraftStore {
     return png;
   }
 
+  /** The key of a stored base layer's PNG, while the index lists it. */
+  #storedKey(png: Uint8Array): string | undefined {
+    const known = this.#keys.get(png);
+    if (known === undefined) return undefined;
+    if (this.#list(baseIndexKey).includes(known)) return known;
+    this.#forgetPng(known);
+    return undefined;
+  }
+
   /**
    * Stores a base layer's PNG once, returning its key, and whether this
    * stored it, if it was kept. A key this store knows is used again while the
@@ -440,13 +457,8 @@ export class DraftStore {
    * it is stored again.
    */
   #keepPng(png: Uint8Array): { key: string; stored: boolean } | undefined {
-    const known = this.#keys.get(png);
-    if (known !== undefined) {
-      if (this.#list(baseIndexKey).includes(known)) {
-        return { key: known, stored: false };
-      }
-      this.#forgetPng(known);
-    }
+    const known = this.#storedKey(png);
+    if (known !== undefined) return { key: known, stored: false };
     if (basePngProblem(png) !== undefined) return undefined;
     const key = crypto.randomUUID();
     if (!this.#write(basePrefix + key, toBase64(png), baseIndexKey, key)) {
@@ -455,6 +467,26 @@ export class DraftStore {
     this.#pngs.set(key, png);
     this.#keys.set(png, key);
     return { key, stored: true };
+  }
+
+  /**
+   * Stores a base layer's PNG ahead of the draft that will keep it, as
+   * {@link put} would, but a little at a time, with its write and its reading
+   * back in separate tasks. `put` cannot pause, and for a large one all of
+   * that in one go stops the page for up to half a second. One this leaves
+   * unstored, `put` tries itself, and reports as it always does.
+   */
+  async keepBase(png: Uint8Array, options: Pausing = {}): Promise<void> {
+    if (this.#storedKey(png) !== undefined) return;
+    if ((await slicedBasePngProblem(png, options)) !== undefined) return;
+    const text = await toBase64Sliced(png, options);
+    const key = crypto.randomUUID();
+    this.#storage.saveLocalStorage(basePrefix + key, text);
+    await options.pause?.();
+    if (this.#kept(basePrefix + key, text, baseIndexKey, key)) {
+      this.#pngs.set(key, png);
+      this.#keys.set(png, key);
+    }
   }
 
   #forgetPng(key: string): void {

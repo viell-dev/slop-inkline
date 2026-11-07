@@ -11,10 +11,16 @@ import {
   type Draft,
   type VaultStorage,
 } from "../../../src/editor/drafts.ts";
-import { limits, type BaseLayer } from "../../../src/format/record.ts";
+import { readChunks } from "../../../src/format/png.ts";
+import {
+  limits,
+  toBase64,
+  type BaseLayer,
+} from "../../../src/format/record.ts";
 import { writeText } from "../../../src/format/text.ts";
 import type { InkDocument } from "../../../src/ink/document.ts";
 import { blank, encodePng } from "../../support/png.ts";
+import { paused } from "../../support/slices.ts";
 
 const png = encodePng(blank(2, 2));
 const layer: BaseLayer = { x: 0, y: 0, width: 32, height: 32, png };
@@ -321,6 +327,128 @@ describe("DraftStore", () => {
     const [lost] = new DraftStore(storage, () => 5000).list();
     expect(lost?.base).toEqual({ kind: "lost" });
     expect(lost?.strokes).toEqual(written.strokes);
+  });
+});
+
+describe("DraftStore.keepBase", () => {
+  const baseKeys = (storage: MemoryStorage): string[] =>
+    storage.keys("inkline-draft-base:");
+  const kept = draft({ base: { kind: "kept", layer } });
+
+  it("stores a PNG for the draft that keeps it, once", async () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 1000);
+    await store.keepBase(png);
+    const [key] = baseKeys(storage);
+    expect(baseKeys(storage)).toHaveLength(1);
+    if (key === undefined) throw new Error("no base layer stored");
+    expect(storage.loadLocalStorage(key)).toBe(toBase64(png));
+    expect(store.put(kept)).toBe(true);
+    expect(baseKeys(storage)).toEqual([key]);
+    expect(storage.writes.get(key)).toBe(1);
+    expect(store.list()[0]?.base).toEqual({ kind: "kept", layer });
+  });
+
+  it("does nothing for a PNG a draft has stored already", async () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 1000);
+    expect(store.put(kept)).toBe(true);
+    const [key] = baseKeys(storage);
+    if (key === undefined) throw new Error("no base layer stored");
+    await store.keepBase(png);
+    expect(baseKeys(storage)).toEqual([key]);
+    expect(storage.writes.get(key)).toBe(1);
+  });
+
+  it("stores it again once another store has dropped it", async () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 1000);
+    await store.keepBase(png);
+    // Nothing uses it, so listing the drafts drops it.
+    new DraftStore(storage, () => 1000).list();
+    expect(baseKeys(storage)).toEqual([]);
+    await store.keepBase(png);
+    expect(baseKeys(storage)).toHaveLength(1);
+    expect(store.put(kept)).toBe(true);
+    expect(store.list()[0]?.base).toEqual({ kind: "kept", layer });
+  });
+
+  it("leaves a stored PNG for no draft to the next list", async () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 1000);
+    await store.keepBase(png);
+    expect(store.list()).toEqual([]);
+    expect(baseKeys(storage)).toEqual([]);
+  });
+
+  it("writes and reads back in separate tasks", async () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 1000);
+    const steps: string[] = [];
+    const save = storage.saveLocalStorage.bind(storage);
+    const load = storage.loadLocalStorage.bind(storage);
+    storage.saveLocalStorage = (key, value): void => {
+      if (key.startsWith("inkline-draft-base:")) steps.push("write");
+      save(key, value);
+    };
+    storage.loadLocalStorage = (key): unknown => {
+      if (steps.at(-1) !== "read") steps.push("read");
+      return load(key);
+    };
+    await store.keepBase(png, {
+      pause: () => {
+        steps.push("pause");
+        return Promise.resolve();
+      },
+    });
+    const write = steps.indexOf("write");
+    expect(write).toBeGreaterThan(-1);
+    expect(steps[write + 1]).toBe("pause");
+    expect(steps[write + 2]).toBe("read");
+  });
+
+  it("pauses all through a large PNG", async () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 1000);
+    const data = new Uint8Array(400 * 400 * 4);
+    for (let index = 0; index < data.length; index++) {
+      data[index] = (index * 2654435761) >>> 24;
+    }
+    const large = encodePng({ width: 400, height: 400, data });
+    const { pauses } = await paused((pause) =>
+      store.keepBase(large, { pause }),
+    );
+    expect(pauses).toBeGreaterThanOrEqual(3);
+    expect(baseKeys(storage)).toHaveLength(1);
+  });
+
+  it("keeps no PNG that reading would refuse", async () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 1000);
+    const bad = png.slice();
+    const data = readChunks(bad).find(({ type }) => type === "IDAT");
+    if (data === undefined) throw new Error("no image data");
+    const at = data.data.byteOffset - bad.byteOffset;
+    bad[at] = (bad[at] ?? 0) ^ 0xff;
+    await store.keepBase(bad);
+    expect(baseKeys(storage)).toEqual([]);
+    expect(
+      store.put(
+        draft({ base: { kind: "kept", layer: { ...layer, png: bad } } }),
+      ),
+    ).toBe(false);
+  });
+
+  it("leaves a PNG storage refuses for put to report", async () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 1000);
+    storage.quota = 10;
+    await store.keepBase(png);
+    expect(baseKeys(storage)).toEqual([]);
+    expect(store.put(kept)).toBe(false);
+    storage.quota = Number.POSITIVE_INFINITY;
+    expect(store.put(kept)).toBe(true);
+    expect(store.list()[0]?.base).toEqual({ kind: "kept", layer });
   });
 });
 

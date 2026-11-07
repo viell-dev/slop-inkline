@@ -12,7 +12,9 @@ import {
   encodeRgba,
   imageHeader,
   readChunks,
+  slicer,
   writeChunks,
+  type Pausing,
 } from "../format/png.ts";
 import {
   limits,
@@ -46,6 +48,25 @@ export const maxPictureSize = limits.baseSize;
 
 /** The widest canvas drawn on at once while looking for the ink. */
 const tileWidth = 4096;
+
+/** How many rows of a reduced base layer go onto its canvas at a time. */
+const reducedRows = 64;
+
+/**
+ * Lets frames and input run, in a task of their own. A timer would too, but a
+ * hidden window's timers are held back to about one a second, and a save of a
+ * large symbol pauses hundreds of times.
+ */
+export function nextTask(): Promise<void> {
+  return new Promise((resolve) => {
+    const { port1, port2 } = new MessageChannel();
+    port1.onmessage = () => {
+      port1.close();
+      resolve();
+    };
+    port2.postMessage(undefined);
+  });
+}
 
 function canvas(width: number, height: number) {
   const surface = new OffscreenCanvas(width, height);
@@ -95,11 +116,7 @@ export function readPixels(image: ImageBitmap | OffscreenCanvas): RgbaPixels {
  */
 export function encodePixels(pixels: RgbaPixels): Promise<Uint8Array> {
   return encodeRgba(pixels.width, pixels.height, pixels.data, {
-    // A task of its own, so that frames and input run between batches.
-    pause: () =>
-      new Promise((resolve) => {
-        window.setTimeout(resolve, 0);
-      }),
+    pause: nextTask,
   });
 }
 
@@ -310,23 +327,41 @@ function placedBase(
  * smoothing does not: Chromium 120's "high" misses most of a thin line reduced
  * five times, and bilinear halving leaves out pixels at an odd size. The
  * layer's place grows to whole pixels, where a draw copies them as they are,
- * and it stays right through a move by whole pixels, as saving's crop is.
+ * and it stays right through a move by whole pixels, as saving's crop is. The
+ * image is read and the result written a little at a time, with `pause` awaited
+ * every few milliseconds, as a large one takes hundreds.
  */
-export function reducedBase(base: DrawableBase): DrawableBase {
+export async function reducedBase(
+  base: DrawableBase,
+  { pause }: Pausing = {},
+): Promise<DrawableBase> {
   const { image, x, y, width, height } = base;
   const across = { size: image.width, start: x, length: width };
   const down = { size: image.height, start: y, length: height };
   if (!baseIsReduced(across, down)) return base;
-  const reduced = reduceBaseAlpha(readPixels(image), across, down);
-  const { surface, context } = canvas(reduced.width, reduced.height);
-  context.putImageData(
-    new ImageData(
-      inkPixels(reduced.width, reduced.height, reduced.alpha),
-      reduced.width,
-    ),
-    0,
-    0,
+  const source = image.getContext("2d");
+  if (source === null) throw new Error("no 2D canvas context");
+  const reduced = await reduceBaseAlpha(
+    (row) => source.getImageData(0, row, image.width, 1).data,
+    across,
+    down,
+    { pause },
   );
+  const { surface, context } = canvas(reduced.width, reduced.height);
+  const breather = slicer(pause);
+  for (let top = 0; top < reduced.height; top += reducedRows) {
+    const rows = Math.min(reducedRows, reduced.height - top);
+    const alpha = reduced.alpha.subarray(
+      top * reduced.width,
+      (top + rows) * reduced.width,
+    );
+    context.putImageData(
+      new ImageData(inkPixels(reduced.width, rows, alpha), reduced.width),
+      0,
+      top,
+    );
+    await breather();
+  }
   return {
     x: reduced.across.start,
     y: reduced.down.start,
@@ -547,7 +582,9 @@ export async function saveInk(
   // only its pixels.
   const placedAtFirst = placedBase(base, document.base);
   const reduced =
-    placedAtFirst === undefined ? undefined : reducedBase(placedAtFirst);
+    placedAtFirst === undefined
+      ? undefined
+      : await reducedBase(placedAtFirst, { pause: nextTask });
   let { left, width } = crop(findInk(document, reduced));
   for (let attempt = 0; ; attempt++) {
     if (width > limits.width) {
@@ -586,6 +623,7 @@ export async function saveInk(
         await encodePixels(image),
         record,
         carried,
+        { pause: nextTask },
       );
       return { bytes, record, left, width };
     }

@@ -4,6 +4,7 @@ import { deflateRawSync, deflateSync, inflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import {
   RecordError,
+  carriedChunks,
   isInkPath,
   preservableChunks,
   readInkFile,
@@ -26,6 +27,7 @@ import {
   type InkRecord,
 } from "../../../src/format/record.ts";
 import { inkGrey } from "../../../src/ink/render.ts";
+import { noise, paused } from "../../support/slices.ts";
 import {
   blank,
   decodeRgba,
@@ -713,6 +715,87 @@ function findChunk(file: Uint8Array, type: string): number {
   }
   throw new Error(`no ${type} chunk`);
 }
+
+describe("writeInkFile in slices", () => {
+  const base = {
+    x: 16,
+    y: -32,
+    width: 3072,
+    height: 3072,
+    png: encodePng({ width: 300, height: 300, data: noise(300 * 300 * 4) }),
+  };
+  const large: InkRecord = { ...record, base };
+  const carried = [
+    {
+      chunk: { type: "tEXt", data: Uint8Array.of(97, 0, 98) },
+      afterData: false,
+    },
+  ];
+
+  it("writes the file it writes in one go, pausing all through it", async () => {
+    const whole = await writeInkFile(image, large, carried);
+    const { result, pauses } = await paused((pause) =>
+      writeInkFile(image, large, carried, { pause }),
+    );
+    expect(result).toEqual(whole);
+    // Its base64, CRCs, compression and checks, a pause for each kilobyte.
+    expect(pauses).toBeGreaterThanOrEqual(base.png.length / 1024);
+  });
+
+  it("holds the record's own text, and its PNG byte for byte", async () => {
+    const { result } = await paused((pause) =>
+      writeInkFile(image, large, carried, { pause }),
+    );
+    const chunk = readChunks(result).find(
+      ({ type }) => type === recordChunkType,
+    );
+    if (chunk === undefined) throw new Error("no record chunk");
+    expect(inflateSync(chunk.data.subarray(4)).toString("utf8")).toBe(
+      serializeRecord(large),
+    );
+    const source = await readInkFile(result);
+    if (source.kind !== "record") throw new Error(source.kind);
+    expect(source.record.base?.png).toEqual(base.png);
+  });
+
+  it("refuses what it refuses in one go", async () => {
+    const short: InkRecord = {
+      ...record,
+      base: { ...base, png: base.png.subarray(0, base.png.length - 1) },
+    };
+    const refusal = await writeInkFile(image, short).catch(String);
+    expect(refusal).toContain("record breaks the format");
+    await expect(
+      paused((pause) => writeInkFile(image, short, [], { pause })),
+    ).rejects.toThrow(RecordError);
+  });
+});
+
+describe("carriedChunks", () => {
+  it("keeps what preservableChunks keeps, damaged chunks left out", () => {
+    const text = (data: number): Chunk => ({
+      type: "tEXt",
+      data: Uint8Array.of(97, 0, data),
+    });
+    const bytes = withChunks([text(1), text(2)]).slice();
+    const [, second] = readChunks(bytes).filter(({ type }) => type === "tEXt");
+    if (second === undefined) throw new Error("no second chunk");
+    const at = second.data.byteOffset - bytes.byteOffset + 2;
+    bytes[at] = 9;
+    const carried = carriedChunks(bytes);
+    expect(carried).toEqual(preservableChunks(readChunks(bytes)));
+    expect(carried).toHaveLength(1);
+  });
+
+  it("does not mind damage to what it does not keep", () => {
+    const bytes = withChunks([recordChunk(formatVersion)]).slice();
+    const data = readChunks(bytes).find(({ type }) => type === "IDAT");
+    if (data === undefined) throw new Error("no image data");
+    const at = data.data.byteOffset - bytes.byteOffset;
+    bytes[at] = (bytes[at] ?? 0) ^ 0xff;
+    expect(carriedChunks(bytes)).toEqual(preservableChunks(readChunks(bytes)));
+  });
+});
 
 describe("writeInkFile writes only what readers accept", () => {
   it("refuses a record whose text is longer than the limit", async () => {
