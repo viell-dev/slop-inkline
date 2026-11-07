@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { setTimeout as wait } from "node:timers/promises";
 import { describe, expect, it } from "vitest";
 import { readChunks, writeChunks } from "../../../src/format/png.ts";
 import { writeText } from "../../../src/format/text.ts";
@@ -56,7 +57,7 @@ function indexOf(files: Fake[]) {
 /** Waits until nothing is left to read. */
 async function settled(index: SymbolTextIndex<Fake>): Promise<void> {
   while (index.reading) {
-    await new Promise((resolve) => setTimeout(resolve, 1));
+    await wait(1);
   }
 }
 
@@ -96,7 +97,7 @@ describe("SymbolTextIndex", () => {
     const { index } = indexOf([quick, slow]);
     index.start();
     while (index.textOf(quick) === undefined) {
-      await new Promise((resolve) => setTimeout(resolve, 1));
+      await wait(1);
     }
     expect(index.reading).toBe(true);
     expect(index.textOf(slow)).toBeUndefined();
@@ -198,7 +199,7 @@ describe("SymbolTextIndex", () => {
     const { index, counts } = indexOf([file]);
     index.start();
     while (counts.reads === 0) {
-      await new Promise((resolve) => setTimeout(resolve, 1));
+      await wait(1);
     }
     file.bytes = await said("KA");
     index.changed(file);
@@ -214,7 +215,7 @@ describe("SymbolTextIndex", () => {
     const { index, counts } = indexOf([file]);
     index.start();
     while (counts.reads === 0) {
-      await new Promise((resolve) => setTimeout(resolve, 1));
+      await wait(1);
     }
     index.removed(file);
     open();
@@ -243,7 +244,7 @@ describe("SymbolTextIndex", () => {
     const { index, counts } = indexOf([first, second]);
     index.start();
     while (counts.reads === 0) {
-      await new Promise((resolve) => setTimeout(resolve, 1));
+      await wait(1);
     }
     index.stop();
     open();

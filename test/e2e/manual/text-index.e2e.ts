@@ -226,7 +226,7 @@ async function library(): Promise<Record<string, number>> {
       field.value = query;
       field.dispatchEvent(new Event("input"));
       // A frame, so that drawing the rows counts.
-      await new Promise((resolve) => requestAnimationFrame(resolve));
+      await new Promise((resolve) => window.requestAnimationFrame(resolve));
       shown[query === "" ? "(all)" : query] = performance.now() - before;
     }
     return shown;

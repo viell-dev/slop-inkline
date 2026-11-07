@@ -909,7 +909,7 @@ describe("A symbol's readings and translations", function () {
       await fill("reading", "typed");
       await browser.executeObsidian(async ({ app }) => {
         const file = app.vault.getFileByPath("Gone.ink.png");
-        if (file !== null) await app.vault.delete(file);
+        if (file !== null) await app.fileManager.trashFile(file);
       });
       await browser.waitUntil(async () =>
         (await formError().getText()).includes("no longer in the vault"),
@@ -1203,7 +1203,7 @@ describe("A symbol's readings and translations", function () {
       await browser.executeObsidian(async ({ app }) => {
         const file = app.vault.getFileByPath("New/Two.ink.png");
         if (file === null) throw new Error("no file");
-        await app.vault.delete(file);
+        await app.fileManager.trashFile(file);
       });
       await waitForFiltered("KA", []);
       await symbolWith("Three.ink.png", { reading: ["KA"] });
