@@ -129,12 +129,13 @@ export interface RenameWait {
  * waiting, as {@link watchSave} does, but for a rename, which no clock can judge.
  * Its promise lasts as long as Obsidian's question about links stays open, and
  * after that it writes every note that links to the symbol: in real Obsidian, by
- * test/e2e/manual/rename-time.e2e.ts, 14 s at 3,000 notes, where telling someone
- * to restart would leave the rest with the old link. What sets a stall apart is
- * that nothing happens, as the vault reports each note at most 96 ms after the
- * last. So {@link stalledAfter} counts only from the last look at which `moving`
- * was true, however long the rename has run, and a person is told only as long
- * as that holds: `told` hears `false` when it moves again.
+ * test/e2e/manual/rename-time.e2e.ts, up to 20 s at 3,000 notes on a busy machine,
+ * where telling someone to restart would leave the rest with the old link. What
+ * sets a stall apart is that nothing happens, as the vault reports each note at
+ * most 0.11 s after the last, however many there are. So {@link stalledAfter}
+ * counts only from the last look at which `moving` was true, however long the
+ * rename has run, and a person is told only as long as that holds: `told` hears
+ * `false` when it moves again.
  *
  * It counts looks, not the clock, so that a page that freezes for a while, as a
  * large save's does, or a computer that sleeps, does not look like a stall.

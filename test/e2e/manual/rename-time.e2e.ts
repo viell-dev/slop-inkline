@@ -18,6 +18,9 @@ const outputDir = outputDirectory(process.env.E2E_OUTPUT_DIR, root);
 /** How many notes link to the symbol, for each measurement. */
 const noteCounts = [10, 100, 1000, 3000];
 
+/** How many notes to make in one call to the page. */
+const batch = 500;
+
 /** The names to rename it through, so that each is a rename of its own. */
 const names = ["gate", "lintel", "arch", "gate"];
 
@@ -63,18 +66,28 @@ describe("How a rename goes", function () {
     it(`renames a symbol that ${String(notes)} notes link to`, async function () {
       await startOver();
       await createSymbol("gate.ink.png");
-      await browser.executeObsidian(async ({ app }, count) => {
+      await browser.executeObsidian(async ({ app }) => {
         const setConfig: unknown = Reflect.get(app.vault, "setConfig");
         if (typeof setConfig !== "function") throw new Error("no setConfig");
         Reflect.apply(setConfig, app.vault, ["alwaysUpdateLinks", true]);
         await app.vault.createFolder("Many");
-        for (let at = 0; at < count; at++) {
-          await app.vault.create(
-            `Many/Note ${String(at)}.md`,
-            "Read ![[gate.ink.png]] here.\n",
-          );
-        }
-      }, notes);
+      });
+      // A batch at a time, as a call that outlasts the driver's limit is sent
+      // again, on a busy machine, and fails on the notes it had made.
+      for (let first = 0; first < notes; first += batch) {
+        await browser.executeObsidian(
+          async ({ app }, from, to) => {
+            for (let at = from; at < to; at++) {
+              await app.vault.create(
+                `Many/Note ${String(at)}.md`,
+                "Read ![[gate.ink.png]] here.\n",
+              );
+            }
+          },
+          first,
+          Math.min(first + batch, notes),
+        );
+      }
       await waitForLinks(notes, "gate.ink.png");
       const runs: unknown[] = [];
       for (let at = 1; at < names.length; at++) {
