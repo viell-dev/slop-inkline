@@ -137,10 +137,11 @@ export class SymbolLibraryView extends ItemView {
   #status: HTMLElement | undefined;
   /**
    * What the library last showed, so that a change elsewhere, as an edit to
-   * a note that Obsidian's cache then resolves, redraws nothing, and a click
-   * on a symbol is not lost to a redraw between its press and its release.
+   * a note that Obsidian's cache then resolves, redraws nothing.
    */
   #shown = "";
+  /** Whether a press on the list has yet to end, which holds off redrawing. */
+  #pressed = false;
   /** Shows the library again, once for a burst of changes. */
   readonly #refresh = debounce(
     () => {
@@ -213,10 +214,14 @@ export class SymbolLibraryView extends ItemView {
     });
     this.#status.hide();
     // Its pictures are text, as the renderer paints symbols in text.
-    this.#list = root.createDiv({
+    const list = root.createDiv({
       cls: ["inkline-library-list", textClass],
       attr: { role: "list", "aria-label": "Symbols" },
     });
+    list.addEventListener("pointerdown", (event) => {
+      if (event.button === 0) this.#holdForPress(list.win);
+    });
+    this.#list = list;
     const touched = (file: TAbstractFile, oldPath?: string) => {
       if (
         isInkPath(file.path) ||
@@ -291,12 +296,36 @@ export class SymbolLibraryView extends ItemView {
     );
   }
 
+  /**
+   * Holds off redrawing until the press just made ends, wherever it ends. A
+   * click needs its press and its release on one element, and a redraw replaces
+   * every row, so a row redrawn between them would get no click. `win` is the
+   * list's window for this press, as the library's tab can move to another. A
+   * move with the button up ends it too, as a release can go to a menu of the
+   * system's and never arrive.
+   */
+  #holdForPress(win: Window): void {
+    this.#pressed = true;
+    const ending = ["pointerup", "pointercancel", "pointermove"] as const;
+    const ended = (event: PointerEvent): void => {
+      if ((event.buttons & 1) !== 0) return;
+      this.#pressed = false;
+      for (const type of ending) win.removeEventListener(type, ended, true);
+    };
+    for (const type of ending) win.addEventListener(type, ended, true);
+  }
+
   /** Shows the library as the vault holds it now, keeping the focus. */
   #render(): void {
     if (this.#editing !== undefined) return;
     const list = this.#list;
     const field = this.#folderField;
     if (list === undefined || field === undefined) return;
+    // Not yet: this comes round again until the press has ended.
+    if (this.#pressed) {
+      this.#refresh();
+      return;
+    }
     const files = this.#files();
     const entries = this.#entries(files);
     const folders = foldersOf(entries);

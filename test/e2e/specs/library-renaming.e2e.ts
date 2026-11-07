@@ -31,13 +31,7 @@ async function showLibrary(): Promise<void> {
 }
 
 async function beginRename(name: string, typed: string): Promise<void> {
-  // A row redrawn between a click's press and its release gets no click, which
-  // #204 records, so this goes on until the form is there.
-  await browser.waitUntil(async () => {
-    if (await nameField().isExisting()) return true;
-    await row(name).$(".inkline-library-rename").click();
-    return nameField().isExisting();
-  });
+  await row(name).$(".inkline-library-rename").click();
   await nameField().waitForDisplayed();
   await nameField().setValue(typed);
 }
