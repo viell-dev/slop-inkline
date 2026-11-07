@@ -3,7 +3,7 @@
 // thousandths of a pixel, which test/unit/ink/outline.test.ts compares with
 // every change. From the first stable release these files are never replaced:
 // if a shape must change, that is a new format version, with the new ones
-// pinned under a new name.
+// pinned under a new name and their hashes added to ../pinned.sha256.
 //
 //   node test/fixtures/outline/generate.ts
 

@@ -150,6 +150,10 @@ existing file is affected.
   in the default sidebar, however long the name is. The name has the room the
   row's narrower buttons leave, and they line up across rows. In a sidebar
   narrower than about 275 pixels, they drop below the name together.
+- Every limit of the file format is now tested at the limit and just past it,
+  with its number written out, and a recorded list of hashes holds the pinned
+  test files, so that neither can change by mistake once the format is permanent
+  ([#197](https://github.com/viell-dev/slop-inkline/issues/197)).
 
 ## 0.9.1 - 2026-11-06
 
