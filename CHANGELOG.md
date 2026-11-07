@@ -77,6 +77,13 @@ changes the file must keep. No existing file is affected.
 - A very long name with no spaces breaks within its row in the symbol lists,
   rather than giving the list a sideways scroll bar
   ([#178](https://github.com/viell-dev/slop-inkline/issues/178)).
+- The editor keeps the keyboard when **Edit symbol** is chosen from a menu
+  before Obsidian has finished opening it. That menu could go on to take every
+  key though it had gone from the screen: the editor's shortcuts did nothing,
+  the first Escape left the editor open and moved the focus to the name field,
+  and a menu that took the keyboard just before the editor opened held the
+  note's arrow keys once the editor closed
+  ([#78](https://github.com/viell-dev/slop-inkline/issues/78)).
 - A flat-ended stroke whose only ink in the line came from the part drawn again
   at its cut end was left out when saving, which could save a blank symbol.
 - A picture with an orientation in its metadata is no longer turned on opening,

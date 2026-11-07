@@ -5,8 +5,10 @@ import { toBase64 } from "../support/browser.ts";
 import { draw, openAtMarker, waitForEditor } from "../support/editor.ts";
 import {
   choose,
+  chooseOnShowing,
   closeEditor,
   editorName,
+  holdMenuLoad,
   menuItems,
 } from "../support/menus.ts";
 
@@ -160,6 +162,61 @@ async function cursorAfter(text: string, nth = 0): Promise<void> {
 /** Whether Obsidian's image viewer is open. */
 async function viewerOpen(): Promise<boolean> {
   return browser.execute(() => document.querySelector(".lightbox") !== null);
+}
+
+/** Puts the cursor on the top line, and right-clicks the embed's text. */
+async function rightClickEmbedText(): Promise<void> {
+  await browser.executeObsidian(({ app, obsidian }) => {
+    const editor = app.workspace.getActiveViewOfType(
+      obsidian.MarkdownView,
+    )?.editor;
+    if (editor === undefined) throw new Error("no editor");
+    editor.focus();
+    editor.setCursor({ line: 0, ch: 3 });
+  });
+  await browser
+    .$(".workspace-leaf.mod-active .markdown-source-view .cm-content")
+    .$('.//span[contains(text(), "001.ink.png")]')
+    .click({ button: "right" });
+}
+
+/** Puts the active note's cursor on its top line, or says where it is. */
+async function cursorOffset(top = false): Promise<number> {
+  return browser.executeObsidian(({ app, obsidian }, toTop) => {
+    const editor = app.workspace.getActiveViewOfType(
+      obsidian.MarkdownView,
+    )?.editor;
+    if (editor === undefined) throw new Error("no editor");
+    if (toTop) editor.setCursor({ line: 0, ch: 3 });
+    return editor.posToOffset(editor.getCursor());
+  }, top);
+}
+
+/**
+ * Checks that the open editor has the keyboard and the drawing the focus: a
+ * shortcut reaches it, one Escape closes it, and the keys go to the note after
+ * it, none of them to a menu that has gone.
+ */
+async function keyboardIsTheEditors(): Promise<void> {
+  const focused = () =>
+    browser.execute(() =>
+      document.activeElement?.classList.contains("inkline-surface"),
+    );
+  const eraser = browser.$('[data-inkline-button="eraser"]');
+  expect(await focused()).toBe(true);
+  await browser.keys("e");
+  await browser.waitUntil(
+    async () => (await eraser.getAttribute("aria-pressed")) === "true",
+    { timeout: 3000, timeoutMsg: "the editor's shortcut did nothing" },
+  );
+  expect(await focused()).toBe(true);
+  await closeEditor();
+  const top = await cursorOffset(true);
+  await browser.keys(["ArrowDown"]);
+  await browser.waitUntil(async () => (await cursorOffset()) !== top, {
+    timeout: 3000,
+    timeoutMsg: "the note's cursor did not move",
+  });
 }
 
 describe("Editing a symbol from a note", function () {
@@ -400,5 +457,31 @@ describe("Editing a symbol from a note", function () {
       expect(await editorName()).toBe("001");
       await closeEditor();
     }
+  });
+
+  // A menu takes the keyboard in a timer of its own, which choosing from it
+  // doesn't stop (#78).
+  it("keeps the keyboard when a menu loads after the editor opens", async function () {
+    await open("Entry.md", "source");
+    const release = await holdMenuLoad();
+    let held = 0;
+    try {
+      await rightClickEmbedText();
+      await browser.waitUntil(async () => (await menuItems()).length > 0);
+      await choose("Edit symbol");
+      expect(await editorName()).toBe("001");
+    } finally {
+      held = await release();
+    }
+    expect(held).toBe(1);
+    await keyboardIsTheEditors();
+  });
+
+  it("keeps the keyboard when a menu loads just before the editor opens", async function () {
+    await open("Entry.md", "source");
+    await chooseOnShowing("Edit symbol");
+    await rightClickEmbedText();
+    expect(await editorName()).toBe("001");
+    await keyboardIsTheEditors();
   });
 });
