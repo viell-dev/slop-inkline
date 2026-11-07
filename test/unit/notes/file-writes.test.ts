@@ -15,6 +15,7 @@ import {
   stalledAfter,
   stoppable,
   TextMoved,
+  watchRename,
   watchSave,
   WriteQueue,
   type FileAccess,
@@ -670,6 +671,123 @@ describe("changeFile", () => {
       libraryChange(file, typed, { reading: [], translation: [] }),
     ).rejects.toThrow("not a whole PNG");
     expect(file.writes).toBe(0);
+  });
+});
+
+describe("A rename that waits for Obsidian", () => {
+  /** What the person was told, in order. */
+  let told: boolean[];
+  const waiting = (still: boolean): void => {
+    told.push(still);
+  };
+  let end: () => void;
+  let fail: (error: Error) => void;
+  let gate: Promise<void>;
+  /** What the rename says of itself at each look. */
+  let moving: boolean;
+  let looks: number;
+  const look = (): boolean => {
+    looks++;
+    return moving;
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal("window", { setInterval, clearInterval });
+    told = [];
+    moving = false;
+    looks = 0;
+    gate = new Promise((resolve, reject) => {
+      end = resolve;
+      fail = reject;
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("says nothing of a rename that ends in time", async () => {
+    const renamed = watchRename(gate, look, waiting);
+    await vi.advanceTimersByTimeAsync(stalledAfter - 1);
+    end();
+    await renamed;
+    await vi.advanceTimersByTimeAsync(stalledAfter * 2);
+    expect(told).toEqual([]);
+  });
+
+  it("says so once nothing has happened for the wait, and when it ends", async () => {
+    const renamed = watchRename(gate, look, waiting);
+    await vi.advanceTimersByTimeAsync(stalledAfter - 1);
+    expect(told).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(told).toEqual([true]);
+    // It says so once, however long that lasts.
+    await vi.advanceTimersByTimeAsync(stalledAfter * 10);
+    expect(told).toEqual([true]);
+    end();
+    await renamed;
+    expect(told).toEqual([true, false]);
+  });
+
+  it("goes on for as long as it keeps moving, then counts from the last move", async () => {
+    const renamed = watchRename(gate, look, waiting);
+    moving = true;
+    await vi.advanceTimersByTimeAsync(stalledAfter * 20);
+    expect(told).toEqual([]);
+    moving = false;
+    await vi.advanceTimersByTimeAsync(stalledAfter - 1);
+    expect(told).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(told).toEqual([true]);
+    end();
+    await renamed;
+  });
+
+  it("takes it back when the rename moves again, and counts from there", async () => {
+    const renamed = watchRename(gate, look, waiting);
+    await vi.advanceTimersByTimeAsync(stalledAfter);
+    expect(told).toEqual([true]);
+    moving = true;
+    await vi.advanceTimersByTimeAsync(250);
+    expect(told).toEqual([true, false]);
+    moving = false;
+    await vi.advanceTimersByTimeAsync(stalledAfter - 1);
+    expect(told).toEqual([true, false]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(told).toEqual([true, false, true]);
+    end();
+    await renamed;
+  });
+
+  it("ends the wait as the rename fails, and fails as it did", async () => {
+    const renamed = watchRename(gate, look, waiting);
+    await vi.advanceTimersByTimeAsync(stalledAfter);
+    fail(new Error("the disk says no"));
+    await expect(renamed).rejects.toThrow("the disk says no");
+    expect(told).toEqual([true, false]);
+  });
+
+  it("stops looking once the rename ends", async () => {
+    const renamed = watchRename(gate, look, waiting);
+    await vi.advanceTimersByTimeAsync(1000);
+    end();
+    await renamed;
+    const seen = looks;
+    await vi.advanceTimersByTimeAsync(stalledAfter * 2);
+    expect(looks).toBe(seen);
+  });
+
+  it("goes by looks, so that a clock that jumps does not look like a stall", async () => {
+    const renamed = watchRename(gate, look, waiting);
+    await vi.advanceTimersByTimeAsync(1000);
+    // A computer that slept, or a page that froze for a minute, then one look.
+    vi.setSystemTime(Date.now() + 60_000);
+    await vi.advanceTimersByTimeAsync(250);
+    expect(told).toEqual([]);
+    end();
+    await renamed;
   });
 });
 

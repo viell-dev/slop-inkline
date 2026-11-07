@@ -179,6 +179,23 @@ export async function readFileText(
   );
 }
 
+/**
+ * `bytes` without the chunks that hold a symbol's text, usable or not, and with
+ * every other byte as it was. Two files that give the same result here differ in
+ * those chunks alone, so what a person drew and anything else in the file are the
+ * same in both, down to another program's own text chunks. Only the bytes count,
+ * so no CRC is worked out. Throws `PngError` when the bytes fail the format's
+ * check of a PNG's structure.
+ */
+export function withoutText(bytes: Uint8Array): Uint8Array {
+  const chunks = readChunks(bytes, () => false);
+  const keywords = [keywordBytes("reading"), keywordBytes("translation")];
+  const held = chunks.filter((chunk) =>
+    keywords.some((keyword) => holdsKeyword(chunk, keyword)),
+  );
+  return held.length === 0 ? bytes : spliceChunks(bytes, chunks, new Set(held));
+}
+
 /** The chunk that holds a field's values, as a writer must write it. */
 function textChunk(keyword: Uint8Array, values: readonly string[]): Chunk {
   const text = new TextEncoder().encode(values.join("\n"));

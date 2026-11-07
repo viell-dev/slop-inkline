@@ -48,6 +48,24 @@ changes, restart Obsidian, which ends the wait:
   **Cancel** or Esc closes the fields and stops the save. Only a save that had
   already reached Obsidian can still finish, and a notice says so.
 
+**Unreleased:** a rename is not in that line, so a save never waits for one, and
+it is told apart differently, as it can rightly take a long time: Obsidian's
+question about links stays open for as long as you like, and it then updates
+each note that links to the symbol, which takes a few seconds for every thousand
+notes. So only a rename where nothing happens for a few seconds, with no
+question open, says it is waiting for Obsidian, and the message goes if it moves
+again. If nothing changes, restart Obsidian:
+
+- **In the library,** the name you typed stays in the row to copy, as a restart
+  does not keep it. **Cancel** or Esc closes the row, and stops the rename if
+  Obsidian has not begun it yet. One it has begun can still finish, and a notice
+  says so, and says again when it ends, whether it worked or not. Until then
+  another rename of that symbol is refused, and says why.
+- **In the editor,** the drawing is saved by then, and the name is in the draft.
+- **Obsidian moves the file before it updates the links.** A restart while it
+  updates them leaves the notes it had not reached with the old name, whose
+  embeds no longer find the symbol.
+
 Inkline cannot do the same with another program. Obsidian writes a binary file
 only as a whole, with no way to write it only if it has not changed since it was
 read, so a sync tool that writes the file in the moment between Inkline's last

@@ -235,6 +235,13 @@ while its name is being edited cannot rename the replacement.
 as [renaming in the editor](./drawing.md#the-name) does. If a note cannot be
 saved, the row says which one, and nothing is renamed.
 
+**Unreleased:** a rename can take a while in a much used symbol, as Obsidian
+updates each note that links to it, and for as long as you take over its
+question about links. Neither is a problem, and the row says nothing of them. If
+it stops, as on a drive that stops answering, the row says so after a few
+seconds, and **Cancel** or Esc close it; see
+[what is kept](./limits.md#a-file-written-at-the-moment-inkline-saves).
+
 The list follows files and their links as they change. Obsidian's backlinks for
 the symbol file also list the notes that link to it.
 

@@ -182,6 +182,11 @@ whole open of the editor, by a CPU profile with each long task's share, and what
 opening does beside the index reading the vault. It writes
 `open-time-<version>.json` to the output directory.
 
+`test/e2e/manual/rename-time.e2e.ts` stays outside it too: it measures how long
+a rename takes by how many notes link to the symbol, and how often the vault
+reports something meanwhile, which is how a rename that stopped is told from a
+slow one. It writes `rename-time-<version>.json` to the output directory.
+
 `test/e2e/manual/fixtures.e2e.ts` stays outside it too: it saves the drawings of
 `test/fixtures/format/records.ts` as golden files, with the real save in
 Obsidian, as its opening comment says.

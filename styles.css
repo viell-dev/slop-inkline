@@ -570,13 +570,14 @@ img.inkline-symbol:not([width], [height]) {
   overflow-wrap: anywhere;
 }
 
-.inkline-library-text-note {
+.inkline-text-note {
+  user-select: text;
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   overflow-wrap: anywhere;
 }
 
-.inkline-library-text-note:empty {
+.inkline-text-note:empty {
   display: none;
 }
 
@@ -589,6 +590,10 @@ img.inkline-symbol:not([width], [height]) {
 
 .inkline-save-wait:empty {
   display: none;
+}
+
+.inkline-library-rename-form .inkline-save-wait {
+  width: 100%;
 }
 
 .inkline-library-text-buttons {
