@@ -269,11 +269,24 @@ must keep released files readable and looking the same, as
   bidirectional controls kept to their own value; a name and a reading that
   disagree, through a rename; and Copy from leaving them behind
   ([symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts)).
+- **Unreleased:** two saves of one symbol that meet, with each held between its
+  read and its write: two from libraries keep both fields, or refuse the later
+  of two to one field with what is there; a library's that goes first stops an
+  editor's until it asks; and an editor's that goes first has the library's
+  build on it. A change that lands during a save is seen by the bytes, not by a
+  date or a size. A program outside Inkline that writes after the last read is
+  [a limit](./limits.md#a-file-written-at-the-moment-inkline-saves), which this
+  does not cover
+  ([symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts)
+  and
+  [file-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/file-writes.test.ts)).
 - **Unreleased:** the `;;` list, Insert existing symbol, Copy from, and the
   library's filter find a symbol by a reading or translation whatever its name,
-  and show why; the index follows files as they are made, changed, renamed,
-  moved with their folder, and deleted, goes on past a damaged file and a costly
-  one, and lets a search work while it reads
+  and show why; an accent needs no typing, and a mark that makes another sound
+  counts, in kana, Indic scripts, Thai, Arabic, Hebrew, and Cyrillic; the index
+  follows files as they are made, changed, renamed, moved with their folder, and
+  deleted, goes on past a damaged file and a costly one, lets a search work
+  while it reads, and finds what just changed before the rest
   ([symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts),
   [search.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/search.test.ts),
   and

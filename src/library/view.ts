@@ -23,6 +23,7 @@ import { isInkPath } from "../format/ink-file.ts";
 import type { SymbolText, TextField } from "../format/text.ts";
 import { embedFor } from "../notes/embeds.ts";
 import { showLinkMenu } from "../notes/entries.ts";
+import { TextMoved } from "../notes/file-writes.ts";
 import { writeAt } from "../notes/insertion.ts";
 import { insertionAt } from "../notes/links.ts";
 import { symbolStem } from "../notes/names.ts";
@@ -30,7 +31,6 @@ import type { SymbolTexts } from "../notes/suggest.ts";
 import {
   readSymbolText,
   renameSymbol,
-  TextMoved,
   writeSymbolText,
 } from "../notes/symbols.ts";
 import {
@@ -314,12 +314,12 @@ export class SymbolLibraryView extends ItemView {
     field.value =
       this.#folder === undefined ? "-1" : String(folders.indexOf(this.#folder));
     const focused = list.doc.activeElement;
-    const focusPath =
-      focused !== null && list.contains(focused)
-        ? focused
-            .closest("[data-inkline-path]")
-            ?.getAttribute("data-inkline-path")
-        : undefined;
+    const inList = focused !== null && list.contains(focused);
+    const focusPath = inList
+      ? focused
+          .closest("[data-inkline-path]")
+          ?.getAttribute("data-inkline-path")
+      : undefined;
     const focusRole = focused?.getAttribute("data-inkline-role");
     const focusNote = focused?.getAttribute("data-inkline-note");
     list.empty();
@@ -346,13 +346,17 @@ export class SymbolLibraryView extends ItemView {
       const more = list.createEl("button", {
         cls: "inkline-library-more",
         text: `Show more: ${String(left)} left`,
+        attr: { "data-inkline-role": "more" },
       });
       more.addEventListener("click", () => {
-        this.#rows += rowsAtOnce;
-        this.#render();
+        this.#showMore(list);
       });
     }
-    if (focusPath !== undefined && focusPath !== null) {
+    if (inList && focusRole === "more") {
+      // A redraw nobody asked for, as when the index catches up, takes the
+      // button from under the focus too. It is back unless the list got shorter.
+      this.#focusRow(list, shown.length);
+    } else if (focusPath !== undefined && focusPath !== null) {
       const row = Array.from(list.querySelectorAll("[data-inkline-path]")).find(
         (found) => found.getAttribute("data-inkline-path") === focusPath,
       );
@@ -373,6 +377,34 @@ export class SymbolLibraryView extends ItemView {
       }
       if (target?.instanceOf(HTMLElement) === true) target.focus();
     }
+  }
+
+  /**
+   * Draws the next rows, and goes on from the first of them, as the button that
+   * had the focus is gone. A person using the keyboard, or a screen reader,
+   * would otherwise start again from the top of the window.
+   */
+  #showMore(list: HTMLElement): void {
+    const first = this.#rows;
+    this.#rows += rowsAtOnce;
+    this.#render();
+    // A row being edited holds off redrawing, and keeps the focus it has.
+    if (this.#editing === undefined) this.#focusRow(list, first);
+  }
+
+  /**
+   * Focuses the row at `index`, or else Show more, or else the last row, or
+   * else the filter, so that a redraw leaves the focus with the list.
+   */
+  #focusRow(list: HTMLElement, index: number): void {
+    const rows = list.querySelectorAll("[data-inkline-path]");
+    const insert = '[data-inkline-role="insert"]';
+    const target =
+      rows[index]?.querySelector(insert) ??
+      list.querySelector('[data-inkline-role="more"]') ??
+      rows[rows.length - 1]?.querySelector(insert) ??
+      this.#searchField;
+    if (target?.instanceOf(HTMLElement) === true) target.focus();
   }
 
   /** Shows one symbol: a button that inserts it, and the notes that use it. */

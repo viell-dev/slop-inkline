@@ -319,6 +319,9 @@ export interface EditorOptions {
    * it, before any later step that can fail, such as inserting an embed, so
    * that the editor goes on comparing the file with that. `name` is what the
    * name field holds, as typed, for the file to take as its name.
+   * `check` looks at the file once more: the host calls it just before it
+   * writes over a file, where no other save can come between them, and writes
+   * nothing if it rejects, which it does to ask about a change or refuse one.
    * Resolves to whether that name was kept or applied. False means only the
    * rename failed: the drawing is saved, and the name stays for a retry.
    */
@@ -328,6 +331,7 @@ export interface EditorOptions {
     keepDraft: () => boolean,
     holds: (fingerprint: string) => void,
     name: string,
+    check: () => Promise<void>,
   ) => Promise<boolean>;
   /**
    * For an existing symbol, which other notes may show: how the vault's
@@ -3117,15 +3121,31 @@ export class InkEditorModal extends Modal {
   }
 
   /**
+   * Reads the file again just before a save writes over it, and throws if the
+   * save must not go on: it asks first about a change made elsewhere, and
+   * `resume` saves again if the answer is to; a file it cannot read is never
+   * written over. It only starts the question, as the host calls this in the
+   * file's turn, which every other save of the file waits for.
+   */
+  async #checkBeforeWriting(resume: () => void): Promise<void> {
+    const found = await this.#readFile();
+    if (this.#retired) throw new Error("Inkline was disabled");
+    if (found === undefined) return;
+    const action = this.#watch.saving(found.reading);
+    if (action === "unreadable") throw new Error(unreadable);
+    if (action === "ask" && found.reading.kind === "file") {
+      this.#askChanged(found.reading.fingerprint, found.opened, resume);
+      throw new Unsaved("the file changed on disk");
+    }
+  }
+
+  /**
    * Saves the drawing as it is now, with a stroke still being drawn ended
    * first. Only one save runs at a time; strokes drawn meanwhile stay
    * unsaved. After a save, the session moves into the saved file's
    * coordinates. A failed save says why and keeps the editor open. Returns
-   * whether the drawing was saved.
-   *
-   * The file is read again first. If something else changed it, the editor
-   * asks before writing over the change, and `resume` saves again if the
-   * answer is to; a file it cannot read is never written over.
+   * whether the drawing was saved. `resume` saves again, if a change to the
+   * file stops this one and the answer is to go on.
    */
   #save(resume: () => void = () => void this.#save()): Promise<boolean> {
     if (this.#saving !== undefined) return this.#saving;
@@ -3164,16 +3184,6 @@ export class InkEditorModal extends Modal {
             bytes = await writeText(bytes, field, values);
           }
         }
-        const found = await this.#readFile();
-        if (this.#retired) throw new Error("Inkline was disabled");
-        if (found !== undefined) {
-          const action = this.#watch.saving(found.reading);
-          if (action === "unreadable") throw new Error(unreadable);
-          if (action === "ask" && found.reading.kind === "file") {
-            this.#askChanged(found.reading.fingerprint, found.opened, resume);
-            throw new Unsaved("the file changed on disk");
-          }
-        }
         // Kept before the file can change, with its own base layer, so that
         // the draft does not depend on which version the file holds.
         const written = await fingerprintOf(bytes);
@@ -3187,6 +3197,7 @@ export class InkEditorModal extends Modal {
             this.#watch.took(fingerprint);
           },
           typed,
+          () => this.#checkBeforeWriting(resume),
         );
         // A rename that failed leaves the name typed in the field, unsaved,
         // for the next save to try again.

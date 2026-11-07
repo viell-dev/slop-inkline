@@ -114,15 +114,52 @@ export function holdsTyped(name: string, query: string): boolean {
 /** The fields a search looks through, in the order it prefers them. */
 const textFields: readonly TextField[] = ["reading", "translation"];
 
-const marks = /\p{M}/gu;
+/**
+ * The marks Unicode keeps for any alphabet's letters: all that Latin, Greek, and
+ * Cyrillic letters come apart into, and nothing that another living script's do.
+ * They mark a letter that stays that letter to someone looking for it, and a
+ * keyboard makes them hard, so `sa` finds `šá`. Every other script keeps its
+ * marks in a block of its own, and there a mark makes another sound or spelling,
+ * so it stays with its letter: the voicing of kana, the vowels of Indic scripts,
+ * Thai, and Tibetan, and the points of Hebrew and Arabic.
+ */
+const accents =
+  /[\u0300-\u036f]|[\u1ab0-\u1aff]|[\u1dc0-\u1dff]|[\u20d0-\u20f0]|[\ufe20-\ufe2f]/gu;
+
+/** A mark that is part of its letter, looked for at one place in a key. */
+const letterMark = new RegExp(`(?!${accents.source})\\p{M}`, "uy");
+
+/** What picks a shape for a character, and says nothing of what it is. */
+const selectors = /\p{Variation_Selector}/gu;
+
+/**
+ * A kana voicing mark written on its own, which comes apart into a space and the
+ * mark. `は゛` is `ば`, so the space goes.
+ */
+const spacedVoicing = / ([\u3099\u309a])/gu;
+
+/**
+ * A Cyrillic letter with a mark, which comes apart like an accented one but is a
+ * letter of its own: `й` is not `и`, nor `ў` `у`, and each has its key. A stress
+ * mark on a vowel makes no such letter, and neither does the grave of `ѐ` and
+ * `ѝ`, which is only stress, so those still go.
+ */
+const cyrillicLetter = /\p{Script=Cyrillic}[\u0301-\u030f]/gu;
 
 /**
  * `text` as a search compares it: in one form, and in one letter case. The
  * format fixes neither, so this is only ever a key, and the value stays as it
- * was written. Compatibility forms go too, so that `ﾀ` finds `タ`.
+ * was written. Compatibility forms go too, so that `ﾀ` finds `タ`. A Hangul
+ * syllable comes apart into the letters that spell it, so that `가` finds `각`,
+ * which starts with it, and `ㄱ` finds both.
  */
 function folded(text: string): string {
-  return text.normalize("NFKD").toLowerCase();
+  return text
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(selectors, "")
+    .replace(spacedVoicing, "$1")
+    .replace(cyrillicLetter, (letter) => letter.normalize("NFC"));
 }
 
 /**
@@ -133,7 +170,7 @@ function folded(text: string): string {
 export interface SearchableText {
   readonly text: SymbolText;
   readonly marked: Readonly<Record<TextField, string>>;
-  /** The same without marks, such as the accents a keyboard makes hard. */
+  /** The same without accents, such as a keyboard makes hard. */
   readonly plain: Readonly<Record<TextField, string>>;
 }
 
@@ -146,8 +183,8 @@ export function searchableText(text: SymbolText): SearchableText {
     text,
     marked,
     plain: {
-      reading: marked.reading.replace(marks, ""),
-      translation: marked.translation.replace(marks, ""),
+      reading: marked.reading.replace(accents, ""),
+      translation: marked.translation.replace(accents, ""),
     },
   };
 }
@@ -156,10 +193,9 @@ export function searchableText(text: SymbolText): SearchableText {
 export interface TextQuery {
   readonly needle: string;
   /**
-   * Whether it holds marks. Typed without any, it finds a value with or
+   * Whether it holds accents. Typed without any, it finds a value with or
    * without them: `sa` finds `šá`. Typed with some, it asks for those: `šá`
-   * does not find `sa`, so that a script whose marks are its vowels can be
-   * searched by them.
+   * does not find `sa`.
    */
   readonly marked: boolean;
 }
@@ -169,7 +205,7 @@ export function textQuery(typed: string): TextQuery | undefined {
   const needle = folded(typed);
   return needle.trim() === ""
     ? undefined
-    : { needle, marked: needle.replace(marks, "") !== needle };
+    : { needle, marked: needle.replace(accents, "") !== needle };
 }
 
 /** A value that holds what was typed, and the field it is in. */
@@ -178,6 +214,21 @@ export interface FoundText {
   readonly value: string;
   /** The value as it was compared. */
   readonly key: string;
+}
+
+/**
+ * Where `key` first holds `needle`, or -1. A match must not stop between a letter
+ * and a mark that is part of it, which a key keeps apart: in code points `は` is
+ * the start of `ば`, but nobody reads a part of `ば` as `は`.
+ */
+function whereHeld(key: string, needle: string): number {
+  let at = key.indexOf(needle);
+  while (at !== -1) {
+    letterMark.lastIndex = at + needle.length;
+    if (!letterMark.test(key)) return at;
+    at = key.indexOf(needle, at + 1);
+  }
+  return -1;
 }
 
 /**
@@ -197,8 +248,9 @@ export function findText(
     if (!keys.includes(needle)) continue;
     keys.split("\n").forEach((key, index) => {
       const value = text.text[field][index];
-      if (value === undefined || !key.includes(needle)) return;
-      const rank = key === needle ? 2 : key.startsWith(needle) ? 1 : 0;
+      const at = whereHeld(key, needle);
+      if (value === undefined || at === -1) return;
+      const rank = at > 0 ? 0 : key.length === needle.length ? 2 : 1;
       if (rank <= best) return;
       best = rank;
       found = { field, value, key };

@@ -29,8 +29,10 @@ changes the file must keep. No existing file is affected.
   ([#187](https://github.com/viell-dev/slop-inkline/issues/187)).
 - The `;;` list, **Inkline: Insert existing symbol**, **Copy from**, and the
   library's filter find a symbol by a reading or translation as well as by name,
-  and a row found that way shows why. They read the vault's symbols in the
-  background, without slowing typing, and say so while they may be missing some
+  and a row found that way shows why. Accents need no typing, but a mark that
+  makes another sound counts: `sa` finds `šá`, and `は` does not find `ば`. They
+  read the vault's symbols in the background, without slowing typing, what just
+  changed first, and say so while they may be missing some
   ([#189](https://github.com/viell-dev/slop-inkline/issues/189)).
 
 ### Fixed

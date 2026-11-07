@@ -427,7 +427,7 @@ img.inkline-symbol:not([width], [height]) {
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: var(--size-4-2);
+  gap: var(--size-4-1);
   min-width: 0;
   height: auto;
   padding: var(--size-4-1);
@@ -515,7 +515,7 @@ img.inkline-symbol:not([width], [height]) {
 .inkline-library-values {
   flex-basis: 100%;
   min-width: 0;
-  padding-inline-start: calc(3em + var(--size-4-1) + var(--size-4-2));
+  padding-inline-start: calc(3em + var(--size-4-1) + var(--size-4-1));
   font-size: var(--font-ui-small);
 }
 

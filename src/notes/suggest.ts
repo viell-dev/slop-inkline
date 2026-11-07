@@ -85,7 +85,7 @@ export function matchSymbols(
 ): SymbolMatch[] {
   const typed = query.trim();
   const match = typed === "" ? undefined : prepareFuzzySearch(typed);
-  const wanted = textQuery(query);
+  const wanted = textQuery(typed);
   const matchKey =
     wanted === undefined ? undefined : prepareFuzzySearch(wanted.needle);
   const uses = app.metadataCache.resolvedLinks[notePath] ?? {};

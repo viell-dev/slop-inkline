@@ -11,9 +11,9 @@ The [issues](https://github.com/viell-dev/slop-inkline/issues) track each one.
   run on Linux; Windows and macOS should work but are not tested.
 - **Mouse or trackpad.** A drawing tablet's pen or a touchscreen draws as a
   mouse does: pen pressure and a pen's eraser end are not supported.
-- **Large libraries** show every matching symbol at once, without paging. Filter
-  by name or folder to narrow the list. **Unreleased:** the list draws 100 at a
-  time, and **Show more** adds the next 100.
+- **Large libraries** show every matching symbol at once (**Unreleased:** 100 at
+  a time, with **Show more** for the next 100). Filter by name or folder to
+  narrow the list.
 - **Library insertion needs a sidebar.** If the library's tab is dragged into
   the main area, move it back to a sidebar to insert into a note.
 - **Physical printing** has not been checked. Native
@@ -27,6 +27,19 @@ can lead nowhere or to another file
 ([#35](https://github.com/viell-dev/slop-inkline/issues/35)). Inkline checks
 every embed it inserts: it writes such a `%` as `%25`, and names a symbol whose
 link would still lead elsewhere by its path in the vault.
+
+## A file written at the moment Inkline saves
+
+**Unreleased:** Inkline's own saves of a symbol go one at a time, whether from
+the editor or the library, and each reads the file first, so that two of them
+cannot undo each other. It cannot do the same with another program. Obsidian
+writes a binary file only as a whole, with no way to write it only if it has not
+changed since it was read, so a sync tool that writes the file in the moment
+between Inkline's last read and its write can have that change replaced. Inkline
+keeps that moment short, with the read straight before the write, and it does
+not rule it out. A change made before that read is noticed: the editor asks, and
+the library shows it. Your sync tool's own history is the way back from a change
+lost like this.
 
 ## Renames and Obsidian's question
 

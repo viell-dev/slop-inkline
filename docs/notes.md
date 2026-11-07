@@ -78,6 +78,14 @@ under its name, as in `Reading: TA`. A value must hold what you typed, in any
 letter case, and with or without its accents; a name still matches loosely. The
 best match comes first, name or value, and of the two, the name.
 
+**Unreleased:** an accent is a mark on the letters of the Latin or Greek
+alphabet, or a stress mark in Cyrillic: `sa` finds `šá`, and typing `šá` asks
+for those accents. Any other mark makes another sound, so it counts as part of
+its letter: `は` does not find `ば` or `ぱ`, nor `и` find `й`, nor `क` find
+`कि`, and the vowel points of Arabic and Hebrew have to be typed to find a value
+that has them. Korean goes by its spelling, so `가` finds `각`, which starts
+with it.
+
 **Unreleased:** it places the symbol as **Inkline: Insert symbol** does: just
 after a link or embed the cursor is inside, so that no link is split, and beside
 selected text, which stays. If the note changes while the search is open, the

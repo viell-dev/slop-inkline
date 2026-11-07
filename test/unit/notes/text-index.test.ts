@@ -36,12 +36,15 @@ async function said(...values: readonly string[]): Promise<Uint8Array> {
 /** An index over `files`, counting what it reads and tells. */
 function indexOf(files: Fake[]) {
   const counts = { reads: 0, caughtUp: 0 };
+  /** The names of the files read, in the order their reads began. */
+  const order: string[] = [];
   const index = new SymbolTextIndex<Fake>(
     {
       files: () => files,
       size: (file) => file.size ?? file.bytes.length,
       read: async (file) => {
         counts.reads++;
+        order.push(file.name);
         await file.gate;
         if (file.failing === true) throw new Error("held by another program");
         return file.bytes;
@@ -51,7 +54,7 @@ function indexOf(files: Fake[]) {
       counts.caughtUp++;
     },
   );
-  return { index, counts };
+  return { index, counts, order };
 }
 
 /** Waits until nothing is left to read. */
@@ -235,6 +238,90 @@ describe("SymbolTextIndex", () => {
     expect(index.reading).toBe(true);
     open();
     await settled(index);
+  });
+
+  it("reads what the vault reports ahead of the rest of the first sweep", async () => {
+    const { gate, open } = gated();
+    const held = { name: "held", bytes: await said("TA"), gate };
+    const others = await Promise.all(
+      ["b", "c", "d", "e"].map(async (name) => ({
+        name,
+        bytes: await said(name),
+      })),
+    );
+    const saved: Fake = { name: "saved", bytes: await said("KA") };
+    const { index, counts, order } = indexOf([held, ...others]);
+    index.start();
+    while (counts.reads === 0) {
+      await wait(1);
+    }
+    const last = others[3] as Fake;
+    last.bytes = await said("GA");
+    index.changed(saved);
+    index.changed(last);
+    open();
+    await settled(index);
+    // Each once, the one it had started first, then those reported, in order.
+    expect(order).toEqual(["held", "saved", "e", "b", "c", "d"]);
+    expect(readings(index, last)).toEqual(["GA"]);
+  });
+
+  it("says when it has read what the vault reported, with the sweep still going", async () => {
+    const first = gated();
+    const second = gated();
+    const held = { name: "held", bytes: await said("TA"), gate: first.gate };
+    const later = { name: "later", bytes: await said("GA"), gate: second.gate };
+    const saved: Fake = { name: "saved", bytes: await said("KA") };
+    const { index, counts } = indexOf([held, later]);
+    index.start();
+    while (counts.reads === 0) {
+      await wait(1);
+    }
+    index.changed(saved);
+    first.open();
+    while (counts.caughtUp === 0) {
+      await wait(1);
+    }
+    expect(readings(index, saved)).toEqual(["KA"]);
+    expect(index.reading).toBe(true);
+    second.open();
+    await settled(index);
+    expect(counts.caughtUp).toBe(2);
+  });
+
+  it("leaves out a file that the sweep had yet to read, once it goes", async () => {
+    const { gate, open } = gated();
+    const held = { name: "held", bytes: await said("TA"), gate };
+    const gone = { name: "gone", bytes: await said("KA") };
+    const { index, counts, order } = indexOf([held, gone]);
+    index.start();
+    while (counts.reads === 0) {
+      await wait(1);
+    }
+    index.removed(gone);
+    open();
+    await settled(index);
+    expect(order).toEqual(["held"]);
+    expect(index.textOf(gone)).toBeUndefined();
+  });
+
+  it("keeps no entry for a file that goes during a refresh", async () => {
+    const { gate, open } = gated();
+    const file: Fake = { name: "a", bytes: await said("TA"), gate };
+    const { index, counts } = indexOf([]);
+    index.start();
+    const refreshed = index.refresh(file);
+    while (counts.reads === 0) {
+      await wait(1);
+    }
+    index.removed(file);
+    open();
+    await refreshed;
+    expect(index.textOf(file)).toBeUndefined();
+    // Back again, as a file renamed to a symbol's name is.
+    index.changed(file);
+    await settled(index);
+    expect(readings(index, file)).toEqual(["TA"]);
   });
 
   it("stops reading, and forgets, when stopped", async () => {

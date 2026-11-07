@@ -40,11 +40,21 @@ const none: SearchableText = searchableText({ reading: [], translation: [] });
  */
 export class SymbolTextIndex<File extends object> {
   readonly #source: TextSource<File>;
-  /** Told when the index has caught up with everything it was told of. */
+  /**
+   * Told when the index has caught up with everything it was told of: with the
+   * vault's reports, as someone may be waiting for one, and with the sweep.
+   */
   readonly #caughtUp: () => void;
   readonly #entries = new Map<File, SearchableText>();
-  /** Files to read, oldest report first. */
-  readonly #queue = new Set<File>();
+  /**
+   * Files the vault reported, oldest first. They come before the sweep, as one
+   * a person just saved is what they will look for, not the thousandth file.
+   */
+  readonly #reported = new Set<File>();
+  /** What is left of reading every file from nothing. */
+  readonly #sweep = new Set<File>();
+  /** Files the vault said went, which a read under way must not bring back. */
+  readonly #gone = new WeakSet<File>();
   /** The file being read, until it is read or goes. */
   #reading: File | undefined;
   /** What is working through the queue, while something is. */
@@ -59,14 +69,15 @@ export class SymbolTextIndex<File extends object> {
   /** Reads every symbol file in the background, from nothing. */
   start(): void {
     this.#stopped = false;
-    for (const file of this.#source.files()) this.#queue.add(file);
+    for (const file of this.#source.files()) this.#sweep.add(file);
     this.#run();
   }
 
   /** Forgets everything, and stops reading after the file being read. */
   stop(): void {
     this.#stopped = true;
-    this.#queue.clear();
+    this.#reported.clear();
+    this.#sweep.clear();
     this.#entries.clear();
     this.#reading = undefined;
   }
@@ -74,13 +85,17 @@ export class SymbolTextIndex<File extends object> {
   /** Reads `file` again, as it is new or changed. */
   changed(file: File): void {
     if (this.#stopped) return;
-    this.#queue.add(file);
+    this.#gone.delete(file);
+    this.#sweep.delete(file);
+    this.#reported.add(file);
     this.#run();
   }
 
   /** Forgets `file`, as it was deleted, or is no longer a symbol. */
   removed(file: File): void {
-    this.#queue.delete(file);
+    this.#gone.add(file);
+    this.#reported.delete(file);
+    this.#sweep.delete(file);
     this.#entries.delete(file);
     if (this.#reading === file) this.#reading = undefined;
   }
@@ -101,33 +116,46 @@ export class SymbolTextIndex<File extends object> {
    */
   async refresh(file: File): Promise<void> {
     const text = await this.#read(file);
-    if (text !== undefined && !this.#stopped) this.#entries.set(file, text);
+    if (text !== undefined && !this.#stopped && !this.#gone.has(file)) {
+      this.#entries.set(file, text);
+    }
+  }
+
+  /** The next file to read, if any. */
+  #next(): File | undefined {
+    const [file] = this.#reported.size > 0 ? this.#reported : this.#sweep;
+    return file;
   }
 
   #run(): void {
-    if (this.#running !== undefined || this.#queue.size === 0) return;
+    if (this.#running !== undefined || this.#next() === undefined) return;
     this.#running = this.#work().finally(() => {
       this.#running = undefined;
       if (this.#stopped) return;
       // A report can land just as the work ends.
-      if (this.#queue.size > 0) this.#run();
+      if (this.#next() !== undefined) this.#run();
       else this.#caughtUp();
     });
   }
 
   async #work(): Promise<void> {
     for (;;) {
-      const [file] = this.#queue;
+      const file = this.#next();
       if (file === undefined || this.#stopped) return;
-      this.#queue.delete(file);
+      const reported = this.#reported.delete(file);
+      this.#sweep.delete(file);
       this.#reading = file;
       const text = await this.#read(file);
-      // Deleted meanwhile leaves `#reading` empty; changed again, it is back in
-      // the queue, and this reading is soon replaced.
+      // Deleted meanwhile leaves `#reading` empty; changed again, it is reported
+      // once more, and this reading is soon replaced.
       if (this.#reading === file && text !== undefined) {
         this.#entries.set(file, text);
       }
       this.#reading = undefined;
+      // The end of everything says so too, once the work ends.
+      if (reported && this.#reported.size === 0 && this.#sweep.size > 0) {
+        this.#caughtUp();
+      }
     }
   }
 

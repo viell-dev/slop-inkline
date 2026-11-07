@@ -245,18 +245,109 @@ describe("finding a value", () => {
     expect(found(text(["ab", "cd"]), "b\nc")).toBeUndefined();
   });
 
-  it("needs no marks to find a value that has them", () => {
+  it("needs no accents to find a value that has them", () => {
     expect(found(text(["šá"]), "sa")).toBe("šá");
     expect(found(text(["ā"]), "a")).toBe("ā");
+    expect(found(text(["ệ"]), "e")).toBe("ệ");
     // Both ways of writing `á`.
     expect(found(text(["a\u0301"]), "\u00e1")).toBe("a\u0301");
     expect(found(text(["\u00e1"]), "a\u0301")).toBe("\u00e1");
   });
 
-  it("asks for the marks that were typed", () => {
+  it("asks for the accents that were typed", () => {
     expect(found(text(["sa"]), "šá")).toBeUndefined();
+    expect(found(text(["šá"]), "sá")).toBeUndefined();
+    expect(found(text(["šá"]), "šá")).toBe("šá");
+    expect(found(text(["ば sá"]), "ば sá")).toBe("ば sá");
+    expect(found(text(["ば sá"]), "は sá")).toBeUndefined();
+  });
+
+  it.each([
+    ["Greek's stress", "ά", "α"],
+    ["Greek's diaeresis", "ϊ", "ι"],
+    ["Greek's breathing and iota", "ᾧ", "ω"],
+    ["a Vietnamese tone", "mã", "ma"],
+    ["pinyin's tone", "mǎ", "ma"],
+    ["a romanised long vowel", "ō", "o"],
+    ["Russian's stress", "за\u0301мок", "замок"],
+    ["Serbian's stress on a vowel", "и\u0300", "и"],
+    ["Bulgarian's stress in `ѝ`", "ѝ", "и"],
+    ["Macedonian's stress in `ѐ`", "ѐ", "е"],
+    ["a keycap", "1\ufe0f\u20e3", "1"],
+  ])("takes %s as an accent", (_, value, typed) => {
+    expect(found(text([value]), typed)).toBe(value);
+  });
+
+  it.each([
+    ["a voiced kana", "ば", "は"],
+    ["a half-voiced kana", "ぱ", "は"],
+    ["a voiced katakana", "バ", "ハ"],
+    ["a half-voiced katakana", "パ", "ハ"],
+    ["a voiced iteration mark", "ゞ", "ゝ"],
+    ["half-width kana with its mark", "ﾊﾞ", "ﾊ"],
+    ["kana with its mark apart", "は\u3099", "は"],
+    ["kana with its mark spaced", "は\u309b", "は"],
+    ["a mark on kana with no letter of its own", "か\u309a", "か"],
+    ["voicing inside a value", "ばな", "は"],
+    ["a Devanagari vowel sign", "कि", "क"],
+    ["Devanagari's nukta", "क़", "क"],
+    ["Devanagari's virama", "क्ष", "क"],
+    ["Bengali's nukta", "ড়", "ড"],
+    ["a Tamil vowel sign", "கா", "க"],
+    ["a Thai vowel", "กิน", "ก"],
+    ["a Thai tone", "ก่า", "กา"],
+    ["a Lao vowel", "ກິນ", "ກ"],
+    ["a Tibetan vowel", "གི", "ག"],
+    ["a Myanmar vowel", "ကို", "က"],
+    ["a Khmer vowel", "កុ", "ក"],
+    ["Arabic's vowels", "كَتَبَ", "كتب"],
+    ["Arabic's hamza", "أ", "ا"],
+    ["Hebrew's vowels", "שָׁלוֹם", "שלום"],
+    ["Hebrew's shin dot", "שׁ", "ש"],
+    ["a Cyrillic short i", "й", "и"],
+    ["a capital Cyrillic short i", "Й", "и"],
+    ["a Cyrillic short i apart", "и\u0306", "и"],
+    ["a Belarusian short u", "ў", "у"],
+    ["a Ukrainian yi", "ї", "і"],
+    ["a Russian yo", "ё", "е"],
+    ["a Macedonian gje", "ѓ", "г"],
+    ["a Macedonian kje", "ќ", "к"],
+    ["a Tajik long i", "ӣ", "и"],
+  ])("takes %s as another letter", (_, value, typed) => {
+    expect(found(text([value]), typed)).toBeUndefined();
+    expect(found(text([value]), value)).toBe(value);
+  });
+
+  it("finds a letter that a voiced one goes before or after", () => {
+    expect(found(text(["はな"]), "は")).toBe("はな");
+    expect(found(text(["ばは"]), "は")).toBe("ばは");
+    expect(found(text(["ばな"]), "ば")).toBe("ばな");
+    expect(found(text(["ばは", "はな"]), "は")).toBe("はな");
+    expect(found(text(["は"]), "ば")).toBeUndefined();
+    // A consonant with no sign after it, in the same way.
+    expect(found(text(["कमल"]), "क")).toBe("कमल");
     expect(found(text(["कि"]), "का")).toBeUndefined();
-    expect(found(text(["कि"]), "कि")).toBe("कि");
+  });
+
+  it("reads every way of writing a voiced kana alike", () => {
+    for (const value of ["ば", "は\u3099", "は\u309b"]) {
+      expect(found(text([value]), "ば")).toBe(value);
+      expect(found(text(["ば"]), value)).toBe("ば");
+    }
+    expect(found(text(["ﾊﾞ"]), "バ")).toBe("ﾊﾞ");
+  });
+
+  it("reads Hangul by its spelling, so a syllable finds those it starts", () => {
+    expect(found(text(["각"]), "가")).toBe("각");
+    expect(found(text(["가"]), "각")).toBeUndefined();
+    // A letter on its own, as an input method shows it first.
+    expect(found(text(["가"]), "ㄱ")).toBe("가");
+  });
+
+  it("takes no notice of what only picks a shape", () => {
+    expect(found(text(["葛\u{e0100}"]), "葛")).toBe("葛\u{e0100}");
+    expect(found(text(["葛"]), "葛\u{e0100}")).toBe("葛");
+    expect(found(text(["❤\ufe0f"]), "❤")).toBe("❤\ufe0f");
   });
 
   it("finds compatibility forms by the plain one", () => {

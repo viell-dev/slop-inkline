@@ -30,6 +30,9 @@ symbol's Rename button, or to the name filter if the symbol no longer shows.
 translations in its row. Enter starts another value, Tab moves on, Mod+Enter
 saves, and Esc cancels. Afterward focus returns to that button.
 
+**Unreleased:** **Show more** moves the focus to the first of the new rows, so
+that Tab goes on from there.
+
 ## The editor's keys
 
 Mod is Ctrl, or Cmd on macOS. Each button's tooltip shows its key. The keys that

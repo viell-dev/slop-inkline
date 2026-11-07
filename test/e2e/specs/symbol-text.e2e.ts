@@ -179,6 +179,28 @@ async function fill(
   await area(field).setValue(text);
 }
 
+/**
+ * Sets a text area's value as pasting does, in one change. A list at the format's
+ * limit is thousands of keys, which take most of a test's time to send.
+ */
+async function paste(
+  field: "reading" | "translation",
+  text: string,
+): Promise<void> {
+  await browser.execute(
+    (name, value) => {
+      const found = document.querySelector<HTMLTextAreaElement>(
+        `textarea[data-inkline-field="${name}"]`,
+      );
+      if (found === null) throw new Error(`no ${name}`);
+      found.value = value;
+      found.dispatchEvent(new Event("input", { bubbles: true }));
+    },
+    field,
+    text,
+  );
+}
+
 /** Opens the editor on a symbol file. */
 async function editFile(file: string): Promise<void> {
   await browser.executeObsidian(({ app, plugins }, wanted) => {
@@ -262,6 +284,67 @@ async function restartInkline(): Promise<void> {
 /** Types `text` a key at a time, as a person does. */
 async function type(text: string): Promise<void> {
   for (const key of text) await browser.keys([key]);
+}
+
+/** Saves the library's fields, under an editor or not. */
+function saveFields(): void {
+  document
+    .querySelector<HTMLFormElement>(".inkline-library-text-form")
+    ?.requestSubmit();
+}
+
+/** Saves the editor. */
+function saveEditor(): void {
+  document.querySelector<HTMLElement>('[data-inkline-button="save"]')?.click();
+}
+
+/**
+ * Has the next write to the vault start the other of the two saves, and go on
+ * only `ms` later, so that the other has every chance to come between its read
+ * and its write. `other` says which: `fields` or `editor`.
+ */
+async function atNextWrite(
+  other: "fields" | "editor",
+  ms: number,
+): Promise<void> {
+  await browser.executeObsidian(
+    ({ app }, which, wait) => {
+      const write = app.vault.modifyBinary.bind(app.vault);
+      app.vault.modifyBinary = async (...args) => {
+        app.vault.modifyBinary = write;
+        if (which === "fields") {
+          document
+            .querySelector<HTMLFormElement>(".inkline-library-text-form")
+            ?.requestSubmit();
+        } else {
+          document
+            .querySelector<HTMLElement>('[data-inkline-button="save"]')
+            ?.click();
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, wait));
+        return write(...args);
+      };
+    },
+    other,
+    ms,
+  );
+}
+
+/** Bulk files, each with a reading of its own, for an index to take time over. */
+async function bulkSymbols(count: number): Promise<void> {
+  await browser.executeObsidian(async ({ app }, total) => {
+    const { canvas, text } = window.inklineTest;
+    const { bytes } = await canvas.saveInk({ strokes: [] }, undefined, []);
+    for (let at = 0; at < total; at++) {
+      const said = await text.writeText(bytes, "reading", [
+        `value${String(at)}`,
+      ]);
+      await app.vault.createBinary(
+        `Bulk ${String(at).padStart(2, "0")}.ink.png`,
+        said.slice().buffer,
+      );
+    }
+  }, count);
 }
 
 /** Puts a note in place, and waits until Obsidian can open it. */
@@ -430,14 +513,14 @@ describe("A symbol's readings and translations", function () {
       ]);
       await showFields();
       const before = await bytesOf("Limit.ink.png");
-      await fill("reading", "é".repeat(2048) + "x");
+      await paste("reading", "é".repeat(2048) + "x");
       await browser.$('[data-inkline-button="save"]').click();
       await waitForStatus("Not saved");
       expect(await browser.$(".inkline-text-error").getText()).toContain(
         "4096",
       );
       expect(await bytesOf("Limit.ink.png")).toBe(before);
-      await fill("reading", "é".repeat(2048));
+      await paste("reading", "é".repeat(2048));
       await saveAndClose();
       expect((await fieldsOf("Limit.ink.png")).reading).toEqual([
         "é".repeat(2048),
@@ -902,6 +985,145 @@ describe("A symbol's readings and translations", function () {
       expect(await area("reading").getValue()).toBe("typed");
     });
 
+    /**
+     * Opens `file`'s fields in two libraries, types each value in its own, and
+     * saves both at once, with each write taking long enough for the other to
+     * read the file first, if nothing stops it.
+     */
+    async function saveTwice(
+      file: string,
+      first: readonly [field: string, text: string],
+      second: readonly [field: string, text: string],
+    ): Promise<void> {
+      await browser.executeObsidian(async ({ app }) => {
+        await app.workspace
+          .getLeaf("split")
+          .setViewState({ type: "inkline-library", active: false });
+      });
+      const buttons = `.inkline-library-symbol[data-inkline-path="${file}"] [data-inkline-role="text"]`;
+      await browser.waitUntil(
+        async () => (await browser.$$(buttons).length) === 2,
+      );
+      const saves = ".inkline-library-text-buttons button[type=submit]";
+      await browser.execute((selector) => {
+        for (const button of document.querySelectorAll<HTMLElement>(selector)) {
+          button.click();
+        }
+      }, buttons);
+      await browser.waitUntil(async () =>
+        browser.execute((selector) => {
+          const found = document.querySelectorAll<HTMLButtonElement>(selector);
+          return found.length === 2 && [...found].every((b) => !b.disabled);
+        }, saves),
+      );
+      await delayVault("modifyBinary", 300, "before");
+      await browser.execute(
+        (values) => {
+          const forms = document.querySelectorAll<HTMLFormElement>(
+            ".inkline-library-text-form",
+          );
+          forms.forEach((form, index) => {
+            const [field, text] = values[index] ?? [];
+            const found = form.querySelector<HTMLTextAreaElement>(
+              `textarea[data-inkline-field="${field ?? ""}"]`,
+            );
+            if (found === null) throw new Error("no field");
+            found.value = text ?? "";
+            found.dispatchEvent(new Event("input", { bubbles: true }));
+          });
+          for (const form of forms) form.requestSubmit();
+        },
+        [first, second],
+      );
+    }
+
+    it("keeps both of two saves of one symbol, whichever writes last", async function () {
+      await symbolWith("Both.ink.png", {
+        reading: ["TA"],
+        translation: ["field"],
+      });
+      await showLibrary();
+      await saveTwice(
+        "Both.ink.png",
+        ["reading", "FIRST"],
+        ["translation", "SECOND"],
+      );
+      await waitForClosedForm();
+      await restoreVault();
+      expect(await fieldsOf("Both.ink.png")).toEqual({
+        reading: ["FIRST"],
+        translation: ["SECOND"],
+      });
+    });
+
+    it("refuses the later of two saves of one field, and shows what is there", async function () {
+      await symbolWith("Same.ink.png", { reading: ["TA"] });
+      await showLibrary();
+      await saveTwice(
+        "Same.ink.png",
+        ["reading", "FIRST"],
+        ["reading", "SECOND"],
+      );
+      await browser.waitUntil(async () =>
+        (await formNote().getText()).includes("FIRST"),
+      );
+      await restoreVault();
+      expect((await fieldsOf("Same.ink.png")).reading).toEqual(["FIRST"]);
+      expect(await area("reading").getValue()).toBe("SECOND");
+    });
+
+    it("stops an editor's save that the library's went ahead of, until it is asked", async function () {
+      await symbolWith("Library first.ink.png", {
+        reading: ["TA"],
+        translation: ["field"],
+      });
+      await showLibrary();
+      await openFields("Library first.ink.png");
+      await fill("reading", "typed");
+      await editFile("Library first.ink.png");
+      await draw([
+        [0.5, 0.3],
+        [0.7, 0.6],
+      ]);
+      const before = await recordOf("Library first.ink.png");
+      // As the library starts to write, the editor saves too.
+      await atNextWrite("editor", 300);
+      await browser.execute(saveFields);
+      await clickTop("Keep mine");
+      await browser.$(".inkline-editor").waitForExist({ reverse: true });
+      expect(await fieldsOf("Library first.ink.png")).toEqual({
+        reading: ["typed"],
+        translation: ["field"],
+      });
+      expect(await recordOf("Library first.ink.png")).not.toBe(before);
+    });
+
+    it("has the library's save build on an editor's that went ahead of it", async function () {
+      await symbolWith("Editor first.ink.png", {
+        reading: ["TA"],
+        translation: ["field"],
+      });
+      await showLibrary();
+      await openFields("Editor first.ink.png");
+      await fill("reading", "typed");
+      await editFile("Editor first.ink.png");
+      await draw([
+        [0.5, 0.3],
+        [0.7, 0.6],
+      ]);
+      const before = await recordOf("Editor first.ink.png");
+      // As the editor starts to write, the library saves too.
+      await atNextWrite("fields", 300);
+      await browser.execute(saveEditor);
+      await waitForClosedForm();
+      await browser.$(".inkline-editor").waitForExist({ reverse: true });
+      expect(await fieldsOf("Editor first.ink.png")).toEqual({
+        reading: ["typed"],
+        translation: ["field"],
+      });
+      expect(await recordOf("Editor first.ink.png")).not.toBe(before);
+    });
+
     it("says so when the file goes while its fields are open", async function () {
       await symbolWith("Gone.ink.png", { reading: ["TA"] });
       await showLibrary();
@@ -923,13 +1145,13 @@ describe("A symbol's readings and translations", function () {
       await showLibrary();
       await openFields("Long.ink.png");
       const before = await bytesOf("Long.ink.png");
-      await fill("reading", "x".repeat(4097));
+      await paste("reading", "x".repeat(4097));
       await formSave().click();
       await browser.waitUntil(async () =>
         (await browser.$(".inkline-text-error").getText()).includes("4096"),
       );
       expect(await bytesOf("Long.ink.png")).toBe(before);
-      await fill("reading", "x".repeat(4096));
+      await paste("reading", "x".repeat(4096));
       await formSave().click();
       await waitForClosedForm();
       expect((await fieldsOf("Long.ink.png")).reading).toEqual([
@@ -1000,14 +1222,58 @@ describe("A symbol's readings and translations", function () {
         });
       };
       const more = () => browser.$(".inkline-library-more");
+      const focusMore = async (): Promise<void> => {
+        await browser.execute(() => {
+          document.querySelector<HTMLElement>(".inkline-library-more")?.focus();
+        });
+      };
+      /** What has the focus, and whether it shows in the list. */
+      const focused = () =>
+        browser.execute(() => {
+          const active = document.activeElement;
+          const box = active?.getBoundingClientRect();
+          const pane = document
+            .querySelector(".inkline-library")
+            ?.getBoundingClientRect();
+          return {
+            role: active?.getAttribute("data-inkline-role") ?? null,
+            path:
+              active
+                ?.closest("[data-inkline-path]")
+                ?.getAttribute("data-inkline-path") ?? null,
+            shows:
+              box !== undefined &&
+              pane !== undefined &&
+              box.top >= pane.top &&
+              box.top < pane.bottom,
+          };
+        });
       await waitForCount(100);
       expect(await more().getText()).toBe("Show more: 150 left");
-      await more().click();
+      // By the keyboard, the focus goes on from the first new row.
+      await focusMore();
+      await browser.keys(["Enter"]);
       await waitForCount(200);
+      expect(await focused()).toEqual({
+        role: "insert",
+        path: "Row 100.ink.png",
+        shows: true,
+      });
       expect(await more().getText()).toBe("Show more: 50 left");
+      // A redraw that nobody asked for leaves it on the button.
+      await focusMore();
+      await changeOnDisk("Row 000.ink.png", { reading: ["again"] });
+      await waitForValues("Row 000.ink.png", "again");
+      expect((await focused()).role).toBe("more");
+      // With nothing left to show, the same, by the mouse this time.
       await more().click();
       await waitForCount(250);
       expect(await more().isExisting()).toBe(false);
+      expect(await focused()).toEqual({
+        role: "insert",
+        path: "Row 200.ink.png",
+        shows: true,
+      });
       await browser.$(".inkline-library-search").setValue("last");
       await waitForCount(1);
     });
@@ -1092,6 +1358,47 @@ describe("A symbol's readings and translations", function () {
       await browser.waitUntil(async () => (await rows()).length === 0);
     });
 
+    it("tells a voiced kana from the plain one, in the lists and the library", async function () {
+      await symbolWith("One.ink.png", { reading: ["は"] });
+      await symbolWith("Two.ink.png", { reading: ["ば"] });
+      await symbolWith("Three.ink.png", { reading: ["ぱ"] });
+      await indexed();
+      await waitForValues("Three.ink.png", "ぱ");
+      const search = browser.$(".inkline-library-search");
+      /** The rows the filter leaves, by path. */
+      const left = () =>
+        browser.execute(() =>
+          Array.from(document.querySelectorAll(".inkline-library-symbol")).map(
+            (found) => found.getAttribute("data-inkline-path"),
+          ),
+        );
+      for (const [typed, file] of [
+        ["は", "One.ink.png"],
+        ["ば", "Two.ink.png"],
+        ["ぱ", "Three.ink.png"],
+      ] as const) {
+        await search.setValue(typed);
+        await browser.waitUntil(
+          async () => JSON.stringify(await left()) === JSON.stringify([file]),
+          { timeoutMsg: `${typed} did not leave only ${file}` },
+        );
+      }
+      await search.setValue("sa");
+      await browser.waitUntil(
+        async () =>
+          JSON.stringify(await left()) ===
+          JSON.stringify(["Anything at all.ink.png"]),
+      );
+      await search.setValue("");
+      await openAtMarker(noteFile, "HERE");
+      await browser.executeObsidianCommand("inkline:insert-existing-symbol");
+      await browser.$(".prompt-input").waitForExist();
+      await browser.$(".prompt-input").setValue("は");
+      await waitForRow("One");
+      expect(await rows()).toEqual([{ name: "One", why: "Reading: は" }]);
+      await browser.keys(["Escape"]);
+    });
+
     it("finds by Insert existing symbol", async function () {
       await indexed();
       await openAtMarker(noteFile, "HERE");
@@ -1102,6 +1409,9 @@ describe("A symbol's readings and translations", function () {
         { name: "Anything at all", why: "Translation: rice field" },
       ]);
       await saveScreenshot("text-insert-existing");
+      // A space after what was typed is nothing to look for, as in the library.
+      await browser.$(".prompt-input").setValue("TA ");
+      await waitForRow("Anything at all");
       await browser.keys(["Escape"]);
     });
 
@@ -1249,19 +1559,7 @@ describe("A symbol's readings and translations", function () {
 
     it("searches while it reads, and says it may be missing some", async function () {
       this.timeout(120_000);
-      await browser.executeObsidian(async ({ app }) => {
-        const { canvas, text } = window.inklineTest;
-        const { bytes } = await canvas.saveInk({ strokes: [] }, undefined, []);
-        for (let at = 0; at < 60; at++) {
-          const said = await text.writeText(bytes, "reading", [
-            `value${String(at)}`,
-          ]);
-          await app.vault.createBinary(
-            `Bulk ${String(at).padStart(2, "0")}.ink.png`,
-            said.slice().buffer,
-          );
-        }
-      });
+      await bulkSymbols(60);
       await showLibrary();
       // Reads slowly enough to see, from nothing.
       await delayVault("readBinary", 100);
@@ -1296,6 +1594,48 @@ describe("A symbol's readings and translations", function () {
         { timeout: 60_000 },
       );
       await browser.waitUntil(async () => !(await status.isDisplayed()));
+      await restoreVault();
+    });
+
+    it("finds what just changed ahead of the first reading of the vault", async function () {
+      this.timeout(120_000);
+      await bulkSymbols(60);
+      await showLibrary();
+      await delayVault("readBinary", 300);
+      await restartInkline();
+      await showLibrary();
+      const status = browser.$(".inkline-library-status");
+      const count = () => browser.$$(".inkline-library-symbol").length;
+      // Something the vault reports goes before the rest of the files.
+      await changeOnDisk("Bulk 58.ink.png", { reading: ["synced"] });
+      await browser.$(".inkline-library-search").setValue("synced");
+      await browser.waitUntil(async () => (await count()) === 1, {
+        timeout: 5000,
+      });
+      expect(await status.isDisplayed()).toBe(true);
+      // A burst of reports, as from a sync tool, and a save goes before those
+      // too: what was just typed is what a person looks for next.
+      await browser.executeObsidian(async ({ app }) => {
+        const { text } = window.inklineTest;
+        for (const file of app.vault.getFiles()) {
+          if (!file.path.startsWith("Bulk ")) continue;
+          // Past the vault, whose reads are slowed for the index.
+          const bytes = new Uint8Array(
+            await app.vault.adapter.readBinary(file.path),
+          );
+          const written = await text.writeText(bytes, "translation", ["again"]);
+          await app.vault.modifyBinary(file, written.slice().buffer);
+        }
+      });
+      await editFile("Bulk 59.ink.png");
+      await showFields();
+      await fill("reading", "justtyped");
+      await saveAndClose();
+      await browser.$(".inkline-library-search").setValue("justtyped");
+      await browser.waitUntil(async () => (await count()) === 1, {
+        timeout: 5000,
+      });
+      expect(await status.isDisplayed()).toBe(true);
       await restoreVault();
     });
   });
