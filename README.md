@@ -35,8 +35,9 @@ install ZIP from
 extract it into your vault's `.obsidian/plugins/` directory; see the
 [installation guide](https://viell-dev.github.io/slop-inkline/install) for
 setup, updates, and older versions. Release notes describe compatibility
-changes; the file format remains a draft until the first stable release, 1.0.0.
-The 0.9 releases are its betas.
+changes. The 0.9 releases lead to the first stable release, 1.0.0: from 0.9.2 on
+they are its release candidates, and the file format is final. A symbol saved by
+an earlier version opens as a picture to draw over, without its strokes.
 
 Inkline is not in Obsidian's community plugin directory yet. The plan is that
 1.0.0 is its first release there, and that the directory offers public releases

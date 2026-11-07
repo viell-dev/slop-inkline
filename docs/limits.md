@@ -11,9 +11,8 @@ The [issues](https://github.com/viell-dev/slop-inkline/issues) track each one.
   run on Linux; Windows and macOS should work but are not tested.
 - **Mouse or trackpad.** A drawing tablet's pen or a touchscreen draws as a
   mouse does: pen pressure and a pen's eraser end are not supported.
-- **Large libraries** show every matching symbol at once (**Unreleased:** 100 at
-  a time, with **Show more** for the next 100). Filter by name or folder to
-  narrow the list.
+- **Large libraries** show 100 symbols at a time, with **Show more** for the
+  next 100. Filter them, or choose a folder, to narrow the list.
 - **Library insertion needs a sidebar.** If the library's tab is dragged into
   the main area, move it back to a sidebar to insert into a note.
 - **Physical printing** has not been checked. Native
@@ -30,15 +29,15 @@ link would still lead elsewhere by its path in the vault.
 
 ## A file written at the moment Inkline saves
 
-**Unreleased:** Inkline's own saves of symbols go one at a time, whether from
-the editor or the library, and each reads the file first, so that two of them
-cannot undo each other, even if the file is renamed or replaced while one waits.
-It also means that a save Obsidian never finishes, as on a drive that stops
-answering, holds up every later save, whichever symbol it is for. After a few
-seconds of that, the editor and the library's fields say so, and saving goes on
-by itself if Obsidian finishes. A save is never let go of early, as Obsidian
-could still finish it, over whatever a later save had written. If nothing
-changes, restart Obsidian, which ends the wait:
+Inkline's own saves of symbols go one at a time, whether from the editor or the
+library, and each reads the file first, so that two of them cannot undo each
+other, even if the file is renamed or replaced while one waits. It also means
+that a save Obsidian never finishes, as on a drive that stops answering, holds
+up every later save, whichever symbol it is for. After a few seconds of that,
+the editor and the library's fields say so, and saving goes on by itself if
+Obsidian finishes. A save is never let go of early, as Obsidian could still
+finish it, over whatever a later save had written. If nothing changes, restart
+Obsidian, which ends the wait:
 
 - **In the editor,** your strokes are safe in a draft. Open the symbol again, or
   start a new symbol in that note if it had not been saved yet, and choose
@@ -48,13 +47,13 @@ changes, restart Obsidian, which ends the wait:
   **Cancel** or Esc closes the fields and stops the save. Only a save that had
   already reached Obsidian can still finish, and a notice says so.
 
-**Unreleased:** a rename is not in that line, so a save never waits for one, and
-it is told apart differently, as it can rightly take a long time: Obsidian's
-question about links stays open for as long as you like, and it then updates
-each note that links to the symbol, which takes a few seconds for every thousand
-notes. So only a rename where nothing happens for a few seconds, with no
-question open, says it is waiting for Obsidian, and the message goes if it moves
-again. If nothing changes, restart Obsidian:
+A rename is not in that line, so a save never waits for one, and it is told
+apart differently, as it can rightly take a long time: Obsidian's question about
+links stays open for as long as you like, and it then updates each note that
+links to the symbol, which takes a few seconds for every thousand notes. So only
+a rename where nothing happens for a few seconds, with no question open, says it
+is waiting for Obsidian, and the message goes if it moves again. If nothing
+changes, restart Obsidian:
 
 - **In the library,** the name you typed stays in the row to copy, as a restart
   does not keep it. **Cancel** or Esc closes the row, and stops the rename if
@@ -83,8 +82,8 @@ text, which is lost. A note's own save, two seconds after an edit, is enough.
 Obsidian does this with any file
 ([#10](https://github.com/viell-dev/slop-inkline/issues/10)).
 
-**Unreleased:** Inkline's own renames save every open note first, which leaves
-that save nothing to do, and refuse to go on if one cannot be saved
+Inkline's own renames save every open note first, which leaves that save nothing
+to do, and refuse to go on if one cannot be saved
 ([#182](https://github.com/viell-dev/slop-inkline/issues/182)). What stays out
 of Inkline's reach:
 
@@ -111,47 +110,46 @@ the mark before renaming what it links to.
 ## Files and sizes
 
 - A symbol is at most 4096 pixels wide, 32 times the height of its text.
+- **A symbol saved before 0.9.2 keeps its look but not its strokes.** The file
+  format became final in that release, and no later version reads the strokes of
+  earlier files. The symbol stays in your notes and opens as a
+  [picture to draw over](./recovery.md#pictures-without-strokes).
 - Tools that change or recompress a symbol's image can drop the strokes it
   keeps, leaving a picture; see
   [Without Inkline](./without-inkline.md#editing-them-elsewhere).
-- **Unreleased:** a symbol holds at most 250,000 points across its strokes,
-  erased ones included. That is minutes of unbroken drawing with the fastest
-  mice. Saving past it fails with a message, and the draft stops at the last
-  stroke within it, so undo what took the drawing over.
-- Saving a symbol with a large base layer from the editor stops Obsidian
-  answering while it works: about a second for a file of 1.5 MB, and four to
-  five for one near the limit. A symbol drawn by hand takes milliseconds
-  ([#200](https://github.com/viell-dev/slop-inkline/issues/200)).
-  **Unreleased:** Obsidian keeps answering all through such a save, which takes
-  two or three seconds near the limit. What remains is a pause of up to about a
+- A symbol holds at most 250,000 points across its strokes, erased ones
+  included. That is minutes of unbroken drawing with the fastest mice. Saving
+  past it fails with a message, and the draft stops at the last stroke within
+  it, so undo what took the drawing over.
+- Saving a symbol with a large base layer from the editor takes two or three
+  seconds near the limit, and Obsidian keeps answering all through it. A symbol
+  drawn by hand takes milliseconds. What remains is a pause of up to about a
   quarter of a second just after you ask to save, while Inkline keeps a copy of
-  the base layer for a draft, in one write that it cannot divide.
-- Opening such a symbol in the editor stops Obsidian answering too, while
-  Inkline reads it: about half a second for a file of 1.5 MB, and two to three
-  near the limit ([#202](https://github.com/viell-dev/slop-inkline/issues/202)).
-  **Unreleased:** Obsidian keeps answering while Inkline reads such a symbol,
-  which takes a second or two near the limit, and a notice says that it is
+  the base layer for a draft, in one write that it cannot divide
+  ([#200](https://github.com/viell-dev/slop-inkline/issues/200)).
+- Opening such a symbol in the editor takes a second or two near the limit.
+  Obsidian keeps answering while Inkline reads it, and a notice says that it is
   opening. The longest pauses left are about a tenth of a second, up to a
   quarter at worst, in single steps that Inkline cannot divide, such as hashing
-  the file.
-- **Unreleased:** a symbol file made to be slow to draw, by a stroke that turns
-  back at nearly every point, can keep Obsidian busy for a long time when you
-  open it in the editor, hours for the worst of them, from a file of a few
-  kilobytes. Close Obsidian if it stops answering: no file has changed, and the
-  note shows the symbol as before. Drawing by hand does not come near this.
-- **Unreleased:** the lists find a symbol by its readings and translations a
-  moment after Obsidian starts, and a few seconds after in a vault of thousands
-  of symbols, as they are read in the background each time; a line in the list
-  says so meanwhile. Names work from the start. A file of over 32 MiB, or with
-  more than 16 chunks of one keyword before a usable one, as a file made to be
-  slow to read has, is found by its name only. Its text still shows in the
-  library's fields.
-- **Unreleased:** a list of readings or translations that Inkline cannot read,
-  as from a later version, stays in the file, behind any you type, and looks
-  empty. Inkline offers no way to remove one.
-- **Unreleased:** a symbol's readings and translations go with its file, and
-  only there. Some image programs drop them; a long list in a non-Latin script
-  was lost through two plain ImageMagick copies, while short text came through.
+  the file ([#202](https://github.com/viell-dev/slop-inkline/issues/202)).
+- A symbol file made to be slow to draw, by a stroke that turns back at nearly
+  every point, can keep Obsidian busy for a long time when you open it in the
+  editor, hours for the worst of them, from a file of a few kilobytes. Close
+  Obsidian if it stops answering: no file has changed, and the note shows the
+  symbol as before. Drawing by hand does not come near this.
+- The lists find a symbol by its readings and translations a moment after
+  Obsidian starts, and a few seconds after in a vault of thousands of symbols,
+  as they are read in the background each time; a line in the list says so
+  meanwhile. Names work from the start. A file of over 32 MiB, or with more than
+  16 chunks of one keyword before a usable one, as a file made to be slow to
+  read has, is found by its name only. Its text still shows in the library's
+  fields.
+- A list of readings or translations that Inkline cannot read, as from a later
+  version, stays in the file, behind any you type, and looks empty. Inkline
+  offers no way to remove one.
+- A symbol's readings and translations go with its file, and only there. Some
+  image programs drop them; a long list in a non-Latin script was lost through
+  two plain ImageMagick copies, while short text came through.
 - A picture to trace over is scaled down to 4096 pixels on its longer side. A
   file opened from its pixels can be up to 4096 pixels a side, and its ink must
   fit within 8 MiB, the largest base layer a symbol can store.

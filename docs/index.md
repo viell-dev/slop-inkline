@@ -63,8 +63,11 @@ in text.
   symbol you have to insert it again. See [Symbols in notes](./notes.md).
 - **Name** and rename it in its editor, and **edit** it again from its menu, a
   command, or the file explorer.
-- **Find and reuse** your symbols in the sidebar library, with filters by name
-  and folder, and the notes that use each. See
+- **Record** how it is read and what it means, apart from its name, and find it
+  by either. See
+  [Readings and translations](./notes.md#readings-and-translations).
+- **Find and reuse** your symbols in the sidebar library, with a filter,
+  folders, and the notes that use each. See
   [Find where a symbol is used](./notes.md#find-where-a-symbol-is-used).
 - **Keep your work**: the editor asks before closing unsaved work, keeps unsaved
   strokes as a draft after a crash, and never saves over a file it cannot read.

@@ -46,21 +46,22 @@ The embed goes where the cursor was when you ran the command:
   link is split. After a bare web address, which only a space ends, a space
   comes first.
 
-**Unreleased:** the cursor then lands just after the symbol, as after a typed
-character, so you can type on at once, in a table cell in Live Preview too. Text
-you had selected stays as it was. With **Next**, each symbol goes after the one
-before, in the order you drew them, and the cursor ends after the last, also
-when you discard the drawing you were on. A note that has gone to Reading view
-meanwhile takes the symbol too, through its file, which keeps its line endings,
-Windows ones included.
+The cursor then lands just after the symbol, as after a typed character, so you
+can type on at once, in a table cell in Live Preview too. Text you had selected
+stays as it was. With **Next**, each symbol goes after the one before, in the
+order you drew them, and the cursor ends after the last, also when you discard
+the drawing you were on. A note that has gone to Reading view meanwhile takes
+the symbol too, through its file, which keeps its line endings, Windows ones
+included.
 
 ## Insert a symbol you have
 
-Type `;;` and a few letters of a symbol's name, in any script, to list the
-matching symbols with their pictures:
+Type `;;` and a few letters of a symbol's name, or of one of its
+[readings and translations](#readings-and-translations), in any script, to list
+the matching symbols with their pictures:
 
-1. The list puts the best match by name first, then the symbols this note uses
-   most, then the most recently changed, and shows up to 50.
+1. The list puts the best match first, then the symbols this note uses most,
+   then the most recently changed, and shows up to 50.
 2. Enter, or a click, puts the chosen symbol's embed in place of what you typed.
 3. Esc closes the list, and what you type after it stays text.
 
@@ -69,32 +70,27 @@ on after `;;` stops matching. `;;` in code, inline or fenced, and in front
 matter lists nothing: it is the note's own text there.
 
 **Inkline: Insert existing symbol** opens the same list as a search, and inserts
-the chosen symbol at the cursor.
+the chosen symbol at the cursor. It places the symbol as **Inkline: Insert
+symbol** does: just after a link or embed the cursor is inside, so that no link
+is split, and beside selected text, which stays. If the note changes while the
+search is open, the symbol still goes where the cursor was.
 
-**Unreleased:** both also find a symbol by its
-[readings and translations](#readings-and-translations), whatever its name:
-`;;TA` lists a symbol with the reading `TA`, and a row found that way says so,
-under its name, as in `Reading: TA`. A value must hold what you typed, in any
-letter case, and with or without its accents; a name still matches loosely. The
-best match comes first, name or value, and of the two, the name.
+Both find a symbol by a reading or translation whatever its name: `;;TA` lists a
+symbol with the reading `TA`, and a row found that way says so, under its name,
+as in `Reading: TA`. A value must hold what you typed, in any letter case, and
+with or without its accents; a name still matches loosely. The best match comes
+first, name or value, and of the two, the name.
 
-**Unreleased:** an accent is a mark on the letters of the Latin or Greek
-alphabet, or a stress mark in Cyrillic: `sa` finds `šá`, and typing `šá` asks
-for those accents. Any other mark makes another sound, so it counts as part of
-its letter: `は` does not find `ば` or `ぱ`, nor `и` find `й`, nor `क` find
-`कि`, and the vowel points of Arabic and Hebrew have to be typed to find a value
-that has them. Korean goes by its spelling, so `가` finds `각`, which starts
-with it.
+An accent is a mark on the letters of the Latin or Greek alphabet, or a stress
+mark in Cyrillic: `sa` finds `šá`, and typing `šá` asks for those accents. Any
+other mark makes another sound, so it counts as part of its letter: `は` does
+not find `ば` or `ぱ`, nor `и` find `й`, nor `क` find `कि`, and the vowel points
+of Arabic and Hebrew have to be typed to find a value that has them. Korean goes
+by its spelling, so `가` finds `각`, which starts with it.
 
-**Unreleased:** it places the symbol as **Inkline: Insert symbol** does: just
-after a link or embed the cursor is inside, so that no link is split, and beside
-selected text, which stays. If the note changes while the search is open, the
-symbol still goes where the cursor was.
-
-**Unreleased:** these lists, [Copy from](./drawing.md#start-from-a-copy), and
-the library give each picture a column of its own, so that names line up
-whatever each symbol's width. A symbol wider than the column shows whole, at a
-smaller size.
+These lists, [Copy from](./drawing.md#start-from-a-copy), and the library give
+each picture a column of its own, so that names line up whatever each symbol's
+width. A symbol wider than the column shows whole, at a smaller size.
 
 ## Edit a symbol
 
@@ -110,13 +106,17 @@ It is offered:
 - as the command **Inkline: Edit symbol**, with the cursor on a symbol's embed,
   outside code and front matter.
 
-**Unreleased:** a symbol with a large base layer takes a moment to open, and a
-notice says so. Obsidian goes on answering meanwhile, so a key you press still
-reaches the note until the editor is there. Asking for the same symbol again
-changes nothing, and asking for another opens that one instead. If another
-window opens meanwhile, such as the command palette, the symbol does not come up
-over it, and a notice says to open it again. If you choose **Reload** in the
-editor and go on drawing or typing while it reads the file, it asks again.
+A symbol with a large base layer takes a moment to open, and a notice says so.
+Obsidian goes on answering meanwhile, so a key you press still reaches the note
+until the editor is there. Asking for the same symbol again changes nothing, and
+asking for another opens that one instead. If another window opens meanwhile,
+such as the command palette, the symbol does not come up over it, and a notice
+says to open it again. If you choose **Reload** in the editor and go on drawing
+or typing while it reads the file, it asks again.
+
+A symbol saved by a version before 0.9.2 opens as a
+[picture to draw over](./recovery.md#pictures-without-strokes), without its
+strokes, and the editor says why.
 
 Right-clicking a symbol offers Edit symbol wherever else the symbol is:
 
@@ -140,20 +140,20 @@ the question, and how to make a variant instead.
 
 ## Names and renames
 
-A symbol's name is its file's name, and a name is the place for your current
-reading of it. Rename it directly in the library, in its editor, as
-[Drawing in the editor](./drawing.md#the-name) describes, or rename its file in
-Obsidian in any way: an open editor follows a rename made elsewhere, and keeps
-the name given there, even one Inkline itself would not give.
+A symbol's name is its file's name, which can be your current guess at it, or
+anything else that suits you. Rename it directly in the library, in its editor,
+as [Drawing in the editor](./drawing.md#the-name) describes, or rename its file
+in Obsidian in any way: an open editor follows a rename made elsewhere, and
+keeps the name given there, even one Inkline itself would not give.
 
 ## Readings and translations
 
-**Unreleased:** a symbol can record how it is read and what it means, apart from
-its name. A **reading** is how it is read aloud, written any way you like: the
-sign た might have the reading `TA`. A **translation** is what it means, in
-words of any language. Either can hold several values, one to a line, the main
-one first. The two lists are separate, so the second reading has nothing to do
-with the second translation.
+A symbol can record how it is read and what it means, apart from its name. A
+**reading** is how it is read aloud, written any way you like: the sign た might
+have the reading `TA`. A **translation** is what it means, in words of any
+language. Either can hold several values, one to a line, the main one first. The
+two lists are separate, so the second reading has nothing to do with the second
+translation.
 
 They are for what you currently take the symbol to be. The name stays what your
 notes link to, so correcting a guess here changes no note and needs no rename,
@@ -181,8 +181,8 @@ It lists every symbol with its picture, name, folder, and how many notes link to
 it. Each note counts once, however often it uses the symbol. Symbols are ordered
 by folder, the top folder first, then by name, with numbers in order.
 
-- Type part of a name in **Filter by name**, in any letter case or script, and
-  choose a folder to narrow the list.
+- Type part of a name, a reading, or a translation in **Filter symbols**, in any
+  letter case or script, and choose a folder to narrow the list.
 - Click a symbol to insert it at the cursor in the note you were last in. The
   cursor moves after it and the library keeps the focus, so successive clicks
   write successive symbols. A selection's text is kept; a cursor inside a link
@@ -196,23 +196,21 @@ by folder, the top folder first, then by name, with numbers in order.
   link settings. Esc or **Cancel** keeps the old name. An empty name also keeps
   the old name. The same name rules apply as in the drawing editor.
 
-**Unreleased:** a row keeps its picture, name, and buttons on one line in the
-default sidebar. A long name wraps onto a second line and then shortens, and a
-long folder shortens, rather than running off the sidebar. Hold the pointer over
-the symbol for its whole name and folder. **Rename** also shows the whole name,
-without the pointer. In a sidebar narrower than about 285 pixels, the buttons
-drop below the name.
+A row keeps its picture, name, and buttons on one line in the default sidebar. A
+long name wraps onto a second line and then shortens, and a long folder
+shortens, rather than running off the sidebar. Hold the pointer over the symbol
+for its whole name and folder. **Rename** also shows the whole name, without the
+pointer. In a sidebar narrower than about 285 pixels, the buttons drop below the
+name.
 
-**Unreleased:** a symbol's
-[readings and translations](#readings-and-translations) show under its row, a
-line for each, which a long list shortens; a symbol with none keeps a row of the
-usual height.
+A symbol's [readings and translations](#readings-and-translations) show under
+its row, a line for each, which a long list shortens; a symbol with none keeps a
+row of the usual height.
 
-- The filter, now **Filter symbols**, finds them too. A row found by a value
-  shows it first, in bold, so a match with another name is no mystery. While
-  Inkline is still reading the vault's symbols, as it does for a few seconds
-  after Obsidian starts in a vault of thousands of them, a line says that more
-  may match.
+- A row the filter found by a value shows it first, in bold, so a match with
+  another name is no mystery. While Inkline is still reading the vault's
+  symbols, as it does for a few seconds after Obsidian starts in a vault of
+  thousands of them, a line says that more may match.
 - The button with the translation icon, beside **Rename**, edits them in that
   row, one value to a line. **Save**, or Ctrl+Enter, or Cmd+Enter on macOS,
   changes the file's text and nothing else: its drawing's bytes stay as they
@@ -231,15 +229,15 @@ any files and links that changed while you typed. Renaming changes the file's
 name, leaving its drawing's bytes as they are. A symbol deleted and replaced
 while its name is being edited cannot rename the replacement.
 
-**Unreleased:** **Rename** first saves every open note that holds unsaved text,
-as [renaming in the editor](./drawing.md#the-name) does. If a note cannot be
-saved, the row says which one, and nothing is renamed.
+**Rename** first saves every open note that holds unsaved text, as
+[renaming in the editor](./drawing.md#the-name) does. If a note cannot be saved,
+the row says which one, and nothing is renamed.
 
-**Unreleased:** a rename can take a while in a much used symbol, as Obsidian
-updates each note that links to it, and for as long as you take over its
-question about links. Neither is a problem, and the row says nothing of them. If
-it stops, as on a drive that stops answering, the row says so after a few
-seconds, and **Cancel** or Esc close it; see
+A rename can take a while in a much used symbol, as Obsidian updates each note
+that links to it, and for as long as you take over its question about links.
+Neither is a problem, and the row says nothing of them. If it stops, as on a
+drive that stops answering, the row says so after a few seconds, and **Cancel**
+or Esc close it; see
 [what is kept](./limits.md#a-file-written-at-the-moment-inkline-saves).
 
 The list follows files and their links as they change. Obsidian's backlinks for

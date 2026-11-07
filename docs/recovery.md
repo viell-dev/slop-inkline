@@ -66,12 +66,12 @@ the unsaved drawing?**, with the time the draft was kept:
 - **Not now** keeps it, to be offered next time.
 
 If the symbol was saved again since the draft was kept, the question says that
-its strokes may not line up. **Unreleased:** a change to its readings or
-translations alone leaves the strokes where they were, so the question says
-nothing of them; if the draft holds text you typed, it says to look that over
-before saving. A draft not restored within 30 days is dropped. If the local
-storage refuses a draft, as when it is full, a notice says so, and the last
-draft kept stays; save the symbol to keep the changes.
+its strokes may not line up. A change to its readings or translations alone
+leaves the strokes where they were, so the question says nothing of them; if the
+draft holds text you typed, it says to look that over before saving. A draft not
+restored within 30 days is dropped. If the local storage refuses a draft, as
+when it is full, a notice says so, and the last draft kept stays; save the
+symbol to keep the changes.
 
 A new symbol's first save that was cut short, or whose embed could not be
 inserted, is finished when you restore its draft: with the file it had made, if
@@ -89,23 +89,23 @@ elsewhere, by sync, another app, or another editor, is not lost to a save:
   editor is open; **Keep mine** keeps your drawing, and saving it replaces the
   change.
 - Each save checks the file first, and asks the same question if it changed.
-  **Unreleased:** that includes a save from the library, which waits for one
-  from the editor, and the other way round. The last moment before a write is
+  That includes a save from the library, which waits for one from the editor,
+  and the other way round. The last moment before a write is
   [a known limit](./limits.md#a-file-written-at-the-moment-inkline-saves).
-- **Unreleased:** a change to a symbol's readings or translations alone, as from
-  the library or by sync, changes nothing about the drawing, so the editor asks
-  nothing and takes it in: your strokes, unsaved or not, and Undo stay as they
-  are, and the fields follow the file. This holds for a save too, which goes on
-  with the new text.
-- **Unreleased:** a field you have typed in keeps what you typed, as nothing
-  could bring that back. If the file changed that field too, the fields open and
-  say what saving replaces, and the file keeps its value until you save. A save
-  that finds such a change only as it starts writes nothing, so that you see
-  what it would replace; save again to replace it.
-- **Unreleased:** when the drawing changed too, the question comes up as above,
-  and it mentions a field you typed in that the file changed: **Keep mine**
-  keeps what you typed, and **Reload** takes the file's. A field you typed in
-  that the file left alone stays as you typed it either way.
+- A change to a symbol's readings or translations alone, as from the library or
+  by sync, changes nothing about the drawing, so the editor asks nothing and
+  takes it in: your strokes, unsaved or not, and Undo stay as they are, and the
+  fields follow the file. This holds for a save too, which goes on with the new
+  text.
+- A field you have typed in keeps what you typed, as nothing could bring that
+  back. If the file changed that field too, the fields open and say what saving
+  replaces, and the file keeps its value until you save. A save that finds such
+  a change only as it starts writes nothing, so that you see what it would
+  replace; save again to replace it.
+- When the drawing changed too, the question comes up as above, and it mentions
+  a field you typed in that the file changed: **Keep mine** keeps what you
+  typed, and **Reload** takes the file's. A field you typed in that the file
+  left alone stays as you typed it either way.
 - A symbol whose file was deleted while it was open is saved again where it was,
   folder and all.
 - A rename made elsewhere is followed, and its name kept.
@@ -125,15 +125,23 @@ elsewhere, by sync, another app, or another editor, is not lost to a save:
   saved over: the editor says so, and keeps your drawing open.
 - **A file that is not a valid PNG**, as one cut short by a failed copy, does
   not open, and a notice says why.
-- **Unreleased:** a symbol whose image is damaged, but whose strokes are whole,
-  opens as usual, and saving it draws the image again.
+- A symbol whose image is damaged, but whose strokes are whole, opens as usual,
+  and saving it draws the image again.
 
 ## Pictures without strokes
 
-A `.ink.png` file whose strokes are missing opens as a picture: its pixels
-become the symbol's base layer, at their own resolution, scaled in proportion to
-the line's height, and the pen and eraser act on it. Its transparency, or for an
-opaque picture its darkness, becomes the ink, in the text's colour like any
-other. That happens with files from other programs, and with files whose strokes
-an image optimiser or a sync tool stripped out. Saving one stores strokes again
-from then on.
+A `.ink.png` file that holds no strokes opens as a picture to draw over, and the
+editor's status line says so. Its pixels become the symbol's base layer, at
+their own resolution, scaled in proportion to the line's height, and the pen and
+eraser act on it. Its transparency, or for an opaque picture its darkness,
+becomes the ink, in the text's colour like any other. Saving one stores strokes
+again from then on. Until then the file stays as it was.
+
+That happens with:
+
+- every symbol saved by a version before 0.9.2, as the file format became final
+  in that release, and Inkline does not read the strokes of earlier files. They
+  look as they did and stay in your notes, but their strokes can't be edited one
+  by one. Draw over the picture, or draw the symbol again;
+- files from other programs;
+- files whose strokes an image optimiser or a sync tool stripped out.
