@@ -1,7 +1,13 @@
 // Pixel rules that need no canvas: where the ink is, and how a picture's
 // pixels become ink when a file without a record is opened.
 
-import { slicer, type Pausing } from "../format/png.ts";
+import {
+  finished,
+  finishedSliced,
+  slicer,
+  type Pausing,
+  type Steps,
+} from "../format/png.ts";
 import { limits, unitsPerPixel } from "../format/record.ts";
 import type { Bounds } from "./geometry.ts";
 import { inkGrey } from "./render.ts";
@@ -34,6 +40,44 @@ export function inkBounds(pixels: RgbaPixels): Bounds | undefined {
     : { left, top, right: right + 1, bottom: bottom + 1 };
 }
 
+/** How many pixels go by between places to pause, a few milliseconds' work. */
+const slicePixels = 256 * 1024;
+
+/** {@link inkAlpha} as steps. */
+function* inkAlphaSteps(pixels: RgbaPixels): Steps<Uint8ClampedArray> {
+  const { width, height, data } = pixels;
+  const alpha = new Uint8ClampedArray(width * height);
+  let opaque = true;
+  for (let start = 0; start < alpha.length && opaque; start += slicePixels) {
+    const end = Math.min(alpha.length, start + slicePixels);
+    for (let index = start; index < end; index++) {
+      if ((data[index * 4 + 3] ?? 0) !== 255) {
+        opaque = false;
+        break;
+      }
+    }
+    yield;
+  }
+  for (let start = 0; start < alpha.length; start += slicePixels) {
+    const end = Math.min(alpha.length, start + slicePixels);
+    for (let index = start; index < end; index++) {
+      const offset = index * 4;
+      if (opaque) {
+        // Rec. 709 luminance weights on the stored values.
+        const luminance =
+          0.2126 * (data[offset] ?? 0) +
+          0.7152 * (data[offset + 1] ?? 0) +
+          0.0722 * (data[offset + 2] ?? 0);
+        alpha[index] = 255 - Math.round(luminance);
+      } else {
+        alpha[index] = data[offset + 3] ?? 0;
+      }
+    }
+    yield;
+  }
+  return alpha;
+}
+
 /**
  * The ink a picture holds, as one alpha value per pixel. A picture with any
  * transparency keeps its alpha. A fully opaque one, such as a screenshot, is
@@ -41,29 +85,15 @@ export function inkBounds(pixels: RgbaPixels): Bounds | undefined {
  * becomes empty and black full ink.
  */
 export function inkAlpha(pixels: RgbaPixels): Uint8ClampedArray {
-  const { width, height, data } = pixels;
-  const alpha = new Uint8ClampedArray(width * height);
-  let opaque = true;
-  for (let index = 0; index < alpha.length; index++) {
-    if ((data[index * 4 + 3] ?? 0) !== 255) {
-      opaque = false;
-      break;
-    }
-  }
-  for (let index = 0; index < alpha.length; index++) {
-    const offset = index * 4;
-    if (opaque) {
-      // Rec. 709 luminance weights on the stored values.
-      const luminance =
-        0.2126 * (data[offset] ?? 0) +
-        0.7152 * (data[offset + 1] ?? 0) +
-        0.0722 * (data[offset + 2] ?? 0);
-      alpha[index] = 255 - Math.round(luminance);
-    } else {
-      alpha[index] = data[offset + 3] ?? 0;
-    }
-  }
-  return alpha;
+  return finished(inkAlphaSteps(pixels));
+}
+
+/** {@link inkAlpha} for a large picture, a little at a time. */
+export function inkAlphaSliced(
+  pixels: RgbaPixels,
+  options: Pausing = {},
+): Promise<Uint8ClampedArray> {
+  return finishedSliced(inkAlphaSteps(pixels), options);
 }
 
 /**
@@ -79,17 +109,41 @@ export function greyInk(data: Uint8ClampedArray): void {
   }
 }
 
+/** {@link inkPixels} as steps. */
+function* inkPixelsSteps(
+  width: number,
+  height: number,
+  alpha: Uint8ClampedArray,
+): Steps<Uint8ClampedArray<ArrayBuffer>> {
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let start = 0; start < width * height; start += slicePixels) {
+    const end = Math.min(width * height, start + slicePixels);
+    data.fill(inkGrey, start * 4, end * 4);
+    for (let index = start; index < end; index++) {
+      data[index * 4 + 3] = alpha[index] ?? 0;
+    }
+    yield;
+  }
+  return data;
+}
+
 /** RGBA pixels of grey ink with the given alpha, ready to encode as PNG. */
 export function inkPixels(
   width: number,
   height: number,
   alpha: Uint8ClampedArray,
 ): Uint8ClampedArray<ArrayBuffer> {
-  const data = new Uint8ClampedArray(width * height * 4).fill(inkGrey);
-  for (let index = 0; index < width * height; index++) {
-    data[index * 4 + 3] = alpha[index] ?? 0;
-  }
-  return data;
+  return finished(inkPixelsSteps(width, height, alpha));
+}
+
+/** {@link inkPixels} for a large picture, a little at a time. */
+export function inkPixelsSliced(
+  width: number,
+  height: number,
+  alpha: Uint8ClampedArray,
+  options: Pausing = {},
+): Promise<Uint8ClampedArray<ArrayBuffer>> {
+  return finishedSliced(inkPixelsSteps(width, height, alpha), options);
 }
 
 /**

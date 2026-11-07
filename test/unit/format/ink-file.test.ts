@@ -7,27 +7,31 @@ import {
   carriedChunks,
   isInkPath,
   preservableChunks,
+  readInk,
   readInkFile,
   recordChunkType,
   writeInkFile,
 } from "../../../src/format/ink-file.ts";
 import {
   PngError,
+  inflate,
   maxChunks,
   readChunks,
   writeChunks,
   type Chunk,
 } from "../../../src/format/png.ts";
 import {
+  baseImageProblem,
   formatVersion,
   imageHeight,
   limits,
   parseRecord,
+  parseRecordSliced,
   serializeRecord,
   type InkRecord,
 } from "../../../src/format/record.ts";
 import { inkGrey } from "../../../src/ink/render.ts";
-import { noise, paused } from "../../support/slices.ts";
+import { noise, paused, sameBytes } from "../../support/slices.ts";
 import {
   blank,
   decodeRgba,
@@ -737,7 +741,7 @@ describe("writeInkFile in slices", () => {
     const { result, pauses } = await paused((pause) =>
       writeInkFile(image, large, carried, { pause }),
     );
-    expect(result).toEqual(whole);
+    expect(sameBytes(result, whole)).toBe(true);
     // Its base64, CRCs, compression and checks, a pause for each kilobyte.
     expect(pauses).toBeGreaterThanOrEqual(base.png.length / 1024);
   });
@@ -755,7 +759,9 @@ describe("writeInkFile in slices", () => {
     );
     const source = await readInkFile(result);
     if (source.kind !== "record") throw new Error(source.kind);
-    expect(source.record.base?.png).toEqual(base.png);
+    const png = source.record.base?.png;
+    if (png === undefined) throw new Error("no base layer");
+    expect(sameBytes(png, base.png)).toBe(true);
   });
 
   it("refuses what it refuses in one go", async () => {
@@ -768,6 +774,83 @@ describe("writeInkFile in slices", () => {
     await expect(
       paused((pause) => writeInkFile(image, short, [], { pause })),
     ).rejects.toThrow(RecordError);
+  });
+});
+
+describe("readInk in slices", () => {
+  const base = {
+    x: 16,
+    y: -32,
+    width: 3072,
+    height: 3072,
+    png: encodePng({ width: 200, height: 200, data: noise(200 * 200 * 4) }),
+  };
+  const large: InkRecord = { ...record, base };
+
+  it("reads what it reads in one go, pausing all through it", async () => {
+    const file = await writeInkFile(image, large);
+    const chunks = readChunks(file);
+    const whole = await readInk(chunks);
+    if (whole.kind !== "record") throw new Error(whole.kind);
+    const { result, pauses } = await paused((pause) =>
+      readInk(chunks, { pause }),
+    );
+    if (result.kind !== "record") throw new Error(result.kind);
+    for (const {
+      record: { base: read },
+    } of [whole, result]) {
+      if (read === undefined) throw new Error("no base layer");
+      expect(sameBytes(read.png, base.png)).toBe(true);
+    }
+    expect(result.width).toBe(whole.width);
+    expect(result.record.strokes).toEqual(whole.record.strokes);
+    // Its inflating, base64, CRCs, and image data, a pause for each kilobyte.
+    expect(pauses).toBeGreaterThanOrEqual(base.png.length / 1024);
+  });
+
+  it("pauses in each of its steps, not only in some of them", async () => {
+    const file = await writeInkFile(image, large);
+    const chunks = readChunks(file);
+    const chunk = chunks.find(({ type }) => type === recordChunkType);
+    if (chunk === undefined) throw new Error("no record");
+    const data = chunk.data.subarray(4);
+    const text = serializeRecord(large);
+    const inflating = await paused((pause) => inflate(data, { pause }));
+    const parsing = await paused((pause) => parseRecordSliced(text, { pause }));
+    const checking = await paused((pause) =>
+      baseImageProblem(base.png, { pause }),
+    );
+    const { pauses } = await paused((pause) => readInk(chunks, { pause }));
+    expect(inflating.pauses).toBeGreaterThan(0);
+    expect(parsing.pauses).toBeGreaterThan(0);
+    expect(checking.pauses).toBeGreaterThan(0);
+    expect(pauses).toBeGreaterThanOrEqual(
+      inflating.pauses + parsing.pauses + checking.pauses,
+    );
+  });
+
+  it("reads a damaged record as it does in one go", async () => {
+    const file = (await writeInkFile(image, large)).slice();
+    const chunk = readChunks(file).find(({ type }) => type === recordChunkType);
+    if (chunk === undefined) throw new Error("no record");
+    const at = chunk.data.byteOffset + chunk.data.length - 9;
+    file[at] = (file[at] ?? 0) ^ 1;
+    const chunks = readChunks(file);
+    const whole = await readInk(chunks);
+    expect(whole).toMatchObject({ kind: "pixels", reason: "damaged" });
+    const { result } = await paused((pause) => readInk(chunks, { pause }));
+    expect(result).toEqual(whole);
+  });
+
+  it("reads a file with no record, or a later version's, the same", async () => {
+    const later = withChunks([
+      recordChunk(formatVersion + 1, new Uint8Array(3)),
+    ]);
+    for (const bytes of [image, later]) {
+      const chunks = readChunks(bytes);
+      const { result } = await paused((pause) => readInk(chunks, { pause }));
+      expect(result).toEqual(await readInk(chunks));
+    }
   });
 });
 

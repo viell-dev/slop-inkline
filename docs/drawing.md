@@ -306,6 +306,12 @@ another symbol's strokes and ink, chosen from a list of the vault's symbols with
 their pictures, in place of what is drawn so far, for scripts whose symbols
 share parts. Undo takes the copy back.
 
+**Unreleased:** a large symbol takes a moment to read, and a notice says so.
+What you draw meanwhile stays in the history, for Undo to bring back. If a save
+or a question comes up before the symbol is read, the drawing stays as it is,
+and the status line says that it was not copied, so that **Save** cannot save
+the copy in your drawing's stead. Choose it again.
+
 **Unreleased:** the list finds a symbol by its
 [readings and translations](#readings-and-translations) as well as its path, and
 a row found that way says so. The copy takes only the drawing: they stay with

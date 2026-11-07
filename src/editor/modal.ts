@@ -2772,6 +2772,13 @@ export class InkEditorModal extends Modal {
       this.#choosing = undefined;
     }
     if (copy === undefined || this.#retired || this.#closing) return;
+    // A large symbol takes a moment to read. A save or a question that came up
+    // meanwhile is about the drawing as it stands: a copy taking its place now
+    // would be saved, or asked about, in the drawing's stead.
+    if (this.#saving !== undefined || this.#questions.size > 0) {
+      this.#announce(`Not copied: ${copy.name} was still being read`);
+      return;
+    }
     // A stroke being drawn is committed first, so that Undo brings it back.
     this.#session.end();
     const { document, base } = copy.ink;
@@ -2970,6 +2977,8 @@ export class InkEditorModal extends Modal {
   /** Reads the file again and takes in what it now holds, as Reload asks. */
   async #reloadFile(): Promise<void> {
     const known = this.#watch.version;
+    const drawn = this.#session.document;
+    const typed = JSON.stringify(this.#textFields?.typed());
     const found = await this.#readFile();
     if (found === undefined || this.#retired || this.#closing) return;
     // A save or reload meanwhile makes the read stale: a fresh check decides.
@@ -2984,6 +2993,14 @@ export class InkEditorModal extends Modal {
       // Changed back meanwhile: the drawing already follows it.
     } else if (opened === undefined) {
       this.#announce(`Not reloaded: ${unreadable}`);
+    } else if (
+      // A large file takes a moment. Reload was the answer about the drawing as
+      // it stood then, and says nothing of what was added to it since.
+      this.#session.drawing ||
+      this.#session.document !== drawn ||
+      JSON.stringify(this.#textFields?.typed()) !== typed
+    ) {
+      this.#askChanged(reading.fingerprint, opened);
     } else {
       this.#reload(reading.fingerprint, opened);
     }

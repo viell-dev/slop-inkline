@@ -176,6 +176,12 @@ save of a large symbol takes and what that does to the rest of the plugin, which
 is how the wait before a stalled save's message was chosen. It writes
 `save-time-<version>.json` to the output directory.
 
+`test/e2e/manual/open-time.e2e.ts` stays outside it too: it measures what each
+step of reading a large symbol costs, where the main thread's time goes in a
+whole open of the editor, by a CPU profile with each long task's share, and what
+opening does beside the index reading the vault. It writes
+`open-time-<version>.json` to the output directory.
+
 `test/e2e/manual/fixtures.e2e.ts` stays outside it too: it saves the drawings of
 `test/fixtures/format/records.ts` as golden files, with the real save in
 Obsidian, as its opening comment says.

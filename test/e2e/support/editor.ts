@@ -654,6 +654,33 @@ export async function editFile(file: string): Promise<void> {
 }
 
 /**
+ * Opens the editor on a symbol file, and reports what that took: until it was
+ * there, and until it had painted, and what the main thread went through
+ * meanwhile. A long task still running would not be reported yet.
+ */
+export async function timedEditorOpen(file: string) {
+  return browser.executeObsidian(async ({ app, plugins }, wanted) => {
+    const { mainThread } = window.inklineTest;
+    const found = app.vault.getFileByPath(wanted);
+    if (found === null) throw new Error(`no ${wanted}`);
+    const thread = mainThread.watchMainThread();
+    const start = performance.now();
+    void plugins.inkline.editSymbol(found);
+    while (document.querySelector(".inkline-editor") === null) {
+      await new Promise((resolve) => window.setTimeout(resolve, 2));
+    }
+    const shownMs = performance.now() - start;
+    await new Promise((resolve) => {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(resolve);
+      });
+    });
+    const totalMs = performance.now() - start;
+    return { shownMs, totalMs, thread: thread() };
+  }, file);
+}
+
+/**
  * Saves the open editor by its button, which closes it, and reports what that
  * took: from pressing it to the editor closing, and each read and write of the
  * vault meanwhile, which is the part that a stalled save would wait on.

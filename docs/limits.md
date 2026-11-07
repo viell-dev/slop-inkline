@@ -111,6 +111,11 @@ the mark before renaming what it links to.
 - Opening such a symbol in the editor stops Obsidian answering too, while
   Inkline reads it: about half a second for a file of 1.5 MB, and two to three
   near the limit ([#202](https://github.com/viell-dev/slop-inkline/issues/202)).
+  **Unreleased:** Obsidian keeps answering while Inkline reads such a symbol,
+  which takes a second or two near the limit, and a notice says that it is
+  opening. The longest pauses left are about a tenth of a second, up to a
+  quarter at worst, in single steps that Inkline cannot divide, such as hashing
+  the file.
 - **Unreleased:** a symbol file made to be slow to draw, by a stroke that turns
   back at nearly every point, can keep Obsidian busy for a long time when you
   open it in the editor, hours for the worst of them, from a file of a few
