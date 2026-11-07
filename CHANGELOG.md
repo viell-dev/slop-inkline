@@ -9,9 +9,32 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
-The file format now defines where a symbol's readings and translations go: PNG
-text chunks, apart from its strokes and its file's name, which a program that
-changes the file must keep. No existing file is affected.
+## 0.9.2 - 2026-11-07
+
+This is the first release candidate of 1.0.0: a build meant to become 1.0.0
+unchanged, for its last checks. The owner is asked to try it in
+[their test request](https://github.com/viell-dev/slop-inkline/issues/212).
+
+**Symbols saved by any earlier version open as pictures to draw over, without
+their strokes.** The file format is now final, by the owner's decision in
+[#144](https://github.com/viell-dev/slop-inkline/issues/144), after a
+[review of every rule in it](https://github.com/viell-dev/slop-inkline/issues/172),
+and Inkline no longer reads what earlier versions stored. Your symbols and the
+notes that use them don't change, and they look as they did. In the editor, such
+a symbol says why it has no strokes, and saving it stores strokes from then on.
+Unsaved drafts from earlier versions are dropped, so finish what you are drawing
+before you update.
+
+What else is new since 0.9.1:
+
+- **Readings and translations.** A symbol can record how it is read and what it
+  means, apart from its name, and the lists find it by either.
+- **The grid is a guide.** Nothing snaps to it unless Shift is held, and **Flat
+  ends** only ever cuts along a row.
+- **Typing goes on after a symbol,** as after a typed character, and names line
+  up in the lists.
+- **Large symbols no longer freeze Obsidian** while they open or save.
+- **A save or a rename that stalls says so,** with how to get your work back.
 
 ### Added
 
@@ -33,6 +56,82 @@ changes the file must keep. No existing file is affected.
   work back. Saving goes on by itself if Obsidian finishes, and the library's
   fields can be closed meanwhile
   ([#198](https://github.com/viell-dev/slop-inkline/pull/198)).
+- The editor's status line says why a file with no strokes opened as a picture
+  to draw over, as every symbol saved by an earlier version now does.
+
+### Changed
+
+- The grid is now a guide, and snaps only while Shift is held, for the pen, the
+  eraser, Ellipse, and Polygon. A click between its dots stays where you
+  clicked, and a stroke's ends stay where you pressed and let go, so that you
+  can keep the grid on just to judge distances. Each thing you place goes by
+  Shift at that moment: a stroke's start at the press, its end at the release,
+  an ellipse's corners likewise, and each polygon corner at its click. With the
+  grid on, Shift on Ellipse snaps instead of making a circle; with the grid off,
+  it still makes one
+  ([#169](https://github.com/viell-dev/slop-inkline/issues/169)).
+- **Flat ends** applies to ends that Shift put on the grid. A freehand end is
+  not on a grid line, and stays round. The button is available as before
+  ([#169](https://github.com/viell-dev/slop-inkline/issues/169)).
+- On a symbol you open again, the grid lines up with the ends you put on it with
+  Shift, as freehand ends no longer lie on it
+  ([#169](https://github.com/viell-dev/slop-inkline/issues/169)).
+- Names now line up across rows in the `;;` list, **Inkline: Insert existing
+  symbol**, **Copy from**, and the symbol library, as each picture has a column
+  of its own. A symbol wider than the column shows whole, at a smaller size
+  ([#171](https://github.com/viell-dev/slop-inkline/issues/171)).
+- The cursor now lands just after a symbol that **Save** or **Next** inserts, as
+  after a typed character, so that typing goes on after it, in a table cell in
+  Live Preview too. **Next** still puts a run of symbols in the order they were
+  drawn, and the cursor ends after the last, also when the last drawing is
+  discarded after the note changed on disk. Selected text stays as it was
+  ([#170](https://github.com/viell-dev/slop-inkline/issues/170)).
+- **Inkline: Insert existing symbol** places a symbol as the other routes do:
+  just after a link or embed the cursor is inside, rather than splitting it, and
+  beside selected text, rather than replacing it
+  ([#173](https://github.com/viell-dev/slop-inkline/issues/173)).
+- A row of the symbol library keeps its picture, name, and buttons on one line
+  in the default sidebar, however long the name is. The name has the room the
+  row's narrower buttons leave, and they line up across rows. In a sidebar
+  narrower than about 285 pixels, they drop below the name together.
+- An editor open on a symbol tells a change to its readings or translations from
+  a change to its drawing. A change to the text alone, from the library or by
+  sync, asks nothing and takes the text in, with unsaved strokes and Undo left
+  alone, and a draft no longer warns that its strokes may not line up. Text you
+  typed in a field the file changed too stays, with a note of what saving
+  replaces, as in the library
+  ([#195](https://github.com/viell-dev/slop-inkline/issues/195)).
+- The file format is rewritten for the first public release, after a review of
+  every rule in it, and
+  [its specification](https://viell-dev.github.io/slop-inkline/file-format) now
+  stands alone. It also defines where a symbol's readings and translations go:
+  PNG text chunks, which a program that changes the file must keep.
+- The record moves to a chunk of its own, `inKL`, marked as depending on the
+  image, so that a program that changes the image drops it and leaves a picture,
+  rather than leave strokes behind that bring the old image back. The format
+  version comes first in it, outside the compression, so that any later version
+  is recognised whatever else it holds.
+- A symbol whose strokes cannot be read is no longer opened as a picture, which
+  replaced them on saving: it does not open, a notice says why, and **Copy
+  from** starts a new symbol from what it shows.
+- A symbol's image is 192 pixels high and at most 4096 wide, down from 8192, and
+  a record holds no other geometry. Strokes record no pressure. A fill has no
+  brush size, and only a smooth stroke's ends can be cut, `"up"` or `"down"`. A
+  symbol holds at most 250,000 points, down from 1,000,000, which keeps the
+  memory a small crafted file can ask for lower. It does not bound how long such
+  a file can keep the editor busy, as
+  [Known limits](https://viell-dev.github.io/slop-inkline/limits#files-and-sizes)
+  says.
+- A single click draws a round dot exactly as wide as the brush, centred on the
+  click, rather than a short stroke a little wider, running down and right.
+- Every pixel of a symbol's image holds the same grey, however transparent, so
+  that a viewer that scales the image shows no dark fringe.
+- How a stroke's outline is drawn is now specified in full and kept in Inkline's
+  own source, so that it no longer depends on the perfect-freehand package.
+- Every limit of the file format is now tested at the limit and just past it,
+  with its number written out, and a recorded list of hashes holds the pinned
+  test files, so that neither can change by mistake once the format is permanent
+  ([#197](https://github.com/viell-dev/slop-inkline/issues/197)).
 
 ### Fixed
 
@@ -63,15 +162,13 @@ changes the file must keep. No existing file is affected.
   either direction, rather than going at the end of the note. The file keeps its
   own line endings, and a symbol that does go at the end uses them too
   ([#174](https://github.com/viell-dev/slop-inkline/pull/174)).
-- A symbol renamed just after it went into a table cell in Live Preview no
-  longer gets its new name twice in the embed, when Obsidian updates the links
-  too ([#174](https://github.com/viell-dev/slop-inkline/pull/174)).
 - A symbol renamed just after it went in no longer spoils a note that holds
   other unsaved text. Its embed could get the new name twice, or part of it at
   the start of the note, and the text could go from the editor. The embed now
   takes the new name once, with the link updates on or off, in one pane or two,
-  and in a table cell
-  ([#180](https://github.com/viell-dev/slop-inkline/issues/180)).
+  and in a table cell in Live Preview
+  ([#174](https://github.com/viell-dev/slop-inkline/pull/174),
+  [#180](https://github.com/viell-dev/slop-inkline/issues/180)).
 - A rename no longer lets Obsidian write the new link over other text, which was
   lost for good. It happened when a note embedding the symbol saved itself while
   Obsidian's question about the links was open. Every rename, from the editor or
@@ -110,9 +207,7 @@ changes the file must keep. No existing file is affected.
   size, as each saved pixel is now the exact mean of the pixels it covers.
 - A stroke that turns through almost exactly a right angle keeps its shape when
   saving's crop or the arrow keys shift it. Rounding used to depend on where the
-  stroke lay, so that adding a mark elsewhere could redraw it pixels away. Such
-  a stroke in a symbol saved earlier can look different the next time it is
-  drawn.
+  stroke lay, so that adding a mark elsewhere could redraw it pixels away.
 - A line whose far end you erased keeps its pixels when an edit moves saving's
   crop. The line runs past the image's edge, and the browser drew its curve a
   little differently wherever the crop put that edge, so that about half of such
@@ -151,79 +246,6 @@ changes the file must keep. No existing file is affected.
   the copy in the drawing's stead. The status line says it was not copied.
   **Reload** asks again if you drew or typed while it read the file
   ([#202](https://github.com/viell-dev/slop-inkline/issues/202)).
-
-### Changed
-
-- An editor open on a symbol tells a change to its readings or translations from
-  a change to its drawing. A change to the text alone, from the library or by
-  sync, asks nothing and takes the text in, with unsaved strokes and Undo left
-  alone, and a draft no longer warns that its strokes may not line up. Text you
-  typed in a field the file changed too stays, with a note of what saving
-  replaces, as in the library
-  ([#195](https://github.com/viell-dev/slop-inkline/issues/195)).
-- The file format is rewritten for the first public release, after a review of
-  every rule in it, and [its specification](docs/file-format.md) now stands
-  alone. **Symbols saved by earlier versions open as pictures, without their
-  strokes**, and look as they did; saving one stores strokes again from then on.
-  Unsaved drafts from earlier versions are dropped.
-- The record moves to a chunk of its own, `inKL`, marked as depending on the
-  image, so that a program that changes the image drops it and leaves a picture,
-  rather than leave strokes behind that bring the old image back. The format
-  version comes first in it, outside the compression, so that any later version
-  is recognised whatever else it holds.
-- A symbol whose strokes cannot be read is no longer opened as a picture, which
-  replaced them on saving: it does not open, a notice says why, and **Copy
-  from** starts a new symbol from what it shows.
-- A symbol's image is 192 pixels high and at most 4096 wide, down from 8192, and
-  a record holds no other geometry. Strokes record no pressure. A fill has no
-  brush size, and only a smooth stroke's ends can be cut, `"up"` or `"down"`. A
-  symbol holds at most 250,000 points, down from 1,000,000, which keeps the
-  memory a small crafted file can ask for lower. It does not bound how long such
-  a file can keep the editor busy, as
-  [Known limits](docs/limits.md#files-and-sizes) says.
-- A single click draws a round dot exactly as wide as the brush, centred on the
-  click, rather than a short stroke a little wider, running down and right.
-- Every pixel of a symbol's image holds the same grey, however transparent, so
-  that a viewer that scales the image shows no dark fringe.
-- How a stroke's outline is drawn is now specified in full and kept in Inkline's
-  own source, so that it no longer depends on the perfect-freehand package.
-- The grid is now a guide, and snaps only while Shift is held, for the pen, the
-  eraser, Ellipse, and Polygon. A click between its dots stays where you
-  clicked, and a stroke's ends stay where you pressed and let go, so that you
-  can keep the grid on just to judge distances. Each thing you place goes by
-  Shift at that moment: a stroke's start at the press, its end at the release,
-  an ellipse's corners likewise, and each polygon corner at its click. With the
-  grid on, Shift on Ellipse snaps instead of making a circle; with the grid off,
-  it still makes one
-  ([#169](https://github.com/viell-dev/slop-inkline/issues/169)).
-- **Flat ends** applies to ends that Shift put on the grid. A freehand end is
-  not on a grid line, and stays round. The button is available as before
-  ([#169](https://github.com/viell-dev/slop-inkline/issues/169)).
-- On a symbol you open again, the grid lines up with the ends you put on it with
-  Shift, as freehand ends no longer lie on it
-  ([#169](https://github.com/viell-dev/slop-inkline/issues/169)).
-- Names now line up across rows in the `;;` list, **Inkline: Insert existing
-  symbol**, **Copy from**, and the symbol library, as each picture has a column
-  of its own. A symbol wider than the column shows whole, at a smaller size
-  ([#171](https://github.com/viell-dev/slop-inkline/issues/171)).
-- The cursor now lands just after a symbol that **Save** or **Next** inserts, as
-  after a typed character, so that typing goes on after it, in a table cell in
-  Live Preview too. **Next** still puts a run of symbols in the order they were
-  drawn, and the cursor ends after the last, also when the last drawing is
-  discarded after the note changed on disk. Selected text stays as it was
-  ([#170](https://github.com/viell-dev/slop-inkline/issues/170)).
-- **Inkline: Insert existing symbol** places a symbol as the other routes do:
-  just after a link or embed the cursor is inside, rather than splitting it, and
-  beside selected text, rather than replacing it
-  ([#173](https://github.com/viell-dev/slop-inkline/issues/173)).
-- A row of the symbol library keeps its picture, name, and buttons on one line
-  in the default sidebar, however long the name is. The name has the room the
-  row's narrower buttons leave, and they line up across rows. In a sidebar
-  narrower than about 275 pixels, they drop below the name together.
-- Every limit of the file format is now tested at the limit and just past it,
-  with its number written out, and a recorded list of hashes holds the pinned
-  test files, so that neither can change by mistake once the format is permanent
-  ([#197](https://github.com/viell-dev/slop-inkline/issues/197)).
 
 ## 0.9.1 - 2026-11-06
 

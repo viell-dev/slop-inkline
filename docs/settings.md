@@ -2,16 +2,16 @@
 
 Open **Settings → Inkline** to change these choices:
 
-| Setting        | Default                     | What it changes                                                                           |
-| -------------- | --------------------------- | ----------------------------------------------------------------------------------------- |
-| Symbol size    | 100%                        | Height relative to the usual line height, from 50% to 200%, in steps of 5%.               |
-| Text colour    | On                          | Symbols take the colour of the surrounding text. Off, they show their stored grey pixels. |
-| Insert trigger | `;;`                        | These characters and a few letters of a name list symbols to insert.                      |
-| Symbol folder  | Empty                       | The folder in the vault for new symbols. Empty puts them where new attachments go.        |
-| Brush size     | M, the second of four sizes | The starting size for both Pen and Eraser.                                                |
-| Grid size      | 5 cells                     | How many of the grid's cells span the font's x-height, from 2 to 10.                      |
-| Editor buttons | Icons and text              | What the editor's buttons show: icons and text, icons only, or text only.                 |
-| Guides         | Shown, with every line      | Whether an editor starts with the guides shown, and which font lines they show.           |
+| Setting        | Default                     | What it changes                                                                               |
+| -------------- | --------------------------- | --------------------------------------------------------------------------------------------- |
+| Symbol size    | 100%                        | Height relative to the usual line height, from 50% to 200%, in steps of 5%.                   |
+| Text colour    | On                          | Symbols take the colour of the surrounding text. Off, they show their stored grey pixels.     |
+| Insert trigger | `;;`                        | These characters and a few letters of a name, reading, or translation list symbols to insert. |
+| Symbol folder  | Empty                       | The folder in the vault for new symbols. Empty puts them where new attachments go.            |
+| Brush size     | M, the second of four sizes | The starting size for both Pen and Eraser.                                                    |
+| Grid size      | 5 cells                     | How many of the grid's cells span the font's x-height, from 2 to 10.                          |
+| Editor buttons | Icons and text              | What the editor's buttons show: icons and text, icons only, or text only.                     |
+| Guides         | Shown, with every line      | Whether an editor starts with the guides shown, and which font lines they show.               |
 
 Size and colour apply at once to existing symbols in open notes, including
 Reading view, Live Preview, and popout windows. At 100%, symbols are 1.5 times

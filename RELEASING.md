@@ -53,9 +53,9 @@ stable release supports, its tasks, formats, and platforms, what stays out, and
 when beta, rc, and stable begin. The maintaining agents propose it in an issue
 with `Needs: Owner`, record the agreement there, and link it here. With a goal
 agreed, they move to beta and rc on the evidence, recorded in the release pull
-request; a case the goal does not settle goes back to the owner. The proposed
-goal is [#144](https://github.com/viell-dev/slop-inkline/issues/144); the owner
-decided on 2026-11-05 that the builds after 0.3.0-alpha.8 are betas.
+request; a case the goal does not settle goes back to the owner. The agreed goal
+is [below](#the-stable-release-goal); the owner decided on 2026-11-05 that the
+builds after 0.3.0-alpha.8 are betas.
 
 Each new version must be higher than every published version, in SemVer's order
 and in Obsidian's, or someone on that version is never offered it. The two
@@ -89,6 +89,86 @@ requests and remaining work.
 
 Submitting the plugin to Obsidian's community directory, or a change of what
 Inkline is for or where it is distributed, needs the owner's decision.
+
+## The stable release goal
+
+The owner agreed this goal for `1.0.0` in
+[#144](https://github.com/viell-dev/slop-inkline/issues/144), changing its
+section on formats there, and widened it with readings and translations in
+[#187](https://github.com/viell-dev/slop-inkline/issues/187). A change to it is
+the owner's decision.
+
+**The first stable release is for** desktop Obsidian, with a mouse or trackpad,
+as [#101](https://github.com/viell-dev/slop-inkline/issues/101) decided.
+
+**What it does:**
+
+- Draw a symbol: Pen, Eraser, Ellipse, Polygon, Toggle fill, brush sizes,
+  guides, grid, Flat ends, Zoom, and moving the drawing.
+- Trace a picture, by hand or with Make ink.
+- Insert a symbol, by the insert command or by typing its name after the
+  trigger.
+- Reuse and manage symbols: the library, renaming, finding uses, Copy from,
+  editing one that is used in several places, and readings and translations,
+  filled in from the editor or the library, by which the lists find a symbol.
+- Show symbols in text in every view, in both themes, in print and in PDF.
+- Recover unsaved work from drafts.
+
+**Formats:** `.ink.png`, version 1. Files from before the first public release
+need not open, as the owner decided: only those from that release onward have to
+stay compatible. From it, every file must keep opening and looking the same, or
+be upgraded by a converter.
+[#172](https://github.com/viell-dev/slop-inkline/issues/172) records the
+format's review.
+
+**Platforms:** Obsidian 1.13.4 and later. Linux is tested in real Obsidian.
+Windows and macOS are allowed and expected to work, without tests in the real
+host.
+
+**Out of scope:** mobile, pen and touch devices, free brush sizes, colours,
+layers, selecting or transforming parts of a drawing, and ready-made symbol
+libraries.
+
+**Stages:**
+
+- **Beta:** those features are complete, which means the points of
+  [#126](https://github.com/viell-dev/slop-inkline/issues/126) are handled. Then
+  only fixes and polish follow.
+- **rc:** the owner's report on the beta is handled, no known defect blocks
+  ordinary use, and the format has stopped changing.
+- **Stable:** the owner's pass on the rc, no release blockers, and the owner's
+  explicit word that the hold in
+  [#5](https://github.com/viell-dev/slop-inkline/issues/5) is lifted. Nothing
+  here lifts it.
+
+**Version:** the first public release is `1.0.0`, and it is the first in
+Obsidian's directory, as the owner decided in
+[#141](https://github.com/viell-dev/slop-inkline/issues/141) on 2026-11-05. The
+builds before it are pre-releases: `0.9.0` is the first beta, and `0.9.2` the
+first rc.
+
+### Why 0.9.2 is an rc
+
+It meets each of the conditions above:
+
+- **The owner's report on the beta is handled.** Their report on `0.9.1`, in
+  [#150](https://github.com/viell-dev/slop-inkline/issues/150), made four
+  points, and each has been delivered:
+  [#168](https://github.com/viell-dev/slop-inkline/issues/168),
+  [#169](https://github.com/viell-dev/slop-inkline/issues/169),
+  [#170](https://github.com/viell-dev/slop-inkline/issues/170), and
+  [#171](https://github.com/viell-dev/slop-inkline/issues/171).
+- **No known defect blocks ordinary use.** No open issue reports one. What stays
+  open is a request to a person, an idea, or work that waits on `1.0.0` itself
+  or on another project.
+- **The format has stopped changing.** The review the owner asked for ended
+  after ten cycles, with all four reviewers agreeing on the same commit, and
+  tests hold its limits and pinned files
+  ([#197](https://github.com/viell-dev/slop-inkline/issues/197)). Readings and
+  translations use the text chunks that review defined.
+
+The owner's pass on it decides what follows, and the hold in
+[#5](https://github.com/viell-dev/slop-inkline/issues/5) stands.
 
 ## Where a version is recorded
 
@@ -422,7 +502,9 @@ Obsidian hosts:
 3. For an update, start from the actual previous release, save a synthetic
    drawing and preference, turn Inkline off, and extract the new ZIP into the
    same plugins directory. Replace only the three plugin files, preserving
-   `data.json` and vault attachments; turn Inkline on and recheck both.
+   `data.json` and vault attachments; turn Inkline on and recheck both. From a
+   release before `0.9.2`, the drawing's file and look stay, and it opens as a
+   picture to draw over, as [the goal](#the-stable-release-goal) allows.
 4. Record the release commit, Obsidian versions, checksums, attestation and
    installation/update results, and evidence limits in the release PR. Never
    invent or modify a published release to simulate an upgrade.
@@ -441,9 +523,15 @@ sh test/e2e/session.sh --spec test/e2e/manual/update.e2e.ts
 For Docker, mount both artifact paths read-only and pass those variables to the
 project's test image. The check refuses missing inputs or a non-temporary vault,
 draws with the old release, saves a preference, extracts the new ZIP with
-`unzip`, reloads the host, and verifies the unchanged drawing, note and
-preferences through another plugin reload. It runs on both default host
-versions; inspect the resulting screenshots as well as the assertions.
+`unzip`, reloads the host, and verifies the unchanged symbol file, note and
+preferences through another plugin reload, that the note still shows the symbol,
+and that a stroke drawn over it and a new symbol save and reopen.
+
+What the symbol must open as goes by `E2E_PREVIOUS_VERSION` alone. From a
+release before `0.9.2` it is a picture to draw over, whose status line says why;
+from `0.9.2` on it is the strokes, so that a release that stopped reading them
+fails with no change to the check. It runs on both default host versions;
+inspect the resulting screenshots as well as the assertions.
 
 ## Documentation
 

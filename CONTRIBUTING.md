@@ -165,7 +165,9 @@ docker run --rm --init --shm-size=1g \
 
 It uses no GitHub token, so its requests count against the 60 an hour that
 GitHub allows an address: it makes about 16 for each Obsidian version, and
-refuses to start with fewer than 50 left.
+refuses to start with fewer than 50 left. It expects strokes and a draft to
+survive the update, so name `0.9.2` or later as the version to update from: an
+earlier one keeps neither, as the file format changed there.
 
 `test/e2e/manual/listing.e2e.ts` also stays outside the suite: it makes the
 pictures for Obsidian's community directory listing, as

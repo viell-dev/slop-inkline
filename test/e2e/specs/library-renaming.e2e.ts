@@ -31,6 +31,13 @@ async function showLibrary(): Promise<void> {
 }
 
 async function beginRename(name: string, typed: string): Promise<void> {
+  // A notice from the test before can lie over the button and take the click,
+  // as it would a person's (#214).
+  await browser.execute(() => {
+    for (const notice of activeDocument.querySelectorAll(".notice")) {
+      notice.remove();
+    }
+  });
   await row(name).$(".inkline-library-rename").click();
   await nameField().waitForDisplayed();
   await nameField().setValue(typed);

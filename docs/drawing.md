@@ -5,8 +5,8 @@
 The editor opens over the note for a new symbol, from **Inkline: Insert
 symbol**, or for one you have, from **Edit symbol**. Its parts, from the top:
 
-- the **name field**, which holds the symbol's name, and, **Unreleased:** beside
-  it, its [readings and translations](#readings-and-translations);
+- the **name field**, which holds the symbol's name, and, beside it, its
+  [readings and translations](#readings-and-translations);
 - the **toolbar**, whose buttons show an icon, a name, or both, as **Editor
   buttons** in the [settings](./settings.md) chooses, with each tool's shortcut
   in its tooltip;
@@ -55,27 +55,24 @@ takes away the whole drawing, and Undo brings it back.
 
 **Ellipse** (O) makes dragging draw an ellipse instead of following the pointer:
 drag from one corner of the box it fills to the other, and it is drawn as you
-go. Hold Shift for a circle, as wide as the box's longer side. It draws with the
-pen or the eraser, whichever is chosen, at its brush size, so the eraser takes
-away a ring. A shape drawn with the eraser is tinted red until it is done, as it
-would show nothing where there is no ink to take away. Press **Ellipse** again
-to draw freehand. **Next** keeps it on; an editor opened afresh draws freehand.
+go. With the grid off, hold Shift for a circle, as wide as the box's longer
+side. It draws with the pen or the eraser, whichever is chosen, at its brush
+size, so the eraser takes away a ring. A shape drawn with the eraser is tinted
+red until it is done, as it would show nothing where there is no ink to take
+away. Press **Ellipse** again to draw freehand. **Next** keeps it on; an editor
+opened afresh draws freehand.
 
-With the grid on, the box's corners are on the grid, so the ellipse touches its
-lines at its top, bottom, and sides. A circle is on the grid along its longer
-side; across the other it can end between lines, as the grid's rows and columns
-are spaced differently. For a half circle, draw the circle, then erase the half
-you don't want with eraser strokes that end on the line across its middle: on
-the grid with **Flat ends** on, their ends stop flush with that line.
+With the grid on, nothing goes on it unless Shift is held, so each corner of the
+box is on the grid only if Shift is held as you place it: the first as you
+press, the second as you let go. Shift does this instead of making a circle, and
+no circle is drawn. The second corner follows the pointer, and goes back to it
+if you let go of Shift while dragging. An ellipse with both corners on the grid
+touches its lines at its top, bottom, and sides.
 
-**Unreleased:** nothing goes on the grid unless Shift is held, so each corner of
-the box is on the grid only if Shift is held as you place it: the first as you
-press, the second as you let go. With the grid on, Shift does this instead of
-making a circle, and no circle is drawn; with the grid off, it still makes one.
-The second corner follows the pointer, and goes back to it if you let go of
-Shift while dragging. For the half circle above, bring the eraser strokes up or
-down to the row across its middle, and hold Shift as they end, as flat ends only
-cut along a row.
+For a half circle, draw the circle, then erase the half you don't want with
+eraser strokes that end on the row across its middle: with the grid and **Flat
+ends** on, bring them up or down to that row and hold Shift as they end, and
+their ends stop flush with it.
 
 ## Polygons
 
@@ -96,18 +93,16 @@ it never reaches far beyond. An open shape's ends are square, half the stroke's
 width past its end corners, so that two shapes meeting at a corner make a sharp
 one.
 
-With the grid on, the corners snap to the grid. A shape's ends aren't cut flat
-on the grid: an open shape keeps its square ends, past the line they lie on, and
-**Up** and **Down** can then sit it on the line. Off the grid, a click within
-the brush's circle of the first or last corner counts as that corner, or within
-4 of the drawing's pixels for a smaller brush. So does such a click with the
-grid on, for a corner placed before the grid was turned on.
+With the grid on, a corner goes on it only if Shift is held as you click it, so
+one shape can have some corners on the grid and some off it. The next side shows
+where a click would put the corner. A shape's ends aren't cut flat on the grid:
+an open shape keeps its square ends, past the line they lie on, and **Up** and
+**Down** can then sit it on the line.
 
-**Unreleased:** a corner goes on the grid only if Shift is held as you click it,
-so one shape can have some corners on the grid and some off it. The next side
-shows where a click would put the corner. A click within the brush's circle of
-the first or last corner counts as that corner, as off the grid. So does a click
-with Shift held that snaps to such a corner, if Shift put it on the grid.
+A click within the brush's circle of the first or last corner counts as that
+corner, or within 4 of the drawing's pixels for a smaller brush, with the grid
+on or off. So does a click with Shift held that snaps to such a corner, if Shift
+put it on the grid.
 
 ## Filled shapes
 
@@ -126,15 +121,14 @@ opened afresh does not fill.
 ## Straight lines and the grid
 
 Hold Shift while drawing to make the stroke straight, from where it was when
-Shift went down. **Grid** (Shift+G) shows a grid of dots and snaps the ends of
-strokes to them, for scripts built from straight strokes and dots; a tap on the
-grid stays a dot.
+Shift went down. **Grid** (Shift+G) shows a grid of dots, for scripts built from
+straight strokes and dots.
 
-**Unreleased:** the grid is a guide, and nothing snaps to it unless Shift is
-held, for every tool. You can keep it on to judge distances and still draw
-freely: a click between its dots stays where you clicked, and a stroke starts
-and ends where you pressed and let go. With the grid on, holding Shift puts what
-you place at that moment on the nearest dot:
+The grid is a guide, and nothing snaps to it unless Shift is held, for every
+tool. You can keep it on to judge distances and still draw freely: a click
+between its dots stays where you clicked, and a stroke starts and ends where you
+pressed and let go. With the grid on, holding Shift puts what you place at that
+moment on the nearest dot:
 
 - Held as you press, it puts the stroke's start on the grid. A tap stays a dot
   there.
@@ -161,39 +155,35 @@ so cells there are square, and cells between other lines are close to square. No
 even grid could meet every line of every font. In a font such as Inter, at the
 default grid size, the cap height then lies 7 cells above the baseline.
 
-**Flat ends** (T), with the grid on, stops a freehand stroke's ends flush with
-the grid line they lie on, instead of rounding past it. It is a switch, off in a
-new editor, and **Next** keeps it. The cut runs along the line across the
-stroke: a row for a stroke that comes in at 45° or steeper, as the legs of an A
-come down to the baseline, and a column for a flatter one, judged over the last
-grid cell or two brush widths of what you drew, whichever is longer, and leaving
-out the jumps to the grid points. A stroke that ends on the grid point it
-started on keeps its round ends, as a closed loop has none to cut. So a stroke
-drawn down to the baseline sits on it, with nothing below to erase. A dot stays
-round, as does an end drawn with the grid off. The eraser's ends are cut the
-same way, so erasing up to a line leaves a straight edge there. Shapes are never
-cut: an ellipse has no ends, and a polygon keeps its square ones.
+**Flat ends** (T) stops a stroke's ends flush with a row of the grid, instead of
+rounding past it, but only the ends that Shift put on the grid, and only along a
+row. It is a switch, off in a new editor, and **Next** keeps it. The button is
+available with the grid on, while drawing freehand.
 
-**Unreleased:** **Flat ends** only ever cuts along a row, and only ends that
-Shift put on the grid. An end that comes in at 45° or steeper stops flush with
-the row through it. One running more along the row than across it is not cut, so
-a line drawn along the baseline stays whole with round ends. A freehand end is
-not on a grid line, and stays round. The button is available as before: with the
-grid on, while drawing freehand.
+An end that comes in at 45° or steeper stops flush with the row through it, as
+the legs of an A come down to the baseline, judged over the last grid cell or
+two brush widths of what you drew, whichever is longer, and leaving out the
+jumps to the grid points. So a stroke drawn down to the baseline sits on it,
+with nothing below to erase. One running more along the row than across it is
+not cut, so a line drawn along the baseline stays whole with round ends.
 
-The grid keeps its place through saves, and on a symbol you open again it lines
-up with most of its strokes, if the grid has the same size as when you drew
-them. While **Move** is on, Shift with an arrow key moves a picture to trace
-over by one column of the grid.
+A freehand end is not on a grid line, and stays round. So does a dot, and a
+stroke that ends on the grid point it started on, as a closed loop has no ends
+to cut. The eraser's ends are cut the same way, so erasing up to a row leaves a
+straight edge there. Shapes are never cut: an ellipse has no ends, and a polygon
+keeps its square ones.
 
-**Unreleased:** a symbol keeps its strokes exactly but not its grid, so what you
-placed with Shift never moves; what can change is where your next Shift lands.
-On a symbol you open again, the grid lines up with the ends you put on it with
-Shift, if the grid has the same rows as when you drew them. The rare freehand
-end that lies exactly on a row counts as one of them, so with very few placed
-ends it can pull the columns away from those. A symbol with none lines up with
-the ends that share a place within a cell, and else with the start of the first
-stroke.
+The grid keeps its place through saves. A symbol keeps its strokes exactly but
+not its grid, so what you placed with Shift never moves; what can change is
+where your next Shift lands. On a symbol you open again, the grid lines up with
+the ends you put on it with Shift, if the grid has the same rows as when you
+drew them. The rare freehand end that lies exactly on a row counts as one of
+them, so with very few placed ends it can pull the columns away from those. A
+symbol with none lines up with the ends that share a place within a cell, and
+else with the start of the first stroke.
+
+While **Move** is on, Shift with an arrow key moves a picture to trace over by
+one column of the grid.
 
 ## Guides, view, and width
 
@@ -226,10 +216,10 @@ view lines up in the other, and zooming out puts the usual grid back where it
 was, however much you drew while zoomed. A polygon being placed keeps the grid
 it started on until it ends, and Shift with an arrow key moves a picture by a
 column of the grid shown. **Grid size** keeps its range of 2 to 10, and saved
-symbols are not affected. On a symbol you open again, the usual grid follows
-most of the strokes' ends, so after drawing mostly on points of the finer grid
-alone it can lie half a cell from where it was; the finer grid passes through
-them either way.
+symbols are not affected. On a symbol you open again, the usual grid follows the
+ends you placed with Shift, so after placing them mostly on points of the finer
+grid alone it can lie half a cell from where it was; the finer grid passes
+through them either way.
 
 **Help** opens a built-in quick start with an explanation of each guide, the
 grid, drawing, tracing, and saving. Close Help or press Esc to return to the
@@ -306,13 +296,13 @@ another symbol's strokes and ink, chosen from a list of the vault's symbols with
 their pictures, in place of what is drawn so far, for scripts whose symbols
 share parts. Undo takes the copy back.
 
-**Unreleased:** a large symbol takes a moment to read, and a notice says so.
-What you draw meanwhile stays in the history, for Undo to bring back. If a save
-or a question comes up before the symbol is read, the drawing stays as it is,
-and the status line says that it was not copied, so that **Save** cannot save
-the copy in your drawing's stead. Choose it again.
+A large symbol takes a moment to read, and a notice says so. What you draw
+meanwhile stays in the history, for Undo to bring back. If a save or a question
+comes up before the symbol is read, the drawing stays as it is, and the status
+line says that it was not copied, so that **Save** cannot save the copy in your
+drawing's stead. Choose it again.
 
-**Unreleased:** the list finds a symbol by its
+The list finds a symbol by its
 [readings and translations](#readings-and-translations) as well as its path, and
 a row found that way says so. The copy takes only the drawing: they stay with
 the symbol they were written for, and the status line says so. A variant is
@@ -355,19 +345,19 @@ through Obsidian, so that the links to it follow as Obsidian's settings say. If
 the rename fails, the drawing is saved anyway, and the editor stays open with
 the name for the next save to try.
 
-**Unreleased:** a rename first saves every open note that holds unsaved text, as
-Obsidian writes links at places it noted before it asks about them. If a note
-cannot be saved, nothing is renamed, and the editor stays open with the name for
-the next save to try. A new symbol's embed takes the new name whatever you
-answer Obsidian, and the cursor stays just after the symbol.
+A rename first saves every open note that holds unsaved text, as Obsidian writes
+links at places it noted before it asks about them. If a note cannot be saved,
+nothing is renamed, and the editor stays open with the name for the next save to
+try. A new symbol's embed takes the new name whatever you answer Obsidian, and
+the cursor stays just after the symbol.
 
 ## Readings and translations
 
-**Unreleased:** the button beside the name shows a symbol's readings and
-translations, and opens two fields to fill them in. It adds no row to the
-editor, and a symbol that has some shows them on the button. A field holds one
-value to a line, the main one first, so press Enter between two values. Tab
-moves on from a field, and Mod+Enter saves as it does anywhere in the editor.
+The button beside the name shows a symbol's readings and translations, and opens
+two fields to fill them in. It adds no row to the editor, and a symbol that has
+some shows them on the button. A field holds one value to a line, the main one
+first, so press Enter between two values. Tab moves on from a field, and
+Mod+Enter saves as it does anywhere in the editor.
 
 They save with the symbol, on the same **Save** as the drawing, and a draft
 keeps what you typed as it keeps a new name. Spaces around a value and blank

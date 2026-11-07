@@ -1355,6 +1355,7 @@ async function openEditor(
     document: opened.document,
     ...(opened.base === undefined ? {} : { base: opened.base }),
     carried: opened.carried,
+    ...(opened.picture === true ? { picture: true } : {}),
     text,
     center: opened.width / 2,
     width: opened.width,

@@ -201,6 +201,9 @@ const keyScale = wheelFactor(-100);
 const noPicture = "Paste, drop, or choose a picture to trace over it.";
 const tracing = "Tracing over a picture, which is not saved.";
 const making = "Making ink of the picture: set the threshold, then Apply.";
+/** What the status line says of a file opened from its pixels, and why. */
+const noStrokes =
+  "Opened as a picture to draw over, as this file holds no strokes: symbols saved before Inkline 0.9.2 open this way";
 
 /**
  * The part of the picture that would become ink, as the preview last traced
@@ -305,6 +308,8 @@ export interface EditorOptions {
   readonly document: InkDocument;
   readonly base?: DrawableBase;
   readonly carried?: readonly CarriedChunk[];
+  /** Whether its file held no strokes, so that its pixels opened instead. */
+  readonly picture?: boolean;
   /** What its file says about the symbol; a new one says nothing. */
   readonly text?: SymbolText;
   /** The document x to centre the surface on, in pixels. */
@@ -942,6 +947,7 @@ export class InkEditorModal extends Modal {
       cls: "inkline-status",
       attr: { "aria-live": "polite" },
     });
+    if (this.#options.picture === true) this.#announce(noStrokes);
     this.#saveWait = this.contentEl.createDiv({
       cls: "inkline-save-wait",
       attr: { role: "alert" },
@@ -2823,10 +2829,11 @@ export class InkEditorModal extends Modal {
     this.#session.replace(document);
     this.#fitView();
     this.#changed();
+    const started = copy.hasText
+      ? `Started from a copy of ${copy.name}, without its readings and translations`
+      : `Started from a copy of ${copy.name}`;
     this.#announce(
-      copy.hasText
-        ? `Started from a copy of ${copy.name}, without its readings and translations`
-        : `Started from a copy of ${copy.name}`,
+      copy.ink.picture === true ? `${started}. ${noStrokes}` : started,
     );
   }
 

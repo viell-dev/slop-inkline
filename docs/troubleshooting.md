@@ -25,36 +25,41 @@ a space, a name matches only symbols whose names hold what you typed.
 [Install](./install.md#update) describes; this version will not edit the symbol,
 so that it never loses what the newer one stored.
 
+**"Opened as a picture to draw over, as this file holds no strokes …"** The file
+holds a picture but no strokes to edit, as every symbol saved before 0.9.2 does.
+Nothing is wrong with it, and it looks as it did;
+[Pictures without strokes](./recovery.md#pictures-without-strokes) says what you
+can do with it.
+
 **"Could not save the symbol: …"** The reason follows the colon, such as a name
 refused or a file that could not be written. The editor stays open with the
 drawing, which is also kept as a draft: fix what the notice says, and save
 again.
 
-**"Waiting for Obsidian to finish writing a file."** **Unreleased:** a save of a
-symbol has taken more than a few seconds, usually because a drive has stopped
-answering. Saving goes on by itself if Obsidian finishes. If nothing changes,
-restart Obsidian:
+**"Waiting for Obsidian to finish writing a file."** A save of a symbol has
+taken more than a few seconds, usually because a drive has stopped answering.
+Saving goes on by itself if Obsidian finishes. If nothing changes, restart
+Obsidian:
 [what you drew or typed](./limits.md#a-file-written-at-the-moment-inkline-saves)
 is kept in different ways in the editor and the library.
 
-**"Waiting for Obsidian to finish renaming a file."** **Unreleased:** a rename
-from the library has stopped for more than a few seconds, usually because a
-drive has stopped answering. It goes on by itself if Obsidian finishes, and
-**Cancel** or Esc close the row meanwhile. If nothing changes, copy the name you
-typed and restart Obsidian, then
+**"Waiting for Obsidian to finish renaming a file."** A rename from the library
+has stopped for more than a few seconds, usually because a drive has stopped
+answering. It goes on by itself if Obsidian finishes, and **Cancel** or Esc
+close the row meanwhile. If nothing changes, copy the name you typed and restart
+Obsidian, then
 [check the notes that use the symbol](./limits.md#a-file-written-at-the-moment-inkline-saves).
 
 **"… is saved, but could not be renamed: …"** The drawing is saved under the old
 name, and the new name stays in the editor's name field, for the next save to
-try again. **Unreleased:** when the reason is that a note could not be saved
-first, Obsidian says why too. Nothing was renamed, and the note keeps its text
-in its editor: deal with what stopped the save, and save the symbol again.
+try again. When the reason is that a note could not be saved first, Obsidian
+says why too. Nothing was renamed, and the note keeps its text in its editor:
+deal with what stopped the save, and save the symbol again.
 
-**"Check the symbol's embed in …: it may still have the old name."**
-**Unreleased:** the symbol was renamed, but the note's editor had not taken the
-new name five seconds later, as on a very slow disk. Inkline leaves the note's
-text alone. Look at the embed in that note, and if it still has the old name,
-change it by hand.
+**"Check the symbol's embed in …: it may still have the old name."** The symbol
+was renamed, but the note's editor had not taken the new name five seconds
+later, as on a very slow disk. Inkline leaves the note's text alone. Look at the
+embed in that note, and if it still has the old name, change it by hand.
 
 **"The note changed where the symbol was going, so it was added at the end of
 …"** The text around the place where you started the symbol changed too much to

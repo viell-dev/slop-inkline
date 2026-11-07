@@ -32,11 +32,11 @@ limits.
    Take the highest version number. Every release so far is a pre-release. From
    0.9.0 on, a pre-release has an odd minor version, such as `0.9.0` or `1.1.2`,
    and a public release an even one, such as `1.0.0`; earlier pre-releases have
-   a suffix, such as `0.3.0-alpha.8`. The 0.9 releases are betas and then
-   release candidates of 1.0.0: their features are complete, but the file format
-   can still change until 1.0.0, and a later one may not open symbols an earlier
-   one saved. GitHub's **Source code** archives contain source files, not the
-   built plugin.
+   a suffix, such as `0.3.0-alpha.8`. The 0.9 releases lead to 1.0.0: 0.9.0 and
+   0.9.1 are betas, and from 0.9.2 on they are release candidates, each meant to
+   become 1.0.0 unchanged. The file format is final from 0.9.2, so a symbol
+   saved by an earlier version opens as a picture, as [Update](#update) says.
+   GitHub's **Source code** archives contain source files, not the built plugin.
 2. Extract the ZIP into your vault's `.obsidian/plugins/` directory. The ZIP
    contains its own `inkline/` folder, so the result must be:
 
@@ -94,10 +94,20 @@ install ZIP as well, run `node scripts/package.ts dist test-results/package`.
    replace only those same three files.
 3. Turn Inkline on again, or restart Obsidian.
 
-Your drawings remain ordinary PNG attachments in the vault. A symbol saved by a
-newer version than the one you have opens with a notice to update Inkline rather
-than in the editor, so that it is never saved over by a version that does not
-understand it.
+Your drawings remain ordinary PNG attachments in the vault.
+
+**Updating from a version before 0.9.2:** the file format became final in 0.9.2,
+and Inkline no longer reads the strokes of earlier files. Your symbols and the
+notes that use them don't change, and they look as they did, but each symbol
+opens in the editor as a
+[picture to draw over](./recovery.md#pictures-without-strokes), and the editor
+says why. Saving one stores strokes from then on. Unsaved drawings kept as
+[drafts](./recovery.md#drafts-after-a-crash) by an earlier version are dropped,
+so finish what you are drawing before you update.
+
+A symbol saved by a newer version than the one you have opens with a notice to
+update Inkline rather than in the editor, so that it is never saved over by a
+version that does not understand it.
 
 ## Install with BRAT
 
@@ -132,9 +142,8 @@ UPDATE**. It replaces the three plugin files and reloads Inkline, so you need
 not turn it off first. `data.json` and your drawings stay as they are. An open
 editor closes when Inkline reloads, and keeps its unsaved strokes as a
 [draft](./recovery.md#drafts-after-a-crash), which it offers back when you next
-open that symbol, or a new symbol in the same note. The file format can still
-change until 1.0.0, as [Install the ZIP](#install-the-zip) says, so choose a
-version number if you want to decide when you update.
+open that symbol, or a new symbol in the same note. Pre-releases are for
+testing, so choose a version number if you want to decide when you update.
 
 BRAT never updates a version you chose. To change it, or to move between a
 version and **latest**, repeat steps 2 to 5 with your new choice, and BRAT

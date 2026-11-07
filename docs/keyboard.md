@@ -14,24 +14,24 @@ own; give one any of them under **Settings → Hotkeys**.
 
 The insert commands are offered in a note in editing view, and **Edit symbol**
 only with the cursor on a symbol's embed. In a note, `;;` and a few letters of a
-symbol's name list your symbols as you type; the arrow keys choose one, Enter
-inserts it, and Esc closes the list.
+symbol's name, or of a reading or translation, list your symbols as you type;
+the arrow keys choose one, Enter inserts it, and Esc closes the list.
 
-In the library, Tab reaches the name filter, folder selector, symbol buttons,
-usage counts, and the notes in an expanded list. Enter activates a button or
-opens a note; Space also activates a button. Inserting keeps the focus in the
-library for the next symbol.
+In the library, Tab reaches the filter, folder selector, symbol buttons, usage
+counts, and the notes in an expanded list. Enter activates a button or opens a
+note; Space also activates a button. Inserting keeps the focus in the library
+for the next symbol.
 
 **Rename** edits a name in its row. Enter saves it, and Esc cancels it; the
 **Save** and **Cancel** buttons do the same. Afterward focus returns to the
-symbol's Rename button, or to the name filter if the symbol no longer shows.
+symbol's Rename button, or to the filter if the symbol no longer shows.
 
-**Unreleased:** the button after **Rename** edits a symbol's readings and
-translations in its row. Enter starts another value, Tab moves on, Mod+Enter
-saves, and Esc cancels. Afterward focus returns to that button.
+The button after **Rename** edits a symbol's readings and translations in its
+row. Enter starts another value, Tab moves on, Mod+Enter saves, and Esc cancels.
+Afterward focus returns to that button.
 
-**Unreleased:** **Show more** moves the focus to the first of the new rows, so
-that Tab goes on from there.
+**Show more** moves the focus to the first of the new rows, so that Tab goes on
+from there.
 
 ## The editor's keys
 
@@ -56,9 +56,9 @@ immediately. Select the name field to type a name; Enter returns to drawing.
 | Mod+Shift+Z, or Mod+Y     | Redo        | Redo it.                                                 |
 | Delete, or Backspace      | Clear       | Clear the drawing; Undo brings it back.                  |
 | G                         | Guides      | Show or hide the guides.                                 |
-| Shift+G                   | Grid        | Show or hide the grid, which snaps the ends of strokes.  |
-| T                         | Flat ends   | End freehand strokes flat on the grid, or round.         |
-| Shift, held while drawing |             | Draw a straight line, or a circle with Ellipse.          |
+| Shift+G                   | Grid        | Show or hide the grid, a guide that Shift snaps to.      |
+| T                         | Flat ends   | End strokes that Shift put on the grid flat, or round.   |
+| Shift, held while drawing |             | Draw a straight line, and snap to the grid if it is on.  |
 | V                         | Copy from   | Start a new symbol from a copy of another.               |
 | F                         | Fit         | Centre the drawing, showing all of it if it is wider.    |
 | ArrowUp                   | Up          | Move the drawing up a pixel; Shift, a grid cell's width. |
@@ -71,20 +71,19 @@ immediately. Select the name field to type a name; Enter returns to drawing.
 | Mod+Shift+Enter           | Next        | Save, insert, and start the symbol that follows.         |
 | Esc                       |             | Drop a polygon being drawn, or else close the editor.    |
 
-**Unreleased:** the grid is a guide, and Shift held while drawing snaps to it:
-at a press, a release, and each polygon corner you click. With the grid on,
-Shift with Ellipse snaps the box's corners rather than making a circle.
+Shift held while drawing snaps to the grid at a press, a release, and each
+polygon corner you click. With the grid on, Shift with Ellipse snaps the box's
+corners; with the grid off, it makes a circle.
 [Drawing](./drawing.md#straight-lines-and-the-grid) says what Shift does at each
 moment.
 
 Closing the editor with unsaved changes asks first. While **Move** is on, the
 arrow keys move the picture, with Shift by one column of the grid, and + and −
 scale it. Otherwise, the up and down arrow keys move the drawing, and while
-**Zoom** is on, the left and right arrow keys, and the wheel, move along it.
-**Unreleased:** Tab goes from the name field to the button that shows the
-readings and translations; Enter or Space on it opens their fields and moves
-there, where Enter starts another value. A second press closes them and returns
-to the drawing.
+**Zoom** is on, the left and right arrow keys, and the wheel, move along it. Tab
+goes from the name field to the button that shows the readings and translations;
+Enter or Space on it opens their fields and moves there, where Enter starts
+another value. A second press closes them and returns to the drawing.
 
 Copy from and Next are only in the editor for a new symbol. Make ink's threshold
 is a slider, which its arrow keys move; **Light ink**, **Apply**, and **Cancel**
@@ -104,9 +103,9 @@ and returns focus to the drawing area.
   pen, the eraser, Ellipse, Polygon, Toggle fill, the brush sizes, the guides,
   the grid, Zoom, Move, Make ink, and Light ink say whether they are on.
 - The drawing area keeps its accessible name without a hover tooltip.
-- **Unreleased:** the fields for readings and translations have labels, and say
-  when a list cannot be saved. Each value in a list shows in its own direction,
-  so right-to-left text reads as it should beside other text.
+- The fields for readings and translations have labels, and say when a list
+  cannot be saved. Each value in a list shows in its own direction, so
+  right-to-left text reads as it should beside other text.
 - The editor's status line, such as "Saving…", "Saved", or "Not saved" and why,
   is announced as it changes.
 - The editor puts the focus on the drawing area when it opens, and drawing puts

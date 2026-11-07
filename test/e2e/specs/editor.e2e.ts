@@ -1986,6 +1986,30 @@ describe("The editor", function () {
     }, path);
   }
 
+  it("says why a file with no strokes opens as a picture, and only then", async function () {
+    await createSquare();
+    await editFile("square.ink.png");
+    await waitForStatus("as this file holds no strokes");
+    // Saved, it holds a record, even one with no stroke left in it.
+    await draw([
+      [0.45, 0.8],
+      [0.55, 0.8],
+    ]);
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    await browser.keys(["Control", "z"]);
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    const saved = JSON.parse(await recordOf("square.ink.png")) as {
+      strokes: unknown[];
+      base?: unknown;
+    };
+    expect(saved.strokes).toHaveLength(0);
+    expect(saved.base).toBeDefined();
+    await editFile("square.ink.png");
+    expect(await browser.$(".inkline-status").getText()).toBe("");
+  });
+
   it("does not open a symbol from a later version, and says so", async function () {
     await writeWithRecord("later.ink.png", [0, 0, 0, 2]);
     await tryToEdit("later.ink.png");
@@ -4152,6 +4176,8 @@ describe("The editor", function () {
       await saveScreenshot("copy-from-list");
       await chooseSymbol("square");
       await waitForStatus("Started from a copy of square");
+      // It holds a picture and no strokes, and says why.
+      await waitForStatus("as this file holds no strokes");
       await browser.keys(["Control", "Enter"]);
       await waitClosed();
       const record = JSON.parse(await recordOf("001.ink.png")) as {
