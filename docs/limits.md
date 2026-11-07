@@ -59,7 +59,8 @@ again. If nothing changes, restart Obsidian:
 - **In the library,** the name you typed stays in the row to copy, as a restart
   does not keep it. **Cancel** or Esc closes the row, and stops the rename if
   Obsidian has not begun it yet. One it has begun can still finish, and a notice
-  says so, and says again when it ends, whether it worked or not.
+  says so, and says again when it ends, whether it worked or not. Until then
+  another rename of that symbol is refused, and says why.
 - **In the editor,** the drawing is saved by then, and the name is in the draft.
 - **Obsidian moves the file before it updates the links.** A restart while it
   updates them leaves the notes it had not reached with the old name, whose

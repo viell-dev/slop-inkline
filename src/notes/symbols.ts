@@ -90,6 +90,14 @@ const settleCheck = 20;
  */
 const writes = new WriteQueue();
 
+/**
+ * The symbols Obsidian is renaming for Inkline. Asked to rename a file it is
+ * already renaming, Obsidian says it has at once, then does so once the first
+ * ends, so that nothing could tell whether the name was given, or say so if the
+ * first never ends. The second is refused instead, as a failed rename is.
+ */
+const beingRenamed = new WeakSet<TFile>();
+
 /** What the plugin lends the editors it opens. */
 export interface EditorHost {
   readonly app: App;
@@ -413,7 +421,8 @@ function notesLinking(app: App, path: string): Set<string> {
  * `wait` hears if that all stops for long enough, which only a person being
  * asked, or a report of the symbol or a note that links to it, puts off.
  * `starting` is called just before the rename reaches Obsidian, and can throw to
- * stop it: a note's save can take as long as any other.
+ * stop it: a note's save can take as long as any other. Throws, having renamed
+ * nothing, if Obsidian is still renaming `file`.
  */
 async function renameSaved(
   app: App,
@@ -431,10 +440,18 @@ async function renameSaved(
     app.vault.on("modify", reported),
     app.vault.on("rename", reported),
   ];
-  const renaming = async (): Promise<void> => {
+  const work = async (): Promise<void> => {
     await saveOpenNotes(app);
     starting();
-    await app.fileManager.renameFile(file, path);
+    if (beingRenamed.has(file)) {
+      throw new Error("Obsidian is still renaming this symbol.");
+    }
+    beingRenamed.add(file);
+    try {
+      await app.fileManager.renameFile(file, path);
+    } finally {
+      beingRenamed.delete(file);
+    }
   };
   const moving = (): boolean => {
     const seen = moved;
@@ -442,7 +459,7 @@ async function renameSaved(
     return seen || wait.asked();
   };
   try {
-    await watchRename(renaming(), moving, wait.told);
+    await watchRename(work(), moving, wait.told);
   } finally {
     for (const report of reports) app.vault.offref(report);
   }
@@ -600,7 +617,7 @@ export function renameSymbol(
 ): SymbolWork {
   let stopped = false;
   let reached = false;
-  const renaming = async (): Promise<void> => {
+  const work = async (): Promise<void> => {
     stillSymbol(app, file);
     const path = renamedPath(app, file, chosen(typed, file));
     if (path === undefined) return;
@@ -610,7 +627,7 @@ export function renameSymbol(
     });
   };
   return {
-    done: renaming(),
+    done: work(),
     stop: () => {
       stopped = true;
       return !reached;

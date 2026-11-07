@@ -321,8 +321,9 @@ must keep released files readable and looking the same, as
   held says so after the wait, counted from the answer if there was a question,
   keeps the name to copy, and ends with the rename; the message goes if the
   question opens late; Cancel or Esc leave it, a rename not begun is stopped,
-  and one begun says that it may still finish, and how it ended; a failure gives
-  the form back; and the editor does the same
+  and one begun says that it may still finish, and how it ended; another rename
+  of that symbol is refused until then; a failure gives the form back; and the
+  editor does the same
   ([library-renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-renaming.e2e.ts),
   [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts),
   and

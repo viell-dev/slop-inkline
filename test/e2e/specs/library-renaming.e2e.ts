@@ -628,6 +628,27 @@ describe("Renaming in the symbol library", function () {
       expect(await symbolFiles()).toEqual(["gate.ink.png"]);
     });
 
+    it("refuses a second rename while Obsidian has the first", async function () {
+      await usedSymbol();
+      await showLibrary();
+      await beginRename("gate", "lintel");
+      await hold("move");
+      await browser.keys(["Enter"]);
+      await waitForHeld();
+      await waitForWait();
+      await formButton("Cancel").click();
+      await waitForName("gate");
+      await beginRename("gate", "arch");
+      await browser.keys(["Enter"]);
+      // Obsidian would say this one was done, with nothing renamed.
+      await waitForError("Obsidian is still renaming this symbol");
+      expect(await nameField().getValue()).toBe("arch");
+      await formButton("Cancel").click();
+      await letGo();
+      await waitForName("lintel");
+      expect(await symbolFiles()).toEqual(["lintel.ink.png"]);
+    });
+
     it("gives the form back when a rename held back fails", async function () {
       await usedSymbol();
       await showLibrary();
