@@ -6,6 +6,11 @@ import { recordChunkType } from "../../../src/format/ink-file.ts";
 import { readChunks, writeChunks } from "../../../src/format/png.ts";
 import { serializeRecord, type InkRecord } from "../../../src/format/record.ts";
 import { goldenFiles } from "../../fixtures/format/records.ts";
+import {
+  passedOver,
+  textCases,
+  usedAfter,
+} from "../../fixtures/format/text-cases.ts";
 import { encodePng, blank, header } from "../../support/png.ts";
 import { loadModules, toBase64 } from "../support/browser.ts";
 
@@ -185,6 +190,111 @@ describe("The file format in Obsidian's renderer", function () {
       expect(result.moved).toBeLessThanOrEqual(result.ink * share);
     });
   }
+
+  it("reads each crafted text chunk as the format says", async function () {
+    const bytes = await readFile(path.join(fixtures, "v1-strokes.ink.png"));
+    const cases = textCases.map(({ name, chunk, values }) => ({
+      name,
+      type: chunk.type,
+      data: toBase64(chunk.data),
+      values,
+    }));
+    const read = await browser.execute(
+      async (
+        base64: string,
+        crafted: readonly {
+          name: string;
+          type: string;
+          data: string;
+        }[],
+      ) => {
+        const { png, text } = window.inklineTest;
+        const decoded = (encoded: string): Uint8Array<ArrayBuffer> =>
+          Uint8Array.from(atob(encoded), (char) => char.charCodeAt(0));
+        const chunks = png.readChunks(decoded(base64));
+        const data = chunks.findIndex(({ type }) => type === "IDAT");
+        const results: Record<string, readonly string[]> = {};
+        for (const { name, type, data: encoded } of crafted) {
+          const file = png.writeChunks([
+            ...chunks.slice(0, data),
+            { type, data: decoded(encoded) },
+            ...chunks.slice(data),
+          ]);
+          const { reading } = await text.readText(png.readChunks(file));
+          results[name] = reading;
+        }
+        return results;
+      },
+      toBase64(bytes),
+      cases,
+    );
+    expect(read).toEqual(
+      Object.fromEntries(cases.map(({ name, values }) => [name, values])),
+    );
+  });
+
+  it("changes text and nothing else, whatever else the file holds", async function () {
+    const bytes = await readFile(path.join(fixtures, "v1-text.ink.png"));
+    const skipped = [...passedOver, usedAfter].map(({ type, data }) => ({
+      type,
+      data: toBase64(data),
+    }));
+    const result = await browser.execute(
+      async (
+        base64: string,
+        crafted: readonly { type: string; data: string }[],
+      ) => {
+        const { inkFile, png, record, text } = window.inklineTest;
+        const decoded = (encoded: string): Uint8Array<ArrayBuffer> =>
+          Uint8Array.from(atob(encoded), (char) => char.charCodeAt(0));
+        const pinned = decoded(base64);
+        const chunks = png.readChunks(pinned);
+        const data = chunks.findIndex(({ type }) => type === "IDAT");
+        // Chunks of the reading that this reader cannot use, then one it can.
+        const file = png.writeChunks([
+          ...chunks.slice(0, data),
+          ...crafted.map(({ type, data: encoded }) => ({
+            type,
+            data: decoded(encoded),
+          })),
+          ...chunks.slice(data),
+        ]);
+        // One bit of damage to the record's version, which no change may mend.
+        const opened = png.readChunks(file);
+        const inRecord = opened.find(({ type }) => type === "inKL");
+        if (inRecord === undefined) throw new Error("no record");
+        inRecord.data.set([(inRecord.data[0] ?? 0) ^ 1], 0);
+
+        const changed = await text.writeText(file, "reading", ["KA"]);
+        const encoded = (bytes: Uint8Array): string[] =>
+          png.readChunks(bytes).map((chunk) => record.toBase64(chunk.data));
+        const cleared = await text.writeText(changed, "reading", []);
+        const source = await inkFile.readInkFile(changed);
+        return {
+          read: await text.readText(png.readChunks(changed)),
+          afterClearing: await text.readText(png.readChunks(cleared)),
+          source: source.kind === "pixels" ? source.reason : source.kind,
+          detail: "detail" in source ? source.detail : "",
+          before: encoded(file),
+          after: encoded(changed),
+        };
+      },
+      toBase64(bytes),
+      skipped,
+    );
+    expect(result.read.reading).toEqual(["KA"]);
+    expect(result.read.translation).toEqual(["rice field", "田"]);
+    // In file order: the header, the record, the two pinned chunks, the crafted
+    // chunks, and the image data. The pinned reading and the crafted one that
+    // can be used give way to the new one, and every other chunk stays.
+    const usable = [2, 3 + skipped.length];
+    expect(result.after.toSpliced(2, 1)).toEqual(
+      result.before.filter((_, index) => !usable.includes(index)),
+    );
+    expect(result.afterClearing.reading).toEqual([]);
+    expect(result.source).toBe("damaged");
+    expect(result.detail).toBe("bad CRC in the record chunk");
+  });
 
   it("keeps a file's text, byte for byte, through edits that move the crop", async function () {
     const bytes = await readFile(path.join(fixtures, "v1-text.ink.png"));

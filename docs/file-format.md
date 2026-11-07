@@ -15,7 +15,8 @@ so that it can be read, drawn, and written without any other part of Inkline.
 
 A program that only shows the image is none of these, and needs only
 [Geometry](#geometry) to place it in text. Nor is one that only reads or changes
-[text about a symbol](#text-about-a-symbol), which needs only that section.
+[text about a symbol](#text-about-a-symbol), which needs only that section and
+step 1 of [Reading a file](#reading-a-file).
 
 The words "must", "must not", "should", and "may" are used as in
 [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119) and
@@ -477,13 +478,13 @@ What a person says about a symbol, such as how it is read and what it means, is
 held in PNG's text chunks, `tEXt`, `zTXt`, and `iTXt`, and never in the record.
 It is not part of the drawing, and stays true of the symbol whatever becomes of
 the image. So PNG's mark of safe to copy is right for it, as the mark of unsafe
-is right for the record, and many programs that drop the record keep it. Most
-files hold no such text, and a file needs none.
+is right for the record, and many programs that drop the record keep it. A file
+needs none.
 
 ### Readings and translations
 
-A file may hold one text chunk for each of these keywords, compared byte for
-byte:
+A symbol's readings and translations are held under these keywords, compared
+byte for byte:
 
 | Keyword               | Holds                      |
 | --------------------- | -------------------------- |
@@ -497,15 +498,16 @@ someone takes the symbol to be, which may be uncertain, and a symbol can have
 several of either. With no such chunk, nothing of that kind is recorded, which
 does not say that the symbol has no reading or no meaning.
 
-A chunk's text holds one value on each line, the main one first, with a single
-line feed between values and none after the last. They share one chunk because
-programs that meet a keyword twice can keep only one of its chunks, or reverse
-them. The text must follow these rules:
+A chunk's text is a list of values, the main one first. A line feed, U+000A,
+alone separates two values, and none follows the last; no other character ends a
+value. They share one chunk because programs that meet a keyword twice can keep
+only one of its chunks, or reverse them. The text must follow these rules:
 
-- It is at most 4,096 bytes long in UTF-8, with no byte order mark.
+- It is at most 4,096 bytes long in UTF-8, and does not start with a byte order
+  mark, U+FEFF.
 - No value is empty.
 - No value holds a control character, from U+0000 to U+001F or from U+007F to
-  U+009F.
+  U+009F, or a line or paragraph separator, U+2028 or U+2029.
 
 A value is plain text, and nothing else about it is fixed: no language, script,
 system of transcription, letter case, or Unicode normalization, and no way of
@@ -513,39 +515,76 @@ comparing two values. Readings and translations are separate lists, and a
 value's place in one says nothing about the other. They change nothing about how
 a record draws or how its symbol sits in text, and a program need not read them.
 
-A program that writes such a chunk must write it as `iTXt`, uncompressed, with
-an empty language tag and translated keyword, as its values need not share a
-language. It should place it before the image data, so that a program looking
-for the text can stop there. A change to the text changes no critical chunk, so
-PNG lets the program keep the record chunk as it is, without reading it, even in
-a file whose record it cannot use. It must leave at most one chunk for a keyword
-it changes, and none when no value remains.
-
-A program that reads such text takes it from any file that passes step 1 of
-[Reading a file](#reading-a-file), with or without a record it can use. It looks
-through every `tEXt`, `zTXt`, and `iTXt` chunk, wherever it lies and compressed
-or not, since other programs move them and turn one kind into another. It
-decodes each as PNG says, Latin-1 in `tEXt` and `zTXt` and UTF-8 in `iTXt`, and
-ignores any language tag or translated keyword, whatever it holds. For each
-keyword it uses the first chunk with a correct CRC that keeps to PNG's rules for
-that chunk and to the rules above. Any other chunk with that keyword counts for
-nothing, and is no fault in the file or the record.
-
 The file's name is neither a reading nor a translation. The name says which file
 this is, and they say what someone takes its symbol to be, so a difference
 between them is no error, and renaming a file changes no text chunk. A program
 must not fill in a value from the name, a name from a value, or keep the two in
 step, unless a person asks it to.
 
+### Reading the text
+
+A program that reads such text takes it from any file that passes step 1 of
+[Reading a file](#reading-a-file), with or without a record it can use. It looks
+through every `tEXt`, `zTXt`, and `iTXt` chunk, wherever it lies and compressed
+or not, since other programs move them and turn one kind into another.
+
+A chunk is **usable** for a keyword if its CRC is correct, its text follows
+[the rules above](#readings-and-translations), and its data is that keyword,
+byte for byte, then a zero byte, then:
+
+- In `tEXt`, the text.
+- In `zTXt`, a compression method of 0, then the text, compressed.
+- In `iTXt`, a compression flag and a compression method, a byte each, then a
+  language tag and a translated keyword, each ending with a zero byte, then the
+  text. With a flag of 0 the text is not compressed, and the method is ignored.
+  With a flag of 1 it is compressed, and the method must be 0. No other flag is
+  allowed. The language tag and the translated keyword are ignored, whatever
+  they hold.
+
+Compressed text must be one zlib stream, as in
+[the record chunk](#the-record-chunk), that ends where the chunk ends. The text
+of `tEXt` and `zTXt` is Latin-1, each byte being the character of that code
+point, so that bytes `0x80` to `0x9F` are control characters, whatever the web's
+label `latin1` decodes them to. The text of `iTXt` must be well-formed UTF-8, as
+[RFC 3629](https://www.rfc-editor.org/rfc/rfc3629) defines it, and is taken as
+it stands. The decoding PNG recommends replaces an ill-formed sequence and drops
+a byte order mark, which a program must not do here, so that every program finds
+the same values in a chunk, or none.
+
+For each keyword, a program uses the first usable chunk. Any other chunk with
+that keyword counts for nothing, and is no fault in the file or the record.
+
+### Changing the text
+
+A change to the text changes no critical chunk, so PNG lets a program keep the
+record chunk without reading it, and it must. A program that changes such text
+changes only a file that passes step 1 of [Reading a file](#reading-a-file). It
+leaves every other chunk as it was, byte for byte, in its order and with its
+CRC, right or wrong: the image data, the record chunk, whether or not it can use
+it, and the text of every other keyword.
+
+For the keyword it changes, it replaces every usable chunk with at most one, and
+with none when no value remains. A chunk of that keyword that is not usable may
+hold what the program cannot see, such as a list that a later revision allows.
+So it keeps such a chunk, unless a person asks it to remove it, and places its
+own before it, so that the value a person gave is the one read.
+
+A program must write such a chunk as `iTXt`, uncompressed, with a compression
+method of 0 and an empty language tag and translated keyword, as its values need
+not share a language. It should place it before the image data, as PNG
+recommends for small text.
+
 ### What an editor keeps
 
 When it writes a file again, with or without a record before, an editor must
 keep every text chunk with a correct CRC, byte for byte and in their order,
-unless a person asks it to change or remove one. This covers every keyword, and
-a chunk that the rules above would not let a program use.
+unless a person asks it to change or remove one, and it changes a reading or a
+translation as [Changing the text](#changing-the-text) says. This covers every
+keyword, and a chunk that is not usable.
 
-So a keyword needs no version: a program ignores one it does not know, and an
-editor keeps it. Keywords beginning `Inkline ` belong to this document.
+So a keyword needs no version: a program ignores one it does not know, and one
+that changes the file keeps it. Keywords beginning `Inkline ` belong to this
+document.
 
 A copy of a file holds the same text, and the two can then differ. A program
 that drops a text chunk leaves the rest of the file as it was, and the text is
@@ -571,8 +610,8 @@ any version can recognise a file of any other:
 - The first four bytes of that chunk's data are its version, a big-endian
   unsigned integer from 1, that no two versions share.
 - [Text about a symbol](#text-about-a-symbol) is in PNG's text chunks, outside
-  the record, with the keywords and meanings defined there, and an editor keeps
-  it.
+  the record, with the keywords and meanings defined there, and an editor or a
+  program that changes the text keeps it.
 
 Everything else may change between versions, including everything after those
 four bytes, however large it gets.
@@ -587,10 +626,12 @@ and any new information in the record that must survive editing.
 
 Without changing the version, a later revision of this document may add only a
 field that changes nothing about how a record draws or how its symbol sits in
-text, and that may be lost without harm, or a keyword for
-[text about a symbol](#text-about-a-symbol), which changes neither and which
-every editor keeps. A reader must ignore a field it does not know, and an editor
-must not keep such a field when it writes the record again.
+text, and that may be lost without harm. It may also add a keyword for
+[text about a symbol](#text-about-a-symbol), or loosen what a keyword's text may
+hold. Neither changes how a record draws or a symbol sits, a program reading
+text reads no version, and one that cannot use a chunk keeps it. A reader must
+ignore a field it does not know, and an editor must not keep such a field when
+it writes the record again.
 
 So a change such as a symbol wider than the space it takes up, overlapping the
 text after it, raises the version. A reader of version 1 then shows the image at
@@ -641,9 +682,13 @@ not build every stroke's outline at once. A program may decline a file it judges
 too costly to read or draw. It then treats the file like one with an unusable
 record, so an editor must not replace it.
 
-Text about a symbol is untrusted too. A program should stop decompressing a text
-chunk as soon as it passes the limit on its text, and must treat a value as
-plain text, never as markup, a link, or a path.
+Text about a symbol is untrusted too. A program should read a chunk's keyword
+first and decompress only the text of a keyword it wants, should stop
+decompressing as soon as the text passes its limit, and must treat a value as
+plain text, never as markup, a link, or a path. A value can hold bidirectional
+controls, which can make it look like another value and can reorder what follows
+it, so a program should isolate a value it shows among other text, as HTML's
+`bdi` element does.
 
 A record keeps every stroke and all of the base layer, including ink that later
 strokes erased or that lies outside the image, so sharing a file can show more

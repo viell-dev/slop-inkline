@@ -16,8 +16,9 @@ stored pixels, and the editor opens those as a picture to draw over. A draft
 holding such a stroke is no longer offered back.
 
 The format also now defines where a symbol's readings and translations go: PNG
-text chunks, apart from its strokes and its file's name, which every editor must
-keep. Inkline writes and shows none of them, and no existing file is affected.
+text chunks, apart from its strokes and its file's name, which a program that
+changes the file must keep. Inkline writes and shows none of them yet, and no
+existing file is affected.
 
 ### Fixed
 

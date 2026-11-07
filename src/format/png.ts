@@ -230,6 +230,60 @@ export function writeChunks(chunks: readonly Chunk[]): Uint8Array<ArrayBuffer> {
   return joinChunks(chunks.map(seal));
 }
 
+/** The bytes of several parts, one after another. */
+function joinBytes(parts: readonly Uint8Array[]): Uint8Array<ArrayBuffer> {
+  const output = new Uint8Array(
+    parts.reduce((total, part) => total + part.length, 0),
+  );
+  let offset = 0;
+  for (const part of parts) {
+    output.set(part, offset);
+    offset += part.length;
+  }
+  return output;
+}
+
+/** A chunk to add to a file, and the chunk of that file it goes in front of. */
+export interface InsertedChunk {
+  readonly chunk: Chunk;
+  readonly before: Chunk;
+}
+
+/**
+ * A PNG file with `removed` left out and `inserted` added, and every other byte
+ * as it was. `chunks` are what {@link readChunks} took from `bytes`, as this
+ * finds them by where their data lies. Nothing is decoded or sealed again, which
+ * is what sets this apart from {@link writeChunks}: a chunk with a wrong CRC
+ * keeps it, and is still seen as damaged, rather than passing for sound with
+ * whatever the damage left in it.
+ */
+export function spliceChunks(
+  bytes: Uint8Array,
+  chunks: readonly Chunk[],
+  removed: ReadonlySet<Chunk>,
+  inserted?: InsertedChunk,
+): Uint8Array<ArrayBuffer> {
+  const parts: Uint8Array[] = [];
+  let copied = 0;
+  for (const chunk of chunks) {
+    const start = chunk.data.byteOffset - bytes.byteOffset - 8;
+    if (chunk === inserted?.before) {
+      const sealed = writeChunks([inserted.chunk]);
+      parts.push(
+        bytes.subarray(copied, start),
+        sealed.subarray(pngSignature.length),
+      );
+      copied = start;
+    }
+    if (removed.has(chunk)) {
+      parts.push(bytes.subarray(copied, start));
+      copied = start + 12 + chunk.data.length;
+    }
+  }
+  parts.push(bytes.subarray(copied));
+  return joinBytes(parts);
+}
+
 /** The image's header fields, from chunks that {@link readChunks} checked. */
 export function imageHeader(chunks: readonly Chunk[]): ImageHeader {
   const [header] = chunks;
@@ -292,13 +346,7 @@ async function transform(
     }
     parts.push(value);
   }
-  const output = new Uint8Array(total);
-  let offset = 0;
-  for (const part of parts) {
-    output.set(part, offset);
-    offset += part.length;
-  }
-  return output;
+  return joinBytes(parts);
 }
 
 /** Compresses with zlib, the only compression method PNG defines. */
