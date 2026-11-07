@@ -131,8 +131,10 @@ async function opened(file: string) {
 /**
  * How many tasks of its own the page ran while `file`'s record was read, up to
  * decoding its image, the first thing in a read that was ever a real wait, and
- * while that image was drawn, after it. None could run in work done in one go,
- * however fast the machine is.
+ * while that image was drawn, after it. None could run in work done in one go.
+ * A clock on which every check finds its slice over makes this hold however fast
+ * the machine is: a fast one can draw an image inside a single slice, and rightly
+ * not pause.
  */
 async function tasksDuringRead(file: string) {
   return browser.executeObsidian(async ({ app }, wanted) => {
@@ -161,10 +163,13 @@ async function tasksDuringRead(file: string) {
       if (running) window.setTimeout(tick, 0);
     };
     window.setTimeout(tick, 0);
+    let now = 0;
+    Reflect.set(performance, "now", () => (now += 13));
     try {
       await canvas.openInk(bytes);
     } finally {
       running = false;
+      Reflect.deleteProperty(performance, "now");
       Reflect.set(window, "createImageBitmap", original);
     }
     return { reading: reading ?? -1, drawing: tasks - (decoded ?? tasks) };
