@@ -61,6 +61,7 @@ import {
 } from "../notes/text-fields.ts";
 import {
   draftBase,
+  drawingOf,
   fingerprintOf,
   restoreDraft,
   sameTarget,
@@ -69,7 +70,7 @@ import {
   type DraftTarget,
 } from "./drafts.ts";
 import { buttonFace, type ButtonLabels } from "./buttons.ts";
-import { FileWatch, type Reading } from "./disk.ts";
+import { FileWatch, type FileReading, type Reading } from "./disk.ts";
 import {
   contrastBrushCursor,
   paintBrushCursor,
@@ -354,6 +355,8 @@ export interface EditorOptions {
   readonly file?: () => SymbolFile | undefined;
   /** A fingerprint of the file as opened, for an existing symbol. */
   readonly fingerprint?: string;
+  /** The same of all but its text, as `drawingOf` gives it. */
+  readonly drawing?: string;
   /** Where unsaved strokes are kept, and which symbol they belong to. */
   readonly drafts?: {
     readonly store: DraftStore;
@@ -418,8 +421,25 @@ function typing(element: Element | null): boolean {
 /** A save that stopped to ask a question, which says why without a notice. */
 class Unsaved extends Error {}
 
+/**
+ * A save that found the file's text changed, took it in, and is to start again,
+ * as what it was about to write held the text as it was. It need say nothing.
+ */
+class SaveAgain extends Error {
+  /** Starts the save again, once this one has ended. */
+  readonly again: () => void;
+
+  constructor(again: () => void) {
+    super("the file's text changed");
+    this.again = again;
+  }
+}
+
 const unreadable =
   "the file changed on disk, and this version of Inkline cannot read it";
+
+const textReplaced =
+  "the file changed text you typed, so look at what it now says and save again";
 
 export class InkEditorModal extends Modal {
   readonly #options: EditorOptions;
@@ -568,7 +588,7 @@ export class InkEditorModal extends Modal {
       this.#session.flatEnds = options.tools.flatEnds === true;
       this.#guidesShown = guides;
     }
-    this.#watch = new FileWatch(options.fingerprint);
+    this.#watch = new FileWatch(options.fingerprint, options.drawing);
     this.#carried = options.carried ?? [];
     this.#opened = options.document;
     this.#savedName = options.name ?? "";
@@ -2606,6 +2626,9 @@ export class InkEditorModal extends Modal {
       ...(this.#watch.fingerprint === undefined
         ? {}
         : { fingerprint: this.#watch.fingerprint }),
+      ...(this.#watch.drawing === undefined
+        ? {}
+        : { drawing: this.#watch.drawing }),
       savedAt: Date.now(),
       gridOrigin: this.#session.gridOrigin,
       ...(this.#nameChanged ? { name: this.#typedName } : {}),
@@ -2698,16 +2721,28 @@ export class InkEditorModal extends Modal {
     const unreadable = readable
       ? ""
       : " Its base layer cannot be read, so only its strokes would come back.";
-    const moved =
+    const changed =
       // A new symbol's editor has no file yet to compare the draft's with.
       draft.fingerprint !== undefined &&
       this.#watch.fingerprint !== undefined &&
-      draft.fingerprint !== this.#watch.fingerprint
+      draft.fingerprint !== this.#watch.fingerprint;
+    // The strokes line up with the drawing, so a change to the text alone leaves
+    // them where they were, and matters only to text the draft would put back.
+    const textOnly =
+      changed &&
+      draft.drawing !== undefined &&
+      draft.drawing === this.#watch.drawing;
+    const moved =
+      changed && !textOnly
         ? " The symbol was saved again since then, so its strokes may not line up."
+        : "";
+    const retyped =
+      textOnly && Object.keys(draft.text ?? {}).length > 0
+        ? " Its readings or translations changed since then, so look over what you typed before saving."
         : "";
     this.#ask(
       "Restore the unsaved drawing?",
-      `This symbol has unsaved changes from ${new Date(draft.savedAt).toLocaleString()}.${moved}${unreadable}`,
+      `This symbol has unsaved changes from ${new Date(draft.savedAt).toLocaleString()}.${moved}${retyped}${unreadable}`,
       [
         {
           text: "Restore",
@@ -2880,7 +2915,12 @@ export class InkEditorModal extends Modal {
       // Not a PNG that decodes, so not readable.
     }
     return {
-      reading: { kind: "file", fingerprint, readable: opened !== undefined },
+      reading: {
+        kind: "file",
+        fingerprint,
+        drawing: await drawingOf(bytes),
+        readable: opened !== undefined,
+      },
       ...(opened === undefined ? {} : { opened }),
     };
   }
@@ -2905,10 +2945,37 @@ export class InkEditorModal extends Modal {
         `${this.#displayName} changed on disk, and this version of Inkline cannot read it, so the editor will not save over it.`,
       );
     } else if (action === "reload" && opened !== undefined) {
-      this.#reload(reading.fingerprint, opened);
+      this.#reload(reading, opened);
+    } else if (action === "text" && opened !== undefined) {
+      // A question open is about another change, and has what that change read
+      // to go on with. The file is looked at again once it is answered.
+      if (!this.#askingChanged) this.#takeText(reading, opened);
     } else if (action === "ask") {
-      this.#askChanged(reading.fingerprint, opened);
+      this.#askChanged(reading, opened);
     }
+  }
+
+  /**
+   * Takes in a change to the file's text alone. Nothing about the drawing
+   * changed, so the strokes, unsaved or not, and Undo stay as they are, and there
+   * is nothing to ask. A field someone typed in keeps what they typed, as nothing
+   * else could bring that back, while the file's value stays in the file; the
+   * fields say what saving would replace, as the library's do, and open to say
+   * it. Returns whether that is so of any field.
+   */
+  #takeText(reading: FileReading, opened: OpenedFile): boolean {
+    this.#carried = opened.carried;
+    this.#watch.tookText(reading);
+    const clashing = (this.#textFields?.take(opened.text) ?? []).length > 0;
+    this.#showTextSummary();
+    if (clashing) this.#showText(true);
+    this.#announce(
+      clashing
+        ? "The file changed text you typed: saving replaces what it now says"
+        : "Readings and translations updated: the file changed on disk",
+    );
+    this.#keepDraft();
+    return clashing;
   }
 
   /**
@@ -2922,7 +2989,7 @@ export class InkEditorModal extends Modal {
    * answered.
    */
   #askChanged(
-    fingerprint: string,
+    reading: FileReading,
     opened: OpenedFile | undefined,
     resume?: () => void,
   ): void {
@@ -2952,18 +3019,22 @@ export class InkEditorModal extends Modal {
           text: "Keep mine",
           act: () => {
             const then = answered();
-            this.#watch.keep(fingerprint);
+            this.#watch.keep(reading.fingerprint, reading.drawing);
             if (opened !== undefined) {
               this.#carried = opened.carried;
               this.#textFields?.take(opened.text);
               this.#showTextSummary();
             }
             then?.();
+            this.#checkFile();
           },
         },
       ],
       "Not now",
-      () => void answered(),
+      () => {
+        answered();
+        this.#checkFile();
+      },
     );
   }
 
@@ -2985,7 +3056,7 @@ export class InkEditorModal extends Modal {
     } else if (opened === undefined) {
       this.#announce(`Not reloaded: ${unreadable}`);
     } else {
-      this.#reload(reading.fingerprint, opened);
+      this.#reload(reading, opened);
     }
   }
 
@@ -2993,7 +3064,7 @@ export class InkEditorModal extends Modal {
    * Takes in what the file now holds, as one step that Undo takes back, so
    * that the drawing it replaces is not lost while the editor is open.
    */
-  #reload(fingerprint: string, opened: OpenedFile): void {
+  #reload(reading: FileReading, opened: OpenedFile): void {
     // A stroke being drawn is committed first, so that Undo brings it back.
     this.#session.end();
     const { document, base, carried, text } = opened;
@@ -3013,7 +3084,7 @@ export class InkEditorModal extends Modal {
     this.#opened = document;
     this.#session.replace(document);
     this.#session.markSaved(document);
-    this.#watch.took(fingerprint);
+    this.#watch.took(reading.fingerprint, reading.drawing);
     this.#fitView();
     this.#changed();
     this.#announce("Reloaded: the file changed on disk");
@@ -3160,17 +3231,27 @@ export class InkEditorModal extends Modal {
    * `resume` saves again if the answer is to; a file it cannot read is never
    * written over. It only starts the question, as the host calls this in the
    * save's turn, which every other save waits for.
+   *
+   * A change to the text alone asks nothing, but what the save was about to
+   * write holds the text as it was, so that it stops and `resume` starts it
+   * again with the change. Unless the change is to a field someone typed in:
+   * then nothing is written until they have seen what the file now says, as the
+   * library's fields do, and the next save is theirs to make.
    */
   async #checkBeforeWriting(resume: () => void): Promise<void> {
     const found = await this.#readFile();
     if (this.#retired) throw new Error("Inkline was disabled");
     if (found === undefined) return;
-    const action = this.#watch.saving(found.reading);
+    const { reading, opened } = found;
+    const action = this.#watch.saving(reading);
     if (action === "unreadable") throw new Error(unreadable);
-    if (action === "ask" && found.reading.kind === "file") {
-      this.#askChanged(found.reading.fingerprint, found.opened, resume);
-      throw new Unsaved("the file changed on disk");
+    if (action === "write" || reading.kind !== "file") return;
+    if (action === "text" && opened !== undefined && !this.#askingChanged) {
+      if (this.#takeText(reading, opened)) throw new Unsaved(textReplaced);
+      throw new SaveAgain(resume);
     }
+    this.#askChanged(reading, opened, resume);
+    throw new Unsaved("the file changed on disk");
   }
 
   /**
@@ -3202,16 +3283,18 @@ export class InkEditorModal extends Modal {
     const changes = this.#textFields?.changes() ?? {};
     const typedText = this.#textFields?.typed() ?? {};
     this.#announce("Saving…");
+    /** Starts this save again once it has ended, if it is to. */
+    let again: (() => void) | undefined;
     this.#saving = (async () => {
       try {
         const {
-          bytes: drawn,
+          bytes: inked,
           record,
           left,
         } = await saveInk(document, base, this.#carried);
         // Only a field that changed: the rest stay as the chunks that `saveInk`
         // carried, byte for byte, whatever they hold.
-        let bytes = drawn;
+        let bytes = inked;
         for (const field of textFields) {
           const values = changes[field];
           if (values !== undefined) {
@@ -3221,6 +3304,7 @@ export class InkEditorModal extends Modal {
         // Kept before the file can change, with its own base layer, so that
         // the draft does not depend on which version the file holds.
         const written = await fingerprintOf(bytes);
+        const drawn = await drawingOf(bytes);
         this.#keepDraft();
         const typed = this.#typedName;
         const named = await this.#options.write(
@@ -3228,7 +3312,10 @@ export class InkEditorModal extends Modal {
           record,
           () => this.#keepDraft(),
           (fingerprint) => {
-            this.#watch.took(fingerprint);
+            this.#watch.took(
+              fingerprint,
+              fingerprint === written ? drawn : undefined,
+            );
           },
           typed,
           () => this.#checkBeforeWriting(resume),
@@ -3245,7 +3332,7 @@ export class InkEditorModal extends Modal {
         this.#carried = preservableChunks(readChunks(bytes));
         this.#textFields?.saved(changes, typedText);
         this.#showTextSummary();
-        this.#watch.took(written);
+        this.#watch.took(written, drawn);
         this.#session.markSaved(document);
         this.#session.rebase(-left);
         this.#view?.shift(-left);
@@ -3256,6 +3343,10 @@ export class InkEditorModal extends Modal {
         this.#announce(this.#notRenamed ? "Saved, but not renamed" : "Saved");
         return true;
       } catch (error) {
+        if (error instanceof SaveAgain) {
+          again = error.again;
+          return false;
+        }
         const reason = error instanceof Error ? error.message : String(error);
         this.#announce(`Not saved: ${reason}`);
         if (!(error instanceof Unsaved)) {
@@ -3269,6 +3360,9 @@ export class InkEditorModal extends Modal {
         this.#keepDraft();
         // Changes reported while it ran, its own write among them.
         this.#checkFile();
+        // Not yet, as what waits on this save must hear that it stopped first:
+        // Next, for one, goes by whether it is still under way.
+        if (again !== undefined) this.modalEl.win.setTimeout(again);
       }
     })();
     this.#updateButtons();

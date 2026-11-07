@@ -34,6 +34,16 @@ changes the file must keep. No existing file is affected.
   fields can be closed meanwhile
   ([#198](https://github.com/viell-dev/slop-inkline/pull/198)).
 
+### Changed
+
+- An editor open on a symbol tells a change to its readings or translations from
+  a change to its drawing. A change to the text alone, from the library or by
+  sync, asks nothing and takes the text in, with unsaved strokes and Undo left
+  alone, and a draft no longer warns that its strokes may not line up. Text you
+  typed in a field the file changed too stays, with a note of what saving
+  replaces, as in the library
+  ([#195](https://github.com/viell-dev/slop-inkline/issues/195)).
+
 ### Fixed
 
 - **Flat ends** only ever cuts along a row. An end running more along the row

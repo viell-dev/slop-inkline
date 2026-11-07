@@ -4,6 +4,7 @@ import {
   decodeDraft,
   draftBase,
   draftLifetime,
+  drawingOf,
   fingerprintOf,
   restoreDraft,
   sameTarget,
@@ -11,6 +12,7 @@ import {
   type VaultStorage,
 } from "../../../src/editor/drafts.ts";
 import { limits, type BaseLayer } from "../../../src/format/record.ts";
+import { writeText } from "../../../src/format/text.ts";
 import type { InkDocument } from "../../../src/ink/document.ts";
 import { blank, encodePng } from "../../support/png.ts";
 
@@ -343,6 +345,7 @@ describe("decodeDraft", () => {
     const store = new DraftStore(storage);
     for (const written of [
       draft({ fingerprint: "ab" }),
+      draft({ id: "with-drawing", fingerprint: "ab", drawing: "cd" }),
       draft({ id: "b", base: { kind: "none" } }),
       draft({ id: "c", base: { kind: "lost" } }),
       draft({
@@ -528,5 +531,22 @@ describe("fingerprintOf", () => {
     expect(await fingerprintOf(new TextEncoder().encode("abc"))).toBe(
       "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
     );
+  });
+});
+
+describe("drawingOf", () => {
+  it("is the same whatever the file's text says, and only then", async () => {
+    const said = await writeText(png, "reading", ["TA"]);
+    const other = await writeText(said, "reading", ["KA"]);
+    expect(await fingerprintOf(said)).not.toBe(await fingerprintOf(other));
+    expect(await drawingOf(said)).toBe(await drawingOf(other));
+    expect(await drawingOf(said)).toBe(await fingerprintOf(png));
+    const changed = encodePng(blank(3, 2));
+    expect(await drawingOf(changed)).not.toBe(await drawingOf(png));
+  });
+
+  it("gives nothing for a file that is not a whole PNG", async () => {
+    expect(await drawingOf(new TextEncoder().encode("x"))).toBeUndefined();
+    expect(await drawingOf(png.subarray(0, 20))).toBeUndefined();
   });
 });

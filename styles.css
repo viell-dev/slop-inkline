@@ -570,13 +570,13 @@ img.inkline-symbol:not([width], [height]) {
   overflow-wrap: anywhere;
 }
 
-.inkline-library-text-note {
+.inkline-text-note {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   overflow-wrap: anywhere;
 }
 
-.inkline-library-text-note:empty {
+.inkline-text-note:empty {
   display: none;
 }
 

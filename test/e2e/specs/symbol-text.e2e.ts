@@ -20,6 +20,7 @@ import {
   recordOf,
   restoreVault,
   startOver,
+  storedDrafts,
   surface,
   symbolFiles,
   topButton,
@@ -75,6 +76,69 @@ async function changeOnDisk(file: string, fields: Fields): Promise<void> {
   );
 }
 
+/**
+ * Has a sync tool change `file`'s reading just as the next read of the file
+ * starts, which is a save's look at it just before it writes: writing to the
+ * disk tells the vault at once, so that a change made before a save would be
+ * taken in before it starts.
+ */
+async function changeAtNextRead(file: string, reading: string): Promise<void> {
+  await browser.executeObsidian(
+    ({ app }, wanted, value) => {
+      const read = app.vault.readBinary.bind(app.vault);
+      app.vault.readBinary = async (target) => {
+        if (target.path !== wanted) return read(target);
+        app.vault.readBinary = read;
+        const { text } = window.inklineTest;
+        const bytes = await text.writeText(
+          new Uint8Array(await read(target)),
+          "reading",
+          [value],
+        );
+        await app.vault.adapter.writeBinary(wanted, bytes.slice().buffer);
+        return read(target);
+      };
+    },
+    file,
+    reading,
+  );
+}
+
+/**
+ * Changes a file's drawing to three dots, and its fields, as sync would bring
+ * them from another computer.
+ */
+async function redrawOnDisk(file: string, fields: Fields): Promise<void> {
+  await browser.executeObsidian(
+    async ({ app }, wanted, { reading, translation }) => {
+      const found = app.vault.getFileByPath(wanted);
+      if (found === null) throw new Error(`no ${wanted}`);
+      const { canvas, inkFile, png, text } = window.inklineTest;
+      const was = new Uint8Array(await app.vault.readBinary(found));
+      const dot = (x: number) => ({
+        tool: "pen" as const,
+        size: 256,
+        points: [x, 1600],
+      });
+      const saved = await canvas.saveInk(
+        { strokes: [dot(800), dot(1600), dot(2400)] },
+        undefined,
+        inkFile.preservableChunks(png.readChunks(was)),
+      );
+      let bytes: Uint8Array = saved.bytes;
+      if (reading !== undefined) {
+        bytes = await text.writeText(bytes, "reading", reading);
+      }
+      if (translation !== undefined) {
+        bytes = await text.writeText(bytes, "translation", translation);
+      }
+      await app.vault.modifyBinary(found, bytes.slice().buffer);
+    },
+    file,
+    fields,
+  );
+}
+
 /** A symbol at `file` that says `fields` about itself. */
 async function symbolWith(
   file: string,
@@ -83,6 +147,30 @@ async function symbolWith(
 ): Promise<void> {
   await createSymbol(file, xs);
   await changeOnDisk(file, fields);
+}
+
+/** What a file holds now, to put back with {@link writeBase64}. */
+async function bytesAsBase64(file: string): Promise<string> {
+  return browser.executeObsidian(async ({ app }, wanted) => {
+    const found = app.vault.getFileByPath(wanted);
+    if (found === null) throw new Error(`no ${wanted}`);
+    const bytes = new Uint8Array(await app.vault.readBinary(found));
+    return btoa(String.fromCharCode(...bytes));
+  }, file);
+}
+
+/** Puts back what {@link bytesAsBase64} gave. */
+async function writeBase64(file: string, held: string): Promise<void> {
+  await browser.executeObsidian(
+    async ({ app }, wanted, base64) => {
+      const found = app.vault.getFileByPath(wanted);
+      if (found === null) throw new Error(`no ${wanted}`);
+      const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+      await app.vault.modifyBinary(found, bytes.buffer);
+    },
+    file,
+    held,
+  );
 }
 
 /** The bytes of a file, as text to compare. */
@@ -168,7 +256,7 @@ async function openFields(file: string): Promise<void> {
 
 const formSave = () => browser.$(".inkline-library-text-buttons button");
 const formError = () => browser.$(".inkline-library-rename-error");
-const formNote = () => browser.$(".inkline-library-text-note");
+const formNote = () => browser.$(".inkline-text-note");
 
 /** The form's fields are gone, as after a save or a cancel. */
 async function waitForClosedForm(): Promise<void> {
@@ -718,7 +806,7 @@ describe("A symbol's readings and translations", function () {
       });
     });
 
-    it("asks when the file changed a field that was typed in, and Keep mine keeps both", async function () {
+    it("asks when the drawing changed and a field typed in did, and Keep mine keeps both", async function () {
       await symbolWith("Clash.ink.png", {
         reading: ["TA"],
         translation: ["field"],
@@ -726,7 +814,7 @@ describe("A symbol's readings and translations", function () {
       await editFile("Clash.ink.png");
       await showFields();
       await fill("reading", "typed");
-      await changeOnDisk("Clash.ink.png", {
+      await redrawOnDisk("Clash.ink.png", {
         reading: ["theirs"],
         translation: ["plot"],
       });
@@ -742,6 +830,287 @@ describe("A symbol's readings and translations", function () {
       });
     });
 
+    describe("when only its text changes on disk", function () {
+      const file = "Sync.ink.png";
+      const note = () => browser.$(".inkline-editor .inkline-text-note");
+
+      /** How many strokes the record in `file` holds. */
+      async function strokes(): Promise<number> {
+        const { strokes: held } = JSON.parse(await recordOf(file)) as {
+          strokes: unknown[];
+        };
+        return held.length;
+      }
+
+      /** Whether a modal stands above the editor, as a question does. */
+      async function asked(): Promise<boolean> {
+        return browser.execute(
+          () => document.querySelectorAll(".modal-container").length > 1,
+        );
+      }
+
+      /** Opens the editor on a symbol, and draws a stroke it does not save. */
+      async function withStroke(): Promise<void> {
+        await symbolWith(file, { reading: ["TA"], translation: ["field"] });
+        await editFile(file);
+        await showFields();
+        await draw([
+          [0.5, 0.3],
+          [0.7, 0.6],
+        ]);
+      }
+
+      /** Has the editor keep the stroke as a draft, and restarts Obsidian. */
+      async function leaveDraft(): Promise<void> {
+        await browser.waitUntil(
+          async () => (await storedDrafts()).length === 1,
+        );
+        await browser.reloadObsidian();
+        await loadModules();
+      }
+
+      /** What the question about a draft says, once it opens. */
+      async function draftQuestion(): Promise<string> {
+        await browser.waitUntil(
+          async () => (await topButton("Restore")) !== undefined,
+        );
+        return browser.execute(
+          () =>
+            [...document.querySelectorAll(".modal-container")].at(-1)
+              ?.textContent ?? "",
+        );
+      }
+
+      it("takes it in without asking, and leaves unsaved strokes alone", async function () {
+        await withStroke();
+        await changeOnDisk(file, { reading: ["KA"] });
+        await browser.waitUntil(
+          async () => (await area("reading").getValue()) === "KA",
+        );
+        await waitForStatus("Readings and translations updated");
+        expect(await asked()).toBe(false);
+        expect(await area("translation").getValue()).toBe("field");
+        await saveAndClose();
+        expect(await fieldsOf(file)).toEqual({
+          reading: ["KA"],
+          translation: ["field"],
+        });
+        expect(await strokes()).toBe(2);
+      });
+
+      it("takes in a save from the library the same way", async function () {
+        await symbolWith(file, { reading: ["TA"] });
+        await showLibrary();
+        await openFields(file);
+        await fill("translation", "from the library");
+        await editFile(file);
+        await showFields();
+        await draw([
+          [0.5, 0.3],
+          [0.7, 0.6],
+        ]);
+        await browser.execute(saveFields);
+        await waitForClosedForm();
+        await browser.waitUntil(
+          async () =>
+            (await area("translation").getValue()) === "from the library",
+        );
+        expect(await asked()).toBe(false);
+        await saveAndClose();
+        expect((await fieldsOf(file)).translation).toEqual([
+          "from the library",
+        ]);
+        expect(await strokes()).toBe(2);
+      });
+
+      it("reloads nothing with nothing unsaved, so Undo has nothing to take back", async function () {
+        await symbolWith(file, { reading: ["TA"] });
+        await editFile(file);
+        await showFields();
+        await changeOnDisk(file, { reading: ["KA"] });
+        await waitForStatus("Readings and translations updated");
+        expect(await area("reading").getValue()).toBe("KA");
+        expect(
+          await browser
+            .$('[data-inkline-button="undo"]')
+            .getProperty("disabled"),
+        ).toBe(true);
+        // Nothing to save, so nothing is kept as if it were.
+        expect(await storedDrafts()).toEqual([]);
+      });
+
+      it("keeps what was typed in a field it changed, and says what saving replaces", async function () {
+        await symbolWith(file, { reading: ["TA"], translation: ["field"] });
+        await editFile(file);
+        await showFields();
+        await fill("reading", "typed");
+        // Closed, to show that the fields open to say so.
+        await toggle().click();
+        expect(await area("reading").isDisplayed()).toBe(false);
+        await changeOnDisk(file, {
+          reading: ["theirs"],
+          translation: ["plot"],
+        });
+        await waitForStatus("saving replaces what it now says");
+        expect(await asked()).toBe(false);
+        expect(await area("reading").isDisplayed()).toBe(true);
+        expect(await area("reading").getValue()).toBe("typed");
+        expect(await area("translation").getValue()).toBe("plot");
+        const said = await note().getText();
+        expect(said).toContain("Saving replaces what it now says");
+        expect(said).toContain("Reading: theirs");
+        expect(said).not.toContain("plot");
+        await saveScreenshot("text-editor-replaced");
+        // The file keeps its value until a person saves over it.
+        expect((await fieldsOf(file)).reading).toEqual(["theirs"]);
+        await browser.keys(["Control", "s"]);
+        await waitForStatus("Saved");
+        expect(await note().getText()).toBe("");
+        expect(await fieldsOf(file)).toEqual({
+          reading: ["typed"],
+          translation: ["plot"],
+        });
+      });
+
+      it("drops the note once the typing no longer replaces anything", async function () {
+        await symbolWith(file, { reading: ["TA"] });
+        await editFile(file);
+        await showFields();
+        await fill("reading", "typed");
+        await changeOnDisk(file, { reading: ["theirs"] });
+        await waitForStatus("saving replaces what it now says");
+        await fill("reading", "theirs");
+        await browser.waitUntil(async () => (await note().getText()) === "");
+      });
+
+      it("stops a save that finds a change to a field typed in, with nothing written", async function () {
+        await symbolWith(file, { reading: ["TA"] });
+        await editFile(file);
+        await showFields();
+        await fill("reading", "typed");
+        await changeAtNextRead(file, "theirs");
+        await browser.execute(saveEditor);
+        await waitForStatus("Not saved: the file changed text you typed");
+        expect(await asked()).toBe(false);
+        expect((await fieldsOf(file)).reading).toEqual(["theirs"]);
+        expect(await note().getText()).toContain("Reading: theirs");
+        expect(await area("reading").getValue()).toBe("typed");
+        await browser.$('[data-inkline-button="save"]').click();
+        await browser.$(".inkline-editor").waitForExist({ reverse: true });
+        expect((await fieldsOf(file)).reading).toEqual(["typed"]);
+      });
+
+      it("goes on with a save that finds a change it can keep, and closes", async function () {
+        await withStroke();
+        await changeAtNextRead(file, "KA");
+        await browser.execute(saveEditor);
+        await browser.$(".inkline-editor").waitForExist({ reverse: true });
+        expect(await fieldsOf(file)).toEqual({
+          reading: ["KA"],
+          translation: ["field"],
+        });
+        expect(await strokes()).toBe(2);
+      });
+
+      it("goes on with Next through a change found as it saves", async function () {
+        await newSymbol();
+        await draw([
+          [0.5, 0.3],
+          [0.7, 0.6],
+        ]);
+        await browser.keys(["Control", "s"]);
+        await waitForStatus("Saved");
+        await draw([
+          [0.2, 0.3],
+          [0.3, 0.6],
+        ]);
+        const [made] = await symbolFiles();
+        if (made === undefined) throw new Error("no symbol");
+        await changeAtNextRead(made, "KA");
+        await markEditor();
+        await browser.$('[data-inkline-button="next"]').click();
+        await waitForNext(1);
+        expect((await fieldsOf(made)).reading).toEqual(["KA"]);
+      });
+
+      it("takes in text on top of a change that Keep mine replaces", async function () {
+        await withStroke();
+        await redrawOnDisk(file, { reading: ["theirs"] });
+        await clickTop("Keep mine");
+        await browser.waitUntil(
+          async () => (await area("reading").getValue()) === "theirs",
+        );
+        await changeOnDisk(file, { translation: ["plot"] });
+        await browser.waitUntil(
+          async () => (await area("translation").getValue()) === "plot",
+        );
+        expect(await asked()).toBe(false);
+        await saveAndClose();
+        expect(await fieldsOf(file)).toEqual({
+          reading: ["theirs"],
+          translation: ["plot"],
+        });
+        // The drawing kept: the first stroke and the new one, not three dots.
+        expect(await strokes()).toBe(2);
+      });
+
+      it("looks at the file again once a question is answered", async function () {
+        await withStroke();
+        const original = await bytesAsBase64(file);
+        await redrawOnDisk(file, {});
+        await browser.waitUntil(
+          async () => (await topButton("Keep mine")) !== undefined,
+        );
+        // Back to the drawing the editor knows, with other text, under the
+        // question: what that question read is out of date.
+        await writeBase64(file, original);
+        await changeOnDisk(file, { reading: ["KA"] });
+        await clickTop("Keep mine");
+        await browser.waitUntil(
+          async () => (await area("reading").getValue()) === "KA",
+        );
+        await saveAndClose();
+        expect((await fieldsOf(file)).reading).toEqual(["KA"]);
+        expect(await strokes()).toBe(2);
+      });
+
+      it("offers a draft without saying its strokes may not line up", async function () {
+        await withStroke();
+        await leaveDraft();
+        await changeOnDisk(file, { reading: ["KA"] });
+        await editFile(file);
+        const said = await draftQuestion();
+        expect(said).toContain("has unsaved changes");
+        expect(said).not.toContain("may not line up");
+        expect(said).not.toContain("look over what you typed");
+        await clickTop("Restore");
+        await saveAndClose();
+        expect((await fieldsOf(file)).reading).toEqual(["KA"]);
+        expect(await strokes()).toBe(2);
+      });
+
+      it("says to look over text a draft would put back", async function () {
+        await symbolWith(file, { reading: ["TA"], translation: ["field"] });
+        await editFile(file);
+        await showFields();
+        await fill("reading", "typed");
+        await leaveDraft();
+        await changeOnDisk(file, { translation: ["plot"] });
+        await editFile(file);
+        const said = await draftQuestion();
+        expect(said).toContain("look over what you typed");
+        expect(said).not.toContain("may not line up");
+      });
+
+      it("still says so of a draft whose drawing changed", async function () {
+        await withStroke();
+        await leaveDraft();
+        await redrawOnDisk(file, { reading: ["KA"] });
+        await editFile(file);
+        expect(await draftQuestion()).toContain("may not line up");
+      });
+    });
+
     it("takes the file's values in a field it changed when told to Reload", async function () {
       await symbolWith("Reload.ink.png", {
         reading: ["TA"],
@@ -751,7 +1120,7 @@ describe("A symbol's readings and translations", function () {
       await showFields();
       await fill("reading", "typed");
       await fill("translation", "kept");
-      await changeOnDisk("Reload.ink.png", { reading: ["theirs"] });
+      await redrawOnDisk("Reload.ink.png", { reading: ["theirs"] });
       await clickTop("Reload");
       await browser.waitUntil(
         async () => (await area("reading").getValue()) === "theirs",
@@ -1227,7 +1596,7 @@ describe("A symbol's readings and translations", function () {
       expect(await area("reading").getValue()).toBe("SECOND");
     });
 
-    it("stops an editor's save that the library's went ahead of, until it is asked", async function () {
+    it("has an editor's save take in what a library's wrote ahead of it, without asking", async function () {
       await symbolWith("Library first.ink.png", {
         reading: ["TA"],
         translation: ["field"],
@@ -1244,7 +1613,6 @@ describe("A symbol's readings and translations", function () {
       // As the library starts to write, the editor saves too.
       await atNextWrite("editor", 300);
       await browser.execute(saveFields);
-      await clickTop("Keep mine");
       await browser.$(".inkline-editor").waitForExist({ reverse: true });
       expect(await fieldsOf("Library first.ink.png")).toEqual({
         reading: ["typed"],
@@ -1445,15 +1813,28 @@ describe("A symbol's readings and translations", function () {
           button.click();
         }
       });
-      await browser.waitUntil(
-        async () => (await topButton("Keep mine")) !== undefined,
+      // The drawn one first gives the other a changed drawing, which it asks
+      // about. The other first changes only text, which the drawn one builds on.
+      await browser.waitUntil(async () =>
+        browser.execute(
+          () =>
+            document.querySelector(".inkline-editor") === null ||
+            [...document.querySelectorAll("button")].some(
+              (button) => button.textContent === "Keep mine",
+            ),
+        ),
       );
-      // Whichever got there first made the file, and the other wrote nothing.
+      const asked = await browser.execute(
+        () => document.querySelector(".inkline-editor") !== null,
+      );
       expect(await symbolFiles()).toEqual([file]);
-      const drawnFirst = (await recordOf(file)) !== before;
-      expect((await fieldsOf(file)).reading).toEqual(
-        drawnFirst ? ["TA"] : ["LATER"],
-      );
+      if (asked) {
+        // Whichever got there first made the file, and the other wrote nothing.
+        expect(await recordOf(file)).not.toBe(before);
+        expect((await fieldsOf(file)).reading).toEqual(["TA"]);
+      } else {
+        expect(await recordOf(file)).not.toBe(before);
+      }
       await keepMineUntilClosed();
       expect(await symbolFiles()).toEqual([file]);
       expect((await fieldsOf(file)).reading).toEqual(["LATER"]);

@@ -20,7 +20,6 @@ import {
   type WorkspaceLeaf,
 } from "obsidian";
 import { isInkPath } from "../format/ink-file.ts";
-import type { SymbolText, TextField } from "../format/text.ts";
 import { embedFor } from "../notes/embeds.ts";
 import { showLinkMenu } from "../notes/entries.ts";
 import { savingWaits, TextMoved, watchSave } from "../notes/file-writes.ts";
@@ -34,7 +33,6 @@ import {
   writeSymbolText,
 } from "../notes/symbols.ts";
 import {
-  fieldLabel,
   isBlank,
   noText,
   showValues,
@@ -615,7 +613,6 @@ export class SymbolLibraryView extends ItemView {
       if (!saving) error.setText("");
     });
     fields.enabled = false;
-    const note = form.createDiv({ cls: "inkline-library-text-note" });
     const error = form.createDiv({
       cls: "inkline-library-rename-error",
       attr: { role: "alert" },
@@ -647,28 +644,13 @@ export class SymbolLibraryView extends ItemView {
       leaveSave?.();
       finish();
     };
-    /** The fields the file changed under what was typed, as far as told. */
-    const warned = new Set<TextField>();
-    /** Says what saving would replace, with `moved` new since last time. */
-    const warn = (moved: readonly TextField[], now: SymbolText): void => {
-      for (const field of moved) warned.add(field);
-      note.empty();
-      if (warned.size === 0) return;
-      note.createDiv({
-        text: "The file changed meanwhile. Saving replaces what it now says:",
-      });
-      for (const field of warned) {
-        if (now[field].length > 0) showValues(note, field, now[field]);
-        else note.createDiv({ text: `${fieldLabel(field, 2)}: none` });
-      }
-    };
     const reread = (): void => {
       if (saving) return;
       const read = ++reads;
       void readSymbolText(this.app, file).then(
         (now) => {
           if (closed || read !== reads || saving) return;
-          warn(fields.take(now), now);
+          fields.take(now);
           fields.enabled = true;
           save.disabled = false;
           error.setText("");
@@ -759,7 +741,7 @@ export class SymbolLibraryView extends ItemView {
           if (closed) return;
           again();
           if (failure instanceof TextMoved) {
-            warn(fields.take(failure.text), failure.text);
+            fields.take(failure.text);
           } else {
             error.setText(
               failure instanceof Error

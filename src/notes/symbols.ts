@@ -19,6 +19,7 @@ import { readText, type SymbolText } from "../format/text.ts";
 import { openInk, openPicture } from "../ink/canvas.ts";
 import { emptyDocument } from "../ink/document.ts";
 import {
+  drawingOf,
   fingerprintOf,
   type CreatedFile,
   type DraftStore,
@@ -1162,11 +1163,13 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
   const { app } = host;
   let opened;
   let fingerprint;
+  let drawing;
   let text;
   try {
     const bytes = new Uint8Array(await app.vault.readBinary(file));
     opened = await openInk(bytes);
     fingerprint = await fingerprintOf(bytes);
+    drawing = await drawingOf(bytes);
     text = await readText(readChunks(bytes));
   } catch (error) {
     new Notice(`Could not open ${file.name}: ${message(error)}`);
@@ -1202,6 +1205,7 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
     center: opened.width / 2,
     width: opened.width,
     fingerprint,
+    ...(drawing === undefined ? {} : { drawing }),
     drafts: {
       store: host.drafts,
       // The file's path follows renames.

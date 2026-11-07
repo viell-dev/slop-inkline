@@ -15,6 +15,8 @@ import {
   type BaseLayer,
   type Stroke,
 } from "../format/record.ts";
+import { PngError } from "../format/png.ts";
+import { withoutText } from "../format/text.ts";
 import type { InkDocument } from "../ink/document.ts";
 import type { TypedText } from "../notes/text-fields.ts";
 
@@ -67,6 +69,12 @@ export interface Draft {
    * opened or last saved, or undefined for a symbol not saved yet.
    */
   readonly fingerprint?: string;
+  /**
+   * The same of the file without its text, as {@link drawingOf} gives it, to
+   * tell a change to that text alone, which leaves the strokes lined up. A draft
+   * from before there was one has none, and any change counts against it.
+   */
+  readonly drawing?: string;
   /** When it was kept, in milliseconds since 1970. */
   readonly savedAt: number;
   /**
@@ -201,7 +209,7 @@ function decode(
   }
   if (!isRecord(value)) return undefined;
   const { id, target, base, layer, fingerprint, savedAt, version, ink } = value;
-  const { gridOrigin, name, text } = value;
+  const { drawing, gridOrigin, name, text } = value;
   const parsedTarget = parseTarget(target);
   const parsedText = parseText(text);
   if (
@@ -222,6 +230,8 @@ function decode(
     target: parsedTarget,
     strokes: parsed.record.strokes,
     ...(fingerprint === undefined ? {} : { fingerprint }),
+    // Only a warning goes by this, so it is no reason to lose the strokes.
+    ...(typeof drawing === "string" ? { drawing } : {}),
     savedAt,
     // Only the grid is lost if this cannot be read, not the strokes.
     ...(typeof gridOrigin === "number" && Number.isFinite(gridOrigin)
@@ -266,7 +276,7 @@ export function decodeDraft(
 /** A draft as the text stored for it, with its kept base layer's key. */
 function encodeDraft(draft: Draft, baseKey: string | undefined): string {
   const { id, target, strokes, base, fingerprint, savedAt, gridOrigin } = draft;
-  const { name, text } = draft;
+  const { drawing, name, text } = draft;
   const layer =
     base.kind === "kept" && baseKey !== undefined
       ? {
@@ -286,6 +296,7 @@ function encodeDraft(draft: Draft, baseKey: string | undefined): string {
     target,
     ...layer,
     ...(fingerprint === undefined ? {} : { fingerprint }),
+    ...(drawing === undefined ? {} : { drawing }),
     savedAt,
     ...(gridOrigin === undefined ? {} : { gridOrigin }),
     ...(name === undefined ? {} : { name }),
@@ -566,4 +577,21 @@ export async function fingerprintOf(bytes: Uint8Array): Promise<string> {
   return [...new Uint8Array(digest)]
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
+}
+
+/**
+ * A fingerprint of everything in a file but its readings and translations, to
+ * tell a change to them from a change to its drawing; undefined for a file that
+ * is not a whole PNG, which has no text to leave out. Everything else counts,
+ * byte for byte, so that a change this does not see can only be to that text.
+ */
+export async function drawingOf(
+  bytes: Uint8Array,
+): Promise<string | undefined> {
+  try {
+    return await fingerprintOf(withoutText(bytes));
+  } catch (error) {
+    if (error instanceof PngError) return undefined;
+    throw error;
+  }
 }
