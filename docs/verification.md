@@ -67,6 +67,16 @@ must keep released files readable and looking the same, as
   and either side of a tie, and the pieces of polygons and of cut strokes: a
   change that would change how saved strokes look fails
   [outline.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/ink/outline.test.ts).
+- **Unreleased:** every limit of the format is tested at the limit and just past
+  it, with its number written out rather than taken from the code, so that a
+  limit cannot move without failing a test
+  ([limits.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/format/limits.test.ts)).
+- **Unreleased:** every file in the fixtures but their TypeScript is held to a
+  [recorded list of hashes](https://github.com/viell-dev/slop-inkline/blob/main/test/fixtures/pinned.sha256),
+  so that changing, removing, or adding one fails until the list changes too, on
+  purpose
+  ([pinned-files.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/format/pinned-files.test.ts)).
+  From the first stable release that list only grows.
 - Moving a stroke by whole units moves its outline exactly, over seeded strokes
   built to turn on a tie
   ([outline.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/ink/outline.test.ts)).

@@ -175,6 +175,14 @@ pictures for Obsidian's community directory listing, as
 `test/fixtures/format/records.ts` as golden files, with the real save in
 Obsidian, as its opening comment says.
 
+`test/fixtures/pinned.sha256` lists the hash of every file in `test/fixtures`
+that is not TypeScript, and a unit test fails when a file and the list disagree.
+From the repository's root,
+`sha256sum --text <file> >> test/fixtures/pinned.sha256` adds a new file's line,
+and `sha256sum --check test/fixtures/pinned.sha256` checks them all.
+[AGENTS.md](AGENTS.md#code) says what may change there, which from `1.0.0` is
+nothing but new lines.
+
 CI runs the end-to-end tests on Linux for every pull request, and the Docker
 image weekly and on request.
 
