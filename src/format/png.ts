@@ -255,7 +255,8 @@ export interface InsertedChunk {
  * finds them by where their data lies. Nothing is decoded or sealed again, which
  * is what sets this apart from {@link writeChunks}: a chunk with a wrong CRC
  * keeps it, and is still seen as damaged, rather than passing for sound with
- * whatever the damage left in it.
+ * whatever the damage left in it. Throws `PngError` if `inserted` goes in front
+ * of a chunk that is not among `chunks`, rather than leave it out.
  */
 export function spliceChunks(
   bytes: Uint8Array,
@@ -263,6 +264,9 @@ export function spliceChunks(
   removed: ReadonlySet<Chunk>,
   inserted?: InsertedChunk,
 ): Uint8Array<ArrayBuffer> {
+  if (inserted !== undefined && !chunks.includes(inserted.before)) {
+    throw new PngError("the chunk to insert before is not in the file");
+  }
   const parts: Uint8Array[] = [];
   let copied = 0;
   for (const chunk of chunks) {

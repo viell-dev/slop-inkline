@@ -57,6 +57,18 @@ describe("the repository's release metadata", () => {
     const committed = readFileSync("manifest.json", "utf8");
     expect(builtManifest(committed, manifest.version)).toBe(committed);
   });
+
+  // A merge of two branches' changelogs can keep both copies of a heading or an
+  // entry, and each section becomes a release's notes.
+  it("repeats no heading or entry within a changelog section", () => {
+    const sections = readFileSync("CHANGELOG.md", "utf8").split(/^(?=## )/m);
+    for (const section of sections) {
+      const items = section
+        .split("\n")
+        .filter((line) => /^(###|-) /.test(line));
+      expect(items).toEqual([...new Set(items)]);
+    }
+  });
 });
 
 describe("metadataProblems", () => {

@@ -544,8 +544,9 @@ byte for byte, then a zero byte, then:
 Compressed text must be one zlib stream, as in
 [the record chunk](#the-record-chunk), that ends where the chunk ends. The text
 of `tEXt` and `zTXt` is Latin-1, each byte being the character of that code
-point, so that bytes `0x80` to `0x9F` are control characters, whatever the web's
-label `latin1` decodes them to. The text of `iTXt` must be well-formed UTF-8, as
+point, so that bytes `0x80` to `0x9F` are control characters, not the printable
+characters of windows-1252, which many decoders give under that name. The text
+of `iTXt` must be well-formed UTF-8, as
 [RFC 3629](https://www.rfc-editor.org/rfc/rfc3629) defines it, and is taken as
 it stands. The decoding PNG recommends replaces an ill-formed sequence and drops
 a byte order mark, which a program must not do here, so that every program finds
@@ -567,7 +568,8 @@ For the keyword it changes, it replaces every usable chunk with at most one, and
 with none when no value remains. A chunk of that keyword that is not usable may
 hold what the program cannot see, such as a list that a later revision allows.
 So it keeps such a chunk, unless a person asks it to remove it, and places its
-own before it, so that the value a person gave is the one read.
+own before every chunk of that keyword it keeps, so that the value a person gave
+is the one read.
 
 A program must write such a chunk as `iTXt`, uncompressed, with a compression
 method of 0 and an empty language tag and translated keyword, as its values need
@@ -578,18 +580,17 @@ recommends for small text.
 
 When it writes a file again, with or without a record before, an editor must
 keep every text chunk with a correct CRC, byte for byte and in their order,
-unless a person asks it to change or remove one, and it changes a reading or a
-translation as [Changing the text](#changing-the-text) says. This covers every
-keyword, and a chunk that is not usable.
+unless a person asks it to change or remove one. This covers every keyword, and
+a chunk that is not usable. When it changes a reading or a translation, it does
+so as [Changing the text](#changing-the-text) says.
 
 So a keyword needs no version: a program ignores one it does not know, and one
 that changes the file keeps it. Keywords beginning `Inkline ` belong to this
 document.
 
-A copy of a file holds the same text, and the two can then differ. A program
-that drops a text chunk leaves the rest of the file as it was, and the text is
-gone: it is held nowhere else, and neither the record nor the file's name can
-give it back.
+A copy of a file holds the same text, and the two can then differ. Dropping a
+text chunk harms nothing else in the file, but the text is gone: it is held
+nowhere else, and neither the record nor the file's name can give it back.
 
 ## Versions
 

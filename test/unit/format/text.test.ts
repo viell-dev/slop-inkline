@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   preservableChunks,
   readInkFile,
@@ -9,6 +9,7 @@ import {
 } from "../../../src/format/ink-file.ts";
 import {
   PngError,
+  inflate,
   maxChunks,
   readChunks,
   spliceChunks,
@@ -30,6 +31,13 @@ import {
   textCases,
   usedAfter,
 } from "../../fixtures/format/text-cases.ts";
+
+// The real thing, watched: a stream far past the limit is void with or without
+// it, so that only what `inflate` was asked to do tells the two apart.
+vi.mock(import("../../../src/format/png.ts"), async (importOriginal) => {
+  const png = await importOriginal();
+  return { ...png, inflate: vi.fn(png.inflate) };
+});
 
 const fixtures = path.resolve(import.meta.dirname, "../../fixtures/format");
 
@@ -161,6 +169,19 @@ describe("readText", () => {
     expect(await readText(readChunks(file))).toEqual({
       reading: ["TA"],
       translation: ["field"],
+    });
+  });
+
+  it("decompresses text no further than its limit", async () => {
+    const found = textCases.find(({ name }) =>
+      name.startsWith("many times the limit"),
+    );
+    if (found === undefined) throw new Error("no such text case");
+    const file = withChunks(plain, [found.chunk]);
+    vi.mocked(inflate).mockClear();
+    expect(await readingsOf(file)).toEqual([]);
+    expect(inflate).toHaveBeenCalledExactlyOnceWith(expect.anything(), {
+      limit: maxTextBytes,
     });
   });
 
@@ -528,5 +549,15 @@ describe("spliceChunks", () => {
   it("gives the same bytes when asked for nothing", () => {
     const chunks = readChunks(plain);
     expect(spliceChunks(plain, chunks, new Set())).toEqual(plain);
+  });
+
+  it("refuses to leave out a chunk that has nothing to go in front of", () => {
+    const chunk: Chunk = { type: "tEXt", data: new Uint8Array(1) };
+    expect(() =>
+      spliceChunks(plain, readChunks(plain), new Set(), {
+        chunk,
+        before: chunk,
+      }),
+    ).toThrow(PngError);
   });
 });
