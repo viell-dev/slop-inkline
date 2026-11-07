@@ -16,7 +16,7 @@ import {
   formatVersion,
   imageHeight,
   limits,
-  parseRecord,
+  parseRecordSliced,
   recordProblem,
   serializedBytes,
   type InkRecord,
@@ -136,9 +136,14 @@ function chunkVersion({ data }: Chunk): number | undefined {
 /**
  * Reads what a PNG's chunks hold. The version comes first and alone: a later
  * version may hold anything after it, of any size, and is known by that
- * whatever this version would make of the rest.
+ * whatever this version would make of the rest. A record with a large base
+ * layer takes seconds, so `pause` is awaited every few milliseconds of it, to
+ * let the page run.
  */
-export async function readInk(chunks: readonly Chunk[]): Promise<InkSource> {
+export async function readInk(
+  chunks: readonly Chunk[],
+  options: Pausing = {},
+): Promise<InkSource> {
   const found = chunks.filter(isRecordChunk);
   const [chunk] = found;
   if (chunk === undefined) return { kind: "pixels", reason: "none" };
@@ -168,6 +173,7 @@ export async function readInk(chunks: readonly Chunk[]): Promise<InkSource> {
   try {
     const bytes = await inflate(chunk.data.subarray(versionBytes), {
       limit: limits.text,
+      pause: options.pause,
     });
     // `ignoreBOM` keeps a byte order mark in the text, for the parser to
     // refuse, rather than dropping it.
@@ -177,13 +183,13 @@ export async function readInk(chunks: readonly Chunk[]): Promise<InkSource> {
   } catch (error) {
     return damaged(String(error));
   }
-  const parsed = parseRecord(text);
+  const parsed = await parseRecordSliced(text, options);
   if (!parsed.ok) return damaged(parsed.detail);
   const { record } = parsed;
   const problem =
     record.base === undefined
       ? undefined
-      : await baseImageProblem(record.base.png);
+      : await baseImageProblem(record.base.png, options);
   return problem === undefined
     ? { kind: "record", record, width }
     : damaged(problem);

@@ -110,6 +110,14 @@ It is offered:
 - as the command **Inkline: Edit symbol**, with the cursor on a symbol's embed,
   outside code and front matter.
 
+**Unreleased:** a symbol with a large base layer takes a moment to open, and a
+notice says so. Obsidian goes on answering meanwhile, so a key you press still
+reaches the note until the editor is there. Asking for the same symbol again
+changes nothing, and asking for another opens that one instead. If another
+window opens meanwhile, such as the command palette, the symbol does not come up
+over it, and a notice says to open it again. If you choose **Reload** in the
+editor and go on drawing or typing while it reads the file, it asks again.
+
 Right-clicking a symbol offers Edit symbol wherever else the symbol is:
 
 - in a callout or a table in Live Preview, in Obsidian's menu for the block,

@@ -49,6 +49,34 @@ export function slicer(pause: Pause | undefined): () => Promise<void> {
   };
 }
 
+/**
+ * Work written as steps, each `yield` a place where it can pause. The same code
+ * then runs at once, for a caller that cannot wait, and in slices, for a large
+ * file, so that the two cannot come to read a file differently.
+ */
+export type Steps<T> = Generator<undefined, T, undefined>;
+
+/** What `steps` come to, with no pause. */
+export function finished<T>(steps: Steps<T>): T {
+  for (;;) {
+    const step = steps.next();
+    if (step.done === true) return step.value;
+  }
+}
+
+/** What `steps` come to, with `pause` awaited every few milliseconds. */
+export async function finishedSliced<T>(
+  steps: Steps<T>,
+  { pause }: Pausing = {},
+): Promise<T> {
+  const breather = slicer(pause);
+  for (;;) {
+    const step = steps.next();
+    if (step.done === true) return step.value;
+    await breather();
+  }
+}
+
 const crcTable = (() => {
   const table = new Uint32Array(256);
   for (let n = 0; n < 256; n++) {
@@ -80,16 +108,13 @@ export function crc32(...parts: readonly Uint8Array[]): number {
 /** How many bytes a CRC takes in at a time, under a millisecond's work. */
 const crcSliceBytes = 32 * 1024;
 
-/** {@link crc32}, calling `breather` between pieces of the work. */
-async function slicedCrc(
-  parts: readonly Uint8Array[],
-  breather: () => Promise<void>,
-): Promise<number> {
+/** {@link crc32} as steps. */
+function* crcSteps(parts: readonly Uint8Array[]): Steps<number> {
   let crc = 0xffffffff;
   for (const part of parts) {
     for (let offset = 0; offset < part.length; offset += crcSliceBytes) {
       crc = extendCrc(crc, part.subarray(offset, offset + crcSliceBytes));
-      await breather();
+      yield;
     }
   }
   return (crc ^ 0xffffffff) >>> 0;
@@ -261,6 +286,48 @@ export function readChunks(
 }
 
 /**
+ * `chunks`, which {@link readChunks} took from `bytes` without working out their
+ * CRCs, with each whose CRC is wrong marked `damaged`, as that would have, in
+ * steps, so that a large file can be checked in slices.
+ */
+export function* checkedChunks(
+  bytes: Uint8Array,
+  chunks: readonly Chunk[],
+): Steps<Chunk[]> {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const checked: Chunk[] = [];
+  for (const chunk of chunks) {
+    const dataStart = chunk.data.byteOffset - bytes.byteOffset;
+    const crc = yield* crcSteps([
+      bytes.subarray(dataStart - 4, dataStart),
+      chunk.data,
+    ]);
+    const intact = crc === view.getUint32(dataStart + chunk.data.length);
+    checked.push(intact ? chunk : { ...chunk, damaged: true });
+    yield;
+  }
+  return checked;
+}
+
+/**
+ * {@link readChunks} for a large file, working out its CRCs in slices: what it
+ * finds and what it refuses are the same, as a chunk's CRC decides neither,
+ * apart from `IHDR`'s, which is always checked.
+ */
+export async function readChunksSliced(
+  bytes: Uint8Array,
+  options: Pausing = {},
+): Promise<Chunk[]> {
+  return finishedSliced(
+    checkedChunks(
+      bytes,
+      readChunks(bytes, () => false),
+    ),
+    options,
+  );
+}
+
+/**
  * The first of `chunks` whose CRC is wrong, if any, for chunks that
  * {@link readChunks} took from `bytes` and did not check, so that a large file
  * can be checked in slices.
@@ -268,19 +335,10 @@ export function readChunks(
 export async function firstDamaged(
   bytes: Uint8Array,
   chunks: readonly Chunk[],
-  { pause }: Pausing = {},
+  options: Pausing = {},
 ): Promise<Chunk | undefined> {
-  const breather = slicer(pause);
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  for (const chunk of chunks) {
-    const dataStart = chunk.data.byteOffset - bytes.byteOffset;
-    const crc = await slicedCrc(
-      [bytes.subarray(dataStart - 4, dataStart), chunk.data],
-      breather,
-    );
-    if (crc !== view.getUint32(dataStart + chunk.data.length)) return chunk;
-  }
-  return undefined;
+  const checked = await finishedSliced(checkedChunks(bytes, chunks), options);
+  return checked.find(({ damaged }) => damaged === true);
 }
 
 /** A chunk with its CRC already computed. */
@@ -317,18 +375,22 @@ export function writeChunks(chunks: readonly Chunk[]): Uint8Array<ArrayBuffer> {
   return joinChunks(chunks.map(seal));
 }
 
-/** {@link writeChunks} for a large file, working out each CRC in slices. */
-export async function writeChunksSliced(
-  chunks: readonly Chunk[],
-  { pause }: Pausing = {},
-): Promise<Uint8Array<ArrayBuffer>> {
-  const breather = slicer(pause);
+/** {@link writeChunks} as steps. */
+function* writeSteps(chunks: readonly Chunk[]): Steps<Uint8Array<ArrayBuffer>> {
   const sealed: SealedChunk[] = [];
   for (const chunk of chunks) {
-    const crc = await slicedCrc([typeBytes(chunk.type), chunk.data], breather);
+    const crc = yield* crcSteps([typeBytes(chunk.type), chunk.data]);
     sealed.push({ ...chunk, crc });
   }
   return joinChunks(sealed);
+}
+
+/** {@link writeChunks} for a large file, working out each CRC in slices. */
+export function writeChunksSliced(
+  chunks: readonly Chunk[],
+  options: Pausing = {},
+): Promise<Uint8Array<ArrayBuffer>> {
+  return finishedSliced(writeSteps(chunks), options);
 }
 
 /** The bytes of several parts, one after another. */

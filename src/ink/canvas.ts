@@ -3,6 +3,7 @@
 // rules it applies live in modules that unit tests can run.
 
 import {
+  carriedChunks,
   preservableChunks,
   readInk,
   writeInkFile,
@@ -12,6 +13,7 @@ import {
   encodeRgba,
   imageHeader,
   readChunks,
+  readChunksSliced,
   slicer,
   writeChunks,
   type Pausing,
@@ -34,9 +36,10 @@ import { strokeBounds } from "./outline.ts";
 import {
   baseIsReduced,
   greyInk,
-  inkAlpha,
+  inkAlphaSliced,
   inkBounds,
   inkPixels,
+  inkPixelsSliced,
   reduceBaseAlpha,
   type RgbaPixels,
   type TracedInk,
@@ -51,6 +54,9 @@ const tileWidth = 4096;
 
 /** How many rows of a reduced base layer go onto its canvas at a time. */
 const reducedRows = 64;
+
+/** How many rows of a decoded image are drawn at a time. */
+const bandRows = 128;
 
 /**
  * Lets frames and input run, in a task of their own. A timer would too, but a
@@ -80,13 +86,17 @@ function canvas(width: number, height: number) {
  * `maxSize` pixels a side, so that a crafted file cannot claim a huge image.
  * Colour profiles and gamma are ignored, and so is `eXIf`, whose orientation
  * Chromium would apply: the stored values are used as they are, as the format
- * specifies, whichever way a browser's defaults go.
+ * specifies, whichever way a browser's defaults go. The image comes
+ * premultiplied, as a canvas stores it: all that is read from it is its alpha,
+ * and its colours where it is opaque, which that leaves as they are, and
+ * Chromium 120 otherwise converts all of it again for each part that is drawn.
  */
 export async function decodePng(
   bytes: Uint8Array,
   maxSize = maxPictureSize,
 ): Promise<ImageBitmap> {
-  const chunks = readChunks(bytes);
+  // What a CRC found would change nothing here: a browser's decoder has its say.
+  const chunks = readChunks(bytes, () => false);
   const { width, height } = imageHeader(chunks);
   if (width > maxSize || height > maxSize) {
     throw new RangeError(
@@ -97,7 +107,7 @@ export async function decodePng(
     ? writeChunks(chunks.filter(({ type }) => type !== "eXIf"))
     : bytes.slice();
   return createImageBitmap(new Blob([plain], { type: "image/png" }), {
-    premultiplyAlpha: "none",
+    premultiplyAlpha: "premultiply",
     colorSpaceConversion: "none",
   });
 }
@@ -107,6 +117,22 @@ export function readPixels(image: ImageBitmap | OffscreenCanvas): RgbaPixels {
   const { surface, context } = canvas(image.width, image.height);
   context.drawImage(image, 0, 0);
   return context.getImageData(0, 0, surface.width, surface.height);
+}
+
+/** {@link readPixels} for a large image, a band of rows at a time. */
+async function readPixelsSliced(image: ImageBitmap): Promise<RgbaPixels> {
+  const { width, height } = image;
+  const { context } = canvas(width, Math.min(bandRows, height));
+  const data = new Uint8ClampedArray(width * height * 4);
+  const breather = slicer(nextTask);
+  for (let top = 0; top < height; top += bandRows) {
+    const rows = Math.min(bandRows, height - top);
+    context.clearRect(0, 0, width, rows);
+    context.drawImage(image, 0, top, width, rows, 0, 0, width, rows);
+    data.set(context.getImageData(0, 0, width, rows).data, top * width * 4);
+    await breather();
+  }
+  return { width, height, data };
 }
 
 /**
@@ -142,16 +168,32 @@ export type UnusableInk =
 
 /**
  * A base layer for drawing. Its pixels are tinted to the ink's grey, keeping
- * their alpha, since a base layer's ink is its alpha whatever its colours.
+ * their alpha, since a base layer's ink is its alpha whatever its colours. It
+ * goes a band of rows at a time, as one draw of the largest takes half a second.
  */
 export async function drawableBase(base: BaseLayer): Promise<DrawableBase> {
   const bitmap = await decodePng(base.png, limits.baseSize);
   try {
-    const { surface, context } = canvas(bitmap.width, bitmap.height);
-    context.drawImage(bitmap, 0, 0);
-    context.globalCompositeOperation = "source-in";
+    const { width, height } = bitmap;
+    const { surface, context } = canvas(width, height);
+    const breather = slicer(nextTask);
     context.fillStyle = inkColor;
-    context.fillRect(0, 0, surface.width, surface.height);
+    for (let top = 0; top < height; top += bandRows) {
+      const rows = Math.min(bandRows, height - top);
+      context.save();
+      // `source-in` clears whatever it does not cover, but for a clip.
+      context.beginPath();
+      context.rect(0, top, width, rows);
+      context.clip();
+      context.drawImage(bitmap, 0, top, width, rows, 0, top, width, rows);
+      context.globalCompositeOperation = "source-in";
+      context.fillRect(0, top, width, rows);
+      context.restore();
+      // A canvas puts off what it is asked to draw until something needs it,
+      // which would leave all of this for one call, and no pause in it.
+      context.getImageData(0, top, 1, 1);
+      await breather();
+    }
     return { ...base, image: surface };
   } finally {
     bitmap.close();
@@ -175,15 +217,17 @@ export async function baseFromPicture(
   const bitmap = await decodePng(bytes);
   let pixels: RgbaPixels;
   try {
-    pixels = readPixels(bitmap);
+    pixels = await readPixelsSliced(bitmap);
   } finally {
     bitmap.close();
   }
   const { width, height } = pixels;
+  const options = { pause: nextTask };
+  const alpha = await inkAlphaSliced(pixels, options);
   const png = await encodePixels({
     width,
     height,
-    data: inkPixels(width, height, inkAlpha(pixels)),
+    data: await inkPixelsSliced(width, height, alpha, options),
   });
   // A base layer that a record could not hold could never be saved.
   if (png.length > limits.baseBytes) {
@@ -269,7 +313,7 @@ export async function openPicture(bytes: Uint8Array): Promise<EditableInk> {
     kind: "editable",
     document: { strokes: [], base: layer },
     base: drawable,
-    carried: preservableChunks(readChunks(bytes)),
+    carried: carriedChunks(bytes),
     width: Math.round(layer.width / unitsPerPixel),
   };
 }
@@ -279,13 +323,17 @@ export async function openPicture(bytes: Uint8Array): Promise<EditableInk> {
  * layer are edited exactly. Without any record, the file's pixels become the
  * base layer. A record that cannot be used is reported, not opened, so that
  * saving does not replace it: {@link openPicture} can make a new symbol of the
- * file's pixels. Throws when the file is not a PNG that can be decoded.
+ * file's pixels. Throws when the file is not a PNG that can be decoded. A large
+ * file takes seconds, in slices short enough for the page to go on answering.
+ * While it does, whatever asked must expect the world to move on: the file may
+ * change, and whoever wanted it may be gone.
  */
 export async function openInk(
   bytes: Uint8Array,
 ): Promise<EditableInk | UnusableInk> {
-  const chunks = readChunks(bytes);
-  const source = await readInk(chunks);
+  const options = { pause: nextTask };
+  const chunks = await readChunksSliced(bytes, options);
+  const source = await readInk(chunks, options);
   if (source.kind === "pixels") {
     if (source.reason === "none") return openPicture(bytes);
     return { kind: source.reason, detail: source.detail };

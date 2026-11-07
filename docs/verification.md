@@ -387,17 +387,28 @@ must keep released files readable and looking the same, as
 
 Each of these asserts a budget beside its correctness checks:
 
-| What                                                                                                                | Budget      | Where                                                                                                                       |
-| ------------------------------------------------------------------------------------------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Tagging a thousand symbols in a note, the fastest of five runs                                                      | 50 ms       | [render.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/render.e2e.ts)                           |
-| Searching 5,000 symbols as each letter of a name, reading, or translation is typed, each query's fastest of three   | 100 ms      | [scale.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/scale.e2e.ts)                             |
-| Keeping a draft with a large base layer, after the first                                                            | 50 ms each  | [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)                           |
-| Previewing the ink of a 4K screenshot                                                                               | 300 ms      | [ink.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/ink.e2e.ts)                                 |
-| Saving, without waiting for the window to be idle                                                                   | 700 ms each | [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)                           |
-| **Unreleased:** The longest task and frame of saving nearly the largest file a symbol can be, the shortest of three | 400 ms      | [save-responsiveness.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/save-responsiveness.e2e.ts) |
-| **Unreleased:** The same for a symbol of the most pixels it can have                                                | 200 ms      | [save-responsiveness.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/save-responsiveness.e2e.ts) |
-| Adding a pen stroke to 3,000 dots, and a frame of one past the image's end, the fastest of nine                     | 30 ms each  | [long-drawing.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/long-drawing.e2e.ts)               |
-| Reading long lines of failed links in one pass                                                                      | 3 s each    | [links.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/links.test.ts)                          |
+| What                                                                                                                 | Budget      | Where                                                                                                                       |
+| -------------------------------------------------------------------------------------------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Tagging a thousand symbols in a note, the fastest of five runs                                                       | 50 ms       | [render.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/render.e2e.ts)                           |
+| Searching 5,000 symbols as each letter of a name, reading, or translation is typed, each query's fastest of three    | 100 ms      | [scale.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/scale.e2e.ts)                             |
+| Keeping a draft with a large base layer, after the first                                                             | 50 ms each  | [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)                           |
+| Previewing the ink of a 4K screenshot                                                                                | 300 ms      | [ink.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/ink.e2e.ts)                                 |
+| Saving, without waiting for the window to be idle                                                                    | 700 ms each | [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)                           |
+| **Unreleased:** The longest task and frame of saving nearly the largest file a symbol can be, the shortest of three  | 400 ms      | [save-responsiveness.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/save-responsiveness.e2e.ts) |
+| **Unreleased:** The same for a symbol of the most pixels it can have                                                 | 200 ms      | [save-responsiveness.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/save-responsiveness.e2e.ts) |
+| **Unreleased:** The longest task and frame of opening nearly the largest file a symbol can be, the shortest of three | 250 ms      | [open-responsiveness.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/open-responsiveness.e2e.ts) |
+| **Unreleased:** The same for a symbol of the most pixels it can have                                                 | 300 ms      | [open-responsiveness.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/open-responsiveness.e2e.ts) |
+| Adding a pen stroke to 3,000 dots, and a frame of one past the image's end, the fastest of nine                      | 30 ms each  | [long-drawing.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/long-drawing.e2e.ts)               |
+| Reading long lines of failed links in one pass                                                                       | 3 s each    | [links.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/links.test.ts)                          |
+
+**Unreleased:** a budget alone would not show that a large symbol is read in
+slices, as a canvas can put off the work it is given and leave it for a later
+call. So
+[open-responsiveness.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/open-responsiveness.e2e.ts)
+also counts the other tasks that run all through a read, compares what it finds
+with the plain steps, its pixels with one whole draw, and holds a read up to act
+meanwhile: asking again, another window, a change to the file, closing, and
+drawing while **Copy from** or **Reload** reads.
 
 ### A release is what was tested
 
