@@ -155,6 +155,8 @@ export interface EditableInk {
   readonly carried: readonly CarriedChunk[];
   /** How wide the symbol shows in the line box, in pixels, from 0. */
   readonly width: number;
+  /** Whether this is a file's pixels, as it held no strokes to open. */
+  readonly picture?: boolean;
 }
 
 /**
@@ -315,6 +317,7 @@ export async function openPicture(bytes: Uint8Array): Promise<EditableInk> {
     base: drawable,
     carried: carriedChunks(bytes),
     width: Math.round(layer.width / unitsPerPixel),
+    picture: true,
   };
 }
 
