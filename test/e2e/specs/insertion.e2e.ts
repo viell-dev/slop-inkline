@@ -28,8 +28,13 @@ const zigzag = [
   [0.55, 0.7],
 ] as const;
 
-async function insert(): Promise<void> {
+/**
+ * Opens the note at its marker, which edits it, and then the editor. `settle`
+ * leaves that edit out of the next one's undo step.
+ */
+async function insert(settle = 0): Promise<void> {
   await openAtMarker("Editor.md", "HERE");
+  await browser.pause(settle);
   await browser.executeObsidianCommand("inkline:insert-symbol");
   await waitForEditor();
 }
@@ -746,8 +751,7 @@ describe("Where the cursor lands after a symbol", function () {
   });
 
   it("takes a saved symbol back in one undo, with the note as it was", async function () {
-    await browser.pause(undoGroup);
-    await insert();
+    await insert(undoGroup);
     await draw(zigzag);
     await save();
     await browser.keys(["Control", "z"]);
@@ -1072,8 +1076,8 @@ describe("A rename while the note holds unsaved text", function () {
   }
 
   /** Inserts a symbol with Mod+S, and waits for Obsidian's cache to know it. */
-  async function insertAndIndex(): Promise<void> {
-    await insert();
+  async function insertAndIndex(settle = 0): Promise<void> {
+    await insert(settle);
     await draw(zigzag);
     await browser.keys(["Control", "s"]);
     await waitForStatus("Saved");
@@ -1475,9 +1479,8 @@ describe("A rename while the note holds unsaved text", function () {
   });
 
   it("takes the rename and the text back one undo at a time", async function () {
-    await browser.pause(undoGroup);
     await setLinkUpdates(true);
-    await insertAndIndex();
+    await insertAndIndex(undoGroup);
     await addBoth("Editor.md");
     await saveRenamed(undefined);
     await waitForNote(withText(renamed));
