@@ -48,8 +48,10 @@ be found again. The symbol is at the end of that note; move its embed where it
 belongs.
 
 **"Inkline could not keep a draft of the latest changes …"** The vault's local
-storage refused the draft, as when it is full. Save the symbol to keep the
-changes.
+storage refused the draft, as when it is full: save the symbol to keep the
+changes. If the notice says the changes take the drawing past what a symbol can
+hold, saving refuses too: undo them, and see
+[Known limits](./limits.md#files-and-sizes).
 
 **A symbol has the wrong colour or size.** A theme or a CSS snippet can change
 how images in text look. [Rendering in notes](./rendering.md) describes the

@@ -5,7 +5,6 @@ import { unitsPerPixel, type Stroke } from "../format/record.ts";
 import type { Bounds } from "./geometry.ts";
 import {
   cutBoxes,
-  fillOutline,
   restShape,
   strokeShape,
   traceShape,
@@ -28,13 +27,12 @@ const everywhere = 2 ** 24;
 
 /** A base layer decoded for drawing: where it goes and its pixels. */
 export interface DrawableBase {
-  /** In units, like the record's base layer. */
+  /** Where it goes, in units, like the record's base layer. */
   readonly x: number;
   readonly y: number;
-  readonly scale: number;
-  readonly image: CanvasImageSource;
   readonly width: number;
   readonly height: number;
+  readonly image: OffscreenCanvas;
 }
 
 /** The subset of a 2D canvas context that drawing uses. */
@@ -82,23 +80,14 @@ export function drawInk(
       base.image,
       base.x / unitsPerPixel,
       base.y / unitsPerPixel,
-      base.width * base.scale,
-      base.height * base.scale,
+      base.width / unitsPerPixel,
+      base.height / unitsPerPixel,
     );
   }
   for (const stroke of strokes) {
     context.globalCompositeOperation =
       stroke.tool === "pen" ? "source-over" : "destination-out";
-    // A filled stroke is its inside alone, with its edges through its
-    // points, so that a filled shape on the grid lies within its lines.
-    const fill = fillOutline(stroke);
-    if (fill === undefined) {
-      drawStroke(context, stroke);
-    } else {
-      context.beginPath();
-      traceShape({ kind: "pieces", pieces: [fill] }, context);
-      context.fill();
-    }
+    drawStroke(context, stroke);
   }
   context.restore();
 }

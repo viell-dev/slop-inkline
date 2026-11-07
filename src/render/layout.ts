@@ -2,6 +2,7 @@
 // as plain functions that need neither Obsidian nor a page, so that unit
 // tests can check them. symbols.ts applies them to the page.
 
+import { isInkPath } from "../format/ink-file.ts";
 import { lineBox } from "../ink/geometry.ts";
 
 /**
@@ -28,7 +29,7 @@ export function isSymbolUrl(src: string, vault: string): boolean {
   } catch {
     // A stray % leaves the path as it is.
   }
-  return decoded.toLowerCase().endsWith(".ink.png");
+  return isInkPath(decoded);
 }
 
 /**

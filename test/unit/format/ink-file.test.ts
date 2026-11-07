@@ -1,51 +1,87 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { deflateRawSync, deflateSync, inflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import {
   RecordError,
   isInkPath,
   preservableChunks,
   readInkFile,
+  recordChunkType,
   writeInkFile,
 } from "../../../src/format/ink-file.ts";
 import {
   PngError,
-  deflate,
-  encodeInternationalText,
+  maxChunks,
   readChunks,
   writeChunks,
   type Chunk,
 } from "../../../src/format/png.ts";
 import {
+  formatVersion,
+  imageHeight,
   limits,
-  recordValue,
+  parseRecord,
   serializeRecord,
   type InkRecord,
 } from "../../../src/format/record.ts";
-import { blank, encodePng, pixelChunks } from "../../support/png.ts";
+import { inkGrey } from "../../../src/ink/render.ts";
+import {
+  blank,
+  decodeRgba,
+  encodePng,
+  header,
+  pixelChunks,
+} from "../../support/png.ts";
+import {
+  goldenFiles,
+  goldenImages,
+  goldenText,
+  iTxtData,
+} from "../../fixtures/format/records.ts";
 
 const fixtures = path.resolve(import.meta.dirname, "../../fixtures/format");
 
 const record: InkRecord = {
-  box: { pxPerEm: 128, width: 8, height: 12, baseline: 9 },
-  strokes: [{ tool: "pen", size: 16, pressure: false, points: [16, 32] }],
+  strokes: [{ tool: "pen", size: 16, points: [16, 32] }],
 };
 
-const image = encodePng(blank(8, 12));
+const width = 8;
+const image = encodePng(blank(width, imageHeight));
+const asRead = { kind: "record", record, width };
 
-async function textChunk(keyword: string, text: string): Promise<Chunk> {
-  return encodeInternationalText({ keyword, text });
+/** A record chunk of a version, holding `payload` after it. */
+function recordChunk(
+  version: number,
+  payload: Uint8Array = deflateSync(serializeRecord(record)),
+): Chunk {
+  const data = new Uint8Array(4 + payload.length);
+  new DataView(data.buffer).setUint32(0, version);
+  data.set(payload, 4);
+  return { type: recordChunkType, data };
 }
 
 /** A PNG with the given chunks between its header and its pixels. */
 function withChunks(
   extra: readonly Chunk[],
-  width = 8,
-  height = 12,
+  imageWidth = width,
+  height = imageHeight,
 ): Uint8Array {
-  const [header, ...rest] = pixelChunks(blank(width, height));
+  const [header, ...rest] = pixelChunks(blank(imageWidth, height));
   if (header === undefined) throw new Error("no header");
   return writeChunks([header, ...extra, ...rest]);
+}
+
+/** A chunk of a text record, compressed as a record's is. */
+const textChunk = (text: string): Chunk => recordChunk(1, deflateSync(text));
+
+/** Reads a file that must be damaged, for its reason. */
+async function damagedBecause(file: Uint8Array): Promise<string> {
+  const source = await readInkFile(file);
+  if (source.kind !== "pixels" || source.reason !== "damaged") {
+    throw new Error(`not damaged: ${JSON.stringify(source)}`);
+  }
+  return source.detail;
 }
 
 describe("isInkPath", () => {
@@ -56,16 +92,24 @@ describe("isInkPath", () => {
     expect(isInkPath("a.ink.png.bak")).toBe(false);
     expect(isInkPath("ink.png")).toBe(false);
   });
+
+  it("compares ASCII letters only", () => {
+    // The Kelvin sign lowercases to k, and a dotless i uppercases to I.
+    expect(isInkPath("a.in\u212A.png")).toBe(false);
+    expect(isInkPath("a.\u0131nk.png")).toBe(false);
+    expect(isInkPath("\u212A.ink.png")).toBe(true);
+    expect(isInkPath("a.ink.png\n")).toBe(false);
+  });
+});
+
+describe("the record chunk's type", () => {
+  it("is ancillary, private, and unsafe to copy, by PNG's letter rules", () => {
+    expect(recordChunkType).toMatch(/^[a-z][a-z][A-Z][A-Z]$/);
+  });
 });
 
 describe("version 1 golden files", () => {
-  for (const name of [
-    "v1-strokes",
-    "v1-base",
-    "v1-cuts",
-    "v1-polygons",
-    "v1-fill",
-  ]) {
+  for (const name of Object.keys(goldenFiles)) {
     it(`reads ${name}`, async () => {
       const bytes = await readFile(path.join(fixtures, `${name}.ink.png`));
       const expected = await readFile(
@@ -76,7 +120,182 @@ describe("version 1 golden files", () => {
       if (source.kind !== "record") throw new Error(JSON.stringify(source));
       expect(`${serializeRecord(source.record)}\n`).toBe(expected);
     });
+
+    it(`holds ${name}'s ink in one grey, in every pixel`, async () => {
+      const bytes = await readFile(path.join(fixtures, `${name}.ink.png`));
+      const { data } = decodeRgba(new Uint8Array(bytes));
+      let ink = 0;
+      for (let at = 0; at < data.length; at += 4) {
+        expect([data[at], data[at + 1], data[at + 2]]).toEqual([
+          inkGrey,
+          inkGrey,
+          inkGrey,
+        ]);
+        if ((data[at + 3] ?? 0) > 0) ink++;
+      }
+      expect(ink).toBeGreaterThan(100);
+    });
+
+    it(`finds what ${name} holds laid out as the format says`, async () => {
+      const bytes = await readFile(path.join(fixtures, `${name}.ink.png`));
+      const chunks = readChunks(new Uint8Array(bytes));
+      const [, chunk] = chunks;
+      if (chunk === undefined) throw new Error("no chunks");
+      expect(chunk.type).toBe(recordChunkType);
+      expect([...chunk.data.subarray(0, 4)]).toEqual([0, 0, 0, 1]);
+      const text = inflateSync(chunk.data.subarray(4)).toString("utf8");
+      expect(`${text}\n`).toBe(
+        await readFile(path.join(fixtures, `${name}.json`), "utf8"),
+      );
+      const header = chunks[0]?.data ?? new Uint8Array();
+      // Height 192, bit depth 8, colour type 6, no interlacing.
+      expect([...header.subarray(4, 8)]).toEqual([0, 0, 0, imageHeight]);
+      expect([...header.subarray(8, 13)]).toEqual([8, 6, 0, 0, 0]);
+    });
   }
+});
+
+describe("text about a symbol", () => {
+  const ascii = (text: string): Uint8Array =>
+    Uint8Array.from(text, (char) => char.charCodeAt(0));
+  const joined = (...parts: readonly Uint8Array[]): Uint8Array =>
+    Uint8Array.from(parts.flatMap((part) => [...part]));
+  const textOf = (chunks: readonly Chunk[]): Chunk[] =>
+    chunks.filter((chunk) => /^(?:tEXt|zTXt|iTXt)$/.test(chunk.type));
+
+  /** A PNG with a record, and chunks either side of its image data. */
+  function symbol(
+    beforeData: readonly Chunk[],
+    afterData: readonly Chunk[],
+  ): Uint8Array {
+    const [header, data, end] = pixelChunks(blank(8, imageHeight));
+    if (header === undefined || data === undefined || end === undefined) {
+      throw new Error("no chunks");
+    }
+    return writeChunks([
+      header,
+      recordChunk(1),
+      ...beforeData,
+      data,
+      ...afterData,
+      end,
+    ]);
+  }
+
+  it("holds v1-text's in the chunks a writer must write, before the image data", async () => {
+    const name = "v1-text";
+    const bytes = await readFile(path.join(fixtures, `${name}.ink.png`));
+    const chunks = readChunks(new Uint8Array(bytes));
+    const text = Object.entries(goldenText[name] ?? {}).map(
+      ([keyword, value]) => ({
+        type: "iTXt",
+        data: iTxtData(keyword, value),
+      }),
+    );
+    expect(text).toHaveLength(2);
+    expect(textOf(chunks)).toEqual(text);
+    const firstData = chunks.findIndex((chunk) => chunk.type === "IDAT");
+    expect(chunks.slice(1, firstData).map((chunk) => chunk.type)).toEqual([
+      recordChunkType,
+      "iTXt",
+      "iTXt",
+    ]);
+  });
+
+  it("is not in any other golden file, as a file needs none", async () => {
+    for (const name of Object.keys(goldenFiles)) {
+      if (goldenText[name] !== undefined) continue;
+      const bytes = await readFile(path.join(fixtures, `${name}.ink.png`));
+      expect(textOf(readChunks(new Uint8Array(bytes)))).toEqual([]);
+    }
+  });
+
+  it("goes through saves byte for byte and in its order, whatever it holds", async () => {
+    const reading: Chunk = {
+      type: "iTXt",
+      data: iTxtData("Inkline reading", "TA\nた"),
+    };
+    const beforeData: Chunk[] = [
+      reading,
+      // As other programs turn it into: compressed, plain, and with a language.
+      {
+        type: "zTXt",
+        data: joined(ascii("Inkline translation\0\0"), deflateSync("field")),
+      },
+      {
+        type: "iTXt",
+        data: joined(ascii("Inkline reading\0\x01\0ja\0\0"), deflateSync("t")),
+      },
+      { type: "tEXt", data: ascii("Inkline reading\0DA") },
+      // Keywords it does not know, of this format and of others.
+      { type: "iTXt", data: iTxtData("Inkline origin", "a later keyword") },
+      { type: "tEXt", data: ascii("Comment\0from another tool") },
+    ];
+    const afterData: Chunk[] = [
+      // Text that no program may use, which is still kept.
+      { type: "iTXt", data: iTxtData("Inkline reading", "x".repeat(5000)) },
+      { type: "iTXt", data: iTxtData("Inkline reading", "TA\r\n") },
+      { type: "iTXt", data: iTxtData("Inkline reading", "") },
+      { type: "iTXt", data: ascii("Inkline reading\0\0\0\0\0\xff") },
+      { type: "tEXt", data: ascii("no separator") },
+      { type: "zTXt", data: ascii("Comment\0\0not a zlib stream") },
+      reading,
+    ];
+    const file = symbol(beforeData, afterData);
+    const saved = await writeInkFile(
+      image,
+      record,
+      preservableChunks(readChunks(file)),
+    );
+    const again = await writeInkFile(
+      image,
+      record,
+      preservableChunks(readChunks(saved)),
+    );
+    for (const bytes of [saved, again]) {
+      const chunks = readChunks(bytes);
+      expect(textOf(chunks)).toEqual([...beforeData, ...afterData]);
+      const lastData = chunks.findLastIndex((chunk) => chunk.type === "IDAT");
+      expect(textOf(chunks.slice(0, lastData))).toEqual(beforeData);
+      expect(await readInkFile(bytes)).toEqual(asRead);
+    }
+  });
+});
+
+describe("a base layer drawn smaller than its image", () => {
+  it("takes in every source pixel it covers, in the golden file's pixels", async () => {
+    const name = "v1-base-reduced";
+    const image = goldenImages[name];
+    const bytes = await readFile(path.join(fixtures, `${name}.ink.png`));
+    const source = await readInkFile(new Uint8Array(bytes));
+    if (source.kind !== "record" || source.record.base === undefined) {
+      throw new Error("no base layer");
+    }
+    if (image === undefined) throw new Error("no image");
+    const { x, y, width: drawn } = source.record.base;
+    const { width, data } = decodeRgba(new Uint8Array(bytes));
+    const scale = image.side / (drawn / 16);
+    const [left, top] = [x / 16, y / 16];
+    let worst = 0;
+    // Away from the rectangle's edge, each pixel against the exact mean of the
+    // source pixels it covers, which is what a save stores, to the rounding. A
+    // filter that samples four source pixels puts a line it lands on at full
+    // strength and misses the others, by 200 levels.
+    for (let row = 4; row < 188; row++) {
+      for (let column = 4; column < drawn / 16 - 4; column++) {
+        let sum = 0;
+        for (let v = row * scale; v < (row + 1) * scale; v++) {
+          for (let u = column * scale; u < (column + 1) * scale; u++) {
+            sum += image.alpha(u, v);
+          }
+        }
+        const mean = sum / (scale * scale);
+        const at = ((row + top) * width + column + left) * 4 + 3;
+        worst = Math.max(worst, Math.abs((data[at] ?? 0) - mean));
+      }
+    }
+    expect(worst).toBeLessThanOrEqual(0.5);
+  });
 });
 
 describe("writeInkFile", () => {
@@ -84,30 +303,40 @@ describe("writeInkFile", () => {
     const file = await writeInkFile(image, record);
     expect(readChunks(file).map((chunk) => chunk.type)).toEqual([
       "IHDR",
-      "iTXt",
+      recordChunkType,
       "IDAT",
       "IEND",
     ]);
-    expect(await readInkFile(file)).toEqual({ kind: "record", record });
+    expect(await readInkFile(file)).toEqual(asRead);
+  });
+
+  it("opens the chunk with the version, then the compressed text", async () => {
+    const file = await writeInkFile(image, record);
+    const [, chunk] = readChunks(file);
+    if (chunk === undefined) throw new Error("no chunk");
+    expect([...chunk.data.subarray(0, 4)]).toEqual([0, 0, 0, formatVersion]);
+    expect(inflateSync(chunk.data.subarray(4)).toString("utf8")).toBe(
+      serializeRecord(record),
+    );
   });
 
   it("replaces an earlier record and keeps every other chunk", async () => {
-    const other = await textChunk("Comment", "kept");
+    const other: Chunk = { type: "tEXt", data: new Uint8Array(4).fill(65) };
     const original = withChunks([
-      await textChunk("inkline", serializeRecord({ ...record, strokes: [] })),
+      recordChunk(1, deflateSync(serializeRecord({ strokes: [] }))),
       other,
     ]);
     const file = await writeInkFile(original, record);
     const chunks = readChunks(file);
     expect(chunks.map((chunk) => chunk.type)).toEqual([
       "IHDR",
-      "iTXt",
-      "iTXt",
+      recordChunkType,
+      "tEXt",
       "IDAT",
       "IEND",
     ]);
     expect(chunks[2]).toEqual(other);
-    expect(await readInkFile(file)).toEqual({ kind: "record", record });
+    expect(await readInkFile(file)).toEqual(asRead);
   });
 
   it("keeps the pixels byte for byte", async () => {
@@ -117,16 +346,62 @@ describe("writeInkFile", () => {
     expect(pixels(file)).toEqual(pixels(image));
   });
 
-  it("refuses a record whose size differs from the image", async () => {
+  it("refuses an image that is not a symbol's height", async () => {
+    await expect(writeInkFile(encodePng(blank(8, 12)), record)).rejects.toThrow(
+      "a symbol's image cannot be 8×12",
+    );
+  });
+
+  it("refuses an image wider than the limit", async () => {
     await expect(
-      writeInkFile(image, { ...record, box: { ...record.box, width: 9 } }),
-    ).rejects.toThrow("record is 9×12, image is 8×12");
+      writeInkFile(encodePng(blank(limits.width + 1, imageHeight)), record),
+    ).rejects.toThrow(RecordError);
   });
 
   it("refuses bytes that are not a PNG", async () => {
     await expect(writeInkFile(Uint8Array.of(1, 2, 3), record)).rejects.toThrow(
       PngError,
     );
+  });
+
+  describe("against the reader's chunk limit", () => {
+    const text: Chunk = {
+      type: "tEXt",
+      data: new TextEncoder().encode("Comment\0"),
+    };
+    const texts = (count: number): Chunk[] =>
+      new Array<Chunk>(count).fill(text);
+    const carried = (count: number) =>
+      texts(count).map((chunk) => ({ chunk, afterData: false }));
+    // What the image and the record leave for carried chunks.
+    const room = maxChunks - readChunks(image).length - 1;
+    const tooMany = `more than ${String(maxChunks)} chunks`;
+
+    it("writes as many chunks as it can read back", async () => {
+      const file = await writeInkFile(image, record, carried(room));
+      expect(readChunks(file)).toHaveLength(maxChunks);
+      expect(await readInkFile(file)).toEqual(asRead);
+    });
+
+    it("refuses one more among what it carries", async () => {
+      const refused = writeInkFile(image, record, carried(room + 1));
+      await expect(refused).rejects.toThrow(RecordError);
+      await expect(refused).rejects.toThrow(tooMany);
+    });
+
+    it("refuses a full file that the record would take over", async () => {
+      const full = withChunks(texts(room + 1));
+      expect(readChunks(full)).toHaveLength(maxChunks);
+      await expect(writeInkFile(full, record)).rejects.toThrow(tooMany);
+    });
+
+    it("counts a record it replaces once", async () => {
+      const full = withChunks([recordChunk(1), ...texts(room)]);
+      expect(readChunks(full)).toHaveLength(maxChunks);
+      const file = await writeInkFile(full, record);
+      expect(readChunks(file)).toHaveLength(maxChunks);
+      expect(await readInkFile(file)).toEqual(asRead);
+    });
   });
 });
 
@@ -138,87 +413,67 @@ describe("readInkFile", () => {
     });
   });
 
-  it("ignores text chunks with other keywords", async () => {
+  it("ignores every other chunk, whatever it says", async () => {
+    const ascii = new TextEncoder().encode(
+      `inkline\0${serializeRecord(record)}`,
+    );
     const file = withChunks([
-      await textChunk("Inkline", serializeRecord(record)),
+      { type: "tEXt", data: ascii },
+      { type: "inKl", data: recordChunk(1).data },
     ]);
     expect(await readInkFile(file)).toEqual({ kind: "pixels", reason: "none" });
   });
 
-  it("reports a record that no longer matches the image's size", async () => {
-    const file = withChunks(
-      [await textChunk("inkline", serializeRecord(record))],
-      16,
-      24,
-    );
-    expect(await readInkFile(file)).toEqual({
-      kind: "pixels",
-      reason: "stale",
-      detail: "record is 8×12, image is 16×24",
-    });
+  it("finds the record wherever a chunk may be", async () => {
+    const [header, data, end] = pixelChunks(blank(width, imageHeight));
+    if (header === undefined || data === undefined || end === undefined) {
+      throw new Error("no chunks");
+    }
+    expect(
+      await readInkFile(writeChunks([header, data, recordChunk(1), end])),
+    ).toEqual(asRead);
   });
 
-  it("reports a record from a later version", async () => {
-    const newer = serializeRecord(record).replace('"version":1', '"version":7');
-    const file = withChunks([await textChunk("inkline", newer)]);
-    expect(await readInkFile(file)).toMatchObject({
-      kind: "pixels",
-      reason: "newer-version",
+  it("reads a record whatever way another program stored the image", async () => {
+    const [header, ...rest] = pixelChunks({
+      width,
+      height: imageHeight,
+      data: new Uint8Array(width * imageHeight),
+      grey: true,
     });
-  });
-
-  it("reports a record that breaks the format", async () => {
-    const file = withChunks([
-      await textChunk("inkline", '{"format":"inkline"}'),
+    if (header === undefined) throw new Error("no header");
+    const file = writeChunks([
+      header,
+      ...rest.slice(0, -1),
+      recordChunk(1),
+      ...rest.slice(-1),
     ]);
-    expect(await readInkFile(file)).toMatchObject({
-      kind: "pixels",
-      reason: "invalid",
-      detail: "version is not an integer from 1 to 9007199254740991",
-    });
+    expect(await readInkFile(file)).toEqual(asRead);
   });
 
-  it("reports a stroke cut along a column, as Inkline no longer writes", async () => {
-    const value = recordValue(record);
+  it("gives the image's width with the record", async () => {
+    const file = withChunks([recordChunk(1)], 300);
+    expect(await readInkFile(file)).toEqual({ ...asRead, width: 300 });
+  });
+
+  it("ignores fields this version does not know", async () => {
     const file = withChunks([
-      await textChunk(
-        "inkline",
-        JSON.stringify({
-          ...value,
-          strokes: [
-            {
-              tool: "pen",
-              size: 32,
-              pressure: false,
-              points: [0, 0, 64, 0],
-              cut: { end: "right" },
-            },
-          ],
-        }),
+      textChunk(
+        '{"future":{"a":[1,2]},"strokes":[{"note":"x","tool":"pen","size":16,"points":[16,32]}]}',
       ),
     ]);
-    expect(await readInkFile(file)).toMatchObject({
-      kind: "pixels",
-      reason: "invalid",
-      detail: 'strokes[0].cut.end is not "up" or "down"',
-    });
+    expect(await readInkFile(file)).toEqual(asRead);
   });
 
-  it("reports a record chunk whose compressed text is corrupt", async () => {
-    const data = new Uint8Array([
-      ...new TextEncoder().encode("inkline"),
-      0,
-      1,
-      0,
-      0,
-      0,
-      ...(await deflate(new TextEncoder().encode("{}"))).subarray(0, 4),
+  it("refuses a stroke cut along a column, which version 1 does not have", async () => {
+    const file = withChunks([
+      textChunk(
+        '{"strokes":[{"tool":"pen","size":32,"points":[0,0,64,0],"cut":{"end":"right"}}]}',
+      ),
     ]);
-    const file = withChunks([{ type: "iTXt", data }]);
-    expect(await readInkFile(file)).toMatchObject({
-      kind: "pixels",
-      reason: "invalid",
-    });
+    expect(await damagedBecause(file)).toBe(
+      'strokes[0].cut.end is not "up" or "down"',
+    );
   });
 
   it("throws on bytes that are not a PNG", async () => {
@@ -226,14 +481,251 @@ describe("readInkFile", () => {
       readInkFile(new TextEncoder().encode("hello")),
     ).rejects.toThrow(PngError);
   });
+
+  it("reads a record whatever the image data holds, as reading never decodes it", async () => {
+    const [header, ...rest] = pixelChunks(blank(width, imageHeight));
+    if (header === undefined) throw new Error("no header");
+    const others = rest.filter(({ type }) => type !== "IDAT");
+    const payloads = [
+      // Empty, not a zlib stream, and a stream that stops rows short.
+      new Uint8Array(0),
+      Uint8Array.of(1, 2, 3),
+      deflateSync(new Uint8Array(10)),
+    ];
+    for (const data of payloads) {
+      const file = writeChunks([
+        header,
+        recordChunk(1),
+        { type: "IDAT", data },
+        ...others,
+      ]);
+      expect(await readInkFile(file)).toEqual(asRead);
+    }
+  });
+
+  it("passes over an ancillary chunk with PNG's reserved letter in lower case", async () => {
+    // PNG says such a file does not conform, and also that an unknown chunk is
+    // no error unless it is critical, so a reader goes on.
+    const odd = { type: "abcl", data: new Uint8Array(0) };
+    expect(await readInkFile(withChunks([recordChunk(1), odd]))).toEqual(
+      asRead,
+    );
+  });
+
+  it("throws on a critical chunk PNG does not define, even with a record", async () => {
+    const file = withChunks([
+      recordChunk(1),
+      { type: "ABCD", data: new Uint8Array(1) },
+    ]);
+    await expect(readInkFile(file)).rejects.toThrow(
+      "unknown critical chunk ABCD",
+    );
+  });
 });
+
+describe("readInkFile tells a later version from anything else", () => {
+  const newer = {
+    kind: "pixels",
+    reason: "newer-version",
+    detail: "version 2 is newer than 1",
+  };
+
+  it("by the first four bytes of the chunk alone", async () => {
+    expect(await readInkFile(withChunks([recordChunk(2)]))).toEqual(newer);
+  });
+
+  it("whatever the rest of the chunk holds", async () => {
+    for (const payload of [
+      new Uint8Array(0),
+      new Uint8Array(64).fill(0xff),
+      new TextEncoder().encode("not compressed, and not JSON"),
+    ]) {
+      expect(await readInkFile(withChunks([recordChunk(2, payload)]))).toEqual(
+        newer,
+      );
+    }
+  });
+
+  it("however large the rest would inflate to", async () => {
+    const oversized = deflateSync(new Uint8Array(limits.text + 1024));
+    expect(oversized.length).toBeLessThan(limits.text / 100);
+    expect(await readInkFile(withChunks([recordChunk(2, oversized)]))).toEqual(
+      newer,
+    );
+  });
+
+  it("in a file whose image no version 1 record could have", async () => {
+    expect(await readInkFile(withChunks([recordChunk(2)], 9000, 300))).toEqual(
+      newer,
+    );
+  });
+
+  it("in any record chunk, not only the first", async () => {
+    expect(
+      await readInkFile(withChunks([recordChunk(1), recordChunk(2)])),
+    ).toEqual(newer);
+  });
+
+  it("up to the largest version the field can hold", async () => {
+    expect(await readInkFile(withChunks([recordChunk(0xffffffff)]))).toEqual({
+      ...newer,
+      detail: "version 4294967295 is newer than 1",
+    });
+  });
+});
+
+describe("readInkFile reports a record that cannot be used", () => {
+  it("in a chunk too short for a version", async () => {
+    const file = withChunks([
+      { type: recordChunkType, data: new Uint8Array(3) },
+    ]);
+    expect(await damagedBecause(file)).toBe("no format version");
+  });
+
+  it("of version 0", async () => {
+    expect(await damagedBecause(withChunks([recordChunk(0)]))).toBe(
+      "no format version",
+    );
+  });
+
+  it("with more than one record chunk", async () => {
+    expect(
+      await damagedBecause(withChunks([recordChunk(1), recordChunk(1)])),
+    ).toBe("more than one record chunk");
+  });
+
+  it("whose base layer's PNG has a wrong CRC, in its image data too", () => {
+    const base = writeChunks(pixelChunks(blank(2, 2)));
+    const lastData = base.length - 12 - 1 - 4;
+    base[lastData] = (base[lastData] ?? 0) ^ 1;
+    const text = serializeRecord({
+      strokes: [],
+      base: { x: 0, y: 0, width: 16, height: 16, png: base },
+    });
+    const parsed = parseRecord(text);
+    expect(parsed.ok).toBe(false);
+    if (!parsed.ok) expect(parsed.detail).toContain("bad CRC in IDAT");
+  });
+
+  it("whose chunk has a wrong CRC, without trusting its version", async () => {
+    const file = withChunks([recordChunk(1)]);
+    // Turns version 1 into version 2 without fixing the CRC.
+    file[findChunk(file, recordChunkType) + 8 + 3] = 2;
+    expect(await damagedBecause(file)).toBe("bad CRC in the record chunk");
+  });
+
+  it("in an image of another height", async () => {
+    expect(await damagedBecause(withChunks([recordChunk(1)], 8, 12))).toBe(
+      "the image is 8×12",
+    );
+  });
+
+  it("in an image wider than the limit", async () => {
+    expect(
+      await damagedBecause(withChunks([recordChunk(1)], limits.width + 1)),
+    ).toBe(`the image is ${String(limits.width + 1)}×192`);
+  });
+
+  it("that is not compressed", async () => {
+    const text = new TextEncoder().encode(serializeRecord(record));
+    await damagedBecause(withChunks([recordChunk(1, text)]));
+  });
+
+  it("with anything after the stream's end", async () => {
+    const payload = deflateSync(serializeRecord(record));
+    const longer = new Uint8Array(payload.length + 4);
+    longer.set(payload);
+    expect(
+      await damagedBecause(withChunks([recordChunk(1, longer)])),
+    ).toBeTruthy();
+    const twice = new Uint8Array(payload.length * 2);
+    twice.set(payload);
+    twice.set(payload, payload.length);
+    expect(
+      await damagedBecause(withChunks([recordChunk(1, twice)])),
+    ).toBeTruthy();
+  });
+
+  it("that stops short", async () => {
+    const whole = deflateSync(serializeRecord(record));
+    await damagedBecause(withChunks([recordChunk(1, whole.subarray(0, 4))]));
+  });
+
+  it("that inflates past the limit, without inflating the rest", async () => {
+    const huge = deflateSync(new Uint8Array(limits.text + 1024));
+    expect(await damagedBecause(withChunks([recordChunk(1, huge)]))).toContain(
+      "expands beyond",
+    );
+  });
+
+  it("that is not UTF-8", async () => {
+    await damagedBecause(
+      withChunks([recordChunk(1, deflateSync(Uint8Array.of(0xff, 0xfe)))]),
+    );
+  });
+
+  it("that is not JSON", async () => {
+    expect(await damagedBecause(withChunks([textChunk("{")]))).toBe("not JSON");
+  });
+
+  it("that opens with a byte order mark", async () => {
+    const text = `\uFEFF${serializeRecord(record)}`;
+    expect(await damagedBecause(withChunks([textChunk(text)]))).toBe(
+      "not JSON",
+    );
+  });
+
+  it("that breaks the format", async () => {
+    expect(await damagedBecause(withChunks([textChunk("{}")]))).toBe(
+      "strokes is not a list",
+    );
+  });
+
+  it("of a kind of stroke this version does not know", async () => {
+    const text = serializeRecord(record).replace(
+      '"tool":"pen"',
+      '"tool":"pen","kind":"bezier"',
+    );
+    expect(await damagedBecause(withChunks([textChunk(text)]))).toContain(
+      "kind",
+    );
+  });
+});
+
+/** The offset of the first chunk of a type in a PNG. */
+function findChunk(file: Uint8Array, type: string): number {
+  const view = new DataView(file.buffer, file.byteOffset, file.byteLength);
+  let at = 8;
+  while (at < file.length) {
+    const found = String.fromCharCode(...file.subarray(at + 4, at + 8));
+    if (found === type) return at;
+    at += 12 + view.getUint32(at);
+  }
+  throw new Error(`no ${type} chunk`);
+}
 
 describe("writeInkFile writes only what readers accept", () => {
   it("refuses a record whose text is longer than the limit", async () => {
-    const points = new Array<number>(2 * limits.points).fill(limits.coordinate);
+    // Only the largest of everything together reaches it: all the points, in
+    // as many strokes as a record can have, on the largest base layer.
+    const [header, , end] = pixelChunks(blank(1, 1));
+    if (header === undefined || end === undefined) throw new Error("no PNG");
+    const data = new Uint8Array(limits.baseBytes - 64);
+    const each = (2 * limits.points) / limits.strokes;
     const long: InkRecord = {
-      ...record,
-      strokes: [{ tool: "pen", size: 16, pressure: false, points }],
+      strokes: Array.from({ length: limits.strokes }, () => ({
+        tool: "eraser",
+        size: limits.strokeSize,
+        points: new Array<number>(each).fill(-limits.coordinate),
+        cut: { start: "down", end: "down" },
+      })),
+      base: {
+        x: 0,
+        y: 0,
+        width: 16,
+        height: 16,
+        png: writeChunks([header, { type: "IDAT", data }, end]),
+      },
     };
     expect(serializeRecord(long).length).toBeGreaterThan(limits.text);
     await expect(writeInkFile(image, long)).rejects.toThrow(
@@ -243,47 +735,37 @@ describe("writeInkFile writes only what readers accept", () => {
 
   it("refuses a record that breaks the format", async () => {
     const broken: InkRecord = {
-      ...record,
-      strokes: [{ tool: "pen", size: 0, pressure: false, points: [0, 0] }],
+      strokes: [{ tool: "pen", size: 0, points: [0, 0] }],
     };
     await expect(writeInkFile(image, broken)).rejects.toThrow(
       "record breaks the format: strokes[0].size is not an integer",
     );
   });
 
-  it("refuses to replace a record from a later version", async () => {
-    const newer = serializeRecord(record).replace('"version":1', '"version":2');
-    const file = withChunks([await textChunk("inkline", newer)]);
-    await expect(writeInkFile(file, record)).rejects.toThrow(
-      "the file holds a record from a later version: version 2 is newer than 1",
-    );
+  it("refuses to replace a record from a later version, in any chunk", async () => {
+    await expect(
+      writeInkFile(withChunks([recordChunk(2)]), record),
+    ).rejects.toThrow("version 2 is newer than 1");
+    await expect(
+      writeInkFile(withChunks([recordChunk(1), recordChunk(2)]), record),
+    ).rejects.toThrow("version 2 is newer than 1");
   });
 
-  it("replaces a record that breaks the format", async () => {
-    const file = withChunks([await textChunk("inkline", "{}")]);
-    expect(await readInkFile(await writeInkFile(file, record))).toEqual({
-      kind: "record",
-      record,
-    });
+  it("refuses to replace a record later than the limits of this version", async () => {
+    const oversized = deflateSync(new Uint8Array(limits.text + 1024));
+    await expect(
+      writeInkFile(withChunks([recordChunk(2, oversized)]), record),
+    ).rejects.toThrow("version 2 is newer than 1");
+  });
+
+  it("refuses to replace a record it cannot read", async () => {
+    await expect(
+      writeInkFile(withChunks([textChunk("{}")]), record),
+    ).rejects.toThrow("the file's record is unusable: strokes is not a list");
   });
 });
 
 describe("readInkFile accepts", () => {
-  it("an uncompressed record", async () => {
-    const text = new TextEncoder().encode(serializeRecord(record));
-    const data = new Uint8Array([
-      ...new TextEncoder().encode("inkline"),
-      0,
-      0,
-      0,
-      0,
-      0,
-      ...text,
-    ]);
-    const file = withChunks([{ type: "iTXt", data }]);
-    expect(await readInkFile(file)).toEqual({ kind: "record", record });
-  });
-
   it("only well-formed PNG files", async () => {
     const [header, , end] = pixelChunks(blank(8, 12));
     if (header === undefined || end === undefined) throw new Error("no chunks");
@@ -300,6 +782,7 @@ describe("carrying chunks through a save", () => {
   const physical: Chunk = { type: "pHYs", data: new Uint8Array(9) };
   const gamma: Chunk = { type: "gAMA", data: new Uint8Array(4) };
   const time: Chunk = { type: "tIME", data: new Uint8Array(7) };
+  const exif: Chunk = { type: "eXIf", data: new Uint8Array(4) };
   const unknown: Chunk = { type: "vpAg", data: new Uint8Array(9) };
   const before = (chunk: Chunk) => ({ chunk, afterData: false });
   const after = (chunk: Chunk) => ({ chunk, afterData: true });
@@ -309,30 +792,38 @@ describe("carrying chunks through a save", () => {
     beforeData: readonly Chunk[],
     afterData: readonly Chunk[],
   ): Uint8Array {
-    const [header, data, end] = pixelChunks(blank(8, 12));
+    const [header, data, end] = pixelChunks(blank(8, imageHeight));
     if (header === undefined || data === undefined || end === undefined) {
       throw new Error("no chunks");
     }
     return writeChunks([header, ...beforeData, data, ...afterData, end]);
   }
 
-  it("keeps ancillary chunks that are safe to copy, but not the record, with their side of the image data", async () => {
+  it("keeps ancillary chunks that are safe to copy, but not the record, with their side of the image data", () => {
     const file = framed(
-      [
-        await textChunk("inkline", serializeRecord(record)),
-        comment,
-        physical,
-        gamma,
-        time,
-      ],
+      [recordChunk(1), comment, physical, gamma, time],
       [unknown, comment],
     );
-    expect(preservableChunks(file)).toEqual([
+    expect(preservableChunks(readChunks(file))).toEqual([
       before(comment),
       before(physical),
       after(unknown),
       after(comment),
     ]);
+  });
+
+  it("drops eXIf, which is safe to copy but can turn the image", () => {
+    const file = framed([exif, comment], []);
+    expect(preservableChunks(readChunks(file))).toEqual([before(comment)]);
+  });
+
+  it("drops a chunk with a wrong CRC, and copies what it keeps", () => {
+    const file = framed([comment, physical], []);
+    const at = findChunk(file, "tEXt") + 9;
+    file[at] = (file[at] ?? 0) ^ 1;
+    const carried = preservableChunks(readChunks(file));
+    expect(carried).toEqual([before(physical)]);
+    expect(carried[0]?.chunk.data.buffer).not.toBe(file.buffer);
   });
 
   it("puts chunks back on their side of the image data", async () => {
@@ -343,7 +834,7 @@ describe("carrying chunks through a save", () => {
     ]);
     expect(readChunks(file).map((chunk) => chunk.type)).toEqual([
       "IHDR",
-      "iTXt",
+      recordChunkType,
       "tEXt",
       "pHYs",
       "IDAT",
@@ -353,16 +844,11 @@ describe("carrying chunks through a save", () => {
   });
 
   it("keeps chunks PNG requires before the image data there", async () => {
-    const exif: Chunk = { type: "eXIf", data: new Uint8Array(4) };
-    const file = await writeInkFile(image, record, [
-      after(physical),
-      after(exif),
-    ]);
+    const file = await writeInkFile(image, record, [after(physical)]);
     expect(readChunks(file).map((chunk) => chunk.type)).toEqual([
       "IHDR",
-      "iTXt",
+      recordChunkType,
       "pHYs",
-      "eXIf",
       "IDAT",
       "IEND",
     ]);
@@ -385,10 +871,7 @@ describe("carrying chunks through a save", () => {
   });
 
   it("never carries chunks that are not safe to copy, or a record", async () => {
-    const stale = await textChunk(
-      "inkline",
-      serializeRecord({ ...record, strokes: [] }),
-    );
+    const stale = recordChunk(1, deflateSync(serializeRecord({ strokes: [] })));
     const file = await writeInkFile(image, record, [
       before(gamma),
       before(time),
@@ -396,10 +879,99 @@ describe("carrying chunks through a save", () => {
     ]);
     expect(readChunks(file).map((chunk) => chunk.type)).toEqual([
       "IHDR",
-      "iTXt",
+      recordChunkType,
       "IDAT",
       "IEND",
     ]);
-    expect(await readInkFile(file)).toEqual({ kind: "record", record });
+    expect(await readInkFile(file)).toEqual(asRead);
   });
+});
+
+describe("a base layer's image data", () => {
+  const side = 8;
+  const rowBytes = 1 + 4 * side;
+  const rows = (count: number): Uint8Array => new Uint8Array(count * rowBytes);
+
+  /** A base layer's PNG with `parts` for the data of its `IDAT` chunks. */
+  function basePng(...parts: readonly Uint8Array[]): Uint8Array {
+    return writeChunks([
+      header(side, side),
+      ...parts.map((data) => ({ type: "IDAT", data })),
+      { type: "IEND", data: new Uint8Array(0) },
+    ]);
+  }
+
+  const withBase = (png: Uint8Array): InkRecord => ({
+    strokes: [],
+    base: { x: 0, y: 0, width: 128, height: 128, png },
+  });
+
+  /** A file holding a record whose base layer is `png`. */
+  const fileWith = (png: Uint8Array): Uint8Array =>
+    withChunks([recordChunk(1, deflateSync(serializeRecord(withBase(png))))]);
+
+  const whole = deflateSync(rows(side));
+  const wrongChecksum = Uint8Array.from(whole);
+  wrongChecksum[wrongChecksum.length - 1] = (wrongChecksum.at(-1) ?? 0) ^ 0xff;
+  const withFilter = (type: number, row: number): Uint8Array => {
+    const data = rows(side);
+    data[row * rowBytes] = type;
+    return deflateSync(data);
+  };
+
+  it("is read when it is one stream of exactly the image's rows", async () => {
+    const png = basePng(whole);
+    expect(await readInkFile(fileWith(png))).toEqual({
+      kind: "record",
+      record: withBase(png),
+      width,
+    });
+  });
+
+  it("may span several chunks, and use every filter PNG defines", async () => {
+    const split = basePng(whole.subarray(0, 3), whole.subarray(3));
+    expect((await readInkFile(fileWith(split))).kind).toBe("record");
+    const data = rows(side);
+    for (let row = 0; row < side; row++) data[row * rowBytes] = row % 5;
+    const filtered = basePng(deflateSync(data));
+    expect((await readInkFile(fileWith(filtered))).kind).toBe("record");
+  });
+
+  const broken: [string, Uint8Array, string][] = [
+    ["fewer rows than its image", deflateSync(rows(4)), "stops short"],
+    ["one row too few", deflateSync(rows(7)), "stops short"],
+    ["one byte too few", deflateSync(rows(8).subarray(1)), "stops short"],
+    ["more rows than its image", deflateSync(rows(12)), "one whole stream"],
+    ["one byte too many", deflateSync(new Uint8Array(265)), "one whole stream"],
+    ["a wrong Adler-32", wrongChecksum, "one whole stream"],
+    [
+      "bytes after the stream",
+      Uint8Array.from([...whole, 0, 0, 0]),
+      "one whole stream",
+    ],
+    ["a stream cut off", whole.subarray(0, -6), "one whole stream"],
+    ["no zlib wrapper", deflateRawSync(rows(side)), "one whole stream"],
+    ["data that is not zlib", new Uint8Array(40).fill(7), "one whole stream"],
+    ["a filter type of 5", withFilter(5, 0), "undefined filter type"],
+    ["a filter type of 9 in its last row", withFilter(9, 7), "filter type"],
+  ];
+  for (const [name, data, reason] of broken) {
+    it(`makes a record unusable with ${name}`, async () => {
+      expect(await readInkFile(fileWith(basePng(data)))).toEqual({
+        kind: "pixels",
+        reason: "damaged",
+        detail: expect.stringContaining(reason) as string,
+      });
+    });
+
+    it(`is neither replaced nor written with ${name}`, async () => {
+      const png = basePng(data);
+      await expect(writeInkFile(fileWith(png), record)).rejects.toThrow(
+        "the file's record is unusable",
+      );
+      await expect(writeInkFile(image, withBase(png))).rejects.toThrow(
+        "record breaks the format",
+      );
+    });
+  }
 });

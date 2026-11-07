@@ -2,28 +2,42 @@
 // edited again without loss. docs/file-format.md specifies it; this module
 // writes it and checks it, treating every file as untrusted input.
 
-import { PngError, imageHeader, readChunks, type ImageHeader } from "./png.ts";
+import {
+  PngError,
+  imageHeader,
+  inflate,
+  pngSignature,
+  readChunks,
+  type Chunk,
+} from "./png.ts";
 
-/** The `format` value that marks a record as Inkline's. */
-export const formatName = "inkline";
-
-/** The record version this code writes, and the newest it reads. */
+/** The format version this code writes, and the newest it reads. */
 export const formatVersion = 1;
 
 /** Coordinates and sizes are integers in sixteenths of a pixel. */
 export const unitsPerPixel = 16;
 
-/** The largest pressure value; pressure runs from 0 to this. */
-export const maxPressure = 255;
+/** The height of every symbol's image, in pixels. */
+export const imageHeight = 192;
 
-/** Limits that keep a crafted file from exhausting memory or time. */
+/**
+ * Limits that bound what a crafted file can make a reader hold in memory. They
+ * do not bound how long drawing it takes: see the format's security
+ * considerations.
+ */
 export const limits = {
-  pxPerEm: { min: 16, max: 1024 },
-  /** Image width and height, in pixels. */
-  size: { min: 1, max: 8192 },
+  /** The widest image, in pixels. */
+  width: 4096,
   strokes: 10_000,
-  /** Points across all strokes. */
-  points: 1_000_000,
+  /**
+   * Points across all strokes. This bounds the size of the outlines a record
+   * asks for, as a smooth stroke that doubles back at every point has 28
+   * corners of outline for each one, from a few kilobytes of compressed text.
+   * It does not bound the time to fill them, which can grow with the square of
+   * a stroke's points. It is still minutes of unbroken drawing at the fastest
+   * pointers' rate.
+   */
+  points: 250_000,
   /** Largest absolute coordinate, in units. */
   coordinate: 2 ** 24,
   /** Largest stroke diameter, in units. */
@@ -32,9 +46,10 @@ export const limits = {
   baseBytes: 8 * 1024 * 1024,
   /** Largest base image width and height, in pixels. */
   baseSize: 4096,
-  baseScale: { min: 1 / 64, max: 64 },
   /** Longest record text, in bytes of UTF-8. */
   text: 16 * 1024 * 1024,
+  /** Deepest nesting of objects and arrays in the record text. */
+  depth: 16,
 } as const;
 
 export type Tool = "pen" | "eraser";
@@ -50,57 +65,50 @@ export type Cut = "up" | "down";
 /** The directions a stroke can be cut in, for checking a file. */
 export const cuts: readonly Cut[] = ["up", "down"];
 
-/**
- * How a stroke's points are joined: by default, as drawn, in a smooth stroke
- * with round ends; `polygon`, by straight lines meeting at sharp corners.
- */
-export type StrokeKind = "polygon";
-
 /** Where a stroke's ends are cut flat; an end not named keeps its round cap. */
 export interface StrokeCuts {
   readonly start?: Cut;
   readonly end?: Cut;
 }
 
-export interface Stroke {
+/** What every stroke has. */
+interface StrokeFields {
   readonly tool: Tool;
-  /** The stroke's diameter, in units. */
-  readonly size: number;
-  /** Whether the points carry pressure, which a pen records and a mouse does not. */
-  readonly pressure: boolean;
   /**
-   * The points in drawing order, flattened: `x, y` per point, or
-   * `x, y, pressure` when {@link pressure} is true. Coordinates are in units
-   * from the image's top left corner.
+   * The points in drawing order, flattened: `x, y` per point, in units from
+   * the image's top left corner.
    */
   readonly points: readonly number[];
-  /**
-   * `polygon` for straight lines between the points, with sharp corners and
-   * square ends, closed when the last point is the first; undefined for a
-   * stroke drawn as the pointer went.
-   */
-  readonly kind?: StrokeKind;
-  /**
-   * Whether the stroke fills the area its points enclose, its last point
-   * joined back to its first, in place of being drawn along them, as a
-   * filled shape whose edges run through its points.
-   */
-  readonly fill?: boolean;
+}
+
+/** A stroke drawn as the pointer went, smoothly, with round ends. */
+export interface SmoothStroke extends StrokeFields {
+  /** The stroke's diameter, in units. */
+  readonly size: number;
+  readonly kind?: never;
   /** The ends cut flat at a grid line, if any. */
   readonly cut?: StrokeCuts;
 }
 
-/** The image's geometry: the line box it maps to, in pixels. */
-export interface Box {
-  /** Pixels per em of the text the symbol sits in. */
-  readonly pxPerEm: number;
-  /** The image's width, in pixels, after cropping. */
-  readonly width: number;
-  /** The image's height, in pixels: the full line box. */
-  readonly height: number;
-  /** The text baseline, in pixels from the top. */
-  readonly baseline: number;
+/**
+ * Straight lines between the points, with sharp corners and square ends,
+ * closed when the last point is the first.
+ */
+export interface PolygonStroke extends StrokeFields {
+  /** The lines' width, in units. */
+  readonly size: number;
+  readonly kind: "polygon";
+  readonly cut?: never;
 }
+
+/** The area the points enclose, the last point joined back to the first. */
+export interface FillStroke extends StrokeFields {
+  readonly kind: "fill";
+  readonly size?: never;
+  readonly cut?: never;
+}
+
+export type Stroke = SmoothStroke | PolygonStroke | FillStroke;
 
 /** Imported pixels that strokes draw on and erase from. */
 export interface BaseLayer {
@@ -108,29 +116,22 @@ export interface BaseLayer {
   readonly x: number;
   /** The top edge, in units from the image's top edge. */
   readonly y: number;
-  /** How many image pixels one base pixel covers. */
-  readonly scale: number;
+  /** The width it is drawn at, in units. */
+  readonly width: number;
+  /** The height it is drawn at, in units. */
+  readonly height: number;
   /** A PNG whose alpha channel is the ink. */
   readonly png: Uint8Array;
 }
 
 export interface InkRecord {
-  readonly box: Box;
   readonly strokes: readonly Stroke[];
   readonly base?: BaseLayer;
 }
 
 export type ParseResult =
   | { readonly ok: true; readonly record: InkRecord }
-  | {
-      readonly ok: false;
-      /**
-       * `newer-version` when a later Inkline wrote the record, `invalid`
-       * when it breaks the format.
-       */
-      readonly reason: "newer-version" | "invalid";
-      readonly detail: string;
-    };
+  | { readonly ok: false; readonly detail: string };
 
 class InvalidRecord extends Error {}
 
@@ -160,30 +161,6 @@ function integer(
     : fail(`${name} is not an integer from ${String(min)} to ${String(max)}`);
 }
 
-function parseBox(value: unknown): Box {
-  const box = object(value, "box");
-  const pxPerEm = integer(
-    box.pxPerEm,
-    "box.pxPerEm",
-    limits.pxPerEm.min,
-    limits.pxPerEm.max,
-  );
-  const width = integer(
-    box.width,
-    "box.width",
-    limits.size.min,
-    limits.size.max,
-  );
-  const height = integer(
-    box.height,
-    "box.height",
-    limits.size.min,
-    limits.size.max,
-  );
-  const baseline = integer(box.baseline, "box.baseline", 0, height);
-  return { pxPerEm, width, height, baseline };
-}
-
 function parseStroke(
   value: unknown,
   index: number,
@@ -195,49 +172,30 @@ function parseStroke(
     stroke.tool === "pen" || stroke.tool === "eraser"
       ? stroke.tool
       : fail(`${name}.tool is not "pen" or "eraser"`);
-  const size = integer(stroke.size, `${name}.size`, 1, limits.strokeSize);
-  if (typeof stroke.pressure !== "boolean") {
-    fail(`${name}.pressure is not a boolean`);
-  }
-  const pressure = stroke.pressure;
-  const stride = pressure ? 3 : 2;
   const raw = stroke.points;
-  if (!Array.isArray(raw) || raw.length === 0 || raw.length % stride !== 0) {
-    fail(
-      `${name}.points is not a non-empty list of ${String(stride)}-number points`,
-    );
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length % 2 !== 0) {
+    fail(`${name}.points is not a non-empty list of x, y points`);
   }
-  budget.points -= raw.length / stride;
+  budget.points -= raw.length / 2;
   if (budget.points < 0) fail(`more than ${String(limits.points)} points`);
-  const points = raw.map((point: unknown, at) =>
-    pressure && at % 3 === 2
-      ? integer(point, `${name}.points`, 0, maxPressure)
-      : integer(point, `${name}.points`, -limits.coordinate, limits.coordinate),
+  const points = raw.map((point: unknown) =>
+    integer(point, `${name}.points`, -limits.coordinate, limits.coordinate),
   );
-  const kind = parseKind(stroke.kind, `${name}.kind`);
-  if (kind !== undefined && pressure) {
-    fail(`${name} is a polygon with pressure`);
+  const { kind } = stroke;
+  if (kind === "fill") {
+    if (points.length < 6) fail(`${name} fills fewer than three points`);
+    if (stroke.size !== undefined) fail(`${name}.size is on a fill`);
+    if (stroke.cut !== undefined) fail(`${name}.cut is on a fill`);
+    return { tool, points, kind };
   }
-  if (stroke.fill !== undefined && typeof stroke.fill !== "boolean") {
-    fail(`${name}.fill is not a boolean`);
+  const size = integer(stroke.size, `${name}.size`, 1, limits.strokeSize);
+  if (kind === "polygon") {
+    if (stroke.cut !== undefined) fail(`${name}.cut is on a polygon`);
+    return { tool, size, points, kind };
   }
-  const fill = stroke.fill === true;
+  if (kind !== undefined) fail(`${name}.kind is not "polygon" or "fill"`);
   const cut = parseCuts(stroke.cut, `${name}.cut`);
-  return {
-    tool,
-    size,
-    pressure,
-    points,
-    ...(kind === undefined ? {} : { kind }),
-    ...(fill ? { fill } : {}),
-    ...(cut === undefined ? {} : { cut }),
-  };
-}
-
-/** A stroke's kind, or undefined for a stroke drawn as the pointer went. */
-function parseKind(value: unknown, name: string): StrokeKind | undefined {
-  if (value === undefined) return undefined;
-  return value === "polygon" ? value : fail(`${name} is not "polygon"`);
+  return { tool, size, points, ...(cut === undefined ? {} : { cut }) };
 }
 
 /** A stroke's cuts, or undefined when it has none. */
@@ -254,7 +212,7 @@ function parseCuts(value: unknown, name: string): StrokeCuts | undefined {
   };
   const start = end("start");
   const last = end("end");
-  if (start === undefined && last === undefined) return undefined;
+  if (start === undefined && last === undefined) fail(`${name} is empty`);
   return {
     ...(start === undefined ? {} : { start }),
     ...(last === undefined ? {} : { end: last }),
@@ -264,6 +222,10 @@ function parseCuts(value: unknown, name: string): StrokeCuts | undefined {
 function fromBase64(text: string, name: string): Uint8Array {
   if (!/^[A-Za-z0-9+/]*={0,2}$/.test(text) || text.length % 4 !== 0) {
     fail(`${name} is not base64`);
+  }
+  // The bits padding leaves over are zero, so that bytes have one spelling.
+  if (/(?:[^AQgw]==|[^AEIMQUYcgkosw048=]=)$/.test(text.slice(-3))) {
+    fail(`${name} has padding bits set`);
   }
   const binary = atob(text);
   return Uint8Array.from(binary, (char) => char.charCodeAt(0));
@@ -279,19 +241,37 @@ export function toBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-/** Checks a base layer's PNG against the format's limits. */
+/** The only chunks a base layer's PNG holds. */
+const baseChunks = new Set(["IHDR", "IDAT", "IEND"]);
+
+/** Checks a base layer's PNG against the format's rules and limits. */
 function checkBasePng(png: Uint8Array): void {
   if (png.length > limits.baseBytes) fail("base.png is too large");
-  let header: ImageHeader;
+  let chunks: Chunk[];
   try {
-    header = imageHeader(readChunks(png));
+    chunks = readChunks(png);
   } catch (error) {
     if (!(error instanceof PngError)) throw error;
     fail(`base.png is not a valid PNG: ${error.message}`);
   }
-  if (header.width > limits.baseSize || header.height > limits.baseSize) {
+  const { width, height, bitDepth, colorType, interlaced } =
+    imageHeader(chunks);
+  if (width > limits.baseSize || height > limits.baseSize) {
     fail(`base.png is larger than ${String(limits.baseSize)} pixels a side`);
   }
+  if (bitDepth !== 8 || colorType !== 6 || interlaced) {
+    fail("base.png is not 8-bit RGBA without interlacing");
+  }
+  const other = chunks.find((chunk) => !baseChunks.has(chunk.type));
+  if (other !== undefined) fail(`base.png holds a ${other.type} chunk`);
+  const wrong = chunks.find((chunk) => chunk.damaged === true);
+  if (wrong !== undefined) fail(`base.png has a bad CRC in ${wrong.type}`);
+  // Bytes after `IEND` would otherwise ride along in the record for ever.
+  const end = chunks.reduce(
+    (total, chunk) => total + 12 + chunk.data.length,
+    pngSignature.length,
+  );
+  if (end !== png.length) fail("base.png holds bytes after its end");
 }
 
 /** A base layer's PNG from its base64 text, checked as a record's is. */
@@ -320,6 +300,47 @@ export function basePngProblem(png: Uint8Array): string | undefined {
   }
 }
 
+/** The highest filter type PNG defines for a row. */
+const lastFilterType = 4;
+
+/**
+ * Why the image data of a base layer's PNG breaks the format, or undefined when
+ * it does not, for a PNG {@link basePngProblem} passes. The format settles this
+ * rather than a browser's decoder, as those differ: Chromium 120 draws rows that
+ * are missing as empty, and Chromium 120 and 150 both pass a wrong Adler-32.
+ * It costs what decoding the image does, at most 64 MiB of rows.
+ */
+export async function baseImageProblem(
+  png: Uint8Array,
+): Promise<string | undefined> {
+  const chunks = readChunks(png);
+  const { width, height } = imageHeader(chunks);
+  const parts = chunks.filter(({ type }) => type === "IDAT");
+  const data = new Uint8Array(
+    parts.reduce((total, { data: part }) => total + part.length, 0),
+  );
+  let filled = 0;
+  for (const { data: part } of parts) {
+    data.set(part, filled);
+    filled += part.length;
+  }
+  const rowBytes = 1 + 4 * width;
+  const size = height * rowBytes;
+  let rows: Uint8Array;
+  try {
+    rows = await inflate(data, { limit: size });
+  } catch (error) {
+    return `base.png's image data is not one whole stream: ${String(error)}`;
+  }
+  if (rows.length !== size) return "base.png's image data stops short";
+  for (let row = 0; row < size; row += rowBytes) {
+    if ((rows[row] ?? 0) > lastFilterType) {
+      return "base.png has a row with an undefined filter type";
+    }
+  }
+  return undefined;
+}
+
 /**
  * A base layer's PNG from base64 text, as a record holds it, or undefined
  * when reading a record would refuse it.
@@ -337,16 +358,9 @@ function parseBase(value: unknown): BaseLayer {
   const base = object(value, "base");
   const x = integer(base.x, "base.x", -limits.coordinate, limits.coordinate);
   const y = integer(base.y, "base.y", -limits.coordinate, limits.coordinate);
-  const scale = base.scale;
-  if (
-    typeof scale !== "number" ||
-    !Number.isFinite(scale) ||
-    scale < limits.baseScale.min ||
-    scale > limits.baseScale.max
-  ) {
-    fail("base.scale is out of range");
-  }
-  return { x, y, scale, png: basePng(base.png) };
+  const width = integer(base.width, "base.width", 1, limits.coordinate);
+  const height = integer(base.height, "base.height", 1, limits.coordinate);
+  return { x, y, width, height, png: basePng(base.png) };
 }
 
 /**
@@ -372,16 +386,109 @@ function utf8Length(text: string, limit: number): number {
   return bytes;
 }
 
+/** Whether a code unit is white space, as JSON has it. */
+function isSpace(unit: number): boolean {
+  return unit === 0x20 || unit === 0x09 || unit === 0x0a || unit === 0x0d;
+}
+
+/** Whether a code unit is a decimal digit. */
+function isDigit(unit: number): boolean {
+  return unit >= 0x30 && unit <= 0x39;
+}
+
+/** Where the JSON string that opens at `start` closes. */
+function stringEnd(text: string, start: number): number {
+  let from = start + 1;
+  for (;;) {
+    const end = text.indexOf('"', from);
+    if (end === -1) fail("not JSON");
+    let slashes = 0;
+    while (text[end - 1 - slashes] === "\\") slashes++;
+    if (slashes % 2 === 0) return end;
+    from = end + 1;
+  }
+}
+
+/** Where the JSON number at `start` ends, when it is a plain integer. */
+function integerEnd(text: string, start: number): number {
+  const digits = text[start] === "-" ? start + 1 : start;
+  let end = digits;
+  while (isDigit(text.charCodeAt(end))) end++;
+  const next = text[end];
+  const fraction = next === "." || next === "e" || next === "E";
+  // A leading zero is not JSON, and `-0` is not an integer's plain spelling.
+  const zero = text[digits] === "0" && (end > digits + 1 || digits > start);
+  if (fraction || zero) fail("a number is not an integer in plain digits");
+  // Fifteen digits cannot pass it, so that ordinary numbers cost no parsing.
+  if (
+    end - digits > 15 &&
+    Math.abs(Number(text.slice(start, end))) > Number.MAX_SAFE_INTEGER
+  ) {
+    fail("a number is too large");
+  }
+  return end;
+}
+
+/** A JSON string's text, with its escapes decoded. */
+function decodedString(raw: string): string {
+  try {
+    return JSON.parse(raw) as string;
+  } catch {
+    fail("not JSON");
+  }
+}
+
+/**
+ * Checks what the format asks of the record's text beyond JSON, which parsing
+ * it would not show or would let a crafted file get past: that objects and
+ * arrays nest no deeper than the limit, that no object repeats a name, however
+ * it is spelled, that no string holds half of a surrogate pair, and that every
+ * number is an integer in plain digits that any reader can hold exactly.
+ * Anything else wrong with the text is left for the parser to find.
+ */
+function checkText(text: string): void {
+  /** An object's names so far, or undefined for an array, for each one open. */
+  const open: (Set<string> | undefined)[] = [];
+  for (let at = 0; at < text.length; at++) {
+    const char = text[at];
+    if (char === '"') {
+      const end = stringEnd(text, at);
+      const raw = text.slice(at, end + 1);
+      const value = raw.includes("\\") ? decodedString(raw) : raw.slice(1, -1);
+      // With the `u` flag, a pair is one character, which this does not match.
+      if (/[\uD800-\uDFFF]/u.test(value)) fail("a string is not valid Unicode");
+      const names = open.at(-1);
+      let next = end + 1;
+      while (isSpace(text.charCodeAt(next))) next++;
+      if (names !== undefined && text[next] === ":") {
+        if (names.has(value)) fail(`the name ${raw} is repeated`);
+        names.add(value);
+      }
+      at = end;
+    } else if (char === "{" || char === "[") {
+      open.push(char === "{" ? new Set() : undefined);
+      if (open.length > limits.depth) {
+        fail(`nested more than ${String(limits.depth)} deep`);
+      }
+    } else if (char === "}" || char === "]") {
+      open.pop();
+    } else if (char === "-" || isDigit(text.charCodeAt(at))) {
+      at = integerEnd(text, at) - 1;
+    }
+  }
+}
+
 /**
  * Reads a record from its JSON text. Fields this version does not know are
- * ignored, so that later versions can add optional ones; a higher `version`
- * means a change this version cannot read.
+ * ignored, and are not kept when the record is written again, as
+ * docs/file-format.md says.
  */
 export function parseRecord(text: string): ParseResult {
   try {
     if (utf8Length(text, limits.text) > limits.text) {
       fail("record text is too long");
     }
+    checkText(text);
     let json: unknown;
     try {
       json = JSON.parse(text);
@@ -389,21 +496,6 @@ export function parseRecord(text: string): ParseResult {
       fail("not JSON");
     }
     const record = object(json, "record");
-    if (record.format !== formatName) fail("format is not inkline");
-    const version = integer(
-      record.version,
-      "version",
-      1,
-      Number.MAX_SAFE_INTEGER,
-    );
-    if (version > formatVersion) {
-      return {
-        ok: false,
-        reason: "newer-version",
-        detail: `version ${String(version)} is newer than ${String(formatVersion)}`,
-      };
-    }
-    const box = parseBox(record.box);
     const rawStrokes = record.strokes;
     if (!Array.isArray(rawStrokes)) fail("strokes is not a list");
     if (rawStrokes.length > limits.strokes) {
@@ -417,12 +509,12 @@ export function parseRecord(text: string): ParseResult {
       ok: true,
       record:
         record.base === undefined
-          ? { box, strokes }
-          : { box, strokes, base: parseBase(record.base) },
+          ? { strokes }
+          : { strokes, base: parseBase(record.base) },
     };
   } catch (error) {
     if (error instanceof InvalidRecord) {
-      return { ok: false, reason: "invalid", detail: error.message };
+      return { ok: false, detail: error.message };
     }
     throw error;
   }
@@ -449,39 +541,32 @@ function cutsValue(cut: StrokeCuts | undefined): Record<string, unknown> {
   };
 }
 
+/** A stroke as written, with its fields in a fixed order. */
+function strokeValue(stroke: Stroke): Record<string, unknown> {
+  const { tool, points } = stroke;
+  if (stroke.kind === "fill") return { tool, points, kind: stroke.kind };
+  if (stroke.kind === "polygon") {
+    return { tool, size: stroke.size, points, kind: stroke.kind };
+  }
+  return { tool, size: stroke.size, points, ...cutsValue(stroke.cut) };
+}
+
 /**
  * A record as the JSON value {@link serializeRecord} writes, for embedding in
  * other JSON, which {@link parseRecord} reads back once it is text again.
  */
 export function recordValue(record: InkRecord): Record<string, unknown> {
-  const { box, strokes, base } = record;
+  const { strokes, base } = record;
   return {
-    format: formatName,
-    version: formatVersion,
-    box: {
-      pxPerEm: box.pxPerEm,
-      width: box.width,
-      height: box.height,
-      baseline: box.baseline,
-    },
-    strokes: strokes.map(
-      ({ tool, size, pressure, points, kind, fill, cut }) => ({
-        tool,
-        size,
-        pressure,
-        points,
-        ...(kind === undefined ? {} : { kind }),
-        ...(fill === true ? { fill } : {}),
-        ...cutsValue(cut),
-      }),
-    ),
+    strokes: strokes.map(strokeValue),
     ...(base === undefined
       ? {}
       : {
           base: {
             x: base.x,
             y: base.y,
-            scale: base.scale,
+            width: base.width,
+            height: base.height,
             png: toBase64(base.png),
           },
         }),

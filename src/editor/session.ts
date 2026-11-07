@@ -232,9 +232,8 @@ export function gridOriginOf(
   const { rows } = grid.period === undefined ? finerGrid(grid) : grid;
   const onRows = new Set(rows.map(toUnits));
   const ends: { readonly x: number; readonly y: number }[] = [];
-  for (const { points, pressure } of document.strokes) {
-    const stride = pressure ? 3 : 2;
-    const last = points.length - stride;
+  for (const { points } of document.strokes) {
+    const last = points.length - 2;
     for (const at of last > 0 ? [0, last] : [0]) {
       const x = points[at];
       const y = points[at + 1];
@@ -270,7 +269,7 @@ interface SessionState {
 
 /**
  * A stroke being drawn: its brush and its points so far, in units, `x, y`
- * each, as new strokes carry no pressure.
+ * each.
  */
 interface ActiveStroke {
   readonly tool: Tool;
@@ -633,14 +632,11 @@ export class DrawingSession {
       readonly end?: readonly number[] | undefined;
     } = {},
   ): Stroke {
-    const stroke: Stroke = {
-      tool: active.tool,
-      size: active.size,
-      pressure: false,
-      points: [...active.points],
-      ...(active.polygon ? { kind: "polygon" } : {}),
-      ...(fill && active.points.length >= 6 ? { fill } : {}),
-    };
+    const { tool, size } = active;
+    const points = [...active.points];
+    if (fill && points.length >= 6) return { tool, points, kind: "fill" };
+    if (active.polygon) return { tool, size, points, kind: "polygon" };
+    const stroke = { tool, size, points };
     const reach = Math.max(2 * active.size, toUnits(this.grid.spacing));
     const cut = gridCuts(active.points, reach, ends, {
       ...(paths.start === undefined ? {} : { start: paths.start }),

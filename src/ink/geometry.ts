@@ -1,13 +1,13 @@
 // The line box: the geometry every symbol is drawn in, which maps one image
 // to one line of text. docs/file-format.md explains the values.
 
-import type { Box } from "../format/record.ts";
+import { imageHeight } from "../format/record.ts";
 
-/** The line box version 1 writes, in pixels: 1.5 em tall at 128 px per em. */
+/** The line box every symbol has, in pixels: 1.5 em tall at 128 px per em. */
 export const lineBox = {
   pxPerEm: 128,
-  /** 1.5 em: Obsidian's default line height, so a symbol never widens it. */
-  height: 192,
+  /** 1.5 em: about Obsidian's default line height. */
+  height: imageHeight,
   /** 0.375 em above the bottom, below the default font's descenders. */
   baseline: 144,
 } as const;
@@ -44,15 +44,13 @@ export function crop(bounds: Bounds | undefined): {
 }
 
 /**
- * How to show an image with this box in text: its height in em, and the
- * `vertical-align` in em that puts its baseline on the text's.
+ * How to show a symbol in text: its height in em, and the `vertical-align` in
+ * em that puts its baseline on the text's.
  */
-export function display(box: Box): {
-  heightEm: number;
-  verticalAlignEm: number;
-} {
+export function display(): { heightEm: number; verticalAlignEm: number } {
+  const { pxPerEm, height, baseline } = lineBox;
   return {
-    heightEm: box.height / box.pxPerEm,
-    verticalAlignEm: -(box.height - box.baseline) / box.pxPerEm,
+    heightEm: height / pxPerEm,
+    verticalAlignEm: -(height - baseline) / pxPerEm,
   };
 }

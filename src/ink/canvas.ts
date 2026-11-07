@@ -4,11 +4,16 @@
 
 import {
   preservableChunks,
-  readInkFile,
+  readInk,
   writeInkFile,
   type CarriedChunk,
 } from "../format/ink-file.ts";
-import { encodeRgba, imageHeader, readChunks } from "../format/png.ts";
+import {
+  encodeRgba,
+  imageHeader,
+  readChunks,
+  writeChunks,
+} from "../format/png.ts";
 import {
   limits,
   unitsPerPixel,
@@ -17,25 +22,27 @@ import {
   type Stroke,
 } from "../format/record.ts";
 import {
-  documentFromRecord,
   fitsFormat,
+  moveDocument,
   recordFromDocument,
   type InkDocument,
 } from "./document.ts";
 import { crop, lineBox, type Bounds } from "./geometry.ts";
 import { strokeBounds } from "./outline.ts";
 import {
+  baseIsReduced,
+  greyInk,
   inkAlpha,
   inkBounds,
   inkPixels,
-  repeatPixels,
+  reduceBaseAlpha,
   type RgbaPixels,
   type TracedInk,
 } from "./pixels.ts";
 import { drawInk, inkColor, type DrawableBase } from "./render.ts";
 
 /** The largest picture opened without a record, in pixels a side. */
-export const maxPictureSize = 4096;
+export const maxPictureSize = limits.baseSize;
 
 /** The widest canvas drawn on at once while looking for the ink. */
 const tileWidth = 4096;
@@ -50,20 +57,25 @@ function canvas(width: number, height: number) {
 /**
  * Decodes a PNG file, after checking its structure and that it is at most
  * `maxSize` pixels a side, so that a crafted file cannot claim a huge image.
- * Colour profiles and gamma are ignored: the stored values are used as they
- * are, as the format specifies.
+ * Colour profiles and gamma are ignored, and so is `eXIf`, whose orientation
+ * Chromium would apply: the stored values are used as they are, as the format
+ * specifies, whichever way a browser's defaults go.
  */
 export async function decodePng(
   bytes: Uint8Array,
   maxSize = maxPictureSize,
 ): Promise<ImageBitmap> {
-  const { width, height } = imageHeader(readChunks(bytes));
+  const chunks = readChunks(bytes);
+  const { width, height } = imageHeader(chunks);
   if (width > maxSize || height > maxSize) {
     throw new RangeError(
       `image is ${String(width)}×${String(height)}, larger than ${String(maxSize)} pixels a side`,
     );
   }
-  return createImageBitmap(new Blob([bytes.slice()], { type: "image/png" }), {
+  const plain = chunks.some(({ type }) => type === "eXIf")
+    ? writeChunks(chunks.filter(({ type }) => type !== "eXIf"))
+    : bytes.slice();
+  return createImageBitmap(new Blob([plain], { type: "image/png" }), {
     premultiplyAlpha: "none",
     colorSpaceConversion: "none",
   });
@@ -96,26 +108,20 @@ export interface EditableInk {
   readonly kind: "editable";
   readonly document: InkDocument;
   readonly base?: DrawableBase;
-  /**
-   * `record` when the file's strokes were read; otherwise why its pixels
-   * became the base layer: no record, an invalid one, one that no longer
-   * matches the image, one whose base layer does not decode, or one with
-   * another geometry that cannot be scaled to the line box within the
-   * format's limits.
-   */
-  readonly from:
-    "record" | "none" | "invalid" | "stale" | "undecodable-base" | "unworkable";
   /** The file's chunks to keep when it is saved again: text and the like. */
   readonly carried: readonly CarriedChunk[];
   /** How wide the symbol shows in the line box, in pixels, from 0. */
   readonly width: number;
 }
 
-/** A file that a later version of Inkline wrote, which must not be edited. */
-export interface NewerInk {
-  readonly kind: "newer-version";
-  readonly detail: string;
-}
+/**
+ * A file with a record that this version cannot use, which must not be edited,
+ * since saving would replace it: one that a later version of Inkline wrote, or
+ * one that is damaged, or breaks the format.
+ */
+export type UnusableInk =
+  | { readonly kind: "newer-version"; readonly detail: string }
+  | { readonly kind: "damaged"; readonly detail: string };
 
 /**
  * A base layer for drawing. Its pixels are tinted to the ink's grey, keeping
@@ -129,25 +135,22 @@ export async function drawableBase(base: BaseLayer): Promise<DrawableBase> {
     context.globalCompositeOperation = "source-in";
     context.fillStyle = inkColor;
     context.fillRect(0, 0, surface.width, surface.height);
-    return {
-      ...base,
-      image: surface,
-      width: bitmap.width,
-      height: bitmap.height,
-    };
+    return { ...base, image: surface };
   } finally {
     bitmap.close();
   }
 }
 
+/** A size in pixels as whole units, at least one. */
+function drawnSize(pixels: number): number {
+  return Math.max(1, Math.round(pixels * unitsPerPixel));
+}
+
 /**
  * A base layer from a picture's pixels: their ink, kept at the picture's own
- * resolution and scaled to fill the line box's height. A picture so small
- * that this would scale it more than the format allows has each pixel
- * repeated, which loses nothing, until it fits. Throws a `RangeError` for a
- * picture too large to open, so wide for its height that repeating it would
- * make it too large, or whose ink encodes to more bytes than a base layer can
- * hold.
+ * resolution and scaled to fill the line box's height. Throws a `RangeError`
+ * for a picture too large to open, or whose ink encodes to more bytes than a
+ * base layer can hold.
  */
 export async function baseFromPicture(
   bytes: Uint8Array,
@@ -159,34 +162,25 @@ export async function baseFromPicture(
   } finally {
     bitmap.close();
   }
-  const repeat = Math.ceil(
-    lineBox.height / (pixels.height * limits.baseScale.max),
-  );
-  const width = pixels.width * repeat;
-  const height = pixels.height * repeat;
-  if (width > limits.baseSize || height > limits.baseSize) {
-    throw new RangeError(
-      `a ${String(pixels.width)}×${String(pixels.height)} picture is too large for a base layer at this height`,
-    );
-  }
-  const alpha = repeatPixels(
-    inkAlpha(pixels),
-    pixels.width,
-    pixels.height,
-    repeat,
-  );
+  const { width, height } = pixels;
   const png = await encodePixels({
     width,
     height,
-    data: inkPixels(width, height, alpha),
+    data: inkPixels(width, height, inkAlpha(pixels)),
   });
   // A base layer that a record could not hold could never be saved.
   if (png.length > limits.baseBytes) {
     throw new RangeError(
-      `a ${String(pixels.width)}×${String(pixels.height)} picture's ink takes ${String(png.length)} bytes, more than a base layer can hold (${String(limits.baseBytes)})`,
+      `a ${String(width)}×${String(height)} picture's ink takes ${String(png.length)} bytes, more than a base layer can hold (${String(limits.baseBytes)})`,
     );
   }
-  const layer: BaseLayer = { x: 0, y: 0, scale: lineBox.height / height, png };
+  const layer: BaseLayer = {
+    x: 0,
+    y: 0,
+    width: drawnSize((width * lineBox.height) / height),
+    height: drawnSize(lineBox.height),
+    png,
+  };
   return { layer, drawable: await drawableBase(layer) };
 }
 
@@ -205,10 +199,9 @@ export function previewInk(ink: TracedInk, scale: number): DrawableBase {
   return {
     x: Math.round(ink.x * unitsPerPixel),
     y: Math.round(ink.y * unitsPerPixel),
-    scale,
+    width: drawnSize(ink.width * scale),
+    height: drawnSize(ink.height * scale),
     image: surface,
-    width: ink.width,
-    height: ink.height,
   };
 }
 
@@ -241,59 +234,57 @@ export async function baseFromInk(
   const layer: BaseLayer = {
     x: Math.round(ink.x * unitsPerPixel),
     y: Math.round(ink.y * unitsPerPixel),
-    scale,
+    width: drawnSize(width * scale),
+    height: drawnSize(height * scale),
     png,
   };
   return { layer, drawable: await drawableBase(layer) };
 }
 
-async function fromPixels(
-  bytes: Uint8Array,
-  from: Exclude<EditableInk["from"], "record">,
-  carried: readonly CarriedChunk[],
-): Promise<EditableInk> {
+/**
+ * Opens a file's pixels for editing as a base layer, whatever record it holds,
+ * which saving would then replace: for a file without one, or to start a new
+ * symbol from one whose record cannot be used.
+ */
+export async function openPicture(bytes: Uint8Array): Promise<EditableInk> {
   const { layer, drawable } = await baseFromPicture(bytes);
   return {
     kind: "editable",
     document: { strokes: [], base: layer },
     base: drawable,
-    from,
-    carried,
-    width: Math.round(drawable.width * drawable.scale),
+    carried: preservableChunks(readChunks(bytes)),
+    width: Math.round(layer.width / unitsPerPixel),
   };
 }
 
 /**
- * Opens a symbol file for editing. With a usable record, its strokes and
- * base layer are edited exactly. Without one, the file's pixels become the
- * base layer, and `from` says why. A record from a later version is reported,
- * not opened. Throws when the file is not a PNG that can be decoded.
+ * Opens a symbol file for editing. With a usable record, its strokes and base
+ * layer are edited exactly. Without any record, the file's pixels become the
+ * base layer. A record that cannot be used is reported, not opened, so that
+ * saving does not replace it: {@link openPicture} can make a new symbol of the
+ * file's pixels. Throws when the file is not a PNG that can be decoded.
  */
 export async function openInk(
   bytes: Uint8Array,
-): Promise<EditableInk | NewerInk> {
-  const source = await readInkFile(bytes);
-  const carried = preservableChunks(bytes);
+): Promise<EditableInk | UnusableInk> {
+  const chunks = readChunks(bytes);
+  const source = await readInk(chunks);
   if (source.kind === "pixels") {
-    if (source.reason === "newer-version") {
-      return { kind: "newer-version", detail: source.detail ?? "" };
-    }
-    return fromPixels(bytes, source.reason, carried);
+    if (source.reason === "none") return openPicture(bytes);
+    return { kind: source.reason, detail: source.detail };
   }
-  const document = documentFromRecord(source.record);
-  if (document === undefined) return fromPixels(bytes, "unworkable", carried);
-  const { box } = source.record;
-  const width = Math.round((box.width * lineBox.pxPerEm) / box.pxPerEm);
+  const { record: document, width } = source;
+  const carried = preservableChunks(chunks);
   if (document.base === undefined) {
-    return { kind: "editable", document, from: "record", carried, width };
+    return { kind: "editable", document, carried, width };
   }
   let base: DrawableBase;
   try {
     base = await drawableBase(document.base);
-  } catch {
-    return fromPixels(bytes, "undecodable-base", carried);
+  } catch (error) {
+    return { kind: "damaged", detail: String(error) };
   }
-  return { kind: "editable", document, base, from: "record", carried, width };
+  return { kind: "editable", document, base, carried, width };
 }
 
 /** The decoded base layer placed where a record's base layer is. */
@@ -303,7 +294,46 @@ function placedBase(
 ): DrawableBase | undefined {
   return drawable === undefined || layer === undefined
     ? undefined
-    : { ...drawable, x: layer.x, y: layer.y, scale: layer.scale };
+    : {
+        ...drawable,
+        x: layer.x,
+        y: layer.y,
+        width: layer.width,
+        height: layer.height,
+      };
+}
+
+/**
+ * A base layer for drawing into a saved image: where it is drawn smaller than
+ * its image, that image brought down to the pixels it falls on, so that each
+ * takes in every source pixel it covers, as the format requires. A browser's
+ * smoothing does not: Chromium 120's "high" misses most of a thin line reduced
+ * five times, and bilinear halving leaves out pixels at an odd size. The
+ * layer's place grows to whole pixels, where a draw copies them as they are,
+ * and it stays right through a move by whole pixels, as saving's crop is.
+ */
+export function reducedBase(base: DrawableBase): DrawableBase {
+  const { image, x, y, width, height } = base;
+  const across = { size: image.width, start: x, length: width };
+  const down = { size: image.height, start: y, length: height };
+  if (!baseIsReduced(across, down)) return base;
+  const reduced = reduceBaseAlpha(readPixels(image), across, down);
+  const { surface, context } = canvas(reduced.width, reduced.height);
+  context.putImageData(
+    new ImageData(
+      inkPixels(reduced.width, reduced.height, reduced.alpha),
+      reduced.width,
+    ),
+    0,
+    0,
+  );
+  return {
+    x: reduced.across.start,
+    y: reduced.down.start,
+    width: reduced.across.length,
+    height: reduced.down.length,
+    image: surface,
+  };
 }
 
 /** Whether a vertical span in pixels reaches into the line box. */
@@ -334,9 +364,14 @@ function inkAreas(
   if (base !== undefined) {
     const left = base.x / unitsPerPixel;
     const top = base.y / unitsPerPixel;
-    const bottom = top + base.height * base.scale;
+    const bottom = top + base.height / unitsPerPixel;
     if (inLineBox(top, bottom)) {
-      areas.push({ left, top, right: left + base.width * base.scale, bottom });
+      areas.push({
+        left,
+        top,
+        right: left + base.width / unitsPerPixel,
+        bottom,
+      });
     }
   }
   return areas;
@@ -451,13 +486,40 @@ export function measureAdded(
 /** How far past a trial crop to look for ink, in pixels. */
 const cropMargin = 64;
 
+/** The widest canvas a save draws on, in pixels. */
+const widestDraw = 16384;
+
+/**
+ * Where a save draws a record, in pixels from the image's left edge: all of
+ * `width` and the margin, and every stroke that reaches the line box. A browser
+ * flattens a curve differently where a canvas's side cuts it, so a side that
+ * moved with the crop would change the pixels of strokes an edit left alone,
+ * such as a line whose far end was erased, which runs past the image's edge.
+ * A drawing too wide for this keeps to the crop. The record alone decides, so
+ * that saving it again draws it just the same.
+ */
+function drawnSpan(
+  strokes: readonly Stroke[],
+  width: number,
+): { from: number; to: number } {
+  const cropped = { from: 0, to: width + cropMargin };
+  let { from, to } = cropped;
+  for (const stroke of strokes) {
+    const bounds = strokeBounds(stroke);
+    if (bounds === undefined || !inLineBox(bounds.top, bounds.bottom)) continue;
+    from = Math.min(from, Math.floor(bounds.left) - 2);
+    to = Math.max(to, Math.ceil(bounds.right) + 2);
+  }
+  return to - from > widestDraw ? cropped : { from, to };
+}
+
 /**
  * Saves a document: crops it to its ink with a side bearing on each side,
- * draws the image from the cropped record itself, so that its pixels are
- * exactly what the record draws, and writes both. `carried` chunks, from
- * {@link openInk}, are kept. Returns the file's bytes, its record, and
- * `left`, the document x the image starts at, by which the record moved
- * everything.
+ * draws the image from the cropped record itself, so that its pixels are what
+ * the record draws, and writes both. `carried` chunks, from
+ * {@link openInk}, are kept. Returns the file's bytes, its record, `left`,
+ * the document x the image starts at, by which the record moved everything,
+ * and the image's `width`.
  *
  * The crop is confirmed in the record's own coordinates, so that saving a
  * file again unchanged gives the same record and the same pixels. The
@@ -472,42 +534,60 @@ export async function saveInk(
   document: InkDocument,
   base: DrawableBase | undefined,
   carried: readonly CarriedChunk[] = [],
-): Promise<{ bytes: Uint8Array; record: InkRecord; left: number }> {
+): Promise<{
+  bytes: Uint8Array;
+  record: InkRecord;
+  left: number;
+  width: number;
+}> {
   if (document.base !== undefined && base === undefined) {
     throw new Error("the document's base layer has not been decoded");
   }
   // The document says where its base layer is; the decoded layer supplies
   // only its pixels.
-  let { left, width } = crop(
-    findInk(document, placedBase(base, document.base)),
-  );
+  const placedAtFirst = placedBase(base, document.base);
+  const reduced =
+    placedAtFirst === undefined ? undefined : reducedBase(placedAtFirst);
+  let { left, width } = crop(findInk(document, reduced));
   for (let attempt = 0; ; attempt++) {
-    if (width > limits.size.max) {
+    if (width > limits.width) {
       throw new RangeError(
-        `the ink is ${String(width)} pixels wide with its side bearings, wider than ${String(limits.size.max)}`,
+        `the ink is ${String(width)} pixels wide with its side bearings, wider than ${String(limits.width)}`,
       );
     }
-    const record = recordFromDocument(document, left, width);
+    const record = recordFromDocument(document, left);
     if (!fitsFormat(record)) {
       throw new RangeError(
         "a stroke lies so far from the ink that cropping would move it past the format's coordinate limit",
       );
     }
-    const placed = placedBase(base, record.base);
-    const { surface, context } = canvas(width + cropMargin, lineBox.height);
-    drawInk(context, record.strokes, placed, 0);
+    const { from, to } = drawnSpan(record.strokes, width);
+    const { context } = canvas(to - from, lineBox.height);
+    // The strokes move, rather than the canvas's origin, so that a shape past
+    // the image's edge has the same 32-bit coordinates wherever the crop lies.
+    drawInk(
+      context,
+      moveDocument(record, -from).strokes,
+      reduced === undefined
+        ? undefined
+        : { ...reduced, x: reduced.x - (left + from) * unitsPerPixel },
+    );
     const next = crop(
-      inkBounds(context.getImageData(0, 0, surface.width, surface.height)),
+      inkBounds(
+        context.getImageData(-from, 0, width + cropMargin, lineBox.height),
+      ),
     );
     // The ink is where the trial crop expects it, or the search has not
     // settled, which keeps the last crop: its pixels still match its record.
     if ((next.left === 0 && next.width === width) || attempt === 3) {
+      const image = context.getImageData(-from, 0, width, lineBox.height);
+      greyInk(image.data);
       const bytes = await writeInkFile(
-        await encodePixels(context.getImageData(0, 0, width, lineBox.height)),
+        await encodePixels(image),
         record,
         carried,
       );
-      return { bytes, record, left };
+      return { bytes, record, left, width };
     }
     left += next.left;
     width = next.width;

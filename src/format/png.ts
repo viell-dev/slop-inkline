@@ -9,6 +9,11 @@ export interface Chunk {
   /** The four-letter chunk type, such as `IHDR`. */
   readonly type: string;
   readonly data: Uint8Array;
+  /**
+   * Set on a chunk whose CRC is wrong: what it holds cannot be trusted. Only
+   * `IHDR`, which a reader depends on, is refused for that.
+   */
+  readonly damaged?: true;
 }
 
 export class PngError extends Error {
@@ -44,6 +49,20 @@ function typeBytes(type: string): Uint8Array {
   }
   return Uint8Array.from(type, (char) => char.charCodeAt(0));
 }
+
+/** The critical chunks PNG defines; any other is refused. */
+const criticalChunks = new Set(["IHDR", "PLTE", "IDAT", "IEND"]);
+
+/** Whether PNG marks a chunk type ancillary: its first letter is lowercase. */
+function isAncillary(type: string): boolean {
+  return /^[a-z]/.test(type);
+}
+
+/**
+ * The most chunks read from a file, far more than any encoder writes, so that
+ * a crafted file of empty chunks costs little memory.
+ */
+export const maxChunks = 65_536;
 
 /** Whether the bytes start with the PNG signature. */
 export function isPng(bytes: Uint8Array): boolean {
@@ -102,7 +121,7 @@ function parseHeader(data: Uint8Array): ImageHeader {
 function checkStructure(chunks: readonly Chunk[]): void {
   const [first] = chunks;
   if (first?.type !== "IHDR") throw new PngError("first chunk is not IHDR");
-  const { bitDepth, colorType } = parseHeader(first.data);
+  const { colorType } = parseHeader(first.data);
   const count = (type: string): number =>
     chunks.filter((chunk) => chunk.type === type).length;
   if (count("IHDR") !== 1) throw new PngError("more than one IHDR chunk");
@@ -119,14 +138,6 @@ function checkStructure(chunks: readonly Chunk[]): void {
     throw new PngError("PLTE chunk in a greyscale image");
   }
   if (palette > firstData) throw new PngError("PLTE chunk after IDAT");
-  const paletteLength = chunks[palette]?.data.length;
-  if (paletteLength !== undefined) {
-    const entries = paletteLength / 3;
-    const most = colorType === 3 ? 2 ** bitDepth : 256;
-    if (!Number.isInteger(entries) || entries < 1 || entries > most) {
-      throw new PngError(`PLTE does not hold 1 to ${String(most)} RGB entries`);
-    }
-  }
   const last = chunks.at(-1);
   if (last?.type !== "IEND" || last.data.length !== 0) {
     throw new PngError("IEND is not empty");
@@ -135,9 +146,14 @@ function checkStructure(chunks: readonly Chunk[]): void {
 
 /**
  * Splits a PNG file into its chunks, checking the signature, each chunk's
- * length, type, and CRC, and the critical chunks' structure: one valid `IHDR`
- * first, a `PLTE` where needed, consecutive `IDAT`, and an empty `IEND` last.
- * Bytes after `IEND` are ignored, as PNG decoders do. Pixels are not decoded.
+ * length and type, and the critical chunks' structure: one valid `IHDR` first,
+ * with a correct CRC, a `PLTE` where needed, consecutive `IDAT`, an empty
+ * `IEND` last, and no critical chunk PNG does not define, whose effect on the
+ * image cannot be known. Any other chunk with a wrong CRC comes back marked
+ * `damaged`, so that damage to the image data leaves the rest of a file
+ * readable; decoding the image is what finds out what that damage did. Bytes
+ * after `IEND` are ignored, as PNG decoders do. Pixels are not decoded, and
+ * the chunks' data are views of `bytes`, not copies.
  */
 export function readChunks(bytes: Uint8Array): Chunk[] {
   if (!isPng(bytes)) throw new PngError("not a PNG file");
@@ -157,15 +173,22 @@ export function readChunks(bytes: Uint8Array): Chunk[] {
     if (!/^[A-Za-z]{4}$/.test(type)) {
       throw new PngError("invalid chunk type");
     }
-    const data = bytes.slice(dataStart, dataEnd);
+    if (!isAncillary(type) && !criticalChunks.has(type)) {
+      throw new PngError(`unknown critical chunk ${type}`);
+    }
+    const data = bytes.subarray(dataStart, dataEnd);
     const crc = crc32(bytes.subarray(typeStart, dataStart), data);
-    if (crc !== view.getUint32(dataEnd)) {
-      throw new PngError(`bad CRC in ${type} chunk`);
+    const intact = crc === view.getUint32(dataEnd);
+    if (!intact && type === "IHDR") {
+      throw new PngError("bad CRC in IHDR chunk");
     }
     if (chunks.length === 0 && type !== "IHDR") {
       throw new PngError("first chunk is not IHDR");
     }
-    chunks.push({ type, data });
+    if (chunks.length === maxChunks) {
+      throw new PngError(`more than ${String(maxChunks)} chunks`);
+    }
+    chunks.push(intact ? { type, data } : { type, data, damaged: true });
     offset = dataEnd + 4;
     if (type === "IEND") {
       checkStructure(chunks);
@@ -183,7 +206,7 @@ function seal(chunk: Chunk): SealedChunk {
 }
 
 /** Joins sealed chunks into a PNG file. */
-function joinChunks(chunks: readonly SealedChunk[]): Uint8Array {
+function joinChunks(chunks: readonly SealedChunk[]): Uint8Array<ArrayBuffer> {
   const size = chunks.reduce(
     (total, chunk) => total + 12 + chunk.data.length,
     pngSignature.length,
@@ -203,7 +226,7 @@ function joinChunks(chunks: readonly SealedChunk[]): Uint8Array {
 }
 
 /** Joins chunks into a PNG file, computing each length and CRC. */
-export function writeChunks(chunks: readonly Chunk[]): Uint8Array {
+export function writeChunks(chunks: readonly Chunk[]): Uint8Array<ArrayBuffer> {
   return joinChunks(chunks.map(seal));
 }
 
@@ -513,92 +536,4 @@ export async function encodeRgba(
   }
   chunks.push(seal({ type: "IEND", data: new Uint8Array(0) }));
   return joinChunks(chunks);
-}
-
-export interface InternationalText {
-  /** 1 to 79 Latin-1 characters, without leading, trailing, or double spaces. */
-  readonly keyword: string;
-  readonly text: string;
-}
-
-function validKeyword(keyword: string): boolean {
-  return (
-    keyword.length >= 1 &&
-    keyword.length <= 79 &&
-    /^[\x20-\x7e\xa1-\xff]+$/.test(keyword) &&
-    !/^ | $| {2}/.test(keyword)
-  );
-}
-
-/**
- * Encodes a compressed `iTXt` chunk: keyword, compression flag 1 with
- * method 0 (zlib), empty language tag and translated keyword, and the text
- * as compressed UTF-8.
- */
-export async function encodeInternationalText(
-  value: InternationalText,
-): Promise<Chunk> {
-  if (!validKeyword(value.keyword)) {
-    throw new PngError(`invalid iTXt keyword ${JSON.stringify(value.keyword)}`);
-  }
-  const keyword = Uint8Array.from(value.keyword, (char) => char.charCodeAt(0));
-  const text = await deflate(new TextEncoder().encode(value.text));
-  const data = new Uint8Array(keyword.length + 5 + text.length);
-  data.set(keyword);
-  // Null separator, compression flag, method, then the empty language tag
-  // and translated keyword, each ended by a null byte.
-  data.set([0, 1, 0, 0, 0], keyword.length);
-  data.set(text, keyword.length + 5);
-  return { type: "iTXt", data };
-}
-
-/** An `iTXt` chunk's keyword, or undefined for any other chunk. */
-export function textKeyword(chunk: Chunk): string | undefined {
-  if (chunk.type !== "iTXt") return undefined;
-  // Keywords are at most 79 bytes, so the separator must come by byte 80.
-  const end = chunk.data.subarray(0, 80).indexOf(0);
-  return end < 1
-    ? undefined
-    : String.fromCharCode(...chunk.data.subarray(0, end));
-}
-
-/**
- * Decodes an `iTXt` chunk, compressed or not. Throws when the keyword, the
- * separators, the compression flag, or (for compressed text) the method is
- * wrong, when the text is longer than `limit` bytes (16 MiB by default), or
- * when it is not valid UTF-8. The language tag and translated keyword are
- * skipped without being checked.
- */
-export async function decodeInternationalText(
-  chunk: Chunk,
-  limit = maxInflatedBytes,
-): Promise<InternationalText> {
-  if (chunk.type !== "iTXt") throw new PngError("not an iTXt chunk");
-  const { data } = chunk;
-  const keywordEnd = data.subarray(0, 80).indexOf(0);
-  if (keywordEnd < 1 || keywordEnd + 2 >= data.length) {
-    throw new PngError("malformed iTXt chunk");
-  }
-  const keyword = String.fromCharCode(...data.subarray(0, keywordEnd));
-  const compressed = data[keywordEnd + 1];
-  const method = data[keywordEnd + 2];
-  const languageEnd = data.indexOf(0, keywordEnd + 3);
-  const translatedEnd =
-    languageEnd === -1 ? -1 : data.indexOf(0, languageEnd + 1);
-  if (
-    !validKeyword(keyword) ||
-    translatedEnd === -1 ||
-    (compressed !== 0 && compressed !== 1) ||
-    // Decoders ignore the method of uncompressed text.
-    (compressed === 1 && method !== 0)
-  ) {
-    throw new PngError("malformed iTXt chunk");
-  }
-  const raw = data.subarray(translatedEnd + 1);
-  if (compressed === 0 && raw.length > limit) {
-    throw new PngError(`text is longer than ${String(limit)} bytes`);
-  }
-  const bytes = compressed === 1 ? await inflate(raw, { limit }) : raw;
-  const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  return { keyword, text };
 }

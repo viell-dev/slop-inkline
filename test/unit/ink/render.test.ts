@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Stroke } from "../../../src/format/record.ts";
+import type { SmoothStroke, Stroke } from "../../../src/format/record.ts";
 import {
   drawInk,
   inkColor,
@@ -31,6 +31,9 @@ class RecordingContext implements DrawingContext {
   }
   quadraticCurveTo(): void {
     // Many per outline; not worth recording.
+  }
+  arc(): void {
+    // A dot's outline, as the curves are a stroke's: traceShape's own test.
   }
   closePath(): void {
     this.calls.push("closePath");
@@ -65,13 +68,12 @@ class RecordingContext implements DrawingContext {
   }
 }
 
-const pen: Stroke = {
+const pen: SmoothStroke = {
   tool: "pen",
   size: 32,
-  pressure: false,
   points: [16, 16],
 };
-const eraser: Stroke = { ...pen, tool: "eraser" };
+const eraser: SmoothStroke = { ...pen, tool: "eraser" };
 
 describe("drawInk", () => {
   it("draws the base layer first, then each stroke in order", () => {
@@ -79,11 +81,10 @@ describe("drawInk", () => {
     const base: DrawableBase = {
       x: 32,
       y: -16,
-      scale: 2,
-      width: 10,
-      height: 5,
+      width: 320,
+      height: 160,
       // The recording context never looks at the image.
-      image: {} as CanvasImageSource,
+      image: {} as OffscreenCanvas,
     };
     drawInk(context, [pen, eraser, pen], base, 7);
     expect(context.calls).toEqual([
@@ -109,7 +110,7 @@ describe("drawInk", () => {
   it("draws a cut stroke with its cut boxes clipped away, and only that one", () => {
     const context = new RecordingContext();
     // Down a 2 px brush from (1, 1) to (1, 3) px, cut at both ends.
-    const cut: Stroke = {
+    const cut: SmoothStroke = {
       ...pen,
       points: [16, 16, 16, 48],
       cut: { start: "up", end: "down" },
@@ -146,7 +147,7 @@ describe("drawInk", () => {
   it("draws the rest of a long cut stroke in its cut boxes again", () => {
     const context = new RecordingContext();
     // Down a 2 px brush from (1, 1) to (1, 9) px, cut at its end only.
-    const long: Stroke = {
+    const long: SmoothStroke = {
       ...pen,
       points: [16, 16, 16, 144],
       cut: { end: "down" },
@@ -185,7 +186,8 @@ describe("drawInk", () => {
     const context = new RecordingContext();
     // Right 1 px and down 1 px with a 2 px brush: two sides and a corner.
     const polygon: Stroke = {
-      ...pen,
+      tool: "pen",
+      size: 32,
       points: [16, 16, 32, 16, 32, 32],
       kind: "polygon",
     };
@@ -218,13 +220,11 @@ describe("drawInk", () => {
       }
     }
     const context = new PointsContext();
-    // A triangle with a 2 px brush, closed and filled, erasing.
+    // A triangle, closed and filled, erasing.
     const triangle: Stroke = {
-      ...pen,
       tool: "eraser",
       points: [16, 16, 160, 16, 88, 144, 16, 16],
-      kind: "polygon",
-      fill: true,
+      kind: "fill",
     };
     drawInk(context, [triangle], undefined);
     // One path of the corners, from the last back to the first, and no

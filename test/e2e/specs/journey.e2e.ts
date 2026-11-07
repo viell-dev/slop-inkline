@@ -208,7 +208,8 @@ describe("A deciphering session", function () {
         );
         if (opened.kind !== "editable" || opened.base === undefined)
           throw new Error(`no editable base for ${name}`);
-        dimensions.push([opened.base.width, opened.base.height]);
+        // As drawn, in pixels.
+        dimensions.push([opened.base.width / 16, opened.base.height / 16]);
       }
       return dimensions;
     });

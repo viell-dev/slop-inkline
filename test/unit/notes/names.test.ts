@@ -15,6 +15,7 @@ describe("symbolStem", () => {
     expect(symbolStem("𐎠.ink.png")).toBe("𐎠");
     expect(symbolStem("Water.INK.PNG")).toBe("Water");
     expect(symbolStem("photo.png")).toBeUndefined();
+    expect(symbolStem("a.inK.png")).toBeUndefined();
   });
 });
 

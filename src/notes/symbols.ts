@@ -14,7 +14,7 @@ import {
   type TAbstractFile,
 } from "obsidian";
 import { inkExtension, isInkPath } from "../format/ink-file.ts";
-import { openInk } from "../ink/canvas.ts";
+import { openInk, openPicture } from "../ink/canvas.ts";
 import { emptyDocument } from "../ink/document.ts";
 import {
   fingerprintOf,
@@ -990,7 +990,10 @@ async function copySymbol(
   if (file === undefined || ended() || !host.alive()) return undefined;
   let opened;
   try {
-    opened = await openInk(new Uint8Array(await app.vault.readBinary(file)));
+    const bytes = new Uint8Array(await app.vault.readBinary(file));
+    const ink = await openInk(bytes);
+    // A copy starts from what the file shows, and leaves the file as it is.
+    opened = ink.kind === "damaged" ? await openPicture(bytes) : ink;
   } catch (error) {
     new Notice(`Could not open ${file.name}: ${message(error)}`);
     return undefined;
@@ -1026,6 +1029,12 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
   if (opened.kind === "newer-version") {
     new Notice(
       `${file.name} was saved by a newer version of Inkline. Update Inkline to edit it.`,
+    );
+    return;
+  }
+  if (opened.kind === "damaged") {
+    new Notice(
+      `The strokes in ${file.name} cannot be read, so it was not opened, which keeps them as they are. To go on from what it shows, use Copy from in a new symbol.`,
     );
     return;
   }

@@ -1,13 +1,13 @@
 // Names for new symbols and the embeds that show them.
 
-import { inkExtension } from "../format/ink-file.ts";
+import { inkExtension, isInkPath } from "../format/ink-file.ts";
 
 /** Digits in a number name, so that names sort in order: 001, 002, … */
 const numberWidth = 3;
 
 /** A symbol file's name without its folder or the `.ink.png` ending. */
 export function symbolStem(fileName: string): string | undefined {
-  return fileName.toLowerCase().endsWith(inkExtension)
+  return isInkPath(fileName)
     ? fileName.slice(0, -inkExtension.length)
     : undefined;
 }

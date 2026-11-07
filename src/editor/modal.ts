@@ -12,8 +12,10 @@ import {
   type EventRef,
   type TAbstractFile,
 } from "obsidian";
-import { inkExtension, type CarriedChunk } from "../format/ink-file.ts";
+import type { CarriedChunk } from "../format/ink-file.ts";
 import {
+  parseRecord,
+  serializeRecord,
   unitsPerPixel,
   type BaseLayer,
   type InkRecord,
@@ -46,7 +48,7 @@ import {
   type Region,
 } from "../ink/pixels.ts";
 import type { DrawableBase } from "../ink/render.ts";
-import { chooseRename } from "../notes/names.ts";
+import { chooseRename, symbolStem } from "../notes/names.ts";
 import {
   draftBase,
   fingerprintOf,
@@ -552,7 +554,13 @@ export class InkEditorModal extends Modal {
     if (this.#placed?.layer !== layer) {
       this.#placed = {
         layer,
-        drawable: { ...drawable, x: layer.x, y: layer.y, scale: layer.scale },
+        drawable: {
+          ...drawable,
+          x: layer.x,
+          y: layer.y,
+          width: layer.width,
+          height: layer.height,
+        },
       };
     }
     return this.#placed.drawable;
@@ -1127,9 +1135,7 @@ export class InkEditorModal extends Modal {
   #fileName(): string | undefined {
     const path = this.#options.file?.()?.path;
     const file = path?.slice(path.lastIndexOf("/") + 1);
-    return file?.toLowerCase().endsWith(inkExtension) === true
-      ? file.slice(0, -inkExtension.length)
-      : undefined;
+    return file === undefined ? undefined : symbolStem(file);
   }
 
   /**
@@ -1791,7 +1797,8 @@ export class InkEditorModal extends Modal {
               base: {
                 x: base.x,
                 y: base.y,
-                scale: base.scale,
+                width: base.width,
+                height: base.height,
                 png: new Uint8Array(),
               },
             };
@@ -1948,8 +1955,8 @@ export class InkEditorModal extends Modal {
     const view = this.#view;
     if (view === undefined) return;
     // What the surface shows: the drawing, or the ink being made.
-    const { document, base } = this.#shown(view);
-    const span = documentSpan(document, base?.width);
+    const { document } = this.#shown(view);
+    const span = documentSpan(document);
     if (span === undefined) return;
     view.fit(span.left, span.right);
     this.#resizeView();
@@ -2470,7 +2477,9 @@ export class InkEditorModal extends Modal {
     if (!kept && this.#draftKept) {
       this.#announce("Draft not kept");
       new Notice(
-        "Inkline could not keep a draft of the latest changes, because the vault's local storage refused it. Save the symbol to keep them.",
+        parseRecord(serializeRecord(document)).ok
+          ? "Inkline could not keep a draft of the latest changes, because the vault's local storage refused it. Save the symbol to keep them."
+          : "Inkline could not keep a draft of the latest changes, because they take the drawing past what a symbol can hold. Undo them to save it.",
       );
     } else if (
       kept &&
@@ -2739,17 +2748,24 @@ export class InkEditorModal extends Modal {
     } else if (action === "reload" && opened !== undefined) {
       this.#reload(reading.fingerprint, opened);
     } else if (action === "ask") {
-      this.#askChanged(reading.fingerprint);
+      this.#askChanged(reading.fingerprint, opened);
     }
   }
 
   /**
    * Asks what to do about a change made to the file elsewhere: reload it, or
-   * keep the drawing, so that saving replaces the change. `resume` goes on
-   * with a save that stopped to ask. One such question is open at a time; a
-   * save that stops while it is open goes on once it is answered.
+   * keep the drawing, so that saving replaces the change. Keeping the drawing
+   * replaces only the drawing: the chunks a save carries become those of
+   * `opened`, the changed file, as the question says nothing of any text the
+   * change added. `resume` goes on with a save that stopped to ask. One such
+   * question is open at a time; a save that stops while it is open goes on
+   * once it is answered.
    */
-  #askChanged(fingerprint: string, resume?: () => void): void {
+  #askChanged(
+    fingerprint: string,
+    opened: EditableInk | undefined,
+    resume?: () => void,
+  ): void {
     if (resume !== undefined) this.#resume = resume;
     if (this.#askingChanged) return;
     this.#askingChanged = true;
@@ -2776,6 +2792,7 @@ export class InkEditorModal extends Modal {
           act: () => {
             const then = answered();
             this.#watch.keep(fingerprint);
+            if (opened !== undefined) this.#carried = opened.carried;
             then?.();
           },
         },
@@ -2995,7 +3012,7 @@ export class InkEditorModal extends Modal {
           const action = this.#watch.saving(found.reading);
           if (action === "unreadable") throw new Error(unreadable);
           if (action === "ask" && found.reading.kind === "file") {
-            this.#askChanged(found.reading.fingerprint, resume);
+            this.#askChanged(found.reading.fingerprint, found.opened, resume);
             throw new Unsaved("the file changed on disk");
           }
         }

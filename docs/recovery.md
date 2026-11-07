@@ -95,9 +95,18 @@ elsewhere, by sync, another app, or another editor, is not lost to a save:
 - **A symbol saved by a newer version of Inkline** opens with a notice to update
   Inkline instead of in the editor, so that this version never saves over what
   it does not understand.
+- **A symbol whose strokes cannot be read**, because the file was damaged or a
+  program wrote them wrongly, does not open either, and a notice says so, so
+  that saving never replaces strokes that might still be recovered. It still
+  shows in notes. To go on from what it shows, use
+  [Copy from](./drawing.md#start-from-a-copy) in a new symbol, which leaves the
+  file as it is.
 - **A file that changed on disk to something this version cannot read** is never
   saved over: the editor says so, and keeps your drawing open.
-- **A file that is not a valid PNG** does not open, and a notice says why.
+- **A file that is not a valid PNG**, as one cut short by a failed copy, does
+  not open, and a notice says why.
+- **Unreleased:** a symbol whose image is damaged, but whose strokes are whole,
+  opens as usual, and saving it draws the image again.
 
 ## Pictures without strokes
 
@@ -105,7 +114,6 @@ A `.ink.png` file whose strokes are missing opens as a picture: its pixels
 become the symbol's base layer, at their own resolution, scaled in proportion to
 the line's height, and the pen and eraser act on it. Its transparency, or for an
 opaque picture its darkness, becomes the ink, in the text's colour like any
-other. That happens with files from other programs, with files whose strokes an
-image optimiser or a sync tool stripped out, and with symbols from Inkline's
-earlier prototype, whose white background becomes transparent. Saving one stores
-strokes again from then on.
+other. That happens with files from other programs, and with files whose strokes
+an image optimiser or a sync tool stripped out. Saving one stores strokes again
+from then on.

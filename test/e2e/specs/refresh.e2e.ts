@@ -208,13 +208,12 @@ describe("Saved symbol refresh", function () {
           const file = app.vault.getFileByPath(path);
           if (file === null) throw new Error("no symbol");
           const mtime = file.stat.mtime;
-          const { bytes, record } = await window.inklineTest.canvas.saveInk(
+          const { bytes, width } = await window.inklineTest.canvas.saveInk(
             {
               strokes: [
                 {
                   tool: "pen",
                   size: 256,
-                  pressure: false,
                   points: [0, 1000, x, 1000],
                 },
               ],
@@ -224,7 +223,7 @@ describe("Saved symbol refresh", function () {
           );
           await app.vault.modifyBinary(file, bytes.slice().buffer, { mtime });
           return {
-            width: record.box.width,
+            width,
             sameTime: file.stat.mtime === mtime,
           };
         },

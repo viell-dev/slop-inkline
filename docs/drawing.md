@@ -185,10 +185,14 @@ up with most of its strokes, if the grid has the same size as when you drew
 them. While **Move** is on, Shift with an arrow key moves a picture to trace
 over by one column of the grid.
 
-**Unreleased:** on a symbol you open again, the grid lines up with the ends you
-put on it with Shift, however few there are, if the grid has the same rows as
-when you drew them. A symbol with none lines up with the ends that share a place
-within a cell, and else with the start of the first stroke.
+**Unreleased:** a symbol keeps its strokes exactly but not its grid, so what you
+placed with Shift never moves; what can change is where your next Shift lands.
+On a symbol you open again, the grid lines up with the ends you put on it with
+Shift, if the grid has the same rows as when you drew them. The rare freehand
+end that lies exactly on a row counts as one of them, so with very few placed
+ends it can pull the columns away from those. A symbol with none lines up with
+the ends that share a place within a cell, and else with the start of the first
+stroke.
 
 ## Guides, view, and width
 

@@ -3,7 +3,12 @@
 // that it always shows what a view starting from nothing would, and that
 // adding to a long drawing stays quick.
 
-import type { BaseLayer, Stroke, Tool } from "../../../src/format/record.ts";
+import {
+  limits,
+  type BaseLayer,
+  type Stroke,
+  type Tool,
+} from "../../../src/format/record.ts";
 import { cropSpan, joinSpans, type Span } from "../../../src/editor/guides.ts";
 import { DrawingSession, type Shape } from "../../../src/editor/session.ts";
 import { InkView } from "../../../src/editor/view.ts";
@@ -45,6 +50,8 @@ export interface SequenceReport {
   /** Saves made, and those cropped a pixel from a full measurement. */
   readonly saves: number;
   readonly savesAPixelOff: number;
+  /** Saves refused, for a drawing wider than a symbol can be. */
+  readonly refused: number;
   readonly mismatch?: string;
 }
 
@@ -168,7 +175,13 @@ export async function runSequence(
     if (base === undefined) return undefined;
     const known = places.get(base);
     if (known !== undefined) return known;
-    const place = { ...drawable, x: base.x, y: base.y, scale: base.scale };
+    const place = {
+      ...drawable,
+      x: base.x,
+      y: base.y,
+      width: base.width,
+      height: base.height,
+    };
     places.set(base, place);
     return place;
   };
@@ -189,8 +202,29 @@ export async function runSequence(
   let addedEraser = 0;
   let saves = 0;
   let savesAPixelOff = 0;
+  let refused = 0;
   let last: InkDocument | undefined;
   let mismatch: string | undefined;
+
+  /**
+   * Saves as the editor does. A drawing can grow wider than a symbol can be,
+   * and only then is a save refused, which gives undefined.
+   */
+  const save = async (
+    document: InkDocument,
+    base: DrawableBase | undefined,
+  ): Promise<Awaited<ReturnType<typeof saveInk>> | undefined> => {
+    try {
+      return await saveInk(document, base);
+    } catch (error) {
+      const { left, right } = kept.image;
+      if (error instanceof RangeError && right - left >= limits.width - 2) {
+        refused++;
+        return undefined;
+      }
+      throw error;
+    }
+  };
 
   /** Shows a frame in the kept view and a new one, and compares them. */
   const frame = async (): Promise<void> => {
@@ -249,7 +283,6 @@ export async function runSequence(
       const dot: Stroke = {
         tool: "pen",
         size: toUnits(1),
-        pressure: false,
         points: [toUnits((image.left + image.right) / 2), toUnits(-100)],
       };
       kept.render(document, base, dot);
@@ -265,10 +298,11 @@ export async function runSequence(
     }
     // A save takes longer than all of that, so it is every few frames.
     if (active !== undefined || frames % 5 !== 0) return;
-    const saved = await saveInk(document, base);
+    const saved = await save(document, base);
+    if (saved === undefined) return;
     const crop = {
       left: saved.left,
-      right: saved.left + saved.record.box.width,
+      right: saved.left + saved.width,
     };
     saves++;
     if (!sameSpan(image, crop)) savesAPixelOff++;
@@ -459,10 +493,11 @@ export async function runSequence(
       1,
       async () => {
         const { document } = session;
-        const { left } = await saveInk(document, placed(document));
+        const saved = await save(document, placed(document));
+        if (saved === undefined) return;
         session.markSaved(document);
-        session.rebase(-left);
-        kept.shift(-left);
+        session.rebase(-saved.left);
+        kept.shift(-saved.left);
       },
     ],
     [
@@ -532,6 +567,7 @@ export async function runSequence(
     addedEraser,
     saves,
     savesAPixelOff,
+    refused,
     ...(mismatch === undefined ? {} : { mismatch }),
   };
 }
@@ -556,7 +592,6 @@ export function measureStraddling(): StraddlingReport {
     const dot: Stroke = {
       tool: "pen",
       size: toUnits(12),
-      pressure: false,
       points: [far, toUnits(100)],
     };
     const before = measureInk({ strokes: [dot] }, undefined);
@@ -601,7 +636,6 @@ export function timeChanges(count: number, span: number): ChangeTimes {
   const dot = (x: number, y: number): Stroke => ({
     tool: "pen",
     size: toUnits(12),
-    pressure: false,
     points: [toUnits(x), toUnits(y)],
   });
   const surface = createEl("canvas");

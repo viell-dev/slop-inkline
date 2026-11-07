@@ -9,8 +9,8 @@ import { loadModules } from "../support/browser.ts";
  * Each run's seed, how far across it draws, its screen's device pixels to a CSS
  * pixel, and how many strokes it starts with across the edge between two
  * tiles: a symbol, a long drawing, and one wider than the preview shows at
- * once and than the widest tile measured, and then a dot and a tile's width
- * away from it, strokes across that edge.
+ * once, than the widest tile measured, and than a symbol can be, and then a
+ * dot and a tile's width away from it, strokes across that edge.
  */
 const runs = [
   { seed: 115, reach: 500, ratio: 1, straddles: 0 },
@@ -55,6 +55,7 @@ describe("A long drawing", function () {
     let addedEraser = 0;
     let saves = 0;
     let savesAPixelOff = 0;
+    let refused = 0;
     for (const { seed, reach, ratio, straddles } of runs) {
       const report = await browser.execute(
         (seed, steps, reach, ratio, straddles) =>
@@ -80,9 +81,10 @@ describe("A long drawing", function () {
       addedEraser += report.addedEraser;
       saves += report.saves;
       savesAPixelOff += report.savesAPixelOff;
+      refused += report.refused;
     }
     console.log(
-      `${String(frames)} frames compared, ${String(addedPen)} adding a pen stroke and ${String(addedEraser)} an eraser's, ${String(saves)} saves, ${String(savesAPixelOff)} a pixel off: ${JSON.stringify(Object.fromEntries(totals))}`,
+      `${String(frames)} frames compared, ${String(addedPen)} adding a pen stroke and ${String(addedEraser)} an eraser's, ${String(saves)} saves, ${String(savesAPixelOff)} a pixel off, ${String(refused)} refused as too wide: ${JSON.stringify(Object.fromEntries(totals))}`,
     );
     // The runs do what they are for: every operation, and both kinds of
     // stroke added to the frame before, which is what the view shortens.
@@ -127,7 +129,6 @@ describe("A long drawing", function () {
       const dot = (x: number, y: number) => ({
         tool: "pen" as const,
         size: 12 * record.unitsPerPixel,
-        pressure: false,
         points: [x * record.unitsPerPixel, y * record.unitsPerPixel],
       });
       const measure = canvas.measureInk({ strokes: [dot(100, 96)] }, undefined);

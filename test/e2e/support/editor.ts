@@ -485,7 +485,6 @@ export async function createSymbol(
           strokes: starts.map((x) => ({
             tool: "pen" as const,
             size: 256,
-            pressure: false,
             points: [x, 800, x + 400, 2000],
           })),
         },

@@ -279,7 +279,6 @@ describe("Zoom", function () {
         const dot = (x: number, tool: "pen" | "eraser", size: number) => ({
           tool,
           size: size * record.unitsPerPixel,
-          pressure: false,
           points: [x * record.unitsPerPixel, 100 * record.unitsPerPixel],
         });
         /** What the view and a save make of a document, as the editor shows it. */
@@ -322,7 +321,7 @@ describe("Zoom", function () {
           const saved = await canvas.saveInk(document, undefined, []);
           return {
             image: ink.image,
-            saved: { left: saved.left, width: saved.record.box.width },
+            saved: { left: saved.left, width: saved.width },
             any: inkIn(0, preview.width),
             total,
             size: [preview.width, preview.height],

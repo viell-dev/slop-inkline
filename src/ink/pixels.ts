@@ -1,7 +1,7 @@
 // Pixel rules that need no canvas: where the ink is, and how a picture's
 // pixels become ink when a file without a record is opened.
 
-import { limits } from "../format/record.ts";
+import { limits, unitsPerPixel } from "../format/record.ts";
 import type { Bounds } from "./geometry.ts";
 import { inkGrey } from "./render.ts";
 
@@ -35,9 +35,9 @@ export function inkBounds(pixels: RgbaPixels): Bounds | undefined {
 
 /**
  * The ink a picture holds, as one alpha value per pixel. A picture with any
- * transparency keeps its alpha. A fully opaque one, such as the prototype's
- * files or a screenshot, is dark ink on a light ground: its alpha is 255
- * minus its luminance, so white becomes empty and black full ink.
+ * transparency keeps its alpha. A fully opaque one, such as a screenshot, is
+ * dark ink on a light ground: its alpha is 255 minus its luminance, so white
+ * becomes empty and black full ink.
  */
 export function inkAlpha(pixels: RgbaPixels): Uint8ClampedArray {
   const { width, height, data } = pixels;
@@ -65,6 +65,19 @@ export function inkAlpha(pixels: RgbaPixels): Uint8ClampedArray {
   return alpha;
 }
 
+/**
+ * Sets every pixel's colour to the ink's grey, in place, keeping its alpha:
+ * what a canvas holds varies with its rounding, and is black where it is
+ * transparent, but a symbol's pixels are all of one grey.
+ */
+export function greyInk(data: Uint8ClampedArray): void {
+  for (let index = 0; index < data.length; index += 4) {
+    data[index] = inkGrey;
+    data[index + 1] = inkGrey;
+    data[index + 2] = inkGrey;
+  }
+}
+
 /** RGBA pixels of grey ink with the given alpha, ready to encode as PNG. */
 export function inkPixels(
   width: number,
@@ -76,28 +89,6 @@ export function inkPixels(
     data[index * 4 + 3] = alpha[index] ?? 0;
   }
   return data;
-}
-
-/**
- * Repeats each pixel of a one-value-per-pixel image `factor` times across and
- * down, which enlarges it without changing what it shows.
- */
-export function repeatPixels(
-  values: Uint8ClampedArray,
-  width: number,
-  height: number,
-  factor: number,
-): Uint8ClampedArray {
-  if (factor === 1) return values;
-  const wide = width * factor;
-  const output = new Uint8ClampedArray(wide * height * factor);
-  for (let y = 0; y < height * factor; y++) {
-    const source = Math.floor(y / factor) * width;
-    for (let x = 0; x < wide; x++) {
-      output[y * wide + x] = values[source + Math.floor(x / factor)] ?? 0;
-    }
-  }
-  return output;
 }
 
 /**
@@ -472,6 +463,137 @@ export function shrinkLuminance(picture: Luminance, factor: number): Luminance {
   return alpha === undefined
     ? { width, height, values }
     : { width, height, values, alpha };
+}
+
+/** One way across a base layer: its image's pixels, and where it is drawn. */
+export interface BaseSpan {
+  /** How many pixels its image has this way. */
+  readonly size: number;
+  /** Where it starts, in units. */
+  readonly start: number;
+  /** How long it is drawn, in units. */
+  readonly length: number;
+}
+
+/** A base layer's ink, reduced by {@link reduceBaseAlpha}. */
+export interface ReducedBase {
+  /** How many pixels it has each way. */
+  readonly width: number;
+  readonly height: number;
+  /** One alpha value per pixel, row by row. */
+  readonly alpha: Uint8ClampedArray;
+  /** Where it now goes, in units. */
+  readonly across: Pick<BaseSpan, "start" | "length">;
+  readonly down: Pick<BaseSpan, "start" | "length">;
+}
+
+/** The source pixels one pixel of a reduced span takes in. */
+interface SpanPixel {
+  /** The first of them. */
+  readonly first: number;
+  /** How much of it covers that one and each after it. */
+  readonly parts: readonly number[];
+}
+
+/** Whether a span is drawn smaller than its image. */
+function isReduced({ size, length }: BaseSpan): boolean {
+  return size * unitsPerPixel > length;
+}
+
+/** The whole pixels of the drawing that a span reaches, in units. */
+function wholePixels({ start, length }: BaseSpan): {
+  start: number;
+  length: number;
+} {
+  const first = Math.floor(start / unitsPerPixel) * unitsPerPixel;
+  const end = Math.ceil((start + length) / unitsPerPixel) * unitsPerPixel;
+  return { start: first, length: end - first };
+}
+
+/**
+ * What each whole pixel of the drawing takes in of a span drawn smaller than
+ * its image. Lengths are scaled by the image's size, so that a source pixel is
+ * `length` long, a pixel of the drawing `unitsPerPixel * size`, and every
+ * length here is an exact whole number. At the ends of the span a pixel can be
+ * only partly covered, and its parts then add up to less than a whole pixel.
+ */
+function reducedPixels(span: BaseSpan): SpanPixel[] {
+  const { size, start, length } = span;
+  const reach = wholePixels(span);
+  const pixels: SpanPixel[] = [];
+  for (
+    let edge = reach.start;
+    edge < reach.start + reach.length;
+    edge += unitsPerPixel
+  ) {
+    const from = (Math.max(edge, start) - start) * size;
+    const to = (Math.min(edge + unitsPerPixel, start + length) - start) * size;
+    const first = Math.floor(from / length);
+    const parts: number[] = [];
+    for (let pixel = first; pixel * length < to; pixel++) {
+      const low = Math.max(from, pixel * length);
+      parts.push(Math.min(to, (pixel + 1) * length) - low);
+    }
+    pixels.push({ first, parts });
+  }
+  return pixels;
+}
+
+/** Each pixel of a span that keeps its own, whole. */
+function ownPixels(size: number): SpanPixel[] {
+  return Array.from({ length: size }, (_, first) => ({ first, parts: [1] }));
+}
+
+/** Whether a base layer drawn across and down is reduced either way. */
+export function baseIsReduced(across: BaseSpan, down: BaseSpan): boolean {
+  return isReduced(across) || isReduced(down);
+}
+
+/**
+ * The ink of an image drawn smaller than itself across, down, or both, as the
+ * pixels of the drawing it falls on: each the exact mean of the area it
+ * covers, in whole-number arithmetic, so that no source pixel is left out and
+ * every browser stores the same values. A way it is not reduced keeps the
+ * image's own pixels, and its place, for drawing to enlarge as it does.
+ */
+export function reduceBaseAlpha(
+  image: RgbaPixels,
+  across: BaseSpan,
+  down: BaseSpan,
+): ReducedBase {
+  const columns = isReduced(across)
+    ? reducedPixels(across)
+    : ownPixels(image.width);
+  const rows = isReduced(down) ? reducedPixels(down) : ownPixels(image.height);
+  const whole =
+    (isReduced(across) ? unitsPerPixel * across.size : 1) *
+    (isReduced(down) ? unitsPerPixel * down.size : 1);
+  const alpha = new Uint8ClampedArray(columns.length * rows.length);
+  const sums = new Float64Array(columns.length);
+  rows.forEach(({ first: top, parts: rowParts }, y) => {
+    sums.fill(0);
+    rowParts.forEach((rowPart, row) => {
+      const line = (top + row) * image.width;
+      columns.forEach(({ first, parts }, x) => {
+        let sum = 0;
+        for (let at = 0; at < parts.length; at++) {
+          const pixel = (line + first + at) * 4 + 3;
+          sum += (parts[at] ?? 0) * (image.data[pixel] ?? 0);
+        }
+        sums[x] = (sums[x] ?? 0) + rowPart * sum;
+      });
+    });
+    sums.forEach((sum, x) => {
+      alpha[y * columns.length + x] = Math.round(sum / whole);
+    });
+  });
+  return {
+    width: columns.length,
+    height: rows.length,
+    alpha,
+    across: isReduced(across) ? wholePixels(across) : across,
+    down: isReduced(down) ? wholePixels(down) : down,
+  };
 }
 
 /**

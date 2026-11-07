@@ -1,27 +1,28 @@
-// Stroke outlines: the filled shape each stroke paints, from perfect-freehand
-// for a stroke drawn as the pointer went, and straight-sided pieces for a
-// polygon. Both are part of the file format, since reopening a file draws its
-// strokes again: changing the options, perfect-freehand's version, or how a
-// polygon's corners are made changes how saved symbols look, which
+// Stroke outlines: the filled shape each stroke paints, smooth for a stroke
+// drawn as the pointer went, and straight-sided pieces for a polygon. Both are
+// part of the file format, since reopening a file draws its strokes again:
+// changing how either is made changes how saved symbols look, which
 // test/unit/ink/outline.test.ts pins.
 
-import { getStroke, type StrokeOptions } from "perfect-freehand";
-import { maxPressure, unitsPerPixel, type Stroke } from "../format/record.ts";
+import {
+  unitsPerPixel,
+  type SmoothStroke,
+  type Stroke,
+} from "../format/record.ts";
+import { freehandShape, type FreehandShape, type Point } from "./freehand.ts";
 import type { Bounds } from "./geometry.ts";
-
-/** A point, in pixels. */
-type Point = readonly [number, number];
 
 /** A polygon's corners, in pixels. */
 export type Outline = readonly Point[];
 
 /**
- * What a stroke fills, in pixels: one outline traced as a smooth curve, as
- * for a stroke drawn as the pointer went, or straight-sided pieces filled
- * together, which make a polygon stroke.
+ * What a stroke fills, in pixels: for a stroke drawn as the pointer went, one
+ * outline traced as a smooth curve, or a circle if its path never got away from
+ * its first point; or straight-sided pieces filled together, which make a
+ * polygon stroke.
  */
 export type StrokeShape =
-  | { readonly kind: "smooth"; readonly outline: Outline }
+  | FreehandShape
   | { readonly kind: "pieces"; readonly pieces: readonly Outline[] };
 
 /**
@@ -31,95 +32,109 @@ export type StrokeShape =
  */
 export const cornerReach = 2;
 
-/** The perfect-freehand options for a stroke. */
-export function outlineOptions(stroke: Stroke): StrokeOptions {
-  return {
-    size: stroke.size / unitsPerPixel,
-    // Pressure narrows a pen's stroke to half its size at the lightest touch;
-    // strokes without pressure keep their size throughout.
-    thinning: stroke.pressure ? 0.5 : 0,
-    smoothing: 0.5,
-    streamline: 0.5,
-    simulatePressure: false,
-    start: { cap: true, taper: 0 },
-    end: { cap: true, taper: 0 },
-    last: true,
-  };
-}
-
-/** The points as perfect-freehand takes them, in pixels with 0–1 pressure. */
-export function outlineInput(stroke: Stroke): [number, number, number][] {
-  const stride = stroke.pressure ? 3 : 2;
-  const input: [number, number, number][] = [];
-  for (let index = 0; index + stride <= stroke.points.length; index += stride) {
-    const x = (stroke.points[index] ?? 0) / unitsPerPixel;
-    const y = (stroke.points[index + 1] ?? 0) / unitsPerPixel;
-    const pressure = stroke.pressure
-      ? (stroke.points[index + 2] ?? 0) / maxPressure
-      : 0.5;
-    input.push([x, y, pressure]);
+/** A stroke's points, in pixels. */
+export function strokePoints(stroke: Stroke): Point[] {
+  const points: Point[] = [];
+  for (let index = 0; index + 2 <= stroke.points.length; index += 2) {
+    points.push([
+      (stroke.points[index] ?? 0) / unitsPerPixel,
+      (stroke.points[index + 1] ?? 0) / unitsPerPixel,
+    ]);
   }
-  return input;
+  return points;
 }
 
-/** The polygon perfect-freehand gives for a stroke drawn as the pointer went. */
-export function strokeOutline(stroke: Stroke): Outline {
-  return getStroke(outlineInput(stroke), outlineOptions(stroke)).map(
-    ([x, y]) => [x, y] as const,
-  );
+/** What a stroke drawn as the pointer went fills. */
+export function smoothShape(stroke: SmoothStroke): FreehandShape {
+  return freehandShape(strokePoints(stroke), stroke.size / unitsPerPixel);
 }
 
-/** What a stroke fills: its outline, or a polygon's pieces. */
+/**
+ * What a stroke fills: a smooth stroke's outline or dot, a polygon's pieces,
+ * or a filled stroke's inside, as a single piece that the nonzero rule fills.
+ */
 export function strokeShape(stroke: Stroke): StrokeShape {
-  if (stroke.kind !== "polygon") {
-    return { kind: "smooth", outline: strokeOutline(stroke) };
+  if (stroke.kind === "fill") {
+    return { kind: "pieces", pieces: [corners(stroke)] };
   }
-  const corners = polygonCorners(stroke);
-  const closed = isClosed(corners);
+  if (stroke.kind !== "polygon") return smoothShape(stroke);
+  const points = corners(stroke);
+  const closed = isClosed(points);
   return {
     kind: "pieces",
     pieces: polygonPieces(
-      closed ? corners.slice(0, -1) : corners,
+      closed ? points.slice(0, -1) : points,
       stroke.size / unitsPerPixel,
       closed,
     ),
   };
 }
 
-/** Where a stroke can leave ink, in pixels, or undefined for nowhere. */
-export function strokeBounds(stroke: Stroke): Bounds | undefined {
-  const fill = fillOutline(stroke);
-  if (fill !== undefined) return outlineBounds(fill);
-  const shape = strokeShape(stroke);
+/** Where a shape's ink can go, or undefined for nowhere. */
+function shapeBounds(shape: StrokeShape): Bounds | undefined {
+  if (shape.kind === "dot") {
+    const { center, radius } = shape;
+    const [x, y] = center;
+    return {
+      left: x - radius,
+      top: y - radius,
+      right: x + radius,
+      bottom: y + radius,
+    };
+  }
   return outlineBounds(
     shape.kind === "smooth" ? shape.outline : shape.pieces.flat(),
   );
 }
 
-/**
- * What a filled stroke fills in place of its outline, in pixels: the polygon
- * through its points, or a polygon's corners, from the last back to the
- * first, which the nonzero rule fills. Undefined for a stroke without fill.
- */
-export function fillOutline(stroke: Stroke): Outline | undefined {
-  if (stroke.fill !== true) return undefined;
-  return stroke.kind === "polygon"
-    ? polygonCorners(stroke)
-    : outlineInput(stroke).map(([x, y]) => [x, y] as const);
+/** The smallest box around two boxes, either of which may be nothing. */
+function joined(
+  a: Bounds | undefined,
+  b: Bounds | undefined,
+): Bounds | undefined {
+  if (a === undefined || b === undefined) return a ?? b;
+  return {
+    left: Math.min(a.left, b.left),
+    top: Math.min(a.top, b.top),
+    right: Math.max(a.right, b.right),
+    bottom: Math.max(a.bottom, b.bottom),
+  };
 }
 
-/** A polygon stroke's corners, in pixels, with no point repeated in a row. */
-export function polygonCorners(stroke: Stroke): Point[] {
-  const stride = stroke.pressure ? 3 : 2;
-  const corners: Point[] = [];
-  for (let at = 0; at + stride <= stroke.points.length; at += stride) {
-    const x = (stroke.points[at] ?? 0) / unitsPerPixel;
-    const y = (stroke.points[at + 1] ?? 0) / unitsPerPixel;
-    const last = corners.at(-1);
-    if (last?.[0] === x && last[1] === y) continue;
-    corners.push([x, y]);
-  }
-  return corners;
+/** Where two boxes overlap, if they do. */
+function overlap(a: Bounds, b: Bounds): Bounds | undefined {
+  const left = Math.max(a.left, b.left);
+  const top = Math.max(a.top, b.top);
+  const right = Math.min(a.right, b.right);
+  const bottom = Math.min(a.bottom, b.bottom);
+  return left < right && top < bottom
+    ? { left, top, right, bottom }
+    : undefined;
+}
+
+/**
+ * Where a stroke can leave ink, in pixels, or undefined for nowhere: its
+ * shape, and for a cut stroke, the rest of it inside its cut boxes, whose
+ * outline is its own and can reach past the whole stroke's.
+ */
+export function strokeBounds(stroke: Stroke): Bounds | undefined {
+  const shape = shapeBounds(strokeShape(stroke));
+  const rest = restShape(stroke);
+  if (rest === undefined) return shape;
+  const reach = shapeBounds(rest);
+  if (reach === undefined) return shape;
+  return cutBoxes(stroke).reduce(
+    (bounds, box) => joined(bounds, overlap(reach, box)),
+    shape,
+  );
+}
+
+/** A stroke's points, in pixels, with no point repeated in a row. */
+function corners(stroke: Stroke): Point[] {
+  return strokePoints(stroke).filter(([x, y], index, points) => {
+    const before = points[index - 1];
+    return before?.[0] !== x || before[1] !== y;
+  });
 }
 
 /**
@@ -267,14 +282,13 @@ export function polygonPieces(
  * The boxes a stroke's cuts take away, in pixels: past the horizontal line
  * through each cut end, as far as the brush reaches from that end and a pixel
  * more for its soft edge. Only the end's own ink goes there:
- * {@link uncutRest} draws the rest of the stroke in them again. A polygon is
- * never cut: its ends stay square.
+ * {@link uncutRest} draws the rest of the stroke in them again.
  */
 export function cutBoxes(stroke: Stroke): Bounds[] {
+  if (stroke.kind !== undefined) return [];
   const { cut, points } = stroke;
-  if (cut === undefined || stroke.kind === "polygon") return [];
-  const stride = stroke.pressure ? 3 : 2;
-  const last = points.length - stride;
+  if (cut === undefined) return [];
+  const last = points.length - 2;
   const reach = stroke.size / unitsPerPixel + 1;
   const boxes: Bounds[] = [];
   for (const [direction, at] of [
@@ -302,11 +316,10 @@ export function cutBoxes(stroke: Stroke): Bounds[] {
  * comes back near an end. Undefined when nothing is left, or the stroke has
  * no cuts.
  */
-export function uncutRest(stroke: Stroke): Stroke | undefined {
+export function uncutRest(stroke: SmoothStroke): SmoothStroke | undefined {
   const { cut, points } = stroke;
   if (cut === undefined) return undefined;
-  const stride = stroke.pressure ? 3 : 2;
-  const count = points.length / stride;
+  const count = points.length / 2;
   const trim = 2 * stroke.size;
   /** The first point, stepping by `step` from `at`, at least `trim` along. */
   const beyond = (at: number, step: number): number => {
@@ -315,10 +328,11 @@ export function uncutRest(stroke: Stroke): Stroke | undefined {
     while (along < trim) {
       const next = index + step;
       if (next < 0 || next >= count) return next;
-      along += Math.hypot(
-        (points[next * stride] ?? 0) - (points[index * stride] ?? 0),
-        (points[next * stride + 1] ?? 0) - (points[index * stride + 1] ?? 0),
-      );
+      const dx = (points[next * 2] ?? 0) - (points[index * 2] ?? 0);
+      const dy = (points[next * 2 + 1] ?? 0) - (points[index * 2 + 1] ?? 0);
+      // Not `Math.hypot`, which rounds differently from one engine to another:
+      // a walk can land exactly on `trim`, and this decides which point it is.
+      along += Math.sqrt(dx * dx + dy * dy);
       index = next;
     }
     return index;
@@ -329,8 +343,7 @@ export function uncutRest(stroke: Stroke): Stroke | undefined {
   return {
     tool: stroke.tool,
     size: stroke.size,
-    pressure: stroke.pressure,
-    points: points.slice(first * stride, (last + 1) * stride),
+    points: points.slice(first * 2, (last + 1) * 2),
   };
 }
 
@@ -339,10 +352,9 @@ export function uncutRest(stroke: Stroke): Stroke | undefined {
  * {@link uncutRest}. Undefined when nothing is left, or it has no cuts.
  */
 export function restShape(stroke: Stroke): StrokeShape | undefined {
+  if (stroke.kind !== undefined) return undefined;
   const rest = uncutRest(stroke);
-  return rest === undefined
-    ? undefined
-    : { kind: "smooth", outline: strokeOutline(rest) };
+  return rest === undefined ? undefined : smoothShape(rest);
 }
 
 /** The outline's bounding box, or undefined when it has no corners. */
@@ -366,13 +378,19 @@ export interface PathSink {
   moveTo(x: number, y: number): void;
   lineTo(x: number, y: number): void;
   quadraticCurveTo(cpx: number, cpy: number, x: number, y: number): void;
+  arc(
+    x: number,
+    y: number,
+    radius: number,
+    startAngle: number,
+    endAngle: number,
+  ): void;
   closePath(): void;
 }
 
 /**
  * Adds an outline to a path as a closed, smooth curve: quadratic curves
- * through the midpoints of its edges, with its corners as control points,
- * as perfect-freehand's own examples draw it.
+ * through the midpoints of its edges, with its corners as control points.
  */
 export function traceOutline(outline: Outline, path: PathSink): void {
   const count = outline.length;
@@ -397,11 +415,18 @@ export function traceOutline(outline: Outline, path: PathSink): void {
 
 /**
  * Adds what a stroke fills to a path: its outline as {@link traceOutline}
- * does, or each of a polygon's pieces with straight sides.
+ * does, its circle, or each of a polygon's pieces with straight sides.
  */
 export function traceShape(shape: StrokeShape, path: PathSink): void {
   if (shape.kind === "smooth") {
     traceOutline(shape.outline, path);
+    return;
+  }
+  if (shape.kind === "dot") {
+    const [x, y] = shape.center;
+    path.moveTo(x + shape.radius, y);
+    path.arc(x, y, shape.radius, 0, 2 * Math.PI);
+    path.closePath();
     return;
   }
   for (const piece of shape.pieces) {

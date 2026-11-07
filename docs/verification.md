@@ -42,43 +42,55 @@ review.
 ### Symbol files stay readable, and look the same
 
 A symbol is a PNG with a version 1 record. Reopening and saving it in the same
-version preserves its drawing. Until the first stable release the format is a
-draft; later alphas may change it, as
-[Compatibility](./file-format.md#compatibility) explains. From the first stable
-release, later versions must keep released files readable and looking the same.
+version preserves its drawing. From the first stable release, later versions
+must keep released files readable and looking the same, as
+[Versions](./file-format.md#versions) explains.
 
 - Unit tests of the PNG codec, the record, and symbol files:
   [png.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/format/png.test.ts),
   [record.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/format/record.test.ts),
   and
   [ink-file.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/format/ink-file.test.ts),
-  including chunks that are not well formed and files from later versions.
+  including chunks that are not well formed, damaged records, and files from
+  later versions however large.
 - Pinned golden files in
   [test/fixtures/format](https://github.com/viell-dev/slop-inkline/tree/main/test/fixtures/format),
-  read on every change, in Node.js and in Obsidian's own renderer
+  real saved symbols with one for each kind of stroke and one with text about
+  its symbol, read on every change, and redrawn in Obsidian's own renderer
+  against their stored pixels, within stated tolerances
   ([format.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/format.e2e.ts)).
-  Format changes update affected fixtures while the format is a draft; from the
-  first stable release, existing fixtures stay unchanged and new cases get new
-  files.
+  From the first stable release, existing fixtures stay unchanged and new cases
+  get new files.
 - Pinned stroke outlines in
-  [test/fixtures/outline](https://github.com/viell-dev/slop-inkline/tree/main/test/fixtures/outline):
-  an update of the stroke library that would change how saved strokes look fails
+  [test/fixtures/outline](https://github.com/viell-dev/slop-inkline/tree/main/test/fixtures/outline),
+  one for each path through the algorithm the format specifies, with turns on
+  and either side of a tie, and the pieces of polygons and of cut strokes: a
+  change that would change how saved strokes look fails
   [outline.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/ink/outline.test.ts).
+- Moving a stroke by whole units moves its outline exactly, over seeded strokes
+  built to turn on a tie
+  ([outline.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/ink/outline.test.ts)).
+  In Obsidian, on seeded drawings, a separate mark that moves saving's crop
+  changes no pixel when the strokes keep their place on saving's canvas, as with
+  a mark to their right, or a stroke past the image's left edge such as a pen
+  line with its far end erased. Otherwise it leaves no pixel more than 16 levels
+  of 255 away. The same drawings save again unchanged
+  ([format.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/format.e2e.ts)).
 - In Obsidian, saving a symbol again after reopening it gives the same bytes,
   however far the drawing sits from the origin, and the pixels the browser
   decodes are exactly those encoded
   ([ink.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/ink.e2e.ts)).
 
-### The prototype's files and other pictures open
+### Pictures open
 
-- Synthetic files in the prototype's format, at two sizes, in
-  [test/fixtures/legacy](https://github.com/viell-dev/slop-inkline/tree/main/test/fixtures/legacy),
+- Synthetic opaque pictures, at two sizes, in
+  [test/fixtures/pictures](https://github.com/viell-dev/slop-inkline/tree/main/test/fixtures/pictures),
   open as a base layer of their own pixels, pixel for pixel, scaled to the
   line's height
   ([ink.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/ink.e2e.ts)).
-- Pictures without a record, transparent ones, pictures one or two pixels high,
-  and records that cannot be scaled open from their pixels, and a record from a
-  later version is refused (the same file).
+- Pictures without a record, transparent ones, and pictures one or two pixels
+  high open from their pixels, and a record from a later version or one that
+  cannot be used is not opened (the same file).
 
 ### Symbols read as characters
 
@@ -134,7 +146,10 @@ release, later versions must keep released files readable and looking the same.
   latency or establish performance on every device.
 - **Make ink** of a synthetic H, enlarged from about 1.2 to 11.5 times, leaves
   at most two partly covered document pixels at each edge of the saved symbol,
-  and the reopened symbol draws the same pixels
+  and the reopened symbol draws the same pixels. The editor's own redraw, which
+  leaves scaling to the browser, differs from them only at pixels an edge
+  crosses, and each run checks that this would catch the same row blurred or
+  moved by a pixel
   ([conversion-clarity.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/conversion-clarity.e2e.ts)).
   So does a dim H of soft strokes, 42 levels from its ground to its ink,
   enlarged from about 2.4 to 7.7 times, and the surface shows at most three

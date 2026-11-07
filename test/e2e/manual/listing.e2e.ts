@@ -182,7 +182,6 @@ async function makeVault(): Promise<void> {
             strokes: strokes.map((stroke) => ({
               tool: "pen" as const,
               size: 192,
-              pressure: false,
               points: stroke.flatMap(([x, y]) => [
                 Math.round(160 + x * 1400),
                 Math.round(620 + y * 1680),

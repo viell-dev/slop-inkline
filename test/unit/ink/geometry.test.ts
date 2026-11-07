@@ -55,15 +55,6 @@ describe("crop", () => {
 
 describe("display", () => {
   it("shows the line box at 1.5 em with its baseline on the text's", () => {
-    expect(display({ ...lineBox, width: 64 })).toEqual({
-      heightEm: 1.5,
-      verticalAlignEm: -0.375,
-    });
-  });
-
-  it("follows another box's own geometry", () => {
-    expect(
-      display({ pxPerEm: 100, width: 10, height: 200, baseline: 150 }),
-    ).toEqual({ heightEm: 2, verticalAlignEm: -0.5 });
+    expect(display()).toEqual({ heightEm: 1.5, verticalAlignEm: -0.375 });
   });
 });

@@ -15,6 +15,10 @@ The file format is still a draft until 1.0.0, and it changes here: a stroke's
 stored pixels, and the editor opens those as a picture to draw over. A draft
 holding such a stroke is no longer offered back.
 
+The format also now defines where a symbol's readings and translations go: PNG
+text chunks, apart from its strokes and its file's name, which every editor must
+keep. Inkline writes and shows none of them, and no existing file is affected.
+
 ### Fixed
 
 - **Flat ends** only ever cuts along a row. An end running more along the row
@@ -57,6 +61,32 @@ holding such a stroke is no longer offered back.
 
 ### Changed
 
+- The file format is rewritten for the first public release, after a review of
+  every rule in it, and [its specification](docs/file-format.md) now stands
+  alone. **Symbols saved by earlier versions open as pictures, without their
+  strokes**, and look as they did; saving one stores strokes again from then on.
+  Unsaved drafts from earlier versions are dropped.
+- The record moves to a chunk of its own, `inKL`, marked as depending on the
+  image, so that a program that changes the image drops it and leaves a picture,
+  rather than leave strokes behind that bring the old image back. The format
+  version comes first in it, outside the compression, so that any later version
+  is recognised whatever else it holds.
+- A symbol whose strokes cannot be read is no longer opened as a picture, which
+  replaced them on saving: it does not open, a notice says why, and **Copy
+  from** starts a new symbol from what it shows.
+- A symbol's image is 192 pixels high and at most 4096 wide, down from 8192, and
+  a record holds no other geometry. Strokes record no pressure. A fill has no
+  brush size, and only a smooth stroke's ends can be cut, `"up"` or `"down"`. A
+  symbol holds at most 250,000 points, down from 1,000,000, which keeps the
+  memory a small crafted file can ask for lower. It does not bound how long such
+  a file can keep the editor busy, as
+  [Known limits](docs/limits.md#files-and-sizes) says.
+- A single click draws a round dot exactly as wide as the brush, centred on the
+  click, rather than a short stroke a little wider, running down and right.
+- Every pixel of a symbol's image holds the same grey, however transparent, so
+  that a viewer that scales the image shows no dark fringe.
+- How a stroke's outline is drawn is now specified in full and kept in Inkline's
+  own source, so that it no longer depends on the perfect-freehand package.
 - The grid is now a guide, and snaps only while Shift is held, for the pen, the
   eraser, Ellipse, and Polygon. A click between its dots stays where you
   clicked, and a stroke's ends stay where you pressed and let go, so that you
@@ -90,6 +120,59 @@ holding such a stroke is no longer offered back.
   in the default sidebar, however long the name is. The name has the room the
   row's narrower buttons leave, and they line up across rows. In a sidebar
   narrower than about 275 pixels, they drop below the name together.
+
+### Fixed
+
+- A long name no longer runs off the symbol library and gives it a horizontal
+  scroll bar. It wraps onto a second line and then shortens, as a long folder
+  shortens, and a tooltip on the row has the whole of both. A long note name
+  listed under a symbol wraps too
+  ([#175](https://github.com/viell-dev/slop-inkline/issues/175)).
+- A very long name with no spaces breaks within its row in the symbol lists,
+  rather than giving the list a sideways scroll bar
+  ([#178](https://github.com/viell-dev/slop-inkline/issues/178)).
+
+### Fixed
+
+- **Flat ends** only ever cuts along a row. An end running more along the row
+  than across it is no longer cut along a column, which took a corner out of it,
+  and stays round, so that a line drawn along the baseline stays whole
+  ([#168](https://github.com/viell-dev/slop-inkline/issues/168)).
+- A flat-ended stroke whose only ink in the line came from the part drawn again
+  at its cut end was left out when saving, which could save a blank symbol.
+- A picture with an orientation in its metadata is no longer turned on opening,
+  and turned again in notes. Saving a symbol drops that metadata.
+- A file with a damaged chunk that the image does not depend on opens as it
+  shows, and one with a critical chunk that PNG does not define does not open.
+- A symbol whose image data is damaged opens if its strokes are whole, and
+  saving it draws the image again.
+- A large picture drawn smaller keeps its thin lines when saved, whatever its
+  size, as each saved pixel is now the exact mean of the pixels it covers.
+- A stroke that turns through almost exactly a right angle keeps its shape when
+  saving's crop or the arrow keys shift it. Rounding used to depend on where the
+  stroke lay, so that adding a mark elsewhere could redraw it pixels away. Such
+  a stroke in a symbol saved earlier can look different the next time it is
+  drawn.
+- A line whose far end you erased keeps its pixels when an edit moves saving's
+  crop. The line runs past the image's edge, and the browser drew its curve a
+  little differently wherever the crop put that edge, so that about half of such
+  saves changed some of its pixels
+  ([#186](https://github.com/viell-dev/slop-inkline/issues/186)).
+- A stroke that repeats a point hundreds of times keeps its end, and saving such
+  a symbol no longer cuts most of it off. Inkline does not draw such a stroke,
+  but another program could write one.
+- A symbol whose base layer has incomplete or wrong image data, which only a
+  faulty program writes, does not open in any supported Obsidian. One version
+  used to open it with the missing rows empty, and the next save kept them so.
+- A picture with so many metadata chunks that adding the strokes would take it
+  past the 65,536 Inkline reads is not saved, and stays as it was. Saving used
+  to write a symbol that then would not open.
+- A file is a symbol only if its name ends in the ASCII letters of `.ink.png`,
+  in any case. A letter that only lowercases to one of them, such as the Kelvin
+  sign, no longer counts.
+- **Keep mine** keeps your drawing and no more. A save after it used to write
+  back the text and other carried chunks the file had when the editor opened,
+  which dropped any that the change on disk had added.
 
 ## 0.9.1 - 2026-11-06
 

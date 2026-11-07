@@ -171,6 +171,10 @@ refuses to start with fewer than 50 left.
 pictures for Obsidian's community directory listing, as
 [listing/README.md](listing/README.md) says.
 
+`test/e2e/manual/fixtures.e2e.ts` stays outside it too: it saves the drawings of
+`test/fixtures/format/records.ts` as golden files, with the real save in
+Obsidian, as its opening comment says.
+
 CI runs the end-to-end tests on Linux for every pull request, and the Docker
 image weekly and on request.
 

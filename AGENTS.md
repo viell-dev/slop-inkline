@@ -29,18 +29,20 @@ screenshots use synthetic vaults and drawings only.
 - `src/format/` reads and writes symbol files, and `src/ink/` draws them;
   [docs/file-format.md](docs/file-format.md) specifies both. A change to what
   files hold or how strokes are drawn updates that document in the same pull
-  request. The pinned files in `test/fixtures/` (golden files, stroke outlines,
-  and the prototype-format files) pin what files hold and how they look.
-  - Until the first stable release, the format is a draft. A feature may change
-    what files hold or how strokes are drawn, and files written by earlier
-    pre-releases need not keep opening. Such a change updates the pinned files
-    it affects in the same pull request, converts older files where that is
-    cheap, and says in the changelog which files stop opening or look different.
-    It is still reviewed as below.
+  request. The pinned files in `test/fixtures/format` and
+  `test/fixtures/outline` pin what files hold and how they look.
+  - Until the first stable release, a change may still alter the format, and
+    files written by earlier pre-releases need not keep opening. Such a change
+    updates the pinned files it affects in the same pull request, and says in
+    the changelog which files stop opening or look different. It is still
+    reviewed as below.
   - From the first stable release, the pinned files are never changed: users'
     files must keep opening and looking the same, so a new case gets a new
-    pinned file, and an update of `perfect-freehand` that changes the pinned
-    outlines changes how saved symbols look.
+    pinned file, and a change to how a record draws is a new format version, as
+    [the format's versions](docs/file-format.md#versions) say.
+  - `src/ink/freehand.ts` is part of the format, adapted from perfect-freehand
+    so that no package update can change it. Keep it and the steps in the
+    format's document saying the same thing.
 
 ## Tests
 
@@ -188,10 +190,9 @@ version stays out of it; see
 
 `prototype` holds the history of the earlier prototype, frozen by a ruleset.
 Read it for reference, for example with `git show prototype:src/main.ts`, but
-never merge it or base work on it. Its drawings are not test fixtures: test
-legacy import with synthetic drawings in the prototype's format. Once nothing
-needs it, delete the branch and its ruleset in the pull request that makes it
-unneeded.
+never merge it or base work on it. Its drawings are not test fixtures. Once
+nothing needs it, delete the branch and its ruleset in the pull request that
+makes it unneeded.
 
 ## The pen-input branch
 
@@ -199,8 +200,8 @@ unneeded.
 rejection, and the Pen pressure setting. The owner's scope decision is in
 [#101](https://github.com/viell-dev/slop-inkline/issues/101). Read it for
 reference, as with `git show pen-input:src/editor/pointer.ts`. Do not delete it,
-merge it, or base work on it without the owner's decision. Symbol files keep
-their `pressure` field, so `main` still reads and draws strokes with pressure.
+merge it, or base work on it without the owner's decision. Symbol files hold no
+pressure: bringing pen input back would be a new format version.
 
 ## Instruction files
 

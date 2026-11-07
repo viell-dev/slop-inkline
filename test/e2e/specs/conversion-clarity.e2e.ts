@@ -41,6 +41,40 @@ function partialRuns(row: readonly number[]): number[] {
     .map((run) => run.length);
 }
 
+/**
+ * Where `shown` holds other ink than a saved row: at any pixel the saved row has
+ * empty or full, which is every pixel no edge crosses. The two may differ only
+ * at a pixel an edge crosses, as the format's Antialiasing section says, so
+ * this allows no room in position: an edge that moves or spreads changes a
+ * pixel beside it by far more than the one level the browser's scaling can
+ * round a full pixel by, which CI's Chromium 150 does.
+ */
+function inkChanged(
+  shown: readonly number[],
+  row: readonly number[],
+): { x: number; shown: number; saved: number }[] {
+  return row.flatMap((saved, x) => {
+    const value = shown[x] ?? 0;
+    const crossed = saved > 0 && saved < 255;
+    const same = Math.abs(value - saved) <= 1;
+    return crossed || same ? [] : [{ x, shown: value, saved }];
+  });
+}
+
+/**
+ * That the editor's own drawing of a base layer, which leaves scaling to the
+ * browser, shows the ink a save stored, and that this check would see the two
+ * ways of getting that wrong: this same row blurred, or moved by a pixel.
+ */
+function expectSameInk(shown: readonly number[], row: readonly number[]): void {
+  expect(inkChanged(shown, row)).toEqual([]);
+  const blurred = row.map((value, x) =>
+    Math.round(((row[x - 1] ?? 0) + value + (row[x + 1] ?? 0)) / 3),
+  );
+  expect(inkChanged(blurred, row)).not.toEqual([]);
+  expect(inkChanged([0, ...row.slice(0, -1)], row)).not.toEqual([]);
+}
+
 /** The ink the surface shows along a row, and device pixels per document's. */
 interface ShownRow {
   readonly row: number[];
@@ -133,23 +167,25 @@ async function checkDimClarity(side: number): Promise<void> {
     const saved = await canvas.decodePng(bytes);
     const pixels = canvas.readPixels(saved);
     saved.close();
-    const y = Math.floor(
-      opened.base.y / 16 + (opened.base.height * opened.base.scale) / 4,
-    );
+    const y = Math.floor(opened.base.y / 16 + opened.base.height / 16 / 4);
     const profile = (data: Uint8ClampedArray, width: number) => {
       const row = [];
       for (let x = 0; x < width; x++)
         row.push(data[(y * width + x) * 4 + 3] ?? 0);
       return row;
     };
-    const surface = new OffscreenCanvas(pixels.width, pixels.height);
-    const context = surface.getContext("2d");
-    if (context === null) throw new Error("no context");
-    render.drawInk(context, opened.document.strokes, opened.base);
-    const reopened = context.getImageData(0, 0, pixels.width, pixels.height);
+    const drawn = (base: typeof opened.base) => {
+      const surface = new OffscreenCanvas(pixels.width, pixels.height);
+      const context = surface.getContext("2d");
+      if (context === null) throw new Error("no context");
+      render.drawInk(context, opened.document.strokes, base);
+      const { data } = context.getImageData(0, 0, pixels.width, pixels.height);
+      return profile(data, pixels.width);
+    };
     return {
       row: profile(pixels.data, pixels.width),
-      reopened: profile(reopened.data, pixels.width),
+      reopened: drawn(canvas.reducedBase(opened.base)),
+      shown: drawn(opened.base),
     };
   });
   const edges = partialRuns(result.row);
@@ -163,9 +199,11 @@ async function checkDimClarity(side: number): Promise<void> {
       zoomedScale: zoomed.scale,
       applied: partialRuns(applied.row),
       row: result.row,
+      shown: result.shown,
     }),
   );
   expect(result.reopened).toEqual(result.row);
+  expectSameInk(result.shown, result.row);
   // Four vertical edges, at most two antialiased document pixels each, as a
   // black H on white has.
   expect(edges.length).toBeLessThanOrEqual(4);
@@ -178,8 +216,8 @@ async function checkDimClarity(side: number): Promise<void> {
 
 /**
  * Drops a black H on white, `side` pixels square, makes ink of it, and checks
- * the saved symbol's row through its stems, and that reopening draws it the
- * same.
+ * the saved symbol's row through its stems, that drawing it as a save does
+ * gives the same, and that the editor shows the same ink on reopening.
  */
 async function checkClarity(side: number): Promise<void> {
   await browser.execute(async (n) => {
@@ -225,31 +263,33 @@ async function checkClarity(side: number): Promise<void> {
     const saved = await canvas.decodePng(bytes);
     const pixels = canvas.readPixels(saved);
     saved.close();
-    const y = Math.floor(
-      opened.base.y / 16 + (opened.base.height * opened.base.scale) / 4,
-    );
+    const y = Math.floor(opened.base.y / 16 + opened.base.height / 16 / 4);
     const profile = (data: Uint8ClampedArray, width: number) => {
       const row = [];
       for (let x = 0; x < width; x++)
         row.push(data[(y * width + x) * 4 + 3] ?? 0);
       return row;
     };
-    const surface = new OffscreenCanvas(pixels.width, pixels.height);
-    const context = surface.getContext("2d");
-    if (context === null) throw new Error("no context");
-    render.drawInk(context, opened.document.strokes, opened.base);
-    const reopened = context.getImageData(0, 0, pixels.width, pixels.height);
+    const drawn = (base: typeof opened.base) => {
+      const surface = new OffscreenCanvas(pixels.width, pixels.height);
+      const context = surface.getContext("2d");
+      if (context === null) throw new Error("no context");
+      render.drawInk(context, opened.document.strokes, base);
+      const { data } = context.getImageData(0, 0, pixels.width, pixels.height);
+      return profile(data, pixels.width);
+    };
     const row = profile(pixels.data, pixels.width);
     return {
       row,
-      reopened: profile(reopened.data, pixels.width),
+      reopened: drawn(canvas.reducedBase(opened.base)),
+      shown: drawn(opened.base),
       partial: row.filter((v) => v > 0 && v < 255).length,
-      scale: opened.base.scale,
       width: opened.base.width,
     };
   });
   console.log(`Converted ${String(side)}-pixel H`, JSON.stringify(result));
   expect(result.reopened).toEqual(result.row);
+  expectSameInk(result.shown, result.row);
   // Four vertical edges, at most two antialiased document pixels each.
   const edges = result.row
     .map((value) => (value > 0 && value < 255 ? "p" : " "))
