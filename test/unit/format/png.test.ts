@@ -205,6 +205,60 @@ describe("readChunks and ancillary chunks", () => {
     );
   });
 
+  /** A sound file with an empty second chunk, for a test to spoil. */
+  const withEmptyChunk = (): Uint8Array<ArrayBuffer> =>
+    writeChunks([ihdr, { type: "abCd", data: new Uint8Array(0) }, idat, iend]);
+
+  /** A file whose second chunk has these bytes for its type, and a good CRC. */
+  const withType = (type: string): Uint8Array => {
+    const png = withEmptyChunk();
+    const bytes = Uint8Array.from(type, (char) => char.charCodeAt(0));
+    const at = 8 + 25 + 4;
+    png.set(bytes, at);
+    new DataView(png.buffer).setUint32(at + 4, crc32(bytes));
+    return png;
+  };
+
+  it("refuses a chunk type that is not four letters, whatever else it is", () => {
+    // Either side of each run of letters, and in every place, with a good CRC.
+    for (const type of [
+      "1abc",
+      "a1bc",
+      "ab1c",
+      "abc1",
+      "a bc",
+      "a@bc",
+      "a[bc",
+      "a`bc",
+      "a{bc",
+      "a\u00e9bc",
+    ]) {
+      expect(() => readChunks(withType(type)), type).toThrow(
+        "invalid chunk type",
+      );
+    }
+    for (const type of ["aAbC", "zZzZ"]) {
+      expect(readChunks(withType(type)), type).toHaveLength(4);
+    }
+  });
+
+  /**
+   * A file whose second chunk says it holds `length` bytes, standing in for a
+   * file long enough to hold them: only the file's length is compared with a
+   * chunk's, and checking the CRC of 2 GiB of real bytes takes minutes.
+   */
+  const withLength = (length: number): Uint8Array => {
+    const png = withEmptyChunk();
+    new DataView(png.buffer).setUint32(8 + 25, length);
+    return Object.defineProperty(png, "length", { value: 2 ** 33 });
+  };
+
+  it("refuses a chunk longer than PNG allows, in a file that could hold it", () => {
+    expect(() => readChunks(withLength(2 ** 31))).toThrow("truncated chunk");
+    // PNG's longest gets as far as the CRC, which lies past the bytes here.
+    expect(() => readChunks(withLength(2 ** 31 - 1))).toThrow(RangeError);
+  });
+
   it("reads as many chunks as the limit, and refuses one more", () => {
     const empty: Chunk = { type: "abCd", data: new Uint8Array(0) };
     const fill = (count: number): Uint8Array =>
@@ -255,6 +309,17 @@ describe("readChunks checks the critical chunks", () => {
       "IHDR is not 13 bytes",
     ],
     ["a zero width", [header(0, 2), idat, iend], "IHDR has an invalid size"],
+    ["a zero height", [header(2, 0), idat, iend], "IHDR has an invalid size"],
+    [
+      "a width of 2^31",
+      [header(2 ** 31, 2), idat, iend],
+      "IHDR has an invalid size",
+    ],
+    [
+      "a height of 2^31",
+      [header(2, 2 ** 31), idat, iend],
+      "IHDR has an invalid size",
+    ],
     [
       "bit depth 3",
       [headerWith(3, 6), idat, iend],
@@ -276,6 +341,11 @@ describe("readChunks checks the critical chunks", () => {
       "PLTE chunk in a greyscale image",
     ],
     [
+      "PLTE in a greyscale image with alpha",
+      [headerWith(8, 4), palette, idat, iend],
+      "PLTE chunk in a greyscale image",
+    ],
+    [
       "PLTE after the image data",
       [headerWith(8, 2), idat, palette, iend],
       "PLTE chunk after IDAT",
@@ -292,6 +362,12 @@ describe("readChunks checks the critical chunks", () => {
       expect(() => readChunks(writeChunks(chunks))).toThrow(message);
     });
   }
+
+  it("accepts the largest size PNG allows", () => {
+    for (const chunk of [header(2 ** 31 - 1, 2), header(2, 2 ** 31 - 1)]) {
+      expect(readChunks(writeChunks([chunk, idat, iend]))).toHaveLength(3);
+    }
+  });
 
   it("accepts a palette image with its PLTE and a truecolour one with a suggested palette", () => {
     expect(
@@ -348,13 +424,18 @@ describe("readChunks checks the critical chunks", () => {
     ).toHaveLength(4);
   });
 
-  it("refuses an invalid method", () => {
-    const chunk = header(2, 2);
-    const data = chunk.data.slice();
-    data[12] = 2;
-    expect(() =>
-      readChunks(writeChunks([{ type: "IHDR", data }, idat, iend])),
-    ).toThrow("IHDR has an invalid method");
+  it("refuses an invalid method of compression, filtering, or interlacing", () => {
+    for (const [at, method] of [
+      [10, 1],
+      [11, 1],
+      [12, 2],
+    ] as const) {
+      const data = header(2, 2).data.slice();
+      data[at] = method;
+      expect(() =>
+        readChunks(writeChunks([{ type: "IHDR", data }, idat, iend])),
+      ).toThrow("IHDR has an invalid method");
+    }
   });
 });
 
