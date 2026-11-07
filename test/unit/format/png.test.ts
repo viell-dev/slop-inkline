@@ -1,5 +1,5 @@
 import { loadavg } from "node:os";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   PngError,
   crc32,
@@ -493,25 +493,44 @@ describe("encodeRgba", () => {
       seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
       return seed >>> 24;
     });
-    const stretches: number[] = [];
-    let last = performance.now();
-    const bytes = await encodeRgba(width, height, data, {
-      // A task of its own, as a frame or input would need.
-      pause: async () => {
-        stretches.push(performance.now() - last);
-        await new Promise((resolve) => setImmediate(resolve));
-        last = performance.now();
-      },
-    });
-    // From the last pause to the end, too.
-    stretches.push(performance.now() - last);
-    expect(stretches.length).toBeGreaterThan(1);
+    /** The stretches between one encoding's pauses, and what it made. */
+    const encoded = async (): Promise<{
+      stretches: number[];
+      bytes: Uint8Array;
+    }> => {
+      const stretches: number[] = [];
+      let last = performance.now();
+      const bytes = await encodeRgba(width, height, data, {
+        // A task of its own, as a frame or input would need.
+        pause: async () => {
+          stretches.push(performance.now() - last);
+          await new Promise((resolve) => setImmediate(resolve));
+          last = performance.now();
+        },
+      });
+      // From the last pause to the end, too.
+      stretches.push(performance.now() - last);
+      return { stretches, bytes };
+    };
     // A slice is 12 ms and a batch more; a frozen encoder would take all of it.
-    // The message holds what #124 asks for, should this ever fail again.
-    expect(
-      Math.max(...stretches),
-      `stretches ${stretches.map((ms) => ms.toFixed(1)).join(", ")} ms, load ${loadavg().join(", ")}`,
-    ).toBeLessThan(100);
+    // The fastest of three, as other work on the machine lengthens every
+    // stretch of a run, by up to ten times (#124). That can pass a stall in the
+    // first run alone, so the first run has a limit of its own, which load has
+    // come nowhere near, and the next test counts the pauses with no clock at
+    // all. Each run's stretches are in the message, should all three fail.
+    const runs: number[][] = [];
+    let bytes: Uint8Array = new Uint8Array();
+    for (let run = 0; run < 3; run++) {
+      const result = await encoded();
+      runs.push(result.stretches);
+      ({ bytes } = result);
+      if (Math.max(...result.stretches) < 100) break;
+    }
+    const longest = runs.map((run) => Math.max(...run));
+    const report = `stretches ${runs.map((run) => run.map((ms) => ms.toFixed(1)).join(", ")).join(" | ")} ms, load ${loadavg().join(", ")}`;
+    expect(Math.min(...longest), report).toBeLessThan(100);
+    expect(longest[0], report).toBeLessThan(500);
+    expect(runs.every((run) => run.length > 1)).toBe(true);
     // The image data spans chunks of at most 64 KiB, each checksummed.
     const chunks = readChunks(bytes);
     const parts = chunks.filter((chunk) => chunk.type === "IDAT");
@@ -519,6 +538,43 @@ describe("encodeRgba", () => {
     expect(parts.every((chunk) => chunk.data.length <= 64 * 1024)).toBe(true);
     expect(imageData(chunks).length).toBe((width * 4 + 1) * height);
   });
+
+  it("offers a pause after every batch of rows and every chunk", async () => {
+    const width = 512;
+    const height = 512;
+    let seed = 5;
+    const data = Uint8Array.from({ length: width * height * 4 }, () => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed >>> 24;
+    });
+    // A clock on which every check finds its slice over, so each place the
+    // encoder looks at the clock pauses, however fast the machine is.
+    let now = 0;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => {
+      now += 13;
+      return now;
+    });
+    let pauses = 0;
+    try {
+      const bytes = await encodeRgba(width, height, data, {
+        pause: () => {
+          pauses += 1;
+          return Promise.resolve();
+        },
+      });
+      const parts = readChunks(bytes).filter((chunk) => chunk.type === "IDAT");
+      const rowBytes = width * 4 + 1;
+      const batches = Math.ceil(
+        height / Math.max(1, Math.floor((64 * 1024) / rowBytes)),
+      );
+      // The last chunk's pause comes only if it is full, so one fewer is fine.
+      expect(pauses).toBeGreaterThanOrEqual(batches + parts.length - 1);
+      expect(pauses).toBeLessThanOrEqual(batches + parts.length);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   it("refuses pixels that do not match the size", async () => {
     await expect(encodeRgba(2, 2, new Uint8Array(15))).rejects.toThrow(
       "pixel data does not match the size",
