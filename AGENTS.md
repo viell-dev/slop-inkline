@@ -31,15 +31,32 @@ screenshots use synthetic vaults and drawings only.
   files hold or how strokes are drawn updates that document in the same pull
   request. The pinned files in `test/fixtures/format` and
   `test/fixtures/outline` pin what files hold and how they look.
+  `test/fixtures/pinned.sha256` lists the hash of every data file in
+  `test/fixtures`, those and the pictures, and
+  `test/unit/format/pinned-files.test.ts` fails when a file and the list
+  disagree. `test/unit/format/limits.test.ts` writes out each of the format's
+  limits as a number, at the limit and just past it, as a test that names a
+  constant moves with it.
   - Until the first stable release, a change may still alter the format, and
     files written by earlier pre-releases need not keep opening. Such a change
-    updates the pinned files it affects in the same pull request, and says in
-    the changelog which files stop opening or look different. It is still
-    reviewed as below.
-  - From the first stable release, the pinned files are never changed: users'
-    files must keep opening and looking the same, so a new case gets a new
-    pinned file, and a change to how a record draws is a new format version, as
-    [the format's versions](docs/file-format.md#versions) say.
+    updates the pinned files it affects, their lines in that list, and any limit
+    it moves in that test in the same pull request, and says in the changelog
+    which files stop opening or look different. It is still reviewed as below.
+    The format's document stays at revision 1, and a change to its normative
+    text updates the date under its title.
+  - From `1.0.0`, the first stable release, the pinned files are never changed:
+    users' files must keep opening and looking the same, so a new case gets a
+    new pinned file, and a change to how a record draws is a new format version,
+    as [the format's versions](docs/file-format.md#versions) say. A change to
+    that document's normative text makes a new revision, with its number and
+    date under the title.
+  - From `1.0.0`, `pinned.sha256` only grows: a new pinned file adds a line, and
+    no line ever changes or goes. A wrong hash means the change that caused it
+    is wrong, so fix that change, and never update the list to make the test
+    pass, even when a new browser makes the pinned files look like the easy
+    thing to regenerate: they are the only record of how symbols looked. The
+    limits in `limits.test.ts` are as fixed: a number there changes only with a
+    new format version, which keeps the old one's.
   - `src/ink/freehand.ts` is part of the format, adapted from perfect-freehand
     so that no package update can change it. Keep it and the steps in the
     format's document saying the same thing.

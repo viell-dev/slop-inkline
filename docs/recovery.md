@@ -86,6 +86,14 @@ elsewhere, by sync, another app, or another editor, is not lost to a save:
   editor is open; **Keep mine** keeps your drawing, and saving it replaces the
   change.
 - Each save checks the file first, and asks the same question if it changed.
+  **Unreleased:** that includes a save from the library, which waits for one
+  from the editor, and the other way round. The last moment before a write is
+  [a known limit](./limits.md#a-file-written-at-the-moment-inkline-saves).
+- **Unreleased:** a reading or translation changed elsewhere shows in the field,
+  unless you have typed in that field, which you keep. Typing counts as unsaved,
+  so the question comes up if the file changed the same field: **Keep mine**
+  keeps what you typed, and **Reload** takes the file's. A field you typed in
+  that the file left alone stays as you typed it either way.
 - A symbol whose file was deleted while it was open is saved again where it was,
   folder and all.
 - A rename made elsewhere is followed, and its name kept.

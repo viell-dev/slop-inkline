@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   alphaBounds,
   baseIsReduced,
@@ -27,6 +27,7 @@ import {
   traceInk,
   traceRegion,
   type BaseSpan,
+  type ReducedBase,
   type RgbaPixels,
 } from "../../../src/ink/pixels.ts";
 import { limits } from "../../../src/format/record.ts";
@@ -174,6 +175,16 @@ describe("reduceBaseAlpha", () => {
       size,
       Array.from({ length: size }, (_, index) => (index === at ? 255 : 0)),
     );
+  /** The rows of pixels held whole, as a canvas gives them one at a time. */
+  const rowsOf =
+    ({ width, data }: RgbaPixels) =>
+    (row: number): Uint8ClampedArray =>
+      data.subarray(row * width * 4, (row + 1) * width * 4);
+  const reduce = (
+    pixels: RgbaPixels,
+    across: BaseSpan,
+    down: BaseSpan,
+  ): Promise<ReducedBase> => reduceBaseAlpha(rowsOf(pixels), across, down);
   const oneRow = { size: 1, start: 0, length: 16 };
   /** How much of a span's source pixel a whole pixel covers, in that pixel. */
   const overlap = (
@@ -186,8 +197,8 @@ describe("reduceBaseAlpha", () => {
     return Math.max(0, Math.min(to, pixel + 1) - Math.max(from, pixel));
   };
 
-  it("takes in a source pixel at an odd size", () => {
-    const reduced = reduceBaseAlpha(
+  it("takes in a source pixel at an odd size", async () => {
+    const reduced = await reduce(
       image(9, [0, 0, 0, 0, 0, 255, 0, 0, 0]),
       { size: 9, start: 160, length: 48 },
       oneRow,
@@ -196,9 +207,9 @@ describe("reduceBaseAlpha", () => {
     expect(reduced.across).toEqual({ start: 160, length: 48 });
   });
 
-  it("shares a source pixel between the pixels it falls on", () => {
+  it("shares a source pixel between the pixels it falls on", async () => {
     // Five pixels drawn three wide: the second spans 0.6 to 1.2.
-    const reduced = reduceBaseAlpha(
+    const reduced = await reduce(
       impulse(5, 1),
       { size: 5, start: 0, length: 48 },
       oneRow,
@@ -206,7 +217,7 @@ describe("reduceBaseAlpha", () => {
     expect([...reduced.alpha]).toEqual([102, 51, 0]);
   });
 
-  it("gives every pixel the mean of what it covers, whatever the sizes", () => {
+  it("gives every pixel the mean of what it covers, whatever the sizes", async () => {
     let worst = 0;
     let checked = 0;
     for (let size = 2; size <= 24; size++) {
@@ -215,7 +226,7 @@ describe("reduceBaseAlpha", () => {
         for (const start of [0, 5, 16, -37]) {
           const span = { size, start, length };
           for (let at = 0; at < size; at++) {
-            const { width, alpha, across } = reduceBaseAlpha(
+            const { width, alpha, across } = await reduce(
               impulse(size, at),
               span,
               oneRow,
@@ -234,10 +245,10 @@ describe("reduceBaseAlpha", () => {
     expect(worst).toBeLessThan(0.5001);
   });
 
-  it("counts a pixel the rectangle only partly covers for that part", () => {
+  it("counts a pixel the rectangle only partly covers for that part", async () => {
     // Four full pixels drawn a pixel and a half wide, from a quarter of the way
     // into one: three quarters of the first, and three quarters of the second.
-    const reduced = reduceBaseAlpha(
+    const reduced = await reduce(
       image(4, [255, 255, 255, 255]),
       { size: 4, start: 4, length: 24 },
       oneRow,
@@ -246,17 +257,63 @@ describe("reduceBaseAlpha", () => {
     expect(reduced.across).toEqual({ start: 0, length: 32 });
   });
 
-  it("reduces each way on its own", () => {
+  it("reduces each way on its own", async () => {
     const stripes = image(4, [255, 0, 255, 0, 0, 0, 0, 0]);
     const across = { size: 4, start: 3, length: 32 };
     const down = { size: 2, start: 5, length: 160 };
-    const reduced = reduceBaseAlpha(stripes, across, down);
+    const reduced = await reduce(stripes, across, down);
     expect(reduced.height).toBe(2);
     expect(reduced.down).toMatchObject({ start: 5, length: 160 });
     expect(reduced.across).toEqual({ start: 0, length: 48 });
     expect(reduced.width).toBe(3);
     // A source pixel is half a pixel wide, starting 3 sixteenths along.
     expect([...reduced.alpha]).toEqual([128, 128, 0, 0, 0, 0]);
+  });
+
+  it("reads each row it needs in order, and an image only as far as it must", async () => {
+    const pixels = image(2, [10, 20, 30, 40, 50, 60, 70, 80]);
+    const read: number[] = [];
+    const rows = rowsOf(pixels);
+    const reduced = await reduceBaseAlpha(
+      (row) => {
+        read.push(row);
+        return rows(row);
+      },
+      { size: 2, start: 0, length: 16 },
+      { size: 4, start: 0, length: 32 },
+    );
+    expect(reduced.height).toBe(2);
+    expect([...reduced.alpha]).toEqual([25, 65]);
+    expect(read).toEqual([0, 1, 2, 3]);
+  });
+
+  it("pauses between rows once it has worked long enough, to the same result", async () => {
+    const size = 64;
+    const pixels = image(
+      size,
+      Array.from({ length: size * size }, (_, index) => (index * 37) % 256),
+    );
+    const across = { size, start: 5, length: 16 * 21 };
+    const down = { size, start: -3, length: 16 * 17 };
+    const whole = await reduce(pixels, across, down);
+    // Every look at the clock finds the slice over.
+    let now = 0;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => {
+      now += 100;
+      return now;
+    });
+    let pauses = 0;
+    const sliced = await reduceBaseAlpha(rowsOf(pixels), across, down, {
+      pause: () => {
+        pauses++;
+        return Promise.resolve();
+      },
+    });
+    clock.mockRestore();
+    expect(pauses).toBeGreaterThanOrEqual(size);
+    expect([...sliced.alpha]).toEqual([...whole.alpha]);
+    expect(sliced.across).toEqual(whole.across);
+    expect(sliced.down).toEqual(whole.down);
   });
 
   it("knows when neither way is reduced", () => {
@@ -267,10 +324,10 @@ describe("reduceBaseAlpha", () => {
     expect(baseIsReduced(smaller, same)).toBe(true);
   });
 
-  it("stays exact at the largest image, on a base layer at the limit", () => {
+  it("stays exact at the largest image, on a base layer at the limit", async () => {
     const size = 4096;
     const row = new Array<number>(size).fill(255);
-    const reduced = reduceBaseAlpha(
+    const reduced = await reduce(
       image(size, row),
       { size, start: 2 ** 24 - 65_535, length: 65_535 },
       oneRow,

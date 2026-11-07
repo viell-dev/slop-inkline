@@ -9,16 +9,30 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
-The file format is still a draft until 1.0.0, and it changes here: a stroke's
-`cut` is now only `"up"` or `"down"`. A symbol saved by 0.9.1 or earlier with
-**Flat ends** cut along a column no longer reads as strokes: it still shows its
-stored pixels, and the editor opens those as a picture to draw over. A draft
-holding such a stroke is no longer offered back.
-
-The format also now defines where a symbol's readings and translations go: PNG
+The file format now defines where a symbol's readings and translations go: PNG
 text chunks, apart from its strokes and its file's name, which a program that
-changes the file must keep. Inkline writes and shows none of them yet, and no
-existing file is affected.
+changes the file must keep. No existing file is affected.
+
+### Added
+
+- A symbol can record readings and translations, apart from its file's name, one
+  to a line, so that correcting a guess changes no note and needs no rename.
+  Fill them in beside the name in the editor, or in the library, beside
+  **Rename**, where saving changes the file's text and nothing else, in a file
+  the editor won't open too. A row shows what a symbol holds
+  ([#187](https://github.com/viell-dev/slop-inkline/issues/187)).
+- The `;;` list, **Inkline: Insert existing symbol**, **Copy from**, and the
+  library's filter find a symbol by a reading or translation as well as by name,
+  and a row found that way shows why. Accents need no typing, but a mark that
+  makes another sound counts: `sa` finds `šá`, and `は` does not find `ば`. They
+  read the vault's symbols in the background, without slowing typing, what just
+  changed first, and say so while they may be missing some
+  ([#189](https://github.com/viell-dev/slop-inkline/issues/189)).
+- A save that Obsidian does not finish, as on a drive that stops answering, says
+  so after a few seconds, in the editor and the library, with how to get your
+  work back. Saving goes on by itself if Obsidian finishes, and the library's
+  fields can be closed meanwhile
+  ([#198](https://github.com/viell-dev/slop-inkline/pull/198)).
 
 ### Fixed
 
@@ -51,6 +65,10 @@ existing file is affected.
   changed if one cannot be saved. Text that reaches a note during the question,
   from another window or a plugin, stays exposed, as with any file in Obsidian
   ([#182](https://github.com/viell-dev/slop-inkline/issues/182)).
+- The symbol library draws 100 symbols at a time, with **Show more** for the
+  next 100, so that typing in its filter stays quick in a vault of thousands of
+  them, where each key took seconds
+  ([#189](https://github.com/viell-dev/slop-inkline/issues/189)).
 - A long name no longer runs off the symbol library and gives it a horizontal
   scroll bar. It wraps onto a second line and then shortens, as a long folder
   shortens, and a tooltip on the row has the whole of both. A long note name
@@ -66,6 +84,47 @@ existing file is affected.
   and a menu that took the keyboard just before the editor opened held the
   note's arrow keys once the editor closed
   ([#78](https://github.com/viell-dev/slop-inkline/issues/78)).
+- A flat-ended stroke whose only ink in the line came from the part drawn again
+  at its cut end was left out when saving, which could save a blank symbol.
+- A picture with an orientation in its metadata is no longer turned on opening,
+  and turned again in notes. Saving a symbol drops that metadata.
+- A file with a damaged chunk that the image does not depend on opens as it
+  shows, and one with a critical chunk that PNG does not define does not open.
+- A symbol whose image data is damaged opens if its strokes are whole, and
+  saving it draws the image again.
+- A large picture drawn smaller keeps its thin lines when saved, whatever its
+  size, as each saved pixel is now the exact mean of the pixels it covers.
+- A stroke that turns through almost exactly a right angle keeps its shape when
+  saving's crop or the arrow keys shift it. Rounding used to depend on where the
+  stroke lay, so that adding a mark elsewhere could redraw it pixels away. Such
+  a stroke in a symbol saved earlier can look different the next time it is
+  drawn.
+- A line whose far end you erased keeps its pixels when an edit moves saving's
+  crop. The line runs past the image's edge, and the browser drew its curve a
+  little differently wherever the crop put that edge, so that about half of such
+  saves changed some of its pixels
+  ([#186](https://github.com/viell-dev/slop-inkline/issues/186)).
+- A stroke that repeats a point hundreds of times keeps its end, and saving such
+  a symbol no longer cuts most of it off. Inkline does not draw such a stroke,
+  but another program could write one.
+- A symbol whose base layer has incomplete or wrong image data, which only a
+  faulty program writes, does not open in any supported Obsidian. One version
+  used to open it with the missing rows empty, and the next save kept them so.
+- A picture with so many metadata chunks that adding the strokes would take it
+  past the 65,536 Inkline reads is not saved, and stays as it was. Saving used
+  to write a symbol that then would not open.
+- A file is a symbol only if its name ends in the ASCII letters of `.ink.png`,
+  in any case. A letter that only lowercases to one of them, such as the Kelvin
+  sign, no longer counts.
+- **Keep mine** keeps your drawing and no more. A save after it used to write
+  back the text and other carried chunks the file had when the editor opened,
+  which dropped any that the change on disk had added.
+- Saving a symbol with a large base layer no longer freezes Obsidian. Near the
+  format's limit that took four to five seconds with nothing painting or taking
+  input. It now takes two or three, and Obsidian keeps answering, apart from a
+  pause of up to about a quarter of a second just after you ask to save. What
+  files hold has not changed
+  ([#200](https://github.com/viell-dev/slop-inkline/issues/200)).
 
 ### Changed
 
@@ -128,59 +187,10 @@ existing file is affected.
   in the default sidebar, however long the name is. The name has the room the
   row's narrower buttons leave, and they line up across rows. In a sidebar
   narrower than about 275 pixels, they drop below the name together.
-
-### Fixed
-
-- A long name no longer runs off the symbol library and gives it a horizontal
-  scroll bar. It wraps onto a second line and then shortens, as a long folder
-  shortens, and a tooltip on the row has the whole of both. A long note name
-  listed under a symbol wraps too
-  ([#175](https://github.com/viell-dev/slop-inkline/issues/175)).
-- A very long name with no spaces breaks within its row in the symbol lists,
-  rather than giving the list a sideways scroll bar
-  ([#178](https://github.com/viell-dev/slop-inkline/issues/178)).
-
-### Fixed
-
-- **Flat ends** only ever cuts along a row. An end running more along the row
-  than across it is no longer cut along a column, which took a corner out of it,
-  and stays round, so that a line drawn along the baseline stays whole
-  ([#168](https://github.com/viell-dev/slop-inkline/issues/168)).
-- A flat-ended stroke whose only ink in the line came from the part drawn again
-  at its cut end was left out when saving, which could save a blank symbol.
-- A picture with an orientation in its metadata is no longer turned on opening,
-  and turned again in notes. Saving a symbol drops that metadata.
-- A file with a damaged chunk that the image does not depend on opens as it
-  shows, and one with a critical chunk that PNG does not define does not open.
-- A symbol whose image data is damaged opens if its strokes are whole, and
-  saving it draws the image again.
-- A large picture drawn smaller keeps its thin lines when saved, whatever its
-  size, as each saved pixel is now the exact mean of the pixels it covers.
-- A stroke that turns through almost exactly a right angle keeps its shape when
-  saving's crop or the arrow keys shift it. Rounding used to depend on where the
-  stroke lay, so that adding a mark elsewhere could redraw it pixels away. Such
-  a stroke in a symbol saved earlier can look different the next time it is
-  drawn.
-- A line whose far end you erased keeps its pixels when an edit moves saving's
-  crop. The line runs past the image's edge, and the browser drew its curve a
-  little differently wherever the crop put that edge, so that about half of such
-  saves changed some of its pixels
-  ([#186](https://github.com/viell-dev/slop-inkline/issues/186)).
-- A stroke that repeats a point hundreds of times keeps its end, and saving such
-  a symbol no longer cuts most of it off. Inkline does not draw such a stroke,
-  but another program could write one.
-- A symbol whose base layer has incomplete or wrong image data, which only a
-  faulty program writes, does not open in any supported Obsidian. One version
-  used to open it with the missing rows empty, and the next save kept them so.
-- A picture with so many metadata chunks that adding the strokes would take it
-  past the 65,536 Inkline reads is not saved, and stays as it was. Saving used
-  to write a symbol that then would not open.
-- A file is a symbol only if its name ends in the ASCII letters of `.ink.png`,
-  in any case. A letter that only lowercases to one of them, such as the Kelvin
-  sign, no longer counts.
-- **Keep mine** keeps your drawing and no more. A save after it used to write
-  back the text and other carried chunks the file had when the editor opened,
-  which dropped any that the change on disk had added.
+- Every limit of the file format is now tested at the limit and just past it,
+  with its number written out, and a recorded list of hashes holds the pinned
+  test files, so that neither can change by mistake once the format is permanent
+  ([#197](https://github.com/viell-dev/slop-inkline/issues/197)).
 
 ## 0.9.1 - 2026-11-06
 

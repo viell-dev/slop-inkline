@@ -1,13 +1,24 @@
+import { Buffer } from "node:buffer";
 import { describe, expect, it } from "vitest";
 import {
+  baseImageProblem,
   limits,
   parseRecord,
+  recordProblem,
   serializeRecord,
+  serializedBytes,
+  toBase64,
+  toBase64Sliced,
   type InkRecord,
   type ParseResult,
 } from "../../../src/format/record.ts";
 import { blank, encodePng, header, pixelChunks } from "../../support/png.ts";
-import { pngSignature, writeChunks } from "../../../src/format/png.ts";
+import {
+  pngSignature,
+  readChunks,
+  writeChunks,
+} from "../../../src/format/png.ts";
+import { noise, paused } from "../../support/slices.ts";
 
 const record: InkRecord = {
   strokes: [
@@ -533,6 +544,231 @@ describe("parseRecord holds the text to the format's own JSON", () => {
     expect(invalid(parseRecord(nested(400_000)))).toBe(
       "nested more than 16 deep",
     );
+  });
+});
+
+describe("toBase64", () => {
+  const plain = (bytes: Uint8Array): string =>
+    Buffer.from(bytes).toString("base64");
+
+  it("spells bytes as base64 does, at every length around a group", () => {
+    for (let length = 0; length <= 300; length++) {
+      const bytes = noise(length);
+      expect(toBase64(bytes)).toBe(plain(bytes));
+    }
+  });
+
+  it("gets every value of a byte in every place of a group right", () => {
+    for (let value = 0; value < 256; value++) {
+      for (const bytes of [
+        Uint8Array.of(value),
+        Uint8Array.of(0, value),
+        Uint8Array.of(value, 0),
+        Uint8Array.of(0, 0, value),
+        Uint8Array.of(value, 255, value),
+      ]) {
+        expect(toBase64(bytes)).toBe(plain(bytes));
+      }
+    }
+  });
+
+  it("reads a view into a larger buffer from where it starts", () => {
+    const bytes = noise(100);
+    expect(toBase64(bytes.subarray(7, 50))).toBe(plain(bytes.subarray(7, 50)));
+  });
+
+  it("gives the same text in slices, on and around a slice's end", async () => {
+    const slice = 3 * 16 * 1024;
+    for (const length of [0, 1, 2, 3, slice - 1, slice, slice + 1, 2 * slice]) {
+      const bytes = noise(length);
+      const { result } = await paused((pause) =>
+        toBase64Sliced(bytes, { pause }),
+      );
+      expect(result).toBe(plain(bytes));
+    }
+  });
+});
+
+describe("serializedBytes", () => {
+  const text = (bytes: Uint8Array): string => new TextDecoder().decode(bytes);
+  const stroke = { tool: "pen", size: 16, points: [16, 32] } as const;
+
+  it("is the text of a record without a base layer", async () => {
+    expect(text(await serializedBytes(record))).toBe(serializeRecord(record));
+    const none: InkRecord = { strokes: [] };
+    expect(text(await serializedBytes(none))).toBe(serializeRecord(none));
+  });
+
+  it("is the text of a record with one, at every length around a group", async () => {
+    for (let length = 0; length <= 7; length++) {
+      const base = { x: -5, y: 3, width: 16, height: 32, png: noise(length) };
+      const each: InkRecord = { strokes: [stroke], base };
+      expect(text(await serializedBytes(each))).toBe(serializeRecord(each));
+    }
+  });
+
+  it("is the same in slices, across several of them", async () => {
+    const base = { x: 0, y: 0, width: 16, height: 16, png: noise(200_000) };
+    const large: InkRecord = { strokes: [stroke, stroke], base };
+    const { result, pauses } = await paused((pause) =>
+      serializedBytes(large, { pause }),
+    );
+    expect(text(result)).toBe(serializeRecord(large));
+    expect(pauses).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe("recordProblem", () => {
+  const png = encodePng(blank(3, 2));
+  const place = { x: 0, y: 0, width: 48, height: 32 };
+  const strokes = [{ tool: "pen", size: 16, points: [16, 32] }] as const;
+  /** The PNG with a chunk's data changed, its CRC left as it was. */
+  const damagedData = (type: string): Uint8Array => {
+    const bytes = png.slice();
+    const found = readChunks(bytes).find((chunk) => chunk.type === type);
+    if (found === undefined) throw new Error(`no ${type}`);
+    const at = found.data.byteOffset - bytes.byteOffset;
+    bytes[at] = (bytes[at] ?? 0) ^ 0xff;
+    return bytes;
+  };
+  const [ihdr, idat, iend] = pixelChunks(blank(3, 2));
+  if (ihdr === undefined || idat === undefined || iend === undefined) {
+    throw new Error("no chunks");
+  }
+
+  /** What a whole record's text being read back finds, as it did before. */
+  const readingBack = async (each: InkRecord): Promise<string | undefined> => {
+    const parsed = parseRecord(serializeRecord(each));
+    if (!parsed.ok) return parsed.detail;
+    return each.base === undefined
+      ? undefined
+      : baseImageProblem(each.base.png);
+  };
+
+  const cases: readonly (readonly [string, InkRecord])[] = [
+    ["no strokes", { strokes: [] }],
+    ["a stroke", { strokes }],
+    ["a base layer", { strokes, base: { ...place, png } }],
+    ["a stroke too thin", { strokes: [{ ...strokes[0], size: 0 }] }],
+    [
+      "a stroke and base layer both wrong",
+      {
+        strokes: [{ ...strokes[0], size: 0 }],
+        base: { ...place, png: pngSignature },
+      },
+    ],
+    [
+      "a base layer out of reach",
+      { strokes, base: { ...place, x: limits.coordinate + 1, png } },
+    ],
+    [
+      "a base layer with no width",
+      { strokes, base: { ...place, width: 0, png } },
+    ],
+    [
+      "a base layer's PNG too large",
+      {
+        strokes,
+        base: { ...place, png: new Uint8Array(limits.baseBytes + 1) },
+      },
+    ],
+    ["bytes that are no PNG", { strokes, base: { ...place, png: noise(40) } }],
+    ["no bytes", { strokes, base: { ...place, png: new Uint8Array(0) } }],
+    ["a PNG cut short", { strokes, base: { ...place, png: png.slice(0, 40) } }],
+    [
+      "a damaged header",
+      { strokes, base: { ...place, png: damagedData("IHDR") } },
+    ],
+    [
+      "damaged image data",
+      { strokes, base: { ...place, png: damagedData("IDAT") } },
+    ],
+    [
+      "a chunk a base layer cannot hold",
+      {
+        strokes,
+        base: {
+          ...place,
+          png: writeChunks([
+            ihdr,
+            { type: "tEXt", data: Uint8Array.of(97, 0, 98) },
+            idat,
+            iend,
+          ]),
+        },
+      },
+    ],
+    [
+      "an image larger than a base layer can be",
+      {
+        strokes,
+        base: {
+          ...place,
+          png: writeChunks([header(5000, 2), idat, iend]),
+        },
+      },
+    ],
+    [
+      "an image that is not RGBA",
+      {
+        strokes,
+        base: {
+          ...place,
+          png: writeChunks([
+            {
+              type: "IHDR",
+              data: Uint8Array.of(0, 0, 0, 3, 0, 0, 0, 2, 8, 0, 0, 0, 0),
+            },
+            idat,
+            iend,
+          ]),
+        },
+      },
+    ],
+    [
+      "image data that stops short",
+      {
+        strokes,
+        base: {
+          ...place,
+          png: writeChunks([header(30, 20), idat, iend]),
+        },
+      },
+    ],
+  ];
+
+  it.each(cases)("finds what reading back finds: %s", async (_, each) => {
+    expect(await recordProblem(each)).toBe(await readingBack(each));
+  });
+
+  it("finds it in slices too", async () => {
+    for (const [, each] of cases) {
+      const { result } = await paused((pause) =>
+        recordProblem(each, { pause }),
+      );
+      expect(result).toBe(await readingBack(each));
+    }
+  });
+
+  it("refuses what comes after the end of a PNG", async () => {
+    const trailing = new Uint8Array(png.length + 1);
+    trailing.set(png);
+    const each = { strokes, base: { ...place, png: trailing } };
+    expect(await recordProblem(each)).toBe(await readingBack(each));
+    expect(await recordProblem(each)).toBe(
+      "base.png holds bytes after its end",
+    );
+  });
+
+  it("passes a large PNG, pausing all through it", async () => {
+    const data = noise(400 * 400 * 4);
+    const large = encodePng({ width: 400, height: 400, data });
+    const each = { strokes, base: { ...place, png: large } };
+    const { result, pauses } = await paused((pause) =>
+      recordProblem(each, { pause }),
+    );
+    expect(result).toBeUndefined();
+    expect(pauses).toBeGreaterThanOrEqual(large.length / 1024);
   });
 });
 

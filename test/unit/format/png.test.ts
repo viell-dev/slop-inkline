@@ -5,17 +5,21 @@ import {
   crc32,
   deflate,
   encodeRgba,
+  firstDamaged,
   imageHeader,
   maxChunks,
   inflate,
   isPng,
   pngSignature,
   readChunks,
+  slicer,
   writeChunks,
+  writeChunksSliced,
   type Chunk,
 } from "../../../src/format/png.ts";
 import { inflateSync } from "node:zlib";
 import { blank, encodePng, header, pixelChunks } from "../../support/png.ts";
+import { noise, paused } from "../../support/slices.ts";
 
 const ascii = (text: string): Uint8Array =>
   Uint8Array.from(text, (char) => char.charCodeAt(0));
@@ -31,6 +35,38 @@ describe("crc32", () => {
 
   it("matches the CRC of a real IEND chunk", () => {
     expect(crc32(ascii("IEND"))).toBe(0xae426082);
+  });
+});
+
+describe("readChunks, for a caller that looks at some chunks", () => {
+  const damagedAt = (index: number): Uint8Array => {
+    const bytes = encodePng(blank(2, 2)).slice();
+    let at = pngSignature.length;
+    for (let chunk = 0; chunk < index; chunk++) {
+      at += 12 + new DataView(bytes.buffer).getUint32(at);
+    }
+    const end = at + 8 + new DataView(bytes.buffer).getUint32(at);
+    // The chunk's CRC, wrong.
+    bytes[end] = (bytes[end] ?? 0) ^ 0xff;
+    return bytes;
+  };
+
+  it("works out only the CRCs it is asked for", () => {
+    const image = damagedAt(1);
+    expect(readChunks(image)[1]?.damaged).toBe(true);
+    expect(readChunks(image, () => false)[1]?.damaged).toBeUndefined();
+    expect(readChunks(image, (type) => type === "IDAT")[1]?.damaged).toBe(true);
+  });
+
+  it("still checks the header's, as the file's structure depends on it", () => {
+    expect(() => readChunks(damagedAt(0), () => false)).toThrow(PngError);
+  });
+
+  it("still checks the file's structure", () => {
+    const bytes = encodePng(blank(2, 2));
+    expect(() =>
+      readChunks(bytes.subarray(0, bytes.length - 4), () => false),
+    ).toThrow(PngError);
   });
 });
 
@@ -142,6 +178,146 @@ describe("deflate and inflate", () => {
   });
 });
 
+describe("work in slices", () => {
+  const chunks: Chunk[] = [
+    header(1, 1),
+    { type: "teXt", data: noise(40_000) },
+    { type: "IDAT", data: noise(200_000) },
+    { type: "IEND", data: new Uint8Array(0) },
+  ];
+  /** A file with a byte of a chunk's data changed, with its CRC left alone. */
+  const damaged = (type: string): Uint8Array => {
+    const bytes = writeChunks(chunks).slice();
+    const at = readChunks(bytes).find((chunk) => chunk.type === type);
+    if (at === undefined) throw new Error(`no ${type}`);
+    const offset = at.data.byteOffset - bytes.byteOffset + 100;
+    bytes[offset] = (bytes[offset] ?? 0) ^ 0xff;
+    return bytes;
+  };
+
+  it("pauses only once the work has taken long enough", async () => {
+    let now = 0;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
+    let pauses = 0;
+    const breather = slicer(() => {
+      pauses += 1;
+      return Promise.resolve();
+    });
+    now = 12;
+    await breather();
+    expect(pauses).toBe(0);
+    now = 13;
+    await breather();
+    expect(pauses).toBe(1);
+    // A new slice starts from the pause.
+    await breather();
+    expect(pauses).toBe(1);
+    clock.mockRestore();
+  });
+
+  it("never pauses without a pause to take", async () => {
+    await expect(slicer(undefined)()).resolves.toBeUndefined();
+  });
+
+  it("writes the same file as writeChunks", async () => {
+    expect(await writeChunksSliced(chunks)).toEqual(writeChunks(chunks));
+  });
+
+  it("pauses all through a large chunk's CRC", async () => {
+    const { result, pauses } = await paused((pause) =>
+      writeChunksSliced(chunks, { pause }),
+    );
+    expect(result).toEqual(writeChunks(chunks));
+    expect(pauses).toBeGreaterThanOrEqual(6);
+  });
+
+  it("finds no damage in a sound file", async () => {
+    const bytes = writeChunks(chunks);
+    const read = readChunks(bytes, () => false);
+    expect(await firstDamaged(bytes, read)).toBeUndefined();
+  });
+
+  it("finds the damage readChunks finds", async () => {
+    for (const type of ["teXt", "IDAT"]) {
+      const bytes = damaged(type);
+      const read = readChunks(bytes, () => false);
+      expect(read.some((chunk) => chunk.damaged === true)).toBe(false);
+      const found = await firstDamaged(bytes, read);
+      expect(found?.type).toBe(type);
+      expect(
+        readChunks(bytes).find((chunk) => chunk.damaged === true)?.type,
+      ).toBe(type);
+    }
+  });
+
+  it("finds a wrong CRC itself, and damage in a chunk's type", async () => {
+    const wrongCrc = writeChunks(chunks).slice();
+    const last = readChunks(wrongCrc).find(({ type }) => type === "IDAT");
+    if (last === undefined) throw new Error("no IDAT");
+    const end = last.data.byteOffset + last.data.length;
+    wrongCrc[end] = (wrongCrc[end] ?? 0) ^ 1;
+    const found = await firstDamaged(
+      wrongCrc,
+      readChunks(wrongCrc, () => false),
+    );
+    expect(found?.type).toBe("IDAT");
+  });
+
+  it("reads chunks from a view into a larger buffer", async () => {
+    const file = damaged("IDAT");
+    const padded = new Uint8Array(file.length + 13);
+    padded.set(file, 7);
+    const view = padded.subarray(7, 7 + file.length);
+    const found = await firstDamaged(
+      view,
+      readChunks(view, () => false),
+    );
+    expect(found?.type).toBe("IDAT");
+  });
+
+  it("pauses all through a large chunk's check", async () => {
+    const bytes = writeChunks(chunks);
+    const { pauses } = await paused((pause) =>
+      firstDamaged(
+        bytes,
+        readChunks(bytes, () => false),
+        { pause },
+      ),
+    );
+    expect(pauses).toBeGreaterThanOrEqual(6);
+  });
+
+  it("compresses to the same bytes, pausing all through", async () => {
+    const bytes = noise(50_000);
+    const whole = await deflate(bytes);
+    const { result, pauses } = await paused((pause) =>
+      deflate(bytes, { pause }),
+    );
+    expect(result).toEqual(whole);
+    expect(pauses).toBeGreaterThanOrEqual(bytes.length / 1024);
+  });
+
+  it("decompresses to the same bytes, pausing all through", async () => {
+    const bytes = noise(50_000);
+    const compressed = await deflate(bytes);
+    const { result, pauses } = await paused((pause) =>
+      inflate(compressed, { pause }),
+    );
+    expect(result).toEqual(bytes);
+    expect(pauses).toBeGreaterThanOrEqual(compressed.length / 1024);
+  });
+
+  it("still stops at the limit and at corrupt data, pausing", async () => {
+    const compressed = await deflate(new Uint8Array(100_000));
+    await expect(
+      paused((pause) => inflate(compressed, { limit: 99_999, pause })),
+    ).rejects.toThrow("data expands beyond 99999 bytes");
+    await expect(
+      paused((pause) => inflate(ascii("not zlib data"), { pause })),
+    ).rejects.toThrow();
+  });
+});
+
 describe("readChunks and ancillary chunks", () => {
   const [ihdr, idat, iend] = pixelChunks(blank(1, 1));
   if (ihdr === undefined || idat === undefined || iend === undefined) {
@@ -205,6 +381,60 @@ describe("readChunks and ancillary chunks", () => {
     );
   });
 
+  /** A sound file with an empty second chunk, for a test to spoil. */
+  const withEmptyChunk = (): Uint8Array<ArrayBuffer> =>
+    writeChunks([ihdr, { type: "abCd", data: new Uint8Array(0) }, idat, iend]);
+
+  /** A file whose second chunk has these bytes for its type, and a good CRC. */
+  const withType = (type: string): Uint8Array => {
+    const png = withEmptyChunk();
+    const bytes = Uint8Array.from(type, (char) => char.charCodeAt(0));
+    const at = 8 + 25 + 4;
+    png.set(bytes, at);
+    new DataView(png.buffer).setUint32(at + 4, crc32(bytes));
+    return png;
+  };
+
+  it("refuses a chunk type that is not four letters, whatever else it is", () => {
+    // Either side of each run of letters, and in every place, with a good CRC.
+    for (const type of [
+      "1abc",
+      "a1bc",
+      "ab1c",
+      "abc1",
+      "a bc",
+      "a@bc",
+      "a[bc",
+      "a`bc",
+      "a{bc",
+      "a\u00e9bc",
+    ]) {
+      expect(() => readChunks(withType(type)), type).toThrow(
+        "invalid chunk type",
+      );
+    }
+    for (const type of ["aAbC", "zZzZ"]) {
+      expect(readChunks(withType(type)), type).toHaveLength(4);
+    }
+  });
+
+  /**
+   * A file whose second chunk says it holds `length` bytes, standing in for a
+   * file long enough to hold them: only the file's length is compared with a
+   * chunk's, and checking the CRC of 2 GiB of real bytes takes minutes.
+   */
+  const withLength = (length: number): Uint8Array => {
+    const png = withEmptyChunk();
+    new DataView(png.buffer).setUint32(8 + 25, length);
+    return Object.defineProperty(png, "length", { value: 2 ** 33 });
+  };
+
+  it("refuses a chunk longer than PNG allows, in a file that could hold it", () => {
+    expect(() => readChunks(withLength(2 ** 31))).toThrow("truncated chunk");
+    // PNG's longest gets as far as the CRC, which lies past the bytes here.
+    expect(() => readChunks(withLength(2 ** 31 - 1))).toThrow(RangeError);
+  });
+
   it("reads as many chunks as the limit, and refuses one more", () => {
     const empty: Chunk = { type: "abCd", data: new Uint8Array(0) };
     const fill = (count: number): Uint8Array =>
@@ -255,6 +485,17 @@ describe("readChunks checks the critical chunks", () => {
       "IHDR is not 13 bytes",
     ],
     ["a zero width", [header(0, 2), idat, iend], "IHDR has an invalid size"],
+    ["a zero height", [header(2, 0), idat, iend], "IHDR has an invalid size"],
+    [
+      "a width of 2^31",
+      [header(2 ** 31, 2), idat, iend],
+      "IHDR has an invalid size",
+    ],
+    [
+      "a height of 2^31",
+      [header(2, 2 ** 31), idat, iend],
+      "IHDR has an invalid size",
+    ],
     [
       "bit depth 3",
       [headerWith(3, 6), idat, iend],
@@ -276,6 +517,11 @@ describe("readChunks checks the critical chunks", () => {
       "PLTE chunk in a greyscale image",
     ],
     [
+      "PLTE in a greyscale image with alpha",
+      [headerWith(8, 4), palette, idat, iend],
+      "PLTE chunk in a greyscale image",
+    ],
+    [
       "PLTE after the image data",
       [headerWith(8, 2), idat, palette, iend],
       "PLTE chunk after IDAT",
@@ -292,6 +538,12 @@ describe("readChunks checks the critical chunks", () => {
       expect(() => readChunks(writeChunks(chunks))).toThrow(message);
     });
   }
+
+  it("accepts the largest size PNG allows", () => {
+    for (const chunk of [header(2 ** 31 - 1, 2), header(2, 2 ** 31 - 1)]) {
+      expect(readChunks(writeChunks([chunk, idat, iend]))).toHaveLength(3);
+    }
+  });
 
   it("accepts a palette image with its PLTE and a truecolour one with a suggested palette", () => {
     expect(
@@ -348,13 +600,18 @@ describe("readChunks checks the critical chunks", () => {
     ).toHaveLength(4);
   });
 
-  it("refuses an invalid method", () => {
-    const chunk = header(2, 2);
-    const data = chunk.data.slice();
-    data[12] = 2;
-    expect(() =>
-      readChunks(writeChunks([{ type: "IHDR", data }, idat, iend])),
-    ).toThrow("IHDR has an invalid method");
+  it("refuses an invalid method of compression, filtering, or interlacing", () => {
+    for (const [at, method] of [
+      [10, 1],
+      [11, 1],
+      [12, 2],
+    ] as const) {
+      const data = header(2, 2).data.slice();
+      data[at] = method;
+      expect(() =>
+        readChunks(writeChunks([{ type: "IHDR", data }, idat, iend])),
+      ).toThrow("IHDR has an invalid method");
+    }
   });
 });
 

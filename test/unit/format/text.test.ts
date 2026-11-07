@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   preservableChunks,
   readInkFile,
@@ -9,6 +9,7 @@ import {
 } from "../../../src/format/ink-file.ts";
 import {
   PngError,
+  inflate,
   maxChunks,
   readChunks,
   spliceChunks,
@@ -18,6 +19,7 @@ import {
 import {
   TextError,
   maxTextBytes,
+  readFileText,
   readText,
   textKeywords,
   textProblem,
@@ -30,6 +32,13 @@ import {
   textCases,
   usedAfter,
 } from "../../fixtures/format/text-cases.ts";
+
+// The real thing, watched: a stream far past the limit is void with or without
+// it, so that only what `inflate` was asked to do tells the two apart.
+vi.mock(import("../../../src/format/png.ts"), async (importOriginal) => {
+  const png = await importOriginal();
+  return { ...png, inflate: vi.fn(png.inflate) };
+});
 
 const fixtures = path.resolve(import.meta.dirname, "../../fixtures/format");
 
@@ -161,6 +170,19 @@ describe("readText", () => {
     expect(await readText(readChunks(file))).toEqual({
       reading: ["TA"],
       translation: ["field"],
+    });
+  });
+
+  it("decompresses text no further than its limit", async () => {
+    const found = textCases.find(({ name }) =>
+      name.startsWith("many times the limit"),
+    );
+    if (found === undefined) throw new Error("no such text case");
+    const file = withChunks(plain, [found.chunk]);
+    vi.mocked(inflate).mockClear();
+    expect(await readingsOf(file)).toEqual([]);
+    expect(inflate).toHaveBeenCalledExactlyOnceWith(expect.anything(), {
+      limit: maxTextBytes,
     });
   });
 
@@ -528,5 +550,71 @@ describe("spliceChunks", () => {
   it("gives the same bytes when asked for nothing", () => {
     const chunks = readChunks(plain);
     expect(spliceChunks(plain, chunks, new Set())).toEqual(plain);
+  });
+
+  it("refuses to leave out a chunk that has nothing to go in front of", () => {
+    const chunk: Chunk = { type: "tEXt", data: new Uint8Array(1) };
+    expect(() =>
+      spliceChunks(plain, readChunks(plain), new Set(), {
+        chunk,
+        before: chunk,
+      }),
+    ).toThrow(PngError);
+  });
+});
+
+describe("reading text for a caller that reads many files", () => {
+  const keyword = new TextEncoder().encode(textKeywords.reading);
+  /** A chunk of the keyword that no reader can use. */
+  const unusable: Chunk = {
+    type: "zTXt",
+    data: Uint8Array.from([...keyword, 0, 1]),
+  };
+
+  it("tries as many chunks of a keyword as it is told to, then gives up", async () => {
+    const good = await writeText(plain, "reading", ["TA"]);
+    const held = readChunks(good);
+    const chunk = held.find(({ type }) => type === "iTXt");
+    if (chunk === undefined) throw new Error("no text");
+    const chunks = [unusable, unusable, chunk];
+    expect((await readText(chunks, 3)).reading).toEqual(["TA"]);
+    expect((await readText(chunks, 2)).reading).toEqual([]);
+    expect((await readText(chunks)).reading).toEqual(["TA"]);
+  });
+
+  it("counts the attempts for each keyword apart", async () => {
+    const file = await writeText(
+      withChunks(plain, [unusable, unusable]),
+      "translation",
+      ["field"],
+    );
+    expect(await readFileText(file, 1)).toEqual({
+      reading: [],
+      translation: ["field"],
+    });
+  });
+
+  it("reads a file whose image is damaged without looking at it", async () => {
+    const file = (await writeText(plain, "reading", ["TA"])).slice();
+    const chunk = readChunks(file).find(({ type }) => type === "IDAT");
+    if (chunk === undefined) throw new Error("no image data");
+    const at = chunk.data.byteOffset - file.byteOffset;
+    file[at] = (file[at] ?? 0) ^ 0xff;
+    expect((await readFileText(file, 16)).reading).toEqual(["TA"]);
+  });
+
+  it("still leaves out a text chunk with a wrong CRC", async () => {
+    const file = (await writeText(plain, "reading", ["TA"])).slice();
+    const chunk = readChunks(file).find(({ type }) => type === "iTXt");
+    if (chunk === undefined) throw new Error("no text");
+    const end = chunk.data.byteOffset - file.byteOffset + chunk.data.length;
+    file[end] = (file[end] ?? 0) ^ 0xff;
+    expect((await readFileText(file, 16)).reading).toEqual([]);
+  });
+
+  it("refuses a file that fails the check of a PNG's structure", async () => {
+    await expect(
+      readFileText(plain.subarray(0, plain.length - 4), 16),
+    ).rejects.toThrow(PngError);
   });
 });

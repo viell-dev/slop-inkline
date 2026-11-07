@@ -67,6 +67,16 @@ must keep released files readable and looking the same, as
   and either side of a tie, and the pieces of polygons and of cut strokes: a
   change that would change how saved strokes look fails
   [outline.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/ink/outline.test.ts).
+- **Unreleased:** every limit of the format is tested at the limit and just past
+  it, with its number written out rather than taken from the code, so that a
+  limit cannot move without failing a test
+  ([limits.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/format/limits.test.ts)).
+- **Unreleased:** every file in the fixtures but their TypeScript is held to a
+  [recorded list of hashes](https://github.com/viell-dev/slop-inkline/blob/main/test/fixtures/pinned.sha256),
+  so that changing, removing, or adding one fails until the list changes too, on
+  purpose
+  ([pinned-files.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/format/pinned-files.test.ts)).
+  From the first stable release that list only grows.
 - Moving a stroke by whole units moves its outline exactly, over seeded strokes
   built to turn on a tie
   ([outline.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/ink/outline.test.ts)).
@@ -259,6 +269,52 @@ must keep released files readable and looking the same, as
   ([catalog.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/library/catalog.test.ts)
   and
   [library.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library.e2e.ts)).
+- **Unreleased:** a symbol's readings and translations: typed in the editor and
+  saved with a new symbol, shown on opening again, kept through later saves and
+  in a draft, and refused over the format's limit; changed from the library with
+  every chunk but their own as it was, byte for byte, no note touched, on a file
+  with no record, a damaged one, or a list Inkline cannot read, which stays; a
+  file that is not a whole PNG left alone; a change on disk followed, warned of,
+  or asked about, and never written over unseen; a value at the limit, and
+  bidirectional controls kept to their own value; a name and a reading that
+  disagree, through a rename; and Copy from leaving them behind
+  ([symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts)).
+- **Unreleased:** two saves of one symbol that meet, with each held between its
+  read and its write: two from libraries keep both fields, or refuse the later
+  of two to one field with what is there; a library's that goes first stops an
+  editor's until it asks; and an editor's that goes first has the library's
+  build on it. None is lost to a file renamed, or deleted and put back, while a
+  save waits, with saves asked for under the old name and the new, and two
+  editors saving a deleted file make it once, with the other asking. A change
+  that lands during a save is seen by the bytes, not by a date or a size. A
+  program outside Inkline that writes after the last read is
+  [a limit](./limits.md#a-file-written-at-the-moment-inkline-saves), which this
+  does not cover
+  ([symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts)
+  and
+  [file-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/file-writes.test.ts)).
+- **Unreleased:** a write Obsidian does not finish, held back in the host: a
+  save that takes less than the wait shows nothing; a save behind it in the
+  library says so after the wait, keeps what was typed to copy, and finishes
+  when the write does, while Cancel or Esc leaves it and it writes nothing; a
+  form whose own write is held closes and says it may still finish; the editor
+  says its strokes are in a draft, unless none could be kept, goes on drawing,
+  and gives them back after a restart. However long a write takes, no save
+  behind it reads or writes
+  ([symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts)
+  and
+  [file-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/file-writes.test.ts)).
+- **Unreleased:** the `;;` list, Insert existing symbol, Copy from, and the
+  library's filter find a symbol by a reading or translation whatever its name,
+  and show why; an accent needs no typing, and a mark that makes another sound
+  counts, in kana, Indic scripts, Thai, Arabic, Hebrew, and Cyrillic; the index
+  follows files as they are made, changed, renamed, moved with their folder, and
+  deleted, goes on past a damaged file and a costly one, lets a search work
+  while it reads, and finds what just changed before the rest
+  ([symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts),
+  [search.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/search.test.ts),
+  and
+  [text-index.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/text-index.test.ts)).
 - **Unreleased:** names line up in the `;;` list, Insert existing symbol, Copy
   from, and the library, in both themes: every name and folder starts at the
   same x, at the ends of the Symbol size setting, and beside a very long name or
@@ -307,15 +363,17 @@ must keep released files readable and looking the same, as
 
 Each of these asserts a budget beside its correctness checks:
 
-| What                                                                                            | Budget      | Where                                                                                                         |
-| ----------------------------------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------- |
-| Tagging a thousand symbols in a note, the fastest of five runs                                  | 50 ms       | [render.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/render.e2e.ts)             |
-| Searching 5,000 symbols as each letter of a name is typed, each query's fastest of three        | 100 ms      | [scale.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/scale.e2e.ts)               |
-| Keeping a draft with a large base layer, after the first                                        | 50 ms each  | [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)             |
-| Previewing the ink of a 4K screenshot                                                           | 300 ms      | [ink.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/ink.e2e.ts)                   |
-| Saving, without waiting for the window to be idle                                               | 700 ms each | [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)             |
-| Adding a pen stroke to 3,000 dots, and a frame of one past the image's end, the fastest of nine | 30 ms each  | [long-drawing.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/long-drawing.e2e.ts) |
-| Reading long lines of failed links in one pass                                                  | 3 s each    | [links.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/links.test.ts)            |
+| What                                                                                                                | Budget      | Where                                                                                                                       |
+| ------------------------------------------------------------------------------------------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Tagging a thousand symbols in a note, the fastest of five runs                                                      | 50 ms       | [render.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/render.e2e.ts)                           |
+| Searching 5,000 symbols as each letter of a name, reading, or translation is typed, each query's fastest of three   | 100 ms      | [scale.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/scale.e2e.ts)                             |
+| Keeping a draft with a large base layer, after the first                                                            | 50 ms each  | [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)                           |
+| Previewing the ink of a 4K screenshot                                                                               | 300 ms      | [ink.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/ink.e2e.ts)                                 |
+| Saving, without waiting for the window to be idle                                                                   | 700 ms each | [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)                           |
+| **Unreleased:** The longest task and frame of saving nearly the largest file a symbol can be, the shortest of three | 400 ms      | [save-responsiveness.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/save-responsiveness.e2e.ts) |
+| **Unreleased:** The same for a symbol of the most pixels it can have                                                | 200 ms      | [save-responsiveness.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/save-responsiveness.e2e.ts) |
+| Adding a pen stroke to 3,000 dots, and a frame of one past the image's end, the fastest of nine                     | 30 ms each  | [long-drawing.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/long-drawing.e2e.ts)               |
+| Reading long lines of failed links in one pass                                                                      | 3 s each    | [links.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/links.test.ts)                          |
 
 ### A release is what was tested
 

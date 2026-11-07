@@ -1,5 +1,7 @@
 # Inkline file format, version 1
 
+Revision 1, 7 November 2026
+
 An Inkline symbol is a PNG file. Its pixels show the symbol, so a program that
 shows PNG images shows it. One chunk inside the PNG holds the strokes the symbol
 was drawn with, so that it can be edited again without loss, and text chunks can
@@ -25,9 +27,12 @@ The words "must", "must not", "should", and "may" are used as in
 [Reading a file](#reading-a-file) describes; a reader that refuses a record has
 not failed, and the file may still be shown.
 
-Everything here is normative, except the sections marked informative. PNG means
-the third edition of the [PNG specification](https://www.w3.org/TR/png-3/), the
-W3C Recommendation of 24 June 2025.
+Everything here is normative, except the sections marked informative. Any change
+to the normative text makes a new revision of this document, numbered under its
+title; a revision is not a [version](#versions) of the format. PNG means the
+third edition of the
+[PNG specification](https://www.w3.org/TR/2025/REC-png-3-20250624/), the W3C
+Recommendation of 24 June 2025.
 
 ## The file
 
@@ -125,6 +130,11 @@ The record text is a JSON text as defined by
 which apply to all of it, including fields a reader does not know:
 
 - It is a single object, with no byte order mark.
+- It is well-formed UTF-8, as [RFC 3629](https://www.rfc-editor.org/rfc/rfc3629)
+  defines it, and is taken as it stands. Many decoders replace an ill-formed
+  sequence and drop a byte order mark, and RFC 8259 lets a parser ignore the
+  mark, which a reader must not do here, so that every reader finds the same
+  text or none.
 - No object holds two members of the same name, compared after decoding their
   escapes.
 - No string holds half of a surrogate pair, as an escape such as `\ud83d` can
@@ -242,10 +252,11 @@ counts.
    is sampled by bilinear interpolation or a smoother method. In each direction,
    across or down, in which it is drawn smaller than its image, each pixel must
    take in all the source pixels it covers, as area averaging does.
-2. Each stroke in order: a pen stroke over what is there, and an eraser stroke
-   removing what is there by its own alpha (the compositing operations
-   `source-over` and `destination-out`). A stroke's shape counts once, however
-   often it crosses a pixel.
+2. Each stroke in order. With `a` the alpha a pixel holds and `c` how much of it
+   the stroke's shape covers, each from 0 to 1, a pen stroke leaves
+   `a + c × (1 - a)` and an eraser stroke `a × (1 - c)`, the operations a canvas
+   calls `source-over` and `destination-out`. A stroke's shape counts once,
+   however often it crosses a pixel.
 
 ### Smooth strokes
 
@@ -444,16 +455,16 @@ A reader takes these steps in order, on any PNG it is given:
    nothing is read from it. An ancillary chunk a reader does not know is not a
    failure, whatever its letters, and bytes after `IEND` are ignored.
 2. **Find the record.** With no `inKL` chunk, the PNG has no record: its image
-   is all there is.
+   is all there is to draw.
 3. **Read the version.** If any `inKL` chunk whose CRC is correct has at least
    four bytes and a version higher than the reader knows, the file is **from a
    later version**. This comes before any other check, and before any limit is
    applied to the rest of the chunk.
 4. **Read the record.** It is **unusable** if the PNG has more than one `inKL`
    chunk, if the chunk has a bad CRC, holds fewer than four bytes, or has
-   version 0, if the image is not 192 pixels high and at most 4096 wide, if the
-   text does not decompress, does not end where the chunk ends, is longer than
-   its limit, or is not UTF-8, or if it breaks
+   version 0, if the image is not 192 pixels high or is more than 4096 wide, if
+   the text does not decompress, does not end where the chunk ends, is longer
+   than its limit, or is not UTF-8, or if it breaks
    [The record text](#the-record-text), which includes a base layer's image
    data.
 
@@ -544,8 +555,9 @@ byte for byte, then a zero byte, then:
 Compressed text must be one zlib stream, as in
 [the record chunk](#the-record-chunk), that ends where the chunk ends. The text
 of `tEXt` and `zTXt` is Latin-1, each byte being the character of that code
-point, so that bytes `0x80` to `0x9F` are control characters, whatever the web's
-label `latin1` decodes them to. The text of `iTXt` must be well-formed UTF-8, as
+point, so that bytes `0x80` to `0x9F` are control characters, not the printable
+characters of windows-1252, which many decoders give under that name. The text
+of `iTXt` must be well-formed UTF-8, as
 [RFC 3629](https://www.rfc-editor.org/rfc/rfc3629) defines it, and is taken as
 it stands. The decoding PNG recommends replaces an ill-formed sequence and drops
 a byte order mark, which a program must not do here, so that every program finds
@@ -567,7 +579,8 @@ For the keyword it changes, it replaces every usable chunk with at most one, and
 with none when no value remains. A chunk of that keyword that is not usable may
 hold what the program cannot see, such as a list that a later revision allows.
 So it keeps such a chunk, unless a person asks it to remove it, and places its
-own before it, so that the value a person gave is the one read.
+own before every chunk of that keyword it keeps, so that the value a person gave
+is the one read.
 
 A program must write such a chunk as `iTXt`, uncompressed, with a compression
 method of 0 and an empty language tag and translated keyword, as its values need
@@ -578,18 +591,17 @@ recommends for small text.
 
 When it writes a file again, with or without a record before, an editor must
 keep every text chunk with a correct CRC, byte for byte and in their order,
-unless a person asks it to change or remove one, and it changes a reading or a
-translation as [Changing the text](#changing-the-text) says. This covers every
-keyword, and a chunk that is not usable.
+unless a person asks it to change or remove one. This covers every keyword, and
+a chunk that is not usable. When it changes a reading or a translation, it does
+so as [Changing the text](#changing-the-text) says.
 
 So a keyword needs no version: a program ignores one it does not know, and one
 that changes the file keeps it. Keywords beginning `Inkline ` belong to this
 document.
 
-A copy of a file holds the same text, and the two can then differ. A program
-that drops a text chunk leaves the rest of the file as it was, and the text is
-gone: it is held nowhere else, and neither the record nor the file's name can
-give it back.
+A copy of a file holds the same text, and the two can then differ. Dropping a
+text chunk harms nothing else in the file, but the text is gone: it is held
+nowhere else, and neither the record nor the file's name can give it back.
 
 ## Versions
 
@@ -603,9 +615,9 @@ any version can recognise a file of any other:
 
 - A file is a PNG whose name ends in `.ink.png`, comparing ASCII letters without
   regard to case, and whose image shows the symbol.
-- Its image is shown in text as [Geometry](#geometry) says, 1.5 em tall with the
-  text's baseline 0.375 em above its bottom, whatever its size in pixels, as a
-  program that only shows it reads no version.
+- Its image is shown in text 1.5 em tall, with the text's baseline 0.375 em
+  above its bottom, whatever its size in pixels, and a program that reads no
+  version gives it its own width at that scale.
 - Its record is in the `inKL` chunk, marked unsafe to copy.
 - The first four bytes of that chunk's data are its version, a big-endian
   unsigned integer from 1, that no two versions share.
@@ -755,9 +767,25 @@ bad CRC. It places the ones that come before the image data after the record. If
 the file changed while it was open, and the person keeps their drawing, those
 are the chunks the changed file holds.
 
-Inkline does not show, change, or search text about a symbol, and writes none.
-Copy from takes only the drawing, so a symbol keeps its own text, and a new one
-starts with none.
+Inkline shows a symbol's readings and translations in its editor and library,
+changes them from both, and finds a symbol by them. The library changes a file
+as [Changing the text](#changing-the-text) says, whatever its record holds. The
+editor does the same to the file a save writes, for a field a person changed,
+and carries any other as it was. Inkline removes the spaces around a value
+typed, and blank lines, from a field a person changed, and leaves a value alone
+otherwise. It offers no way to remove a chunk it cannot use. Copy from takes
+only the drawing, so a symbol keeps its own text, and a new one starts with
+none.
+
+Inkline's search compares a key made from each value: its compatibility
+decomposition in lower case, without its accents unless what was typed holds
+some. An accent is a mark from the blocks Unicode keeps for any alphabet, other
+than one that makes a Cyrillic letter of its own. Any other mark, such as kana's
+voicing, is part of its letter, and a match does not stop just before one. It
+keeps these keys in memory, read in the background each time Obsidian starts,
+and so declines to search a file of over 32 MiB, or one with more than 16 chunks
+of a keyword before a usable one, which it treats as saying nothing. Reading
+such a file for a person, as the library's fields do, sets no limit.
 
 Inkline declines a file or a base layer's PNG of more than 65,536 chunks, and
 does not save a file that would have more, which leaves the old file as it was.

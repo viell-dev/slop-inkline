@@ -36,6 +36,11 @@ program that keeps the chunk while changing how the image shows, as by adding an
 orientation to its metadata, leaves strokes that no longer match it; Inkline's
 editor shows the strokes, and saving there replaces the image.
 
+**Unreleased:** a symbol's readings and translations are in PNG text chunks,
+which many programs keep, and any PNG tool can read. A program that drops them
+leaves the rest of the file as it was, and they are gone, as they are held
+nowhere else.
+
 The [file format](./file-format.md) specifies the pixels, the chunk, and the
 text a file can hold about its symbol, for anyone writing a tool that reads or
 writes symbols.

@@ -171,9 +171,22 @@ refuses to start with fewer than 50 left.
 pictures for Obsidian's community directory listing, as
 [listing/README.md](listing/README.md) says.
 
+`test/e2e/manual/save-time.e2e.ts` stays outside it too: it measures how long a
+save of a large symbol takes and what that does to the rest of the plugin, which
+is how the wait before a stalled save's message was chosen. It writes
+`save-time-<version>.json` to the output directory.
+
 `test/e2e/manual/fixtures.e2e.ts` stays outside it too: it saves the drawings of
 `test/fixtures/format/records.ts` as golden files, with the real save in
 Obsidian, as its opening comment says.
+
+`test/fixtures/pinned.sha256` lists the hash of every file in `test/fixtures`
+that is not TypeScript, and a unit test fails when a file and the list disagree.
+From the repository's root,
+`sha256sum --text <file> >> test/fixtures/pinned.sha256` adds a new file's line,
+and `sha256sum --check test/fixtures/pinned.sha256` checks them all.
+[AGENTS.md](AGENTS.md#code) says what may change there, which from `1.0.0` is
+nothing but new lines.
 
 CI runs the end-to-end tests on Linux for every pull request, and the Docker
 image weekly and on request.

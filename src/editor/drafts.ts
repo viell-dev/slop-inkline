@@ -5,17 +5,21 @@
 // keeps is stored once, apart from it, since it does not change as strokes
 // are drawn.
 
+import type { Pausing } from "../format/png.ts";
 import {
   basePngProblem,
   limits,
   parseRecord,
   readBasePng,
   recordValue,
+  slicedBasePngProblem,
   toBase64,
+  toBase64Sliced,
   type BaseLayer,
   type Stroke,
 } from "../format/record.ts";
 import type { InkDocument } from "../ink/document.ts";
+import type { TypedText } from "../notes/text-fields.ts";
 
 /** A file a new symbol's first save made, or was making. */
 export interface CreatedFile {
@@ -78,6 +82,8 @@ export interface Draft {
    * that a restored drawing goes on with it; undefined if none was.
    */
   readonly name?: string;
+  /** What was typed in its readings and translations, as with the name. */
+  readonly text?: TypedText;
 }
 
 /** How long a draft is kept before it is dropped unrestored: 30 days. */
@@ -140,6 +146,17 @@ function parseTarget(value: unknown): DraftTarget | undefined {
     : { kind: "new", note: value.note, file };
 }
 
+/** What a draft kept of a symbol's text, without what it cannot read. */
+function parseText(value: unknown): TypedText | undefined {
+  if (!isRecord(value)) return undefined;
+  const { reading, translation } = value;
+  const text = {
+    ...(typeof reading === "string" ? { reading } : {}),
+    ...(typeof translation === "string" ? { translation } : {}),
+  };
+  return Object.keys(text).length === 0 ? undefined : text;
+}
+
 function coordinate(value: unknown): value is number {
   return (
     typeof value === "number" &&
@@ -187,8 +204,9 @@ function decode(
   }
   if (!isRecord(value)) return undefined;
   const { id, target, base, layer, fingerprint, savedAt, version, ink } = value;
-  const { gridOrigin, name } = value;
+  const { gridOrigin, name, text } = value;
   const parsedTarget = parseTarget(target);
+  const parsedText = parseText(text);
   if (
     version !== draftVersion ||
     typeof id !== "string" ||
@@ -212,8 +230,9 @@ function decode(
     ...(typeof gridOrigin === "number" && Number.isFinite(gridOrigin)
       ? { gridOrigin }
       : {}),
-    // Nor if the name cannot be read.
+    // Nor if the name or the text cannot be read.
     ...(typeof name === "string" ? { name } : {}),
+    ...(parsedText === undefined ? {} : { text: parsedText }),
   };
   if (base === "none" || base === "file" || base === "lost") {
     return layer === undefined
@@ -249,8 +268,8 @@ export function decodeDraft(
 
 /** A draft as the text stored for it, with its kept base layer's key. */
 function encodeDraft(draft: Draft, baseKey: string | undefined): string {
-  const { id, target, strokes, base, fingerprint, savedAt, gridOrigin, name } =
-    draft;
+  const { id, target, strokes, base, fingerprint, savedAt, gridOrigin } = draft;
+  const { name, text } = draft;
   const layer =
     base.kind === "kept" && baseKey !== undefined
       ? {
@@ -273,6 +292,7 @@ function encodeDraft(draft: Draft, baseKey: string | undefined): string {
     savedAt,
     ...(gridOrigin === undefined ? {} : { gridOrigin }),
     ...(name === undefined ? {} : { name }),
+    ...(text === undefined ? {} : { text }),
     ink: recordValue({ strokes }),
   });
 }
@@ -385,6 +405,11 @@ export class DraftStore {
    */
   #write(key: string, text: string, index: string, id: string): boolean {
     this.#storage.saveLocalStorage(key, text);
+    return this.#kept(key, text, index, id);
+  }
+
+  /** Reads back what {@link #write} wrote, and lists it. */
+  #kept(key: string, text: string, index: string, id: string): boolean {
     if (this.#storage.loadLocalStorage(key) !== text) return false;
     const ids = this.#list(index);
     if (ids.includes(id)) return true;
@@ -405,6 +430,15 @@ export class DraftStore {
     return png;
   }
 
+  /** The key of a stored base layer's PNG, while the index lists it. */
+  #storedKey(png: Uint8Array): string | undefined {
+    const known = this.#keys.get(png);
+    if (known === undefined) return undefined;
+    if (this.#list(baseIndexKey).includes(known)) return known;
+    this.#forgetPng(known);
+    return undefined;
+  }
+
   /**
    * Stores a base layer's PNG once, returning its key, and whether this
    * stored it, if it was kept. A key this store knows is used again while the
@@ -412,13 +446,8 @@ export class DraftStore {
    * it is stored again.
    */
   #keepPng(png: Uint8Array): { key: string; stored: boolean } | undefined {
-    const known = this.#keys.get(png);
-    if (known !== undefined) {
-      if (this.#list(baseIndexKey).includes(known)) {
-        return { key: known, stored: false };
-      }
-      this.#forgetPng(known);
-    }
+    const known = this.#storedKey(png);
+    if (known !== undefined) return { key: known, stored: false };
     if (basePngProblem(png) !== undefined) return undefined;
     const key = crypto.randomUUID();
     if (!this.#write(basePrefix + key, toBase64(png), baseIndexKey, key)) {
@@ -427,6 +456,26 @@ export class DraftStore {
     this.#pngs.set(key, png);
     this.#keys.set(png, key);
     return { key, stored: true };
+  }
+
+  /**
+   * Stores a base layer's PNG ahead of the draft that will keep it, as
+   * {@link put} would, but a little at a time, with its write and its reading
+   * back in separate tasks. `put` cannot pause, and for a large one all of
+   * that in one go stops the page for up to half a second. One this leaves
+   * unstored, `put` tries itself, and reports as it always does.
+   */
+  async keepBase(png: Uint8Array, options: Pausing = {}): Promise<void> {
+    if (this.#storedKey(png) !== undefined) return;
+    if ((await slicedBasePngProblem(png, options)) !== undefined) return;
+    const text = await toBase64Sliced(png, options);
+    const key = crypto.randomUUID();
+    this.#storage.saveLocalStorage(basePrefix + key, text);
+    await options.pause?.();
+    if (this.#kept(basePrefix + key, text, baseIndexKey, key)) {
+      this.#pngs.set(key, png);
+      this.#keys.set(png, key);
+    }
   }
 
   #forgetPng(key: string): void {

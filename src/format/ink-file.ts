@@ -7,8 +7,9 @@ import {
   inflate,
   maxChunks,
   readChunks,
-  writeChunks,
+  writeChunksSliced,
   type Chunk,
+  type Pausing,
 } from "./png.ts";
 import {
   baseImageProblem,
@@ -16,7 +17,8 @@ import {
   imageHeight,
   limits,
   parseRecord,
-  serializeRecord,
+  recordProblem,
+  serializedBytes,
   type InkRecord,
 } from "./record.ts";
 import { isTextChunk } from "./text.ts";
@@ -112,6 +114,15 @@ export function preservableChunks(chunks: readonly Chunk[]): CarriedChunk[] {
 }
 
 /**
+ * What {@link preservableChunks} keeps of a file's `bytes`, working out the
+ * CRCs of those chunks alone: a large file's record and image hold most of its
+ * bytes, and neither is kept.
+ */
+export function carriedChunks(bytes: Uint8Array): CarriedChunk[] {
+  return preservableChunks(readChunks(bytes, isSafeToCopy));
+}
+
+/**
  * The format version a record chunk says it has, or undefined when it holds
  * none: a chunk too short for one, or a version of 0.
  */
@@ -188,8 +199,8 @@ export async function readInkFile(bytes: Uint8Array): Promise<InkSource> {
 }
 
 /** The chunk that holds a record, whose text fits the limit. */
-async function recordChunk(text: string): Promise<Chunk> {
-  const compressed = await deflate(new TextEncoder().encode(text));
+async function recordChunk(text: Uint8Array, options: Pausing): Promise<Chunk> {
+  const compressed = await deflate(text, options);
   const data = new Uint8Array(versionBytes + compressed.length);
   new DataView(data.buffer).setUint32(0, formatVersion);
   data.set(compressed, versionBytes);
@@ -209,12 +220,14 @@ async function recordChunk(text: string): Promise<Chunk> {
  * {@link RecordError} when the image is not one a symbol can be, readers would
  * refuse the record, such as for being longer than the text limit, or the file
  * would hold more chunks than {@link readChunks} takes: a file this returns can
- * always be read back.
+ * always be read back. A record with a large base layer takes seconds, so
+ * `pause` is awaited every few milliseconds of it, to let the page run.
  */
 export async function writeInkFile(
   png: Uint8Array,
   record: InkRecord,
   carried: readonly CarriedChunk[] = [],
+  options: Pausing = {},
 ): Promise<Uint8Array> {
   const chunks = readChunks(png);
   const { width, height } = imageHeader(chunks);
@@ -227,22 +240,15 @@ export async function writeInkFile(
   if (existing.kind === "pixels" && existing.reason !== "none") {
     throw new RecordError(`the file's record is unusable: ${existing.detail}`);
   }
-  const text = serializeRecord(record);
-  if (new TextEncoder().encode(text).length > limits.text) {
+  const text = await serializedBytes(record, options);
+  if (text.length > limits.text) {
     throw new RecordError("record text is too long");
   }
-  const check = parseRecord(text);
-  if (!check.ok) {
-    throw new RecordError(`record breaks the format: ${check.detail}`);
-  }
-  const problem =
-    record.base === undefined
-      ? undefined
-      : await baseImageProblem(record.base.png);
+  const problem = await recordProblem(record, options);
   if (problem !== undefined) {
     throw new RecordError(`record breaks the format: ${problem}`);
   }
-  const chunk = await recordChunk(text);
+  const chunk = await recordChunk(text, options);
   const [header, ...rest] = chunks.filter((each) => !isRecordChunk(each));
   if (header === undefined) throw new RecordError("PNG has no chunks");
   const present = new Set(rest.map((each) => each.type));
@@ -279,5 +285,5 @@ export async function writeInkFile(
       `the file would hold more than ${String(maxChunks)} chunks`,
     );
   }
-  return writeChunks(written);
+  return writeChunksSliced(written, options);
 }

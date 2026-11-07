@@ -7,8 +7,9 @@
 //   OBSIDIAN_VERSIONS=latest/latest npm run test:e2e:docker -- \
 //     --spec test/e2e/manual/fixtures.e2e.ts
 //
-// Then copy the files into test/fixtures/format. From the first stable release
-// the files in there never change: a new case gets a new drawing and new files.
+// Then copy the files into test/fixtures/format, and add their hashes to
+// test/fixtures/pinned.sha256. From the first stable release the files in there
+// never change: a new case gets a new drawing and new files.
 
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";

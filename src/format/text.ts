@@ -32,7 +32,7 @@ export class TextError extends Error {
 }
 
 /** Whether a chunk is one of PNG's text chunks, whatever it holds. */
-export function isTextChunk({ type }: Chunk): boolean {
+export function isTextChunk({ type }: Pick<Chunk, "type">): boolean {
   return type === "tEXt" || type === "zTXt" || type === "iTXt";
 }
 
@@ -136,12 +136,22 @@ function keywordBytes(field: TextField): Uint8Array {
  * field, the first usable chunk. A chunk that is not usable counts for nothing,
  * so this never fails, whatever the file's record is. Only the chunks of these
  * two keywords are decompressed.
+ *
+ * `attempts` is how many chunks of a keyword to try, none too many by default.
+ * A field with more than that before a usable one reads as empty, which is how
+ * a caller reading many files declines one too costly to read: trying 65,000
+ * chunks of one keyword takes seconds, in a file of a few megabytes.
  */
-export async function readText(chunks: readonly Chunk[]): Promise<SymbolText> {
+export async function readText(
+  chunks: readonly Chunk[],
+  attempts = Infinity,
+): Promise<SymbolText> {
   const first = async (field: TextField): Promise<readonly string[]> => {
     const keyword = keywordBytes(field);
+    let tried = 0;
     for (const chunk of chunks) {
       if (!holdsKeyword(chunk, keyword)) continue;
+      if (tried++ === attempts) return [];
       const values = await usableValues(chunk, keyword);
       if (values !== undefined) return values;
     }
@@ -151,6 +161,22 @@ export async function readText(chunks: readonly Chunk[]): Promise<SymbolText> {
     reading: await first("reading"),
     translation: await first("translation"),
   };
+}
+
+/**
+ * What a file's bytes say about its symbol, for a caller reading many files:
+ * as {@link readText} does with `attempts`, working out the CRCs of only the
+ * chunks that can hold text, so that a large image costs little. Throws
+ * `PngError` when the bytes fail the format's check of a PNG's structure.
+ */
+export async function readFileText(
+  bytes: Uint8Array,
+  attempts: number,
+): Promise<SymbolText> {
+  return readText(
+    readChunks(bytes, (type) => isTextChunk({ type })),
+    attempts,
+  );
 }
 
 /** The chunk that holds a field's values, as a writer must write it. */
@@ -187,7 +213,8 @@ export async function writeText(
 ): Promise<Uint8Array> {
   const problem = textProblem(values);
   if (problem !== undefined) throw new TextError(problem);
-  const chunks = readChunks(bytes);
+  // Only the text is looked at, and the rest is copied as it is, CRCs and all.
+  const chunks = readChunks(bytes, (type) => isTextChunk({ type }));
   const keyword = keywordBytes(field);
   const removed = new Set<Chunk>();
   let current: readonly string[] | undefined;
