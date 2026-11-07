@@ -1,7 +1,7 @@
 // Writes synthetic opaque pictures saved under a symbol's name, with no record:
 // greyscale PNGs of dark ink on white, at the height of a symbol and at another
 // one. They are drawn here from a formula, and the script writes only files
-// that do not exist yet.
+// that do not exist yet. A new one adds its hash to ../pinned.sha256.
 //
 //   node test/fixtures/pictures/generate.ts
 
