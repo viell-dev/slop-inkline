@@ -4,6 +4,8 @@ import {
   baseImageProblem,
   limits,
   parseRecord,
+  parseRecordSliced,
+  readBasePng,
   recordProblem,
   serializeRecord,
   serializedBytes,
@@ -18,7 +20,7 @@ import {
   readChunks,
   writeChunks,
 } from "../../../src/format/png.ts";
-import { noise, paused } from "../../support/slices.ts";
+import { noise, paused, sameBytes } from "../../support/slices.ts";
 
 const record: InkRecord = {
   strokes: [
@@ -589,6 +591,217 @@ describe("toBase64", () => {
   });
 });
 
+/**
+ * How reading took a base layer's base64 before it went through a table, the
+ * rule that table must keep: what it refused and why, and the bytes otherwise.
+ */
+function ruledBase64(text: string): string | Uint8Array {
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(text) || text.length % 4 !== 0) {
+    return "base.png is not base64";
+  }
+  if (/(?:[^AQgw]==|[^AEIMQUYcgkosw048=]=)$/.test(text.slice(-3))) {
+    return "base.png has padding bits set";
+  }
+  return Uint8Array.from(atob(text), (char) => char.charCodeAt(0));
+}
+
+/** What reading makes of `text` as a base layer's `png`, up to its PNG check. */
+function readBase64(text: string): string {
+  const result = parseRecord(
+    JSON.stringify({
+      strokes: [],
+      base: { x: 0, y: 0, width: 16, height: 16, png: text },
+    }),
+  );
+  return result.ok ? "a PNG" : result.detail;
+}
+
+describe("a base layer's base64", () => {
+  const png = encodePng({ width: 40, height: 30, data: noise(40 * 30 * 4) });
+
+  it("reads back every byte of a PNG, whatever its length", () => {
+    for (let trailing = 0; trailing < 3; trailing++) {
+      const text = toBase64(png);
+      expect(readBasePng(text)).toEqual(png);
+      expect(readBasePng(text.slice(0, -4 - trailing))).toBeUndefined();
+    }
+  });
+
+  it("decodes as the plain rule does at every length", () => {
+    for (let length = 0; length <= 300; length++) {
+      const bytes = noise(length);
+      const text = toBase64(bytes);
+      expect(ruledBase64(text)).toEqual(bytes);
+      // Not a PNG, which says that the base64 was read, and read to these bytes.
+      expect(readBase64(text)).toMatch(/not a valid PNG|too large/);
+    }
+  });
+
+  it("refuses what the plain rule refuses, for the same reason", () => {
+    // Every string of four of these, which take in each kind of character, in
+    // each place, and whatever padding can do.
+    const letters = [
+      "A",
+      "B",
+      "Q",
+      "w",
+      "/",
+      "+",
+      "9",
+      "=",
+      "-",
+      " ",
+      "é",
+      "\n",
+    ];
+    for (const a of letters) {
+      for (const b of letters) {
+        for (const c of letters) {
+          for (const d of letters) {
+            const text = `${a}${b}${c}${d}`;
+            const expected = ruledBase64(text);
+            const found = readBase64(text);
+            if (typeof expected === "string") expect(found).toBe(expected);
+            else expect(found).toContain("not a valid PNG");
+          }
+        }
+      }
+    }
+  });
+
+  it("refuses a bad character in any group, in the middle of a long text", () => {
+    const text = toBase64(noise(3 * 70_000));
+    for (const at of [0, 1, 2, 3, 65_536, 131_071, text.length - 5]) {
+      for (const bad of ["=", "-", "\u00e9", "\u4e00", "\n"]) {
+        const broken = `${text.slice(0, at)}${bad}${text.slice(at + 1)}`;
+        expect(readBase64(broken)).toBe("base.png is not base64");
+      }
+    }
+  });
+
+  it("refuses text that is not a whole number of groups", () => {
+    expect(readBase64("AAAAA")).toBe("base.png is not base64");
+    expect(readBase64("A")).toBe("base.png is not base64");
+    expect(readBase64("=")).toBe("base.png is not base64");
+    expect(readBase64("====")).toBe("base.png is not base64");
+  });
+
+  it("reads a view of no more than the PNG's own bytes", () => {
+    const read = readBasePng(toBase64(png));
+    expect(read?.byteOffset).toBe(0);
+    expect(read?.buffer.byteLength).toBe(png.length);
+  });
+});
+
+/** Every way a record's text can be refused, and some it cannot. */
+const texts: readonly (readonly [string, string])[] = [
+  ["a record", serializeRecord(record)],
+  ["a base layer", serializeRecord(withBase)],
+  ["no JSON", "{"],
+  ["no object", "[]"],
+  ["no strokes", "{}"],
+  ["strokes that are no list", '{"strokes":1}'],
+  ["a repeated name", '{"strokes":[],"strokes":[]}'],
+  ["a repeated name by an escape", '{"strokes":[],"\\u0073trokes":[]}'],
+  ["a number with a fraction", '{"strokes":[],"a":1.5}'],
+  ["half of a surrogate pair", '{"strokes":[],"a":"\\ud800"}'],
+  ["nesting too deep", `{"strokes":[],"a":${"[".repeat(20)}${"]".repeat(20)}}`],
+  ["a stroke that is no object", '{"strokes":[1]}'],
+  ["an unknown tool", variant(["strokes", 0, "tool"], "brush")],
+  ["an odd list of points", variant(["strokes", 0, "points"], [1])],
+  ["a base that is no object", variant(["base"], 1)],
+  ["a place past the limit", variant(["base", "x"], limits.coordinate + 1)],
+  ["a PNG that is no string", variant(["base", "png"], 1)],
+  ["a PNG that is no PNG", variant(["base", "png"], "AAAA")],
+  ["a PNG with a bad letter", variant(["base", "png"], "AA-A")],
+  ["padding bits", variant(["base", "png"], "AB==")],
+];
+
+describe("parseRecordSliced", () => {
+  it.each(texts)("finds what parseRecord finds: %s", async (_, text) => {
+    expect(await parseRecordSliced(text)).toEqual(parseRecord(text));
+    const { result } = await paused((pause) =>
+      parseRecordSliced(text, { pause }),
+    );
+    expect(result).toEqual(parseRecord(text));
+  });
+
+  it("names a bad CRC ahead of bytes after the end, as it always did", async () => {
+    const png = encodePng(blank(3, 3));
+    const damaged = new Uint8Array(png.length + 1);
+    damaged.set(png);
+    const [, chunk] = readChunks(png);
+    if (chunk === undefined) throw new Error("no IDAT");
+    const at = chunk.data.byteOffset;
+    damaged[at] = (damaged[at] ?? 0) ^ 1;
+    const text = variant(["base", "png"], toBase64(damaged));
+    const found = parseRecord(text);
+    expect(found).toEqual({
+      ok: false,
+      detail: "base.png has a bad CRC in IDAT",
+    });
+    expect(await parseRecordSliced(text)).toEqual(found);
+  });
+
+  it("pauses all through a large base layer, to the same record", async () => {
+    const large = encodePng({
+      width: 400,
+      height: 400,
+      data: noise(400 * 400 * 4),
+    });
+    const text = serializeRecord({
+      ...record,
+      base: { x: 0, y: 0, width: 16, height: 16, png: large },
+    });
+    const { result, pauses } = await paused((pause) =>
+      parseRecordSliced(text, { pause }),
+    );
+    if (!result.ok) throw new Error(result.detail);
+    const png = result.record.base?.png;
+    if (png === undefined) throw new Error("no base layer");
+    expect(sameBytes(png, large)).toBe(true);
+    expect(result.record.strokes).toEqual(record.strokes);
+    // Its text's length, its check, its base64, and its CRCs.
+    expect(pauses).toBeGreaterThanOrEqual(large.length / (48 * 1024) + 40);
+  });
+
+  it("pauses all through many strokes and a long text", async () => {
+    const many = {
+      strokes: Array.from({ length: 3000 }, () => ({
+        tool: "pen",
+        size: 16,
+        points: [1, 2, 3, 4],
+      })),
+      other: " ".repeat(300_000),
+    };
+    const text = JSON.stringify(many);
+    const { result, pauses } = await paused((pause) =>
+      parseRecordSliced(text, { pause }),
+    );
+    expect(result).toEqual(parseRecord(text));
+    expect(result.ok).toBe(true);
+    // A pause for each stroke, and more for the text.
+    expect(pauses).toBeGreaterThanOrEqual(3000 + 2 * 5);
+  });
+
+  it("finds what lies past the first slice of the text", async () => {
+    const padding = " ".repeat(200_000);
+    const repeated = `{"strokes":[],${padding}"a":1,"a":2}`;
+    const refused = await paused((pause) =>
+      parseRecordSliced(repeated, { pause }),
+    );
+    expect(refused.result).toEqual({
+      ok: false,
+      detail: 'the name "a" is repeated',
+    });
+    const nested = `{"strokes":[],${padding}"a":${"[".repeat(20)}${"]".repeat(20)}}`;
+    expect(parseRecord(nested)).toEqual({
+      ok: false,
+      detail: `nested more than ${String(limits.depth)} deep`,
+    });
+  });
+});
+
 describe("serializedBytes", () => {
   const text = (bytes: Uint8Array): string => new TextDecoder().decode(bytes);
   const stroke = { tool: "pen", size: 16, points: [16, 32] } as const;
@@ -860,6 +1073,57 @@ describe("parseRecord checks the base image", () => {
 });
 
 describe("parseRecord bounds the text", () => {
+  /** A record of exactly `bytes` of UTF-8, `filler` making up its last value. */
+  function recordOf(
+    bytes: number,
+    filler: string,
+    fillerBytes: number,
+  ): string {
+    const start = '{"strokes":[],"a":"';
+    const end = '"}';
+    const count = (bytes - start.length - end.length) / fillerBytes;
+    if (!Number.isInteger(count)) throw new Error("that does not divide");
+    return `${start}${filler.repeat(count)}${end}`;
+  }
+
+  it("counts a character of each width, across the places it can pause", () => {
+    // Each has a character across the end of a slice of 65,536 code units, or
+    // would if the count went wrong, as the opening of these records is 19 long.
+    for (const [filler, width] of [
+      ["a", 1],
+      ["\u00e9", 2],
+      ["\u4e00", 3],
+      ["\u{1f600}", 4],
+    ] as const) {
+      const size = limits.text - ((limits.text - 21) % width);
+      const atLimit = recordOf(size, filler, width);
+      expect(new TextEncoder().encode(atLimit).length).toBe(size);
+      expect(parseRecord(atLimit).ok).toBe(true);
+      const past = `${recordOf(size, filler, width).slice(0, -2)}${"a".repeat(limits.text - size + 1)}"}`;
+      expect(parseRecord(past)).toEqual({
+        ok: false,
+        detail: "record text is too long",
+      });
+    }
+  });
+
+  it("counts half of a surrogate pair as what encoding would write", () => {
+    // Which the check of its text then refuses, once the length passes it.
+    const lone = "\ud83d";
+    const start = '{"strokes":[],"a":"';
+    const filler = "a".repeat(limits.text - start.length - 2 - 3);
+    const text = `${start}${filler}${lone}"}`;
+    expect(new TextEncoder().encode(text).length).toBe(limits.text);
+    expect(parseRecord(text)).toEqual({
+      ok: false,
+      detail: "a string is not valid Unicode",
+    });
+    expect(parseRecord(`${start}a${filler}${lone}"}`)).toEqual({
+      ok: false,
+      detail: "record text is too long",
+    });
+  });
+
   it("refuses text longer than the limit before parsing it", () => {
     expect(invalid(parseRecord(" ".repeat(limits.text + 1)))).toBe(
       "record text is too long",

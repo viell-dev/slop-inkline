@@ -4,6 +4,9 @@
 
 import {
   PngError,
+  checkedChunks,
+  finished,
+  finishedSliced,
   firstDamaged,
   imageHeader,
   inflate,
@@ -13,6 +16,7 @@ import {
   writeChunks,
   type Chunk,
   type Pausing,
+  type Steps,
 } from "./png.ts";
 
 /** The format version this code writes, and the newest it reads. */
@@ -223,23 +227,25 @@ function parseCuts(value: unknown, name: string): StrokeCuts | undefined {
   };
 }
 
-function fromBase64(text: string, name: string): Uint8Array {
-  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(text) || text.length % 4 !== 0) {
-    fail(`${name} is not base64`);
-  }
-  // The bits padding leaves over are zero, so that bytes have one spelling.
-  if (/(?:[^AQgw]==|[^AEIMQUYcgkosw048=]=)$/.test(text.slice(-3))) {
-    fail(`${name} has padding bits set`);
-  }
-  const binary = atob(text);
-  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
-}
-
 /** The characters of base64, as bytes, and the one that pads it. */
 const base64Letters = new TextEncoder().encode(
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",
 );
 const base64Padding = 0x3d;
+
+/** What marks a character as none of base64's in {@link base64Values}. */
+const notBase64 = 0x80;
+
+/** What each character of base64 stands for, by its code. */
+const base64Values = new Uint8Array(128).fill(notBase64);
+base64Letters.forEach((letter, value) => {
+  base64Values[letter] = value;
+});
+
+/** What a character of base64 stands for, or {@link notBase64}. */
+function base64Value(text: string, at: number): number {
+  return base64Values[text.charCodeAt(at)] ?? notBase64;
+}
 
 /** How many bytes of base64 `length` bytes make. */
 function base64Length(length: number): number {
@@ -284,6 +290,47 @@ export function toBase64(bytes: Uint8Array): string {
 /** How many bytes become base64 at a time, a whole number of groups. */
 const base64SliceBytes = 3 * 16 * 1024;
 
+/**
+ * The bytes of base64 text, as steps. Only the last group can hold padding, so
+ * every group before it is plain letters, a large PNG's nearly all of it, which
+ * go through a table: turning a string of bytes into an array by its characters
+ * takes a second and a half on a large PNG.
+ */
+function* fromBase64(text: string, name: string): Steps<Uint8Array> {
+  if (text.length % 4 !== 0) fail(`${name} is not base64`);
+  const padding = text.endsWith("==") ? 2 : text.endsWith("=") ? 1 : 0;
+  const output = new Uint8Array((text.length / 4) * 3 - padding);
+  const end = Math.max(0, text.length - 4);
+  let to = 0;
+  for (let from = 0; from < end;) {
+    const stop = Math.min(end, from + base64Length(base64SliceBytes));
+    for (; from < stop; from += 4) {
+      const first = base64Value(text, from);
+      const second = base64Value(text, from + 1);
+      const third = base64Value(text, from + 2);
+      const fourth = base64Value(text, from + 3);
+      if (((first | second | third | fourth) & notBase64) !== 0) {
+        fail(`${name} is not base64`);
+      }
+      output[to++] = (first << 2) | (second >> 4);
+      output[to++] = (second << 4) | (third >> 2);
+      output[to++] = (third << 6) | fourth;
+    }
+    yield;
+  }
+  const last = text.slice(end);
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(last)) fail(`${name} is not base64`);
+  // The bits padding leaves over are zero, so that bytes have one spelling.
+  if (/(?:[^AQgw]==|[^AEIMQUYcgkosw048=]=)$/.test(last)) {
+    fail(`${name} has padding bits set`);
+  }
+  const binary = atob(last);
+  for (let index = 0; index < binary.length; index++) {
+    output[to++] = binary.charCodeAt(index);
+  }
+  return output;
+}
+
 /** {@link writeBase64} for a large PNG, in slices. */
 async function writeBase64Sliced(
   bytes: Uint8Array,
@@ -316,22 +363,24 @@ export async function toBase64Sliced(
 const baseChunks = new Set(["IHDR", "IDAT", "IEND"]);
 
 /**
- * Checks a base layer's PNG against the format's rules and limits. `checked`
- * says which chunks' CRCs to work out, as for {@link readChunks}, every chunk's
- * by default.
+ * A base layer's PNG read into its chunks, or why it cannot be, as
+ * {@link readChunks} takes `checked`, every chunk's CRC by default.
  */
-function checkBasePng(
+function basePngChunks(
   png: Uint8Array,
   checked?: (type: string) => boolean,
-): void {
+): Chunk[] {
   if (png.length > limits.baseBytes) fail("base.png is too large");
-  let chunks: Chunk[];
   try {
-    chunks = readChunks(png, checked);
+    return readChunks(png, checked);
   } catch (error) {
     if (!(error instanceof PngError)) throw error;
     fail(`base.png is not a valid PNG: ${error.message}`);
   }
+}
+
+/** Checks a base layer's PNG, from its chunks, against the format's rules. */
+function checkBaseChunks(png: Uint8Array, chunks: readonly Chunk[]): void {
   const { width, height, bitDepth, colorType, interlaced } =
     imageHeader(chunks);
   if (width > limits.baseSize || height > limits.baseSize) {
@@ -352,15 +401,28 @@ function checkBasePng(
   if (end !== png.length) fail("base.png holds bytes after its end");
 }
 
+/**
+ * Checks a base layer's PNG against the format's rules and limits. `checked`
+ * says which chunks' CRCs to work out, as for {@link readChunks}, every chunk's
+ * by default.
+ */
+function checkBasePng(
+  png: Uint8Array,
+  checked?: (type: string) => boolean,
+): void {
+  checkBaseChunks(png, basePngChunks(png, checked));
+}
+
 /** A base layer's PNG from its base64 text, checked as a record's is. */
-function basePng(text: unknown): Uint8Array {
+function* basePng(text: unknown): Steps<Uint8Array> {
   if (typeof text !== "string") fail("base.png is not a string");
   const padding = text.endsWith("==") ? 2 : text.endsWith("=") ? 1 : 0;
   if ((text.length / 4) * 3 - padding > limits.baseBytes) {
     fail("base.png is too large");
   }
-  const png = fromBase64(text, "base.png");
-  checkBasePng(png);
+  const png = yield* fromBase64(text, "base.png");
+  const chunks = basePngChunks(png, () => false);
+  checkBaseChunks(png, yield* checkedChunks(png, chunks));
   return png;
 }
 
@@ -445,41 +507,56 @@ export async function baseImageProblem(
  */
 export function readBasePng(text: unknown): Uint8Array | undefined {
   try {
-    return basePng(text);
+    return finished(basePng(text));
   } catch (error) {
     if (error instanceof InvalidRecord) return undefined;
     throw error;
   }
 }
 
-function parseBase(value: unknown): BaseLayer {
+function* parseBase(value: unknown): Steps<BaseLayer> {
   const base = object(value, "base");
   const x = integer(base.x, "base.x", -limits.coordinate, limits.coordinate);
   const y = integer(base.y, "base.y", -limits.coordinate, limits.coordinate);
   const width = integer(base.width, "base.width", 1, limits.coordinate);
   const height = integer(base.height, "base.height", 1, limits.coordinate);
-  return { x, y, width, height, png: basePng(base.png) };
+  return { x, y, width, height, png: yield* basePng(base.png) };
 }
+
+/** How many code units of a record's text go by between places to pause. */
+const textSliceUnits = 64 * 1024;
 
 /**
  * The text's length in UTF-8 bytes, counted up to just past `limit` without
  * encoding it. A string of more code units than `limit` is always longer,
  * since no code unit takes less than one byte.
  */
-function utf8Length(text: string, limit: number): number {
+function* utf8Length(text: string, limit: number): Steps<number> {
   if (text.length > limit) return text.length;
   let bytes = 0;
-  for (let index = 0; index < text.length && bytes <= limit; index++) {
-    const unit = text.charCodeAt(index);
-    // A surrogate is half of a four-byte character, or three bytes alone as
-    // the replacement character that encoding would write.
-    const next = text.charCodeAt(index + 1);
-    if (unit >= 0xd800 && unit <= 0xdbff && next >= 0xdc00 && next <= 0xdfff) {
-      bytes += 4;
-      index++;
-    } else {
-      bytes += unit < 0x80 ? 1 : unit < 0x800 ? 2 : 3;
+  for (let index = 0; index < text.length && bytes <= limit;) {
+    const stop = Math.min(text.length, index + textSliceUnits);
+    for (; index < stop && bytes <= limit; index++) {
+      const unit = text.charCodeAt(index);
+      if (unit < 0x80) {
+        bytes += 1;
+      } else if (unit < 0x800) {
+        bytes += 2;
+      } else if (
+        // A surrogate is half of a four-byte character, or three bytes alone as
+        // the replacement character that encoding would write.
+        unit >= 0xd800 &&
+        unit <= 0xdbff &&
+        text.charCodeAt(index + 1) >= 0xdc00 &&
+        text.charCodeAt(index + 1) <= 0xdfff
+      ) {
+        bytes += 4;
+        index++;
+      } else {
+        bytes += 3;
+      }
     }
+    yield;
   }
   return bytes;
 }
@@ -544,10 +621,15 @@ function decodedString(raw: string): string {
  * number is an integer in plain digits that any reader can hold exactly.
  * Anything else wrong with the text is left for the parser to find.
  */
-function checkText(text: string): void {
+function* checkText(text: string): Steps<void> {
   /** An object's names so far, or undefined for an array, for each one open. */
   const open: (Set<string> | undefined)[] = [];
+  let pauseAt = textSliceUnits;
   for (let at = 0; at < text.length; at++) {
+    if (at >= pauseAt) {
+      pauseAt = at + textSliceUnits;
+      yield;
+    }
     const char = text[at];
     if (char === '"') {
       const end = stringEnd(text, at);
@@ -576,6 +658,45 @@ function checkText(text: string): void {
   }
 }
 
+/** What reading a record's text comes to, as steps; throws if it is refused. */
+function* recordSteps(text: string): Steps<InkRecord> {
+  if ((yield* utf8Length(text, limits.text)) > limits.text) {
+    fail("record text is too long");
+  }
+  yield* checkText(text);
+  yield;
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    fail("not JSON");
+  }
+  yield;
+  const record = object(json, "record");
+  const rawStrokes = record.strokes;
+  if (!Array.isArray(rawStrokes)) fail("strokes is not a list");
+  if (rawStrokes.length > limits.strokes) {
+    fail(`more than ${String(limits.strokes)} strokes`);
+  }
+  const budget = { points: limits.points };
+  const strokes: Stroke[] = [];
+  for (const [index, stroke] of (rawStrokes as unknown[]).entries()) {
+    strokes.push(parseStroke(stroke, index, budget));
+    yield;
+  }
+  return record.base === undefined
+    ? { strokes }
+    : { strokes, base: yield* parseBase(record.base) };
+}
+
+/** The result for a refused record, or throws any other `error`. */
+function refused(error: unknown): ParseResult {
+  if (error instanceof InvalidRecord) {
+    return { ok: false, detail: error.message };
+  }
+  throw error;
+}
+
 /**
  * Reads a record from its JSON text. Fields this version does not know are
  * ignored, and are not kept when the record is written again, as
@@ -583,38 +704,27 @@ function checkText(text: string): void {
  */
 export function parseRecord(text: string): ParseResult {
   try {
-    if (utf8Length(text, limits.text) > limits.text) {
-      fail("record text is too long");
-    }
-    checkText(text);
-    let json: unknown;
-    try {
-      json = JSON.parse(text);
-    } catch {
-      fail("not JSON");
-    }
-    const record = object(json, "record");
-    const rawStrokes = record.strokes;
-    if (!Array.isArray(rawStrokes)) fail("strokes is not a list");
-    if (rawStrokes.length > limits.strokes) {
-      fail(`more than ${String(limits.strokes)} strokes`);
-    }
-    const budget = { points: limits.points };
-    const strokes = rawStrokes.map((stroke: unknown, index) =>
-      parseStroke(stroke, index, budget),
-    );
+    return { ok: true, record: finished(recordSteps(text)) };
+  } catch (error) {
+    return refused(error);
+  }
+}
+
+/**
+ * {@link parseRecord} for a large record, which takes the same steps, with
+ * `pause` awaited every few milliseconds of them to let the page run.
+ */
+export async function parseRecordSliced(
+  text: string,
+  options: Pausing = {},
+): Promise<ParseResult> {
+  try {
     return {
       ok: true,
-      record:
-        record.base === undefined
-          ? { strokes }
-          : { strokes, base: parseBase(record.base) },
+      record: await finishedSliced(recordSteps(text), options),
     };
   } catch (error) {
-    if (error instanceof InvalidRecord) {
-      return { ok: false, detail: error.message };
-    }
-    throw error;
+    return refused(error);
   }
 }
 

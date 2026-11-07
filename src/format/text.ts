@@ -164,14 +164,14 @@ export async function readText(
 }
 
 /**
- * What a file's bytes say about its symbol, for a caller reading many files:
- * as {@link readText} does with `attempts`, working out the CRCs of only the
- * chunks that can hold text, so that a large image costs little. Throws
- * `PngError` when the bytes fail the format's check of a PNG's structure.
+ * What a file's bytes say about its symbol, as {@link readText} does with
+ * `attempts`, working out the CRCs of only the chunks that can hold text, so
+ * that a large image costs little. Throws `PngError` when the bytes fail the
+ * format's check of a PNG's structure.
  */
 export async function readFileText(
   bytes: Uint8Array,
-  attempts: number,
+  attempts = Infinity,
 ): Promise<SymbolText> {
   return readText(
     readChunks(bytes, (type) => isTextChunk({ type })),

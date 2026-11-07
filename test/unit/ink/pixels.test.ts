@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { noise, paused, sameBytes } from "../../support/slices.ts";
 import {
   alphaBounds,
   baseIsReduced,
@@ -15,8 +16,10 @@ import {
   thresholdRange,
   cropAlpha,
   inkAlpha,
+  inkAlphaSliced,
   inkBounds,
   inkPixels,
+  inkPixelsSliced,
   lightInk,
   luminance,
   otsuThreshold,
@@ -111,6 +114,41 @@ describe("inkPixels", () => {
       inkGrey,
       200,
     ]);
+  });
+});
+
+describe("a large picture's ink, a little at a time", () => {
+  const width = 1021;
+  const height = 601;
+  const data = new Uint8ClampedArray(noise(width * height * 4));
+  /** The same picture, opaque but for its last pixel, or wholly. */
+  const opaque = (last: number): Uint8ClampedArray => {
+    const pixels = data.slice();
+    for (let index = 3; index < pixels.length; index += 4) pixels[index] = 255;
+    pixels[pixels.length - 1] = last;
+    return pixels;
+  };
+
+  it.each([
+    ["with transparency", data],
+    ["opaque", opaque(255)],
+    ["opaque but for its last pixel", opaque(254)],
+  ])("finds the same ink, %s", async (_, pixels) => {
+    const picture = { width, height, data: pixels };
+    const { result, pauses } = await paused((pause) =>
+      inkAlphaSliced(picture, { pause }),
+    );
+    expect(sameBytes(result, inkAlpha(picture))).toBe(true);
+    expect(pauses).toBeGreaterThanOrEqual(2);
+  });
+
+  it("makes the same pixels of it", async () => {
+    const alpha = inkAlpha({ width, height, data });
+    const { result, pauses } = await paused((pause) =>
+      inkPixelsSliced(width, height, alpha, { pause }),
+    );
+    expect(sameBytes(result, inkPixels(width, height, alpha))).toBe(true);
+    expect(pauses).toBeGreaterThanOrEqual(2);
   });
 });
 

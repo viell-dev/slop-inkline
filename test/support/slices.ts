@@ -1,5 +1,6 @@
 // Work done in slices, for tests of what it does and of where it can pause.
 
+import { Buffer } from "node:buffer";
 import { vi } from "vitest";
 
 /**
@@ -34,4 +35,17 @@ export function noise(length: number): Uint8Array<ArrayBuffer> {
     seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
     return seed >>> 24;
   });
+}
+
+/**
+ * Whether two arrays hold the same bytes, for arrays too large for `toEqual`,
+ * which takes seconds to go through a few hundred kilobytes.
+ */
+export function sameBytes(
+  a: Uint8Array | Uint8ClampedArray,
+  b: Uint8Array | Uint8ClampedArray,
+): boolean {
+  const bytes = (array: Uint8Array | Uint8ClampedArray): Buffer =>
+    Buffer.from(array.buffer, array.byteOffset, array.byteLength);
+  return bytes(a).equals(bytes(b));
 }

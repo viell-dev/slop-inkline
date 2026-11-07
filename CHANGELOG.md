@@ -132,6 +132,18 @@ changes the file must keep. No existing file is affected.
   pause of up to about a quarter of a second just after you ask to save. What
   files hold has not changed
   ([#200](https://github.com/viell-dev/slop-inkline/issues/200)).
+- Opening a symbol with a large base layer no longer freezes Obsidian. Near the
+  format's limit that took three seconds or more with nothing painting or taking
+  input. It now takes one or two, Obsidian keeps answering, and a notice says
+  that it is opening. Asking again opens it once, asking for another symbol
+  opens that one, and it does not come up over a window opened meanwhile. A
+  picture with no record opens the same way. What a file reads as has not
+  changed ([#202](https://github.com/viell-dev/slop-inkline/issues/202)).
+- **Copy from** no longer takes the place of a drawing that a save or a question
+  came to while the other symbol was being read, where **Save** could have saved
+  the copy in the drawing's stead. The status line says it was not copied.
+  **Reload** asks again if you drew or typed while it read the file
+  ([#202](https://github.com/viell-dev/slop-inkline/issues/202)).
 
 ### Changed
 

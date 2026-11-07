@@ -5,6 +5,8 @@ import {
   crc32,
   deflate,
   encodeRgba,
+  finished,
+  finishedSliced,
   firstDamaged,
   imageHeader,
   maxChunks,
@@ -12,6 +14,7 @@ import {
   isPng,
   pngSignature,
   readChunks,
+  readChunksSliced,
   slicer,
   writeChunks,
   writeChunksSliced,
@@ -21,8 +24,54 @@ import { inflateSync } from "node:zlib";
 import { blank, encodePng, header, pixelChunks } from "../../support/png.ts";
 import { noise, paused } from "../../support/slices.ts";
 
+/** Chunks of one file, told apart without going through all their bytes. */
+const summary = (chunks: readonly Chunk[]): unknown[] =>
+  chunks.map(({ type, data, damaged }) => [
+    type,
+    data.byteOffset,
+    data.length,
+    damaged,
+  ]);
+
 const ascii = (text: string): Uint8Array =>
   Uint8Array.from(text, (char) => char.charCodeAt(0));
+
+describe("steps", () => {
+  function* counted(): Generator<undefined, number, undefined> {
+    yield;
+    yield;
+    return 7;
+  }
+
+  it("come to the same thing with pauses and without", async () => {
+    expect(finished(counted())).toBe(7);
+    expect(await finishedSliced(counted())).toBe(7);
+    const { result, pauses } = await paused((pause) =>
+      finishedSliced(counted(), { pause }),
+    );
+    expect(result).toBe(7);
+    expect(pauses).toBe(2);
+  });
+
+  it("take no pause before a slice is over", async () => {
+    let pauses = 0;
+    const pause = (): Promise<void> => {
+      pauses += 1;
+      return Promise.resolve();
+    };
+    expect(await finishedSliced(counted(), { pause })).toBe(7);
+    expect(pauses).toBe(0);
+  });
+
+  it("stop at what they throw, as a promise that fails", async () => {
+    function* failing(): Generator<undefined, number, undefined> {
+      yield;
+      throw new RangeError("no");
+    }
+    expect(() => finished(failing())).toThrow("no");
+    await expect(finishedSliced(failing())).rejects.toThrow("no");
+  });
+});
 
 describe("crc32", () => {
   it("matches the standard check value", () => {
@@ -273,6 +322,76 @@ describe("work in slices", () => {
       readChunks(view, () => false),
     );
     expect(found?.type).toBe("IDAT");
+  });
+
+  it("reads what readChunks reads, whichever chunk is damaged", async () => {
+    const sound = writeChunks(chunks);
+    expect(summary(await readChunksSliced(sound))).toEqual(
+      summary(readChunks(sound)),
+    );
+    for (const type of ["teXt", "IDAT"]) {
+      const bytes = damaged(type);
+      const read = await readChunksSliced(bytes);
+      expect(summary(read)).toEqual(summary(readChunks(bytes)));
+      expect(read.filter(({ damaged: bad }) => bad === true)).toHaveLength(1);
+    }
+  });
+
+  it("marks every damaged chunk, not just the first", async () => {
+    const bytes = writeChunks(chunks).slice();
+    for (const { data } of readChunks(bytes).slice(1, -1)) {
+      const at = data.byteOffset + 1;
+      bytes[at] = (bytes[at] ?? 0) ^ 1;
+    }
+    const read = await readChunksSliced(bytes);
+    expect(summary(read)).toEqual(summary(readChunks(bytes)));
+    expect(read.filter(({ damaged: bad }) => bad === true).length).toBe(
+      chunks.length - 2,
+    );
+  });
+
+  it("refuses what readChunks refuses, with the same message", async () => {
+    const sound = writeChunks(chunks);
+    const header = readChunks(sound)[0]?.data;
+    if (header === undefined) throw new Error("no IHDR");
+    const badHeader = sound.slice();
+    badHeader[header.byteOffset] = (badHeader[header.byteOffset] ?? 0) ^ 1;
+    for (const bytes of [
+      badHeader,
+      sound.subarray(0, sound.length - 1),
+      sound.subarray(1),
+      new Uint8Array(0),
+    ]) {
+      let refusal = "";
+      try {
+        readChunks(bytes);
+      } catch (error) {
+        refusal = String(error);
+      }
+      expect(refusal).not.toBe("");
+      await expect(readChunksSliced(bytes)).rejects.toThrow(
+        refusal.replace("PngError: ", ""),
+      );
+    }
+  });
+
+  it("reads chunks in slices from a view into a larger buffer", async () => {
+    const file = damaged("IDAT");
+    const padded = new Uint8Array(file.length + 13);
+    padded.set(file, 7);
+    const view = padded.subarray(7, 7 + file.length);
+    expect(summary(await readChunksSliced(view))).toEqual(
+      summary(readChunks(view)),
+    );
+  });
+
+  it("pauses all through reading chunks, to the same result", async () => {
+    const bytes = writeChunks(chunks);
+    const { result, pauses } = await paused((pause) =>
+      readChunksSliced(bytes, { pause }),
+    );
+    expect(summary(result)).toEqual(summary(readChunks(bytes)));
+    expect(pauses).toBeGreaterThanOrEqual(6);
   });
 
   it("pauses all through a large chunk's check", async () => {

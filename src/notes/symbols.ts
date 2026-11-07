@@ -15,7 +15,7 @@ import {
 } from "obsidian";
 import { inkExtension, isInkPath } from "../format/ink-file.ts";
 import { readChunks } from "../format/png.ts";
-import { readText, type SymbolText } from "../format/text.ts";
+import { readFileText, readText, type SymbolText } from "../format/text.ts";
 import { openInk, openPicture } from "../ink/canvas.ts";
 import { emptyDocument } from "../ink/document.ts";
 import {
@@ -81,6 +81,13 @@ const settleLimit = 5000;
 
 /** How often, in milliseconds, to look. */
 const settleCheck = 20;
+
+/**
+ * How long, in milliseconds, opening a symbol goes on before a notice says so.
+ * An ordinary symbol takes a tenth of this, and one near the format's limit a
+ * second or more, while Obsidian goes on answering.
+ */
+const openingNoticeAfter = 300;
 
 /**
  * Every write over a symbol's file, from the library and the editor alike, so
@@ -1116,6 +1123,26 @@ function message(error: unknown): string {
 }
 
 /**
+ * Says that `name` is opening, if that goes on for long, as nothing else shows
+ * it: Obsidian keeps answering meanwhile. Returns what ends that.
+ */
+function sayOpening(name: string): () => void {
+  let notice: Notice | undefined;
+  const timer = window.setTimeout(() => {
+    notice = new Notice(`Opening ${name}…`, 0);
+  }, openingNoticeAfter);
+  return () => {
+    window.clearTimeout(timer);
+    notice?.hide();
+  };
+}
+
+/** How many modals are open, the top one holding the keyboard. */
+function modalCount(): number {
+  return activeDocument.querySelectorAll(".modal-container").length;
+}
+
+/**
  * Asks which of the vault's symbols to start from, by its path, or by what one
  * says about itself.
  */
@@ -1219,15 +1246,18 @@ async function copySymbol(
   if (file === undefined || ended() || !host.alive()) return undefined;
   let opened;
   let text;
+  const stopSaying = sayOpening(file.name);
   try {
     const bytes = new Uint8Array(await app.vault.readBinary(file));
     const ink = await openInk(bytes);
     // A copy starts from what the file shows, and leaves the file as it is.
     opened = ink.kind === "damaged" ? await openPicture(bytes) : ink;
-    text = await readText(readChunks(bytes));
+    text = await readFileText(bytes);
   } catch (error) {
     new Notice(`Could not open ${file.name}: ${message(error)}`);
     return undefined;
+  } finally {
+    stopSaying();
   }
   if (ended()) return undefined;
   if (opened.kind === "newer-version") {
@@ -1243,25 +1273,58 @@ async function copySymbol(
   };
 }
 
-/** Opens the editor for an existing symbol file, reporting any failure. */
+/** The symbol being read to open, which a later open takes the place of. */
+let opening: { readonly file: TFile } | undefined;
+
+/**
+ * Opens the editor for an existing symbol file, reporting any failure. A large
+ * one takes a moment to read, and asking for it again meanwhile, as with a
+ * second click, goes on with the same read rather than opening it twice.
+ */
 export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
+  if (opening?.file === file) return;
+  const mine = { file };
+  opening = mine;
+  try {
+    await openEditor(host, file, () => opening === mine);
+  } finally {
+    if (opening === mine) opening = undefined;
+  }
+}
+
+/**
+ * Reads `file` and opens the editor on it, unless the person went on to
+ * something else meanwhile. The newest open is the one they want, which
+ * `wanted` says. A modal opened since has the keyboard, and an editor coming up
+ * over it would take the keys and the pointer from someone typing or drawing
+ * there, so that nothing there is lost, and the notice says to open this again.
+ */
+async function openEditor(
+  host: EditorHost,
+  file: TFile,
+  wanted: () => boolean,
+): Promise<void> {
   const { app } = host;
+  const modals = modalCount();
   let opened;
   let fingerprint;
   let drawing;
   let text;
+  const stopSaying = sayOpening(file.name);
   try {
     const bytes = new Uint8Array(await app.vault.readBinary(file));
     opened = await openInk(bytes);
     fingerprint = await fingerprintOf(bytes);
     drawing = await drawingOf(bytes);
-    text = await readText(readChunks(bytes));
+    text = await readFileText(bytes);
   } catch (error) {
     new Notice(`Could not open ${file.name}: ${message(error)}`);
     return;
+  } finally {
+    stopSaying();
   }
   // Inkline may have been disabled while the file was read.
-  if (!host.alive()) return;
+  if (!host.alive() || !wanted()) return;
   if (opened.kind === "newer-version") {
     new Notice(
       `${file.name} was saved by a newer version of Inkline. Update Inkline to edit it.`,
@@ -1271,6 +1334,12 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
   if (opened.kind === "damaged") {
     new Notice(
       `The strokes in ${file.name} cannot be read, so it was not opened, which keeps them as they are. To go on from what it shows, use Copy from in a new symbol.`,
+    );
+    return;
+  }
+  if (modalCount() > modals) {
+    new Notice(
+      `${file.name} did not open, as another window opened while it was being read. Open it again when you are ready.`,
     );
     return;
   }

@@ -16,6 +16,8 @@ export interface MainThread {
   readonly longTasks: number;
   readonly longestTaskMs: number;
   readonly longTasksMs: number;
+  /** Each of them, by `performance.now()`. */
+  readonly longTaskTimes: readonly { startMs: number; ms: number }[];
   /** Pointer and key events, and the longest any waited to be handled. */
   readonly inputs: number;
   readonly longestInputDelayMs: number;
@@ -30,7 +32,7 @@ export function watchMainThread(): () => MainThread {
   let longestFrameMs = 0;
   let inputs = 0;
   let longestInputDelayMs = 0;
-  const tasks: number[] = [];
+  const tasks: { startMs: number; ms: number }[] = [];
   let lastTick = started;
   const tick = (): void => {
     const now = performance.now();
@@ -48,8 +50,11 @@ export function watchMainThread(): () => MainThread {
     if (running) window.requestAnimationFrame(frame);
   };
   window.requestAnimationFrame(frame);
+  const noted = (entry: PerformanceEntry): void => {
+    tasks.push({ startMs: entry.startTime, ms: entry.duration });
+  };
   const observer = new PerformanceObserver((list) => {
-    for (const entry of list.getEntries()) tasks.push(entry.duration);
+    list.getEntries().forEach(noted);
   });
   observer.observe({ type: "longtask", buffered: false });
   const input = (event: Event): void => {
@@ -63,7 +68,7 @@ export function watchMainThread(): () => MainThread {
   for (const kind of kinds) window.addEventListener(kind, input, true);
   return () => {
     running = false;
-    for (const entry of observer.takeRecords()) tasks.push(entry.duration);
+    observer.takeRecords().forEach(noted);
     observer.disconnect();
     for (const kind of kinds) window.removeEventListener(kind, input, true);
     return {
@@ -72,8 +77,9 @@ export function watchMainThread(): () => MainThread {
       frames,
       longestFrameMs,
       longTasks: tasks.length,
-      longestTaskMs: Math.max(0, ...tasks),
-      longTasksMs: tasks.reduce((sum, task) => sum + task, 0),
+      longestTaskMs: Math.max(0, ...tasks.map(({ ms }) => ms)),
+      longTasksMs: tasks.reduce((sum, { ms }) => sum + ms, 0),
+      longTaskTimes: tasks,
       inputs,
       longestInputDelayMs,
     };
