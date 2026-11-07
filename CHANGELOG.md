@@ -13,7 +13,7 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 This is the first release candidate of 1.0.0: a build meant to become 1.0.0
 unchanged, for its last checks. The owner is asked to try it in
-[their test request](REQUEST_ISSUE).
+[their test request](https://github.com/viell-dev/slop-inkline/issues/212).
 
 **Symbols saved by any earlier version open as pictures to draw over, without
 their strokes.** The file format is now final, by the owner's decision in
