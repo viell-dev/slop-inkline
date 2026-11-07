@@ -169,7 +169,7 @@ export async function readText(
  * chunks that can hold text, so that a large image costs little. Throws
  * `PngError` when the bytes fail the format's check of a PNG's structure.
  */
-export function readFileText(
+export async function readFileText(
   bytes: Uint8Array,
   attempts: number,
 ): Promise<SymbolText> {

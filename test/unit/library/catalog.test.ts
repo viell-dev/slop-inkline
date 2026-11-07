@@ -5,6 +5,7 @@ import {
   foldersOf,
   type SymbolFile,
 } from "../../../src/library/catalog.ts";
+import { searchableText } from "../../../src/notes/search.ts";
 
 /** A symbol file at `path`, named and foldered as its path says. */
 function file(path: string): SymbolFile {
@@ -123,5 +124,46 @@ describe("filterCatalog", () => {
       "Runes/tower two.ink.png",
     ]);
     expect(paths(filterCatalog(entries, "", ""))).toEqual(["Tower.ink.png"]);
+  });
+});
+
+describe("filterCatalog, by what a symbol says", () => {
+  const said = catalog(
+    [
+      {
+        ...file("Glyphs/anything.ink.png"),
+        text: searchableText({ reading: ["TA"], translation: ["rice field"] }),
+      },
+      file("tower.ink.png"),
+      file("unread.ink.png"),
+    ],
+    {},
+  );
+
+  it("finds a symbol by a reading or a translation, and says which", () => {
+    expect(filterCatalog(said, "ta", undefined)).toMatchObject([
+      { name: "anything", found: { field: "reading", value: "TA" } },
+    ]);
+    expect(filterCatalog(said, " FIELD ", undefined)).toMatchObject([
+      {
+        name: "anything",
+        found: { field: "translation", value: "rice field" },
+      },
+    ]);
+  });
+
+  it("says nothing of a value where the name matches", () => {
+    const [entry] = filterCatalog(said, "any", undefined);
+    expect(entry?.found).toBeUndefined();
+  });
+
+  it("still narrows by folder", () => {
+    expect(filterCatalog(said, "ta", "")).toEqual([]);
+    expect(filterCatalog(said, "ta", "Glyphs")).toHaveLength(1);
+  });
+
+  it("finds a symbol not yet read by its name alone", () => {
+    expect(filterCatalog(said, "unread", undefined)).toHaveLength(1);
+    expect(filterCatalog(said, "zz", undefined)).toEqual([]);
   });
 });

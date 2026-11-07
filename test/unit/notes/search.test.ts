@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  findText,
   holdsTyped,
   insideCodeBlock,
   insideCodeSpan,
   rankSymbols,
+  searchableText,
+  textQuery,
   triggerQuery,
+  type TextQuery,
 } from "../../../src/notes/search.ts";
 import { defaultSettings } from "../../../src/settings.ts";
 
@@ -66,7 +70,8 @@ describe("rankSymbols", () => {
     uses: number,
     modified: number,
     path = `${name}.ink.png`,
-  ) => ({ name, path, score, uses, modified });
+    byName = true,
+  ) => ({ name, path, score, byName, uses, modified });
 
   it("ranks by match, then by use in the note, then by recency", () => {
     const ranked = rankSymbols([
@@ -81,6 +86,14 @@ describe("rankSymbols", () => {
       "new",
       "old",
     ]);
+  });
+
+  it("puts a name before a value that matches as well, whatever its uses", () => {
+    const ranked = rankSymbols([
+      symbol("value", -1, 9, 9, "value.ink.png", false),
+      symbol("name", -1, 0, 0),
+    ]);
+    expect(ranked.map((entry) => entry.name)).toEqual(["name", "value"]);
   });
 
   it("breaks ties by name and then path, whatever the order given", () => {
@@ -173,5 +186,95 @@ describe("insideCodeBlock", () => {
     expect(insideCodeBlock(note("a\n---\n;;b\n---"), 2)).toBe(false);
     // A fence after the front matter still counts.
     expect(insideCodeBlock(note("---\n---\n```\n;;a"), 3)).toBe(true);
+  });
+});
+
+describe("finding a value", () => {
+  const text = (
+    reading: readonly string[],
+    translation: readonly string[] = [],
+  ) => searchableText({ reading, translation });
+
+  /** The query for `typed`, which every test types something for. */
+  const query = (typed: string): TextQuery => {
+    const found = textQuery(typed);
+    if (found === undefined) throw new Error("nothing typed");
+    return found;
+  };
+
+  const found = (
+    held: ReturnType<typeof text>,
+    typed: string,
+  ): string | undefined => findText(held, query(typed))?.value;
+
+  it("has nothing to look for when nothing was typed", () => {
+    expect(textQuery("")).toBeUndefined();
+    expect(textQuery("   ")).toBeUndefined();
+  });
+
+  it("finds a value in any letter case, and gives it as it was written", () => {
+    expect(found(text(["TA"]), "ta")).toBe("TA");
+    expect(found(text(["ta"]), "TA")).toBe("ta");
+    expect(found(text(["Ta"]), "tA")).toBe("Ta");
+  });
+
+  it("finds part of a value, in either field, and says which", () => {
+    const held = text(["TA"], ["rice field"]);
+    expect(findText(held, query("fie"))).toMatchObject({
+      field: "translation",
+      value: "rice field",
+    });
+    expect(findText(held, query("ta"))).toMatchObject({
+      field: "reading",
+      value: "TA",
+    });
+    expect(found(held, "zz")).toBeUndefined();
+  });
+
+  it("prefers a value that is what was typed, then one that starts with it", () => {
+    expect(found(text(["data", "tall", "ta"]), "ta")).toBe("ta");
+    expect(found(text(["data", "tall"]), "ta")).toBe("tall");
+    expect(found(text(["adata", "data"]), "ta")).toBe("adata");
+    // In either field, a reading first where they match alike.
+    expect(found(text(["data"], ["ta"]), "ta")).toBe("ta");
+    expect(found(text(["ta"], ["ta"]), "ta")).toBe("ta");
+  });
+
+  it("never matches across two values", () => {
+    expect(found(text(["ab", "cd"]), "bc")).toBeUndefined();
+    expect(found(text(["ab", "cd"]), "b\nc")).toBeUndefined();
+  });
+
+  it("needs no marks to find a value that has them", () => {
+    expect(found(text(["šá"]), "sa")).toBe("šá");
+    expect(found(text(["ā"]), "a")).toBe("ā");
+    // Both ways of writing `á`.
+    expect(found(text(["a\u0301"]), "\u00e1")).toBe("a\u0301");
+    expect(found(text(["\u00e1"]), "a\u0301")).toBe("\u00e1");
+  });
+
+  it("asks for the marks that were typed", () => {
+    expect(found(text(["sa"]), "šá")).toBeUndefined();
+    expect(found(text(["कि"]), "का")).toBeUndefined();
+    expect(found(text(["कि"]), "कि")).toBe("कि");
+  });
+
+  it("finds compatibility forms by the plain one", () => {
+    expect(found(text(["ﾀ"]), "タ")).toBe("ﾀ");
+    expect(found(text(["ＴＡ"]), "ta")).toBe("ＴＡ");
+  });
+
+  it("finds right-to-left text, with its controls left in the value", () => {
+    const value = `${String.fromCharCode(0x202e)}שלום`;
+    expect(found(text([value]), "שלום")).toBe(value);
+  });
+
+  it("looks through thousands of values at the format's limit", () => {
+    const values = Array.from(
+      { length: 1000 },
+      (_, index) => `v${String(index)}`,
+    );
+    expect(found(text(values), "v999")).toBe("v999");
+    expect(found(text(values), "w")).toBeUndefined();
   });
 });

@@ -655,6 +655,7 @@ describe("A symbol's readings and translations", function () {
       await area("reading").click();
       await browser.keys(["Control", "a"]);
       await browser.keys(["Delete"]);
+      // The focus is what Mod+Enter answers to.
       await browser.keys(["Control", "Enter"]);
       await waitForClosedForm();
       expect(await fieldsOf("Clear.ink.png")).toEqual({

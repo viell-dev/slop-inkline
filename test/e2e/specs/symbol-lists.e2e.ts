@@ -266,6 +266,8 @@ interface LibraryRow {
   label: Box;
   uses: Box;
   rename: Box;
+  /** What edits its readings and translations, the last of its buttons. */
+  text: Box;
 }
 
 /** The library as it sits in its sidebar. */
@@ -321,6 +323,7 @@ async function measureLibrary(): Promise<Library> {
             label: edges(label),
             uses: edges(part(".inkline-library-uses")),
             rename: edges(part(".inkline-library-rename")),
+            text: edges(part(".inkline-library-edit-text")),
           };
         },
       ),
@@ -335,13 +338,13 @@ function expectInsideSidebar(shown: Library): void {
   for (const row of shown.rows) {
     expect(row.label.right).toBeLessThanOrEqual(row.insert.right + 0.5);
     expect(row.insert.right).toBeLessThanOrEqual(shown.list.right + 0.5);
-    expect(row.rename.right).toBeLessThanOrEqual(shown.list.right + 0.5);
+    expect(row.text.right).toBeLessThanOrEqual(shown.list.right + 0.5);
   }
 }
 
 /** Checks that both of a row's buttons follow its name, on the name's line. */
 function expectOneLine(row: LibraryRow): void {
-  for (const button of [row.uses, row.rename]) {
+  for (const button of [row.uses, row.rename, row.text]) {
     expect(button.left).toBeGreaterThanOrEqual(row.insert.right);
     expect(button.top).toBeLessThan(row.label.bottom);
     expect(button.bottom).toBeGreaterThan(row.label.top);
@@ -719,9 +722,9 @@ describe("Lists of symbols", function () {
           expect(row.uses.top).toBeGreaterThanOrEqual(row.insert.bottom);
           expect(row.rename.top).toBe(row.uses.top);
           expect(row.rename.left).toBeGreaterThanOrEqual(row.uses.right);
-          expect(Math.abs(row.rename.right - shown.list.right)).toBeLessThan(
-            0.5,
-          );
+          expect(row.text.top).toBe(row.uses.top);
+          expect(row.text.left).toBeGreaterThanOrEqual(row.rename.right);
+          expect(Math.abs(row.text.right - shown.list.right)).toBeLessThan(0.5);
         }
         await saveScreenshot(`symbol-library-rows-${String(width)}`);
       });
@@ -751,7 +754,9 @@ describe("Lists of symbols", function () {
           .filter(({ shortened }) => shortened)
           .map(({ name }) => name)
           .sort(),
-      ).toEqual([deepName, long, unbroken].sort());
+        // A folder that was a few pixels short of the row's room, since a third
+        // button took some of it, as with `Glyphs/Deep` above `nested wide`.
+      ).toEqual([deepName, long, "nested wide", unbroken].sort());
       // A long name wraps onto a second line before it shortens.
       const height = (wanted: string): number => {
         const row = rows.find(({ name }) => name === wanted);

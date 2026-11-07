@@ -11,6 +11,7 @@ import {
   Keymap,
   MarkdownView,
   Notice,
+  Scope,
   setIcon,
   setTooltip,
   type TAbstractFile,
@@ -77,6 +78,8 @@ interface TextPanel {
   readonly file: TFile;
   /** Reads the file again, after the vault says it changed or went. */
   readonly reread: () => void;
+  /** Lets go of what the row took while it was edited. */
+  readonly release: () => void;
 }
 
 /** The symbol library, in a sidebar. */
@@ -217,6 +220,7 @@ export class SymbolLibraryView extends ItemView {
   override onClose(): Promise<void> {
     this.#refresh.cancel();
     this.#editing = undefined;
+    this.#textPanel?.release();
     this.#textPanel = undefined;
     this.#searchField = undefined;
     this.#folderField = undefined;
@@ -389,7 +393,9 @@ export class SymbolLibraryView extends ItemView {
         const next =
           this.#editing === undefined
             ? "Refreshing the library."
-            : "Finish editing to refresh the library.";
+            : this.#textPanel === undefined
+              ? "Finish renaming to refresh the library."
+              : "Finish editing to refresh the library.";
         new Notice(`${entry.name} changed or was deleted. ${next}`);
         this.#refresh();
         return;
@@ -497,6 +503,7 @@ export class SymbolLibraryView extends ItemView {
   #stopEditing(field: HTMLElement, file: TFile, role: string): void {
     if (this.#editing !== field) return;
     this.#editing = undefined;
+    this.#textPanel?.release();
     this.#textPanel = undefined;
     if (this.#searchField !== undefined) this.#searchField.disabled = false;
     if (this.#folderField !== undefined) this.#folderField.disabled = false;
@@ -602,19 +609,27 @@ export class SymbolLibraryView extends ItemView {
         },
       );
     };
-    this.#textPanel = { file, reread };
+    // Obsidian takes Mod+Enter before the fields see it.
+    const keys = new Scope(this.app.scope);
+    keys.register(["Mod"], "Enter", () => {
+      if (!form.contains(form.doc.activeElement)) return true;
+      form.requestSubmit();
+      return false;
+    });
+    this.app.keymap.pushScope(keys);
+    this.#textPanel = {
+      file,
+      reread,
+      release: () => {
+        this.app.keymap.popScope(keys);
+      },
+    };
     cancel.addEventListener("click", finish);
     form.addEventListener("keydown", (event) => {
-      if (event.isComposing) return;
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        if (!saving) finish();
-      } else if (event.key === "Enter" && Keymap.isModifier(event, "Mod")) {
-        // Enter alone starts another value.
-        event.preventDefault();
-        form.requestSubmit();
-      }
+      if (event.key !== "Escape" || event.isComposing) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!saving) finish();
     });
     form.addEventListener("submit", (event) => {
       event.preventDefault();

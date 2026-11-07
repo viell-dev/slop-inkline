@@ -323,6 +323,21 @@ describe("DraftStore", () => {
 });
 
 describe("decodeDraft", () => {
+  it("keeps the strokes of a draft whose text cannot be read", () => {
+    const stored = JSON.stringify({
+      version: 2,
+      id: "a",
+      target: { kind: "file", path: "001.ink.png" },
+      base: "none",
+      savedAt: 1,
+      text: { reading: 4 },
+      ink: { strokes: [] },
+    });
+    const read = decodeDraft(stored);
+    expect(read?.id).toBe("a");
+    expect(read?.text).toBeUndefined();
+  });
+
   it("reads what the store writes", () => {
     const storage = new MemoryStorage();
     const store = new DraftStore(storage);
@@ -347,6 +362,7 @@ describe("decodeDraft", () => {
         },
       }),
       draft({ id: "f", gridOrigin: 1.5 }),
+      draft({ id: "g", text: { reading: "TA\nDA", translation: "" } }),
     ]) {
       store.put(written);
       expect(
