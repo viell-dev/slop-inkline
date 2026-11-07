@@ -19,6 +19,7 @@ import {
   serializeRecord,
   type InkRecord,
 } from "./record.ts";
+import { isTextChunk } from "./text.ts";
 
 /** The file name ending that marks a PNG in the vault as a symbol. */
 export const inkExtension = ".ink.png";
@@ -250,7 +251,7 @@ export async function writeInkFile(
     ({ chunk: each }) =>
       !isRecordChunk(each) &&
       isSafeToCopy(each.type) &&
-      (/^(?:tEXt|zTXt|iTXt)$/.test(each.type) || !present.has(each.type)),
+      (isTextChunk(each) || !present.has(each.type)),
   );
   const before = kept
     .filter(

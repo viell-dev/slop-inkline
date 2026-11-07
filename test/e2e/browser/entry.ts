@@ -5,6 +5,7 @@
 export * as png from "../../../src/format/png.ts";
 export * as record from "../../../src/format/record.ts";
 export * as inkFile from "../../../src/format/ink-file.ts";
+export * as text from "../../../src/format/text.ts";
 export * as canvas from "../../../src/ink/canvas.ts";
 export * as document from "../../../src/ink/document.ts";
 export * as geometry from "../../../src/ink/geometry.ts";
