@@ -4176,6 +4176,8 @@ describe("The editor", function () {
       await saveScreenshot("copy-from-list");
       await chooseSymbol("square");
       await waitForStatus("Started from a copy of square");
+      // It holds a picture and no strokes, and says why.
+      await waitForStatus("as this file holds no strokes");
       await browser.keys(["Control", "Enter"]);
       await waitClosed();
       const record = JSON.parse(await recordOf("001.ink.png")) as {

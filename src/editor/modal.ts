@@ -2829,10 +2829,11 @@ export class InkEditorModal extends Modal {
     this.#session.replace(document);
     this.#fitView();
     this.#changed();
+    const started = copy.hasText
+      ? `Started from a copy of ${copy.name}, without its readings and translations`
+      : `Started from a copy of ${copy.name}`;
     this.#announce(
-      copy.hasText
-        ? `Started from a copy of ${copy.name}, without its readings and translations`
-        : `Started from a copy of ${copy.name}`,
+      copy.ink.picture === true ? `${started}. ${noStrokes}` : started,
     );
   }
 
