@@ -221,6 +221,9 @@ export class SymbolLibraryView extends ItemView {
     list.addEventListener("pointerdown", (event) => {
       if (event.button === 0) this.#holdForPress(list.win);
     });
+    list.addEventListener("keydown", (event) => {
+      if (event.key === " " && !event.repeat) this.#holdForSpace(list.win);
+    });
     this.#list = list;
     const touched = (file: TAbstractFile, oldPath?: string) => {
       if (
@@ -313,6 +316,25 @@ export class SymbolLibraryView extends ItemView {
       for (const type of ending) win.removeEventListener(type, ended, true);
     };
     for (const type of ending) win.addEventListener(type, ended, true);
+  }
+
+  /**
+   * Holds off redrawing until Space comes up, as a button acts on Space then, and
+   * a row redrawn while it is down would do nothing. The window losing the focus
+   * ends it too, as the key can then come up where this can't see it.
+   */
+  #holdForSpace(win: Window): void {
+    this.#pressed = true;
+    const stop = (): void => {
+      this.#pressed = false;
+      win.removeEventListener("keyup", up, true);
+      win.removeEventListener("blur", stop);
+    };
+    const up = (event: KeyboardEvent): void => {
+      if (event.key === " ") stop();
+    };
+    win.addEventListener("keyup", up, true);
+    win.addEventListener("blur", stop);
   }
 
   /** Shows the library as the vault holds it now, keeping the focus. */

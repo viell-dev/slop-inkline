@@ -139,7 +139,9 @@ What else is new since 0.9.1:
   redraws between the press and the release, as it could just after a symbol was
   made, or while the vault's symbols were being read. The list now waits for the
   release, so one click is enough
-  ([#204](https://github.com/viell-dev/slop-inkline/issues/204)).
+  ([#204](https://github.com/viell-dev/slop-inkline/issues/204)). Space does the
+  same, which a button acts on when the key comes up
+  ([#209](https://github.com/viell-dev/slop-inkline/issues/209)).
 - A rename that Obsidian does not finish, as on a drive that stops answering, no
   longer leaves the library's row stuck, or the editor at "Saving…", with
   nothing said. After a few seconds with nothing happening they say so, and how

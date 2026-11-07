@@ -597,6 +597,24 @@ describe("The symbol library", function () {
       await waitForNames(["gate", "tower"]);
     });
 
+    it("holds a row while Space is down on one of its buttons", async function () {
+      await createSymbol("gate.ink.png");
+      await showLibrary();
+      await waitForNames(["gate"]);
+      await browser.$(inRow("gate.ink.png", "rename")).execute((button) => {
+        if (button.instanceOf(HTMLElement)) button.focus();
+      });
+      const key = browser.action("key");
+      await key.down(" ").perform(true);
+      await createSymbol("tower.ink.png");
+      await pastRedraw();
+      expect(await names()).toEqual(["gate"]);
+      await key.up(" ").perform(true);
+      await form().waitForExist();
+      await browser.keys(["Escape"]);
+      await waitForNames(["gate", "tower"]);
+    });
+
     it("holds the values the index reads for the row pressed", async function () {
       await createSymbol("gate.ink.png");
       await openNote();
