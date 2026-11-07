@@ -4,6 +4,7 @@ import { obsidianPage } from "wdio-obsidian-service";
 import { brushSizes } from "../../../src/editor/session.ts";
 import { unitsPerPixel } from "../../../src/format/record.ts";
 import { lineBox } from "../../../src/ink/geometry.ts";
+import { stalledAfter } from "../../../src/notes/file-writes.ts";
 import { loadModules } from "../support/browser.ts";
 import {
   addUnsaved,
@@ -1221,6 +1222,82 @@ describe("The editor", function () {
     expect(await symbolFiles()).toEqual(
       ["001", ...names].map((name) => `${name}.ink.png`).sort(),
     );
+  });
+
+  describe("when Obsidian does not finish a rename", function () {
+    const wait = () => browser.$(".inkline-editor .inkline-save-wait");
+
+    /** Has Obsidian's own move of a file wait until {@link letMoveGo}. */
+    async function holdMove(): Promise<void> {
+      await browser.executeObsidian(({ app }) => {
+        const { adapter } = app.vault;
+        const move = adapter.rename.bind(adapter);
+        let go = (): void => undefined;
+        const gate = new Promise<void>((resolve) => {
+          go = resolve;
+        });
+        Reflect.set(window, "inklineLetMoveGo", go);
+        adapter.rename = async (...args) => {
+          await gate;
+          return move(...args);
+        };
+      });
+    }
+
+    async function letMoveGo(): Promise<void> {
+      await browser.executeObsidian(({ app }) => {
+        const go: unknown = Reflect.get(window, "inklineLetMoveGo");
+        Reflect.deleteProperty(window, "inklineLetMoveGo");
+        Reflect.deleteProperty(app.vault.adapter, "rename");
+        if (typeof go === "function") Reflect.apply(go, undefined, []);
+      });
+    }
+
+    afterEach(async function () {
+      await letMoveGo();
+    });
+
+    it("says so of a rename held back, and ends with it", async function () {
+      await saveOne();
+      await waitForLink("Editor.md", "001.ink.png");
+      await editFile("001.ink.png");
+      await nameSymbol("tower");
+      await holdMove();
+      await browser.keys(["Control", "s"]);
+      await browser.waitUntil(async () => (await wait().getText()) !== "", {
+        timeout: stalledAfter + 15_000,
+        timeoutMsg: "the editor never said its rename waits",
+      });
+      expect(await wait().getText()).toContain("Your strokes are safe");
+      // The drawing is written, and the rename is all that is left of the save.
+      expect(await symbolFiles()).toEqual(["001.ink.png"]);
+      await letMoveGo();
+      // The move ends, and only then does Obsidian ask about the links, which
+      // is a person's to answer, so that the message goes.
+      await browser.waitUntil(
+        async () => (await topButton("Just once")) !== undefined,
+      );
+      await browser.waitUntil(async () => (await wait().getText()) === "");
+      await clickTop("Just once");
+      await waitForStatus("Saved");
+      expect(await symbolFiles()).toEqual(["tower.ink.png"]);
+    });
+
+    it("says nothing during Obsidian's question, however long it stays open", async function () {
+      await saveOne();
+      await waitForLink("Editor.md", "001.ink.png");
+      await editFile("001.ink.png");
+      await nameSymbol("tower");
+      await browser.keys(["Control", "s"]);
+      await browser.waitUntil(
+        async () => (await topButton("Just once")) !== undefined,
+      );
+      await browser.pause(stalledAfter + 1500);
+      expect(await wait().getText()).toBe("");
+      await clickTop("Just once");
+      await waitForStatus("Saved");
+      expect(await symbolFiles()).toEqual(["tower.ink.png"]);
+    });
   });
 
   it("keeps a name it could not give the file, for the next save to try", async function () {

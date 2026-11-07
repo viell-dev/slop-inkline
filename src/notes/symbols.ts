@@ -49,8 +49,10 @@ import {
   saveFile,
   stoppable,
   unreadableText,
+  watchRename,
   watchSave,
   WriteQueue,
+  type RenameWait,
   type SaveWait,
 } from "./file-writes.ts";
 import { insertionAt } from "./links.ts";
@@ -387,6 +389,16 @@ async function saveOpenNotes(app: App): Promise<void> {
   }
 }
 
+/** The notes that link to the file at `path`, as Obsidian last indexed them. */
+function notesLinking(app: App, path: string): Set<string> {
+  const notes = new Set<string>();
+  const { resolvedLinks } = app.metadataCache;
+  for (const [note, targets] of Object.entries(resolvedLinks)) {
+    if ((targets[path] ?? 0) > 0) notes.add(note);
+  }
+  return notes;
+}
+
 /**
  * Gives `file` the path `path` through Obsidian, so that the links to it follow
  * as its settings say. Every rename of a symbol comes through here.
@@ -397,10 +409,43 @@ async function saveOpenNotes(app: App): Promise<void> {
  * itself two seconds after an edit, so a save during the question would have it
  * write a link over other text. Saving every open note first leaves those saves
  * nothing to do. Throws, having renamed nothing, if a note cannot be saved.
+ *
+ * `wait` hears if that all stops for long enough, which only a person being
+ * asked, or a report of the symbol or a note that links to it, puts off.
+ * `starting` is called just before the rename reaches Obsidian, and can throw to
+ * stop it: a note's save can take as long as any other.
  */
-async function renameSaved(app: App, file: TFile, path: string): Promise<void> {
-  await saveOpenNotes(app);
-  await app.fileManager.renameFile(file, path);
+async function renameSaved(
+  app: App,
+  file: TFile,
+  path: string,
+  wait: RenameWait,
+  starting: () => void = () => undefined,
+): Promise<void> {
+  const notes = notesLinking(app, file.path);
+  let moved = false;
+  const reported = (changed: TAbstractFile): void => {
+    if (changed === file || notes.has(changed.path)) moved = true;
+  };
+  const reports = [
+    app.vault.on("modify", reported),
+    app.vault.on("rename", reported),
+  ];
+  const renaming = async (): Promise<void> => {
+    await saveOpenNotes(app);
+    starting();
+    await app.fileManager.renameFile(file, path);
+  };
+  const moving = (): boolean => {
+    const seen = moved;
+    moved = false;
+    return seen || wait.asked();
+  };
+  try {
+    await watchRename(renaming(), moving, wait.told);
+  } finally {
+    for (const report of reports) app.vault.offref(report);
+  }
 }
 
 /**
@@ -543,18 +588,34 @@ function usesOf(app: App, path: string): SymbolUses {
 /**
  * Renames a symbol without writing its drawing, using the editor's name
  * rules and Obsidian's link updates. A deleted or replaced file is refused.
- * Throws on failure, so the caller can keep the requested name to retry.
+ * Rejects on failure, so the caller can keep the requested name to retry.
+ * `wait` hears if it stops for long enough; {@link SymbolWork.stop} then stops
+ * it, unless Obsidian has it, which cannot be taken back.
  */
-export async function renameSymbol(
+export function renameSymbol(
   app: App,
   file: TFile,
   typed: string,
-): Promise<void> {
-  if (!present(app, file) || !isInkPath(file.path)) {
-    throw new Error("The symbol is no longer in the vault.");
-  }
-  const path = renamedPath(app, file, chosen(typed, file));
-  if (path !== undefined) await renameSaved(app, file, path);
+  wait: RenameWait,
+): SymbolWork {
+  let stopped = false;
+  let reached = false;
+  const renaming = async (): Promise<void> => {
+    stillSymbol(app, file);
+    const path = renamedPath(app, file, chosen(typed, file));
+    if (path === undefined) return;
+    await renameSaved(app, file, path, wait, () => {
+      if (stopped) throw new Error("The rename was stopped.");
+      reached = true;
+    });
+  };
+  return {
+    done: renaming(),
+    stop: () => {
+      stopped = true;
+      return !reached;
+    },
+  };
 }
 
 /** Throws unless `file` is still the vault's symbol at its path. */
@@ -581,10 +642,10 @@ export async function readSymbolText(
   }
 }
 
-/** A save of a symbol's text under way. */
-export interface TextSave {
+/** A save or rename of a symbol under way. */
+export interface SymbolWork {
   readonly done: Promise<void>;
-  /** Stops it; returns false if its write has gone to the vault. */
+  /** Stops it; returns false if it has gone to the vault, and can still end. */
   readonly stop: () => boolean;
 }
 
@@ -600,7 +661,7 @@ export function writeSymbolText(
   file: TFile,
   changes: TextChanges,
   seen: SymbolText,
-): TextSave {
+): SymbolWork {
   const { access, stop } = stoppable<TFile>({
     check: (symbol) => {
       stillSymbol(app, symbol);
@@ -625,10 +686,11 @@ async function rename(
   app: App,
   file: TFile,
   path: string | undefined,
+  wait: RenameWait,
 ): Promise<boolean> {
   if (path === undefined) return true;
   try {
-    await renameSaved(app, file, path);
+    await renameSaved(app, file, path, wait);
     return true;
   } catch (error) {
     new Notice(
@@ -936,7 +998,7 @@ function newSymbol(
     // refuses it, the write goes ahead: the file then holds the drawing.
     // The editor learns what the file holds as soon as it is adopted or
     // written, so that a later failure leaves it still compared.
-    write: async (bytes, _record, keepDraft, holds, typed, check, waiting) => {
+    write: async (bytes, _record, keepDraft, holds, typed, check, wait) => {
       stillAlive(host);
       // Checked before anything is written, so that a refused name leaves
       // the vault as it was.
@@ -970,7 +1032,7 @@ function newSymbol(
         keepDraft();
         const file = await watchSave(
           app.vault.createBinary(path, toBuffer(bytes)),
-          waiting,
+          wait.told,
         );
         made = { file, fingerprint, previous: undefined };
         holds(fingerprint);
@@ -982,7 +1044,13 @@ function newSymbol(
         made.previous = before;
         if (!inserted) keepDraft();
         try {
-          made.file = await writeSymbol(host, made.file, bytes, check, waiting);
+          made.file = await writeSymbol(
+            host,
+            made.file,
+            bytes,
+            check,
+            wait.told,
+          );
           holds(fingerprint);
         } catch (error) {
           made.fingerprint = before;
@@ -998,7 +1066,7 @@ function newSymbol(
           const was = inserted ? embedFor(app, made.file, note.path) : "";
           const from = made.file.path;
           stillAlive(host);
-          named = await rename(app, made.file, renaming);
+          named = await rename(app, made.file, renaming, wait);
           // A rename that failed left the file, and its embed, as they were.
           if (inserted && after !== undefined && made.file.path !== from) {
             stillAlive(host);
@@ -1016,7 +1084,7 @@ function newSymbol(
         : undefined;
       if (existing === undefined) {
         stillAlive(host);
-        after = await watchSave(insertEmbed(app, target, embed), waiting);
+        after = await watchSave(insertEmbed(app, target, embed), wait.told);
       } else {
         after = existing;
       }
@@ -1213,20 +1281,12 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
     },
     lifecycle: host.lifecycle,
     file: () => symbolFile(app, symbol.path),
-    write: async (
-      saved,
-      _record,
-      _keepDraft,
-      _holds,
-      typed,
-      check,
-      waiting,
-    ) => {
+    write: async (saved, _record, _keepDraft, _holds, typed, check, wait) => {
       stillAlive(host);
       const renaming = renamedPath(app, symbol, chosen(typed, symbol));
-      symbol = await writeSymbol(host, symbol, saved, check, waiting);
+      symbol = await writeSymbol(host, symbol, saved, check, wait.told);
       stillAlive(host);
-      return rename(app, symbol, renaming);
+      return rename(app, symbol, renaming, wait);
     },
     uses: () => usesOf(app, symbol.path),
   }).open();

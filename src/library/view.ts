@@ -22,7 +22,12 @@ import {
 import { isInkPath } from "../format/ink-file.ts";
 import { embedFor } from "../notes/embeds.ts";
 import { showLinkMenu } from "../notes/entries.ts";
-import { savingWaits, TextMoved, watchSave } from "../notes/file-writes.ts";
+import {
+  renameWaits,
+  savingWaits,
+  TextMoved,
+  watchSave,
+} from "../notes/file-writes.ts";
 import { writeAt } from "../notes/insertion.ts";
 import { insertionAt } from "../notes/links.ts";
 import { symbolStem } from "../notes/names.ts";
@@ -60,6 +65,21 @@ const rowsAtOnce = 100;
 /** What a person can do about a save in the fields that has waited that long. */
 const savingLeft =
   "If nothing changes, copy what you typed and restart Obsidian. Cancel closes this, and stops the save if it still can.";
+
+/** What a person can do about a rename that has stopped that long. */
+const renameLeft =
+  "If nothing changes, copy the name you typed and restart Obsidian. Cancel closes this, and stops the rename if it still can.";
+
+/**
+ * Whether a modal is open where `element` is, or where Obsidian opens one now.
+ * Obsidian's question about links has nothing public to tell it by, but under
+ * any modal a person cannot reach `element`, so nothing there is stuck on them.
+ */
+function modalOpen(element: HTMLElement): boolean {
+  return [element.doc, activeDocument].some(
+    (doc) => doc.querySelector(".modal-container") !== null,
+  );
+}
 
 /** The address of `file`'s picture, which changes as the file does. */
 function pictureOf(vault: Vault, file: TFile | undefined): string {
@@ -782,39 +802,92 @@ export class SymbolLibraryView extends ItemView {
       cls: "inkline-library-rename-error",
       attr: { role: "alert" },
     });
+    const wait = form.createDiv({
+      cls: "inkline-save-wait",
+      attr: { role: "alert" },
+    });
     this.#startEditing(input);
     let saving = false;
+    /** How to leave a rename, once it has stopped long enough to be left. */
+    let leaveRename: (() => void) | undefined;
     const finish = () => {
       this.#stopEditing(input, file, "rename");
     };
-    cancel.addEventListener("click", finish);
-    input.addEventListener("keydown", (event) => {
-      if (event.key !== "Escape") return;
+    /** Closes the form, once a rename under way may be left. */
+    const leave = (): void => {
+      if (saving && leaveRename === undefined) return;
+      leaveRename?.();
+      finish();
+    };
+    cancel.addEventListener("click", leave);
+    form.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape" || event.isComposing) return;
       event.preventDefault();
       event.stopPropagation();
-      if (!saving) finish();
+      leave();
     });
     form.addEventListener("submit", (event) => {
       event.preventDefault();
       if (saving) return;
       saving = true;
+      // Disabled, Save would drop the focus, and with it Esc and any copying
+      // from the field, should this rename have to wait.
+      if (form.doc.activeElement === save) input.focus();
       save.disabled = true;
       cancel.disabled = true;
       input.readOnly = true;
       error.setText("");
-      void renameSymbol(this.app, file, input.value).then(
-        finish,
+      const typed = input.value;
+      let waited = false;
+      let stopped = false;
+      const waiting = (still: boolean): void => {
+        if (this.#editing !== input) return;
+        waited ||= still;
+        wait.setText(still ? `${renameWaits} ${renameLeft}` : "");
+        cancel.disabled = !still;
+        leaveRename = !still
+          ? undefined
+          : () => {
+              stopped = renaming.stop();
+              if (!stopped) {
+                new Notice(
+                  `Renaming ${entry.name} had reached Obsidian, so it may still finish.`,
+                );
+              }
+            };
+      };
+      const renaming = renameSymbol(this.app, file, typed, {
+        told: waiting,
+        asked: () => modalOpen(form),
+      });
+      void renaming.done.then(
+        () => {
+          // Nothing else says so, to a person who has looked away or left.
+          if (waited) {
+            const name = symbolStem(file.name) ?? file.basename;
+            new Notice(`Renamed ${entry.name} to ${name}.`);
+          }
+          finish();
+        },
         (failure: unknown) => {
-          if (this.#editing !== input) return;
+          const reason =
+            failure instanceof Error
+              ? failure.message
+              : "The symbol could not be renamed.";
+          // Gone with the form, the name typed would be lost without a word.
+          if (this.#editing !== input) {
+            if (!stopped) {
+              new Notice(
+                `${entry.name} could not be renamed to ${typed}: ${reason}`,
+              );
+            }
+            return;
+          }
           saving = false;
           save.disabled = false;
           cancel.disabled = false;
           input.readOnly = false;
-          error.setText(
-            failure instanceof Error
-              ? failure.message
-              : "The symbol could not be renamed.",
-          );
+          error.setText(reason);
           input.focus();
         },
       );

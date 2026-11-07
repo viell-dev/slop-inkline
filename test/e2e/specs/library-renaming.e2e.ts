@@ -1,10 +1,13 @@
 import { browser, expect } from "@wdio/globals";
+import { stalledAfter } from "../../../src/notes/file-writes.ts";
 import { loadModules } from "../support/browser.ts";
 import {
   addUnsaved,
   clickTop,
   createSymbol,
+  delayVault,
   failSaves,
+  restoreVault,
   startOver,
   symbolFiles,
   topButton,
@@ -28,7 +31,13 @@ async function showLibrary(): Promise<void> {
 }
 
 async function beginRename(name: string, typed: string): Promise<void> {
-  await row(name).$(".inkline-library-rename").click();
+  // A row redrawn between a click's press and its release gets no click, as when
+  // the index first reads a file, so this goes on until the form is there.
+  await browser.waitUntil(async () => {
+    if (await nameField().isExisting()) return true;
+    await row(name).$(".inkline-library-rename").click();
+    return nameField().isExisting();
+  });
   await nameField().waitForDisplayed();
   await nameField().setValue(typed);
 }
@@ -66,6 +75,150 @@ async function setLinkUpdates(always: boolean): Promise<void> {
     if (!configurable(app.vault)) throw new Error("no vault settings");
     app.vault.setConfig("alwaysUpdateLinks", value);
   }, always);
+}
+
+/** Waits for a note to link to `symbol`, in Obsidian's index. */
+async function waitForLink(note: string, symbol: string): Promise<void> {
+  await browser.waitUntil(async () =>
+    browser.executeObsidian(
+      ({ app }, from, to) =>
+        (app.metadataCache.resolvedLinks[from]?.[to] ?? 0) > 0,
+      note,
+      symbol,
+    ),
+  );
+}
+
+/** Makes a symbol that `count` notes embed. */
+async function usedSymbol(count = 1): Promise<void> {
+  await createSymbol("gate.ink.png");
+  await browser.executeObsidian(async ({ app }, notes) => {
+    for (let at = 0; at < notes; at++) {
+      await app.vault.create(
+        `Uses ${String(at)}.md`,
+        "See ![[gate.ink.png]].\n",
+      );
+    }
+  }, count);
+  for (let at = 0; at < count; at++) {
+    await waitForLink(`Uses ${String(at)}.md`, "gate.ink.png");
+  }
+}
+
+/** A note's text as its file holds it. */
+async function noteText(note: string): Promise<string> {
+  return browser.executeObsidian(async ({ app }, path) => {
+    const file = app.vault.getFileByPath(path);
+    if (file === null) throw new Error(`no ${path}`);
+    return app.vault.read(file);
+  }, note);
+}
+
+/** What a rename can stop in, as on a drive that stopped answering. */
+const holdable = {
+  /** Obsidian's own move of a file, in the real `renameFile`. */
+  move: { owner: "adapter", method: "rename", ending: ".ink.png" },
+  /** A note's save, which comes before the move. */
+  save: { owner: "adapter", method: "write", ending: ".md" },
+  /** A link's update in a note, which comes after the move. */
+  link: { owner: "vault", method: "process", ending: ".md" },
+} as const;
+
+/** Has `what` wait until {@link letGo}. */
+async function hold(what: keyof typeof holdable): Promise<void> {
+  await browser.executeObsidian(({ app }, { owner, method, ending }) => {
+    const target = owner === "adapter" ? app.vault.adapter : app.vault;
+    const original: unknown = Reflect.get(target, method);
+    if (typeof original !== "function") throw new Error(`no ${method}`);
+    let settle: (failure?: string) => void = () => undefined;
+    const gate = new Promise<void>((resolve, reject) => {
+      settle = (failure) => {
+        if (failure === undefined) resolve();
+        else reject(new Error(failure));
+      };
+    });
+    Reflect.set(window, "inklineHeldOwner", owner);
+    Reflect.set(window, "inklineHeldMethod", method);
+    Reflect.set(window, "inklineSettle", settle);
+    Reflect.set(
+      target,
+      method,
+      async (...args: unknown[]): Promise<unknown> => {
+        const [first] = args;
+        const path =
+          typeof first === "object" && first !== null
+            ? (Reflect.get(first, "path") as unknown)
+            : first;
+        if (typeof path === "string" && path.endsWith(ending)) {
+          Reflect.set(window, "inklineHeld", true);
+          await gate;
+        }
+        return Reflect.apply(original, target, args) as unknown;
+      },
+    );
+  }, holdable[what]);
+}
+
+/** Waits for what {@link hold} held to be reached. */
+async function waitForHeld(): Promise<void> {
+  await browser.waitUntil(async () =>
+    browser.execute(() => Reflect.get(window, "inklineHeld") === true),
+  );
+}
+
+/** Lets go what {@link hold} held, or fails it with `failure`. */
+async function letGo(failure?: string): Promise<void> {
+  await browser.executeObsidian(({ app }, reason) => {
+    const settle: unknown = Reflect.get(window, "inklineSettle");
+    const owner: unknown = Reflect.get(window, "inklineHeldOwner");
+    const method: unknown = Reflect.get(window, "inklineHeldMethod");
+    if (typeof method === "string") {
+      // Held, it became the object's own, over what its prototype has.
+      Reflect.deleteProperty(
+        owner === "adapter" ? app.vault.adapter : app.vault,
+        method,
+      );
+    }
+    for (const key of [
+      "inklineSettle",
+      "inklineHeldOwner",
+      "inklineHeldMethod",
+      "inklineHeld",
+    ]) {
+      Reflect.deleteProperty(window, key);
+    }
+    if (typeof settle === "function") {
+      Reflect.apply(settle, undefined, [reason ?? undefined]);
+    }
+  }, failure ?? null);
+}
+
+/** Has the page note down anything the form says of a wait, however brief. */
+async function watchForWait(): Promise<void> {
+  await browser.execute(() => {
+    Reflect.deleteProperty(window, "inklineSawWait");
+    const watcher = new MutationObserver(() => {
+      const shown = document.querySelector(".inkline-save-wait");
+      if (shown !== null && shown.textContent !== "") {
+        Reflect.set(window, "inklineSawWait", true);
+      }
+    });
+    watcher.observe(document.body, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+    Reflect.set(window, "inklineWaitWatcher", watcher);
+  });
+}
+
+/** Whether the form has said anything of a wait, and stops listening. */
+async function sawWait(): Promise<boolean> {
+  return browser.execute(() => {
+    const watcher: unknown = Reflect.get(window, "inklineWaitWatcher");
+    if (watcher instanceof MutationObserver) watcher.disconnect();
+    return Reflect.get(window, "inklineSawWait") === true;
+  });
 }
 
 describe("Renaming in the symbol library", function () {
@@ -332,6 +485,238 @@ describe("Renaming in the symbol library", function () {
         Reflect.deleteProperty(app.fileManager, "inklineRenameCalls");
       });
     }
+  });
+
+  describe("when Obsidian does not finish a rename", function () {
+    /** Long enough for a rename to have waited, with a margin for a busy machine. */
+    const waited = stalledAfter + 15_000;
+
+    const form = () => browser.$(".inkline-library-rename-form");
+    const formButton = (text: "Save" | "Cancel") => form().$(`button=${text}`);
+    const waitLine = () => form().$(".inkline-save-wait");
+
+    /** Waits for the form to say its rename waits, and returns what it says. */
+    async function waitForWait(): Promise<string> {
+      await browser.waitUntil(async () => (await waitLine().getText()) !== "", {
+        timeout: waited,
+        timeoutMsg: "the form never said its rename waits",
+      });
+      return waitLine().getText();
+    }
+
+    afterEach(async function () {
+      // A rename left waiting would hold up the vault's reset.
+      await letGo();
+      await restoreVault();
+    });
+
+    it("says nothing during Obsidian's question, however long it stays open", async function () {
+      await usedSymbol();
+      await setLinkUpdates(false);
+      await showLibrary();
+      await beginRename("gate", "lintel");
+      await watchForWait();
+      await browser.keys(["Enter"]);
+      await browser.waitUntil(
+        async () => (await topButton("Just once")) !== undefined,
+      );
+      // Obsidian has moved the file by now, and asks only about the links.
+      expect(await symbolFiles()).toEqual(["lintel.ink.png"]);
+      await browser.pause(stalledAfter + 1500);
+      expect(await waitLine().getText()).toBe("");
+      expect(await formButton("Cancel").isEnabled()).toBe(false);
+      await clickTop("Just once");
+      await waitForName("lintel");
+      expect(await sawWait()).toBe(false);
+      expect(await noteText("Uses 0.md")).toContain("lintel.ink.png");
+      expect(await browser.$(".notice*=Renamed").isExisting()).toBe(false);
+    });
+
+    it("says nothing of a slow rename that keeps moving, however long it takes", async function () {
+      // Longer than the wait, a note at a time, as a much used symbol takes.
+      const notes = 5;
+      await usedSymbol(notes);
+      await showLibrary();
+      await beginRename("gate", "lintel");
+      await watchForWait();
+      await delayVault("process", (stalledAfter * 2) / notes, "before");
+      await browser.keys(["Enter"]);
+      await nameField().waitForExist({
+        reverse: true,
+        timeout: stalledAfter * 3 + 15_000,
+      });
+      expect(await sawWait()).toBe(false);
+      for (let at = 0; at < notes; at++) {
+        expect(await noteText(`Uses ${String(at)}.md`)).toContain("lintel");
+      }
+    });
+
+    it("says so of a rename held back, keeps the name, and ends with it", async function () {
+      await usedSymbol();
+      await showLibrary();
+      await beginRename("gate", "lintel");
+      await hold("move");
+      await browser.keys(["Enter"]);
+      await waitForHeld();
+      const said = await waitForWait();
+      expect(said).toContain("Waiting for Obsidian to finish renaming a file.");
+      expect(said).toContain("goes on by itself when it does");
+      expect(said).toContain("copy the name you typed and restart Obsidian");
+      expect(said).toContain("Cancel closes this, and stops the rename");
+      await saveScreenshot("rename-wait-library", form());
+      // What was typed is there to copy, from the field that has the focus.
+      const shown = await browser.execute(() => {
+        const active = document.activeElement;
+        if (active?.tagName !== "INPUT") return undefined;
+        const field = active as HTMLInputElement;
+        field.select();
+        return {
+          selected: field.value.slice(
+            field.selectionStart ?? 0,
+            field.selectionEnd ?? 0,
+          ),
+          readOnly: field.readOnly,
+        };
+      });
+      expect(shown).toEqual({ selected: "lintel", readOnly: true });
+      expect(await formButton("Save").isEnabled()).toBe(false);
+      expect(await formButton("Cancel").isEnabled()).toBe(true);
+      expect(await symbolFiles()).toEqual(["gate.ink.png"]);
+      await letGo();
+      await waitForName("lintel");
+      await waitForNotice("Renamed gate to lintel");
+      expect(await symbolFiles()).toEqual(["lintel.ink.png"]);
+    });
+
+    for (const [how, leave] of [
+      ["Cancel", async () => formButton("Cancel").click()],
+      ["Esc", async () => browser.keys(["Escape"])],
+    ] as const) {
+      it(`leaves a rename held back with ${how}, says it may still finish, and it does`, async function () {
+        await usedSymbol();
+        await showLibrary();
+        await beginRename("gate", "lintel");
+        await hold("move");
+        // By the mouse, as Save takes the focus with it when it goes off.
+        await formButton("Save").click();
+        await waitForHeld();
+        await waitForWait();
+        await leave();
+        await waitForName("gate");
+        await waitForNotice("may still finish");
+        await letGo();
+        await waitForName("lintel");
+        await waitForNotice("Renamed gate to lintel");
+        expect(await noteText("Uses 0.md")).toContain("lintel.ink.png");
+      });
+    }
+
+    it("says so if a rename left behind fails, with the name typed", async function () {
+      await usedSymbol();
+      await showLibrary();
+      await beginRename("gate", "lintel");
+      await hold("move");
+      await browser.keys(["Enter"]);
+      await waitForHeld();
+      await waitForWait();
+      await formButton("Cancel").click();
+      await waitForName("gate");
+      await letGo("the drive went away");
+      await waitForNotice(
+        "gate could not be renamed to lintel: the drive went away",
+      );
+      expect(await symbolFiles()).toEqual(["gate.ink.png"]);
+    });
+
+    it("gives the form back when a rename held back fails", async function () {
+      await usedSymbol();
+      await showLibrary();
+      await beginRename("gate", "lintel");
+      await hold("move");
+      await browser.keys(["Enter"]);
+      await waitForHeld();
+      await waitForWait();
+      await letGo("the drive went away");
+      await waitForError("the drive went away");
+      expect(await waitLine().getText()).toBe("");
+      expect(await nameField().getValue()).toBe("lintel");
+      expect(await formButton("Save").isEnabled()).toBe(true);
+      expect(await formButton("Cancel").isEnabled()).toBe(true);
+    });
+
+    it("stops a rename held in a note's save, which then renames nothing", async function () {
+      await usedSymbol();
+      await browser.executeObsidian(async ({ app }) => {
+        const note = app.vault.getFileByPath("Uses 0.md");
+        if (note === null) throw new Error("no note");
+        await app.workspace.getLeaf(false).openFile(note);
+      });
+      await showLibrary();
+      await beginRename("gate", "lintel");
+      await addUnsaved("Uses 0.md", "Opening.\n", "start");
+      await hold("save");
+      await browser.keys(["Enter"]);
+      await waitForHeld();
+      await waitForWait();
+      await formButton("Cancel").click();
+      await waitForName("gate");
+      expect(await browser.$(".notice*=may still finish").isExisting()).toBe(
+        false,
+      );
+      await letGo();
+      // The note's own save goes on, and nothing follows it.
+      await browser.waitUntil(async () =>
+        (await noteText("Uses 0.md")).startsWith("Opening."),
+      );
+      await browser.pause(500);
+      expect(await symbolFiles()).toEqual(["gate.ink.png"]);
+      expect(await noteText("Uses 0.md")).toContain("gate.ink.png");
+    });
+
+    it("counts from the answer, for a rename held after Obsidian's question", async function () {
+      await usedSymbol();
+      await setLinkUpdates(false);
+      await showLibrary();
+      await beginRename("gate", "lintel");
+      await hold("link");
+      await browser.keys(["Enter"]);
+      await browser.waitUntil(
+        async () => (await topButton("Just once")) !== undefined,
+      );
+      await browser.pause(stalledAfter + 1000);
+      await clickTop("Just once");
+      await waitForHeld();
+      // A question held open that long must not count towards the wait.
+      await browser.pause(stalledAfter / 2);
+      expect(await waitLine().getText()).toBe("");
+      const said = await waitForWait();
+      expect(said).toContain("Waiting for Obsidian to finish renaming a file.");
+      await letGo();
+      await waitForName("lintel");
+      await waitForNotice("Renamed gate to lintel");
+      expect(await noteText("Uses 0.md")).toContain("lintel.ink.png");
+    });
+
+    it("takes the message back when Obsidian's question opens at last", async function () {
+      await usedSymbol();
+      await setLinkUpdates(false);
+      await showLibrary();
+      await beginRename("gate", "lintel");
+      await hold("move");
+      await browser.keys(["Enter"]);
+      await waitForHeld();
+      await waitForWait();
+      await letGo();
+      // The move ends, and only then does Obsidian ask about the links.
+      await browser.waitUntil(
+        async () => (await topButton("Just once")) !== undefined,
+      );
+      await browser.waitUntil(async () => (await waitLine().getText()) === "");
+      expect(await formButton("Cancel").isEnabled()).toBe(false);
+      await clickTop("Just once");
+      await waitForName("lintel");
+      expect(await noteText("Uses 0.md")).toContain("lintel.ink.png");
+    });
   });
 
   describe("with a note holding unsaved text", function () {

@@ -25,12 +25,21 @@ const keepsChanging = "The file keeps changing, so it was left as it is.";
  * that one took 1.3 s. This leaves room for a slower disk or computer, so that an
  * ordinary save never shows it, however large. An editor's work on the drawing
  * comes before this and can take seconds of its own, so only the write is timed.
+ * A rename gets as long, but only of nothing happening, as {@link watchRename}
+ * says.
  */
 export const stalledAfter = 5000;
 
 /** What a person is told first of a save that has gone on that long. */
 export const savingWaits =
   "Waiting for Obsidian to finish writing a file. Saving goes on by itself when it does.";
+
+/** What a person is told first of a rename that has stopped for that long. */
+export const renameWaits =
+  "Waiting for Obsidian to finish renaming a file. The rename goes on by itself when it does.";
+
+/** How often, in milliseconds, a rename under way is looked at. */
+const renameLook = 250;
 
 /** Thrown by {@link changedText} when a field changed since it was read. */
 export class TextMoved extends Error {
@@ -105,6 +114,52 @@ export async function watchSave<T>(
   } finally {
     window.clearTimeout(timer);
     ended();
+  }
+}
+
+/** What hears of a rename while it goes on. */
+export interface RenameWait {
+  readonly told: SaveWait;
+  /** Whether a person is being asked something, which they can take time over. */
+  readonly asked: () => boolean;
+}
+
+/**
+ * `work`, as it would have ended, with `told` kept up to date for the person
+ * waiting, as {@link watchSave} does, but for a rename, which no clock can judge.
+ * Its promise lasts as long as Obsidian's question about links stays open, and
+ * after that it writes every note that links to the symbol: in real Obsidian, by
+ * test/e2e/manual/rename-time.e2e.ts, 14 s at 3,000 notes, where telling someone
+ * to restart would leave the rest with the old link. What sets a stall apart is
+ * that nothing happens, as the vault reports each note at most 96 ms after the
+ * last. So {@link stalledAfter} counts only from the last look at which `moving`
+ * was true, however long the rename has run, and a person is told only as long
+ * as that holds: `told` hears `false` when it moves again.
+ *
+ * It counts looks, not the clock, so that a page that freezes for a while, as a
+ * large save's does, or a computer that sleeps, does not look like a stall.
+ */
+export async function watchRename<T>(
+  work: Promise<T>,
+  moving: () => boolean,
+  told: SaveWait,
+): Promise<T> {
+  let telling = false;
+  const tell = (waiting: boolean): void => {
+    if (waiting === telling) return;
+    telling = waiting;
+    told(waiting);
+  };
+  let still = 0;
+  const timer = window.setInterval(() => {
+    still = moving() ? 0 : still + renameLook;
+    tell(still >= stalledAfter);
+  }, renameLook);
+  try {
+    return await work;
+  } finally {
+    window.clearInterval(timer);
+    tell(false);
   }
 }
 

@@ -591,6 +591,10 @@ img.inkline-symbol:not([width], [height]) {
   display: none;
 }
 
+.inkline-library-rename-form .inkline-save-wait {
+  width: 100%;
+}
+
 .inkline-library-text-buttons {
   display: flex;
   gap: var(--size-4-1);

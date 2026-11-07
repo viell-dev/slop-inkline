@@ -50,7 +50,7 @@ import {
 } from "../ink/pixels.ts";
 import type { DrawableBase } from "../ink/render.ts";
 import { readText, writeText, type SymbolText } from "../format/text.ts";
-import { savingWaits, type SaveWait } from "../notes/file-writes.ts";
+import { savingWaits, type RenameWait } from "../notes/file-writes.ts";
 import { chooseRename, symbolStem } from "../notes/names.ts";
 import {
   isBlank,
@@ -325,8 +325,8 @@ export interface EditorOptions {
    * writes over a file, where no other save can come between them, and again
    * if another file took that one's place meanwhile. It writes nothing if
    * `check` rejects, which it does to ask about a change or refuse one.
-   * `waiting` hears when a step that writes takes too long, and not of a
-   * rename, whose question waits for a person rather than for Obsidian.
+   * `wait` hears when a step that writes takes too long, or a rename stops,
+   * and says whether a person is being asked something above this editor.
    * Resolves to whether that name was kept or applied. False means only the
    * rename failed: the drawing is saved, and the name stays for a retry.
    */
@@ -337,7 +337,7 @@ export interface EditorOptions {
     holds: (fingerprint: string) => void,
     name: string,
     check: () => Promise<void>,
-    waiting: SaveWait,
+    wait: RenameWait,
   ) => Promise<boolean>;
   /**
    * For an existing symbol, which other notes may show: how the vault's
@@ -3319,8 +3319,11 @@ export class InkEditorModal extends Modal {
           },
           typed,
           () => this.#checkBeforeWriting(resume),
-          (waiting) => {
-            this.#sayWaiting(waiting);
+          {
+            told: (waiting) => {
+              this.#sayWaiting(waiting);
+            },
+            asked: () => !this.#onTop(),
           },
         );
         // A rename that failed leaves the name typed in the field, unsaved,

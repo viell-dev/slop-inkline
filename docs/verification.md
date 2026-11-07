@@ -315,6 +315,18 @@ must keep released files readable and looking the same, as
   ([symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts)
   and
   [file-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/file-writes.test.ts)).
+- **Unreleased:** a rename Obsidian does not finish, with its own move, a note's
+  save, or a link's update held back in the host: nothing is said during
+  Obsidian's question, however long, or of a slow rename that keeps moving; one
+  held says so after the wait, counted from the answer if there was a question,
+  keeps the name to copy, and ends with the rename; the message goes if the
+  question opens late; Cancel or Esc leave it, a rename not begun is stopped,
+  and one begun says that it may still finish, and how it ended; a failure gives
+  the form back; and the editor does the same
+  ([library-renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-renaming.e2e.ts),
+  [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts),
+  and
+  [file-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/file-writes.test.ts)).
 - **Unreleased:** the `;;` list, Insert existing symbol, Copy from, and the
   library's filter find a symbol by a reading or translation whatever its name,
   and show why; an accent needs no typing, and a mark that makes another sound
