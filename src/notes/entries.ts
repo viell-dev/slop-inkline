@@ -152,9 +152,13 @@ function leafOf(app: App, element: Element): WorkspaceLeaf | undefined {
  * Escape only unloads the menu, and goes on to Obsidian's own Escape handling,
  * which sends the focus to the note and so back to the name field.
  *
- * A menu's children load straight after it, so this one undoes that load
- * before any key can reach the menu, whenever the timer runs. A menu that
- * loads before the choice has nothing to undo: hiding it unloads it. See #78.
+ * A menu's children load with it, so this one undoes that load before any key
+ * can reach the menu, whenever the timer runs: a key is a task of its own, and
+ * a microtask runs first. Waiting for the microtask also keeps this right
+ * whichever order the menu and its children load in, as unloading a menu before
+ * it has finished loading would leave it holding the keyboard for good. A menu
+ * that loads before the choice has nothing to undo: hiding it unloads it. See
+ * #78.
  */
 export class MenuChoice extends Component {
   /** Whether an item of the menu was chosen. */
@@ -167,7 +171,10 @@ export class MenuChoice extends Component {
   }
 
   override onload(): void {
-    if (this.chosen) this.#menu.unload();
+    if (!this.chosen) return;
+    queueMicrotask(() => {
+      this.#menu.unload();
+    });
   }
 }
 

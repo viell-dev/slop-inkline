@@ -79,7 +79,8 @@ export async function chooseOnShowing(title: string): Promise<void> {
 /**
  * Waits for the open menu to take the keyboard. Timers of the same length run
  * in order, so this one comes after the one that loads the menu; until then
- * Escape does nothing to the menu.
+ * Escape does nothing to the menu. Call it with the main window active, as
+ * Obsidian sets that timer there, even for a menu in a popout window.
  */
 export async function menuLoaded(): Promise<void> {
   await browser.execute(
