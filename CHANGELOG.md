@@ -28,6 +28,11 @@ changes the file must keep. No existing file is affected.
   read the vault's symbols in the background, without slowing typing, what just
   changed first, and say so while they may be missing some
   ([#189](https://github.com/viell-dev/slop-inkline/issues/189)).
+- A save that Obsidian does not finish, as on a drive that stops answering, says
+  so after a few seconds, in the editor and the library, with how to get your
+  work back. Saving goes on by itself if Obsidian finishes, and the library's
+  fields can be closed meanwhile
+  ([#198](https://github.com/viell-dev/slop-inkline/pull/198)).
 
 ### Fixed
 

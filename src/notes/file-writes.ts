@@ -17,6 +17,21 @@ const attempts = 3;
 
 const keepsChanging = "The file keeps changing, so it was left as it is.";
 
+/**
+ * How long, in milliseconds, a save goes on before a person is told that it is
+ * waiting for Obsidian. In real Obsidian, by test/e2e/manual/save-time.e2e.ts on a
+ * busy machine, a save of a file near the format's largest took at most 0.7 s,
+ * and 2.1 s with the library's filter redrawing all through it; a save behind
+ * that one took 1.3 s. This leaves room for a slower disk or computer, so that an
+ * ordinary save never shows it, however large. An editor's work on the drawing
+ * comes before this and can take seconds of its own, so only the write is timed.
+ */
+export const stalledAfter = 5000;
+
+/** What a person is told first of a save that has gone on that long. */
+export const savingWaits =
+  "Waiting for Obsidian to finish writing a file. Saving goes on by itself when it does.";
+
 /** Thrown by {@link changedText} when a field changed since it was read. */
 export class TextMoved extends Error {
   override name = "TextMoved";
@@ -45,9 +60,11 @@ export function unreadableText(error: unknown): unknown {
  * nothing names a file for as long as a save waits and runs. The vault's file
  * stays with a rename, and is another after a delete and a new file at its path;
  * a path is the other way round. Either way two saves of what is on the disk can
- * hold different keys and run together. A person starts each save, and an
- * ordinary one takes milliseconds, so nobody sees one wait for another file's.
- * What it costs is that a write the vault never finishes holds up every save.
+ * hold different keys and run together. A person starts each save, and one
+ * waits about a second behind even the largest file. What it costs is that a
+ * write the vault never finishes holds up every save, so {@link watchSave} tells
+ * a person. The line stays closed however long that lasts: a write given up on
+ * could still finish, over whatever a later save had written.
  */
 export class WriteQueue {
   /** What the last task ends with, which never rejects. */
@@ -62,12 +79,78 @@ export class WriteQueue {
   }
 }
 
+/**
+ * Told `true` when a save has gone on for {@link stalledAfter}, and `false` when
+ * it ends. A save that ends in time tells it nothing.
+ */
+export type SaveWait = (waiting: boolean) => void;
+
+/**
+ * `work`, as it would have ended, with `told` kept up to date for the person
+ * waiting. Only they are told: the work goes on, and keeps its place in the line.
+ */
+export async function watchSave<T>(
+  work: Promise<T>,
+  told: SaveWait,
+): Promise<T> {
+  let ended = (): void => undefined;
+  const timer = window.setTimeout(() => {
+    told(true);
+    ended = () => {
+      told(false);
+    };
+  }, stalledAfter);
+  try {
+    return await work;
+  } finally {
+    window.clearTimeout(timer);
+    ended();
+  }
+}
+
 /** A file, as a change to it reaches it. */
 export interface FileAccess<File> {
   /** Throws unless `file` is still there to change. */
   readonly check: (file: File) => void;
   readonly read: (file: File) => Promise<Uint8Array>;
   readonly write: (file: File, bytes: ArrayBuffer) => Promise<void>;
+}
+
+/** {@link FileAccess} that a person can stop a save through, while it waits. */
+export interface StoppableAccess<File> {
+  readonly access: FileAccess<File>;
+  /**
+   * Stops the save, so that it writes nothing from its next look at the file on,
+   * which is the first thing a save does in its turn, and the last before it
+   * writes. Returns false if its write has gone to the vault, as that can still
+   * finish.
+   */
+  readonly stop: () => boolean;
+}
+
+/** `access`, with a way to stop a save that uses it. */
+export function stoppable<File>(
+  access: FileAccess<File>,
+): StoppableAccess<File> {
+  let stopped = false;
+  let writing = false;
+  return {
+    access: {
+      ...access,
+      check: (file) => {
+        if (stopped) throw new Error("The save was stopped.");
+        access.check(file);
+      },
+      write: (file, bytes) => {
+        writing = true;
+        return access.write(file, bytes);
+      },
+    },
+    stop: () => {
+      stopped = true;
+      return !writing;
+    },
+  };
 }
 
 /**

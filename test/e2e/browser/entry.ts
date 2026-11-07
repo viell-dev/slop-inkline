@@ -19,4 +19,5 @@ export * as cursor from "../../../src/editor/cursor.ts";
 export * as reference from "../../../src/editor/reference.ts";
 export * as pictures from "./pictures.ts";
 export * as longDrawing from "./long-drawing.ts";
+export * as mainThread from "./main-thread.ts";
 export * as renderSymbols from "../../../src/render/symbols.ts";

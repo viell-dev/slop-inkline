@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readChunks } from "../../../src/format/png.ts";
 import {
   readText,
@@ -12,7 +12,10 @@ import {
   changedText,
   changeFile,
   saveFile,
+  stalledAfter,
+  stoppable,
   TextMoved,
+  watchSave,
   WriteQueue,
   type FileAccess,
 } from "../../../src/notes/file-writes.ts";
@@ -667,5 +670,184 @@ describe("changeFile", () => {
       libraryChange(file, typed, { reading: [], translation: [] }),
     ).rejects.toThrow("not a whole PNG");
     expect(file.writes).toBe(0);
+  });
+});
+
+describe("A save that waits for Obsidian", () => {
+  const typed = { reading: ["TYPED"] };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal("window", { setTimeout, clearTimeout });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  /** What a person waiting for a save has been told, in order. */
+  function listener(): { told: boolean[]; waiting: (still: boolean) => void } {
+    const told: boolean[] = [];
+    return { told, waiting: (still) => told.push(still) };
+  }
+
+  /** A write that the vault does not finish, holding the queue's line. */
+  async function heldWrite(queue: WriteQueue): Promise<{
+    file: Fake;
+    written: Promise<void>;
+    open: () => void;
+  }> {
+    const { gate, open } = gated();
+    const file = fake();
+    file.held = () => gate;
+    const known = file.bytes;
+    const written = queue.run(() => editorWrite(file, known, pinned));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(file.writes).toBe(1);
+    return { file, written, open };
+  }
+
+  it("waits five seconds, as chosen from what large saves measured", () => {
+    expect(stalledAfter).toBe(5000);
+  });
+
+  it("says nothing of a save that ends in time", async () => {
+    const { told, waiting } = listener();
+    const { gate, open } = gated();
+    const saved = watchSave(gate, waiting);
+    await vi.advanceTimersByTimeAsync(stalledAfter - 1);
+    open();
+    await saved;
+    await vi.advanceTimersByTimeAsync(stalledAfter * 2);
+    expect(told).toEqual([]);
+  });
+
+  it("says so once the wait is up, and when the save ends", async () => {
+    const { told, waiting } = listener();
+    const { gate, open } = gated();
+    const saved = watchSave(
+      gate.then(() => "done"),
+      waiting,
+    );
+    await vi.advanceTimersByTimeAsync(stalledAfter - 1);
+    expect(told).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(told).toEqual([true]);
+    await vi.advanceTimersByTimeAsync(stalledAfter * 10);
+    expect(told).toEqual([true]);
+    open();
+    await expect(saved).resolves.toBe("done");
+    expect(told).toEqual([true, false]);
+  });
+
+  it("stops waiting when a save fails, and still fails", async () => {
+    const { told, waiting } = listener();
+    let fail = (_reason: Error): void => undefined;
+    const saved = watchSave(
+      new Promise<void>((_resolve, reject) => {
+        fail = reject;
+      }),
+      waiting,
+    );
+    const failed = expect(saved).rejects.toThrow("no disk");
+    await vi.advanceTimersByTimeAsync(stalledAfter);
+    fail(new Error("no disk"));
+    await failed;
+    expect(told).toEqual([true, false]);
+  });
+
+  it("keeps the line closed, however long a write takes", async () => {
+    const queue = new WriteQueue();
+    const { written, open } = await heldWrite(queue);
+    const other = fake();
+    const seen = await said(other);
+    const { told, waiting } = listener();
+    const behind = watchSave(
+      queue.run(() => libraryChange(other, typed, seen)),
+      waiting,
+    );
+    await vi.advanceTimersByTimeAsync(stalledAfter * 100);
+    // The save behind is told, and has neither read nor written: the write
+    // ahead of it could still finish, whatever it would have done by then.
+    expect(told).toEqual([true]);
+    expect(other.reads).toBe(0);
+    expect(other.writes).toBe(0);
+    open();
+    await written;
+    await behind;
+    expect(told).toEqual([true, false]);
+    expect((await said(other)).reading).toEqual(["TYPED"]);
+  });
+
+  it("leaves nothing of a save stopped in the line, which then moves on", async () => {
+    const queue = new WriteQueue();
+    const { written, open } = await heldWrite(queue);
+    const other = fake();
+    const seen = await said(other);
+    const before = other.bytes;
+    const { access: stopping, stop } = stoppable(access);
+    const stopped = queue.run(() =>
+      changeFile(stopping, other, (bytes) => changedText(bytes, typed, seen)),
+    );
+    const ended = expect(stopped).rejects.toThrow("stopped");
+    const next = fake();
+    const after = queue.run(() => libraryChange(next, typed, seen));
+    await vi.advanceTimersByTimeAsync(stalledAfter);
+    expect(stop()).toBe(true);
+    open();
+    await written;
+    await ended;
+    await after;
+    expect(other.reads).toBe(0);
+    expect(other.writes).toBe(0);
+    expect(other.bytes).toBe(before);
+    expect((await said(next)).reading).toEqual(["TYPED"]);
+  });
+
+  it("stops a save held in a read, before it writes", async () => {
+    const queue = new WriteQueue();
+    const file = fake();
+    const seen = await said(file);
+    const { gate, open } = gated();
+    file.afterRead = (reads) => (reads === 2 ? gate : undefined);
+    const { access: stopping, stop } = stoppable(access);
+    const stopped = queue.run(() =>
+      changeFile(stopping, file, (bytes) => changedText(bytes, typed, seen)),
+    );
+    const ended = expect(stopped).rejects.toThrow("stopped");
+    await vi.advanceTimersByTimeAsync(0);
+    await until(() => file.reads === 2);
+    expect(stop()).toBe(true);
+    open();
+    await ended;
+    expect(file.writes).toBe(0);
+  });
+
+  it("says so when a save's write has gone to the vault, and it can still finish", async () => {
+    const queue = new WriteQueue();
+    const file = fake();
+    const seen = await said(file);
+    const { gate, open } = gated();
+    file.held = () => gate;
+    const { access: stopping, stop } = stoppable(access);
+    const saved = queue.run(() =>
+      changeFile(stopping, file, (bytes) => changedText(bytes, typed, seen)),
+    );
+    await until(() => file.writes === 1);
+    expect(stop()).toBe(false);
+    open();
+    await saved;
+    expect((await said(file)).reading).toEqual(["TYPED"]);
+  });
+
+  it("stops nothing by saying nothing: a save not stopped goes on", async () => {
+    const file = fake();
+    const seen = await said(file);
+    const { access: stopping } = stoppable(access);
+    await changeFile(stopping, file, (bytes) =>
+      changedText(bytes, typed, seen),
+    );
+    expect((await said(file)).reading).toEqual(["TYPED"]);
   });
 });

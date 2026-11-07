@@ -30,6 +30,13 @@ refused or a file that could not be written. The editor stays open with the
 drawing, which is also kept as a draft: fix what the notice says, and save
 again.
 
+**"Waiting for Obsidian to finish writing a file."** **Unreleased:** a save of a
+symbol has taken more than a few seconds, usually because a drive has stopped
+answering. Saving goes on by itself if Obsidian finishes. If nothing changes,
+restart Obsidian:
+[what you drew or typed](./limits.md#a-file-written-at-the-moment-inkline-saves)
+is kept in different ways in the editor and the library.
+
 **"… is saved, but could not be renamed: …"** The drawing is saved under the old
 name, and the new name stays in the editor's name field, for the next save to
 try again. **Unreleased:** when the reason is that a note could not be saved

@@ -23,7 +23,7 @@ import { isInkPath } from "../format/ink-file.ts";
 import type { SymbolText, TextField } from "../format/text.ts";
 import { embedFor } from "../notes/embeds.ts";
 import { showLinkMenu } from "../notes/entries.ts";
-import { TextMoved } from "../notes/file-writes.ts";
+import { savingWaits, TextMoved, watchSave } from "../notes/file-writes.ts";
 import { writeAt } from "../notes/insertion.ts";
 import { insertionAt } from "../notes/links.ts";
 import { symbolStem } from "../notes/names.ts";
@@ -58,6 +58,10 @@ export const libraryViewType = "inkline-library";
  * filter waiting for seconds in a vault of thousands of symbols.
  */
 const rowsAtOnce = 100;
+
+/** What a person can do about a save in the fields that has waited that long. */
+const savingLeft =
+  "If nothing changes, copy what you typed and restart Obsidian. Cancel closes this, and stops the save if it still can.";
 
 /** The address of `file`'s picture, which changes as the file does. */
 function pictureOf(vault: Vault, file: TFile | undefined): string {
@@ -603,6 +607,8 @@ export class SymbolLibraryView extends ItemView {
     title.createDiv({ cls: "inkline-library-name", text: entry.name });
     let saving = false;
     let closed = false;
+    /** How to leave a save, once it has waited long enough to be left. */
+    let leaveSave: (() => void) | undefined;
     /** Counts reads, so that only the latest is taken. */
     let reads = 0;
     const fields = new TextFields(form, noText, () => {
@@ -612,6 +618,10 @@ export class SymbolLibraryView extends ItemView {
     const note = form.createDiv({ cls: "inkline-library-text-note" });
     const error = form.createDiv({
       cls: "inkline-library-rename-error",
+      attr: { role: "alert" },
+    });
+    const wait = form.createDiv({
+      cls: "inkline-save-wait",
       attr: { role: "alert" },
     });
     const buttons = form.createDiv({ cls: "inkline-library-text-buttons" });
@@ -630,6 +640,12 @@ export class SymbolLibraryView extends ItemView {
     const finish = (): void => {
       closed = true;
       this.#stopEditing(anchor, file, "text");
+    };
+    /** Closes the fields, once a save under way may be left. */
+    const leave = (): void => {
+      if (saving && leaveSave === undefined) return;
+      leaveSave?.();
+      finish();
     };
     /** The fields the file changed under what was typed, as far as told. */
     const warned = new Set<TextField>();
@@ -683,12 +699,12 @@ export class SymbolLibraryView extends ItemView {
         this.app.keymap.popScope(keys);
       },
     };
-    cancel.addEventListener("click", finish);
+    cancel.addEventListener("click", leave);
     form.addEventListener("keydown", (event) => {
       if (event.key !== "Escape" || event.isComposing) return;
       event.preventDefault();
       event.stopPropagation();
-      if (!saving) finish();
+      leave();
     });
     form.addEventListener("submit", (event) => {
       event.preventDefault();
@@ -698,6 +714,9 @@ export class SymbolLibraryView extends ItemView {
         finish();
         return;
       }
+      // Disabled, Save would drop the focus, and with it Esc and any copying
+      // from the fields, should this save have to wait.
+      if (form.doc.activeElement === save) fields.focus();
       saving = true;
       save.disabled = true;
       cancel.disabled = true;
@@ -710,9 +729,33 @@ export class SymbolLibraryView extends ItemView {
         fields.enabled = true;
         fields.focus();
       };
-      void writeSymbolText(this.app, file, changes, fields.given)
-        .then(() => this.#texts.refresh(file))
-        .then(finish, (failure: unknown) => {
+      const writing = writeSymbolText(this.app, file, changes, fields.given);
+      let waited = false;
+      const waiting = (still: boolean): void => {
+        if (closed) return;
+        waited ||= still;
+        wait.setText(still ? `${savingWaits} ${savingLeft}` : "");
+        cancel.disabled = !still;
+        leaveSave = !still
+          ? undefined
+          : () => {
+              if (!writing.stop()) {
+                new Notice(
+                  `Saving ${entry.name} had reached Obsidian, so it may still finish.`,
+                );
+              }
+            };
+      };
+      void watchSave(
+        writing.done.then(() => this.#texts.refresh(file)),
+        waiting,
+      ).then(
+        () => {
+          // Nothing else says so, to a person who has looked away or left.
+          if (waited) new Notice(`Saved ${entry.name}.`);
+          finish();
+        },
+        (failure: unknown) => {
           if (closed) return;
           again();
           if (failure instanceof TextMoved) {
@@ -724,7 +767,8 @@ export class SymbolLibraryView extends ItemView {
                 : "The symbol could not be saved.",
             );
           }
-        });
+        },
+      );
     });
     reread();
     fields.focus();

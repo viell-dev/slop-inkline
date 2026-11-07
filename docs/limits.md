@@ -34,8 +34,19 @@ link would still lead elsewhere by its path in the vault.
 the editor or the library, and each reads the file first, so that two of them
 cannot undo each other, even if the file is renamed or replaced while one waits.
 It also means that a save Obsidian never finishes, as on a drive that stops
-answering, holds up every later save until Obsidian restarts. The editor keeps
-your strokes in its draft meanwhile.
+answering, holds up every later save, whichever symbol it is for. After a few
+seconds of that, the editor and the library's fields say so, and saving goes on
+by itself if Obsidian finishes. A save is never let go of early, as Obsidian
+could still finish it, over whatever a later save had written. If nothing
+changes, restart Obsidian, which ends the wait:
+
+- **In the editor,** your strokes are safe in a draft. Open the symbol again, or
+  start a new symbol in that note if it had not been saved yet, and choose
+  **Restore**.
+- **In the library's fields,** what you typed stays there, and you can select
+  and copy it. Copy it before you restart, as a restart does not keep it.
+  **Cancel** or Esc closes the fields and stops the save. Only a save that had
+  already reached Obsidian can still finish, and a notice says so.
 
 Inkline cannot do the same with another program. Obsidian writes a binary file
 only as a whole, with no way to write it only if it has not changed since it was
@@ -89,6 +100,10 @@ the mark before renaming what it links to.
   erased ones included. That is minutes of unbroken drawing with the fastest
   mice. Saving past it fails with a message, and the draft stops at the last
   stroke within it, so undo what took the drawing over.
+- Saving a symbol with a large base layer from the editor stops Obsidian
+  answering while it works: about a second for a file of 1.5 MB, and four to
+  five for one near the limit. A symbol drawn by hand takes milliseconds
+  ([#200](https://github.com/viell-dev/slop-inkline/issues/200)).
 - **Unreleased:** a symbol file made to be slow to draw, by a stroke that turns
   back at nearly every point, can keep Obsidian busy for a long time when you
   open it in the editor, hours for the worst of them, from a file of a few

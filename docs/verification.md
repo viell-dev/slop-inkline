@@ -293,6 +293,17 @@ must keep released files readable and looking the same, as
   ([symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts)
   and
   [file-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/file-writes.test.ts)).
+- **Unreleased:** a write Obsidian does not finish, held back in the host: a
+  save that takes less than the wait shows nothing; a save behind it in the
+  library says so after the wait, keeps what was typed to copy, and finishes
+  when the write does, while Cancel or Esc leaves it and it writes nothing; a
+  form whose own write is held closes and says it may still finish; the editor
+  says its strokes are in a draft, unless none could be kept, goes on drawing,
+  and gives them back after a restart. However long a write takes, no save
+  behind it reads or writes
+  ([symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts)
+  and
+  [file-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/file-writes.test.ts)).
 - **Unreleased:** the `;;` list, Insert existing symbol, Copy from, and the
   library's filter find a symbol by a reading or translation whatever its name,
   and show why; an accent needs no typing, and a mark that makes another sound

@@ -50,6 +50,7 @@ import {
 } from "../ink/pixels.ts";
 import type { DrawableBase } from "../ink/render.ts";
 import { readText, writeText, type SymbolText } from "../format/text.ts";
+import { savingWaits, type SaveWait } from "../notes/file-writes.ts";
 import { chooseRename, symbolStem } from "../notes/names.ts";
 import {
   isBlank,
@@ -323,6 +324,8 @@ export interface EditorOptions {
    * writes over a file, where no other save can come between them, and again
    * if another file took that one's place meanwhile. It writes nothing if
    * `check` rejects, which it does to ask about a change or refuse one.
+   * `waiting` hears when a step that writes takes too long, and not of a
+   * rename, whose question waits for a person rather than for Obsidian.
    * Resolves to whether that name was kept or applied. False means only the
    * rename failed: the drawing is saved, and the name stays for a retry.
    */
@@ -333,6 +336,7 @@ export interface EditorOptions {
     holds: (fingerprint: string) => void,
     name: string,
     check: () => Promise<void>,
+    waiting: SaveWait,
   ) => Promise<boolean>;
   /**
    * For an existing symbol, which other notes may show: how the vault's
@@ -477,6 +481,8 @@ export class InkEditorModal extends Modal {
   #frame: number | undefined;
   #resize: ResizeObserver | undefined;
   #status: HTMLElement | undefined;
+  /** Says that a save is waiting for Obsidian, which outlasts the status. */
+  #saveWait: HTMLElement | undefined;
   /** Base layer images decoded for drawing, by their PNG. */
   readonly #decoded = new Map<Uint8Array, DrawableBase>();
   /** The base layer placed where the document puts it, for drawing. */
@@ -915,6 +921,10 @@ export class InkEditorModal extends Modal {
     this.#status = this.contentEl.createDiv({
       cls: "inkline-status",
       attr: { "aria-live": "polite" },
+    });
+    this.#saveWait = this.contentEl.createDiv({
+      cls: "inkline-save-wait",
+      attr: { role: "alert" },
     });
     const view = new InkView(canvas, surfaceWidth(this.#options.width ?? 0));
     this.#view = view;
@@ -2550,6 +2560,29 @@ export class InkEditorModal extends Modal {
   }
 
   /**
+   * Says that a save is waiting for Obsidian, until it no longer is, and how to
+   * get the strokes back if it never ends. This has a line of its own, as the
+   * status line goes on saying other things meanwhile.
+   */
+  #sayWaiting(waiting: boolean): void {
+    if (!waiting) {
+      this.#saveWait?.setText("");
+      return;
+    }
+    const again =
+      this.#options.drafts?.target().kind === "file"
+        ? "open this symbol again"
+        : "start a new symbol in this note";
+    this.#saveWait?.setText(
+      `${savingWaits} ${
+        this.#keepDraft()
+          ? `Your strokes are safe in a draft, so if nothing changes, restart Obsidian and ${again}.`
+          : "If nothing changes, restart Obsidian, but your latest strokes could not be kept in a draft."
+      }`,
+    );
+  }
+
+  /**
    * Keeps this editor's unsaved drawing as its draft, or drops it once saved,
    * and returns whether the drawing is safe: saved, or kept. When storage
    * refuses a draft, the last one kept stays, and a notice says so once.
@@ -3199,6 +3232,9 @@ export class InkEditorModal extends Modal {
           },
           typed,
           () => this.#checkBeforeWriting(resume),
+          (waiting) => {
+            this.#sayWaiting(waiting);
+          },
         );
         // A rename that failed leaves the name typed in the field, unsaved,
         // for the next save to try again.

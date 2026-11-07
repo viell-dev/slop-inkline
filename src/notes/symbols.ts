@@ -46,9 +46,11 @@ import {
   changedText,
   changeFile,
   saveFile,
+  stoppable,
   unreadableText,
+  watchSave,
   WriteQueue,
-  type FileAccess,
+  type SaveWait,
 } from "./file-writes.ts";
 import { insertionAt } from "./links.ts";
 import { shownGuides, type Settings } from "../settings.ts";
@@ -578,29 +580,37 @@ export async function readSymbolText(
   }
 }
 
+/** A save of a symbol's text under way. */
+export interface TextSave {
+  readonly done: Promise<void>;
+  /** Stops it; returns false if its write has gone to the vault. */
+  readonly stop: () => boolean;
+}
+
 /**
  * Changes a symbol's readings and translations and nothing else: its file's
  * text chunks, as {@link changedText} says, with every other byte as it was. No
  * note changes, as its name stays. A field changed since `seen`, by another
- * save or anything else, throws `TextMoved`, with nothing written; one that
- * this save leaves alone keeps what the other save gave it.
+ * save or anything else, rejects with `TextMoved`, with nothing written; one
+ * that this save leaves alone keeps what the other save gave it.
  */
-export async function writeSymbolText(
+export function writeSymbolText(
   app: App,
   file: TFile,
   changes: TextChanges,
   seen: SymbolText,
-): Promise<void> {
-  const access: FileAccess<TFile> = {
+): TextSave {
+  const { access, stop } = stoppable<TFile>({
     check: (symbol) => {
       stillSymbol(app, symbol);
     },
     read: async (symbol) => new Uint8Array(await app.vault.readBinary(symbol)),
     write: (symbol, bytes) => app.vault.modifyBinary(symbol, bytes),
-  };
-  await writes.run(() =>
+  });
+  const done = writes.run(() =>
     changeFile(access, file, (bytes) => changedText(bytes, changes, seen)),
   );
+  return { done, stop };
 }
 
 /**
@@ -633,33 +643,40 @@ async function rename(
  * needs; returns the file written, which a search finds by what it now says at
  * once, ahead of whatever else is waiting to be read. `check` goes first, in the
  * write's turn, so that no other save of Inkline's can come between it and the
- * write, and rejects to write nothing.
+ * write, and rejects to write nothing. `waiting` hears if that takes too long.
  */
 async function writeSymbol(
   host: EditorHost,
   file: TFile,
   bytes: Uint8Array,
   check: () => Promise<void>,
+  waiting: SaveWait,
 ): Promise<TFile> {
   const { app } = host;
   const buffer = toBuffer(bytes);
-  const written = await writes.run(() =>
-    saveFile({
-      current: () =>
-        present(app, file) ? file : app.vault.getFileByPath(file.path),
-      check,
-      write: (now) => app.vault.modifyBinary(now, buffer),
-      create: async () => {
-        const folder = parentPath(file.path);
-        if (folder !== "" && app.vault.getAbstractFileByPath(folder) === null) {
-          await app.vault.createFolder(folder);
-        }
-        return app.vault.createBinary(file.path, buffer);
-      },
-    }),
-  );
-  await host.texts.refresh(written);
-  return written;
+  const write = async (): Promise<TFile> => {
+    const written = await writes.run(() =>
+      saveFile({
+        current: () =>
+          present(app, file) ? file : app.vault.getFileByPath(file.path),
+        check,
+        write: (now) => app.vault.modifyBinary(now, buffer),
+        create: async () => {
+          const folder = parentPath(file.path);
+          if (
+            folder !== "" &&
+            app.vault.getAbstractFileByPath(folder) === null
+          ) {
+            await app.vault.createFolder(folder);
+          }
+          return app.vault.createBinary(file.path, buffer);
+        },
+      }),
+    );
+    await host.texts.refresh(written);
+    return written;
+  };
+  return watchSave(write(), waiting);
 }
 
 /**
@@ -918,7 +935,7 @@ function newSymbol(
     // refuses it, the write goes ahead: the file then holds the drawing.
     // The editor learns what the file holds as soon as it is adopted or
     // written, so that a later failure leaves it still compared.
-    write: async (bytes, _record, keepDraft, holds, typed, check) => {
+    write: async (bytes, _record, keepDraft, holds, typed, check, waiting) => {
       stillAlive(host);
       // Checked before anything is written, so that a refused name leaves
       // the vault as it was.
@@ -950,7 +967,10 @@ function newSymbol(
         stillAlive(host);
         claim = { path, fingerprint };
         keepDraft();
-        const file = await app.vault.createBinary(path, toBuffer(bytes));
+        const file = await watchSave(
+          app.vault.createBinary(path, toBuffer(bytes)),
+          waiting,
+        );
         made = { file, fingerprint, previous: undefined };
         holds(fingerprint);
         await host.texts.refresh(file);
@@ -961,7 +981,7 @@ function newSymbol(
         made.previous = before;
         if (!inserted) keepDraft();
         try {
-          made.file = await writeSymbol(host, made.file, bytes, check);
+          made.file = await writeSymbol(host, made.file, bytes, check, waiting);
           holds(fingerprint);
         } catch (error) {
           made.fingerprint = before;
@@ -995,7 +1015,7 @@ function newSymbol(
         : undefined;
       if (existing === undefined) {
         stillAlive(host);
-        after = await insertEmbed(app, target, embed);
+        after = await watchSave(insertEmbed(app, target, embed), waiting);
       } else {
         after = existing;
       }
@@ -1189,10 +1209,18 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
     },
     lifecycle: host.lifecycle,
     file: () => symbolFile(app, symbol.path),
-    write: async (saved, _record, _keepDraft, _holds, typed, check) => {
+    write: async (
+      saved,
+      _record,
+      _keepDraft,
+      _holds,
+      typed,
+      check,
+      waiting,
+    ) => {
       stillAlive(host);
       const renaming = renamedPath(app, symbol, chosen(typed, symbol));
-      symbol = await writeSymbol(host, symbol, saved, check);
+      symbol = await writeSymbol(host, symbol, saved, check, waiting);
       stillAlive(host);
       return rename(app, symbol, renaming);
     },
