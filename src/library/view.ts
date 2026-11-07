@@ -52,6 +52,13 @@ import {
 /** The library's view type, as Obsidian registers and restores it. */
 export const libraryViewType = "inkline-library";
 
+/**
+ * The most rows drawn at a time. A row takes a millisecond or more to draw,
+ * with its picture, so a list of them all would keep a person typing in the
+ * filter waiting for seconds in a vault of thousands of symbols.
+ */
+const rowsAtOnce = 100;
+
 /** The address of `file`'s picture, which changes as the file does. */
 function pictureOf(vault: Vault, file: TFile | undefined): string {
   return file === undefined ? "" : vault.getResourcePath(file);
@@ -89,6 +96,8 @@ export class SymbolLibraryView extends ItemView {
   #query = "";
   /** The folder shown, or undefined for every folder. */
   #folder: string | undefined;
+  /** How many rows to draw, which Show more adds to. */
+  #rows = rowsAtOnce;
   /** The symbols whose notes are listed. */
   readonly #expanded = new Set<string>();
   #folderField: HTMLSelectElement | undefined;
@@ -161,6 +170,7 @@ export class SymbolLibraryView extends ItemView {
       search.addEventListener(type, () => {
         if (search.value === this.#query) return;
         this.#query = search.value;
+        this.#rows = rowsAtOnce;
         this.#render();
       });
     }
@@ -170,6 +180,7 @@ export class SymbolLibraryView extends ItemView {
     });
     folders.addEventListener("change", () => {
       this.#folder = this.#folders[Number(folders.value)];
+      this.#rows = rowsAtOnce;
       this.#render();
     });
     this.#folderField = folders;
@@ -272,12 +283,14 @@ export class SymbolLibraryView extends ItemView {
     if (this.#folder !== undefined && !folders.includes(this.#folder)) {
       this.#folder = undefined;
     }
-    const shown = filterCatalog(entries, this.#query, this.#folder);
+    const matching = filterCatalog(entries, this.#query, this.#folder);
+    const shown = matching.slice(0, this.#rows);
     this.#status?.toggle(this.#query.trim() !== "" && this.#texts.reading);
     const key = JSON.stringify([
       folders,
       this.#folder ?? null,
       entries.length,
+      matching.length,
       shown.map((entry) => [
         entry.path,
         entry.notes,
@@ -327,6 +340,17 @@ export class SymbolLibraryView extends ItemView {
     for (const entry of shown) {
       const file = files.get(entry.path);
       if (file !== undefined) this.#renderEntry(list, entry, file);
+    }
+    const left = matching.length - shown.length;
+    if (left > 0) {
+      const more = list.createEl("button", {
+        cls: "inkline-library-more",
+        text: `Show more: ${String(left)} left`,
+      });
+      more.addEventListener("click", () => {
+        this.#rows += rowsAtOnce;
+        this.#render();
+      });
     }
     if (focusPath !== undefined && focusPath !== null) {
       const row = Array.from(list.querySelectorAll("[data-inkline-path]")).find(

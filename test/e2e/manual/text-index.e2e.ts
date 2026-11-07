@@ -184,7 +184,15 @@ async function searches(): Promise<Record<string, number>> {
       throw new Error("no list of symbols registered");
     }
     const times: Record<string, number> = {};
-    for (const query of ["", "g", "glyph 00042", "t", "ta", "ta00042", "zzzz"]) {
+    for (const query of [
+      "",
+      "g",
+      "glyph 00042",
+      "t",
+      "ta",
+      "ta00042",
+      "zzzz",
+    ]) {
       let best = Infinity;
       for (let round = 0; round < 5; round++) {
         const before = performance.now();

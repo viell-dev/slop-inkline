@@ -536,6 +536,11 @@ img.inkline-symbol:not([width], [height]) {
   color: var(--text-muted);
 }
 
+.inkline-library-more {
+  width: 100%;
+  margin-top: var(--size-4-1);
+}
+
 .inkline-library-rename-form {
   display: flex;
   flex-wrap: wrap;

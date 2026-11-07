@@ -1,10 +1,12 @@
 // Inkline in a vault with many symbols: what each keystroke after the
-// trigger costs, as type to insert lists them. Rendering the many symbols of
-// one note is measured in render.e2e.ts.
+// trigger costs, as type to insert lists them, by name, reading, or
+// translation. Rendering the many symbols of one note is measured in
+// render.e2e.ts, and building the index of what they say about themselves, for
+// up to 10,000 symbols, in the manual text-index.e2e.ts.
 
 import { browser, expect } from "@wdio/globals";
 import { encodePng } from "../../support/png.ts";
-import { toBase64 } from "../support/browser.ts";
+import { loadModules, toBase64 } from "../support/browser.ts";
 import { openAtMarker } from "../support/editor.ts";
 
 /** How many symbols the vault holds, in folders of a hundred. */
@@ -38,15 +40,15 @@ describe("A vault with many symbols", function () {
   this.timeout(600_000);
 
   before(async function () {
+    await loadModules();
     // In batches, each well within WebDriver's limit for one script, and each
     // making only what is missing, so that one sent again does no harm.
     const png = symbol();
     for (let first = 0; first < count; first += 500) {
       await browser.executeObsidian(
         async ({ app }, from, to, image) => {
-          const data = Uint8Array.from(atob(image), (c) =>
-            c.charCodeAt(0),
-          ).buffer;
+          const data = Uint8Array.from(atob(image), (c) => c.charCodeAt(0));
+          const { writeText } = window.inklineTest.text;
           for (let index = from; index < to; index++) {
             const folder = `Many/${String(Math.floor(index / 100)).padStart(2, "0")}`;
             for (const path of ["Many", folder]) {
@@ -56,7 +58,12 @@ describe("A vault with many symbols", function () {
             }
             const file = `${folder}/glyph ${String(index).padStart(4, "0")}.ink.png`;
             if (app.vault.getFileByPath(file) === null) {
-              await app.vault.createBinary(file, data);
+              const id = String(index).padStart(4, "0");
+              const read = await writeText(data, "reading", [`TA${id}`]);
+              const said = await writeText(read, "translation", [
+                `rice field ${id}`,
+              ]);
+              await app.vault.createBinary(file, said.slice().buffer);
             }
           }
         },
@@ -89,7 +96,7 @@ describe("A vault with many symbols", function () {
 
     it("finds the symbols a keystroke matches within a few frames", async function () {
       await openAtMarker("Large.md", "HERE");
-      const result = await browser.executeObsidian(({ app }, limit) => {
+      const result = await browser.executeObsidian(async ({ app }, limit) => {
         // The list Inkline registered, among the editor's suggestions: an
         // internal of Obsidian's that only this measurement reads.
         const manager: unknown = Reflect.get(app.workspace, "editorSuggest");
@@ -134,8 +141,15 @@ describe("A vault with many symbols", function () {
               )
             : [];
         };
+        // Reading the vault's text takes a moment after its files are made.
+        const until = Date.now() + 60_000;
+        while (list("ta4999").length === 0) {
+          if (Date.now() > until) throw new Error("the text was never read");
+          await new Promise((resolve) => window.setTimeout(resolve, 100));
+        }
         // As each letter of a name is typed, then a name with a space, a
-        // number in full, and nothing that matches.
+        // number in full, a reading as it is typed and a translation, which
+        // every symbol holds, and nothing that matches.
         const queries = [
           "",
           "g",
@@ -146,6 +160,11 @@ describe("A vault with many symbols", function () {
           "glyph 42",
           "glyph 4242",
           "4242",
+          "t",
+          "ta",
+          "ta42",
+          "ta4242",
+          "rice field 4242",
           "zzzz",
         ];
         // Each query's fastest of three rounds: a slow search is slow in every
@@ -178,6 +197,8 @@ describe("A vault with many symbols", function () {
           all: lists.get("") ?? [],
           spaced: lists.get("glyph 4242") ?? [],
           number: lists.get("4242") ?? [],
+          reading: lists.get("ta4242") ?? [],
+          translation: lists.get("rice field 4242") ?? [],
           none: lists.get("zzzz") ?? [],
         };
       }, budget);
@@ -193,6 +214,8 @@ describe("A vault with many symbols", function () {
       expect(result.all[0]).toBe("Many/00/glyph 0007.ink.png");
       expect(result.spaced).toEqual(["Many/42/glyph 4242.ink.png"]);
       expect(result.number[0]).toBe("Many/42/glyph 4242.ink.png");
+      expect(result.reading).toEqual(["Many/42/glyph 4242.ink.png"]);
+      expect(result.translation).toEqual(["Many/42/glyph 4242.ink.png"]);
       expect(result.none).toEqual([]);
     });
   });

@@ -96,10 +96,13 @@ export class SymbolTextIndex<File extends object> {
     return this.#running !== undefined;
   }
 
-  /** Reads `file` now, for a caller that has just changed it. */
+  /**
+   * Reads `file` now, for a caller that has just changed it, ahead of whatever
+   * else is waiting to be read, which can be thousands of files.
+   */
   async refresh(file: File): Promise<void> {
-    this.changed(file);
-    await this.#running;
+    const text = await this.#read(file);
+    if (text !== undefined && !this.#stopped) this.#entries.set(file, text);
   }
 
   #run(): void {

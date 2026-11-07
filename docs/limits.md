@@ -12,7 +12,8 @@ The [issues](https://github.com/viell-dev/slop-inkline/issues) track each one.
 - **Mouse or trackpad.** A drawing tablet's pen or a touchscreen draws as a
   mouse does: pen pressure and a pen's eraser end are not supported.
 - **Large libraries** show every matching symbol at once, without paging. Filter
-  by name or folder to narrow the list.
+  by name or folder to narrow the list. **Unreleased:** the list draws 100 at a
+  time, and **Show more** adds the next 100.
 - **Library insertion needs a sidebar.** If the library's tab is dragged into
   the main area, move it back to a sidebar to insert into a note.
 - **Physical printing** has not been checked. Native
@@ -76,6 +77,19 @@ the mark before renaming what it links to.
   open it in the editor, hours for the worst of them, from a file of a few
   kilobytes. Close Obsidian if it stops answering: no file has changed, and the
   note shows the symbol as before. Drawing by hand does not come near this.
+- **Unreleased:** the lists find a symbol by its readings and translations a
+  moment after Obsidian starts, and a few seconds after in a vault of thousands
+  of symbols, as they are read in the background each time; a line in the list
+  says so meanwhile. Names work from the start. A file of over 32 MiB, or with
+  more than 16 chunks of one keyword before a usable one, as a file made to be
+  slow to read has, is found by its name only. Its text still shows in the
+  library's fields.
+- **Unreleased:** a list of readings or translations that Inkline cannot read,
+  as from a later version, stays in the file, behind any you type, and looks
+  empty. Inkline offers no way to remove one.
+- **Unreleased:** a symbol's readings and translations go with its file, and
+  only there. Some image programs drop them; a long list in a non-Latin script
+  was lost through two plain ImageMagick copies, while short text came through.
 - A picture to trace over is scaled down to 4096 pixels on its longer side. A
   file opened from its pixels can be up to 4096 pixels a side, and its ink must
   fit within 8 MiB, the largest base layer a symbol can store.

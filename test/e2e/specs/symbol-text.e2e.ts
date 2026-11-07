@@ -886,10 +886,15 @@ describe("A symbol's readings and translations", function () {
       const hostile = `${String.fromCharCode(0x202e)}abc`;
       await symbolWith("Bidi.ink.png", {
         reading: [hostile, "second"],
-        translation: ["שלום"],
+        translation: ["שלום", '<img src="x">'],
       });
       await showLibrary();
       await waitForValues("Bidi.ink.png", "second");
+      // A value is text, never markup.
+      await waitForValues("Bidi.ink.png", '<img src="x">');
+      expect(
+        await row("Bidi.ink.png").$(".inkline-values img").isExisting(),
+      ).toBe(false);
       const order = await browser.execute(() => {
         const values = document.querySelectorAll(".inkline-library-values bdi");
         const box = (index: number) =>
@@ -899,6 +904,36 @@ describe("A symbol's readings and translations", function () {
       expect(order.kind).toBe("BDI");
       expect(order.first).toBeLessThan(order.second);
       await saveScreenshot("text-library-bidi");
+    });
+
+    it("draws a large list in steps, and finds what is past the first", async function () {
+      this.timeout(120_000);
+      await browser.executeObsidian(async ({ app }) => {
+        const { canvas, text } = window.inklineTest;
+        const { bytes } = await canvas.saveInk({ strokes: [] }, undefined, []);
+        for (let at = 0; at < 250; at++) {
+          const said =
+            at === 249
+              ? await text.writeText(bytes, "reading", ["last"])
+              : bytes;
+          await app.vault.createBinary(
+            `Row ${String(at).padStart(3, "0")}.ink.png`,
+            said.slice().buffer,
+          );
+        }
+      });
+      await showLibrary();
+      const rowCount = () => browser.$$(".inkline-library-symbol").length;
+      await browser.waitUntil(async () => (await rowCount()) === 100);
+      const more = browser.$(".inkline-library-more");
+      expect(await more.getText()).toBe("Show more: 150 left");
+      await more.click();
+      await browser.waitUntil(async () => (await rowCount()) === 200);
+      await more.click();
+      await browser.waitUntil(async () => (await rowCount()) === 250);
+      expect(await more.isExisting()).toBe(false);
+      await browser.$(".inkline-library-search").setValue("last");
+      await browser.waitUntil(async () => (await rowCount()) === 1);
     });
 
     it("lets a name and a reading disagree, through a rename too", async function () {
@@ -938,8 +973,12 @@ describe("A symbol's readings and translations", function () {
       await browser.waitUntil(async () =>
         (await rows()).some(({ why }) => why === "Reading: TA"),
       );
-      // A name that is what was typed comes first, and needs no explaining.
-      expect((await rows())[0]).toEqual({ name: "TA", why: "" });
+      // A name that is what was typed comes first, and needs no explaining,
+      // then a value that is, above a name it only starts.
+      expect((await rows()).slice(0, 2)).toEqual([
+        { name: "TA", why: "" },
+        { name: "Anything at all", why: "Reading: TA" },
+      ]);
       await saveScreenshot("text-suggest");
       await browser.keys(["ArrowDown", "Enter"]);
       await browser.waitUntil(async () =>

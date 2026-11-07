@@ -5,7 +5,8 @@
 The editor opens over the note for a new symbol, from **Inkline: Insert
 symbol**, or for one you have, from **Edit symbol**. Its parts, from the top:
 
-- the **name field**, which holds the symbol's name;
+- the **name field**, which holds the symbol's name, and, **Unreleased:** beside
+  it, its [readings and translations](#readings-and-translations);
 - the **toolbar**, whose buttons show an icon, a name, or both, as **Editor
   buttons** in the [settings](./settings.md) chooses, with each tool's shortcut
   in its tooltip;
@@ -305,6 +306,13 @@ another symbol's strokes and ink, chosen from a list of the vault's symbols with
 their pictures, in place of what is drawn so far, for scripts whose symbols
 share parts. Undo takes the copy back.
 
+**Unreleased:** the list finds a symbol by its
+[readings and translations](#readings-and-translations) as well as its path, and
+a row found that way says so. The copy takes only the drawing: they stay with
+the symbol they were written for, and the status line says so. A variant is
+another symbol, which may be read differently, and a copied guess would go on
+being found after the original was corrected.
+
 ## Save
 
 - **Save** (Mod+Enter) saves and closes the editor. For a new symbol, the first
@@ -346,3 +354,20 @@ Obsidian writes links at places it noted before it asks about them. If a note
 cannot be saved, nothing is renamed, and the editor stays open with the name for
 the next save to try. A new symbol's embed takes the new name whatever you
 answer Obsidian, and the cursor stays just after the symbol.
+
+## Readings and translations
+
+**Unreleased:** the button beside the name shows a symbol's readings and
+translations, and opens two fields to fill them in. It adds no row to the
+editor, and a symbol that has some shows them on the button. A field holds one
+value to a line, the main one first, so press Enter between two values. Tab
+moves on from a field, and Mod+Enter saves as it does anywhere in the editor.
+
+They save with the symbol, on the same **Save** as the drawing, and a draft
+keeps what you typed as it keeps a new name. Spaces around a value and blank
+lines are left out. A list over 4,096 bytes can't be saved: the field says so,
+and nothing is written until it is shorter. With **Next**, the fields stay open
+and the next symbol starts with them empty.
+
+[Symbols in notes](./notes.md#readings-and-translations) says what they are for,
+and the library changes them without opening the editor.

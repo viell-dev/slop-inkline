@@ -222,14 +222,18 @@ describe("SymbolTextIndex", () => {
     expect(index.textOf(file)).toBeUndefined();
   });
 
-  it("reads a file now for a caller that changed it", async () => {
+  it("reads a file now for a caller that changed it, ahead of the rest", async () => {
+    const { gate, open } = gated();
     const file: Fake = { name: "a", bytes: await said("TA") };
-    const { index } = indexOf([file]);
+    const slow = { name: "slow", bytes: await said("GA"), gate };
+    const { index } = indexOf([slow, file]);
     index.start();
-    await settled(index);
     file.bytes = await said("KA");
     await index.refresh(file);
     expect(readings(index, file)).toEqual(["KA"]);
+    expect(index.reading).toBe(true);
+    open();
+    await settled(index);
   });
 
   it("stops reading, and forgets, when stopped", async () => {
