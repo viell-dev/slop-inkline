@@ -112,6 +112,12 @@ changes the file must keep. No existing file is affected.
 - **Keep mine** keeps your drawing and no more. A save after it used to write
   back the text and other carried chunks the file had when the editor opened,
   which dropped any that the change on disk had added.
+- Saving a symbol with a large base layer no longer freezes Obsidian. Near the
+  format's limit that took four to five seconds with nothing painting or taking
+  input. It now takes two or three, and Obsidian keeps answering, apart from a
+  pause of up to about a quarter of a second just after you ask to save. What
+  files hold has not changed
+  ([#200](https://github.com/viell-dev/slop-inkline/issues/200)).
 
 ### Changed
 

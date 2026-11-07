@@ -613,6 +613,72 @@ export async function failSaves(): Promise<() => Promise<void>> {
 }
 
 /**
+ * Writes a picture as a symbol: a `side` square of noise, which PNG cannot
+ * compress, in every `spacing`th pixel.
+ */
+export async function writeNoise(
+  file: string,
+  side: number,
+  spacing = 1,
+): Promise<void> {
+  await browser.executeObsidian(
+    async ({ app }, filePath, size, every) => {
+      const { canvas } = window.inklineTest;
+      const data = new Uint8ClampedArray(size * size * 4);
+      let seed = 7;
+      for (let index = 0; index < size * size; index++) {
+        seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+        if (index % every === 0) data[index * 4 + 3] = seed >>> 24;
+      }
+      const bytes = await canvas.encodePixels({
+        width: size,
+        height: size,
+        data,
+      });
+      await app.vault.createBinary(filePath, bytes.slice().buffer);
+    },
+    file,
+    side,
+    spacing,
+  );
+}
+
+/** Opens the editor on a symbol file. */
+export async function editFile(file: string): Promise<void> {
+  await browser.executeObsidian(({ app, plugins }, wanted) => {
+    const found = app.vault.getFileByPath(wanted);
+    if (found === null) throw new Error(`no ${wanted}`);
+    void plugins.inkline.editSymbol(found);
+  }, file);
+  await waitForEditor();
+}
+
+/**
+ * Saves the open editor by its button, which closes it, and reports what that
+ * took: from pressing it to the editor closing, and each read and write of the
+ * vault meanwhile, which is the part that a stalled save would wait on.
+ */
+export async function timedEditorSave() {
+  return browser.executeObsidian(async ({ app }) => {
+    const { mainThread } = window.inklineTest;
+    const button = document.querySelector<HTMLElement>(
+      '[data-inkline-button="save"]',
+    );
+    if (button === null) throw new Error("no save button");
+    const thread = mainThread.watchMainThread();
+    const vault = mainThread.watchVault(app.vault);
+    const bases = mainThread.watchDraftBases(app);
+    const start = performance.now();
+    button.click();
+    while (document.querySelector(".inkline-editor") !== null) {
+      await new Promise((resolve) => window.setTimeout(resolve, 2));
+    }
+    const totalMs = performance.now() - start;
+    return { totalMs, thread: thread(), vault: vault(), bases: bases() };
+  });
+}
+
+/**
  * Closes every modal, discarding unsaved drawings, and every note, then
  * restores the vault and clears drafts, so that each test starts from the
  * same state.

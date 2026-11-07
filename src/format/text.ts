@@ -213,7 +213,8 @@ export async function writeText(
 ): Promise<Uint8Array> {
   const problem = textProblem(values);
   if (problem !== undefined) throw new TextError(problem);
-  const chunks = readChunks(bytes);
+  // Only the text is looked at, and the rest is copied as it is, CRCs and all.
+  const chunks = readChunks(bytes, (type) => isTextChunk({ type }));
   const keyword = keywordBytes(field);
   const removed = new Set<Chunk>();
   let current: readonly string[] | undefined;

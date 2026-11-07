@@ -5,17 +5,21 @@ import {
   crc32,
   deflate,
   encodeRgba,
+  firstDamaged,
   imageHeader,
   maxChunks,
   inflate,
   isPng,
   pngSignature,
   readChunks,
+  slicer,
   writeChunks,
+  writeChunksSliced,
   type Chunk,
 } from "../../../src/format/png.ts";
 import { inflateSync } from "node:zlib";
 import { blank, encodePng, header, pixelChunks } from "../../support/png.ts";
+import { noise, paused } from "../../support/slices.ts";
 
 const ascii = (text: string): Uint8Array =>
   Uint8Array.from(text, (char) => char.charCodeAt(0));
@@ -171,6 +175,146 @@ describe("deflate and inflate", () => {
 
   it("rejects corrupt data", async () => {
     await expect(inflate(ascii("not zlib data"))).rejects.toThrow();
+  });
+});
+
+describe("work in slices", () => {
+  const chunks: Chunk[] = [
+    header(1, 1),
+    { type: "teXt", data: noise(40_000) },
+    { type: "IDAT", data: noise(200_000) },
+    { type: "IEND", data: new Uint8Array(0) },
+  ];
+  /** A file with a byte of a chunk's data changed, with its CRC left alone. */
+  const damaged = (type: string): Uint8Array => {
+    const bytes = writeChunks(chunks).slice();
+    const at = readChunks(bytes).find((chunk) => chunk.type === type);
+    if (at === undefined) throw new Error(`no ${type}`);
+    const offset = at.data.byteOffset - bytes.byteOffset + 100;
+    bytes[offset] = (bytes[offset] ?? 0) ^ 0xff;
+    return bytes;
+  };
+
+  it("pauses only once the work has taken long enough", async () => {
+    let now = 0;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
+    let pauses = 0;
+    const breather = slicer(() => {
+      pauses += 1;
+      return Promise.resolve();
+    });
+    now = 12;
+    await breather();
+    expect(pauses).toBe(0);
+    now = 13;
+    await breather();
+    expect(pauses).toBe(1);
+    // A new slice starts from the pause.
+    await breather();
+    expect(pauses).toBe(1);
+    clock.mockRestore();
+  });
+
+  it("never pauses without a pause to take", async () => {
+    await expect(slicer(undefined)()).resolves.toBeUndefined();
+  });
+
+  it("writes the same file as writeChunks", async () => {
+    expect(await writeChunksSliced(chunks)).toEqual(writeChunks(chunks));
+  });
+
+  it("pauses all through a large chunk's CRC", async () => {
+    const { result, pauses } = await paused((pause) =>
+      writeChunksSliced(chunks, { pause }),
+    );
+    expect(result).toEqual(writeChunks(chunks));
+    expect(pauses).toBeGreaterThanOrEqual(6);
+  });
+
+  it("finds no damage in a sound file", async () => {
+    const bytes = writeChunks(chunks);
+    const read = readChunks(bytes, () => false);
+    expect(await firstDamaged(bytes, read)).toBeUndefined();
+  });
+
+  it("finds the damage readChunks finds", async () => {
+    for (const type of ["teXt", "IDAT"]) {
+      const bytes = damaged(type);
+      const read = readChunks(bytes, () => false);
+      expect(read.some((chunk) => chunk.damaged === true)).toBe(false);
+      const found = await firstDamaged(bytes, read);
+      expect(found?.type).toBe(type);
+      expect(
+        readChunks(bytes).find((chunk) => chunk.damaged === true)?.type,
+      ).toBe(type);
+    }
+  });
+
+  it("finds a wrong CRC itself, and damage in a chunk's type", async () => {
+    const wrongCrc = writeChunks(chunks).slice();
+    const last = readChunks(wrongCrc).find(({ type }) => type === "IDAT");
+    if (last === undefined) throw new Error("no IDAT");
+    const end = last.data.byteOffset + last.data.length;
+    wrongCrc[end] = (wrongCrc[end] ?? 0) ^ 1;
+    const found = await firstDamaged(
+      wrongCrc,
+      readChunks(wrongCrc, () => false),
+    );
+    expect(found?.type).toBe("IDAT");
+  });
+
+  it("reads chunks from a view into a larger buffer", async () => {
+    const file = damaged("IDAT");
+    const padded = new Uint8Array(file.length + 13);
+    padded.set(file, 7);
+    const view = padded.subarray(7, 7 + file.length);
+    const found = await firstDamaged(
+      view,
+      readChunks(view, () => false),
+    );
+    expect(found?.type).toBe("IDAT");
+  });
+
+  it("pauses all through a large chunk's check", async () => {
+    const bytes = writeChunks(chunks);
+    const { pauses } = await paused((pause) =>
+      firstDamaged(
+        bytes,
+        readChunks(bytes, () => false),
+        { pause },
+      ),
+    );
+    expect(pauses).toBeGreaterThanOrEqual(6);
+  });
+
+  it("compresses to the same bytes, pausing all through", async () => {
+    const bytes = noise(50_000);
+    const whole = await deflate(bytes);
+    const { result, pauses } = await paused((pause) =>
+      deflate(bytes, { pause }),
+    );
+    expect(result).toEqual(whole);
+    expect(pauses).toBeGreaterThanOrEqual(bytes.length / 1024);
+  });
+
+  it("decompresses to the same bytes, pausing all through", async () => {
+    const bytes = noise(50_000);
+    const compressed = await deflate(bytes);
+    const { result, pauses } = await paused((pause) =>
+      inflate(compressed, { pause }),
+    );
+    expect(result).toEqual(bytes);
+    expect(pauses).toBeGreaterThanOrEqual(compressed.length / 1024);
+  });
+
+  it("still stops at the limit and at corrupt data, pausing", async () => {
+    const compressed = await deflate(new Uint8Array(100_000));
+    await expect(
+      paused((pause) => inflate(compressed, { limit: 99_999, pause })),
+    ).rejects.toThrow("data expands beyond 99999 bytes");
+    await expect(
+      paused((pause) => inflate(ascii("not zlib data"), { pause })),
+    ).rejects.toThrow();
   });
 });
 

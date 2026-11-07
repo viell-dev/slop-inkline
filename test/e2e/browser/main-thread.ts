@@ -1,5 +1,6 @@
 // What a person would feel of work going on in the page: how long the main
 // thread goes without answering, and how long real input waits for it. Used by
+// test/e2e/specs/save-responsiveness.e2e.ts and
 // test/e2e/manual/save-time.e2e.ts.
 
 /** What {@link watchMainThread} saw. */
@@ -7,6 +8,8 @@ export interface MainThread {
   readonly ranMs: number;
   /** The longest the page went without running a timer. */
   readonly longestGapMs: number;
+  /** How many animation frames ran. */
+  readonly frames: number;
   /** The longest frame, from one animation frame to the next. */
   readonly longestFrameMs: number;
   /** Tasks of 50 ms or more, as Chromium reports them. */
@@ -23,6 +26,7 @@ export function watchMainThread(): () => MainThread {
   const started = performance.now();
   let running = true;
   let longestGapMs = 0;
+  let frames = 0;
   let longestFrameMs = 0;
   let inputs = 0;
   let longestInputDelayMs = 0;
@@ -38,6 +42,7 @@ export function watchMainThread(): () => MainThread {
   let lastFrame = started;
   const frame = (): void => {
     const now = performance.now();
+    frames++;
     longestFrameMs = Math.max(longestFrameMs, now - lastFrame);
     lastFrame = now;
     if (running) window.requestAnimationFrame(frame);
@@ -64,6 +69,7 @@ export function watchMainThread(): () => MainThread {
     return {
       ranMs: performance.now() - started,
       longestGapMs,
+      frames,
       longestFrameMs,
       longTasks: tasks.length,
       longestTaskMs: Math.max(0, ...tasks),
@@ -107,6 +113,52 @@ export function watchVault(vault: object): () => VaultCall[] {
       Reflect.set(vault, method, originals[index]);
     });
     return calls;
+  };
+}
+
+/** What {@link watchDraftBases} saw. */
+export interface DraftBases {
+  /** How many base layers a draft wrote to local storage. */
+  readonly writes: number;
+  /** How many of them were read back in the task that wrote them. */
+  readonly readInSameTask: number;
+}
+
+/**
+ * Watches the base layers that drafts write to local storage through `app`, and
+ * returns what stops that and reports them. A large one takes long to write and
+ * long to read back, so the two must not share a task.
+ */
+export function watchDraftBases(app: object): () => DraftBases {
+  const prefix = "inkline-draft-base:";
+  const save: unknown = Reflect.get(app, "saveLocalStorage");
+  const load: unknown = Reflect.get(app, "loadLocalStorage");
+  if (typeof save !== "function" || typeof load !== "function") {
+    throw new Error("no local storage");
+  }
+  let writes = 0;
+  let readInSameTask = 0;
+  let writing: string | undefined;
+  Reflect.set(app, "saveLocalStorage", (key: string, value: unknown): void => {
+    Reflect.apply(save, app, [key, value]);
+    if (value === null || !key.startsWith(prefix)) return;
+    writes++;
+    writing = key;
+    const { port1, port2 } = new MessageChannel();
+    port1.onmessage = () => {
+      port1.close();
+      writing = undefined;
+    };
+    port2.postMessage(undefined);
+  });
+  Reflect.set(app, "loadLocalStorage", (key: string): unknown => {
+    if (key === writing) readInSameTask++;
+    return Reflect.apply(load, app, [key]) as unknown;
+  });
+  return () => {
+    Reflect.deleteProperty(app, "saveLocalStorage");
+    Reflect.deleteProperty(app, "loadLocalStorage");
+    return { writes, readInSameTask };
   };
 }
 

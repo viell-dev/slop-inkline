@@ -4,11 +4,15 @@
 
 import {
   PngError,
+  firstDamaged,
   imageHeader,
   inflate,
   pngSignature,
   readChunks,
+  slicer,
+  writeChunks,
   type Chunk,
+  type Pausing,
 } from "./png.ts";
 
 /** The format version this code writes, and the newest it reads. */
@@ -231,25 +235,99 @@ function fromBase64(text: string, name: string): Uint8Array {
   return Uint8Array.from(binary, (char) => char.charCodeAt(0));
 }
 
+/** The characters of base64, as bytes, and the one that pads it. */
+const base64Letters = new TextEncoder().encode(
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",
+);
+const base64Padding = 0x3d;
+
+/** How many bytes of base64 `length` bytes make. */
+function base64Length(length: number): number {
+  return Math.ceil(length / 3) * 4;
+}
+
+/** Writes `bytes` as base64 into `output`, from `start`. */
+function writeBase64(
+  bytes: Uint8Array,
+  output: Uint8Array,
+  start: number,
+): void {
+  const letter = (value: number): number => base64Letters[value & 63] ?? 0;
+  const whole = bytes.length - (bytes.length % 3);
+  let at = start;
+  for (let from = 0; from < whole; from += 3) {
+    const group =
+      ((bytes[from] ?? 0) << 16) |
+      ((bytes[from + 1] ?? 0) << 8) |
+      (bytes[from + 2] ?? 0);
+    output[at++] = letter(group >> 18);
+    output[at++] = letter(group >> 12);
+    output[at++] = letter(group >> 6);
+    output[at++] = letter(group);
+  }
+  if (whole === bytes.length) return;
+  const first = bytes[whole] ?? 0;
+  const second = bytes[whole + 1];
+  output[at++] = letter(first >> 2);
+  output[at++] = letter((first << 4) | ((second ?? 0) >> 4));
+  output[at++] = second === undefined ? base64Padding : letter(second << 2);
+  output[at++] = base64Padding;
+}
+
 /** Bytes as base64, the way a record holds a base layer's PNG. */
 export function toBase64(bytes: Uint8Array): string {
-  let binary = "";
-  // Chunks keep each String.fromCharCode call within argument limits.
-  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  const output = new Uint8Array(base64Length(bytes.length));
+  writeBase64(bytes, output, 0);
+  return new TextDecoder().decode(output);
+}
+
+/** How many bytes become base64 at a time, a whole number of groups. */
+const base64SliceBytes = 3 * 16 * 1024;
+
+/** {@link writeBase64} for a large PNG, in slices. */
+async function writeBase64Sliced(
+  bytes: Uint8Array,
+  output: Uint8Array,
+  start: number,
+  { pause }: Pausing,
+): Promise<void> {
+  const breather = slicer(pause);
+  for (let from = 0; from < bytes.length; from += base64SliceBytes) {
+    writeBase64(
+      bytes.subarray(from, from + base64SliceBytes),
+      output,
+      start + base64Length(from),
+    );
+    await breather();
   }
-  return btoa(binary);
+}
+
+/** {@link toBase64} for a large PNG, in slices. */
+export async function toBase64Sliced(
+  bytes: Uint8Array,
+  options: Pausing = {},
+): Promise<string> {
+  const output = new Uint8Array(base64Length(bytes.length));
+  await writeBase64Sliced(bytes, output, 0, options);
+  return new TextDecoder().decode(output);
 }
 
 /** The only chunks a base layer's PNG holds. */
 const baseChunks = new Set(["IHDR", "IDAT", "IEND"]);
 
-/** Checks a base layer's PNG against the format's rules and limits. */
-function checkBasePng(png: Uint8Array): void {
+/**
+ * Checks a base layer's PNG against the format's rules and limits. `checked`
+ * says which chunks' CRCs to work out, as for {@link readChunks}, every chunk's
+ * by default.
+ */
+function checkBasePng(
+  png: Uint8Array,
+  checked?: (type: string) => boolean,
+): void {
   if (png.length > limits.baseBytes) fail("base.png is too large");
   let chunks: Chunk[];
   try {
-    chunks = readChunks(png);
+    chunks = readChunks(png, checked);
   } catch (error) {
     if (!(error instanceof PngError)) throw error;
     fail(`base.png is not a valid PNG: ${error.message}`);
@@ -288,16 +366,34 @@ function basePng(text: unknown): Uint8Array {
 
 /**
  * Why a PNG cannot be a base layer, as reading a record would refuse it, or
- * undefined when it can.
+ * undefined when it can. `checked` says which chunks' CRCs to work out, every
+ * chunk's by default.
  */
-export function basePngProblem(png: Uint8Array): string | undefined {
+export function basePngProblem(
+  png: Uint8Array,
+  checked?: (type: string) => boolean,
+): string | undefined {
   try {
-    checkBasePng(png);
+    checkBasePng(png, checked);
     return undefined;
   } catch (error) {
     if (error instanceof InvalidRecord) return error.message;
     throw error;
   }
+}
+
+/** {@link basePngProblem} for a large PNG, working out its CRCs in slices. */
+export async function slicedBasePngProblem(
+  png: Uint8Array,
+  options: Pausing = {},
+): Promise<string | undefined> {
+  const problem = basePngProblem(png, () => false);
+  if (problem !== undefined) return problem;
+  const chunks = readChunks(png, () => false);
+  const damaged = await firstDamaged(png, chunks, options);
+  return damaged === undefined
+    ? undefined
+    : `base.png has a bad CRC in ${damaged.type}`;
 }
 
 /** The highest filter type PNG defines for a row. */
@@ -312,8 +408,10 @@ const lastFilterType = 4;
  */
 export async function baseImageProblem(
   png: Uint8Array,
+  { pause }: Pausing = {},
 ): Promise<string | undefined> {
-  const chunks = readChunks(png);
+  // That check has worked out the CRCs, and nothing here looks at them.
+  const chunks = readChunks(png, () => false);
   const { width, height } = imageHeader(chunks);
   const parts = chunks.filter(({ type }) => type === "IDAT");
   const data = new Uint8Array(
@@ -328,7 +426,7 @@ export async function baseImageProblem(
   const size = height * rowBytes;
   let rows: Uint8Array;
   try {
-    rows = await inflate(data, { limit: size });
+    rows = await inflate(data, { limit: size, pause });
   } catch (error) {
     return `base.png's image data is not one whole stream: ${String(error)}`;
   }
@@ -526,6 +624,72 @@ export function parseRecord(text: string): ParseResult {
  */
 export function serializeRecord(record: InkRecord): string {
   return JSON.stringify(recordValue(record));
+}
+
+/**
+ * The bytes of {@link serializeRecord}'s text, for a large base layer: its
+ * base64 goes straight into them, in slices, rather than through one string,
+ * each step of which would hold the page up. It is the last thing in the text
+ * but the quote and braces that close it, and JSON escapes none of it.
+ */
+export async function serializedBytes(
+  record: InkRecord,
+  options: Pausing = {},
+): Promise<Uint8Array<ArrayBuffer>> {
+  const { base } = record;
+  const encoder = new TextEncoder();
+  if (base === undefined) return encoder.encode(serializeRecord(record));
+  const around = serializeRecord({
+    ...record,
+    base: { ...base, png: new Uint8Array(0) },
+  });
+  const end = around.length - '"}}'.length;
+  const before = encoder.encode(around.slice(0, end));
+  const after = encoder.encode(around.slice(end));
+  const { png } = base;
+  const length = base64Length(png.length);
+  const output = new Uint8Array(before.length + length + after.length);
+  output.set(before);
+  output.set(after, before.length + length);
+  await writeBase64Sliced(png, output, before.length, options);
+  return output;
+}
+
+/**
+ * The smallest PNG that {@link basePngProblem} passes, to stand for a base
+ * layer's PNG in the text {@link recordProblem} reads.
+ */
+const standInPng = writeChunks([
+  { type: "IHDR", data: Uint8Array.of(0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0) },
+  { type: "IDAT", data: new Uint8Array(0) },
+  { type: "IEND", data: new Uint8Array(0) },
+]);
+
+/**
+ * Why reading would refuse `record`, or undefined when it would not, for a
+ * writer to check what it is about to write. Reading its text back would cost a
+ * large base layer seconds of decoding, only to find the bytes it started with,
+ * so the text read here holds a small PNG in that one's place, and the real one
+ * gets the same checks as bytes, in slices. The text's length is the writer's
+ * to check, as the text here is not the whole of it.
+ */
+export async function recordProblem(
+  record: InkRecord,
+  options: Pausing = {},
+): Promise<string | undefined> {
+  const { base } = record;
+  const text = serializeRecord(
+    base === undefined
+      ? record
+      : { ...record, base: { ...base, png: standInPng } },
+  );
+  const check = parseRecord(text);
+  if (!check.ok) return check.detail;
+  if (base === undefined) return undefined;
+  return (
+    (await slicedBasePngProblem(base.png, options)) ??
+    baseImageProblem(base.png, options)
+  );
 }
 
 /** A stroke's `cut` field as written, start first, or nothing without cuts. */
