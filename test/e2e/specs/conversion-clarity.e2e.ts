@@ -46,7 +46,8 @@ function partialRuns(row: readonly number[]): number[] {
  * empty or full, which is every pixel no edge crosses. The two may differ only
  * at a pixel an edge crosses, as the format's Antialiasing section says, so
  * this allows no room in position: an edge that moves or spreads changes a
- * pixel beside it.
+ * pixel beside it by far more than the one level the browser's scaling can
+ * round a full pixel by, which CI's Chromium 150 does.
  */
 function inkChanged(
   shown: readonly number[],
@@ -55,7 +56,8 @@ function inkChanged(
   return row.flatMap((saved, x) => {
     const value = shown[x] ?? 0;
     const crossed = saved > 0 && saved < 255;
-    return crossed || value === saved ? [] : [{ x, shown: value, saved }];
+    const same = Math.abs(value - saved) <= 1;
+    return crossed || same ? [] : [{ x, shown: value, saved }];
   });
 }
 
