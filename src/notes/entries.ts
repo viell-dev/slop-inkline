@@ -3,6 +3,7 @@
 // is. editSymbol in symbols.ts opens it.
 
 import {
+  Component,
   Menu,
   parseLinktext,
   type App,
@@ -139,6 +140,35 @@ function leafOf(app: App, element: Element): WorkspaceLeaf | undefined {
     }
   });
   return found;
+}
+
+/**
+ * Keeps a menu that has been chosen from off the keyboard, as a child of it.
+ *
+ * Obsidian shows a menu at once, but the menu takes the keyboard only when it
+ * loads, in a timer that hiding it doesn't cancel. When that timer runs after
+ * an item is chosen, the menu takes the keyboard from whatever the item opened
+ * though nothing shows it, and the editor's shortcuts stop working: the next
+ * Escape only unloads the menu, and goes on to Obsidian's own Escape handling,
+ * which sends the focus to the note and so back to the name field.
+ *
+ * A menu's children load straight after it, so this one undoes that load
+ * before any key can reach the menu, whenever the timer runs. A menu that
+ * loads before the choice has nothing to undo: hiding it unloads it. See #78.
+ */
+export class MenuChoice extends Component {
+  /** Whether an item of the menu was chosen. */
+  chosen = false;
+  readonly #menu: Menu;
+
+  constructor(menu: Menu) {
+    super();
+    this.#menu = menu;
+  }
+
+  override onload(): void {
+    if (this.chosen) this.#menu.unload();
+  }
 }
 
 /**

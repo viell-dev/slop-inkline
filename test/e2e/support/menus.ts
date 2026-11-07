@@ -27,6 +27,69 @@ export async function choose(title: string): Promise<void> {
   if (!chosen) throw new Error(`no menu item "${title}"`);
 }
 
+/**
+ * Holds back the load of the next menu to show, and returns what lets it run,
+ * which answers how many it held. A menu takes the keyboard only as it loads,
+ * in a timer of its own, which can run after it has been chosen from.
+ */
+export async function holdMenuLoad(): Promise<() => Promise<number>> {
+  await browser.executeObsidian(({ obsidian }) => {
+    const menu = obsidian.Menu.prototype;
+    const load: unknown = Reflect.get(menu, "load");
+    if (typeof load !== "function") throw new Error("a menu has no load");
+    const held: (() => void)[] = [];
+    Reflect.set(window, "inklineHeldLoads", { load, held });
+    Reflect.set(menu, "load", function (this: unknown): void {
+      held.push(() => {
+        Reflect.apply(load, this, []);
+      });
+    });
+  });
+  return () =>
+    browser.executeObsidian(({ obsidian }) => {
+      const { load, held } = Reflect.get(window, "inklineHeldLoads") as {
+        load: unknown;
+        held: (() => void)[];
+      };
+      Reflect.set(obsidian.Menu.prototype, "load", load);
+      for (const run of held) run();
+      return held.length;
+    });
+}
+
+/**
+ * Has the next menu to show choose its item `title` itself, the moment the
+ * menu is there, which is before Obsidian's timer can load it.
+ */
+export async function chooseOnShowing(title: string): Promise<void> {
+  await browser.execute((wanted) => {
+    const watcher = new MutationObserver(() => {
+      const item = Array.from(
+        document.querySelectorAll(".menu .menu-item-title"),
+      ).find((found) => found.textContent === wanted);
+      const button = item?.closest(".menu-item");
+      if (!button?.instanceOf(HTMLElement)) return;
+      watcher.disconnect();
+      button.click();
+    });
+    watcher.observe(document.body, { childList: true });
+  }, title);
+}
+
+/**
+ * Waits for the open menu to take the keyboard. Timers of the same length run
+ * in order, so this one comes after the one that loads the menu; until then
+ * Escape does nothing to the menu.
+ */
+export async function menuLoaded(): Promise<void> {
+  await browser.execute(
+    () =>
+      new Promise<void>((resolve) => {
+        window.setTimeout(resolve, 0);
+      }),
+  );
+}
+
 /** The name of the symbol the open editor edits, from its title. */
 export async function editorName(): Promise<string> {
   await waitForEditor();
@@ -40,8 +103,8 @@ export async function editorName(): Promise<string> {
 /**
  * Where the focus is, what menus and modals are open, and where the last
  * Escape key went and whether anything handled it, as JSON. Watching for
- * Escape starts with the first call. #78 asks for this if the editor ever
- * stays open after Escape again.
+ * Escape starts with the first call. This is what found the cause of #78,
+ * and it says where to look if the editor ever stays open after Escape again.
  */
 export async function escapeState(): Promise<string> {
   return browser.execute(() => {

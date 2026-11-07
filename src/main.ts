@@ -4,6 +4,7 @@ import type { InkEditorModal } from "./editor/modal.ts";
 import { isInkPath } from "./format/ink-file.ts";
 import { libraryViewType, SymbolLibraryView } from "./library/view.ts";
 import {
+  MenuChoice,
   showSymbolMenu,
   symbolAt,
   symbolInBlock,
@@ -196,11 +197,13 @@ export default class InklinePlugin extends Plugin {
   /** Puts Edit symbol for `file` in `menu`. */
   #addEditItem(menu: Menu, file: TFile): void {
     this.#menusWithEdit.add(menu);
+    const choice = menu.addChild(new MenuChoice(menu));
     menu.addItem((item) =>
       item
         .setTitle("Edit symbol")
         .setIcon("pencil")
         .onClick(() => {
+          choice.chosen = true;
           void this.editSymbol(file);
         }),
     );
