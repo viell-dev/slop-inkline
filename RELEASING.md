@@ -110,7 +110,7 @@ as [#101](https://github.com/viell-dev/slop-inkline/issues/101) decided.
   trigger.
 - Reuse and manage symbols: the library, renaming, finding uses, Copy from,
   editing one that is used in several places, and readings and translations,
-  filled in from the editor and the library, which find a symbol in the lists.
+  filled in from the editor or the library, by which the lists find a symbol.
 - Show symbols in text in every view, in both themes, in print and in PDF.
 - Recover unsaved work from drafts.
 
@@ -144,11 +144,12 @@ libraries.
 **Version:** the first public release is `1.0.0`, and it is the first in
 Obsidian's directory, as the owner decided in
 [#141](https://github.com/viell-dev/slop-inkline/issues/141) on 2026-11-05. The
-builds before it are `0.9.0`, the first beta, and so on.
+builds before it are pre-releases: `0.9.0` is the first beta, and `0.9.2` the
+first rc.
 
 ### Why 0.9.2 is an rc
 
-`0.9.2` is the first rc, as it meets each of the conditions above:
+It meets each of the conditions above:
 
 - **The owner's report on the beta is handled.** Their report on `0.9.1`, in
   [#150](https://github.com/viell-dev/slop-inkline/issues/150), made four
