@@ -66,9 +66,12 @@ the unsaved drawing?**, with the time the draft was kept:
 - **Not now** keeps it, to be offered next time.
 
 If the symbol was saved again since the draft was kept, the question says that
-its strokes may not line up. A draft not restored within 30 days is dropped. If
-the local storage refuses a draft, as when it is full, a notice says so, and the
-last draft kept stays; save the symbol to keep the changes.
+its strokes may not line up. **Unreleased:** a change to its readings or
+translations alone leaves the strokes where they were, so the question says
+nothing of them; if the draft holds text you typed, it says to look that over
+before saving. A draft not restored within 30 days is dropped. If the local
+storage refuses a draft, as when it is full, a notice says so, and the last
+draft kept stays; save the symbol to keep the changes.
 
 A new symbol's first save that was cut short, or whose embed could not be
 inserted, is finished when you restore its draft: with the file it had made, if
@@ -89,9 +92,18 @@ elsewhere, by sync, another app, or another editor, is not lost to a save:
   **Unreleased:** that includes a save from the library, which waits for one
   from the editor, and the other way round. The last moment before a write is
   [a known limit](./limits.md#a-file-written-at-the-moment-inkline-saves).
-- **Unreleased:** a reading or translation changed elsewhere shows in the field,
-  unless you have typed in that field, which you keep. Typing counts as unsaved,
-  so the question comes up if the file changed the same field: **Keep mine**
+- **Unreleased:** a change to a symbol's readings or translations alone, as from
+  the library or by sync, changes nothing about the drawing, so the editor asks
+  nothing and takes it in: your strokes, unsaved or not, and Undo stay as they
+  are, and the fields follow the file. This holds for a save too, which goes on
+  with the new text.
+- **Unreleased:** a field you have typed in keeps what you typed, as nothing
+  could bring that back. If the file changed that field too, the fields open and
+  say what saving replaces, and the file keeps its value until you save. A save
+  that finds such a change only as it starts writes nothing, so that you see
+  what it would replace; save again to replace it.
+- **Unreleased:** when the drawing changed too, the question comes up as above,
+  and it mentions a field you typed in that the file changed: **Keep mine**
   keeps what you typed, and **Reload** takes the file's. A field you typed in
   that the file left alone stays as you typed it either way.
 - A symbol whose file was deleted while it was open is saved again where it was,

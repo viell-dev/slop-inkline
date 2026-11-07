@@ -23,6 +23,7 @@ import {
   readText,
   textKeywords,
   textProblem,
+  withoutText,
   writeText,
   type TextField,
 } from "../../../src/format/text.ts";
@@ -543,6 +544,74 @@ describe("writeText", () => {
       translation: ["rice field", "田"],
     });
     expect(await readInkFile(changed)).toEqual(source);
+  });
+});
+
+describe("withoutText", () => {
+  it("gives a file with no text back as it is", () => {
+    expect(withoutText(plain)).toBe(plain);
+  });
+
+  it("gives the same bytes whatever the two fields say", async () => {
+    const read = await writeText(plain, "reading", ["TA"]);
+    const both = await writeText(read, "translation", ["field", "plot"]);
+    const other = await writeText(both, "reading", ["KA", "GA"]);
+    const cleared = await writeText(other, "translation", []);
+    for (const file of [read, both, other, cleared]) {
+      expect(withoutText(file)).toEqual(plain);
+    }
+  });
+
+  it("leaves out a chunk of a field wherever it lies, usable or not", () => {
+    const unusable: Chunk = {
+      type: "tEXt",
+      data: new TextEncoder().encode(`${textKeywords.reading}\0\ufeffx`),
+    };
+    const file = withChunks(plain, [readings("TA")], [unusable]);
+    expect(withoutText(file)).toEqual(plain);
+    // Damaged, it is still that field's, which says nothing of the drawing.
+    expect(
+      withoutText(flipped(withChunks(plain, [readings("TA")]), "iTXt", 20)),
+    ).toEqual(plain);
+  });
+
+  it("keeps what follows the image's end", async () => {
+    const tail = Uint8Array.of(1, 2, 3);
+    const end = new Uint8Array(plain.length + tail.length);
+    end.set(plain);
+    end.set(tail, plain.length);
+    const said = await writeText(end, "reading", ["TA"]);
+    expect(said.length).toBeGreaterThan(end.length);
+    expect(withoutText(said)).toEqual(end);
+  });
+
+  it("sees a change to anything but the two fields", () => {
+    const other = (keyword: string, value: string): Chunk => ({
+      type: "tEXt",
+      data: new TextEncoder().encode(`${keyword}\0${value}`),
+    });
+    const base = withChunks(plain, [readings("TA")]);
+    const same = withoutText(base);
+    for (const [what, file] of [
+      ["the record", flipped(base, recordChunkType, 20)],
+      ["the image data", flipped(base, "IDAT", 3)],
+      ["another program's text", withChunks(base, [other("Comment", "x")])],
+      [
+        "a keyword that only starts the same",
+        withChunks(base, [other(`${textKeywords.reading}s`, "x")]),
+      ],
+      [
+        "a keyword in another case",
+        withChunks(base, [other(textKeywords.reading.toUpperCase(), "x")]),
+      ],
+    ] as const) {
+      expect(withoutText(file), what).not.toEqual(same);
+    }
+  });
+
+  it("refuses bytes that are not a whole PNG", () => {
+    expect(() => withoutText(plain.subarray(0, 40))).toThrow(PngError);
+    expect(() => withoutText(new TextEncoder().encode("x"))).toThrow(PngError);
   });
 });
 

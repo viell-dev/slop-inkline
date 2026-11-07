@@ -37,6 +37,13 @@ restart Obsidian:
 [what you drew or typed](./limits.md#a-file-written-at-the-moment-inkline-saves)
 is kept in different ways in the editor and the library.
 
+**"Waiting for Obsidian to finish renaming a file."** **Unreleased:** a rename
+from the library has stopped for more than a few seconds, usually because a
+drive has stopped answering. It goes on by itself if Obsidian finishes, and
+**Cancel** or Esc close the row meanwhile. If nothing changes, copy the name you
+typed and restart Obsidian, then
+[check the notes that use the symbol](./limits.md#a-file-written-at-the-moment-inkline-saves).
+
 **"… is saved, but could not be renamed: …"** The drawing is saved under the old
 name, and the new name stays in the editor's name field, for the next save to
 try again. **Unreleased:** when the reason is that a note could not be saved

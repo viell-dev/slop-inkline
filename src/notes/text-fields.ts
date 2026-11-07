@@ -96,12 +96,15 @@ export function fieldLabel(field: TextField, count: number): string {
  * Shows a field's values in `parent` on a line of their own, each in its own
  * `bdi`, as a value can hold bidirectional controls, which must not reorder what
  * follows it. `found`, a value a search matched, comes first, and stands out.
+ * Only the first `limit` show, with how many more there are: a warning that a
+ * save replaces these values passes no limit, as what it hides would be lost.
  */
 export function showValues(
   parent: HTMLElement,
   field: TextField,
   values: readonly string[],
   found?: string,
+  limit = shownValues,
 ): void {
   const line = parent.createDiv({ cls: "inkline-values" });
   line.createSpan({
@@ -112,12 +115,12 @@ export function showValues(
     found === undefined
       ? values
       : [found, ...values.filter((value) => value !== found)];
-  ordered.slice(0, shownValues).forEach((value, index) => {
+  ordered.slice(0, limit).forEach((value, index) => {
     if (index > 0) line.appendText(", ");
     const shown = line.createEl("bdi", { text: value });
     if (value === found) shown.addClass("inkline-value-found");
   });
-  const more = ordered.length - shownValues;
+  const more = ordered.length - limit;
   if (more > 0) line.appendText(`, and ${String(more)} more`);
 }
 
@@ -129,6 +132,10 @@ export class TextFields {
   readonly #changed: () => void;
   readonly #areas = new Map<TextField, HTMLTextAreaElement>();
   readonly #errors = new Map<TextField, HTMLElement>();
+  /** Says what saving would replace, for the fields in {@link #replacing}. */
+  readonly #note: HTMLElement;
+  /** The fields typed in that the file changed under what was typed. */
+  readonly #replacing = new Set<TextField>();
   #given: SymbolText;
 
   constructor(parent: HTMLElement, given: SymbolText, changed: () => void) {
@@ -152,6 +159,7 @@ export class TextFields {
       area.value = fieldText(given[field]);
       area.addEventListener("input", () => {
         this.#check();
+        this.#showReplaced();
         this.#changed();
       });
       this.#areas.set(field, area);
@@ -166,6 +174,10 @@ export class TextFields {
     parent.createDiv({
       cls: "inkline-text-hint",
       text: "One per line, the main one first.",
+    });
+    this.#note = parent.createDiv({
+      cls: "inkline-text-note",
+      attr: { role: "status" },
     });
   }
 
@@ -252,8 +264,33 @@ export class TextFields {
   }
 
   /**
-   * Takes what the file now says, as {@link takeFile} does for each field, and
-   * returns the fields whose typed text would replace a change to the file.
+   * Says what saving would replace, for as long as a field holds text that
+   * would replace a change to the file: that is the only place the file's value
+   * can be seen, and a person who is told can keep it or their own.
+   */
+  #showReplaced(): void {
+    for (const field of this.#replacing) {
+      if (!isTouched(this.#given[field], this.#typed(field))) {
+        this.#replacing.delete(field);
+      }
+    }
+    this.#note.empty();
+    if (this.#replacing.size === 0) return;
+    this.#note.createDiv({
+      text: "The file changed meanwhile. Saving replaces what it now says:",
+    });
+    for (const field of this.#replacing) {
+      const now = this.#given[field];
+      if (now.length > 0) {
+        showValues(this.#note, field, now, undefined, now.length);
+      } else this.#note.createDiv({ text: `${fieldLabel(field, 2)}: none` });
+    }
+  }
+
+  /**
+   * Takes what the file now says, as {@link takeFile} does for each field, says
+   * what saving would replace, and returns the fields whose typed text would
+   * replace a change the file just made.
    */
   take(now: SymbolText): TextField[] {
     const conflicts: TextField[] = [];
@@ -266,10 +303,14 @@ export class TextFields {
         now[field],
       );
       area.value = typed;
-      if (conflict) conflicts.push(field);
+      if (conflict) {
+        conflicts.push(field);
+        this.#replacing.add(field);
+      }
     }
     this.#given = now;
     this.#check();
+    this.#showReplaced();
     return conflicts;
   }
 
@@ -288,6 +329,7 @@ export class TextFields {
       if (area !== undefined) area.value = fieldText(this.#given[field]);
     }
     this.#check();
+    this.#showReplaced();
   }
 
   /**
@@ -309,6 +351,9 @@ export class TextFields {
       }
     }
     this.#check();
+    // The save has replaced what it said it would.
+    this.#replacing.clear();
+    this.#showReplaced();
   }
 
   /** Lets the fields be typed in, or not. */

@@ -36,6 +36,13 @@ changes the file must keep. No existing file is affected.
 
 ### Fixed
 
+- A rename that Obsidian does not finish, as on a drive that stops answering, no
+  longer leaves the library's row stuck, or the editor at "Saving…", with
+  nothing said. After a few seconds with nothing happening they say so, and how
+  to get out, the row keeps the name to copy, and its **Cancel** and Esc work.
+  Obsidian's question about links, and the time it takes to update a much used
+  symbol's notes, don't count
+  ([#201](https://github.com/viell-dev/slop-inkline/issues/201)).
 - **Flat ends** only ever cuts along a row. An end running more along the row
   than across it is no longer cut along a column, which took a corner out of it,
   and stays round, so that a line drawn along the baseline stays whole
@@ -128,6 +135,13 @@ changes the file must keep. No existing file is affected.
 
 ### Changed
 
+- An editor open on a symbol tells a change to its readings or translations from
+  a change to its drawing. A change to the text alone, from the library or by
+  sync, asks nothing and takes the text in, with unsaved strokes and Undo left
+  alone, and a draft no longer warns that its strokes may not line up. Text you
+  typed in a field the file changed too stays, with a note of what saving
+  replaces, as in the library
+  ([#195](https://github.com/viell-dev/slop-inkline/issues/195)).
 - The file format is rewritten for the first public release, after a review of
   every rule in it, and [its specification](docs/file-format.md) now stands
   alone. **Symbols saved by earlier versions open as pictures, without their
