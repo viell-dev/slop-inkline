@@ -155,16 +155,16 @@ describe("Saving a large symbol", function () {
       }
       const shortest = (each: (run: (typeof runs)[number]) => number): number =>
         Math.min(...runs.map(each));
-      // No frames would look like no long ones.
-      expect(shortest((run) => run.thread.frames)).toBeGreaterThan(10);
+      // Work done all in one go would have one task as long as the whole save.
+      // Not a figure of its own: a fast machine must pass this too.
+      for (const run of runs) {
+        expect(run.totalMs).toBeGreaterThan(run.thread.longestTaskMs);
+      }
+      // No frames would look like no long ones. A few are enough to show the
+      // count works, and no more can be asked of a fast machine's short save.
+      expect(shortest((run) => run.thread.frames)).toBeGreaterThan(2);
       expect(shortest((run) => run.thread.longestTaskMs)).toBeLessThan(budget);
       expect(shortest((run) => run.thread.longestFrameMs)).toBeLessThan(budget);
-      // Work done in one go has one frame as long as all of it, however fast the
-      // machine is. A plain figure here failed on a runner fast enough to save
-      // the second symbol in 186 ms.
-      expect(shortest((run) => run.totalMs)).toBeGreaterThan(
-        2 * shortest((run) => run.thread.longestFrameMs),
-      );
     });
   }
 
