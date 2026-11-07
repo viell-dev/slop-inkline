@@ -280,6 +280,13 @@ must keep released files readable and looking the same, as
   ([catalog.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/library/catalog.test.ts)
   and
   [library.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library.e2e.ts)).
+- **Unreleased:** a click in the library lands when the list has something to
+  redraw between its press and its release: a new symbol, values the index read,
+  a row a filter found above the one pressed, Show more, and a form closing. The
+  redraw follows once the press ends, inside the list or out of it, in a popout
+  window too, and a press whose release never came stops holding it back at the
+  next move
+  ([library.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library.e2e.ts)).
 - **Unreleased:** a symbol's readings and translations: typed in the editor and
   saved with a new symbol, shown on opening again, kept through later saves and
   in a draft, and refused over the format's limit; changed from the library with
