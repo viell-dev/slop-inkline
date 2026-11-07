@@ -3071,7 +3071,7 @@ export class InkEditorModal extends Modal {
       this.#session.document !== drawn ||
       JSON.stringify(this.#textFields?.typed()) !== typed
     ) {
-      this.#askChanged(reading.fingerprint, opened);
+      this.#askChanged(reading, opened);
     } else {
       this.#reload(reading, opened);
     }
