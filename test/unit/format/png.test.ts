@@ -461,25 +461,44 @@ describe("encodeRgba", () => {
       seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
       return seed >>> 24;
     });
-    const stretches: number[] = [];
-    let last = performance.now();
-    const bytes = await encodeRgba(width, height, data, {
-      // A task of its own, as a frame or input would need.
-      pause: async () => {
-        stretches.push(performance.now() - last);
-        await new Promise((resolve) => setImmediate(resolve));
-        last = performance.now();
-      },
-    });
-    // From the last pause to the end, too.
-    stretches.push(performance.now() - last);
-    expect(stretches.length).toBeGreaterThan(1);
+    /** The stretches between one encoding's pauses, and what it made. */
+    const encoded = async (): Promise<{
+      stretches: number[];
+      bytes: Uint8Array;
+    }> => {
+      const stretches: number[] = [];
+      let last = performance.now();
+      const bytes = await encodeRgba(width, height, data, {
+        // A task of its own, as a frame or input would need.
+        pause: async () => {
+          stretches.push(performance.now() - last);
+          await new Promise((resolve) => setImmediate(resolve));
+          last = performance.now();
+        },
+      });
+      // From the last pause to the end, too.
+      stretches.push(performance.now() - last);
+      return { stretches, bytes };
+    };
     // A slice is 12 ms and a batch more; a frozen encoder would take all of it.
-    // The message holds what #124 asks for, should this ever fail again.
+    // The fastest of three, as other work on the machine lengthens every
+    // stretch of a run, by up to ten times (#124), while a piece of work with
+    // no pause in it is long in every run. Each run's stretches are in the
+    // message, should all three fail.
+    const runs: number[][] = [];
+    let bytes: Uint8Array = new Uint8Array();
+    for (let run = 0; run < 3; run++) {
+      const result = await encoded();
+      runs.push(result.stretches);
+      ({ bytes } = result);
+      if (Math.max(...result.stretches) < 100) break;
+    }
+    const longest = Math.min(...runs.map((run) => Math.max(...run)));
     expect(
-      Math.max(...stretches),
-      `stretches ${stretches.map((ms) => ms.toFixed(1)).join(", ")} ms, load ${loadavg().join(", ")}`,
+      longest,
+      `stretches ${runs.map((run) => run.map((ms) => ms.toFixed(1)).join(", ")).join(" | ")} ms, load ${loadavg().join(", ")}`,
     ).toBeLessThan(100);
+    expect(runs.every((run) => run.length > 1)).toBe(true);
     // The image data spans chunks of at most 64 KiB, each checksummed.
     const chunks = readChunks(bytes);
     const parts = chunks.filter((chunk) => chunk.type === "IDAT");
@@ -487,6 +506,7 @@ describe("encodeRgba", () => {
     expect(parts.every((chunk) => chunk.data.length <= 64 * 1024)).toBe(true);
     expect(imageData(chunks).length).toBe((width * 4 + 1) * height);
   });
+
   it("refuses pixels that do not match the size", async () => {
     await expect(encodeRgba(2, 2, new Uint8Array(15))).rejects.toThrow(
       "pixel data does not match the size",
