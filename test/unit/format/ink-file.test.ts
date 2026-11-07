@@ -664,6 +664,16 @@ describe("readInkFile reports a record that cannot be used", () => {
     );
   });
 
+  it("with an ill-formed sequence a lenient decoder would replace", async () => {
+    // A field it does not know, so that the replacement would read as a record.
+    const text = serializeRecord(record).replace("{", '{"note":"?",');
+    const sound = await readInkFile(withChunks([textChunk(text)]));
+    expect(sound.kind).toBe("record");
+    const bytes = new TextEncoder().encode(text);
+    bytes[bytes.indexOf(0x3f)] = 0xe9;
+    await damagedBecause(withChunks([recordChunk(1, deflateSync(bytes))]));
+  });
+
   it("that is not JSON", async () => {
     expect(await damagedBecause(withChunks([textChunk("{")]))).toBe("not JSON");
   });

@@ -35,11 +35,14 @@ screenshots use synthetic vaults and drawings only.
     files written by earlier pre-releases need not keep opening. Such a change
     updates the pinned files it affects in the same pull request, and says in
     the changelog which files stop opening or look different. It is still
-    reviewed as below.
+    reviewed as below. The format's document stays at revision 1, and a change
+    to its normative text updates the date under its title.
   - From the first stable release, the pinned files are never changed: users'
     files must keep opening and looking the same, so a new case gets a new
     pinned file, and a change to how a record draws is a new format version, as
-    [the format's versions](docs/file-format.md#versions) say.
+    [the format's versions](docs/file-format.md#versions) say. A change to that
+    document's normative text makes a new revision, with its number and date
+    under the title.
   - `src/ink/freehand.ts` is part of the format, adapted from perfect-freehand
     so that no package update can change it. Keep it and the steps in the
     format's document saying the same thing.

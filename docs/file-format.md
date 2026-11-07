@@ -1,5 +1,7 @@
 # Inkline file format, version 1
 
+Revision 1, 7 November 2026
+
 An Inkline symbol is a PNG file. Its pixels show the symbol, so a program that
 shows PNG images shows it. One chunk inside the PNG holds the strokes the symbol
 was drawn with, so that it can be edited again without loss, and text chunks can
@@ -25,9 +27,12 @@ The words "must", "must not", "should", and "may" are used as in
 [Reading a file](#reading-a-file) describes; a reader that refuses a record has
 not failed, and the file may still be shown.
 
-Everything here is normative, except the sections marked informative. PNG means
-the third edition of the [PNG specification](https://www.w3.org/TR/png-3/), the
-W3C Recommendation of 24 June 2025.
+Everything here is normative, except the sections marked informative. Any change
+to the normative text makes a new revision of this document, numbered under its
+title; a revision is not a [version](#versions) of the format. PNG means the
+third edition of the
+[PNG specification](https://www.w3.org/TR/2025/REC-png-3-20250624/), the W3C
+Recommendation of 24 June 2025.
 
 ## The file
 
@@ -125,6 +130,11 @@ The record text is a JSON text as defined by
 which apply to all of it, including fields a reader does not know:
 
 - It is a single object, with no byte order mark.
+- It is well-formed UTF-8, as [RFC 3629](https://www.rfc-editor.org/rfc/rfc3629)
+  defines it, and is taken as it stands. Many decoders replace an ill-formed
+  sequence and drop a byte order mark, and RFC 8259 lets a parser ignore the
+  mark, which a reader must not do here, so that every reader finds the same
+  text or none.
 - No object holds two members of the same name, compared after decoding their
   escapes.
 - No string holds half of a surrogate pair, as an escape such as `\ud83d` can
@@ -242,10 +252,11 @@ counts.
    is sampled by bilinear interpolation or a smoother method. In each direction,
    across or down, in which it is drawn smaller than its image, each pixel must
    take in all the source pixels it covers, as area averaging does.
-2. Each stroke in order: a pen stroke over what is there, and an eraser stroke
-   removing what is there by its own alpha (the compositing operations
-   `source-over` and `destination-out`). A stroke's shape counts once, however
-   often it crosses a pixel.
+2. Each stroke in order. With `a` the alpha a pixel holds and `c` how much of it
+   the stroke's shape covers, each from 0 to 1, a pen stroke leaves
+   `a + c × (1 - a)` and an eraser stroke `a × (1 - c)`, the operations a canvas
+   calls `source-over` and `destination-out`. A stroke's shape counts once,
+   however often it crosses a pixel.
 
 ### Smooth strokes
 
@@ -444,16 +455,16 @@ A reader takes these steps in order, on any PNG it is given:
    nothing is read from it. An ancillary chunk a reader does not know is not a
    failure, whatever its letters, and bytes after `IEND` are ignored.
 2. **Find the record.** With no `inKL` chunk, the PNG has no record: its image
-   is all there is.
+   is all there is to draw.
 3. **Read the version.** If any `inKL` chunk whose CRC is correct has at least
    four bytes and a version higher than the reader knows, the file is **from a
    later version**. This comes before any other check, and before any limit is
    applied to the rest of the chunk.
 4. **Read the record.** It is **unusable** if the PNG has more than one `inKL`
    chunk, if the chunk has a bad CRC, holds fewer than four bytes, or has
-   version 0, if the image is not 192 pixels high and at most 4096 wide, if the
-   text does not decompress, does not end where the chunk ends, is longer than
-   its limit, or is not UTF-8, or if it breaks
+   version 0, if the image is not 192 pixels high or is more than 4096 wide, if
+   the text does not decompress, does not end where the chunk ends, is longer
+   than its limit, or is not UTF-8, or if it breaks
    [The record text](#the-record-text), which includes a base layer's image
    data.
 
@@ -604,9 +615,9 @@ any version can recognise a file of any other:
 
 - A file is a PNG whose name ends in `.ink.png`, comparing ASCII letters without
   regard to case, and whose image shows the symbol.
-- Its image is shown in text as [Geometry](#geometry) says, 1.5 em tall with the
-  text's baseline 0.375 em above its bottom, whatever its size in pixels, as a
-  program that only shows it reads no version.
+- Its image is shown in text 1.5 em tall, with the text's baseline 0.375 em
+  above its bottom, whatever its size in pixels, and a program that reads no
+  version gives it its own width at that scale.
 - Its record is in the `inKL` chunk, marked unsafe to copy.
 - The first four bytes of that chunk's data are its version, a big-endian
   unsigned integer from 1, that no two versions share.
