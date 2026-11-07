@@ -1,8 +1,14 @@
 // The symbol library's contents: every symbol in the vault, with the notes
-// that use it, in order, and filtered by name and folder. The view in
-// view.ts shows them.
+// that use it, in order, and filtered by name, reading, translation, and
+// folder. The view in view.ts shows them.
 
-import { holdsTyped } from "../notes/search.ts";
+import {
+  findText,
+  holdsTyped,
+  textQuery,
+  type FoundText,
+  type SearchableText,
+} from "../notes/search.ts";
 
 /** A symbol file as the catalog reads it. */
 export interface SymbolFile {
@@ -11,12 +17,16 @@ export interface SymbolFile {
   readonly name: string;
   /** Its folder's path, `""` for the vault's top folder. */
   readonly folder: string;
+  /** What it says about itself, once that has been read. */
+  readonly text?: SearchableText;
 }
 
 /** A symbol in the library, with the notes that use it. */
 export interface CatalogEntry extends SymbolFile {
   /** The paths of the notes that link to it, in order. */
   readonly notes: readonly string[];
+  /** The value the filter found it by, where its name did not match. */
+  readonly found?: FoundText;
 }
 
 /** Names and paths in the order a reader expects: numbers by value. */
@@ -68,8 +78,9 @@ export function foldersOf(entries: readonly CatalogEntry[]): string[] {
 }
 
 /**
- * The entries whose names hold `query`, in any letter case, in `folder`,
- * or in any folder when it is undefined; all of them for an empty query.
+ * The entries whose names hold `query`, in any letter case, or whose readings
+ * or translations do, with the value that did, in `folder`, or in any folder
+ * when it is undefined; all of them for an empty query.
  */
 export function filterCatalog(
   entries: readonly CatalogEntry[],
@@ -77,9 +88,16 @@ export function filterCatalog(
   folder: string | undefined,
 ): CatalogEntry[] {
   const typed = query.normalize("NFC").trim();
-  return entries.filter(
-    (entry) =>
-      (folder === undefined || entry.folder === folder) &&
-      (typed === "" || holdsTyped(entry.name.normalize("NFC"), typed)),
-  );
+  const wanted = textQuery(typed);
+  return entries.flatMap((entry) => {
+    if (folder !== undefined && entry.folder !== folder) return [];
+    if (typed === "" || holdsTyped(entry.name.normalize("NFC"), typed)) {
+      return [entry];
+    }
+    const found =
+      wanted === undefined || entry.text === undefined
+        ? undefined
+        : findText(entry.text, wanted);
+    return found === undefined ? [] : [{ ...entry, found }];
+  });
 }

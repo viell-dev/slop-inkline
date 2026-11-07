@@ -11,8 +11,28 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 The file format now defines where a symbol's readings and translations go: PNG
 text chunks, apart from its strokes and its file's name, which a program that
-changes the file must keep. Inkline writes and shows none of them yet, and no
-existing file is affected.
+changes the file must keep. No existing file is affected.
+
+### Added
+
+- A symbol can record readings and translations, apart from its file's name, one
+  to a line, so that correcting a guess changes no note and needs no rename.
+  Fill them in beside the name in the editor, or in the library, beside
+  **Rename**, where saving changes the file's text and nothing else, in a file
+  the editor won't open too. A row shows what a symbol holds
+  ([#187](https://github.com/viell-dev/slop-inkline/issues/187)).
+- The `;;` list, **Inkline: Insert existing symbol**, **Copy from**, and the
+  library's filter find a symbol by a reading or translation as well as by name,
+  and a row found that way shows why. Accents need no typing, but a mark that
+  makes another sound counts: `sa` finds `šá`, and `は` does not find `ば`. They
+  read the vault's symbols in the background, without slowing typing, what just
+  changed first, and say so while they may be missing some
+  ([#189](https://github.com/viell-dev/slop-inkline/issues/189)).
+- A save that Obsidian does not finish, as on a drive that stops answering, says
+  so after a few seconds, in the editor and the library, with how to get your
+  work back. Saving goes on by itself if Obsidian finishes, and the library's
+  fields can be closed meanwhile
+  ([#198](https://github.com/viell-dev/slop-inkline/pull/198)).
 
 ### Fixed
 
@@ -45,6 +65,10 @@ existing file is affected.
   changed if one cannot be saved. Text that reaches a note during the question,
   from another window or a plugin, stays exposed, as with any file in Obsidian
   ([#182](https://github.com/viell-dev/slop-inkline/issues/182)).
+- The symbol library draws 100 symbols at a time, with **Show more** for the
+  next 100, so that typing in its filter stays quick in a vault of thousands of
+  them, where each key took seconds
+  ([#189](https://github.com/viell-dev/slop-inkline/issues/189)).
 - A long name no longer runs off the symbol library and gives it a horizontal
   scroll bar. It wraps onto a second line and then shortens, as a long folder
   shortens, and a tooltip on the row has the whole of both. A long note name

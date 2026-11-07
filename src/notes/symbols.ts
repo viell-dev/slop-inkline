@@ -14,6 +14,8 @@ import {
   type TAbstractFile,
 } from "obsidian";
 import { inkExtension, isInkPath } from "../format/ink-file.ts";
+import { readChunks } from "../format/png.ts";
+import { readText, type SymbolText } from "../format/text.ts";
 import { openInk, openPicture } from "../ink/canvas.ts";
 import { emptyDocument } from "../ink/document.ts";
 import {
@@ -40,6 +42,16 @@ import {
   type InsertionPoint,
 } from "./insertion.ts";
 import { embedFor } from "./embeds.ts";
+import {
+  changedText,
+  changeFile,
+  saveFile,
+  stoppable,
+  unreadableText,
+  watchSave,
+  WriteQueue,
+  type SaveWait,
+} from "./file-writes.ts";
 import { insertionAt } from "./links.ts";
 import { shownGuides, type Settings } from "../settings.ts";
 import {
@@ -48,7 +60,14 @@ import {
   symbolStem,
   type NameChoice,
 } from "./names.ts";
-import { renderSymbol, SymbolSearch } from "./suggest.ts";
+import {
+  matchSymbols,
+  renderSymbol,
+  SymbolSearch,
+  type SymbolMatch,
+  type SymbolTexts,
+} from "./suggest.ts";
+import { isBlank, type TextChanges } from "./text-fields.ts";
 
 /**
  * How long, in milliseconds, to go on looking at an editor that a rename left
@@ -60,6 +79,14 @@ const settleLimit = 5000;
 /** How often, in milliseconds, to look. */
 const settleCheck = 20;
 
+/**
+ * Every write over a symbol's file, from the library and the editor alike, so
+ * that one's read, check, and write cannot fall between another's, whatever
+ * happens to the file meanwhile. A file a first save makes has nothing to go
+ * between: it was not there to read.
+ */
+const writes = new WriteQueue();
+
 /** What the plugin lends the editors it opens. */
 export interface EditorHost {
   readonly app: App;
@@ -69,6 +96,8 @@ export interface EditorHost {
   readonly lifecycle: NonNullable<EditorOptions["lifecycle"]>;
   /** The vault's drafts. */
   readonly drafts: DraftStore;
+  /** What the vault's symbols say about themselves, as far as it is read. */
+  readonly texts: SymbolTexts;
   /** Whether the plugin is still loaded; nothing is written once it is not. */
   readonly alive: () => boolean;
 }
@@ -527,6 +556,63 @@ export async function renameSymbol(
   if (path !== undefined) await renameSaved(app, file, path);
 }
 
+/** Throws unless `file` is still the vault's symbol at its path. */
+function stillSymbol(app: App, file: TFile): void {
+  if (!present(app, file) || !isInkPath(file.path)) {
+    throw new Error("The symbol is no longer in the vault.");
+  }
+}
+
+/**
+ * What `file` says about its symbol now, read from the file, whatever its
+ * record. Throws with a reason to show if it cannot say anything.
+ */
+export async function readSymbolText(
+  app: App,
+  file: TFile,
+): Promise<SymbolText> {
+  stillSymbol(app, file);
+  const bytes = new Uint8Array(await app.vault.readBinary(file));
+  try {
+    return await readText(readChunks(bytes));
+  } catch (error) {
+    throw unreadableText(error);
+  }
+}
+
+/** A save of a symbol's text under way. */
+export interface TextSave {
+  readonly done: Promise<void>;
+  /** Stops it; returns false if its write has gone to the vault. */
+  readonly stop: () => boolean;
+}
+
+/**
+ * Changes a symbol's readings and translations and nothing else: its file's
+ * text chunks, as {@link changedText} says, with every other byte as it was. No
+ * note changes, as its name stays. A field changed since `seen`, by another
+ * save or anything else, rejects with `TextMoved`, with nothing written; one
+ * that this save leaves alone keeps what the other save gave it.
+ */
+export function writeSymbolText(
+  app: App,
+  file: TFile,
+  changes: TextChanges,
+  seen: SymbolText,
+): TextSave {
+  const { access, stop } = stoppable<TFile>({
+    check: (symbol) => {
+      stillSymbol(app, symbol);
+    },
+    read: async (symbol) => new Uint8Array(await app.vault.readBinary(symbol)),
+    write: (symbol, bytes) => app.vault.modifyBinary(symbol, bytes),
+  });
+  const done = writes.run(() =>
+    changeFile(access, file, (bytes) => changedText(bytes, changes, seen)),
+  );
+  return { done, stop };
+}
+
 /**
  * Gives `file` the path `renamedPath` found, through Obsidian, so that the
  * links to it follow as its settings say; returns whether it succeeded or
@@ -552,24 +638,45 @@ async function rename(
 }
 
 /**
- * Writes a symbol's bytes to its file, or, once that was deleted, to a new
- * file at its path, with the folders it needs; returns the file written.
+ * Writes a symbol's bytes to its file, wherever a rename took it, or, once that
+ * was deleted, to what is at its path, or a new file there, with the folders it
+ * needs; returns the file written, which a search finds by what it now says at
+ * once, ahead of whatever else is waiting to be read. `check` goes first, in the
+ * write's turn, so that no other save of Inkline's can come between it and the
+ * write, and rejects to write nothing. `waiting` hears if that takes too long.
  */
 async function writeSymbol(
-  app: App,
+  host: EditorHost,
   file: TFile,
   bytes: Uint8Array,
+  check: () => Promise<void>,
+  waiting: SaveWait,
 ): Promise<TFile> {
-  const now = present(app, file) ? file : app.vault.getFileByPath(file.path);
-  if (now !== null) {
-    await app.vault.modifyBinary(now, toBuffer(bytes));
-    return now;
-  }
-  const folder = parentPath(file.path);
-  if (folder !== "" && app.vault.getAbstractFileByPath(folder) === null) {
-    await app.vault.createFolder(folder);
-  }
-  return app.vault.createBinary(file.path, toBuffer(bytes));
+  const { app } = host;
+  const buffer = toBuffer(bytes);
+  const write = async (): Promise<TFile> => {
+    const written = await writes.run(() =>
+      saveFile({
+        current: () =>
+          present(app, file) ? file : app.vault.getFileByPath(file.path),
+        check,
+        write: (now) => app.vault.modifyBinary(now, buffer),
+        create: async () => {
+          const folder = parentPath(file.path);
+          if (
+            folder !== "" &&
+            app.vault.getAbstractFileByPath(folder) === null
+          ) {
+            await app.vault.createFolder(folder);
+          }
+          return app.vault.createBinary(file.path, buffer);
+        },
+      }),
+    );
+    await host.texts.refresh(written);
+    return written;
+  };
+  return watchSave(write(), waiting);
 }
 
 /**
@@ -667,10 +774,14 @@ function targetOf(view: MarkdownView): Target | undefined {
  * `view` shows, as a new symbol's embed goes in: at its cursor now, found
  * again once the choice is made, since the note can change meanwhile.
  */
-export function insertExistingSymbol(app: App, view: MarkdownView): void {
+export function insertExistingSymbol(
+  app: App,
+  texts: SymbolTexts,
+  view: MarkdownView,
+): void {
   const target = targetOf(view);
   if (target === undefined) return;
-  new SymbolSearch(app, target.file.path, (embed) => {
+  new SymbolSearch(app, texts, target.file.path, (embed) => {
     insertEmbed(app, target, embed)
       .then(() => {
         returnFocus(app, target);
@@ -760,6 +871,8 @@ function newSymbol(
     guideLines: () => shownGuides(host.settings()),
     gridCells: () => host.settings().gridCells,
     buttonLabels: host.settings().buttonLabels,
+    // A new symbol starts with no text, even after Next, as what someone takes
+    // one symbol to be says nothing of the next.
     next: (chosen) => {
       if (after === undefined || !host.alive()) {
         // No editor takes the picture over.
@@ -822,7 +935,7 @@ function newSymbol(
     // refuses it, the write goes ahead: the file then holds the drawing.
     // The editor learns what the file holds as soon as it is adopted or
     // written, so that a later failure leaves it still compared.
-    write: async (bytes, _record, keepDraft, holds, typed) => {
+    write: async (bytes, _record, keepDraft, holds, typed, check, waiting) => {
       stillAlive(host);
       // Checked before anything is written, so that a refused name leaves
       // the vault as it was.
@@ -854,9 +967,13 @@ function newSymbol(
         stillAlive(host);
         claim = { path, fingerprint };
         keepDraft();
-        const file = await app.vault.createBinary(path, toBuffer(bytes));
+        const file = await watchSave(
+          app.vault.createBinary(path, toBuffer(bytes)),
+          waiting,
+        );
         made = { file, fingerprint, previous: undefined };
         holds(fingerprint);
+        await host.texts.refresh(file);
       } else {
         // A draft kept meanwhile names both, since the file holds either.
         const before = made.fingerprint;
@@ -864,7 +981,7 @@ function newSymbol(
         made.previous = before;
         if (!inserted) keepDraft();
         try {
-          made.file = await writeSymbol(app, made.file, bytes);
+          made.file = await writeSymbol(host, made.file, bytes, check, waiting);
           holds(fingerprint);
         } catch (error) {
           made.fingerprint = before;
@@ -898,7 +1015,7 @@ function newSymbol(
         : undefined;
       if (existing === undefined) {
         stillAlive(host);
-        after = await insertEmbed(app, target, embed);
+        after = await watchSave(insertEmbed(app, target, embed), waiting);
       } else {
         after = existing;
       }
@@ -912,21 +1029,47 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** Asks which of the vault's symbols to start from, by its path. */
+/**
+ * Asks which of the vault's symbols to start from, by its path, or by what one
+ * says about itself.
+ */
 class SymbolChoice extends FuzzySuggestModal<TFile> {
   readonly #symbols: readonly TFile[];
+  readonly #texts: SymbolTexts;
   readonly #chosen: (file: TFile | undefined) => void;
+  /** The values that the list now showing found its symbols by. */
+  #found = new Map<TFile, SymbolMatch>();
   #done = false;
 
   constructor(
     app: App,
     symbols: readonly TFile[],
+    texts: SymbolTexts,
     chosen: (file: TFile | undefined) => void,
   ) {
     super(app);
     this.#symbols = symbols;
+    this.#texts = texts;
     this.#chosen = chosen;
     this.setPlaceholder("Start from which symbol?");
+  }
+
+  override getSuggestions(query: string): FuzzyMatch<TFile>[] {
+    const byPath = super.getSuggestions(query);
+    const found = matchSymbols(this.app, this.#texts, query, "").filter(
+      (match) => match.found !== undefined,
+    );
+    this.#found = new Map(found.map((match) => [match.file, match]));
+    const listed = new Set(byPath.map(({ item }) => item));
+    return [
+      ...byPath,
+      ...found
+        .filter(({ file }) => !listed.has(file))
+        .map(({ file, score }) => ({
+          item: file,
+          match: { score, matches: [] },
+        })),
+    ].sort((a, b) => b.match.score - a.match.score);
   }
 
   override getItems(): TFile[] {
@@ -938,7 +1081,7 @@ class SymbolChoice extends FuzzySuggestModal<TFile> {
   }
 
   override renderSuggestion(match: FuzzyMatch<TFile>, el: HTMLElement): void {
-    renderSymbol(this.app, match.item, el);
+    renderSymbol(this.app, match.item, el, this.#found.get(match.item)?.found);
   }
 
   override onChooseItem(file: TFile): void {
@@ -977,7 +1120,7 @@ async function copySymbol(
   const ended = (): boolean => closed.aborted;
   if (ended()) return undefined;
   const file = await new Promise<TFile | undefined>((resolve) => {
-    const choice = new SymbolChoice(app, symbols, resolve);
+    const choice = new SymbolChoice(app, symbols, host.texts, resolve);
     closed.addEventListener(
       "abort",
       () => {
@@ -989,11 +1132,13 @@ async function copySymbol(
   });
   if (file === undefined || ended() || !host.alive()) return undefined;
   let opened;
+  let text;
   try {
     const bytes = new Uint8Array(await app.vault.readBinary(file));
     const ink = await openInk(bytes);
     // A copy starts from what the file shows, and leaves the file as it is.
     opened = ink.kind === "damaged" ? await openPicture(bytes) : ink;
+    text = await readText(readChunks(bytes));
   } catch (error) {
     new Notice(`Could not open ${file.name}: ${message(error)}`);
     return undefined;
@@ -1008,6 +1153,7 @@ async function copySymbol(
   return {
     name: symbolStem(file.name) ?? file.basename,
     ink: opened,
+    hasText: !isBlank(text),
   };
 }
 
@@ -1016,10 +1162,12 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
   const { app } = host;
   let opened;
   let fingerprint;
+  let text;
   try {
     const bytes = new Uint8Array(await app.vault.readBinary(file));
     opened = await openInk(bytes);
     fingerprint = await fingerprintOf(bytes);
+    text = await readText(readChunks(bytes));
   } catch (error) {
     new Notice(`Could not open ${file.name}: ${message(error)}`);
     return;
@@ -1050,6 +1198,7 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
     document: opened.document,
     ...(opened.base === undefined ? {} : { base: opened.base }),
     carried: opened.carried,
+    text,
     center: opened.width / 2,
     width: opened.width,
     fingerprint,
@@ -1060,10 +1209,18 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
     },
     lifecycle: host.lifecycle,
     file: () => symbolFile(app, symbol.path),
-    write: async (saved, _record, _keepDraft, _holds, typed) => {
+    write: async (
+      saved,
+      _record,
+      _keepDraft,
+      _holds,
+      typed,
+      check,
+      waiting,
+    ) => {
       stillAlive(host);
       const renaming = renamedPath(app, symbol, chosen(typed, symbol));
-      symbol = await writeSymbol(app, symbol, saved);
+      symbol = await writeSymbol(host, symbol, saved, check, waiting);
       stillAlive(host);
       return rename(app, symbol, renaming);
     },

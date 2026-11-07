@@ -11,8 +11,9 @@ The [issues](https://github.com/viell-dev/slop-inkline/issues) track each one.
   run on Linux; Windows and macOS should work but are not tested.
 - **Mouse or trackpad.** A drawing tablet's pen or a touchscreen draws as a
   mouse does: pen pressure and a pen's eraser end are not supported.
-- **Large libraries** show every matching symbol at once, without paging. Filter
-  by name or folder to narrow the list.
+- **Large libraries** show every matching symbol at once (**Unreleased:** 100 at
+  a time, with **Show more** for the next 100). Filter by name or folder to
+  narrow the list.
 - **Library insertion needs a sidebar.** If the library's tab is dragged into
   the main area, move it back to a sidebar to insert into a note.
 - **Physical printing** has not been checked. Native
@@ -26,6 +27,34 @@ can lead nowhere or to another file
 ([#35](https://github.com/viell-dev/slop-inkline/issues/35)). Inkline checks
 every embed it inserts: it writes such a `%` as `%25`, and names a symbol whose
 link would still lead elsewhere by its path in the vault.
+
+## A file written at the moment Inkline saves
+
+**Unreleased:** Inkline's own saves of symbols go one at a time, whether from
+the editor or the library, and each reads the file first, so that two of them
+cannot undo each other, even if the file is renamed or replaced while one waits.
+It also means that a save Obsidian never finishes, as on a drive that stops
+answering, holds up every later save, whichever symbol it is for. After a few
+seconds of that, the editor and the library's fields say so, and saving goes on
+by itself if Obsidian finishes. A save is never let go of early, as Obsidian
+could still finish it, over whatever a later save had written. If nothing
+changes, restart Obsidian, which ends the wait:
+
+- **In the editor,** your strokes are safe in a draft. Open the symbol again, or
+  start a new symbol in that note if it had not been saved yet, and choose
+  **Restore**.
+- **In the library's fields,** what you typed stays there, and you can select
+  and copy it. Copy it before you restart, as a restart does not keep it.
+  **Cancel** or Esc closes the fields and stops the save. Only a save that had
+  already reached Obsidian can still finish, and a notice says so.
+
+Inkline cannot do the same with another program. Obsidian writes a binary file
+only as a whole, with no way to write it only if it has not changed since it was
+read, so a sync tool that writes the file in the moment between Inkline's last
+read and its write can have that change replaced. Inkline keeps that moment
+short, with the read straight before the write, and it does not rule it out. A
+change made before that read is noticed: the editor asks, and the library shows
+it. Your sync tool's own history is the way back from a change lost like this.
 
 ## Renames and Obsidian's question
 
@@ -71,11 +100,28 @@ the mark before renaming what it links to.
   erased ones included. That is minutes of unbroken drawing with the fastest
   mice. Saving past it fails with a message, and the draft stops at the last
   stroke within it, so undo what took the drawing over.
+- Saving a symbol with a large base layer from the editor stops Obsidian
+  answering while it works: about a second for a file of 1.5 MB, and four to
+  five for one near the limit. A symbol drawn by hand takes milliseconds
+  ([#200](https://github.com/viell-dev/slop-inkline/issues/200)).
 - **Unreleased:** a symbol file made to be slow to draw, by a stroke that turns
   back at nearly every point, can keep Obsidian busy for a long time when you
   open it in the editor, hours for the worst of them, from a file of a few
   kilobytes. Close Obsidian if it stops answering: no file has changed, and the
   note shows the symbol as before. Drawing by hand does not come near this.
+- **Unreleased:** the lists find a symbol by its readings and translations a
+  moment after Obsidian starts, and a few seconds after in a vault of thousands
+  of symbols, as they are read in the background each time; a line in the list
+  says so meanwhile. Names work from the start. A file of over 32 MiB, or with
+  more than 16 chunks of one keyword before a usable one, as a file made to be
+  slow to read has, is found by its name only. Its text still shows in the
+  library's fields.
+- **Unreleased:** a list of readings or translations that Inkline cannot read,
+  as from a later version, stays in the file, behind any you type, and looks
+  empty. Inkline offers no way to remove one.
+- **Unreleased:** a symbol's readings and translations go with its file, and
+  only there. Some image programs drop them; a long list in a non-Latin script
+  was lost through two plain ImageMagick copies, while short text came through.
 - A picture to trace over is scaled down to 4096 pixels on its longer side. A
   file opened from its pixels can be up to 4096 pixels a side, and its ink must
   fit within 8 MiB, the largest base layer a symbol can store.

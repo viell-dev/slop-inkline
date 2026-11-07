@@ -71,6 +71,21 @@ matter lists nothing: it is the note's own text there.
 **Inkline: Insert existing symbol** opens the same list as a search, and inserts
 the chosen symbol at the cursor.
 
+**Unreleased:** both also find a symbol by its
+[readings and translations](#readings-and-translations), whatever its name:
+`;;TA` lists a symbol with the reading `TA`, and a row found that way says so,
+under its name, as in `Reading: TA`. A value must hold what you typed, in any
+letter case, and with or without its accents; a name still matches loosely. The
+best match comes first, name or value, and of the two, the name.
+
+**Unreleased:** an accent is a mark on the letters of the Latin or Greek
+alphabet, or a stress mark in Cyrillic: `sa` finds `šá`, and typing `šá` asks
+for those accents. Any other mark makes another sound, so it counts as part of
+its letter: `は` does not find `ば` or `ぱ`, nor `и` find `й`, nor `क` find
+`कि`, and the vowel points of Arabic and Hebrew have to be typed to find a value
+that has them. Korean goes by its spelling, so `가` finds `각`, which starts
+with it.
+
 **Unreleased:** it places the symbol as **Inkline: Insert symbol** does: just
 after a link or embed the cursor is inside, so that no link is split, and beside
 selected text, which stays. If the note changes while the search is open, the
@@ -123,6 +138,34 @@ reading of it. Rename it directly in the library, in its editor, as
 Obsidian in any way: an open editor follows a rename made elsewhere, and keeps
 the name given there, even one Inkline itself would not give.
 
+## Readings and translations
+
+**Unreleased:** a symbol can record how it is read and what it means, apart from
+its name. A **reading** is how it is read aloud, written any way you like: the
+sign た might have the reading `TA`. A **translation** is what it means, in
+words of any language. Either can hold several values, one to a line, the main
+one first. The two lists are separate, so the second reading has nothing to do
+with the second translation.
+
+They are for what you currently take the symbol to be. The name stays what your
+notes link to, so correcting a guess here changes no note and needs no rename,
+and a symbol can be named anything while `;;TA` still finds it. A name and a
+reading that disagree are not a fault: Inkline never fills one in from the other
+or keeps them in step, and renaming a symbol leaves its readings as they are.
+
+- Fill them in while drawing, from
+  [beside the name in the editor](./drawing.md#readings-and-translations).
+- Change them without opening the editor, from the
+  [library](#find-where-a-symbol-is-used). This works on a file the editor will
+  not open, such as one whose strokes are damaged.
+- Find a symbol by them in [the `;;` list](#insert-a-symbol-you-have),
+  **Inkline: Insert existing symbol**,
+  [Copy from](./drawing.md#start-from-a-copy), and the library's filter.
+
+The values live in the file, in PNG text chunks that other programs can read, so
+they go with a copy of it. Some programs drop them; see
+[Without Inkline](./without-inkline.md#editing-them-elsewhere).
+
 ## Find where a symbol is used
 
 Run **Inkline: Show symbol library** to open **Symbols** in the right sidebar.
@@ -149,8 +192,30 @@ by folder, the top folder first, then by name, with numbers in order.
 default sidebar. A long name wraps onto a second line and then shortens, and a
 long folder shortens, rather than running off the sidebar. Hold the pointer over
 the symbol for its whole name and folder. **Rename** also shows the whole name,
-without the pointer. In a sidebar narrower than about 275 pixels, the buttons
+without the pointer. In a sidebar narrower than about 285 pixels, the buttons
 drop below the name.
+
+**Unreleased:** a symbol's
+[readings and translations](#readings-and-translations) show under its row, a
+line for each, which a long list shortens; a symbol with none keeps a row of the
+usual height.
+
+- The filter, now **Filter symbols**, finds them too. A row found by a value
+  shows it first, in bold, so a match with another name is no mystery. While
+  Inkline is still reading the vault's symbols, as it does for a few seconds
+  after Obsidian starts in a vault of thousands of them, a line says that more
+  may match.
+- The button with the translation icon, beside **Rename**, edits them in that
+  row, one value to a line. **Save**, or Ctrl+Enter, or Cmd+Enter on macOS,
+  changes the file's text and nothing else: its drawing's bytes stay as they
+  are, and no note is touched. Esc or **Cancel** keeps what it held. Spaces
+  around a value and blank lines are left out, and a list over 4,096 bytes is
+  refused, with what you typed left for correction.
+- If the file changes while you edit, as by sync, a field you have not typed in
+  follows it. One you have typed in keeps your text, and a line says what saving
+  will replace.
+- The list draws 100 symbols at a time, so that typing in the filter stays
+  quick. **Show more** adds the next 100.
 
 If a name is refused or a rename fails, the entered name stays for correction or
 retry. Save or cancel it before filtering again; the list then catches up with

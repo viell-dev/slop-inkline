@@ -767,9 +767,25 @@ bad CRC. It places the ones that come before the image data after the record. If
 the file changed while it was open, and the person keeps their drawing, those
 are the chunks the changed file holds.
 
-Inkline does not show, change, or search text about a symbol, and writes none.
-Copy from takes only the drawing, so a symbol keeps its own text, and a new one
-starts with none.
+Inkline shows a symbol's readings and translations in its editor and library,
+changes them from both, and finds a symbol by them. The library changes a file
+as [Changing the text](#changing-the-text) says, whatever its record holds. The
+editor does the same to the file a save writes, for a field a person changed,
+and carries any other as it was. Inkline removes the spaces around a value
+typed, and blank lines, from a field a person changed, and leaves a value alone
+otherwise. It offers no way to remove a chunk it cannot use. Copy from takes
+only the drawing, so a symbol keeps its own text, and a new one starts with
+none.
+
+Inkline's search compares a key made from each value: its compatibility
+decomposition in lower case, without its accents unless what was typed holds
+some. An accent is a mark from the blocks Unicode keeps for any alphabet, other
+than one that makes a Cyrillic letter of its own. Any other mark, such as kana's
+voicing, is part of its letter, and a match does not stop just before one. It
+keeps these keys in memory, read in the background each time Obsidian starts,
+and so declines to search a file of over 32 MiB, or one with more than 16 chunks
+of a keyword before a usable one, which it treats as saying nothing. Reading
+such a file for a person, as the library's fields do, sets no limit.
 
 Inkline declines a file or a base layer's PNG of more than 65,536 chunks, and
 does not save a file that would have more, which leaves the old file as it was.

@@ -34,6 +34,38 @@ describe("crc32", () => {
   });
 });
 
+describe("readChunks, for a caller that looks at some chunks", () => {
+  const damagedAt = (index: number): Uint8Array => {
+    const bytes = encodePng(blank(2, 2)).slice();
+    let at = pngSignature.length;
+    for (let chunk = 0; chunk < index; chunk++) {
+      at += 12 + new DataView(bytes.buffer).getUint32(at);
+    }
+    const end = at + 8 + new DataView(bytes.buffer).getUint32(at);
+    // The chunk's CRC, wrong.
+    bytes[end] = (bytes[end] ?? 0) ^ 0xff;
+    return bytes;
+  };
+
+  it("works out only the CRCs it is asked for", () => {
+    const image = damagedAt(1);
+    expect(readChunks(image)[1]?.damaged).toBe(true);
+    expect(readChunks(image, () => false)[1]?.damaged).toBeUndefined();
+    expect(readChunks(image, (type) => type === "IDAT")[1]?.damaged).toBe(true);
+  });
+
+  it("still checks the header's, as the file's structure depends on it", () => {
+    expect(() => readChunks(damagedAt(0), () => false)).toThrow(PngError);
+  });
+
+  it("still checks the file's structure", () => {
+    const bytes = encodePng(blank(2, 2));
+    expect(() =>
+      readChunks(bytes.subarray(0, bytes.length - 4), () => false),
+    ).toThrow(PngError);
+  });
+});
+
 describe("readChunks and writeChunks", () => {
   const png = encodePng(blank(3, 2));
 
