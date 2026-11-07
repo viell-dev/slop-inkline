@@ -5,7 +5,6 @@
 // the background in about a quarter of a minute. Plain, so that unit tests can
 // drive it; the plugin gives it the vault.
 
-import { PngError } from "../format/png.ts";
 import { readFileText } from "../format/text.ts";
 import { searchableText, type SearchableText } from "./search.ts";
 
@@ -109,7 +108,10 @@ export class SymbolTextIndex<File extends object> {
     if (this.#running !== undefined || this.#queue.size === 0) return;
     this.#running = this.#work().finally(() => {
       this.#running = undefined;
-      if (!this.#stopped) this.#caughtUp();
+      if (this.#stopped) return;
+      // A report can land just as the work ends.
+      if (this.#queue.size > 0) this.#run();
+      else this.#caughtUp();
     });
   }
 
@@ -148,9 +150,10 @@ export class SymbolTextIndex<File extends object> {
       return text.reading.length + text.translation.length === 0
         ? none
         : searchableText(text);
-    } catch (error) {
-      if (error instanceof PngError) return none;
-      throw error;
+    } catch {
+      // A file that fails the check of a PNG's structure, or anything else
+      // about this one file, which must not stop the others.
+      return none;
     }
   }
 }

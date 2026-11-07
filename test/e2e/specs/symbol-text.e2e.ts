@@ -851,6 +851,19 @@ describe("A symbol's readings and translations", function () {
       );
       expect(await area("translation").getValue()).toBe("typed");
       await saveScreenshot("text-library-clash");
+      // A later change leaves the warning, with what the file now says.
+      await changeOnDisk("Synced.ink.png", {
+        reading: ["GA"],
+        translation: ["newer"],
+      });
+      await browser.waitUntil(
+        async () => (await area("reading").getValue()) === "GA",
+      );
+      await changeOnDisk("Synced.ink.png", { reading: ["KA"] });
+      await browser.waitUntil(
+        async () => (await area("reading").getValue()) === "KA",
+      );
+      expect(await formNote().getText()).toContain("newer");
       await formSave().click();
       await waitForClosedForm();
       expect(await fieldsOf("Synced.ink.png")).toEqual({

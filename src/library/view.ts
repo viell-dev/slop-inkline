@@ -599,14 +599,17 @@ export class SymbolLibraryView extends ItemView {
       closed = true;
       this.#stopEditing(anchor, file, "text");
     };
-    /** Says which of `moved` the file changed under what was typed. */
+    /** The fields the file changed under what was typed, as far as told. */
+    const warned = new Set<TextField>();
+    /** Says what saving would replace, with `moved` new since last time. */
     const warn = (moved: readonly TextField[], now: SymbolText): void => {
+      for (const field of moved) warned.add(field);
       note.empty();
-      if (moved.length === 0) return;
+      if (warned.size === 0) return;
       note.createDiv({
         text: "The file changed meanwhile. Saving replaces what it now says:",
       });
-      for (const field of moved) {
+      for (const field of warned) {
         if (now[field].length > 0) showValues(note, field, now[field]);
         else note.createDiv({ text: `${fieldLabel(field, 2)}: none` });
       }
