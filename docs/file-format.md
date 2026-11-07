@@ -778,8 +778,11 @@ only the drawing, so a symbol keeps its own text, and a new one starts with
 none.
 
 Inkline's search compares a key made from each value: its compatibility
-decomposition in lower case, without its marks unless what was typed holds some.
-It keeps these keys in memory, read in the background each time Obsidian starts,
+decomposition in lower case, without its accents unless what was typed holds
+some. An accent is a mark from the blocks Unicode keeps for any alphabet, other
+than one that makes a Cyrillic letter of its own. Any other mark, such as kana's
+voicing, is part of its letter, and a match does not stop just before one. It
+keeps these keys in memory, read in the background each time Obsidian starts,
 and so declines to search a file of over 32 MiB, or one with more than 16 chunks
 of a keyword before a usable one, which it treats as saying nothing. Reading
 such a file for a person, as the library's fields do, sets no limit.
