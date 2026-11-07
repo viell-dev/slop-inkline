@@ -1,7 +1,7 @@
 // Inserting a symbol you already have: a suggestion that opens as you type a
-// trigger and a few letters of its name, and a searchable list for a
-// command. Both list the vault's symbols with their pictures, as
-// search.ts ranks them, and insert a plain embed.
+// trigger and a few letters of its name, reading, or translation, and a
+// searchable list for a command. Both list the vault's symbols with their
+// pictures, as search.ts ranks them, and insert a plain embed.
 
 import {
   EditorSuggest,
@@ -19,15 +19,49 @@ import { isInkPath } from "../format/ink-file.ts";
 import { embedFor } from "./embeds.ts";
 import { symbolStem } from "./names.ts";
 import {
+  findText,
   holdsTyped,
   insideCodeBlock,
   insideCodeSpan,
   rankSymbols,
+  textQuery,
   triggerQuery,
+  type Candidate,
+  type FoundText,
 } from "./search.ts";
+import { showValues } from "./text-fields.ts";
+import type { SymbolTextIndex } from "./text-index.ts";
 
 /** The most symbols a list shows at once. */
 const shownAtMost = 50;
+
+/** The vault's symbols' text, as a list reads it. */
+export type SymbolTexts = SymbolTextIndex<TFile>;
+
+/**
+ * A line for a list that may be missing symbols, as the index has not read
+ * every file yet, when it starts or after much has changed.
+ */
+const stillReading = {
+  command: "…",
+  purpose: "still reading symbols, so more may match",
+};
+
+/** What the list shows under a suggestion's rows. */
+const instructions = [
+  { command: "↑↓", purpose: "to choose" },
+  { command: "↵", purpose: "to insert the symbol" },
+  { command: "esc", purpose: "to dismiss" },
+];
+
+/** Below any match, as a value's match is sure to have a score of its own. */
+const lowestScore = -1e9;
+
+/** A symbol that matched, and the value that did where its name did not. */
+export interface SymbolMatch extends Candidate {
+  readonly file: TFile;
+  readonly found?: FoundText;
+}
 
 /** A symbol's name: its file's name without `.ink.png`. */
 function nameOf(file: TFile): string {
@@ -36,45 +70,81 @@ function nameOf(file: TFile): string {
 
 /**
  * The vault's symbols whose names match `query`, as Obsidian's fuzzy search
- * matches them, best first: by the match, then by how often the note at
- * `notePath` uses each, then by how recently each changed. An empty query
- * matches every symbol. A query with a space matches only names that hold
- * it, so that a sentence typed on after a trigger stops matching.
+ * matches them, or with a reading or translation that holds it, best first: by
+ * the match, then by how often the note at `notePath` uses each, then by how
+ * recently each changed. An empty query matches every symbol. A query with a
+ * space matches only names and values that hold it, so that a sentence typed on
+ * after a trigger stops matching. A value must hold what was typed: a fuzzy
+ * match of the words of a translation would find nearly anything.
  */
-export function findSymbols(
+export function matchSymbols(
   app: App,
+  texts: SymbolTexts,
   query: string,
   notePath: string,
-): TFile[] {
+): SymbolMatch[] {
   const typed = query.trim();
   const match = typed === "" ? undefined : prepareFuzzySearch(typed);
+  const wanted = textQuery(query);
+  const matchKey =
+    wanted === undefined ? undefined : prepareFuzzySearch(wanted.needle);
   const uses = app.metadataCache.resolvedLinks[notePath] ?? {};
   const candidates = app.vault
     .getFiles()
     .filter((file) => isInkPath(file.path))
-    .flatMap((file) => {
+    .flatMap((file): SymbolMatch[] => {
       const name = nameOf(file);
-      if (query.includes(" ") && !holdsTyped(name, query)) return [];
-      const found = match === undefined ? { score: 0 } : match(name);
-      if (found === null) return [];
+      const named =
+        query.includes(" ") && !holdsTyped(name, query)
+          ? null
+          : match === undefined
+            ? { score: 0 }
+            : match(name);
+      const text = wanted && texts.textOf(file);
+      const found = wanted && text && findText(text, wanted);
+      if (named === null && found === undefined) return [];
+      const valued = found && matchKey?.(found.key);
       return [
         {
           file,
           name,
           path: file.path,
-          score: found.score,
+          score: Math.max(
+            named?.score ?? lowestScore,
+            valued?.score ?? lowestScore,
+          ),
+          byName: named !== null,
           uses: uses[file.path] ?? 0,
           modified: file.stat.mtime,
+          // A name that holds what was typed needs no explaining; a fuzzy
+          // match of one, as `ta` in `tower gate`, may well.
+          ...(found === undefined || holdsTyped(name, typed) ? {} : { found }),
         },
       ];
     });
-  return rankSymbols(candidates)
-    .slice(0, shownAtMost)
-    .map((candidate) => candidate.file);
+  return rankSymbols(candidates);
 }
 
-/** Shows a symbol in a list: its picture, its name, and its folder. */
-export function renderSymbol(app: App, file: TFile, el: HTMLElement): void {
+/** The first symbols of {@link matchSymbols}, as many as a list shows. */
+export function findSymbols(
+  app: App,
+  texts: SymbolTexts,
+  query: string,
+  notePath: string,
+): SymbolMatch[] {
+  return matchSymbols(app, texts, query, notePath).slice(0, shownAtMost);
+}
+
+/**
+ * Shows a symbol in a list: its picture, its name, its folder, and the value
+ * `found` that it was found by, so that a match with another name is no mystery.
+ */
+export function renderSymbol(
+  app: App,
+  file: TFile,
+  el: HTMLElement,
+  found?: FoundText,
+): void {
   // Its picture is text, as the renderer paints symbols in text.
   el.addClass("inkline-suggestion", "inkline-text");
   // Beside its name, the picture says nothing more to a screen reader.
@@ -92,6 +162,7 @@ export function renderSymbol(app: App, file: TFile, el: HTMLElement): void {
   if (folder !== null && !folder.isRoot()) {
     text.createDiv({ cls: "inkline-suggestion-folder", text: folder.path });
   }
+  if (found !== undefined) showValues(text, found.field, [found.value]);
 }
 
 /**
@@ -109,8 +180,9 @@ function stillThere(app: App, file: TFile): boolean {
  * as `;;tow`, and replaces the trigger and the name with the chosen one's
  * embed.
  */
-export class SymbolSuggest extends EditorSuggest<TFile> {
+export class SymbolSuggest extends EditorSuggest<SymbolMatch> {
   readonly #trigger: () => string;
+  readonly #texts: SymbolTexts;
   /** Whether the list last showed symbols, as it does when Esc closes it. */
   #listed = false;
   /** Whether the list is closing because a symbol was chosen. */
@@ -121,14 +193,11 @@ export class SymbolSuggest extends EditorSuggest<TFile> {
    */
   #dismissed: { path: string; line: number; ch: number } | undefined;
 
-  constructor(app: App, trigger: () => string) {
+  constructor(app: App, trigger: () => string, texts: SymbolTexts) {
     super(app);
     this.#trigger = trigger;
-    this.setInstructions([
-      { command: "↑↓", purpose: "to choose" },
-      { command: "↵", purpose: "to insert the symbol" },
-      { command: "esc", purpose: "to dismiss" },
-    ]);
+    this.#texts = texts;
+    this.setInstructions(instructions);
   }
 
   override onTrigger(
@@ -181,9 +250,17 @@ export class SymbolSuggest extends EditorSuggest<TFile> {
     };
   }
 
-  override getSuggestions(context: EditorSuggestContext): TFile[] {
-    const found = findSymbols(this.app, context.query, context.file.path);
+  override getSuggestions(context: EditorSuggestContext): SymbolMatch[] {
+    const found = findSymbols(
+      this.app,
+      this.#texts,
+      context.query,
+      context.file.path,
+    );
     this.#listed = found.length > 0;
+    this.setInstructions(
+      this.#texts.reading ? [...instructions, stillReading] : instructions,
+    );
     return found;
   }
 
@@ -208,11 +285,11 @@ export class SymbolSuggest extends EditorSuggest<TFile> {
     super.close();
   }
 
-  override renderSuggestion(file: TFile, el: HTMLElement): void {
-    renderSymbol(this.app, file, el);
+  override renderSuggestion(match: SymbolMatch, el: HTMLElement): void {
+    renderSymbol(this.app, match.file, el, match.found);
   }
 
-  override selectSuggestion(file: TFile): void {
+  override selectSuggestion({ file }: SymbolMatch): void {
     const { context } = this;
     if (context === null) return;
     // Closed by a choice, the list dismisses nothing, unless its symbol has
@@ -248,28 +325,36 @@ export class SymbolSuggest extends EditorSuggest<TFile> {
   }
 }
 
-/** The vault's symbols to search by name, inserting the one chosen. */
-export class SymbolSearch extends SuggestModal<TFile> {
+/** The vault's symbols to search, inserting the one chosen. */
+export class SymbolSearch extends SuggestModal<SymbolMatch> {
+  readonly #texts: SymbolTexts;
   readonly #notePath: string;
   readonly #chosen: (embed: string) => void;
 
-  constructor(app: App, notePath: string, chosen: (embed: string) => void) {
+  constructor(
+    app: App,
+    texts: SymbolTexts,
+    notePath: string,
+    chosen: (embed: string) => void,
+  ) {
     super(app);
+    this.#texts = texts;
     this.#notePath = notePath;
     this.#chosen = chosen;
     this.setPlaceholder("Insert which symbol?");
-    this.emptyStateText = "No symbol has that name.";
+    this.emptyStateText = "No symbol has that name, reading, or translation.";
   }
 
-  override getSuggestions(query: string): TFile[] {
-    return findSymbols(this.app, query, this.#notePath);
+  override getSuggestions(query: string): SymbolMatch[] {
+    this.setInstructions(this.#texts.reading ? [stillReading] : []);
+    return findSymbols(this.app, this.#texts, query, this.#notePath);
   }
 
-  override renderSuggestion(file: TFile, el: HTMLElement): void {
-    renderSymbol(this.app, file, el);
+  override renderSuggestion(match: SymbolMatch, el: HTMLElement): void {
+    renderSymbol(this.app, match.file, el, match.found);
   }
 
-  override onChooseSuggestion(file: TFile): void {
+  override onChooseSuggestion({ file }: SymbolMatch): void {
     if (!stillThere(this.app, file)) return;
     this.#chosen(embedFor(this.app, file, this.#notePath));
   }

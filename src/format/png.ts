@@ -154,8 +154,17 @@ function checkStructure(chunks: readonly Chunk[]): void {
  * readable; decoding the image is what finds out what that damage did. Bytes
  * after `IEND` are ignored, as PNG decoders do. Pixels are not decoded, and
  * the chunks' data are views of `bytes`, not copies.
+ *
+ * `checked` says which chunks' CRCs to work out, every chunk's by default. A
+ * chunk it leaves out comes back as if intact, so this is for a caller that
+ * looks only at the chunks it names: working out a CRC takes about 10 ms for
+ * each megabyte, which a large image's chunks need not cost it. `IHDR`'s is
+ * always checked, as the file's structure depends on it.
  */
-export function readChunks(bytes: Uint8Array): Chunk[] {
+export function readChunks(
+  bytes: Uint8Array,
+  checked: (type: string) => boolean = () => true,
+): Chunk[] {
   if (!isPng(bytes)) throw new PngError("not a PNG file");
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const chunks: Chunk[] = [];
@@ -177,8 +186,10 @@ export function readChunks(bytes: Uint8Array): Chunk[] {
       throw new PngError(`unknown critical chunk ${type}`);
     }
     const data = bytes.subarray(dataStart, dataEnd);
-    const crc = crc32(bytes.subarray(typeStart, dataStart), data);
-    const intact = crc === view.getUint32(dataEnd);
+    const intact =
+      (type !== "IHDR" && !checked(type)) ||
+      crc32(bytes.subarray(typeStart, dataStart), data) ===
+        view.getUint32(dataEnd);
     if (!intact && type === "IHDR") {
       throw new PngError("bad CRC in IHDR chunk");
     }

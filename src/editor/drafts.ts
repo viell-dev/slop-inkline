@@ -16,6 +16,7 @@ import {
   type Stroke,
 } from "../format/record.ts";
 import type { InkDocument } from "../ink/document.ts";
+import type { TypedText } from "../notes/text-fields.ts";
 
 /** A file a new symbol's first save made, or was making. */
 export interface CreatedFile {
@@ -78,6 +79,8 @@ export interface Draft {
    * that a restored drawing goes on with it; undefined if none was.
    */
   readonly name?: string;
+  /** What was typed in its readings and translations, as with the name. */
+  readonly text?: TypedText;
 }
 
 /** How long a draft is kept before it is dropped unrestored: 30 days. */
@@ -140,6 +143,17 @@ function parseTarget(value: unknown): DraftTarget | undefined {
     : { kind: "new", note: value.note, file };
 }
 
+/** What a draft kept of a symbol's text, without what it cannot read. */
+function parseText(value: unknown): TypedText | undefined {
+  if (!isRecord(value)) return undefined;
+  const { reading, translation } = value;
+  const text = {
+    ...(typeof reading === "string" ? { reading } : {}),
+    ...(typeof translation === "string" ? { translation } : {}),
+  };
+  return Object.keys(text).length === 0 ? undefined : text;
+}
+
 function coordinate(value: unknown): value is number {
   return (
     typeof value === "number" &&
@@ -187,8 +201,9 @@ function decode(
   }
   if (!isRecord(value)) return undefined;
   const { id, target, base, layer, fingerprint, savedAt, version, ink } = value;
-  const { gridOrigin, name } = value;
+  const { gridOrigin, name, text } = value;
   const parsedTarget = parseTarget(target);
+  const parsedText = parseText(text);
   if (
     version !== draftVersion ||
     typeof id !== "string" ||
@@ -212,8 +227,9 @@ function decode(
     ...(typeof gridOrigin === "number" && Number.isFinite(gridOrigin)
       ? { gridOrigin }
       : {}),
-    // Nor if the name cannot be read.
+    // Nor if the name or the text cannot be read.
     ...(typeof name === "string" ? { name } : {}),
+    ...(parsedText === undefined ? {} : { text: parsedText }),
   };
   if (base === "none" || base === "file" || base === "lost") {
     return layer === undefined
@@ -249,8 +265,8 @@ export function decodeDraft(
 
 /** A draft as the text stored for it, with its kept base layer's key. */
 function encodeDraft(draft: Draft, baseKey: string | undefined): string {
-  const { id, target, strokes, base, fingerprint, savedAt, gridOrigin, name } =
-    draft;
+  const { id, target, strokes, base, fingerprint, savedAt, gridOrigin } = draft;
+  const { name, text } = draft;
   const layer =
     base.kind === "kept" && baseKey !== undefined
       ? {
@@ -273,6 +289,7 @@ function encodeDraft(draft: Draft, baseKey: string | undefined): string {
     savedAt,
     ...(gridOrigin === undefined ? {} : { gridOrigin }),
     ...(name === undefined ? {} : { name }),
+    ...(text === undefined ? {} : { text }),
     ink: recordValue({ strokes }),
   });
 }

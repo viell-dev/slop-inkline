@@ -1,4 +1,12 @@
-import { MarkdownView, Menu, Notice, Platform, Plugin, TFile } from "obsidian";
+import {
+  MarkdownView,
+  Menu,
+  Notice,
+  Platform,
+  Plugin,
+  TFile,
+  type TAbstractFile,
+} from "obsidian";
 import { DraftStore } from "./editor/drafts.ts";
 import type { InkEditorModal } from "./editor/modal.ts";
 import { isInkPath } from "./format/ink-file.ts";
@@ -10,13 +18,14 @@ import {
   symbolInRenderedNote,
   symbolOfImage,
 } from "./notes/entries.ts";
-import { SymbolSuggest } from "./notes/suggest.ts";
+import { SymbolSuggest, type SymbolTexts } from "./notes/suggest.ts";
 import {
   editSymbol,
   insertExistingSymbol,
   insertSymbol,
   type EditorHost,
 } from "./notes/symbols.ts";
+import { SymbolTextIndex } from "./notes/text-index.ts";
 import { SymbolRenderer } from "./render/symbols.ts";
 import { brushSizes } from "./editor/session.ts";
 import { InklineSettingTab } from "./settings-tab.ts";
@@ -37,6 +46,19 @@ export default class InklinePlugin extends Plugin {
   readonly #menuDocuments = new Map<Document, AbortController>();
   /** The menus that hold Edit symbol already. */
   readonly #menusWithEdit = new WeakSet<Menu>();
+  /** What the vault's symbols say about themselves, for searching. */
+  readonly #texts: SymbolTexts = new SymbolTextIndex<TFile>(
+    {
+      files: () =>
+        this.app.vault.getFiles().filter((file) => isInkPath(file.path)),
+      size: (file) => file.stat.size,
+      read: async (file) =>
+        new Uint8Array(await this.app.vault.readBinary(file)),
+    },
+    () => {
+      this.#refreshLibraries();
+    },
+  );
   #drafts: DraftStore | undefined;
   #loaded = false;
   #settings: Settings = defaultSettings;
@@ -50,6 +72,7 @@ export default class InklinePlugin extends Plugin {
       app: this.app,
       settings: () => this.#settings,
       drafts: this.#drafts,
+      texts: this.#texts,
       lifecycle: {
         opened: (editor) => this.#editors.add(editor),
         closed: (editor) => this.#editors.delete(editor),
@@ -110,6 +133,7 @@ export default class InklinePlugin extends Plugin {
         this.#renderer.watch(leaf.view.containerEl.doc);
         this.#offerMenus(leaf.view.containerEl.doc);
       });
+      if (this.#loaded) this.#indexText();
     });
     this.addCommand({
       id: "insert-symbol",
@@ -122,7 +146,10 @@ export default class InklinePlugin extends Plugin {
         return true;
       },
     });
-    this.registerView(libraryViewType, (leaf) => new SymbolLibraryView(leaf));
+    this.registerView(
+      libraryViewType,
+      (leaf) => new SymbolLibraryView(leaf, this.#texts),
+    );
     this.addCommand({
       id: "show-library",
       name: "Show symbol library",
@@ -157,7 +184,7 @@ export default class InklinePlugin extends Plugin {
     });
     // A symbol you already have: its name after the trigger, or a list.
     this.registerEditorSuggest(
-      new SymbolSuggest(this.app, () => this.#settings.trigger),
+      new SymbolSuggest(this.app, () => this.#settings.trigger, this.#texts),
     );
     this.addCommand({
       id: "insert-existing-symbol",
@@ -170,7 +197,7 @@ export default class InklinePlugin extends Plugin {
             new Notice("There are no symbols to insert yet.");
             return true;
           }
-          insertExistingSymbol(this.app, view);
+          insertExistingSymbol(this.app, this.#texts, view);
         }
         return true;
       },
@@ -193,6 +220,46 @@ export default class InklinePlugin extends Plugin {
     );
   }
 
+  /**
+   * Reads what the vault's symbols say about themselves, in the background, and
+   * follows the vault from then on. Once the layout is ready, as the vault
+   * reports every file as created while it loads.
+   */
+  #indexText(): void {
+    const { vault } = this.app;
+    const changed = (file: TAbstractFile): void => {
+      if (file instanceof TFile && isInkPath(file.path)) {
+        this.#texts.changed(file);
+      }
+    };
+    this.registerEvent(vault.on("create", changed));
+    this.registerEvent(vault.on("modify", changed));
+    this.registerEvent(
+      vault.on("delete", (file) => {
+        if (file instanceof TFile) this.#texts.removed(file);
+      }),
+    );
+    // A file keeps its entry through a rename, in one of its folders too,
+    // unless it stops or starts being a symbol.
+    this.registerEvent(
+      vault.on("rename", (file, oldPath) => {
+        if (!(file instanceof TFile)) return;
+        const now = isInkPath(file.path);
+        if (now === isInkPath(oldPath)) return;
+        if (now) this.#texts.changed(file);
+        else this.#texts.removed(file);
+      }),
+    );
+    this.#texts.start();
+  }
+
+  /** Has open libraries show what the index has since read. */
+  #refreshLibraries(): void {
+    for (const leaf of this.app.workspace.getLeavesOfType(libraryViewType)) {
+      if (leaf.view instanceof SymbolLibraryView) leaf.view.refresh();
+    }
+  }
+
   /** Puts Edit symbol for `file` in `menu`. */
   #addEditItem(menu: Menu, file: TFile): void {
     this.#menusWithEdit.add(menu);
@@ -212,6 +279,7 @@ export default class InklinePlugin extends Plugin {
    */
   override onunload(): void {
     this.#loaded = false;
+    this.#texts.stop();
     // Symbols show as the plain images they are once Inkline is off.
     this.#renderer.stop();
     for (const stop of this.#menuDocuments.values()) stop.abort();

@@ -9,10 +9,102 @@
   padding-inline-end: var(--size-4-8);
 }
 
-/* The symbol's name, in the title's place and at its size. */
+/*
+ * The symbol's name, in the title's place and at its size, and beside it what
+ * shows its readings and translations, which adds no row to the editor.
+ */
+.inkline-editor .modal-title {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+}
+
 .inkline-editor .modal-title .inkline-name {
-  width: 100%;
+  flex: 1 1 12em;
+  min-width: 0;
   font: inherit;
+}
+
+.inkline-text-toggle {
+  flex: 0 1 auto;
+  display: flex;
+  gap: var(--size-4-3);
+  min-width: 0;
+  max-width: 50%;
+  height: auto;
+  padding: var(--size-4-1) var(--size-4-2);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-normal);
+  background: none;
+  box-shadow: none;
+}
+
+.inkline-text-toggle .inkline-values {
+  min-width: 0;
+  text-align: start;
+}
+
+.inkline-text-strip {
+  margin-bottom: var(--size-4-3);
+}
+
+.inkline-text-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12em, 1fr));
+  gap: var(--size-4-2);
+}
+
+.inkline-text-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-1);
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+/* Each line takes its own direction, as a field can hold two scripts. */
+.inkline-text-field textarea {
+  width: 100%;
+  resize: vertical;
+  unicode-bidi: plaintext;
+}
+
+.inkline-text-field textarea[aria-invalid="true"] {
+  border-color: var(--text-error);
+}
+
+.inkline-text-hint {
+  margin-top: var(--size-4-1);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.inkline-text-error {
+  color: var(--text-error);
+  overflow-wrap: anywhere;
+}
+
+.inkline-text-error:empty {
+  display: none;
+}
+
+/*
+ * A symbol's readings or translations, on one line. The row or the field for
+ * them has the whole of a list that this shortens.
+ */
+.inkline-values {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inkline-value-found {
+  color: var(--text-normal);
+  font-weight: var(--font-semibold);
 }
 
 .inkline-toolbar {
@@ -331,14 +423,14 @@ img.inkline-symbol:not([width], [height]) {
 }
 
 .inkline-library-insert {
-  flex: 1 1 10em;
+  flex: 1 1 8.5em;
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: var(--size-4-3);
+  gap: var(--size-4-2);
   min-width: 0;
   height: auto;
-  padding: var(--size-4-1) var(--size-4-2);
+  padding: var(--size-4-1);
   text-align: start;
   background: none;
   box-shadow: none;
@@ -392,7 +484,8 @@ img.inkline-symbol:not([width], [height]) {
  * room, and every row's buttons drop at the same width.
  */
 .inkline-library-uses,
-.inkline-library-rename {
+.inkline-library-rename,
+.inkline-library-edit-text {
   height: auto;
   padding-inline: var(--size-4-1);
   color: var(--text-muted);
@@ -403,6 +496,32 @@ img.inkline-symbol:not([width], [height]) {
 
 .inkline-library-uses {
   min-width: 5.5em;
+}
+
+.inkline-library-edit-text {
+  padding-inline: 2px;
+}
+
+.inkline-library-edit-text .svg-icon {
+  width: var(--icon-xs);
+  height: var(--icon-xs);
+}
+
+/*
+ * What a symbol says about itself, under its row and in line with its name,
+ * past the picture's 3 em of the button's text, and the button's padding and
+ * gap. A row with none has nothing here, so that it keeps its height.
+ */
+.inkline-library-values {
+  flex-basis: 100%;
+  min-width: 0;
+  padding-inline-start: calc(3em + var(--size-4-1) + var(--size-4-2));
+  font-size: var(--font-ui-small);
+}
+
+.inkline-library-status {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
 }
 
 .inkline-library-notes {
@@ -427,6 +546,38 @@ img.inkline-symbol:not([width], [height]) {
 .inkline-library-rename-form input {
   flex: 1 1 8em;
   min-width: 0;
+}
+
+.inkline-library-text-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-1);
+  width: 100%;
+  padding-block: var(--size-4-1);
+}
+
+/* Which symbol the fields are for, as they take the place of its row. */
+.inkline-library-text-title {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.inkline-library-text-note {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  overflow-wrap: anywhere;
+}
+
+.inkline-library-text-note:empty {
+  display: none;
+}
+
+.inkline-library-text-buttons {
+  display: flex;
+  gap: var(--size-4-1);
 }
 
 .inkline-library-rename-error {
