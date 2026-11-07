@@ -2748,17 +2748,24 @@ export class InkEditorModal extends Modal {
     } else if (action === "reload" && opened !== undefined) {
       this.#reload(reading.fingerprint, opened);
     } else if (action === "ask") {
-      this.#askChanged(reading.fingerprint);
+      this.#askChanged(reading.fingerprint, opened);
     }
   }
 
   /**
    * Asks what to do about a change made to the file elsewhere: reload it, or
-   * keep the drawing, so that saving replaces the change. `resume` goes on
-   * with a save that stopped to ask. One such question is open at a time; a
-   * save that stops while it is open goes on once it is answered.
+   * keep the drawing, so that saving replaces the change. Keeping the drawing
+   * replaces only the drawing: the chunks a save carries become those of
+   * `opened`, the changed file, as the question says nothing of any text the
+   * change added. `resume` goes on with a save that stopped to ask. One such
+   * question is open at a time; a save that stops while it is open goes on
+   * once it is answered.
    */
-  #askChanged(fingerprint: string, resume?: () => void): void {
+  #askChanged(
+    fingerprint: string,
+    opened: EditableInk | undefined,
+    resume?: () => void,
+  ): void {
     if (resume !== undefined) this.#resume = resume;
     if (this.#askingChanged) return;
     this.#askingChanged = true;
@@ -2785,6 +2792,7 @@ export class InkEditorModal extends Modal {
           act: () => {
             const then = answered();
             this.#watch.keep(fingerprint);
+            if (opened !== undefined) this.#carried = opened.carried;
             then?.();
           },
         },
@@ -3004,7 +3012,7 @@ export class InkEditorModal extends Modal {
           const action = this.#watch.saving(found.reading);
           if (action === "unreadable") throw new Error(unreadable);
           if (action === "ask" && found.reading.kind === "file") {
-            this.#askChanged(found.reading.fingerprint, resume);
+            this.#askChanged(found.reading.fingerprint, found.opened, resume);
             throw new Unsaved("the file changed on disk");
           }
         }

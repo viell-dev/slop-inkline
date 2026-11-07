@@ -36,5 +36,6 @@ program that keeps the chunk while changing how the image shows, as by adding an
 orientation to its metadata, leaves strokes that no longer match it; Inkline's
 editor shows the strokes, and saving there replaces the image.
 
-The [file format](./file-format.md) specifies the pixels and the chunk, for
-anyone writing a tool that reads or writes symbols.
+The [file format](./file-format.md) specifies the pixels, the chunk, and the
+text a file can hold about its symbol, for anyone writing a tool that reads or
+writes symbols.

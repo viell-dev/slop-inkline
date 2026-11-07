@@ -48,6 +48,25 @@ export const goldenImages: Readonly<Record<string, GoldenImage>> = {
   "v1-base-reduced": linesImage,
 };
 
+/** A text chunk's data as a writer must write it, as `iTXt`. */
+export function iTxtData(keyword: string, text: string): Uint8Array {
+  return new TextEncoder().encode(`${keyword}\0\0\0\0\0${text}`);
+}
+
+/**
+ * What each golden file that has text says about its symbol, by keyword: two
+ * values each, the second outside Latin-1, as an `iTXt` chunk that a save
+ * carries before the image data.
+ */
+export const goldenText: Readonly<
+  Record<string, Readonly<Record<string, string>>>
+> = {
+  "v1-text": {
+    "Inkline reading": "TA\nた",
+    "Inkline translation": "rice field\n田",
+  },
+};
+
 export const goldenFiles: Readonly<Record<string, GoldenDrawing>> = {
   // Strokes of each tool: a curve, a dot, a loop that crosses itself, which
   // the nonzero rule keeps solid, a sharp turn, and an eraser across them.
@@ -179,5 +198,12 @@ export const goldenFiles: Readonly<Record<string, GoldenDrawing>> = {
   "v1-base-reduced": {
     strokes: [],
     base: { x: 0, y: 0, width: 3072, height: 3072 },
+  },
+  // A sign with text about it, which is all this file is for.
+  "v1-text": {
+    strokes: [
+      { tool: "pen", size: 160, points: [320, 1000, 1760, 1000] },
+      { tool: "pen", size: 160, points: [1040, 480, 1040, 2000] },
+    ],
   },
 };

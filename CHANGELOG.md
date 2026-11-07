@@ -15,6 +15,10 @@ The file format is still a draft until 1.0.0, and it changes here: a stroke's
 stored pixels, and the editor opens those as a picture to draw over. A draft
 holding such a stroke is no longer offered back.
 
+The format also now defines where a symbol's readings and translations go: PNG
+text chunks, apart from its strokes and its file's name, which every editor must
+keep. Inkline writes and shows none of them, and no existing file is affected.
+
 ### Fixed
 
 - **Flat ends** only ever cuts along a row. An end running more along the row
@@ -166,6 +170,9 @@ holding such a stroke is no longer offered back.
 - A file is a symbol only if its name ends in the ASCII letters of `.ink.png`,
   in any case. A letter that only lowercases to one of them, such as the Kelvin
   sign, no longer counts.
+- **Keep mine** keeps your drawing and no more. A save after it used to write
+  back the text and other carried chunks the file had when the editor opened,
+  which dropped any that the change on disk had added.
 
 ## 0.9.1 - 2026-11-06
 

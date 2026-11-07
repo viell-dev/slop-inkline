@@ -2,9 +2,9 @@
 
 An Inkline symbol is a PNG file. Its pixels show the symbol, so a program that
 shows PNG images shows it. One chunk inside the PNG holds the strokes the symbol
-was drawn with, so that it can be edited again without loss. This document
-specifies that file completely, so that it can be read, drawn, and written
-without any other part of Inkline.
+was drawn with, so that it can be edited again without loss, and text chunks can
+hold what a person says about it. This document specifies that file completely,
+so that it can be read, drawn, and written without any other part of Inkline.
 
 ## Conformance
 
@@ -14,7 +14,8 @@ without any other part of Inkline.
 - An **editor** is a program that reads a file's record and replaces it.
 
 A program that only shows the image is none of these, and needs only
-[Geometry](#geometry) to place it in text.
+[Geometry](#geometry) to place it in text. Nor is one that only reads or changes
+[text about a symbol](#text-about-a-symbol), which needs only that section.
 
 The words "must", "must not", "should", and "may" are used as in
 [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119) and
@@ -64,14 +65,16 @@ an editor edits. A writer must make the image a rendering of the record, as
 record from the record alone, and does not read the image's pixels to do it.
 
 An edit leaves alone what it does not touch. An editor must keep each stroke it
-was not asked to change as it was, in its order. A base layer it was not asked
-to change must keep its place, its size, and the alpha of every pixel of its
-image, however that image is encoded. On its own, an editor may move a whole
-record only across, by a whole number of pixels, as cropping the image does. A
-shape depends only on where its stroke's points lie from one another, so such a
-stroke keeps its shape exactly, in the same place on the grid of pixels. The
-image is still drawn again, so that stroke's pixels can differ only as two
-renderings of one shape can, as [Antialiasing](#antialiasing) describes.
+was not asked to change as it was, apart from any field it does not know, in its
+order. A base layer it was not asked to change must keep its place, its size,
+and the alpha of every pixel of its image, however that image is encoded. On its
+own, an editor may move a whole record only across, by a whole number of pixels,
+as cropping the image does. A shape depends only on where its stroke's points
+lie from one another, so such a stroke keeps its shape exactly, in the same
+place on the grid of pixels. The image is still drawn again, so that stroke's
+pixels can differ only as two renderings of one shape can, as
+[Antialiasing](#antialiasing) describes. An edit also keeps
+[text about the symbol](#what-an-editor-keeps).
 
 [The record chunk](#the-record-chunk) is marked so that a program that changes
 the image data drops it, but that does not stop the two disagreeing. PNG lets a
@@ -95,7 +98,8 @@ a chunk type, this chunk is:
 
 An image optimizer that recompresses a file may therefore drop the record, and
 many programs drop every chunk they do not know. Either way the file shows the
-same symbol, and is left a plain picture.
+same symbol, and is left a plain picture, though
+[text about it](#text-about-a-symbol) often stays.
 
 A writer must write at most one such chunk, and should place it right after
 `IHDR`. A reader must accept it anywhere PNG allows an ancillary chunk.
@@ -432,12 +436,12 @@ A reader takes these steps in order, on any PNG it is given:
 
 1. **Check the PNG's structure.** It must have PNG's signature; every chunk a
    length that fits and a type of four letters; one valid `IHDR` first, with a
-   correct CRC; `PLTE` where PNG requires it and nowhere PNG forbids it; at
-   least one `IDAT`, all of them consecutive; an empty `IEND` last; and no
-   critical chunk PNG does not define. A PNG that fails any of this, as one cut
-   short does, holds no symbol, and nothing is read from it. An ancillary chunk
-   a reader does not know is not a failure, whatever its letters, and bytes
-   after `IEND` are ignored.
+   correct CRC; `PLTE` at most once and before the first `IDAT`, where PNG
+   requires it and never in a greyscale image; at least one `IDAT`, all of them
+   consecutive; an empty `IEND` last; and no critical chunk PNG does not define.
+   A PNG that fails any of this, as one cut short does, holds no symbol, and
+   nothing is read from it. An ancillary chunk a reader does not know is not a
+   failure, whatever its letters, and bytes after `IEND` are ignored.
 2. **Find the record.** With no `inKL` chunk, the PNG has no record: its image
    is all there is.
 3. **Read the version.** If any `inKL` chunk whose CRC is correct has at least
@@ -467,6 +471,87 @@ its whole record. An editor must therefore not replace any of these. A program
 may still show the image, and an editor may offer to make a new file from the
 image, leaving the original as it is.
 
+## Text about a symbol
+
+What a person says about a symbol, such as how it is read and what it means, is
+held in PNG's text chunks, `tEXt`, `zTXt`, and `iTXt`, and never in the record.
+It is not part of the drawing, and stays true of the symbol whatever becomes of
+the image. So PNG's mark of safe to copy is right for it, as the mark of unsafe
+is right for the record, and many programs that drop the record keep it. Most
+files hold no such text, and a file needs none.
+
+### Readings and translations
+
+A file may hold one text chunk for each of these keywords, compared byte for
+byte:
+
+| Keyword               | Holds                      |
+| --------------------- | -------------------------- |
+| `Inkline reading`     | The symbol's readings.     |
+| `Inkline translation` | The symbol's translations. |
+
+A **reading** is how a symbol is read aloud, written down in any way, as a
+transcription or a transliteration: the sign た might have the reading `TA`. A
+**translation** is what a symbol means, in words of any language. Each is what
+someone takes the symbol to be, which may be uncertain, and a symbol can have
+several of either. With no such chunk, nothing of that kind is recorded, which
+does not say that the symbol has no reading or no meaning.
+
+A chunk's text holds one value on each line, the main one first, with a single
+line feed between values and none after the last. They share one chunk because
+programs that meet a keyword twice can keep only one of its chunks, or reverse
+them. The text must follow these rules:
+
+- It is at most 4,096 bytes long in UTF-8, with no byte order mark.
+- No value is empty.
+- No value holds a control character, from U+0000 to U+001F or from U+007F to
+  U+009F.
+
+A value is plain text, and nothing else about it is fixed: no language, script,
+system of transcription, letter case, or Unicode normalization, and no way of
+comparing two values. Readings and translations are separate lists, and a
+value's place in one says nothing about the other. They change nothing about how
+a record draws or how its symbol sits in text, and a program need not read them.
+
+A program that writes such a chunk must write it as `iTXt`, uncompressed, with
+an empty language tag and translated keyword, as its values need not share a
+language. It should place it before the image data, so that a program looking
+for the text can stop there. A change to the text changes no critical chunk, so
+PNG lets the program keep the record chunk as it is, without reading it, even in
+a file whose record it cannot use. It must leave at most one chunk for a keyword
+it changes, and none when no value remains.
+
+A program that reads such text takes it from any file that passes step 1 of
+[Reading a file](#reading-a-file), with or without a record it can use. It looks
+through every `tEXt`, `zTXt`, and `iTXt` chunk, wherever it lies and compressed
+or not, since other programs move them and turn one kind into another. It
+decodes each as PNG says, Latin-1 in `tEXt` and `zTXt` and UTF-8 in `iTXt`, and
+ignores any language tag or translated keyword, whatever it holds. For each
+keyword it uses the first chunk with a correct CRC that keeps to PNG's rules for
+that chunk and to the rules above. Any other chunk with that keyword counts for
+nothing, and is no fault in the file or the record.
+
+The file's name is neither a reading nor a translation. The name says which file
+this is, and they say what someone takes its symbol to be, so a difference
+between them is no error, and renaming a file changes no text chunk. A program
+must not fill in a value from the name, a name from a value, or keep the two in
+step, unless a person asks it to.
+
+### What an editor keeps
+
+When it writes a file again, with or without a record before, an editor must
+keep every text chunk with a correct CRC, byte for byte and in their order,
+unless a person asks it to change or remove one. This covers every keyword, and
+a chunk that the rules above would not let a program use.
+
+So a keyword needs no version: a program ignores one it does not know, and an
+editor keeps it. Keywords beginning `Inkline ` belong to this document.
+
+A copy of a file holds the same text, and the two can then differ. A program
+that drops a text chunk leaves the rest of the file as it was, and the text is
+gone: it is held nowhere else, and neither the record nor the file's name can
+give it back.
+
 ## Versions
 
 The version in the record chunk is the format's own, and has nothing to do with
@@ -485,6 +570,9 @@ any version can recognise a file of any other:
 - Its record is in the `inKL` chunk, marked unsafe to copy.
 - The first four bytes of that chunk's data are its version, a big-endian
   unsigned integer from 1, that no two versions share.
+- [Text about a symbol](#text-about-a-symbol) is in PNG's text chunks, outside
+  the record, with the keywords and meanings defined there, and an editor keeps
+  it.
 
 Everything else may change between versions, including everything after those
 four bytes, however large it gets.
@@ -495,13 +583,14 @@ The version must increase for any change that a reader of an earlier version
 would get wrong by ignoring it. That is any change to how an existing record
 draws or to the space a symbol takes up in a line of text, to the meaning, type,
 or range of a field, or to a limit, any new value of `tool`, `kind`, or `cut`,
-and any new information that must survive editing.
+and any new information in the record that must survive editing.
 
 Without changing the version, a later revision of this document may add only a
 field that changes nothing about how a record draws or how its symbol sits in
-text, and that may be lost without harm. A reader must ignore a field it does
-not know, and an editor must not keep such a field when it writes the record
-again.
+text, and that may be lost without harm, or a keyword for
+[text about a symbol](#text-about-a-symbol), which changes neither and which
+every editor keeps. A reader must ignore a field it does not know, and an editor
+must not keep such a field when it writes the record again.
 
 So a change such as a symbol wider than the space it takes up, overlapping the
 text after it, raises the version. A reader of version 1 then shows the image at
@@ -520,12 +609,13 @@ as many readers as it can.
 ### Converters
 
 A converter writes a new file of another version, leaving the original as it is,
-with the symbol looking the same and sitting the same in text. Going to a lower
-version, it can draw what that version cannot express into the base layer, which
-keeps the ink and loses the editing of what was flattened. That works only for
-what the lower version can place: a symbol wider than the space it takes up, or
-an image beyond that version's limits, cannot come through unchanged. A
-converter must then refuse, or say what will change before it writes.
+with the symbol looking the same and sitting the same in text, and it keeps the
+file's text chunks as an editor does. Going to a lower version, it can draw what
+that version cannot express into the base layer, which keeps the ink and loses
+the editing of what was flattened. That works only for what the lower version
+can place: a symbol wider than the space it takes up, or an image beyond that
+version's limits, cannot come through unchanged. A converter must then refuse,
+or say what will change before it writes.
 
 ## Security considerations
 
@@ -551,9 +641,14 @@ not build every stroke's outline at once. A program may decline a file it judges
 too costly to read or draw. It then treats the file like one with an unusable
 record, so an editor must not replace it.
 
+Text about a symbol is untrusted too. A program should stop decompressing a text
+chunk as soon as it passes the limit on its text, and must treat a value as
+plain text, never as markup, a link, or a path.
+
 A record keeps every stroke and all of the base layer, including ink that later
 strokes erased or that lies outside the image, so sharing a file can show more
-than its image does.
+than its image does. Text chunks go with a file too, and any PNG tool shows
+them.
 
 ## What Inkline does
 
@@ -611,7 +706,13 @@ not draw the record, so only opening such a file for editing does this.
 When it saves over a file, Inkline keeps text chunks, and other chunks PNG marks
 safe to copy that the new image does not have, each on the side of the image
 data it was on, other than `eXIf`, which can turn an image, and chunks with a
-bad CRC. It places the ones that come before the image data after the record.
+bad CRC. It places the ones that come before the image data after the record. If
+the file changed while it was open, and the person keeps their drawing, those
+are the chunks the changed file holds.
+
+Inkline does not show, change, or search text about a symbol, and writes none.
+Copy from takes only the drawing, so a symbol keeps its own text, and a new one
+starts with none.
 
 Inkline declines a file or a base layer's PNG of more than 65,536 chunks, and
 does not save a file that would have more, which leaves the old file as it was.

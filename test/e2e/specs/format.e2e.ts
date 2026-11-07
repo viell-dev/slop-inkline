@@ -186,6 +186,53 @@ describe("The file format in Obsidian's renderer", function () {
     });
   }
 
+  it("keeps a file's text, byte for byte, through edits that move the crop", async function () {
+    const bytes = await readFile(path.join(fixtures, "v1-text.ink.png"));
+    const result = await browser.execute(async (base64: string) => {
+      const { canvas, png, record } = window.inklineTest;
+      const data = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+      const text = (file: Uint8Array): string[] =>
+        png
+          .readChunks(file)
+          .filter((chunk) => chunk.type === "iTXt")
+          .map((chunk) => record.toBase64(chunk.data));
+      /** Adds a mark to the left of the ink, which moves the crop. */
+      const edited = async (file: Uint8Array): Promise<Uint8Array> => {
+        const opened = await canvas.openInk(file);
+        if (opened.kind !== "editable") throw new Error(opened.kind);
+        const mark = { tool: "pen" as const, size: 160, points: [-1600, 1600] };
+        const saved = await canvas.saveInk(
+          {
+            ...opened.document,
+            strokes: [...opened.document.strokes, mark],
+          },
+          opened.base,
+          opened.carried,
+        );
+        return saved.bytes;
+      };
+      const once = await edited(data);
+      const twice = await edited(once);
+      // What a program that drops the record leaves, a picture with its text.
+      const picture = png.writeChunks(
+        png.readChunks(data).filter((chunk) => chunk.type !== "inKL"),
+      );
+      const drawn = await edited(picture);
+      return {
+        before: text(data),
+        once: text(once),
+        twice: text(twice),
+        drawn: text(drawn),
+        recorded: png.readChunks(drawn).some((chunk) => chunk.type === "inKL"),
+      };
+    }, toBase64(bytes));
+    expect(result.before).toHaveLength(2);
+    expect(result.once).toEqual(result.before);
+    expect(result.twice).toEqual(result.before);
+    expect(result.drawn).toEqual(result.before);
+    expect(result.recorded).toBe(true);
+  });
+
   it("refuses a record with anything after its zlib stream", async function () {
     const result = await browser.execute(async () => {
       const { inkFile, png } = window.inklineTest;

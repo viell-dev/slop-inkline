@@ -311,9 +311,10 @@ async function createSquare(): Promise<void> {
 async function changeElsewhere(
   path: string,
   how: "vault" | "disk" = "vault",
+  text?: string,
 ): Promise<void> {
   await browser.executeObsidian(
-    async ({ app }, filePath, way) => {
+    async ({ app }, filePath, way, added) => {
       const { canvas } = window.inklineTest;
       const dot = (x: number) => ({
         tool: "pen" as const,
@@ -323,7 +324,17 @@ async function changeElsewhere(
       const { bytes } = await canvas.saveInk(
         { strokes: [dot(800), dot(1600), dot(2400)] },
         undefined,
-        [],
+        added === null
+          ? []
+          : [
+              {
+                chunk: {
+                  type: "iTXt",
+                  data: new TextEncoder().encode(added),
+                },
+                afterData: false,
+              },
+            ],
       );
       if (way === "disk") {
         await app.vault.adapter.writeBinary(filePath, bytes.slice().buffer);
@@ -335,7 +346,24 @@ async function changeElsewhere(
     },
     path,
     how,
+    text ?? null,
   );
+}
+
+/** Two readings, as the data of the `iTXt` chunk that holds them. */
+const readings = "Inkline reading\0\0\0\0\0TA\nた";
+
+/** The data of a symbol file's `iTXt` chunks, as text. */
+async function textIn(path: string): Promise<string[]> {
+  return browser.executeObsidian(async ({ app }, filePath) => {
+    const file = app.vault.getFileByPath(filePath);
+    if (file === null) throw new Error(`no ${filePath}`);
+    const { png } = window.inklineTest;
+    return png
+      .readChunks(new Uint8Array(await app.vault.readBinary(file)))
+      .filter((chunk) => chunk.type === "iTXt")
+      .map((chunk) => new TextDecoder().decode(chunk.data));
+  }, path);
 }
 
 /** How many strokes a symbol file's record holds. */
@@ -3761,6 +3789,77 @@ describe("The editor", function () {
       await browser.keys(["Control", "Enter"]);
       await waitClosed();
       expect(await strokeCount("001.ink.png")).toBe(2);
+    });
+  });
+  describe("keeping the text about a symbol", function () {
+    it("keeps it through an edit and a save", async function () {
+      await saveOne();
+      await changeElsewhere("001.ink.png", "vault", readings);
+      await editFile("001.ink.png");
+      await draw([[0.5, 0.2]]);
+      await browser.keys(["Control", "s"]);
+      await waitForStatus("Saved");
+      expect(await strokeCount("001.ink.png")).toBe(4);
+      expect(await textIn("001.ink.png")).toEqual([readings]);
+    });
+
+    it("keeps it through a draft offered back", async function () {
+      await saveOne();
+      await changeElsewhere("001.ink.png", "vault", readings);
+      await editFile("001.ink.png");
+      await draw([[0.5, 0.2]]);
+      await obsidianPage.disablePlugin("inkline");
+      await obsidianPage.enablePlugin("inkline");
+      await loadModules();
+      await editFile("001.ink.png");
+      await clickTop("Restore");
+      await browser.keys(["Control", "Enter"]);
+      await waitClosed();
+      expect(await strokeCount("001.ink.png")).toBe(4);
+      expect(await textIn("001.ink.png")).toEqual([readings]);
+    });
+
+    it("takes in what a change it reloads added", async function () {
+      await saveOne();
+      await editFile("001.ink.png");
+      await settledSurface();
+      await changeElsewhere("001.ink.png", "vault", readings);
+      await waitForStatus("Reloaded: the file changed on disk");
+      await draw([[0.5, 0.2]]);
+      await browser.keys(["Control", "s"]);
+      await waitForStatus("Saved");
+      expect(await strokeCount("001.ink.png")).toBe(4);
+      expect(await textIn("001.ink.png")).toEqual([readings]);
+    });
+
+    it("keeps what a change added when the drawing is kept", async function () {
+      await saveOne();
+      await editFile("001.ink.png");
+      await draw([[0.5, 0.2]]);
+      await changeElsewhere("001.ink.png", "vault", readings);
+      await clickTop("Keep mine");
+      await browser.keys(["Control", "s"]);
+      await waitForStatus("Saved");
+      expect(await strokeCount("001.ink.png")).toBe(2);
+      expect(await textIn("001.ink.png")).toEqual([readings]);
+    });
+
+    it("keeps what a change added when a save found it", async function () {
+      await saveOne();
+      await editFile("001.ink.png");
+      await draw([[0.5, 0.2]]);
+      // Straight to the disk, and the save at once, before the vault notices.
+      await changeElsewhere("001.ink.png", "disk", readings);
+      await browser.execute(() => {
+        const save = document.querySelector('[data-inkline-button="save"]');
+        if (!(save instanceof HTMLElement)) throw new Error("no Save button");
+        save.click();
+      });
+      await waitForStatus("Not saved: the file changed on disk");
+      await clickTop("Keep mine");
+      await waitClosed();
+      expect(await strokeCount("001.ink.png")).toBe(2);
+      expect(await textIn("001.ink.png")).toEqual([readings]);
     });
   });
   describe("drawing the next one", function () {

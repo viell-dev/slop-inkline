@@ -33,7 +33,12 @@ import {
   header,
   pixelChunks,
 } from "../../support/png.ts";
-import { goldenFiles, goldenImages } from "../../fixtures/format/records.ts";
+import {
+  goldenFiles,
+  goldenImages,
+  goldenText,
+  iTxtData,
+} from "../../fixtures/format/records.ts";
 
 const fixtures = path.resolve(import.meta.dirname, "../../fixtures/format");
 
@@ -148,6 +153,113 @@ describe("version 1 golden files", () => {
       expect([...header.subarray(8, 13)]).toEqual([8, 6, 0, 0, 0]);
     });
   }
+});
+
+describe("text about a symbol", () => {
+  const ascii = (text: string): Uint8Array =>
+    Uint8Array.from(text, (char) => char.charCodeAt(0));
+  const joined = (...parts: readonly Uint8Array[]): Uint8Array =>
+    Uint8Array.from(parts.flatMap((part) => [...part]));
+  const textOf = (chunks: readonly Chunk[]): Chunk[] =>
+    chunks.filter((chunk) => /^(?:tEXt|zTXt|iTXt)$/.test(chunk.type));
+
+  /** A PNG with a record, and chunks either side of its image data. */
+  function symbol(
+    beforeData: readonly Chunk[],
+    afterData: readonly Chunk[],
+  ): Uint8Array {
+    const [header, data, end] = pixelChunks(blank(8, imageHeight));
+    if (header === undefined || data === undefined || end === undefined) {
+      throw new Error("no chunks");
+    }
+    return writeChunks([
+      header,
+      recordChunk(1),
+      ...beforeData,
+      data,
+      ...afterData,
+      end,
+    ]);
+  }
+
+  it("holds v1-text's in the chunks a writer must write, before the image data", async () => {
+    const name = "v1-text";
+    const bytes = await readFile(path.join(fixtures, `${name}.ink.png`));
+    const chunks = readChunks(new Uint8Array(bytes));
+    const text = Object.entries(goldenText[name] ?? {}).map(
+      ([keyword, value]) => ({
+        type: "iTXt",
+        data: iTxtData(keyword, value),
+      }),
+    );
+    expect(text).toHaveLength(2);
+    expect(textOf(chunks)).toEqual(text);
+    const firstData = chunks.findIndex((chunk) => chunk.type === "IDAT");
+    expect(chunks.slice(1, firstData).map((chunk) => chunk.type)).toEqual([
+      recordChunkType,
+      "iTXt",
+      "iTXt",
+    ]);
+  });
+
+  it("is not in any other golden file, as a file needs none", async () => {
+    for (const name of Object.keys(goldenFiles)) {
+      if (goldenText[name] !== undefined) continue;
+      const bytes = await readFile(path.join(fixtures, `${name}.ink.png`));
+      expect(textOf(readChunks(new Uint8Array(bytes)))).toEqual([]);
+    }
+  });
+
+  it("goes through saves byte for byte and in its order, whatever it holds", async () => {
+    const reading: Chunk = {
+      type: "iTXt",
+      data: iTxtData("Inkline reading", "TA\nた"),
+    };
+    const beforeData: Chunk[] = [
+      reading,
+      // As other programs turn it into: compressed, plain, and with a language.
+      {
+        type: "zTXt",
+        data: joined(ascii("Inkline translation\0\0"), deflateSync("field")),
+      },
+      {
+        type: "iTXt",
+        data: joined(ascii("Inkline reading\0\x01\0ja\0\0"), deflateSync("t")),
+      },
+      { type: "tEXt", data: ascii("Inkline reading\0DA") },
+      // Keywords it does not know, of this format and of others.
+      { type: "iTXt", data: iTxtData("Inkline origin", "a later keyword") },
+      { type: "tEXt", data: ascii("Comment\0from another tool") },
+    ];
+    const afterData: Chunk[] = [
+      // Text that no program may use, which is still kept.
+      { type: "iTXt", data: iTxtData("Inkline reading", "x".repeat(5000)) },
+      { type: "iTXt", data: iTxtData("Inkline reading", "TA\r\n") },
+      { type: "iTXt", data: iTxtData("Inkline reading", "") },
+      { type: "iTXt", data: ascii("Inkline reading\0\0\0\0\0\xff") },
+      { type: "tEXt", data: ascii("no separator") },
+      { type: "zTXt", data: ascii("Comment\0\0not a zlib stream") },
+      reading,
+    ];
+    const file = symbol(beforeData, afterData);
+    const saved = await writeInkFile(
+      image,
+      record,
+      preservableChunks(readChunks(file)),
+    );
+    const again = await writeInkFile(
+      image,
+      record,
+      preservableChunks(readChunks(saved)),
+    );
+    for (const bytes of [saved, again]) {
+      const chunks = readChunks(bytes);
+      expect(textOf(chunks)).toEqual([...beforeData, ...afterData]);
+      const lastData = chunks.findLastIndex((chunk) => chunk.type === "IDAT");
+      expect(textOf(chunks.slice(0, lastData))).toEqual(beforeData);
+      expect(await readInkFile(bytes)).toEqual(asRead);
+    }
+  });
 });
 
 describe("a base layer drawn smaller than its image", () => {

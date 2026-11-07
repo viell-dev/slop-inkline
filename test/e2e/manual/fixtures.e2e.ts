@@ -17,6 +17,8 @@ import { encodePng } from "../../support/png.ts";
 import {
   goldenFiles,
   goldenImages,
+  goldenText,
+  iTxtData,
   type GoldenImage,
 } from "../../fixtures/format/records.ts";
 import { loadModules, toBase64 } from "../support/browser.ts";
@@ -48,8 +50,11 @@ describe("The golden files", function () {
   for (const [name, drawing] of Object.entries(goldenFiles)) {
     it(`saves ${name}`, async function () {
       const image = goldenImages[name];
+      const text = Object.entries(goldenText[name] ?? {}).map(
+        ([keyword, value]) => [...iTxtData(keyword, value)],
+      );
       const saved = await browser.execute(
-        async (strokes, place, png) => {
+        async (strokes, place, png, chunks) => {
           const { canvas, record } = window.inklineTest;
           const bytes = Uint8Array.from(atob(png), (char) =>
             char.charCodeAt(0),
@@ -59,7 +64,14 @@ describe("The golden files", function () {
             layer === undefined ? { strokes } : { strokes, base: layer };
           const base =
             layer === undefined ? undefined : await canvas.drawableBase(layer);
-          const file = await canvas.saveInk(document, base);
+          const file = await canvas.saveInk(
+            document,
+            base,
+            chunks.map((data) => ({
+              chunk: { type: "iTXt", data: Uint8Array.from(data) },
+              afterData: false,
+            })),
+          );
           return {
             text: record.serializeRecord(file.record),
             file: record.toBase64(file.bytes),
@@ -68,6 +80,7 @@ describe("The golden files", function () {
         drawing.strokes,
         drawing.base ?? null,
         image === undefined ? "" : toBase64(baseImage(image)),
+        text,
       );
       await writeFile(
         path.join(output, `${name}.ink.png`),

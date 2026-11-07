@@ -55,9 +55,9 @@ must keep released files readable and looking the same, as
   later versions however large.
 - Pinned golden files in
   [test/fixtures/format](https://github.com/viell-dev/slop-inkline/tree/main/test/fixtures/format),
-  real saved symbols with one for each kind of stroke, read on every change, and
-  redrawn in Obsidian's own renderer against their stored pixels, within stated
-  tolerances
+  real saved symbols with one for each kind of stroke and one with text about
+  its symbol, read on every change, and redrawn in Obsidian's own renderer
+  against their stored pixels, within stated tolerances
   ([format.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/format.e2e.ts)).
   From the first stable release, existing fixtures stay unchanged and new cases
   get new files.
