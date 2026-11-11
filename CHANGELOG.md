@@ -9,6 +9,13 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Fixed
+
+- `COM¹`, `COM²`, `COM³`, `LPT¹`, `LPT²`, and `LPT³`, which Windows keeps for
+  its ports as it keeps `COM1`, are refused as a symbol's or a folder's name,
+  with an extension too. A symbol that already has such a name keeps it when
+  saved ([#225](https://github.com/viell-dev/slop-inkline/issues/225)).
+
 ## 0.9.2 - 2026-11-07
 
 This is the first release candidate of 1.0.0: a build meant to become 1.0.0

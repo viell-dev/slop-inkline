@@ -167,6 +167,17 @@ describe("chooseName", () => {
     // Windows reads a name before a dot as the device too.
     expect(chooseName("CON.txt").kind).toBe("refused");
     expect(chooseName("CONSOLE.txt").kind).toBe("name");
+    // Windows reads the superscripts ¹, ², and ³ as a port's digit.
+    for (const port of ["COM", "com", "LPT", "Lpt"]) {
+      for (const digit of ["¹", "²", "³"]) {
+        expect(chooseName(`${port}${digit}`).kind).toBe("refused");
+        expect(chooseName(`${port}${digit}.txt`).kind).toBe("refused");
+      }
+    }
+    // Ports past 9, other superscripts, and longer names are files.
+    for (const name of ["COM10", "COM¹a", "COM¹0", "LPT⁴", "LPT0"]) {
+      expect(chooseName(name)).toEqual({ kind: "name", name });
+    }
     // 247 bytes and .ink.png fit; one more byte does not.
     expect(chooseName("a".repeat(247)).kind).toBe("name");
     expect(chooseName("a".repeat(248)).kind).toBe("refused");
@@ -201,6 +212,12 @@ describe("chooseRename", () => {
     expect(chooseRename("a#2", "a#1")).toEqual({ kind: "name", name: "a2" });
     expect(chooseRename("con", "")).toEqual(chooseName("con"));
     expect(chooseRename("CON", "con").kind).toBe("refused");
+    // A file named elsewhere for a port keeps its name, but takes no other.
+    expect(chooseRename("COM¹", "COM¹")).toEqual({
+      kind: "name",
+      name: "COM¹",
+    });
+    expect(chooseRename("COM²", "COM¹").kind).toBe("refused");
   });
 });
 
@@ -240,6 +257,9 @@ describe("chooseFolder", () => {
       "Sym[bols]",
       "Notes/con",
       "LPT1.signs",
+      "COM¹",
+      "Notes/lpt³",
+      "LPT².signs",
       "Signs.",
       "Notes/ Signs",
       "Sym\u0007bols",
