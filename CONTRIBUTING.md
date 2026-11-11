@@ -150,24 +150,34 @@ and every drawing a test uses are synthetic.
 against the published releases, on both default Obsidian versions. It stays
 outside the suite and gates no release, as it needs BRAT's own release and
 GitHub. Download BRAT's `main.js`, `manifest.json`, and `styles.css` into a new
-directory, name the highest published version and an older one to update from,
+directory, name the highest published version and an earlier one to update from,
 and run it in the Docker image:
 
 ```sh
 docker build --file test/e2e/Dockerfile --tag inkline-e2e .
 docker run --rm --init --shm-size=1g \
   --env E2E_PLUGIN_DIR=/brat \
-  --env E2E_BRAT_LATEST=0.9.0 --env E2E_BRAT_START=0.3.0-alpha.8 \
+  --env E2E_BRAT_LATEST=0.9.2 --env E2E_BRAT_START=0.9.1 \
   --volume inkline-obsidian-cache:/cache \
   --volume "$PWD/test-results/e2e:/out" --volume "$PWD/brat:/brat:ro" \
   inkline-e2e --spec test/e2e/manual/brat.e2e.ts
 ```
 
-It uses no GitHub token, so its requests count against the 60 an hour that
-GitHub allows an address: it makes about 16 for each Obsidian version, and
-refuses to start with fewer than 50 left. It expects strokes and a draft to
-survive the update, so name `0.9.2` or later as the version to update from: an
-earlier one keeps neither, as the file format changed there.
+What the update must keep goes by the version it starts from. From `0.9.2` on,
+the file format is final, and the update keeps the drawing's strokes and an open
+drawing's draft, as well as its pixels, the note, and the preferences. From an
+earlier version, it keeps the pixels, the note, and the preferences: the symbol
+opens as a picture to draw over, and the draft is dropped, as
+[the install guide](https://viell-dev.github.io/slop-inkline/install#update)
+says. So checking that strokes and a draft survive needs two published releases
+from `0.9.2` on.
+
+Before any request, the check refuses a missing version, a latest one before
+`0.9.2`, and a start that is not earlier than the latest. Before BRAT's
+requests, it refuses a version that is not published, and a latest one that is
+not the highest. It uses no GitHub token, so its requests count against the 60
+an hour that GitHub allows an address: it makes about 17 for each Obsidian
+version, and refuses to start with fewer than 50 left.
 
 `test/e2e/manual/listing.e2e.ts` also stays outside the suite: it makes the
 pictures for Obsidian's community directory listing, as

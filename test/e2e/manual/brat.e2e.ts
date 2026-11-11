@@ -3,8 +3,17 @@
 // and drives BRAT's real dialogs against the published releases, with no token.
 // Start the host with BRAT's three release files through E2E_PLUGIN_DIR.
 // E2E_BRAT_LATEST names the highest published release, and E2E_BRAT_START an
-// older one to update from. Missing inputs fail rather than silently skipping
-// this check.
+// older one to update from. Missing or impossible versions fail before any
+// request, by the rules of test/support/updates.ts, and versions that are not
+// published, or a latest that is not the highest, before BRAT's requests,
+// rather than silently skipping this check or spending GitHub's requests.
+//
+// What an update keeps goes by E2E_BRAT_START alone, as in update.e2e.ts. From
+// 0.9.2 on, the file format is final, and an update keeps the drawing's
+// strokes and an open drawing's draft as well as its pixels, note and
+// preferences. From an earlier release it keeps the pixels, note and
+// preferences: the symbol opens as a picture to draw over, and the draft is
+// dropped, as the owner decided in #144.
 import { createHash } from "node:crypto";
 import {
   existsSync,
@@ -17,6 +26,12 @@ import path from "node:path";
 import { browser, expect } from "@wdio/globals";
 import type { Plugin } from "obsidian";
 import { obsidianPage } from "wdio-obsidian-service";
+import {
+  bratPublishedProblems,
+  bratVersionProblems,
+  keepsStrokesFrom,
+  noStrokes,
+} from "../../support/updates.ts";
 import { loadModules } from "../support/browser.ts";
 import {
   clickTop,
@@ -27,6 +42,7 @@ import {
   symbolFiles,
   waitForEditor,
   waitForNotice,
+  waitForStatus,
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 
@@ -44,11 +60,11 @@ declare module "wdio-obsidian-service" {
 const repository = "viell-dev/slop-inkline";
 const latest = process.env.E2E_BRAT_LATEST;
 const start = process.env.E2E_BRAT_START;
-if (latest === undefined || start === undefined || latest === start) {
-  throw new Error(
-    "E2E_BRAT_LATEST and a different E2E_BRAT_START are required",
-  );
+const problems = bratVersionProblems(latest, start);
+if (problems.length > 0 || latest === undefined || start === undefined) {
+  throw new Error(problems.join("\n"));
 }
+const keepsStrokes = keepsStrokesFrom(start);
 
 /** What a drawing and its preferences are saved as. */
 interface Kept {
@@ -256,7 +272,20 @@ async function readKept(): Promise<Kept> {
   };
 }
 
-/** Checks the drawing, note and preference, then edits with what was saved. */
+/** How many drafts the host's storage lists, as any release so far keeps them. */
+async function keptDrafts(): Promise<number> {
+  // Read as stored: the checkout's own DraftStore would drop an earlier
+  // release's drafts as it read them.
+  return browser.executeObsidian(({ app }) => {
+    const ids: unknown = app.loadLocalStorage("inkline-drafts");
+    return Array.isArray(ids) ? ids.length : 0;
+  });
+}
+
+/**
+ * Checks the drawing, note and preference, then edits with what was saved:
+ * the strokes, or, from a release before the final format, the picture.
+ */
 async function expectKept(kept: Kept, stage: string): Promise<void> {
   expect(await readKept()).toEqual(kept);
   await browser.executeObsidian(async ({ app, plugins }) => {
@@ -265,6 +294,13 @@ async function expectKept(kept: Kept, stage: string): Promise<void> {
     await plugins.inkline.editSymbol(file);
   });
   await waitForEditor();
+  if (keepsStrokes) {
+    expect(await browser.$(".inkline-status").getText()).not.toContain(
+      noStrokes,
+    );
+  } else {
+    await waitForStatus(noStrokes);
+  }
   expect(
     await browser
       .$('[data-inkline-button="size-3"]')
@@ -283,12 +319,24 @@ describe("Installing and updating through BRAT", function () {
       await download("https://api.github.com/rate_limit"),
     ) as { resources: { core: { remaining: number } } };
     const { remaining } = limits.resources.core;
-    // A run on both Obsidian versions makes about 32 of them.
+    // A run on both Obsidian versions makes about 34 of them.
     if (remaining < 50) {
       throw new Error(
         `GitHub allows ${String(remaining)} more unauthenticated requests this hour; wait for its limit to reset`,
       );
     }
+    // Every release fits on the page for many years yet.
+    const releases = JSON.parse(
+      await download(
+        `https://api.github.com/repos/${repository}/releases?per_page=100`,
+      ),
+    ) as { tag_name: string }[];
+    const published = bratPublishedProblems(
+      latest,
+      start,
+      releases.map((release) => release.tag_name),
+    );
+    if (published.length > 0) throw new Error(published.join("\n"));
   });
 
   it("installs the highest release as the latest version", async function () {
@@ -352,7 +400,7 @@ describe("Installing and updating through BRAT", function () {
     await expectKept(kept, "updated-reloaded");
   });
 
-  it("updates at startup, keeping an open drawing as a draft", async function () {
+  it(`updates at startup, ${keepsStrokes ? "keeping an open drawing as a draft" : `dropping the draft ${start} kept`}`, async function () {
     await browser.reloadObsidian({ vault: "test/e2e/vaults/basic" });
     await addThroughBrat(start);
     await browser.waitUntil(async () => (await loadedVersion()) === start);
@@ -383,12 +431,26 @@ describe("Installing and updating through BRAT", function () {
       [0.5, 0.7],
       [0.7, 0.3],
     ]);
+    await browser.waitUntil(async () => (await keptDrafts()) > 0, {
+      timeoutMsg: `${start} kept no draft of the drawing`,
+    });
     await browser.waitUntil(async () => (await loadedVersion()) === latest, {
       timeout: 90_000,
     });
     await browser.$(".inkline-editor").waitForExist({ reverse: true });
     await saveScreenshot("brat-updated-at-startup");
     await browser.executeObsidianCommand("inkline:insert-symbol");
+    if (!keepsStrokes) {
+      // No question about the draft: the editor opens at once, with nothing
+      // in it, as Esc then closes it without asking.
+      await waitForEditor();
+      expect(await browser.$$(".modal-container").length).toBe(1);
+      await saveScreenshot("brat-draft-dropped");
+      await browser.keys("Escape");
+      await browser.$(".inkline-editor").waitForExist({ reverse: true });
+      expect(await symbolFiles()).toEqual([]);
+      return;
+    }
     await clickTop("Restore");
     await waitForEditor();
     await saveScreenshot("brat-draft-restored");
