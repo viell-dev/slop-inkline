@@ -9,6 +9,11 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Fixed
+
+- The README starts with installing Inkline and drawing a first symbol
+  ([#232](https://github.com/viell-dev/slop-inkline/issues/232)).
+
 ## 0.9.2 - 2026-11-07
 
 This is the first release candidate of 1.0.0: a build meant to become 1.0.0
