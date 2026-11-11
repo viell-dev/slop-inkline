@@ -27,6 +27,7 @@ import {
   type EditorHost,
 } from "./notes/symbols.ts";
 import { SymbolTextIndex } from "./notes/text-index.ts";
+import { readAdvance } from "./render/advance.ts";
 import { SymbolRenderer } from "./render/symbols.ts";
 import { brushSizes } from "./editor/session.ts";
 import { InklineSettingTab } from "./settings-tab.ts";
@@ -42,7 +43,23 @@ import {
 export default class InklinePlugin extends Plugin {
   readonly #editors = new Set<InkEditorModal>();
   /** Shows symbols in notes as characters, in every window. */
-  readonly #renderer = new SymbolRenderer(Platform.resourcePathPrefix);
+  readonly #renderer = new SymbolRenderer(
+    Platform.resourcePathPrefix,
+    // PROTOTYPE (#167 §1): reads the advance a symbol's file records.
+    async (src) => {
+      const address = src.split(/[?#]/, 1)[0];
+      const file = this.app.vault
+        .getFiles()
+        .find(
+          (each) =>
+            isInkPath(each.path) &&
+            this.app.vault.getResourcePath(each).split(/[?#]/, 1)[0] ===
+              address,
+        );
+      if (file === undefined) return undefined;
+      return readAdvance(new Uint8Array(await this.app.vault.readBinary(file)));
+    },
+  );
   /** What stops Inkline answering right-clicks, in each document it does. */
   readonly #menuDocuments = new Map<Document, AbortController>();
   /** The menus that hold Edit symbol already. */

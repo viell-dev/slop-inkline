@@ -606,3 +606,53 @@ img.inkline-symbol:not([width], [height]) {
   color: var(--text-error);
   overflow-wrap: anywhere;
 }
+
+/*
+ * PROTOTYPE for #167 §1, not for release: a symbol whose file records an
+ * advance narrower than its image, so that the ink past it lies under what
+ * comes next. The renderer sets the lengths as custom properties.
+ *
+ * Technique B, the default here: the image's box is the advance alone, so
+ * that layout, hit testing, the editor's cursor and selection follow it, and
+ * the ink past it is painted outside the box: a box shadow in the text colour
+ * fills around it, and the mask, which no longer clips to the box, cuts both
+ * to the ink. In stored colour, the picture itself overflows its box.
+ */
+:root:not(.inkline-proto-off) img.inkline-symbol[data-inkline-overhang] {
+  width: var(--inkline-advance-width) !important;
+  height: var(--inkline-height) !important;
+  mask-size: var(--inkline-full-width) 100%;
+  mask-position: calc(-1 * var(--inkline-left)) 0;
+  mask-clip: no-clip;
+  box-shadow: 0 0 0 var(--inkline-spread) currentColor;
+}
+
+:root.inkline-stored-color:not(.inkline-proto-off)
+  img.inkline-symbol[data-inkline-overhang] {
+  box-shadow: none;
+  object-fit: cover;
+  object-position: calc(-1 * var(--inkline-left)) 0;
+  overflow: visible;
+}
+
+/*
+ * Technique A, with inkline-proto-margins on the root: the image keeps its
+ * whole width, and negative margins take the overhang out of the line.
+ */
+:root.inkline-proto-margins:not(.inkline-proto-off)
+  img.inkline-symbol[data-inkline-overhang] {
+  width: var(--inkline-full-width) !important;
+  mask-size: 100% 100%;
+  mask-position: 0 0;
+  mask-clip: border-box;
+  box-shadow: none;
+  margin-left: calc(-1 * var(--inkline-left));
+  margin-right: calc(-1 * var(--inkline-right));
+}
+
+:root.inkline-proto-margins.inkline-stored-color:not(.inkline-proto-off)
+  img.inkline-symbol[data-inkline-overhang] {
+  object-fit: fill;
+  object-position: 50% 50%;
+  overflow: clip;
+}

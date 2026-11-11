@@ -5,12 +5,60 @@
 // Obsidian adds them.
 
 import {
+  overhangStyle,
+  overhangs,
+  type Advance,
+  type OverhangStyle,
+} from "./advance.ts";
+import {
   cssUrl,
   dropFor,
   explicitHeight,
   isSymbolUrl,
   symbolName,
 } from "./layout.ts";
+
+/**
+ * PROTOTYPE (#167 §1): the advance of the symbol at an address, when known.
+ * Undefined while it is being read, or for a file that records none.
+ */
+export type AdvanceOf = (src: string) => Advance | undefined;
+
+/** PROTOTYPE: the attribute that marks an overhanging symbol for styles.css. */
+const overhangMark = "data-inkline-overhang";
+
+const overhangProperties: readonly (keyof OverhangStyle)[] = [
+  "--inkline-left",
+  "--inkline-right",
+  "--inkline-advance-width",
+  "--inkline-full-width",
+  "--inkline-spread",
+  "--inkline-height",
+];
+
+/** PROTOTYPE: sets or removes what places `image` past its advance. */
+function placeOverhang(
+  holders: readonly HTMLElement[],
+  advance: Advance | undefined,
+  height?: number,
+): void {
+  if (advance === undefined || !overhangs(advance)) {
+    for (const holder of holders) {
+      holder.removeAttribute(overhangMark);
+      for (const property of overhangProperties) {
+        holder.style.removeProperty(property);
+      }
+    }
+    return;
+  }
+  const style = overhangStyle(advance, height);
+  for (const holder of holders) {
+    holder.setAttribute(overhangMark, "");
+    for (const property of overhangProperties) {
+      holder.style.setProperty(property, style[property]);
+    }
+  }
+}
 
 /** The class a symbol's image gets, which styles.css styles. */
 export const symbolClass = "inkline-symbol";
@@ -119,13 +167,18 @@ function sized(image: HTMLImageElement): boolean {
  * Tags `image` as a symbol if its URL is a symbol file's, or untags it if it
  * is not one any more, keeping its mask and drop current.
  */
-export function tagImage(image: HTMLImageElement, vault: string): void {
+export function tagImage(
+  image: HTMLImageElement,
+  vault: string,
+  advanceOf?: AdvanceOf,
+): void {
   // The attribute's address, which currentSrc follows only once it loads.
   const src = image.src || image.currentSrc;
   if (!isSymbolUrl(src, vault) || image.closest(textSelector) === null) {
     untagImage(image);
     return;
   }
+  const advance = advanceOf?.(src);
   image.addClass(symbolClass);
   image.style.setProperty(maskProperty, cssUrl(src));
   nameImage(image, src);
@@ -137,6 +190,7 @@ export function tagImage(image: HTMLImageElement, vault: string): void {
   }
   if (!sized(image)) {
     for (const holder of holders) holder.style.removeProperty(dropProperty);
+    placeOverhang([image], advance);
     return;
   }
   const drop = (): void => {
@@ -152,6 +206,7 @@ export function tagImage(image: HTMLImageElement, vault: string): void {
     for (const holder of holders) {
       holder.style.setProperty(dropProperty, dropFor(height));
     }
+    placeOverhang([image], advance, height);
   };
   drop();
   // The width alone gives the height only once the image's own size is known.
@@ -164,6 +219,7 @@ export function untagImage(image: HTMLImageElement): void {
   image.removeClass(symbolClass);
   image.style.removeProperty(maskProperty);
   image.style.removeProperty(dropProperty);
+  placeOverhang([image], undefined);
   unnameImage(image);
   const embed = image.parentElement?.closest(`.${embedClass}`);
   if (embed?.instanceOf(HTMLElement) === true) {
@@ -173,14 +229,18 @@ export function untagImage(image: HTMLImageElement): void {
 }
 
 /** Tags every image in or at `node`. */
-export function tagWithin(node: Node, vault: string): void {
+export function tagWithin(
+  node: Node,
+  vault: string,
+  advanceOf?: AdvanceOf,
+): void {
   if (node.instanceOf(HTMLImageElement)) {
-    tagImage(node, vault);
+    tagImage(node, vault, advanceOf);
     return;
   }
   if (!node.instanceOf(Element)) return;
   for (const image of Array.from(node.getElementsByTagName("img"))) {
-    tagImage(image, vault);
+    tagImage(image, vault, advanceOf);
   }
 }
 
@@ -194,9 +254,50 @@ export class SymbolRenderer {
   #scale = 1;
   #textColor = true;
 
-  constructor(vault: string) {
+  /**
+   * PROTOTYPE: reads the advance of the symbol at an address, and what it
+   * has read, by address without the query; null while reading or for none.
+   */
+  readonly #loadAdvance:
+    ((src: string) => Promise<Advance | undefined>) | undefined;
+  readonly #advances = new Map<string, Advance | null>();
+
+  constructor(
+    vault: string,
+    loadAdvance?: (src: string) => Promise<Advance | undefined>,
+  ) {
     this.#vault = vault;
+    this.#loadAdvance = loadAdvance;
   }
+
+  /**
+   * PROTOTYPE: the advance known for `src`. The first time an address is
+   * seen it starts reading the file and answers undefined; once read, every
+   * image of it is tagged again, which moves the text after it.
+   */
+  readonly #advanceOf: AdvanceOf = (src) => {
+    const load = this.#loadAdvance;
+    if (load === undefined) return undefined;
+    const address = src.split(/[?#]/, 1)[0] ?? "";
+    const known = this.#advances.get(address);
+    if (known !== undefined) return known ?? undefined;
+    this.#advances.set(address, null);
+    void load(src).then(
+      (advance) => {
+        if (advance === undefined) return;
+        this.#advances.set(address, advance);
+        for (const doc of this.#watching.keys()) {
+          for (const image of Array.from(doc.getElementsByTagName("img"))) {
+            if (image.src.split(/[?#]/, 1)[0] === address) {
+              tagImage(image, this.#vault, this.#advanceOf);
+            }
+          }
+        }
+      },
+      () => undefined,
+    );
+    return undefined;
+  };
 
   /** How each watched document stops its observer and close listener. */
   readonly #watching = new Map<Document, () => void>();
@@ -205,6 +306,8 @@ export class SymbolRenderer {
   refresh(src: string): void {
     if (!isSymbolUrl(src, this.#vault)) return;
     const address = src.split(/[?#]/, 1)[0];
+    // PROTOTYPE: the file may record another advance now.
+    if (address !== undefined) this.#advances.delete(address);
     const refreshed = new URL(src);
     // A distinct request even if two writes share a filesystem timestamp.
     refreshed.searchParams.set("inkline", crypto.randomUUID());
@@ -215,7 +318,7 @@ export class SymbolRenderer {
           image.src.split(/[?#]/, 1)[0] === address
         ) {
           image.src = refreshed.href;
-          tagImage(image, this.#vault);
+          tagImage(image, this.#vault, this.#advanceOf);
         }
       }
     }
@@ -246,12 +349,12 @@ export class SymbolRenderer {
       for (const record of records) {
         if (record.type === "attributes") {
           if (record.target.instanceOf(HTMLImageElement)) {
-            tagImage(record.target, this.#vault);
+            tagImage(record.target, this.#vault, this.#advanceOf);
           }
           continue;
         }
         for (const node of Array.from(record.addedNodes)) {
-          tagWithin(node, this.#vault);
+          tagWithin(node, this.#vault, this.#advanceOf);
         }
       }
     });
@@ -271,7 +374,7 @@ export class SymbolRenderer {
       observer.disconnect();
       view.removeEventListener("unload", closed);
     });
-    tagWithin(doc.body, this.#vault);
+    tagWithin(doc.body, this.#vault, this.#advanceOf);
   }
 
   /** Stops tagging symbols in `doc`, and untags those it has. */
