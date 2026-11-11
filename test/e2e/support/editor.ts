@@ -1005,27 +1005,47 @@ const fillerPrefix = "inkline-test-filler:";
 
 /**
  * Fills the renderer's local storage until it refuses even a few characters
- * more, as a full disk or a quota would, and returns how many characters it
- * took. {@link freeStorage} empties it again.
+ * more, as a full disk or a quota would, or until `room` characters more
+ * would fit, and returns how many characters it took. {@link freeStorage}
+ * empties it again.
  */
-export async function fillStorage(): Promise<number> {
-  return browser.execute((prefix) => {
-    let count = 0;
-    let filled = 0;
-    for (let size = 1024 * 1024; size >= 1; size = Math.floor(size / 4)) {
-      const value = "x".repeat(size);
-      for (;;) {
-        try {
-          window.localStorage.setItem(`${prefix}${String(count)}`, value);
-        } catch {
-          break;
+export async function fillStorage(room = 0): Promise<number> {
+  return browser.execute(
+    (prefix, left) => {
+      let count = 0;
+      let filled = 0;
+      for (let size = 1024 * 1024; size >= 1; size = Math.floor(size / 4)) {
+        const value = "x".repeat(size);
+        for (;;) {
+          try {
+            window.localStorage.setItem(`${prefix}${String(count)}`, value);
+          } catch {
+            break;
+          }
+          count++;
+          filled += size;
         }
-        count++;
-        filled += size;
       }
-    }
-    return filled;
-  }, fillerPrefix);
+      // The room asked for, from the last and smallest written, and what
+      // that freed beyond it written back.
+      let freed = 0;
+      while (freed < left && count > 0) {
+        count--;
+        const key = `${prefix}${String(count)}`;
+        freed += window.localStorage.getItem(key)?.length ?? 0;
+        window.localStorage.removeItem(key);
+      }
+      if (freed > left) {
+        window.localStorage.setItem(
+          `${prefix}${String(count)}`,
+          "x".repeat(freed - left),
+        );
+      }
+      return filled - Math.min(freed, left);
+    },
+    fillerPrefix,
+    room,
+  );
 }
 
 /** Removes what {@link fillStorage} wrote. */

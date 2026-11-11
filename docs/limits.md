@@ -156,6 +156,11 @@ the mark before renaming what it links to.
   opening. The longest pauses left are about a tenth of a second, up to a
   quarter at worst, in single steps that Inkline cannot divide, such as hashing
   the file ([#202](https://github.com/viell-dev/slop-inkline/issues/202)).
+- **Unreleased:** a draft keeps only the base layer its drawing uses now. Undo
+  or Redo past a Copy from, a Make ink, or a picture you chose stores that
+  step's base layer again, which takes a moment for a large one. If Obsidian's
+  storage is nearly full, it can then refuse the draft, and a notice
+  [says so](./troubleshooting.md#common-problems): save to keep the changes.
 - A symbol file made to be slow to draw, by a stroke that turns back at nearly
   every point, can keep Obsidian busy for a long time when you open it in the
   editor, hours for the worst of them, from a file of a few kilobytes. Close

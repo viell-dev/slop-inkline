@@ -208,6 +208,19 @@ must keep released files readable and looking the same, as
   first save that an interruption cut short finished from its draft (the same
   file, and
   [drafts.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/drafts.test.ts)).
+- **Unreleased:** a draft's base layer dropped from storage as soon as the draft
+  that replaces it is kept, and never before: kept when storage refuses the
+  replacement, and while another draft names it, a held one, a restored one, or
+  another editor's; and stored once when a stroke keeps a draft while it is
+  being stored ahead of a save. With room for two pictures in Obsidian's own
+  local storage, a draft is kept through copy after copy
+  ([base-memory.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/base-memory.e2e.ts)
+  and
+  [drafts.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/drafts.test.ts)).
+- **Unreleased:** a decoded base layer kept while Undo or Redo can reach it, and
+  shown again by them, and let go after a new change past an Undo, by a copy or
+  a stroke, and once it is further back than Undo goes
+  ([base-memory.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/base-memory.e2e.ts)).
 - A file changed on disk while the editor is open: taken in, asked about,
   reloaded with the drawing one undo away, never saved over when it cannot be
   read, and saved again where it was if deleted (the same file, and
@@ -510,6 +523,9 @@ the individual pull requests hold the inputs, results, and review discussion.
   attestations, then extracts the published ZIP and compares its files with the
   loose assets. This verifies our manual installation channel. It does not audit
   or endorse third-party installer plugins.
+- Memory is checked as whether anything can still reach a decoded base layer
+  once garbage is collected, not as how much memory Obsidian or its GPU process
+  uses.
 - The budgets are wall-clock times. Each leaves room for a slow machine, but
   heavy work beside a run can still exceed one; such a failure is investigated,
   not run again until it passes.

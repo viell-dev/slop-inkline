@@ -29,6 +29,17 @@ even one a public release; earlier pre-releases carry a suffix such as
   its ports as it keeps `COM1`, are refused as a symbol's or a folder's name,
   with an extension too. A symbol that already has such a name keeps it when
   saved ([#225](https://github.com/viell-dev/slop-inkline/issues/225)).
+- A draft is no longer refused for room that pictures no draft needs take up.
+  Each **Copy from**, **Make ink**, or reload that gave the drawing a new base
+  layer kept the old one's picture in the vault's local storage too, until
+  Inkline next looked for drafts to offer, so a few of them in one editor could
+  fill it. The old picture now goes as soon as the draft that replaces it is
+  kept, and never before
+  ([#223](https://github.com/viell-dev/slop-inkline/issues/223)).
+- The editor no longer keeps every base layer it has shown in memory until it
+  closes. One that Undo and Redo can no longer reach, after a new change past an
+  Undo or once it is further back than Undo goes, is let go
+  ([#224](https://github.com/viell-dev/slop-inkline/issues/224)).
 - The guide said that symbols keep showing in other Markdown apps and on GitHub,
   but those show Obsidian's own embed, such as `![[tower.ink.png]]`, as text.
   [Without Inkline](https://viell-dev.github.io/slop-inkline/without-inkline#in-other-apps)
