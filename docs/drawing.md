@@ -351,6 +351,13 @@ nothing is renamed, and the editor stays open with the name for the next save to
 try. A new symbol's embed takes the new name whatever you answer Obsidian, and
 the cursor stays just after the symbol.
 
+**Unreleased:** the symbol's file is checked again once the drawing and the
+notes are saved, just before Obsidian renames it. If it was deleted and
+replaced, or renamed elsewhere, meanwhile, or another symbol took the new name,
+nothing is renamed: the drawing is saved, a notice says why, and the editor
+stays open with the name you typed for the next save to try. A name given
+elsewhere stays until then.
+
 ## Readings and translations
 
 The button beside the name shows a symbol's readings and translations, and opens

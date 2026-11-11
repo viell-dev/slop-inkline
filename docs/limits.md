@@ -84,8 +84,9 @@ Obsidian does this with any file
 
 Inkline's own renames save every open note first, which leaves that save nothing
 to do, and refuse to go on if one cannot be saved
-([#182](https://github.com/viell-dev/slop-inkline/issues/182)). What stays out
-of Inkline's reach:
+([#182](https://github.com/viell-dev/slop-inkline/issues/182)). **Unreleased:**
+a note typed in while the others are being saved is saved again before the
+rename starts. What stays out of Inkline's reach:
 
 - **Text that arrives during the question,** from another window or a plugin, if
   the note saves itself before you answer. Answer the question first.

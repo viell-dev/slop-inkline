@@ -835,6 +835,102 @@ export async function restoreVault(): Promise<void> {
   );
 }
 
+/** What a save or a rename can stop in, as on a drive that stopped answering. */
+const holdable = {
+  /** Obsidian's own move of a file, in the real `renameFile`. */
+  move: { owner: "adapter", method: "rename", ending: ".ink.png" },
+  /** A note's save, which comes before the move. */
+  save: { owner: "adapter", method: "write", ending: ".md" },
+  /**
+   * A note's read, as a rename reads each open note before the move, to see
+   * whether it has text to save.
+   */
+  read: { owner: "vault", method: "read", ending: ".md" },
+  /** A symbol's save, which comes before an editor's rename. */
+  write: { owner: "vault", method: "modifyBinary", ending: ".ink.png" },
+  /** A link's update in a note, which comes after the move. */
+  link: { owner: "vault", method: "process", ending: ".md" },
+} as const;
+
+/**
+ * Has `what` wait until {@link letGo}, for every file whose path ends with
+ * `ending`, `what`'s own by default.
+ */
+export async function hold(
+  what: keyof typeof holdable,
+  ending: string = holdable[what].ending,
+): Promise<void> {
+  await browser.executeObsidian(
+    ({ app }, { owner, method }, end) => {
+      const target = owner === "adapter" ? app.vault.adapter : app.vault;
+      const original: unknown = Reflect.get(target, method);
+      if (typeof original !== "function") throw new Error(`no ${method}`);
+      let settle: (failure?: string) => void = () => undefined;
+      const gate = new Promise<void>((resolve, reject) => {
+        settle = (failure) => {
+          if (failure === undefined) resolve();
+          else reject(new Error(failure));
+        };
+      });
+      Reflect.set(window, "inklineHeldOwner", owner);
+      Reflect.set(window, "inklineHeldMethod", method);
+      Reflect.set(window, "inklineSettle", settle);
+      Reflect.set(
+        target,
+        method,
+        async (...args: unknown[]): Promise<unknown> => {
+          const [first] = args;
+          const path =
+            typeof first === "object" && first !== null
+              ? (Reflect.get(first, "path") as unknown)
+              : first;
+          if (typeof path === "string" && path.endsWith(end)) {
+            Reflect.set(window, "inklineHeld", true);
+            await gate;
+          }
+          return Reflect.apply(original, target, args) as unknown;
+        },
+      );
+    },
+    holdable[what],
+    ending,
+  );
+}
+
+/** Waits for what {@link hold} held to be reached. */
+export async function waitForHeld(): Promise<void> {
+  await browser.waitUntil(async () =>
+    browser.execute(() => Reflect.get(window, "inklineHeld") === true),
+  );
+}
+
+/** Lets go what {@link hold} held, or fails it with `failure`. */
+export async function letGo(failure?: string): Promise<void> {
+  await browser.executeObsidian(({ app }, reason) => {
+    const settle: unknown = Reflect.get(window, "inklineSettle");
+    const owner: unknown = Reflect.get(window, "inklineHeldOwner");
+    const method: unknown = Reflect.get(window, "inklineHeldMethod");
+    if (typeof method === "string") {
+      // Held, it became the object's own, over what its prototype has.
+      Reflect.deleteProperty(
+        owner === "adapter" ? app.vault.adapter : app.vault,
+        method,
+      );
+    }
+    for (const key of [
+      "inklineSettle",
+      "inklineHeldOwner",
+      "inklineHeldMethod",
+      "inklineHeld",
+    ]) {
+      Reflect.deleteProperty(window, key);
+    }
+    if (typeof settle === "function") {
+      Reflect.apply(settle, undefined, [reason ?? undefined]);
+    }
+  }, failure ?? null);
+}
+
 /**
  * Makes `createImageBitmap`, which decodes base layers, take `ms` longer,
  * until {@link restoreDecoding}.

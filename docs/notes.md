@@ -233,6 +233,12 @@ while its name is being edited cannot rename the replacement.
 [renaming in the editor](./drawing.md#the-name) does. If a note cannot be saved,
 the row says which one, and nothing is renamed.
 
+**Unreleased:** saving the notes can take a moment on a slow disk, and the
+symbol is checked again once it is done. A symbol deleted and replaced
+meanwhile, or renamed elsewhere, is not renamed, and nor is one whose new name
+another symbol has taken meanwhile. The row says why and keeps the name you
+typed, and **Save** tries again, from the name the symbol has now.
+
 A rename can take a while in a much used symbol, as Obsidian updates each note
 that links to it, and for as long as you take over its question about links.
 Neither is a problem, and the row says nothing of them. If it stops, as on a
