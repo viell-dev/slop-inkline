@@ -15,12 +15,12 @@ even one a public release; earlier pre-releases carry a suffix such as
   the symbol is deleted and a file is put at its path while the rename saves the
   open notes or the drawing, or while Obsidian finishes indexing the vault or
   another rename before it moves the file. The symbol is checked again once
-  nothing is left to wait for, and Obsidian moves it in that same step. A symbol
-  deleted, replaced, or renamed elsewhere meanwhile, or whose new name another
-  symbol has taken, is not renamed: the name you typed stays to try again. A
-  change that still reaches the file before Obsidian moves it, such as one made
-  outside Obsidian at that moment, is reported with where the symbol is now,
-  rather than taken for a rename that went well
+  nothing is left to wait for, and Obsidian begins to move it in that same step.
+  A symbol deleted, replaced, or renamed elsewhere meanwhile, or whose new name
+  another symbol has taken, is not renamed: the name you typed stays to try
+  again. A change that still reaches the file before Obsidian moves it, such as
+  one made outside Obsidian at that moment, is reported with where the symbol is
+  now, rather than taken for a rename that went well
   ([#218](https://github.com/viell-dev/slop-inkline/issues/218)).
 - Text typed in a note while a rename saves the other open notes is saved too
   before the rename, so that Obsidian's update of the links can't write over it

@@ -79,12 +79,12 @@ it. Your sync tool's own history is the way back from a change lost like this.
 file there is still the one it was asked to rename, and its rename can first
 wait a while, for its index of the vault and for any other rename. So Inkline
 waits for those itself before it checks the symbol for the last time, and
-Obsidian moves the file in the same step as that check. Inkline learns what
-Obsidian is waiting for from Obsidian's own state, which its plugin API does not
-include ([#10](https://github.com/viell-dev/slop-inkline/issues/10)). With a
-version of Obsidian that keeps it otherwise, Obsidian waits after the check, as
-it did before, and it can then say a rename is done before it has made it, which
-Inkline reports as a name that may still change.
+Obsidian begins to move the file in the same step as that check. Inkline learns
+what Obsidian is waiting for from Obsidian's own state, which its plugin API
+does not include ([#10](https://github.com/viell-dev/slop-inkline/issues/10)).
+With a version of Obsidian that keeps it otherwise, Obsidian waits after the
+check, as it did before, and it can then say a rename is done before it has made
+it, which Inkline reports as a name that may still change.
 
 Some changes can still reach the file between the check and the move: one that
 Obsidian had already begun to write to the disk, and one made outside Obsidian
