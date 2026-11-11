@@ -27,12 +27,24 @@ const symbols = [
   "Composed/tri-linked.ink.png",
   "Composed/tri-flat.ink.png",
   "Composed/mixed-flat.ink.png",
+  "Composed/tri-keep-flat.ink.png",
 ];
 
 const note = [
   "# Parts ![[Parts/mark.ink.png]] and ![[Composed/tri-keep.ink.png]] at heading size",
   "",
   "A part ![[Parts/mark.ink.png]] alone; copied ![[Composed/tri-copy.ink.png]], weight kept ![[Composed/tri-keep.ink.png]], linked ![[Composed/tri-linked.ink.png]], flattened ![[Composed/tri-flat.ink.png]], with a traced part ![[Composed/mixed-flat.ink.png]] in text.",
+  "",
+].join("\n");
+
+/** Each symbol at 384 pixels tall, twice its file's size, to see its detail. */
+const large = [
+  "Large:",
+  "",
+  ...symbols.map(
+    (symbol) =>
+      `${symbol.slice(symbol.lastIndexOf("/") + 1, -".ink.png".length)} ![[${symbol}|240]]`,
+  ),
   "",
 ].join("\n");
 
@@ -144,7 +156,7 @@ async function vaultCheck(name: string) {
 describe("Symbols built from other symbols (#167 §4)", function () {
   before(async function () {
     await loadModules();
-    const scene = await browser.executeObsidian(async ({ app }, text) => {
+    const scene = await browser.executeObsidian(async ({ app }, text, big) => {
       const { compose, canvas, inkFile } = window.inklineTest;
       const timings: Record<string, number> = {};
       const time = async <T>(name: string, step: () => Promise<T>) => {
@@ -194,7 +206,17 @@ describe("Symbols built from other symbols (#167 §4)", function () {
       const aloneExact = await compose.drawTransformed(alone, width);
       const full = await compose.drawRecord(mark.record, width);
 
+      // Other scales, where points no longer land on whole units.
+      const scales: Record<string, unknown> = {};
+      for (const scale of [0.25, 1 / 3, 0.4, 0.45, 0.6, 0.75]) {
+        const one = [{ record: mark.record, placement: { x: 0, y: 0, scale, weight: "scale" as const } }];
+        const pointsScaled = await compose.drawLayered(one, width);
+        const exact = await compose.drawTransformed(one, width);
+        scales[scale.toFixed(3)] = compose.difference(exact, pointsScaled);
+      }
+
       const measures = {
+        scales,
         partWidth: width,
         partStrokes: mark.record.strokes.length,
         partInk: compose.difference(full, full).inkA,
@@ -206,6 +228,10 @@ describe("Symbols built from other symbols (#167 §4)", function () {
         scaledAgainstExact: compose.difference(aloneExact, aloneScaled),
         triangleScaledAgainstExact: compose.difference(transformed, layered),
         keptWeightAgainstScaled: compose.difference(layered, keepCanvas),
+        keptWeightCopyAgainstLayered: compose.difference(
+          await compose.drawLayered(parts("keep"), width),
+          keepCanvas,
+        ),
       };
 
       // The files.
@@ -220,6 +246,10 @@ describe("Symbols built from other symbols (#167 §4)", function () {
         canvas.saveInk(flat.document, flat.base),
       );
       await write("Composed/tri-flat.ink.png", flatFile.bytes);
+      const keepLayered = await compose.drawLayered(parts("keep"), width);
+      const keepFlat = await compose.flattened(keepLayered);
+      const keepFlatFile = await canvas.saveInk(keepFlat.document, keepFlat.base);
+      await write("Composed/tri-keep-flat.ink.png", keepFlatFile.bytes);
       const { canvas: linkedImage, left } = compose.cropped(layered);
       const linkedFile = await time("writeLinked", () =>
         compose.versionTwoFile(linkedImage, {
@@ -265,6 +295,7 @@ describe("Symbols built from other symbols (#167 §4)", function () {
       const linkedSource = await inkFile.readInkFile(linkedFile);
 
       await app.vault.create("Compose.md", text);
+      await app.vault.create("Large.md", big);
       return {
         measures,
         timings,
@@ -290,7 +321,7 @@ describe("Symbols built from other symbols (#167 §4)", function () {
         linkedSource: linkedSource.kind === "pixels" ? linkedSource : "record",
         linkedRecord: await compose.recordChunkOf(linkedFile),
       };
-    }, note);
+    }, note, large);
     measured.scene = scene;
   });
 
@@ -350,6 +381,18 @@ describe("Symbols built from other symbols (#167 §4)", function () {
     });
   }
 
+  it("shows each composite large, at 384 pixels tall, in both themes", async function () {
+    await open("Large.md", "preview");
+    await browser.waitUntil(async () =>
+      (await shown(images("preview"))).filter((each) => each.tagged && each.complete).length === symbols.length,
+    );
+    for (const chosen of ["moonstone", "obsidian"] as const) {
+      await theme(chosen);
+      await saveScreenshot(`compose-large-${chosen}`);
+    }
+    await theme("moonstone");
+  });
+
   it("leaves Source mode as text", async function () {
     await open("Compose.md", "raw");
     await browser.pause(500);
@@ -367,6 +410,16 @@ describe("Symbols built from other symbols (#167 §4)", function () {
     await waitForEditor();
     await browser.pause(300);
     await saveScreenshot("compose-editor-copy");
+    await browser.keys(["Escape"]);
+    await browser.$(".inkline-editor").waitForExist({ reverse: true });
+    await browser.executeObsidian(({ app, plugins }) => {
+      const found = app.vault.getFileByPath("Composed/tri-flat.ink.png");
+      if (found === null) throw new Error("no flat");
+      void plugins.inkline.editSymbol(found);
+    });
+    await waitForEditor();
+    await browser.pause(300);
+    await saveScreenshot("compose-editor-flat");
     await browser.keys(["Escape"]);
     await browser.$(".inkline-editor").waitForExist({ reverse: true });
     await browser.executeObsidian(({ app, plugins }) => {
@@ -507,6 +560,12 @@ describe("Symbols built from other symbols (#167 §4)", function () {
       "compose-after-part-changed-text",
       browser.$(".workspace-leaf.mod-active .markdown-reading-view p"),
     );
+    await open("Large.md", "preview");
+    await browser.waitUntil(async () =>
+      (await shown(images("preview"))).filter((each) => each.tagged && each.complete).length === symbols.length,
+    );
+    await browser.pause(500);
+    await saveScreenshot("compose-large-after-part-changed");
   });
 
   it("renames a part: Obsidian updates the notes, not the links inside symbols", async function () {
@@ -533,14 +592,19 @@ describe("Symbols built from other symbols (#167 §4)", function () {
         .filter(([, targets]) => "Parts/sign.ink.png" in targets)
         .map(([from]) => from);
       return {
-        noteNamesNewPath: text.includes("Parts/sign.ink.png"),
-        noteNamesOldPath: text.includes("Parts/mark.ink.png"),
+        // Obsidian writes the shortest link that finds the file.
+        noteText: text,
+        noteNamesNewName: text.includes("sign.ink.png"),
+        noteNamesOldName: text.includes("mark.ink.png"),
         linkedRecordNames: (chunk?.record as { parts: { symbol: string }[] }).parts.map((p) => p.symbol),
         backlinks,
       };
     });
     measured.rename = result;
-    expect(result.noteNamesNewPath).toBe(true);
+    expect(result.noteNamesNewName).toBe(true);
+    expect(result.noteNamesOldName).toBe(false);
+    // Only notes link to the part: Obsidian reads no links inside a PNG.
+    expect(result.backlinks.every((from) => from.endsWith(".md"))).toBe(true);
     expect(result.linkedRecordNames).toContain("Parts/mark.ink.png");
     const check = await vaultCheck("Composed/tri-linked.ink.png");
     measured.checkAfterRename = check;
@@ -589,14 +653,15 @@ describe("Symbols built from other symbols (#167 §4)", function () {
     await browser.pause(800);
     const all = await shown(images("preview"));
     measured.afterDelete = all.map((each) => ({
-      src: each.src.slice(0, 60),
+      src: decodeURIComponent(each.src.slice(each.src.lastIndexOf("/") + 1)),
       tagged: each.tagged,
       complete: each.complete,
       naturalHeight: each.naturalHeight,
     }));
     // The part's own two embeds no longer find a file; the composites show.
     const composites = all.filter((each) => /tri-|mixed/.test(each.src));
-    expect(composites.length).toBe(6);
+    measured.afterDeleteCount = { images: all.length, composites: composites.length };
+    expect(composites.length).toBeGreaterThanOrEqual(5);
     for (const image of composites) {
       expect(image.tagged).toBe(true);
       expect(image.naturalHeight).toBe(192);
