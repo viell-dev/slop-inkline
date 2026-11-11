@@ -703,6 +703,29 @@ describe("Renaming in the symbol library", function () {
       expect(await symbolFiles()).toEqual(["gate.ink.png"]);
     });
 
+    it("says what happened to a rename left behind that something came between", async function () {
+      await usedSymbol();
+      await showLibrary();
+      await beginRename("gate", "lintel");
+      await hold("move");
+      await browser.keys(["Enter"]);
+      await waitForHeld();
+      await waitForWait();
+      await formButton("Cancel").click();
+      await waitForName("gate");
+      await browser.executeObsidian(async ({ app }) => {
+        const file = app.vault.getFileByPath("gate.ink.png");
+        if (file === null) throw new Error("no gate");
+        await app.fileManager.trashFile(file);
+      });
+      await createSymbol("gate.ink.png", [1200, 1800]);
+      await letGo();
+      await waitForNotice(
+        "Renaming gate to lintel: the file was deleted while Obsidian was renaming it, and Obsidian renamed another file to lintel.ink.png",
+      );
+      expect(await symbolFiles()).toEqual(["lintel.ink.png"]);
+    });
+
     it("refuses a second rename while Obsidian has the first", async function () {
       await usedSymbol();
       await showLibrary();
