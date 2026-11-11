@@ -1576,6 +1576,39 @@ describe("The editor", function () {
       expect(await noteOnDisk("Editor.md")).toContain("![[001.ink.png]]");
     });
 
+    for (const what of ["write", "read"] as const) {
+      const during =
+        what === "write" ? "its drawing is written" : "open notes are saved";
+      it(`leaves a new symbol's embed to a rename made elsewhere while ${during}`, async function () {
+        await insert();
+        await draw(zigzag);
+        await browser.keys(["Control", "s"]);
+        await waitForStatus("Saved");
+        await draw(stroke);
+        await nameSymbol("tower");
+        await hold(what);
+        await browser.keys(["Control", "s"]);
+        await waitForHeld();
+        // Renamed as sync would, which leaves the links as they were.
+        await browser.executeObsidian(async ({ app }) => {
+          const file = app.vault.getFileByPath("001.ink.png");
+          if (file === null) throw new Error("no 001");
+          await app.vault.rename(file, "elsewhere.ink.png");
+        });
+        await letGo();
+        await waitForNotice(
+          "001.ink.png is saved, but could not be renamed: the file was renamed to elsewhere.ink.png meanwhile",
+        );
+        expect(await symbolFiles()).toEqual(["elsewhere.ink.png"]);
+        expect(await strokeCount("elsewhere.ink.png")).toBe(2);
+        // Said once the save, and anything it does to the note, is over.
+        await waitForStatus("Saved, but not renamed");
+        // As every other link to the file is, by whichever way it went.
+        expect(await noteOnDisk("Editor.md")).toContain("![[001.ink.png]]");
+        expect(await noteText()).toContain("![[001.ink.png]]");
+      });
+    }
+
     /**
      * Opens the editor of `001.ink.png`, which the open note `Editor.md`
      * embeds, adds a stroke, names it `tower`, and saves, with Obsidian's
