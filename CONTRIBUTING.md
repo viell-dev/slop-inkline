@@ -176,7 +176,7 @@ Before any request, the check refuses a missing version, a latest one before
 `0.9.2`, and a start that is not earlier than the latest. Before BRAT's
 requests, it refuses a version that is not published, and a latest one that is
 not the highest. It uses no GitHub token, so its requests count against the 60
-an hour that GitHub allows an address: it makes about 17 for each Obsidian
+an hour that GitHub allows an address: it makes about 16 for each Obsidian
 version, and refuses to start with fewer than 50 left.
 
 `test/e2e/manual/listing.e2e.ts` also stays outside the suite: it makes the
