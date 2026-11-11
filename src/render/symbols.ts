@@ -36,6 +36,90 @@ const textSelector = `.markdown-rendered, .cm-content, .${textClass}`;
  */
 export const embedClass = "inkline-symbol-embed";
 
+/**
+ * PROTOTYPE for #167, section 3, not for release: a symbol's main reading and
+ * translation, shown as ruby above and below it.
+ */
+export interface Annotation {
+  readonly reading?: string;
+  readonly translation?: string;
+}
+
+/** PROTOTYPE: what a symbol's image says about it, by its address. */
+export type Annotate = (src: string) => Annotation | undefined;
+
+/** PROTOTYPE: the class of the ruby elements Inkline puts around a symbol. */
+export const rubyClass = "inkline-ruby";
+
+/** PROTOTYPE: what an image's ruby holds now, so that it is not redone. */
+const rubyMark = "data-inkline-ruby";
+
+/** PROTOTYPE: the ruby elements Inkline put around `image`, innermost first. */
+function rubiesAround(image: HTMLImageElement): HTMLElement[] {
+  const found: HTMLElement[] = [];
+  let base: Element = image;
+  let parent = image.parentElement;
+  while (
+    parent !== null &&
+    parent.localName === "ruby" &&
+    parent.hasClass(rubyClass) &&
+    parent.firstElementChild === base
+  ) {
+    found.push(parent);
+    base = parent;
+    parent = parent.parentElement;
+  }
+  return found;
+}
+
+/** PROTOTYPE: takes away the ruby Inkline put around `image`. */
+function unwrapRuby(image: HTMLImageElement): void {
+  const rubies = rubiesAround(image);
+  image.removeAttribute(rubyMark);
+  const outer = rubies.at(-1);
+  if (outer !== undefined) outer.replaceWith(image);
+}
+
+/** PROTOTYPE: puts `base` in a ruby with `text` over or under it. */
+function wrapRuby(
+  base: Element,
+  text: string,
+  position: "over" | "under",
+): HTMLElement {
+  const doc = base.ownerDocument;
+  const ruby = doc.createElement("ruby");
+  ruby.addClass(rubyClass, `${rubyClass}-${position}`);
+  const rt = doc.createElement("rt");
+  // A value can hold bidirectional controls: keep them to itself.
+  const bdi = doc.createElement("bdi");
+  bdi.textContent = text;
+  rt.append(bdi);
+  base.replaceWith(ruby);
+  ruby.append(base, rt);
+  return ruby;
+}
+
+/** PROTOTYPE: gives `image` the ruby `annotation` asks for, or none. */
+function annotateImage(
+  image: HTMLImageElement,
+  annotation: Annotation | undefined,
+): void {
+  const reading = annotation?.reading ?? "";
+  const translation = annotation?.translation ?? "";
+  const key = `${reading}\u0000${translation}`;
+  const wanted = reading !== "" || translation !== "";
+  if (wanted && image.getAttribute(rubyMark) === key) {
+    if (rubiesAround(image).length > 0) return;
+  }
+  if (!wanted && !image.hasAttribute(rubyMark)) return;
+  unwrapRuby(image);
+  if (!wanted) return;
+  let base: Element = image;
+  if (reading !== "") base = wrapRuby(base, reading, "over");
+  if (translation !== "") wrapRuby(base, translation, "under");
+  image.setAttribute(rubyMark, key);
+}
+
 /** The custom properties a tagged image gets: its mask, and its drop. */
 const maskProperty = "--inkline-mask";
 const dropProperty = "--inkline-drop";
@@ -119,7 +203,11 @@ function sized(image: HTMLImageElement): boolean {
  * Tags `image` as a symbol if its URL is a symbol file's, or untags it if it
  * is not one any more, keeping its mask and drop current.
  */
-export function tagImage(image: HTMLImageElement, vault: string): void {
+export function tagImage(
+  image: HTMLImageElement,
+  vault: string,
+  annotate?: Annotate,
+): void {
   // The attribute's address, which currentSrc follows only once it loads.
   const src = image.src || image.currentSrc;
   if (!isSymbolUrl(src, vault) || image.closest(textSelector) === null) {
@@ -129,6 +217,7 @@ export function tagImage(image: HTMLImageElement, vault: string): void {
   image.addClass(symbolClass);
   image.style.setProperty(maskProperty, cssUrl(src));
   nameImage(image, src);
+  annotateImage(image, annotate?.(src));
   const embed = image.parentElement?.closest(".image-embed");
   const holders: HTMLElement[] = [image];
   if (embed?.instanceOf(HTMLElement) === true) {
@@ -162,6 +251,7 @@ export function tagImage(image: HTMLImageElement, vault: string): void {
 export function untagImage(image: HTMLImageElement): void {
   if (!image.hasClass(symbolClass)) return;
   image.removeClass(symbolClass);
+  unwrapRuby(image);
   image.style.removeProperty(maskProperty);
   image.style.removeProperty(dropProperty);
   unnameImage(image);
@@ -173,14 +263,18 @@ export function untagImage(image: HTMLImageElement): void {
 }
 
 /** Tags every image in or at `node`. */
-export function tagWithin(node: Node, vault: string): void {
+export function tagWithin(
+  node: Node,
+  vault: string,
+  annotate?: Annotate,
+): void {
   if (node.instanceOf(HTMLImageElement)) {
-    tagImage(node, vault);
+    tagImage(node, vault, annotate);
     return;
   }
   if (!node.instanceOf(Element)) return;
   for (const image of Array.from(node.getElementsByTagName("img"))) {
-    tagImage(image, vault);
+    tagImage(image, vault, annotate);
   }
 }
 
@@ -193,6 +287,10 @@ export class SymbolRenderer {
   readonly #vault: string;
   #scale = 1;
   #textColor = true;
+  /** PROTOTYPE: where readings and translations come from, if shown. */
+  #annotate: Annotate | undefined;
+  /** PROTOTYPE: a class for every watched document's root, if any. */
+  #rubyRoot = "";
 
   constructor(vault: string) {
     this.#vault = vault;
@@ -221,6 +319,28 @@ export class SymbolRenderer {
     }
   }
 
+  /**
+   * PROTOTYPE: shows readings and translations from `annotate` as ruby, with
+   * `root` as a class on every watched document's root.
+   */
+  annotateWith(annotate: Annotate | undefined, root: string): void {
+    this.#annotate = annotate;
+    for (const doc of this.#watching.keys()) {
+      if (this.#rubyRoot !== "")
+        doc.documentElement.removeClass(this.#rubyRoot);
+    }
+    this.#rubyRoot = root;
+    for (const doc of this.#watching.keys()) this.#configureDocument(doc);
+    this.retag();
+  }
+
+  /** PROTOTYPE: tags every watched image again, as what they say changed. */
+  retag(): void {
+    for (const doc of this.#watching.keys()) {
+      tagWithin(doc.body, this.#vault, this.#annotate);
+    }
+  }
+
   /** Applies display settings to existing windows and those opened later. */
   configure(scale: number, textColor: boolean): void {
     this.#scale = scale;
@@ -234,6 +354,7 @@ export class SymbolRenderer {
       String(this.#scale),
     );
     doc.documentElement.toggleClass("inkline-stored-color", !this.#textColor);
+    if (this.#rubyRoot !== "") doc.documentElement.addClass(this.#rubyRoot);
   }
 
   /** Starts tagging symbols in `doc`, a window's document. */
@@ -246,12 +367,12 @@ export class SymbolRenderer {
       for (const record of records) {
         if (record.type === "attributes") {
           if (record.target.instanceOf(HTMLImageElement)) {
-            tagImage(record.target, this.#vault);
+            tagImage(record.target, this.#vault, this.#annotate);
           }
           continue;
         }
         for (const node of Array.from(record.addedNodes)) {
-          tagWithin(node, this.#vault);
+          tagWithin(node, this.#vault, this.#annotate);
         }
       }
     });
@@ -271,7 +392,7 @@ export class SymbolRenderer {
       observer.disconnect();
       view.removeEventListener("unload", closed);
     });
-    tagWithin(doc.body, this.#vault);
+    tagWithin(doc.body, this.#vault, this.#annotate);
   }
 
   /** Stops tagging symbols in `doc`, and untags those it has. */
@@ -282,6 +403,7 @@ export class SymbolRenderer {
     this.#watching.delete(doc);
     doc.documentElement.style.removeProperty("--inkline-scale");
     doc.documentElement.removeClass("inkline-stored-color");
+    if (this.#rubyRoot !== "") doc.documentElement.removeClass(this.#rubyRoot);
     for (const image of Array.from(doc.getElementsByTagName("img"))) {
       untagImage(image);
     }

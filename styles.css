@@ -606,3 +606,33 @@ img.inkline-symbol:not([width], [height]) {
   color: var(--text-error);
   overflow-wrap: anywhere;
 }
+
+/*
+ * PROTOTYPE for #167, section 3, not for release: a symbol's main reading
+ * over it and its main translation under it, as ruby that Inkline puts around
+ * its image from what its file holds. With "note", only a note whose
+ * cssclasses holds inkline-readings shows them.
+ */
+ruby.inkline-ruby {
+  ruby-position: over;
+}
+
+ruby.inkline-ruby-under {
+  ruby-position: under;
+}
+
+ruby.inkline-ruby > rt {
+  color: var(--text-muted);
+  font-size: 0.5em;
+  font-style: normal;
+  font-weight: var(--font-normal);
+  line-height: 1.2;
+}
+
+.inkline-ruby-note ruby.inkline-ruby > rt {
+  display: none;
+}
+
+.inkline-ruby-note .inkline-readings ruby.inkline-ruby > rt {
+  display: revert;
+}

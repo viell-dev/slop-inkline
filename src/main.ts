@@ -58,6 +58,8 @@ export default class InklinePlugin extends Plugin {
     },
     () => {
       this.#refreshLibraries();
+      // PROTOTYPE (#167, section 3): ruby follows what the index has read.
+      this.#renderer.retag();
     },
   );
   #drafts: DraftStore | undefined;
@@ -83,8 +85,10 @@ export default class InklinePlugin extends Plugin {
   }
 
   override async onload(): Promise<void> {
+    let data: unknown;
     try {
-      this.#settings = readSettings(await this.loadData(), brushSizes.length);
+      data = await this.loadData();
+      this.#settings = readSettings(data, brushSizes.length);
     } catch {
       new Notice(
         "Inkline settings could not be read. Using defaults for this session.",
@@ -94,6 +98,7 @@ export default class InklinePlugin extends Plugin {
       this.#settings.symbolScale / 100,
       this.#settings.textColor,
     );
+    this.#prototypeRuby(data);
     this.addSettingTab(
       new InklineSettingTab(this.app, this, {
         settings: () => this.#settings,
@@ -252,6 +257,44 @@ export default class InklinePlugin extends Plugin {
       }),
     );
     this.#texts.start();
+  }
+
+  /**
+   * PROTOTYPE for #167, section 3, not for release. With `rubyPrototype` in
+   * the plugin's data, shows each symbol's main reading above it and its main
+   * translation below it, as ruby, from the values its file holds: in every
+   * note with "all", or with "note" only in a note whose `cssclasses` holds
+   * `inkline-readings`. Nothing is written to any note.
+   */
+  #prototypeRuby(data: unknown): void {
+    const mode: unknown =
+      typeof data === "object" && data !== null
+        ? Reflect.get(data, "rubyPrototype")
+        : undefined;
+    if (mode !== "all" && mode !== "note") return;
+    const bySource = (src: string): TFile | undefined => {
+      const address = src.split(/[?#]/, 1)[0];
+      return this.app.vault
+        .getFiles()
+        .find(
+          (file) =>
+            isInkPath(file.path) &&
+            this.app.vault.getResourcePath(file).split(/[?#]/, 1)[0] ===
+              address,
+        );
+    };
+    this.#renderer.annotateWith((src) => {
+      const file = bySource(src);
+      if (file === undefined) return undefined;
+      const text = this.#texts.textOf(file)?.text;
+      if (text === undefined) return undefined;
+      return {
+        ...(text.reading[0] === undefined ? {} : { reading: text.reading[0] }),
+        ...(text.translation[0] === undefined
+          ? {}
+          : { translation: text.translation[0] }),
+      };
+    }, `inkline-ruby-${mode}`);
   }
 
   /** Has open libraries show what the index has since read. */
