@@ -472,10 +472,11 @@ describe("Symbols built from other symbols (#167 §4)", function () {
       await browser.keys(["Enter"]);
       await waitForStatus("Placing mark");
       if (index === 0) await saveScreenshot("compose-ui-placing-full-size");
-      // Half size, about its centre, by the wheel: e^(-346.57 / 500) = 0.5.
+      // Half size, about its centre, by the wheel: e^(-347 / 500) = 0.4997,
+      // as WebDriver takes whole wheel deltas only.
       await browser
         .action("wheel")
-        .scroll({ origin: canvas, x: 0, y: 0, deltaX: 0, deltaY: 346.57 })
+        .scroll({ origin: canvas, x: 0, y: 0, deltaX: 0, deltaY: 347 })
         .perform();
       await browser
         .action("pointer", { parameters: { pointerType: "mouse" } })
