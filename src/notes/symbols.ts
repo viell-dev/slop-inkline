@@ -130,7 +130,8 @@ function parentPath(path: string): string {
   return slash === -1 ? "" : path.slice(0, slash);
 }
 
-function stillAlive(host: EditorHost): void {
+/** Throws once Inkline has unloaded, so that nothing more is written. */
+function stillAlive(host: Pick<EditorHost, "alive">): void {
   if (!host.alive()) throw new Error("Inkline was disabled");
 }
 
@@ -614,13 +615,15 @@ function usesOf(app: App, path: string): SymbolUses {
  * rules and Obsidian's link updates. A deleted or replaced file is refused.
  * Rejects on failure, so the caller can keep the requested name to retry.
  * `wait` hears if it stops for long enough; {@link SymbolWork.stop} then stops
- * it, unless Obsidian has it, which cannot be taken back.
+ * it, unless Obsidian has it, which cannot be taken back. Once `alive` says
+ * Inkline has unloaded, it stops as well, as an editor's rename does.
  */
 export function renameSymbol(
   app: App,
   file: TFile,
   typed: string,
   wait: RenameWait,
+  alive: () => boolean,
 ): SymbolWork {
   let stopped = false;
   let reached = false;
@@ -630,6 +633,7 @@ export function renameSymbol(
     if (path === undefined) return;
     await renameSaved(app, file, path, wait, () => {
       if (stopped) throw new Error("The rename was stopped.");
+      stillAlive({ alive });
       reached = true;
     });
   };
@@ -678,16 +682,19 @@ export interface SymbolWork {
  * text chunks, as {@link changedText} says, with every other byte as it was. No
  * note changes, as its name stays. A field changed since `seen`, by another
  * save or anything else, rejects with `TextMoved`, with nothing written; one
- * that this save leaves alone keeps what the other save gave it.
+ * that this save leaves alone keeps what the other save gave it. Once `alive`
+ * says Inkline has unloaded, it writes nothing more, as an editor's save.
  */
 export function writeSymbolText(
   app: App,
   file: TFile,
   changes: TextChanges,
   seen: SymbolText,
+  alive: () => boolean,
 ): SymbolWork {
   const { access, stop } = stoppable<TFile>({
     check: (symbol) => {
+      stillAlive({ alive });
       stillSymbol(app, symbol);
     },
     read: async (symbol) => new Uint8Array(await app.vault.readBinary(symbol)),
@@ -859,19 +866,22 @@ function targetOf(view: MarkdownView): Target | undefined {
 /**
  * Lists the vault's symbols to search, and inserts the one chosen in the note
  * `view` shows, as a new symbol's embed goes in: at its cursor now, found
- * again once the choice is made, since the note can change meanwhile.
+ * again once the choice is made, since the note can change meanwhile. The
+ * list closes as `unloaded` aborts, when Inkline unloads, and nothing is
+ * inserted from it after that.
  */
 export function insertExistingSymbol(
   app: App,
   texts: SymbolTexts,
   view: MarkdownView,
+  unloaded: AbortSignal,
 ): void {
   const target = targetOf(view);
   if (target === undefined) return;
-  new SymbolSearch(app, texts, target.file.path, (embed) => {
+  new SymbolSearch(app, texts, target.file.path, unloaded, (embed) => {
     insertEmbed(app, target, embed)
       .then(() => {
-        returnFocus(app, target);
+        if (!unloaded.aborted) returnFocus(app, target);
       })
       .catch((error: unknown) => {
         new Notice(`The symbol could not be inserted: ${message(error)}`);
@@ -1282,7 +1292,8 @@ let opening: { readonly file: TFile } | undefined;
  * second click, goes on with the same read rather than opening it twice.
  */
 export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
-  if (opening?.file === file) return;
+  // A symbol's menu can stay open after Inkline unloads, with Edit symbol in it.
+  if (!host.alive() || opening?.file === file) return;
   const mine = { file };
   opening = mine;
   try {

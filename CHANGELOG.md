@@ -9,6 +9,19 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Fixed
+
+- Turning Inkline off closes **Inkline: Insert existing symbol**, which stayed
+  open and could still insert a symbol into the note
+  ([#221](https://github.com/viell-dev/slop-inkline/issues/221)). Nothing else
+  Inkline started acts once it is off either: **Edit symbol** in a symbol's menu
+  left open does nothing, and a rename or a change of readings and translations
+  that the library was still saving stops and says so, as the editor's saves
+  already did. Turned off just as it starts, before Obsidian's window is ready
+  or while it reads its settings, Inkline no longer goes on showing symbols as
+  characters, or leaves its commands behind
+  ([#222](https://github.com/viell-dev/slop-inkline/issues/222)).
+
 ## 0.9.2 - 2026-11-07
 
 This is the first release candidate of 1.0.0: a build meant to become 1.0.0

@@ -176,6 +176,11 @@ embeds, which Obsidian shows as images, as
 editor open keeps its unsaved strokes as a draft, which the editor offers back
 when Inkline is on again.
 
+**Unreleased:** turning Inkline off also closes **Inkline: Insert existing
+symbol**, and stops a rename or a change of readings and translations that the
+library is still saving, with a notice saying so, so that you can make it again
+once Inkline is on.
+
 If you installed Inkline with BRAT, also remove `viell-dev/slop-inkline` from
 the **Beta plugin list** in BRAT's settings, with its **×** button, twice: BRAT
 otherwise installs it again at its next check. Removing it there leaves the

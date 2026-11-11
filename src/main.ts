@@ -61,10 +61,20 @@ export default class InklinePlugin extends Plugin {
     },
   );
   #drafts: DraftStore | undefined;
-  #loaded = false;
+  /**
+   * This load of the plugin, which ends as Obsidian unloads it: Obsidian makes
+   * a new instance for each load. What Inkline starts that can act later, as
+   * from a callback, after an await, or from a dialog, is over once it ends.
+   */
+  readonly #lifetime = new AbortController();
   #settings: Settings = defaultSettings;
   /** Settings writes finish in order, even when controls change quickly. */
   #savingSettings: Promise<void> = Promise.resolve();
+
+  /** Whether this load of the plugin has yet to end. */
+  get #loaded(): boolean {
+    return !this.#lifetime.signal.aborted;
+  }
 
   /** What the editors this plugin opens may use while it is loaded. */
   get #host(): EditorHost {
@@ -90,6 +100,9 @@ export default class InklinePlugin extends Plugin {
         "Inkline settings could not be read. Using defaults for this session.",
       );
     }
+    // Obsidian can unload the plugin while its settings are read, and would
+    // never undo what this went on to register.
+    if (!this.#loaded) return;
     this.#renderer.configure(
       this.#settings.symbolScale / 100,
       this.#settings.textColor,
@@ -100,7 +113,6 @@ export default class InklinePlugin extends Plugin {
         change: (key, value) => this.#change(key, value),
       }),
     );
-    this.#loaded = true;
     this.#renderer.watch(document);
     // Obsidian can leave existing embeds pointing at the old resource URL
     // after an image changes. Refresh both their pixels and their ink mask.
@@ -128,13 +140,15 @@ export default class InklinePlugin extends Plugin {
         this.#renderer.unwatch(win.doc);
       }),
     );
-    // Popout windows open before Inkline was.
+    // Popout windows open before Inkline was. The callback cannot be taken
+    // back, and can come after an unload, which it would undo.
     this.app.workspace.onLayoutReady(() => {
+      if (!this.#loaded) return;
       this.app.workspace.iterateAllLeaves((leaf) => {
         this.#renderer.watch(leaf.view.containerEl.doc);
         this.#offerMenus(leaf.view.containerEl.doc);
       });
-      if (this.#loaded) this.#indexText();
+      this.#indexText();
     });
     this.addCommand({
       id: "insert-symbol",
@@ -149,7 +163,7 @@ export default class InklinePlugin extends Plugin {
     });
     this.registerView(
       libraryViewType,
-      (leaf) => new SymbolLibraryView(leaf, this.#texts),
+      (leaf) => new SymbolLibraryView(leaf, this.#texts, () => this.#loaded),
     );
     this.addCommand({
       id: "show-library",
@@ -198,7 +212,12 @@ export default class InklinePlugin extends Plugin {
             new Notice("There are no symbols to insert yet.");
             return true;
           }
-          insertExistingSymbol(this.app, this.#texts, view);
+          insertExistingSymbol(
+            this.app,
+            this.#texts,
+            view,
+            this.#lifetime.signal,
+          );
         }
         return true;
       },
@@ -277,11 +296,12 @@ export default class InklinePlugin extends Plugin {
   }
 
   /**
-   * Closes every open editor, keeping unsaved strokes as drafts that the
-   * editor offers back next time, and stops anything more being written.
+   * Ends this load, which closes Insert existing symbol's list, and closes
+   * every open editor, keeping unsaved strokes as drafts that the editor
+   * offers back next time, and stops anything more being written.
    */
   override onunload(): void {
-    this.#loaded = false;
+    this.#lifetime.abort();
     this.#texts.stop();
     // Symbols show as the plain images they are once Inkline is off.
     this.#renderer.stop();
