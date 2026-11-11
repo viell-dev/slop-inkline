@@ -25,6 +25,20 @@ even one a public release; earlier pre-releases carry a suffix such as
   its ports as it keeps `COM1`, are refused as a symbol's or a folder's name,
   with an extension too. A symbol that already has such a name keeps it when
   saved ([#225](https://github.com/viell-dev/slop-inkline/issues/225)).
+- The guide said that symbols keep showing in other Markdown apps and on GitHub,
+  but those show Obsidian's own embed, such as `![[tower.ink.png]]`, as text.
+  [Without Inkline](https://viell-dev.github.io/slop-inkline/without-inkline#in-other-apps)
+  now says what another app needs, with the Obsidian settings that write such
+  links and an example from a note in a folder
+  ([#231](https://github.com/viell-dev/slop-inkline/issues/231)).
+- The description prepared for Obsidian's community directory said that Inkline
+  reads nothing outside your vault. It now says that it keeps drafts in
+  Obsidian's storage on your computer, and reads nothing else unless you choose,
+  drop, or paste a picture to trace over, which can come from anywhere. The
+  security policy says the same
+  ([#233](https://github.com/viell-dev/slop-inkline/issues/233)).
+- The README starts with installing Inkline and drawing a first symbol
+  ([#232](https://github.com/viell-dev/slop-inkline/issues/232)).
 
 ## 0.9.2 - 2026-11-07
 
@@ -542,7 +556,7 @@ Public stable publication remains on hold, as the earlier
 ### Changed
 
 - Releases are alphas for now, and until the first stable release the
-  [file format](https://viell-dev.github.io/slop-inkline/file-format#compatibility)
+  [file format](https://viell-dev.github.io/slop-inkline/file-format#versions)
   is a draft: a later alpha may change what symbol files hold, and need not open
   files an earlier one saved. The changelog says when that happens; this alpha
   opens every file the earlier releases saved.

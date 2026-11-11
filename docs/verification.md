@@ -104,6 +104,9 @@ must keep released files readable and looking the same, as
   no strokes opened as a picture, and says nothing of one whose record holds
   none
   ([editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)).
+- A picture to trace over, chosen with **Choose picture…** from a folder outside
+  the vault, shows on the drawing area, and puts no file in the vault
+  ([choose-picture.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/choose-picture.e2e.ts)).
 
 ### Symbols read as characters
 
@@ -232,7 +235,8 @@ must keep released files readable and looking the same, as
   and found again after the text moved
   ([editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)).
   Type to insert lists nothing in code or front matter, and the links it writes
-  lead back to their symbols
+  lead back to their symbols, from a note in a folder too, as paths from there
+  when Obsidian writes relative Markdown links
   ([suggest.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/suggest.e2e.ts)).
 - The cursor lands after a symbol from every route that inserts one, and typing
   goes on there: Save, Mod+S, a run from Next, both lists, and the library, past
@@ -442,8 +446,9 @@ drawing while **Copy from** or **Reload** reads.
 - Installing and updating through BRAT, an optional third-party route, has a
   separate check against the published releases. BRAT's own dialog installs the
   highest release and a chosen one, downloading only the three plugin files, and
-  an update from one to the other keeps the drawing, note and preferences, and
-  an open drawing as a draft
+  an update from one to the other keeps the drawing, note and preferences. From
+  0.9.2 on it keeps the strokes and an open drawing's draft too; from an earlier
+  release the symbol opens as a picture and the draft is dropped
   ([brat.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/manual/brat.e2e.ts)).
   It needs BRAT's release and GitHub, so it is run by hand and gates no release.
 - A publication that fails part way can run again without replacing anything
@@ -468,7 +473,9 @@ drawing while **Copy from** or **Reload** reads.
   Obsidian's
   ([version.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/version.test.ts)).
 - This site's commands, keys, defaults, Obsidian version, links, and example
-  embeds agree with the code
+  embeds agree with the code, as do the links, Obsidian and Node.js versions,
+  command names, and examples of the repository's own documents, and the
+  versions its BRAT recipe names
   ([docs.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/docs.test.ts)),
   and what deploys follows [Versions of this site](./versions.md)
   ([docs-source.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/docs-source.test.ts)).
