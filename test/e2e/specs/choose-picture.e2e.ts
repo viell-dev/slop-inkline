@@ -1,5 +1,9 @@
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { browser, expect } from "@wdio/globals";
 import { obsidianPage } from "wdio-obsidian-service";
+import { encodePng } from "../../support/png.ts";
 import { loadModules } from "../support/browser.ts";
 import {
   draw,
@@ -175,6 +179,47 @@ describe("Choose picture", function () {
       const shown = await pictureShown();
       return shown.blue && !shown.red;
     });
+  });
+
+  it("reads a picture chosen from outside the vault, and puts none of it there", async function () {
+    // A synthetic picture in a new folder beside the test vault, not in it,
+    // chosen as the system's dialog would: WebDriver gives a file input a
+    // file from this machine by its path.
+    const folder = mkdtempSync(path.join(tmpdir(), "inkline-outside-"));
+    try {
+      const file = path.join(folder, "outside.png");
+      const data = new Uint8Array(60 * 40 * 4);
+      for (let at = 0; at < data.length; at += 4) {
+        data.set([255, 0, 0, 255], at);
+      }
+      writeFileSync(file, encodePng({ width: 60, height: 40, data }));
+      const vault = await browser.executeObsidian(({ app, obsidian }) => {
+        if (!(app.vault.adapter instanceof obsidian.FileSystemAdapter)) {
+          throw new Error("This check requires a desktop test vault");
+        }
+        return app.vault.adapter.getBasePath();
+      });
+      const from = path.relative(realpathSync(vault), realpathSync(file));
+      expect(from.split(path.sep)[0]).toBe("..");
+      const files = async () =>
+        browser.executeObsidian(({ app }) =>
+          app.vault
+            .getFiles()
+            .map((found) => found.path)
+            .sort(),
+        );
+      const before = await files();
+      await openEditor();
+      await browser
+        .$('.inkline-editor .inkline-picture input[type="file"]')
+        .addValue(file);
+      await waitForStatus("Tracing over the picture");
+      await browser.waitUntil(async () => (await pictureShown()).red);
+      await saveScreenshot("choose-picture-outside");
+      expect(await files()).toEqual(before);
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
   });
 
   it("gives the focus back to the drawing after a choice or a cancel", async function () {

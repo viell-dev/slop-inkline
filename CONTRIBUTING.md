@@ -150,24 +150,34 @@ and every drawing a test uses are synthetic.
 against the published releases, on both default Obsidian versions. It stays
 outside the suite and gates no release, as it needs BRAT's own release and
 GitHub. Download BRAT's `main.js`, `manifest.json`, and `styles.css` into a new
-directory, name the highest published version and an older one to update from,
+directory, name the highest published version and an earlier one to update from,
 and run it in the Docker image:
 
 ```sh
 docker build --file test/e2e/Dockerfile --tag inkline-e2e .
 docker run --rm --init --shm-size=1g \
   --env E2E_PLUGIN_DIR=/brat \
-  --env E2E_BRAT_LATEST=0.9.0 --env E2E_BRAT_START=0.3.0-alpha.8 \
+  --env E2E_BRAT_LATEST=0.9.2 --env E2E_BRAT_START=0.9.1 \
   --volume inkline-obsidian-cache:/cache \
   --volume "$PWD/test-results/e2e:/out" --volume "$PWD/brat:/brat:ro" \
   inkline-e2e --spec test/e2e/manual/brat.e2e.ts
 ```
 
-It uses no GitHub token, so its requests count against the 60 an hour that
-GitHub allows an address: it makes about 16 for each Obsidian version, and
-refuses to start with fewer than 50 left. It expects strokes and a draft to
-survive the update, so name `0.9.2` or later as the version to update from: an
-earlier one keeps neither, as the file format changed there.
+What the update must keep goes by the version it starts from. From `0.9.2` on,
+the file format is final, and the update keeps the drawing's strokes and an open
+drawing's draft, as well as its pixels, the note, and the preferences. From an
+earlier version, it keeps the pixels, the note, and the preferences: the symbol
+opens as a picture to draw over, and the draft is dropped, as
+[the install guide](https://viell-dev.github.io/slop-inkline/install#update)
+says. So checking that strokes and a draft survive needs two published releases
+from `0.9.2` on.
+
+Before any request, the check refuses a missing version, a latest one before
+`0.9.2`, and a start that is not earlier than the latest. Before BRAT's
+requests, it refuses a version that is not published, and a latest one that is
+not the highest. It uses no GitHub token, so its requests count against the 60
+an hour that GitHub allows an address: it makes about 16 for each Obsidian
+version, and refuses to start with fewer than 50 left.
 
 `test/e2e/manual/listing.e2e.ts` also stays outside the suite: it makes the
 pictures for Obsidian's community directory listing, as
@@ -218,7 +228,10 @@ and fails on a link to a page that does not exist. `test/unit/docs.test.ts`
 checks that the site lists every command and every button's key as the code has
 them, gives the defaults and the Obsidian version the code and manifest have,
 links only to headings and repository files that exist, and gives example embeds
-that read as symbols.
+that read as symbols. It holds the repository's own Markdown documents, such as
+this one and the README, to the same: their links, by GitHub's rules, the
+Obsidian and Node.js versions, the commands they name, their examples, and the
+versions of the BRAT recipe above.
 
 A change that users can see updates the guide in the same pull request. The
 guide deploys from `main` and describes the newest published release. Clearly
@@ -227,6 +240,41 @@ instructions usable. Author and PR review check that distinction before merge; a
 changelog entry alone does not label the guide. A release PR removes the labels
 only for behavior included in that release. [docs/versions.md](docs/versions.md)
 describes deployment and corrections.
+
+### What a change updates
+
+A change updates every place that states what it changes, not only the guide.
+These are the places for each kind of change. What is marked checked, the unit
+tests compare with the code: `docs.test.ts` for the guide and the documents,
+`listing.test.ts` for the listing, and `release.test.ts` for versions. What is
+marked read, author and pull request review read for meaning.
+
+- **A command, button, key, default, or notice:** the guide's keyboard,
+  settings, drawing, and troubleshooting pages, and the README's first steps,
+  checked; the editor's **Help** and its tooltips, read.
+- **The Obsidian or Node.js version, or the platforms:** `manifest.json` and
+  `package.json` own them. The README, the home and install pages, and Set up
+  above, checked; Known limits and the listing's long description, read.
+- **What Inkline reads, writes, or sends:** [SECURITY.md](SECURITY.md), the
+  listing's long description, and the guide's drawing and recovery pages, read.
+- **What a symbol file holds, or how it draws:** the file format and Without
+  Inkline pages, and the pinned fixtures, as [AGENTS.md](AGENTS.md#code) says.
+- **How a symbol shows in a note or in another app:** the rendering and Without
+  Inkline pages; their example embeds, checked.
+- **Installing, updating, or a release:** the install page, the README's
+  Install, [RELEASING.md](RELEASING.md), and the recipes in [Tests](#tests); the
+  BRAT recipe's versions, checked.
+- **What Inkline is for:** the README, the home page, the listing's
+  descriptions, and [Request a feature](#request-a-feature); the short
+  description, checked against the manifest's.
+- **How it looks:** `docs/screenshots/` and `listing/screenshots/`; the
+  listing's sizes, checked.
+- **Anything users can see:** `Unreleased` in [CHANGELOG.md](CHANGELOG.md), and
+  the guide's
+  [Promises and evidence](https://viell-dev.github.io/slop-inkline/verification)
+  for what tests it.
+
+The tests also check every link in the guide and in these documents.
 
 ## Pull requests
 
@@ -240,7 +288,8 @@ approval from a second account.
 - Add a "Verification" section: the commands run, the inputs tried beyond the
   tests, the platforms and Obsidian versions checked, and whether another agent
   reviewed the change, at which commit, and why or why not.
-- Add tests, update every document the change makes stale, and add user-visible
+- Add tests, update every document the change makes stale, as
+  [What a change updates](#what-a-change-updates) lists, and add user-visible
   changes to `Unreleased` in [CHANGELOG.md](CHANGELOG.md).
 - Keep each pull request to one change.
 

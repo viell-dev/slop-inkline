@@ -1,8 +1,10 @@
 # Without Inkline
 
-A symbol is an ordinary PNG file with an ordinary embed, so your notes keep
-showing it when Inkline is turned off or uninstalled, in other Markdown apps,
-and on sites such as GitHub. Nothing about a note depends on the plugin.
+A symbol is an ordinary PNG file with an ordinary embed, so Obsidian keeps
+showing it in your notes when Inkline is turned off or uninstalled. A note holds
+no syntax of Inkline's own. Other Markdown apps, and sites such as GitHub, can
+show the picture too, from a link they read, as [In other apps](#in-other-apps)
+describes.
 
 ## What you see
 
@@ -21,6 +23,35 @@ The door is marked with ![[tower.ink.png|24]] which means return.
 
 With Inkline on again, symbols show as characters at once, and an editor that
 was open when it was turned off offers its unsaved strokes back as a draft.
+
+## In other apps
+
+Obsidian's embed, `![[tower.ink.png]]`, is its own syntax, which GitHub and many
+other apps show as text. They show a symbol as the picture it is when:
+
+- the note links it as a standard Markdown image, `![](path)`;
+- the path leads from the note's own folder to the symbol's file, as GitHub
+  reads it;
+- the symbol's file goes with the note, at that place, as when the whole vault
+  is copied or pushed.
+
+Obsidian writes such links for the symbols Inkline inserts when **Use
+\[\[Wikilinks\]\]** is off and **New link format** is **Relative path to file**,
+under **Settings → Files and links**. A note `Notes/Door.md` then embeds the
+symbol `Symbols/tower.ink.png` as:
+
+```md
+The door is marked with ![](../Symbols/tower.ink.png) which means return.
+```
+
+Inkline shows such a link as a character, as it shows any other. The settings
+change only the links Obsidian writes from then on, not those already in your
+notes. Where Obsidian's own link would lead elsewhere, as it can for a name with
+an unbalanced parenthesis, Inkline links the symbol by its path in the vault
+instead, as [Known limits](./limits.md#links-obsidian-writes) says. Other apps
+read that path from the note's folder, so they show such a symbol only in a note
+at the vault's root. A size after `|` is Obsidian's own: other apps show a
+symbol at its file's size, as [What you see](#what-you-see) describes.
 
 ## Editing them elsewhere
 
