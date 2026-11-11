@@ -141,6 +141,18 @@ function lineEndNote(around: number): string {
   ).join("\n\n");
 }
 
+const containersNote = [
+  "Top line.",
+  "",
+  "| Cell | Next |",
+  "| --- | --- |",
+  "| A![[swash.ink.png]] | ollow |",
+  "",
+  "> [!note] Callout",
+  "> In a callout ![[swash.ink.png]]ollow here.",
+  "",
+].join("\n");
+
 const pdfNote = [
   "# Overhang",
   "",
@@ -461,12 +473,13 @@ function flourishRect(
       ? measured.box.left - geometry.advance[0] * scale
       : measured.box.left;
   const { x0, x1, y0, y1 } = geometry.flourish;
-  // Inside the flourish by a pixel each side, and its middle rows.
+  // Inside the flourish by a pixel each side, and all of its rows: at the
+  // text's size it is two pixels tall.
   return {
     left: origin + x0 * scale + 1,
     right: origin + x1 * scale - 1,
-    top: measured.box.top + (y0 + 4) * scale,
-    bottom: measured.box.top + (y1 - 4) * scale,
+    top: Math.floor(measured.box.top + y0 * scale),
+    bottom: Math.ceil(measured.box.top + y1 * scale),
   };
 }
 
@@ -518,6 +531,7 @@ describe("Symbols wider than their advance (#167 §1)", function () {
       {
         "Overhang.md": overhangNote,
         "Pdf.md": pdfNote,
+        "Containers.md": containersNote,
       },
     );
   });
@@ -979,7 +993,95 @@ describe("Symbols wider than their advance (#167 §1)", function () {
     await record("themes", found);
   });
 
-  it("prints to PDF with the box technique", async function () {
+  for (const mode of ["preview", "source"] as const) {
+    it(`draws in a table and a callout in ${mode} with box`, async function () {
+      await useTechnique("box");
+      await open("Containers.md", mode);
+      await waitForSymbols(mode, 2, 2);
+      await browser.pause(300);
+      const measured = await measure(mode);
+      const ground = await emptyPoint(mode);
+      const ink = await inkIn(
+        measured.map((each) => flourishRect(each, "box", swash)),
+        ground,
+        view(mode),
+      );
+      const clips = await browser.execute(
+        (selector) =>
+          Array.from(
+            activeDocument.querySelectorAll(`${selector} img.inkline-symbol`),
+          ).map((image) => {
+            const clipping: string[] = [];
+            for (
+              let at: Element | null = image.parentElement;
+              at !== null && !at.matches(selector);
+              at = at.parentElement
+            ) {
+              const style = getComputedStyle(at);
+              if (
+                style.overflowX !== "visible" ||
+                style.contain.includes("paint")
+              ) {
+                clipping.push(
+                  `${at.tagName.toLowerCase()}.${Array.from(at.classList).join(".")} overflow-x:${style.overflowX} contain:${style.contain}`,
+                );
+              }
+            }
+            return clipping;
+          }),
+        view(mode),
+      );
+      await saveScreenshot(`overhang-containers-${mode}`);
+      await record(`containers-${mode}`, { measured, flourishInk: ink, clips });
+    });
+  }
+
+  it("jumps while Inkline reads a changed file", async function () {
+    await useTechnique("box");
+    await open("Overhang.md", "preview");
+    await waitForSymbols("preview", 7, 6);
+    await browser.execute((selector) => {
+      const changes: { at: number; marked: boolean; width: number }[] = [];
+      Reflect.set(window, "overhangChanges", changes);
+      const image = activeDocument.querySelector(
+        `${selector} img.inkline-symbol`,
+      );
+      if (image === null) throw new Error("no symbol");
+      const start = performance.now();
+      const observer = new MutationObserver(() => {
+        const current = activeDocument.querySelector(
+          `${selector} img.inkline-symbol`,
+        );
+        if (current === null) return;
+        changes.push({
+          at: performance.now() - start,
+          marked: current.hasAttribute("data-inkline-overhang"),
+          width: current.getBoundingClientRect().width,
+        });
+      });
+      observer.observe(activeDocument.body, {
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["data-inkline-overhang", "src"],
+      });
+      Reflect.set(window, "overhangObserver", observer);
+    }, view("preview"));
+    await browser.executeObsidian(async ({ app }, encoded) => {
+      const file = app.vault.getFileByPath("swash.ink.png");
+      if (file === null) throw new Error("no swash");
+      const bytes = Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0));
+      await app.vault.modifyBinary(file, bytes.buffer);
+    }, toBase64(swashPng()));
+    await browser.pause(2000);
+    const changes = await browser.execute(() => {
+      const observer: unknown = Reflect.get(window, "overhangObserver");
+      if (observer instanceof MutationObserver) observer.disconnect();
+      return Reflect.get(window, "overhangChanges") as unknown;
+    });
+    await record("modify-jump", changes);
+  });
+
+  it("prints to PDF", async function () {
     await useTechnique("box");
     await open("Pdf.md", "preview");
     await waitForSymbols("preview", 2, 2);

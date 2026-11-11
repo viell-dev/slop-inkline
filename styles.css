@@ -656,3 +656,27 @@ img.inkline-symbol:not([width], [height]) {
   object-position: 50% 50%;
   overflow: clip;
 }
+
+/*
+ * In print, technique A: there no pointer or cursor needs the box to be the
+ * advance, and Chromium's PDF of technique B's box shadow can leave a faint
+ * hairline along the shadow's edge where the mask cuts it.
+ */
+@media print {
+  :root:not(.inkline-proto-off) img.inkline-symbol[data-inkline-overhang] {
+    width: var(--inkline-full-width) !important;
+    mask-size: 100% 100%;
+    mask-position: 0 0;
+    mask-clip: border-box;
+    box-shadow: none;
+    margin-left: calc(-1 * var(--inkline-left));
+    margin-right: calc(-1 * var(--inkline-right));
+  }
+
+  :root.inkline-stored-color:not(.inkline-proto-off)
+    img.inkline-symbol[data-inkline-overhang] {
+    object-fit: fill;
+    object-position: 50% 50%;
+    overflow: clip;
+  }
+}
