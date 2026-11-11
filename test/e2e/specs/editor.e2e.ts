@@ -25,6 +25,7 @@ import {
   noteText,
   openAtMarker,
   recordOf,
+  renamePastHold,
   restoreDecoding,
   restoreVault,
   settledSurface,
@@ -1674,6 +1675,59 @@ describe("The editor", function () {
       expect((await nameField()).value).toBe("tower");
       expect(await symbolFiles()).toEqual(["tower.ink.png"]);
       expect(await bytesOfFile("tower.ink.png")).toEqual(replacement);
+    });
+
+    /**
+     * Opens the editor of `001.ink.png`, which the open note `Editor.md`
+     * embeds, adds a stroke, names it `tower`, and saves, holding Obsidian's
+     * move of the file, past every check, as a change already on its way to
+     * the disk, or one made outside Obsidian, would be.
+     */
+    async function saveHeldInMove(): Promise<void> {
+      await saveOne();
+      await waitForLink("Editor.md", "001.ink.png");
+      await editFile("001.ink.png");
+      await draw(stroke);
+      await nameSymbol("tower");
+      await hold("move");
+      await browser.keys(["Control", "s"]);
+      await waitForHeld();
+    }
+
+    it("says the symbol stays where it was when a file comes by the new name as Obsidian moves it", async function () {
+      await saveHeldInMove();
+      // As sync would bring in a file of that name.
+      await writeSymbol("tower.ink.png", [1200, 1800]);
+      const arrived = await bytesOfFile("tower.ink.png");
+      await letGo();
+      await waitForNotice(
+        "001.ink.png is saved, but tower.ink.png was created while Obsidian was renaming it, and the file is still 001.ink.png",
+      );
+      await waitForStatus("Saved, but not renamed");
+      expect(await nameField()).toEqual({ value: "tower", placeholder: "001" });
+      expect(await symbolFiles()).toEqual(["001.ink.png", "tower.ink.png"]);
+      expect(await strokeCount("001.ink.png")).toBe(2);
+      expect(await bytesOfFile("tower.ink.png")).toEqual(arrived);
+      expect(await noteOnDisk("Editor.md")).toContain("![[001.ink.png]]");
+    });
+
+    it("says the symbol has the new name when it is renamed to it elsewhere as Obsidian moves it", async function () {
+      await saveHeldInMove();
+      // The very rename, as sync would make it, which leaves the links.
+      await renamePastHold("001.ink.png", "tower.ink.png");
+      await letGo();
+      await waitForNotice(
+        "001.ink.png is saved, but Obsidian did not finish the rename, though the file is tower.ink.png now, so links to it may still have the old name",
+      );
+      await waitForStatus("Saved");
+      expect(await browser.$(".inkline-status").getText()).toBe("Saved");
+      expect(await nameField()).toEqual({
+        value: "tower",
+        placeholder: "tower",
+      });
+      expect(await symbolFiles()).toEqual(["tower.ink.png"]);
+      expect(await strokeCount("tower.ink.png")).toBe(2);
+      expect(await noteOnDisk("Editor.md")).toContain("![[001.ink.png]]");
     });
   });
 

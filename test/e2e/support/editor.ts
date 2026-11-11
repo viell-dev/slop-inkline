@@ -937,9 +937,36 @@ export async function letGo(failure?: string): Promise<void> {
 }
 
 /**
- * Holds Obsidian's index, until {@link letGo}, on a note that arrives in the
- * vault as from sync, so that what waits for the index to catch up with the
- * whole vault waits, as Obsidian's `renameFile` does before it moves a file.
+ * Renames the file at `from` to `to` through the vault, as sync would, past
+ * what {@link hold} holds of Obsidian's moves, which goes on holding the rest.
+ */
+export async function renamePastHold(from: string, to: string): Promise<void> {
+  await browser.executeObsidian(
+    async ({ app }, path, next) => {
+      const file = app.vault.getFileByPath(path);
+      if (file === null) throw new Error(`no ${path}`);
+      const { adapter } = app.vault;
+      // Held, it is the adapter's own, over what its prototype has.
+      const held: unknown = Object.hasOwn(adapter, "rename")
+        ? Reflect.get(adapter, "rename")
+        : undefined;
+      Reflect.deleteProperty(adapter, "rename");
+      try {
+        await app.vault.rename(file, next);
+      } finally {
+        if (held !== undefined) Reflect.set(adapter, "rename", held);
+      }
+    },
+    from,
+    to,
+  );
+}
+
+/**
+ * Holds Obsidian's index, until {@link letGo}, on a note it creates through
+ * the vault, which the index reads as it would one that sync brings in, so
+ * that what waits for the index to catch up with the whole vault waits, as
+ * Obsidian's `renameFile` does before it moves a file.
  */
 export async function holdIndex(): Promise<void> {
   await hold("index", "Synced.md");
