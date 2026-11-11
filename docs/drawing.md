@@ -352,11 +352,15 @@ try. A new symbol's embed takes the new name whatever you answer Obsidian, and
 the cursor stays just after the symbol.
 
 **Unreleased:** the symbol's file is checked again once the drawing and the
-notes are saved, just before Obsidian renames it. If it was deleted and
-replaced, or renamed elsewhere, meanwhile, or another symbol took the new name,
-nothing is renamed: the drawing is saved, a notice says why, and the editor
-stays open with the name you typed for the next save to try. A name given
-elsewhere stays until then.
+notes are saved, and once Obsidian has finished indexing the notes and any other
+rename, so that Obsidian moves it straight after the check. If it was deleted
+and replaced, or renamed elsewhere, meanwhile, or another symbol took the new
+name, nothing is renamed: the drawing is saved, a notice says why, and the
+editor stays open with the name you typed for the next save to try. A name given
+elsewhere stays until then, with the links that rename left. A change at the
+very moment Obsidian moves the file, such as one by another app, is reported in
+a notice that says what happened and where the symbol is, as
+[the limits](./limits.md#a-file-changed-as-obsidian-renames-it) describe.
 
 ## Readings and translations
 

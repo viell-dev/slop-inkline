@@ -850,6 +850,11 @@ const holdable = {
   write: { owner: "vault", method: "modifyBinary", ending: ".ink.png" },
   /** A link's update in a note, which comes after the move. */
   link: { owner: "vault", method: "process", ending: ".md" },
+  /**
+   * Obsidian's index reading a note it has not indexed yet, which it reads as
+   * bytes. Obsidian's `renameFile` waits for the index before the move.
+   */
+  index: { owner: "adapter", method: "readBinary", ending: ".md" },
 } as const;
 
 /**
@@ -929,6 +934,40 @@ export async function letGo(failure?: string): Promise<void> {
       Reflect.apply(settle, undefined, [reason ?? undefined]);
     }
   }, failure ?? null);
+}
+
+/**
+ * Holds Obsidian's index, until {@link letGo}, on a note that arrives in the
+ * vault as from sync, so that what waits for the index to catch up with the
+ * whole vault waits, as Obsidian's `renameFile` does before it moves a file.
+ */
+export async function holdIndex(): Promise<void> {
+  await hold("index", "Synced.md");
+  await browser.executeObsidian(async ({ app }) => {
+    // New text each time, which the index has not seen.
+    await app.vault.create("Synced.md", `Arrived at ${String(Date.now())}.\n`);
+  });
+  await waitForHeld();
+}
+
+/**
+ * Waits until something waits for Obsidian's index, as Obsidian's `renameFile`
+ * does before it moves a file, and a rename by Inkline before it calls that.
+ * Obsidian keeps what waits in the metadata cache's `onCleanCacheCallbacks`,
+ * which is not in its API.
+ */
+export async function waitForIndexWait(): Promise<void> {
+  await browser.waitUntil(
+    async () =>
+      browser.executeObsidian(({ app }) => {
+        const waiting: unknown = Reflect.get(
+          app.metadataCache,
+          "onCleanCacheCallbacks",
+        );
+        return Array.isArray(waiting) && waiting.length > 0;
+      }),
+    { timeoutMsg: "nothing waited for Obsidian's index" },
+  );
 }
 
 /**

@@ -19,6 +19,7 @@ import {
   fillStorage,
   freeStorage,
   hold,
+  holdIndex,
   letGo,
   markEditor,
   noteText,
@@ -30,6 +31,7 @@ import {
   storedDrafts,
   waitForEditor,
   waitForHeld,
+  waitForIndexWait,
   waitForNext,
   waitForNotice,
   waitForPanes,
@@ -1572,6 +1574,73 @@ describe("The editor", function () {
       expect(await symbolFiles()).toEqual(["001.ink.png"]);
       expect(await bytesOfFile("001.ink.png")).toEqual(replacement);
       expect(await noteOnDisk("Editor.md")).toContain("![[001.ink.png]]");
+    });
+
+    /**
+     * Opens the editor of `001.ink.png`, which the open note `Editor.md`
+     * embeds, adds a stroke, names it `tower`, and saves, with Obsidian's
+     * index held on another note, as on a slow disk or while sync brings in
+     * notes. Obsidian's `renameFile` waits for the index before it moves a
+     * file; this waits until the rename waits for it, with the drawing written.
+     */
+    async function saveWhileIndexing(): Promise<void> {
+      await saveOne();
+      await waitForLink("Editor.md", "001.ink.png");
+      await editFile("001.ink.png");
+      await draw(stroke);
+      await nameSymbol("tower");
+      await holdIndex();
+      await browser.keys(["Control", "s"]);
+      await waitForIndexWait();
+      await browser.waitUntil(
+        async () => (await strokeCount("001.ink.png")) === 2,
+      );
+    }
+
+    it("saves a symbol deleted and replaced while Obsidian indexes the vault, but does not rename the replacement", async function () {
+      await saveWhileIndexing();
+      const replacement = await replaceSymbol();
+      await letGo();
+      await waitForNotice(
+        "001.ink.png is saved, but could not be renamed: the file was deleted or replaced meanwhile",
+      );
+      expect((await nameField()).value).toBe("tower");
+      expect(await symbolFiles()).toEqual(["001.ink.png"]);
+      expect(await bytesOfFile("001.ink.png")).toEqual(replacement);
+    });
+
+    it("says what happened to a symbol replaced as Obsidian moves it", async function () {
+      await saveOne();
+      await waitForLink("Editor.md", "001.ink.png");
+      await editFile("001.ink.png");
+      await draw(stroke);
+      await nameSymbol("tower");
+      // Past every check, as a change already on its way to the disk, or one
+      // made outside Obsidian, would be.
+      await hold("move");
+      await browser.keys(["Control", "s"]);
+      await waitForHeld();
+      const replacement = await replaceSymbol();
+      await letGo();
+      const said =
+        "001.ink.png is saved, but the file was deleted while Obsidian was renaming it, and Obsidian renamed another file to tower.ink.png";
+      // Obsidian can ask about the links to the file it was asked to rename.
+      await browser.waitUntil(async () => {
+        const once = await topButton("Just once");
+        if (once !== undefined) await once.click();
+        return browser.execute(
+          (wanted) =>
+            [...document.querySelectorAll(".notice")].some((notice) =>
+              notice.textContent.includes(wanted),
+            ),
+          said,
+        );
+      });
+      // Not taken for a rename that went as asked, the name stays to retry.
+      // The status line goes on to say what the editor sees of its file.
+      expect((await nameField()).value).toBe("tower");
+      expect(await symbolFiles()).toEqual(["tower.ink.png"]);
+      expect(await bytesOfFile("tower.ink.png")).toEqual(replacement);
     });
   });
 

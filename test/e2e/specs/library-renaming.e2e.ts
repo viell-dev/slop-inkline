@@ -8,12 +8,14 @@ import {
   delayVault,
   failSaves,
   hold,
+  holdIndex,
   letGo,
   restoreVault,
   startOver,
   symbolFiles,
   topButton,
   waitForHeld,
+  waitForIndexWait,
   waitForNotice,
   waitForPanes,
 } from "../support/editor.ts";
@@ -476,6 +478,87 @@ describe("Renaming in the symbol library", function () {
       await waitForError("already has a symbol named lintel");
       expect(await nameField().getValue()).toBe("lintel");
       expect(await symbolFiles()).toEqual(["LINTEL.ink.png", "gate.ink.png"]);
+    });
+  });
+
+  describe("when the symbol changes while Obsidian would wait to move it", function () {
+    /**
+     * Begins renaming `gate.ink.png`, which an open note embeds, to `typed`,
+     * with Obsidian's index held on another note, as on a slow disk or while
+     * sync brings in notes. Obsidian's `renameFile` waits for the index before
+     * it moves a file; this waits until the rename waits for it.
+     */
+    async function renameWhileIndexing(typed: string): Promise<void> {
+      await usedSymbol();
+      await browser.executeObsidian(async ({ app }) => {
+        const note = app.vault.getFileByPath("Uses 0.md");
+        if (note === null) throw new Error("no note");
+        await app.workspace.getLeaf(false).openFile(note);
+      });
+      await showLibrary();
+      await beginRename("gate", typed);
+      await holdIndex();
+      await browser.keys(["Enter"]);
+      await waitForIndexWait();
+    }
+
+    afterEach(async function () {
+      await letGo();
+    });
+
+    it("refuses a symbol deleted and replaced while Obsidian indexes the vault", async function () {
+      await renameWhileIndexing("lintel");
+      await browser.executeObsidian(async ({ app }) => {
+        const file = app.vault.getFileByPath("gate.ink.png");
+        if (file === null) throw new Error("no gate");
+        await app.fileManager.trashFile(file);
+      });
+      await createSymbol("gate.ink.png", [1200, 1800]);
+      const replacement = await bytesOf("gate.ink.png");
+      await letGo();
+      await waitForError("the file was deleted or replaced meanwhile");
+      expect(await nameField().getValue()).toBe("lintel");
+      expect(await symbolFiles()).toEqual(["gate.ink.png"]);
+      expect(await bytesOf("gate.ink.png")).toBe(replacement);
+    });
+
+    it("refuses a symbol renamed elsewhere while Obsidian indexes the vault, and keeps that name", async function () {
+      await renameWhileIndexing("lintel");
+      // Renamed as sync would, without Inkline.
+      await browser.executeObsidian(async ({ app }) => {
+        const file = app.vault.getFileByPath("gate.ink.png");
+        if (file === null) throw new Error("no gate");
+        await app.vault.rename(file, "arch.ink.png");
+      });
+      await letGo();
+      await waitForError("the file was renamed to arch.ink.png meanwhile");
+      expect(await nameField().getValue()).toBe("lintel");
+      expect(await symbolFiles()).toEqual(["arch.ink.png"]);
+    });
+
+    it("says what happened when the symbol is replaced as Obsidian moves it", async function () {
+      await usedSymbol();
+      await showLibrary();
+      await beginRename("gate", "lintel");
+      // Past every check, as a change already on its way to the disk, or one
+      // made outside Obsidian, would be.
+      await hold("move");
+      await browser.keys(["Enter"]);
+      await waitForHeld();
+      await browser.executeObsidian(async ({ app }) => {
+        const file = app.vault.getFileByPath("gate.ink.png");
+        if (file === null) throw new Error("no gate");
+        await app.fileManager.trashFile(file);
+      });
+      await createSymbol("gate.ink.png", [1200, 1800]);
+      const replacement = await bytesOf("gate.ink.png");
+      await letGo();
+      await waitForError(
+        "the file was deleted while Obsidian was renaming it, and Obsidian renamed another file to lintel.ink.png",
+      );
+      expect(await nameField().getValue()).toBe("lintel");
+      expect(await symbolFiles()).toEqual(["lintel.ink.png"]);
+      expect(await bytesOf("lintel.ink.png")).toBe(replacement);
     });
   });
 

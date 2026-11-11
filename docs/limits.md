@@ -73,6 +73,29 @@ short, with the read straight before the write, and it does not rule it out. A
 change made before that read is noticed: the editor asks, and the library shows
 it. Your sync tool's own history is the way back from a change lost like this.
 
+## A file changed as Obsidian renames it
+
+**Unreleased:** Obsidian moves a file by its path, without checking that the
+file there is still the one it was asked to rename, and its rename can first
+wait a while, for its index of the vault and for any other rename. So Inkline
+waits for those itself before it checks the symbol for the last time, and
+Obsidian moves the file in the same step as that check. Inkline learns what
+Obsidian is waiting for from Obsidian's own state, which its plugin API does not
+include ([#10](https://github.com/viell-dev/slop-inkline/issues/10)). With a
+version of Obsidian that keeps it otherwise, Obsidian waits after the check, as
+it did before, and it can then say a rename is done before it has made it, which
+Inkline reports as a name that may still change.
+
+Some changes can still reach the file between the check and the move: one that
+Obsidian had already begun to write to the disk, and one made outside Obsidian
+at that moment, as by a sync tool. If anything is deleted, created, or renamed
+at the symbol's path or its new one before Obsidian has moved it, Inkline says
+what happened and where the symbol is now, rather than closing the library's row
+or saying only that the editor saved. Obsidian may by then have given the new
+name to another file at the old path, or moved the symbol away from a name given
+elsewhere, and Inkline cannot stop a move Obsidian has begun: look at both names
+in the library before going on.
+
 ## Renames and Obsidian's question
 
 When a file is renamed, Obsidian notes where the links to it are, asks whether
