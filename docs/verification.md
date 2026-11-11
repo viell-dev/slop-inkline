@@ -469,7 +469,9 @@ drawing while **Copy from** or **Reload** reads.
   Obsidian's
   ([version.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/version.test.ts)).
 - This site's commands, keys, defaults, Obsidian version, links, and example
-  embeds agree with the code
+  embeds agree with the code, as do the links, Obsidian and Node.js versions,
+  command names, and examples of the repository's own documents, and the
+  versions its BRAT recipe names
   ([docs.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/docs.test.ts)),
   and what deploys follows [Versions of this site](./versions.md)
   ([docs-source.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/docs-source.test.ts)).

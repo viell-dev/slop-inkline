@@ -530,7 +530,7 @@ Public stable publication remains on hold, as the earlier
 ### Changed
 
 - Releases are alphas for now, and until the first stable release the
-  [file format](https://viell-dev.github.io/slop-inkline/file-format#compatibility)
+  [file format](https://viell-dev.github.io/slop-inkline/file-format#versions)
   is a draft: a later alpha may change what symbol files hold, and need not open
   files an earlier one saved. The changelog says when that happens; this alpha
   opens every file the earlier releases saved.
