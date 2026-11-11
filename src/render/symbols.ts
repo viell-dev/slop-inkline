@@ -61,7 +61,7 @@ function rubiesAround(image: HTMLImageElement): HTMLElement[] {
   let parent = image.parentElement;
   while (
     parent !== null &&
-    parent.localName === "ruby" &&
+    (parent.localName === "ruby" || parent.localName === "span") &&
     parent.hasClass(rubyClass) &&
     parent.firstElementChild === base
   ) {
@@ -116,7 +116,19 @@ function annotateImage(
   if (!wanted) return;
   let base: Element = image;
   if (reading !== "") base = wrapRuby(base, reading, "over");
-  if (translation !== "") wrapRuby(base, translation, "under");
+  if (translation !== "") {
+    // Chromium 150 leaves a nested ruby's text at the start of a wider
+    // annotation around it, off its symbol, unless the inner ruby is a box of
+    // its own (ruby-followup.e2e.ts).
+    if (reading !== "") {
+      const box = image.ownerDocument.createElement("span");
+      box.addClass(rubyClass, `${rubyClass}-box`);
+      base.replaceWith(box);
+      box.append(base);
+      base = box;
+    }
+    wrapRuby(base, translation, "under");
+  }
   image.setAttribute(rubyMark, key);
 }
 

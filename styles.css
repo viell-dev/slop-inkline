@@ -621,12 +621,25 @@ ruby.inkline-ruby-under {
   ruby-position: under;
 }
 
+/* A symbol with its reading, as one box under its translation. */
+span.inkline-ruby-box {
+  display: inline-block;
+}
+
 ruby.inkline-ruby > rt {
   color: var(--text-muted);
   font-size: 0.5em;
   font-style: normal;
   font-weight: var(--font-normal);
   line-height: 1.2;
+}
+
+/*
+ * In Live Preview the embed takes the drop, so the image inside its ruby
+ * stands on the ruby's baseline rather than dropping a second time.
+ */
+.cm-content .image-embed .image-wrapper ruby.inkline-ruby img.inkline-symbol {
+  vertical-align: baseline;
 }
 
 .inkline-ruby-note ruby.inkline-ruby > rt {
