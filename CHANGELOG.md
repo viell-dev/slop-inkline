@@ -11,6 +11,12 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ### Fixed
 
+- The guide said that symbols keep showing in other Markdown apps and on GitHub,
+  but those show Obsidian's own embed, such as `![[tower.ink.png]]`, as text.
+  [Without Inkline](https://viell-dev.github.io/slop-inkline/without-inkline#in-other-apps)
+  now says what another app needs, with the Obsidian settings that write such
+  links and an example from a note in a folder
+  ([#231](https://github.com/viell-dev/slop-inkline/issues/231)).
 - The README starts with installing Inkline and drawing a first symbol
   ([#232](https://github.com/viell-dev/slop-inkline/issues/232)).
 

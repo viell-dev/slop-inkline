@@ -232,7 +232,8 @@ must keep released files readable and looking the same, as
   and found again after the text moved
   ([editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)).
   Type to insert lists nothing in code or front matter, and the links it writes
-  lead back to their symbols
+  lead back to their symbols, from a note in a folder too, as paths from there
+  when Obsidian writes relative Markdown links
   ([suggest.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/suggest.e2e.ts)).
 - The cursor lands after a symbol from every route that inserts one, and typing
   goes on there: Save, Mod+S, a run from Next, both lists, and the library, past
