@@ -104,6 +104,9 @@ must keep released files readable and looking the same, as
   no strokes opened as a picture, and says nothing of one whose record holds
   none
   ([editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)).
+- A picture to trace over, chosen with **Choose picture…** from a folder outside
+  the vault, shows on the drawing area, and puts no file in the vault
+  ([choose-picture.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/choose-picture.e2e.ts)).
 
 ### Symbols read as characters
 

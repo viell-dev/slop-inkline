@@ -17,6 +17,12 @@ even one a public release; earlier pre-releases carry a suffix such as
   now says what another app needs, with the Obsidian settings that write such
   links and an example from a note in a folder
   ([#231](https://github.com/viell-dev/slop-inkline/issues/231)).
+- The description prepared for Obsidian's community directory said that Inkline
+  reads nothing outside your vault. It now says that it keeps drafts in
+  Obsidian's storage on your computer, and reads nothing else unless you choose,
+  drop, or paste a picture to trace over, which can come from anywhere. The
+  security policy says the same
+  ([#233](https://github.com/viell-dev/slop-inkline/issues/233)).
 - The README starts with installing Inkline and drawing a first symbol
   ([#232](https://github.com/viell-dev/slop-inkline/issues/232)).
 
