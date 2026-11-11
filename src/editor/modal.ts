@@ -48,7 +48,8 @@ import {
   type PicturePlace,
   type Region,
 } from "../ink/pixels.ts";
-import type { DrawableBase } from "../ink/render.ts";
+import { drawInk, type DrawableBase } from "../ink/render.ts";
+import { addPart, type Weight } from "./parts.ts";
 import { readText, writeText, type SymbolText } from "../format/text.ts";
 import { savingWaits, type RenameWait } from "../notes/file-writes.ts";
 import { chooseRename, symbolStem } from "../notes/names.ts";
@@ -535,6 +536,17 @@ export class InkEditorModal extends Modal {
   #pictureRequests = 0;
   /** Whether dragging and the wheel move the picture, rather than drawing. */
   #moving = false;
+  /**
+   * Prototype for #167 §4: a symbol being placed as a part, shown as the
+   * picture is, until A or Shift+A puts its strokes in.
+   */
+  #part:
+    | {
+        readonly name: string;
+        readonly ink: EditableInk;
+        readonly image: ImageBitmap;
+      }
+    | undefined;
   /**
    * Where the pointer dragging the picture last was, on the screen: the view
    * can move under it, as a save or Fit does, so each move maps both ends.
@@ -1407,6 +1419,13 @@ export class InkEditorModal extends Modal {
     if (this.#options.copyFrom !== undefined) {
       key([], "v", () => {
         void this.#copy();
+      });
+      key([], "a", () => {
+        if (this.#part === undefined) void this.#choosePart();
+        else this.#putPart("scale");
+      });
+      key(["Shift"], "a", () => {
+        if (this.#part !== undefined) this.#putPart("keep");
       });
     }
     key([], "f", () => {
@@ -2834,6 +2853,79 @@ export class InkEditorModal extends Modal {
       : `Started from a copy of ${copy.name}`;
     this.#announce(
       copy.ink.picture === true ? `${started}. ${noStrokes}` : started,
+    );
+  }
+
+  /**
+   * Prototype for #167 §4: chooses a symbol to add as a part, and shows it as
+   * the picture to trace is, at its own size, for Move to place: drag it, the
+   * wheel or + and − scale it, the arrow keys nudge it.
+   */
+  async #choosePart(): Promise<void> {
+    const copyFrom = this.#options.copyFrom;
+    if (copyFrom === undefined || this.#choosing !== undefined) return;
+    const choosing = new AbortController();
+    this.#choosing = choosing;
+    let copy: SymbolCopy | undefined;
+    try {
+      copy = await copyFrom(choosing.signal);
+    } finally {
+      this.#choosing = undefined;
+    }
+    const view = this.#view;
+    if (copy === undefined || this.#retired || this.#closing || view === undefined) {
+      return;
+    }
+    const { ink } = copy;
+    const surface = new OffscreenCanvas(Math.max(1, ink.width), lineBox.height);
+    const context = surface.getContext("2d");
+    if (context === null) return;
+    drawInk(context, ink.document.strokes, ink.base);
+    const image = surface.transferToImageBitmap();
+    this.#setPicture({
+      image,
+      width: image.width,
+      height: image.height,
+      placement: { x: view.center - image.width / 2, y: 0, scale: 1 },
+    });
+    this.#part = { name: copy.name, ink, image };
+    this.#moving = true;
+    this.#updateButtons();
+    this.#announce(
+      `Placing ${copy.name}: drag it, the wheel scales it; A puts it in, Shift+A keeps its stroke widths`,
+    );
+  }
+
+  /** Prototype for #167 §4: puts the part's strokes in where it was placed. */
+  #putPart(weight: Weight): void {
+    const part = this.#part;
+    const picture = this.#picture;
+    this.#part = undefined;
+    if (part === undefined) return;
+    if (picture?.image !== part.image) {
+      this.#announce(`Not added: another picture took the place of ${part.name}`);
+      return;
+    }
+    this.#session.end();
+    const added = addPart(
+      this.#session.document,
+      part.ink.document,
+      picture.placement,
+      weight,
+    );
+    if (!added.ok) {
+      this.#announce(`Not added: ${added.reason}`);
+      return;
+    }
+    const base = added.document.base;
+    if (base !== undefined && part.ink.base !== undefined) {
+      this.#decoded.set(base.png, part.ink.base);
+    }
+    this.#session.replace(added.document, this.#session.gridOrigin);
+    this.#setPicture(undefined);
+    this.#changed();
+    this.#announce(
+      `Added ${part.name} at ${String(Math.round(picture.placement.scale * 100))}%${weight === "keep" ? ", stroke widths kept" : ""}; Undo takes it back`,
     );
   }
 

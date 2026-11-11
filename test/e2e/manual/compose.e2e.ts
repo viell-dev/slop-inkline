@@ -12,7 +12,14 @@ import path from "node:path";
 import { browser, expect } from "@wdio/globals";
 import { obsidianPage } from "wdio-obsidian-service";
 import { loadModules } from "../support/browser.ts";
-import { waitForEditor } from "../support/editor.ts";
+import {
+  openAtMarker,
+  settledSurface,
+  storedDrafts,
+  surface,
+  waitForEditor,
+  waitForStatus,
+} from "../support/editor.ts";
 import { outputDirectory } from "../support/harness.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 
@@ -37,14 +44,14 @@ const note = [
   "",
 ].join("\n");
 
-/** Each symbol at 384 pixels tall, twice its file's size, to see its detail. */
+/** Each symbol at its file's own size, 192 pixels tall, to see its detail. */
 const large = [
-  "Large:",
-  "",
-  ...symbols.map(
-    (symbol) =>
-      `${symbol.slice(symbol.lastIndexOf("/") + 1, -".ink.png".length)} ![[${symbol}|240]]`,
-  ),
+  symbols
+    .map(
+      (symbol) =>
+        `${symbol.slice(symbol.lastIndexOf("/") + 1, -".ink.png".length)} ![[${symbol}|120]]`,
+    )
+    .join(" "),
   "",
 ].join("\n");
 
@@ -381,7 +388,7 @@ describe("Symbols built from other symbols (#167 §4)", function () {
     });
   }
 
-  it("shows each composite large, at 384 pixels tall, in both themes", async function () {
+  it("shows each composite large, at 192 pixels tall, in both themes", async function () {
     await open("Large.md", "preview");
     await browser.waitUntil(async () =>
       (await shown(images("preview"))).filter((each) => each.tagged && each.complete).length === symbols.length,
@@ -432,6 +439,96 @@ describe("Symbols built from other symbols (#167 §4)", function () {
     measured.linkedNotice = await notice.getText();
     await saveScreenshot("compose-editor-linked-refused");
     expect(await browser.$(".inkline-editor").isExisting()).toBe(false);
+  });
+
+  it("places three parts with the mouse in the editor prototype, as one Undo step each", async function () {
+    await openAtMarker("Editor.md", "HERE");
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await waitForEditor();
+    const { width } = await settledSurface();
+    // CSS pixels per document pixel: the surface shows 576 across.
+    const k = width / 576;
+    const canvas = await surface().getElement();
+    // Offsets from the surface's centre, which is document (centre, 96).
+    const at = (dx: number, dy: number) => ({
+      origin: canvas,
+      x: Math.round(dx * k),
+      y: Math.round(dy * k),
+    });
+    // The triangle's parts, as picture centres from the surface's centre:
+    // the composite starts 56 document pixels left of the centre, and each
+    // part, half of its 121 by 192, is centred 30.25 across and 48 down
+    // from its top left corner.
+    const targets: readonly (readonly [number, number])[] = [
+      [-56 + 30.25, 72 + 48 - 96],
+      [-56 + 52.5 + 30.25, 72 + 48 - 96],
+      [-56 + 26.25 + 30.25, 12 + 48 - 96],
+    ];
+    const draftStrokes = async () => (await storedDrafts())[0]?.strokes.length ?? 0;
+    for (const [index, [dx, dy]] of targets.entries()) {
+      await browser.keys(["a"]);
+      await browser.$(".prompt-input").waitForDisplayed();
+      await browser.keys("mark");
+      await browser.keys(["Enter"]);
+      await waitForStatus("Placing mark");
+      if (index === 0) await saveScreenshot("compose-ui-placing-full-size");
+      // Half size, about its centre, by the wheel: e^(-346.57 / 500) = 0.5.
+      await browser
+        .action("wheel")
+        .scroll({ origin: canvas, x: 0, y: 0, deltaX: 0, deltaY: 346.57 })
+        .perform();
+      await browser
+        .action("pointer", { parameters: { pointerType: "mouse" } })
+        .move(at(0, 0))
+        .down()
+        .move({ ...at(dx / 2, dy / 2), duration: 50 })
+        .move({ ...at(dx, dy), duration: 50 })
+        .up()
+        .perform();
+      if (index === 2) await saveScreenshot("compose-ui-placing-third");
+      await browser.keys(["a"]);
+      await waitForStatus("Added mark at");
+      measured[`uiStatus${String(index)}`] = await browser.$(".inkline-status").getText();
+      await browser.waitUntil(async () => (await draftStrokes()) === 5 * (index + 1));
+      if (index === 0) {
+        // One step: Undo takes the whole part back, Redo brings it again.
+        await browser.keys(["Control", "z"]);
+        await browser.waitUntil(async () => (await draftStrokes()) === 0);
+        await browser.keys(["Control", "y"]);
+        await browser.waitUntil(async () => (await draftStrokes()) === 5);
+      }
+    }
+    await saveScreenshot("compose-ui-three-parts");
+    await browser.keys(["Control", "Enter"]);
+    await browser.$(".inkline-editor").waitForExist({ reverse: true });
+    const saved = await browser.executeObsidian(async ({ app }) => {
+      const { compose, inkFile } = window.inklineTest;
+      const file = app.vault
+        .getFiles()
+        .find((each) => each.path.endsWith(".ink.png") && !each.path.includes("/"));
+      if (file === undefined) return { found: false as const };
+      const bytes = new Uint8Array(await app.vault.readBinary(file));
+      const source = await inkFile.readInkFile(bytes);
+      if (source.kind !== "record") return { found: true as const, kind: source.kind };
+      // Against the scripted triangle, which placed the same parts exactly.
+      const scripted = app.vault.getFileByPath("Composed/tri-copy.ink.png");
+      if (scripted === null) throw new Error("no tri-copy");
+      const other = await inkFile.readInkFile(new Uint8Array(await app.vault.readBinary(scripted)));
+      if (other.kind !== "record") throw new Error("tri-copy unreadable");
+      const mine = await compose.drawRecord(source.record, Math.max(source.width, other.width));
+      const theirs = await compose.drawRecord(other.record, Math.max(source.width, other.width));
+      return {
+        found: true as const,
+        kind: source.kind,
+        strokes: source.record.strokes.length,
+        width: source.width,
+        sizes: source.record.strokes.map((stroke) => stroke.size ?? null),
+        againstScripted: compose.difference(theirs, mine),
+      };
+    });
+    measured.ui = saved;
+    expect(saved).toMatchObject({ found: true, kind: "record", strokes: 15 });
+    await open("Large.md", "preview");
   });
 
   it("shows every composite as the picture it is without Inkline", async function () {
