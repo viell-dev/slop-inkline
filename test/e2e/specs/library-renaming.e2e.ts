@@ -816,9 +816,29 @@ describe("Renaming in the symbol library", function () {
       });
       await showLibrary();
       await beginRename("gate", "lintel");
-      await addUnsaved("Uses 0.md", "Opening.\n", "start");
       await hold("save");
-      await browser.keys(["Enter"]);
+      // The note saves itself two seconds after an edit, which on a busy
+      // machine can come before the rename's save: the rename then finds
+      // nothing to save, or finds that save held, and on Obsidian 1.13 a save
+      // during another returns at once, so the rename is refused. So the text
+      // is added and the rename begun in one step, as Enter in the field would
+      // begin it (#234).
+      await browser.executeObsidian(({ app, obsidian }, text) => {
+        const view = app.workspace
+          .getLeavesOfType("markdown")
+          .map((leaf) => leaf.view)
+          .find(
+            (open) =>
+              open instanceof obsidian.MarkdownView &&
+              open.file?.path === "Uses 0.md",
+          );
+        const form = document.querySelector(".inkline-library-rename-form");
+        if (!(view instanceof obsidian.MarkdownView))
+          throw new Error("no note");
+        if (!(form instanceof HTMLFormElement)) throw new Error("no form");
+        view.editor.replaceRange(text, view.editor.offsetToPos(0));
+        form.requestSubmit();
+      }, "Opening.\n");
       await waitForHeld();
       await waitForWait();
       await formButton("Cancel").click();
@@ -827,7 +847,7 @@ describe("Renaming in the symbol library", function () {
         false,
       );
       await letGo();
-      // The note's own save goes on, and nothing follows it.
+      // The note's save goes on, and nothing follows it.
       await browser.waitUntil(async () =>
         (await noteText("Uses 0.md")).startsWith("Opening."),
       );
