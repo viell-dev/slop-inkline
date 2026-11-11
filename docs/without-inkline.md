@@ -48,10 +48,10 @@ Inkline shows such a link as a character, as it shows any other. The settings
 change only the links Obsidian writes from then on, not those already in your
 notes. Where Obsidian's own link would lead elsewhere, as it can for a name with
 an unbalanced parenthesis, Inkline links the symbol by its path in the vault
-instead, as [Known limits](./limits.md#links-obsidian-writes) says, and other
-apps read that path from the note's folder. A size after `|` is Obsidian's own:
-other apps show a symbol at its file's size, as [What you see](#what-you-see)
-describes.
+instead, as [Known limits](./limits.md#links-obsidian-writes) says. Other apps
+read that path from the note's folder, so they show such a symbol only in a note
+at the vault's root. A size after `|` is Obsidian's own: other apps show a
+symbol at its file's size, as [What you see](#what-you-see) describes.
 
 ## Editing them elsewhere
 

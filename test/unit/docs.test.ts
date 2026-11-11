@@ -110,7 +110,11 @@ function anchors(text: string, slug = anchor): string[] {
   return found;
 }
 
-/** The targets of `text`'s Markdown links, outside code, as written. */
+/**
+ * The targets of `text`'s Markdown links, outside code, as written. A target in
+ * angle brackets, `[text](<a b.md>)`, is not matched: no document uses one, and
+ * one added would go unchecked.
+ */
 function links(text: string): string[] {
   const prose = outsideFences(text)
     .map((line) => line.replace(/`[^`]*`/g, ""))
@@ -147,6 +151,8 @@ function documentLinkProblem(name: string, href: string): string | undefined {
   } else {
     file = path === "" ? name : join(dirname(name), path);
   }
+  // Windows and macOS find a file whatever the case of its name, and GitHub
+  // does not, so a link differing in case passes there and fails on Linux CI.
   if (!existsSync(file)) return "no such file";
   if (
     fragment !== undefined &&
