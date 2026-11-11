@@ -11,6 +11,24 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ### Fixed
 
+- A rename, from the library or the editor, no longer renames another file when
+  the symbol is deleted and a file is put at its path while the rename saves the
+  open notes or the drawing, or while Obsidian finishes indexing the vault or
+  another rename before it moves the file. The symbol is checked again once
+  nothing is left to wait for, and Obsidian begins to move it in that same step.
+  A symbol deleted, replaced, or renamed elsewhere meanwhile, or whose new name
+  another symbol has taken, is not renamed: the name you typed stays to try
+  again. A change that still reaches the file before Obsidian moves it, such as
+  one made outside Obsidian at that moment, is reported with where the symbol is
+  now, rather than taken for a rename that went well
+  ([#218](https://github.com/viell-dev/slop-inkline/issues/218)).
+- Text typed in a note while a rename saves the other open notes is saved too
+  before the rename, so that Obsidian's update of the links can't write over it
+  ([#218](https://github.com/viell-dev/slop-inkline/issues/218)).
+- `COM¹`, `COM²`, `COM³`, `LPT¹`, `LPT²`, and `LPT³`, which Windows keeps for
+  its ports as it keeps `COM1`, are refused as a symbol's or a folder's name,
+  with an extension too. A symbol that already has such a name keeps it when
+  saved ([#225](https://github.com/viell-dev/slop-inkline/issues/225)).
 - A draft is no longer refused for room that pictures no draft needs take up.
   Each **Copy from**, **Make ink**, or reload that gave the drawing a new base
   layer kept the old one's picture in the vault's local storage too, until

@@ -835,6 +835,168 @@ export async function restoreVault(): Promise<void> {
   );
 }
 
+/** What a save or a rename can stop in, as on a drive that stopped answering. */
+const holdable = {
+  /** Obsidian's own move of a file, in the real `renameFile`. */
+  move: { owner: "adapter", method: "rename", ending: ".ink.png" },
+  /** A note's save, which comes before the move. */
+  save: { owner: "adapter", method: "write", ending: ".md" },
+  /**
+   * A note's read, as a rename reads each open note before the move, to see
+   * whether it has text to save.
+   */
+  read: { owner: "vault", method: "read", ending: ".md" },
+  /** A symbol's save, which comes before an editor's rename. */
+  write: { owner: "vault", method: "modifyBinary", ending: ".ink.png" },
+  /** A link's update in a note, which comes after the move. */
+  link: { owner: "vault", method: "process", ending: ".md" },
+  /**
+   * Obsidian's index reading a note it has not indexed yet, which it reads as
+   * bytes. Obsidian's `renameFile` waits for the index before the move.
+   */
+  index: { owner: "adapter", method: "readBinary", ending: ".md" },
+} as const;
+
+/**
+ * Has `what` wait until {@link letGo}, for every file whose path ends with
+ * `ending`, `what`'s own by default.
+ */
+export async function hold(
+  what: keyof typeof holdable,
+  ending: string = holdable[what].ending,
+): Promise<void> {
+  await browser.executeObsidian(
+    ({ app }, { owner, method }, end) => {
+      const target = owner === "adapter" ? app.vault.adapter : app.vault;
+      const original: unknown = Reflect.get(target, method);
+      if (typeof original !== "function") throw new Error(`no ${method}`);
+      let settle: (failure?: string) => void = () => undefined;
+      const gate = new Promise<void>((resolve, reject) => {
+        settle = (failure) => {
+          if (failure === undefined) resolve();
+          else reject(new Error(failure));
+        };
+      });
+      Reflect.set(window, "inklineHeldOwner", owner);
+      Reflect.set(window, "inklineHeldMethod", method);
+      Reflect.set(window, "inklineSettle", settle);
+      Reflect.set(
+        target,
+        method,
+        async (...args: unknown[]): Promise<unknown> => {
+          const [first] = args;
+          const path =
+            typeof first === "object" && first !== null
+              ? (Reflect.get(first, "path") as unknown)
+              : first;
+          if (typeof path === "string" && path.endsWith(end)) {
+            Reflect.set(window, "inklineHeld", true);
+            await gate;
+          }
+          return Reflect.apply(original, target, args) as unknown;
+        },
+      );
+    },
+    holdable[what],
+    ending,
+  );
+}
+
+/** Waits for what {@link hold} held to be reached. */
+export async function waitForHeld(): Promise<void> {
+  await browser.waitUntil(async () =>
+    browser.execute(() => Reflect.get(window, "inklineHeld") === true),
+  );
+}
+
+/** Lets go what {@link hold} held, or fails it with `failure`. */
+export async function letGo(failure?: string): Promise<void> {
+  await browser.executeObsidian(({ app }, reason) => {
+    const settle: unknown = Reflect.get(window, "inklineSettle");
+    const owner: unknown = Reflect.get(window, "inklineHeldOwner");
+    const method: unknown = Reflect.get(window, "inklineHeldMethod");
+    if (typeof method === "string") {
+      // Held, it became the object's own, over what its prototype has.
+      Reflect.deleteProperty(
+        owner === "adapter" ? app.vault.adapter : app.vault,
+        method,
+      );
+    }
+    for (const key of [
+      "inklineSettle",
+      "inklineHeldOwner",
+      "inklineHeldMethod",
+      "inklineHeld",
+    ]) {
+      Reflect.deleteProperty(window, key);
+    }
+    if (typeof settle === "function") {
+      Reflect.apply(settle, undefined, [reason ?? undefined]);
+    }
+  }, failure ?? null);
+}
+
+/**
+ * Renames the file at `from` to `to` through the vault, as sync would, past
+ * what {@link hold} holds of Obsidian's moves, which goes on holding the rest.
+ */
+export async function renamePastHold(from: string, to: string): Promise<void> {
+  await browser.executeObsidian(
+    async ({ app }, path, next) => {
+      const file = app.vault.getFileByPath(path);
+      if (file === null) throw new Error(`no ${path}`);
+      const { adapter } = app.vault;
+      // Held, it is the adapter's own, over what its prototype has.
+      const held: unknown = Object.hasOwn(adapter, "rename")
+        ? Reflect.get(adapter, "rename")
+        : undefined;
+      Reflect.deleteProperty(adapter, "rename");
+      try {
+        await app.vault.rename(file, next);
+      } finally {
+        if (held !== undefined) Reflect.set(adapter, "rename", held);
+      }
+    },
+    from,
+    to,
+  );
+}
+
+/**
+ * Holds Obsidian's index, until {@link letGo}, on a note it creates through
+ * the vault, which the index reads as it would one that sync brings in, so
+ * that what waits for the index to catch up with the whole vault waits, as
+ * Obsidian's `renameFile` does before it moves a file.
+ */
+export async function holdIndex(): Promise<void> {
+  await hold("index", "Synced.md");
+  await browser.executeObsidian(async ({ app }) => {
+    // New text each time, which the index has not seen.
+    await app.vault.create("Synced.md", `Arrived at ${String(Date.now())}.\n`);
+  });
+  await waitForHeld();
+}
+
+/**
+ * Waits until something waits for Obsidian's index, as Obsidian's `renameFile`
+ * does before it moves a file, and a rename by Inkline before it calls that.
+ * Obsidian keeps what waits in the metadata cache's `onCleanCacheCallbacks`,
+ * which is not in its API.
+ */
+export async function waitForIndexWait(): Promise<void> {
+  await browser.waitUntil(
+    async () =>
+      browser.executeObsidian(({ app }) => {
+        const waiting: unknown = Reflect.get(
+          app.metadataCache,
+          "onCleanCacheCallbacks",
+        );
+        return Array.isArray(waiting) && waiting.length > 0;
+      }),
+    { timeoutMsg: "nothing waited for Obsidian's index" },
+  );
+}
+
 /**
  * Makes `createImageBitmap`, which decodes base layers, take `ms` longer,
  * until {@link restoreDecoding}.
