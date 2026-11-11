@@ -160,7 +160,7 @@ export function withSetting(
       return typeof value === "number" &&
         Number.isInteger(value) &&
         value >= 50 &&
-        value <= 200 &&
+        value <= 800 &&
         value % 5 === 0
         ? { ...settings, symbolScale: value }
         : undefined;

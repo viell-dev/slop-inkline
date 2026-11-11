@@ -69,7 +69,7 @@ export class InklineSettingTab extends PluginSettingTab {
           key: "symbolScale",
           defaultValue: defaultSettings.symbolScale,
           min: 50,
-          max: 200,
+          max: 800,
           step: 5,
           displayFormat: (value) => `${String(value)}%`,
         },
