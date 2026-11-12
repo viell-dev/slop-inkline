@@ -355,13 +355,14 @@ export class SymbolSearch extends SuggestModal<SymbolMatch> {
     this.emptyStateText = "No symbol has that name, reading, or translation.";
   }
 
+  // The list listens for the unload from when it opens until it closes: one
+  // never opened has nothing to close, and the signal lasts as long as Inkline
+  // does, so the list stops listening to it as it closes.
   override onOpen(): Promise<void> | void {
     this.#unloaded.addEventListener("abort", this.#unload, { once: true });
     return super.onOpen();
   }
 
-  // The signal lasts as long as Inkline does, so the list stops listening to
-  // it as it closes.
   override onClose(): void {
     this.#unloaded.removeEventListener("abort", this.#unload);
     super.onClose();

@@ -145,9 +145,12 @@ function parentPath(path: string): string {
   return slash === -1 ? "" : path.slice(0, slash);
 }
 
-/** Throws once Inkline has unloaded, so that nothing more is written. */
-function stillAlive(host: Pick<EditorHost, "unloaded">): void {
-  if (host.unloaded.aborted) throw new Error("Inkline was disabled");
+/**
+ * Throws once `unloaded` has aborted, as Inkline unloads, so that nothing more
+ * is written.
+ */
+function stillAlive(unloaded: AbortSignal): void {
+  if (unloaded.aborted) throw new Error("Inkline was disabled");
 }
 
 /** The names of what a folder of the vault holds, `""` for its root. */
@@ -428,7 +431,7 @@ async function saveOpenNotes(
     };
     let text = await saved();
     if (text === undefined) {
-      stillAlive({ unloaded });
+      stillAlive(unloaded);
       // Obsidian reports a save that fails, and keeps the editor's text.
       text = await view.save().then(saved, () => undefined);
     }
@@ -806,12 +809,12 @@ async function renameSaved(
     const waits = moveWaits(app);
     let saved = false;
     for (let pass = 0; pass < notePasses && !saved; pass++) {
-      stillAlive({ unloaded });
+      stillAlive(unloaded);
       const unchanged = await saveOpenNotes(app, unloaded);
       // Saving a note sets Obsidian's index going again.
       while (waits?.clear() === false) {
         await unlessUnloaded(waits.settle(), unloaded);
-        stillAlive({ unloaded });
+        stillAlive(unloaded);
       }
       saved = unchanged();
     }
@@ -821,7 +824,7 @@ async function renameSaved(
     // Nothing from here waits until Obsidian has moved the file, where it lets
     // its waits be seen, so that nothing checked, the notes above included,
     // can change before it does.
-    stillAlive({ unloaded });
+    stillAlive(unloaded);
     confirmRenaming(app, renaming);
     notBeingRenamed(file);
     starting();
@@ -1084,7 +1087,7 @@ export function writeSymbolText(
 ): SymbolWork {
   const { access, stop } = stoppable<TFile>({
     check: (symbol) => {
-      stillAlive({ unloaded });
+      stillAlive(unloaded);
       stillSymbol(app, symbol);
     },
     read: async (symbol) => new Uint8Array(await app.vault.readBinary(symbol)),
@@ -1432,7 +1435,7 @@ function newSymbol(
     // The editor learns what the file holds as soon as it is adopted or
     // written, so that a later failure leaves it still compared.
     write: async (bytes, _record, keepDraft, holds, typed, check, wait) => {
-      stillAlive(host);
+      stillAlive(host.unloaded);
       // Checked before anything is written, so that a refused name leaves
       // the vault as it was.
       const name = chosen(typed, made?.file);
@@ -1452,7 +1455,7 @@ function newSymbol(
           renaming = renamingOf(app, made.file, name);
         }
       }
-      stillAlive(host);
+      stillAlive(host.unloaded);
       if (made === undefined) {
         const path = await newSymbolPath(
           app,
@@ -1460,7 +1463,7 @@ function newSymbol(
           name,
           host.settings().symbolFolder,
         );
-        stillAlive(host);
+        stillAlive(host.unloaded);
         claim = { path, fingerprint };
         keepDraft();
         const file = await watchSave(
@@ -1500,7 +1503,7 @@ function newSymbol(
           // leaves the embed to whatever renamed it, as every other link to
           // the file is.
           const was = inserted ? embedFor(app, made.file, note.path) : "";
-          stillAlive(host);
+          stillAlive(host.unloaded);
           named = await rename(host, renaming, wait);
           // Even once Inkline is disabled: Obsidian has renamed the file by
           // then, which nothing takes back, so stopping would leave the embed
@@ -1514,13 +1517,13 @@ function newSymbol(
       }
       if (inserted) return named;
       // Once Inkline is disabled, the editor's draft finishes the insertion.
-      stillAlive(host);
+      stillAlive(host.unloaded);
       const embed = embedFor(app, made.file, note.path);
       const existing = adopted
         ? await existingEmbed(app, target, made.file, embed)
         : undefined;
       if (existing === undefined) {
-        stillAlive(host);
+        stillAlive(host.unloaded);
         after = await watchSave(insertEmbed(app, target, embed), wait.told);
       } else {
         after = existing;
@@ -1783,10 +1786,10 @@ async function openEditor(
     lifecycle: host.lifecycle,
     file: () => symbolFile(app, symbol.path),
     write: async (saved, _record, _keepDraft, _holds, typed, check, wait) => {
-      stillAlive(host);
+      stillAlive(host.unloaded);
       const renaming = renamingOf(app, symbol, chosen(typed, symbol));
       symbol = await writeSymbol(host, symbol, saved, check, wait.told);
-      stillAlive(host);
+      stillAlive(host.unloaded);
       return rename(host, renaming, wait);
     },
     uses: () => usesOf(app, symbol.path),
