@@ -31,6 +31,7 @@ import {
   settledSurface,
   storedDrafts,
   waitForEditor,
+  waitForFailedSaves,
   waitForHeld,
   waitForIndexWait,
   waitForNext,
@@ -1395,11 +1396,16 @@ describe("The editor", function () {
     const opening = "Opening unsaved line.\n";
     const renamed = `${opening}The door is marked with ![[tower.ink.png]] which means return.\n`;
 
-    /** Opens the editor of a symbol that `Editor.md` embeds, and adds text. */
-    async function editWithText(): Promise<void> {
+    /** Opens the editor of a symbol that `Editor.md` embeds. */
+    async function editEmbedded(): Promise<void> {
       await saveOne();
       await waitForLink("Editor.md", "001.ink.png");
       await editFile("001.ink.png");
+    }
+
+    /** {@link editEmbedded}, then adds text to the note and names the symbol. */
+    async function editWithText(): Promise<void> {
+      await editEmbedded();
       await addUnsaved("Editor.md", opening, "start");
       await nameSymbol("tower");
     }
@@ -1419,21 +1425,26 @@ describe("The editor", function () {
     });
 
     it("refuses the rename if the note cannot be saved, and keeps the name to try", async function () {
-      await editWithText();
+      await editEmbedded();
+      // Saves fail before the text is added, and until the file is read and
+      // the note's own save has failed as well as the rename's (#234).
       const restore = await failSaves();
       try {
+        await addUnsaved("Editor.md", opening, "start");
+        await nameSymbol("tower");
         await browser.keys(["Control", "Enter"]);
         await waitForNotice(
           "001.ink.png is saved, but could not be renamed: the note Editor could not be saved first",
         );
         await waitForStatus("Saved, but not renamed");
+        await waitForFailedSaves("Editor.md", 2);
+        expect(await noteOnDisk("Editor.md")).toBe(saved);
       } finally {
         await restore();
       }
       expect(await editorOpen()).toBe(true);
       expect((await nameField()).value).toBe("tower");
       expect(await symbolFiles()).toEqual(["001.ink.png"]);
-      expect(await noteOnDisk("Editor.md")).toBe(saved);
       await waitForPanes("Editor.md", `${opening}${saved}`);
       await browser.keys(["Control", "Enter"]);
       await browser.$("button=Just once").waitForDisplayed();

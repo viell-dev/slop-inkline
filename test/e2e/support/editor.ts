@@ -599,17 +599,58 @@ export async function waitForPanes(path: string, text: string): Promise<void> {
 
 /**
  * Has saving a note fail, as on a full disk, until what it returns is called.
- * A symbol's file is written another way, so that goes on working.
+ * A symbol's file is written another way, so that goes on working. Each save
+ * that fails is counted, for {@link waitForFailedSaves}.
+ *
+ * A note saves itself two seconds after an edit, which a busy machine can take
+ * to reach any later step. So a test has saves fail before it adds the text
+ * that must stay unsaved, and reads the note's file before it calls what this
+ * returns, once it has waited for that save to fail too: with saves working,
+ * that save could be under way at the test's next save of the note, which on
+ * Obsidian 1.13 then returns before the text is written.
  */
 export async function failSaves(): Promise<() => Promise<void>> {
   await browser.executeObsidian(({ app }) => {
-    app.vault.modify = () => Promise.reject(new Error("the disk is full"));
+    const failed: string[] = [];
+    Reflect.set(window, "inklineFailedSaves", failed);
+    app.vault.modify = (file) => {
+      failed.push(file.path);
+      return Promise.reject(new Error("the disk is full"));
+    };
   });
   return async () => {
     await browser.executeObsidian(({ app }) => {
       Reflect.deleteProperty(app.vault, "modify");
+      Reflect.deleteProperty(window, "inklineFailedSaves");
     });
   };
+}
+
+/**
+ * Waits for {@link failSaves} to have failed `count` saves of the note at
+ * `path`.
+ */
+export async function waitForFailedSaves(
+  path: string,
+  count: number,
+): Promise<void> {
+  let failed = 0;
+  try {
+    await browser.waitUntil(async () => {
+      failed = await browser.execute((file) => {
+        const paths: unknown = Reflect.get(window, "inklineFailedSaves");
+        return Array.isArray(paths)
+          ? paths.filter((failure) => failure === file).length
+          : 0;
+      }, path);
+      return failed >= count;
+    });
+  } catch (error) {
+    throw new Error(
+      `waited for ${String(count)} failed saves of ${path}, but saw ${String(failed)}`,
+      { cause: error },
+    );
+  }
 }
 
 /**

@@ -15,6 +15,7 @@ import {
   startOver,
   symbolFiles,
   topButton,
+  waitForFailedSaves,
   waitForHeld,
   waitForIndexWait,
   waitForNotice,
@@ -815,9 +816,29 @@ describe("Renaming in the symbol library", function () {
       });
       await showLibrary();
       await beginRename("gate", "lintel");
-      await addUnsaved("Uses 0.md", "Opening.\n", "start");
       await hold("save");
-      await browser.keys(["Enter"]);
+      // The note saves itself two seconds after an edit, which on a busy
+      // machine can come before the rename's save: the rename then finds
+      // nothing to save, or finds that save held, and on Obsidian 1.13 a save
+      // during another returns at once, so the rename is refused. So the text
+      // is added and the rename begun in one step, as Enter in the field would
+      // begin it (#234).
+      await browser.executeObsidian(({ app, obsidian }, text) => {
+        const view = app.workspace
+          .getLeavesOfType("markdown")
+          .map((leaf) => leaf.view)
+          .find(
+            (open) =>
+              open instanceof obsidian.MarkdownView &&
+              open.file?.path === "Uses 0.md",
+          );
+        const form = document.querySelector(".inkline-library-rename-form");
+        if (!(view instanceof obsidian.MarkdownView))
+          throw new Error("no note");
+        if (!(form instanceof HTMLFormElement)) throw new Error("no form");
+        view.editor.replaceRange(text, view.editor.offsetToPos(0));
+        form.requestSubmit();
+      }, "Opening.\n");
       await waitForHeld();
       await waitForWait();
       await formButton("Cancel").click();
@@ -826,7 +847,7 @@ describe("Renaming in the symbol library", function () {
         false,
       );
       await letGo();
-      // The note's own save goes on, and nothing follows it.
+      // The note's save goes on, and nothing follows it.
       await browser.waitUntil(async () =>
         (await noteText("Uses 0.md")).startsWith("Opening."),
       );
@@ -914,11 +935,10 @@ describe("Renaming in the symbol library", function () {
     const renamed = `${opening}The door  ![[lintel.ink.png]] today.\n`;
 
     /**
-     * Opens a note that embeds the symbol, begins renaming it in the library
-     * with Obsidian set to ask about links, and adds unsaved text to the note.
-     * The text comes last, as the note's blur saves what it holds by then.
+     * Opens a note that embeds the symbol, and begins renaming it in the
+     * library with Obsidian set to ask about links.
      */
-    async function renameWithText(): Promise<void> {
+    async function beginWithNote(): Promise<void> {
       await createSymbol("gate.ink.png");
       await setLinkUpdates(false);
       await browser.executeObsidian(async ({ app }, text) => {
@@ -934,6 +954,14 @@ describe("Renaming in the symbol library", function () {
       );
       await showLibrary();
       await beginRename("gate", "lintel");
+    }
+
+    /**
+     * {@link beginWithNote}, then adds unsaved text to the note. The text comes
+     * last, as the note's blur saves what it holds by then.
+     */
+    async function renameWithText(): Promise<void> {
+      await beginWithNote();
       await addUnsaved("Uses.md", opening, "start");
     }
 
@@ -1009,17 +1037,21 @@ describe("Renaming in the symbol library", function () {
     });
 
     it("refuses the rename if the note cannot be saved, and changes nothing", async function () {
-      await renameWithText();
+      await beginWithNote();
+      // Saves fail before the text is added, and until the file is read and
+      // the note's own save has failed as well as the rename's (#234).
       const restore = await failSaves();
       try {
+        await addUnsaved("Uses.md", opening, "start");
         await browser.keys(["Enter"]);
         await waitForError("the note Uses could not be saved first");
+        await waitForFailedSaves("Uses.md", 2);
+        expect(await onDisk()).toBe(saved);
       } finally {
         await restore();
       }
       expect(await nameField().getValue()).toBe("lintel");
       expect(await symbolFiles()).toEqual(["gate.ink.png"]);
-      expect(await onDisk()).toBe(saved);
       await waitForPanes("Uses.md", `${opening}${saved}`);
       await browser.keys(["Enter"]);
       await clickTop("Just once");
