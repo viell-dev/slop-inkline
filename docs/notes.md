@@ -74,6 +74,13 @@ Typed with a space, the name must hold what you typed, so that a sentence typed
 on after `;;` stops matching. `;;` in code, inline or fenced, and in front
 matter lists nothing: it is the note's own text there.
 
+**Unreleased:** code is where Reading view shows it. Inline code can run on from
+an earlier line of its paragraph, which the editor may not show as code, and
+`;;` lists nothing there either, nor in a code block made by indenting lines
+four spaces or a tab. A fenced code block in a quote or a list item ends with
+the quote or the item, even if it is never closed, so `;;` in the text after it
+lists again.
+
 **Inkline: Insert existing symbol** opens the same list as a search, and inserts
 the chosen symbol at the cursor. It places the symbol as **Inkline: Insert
 symbol** does: just after a link or embed the cursor is inside, so that no link

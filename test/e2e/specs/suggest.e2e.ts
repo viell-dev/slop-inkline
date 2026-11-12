@@ -1,6 +1,7 @@
 import { browser, expect } from "@wdio/globals";
 import { encodePng } from "../../support/png.ts";
-import { toBase64 } from "../support/browser.ts";
+import { codeCases, type CodeCase } from "../../support/code-cases.ts";
+import { loadModules, toBase64 } from "../support/browser.ts";
 import { noteText, openAtMarker, waitForNotice } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 
@@ -169,6 +170,61 @@ async function deleteFiles(paths: string[]): Promise<void> {
 /** Whether a suggestion or list is open. */
 async function listOpen(): Promise<boolean> {
   return browser.$(".suggestion-container").isExisting();
+}
+
+/**
+ * Notes by name, with HERE where a trigger is typed, and whether a list
+ * opens there: in code that started on an earlier line, none does, and in
+ * the text beside it, one does.
+ */
+const contexts: [string, string, boolean][] = [
+  // A code span runs through its paragraph's lines.
+  ["Span", "A `code span\nthat runs on HERE` here.\n", false],
+  ["Span ended", "A `code span\nthat ends` HERE.\n", true],
+  ["Span in a quote", "> A `code span\nthat runs on HERE` here.\n", false],
+  ["Span over a blank", "A `not code\n\nHERE` here.\n", true],
+  ["Escaped", "A \\`not code\nHERE` here.\n", true],
+  ["Unmatched", "A `not code\nHERE here.\n", true],
+  ["Unmatched run", "A ``not code\nHERE` here.\n", false],
+  // A fenced code block in a quote ends with the quote.
+  ["Quote", "> ```\n> sample\n\nHERE\n", true],
+  ["Nested quote", "> > ```\n> > sample\n>\n> HERE\n", true],
+  ["Quote's fence", "> ```\n> sample\n>\n> HERE\n", false],
+  ["Nested fence", "> > ```\n> > sample\n> > HERE\n", false],
+  // And one in a list item, with the item.
+  ["Item's fence", "- ```\n  sample\n  HERE\n", false],
+  ["List", "- A list item\n  ```\n  sample\n\nHERE\n", true],
+  // One the note opened runs to its end, through blank lines.
+  ["Open fence", "```\nsample\n\n\nHERE\n", false],
+  // An indented code block, told from a list item's indented text.
+  ["Indented", "Some text.\n\n    HERE\n", false],
+  ["Item's text", "- A list item\n\n    HERE\n", true],
+];
+
+/**
+ * Waits for the line break Enter makes after `typed`, in place of HERE in
+ * `note`: the note's own text up to it, a line break, then what the editor
+ * starts the next line with, as a quote's `>`, and the rest of the note.
+ */
+async function waitForLineBreak(note: string, typed: string): Promise<void> {
+  const [before = "", after = ""] = note.split("HERE");
+  let read = "";
+  try {
+    await browser.waitUntil(async () => {
+      read = await noteText();
+      return (
+        read.startsWith(`${before}${typed}\n`) &&
+        read.endsWith(after) &&
+        read.length > before.length + typed.length + after.length
+      );
+    });
+  } catch (error) {
+    throw new Error(
+      `waited for a line break after ${typed} in ${JSON.stringify(note)}, but it read ${JSON.stringify(read)}`,
+      { cause: error },
+    );
+  }
+  expect(read).not.toContain(".ink.png");
 }
 
 describe("Inserting a symbol with none in the vault", function () {
@@ -365,6 +421,41 @@ describe("Inserting a symbol you have", function () {
     );
   });
 
+  describe("in code that started on an earlier line", function () {
+    // A list left open by a failure would take the keys of the next test.
+    afterEach(async function () {
+      if (await listOpen()) await browser.keys(["Escape"]);
+    });
+
+    for (const [name, note, lists] of contexts) {
+      it(`${lists ? "lists" : "lists nothing"} in ${JSON.stringify(note)}`, async function () {
+        await browser.executeObsidian(
+          async ({ app }, path, text) => {
+            await app.vault.create(path, text);
+          },
+          `${name}.md`,
+          note,
+        );
+        await openAtMarker(`${name}.md`, "HERE");
+        await type(";;arc");
+        if (lists) {
+          await waitForSuggested(["arch"]);
+          await browser.keys(["Enter"]);
+          await waitForNote(note.replace("HERE", "![[arch.ink.png]]"));
+          return;
+        }
+        await browser.pause(500);
+        await saveScreenshot(
+          `suggest-code-${name.toLowerCase().replace(/\W+/g, "-")}`,
+        );
+        expect(await listOpen()).toBe(false);
+        // Enter breaks the line, as it would with no list, and inserts nothing.
+        await browser.keys(["Enter"]);
+        await waitForLineBreak(note, ";;arc");
+      });
+    }
+  });
+
   it("inserts nothing for a symbol deleted while it was listed", async function () {
     // ;;gon lists gonk too, so the list shows gone alone only once the last
     // key has been read, before the vault forgets it.
@@ -498,5 +589,78 @@ describe("Inserting a symbol you have", function () {
       await setLinkSetting("newLinkFormat", "shortest");
       await useMarkdownLinks(false);
     }
+  });
+});
+
+describe("Where a trigger is code", function () {
+  before(async function () {
+    await loadModules();
+  });
+
+  // The cases of test/support/code-cases.ts, rendered as Reading view
+  // renders them.
+  it("finds code where Obsidian renders it, and only there", async function () {
+    const differ = await browser.executeObsidian(
+      async ({ app, obsidian }, cases) => {
+        const { insideCode } = window.inklineTest.code;
+        const found: string[] = [];
+        for (const [name, { note, code, limit }] of cases) {
+          const shown = activeDocument.body.createDiv();
+          const component = new obsidian.Component();
+          component.load();
+          try {
+            await obsidian.MarkdownRenderer.render(
+              app,
+              note,
+              shown,
+              "",
+              component,
+            );
+            const walker = activeDocument.createTreeWalker(
+              shown,
+              NodeFilter.SHOW_TEXT,
+            );
+            let rendered: boolean | undefined;
+            for (
+              let at = walker.nextNode();
+              at !== null;
+              at = walker.nextNode()
+            ) {
+              if (at.textContent?.includes("HERE") === true) {
+                rendered = at.parentElement?.closest("code") != null;
+                break;
+              }
+            }
+            const lines = note.split("\n");
+            const before = note.slice(0, note.indexOf("HERE")).split("\n");
+            const checked = insideCode(
+              (index) => lines[index],
+              before.length - 1,
+              (before.at(-1) ?? "").length,
+            );
+            if (rendered !== code) {
+              found.push(`${name}: Obsidian renders ${String(rendered)}`);
+            }
+            // Where the check knowingly differs, it finds the other answer.
+            if (checked !== (limit === undefined ? code : !code)) {
+              found.push(`${name}: the check finds ${String(checked)}`);
+            }
+          } finally {
+            component.unload();
+            shown.remove();
+          }
+        }
+        return found;
+      },
+      // The notes typed in above too, where a list opens only in text.
+      [
+        ...Object.entries(codeCases),
+        ...contexts.map(([name, note, lists]): [string, CodeCase] => [
+          name,
+          { note, code: !lists },
+        ]),
+      ],
+    );
+    expect(differ).toEqual([]);
   });
 });

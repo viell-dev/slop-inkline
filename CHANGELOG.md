@@ -11,6 +11,19 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ### Fixed
 
+- The `;;` list no longer opens in inline code that started on an earlier line
+  of its paragraph, where Enter put an embed into the code
+  ([#219](https://github.com/viell-dev/slop-inkline/issues/219)).
+- The `;;` list opens again in the text after a quote or a list item holding a
+  fenced code block that was never closed: the block ends with the quote or the
+  item, as Reading view shows it. **Inkline: Edit symbol** works on an embed
+  there too ([#220](https://github.com/viell-dev/slop-inkline/issues/220)).
+- The list follows Reading view in a few more places where it differed: it lists
+  nothing in a code block made by indenting lines, which it now tells from a
+  list item's indented text, nor in a fenced code block opened on a list item's
+  own line, nor after a run of backticks that only a shorter run closes, and it
+  reads each of a table's cells on its own. **Inkline: Edit symbol** is not
+  offered on an embed in an indented code block, which shows it as text.
 - Turning Inkline off closes **Inkline: Insert existing symbol**, which stayed
   open and could still insert a symbol into the note
   ([#221](https://github.com/viell-dev/slop-inkline/issues/221)). Nothing else
