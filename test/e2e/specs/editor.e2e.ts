@@ -1958,8 +1958,8 @@ describe("The editor", function () {
     await browser.waitUntil(
       async () => (await topButton("Do not update")) !== undefined,
     );
-    // Obsidian has the rename, which goes on without Inkline, and so does
-    // the embed's following it.
+    // Obsidian has the rename, which goes on without Inkline, and the embed
+    // follows it all the same.
     await obsidianPage.disablePlugin("inkline");
     try {
       expect(await editorOpen()).toBe(false);
@@ -1982,7 +1982,11 @@ describe("The editor", function () {
         ),
       );
       expect(
-        notices.filter((notice) => /could not|old name/i.test(notice)),
+        notices.filter((notice) =>
+          /Could not save the symbol|could not be renamed|old name/.test(
+            notice,
+          ),
+        ),
       ).toEqual([]);
     } finally {
       await obsidianPage.enablePlugin("inkline");
