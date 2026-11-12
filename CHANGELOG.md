@@ -17,12 +17,14 @@ even one a public release; earlier pre-releases carry a suffix such as
   Inkline started acts once it is off either: **Edit symbol** in a symbol's menu
   left open does nothing, and a rename or a change of readings and translations
   that the library was still saving stops and says so, as the editor's saves
-  already did. A rename that Obsidian has not begun, from the library or the
-  editor, saves no open note after that, and one waiting for Obsidian to index
-  the vault or finish another rename stops at once. Turned off just as it
-  starts, before Obsidian's window is ready or while it reads its settings,
-  Inkline no longer goes on showing symbols as characters, or leaves its
-  commands behind
+  already did, unless it had reached Obsidian. A rename that Obsidian has not
+  begun, from the library or the editor, saves no open note after that, and one
+  waiting for Obsidian to index the vault or finish another rename stops at
+  once. One that Obsidian has begun finishes, as before, and the embed of a new
+  symbol renamed as it was saved now follows it to the new name, where it kept
+  the old one, which no longer named a file. Turned off just as it starts,
+  before Obsidian's window is ready or while it reads its settings, Inkline no
+  longer goes on showing symbols as characters, or leaves its commands behind
   ([#222](https://github.com/viell-dev/slop-inkline/issues/222)).
 - A rename, from the library or the editor, no longer renames another file when
   the symbol is deleted and a file is put at its path while the rename saves the

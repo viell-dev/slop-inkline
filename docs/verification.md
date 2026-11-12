@@ -281,9 +281,11 @@ must keep released files readable and looking the same, as
   left open does not even read the symbol; a library rename or change of
   readings still waiting writes nothing, and says so, and the rename saves no
   open note; a rename waiting for Obsidian's index or another rename, in the
-  library or an editor, stops at once; and a layout callback that comes late, or
-  turning Inkline off while it reads its settings, leaves no tagged symbols,
-  display settings, menus, or commands behind, and the next load has them all
+  library or an editor, stops at once, while one turned off during Obsidian's
+  question about links finishes, with a new symbol's embed following it to the
+  new name; and a layout callback that comes late, or turning Inkline off while
+  it reads its settings, leaves no tagged symbols, display settings, menus, or
+  commands behind, and the next load has them all
   ([plugin.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/plugin.e2e.ts)
   and
   [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)).
