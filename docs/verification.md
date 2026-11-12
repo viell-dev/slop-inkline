@@ -131,8 +131,8 @@ must keep released files readable and looking the same, as
   both, an embedded note, and a hover preview, in light and dark themes, in the
   text colour and its stored colour, measured from screenshots
   ([wide.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/wide.e2e.ts)),
-  and in a heading wider than a native PDF's page, measured in its rasterized
-  page (pdf.e2e.ts).
+  and in a native PDF, in a heading where it is wider than the page, measured in
+  the rasterized page (pdf.e2e.ts).
 - Saving refreshes existing placements in Live Preview, Reading view and
   popouts, preserving note text, explicit widths and unrelated images. Names
   with spaces, percent signs and Unicode are covered, as are repeated file
