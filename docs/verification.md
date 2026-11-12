@@ -234,6 +234,12 @@ must keep released files readable and looking the same, as
   Type to insert lists nothing in code or front matter, and the links it writes
   lead back to their symbols
   ([suggest.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/suggest.e2e.ts)).
+  What it counts as code is checked against how Obsidian renders a set of
+  synthetic notes, in Obsidian and in unit tests, and against CommonMark for
+  every short note of a set of lines on which the two agree
+  ([code-cases.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/support/code-cases.ts)
+  and
+  [code.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/code.test.ts)).
 - The cursor lands after a symbol from every route that inserts one, and typing
   goes on there: Save, Mod+S, a run from Next, both lists, and the library, past
   a link or an address, after the note's changes moved the place or took it

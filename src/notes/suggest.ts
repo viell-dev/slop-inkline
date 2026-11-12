@@ -16,13 +16,12 @@ import {
   type TFile,
 } from "obsidian";
 import { isInkPath } from "../format/ink-file.ts";
+import { insideCode } from "./code.ts";
 import { embedFor } from "./embeds.ts";
 import { symbolStem } from "./names.ts";
 import {
   findText,
   holdsTyped,
-  insideCodeBlock,
-  insideCodeSpan,
   rankSymbols,
   textQuery,
   triggerQuery,
@@ -233,12 +232,12 @@ export class SymbolSuggest extends EditorSuggest<SymbolMatch> {
     }
     if (found === undefined || this.#dismissed !== undefined) return null;
     // Not in code or front matter, where a trigger is the note's own text.
+    const lines = editor.lineCount();
     if (
-      insideCodeSpan(line, found.start) ||
-      insideCodeBlock(
-        (index) =>
-          index < editor.lineCount() ? editor.getLine(index) : undefined,
+      insideCode(
+        (index) => (index < lines ? editor.getLine(index) : undefined),
         cursor.line,
+        found.start,
       )
     ) {
       return null;

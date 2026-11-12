@@ -17,9 +17,11 @@ embed, outside code and front matter. A right-click on the symbol itself offers
 it, as [Edit a symbol](./notes.md#edit-a-symbol) lists.
 
 **Typing `;;` lists nothing.** The list does not open in code or front matter,
-nor when a space follows `;;` straight away. With no symbols in the vault yet,
-`;;` shows nothing, and **Inkline: Insert existing symbol** says so. Typed with
-a space, a name matches only symbols whose names hold what you typed.
+nor when a space follows `;;` straight away. **Unreleased:** code is where
+Reading view shows it, which can differ from how the editor colors it: a pair of
+backticks makes code across the lines of a paragraph. With no symbols in the
+vault yet, `;;` shows nothing, and **Inkline: Insert existing symbol** says so.
+Typed with a space, a name matches only symbols whose names hold what you typed.
 
 **"… was saved by a newer version of Inkline."** Update Inkline, as
 [Install](./install.md#update) describes; this version will not edit the symbol,

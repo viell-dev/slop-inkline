@@ -12,15 +12,15 @@ import {
 } from "obsidian";
 import { isInkPath } from "../format/ink-file.ts";
 import { symbolClass } from "../render/symbols.ts";
+import { insideCodeBlock } from "./code.ts";
 import { embedAt } from "./links.ts";
-import { insideCodeBlock } from "./search.ts";
 
 /**
  * The symbol file that the embed at `offset` in `text`, the note at
  * `notePath`, shows: the embed with the offset on it or at either end, as a
  * cursor just after one is. Undefined when there is no embed there, it
- * shows no symbol, or it is in front matter or a fenced code block, where
- * it is text and shows nothing.
+ * shows no symbol, or it is in front matter or a code block, where it is
+ * text and shows nothing.
  */
 export function symbolAt(
   app: App,

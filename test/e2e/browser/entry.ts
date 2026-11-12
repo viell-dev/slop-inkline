@@ -21,3 +21,4 @@ export * as pictures from "./pictures.ts";
 export * as longDrawing from "./long-drawing.ts";
 export * as mainThread from "./main-thread.ts";
 export * as renderSymbols from "../../../src/render/symbols.ts";
+export * as code from "../../../src/notes/code.ts";
