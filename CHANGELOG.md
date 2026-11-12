@@ -9,6 +9,19 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+## 0.9.3 - 2026-11-12
+
+This is the second release candidate of 1.0.0: a build meant to become 1.0.0
+unchanged, for its last checks. The owner is asked to try it in
+[their test request](https://github.com/viell-dev/slop-inkline/issues/212).
+
+0.9.2 did not become 1.0.0: a review of the whole code after it was published
+([#217](https://github.com/viell-dev/slop-inkline/issues/217)) found that a
+rename could move another file than the one you chose
+([#218](https://github.com/viell-dev/slop-inkline/issues/218)). That is fixed
+here, with the review's other findings. The file format is unchanged, so symbols
+and drafts from 0.9.2 open as they did.
+
 ### Fixed
 
 - The `;;` list no longer opens in inline code that started on an earlier line

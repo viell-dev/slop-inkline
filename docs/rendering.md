@@ -67,12 +67,12 @@ explicit sizes keep their own height and drop. The root also has
 `inkline-stored-color` when text colour is off. Both are removed when Inkline
 stops watching the document.
 
-**Unreleased:** a symbol without an explicit size is no wider than the space it
-is in, with `max-width: 100%`, as Obsidian's own styles give an image in a note.
-Where that space is narrower than the symbol, as a very wide one's can be in a
-hover preview, a table cell, a narrow pane, or a PDF page, its box takes the
-space's width and keeps its height and drop, and its ink is drawn in the box
-whole and evenly smaller, with `object-fit: contain` for its pixels and
+A symbol without an explicit size is no wider than the space it is in, with
+`max-width: 100%`, as Obsidian's own styles give an image in a note. Where that
+space is narrower than the symbol, as a very wide one's can be in a hover
+preview, a table cell, a narrow pane, or a PDF page, its box takes the space's
+width and keeps its height and drop, and its ink is drawn in the box whole and
+evenly smaller, with `object-fit: contain` for its pixels and
 `mask-size: contain` for its mask, at `0 75%`: three quarters of the way down
 the height left over, which keeps its baseline on the text's. A line can't break
 inside a symbol as it can inside a long word, and a symbol that overflowed would

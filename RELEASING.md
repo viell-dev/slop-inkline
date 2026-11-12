@@ -144,12 +144,17 @@ libraries.
 **Version:** the first public release is `1.0.0`, and it is the first in
 Obsidian's directory, as the owner decided in
 [#141](https://github.com/viell-dev/slop-inkline/issues/141) on 2026-11-05. The
-builds before it are pre-releases: `0.9.0` is the first beta, and `0.9.2` the
-first rc.
+builds before it are pre-releases: `0.9.0` is the first beta, `0.9.2` the first
+rc, and `0.9.3` the second.
 
-### Why 0.9.2 is an rc
+### Why 0.9.3 is an rc
 
-It meets each of the conditions above:
+0.9.2 was the first rc. A review of the whole code after it was published,
+[#217](https://github.com/viell-dev/slop-inkline/issues/217), found a rename
+that could move another file than the one chosen,
+[#218](https://github.com/viell-dev/slop-inkline/issues/218), so 0.9.2 could not
+become `1.0.0` unchanged. 0.9.3 fixes it and the review's other findings, and
+meets each of the conditions above:
 
 - **The owner's report on the beta is handled.** Their report on `0.9.1`, in
   [#150](https://github.com/viell-dev/slop-inkline/issues/150), made four
@@ -158,14 +163,37 @@ It meets each of the conditions above:
   [#169](https://github.com/viell-dev/slop-inkline/issues/169),
   [#170](https://github.com/viell-dev/slop-inkline/issues/170), and
   [#171](https://github.com/viell-dev/slop-inkline/issues/171).
-- **No known defect blocks ordinary use.** No open issue reports one. What stays
-  open is a request to a person, an idea, or work that waits on `1.0.0` itself
-  or on another project.
+- **No known defect blocks ordinary use.** Each defect still open is recorded
+  with the reason it waits:
+  - [#243](https://github.com/viell-dev/slop-inkline/issues/243),
+    [#249](https://github.com/viell-dev/slop-inkline/issues/249) and
+    [#250](https://github.com/viell-dev/slop-inkline/issues/250): rare layouts
+    where the `;;` list's check reads code differently from Reading view. Over
+    thousands of random notes, 0.9.3's check gets hundreds right that 0.9.2 got
+    wrong, and a handful the other way, such as an unmatched backtick inside a
+    link reference definition. One case a person could type is a tab after a
+    quote's `>`, which Reading view shows as indented code and the check, as in
+    0.9.2, reads as text;
+  - [#245](https://github.com/viell-dev/slop-inkline/issues/245): a size written
+    into an embed, wider than its space, sits a few pixels low, which Inkline
+    never writes itself;
+  - [#247](https://github.com/viell-dev/slop-inkline/issues/247): turning
+    Inkline off while Obsidian still has a rename leaves a draft behind. Most
+    often it is offered back though the drawing was saved. In a narrower form, a
+    stroke drawn after saving, before Obsidian moved the file, stays in a draft
+    that is no longer offered;
+  - [#238](https://github.com/viell-dev/slop-inkline/issues/238): a moment's
+    cost on Undo past a large picture.
+
+  The refactoring the review asked for, #226 to #228, waits until after `1.0.0`,
+  so that the build the owner tries is the one that ships.
+
 - **The format has stopped changing.** The review the owner asked for ended
   after ten cycles, with all four reviewers agreeing on the same commit, and
   tests hold its limits and pinned files
   ([#197](https://github.com/viell-dev/slop-inkline/issues/197)). Readings and
-  translations use the text chunks that review defined.
+  translations use the text chunks that review defined. Nothing in 0.9.3 changes
+  it.
 
 The owner's pass on it decides what follows, and the hold in
 [#5](https://github.com/viell-dev/slop-inkline/issues/5) stands.

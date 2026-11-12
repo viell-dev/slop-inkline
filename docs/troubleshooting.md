@@ -17,12 +17,12 @@ embed, outside code and front matter. A right-click on the symbol itself offers
 it, as [Edit a symbol](./notes.md#edit-a-symbol) lists.
 
 **Typing `;;` lists nothing.** The list does not open in code or front matter,
-nor when a space follows `;;` straight away. **Unreleased:** code is where
-Reading view shows it, which can differ from how the editor colors it: a pair of
-backticks makes code across the lines of a paragraph, but not from a callout's
-title line into the callout. With no symbols in the vault yet, `;;` shows
-nothing, and **Inkline: Insert existing symbol** says so. Typed with a space, a
-name matches only symbols whose names hold what you typed.
+nor when a space follows `;;` straight away. Code is where Reading view shows
+it, which can differ from how the editor colors it: a pair of backticks makes
+code across the lines of a paragraph, but not from a callout's title line into
+the callout. With no symbols in the vault yet, `;;` shows nothing, and
+**Inkline: Insert existing symbol** says so. Typed with a space, a name matches
+only symbols whose names hold what you typed.
 
 **"… was saved by a newer version of Inkline."** Update Inkline, as
 [Install](./install.md#update) describes; this version will not edit the symbol,
@@ -53,14 +53,14 @@ close the row meanwhile. If nothing changes, copy the name you typed and restart
 Obsidian, then
 [check the notes that use the symbol](./limits.md#a-file-written-at-the-moment-inkline-saves).
 
-**Unreleased: "The readings and translations of … were not saved: …"** The
-library's row closed before its save was done, as when Inkline is turned off or
-the library is closed while the save waits, and the reason says why it was not
-written. Open the symbol's readings and translations in the library again, and
-save them once more. A rename that the library had not yet handed to Obsidian
-when Inkline was turned off, even one waiting for Obsidian to finish another
-rename, says "… could not be renamed to …: Inkline was disabled" the same way,
-at once, and renames nothing.
+**"The readings and translations of … were not saved: …"** The library's row
+closed before its save was done, as when Inkline is turned off or the library is
+closed while the save waits, and the reason says why it was not written. Open
+the symbol's readings and translations in the library again, and save them once
+more. A rename that the library had not yet handed to Obsidian when Inkline was
+turned off, even one waiting for Obsidian to finish another rename, says "…
+could not be renamed to …: Inkline was disabled" the same way, at once, and
+renames nothing.
 
 **"… is saved, but could not be renamed: …"** The drawing is saved under the old
 name, and the new name stays in the editor's name field, for the next save to

@@ -20,11 +20,11 @@ hover previews, text cards on a canvas, and popout windows.
 
 - **An explicit size** that Obsidian's embed syntax gives, as in
   `![[tower.ink.png|24]]`, is kept, and the symbol still stands on the baseline.
-- **Unreleased:** a symbol wider than the space it is in, as a very wide one can
-  be in a hover preview, a table cell, a narrow pane, or a PDF page, shrinks
-  evenly to fit, whole and on the baseline, rather than being squeezed sideways.
-  It still takes the whole width of that space, so in Live Preview a click
-  beside its ink on that line selects the symbol.
+- A symbol wider than the space it is in, as a very wide one can be in a hover
+  preview, a table cell, a narrow pane, or a PDF page, shrinks evenly to fit,
+  whole and on the baseline, rather than being squeezed sideways. It still takes
+  the whole width of that space, so in Live Preview a click beside its ink on
+  that line selects the symbol.
 - **Hovering** a symbol shows its name, or what its embed's alias or alt text
   says; screen readers read it too.
 - **A symbol file shown on its own**, in its own tab or as an image on a canvas,
@@ -74,13 +74,12 @@ Typed with a space, the name must hold what you typed, so that a sentence typed
 on after `;;` stops matching. `;;` in code, inline or fenced, and in front
 matter lists nothing: it is the note's own text there.
 
-**Unreleased:** code is where Reading view shows it. Inline code can run on from
-an earlier line of its paragraph, which the editor may not show as code, and
-`;;` lists nothing there either, nor in a code block made by indenting lines
-four spaces or a tab. A fenced code block in a quote or a list item ends with
-the quote or the item, even if it is never closed, so `;;` in the text after it
-lists again. A callout's title line is read on its own: inline code in it ends
-with the line.
+Code is where Reading view shows it. Inline code can run on from an earlier line
+of its paragraph, which the editor may not show as code, and `;;` lists nothing
+there either, nor in a code block made by indenting lines four spaces or a tab.
+A fenced code block in a quote or a list item ends with the quote or the item,
+even if it is never closed, so `;;` in the text after it lists again. A
+callout's title line is read on its own: inline code in it ends with the line.
 
 **Inkline: Insert existing symbol** opens the same list as a search, and inserts
 the chosen symbol at the cursor. It places the symbol as **Inkline: Insert
@@ -246,18 +245,18 @@ while its name is being edited cannot rename the replacement.
 [renaming in the editor](./drawing.md#the-name) does. If a note cannot be saved,
 the row says which one, and nothing is renamed.
 
-**Unreleased:** saving the notes can take a moment on a slow disk, and Obsidian
-makes a rename wait while it indexes notes, such as those just saved, or
-finishes another rename. The symbol is checked again once both are done, and
-Obsidian begins to move it in that same step. A symbol deleted and replaced
-meanwhile, or renamed elsewhere, is not renamed, and nor is one whose new name
-another symbol has taken meanwhile. The row says why and keeps the name you
-typed, and **Save** tries again, from the name the symbol has now. A symbol
-renamed elsewhere keeps the links that rename left: Obsidian's file explorer
-updates them as its settings say, but a rename by sync or another app leaves
-notes embedding the old name. A change that reaches the file at the very moment
-Obsidian moves it, such as one by another app, is not refused but reported: the
-row says what happened and where the symbol is, as
+Saving the notes can take a moment on a slow disk, and Obsidian makes a rename
+wait while it indexes notes, such as those just saved, or finishes another
+rename. The symbol is checked again once both are done, and Obsidian begins to
+move it in that same step. A symbol deleted and replaced meanwhile, or renamed
+elsewhere, is not renamed, and nor is one whose new name another symbol has
+taken meanwhile. The row says why and keeps the name you typed, and **Save**
+tries again, from the name the symbol has now. A symbol renamed elsewhere keeps
+the links that rename left: Obsidian's file explorer updates them as its
+settings say, but a rename by sync or another app leaves notes embedding the old
+name. A change that reaches the file at the very moment Obsidian moves it, such
+as one by another app, is not refused but reported: the row says what happened
+and where the symbol is, as
 [the limits](./limits.md#a-file-changed-as-obsidian-renames-it) describe.
 
 A rename can take a while in a much used symbol, as Obsidian updates each note
