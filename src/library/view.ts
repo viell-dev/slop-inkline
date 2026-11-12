@@ -34,6 +34,7 @@ import { symbolStem } from "../notes/names.ts";
 import type { SymbolTexts } from "../notes/suggest.ts";
 import {
   readSymbolText,
+  RenameDisturbed,
   renameSymbol,
   writeSymbolText,
 } from "../notes/symbols.ts";
@@ -950,11 +951,12 @@ export class SymbolLibraryView extends ItemView {
               : "The symbol could not be renamed.";
           // Gone with the form, the name typed would be lost without a word.
           if (this.#editing !== input) {
-            if (!stopped) {
-              new Notice(
-                `${entry.name} could not be renamed to ${typed}: ${reason}`,
-              );
-            }
+            if (stopped) return;
+            new Notice(
+              failure instanceof RenameDisturbed
+                ? `Renaming ${entry.name} to ${typed}: ${reason}`
+                : `${entry.name} could not be renamed to ${typed}: ${reason}`,
+            );
             return;
           }
           saving = false;
