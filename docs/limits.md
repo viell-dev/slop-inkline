@@ -17,6 +17,12 @@ The [issues](https://github.com/viell-dev/slop-inkline/issues) track each one.
   the main area, move it back to a sidebar to insert into a note.
 - **Physical printing** has not been checked. Native
   [PDF export](./notes.md#export-a-note-to-pdf) is verified on Linux.
+- **A size you write into an embed, wider than its space,** as
+  `![[wide.ink.png|1000]]` in a hover preview, keeps the symbol's shape but sits
+  it a few pixels below the baseline
+  ([#245](https://github.com/viell-dev/slop-inkline/issues/245)). Inkline never
+  writes such a size itself, and a symbol without one fits its space on the
+  baseline.
 
 ## Links Obsidian writes
 
@@ -75,16 +81,16 @@ it. Your sync tool's own history is the way back from a change lost like this.
 
 ## A file changed as Obsidian renames it
 
-**Unreleased:** Obsidian moves a file by its path, without checking that the
-file there is still the one it was asked to rename, and its rename can first
-wait a while, for its index of the vault and for any other rename. So Inkline
-waits for those itself before it checks the symbol for the last time, and
-Obsidian begins to move the file in the same step as that check. Inkline learns
-what Obsidian is waiting for from Obsidian's own state, which its plugin API
-does not include ([#10](https://github.com/viell-dev/slop-inkline/issues/10)).
-With a version of Obsidian that keeps it otherwise, Obsidian waits after the
-check, as it did before, and it can then say a rename is done before it has made
-it, which Inkline reports as a name that may still change.
+Obsidian moves a file by its path, without checking that the file there is still
+the one it was asked to rename, and its rename can first wait a while, for its
+index of the vault and for any other rename. So Inkline waits for those itself
+before it checks the symbol for the last time, and Obsidian begins to move the
+file in the same step as that check. Inkline learns what Obsidian is waiting for
+from Obsidian's own state, which its plugin API does not include
+([#10](https://github.com/viell-dev/slop-inkline/issues/10)). With a version of
+Obsidian that keeps it otherwise, Obsidian waits after the check, as it did
+before, and it can then say a rename is done before it has made it, which
+Inkline reports as a name that may still change.
 
 Some changes can still reach the file between the check and the move: one that
 Obsidian had already begun to write to the disk, and one made outside Obsidian
@@ -107,9 +113,9 @@ Obsidian does this with any file
 
 Inkline's own renames save every open note first, which leaves that save nothing
 to do, and refuse to go on if one cannot be saved
-([#182](https://github.com/viell-dev/slop-inkline/issues/182)). **Unreleased:**
-a note typed in while the others are being saved is saved again before the
-rename starts. What stays out of Inkline's reach:
+([#182](https://github.com/viell-dev/slop-inkline/issues/182)). A note typed in
+while the others are being saved is saved again before the rename starts. What
+stays out of Inkline's reach:
 
 - **Text that arrives during the question,** from another window or a plugin, if
   the note saves itself before you answer. Answer the question first.
@@ -156,10 +162,10 @@ the mark before renaming what it links to.
   opening. The longest pauses left are about a tenth of a second, up to a
   quarter at worst, in single steps that Inkline cannot divide, such as hashing
   the file ([#202](https://github.com/viell-dev/slop-inkline/issues/202)).
-- **Unreleased:** a draft keeps only the base layer its drawing uses now. Undo
-  or Redo past a Copy from, a Make ink, or a picture you chose stores that
-  step's base layer again, which takes a moment for a large one. If Obsidian's
-  storage is nearly full, it can then refuse the draft, and a notice
+- A draft keeps only the base layer its drawing uses now. Undo or Redo past a
+  Copy from, a Make ink, or a picture you chose stores that step's base layer
+  again, which takes a moment for a large one. If Obsidian's storage is nearly
+  full, it can then refuse the draft, and a notice
   [says so](./troubleshooting.md#common-problems): save to keep the changes.
 - A symbol file made to be slow to draw, by a stroke that turns back at nearly
   every point, can keep Obsidian busy for a long time when you open it in the
