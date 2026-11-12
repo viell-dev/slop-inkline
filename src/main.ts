@@ -88,7 +88,7 @@ export default class InklinePlugin extends Plugin {
         opened: (editor) => this.#editors.add(editor),
         closed: (editor) => this.#editors.delete(editor),
       },
-      alive: () => this.#loaded,
+      unloaded: this.#lifetime.signal,
     };
   }
 
@@ -163,7 +163,7 @@ export default class InklinePlugin extends Plugin {
     });
     this.registerView(
       libraryViewType,
-      (leaf) => new SymbolLibraryView(leaf, this.#texts, () => this.#loaded),
+      (leaf) => new SymbolLibraryView(leaf, this.#texts, this.#lifetime.signal),
     );
     this.addCommand({
       id: "show-library",

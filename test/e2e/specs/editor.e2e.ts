@@ -1654,6 +1654,31 @@ describe("The editor", function () {
       expect(await bytesOfFile("001.ink.png")).toEqual(replacement);
     });
 
+    it("renames nothing, and says so at once, once Inkline is disabled while Obsidian indexes the vault", async function () {
+      await saveWhileIndexing();
+      await obsidianPage.disablePlugin("inkline");
+      try {
+        expect(await editorOpen()).toBe(false);
+        // Said while Obsidian still waits for its index.
+        await waitForNotice(
+          "001.ink.png is saved, but could not be renamed: Inkline was disabled",
+        );
+        await letGo();
+        // The index catches up, and nothing follows it.
+        await browser.waitUntil(async () =>
+          browser.executeObsidian(
+            ({ app }) => app.metadataCache.getCache("Synced.md") !== null,
+          ),
+        );
+        await browser.pause(500);
+        expect(await symbolFiles()).toEqual(["001.ink.png"]);
+      } finally {
+        await obsidianPage.enablePlugin("inkline");
+        await loadModules();
+      }
+      expect(await strokeCount("001.ink.png")).toBe(2);
+    });
+
     it("says what happened to a symbol replaced as Obsidian moves it", async function () {
       await saveOne();
       await waitForLink("Editor.md", "001.ink.png");

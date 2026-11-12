@@ -131,8 +131,8 @@ export interface EditorHost {
   readonly drafts: DraftStore;
   /** What the vault's symbols say about themselves, as far as it is read. */
   readonly texts: SymbolTexts;
-  /** Whether the plugin is still loaded; nothing is written once it is not. */
-  readonly alive: () => boolean;
+  /** Aborts as the plugin unloads; nothing is written once it has. */
+  readonly unloaded: AbortSignal;
 }
 
 /** An `ArrayBuffer` holding exactly these bytes, as the vault takes. */
@@ -146,8 +146,8 @@ function parentPath(path: string): string {
 }
 
 /** Throws once Inkline has unloaded, so that nothing more is written. */
-function stillAlive(host: Pick<EditorHost, "alive">): void {
-  if (!host.alive()) throw new Error("Inkline was disabled");
+function stillAlive(host: Pick<EditorHost, "unloaded">): void {
+  if (host.unloaded.aborted) throw new Error("Inkline was disabled");
 }
 
 /** The names of what a folder of the vault holds, `""` for its root. */
@@ -410,8 +410,12 @@ async function insertEmbed(
  * read. So this returns a check, which waits for nothing, of whether every open
  * note's editor still holds the text found saved in it; a note opened since, or
  * one whose tab shows another note now, has not been looked at, and fails it.
+ * Once `unloaded` aborts, it saves no more notes, and throws.
  */
-async function saveOpenNotes(app: App): Promise<() => boolean> {
+async function saveOpenNotes(
+  app: App,
+  unloaded: AbortSignal,
+): Promise<() => boolean> {
   const found = new Map<MarkdownView, { file: TFile; text: string }>();
   for (const { view } of app.workspace.getLeavesOfType("markdown")) {
     if (!(view instanceof MarkdownView) || view.file === null) continue;
@@ -422,9 +426,12 @@ async function saveOpenNotes(app: App): Promise<() => boolean> {
       const shown = view.getViewData();
       return sameText(text, shown) ? shown : undefined;
     };
-    // Obsidian reports a save that fails, and keeps the editor's text.
-    const text =
-      (await saved()) ?? (await view.save().then(saved, () => undefined));
+    let text = await saved();
+    if (text === undefined) {
+      stillAlive({ unloaded });
+      // Obsidian reports a save that fails, and keeps the editor's text.
+      text = await view.save().then(saved, () => undefined);
+    }
     if (text === undefined) {
       throw new Error(`the note ${file.basename} could not be saved first`);
     }
@@ -443,6 +450,28 @@ async function saveOpenNotes(app: App): Promise<() => boolean> {
  * they were being saved, before it gives up.
  */
 const notePasses = 3;
+
+/**
+ * Waits for `waiting`, or until `unloaded` aborts, whichever comes first. The
+ * signal lasts as long as Inkline does, so this stops listening to it once the
+ * wait ends.
+ */
+async function unlessUnloaded(
+  waiting: Promise<void>,
+  unloaded: AbortSignal,
+): Promise<void> {
+  if (unloaded.aborted) return;
+  let unload = (): void => undefined;
+  const aborted = new Promise<void>((resolve) => {
+    unload = resolve;
+  });
+  unloaded.addEventListener("abort", unload, { once: true });
+  try {
+    await Promise.race([waiting, aborted]);
+  } finally {
+    unloaded.removeEventListener("abort", unload);
+  }
+}
 
 /** The notes that link to the file at `path`, as Obsidian last indexed them. */
 function notesLinking(app: App, path: string): Set<string> {
@@ -748,11 +777,18 @@ function watchMove(app: App, renaming: Renaming): Move {
  * `starting` is called just before the rename reaches Obsidian, and can throw to
  * stop it: a note's save, or Obsidian's index, can take as long as anything
  * else. Throws, having renamed nothing, if Obsidian is still renaming the file.
+ *
+ * Once `unloaded` aborts, as Inkline unloads, the rename throws at its next
+ * step, having renamed nothing and saved no more notes, unless Obsidian has it
+ * already. Its wait for Obsidian ends then too, as nothing of it is Obsidian's
+ * yet, and what Obsidian waits for, such as another rename's question, can
+ * last any time.
  */
 async function renameSaved(
   app: App,
   renaming: Renaming,
   wait: RenameWait,
+  unloaded: AbortSignal,
   starting: () => void = () => undefined,
 ): Promise<void> {
   const { file } = renaming;
@@ -770,9 +806,13 @@ async function renameSaved(
     const waits = moveWaits(app);
     let saved = false;
     for (let pass = 0; pass < notePasses && !saved; pass++) {
-      const unchanged = await saveOpenNotes(app);
+      stillAlive({ unloaded });
+      const unchanged = await saveOpenNotes(app, unloaded);
       // Saving a note sets Obsidian's index going again.
-      while (waits?.clear() === false) await waits.settle();
+      while (waits?.clear() === false) {
+        await unlessUnloaded(waits.settle(), unloaded);
+        stillAlive({ unloaded });
+      }
       saved = unchanged();
     }
     if (!saved) {
@@ -781,6 +821,7 @@ async function renameSaved(
     // Nothing from here waits until Obsidian has moved the file, where it lets
     // its waits be seen, so that nothing checked, the notes above included,
     // can change before it does.
+    stillAlive({ unloaded });
     confirmRenaming(app, renaming);
     notBeingRenamed(file);
     starting();
@@ -963,15 +1004,16 @@ function usesOf(app: App, path: string): SymbolUses {
  * the requested name to retry, and with {@link RenameDisturbed} if something
  * came between once Obsidian had it, or Obsidian failed with the file renamed.
  * `wait` hears if it stops for long enough; {@link SymbolWork.stop} then stops
- * it, unless Obsidian has it, which cannot be taken back. Once `alive` says
- * Inkline has unloaded, it stops as well, as an editor's rename does.
+ * it, unless Obsidian has it, which cannot be taken back. Once `unloaded`
+ * aborts, as Inkline unloads, it stops as well, as an editor's rename does,
+ * and at once if it is waiting for Obsidian.
  */
 export function renameSymbol(
   app: App,
   file: TFile,
   typed: string,
   wait: RenameWait,
-  alive: () => boolean,
+  unloaded: AbortSignal,
 ): SymbolWork {
   let stopped = false;
   let reached = false;
@@ -979,9 +1021,8 @@ export function renameSymbol(
     stillSymbol(app, file);
     const renaming = renamingOf(app, file, chosen(typed, file));
     if (renaming === undefined) return;
-    await renameSaved(app, renaming, wait, () => {
+    await renameSaved(app, renaming, wait, unloaded, () => {
       if (stopped) throw new Error("The rename was stopped.");
-      stillAlive({ alive });
       reached = true;
     });
   };
@@ -1030,19 +1071,20 @@ export interface SymbolWork {
  * text chunks, as {@link changedText} says, with every other byte as it was. No
  * note changes, as its name stays. A field changed since `seen`, by another
  * save or anything else, rejects with `TextMoved`, with nothing written; one
- * that this save leaves alone keeps what the other save gave it. Once `alive`
- * says Inkline has unloaded, it writes nothing more, as an editor's save.
+ * that this save leaves alone keeps what the other save gave it. Once
+ * `unloaded` aborts, as Inkline unloads, it writes nothing more, as an
+ * editor's save.
  */
 export function writeSymbolText(
   app: App,
   file: TFile,
   changes: TextChanges,
   seen: SymbolText,
-  alive: () => boolean,
+  unloaded: AbortSignal,
 ): SymbolWork {
   const { access, stop } = stoppable<TFile>({
     check: (symbol) => {
-      stillAlive({ alive });
+      stillAlive({ unloaded });
       stillSymbol(app, symbol);
     },
     read: async (symbol) => new Uint8Array(await app.vault.readBinary(symbol)),
@@ -1073,9 +1115,7 @@ async function rename(
 ): Promise<boolean> {
   if (renaming === undefined) return true;
   try {
-    await renameSaved(host.app, renaming, wait, () => {
-      stillAlive(host);
-    });
+    await renameSaved(host.app, renaming, wait, host.unloaded);
     return true;
   } catch (error) {
     const { fileName } = renaming;
@@ -1330,7 +1370,7 @@ function newSymbol(
     // A new symbol starts with no text, even after Next, as what someone takes
     // one symbol to be says nothing of the next.
     next: (chosen) => {
-      if (after === undefined || !host.alive()) {
+      if (after === undefined || host.unloaded.aborted) {
         // No editor takes the picture over.
         chosen.picture?.image.close();
         return;
@@ -1379,7 +1419,7 @@ function newSymbol(
       ...host.lifecycle,
       closed: (editor) => {
         host.lifecycle.closed(editor);
-        if (!host.alive() || (tools === undefined && !inserted)) return;
+        if (host.unloaded.aborted || (tools === undefined && !inserted)) return;
         // Following another, this one's point is just after that symbol.
         returnFocus(app, target, after ?? target.point);
       },
@@ -1613,7 +1653,7 @@ async function copySymbol(
     );
     choice.open();
   });
-  if (file === undefined || ended() || !host.alive()) return undefined;
+  if (file === undefined || ended() || host.unloaded.aborted) return undefined;
   let opened;
   let text;
   const stopSaying = sayOpening(file.name);
@@ -1653,7 +1693,7 @@ let opening: { readonly file: TFile } | undefined;
  */
 export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
   // A symbol's menu can stay open after Inkline unloads, with Edit symbol in it.
-  if (!host.alive() || opening?.file === file) return;
+  if (host.unloaded.aborted || opening?.file === file) return;
   const mine = { file };
   opening = mine;
   try {
@@ -1695,7 +1735,7 @@ async function openEditor(
     stopSaying();
   }
   // Inkline may have been disabled while the file was read.
-  if (!host.alive() || !wanted()) return;
+  if (host.unloaded.aborted || !wanted()) return;
   if (opened.kind === "newer-version") {
     new Notice(
       `${file.name} was saved by a newer version of Inkline. Update Inkline to edit it.`,

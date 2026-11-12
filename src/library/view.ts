@@ -116,10 +116,10 @@ interface TextPanel {
 export class SymbolLibraryView extends ItemView {
   readonly #texts: SymbolTexts;
   /**
-   * Whether Inkline is still loaded. Obsidian closes the library as Inkline
-   * unloads, and a save or rename still waiting then writes nothing.
+   * Aborts as Inkline unloads. Obsidian closes the library then, and a save or
+   * rename still waiting writes nothing.
    */
-  readonly #alive: () => boolean;
+  readonly #unloaded: AbortSignal;
   /** What the filter holds. */
   #query = "";
   /** The folder shown, or undefined for every folder. */
@@ -157,10 +157,10 @@ export class SymbolLibraryView extends ItemView {
     true,
   );
 
-  constructor(leaf: WorkspaceLeaf, texts: SymbolTexts, alive: () => boolean) {
+  constructor(leaf: WorkspaceLeaf, texts: SymbolTexts, unloaded: AbortSignal) {
     super(leaf);
     this.#texts = texts;
-    this.#alive = alive;
+    this.#unloaded = unloaded;
   }
 
   /** Shows what changed, such as text the index has read since. */
@@ -794,7 +794,7 @@ export class SymbolLibraryView extends ItemView {
         file,
         changes,
         fields.given,
-        this.#alive,
+        this.#unloaded,
       );
       let waited = false;
       const waiting = (still: boolean): void => {
@@ -933,7 +933,7 @@ export class SymbolLibraryView extends ItemView {
         file,
         typed,
         { told: waiting, asked: () => modalOpen(form) },
-        this.#alive,
+        this.#unloaded,
       );
       void renaming.done.then(
         () => {

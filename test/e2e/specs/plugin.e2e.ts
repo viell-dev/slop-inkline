@@ -1,13 +1,19 @@
 import { browser, expect } from "@wdio/globals";
 import { obsidianPage } from "wdio-obsidian-service";
+import { stalledAfter } from "../../../src/notes/file-writes.ts";
 import { loadModules } from "../support/browser.ts";
 import {
   createSymbol,
   editorOpen,
+  hold,
+  holdIndex,
+  letGo,
   noteText,
   openAtMarker,
   startOver,
   symbolFiles,
+  waitForHeld,
+  waitForIndexWait,
   waitForNotice,
 } from "../support/editor.ts";
 import { choose, menuItems } from "../support/menus.ts";
@@ -72,6 +78,37 @@ async function waitForText(text: string): Promise<void> {
       { cause: error },
     );
   }
+}
+
+/** The library's form for a new name. */
+const renameForm = () => browser.$(".inkline-library-rename-form");
+
+/** Opens the library, and types `typed` as its only symbol's new name. */
+async function beginRename(typed: string): Promise<void> {
+  await browser.executeObsidianCommand("inkline:show-library");
+  await browser.$(".inkline-library-rename").waitForExist();
+  await browser.$(".inkline-library-rename").click();
+  await renameForm().$("input").waitForDisplayed();
+  await renameForm().$("input").setValue(typed);
+}
+
+/**
+ * Has Obsidian update links without asking, or ask; returns whether it updated
+ * them without asking before.
+ */
+async function linkUpdates(always: boolean): Promise<boolean> {
+  return browser.executeObsidian(({ app }, value) => {
+    const getConfig: unknown = Reflect.get(app.vault, "getConfig");
+    const setConfig: unknown = Reflect.get(app.vault, "setConfig");
+    if (typeof getConfig !== "function" || typeof setConfig !== "function") {
+      throw new Error("no vault settings");
+    }
+    const before: unknown = Reflect.apply(getConfig, app.vault, [
+      "alwaysUpdateLinks",
+    ]);
+    Reflect.apply(setConfig, app.vault, ["alwaysUpdateLinks", value]);
+    return before === true;
+  }, always);
 }
 
 /** A vault call held back until a test lets it go. */
@@ -304,16 +341,11 @@ describe("What Inkline started, once it unloads", function () {
 
   it("stops a library rename still waiting as it unloads, and says so", async function () {
     await openAtMarker("Unload.md", "ONE");
-    await browser.executeObsidianCommand("inkline:show-library");
-    await browser.$(".inkline-library-rename").waitForExist();
-    await browser.$(".inkline-library-rename").click();
-    const form = browser.$(".inkline-library-rename-form");
-    await form.$("input").waitForDisplayed();
-    await form.$("input").setValue("renamed");
+    await beginRename("renamed");
     // A rename saves the open notes first, reading each.
     const held = await holdVault("read", "Unload.md");
     try {
-      await form.$("button=Save").click();
+      await renameForm().$("button=Save").click();
       await held.reached();
       await obsidianPage.disablePlugin("inkline");
     } finally {
@@ -323,6 +355,161 @@ describe("What Inkline started, once it unloads", function () {
       "tower could not be renamed to renamed: Inkline was disabled",
     );
     expect(await symbolFiles()).toEqual(["tower.ink.png"]);
+  });
+
+  it("saves no note for a library rename once it unloads", async function () {
+    await open("Unload.md", "live");
+    // Text that the note's file lacks, which a rename saves first. The note's
+    // own save, two seconds after an edit, is kept back, so that only a save
+    // through its view, which is what a rename asks for, can write it.
+    await browser.executeObsidian(({ app, obsidian }) => {
+      const view = app.workspace.getActiveViewOfType(obsidian.MarkdownView);
+      if (view === null) throw new Error("no Markdown view");
+      const save: unknown = Reflect.get(view, "save");
+      if (typeof save !== "function") throw new Error("a note has no save");
+      // What the view had of its own, to put back.
+      const own = Object.fromEntries(
+        ["requestSave", "save"]
+          .filter((name) => Object.hasOwn(view, name))
+          .map((name): [string, unknown] => [name, Reflect.get(view, name)]),
+      );
+      Reflect.set(window, "inklineNote", { view, own });
+      Reflect.set(window, "inklineNoteSaves", 0);
+      Reflect.set(view, "requestSave", () => undefined);
+      Reflect.set(view, "save", async (...args: unknown[]): Promise<void> => {
+        Reflect.set(
+          window,
+          "inklineNoteSaves",
+          Number(Reflect.get(window, "inklineNoteSaves")) + 1,
+        );
+        await Reflect.apply(save, view, args);
+      });
+      view.editor.replaceRange("Typed. ", { line: 0, ch: 0 });
+    });
+    try {
+      await beginRename("renamed");
+      const held = await holdVault("read", "Unload.md");
+      try {
+        await renameForm().$("button=Save").click();
+        await held.reached();
+        await obsidianPage.disablePlugin("inkline");
+      } finally {
+        await held.release();
+      }
+      await waitForNotice(
+        "tower could not be renamed to renamed: Inkline was disabled",
+      );
+      await browser.pause(300);
+      expect(
+        await browser.execute((): unknown =>
+          Reflect.get(window, "inklineNoteSaves"),
+        ),
+      ).toBe(0);
+      expect(
+        await browser.executeObsidian(async ({ app }) => {
+          const file = app.vault.getFileByPath("Unload.md");
+          if (file === null) throw new Error("no Unload.md");
+          return app.vault.read(file);
+        }),
+      ).toBe("First ONE, then TWO.\n");
+      expect(await symbolFiles()).toEqual(["tower.ink.png"]);
+    } finally {
+      await browser.execute(() => {
+        const { view, own } = Reflect.get(window, "inklineNote") as {
+          view: object;
+          own: Record<string, unknown>;
+        };
+        for (const name of ["requestSave", "save"]) {
+          if (name in own) Reflect.set(view, name, own[name]);
+          else Reflect.deleteProperty(view, name);
+        }
+      });
+    }
+  });
+
+  describe("a library rename waiting for Obsidian as it unloads", function () {
+    afterEach(async function () {
+      // A rename left waiting would hold up the vault's reset.
+      await letGo();
+    });
+
+    it("stops at once while Obsidian indexes the vault, and says so", async function () {
+      await beginRename("renamed");
+      // Obsidian's renameFile waits for its index before it moves a file, and
+      // a rename by Inkline waits for it too before it calls that.
+      await holdIndex();
+      await renameForm().$("button=Save").click();
+      await waitForIndexWait();
+      await obsidianPage.disablePlugin("inkline");
+      // Said while Obsidian still waits for its index.
+      await waitForNotice(
+        "tower could not be renamed to renamed: Inkline was disabled",
+      );
+      await letGo();
+      // The index catches up, and nothing follows it.
+      await browser.waitUntil(async () =>
+        browser.executeObsidian(
+          ({ app }) => app.metadataCache.getCache("Synced.md") !== null,
+        ),
+      );
+      await browser.pause(500);
+      expect(await symbolFiles()).toEqual(["tower.ink.png"]);
+    });
+
+    it("stops at once behind another rename, and says so", async function () {
+      const asked = await linkUpdates(true);
+      try {
+        await browser.executeObsidian(async ({ app }) => {
+          await app.vault.create("Other.md", "Other.\n");
+          await app.vault.create("Links.md", "See [[Other]].\n");
+        });
+        await browser.waitUntil(async () =>
+          browser.executeObsidian(
+            ({ app }) =>
+              (app.metadataCache.resolvedLinks["Links.md"]?.["Other.md"] ?? 0) >
+              0,
+          ),
+        );
+        // Another rename, held where it updates the link to its file, which
+        // Obsidian's renames after it wait for.
+        await hold("link");
+        await browser.executeObsidian(({ app }) => {
+          const file = app.vault.getFileByPath("Other.md");
+          if (file === null) throw new Error("no Other.md");
+          void app.fileManager.renameFile(file, "Moved.md");
+        });
+        await waitForHeld();
+        await beginRename("renamed");
+        await renameForm().$("button=Save").click();
+        // Said once the rename has waited for long enough, here behind the
+        // other one.
+        await browser.waitUntil(
+          async () =>
+            (await renameForm().$(".inkline-save-wait").getText()) !== "",
+          { timeout: stalledAfter + 10_000 },
+        );
+        await obsidianPage.disablePlugin("inkline");
+        // Said while the other rename still waits.
+        await waitForNotice(
+          "tower could not be renamed to renamed: Inkline was disabled",
+        );
+        await letGo();
+        // The other rename ends, and nothing follows it.
+        await browser.waitUntil(async () =>
+          browser.executeObsidian(async ({ app }) => {
+            const links = app.vault.getFileByPath("Links.md");
+            return (
+              links !== null &&
+              (await app.vault.read(links)) === "See [[Moved]].\n"
+            );
+          }),
+        );
+        await browser.pause(500);
+        expect(await symbolFiles()).toEqual(["tower.ink.png"]);
+      } finally {
+        await linkUpdates(asked);
+      }
+    });
   });
 
   it("stops a library save of readings still waiting as it unloads, and says so", async function () {
