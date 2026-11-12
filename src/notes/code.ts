@@ -20,6 +20,13 @@
 //   lacks, on the same terms, and belongs to it: the quote is in the item, and
 //   the `>` lines after it go on in that quote. In CommonMark the quote ends
 //   the item.
+// - A line that starts a quote is a callout's title line when its text after
+//   the `>` and a space starts with `[!`, a type of anything but `]`, `]`,
+//   then `+`, `-`, or neither, then white space or the line's end. Obsidian
+//   reads the rest of the line, the title, as a note of one line, and the
+//   callout's content from the next line. That line goes on in the quote
+//   without its `>`, on the terms a paragraph's line does, but starts a block
+//   of its own. In CommonMark the title line starts the quote's paragraph.
 // - A line of spaces with a tab among them does not end a paragraph, but ends
 //   a quote, or a list item that the next line does not indent into.
 // - An empty list item ends a paragraph, as one with text does. In CommonMark
@@ -49,7 +56,9 @@ type Leaf =
   /** `first` is its first line, which a table's header would be. */
   | { readonly kind: "paragraph"; readonly first: string; lines: number }
   | { readonly kind: "table" }
-  | { readonly kind: "fence"; readonly mark: string; readonly length: number };
+  | { readonly kind: "fence"; readonly mark: string; readonly length: number }
+  /** A callout's title line, before the callout's content starts. */
+  | { readonly kind: "title" };
 
 /**
  * What a line is, for what can be code in it:
@@ -60,10 +69,13 @@ type Leaf =
  * - `continued`, a line that continues the paragraph before it;
  * - `row`, a row of a table, each of whose cells is read on its own;
  * - `line`, a line read on its own: a heading;
+ * - `title`, a callout's title line, whose title is read as a note of one
+ *   line, as {@link calloutTitle} gives it;
  * - `none`, a line with nothing in it to read: a blank line or a thematic
  *   break.
  */
-type LineKind = "code" | "paragraph" | "continued" | "row" | "line" | "none";
+type LineKind =
+  "code" | "paragraph" | "continued" | "row" | "line" | "title" | "none";
 
 const none: Leaf = { kind: "none" };
 
@@ -80,6 +92,8 @@ const itemStart = /^ {0,3}(?:[-+*]|\d{1,9}[.)])(?: |$)/;
  */
 const interruptingItem = /^ {0,3}(?:[-+*]|1[.)])(?: |$)/;
 const delimiterRow = /^ *\|? *:?-+:? *(?:\| *:?-+:? *)*\|? *$/;
+/** A callout's type, which starts the text of its title line. */
+const calloutType = /^\[![^\]]+\][+-]?(?:\s|$)/;
 
 /** `line` without a line feed's `\r`, and with its tabs as spaces. */
 function columns(line: string): string {
@@ -246,7 +260,9 @@ class Blocks {
       const lazy =
         !blank &&
         !heldNothing(before, matched) &&
-        (this.#leaf.kind === "paragraph" || this.#leaf.kind === "fence") &&
+        (this.#leaf.kind === "paragraph" ||
+          this.#leaf.kind === "fence" ||
+          this.#leaf.kind === "title") &&
         leaving !== undefined &&
         !endsContainer(rest, leaving);
       if (lazy && this.#leaf.kind === "fence") return "code";
@@ -276,10 +292,13 @@ class Blocks {
       }
     }
     // The line starts blocks of its own, in the containers it is in.
+    // Whether the last it starts is a quote, which may be a callout.
+    let quoteStarted = false;
     for (;;) {
       const indent = leadingSpaces(rest);
       const mark = rest.charAt(indent);
       if (indent > 3 || !oneOf(mark, ">-+*0123456789")) break;
+      quoteStarted = mark === ">";
       if (mark === ">") {
         this.#containers.push({ kind: "quote" });
         marked = this.#containers.length;
@@ -310,6 +329,10 @@ class Blocks {
     this.#blankFrom = empty ? marked : undefined;
     this.#leaf = none;
     if (empty) return "none";
+    if (quoteStarted && calloutType.test(rest)) {
+      this.#leaf = { kind: "title" };
+      return "title";
+    }
     // An indented code block's line.
     if (indent >= 4) return "code";
     const mark = rest.charAt(indent);
@@ -381,6 +404,34 @@ function afterFrontMatter(lineAt: LineAt, line: number): number | undefined {
 }
 
 /**
+ * The title of callout title line `line`, the text after its type, as a note
+ * of one line: what that line is, and the column of `line` it starts at. A
+ * title that is a callout's title line itself, as in `> [!a] > [!b] c`, is
+ * read so in turn, down to the innermost.
+ */
+function calloutTitle(line: string): {
+  readonly lineAt: LineAt;
+  readonly kind: LineKind;
+  readonly start: number;
+} {
+  let text = line;
+  let start = 0;
+  let kind: LineKind = "title";
+  // A loop, as titles can nest as deep as a line is long. The text gets
+  // shorter each time round, as a title line holds a `>` before its type.
+  while (kind === "title") {
+    // The markers of the quotes and list items before a type hold no `[`.
+    const from = text.indexOf("[");
+    const end = from + (calloutType.exec(text.slice(from))?.[0].length ?? 0);
+    start += end;
+    text = text.slice(end);
+    kind = new Blocks().read(text);
+  }
+  const title = text;
+  return { lineAt: (index) => (index === 0 ? title : undefined), kind, start };
+}
+
+/**
  * Whether line `line` of a note lies in its front matter or in a code block,
  * fenced or indented, a fence's own lines and the info string after an
  * opening fence included, as {@link insideCode} finds them. Only the lines up
@@ -391,9 +442,12 @@ export function insideCodeBlock(lineAt: LineAt, line: number): boolean {
   if (from === undefined) return true;
   const blocks = new Blocks();
   let kind: LineKind = "none";
+  let text = "";
   for (let index = from; index <= line; index++) {
-    kind = blocks.read(lineAt(index) ?? "");
+    text = lineAt(index) ?? "";
+    kind = blocks.read(text);
   }
+  if (kind === "title") return calloutTitle(text).kind === "code";
   return kind === "code";
 }
 
@@ -423,6 +477,10 @@ export function insideCode(lineAt: LineAt, line: number, ch: number): boolean {
   if (kind === "none") return false;
   if (kind === "line") return insideCodeSpan(text, ch) === true;
   if (kind === "row") return insideCell(text, ch);
+  if (kind === "title") {
+    const title = calloutTitle(text);
+    return ch >= title.start && insideCode(title.lineAt, 0, ch - title.start);
+  }
   let index = line + 1;
   let next = lineAt(index);
   let after: LineKind = next === undefined ? "none" : blocks.read(next);

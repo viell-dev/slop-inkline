@@ -79,7 +79,8 @@ an earlier line of its paragraph, which the editor may not show as code, and
 `;;` lists nothing there either, nor in a code block made by indenting lines
 four spaces or a tab. A fenced code block in a quote or a list item ends with
 the quote or the item, even if it is never closed, so `;;` in the text after it
-lists again.
+lists again. A callout's title line is read on its own: inline code in it ends
+with the line.
 
 **Inkline: Insert existing symbol** opens the same list as a search, and inserts
 the chosen symbol at the cursor. It places the symbol as **Inkline: Insert

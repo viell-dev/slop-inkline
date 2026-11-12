@@ -13,7 +13,10 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 - The `;;` list no longer opens in inline code that started on an earlier line
   of its paragraph, where Enter put an embed into the code
-  ([#219](https://github.com/viell-dev/slop-inkline/issues/219)).
+  ([#219](https://github.com/viell-dev/slop-inkline/issues/219)). A callout's
+  title line is read on its own, as Reading view shows it: inline code in it
+  ends with the line, and a table can start on the line under it
+  ([#248](https://github.com/viell-dev/slop-inkline/issues/248)).
 - The `;;` list opens again in the text after a quote or a list item holding a
   fenced code block that was never closed: the block ends with the quote or the
   item, as Reading view shows it. **Inkline: Edit symbol** works on an embed
