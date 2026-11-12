@@ -39,6 +39,16 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
   "a span ended by a bullet": { note: "`first\n* HERE`", code: false },
   "a span ended by a list at 1": { note: "`first\n1. HERE`", code: false },
   "a span not ended by a list at 2": { note: "`first\n2. HERE`", code: true },
+  "a span ended by an empty bullet": { note: "`HERE\n- \n`", code: false },
+  "a span ended by an empty *": { note: "`HERE\n*\n`", code: false },
+  "a span ended by an empty +": { note: "`HERE\n+\n`", code: false },
+  "a span ended by an empty list at 1": { note: "`HERE\n1.\n`", code: false },
+  "a span ended by an empty list at 1)": { note: "`HERE\n1)\n`", code: false },
+  "a span not ended by an empty list at 2": {
+    note: "`HERE\n2. \n`",
+    code: true,
+  },
+  "a span ended by a - underline": { note: "`HERE\n-\n`", code: false },
   "a span ended by a quote": { note: "`first\n> HERE`", code: false },
   "a span ended by a fence": {
     note: "`first\n~~~\nHERE`\n~~~",
@@ -56,6 +66,26 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
   },
   "a span over a quote's blank line": {
     note: "> `first\n>\n> HERE`",
+    code: false,
+  },
+  "a span over a quote's tab line, lazily": {
+    note: "> `a\n>\t\nHERE`",
+    code: true,
+  },
+  "a span over a quote's space and tab, lazily": {
+    note: "> `a\n> \t\nHERE`",
+    code: true,
+  },
+  "a span over a nested quote's tab line, lazily": {
+    note: "> > `a\n> >\t\nHERE`",
+    code: true,
+  },
+  "a span in a quote, ended by an empty item": {
+    note: "> ``HERE\n> 1. \n> `a",
+    code: false,
+  },
+  "a span in a quote, then an empty bullet": {
+    note: "> `a\n- \nHERE`",
     code: false,
   },
   "a span in a list item": { note: "- `first\n  HERE`", code: true },
@@ -136,6 +166,30 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
   },
   "a quote's fence, closed": { note: "> ```\n> a\n> ```\nHERE", code: false },
   "a quote's fence, its blank line": { note: "> ```\n>\n> HERE", code: true },
+  "a quote's fence, its blank line, then lazily": {
+    note: "> ```\n>\nHERE",
+    code: true,
+  },
+  "a quote's fence, its blank line and a space, lazily": {
+    note: "> ```\n> \nHERE",
+    code: true,
+  },
+  "a quote's fence, a line and a blank one, lazily": {
+    note: "> ```\n> a\n>\nHERE",
+    code: true,
+  },
+  "a quote's fence, its tab line, then lazily": {
+    note: "> ```\n>\t\nHERE",
+    code: true,
+  },
+  "a quote's fence, its blank line, lazily, then a blank": {
+    note: "> ```\n>\nb\n\nHERE",
+    code: false,
+  },
+  "a nested quote's fence, its blank line, lazily": {
+    note: "> > ```\n> >\nHERE",
+    code: true,
+  },
   "a quote's fence, without a space": { note: ">```\n>HERE", code: true },
   "an indented quote's fence": { note: "   > ```\n   > HERE", code: true },
   "a quote's fence, lazily": { note: "> ```\n> sample\nHERE", code: true },
@@ -160,6 +214,14 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
     code: false,
   },
   "a quote's fence, then a bullet": { note: "> ```\n> a\n- HERE", code: false },
+  "a quote's fence, then an empty bullet": {
+    note: "> ```\n> a\n-\nHERE",
+    code: false,
+  },
+  "a quote's fence, then an empty list at 1": {
+    note: "> ```\n> a\n1.\nHERE",
+    code: false,
+  },
   "a quote's fence, then a heading": {
     note: "> ```\n> a\n# HERE",
     code: false,
@@ -286,6 +348,201 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
   "a wide item's fence": { note: "-   ```\n    HERE", code: true },
   "a wide item's fence, lazily": { note: "-   ```\n  HERE", code: true },
   "an empty item's fence": { note: "-\n  ```\n  HERE", code: true },
+  "an item's fence, then quote lines": {
+    note: "- ```\n  a\n> b\n> HERE",
+    code: true,
+  },
+  "an item's fence, then a quote's fence": {
+    note: "- ```\n  a\n> ```\n> HERE",
+    code: true,
+  },
+  // A quote right under a list item, without the item's indentation, is in
+  // the item, and its later lines go on in that quote.
+  "a span in a quote under an item": {
+    note: "- a\n> `b\n> HERE`",
+    code: true,
+  },
+  "a span in a callout under an item": {
+    note: "- a\n> [!note]\n> `b\n> HERE`",
+    code: true,
+  },
+  "a span in a quote under a numbered item": {
+    note: "1. a\n> `b\n> HERE`",
+    code: true,
+  },
+  "a span in a quote under a nested item": {
+    note: "- a\n  - b\n> `c\n> HERE`",
+    code: true,
+  },
+  "a span in a quote under a quote's item": {
+    note: "> - a\n> > `b\n> > HERE`",
+    code: true,
+  },
+  "a span in a quote under an item, over a lazy line": {
+    note: "- a\n> b\nc `d\n> HERE`",
+    code: true,
+  },
+  "a closed fence in a quote under an item": {
+    note: "- a\n> ```\n> x\n> ```\n> HERE",
+    code: false,
+  },
+  "a closed fence in a quote under an item, lazily": {
+    note: "- a\n> ```\n> x\n> ```\nHERE",
+    code: false,
+  },
+  "a table in a quote under an item": {
+    note: "- a\n> | x | y |\n> | - | - |\n> | `b | HERE` |",
+    code: false,
+  },
+  "a span in a quote under an item, from its second line": {
+    note: "- a\n> b\n> `c\n> HERE`",
+    code: true,
+  },
+  "a span in a quote under an item, to its third line": {
+    note: "- a\n> `b\n> c\n> HERE`",
+    code: true,
+  },
+  "a span in a quote under an item's second line": {
+    note: "- a\n  b\n> `c\n> HERE`",
+    code: true,
+  },
+  "a span in a quote under an item, over a lazy line in it": {
+    note: "- a\n> `b\nc\n> HERE`",
+    code: true,
+  },
+  "a span in a quote under an item, to a lazy line": {
+    note: "- a\n> `b\n> c\nHERE`",
+    code: true,
+  },
+  "a span in a quote under a second item": {
+    note: "- a\n- b\n> c\n> `d\n> HERE`",
+    code: true,
+  },
+  "a span in a quote under an item after a quote": {
+    note: "> q\n- a\n> `b\n> HERE`",
+    code: true,
+  },
+  "a span in a nested quote under an item": {
+    note: "- a\n> > `b\n> > HERE`",
+    code: true,
+  },
+  "a span in a quote under a quote's item, from its second line": {
+    note: "> - a\n> > `b\n> > c\n> > HERE`",
+    code: true,
+  },
+  "a span in a quote under an item's indented quote": {
+    note: "- a\n  > b\n> `c\n> HERE`",
+    code: true,
+  },
+  "a span in a quote under a nested item, indented": {
+    note: "- a\n  - b\n  > `c\n  > HERE`",
+    code: true,
+  },
+  "a closed fence in a callout under an item": {
+    note: "- a\n> [!note]\n> ```\n> x\n> ```\n> HERE",
+    code: false,
+  },
+  "a closed fence in a quote under a numbered item": {
+    note: "1. a\n> ```\n> x\n> ```\n> HERE",
+    code: false,
+  },
+  "a table in a quote under a nested item": {
+    note: "- a\n  - b\n> | x | y |\n> | - | - |\n> | `c | HERE` |",
+    code: false,
+  },
+  "a table in a quote under a quote's item": {
+    note: "> - a\n> > | x | y |\n> > | - | - |\n> > | `b | HERE` |",
+    code: false,
+  },
+  "a quote under an item, then its text": {
+    note: "- a\n> b\n> HERE",
+    code: false,
+  },
+  "a span from an item into a quote under it": {
+    note: "- `a\n> HERE`",
+    code: false,
+  },
+  "a span over a blank line in a quote under an item": {
+    note: "- a\n> `b\n>\n> HERE`",
+    code: false,
+  },
+  "a span in a quote under an item, then an item in it": {
+    note: "- a\n> `b\n> - HERE`",
+    code: false,
+  },
+  "a span in an item in a quote under an item": {
+    note: "- a\n> - `b\n>   HERE`",
+    code: true,
+  },
+  "a fence in a quote under an item, over a blank quote line": {
+    note: "- a\n> ```\n> x\n>\n> HERE",
+    code: true,
+  },
+  "a span after a closed fence in a quote under an item": {
+    note: "- a\n> ```\n> x\n> ```\n> `y\n> HERE`",
+    code: true,
+  },
+  "a fence in a quote under an item, then the next item": {
+    note: "- a\n> ```\n> x\n- HERE",
+    code: false,
+  },
+  "a fence in a quote under an item, its blank line, lazily": {
+    note: "- a\n> ```\n>\nHERE",
+    code: true,
+  },
+  "a fence in a quote under an item, its blank line, an item": {
+    note: "- a\n> ```\n>\n- HERE",
+    code: false,
+  },
+  "a fence in an item's quote, its blank line, lazily": {
+    note: "- a\n  > ```\n  >\nHERE",
+    code: true,
+  },
+  "a fence in a quote under an item, lazily": {
+    note: "- a\n> ```\n> x\n  HERE",
+    code: true,
+  },
+  "a span in a quote under an item, over a tab line": {
+    note: "- a\n> `b\n>\t\nHERE`",
+    code: true,
+  },
+  "a span in a quote under an item, then indented": {
+    note: "- a\n> `b\n  > HERE`",
+    code: true,
+  },
+  "a span in a quote's item's quote, lazily": {
+    note: "> - a\n> > `b\n> HERE`",
+    code: true,
+  },
+  "a span in a quote under a wide numbered item": {
+    note: "1.  a\n  > `b\n> HERE`",
+    code: true,
+  },
+  "a quote under an empty item": { note: "-\n> b\n\n    HERE", code: false },
+  "a quote under an item, over its blank line": {
+    note: "- a\n> b\n>\n> c\n\n    HERE",
+    code: false,
+  },
+  "a quote under a nested item, over its blank line": {
+    note: "- a\n  - b\n  >\n> c\n\n      HERE",
+    code: false,
+  },
+  "a quote under an item's later paragraph": {
+    note: "- a\n\n  b\n> c\n\n    HERE",
+    code: false,
+  },
+  "a quote after an item's blank line": {
+    note: "- a\n\n> b\n\n    HERE",
+    code: true,
+  },
+  "a quote under an item, then a blank and a quote": {
+    note: "- a\n> b\n\n> c\n\n    HERE",
+    code: true,
+  },
+  "an item's fence, a blank line, then a quote": {
+    note: "- ```\n  a\n\n> HERE",
+    code: false,
+  },
   // Fences elsewhere.
   "a fence open to the end": { note: "```\na\n\nHERE", code: true },
   "a fence indented 2": { note: "  ```\nHERE", code: true },

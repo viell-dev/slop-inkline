@@ -9,14 +9,21 @@
 // which these functions follow too:
 //
 // - A line that leaves a quote or a list item, and does not start a block that
-//   ends it, carries on the paragraph or the fenced code block open in it. In
-//   CommonMark only a paragraph goes on so.
+//   ends it, carries on the paragraph or the fenced code block open in it,
+//   unless the line before held nothing in it, not even its marker: a blank
+//   line stops it, but a `>` alone in a quote does not. In CommonMark only a
+//   paragraph goes on so.
 // - A quote ends at a line that starts a heading, a thematic break, a fence,
 //   or a list, or is indented as code. A list item ends at one that starts a
-//   heading, a thematic break, a fence, or another item, but goes on through a
-//   quote's `>`.
+//   heading, a thematic break, a fence, or another item.
+// - A line that starts a quote goes on in a list item whose indentation it
+//   lacks, on the same terms, and belongs to it: the quote is in the item, and
+//   the `>` lines after it go on in that quote. In CommonMark the quote ends
+//   the item.
 // - A line of spaces with a tab among them does not end a paragraph, but ends
 //   a quote, or a list item that the next line does not indent into.
+// - An empty list item ends a paragraph, as one with text does. In CommonMark
+//   it does not.
 // - A run of backticks that no run as long closes leaves only its first
 //   backtick as text, and the rest of the run can still open a code span.
 //   CommonMark leaves the whole run as text.
@@ -66,8 +73,12 @@ const fenceStart = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 const listMarker = /^( {0,3})([-+*]|\d{1,9}[.)])( *)(.*)$/;
 /** A list item's start, of any number, empty or not. */
 const itemStart = /^ {0,3}(?:[-+*]|\d{1,9}[.)])(?: |$)/;
-/** A list item that may end a paragraph: CommonMark's, not empty. */
-const interruptingItem = /^ {0,3}(?:[-+*]|1[.)]) +\S/;
+/**
+ * A list item that may end a paragraph: a bullet, or a number that is 1, as
+ * CommonMark has it, so `2.` under a paragraph carries it on; but empty too,
+ * as Obsidian reads it.
+ */
+const interruptingItem = /^ {0,3}(?:[-+*]|1[.)])(?: |$)/;
 const delimiterRow = /^ *\|? *:?-+:? *(?:\| *:?-+:? *)*\|? *$/;
 
 /** `line` without a line feed's `\r`, and with its tabs as spaces. */
@@ -154,7 +165,10 @@ function interruptsParagraph(text: string): boolean {
 
 /**
  * Whether `text`, a line that `container` does not take in, ends it, rather
- * than carrying on what is open in it.
+ * than carrying on what is open in it. A quote ends at a line indented as
+ * code, as Obsidian reads it, and at a list item that may end a paragraph; a
+ * list item ends at any other item. A quote's `>` line never comes here for a
+ * list item, which takes it in.
  */
 function endsContainer(text: string, container: Container): boolean {
   if (startsLeaf(text)) return true;
@@ -193,29 +207,45 @@ class Blocks {
   /** The containers open, the outermost first. */
   readonly #containers: Container[] = [];
   #leaf: Leaf = none;
-  /** Whether the line before was blank within its containers. */
-  #blank = false;
+  /**
+   * Where the line before was blank: undefined if it held text, or else the
+   * number of its containers up to the last whose marker it held, a quote's
+   * `>` or an item's own, after which it held nothing. A blank line is blank
+   * from 0, and a `>` alone in a quote in an item from 2.
+   */
+  #blankFrom: number | undefined;
 
   /** What `line`, the next line of the note, is. */
   read(line: string): LineKind {
     const text = columns(line);
+    const before = this.#blankFrom;
     let at = 0;
     let matched = 0;
+    // The containers up to the last whose marker the line holds.
+    let marked = 0;
     for (const container of this.#containers) {
-      const next = continued(text, at, container);
+      // A list item takes in a line that starts a quote but lacks the
+      // item's indentation, unless the line before held nothing in it.
+      const next =
+        continued(text, at, container) ??
+        (container.kind === "item" &&
+        !heldNothing(before, matched) &&
+        startsQuote(text, at)
+          ? at
+          : undefined);
       if (next === undefined) break;
       at = next;
       matched++;
+      if (container.kind === "quote") marked = matched;
     }
     let rest = text.slice(at);
     const blank = isBlank(rest);
-    const wasBlank = this.#blank;
-    this.#blank = blank;
+    this.#blankFrom = blank ? marked : undefined;
     if (matched < this.#containers.length) {
       const leaving = this.#containers[matched];
       const lazy =
         !blank &&
-        !wasBlank &&
+        !heldNothing(before, matched) &&
         (this.#leaf.kind === "paragraph" || this.#leaf.kind === "fence") &&
         leaving !== undefined &&
         !endsContainer(rest, leaving);
@@ -252,6 +282,7 @@ class Blocks {
       if (indent > 3 || !oneOf(mark, ">-+*0123456789")) break;
       if (mark === ">") {
         this.#containers.push({ kind: "quote" });
+        marked = this.#containers.length;
         rest = rest.slice(indent + 1);
         if (rest.startsWith(" ")) rest = rest.slice(1);
         continue;
@@ -269,12 +300,16 @@ class Blocks {
         kind: "item",
         indent: indent + marker.length + width,
       });
+      marked = this.#containers.length;
       rest = rest.slice(indent + marker.length + width);
     }
     const indent = leadingSpaces(rest);
-    this.#blank = indent === rest.length;
+    // The blocks the line starts can leave nothing after their markers, as a
+    // `>` or a `-` alone does: then the line is blank after all, in them.
+    const empty = indent === rest.length;
+    this.#blankFrom = empty ? marked : undefined;
     this.#leaf = none;
-    if (this.#blank) return "none";
+    if (empty) return "none";
     // An indented code block's line.
     if (indent >= 4) return "code";
     const mark = rest.charAt(indent);
@@ -293,6 +328,22 @@ class Blocks {
     this.#leaf = { kind: "paragraph", first: rest, lines: 1 };
     return "paragraph";
   }
+}
+
+/**
+ * Whether a line, blank from `blankFrom` on as {@link Blocks} records it, held
+ * nothing in the container open at `depth`: not its marker, nor anything in
+ * it. A line that lacks that container's marker or indentation goes on in it
+ * only after a line that held something there.
+ */
+function heldNothing(blankFrom: number | undefined, depth: number): boolean {
+  return blankFrom !== undefined && blankFrom <= depth;
+}
+
+/** Whether `text`, from column `at`, starts a quote. */
+function startsQuote(text: string, at: number): boolean {
+  const indent = leadingSpaces(text, at);
+  return indent <= 3 && text[at + indent] === ">";
 }
 
 /**

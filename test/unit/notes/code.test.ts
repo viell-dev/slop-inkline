@@ -255,10 +255,18 @@ describe("insideCode beside CommonMark", () => {
       text: line.length > quotes.length,
     };
   };
-  /** Whether a line leaves a quote right after a line with text in it. */
-  const lazy = (before: string, line: string) => {
-    const [a, b] = [depth(before), depth(line)];
-    return b.quotes < a.quotes && a.text && b.text;
+  /**
+   * Whether line `index` of `note` holds text and leaves a quote right after
+   * a line in it, which a quote's fence goes on through in Obsidian: after a
+   * line with text, or, once a fence may be open, after a `>` alone.
+   */
+  const lazy = (note: readonly string[], index: number) => {
+    const [a, b] = [depth(note[index - 1] ?? ""), depth(note[index] ?? "")];
+    return (
+      b.quotes < a.quotes &&
+      b.text &&
+      (a.text || note.slice(0, index).some((line) => line.includes("```")))
+    );
   };
 
   // This checks what is read, not how fast: the parser takes over a second
@@ -281,12 +289,7 @@ describe("insideCode beside CommonMark", () => {
         for (const here of markers) {
           for (let at = 0; at <= start.length; at++) {
             const all = [...start.slice(0, at), here, ...start.slice(at)];
-            if (
-              all.some(
-                (line, index) => index > 0 && lazy(all[index - 1] ?? "", line),
-              )
-            )
-              continue;
+            if (all.some((_, index) => index > 0 && lazy(all, index))) continue;
             const text = all.join("\n");
             compared++;
             if (hereInCode(text) !== commonMarkCode(text, text.indexOf("HERE")))
