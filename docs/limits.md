@@ -167,6 +167,12 @@ the mark before renaming what it links to.
   again, which takes a moment for a large one. If Obsidian's storage is nearly
   full, it can then refuse the draft, and a notice
   [says so](./troubleshooting.md#common-problems): save to keep the changes.
+- If you turn Inkline off while Obsidian is still renaming a symbol you have
+  just saved, as while it asks about links, the editor keeps a draft. Opening
+  the symbol again can offer it back though the drawing was saved. A stroke
+  drawn after that save, before Obsidian moved the file, stays in a draft that
+  is not offered ([#247](https://github.com/viell-dev/slop-inkline/issues/247)),
+  so save again before turning Inkline off.
 - A symbol file made to be slow to draw, by a stroke that turns back at nearly
   every point, can keep Obsidian busy for a long time when you open it in the
   editor, hours for the worst of them, from a file of a few kilobytes. Close

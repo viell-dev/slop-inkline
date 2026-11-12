@@ -170,14 +170,18 @@ meets each of the conditions above:
     [#250](https://github.com/viell-dev/slop-inkline/issues/250): rare layouts
     where the `;;` list's check reads code differently from Reading view. Over
     thousands of random notes, 0.9.3's check gets hundreds right that 0.9.2 got
-    wrong, and a handful the other way, none of them a note a person writes,
-    such as an unmatched backtick inside a link reference definition;
+    wrong, and a handful the other way, such as an unmatched backtick inside a
+    link reference definition. One case a person could type is a tab after a
+    quote's `>`, which Reading view shows as indented code and the check, as in
+    0.9.2, reads as text;
   - [#245](https://github.com/viell-dev/slop-inkline/issues/245): a size written
     into an embed, wider than its space, sits a few pixels low, which Inkline
     never writes itself;
-  - [#247](https://github.com/viell-dev/slop-inkline/issues/247): a draft
-    offered back after Inkline was turned off during a rename, which loses
-    nothing;
+  - [#247](https://github.com/viell-dev/slop-inkline/issues/247): turning
+    Inkline off while Obsidian still has a rename leaves a draft behind. Most
+    often it is offered back though the drawing was saved. In a narrower form, a
+    stroke drawn after saving, before Obsidian moved the file, stays in a draft
+    that is no longer offered;
   - [#238](https://github.com/viell-dev/slop-inkline/issues/238): a moment's
     cost on Undo past a large picture.
 
