@@ -31,7 +31,14 @@ import { loadModules } from "../support/browser.ts";
 import { openAtMarker } from "../support/editor.ts";
 import { outputDirectory } from "../support/harness.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
-import { denseStrokes, lattice, wideStrokes } from "./dense-glyph.ts";
+import {
+  denseStrokes,
+  fineLattice,
+  fineStrokes,
+  lattice,
+  wideStrokes,
+  widerStrokes,
+} from "./dense-glyph.ts";
 
 const output = outputDirectory(
   process.env.E2E_OUTPUT_DIR,
@@ -80,6 +87,15 @@ const bigNote = [
   `${words} Here is the sign ![[Glyphs/dense.ink.png]] in running text. ${words}`,
   "",
   "Width 120 ![[Glyphs/dense.ink.png|120]] stays as written.",
+  "",
+].join("\n");
+
+const fineNote = [
+  "Title line without symbols.",
+  "",
+  `${words} The finest grille ![[Glyphs/fine.ink.png]] in running text. ${words}`,
+  "",
+  "Wider before ![[Glyphs/wider.ink.png]] wider after.",
   "",
 ].join("\n");
 
@@ -232,29 +248,39 @@ interface Lattice {
   profile: number[];
 }
 
+/** Where a lattice's strokes and gaps lie, in line-box pixels. */
+interface LatticeSpec {
+  readonly column: number;
+  readonly lines: readonly number[];
+  readonly gaps: readonly number[];
+}
+
+const denseLattice: LatticeSpec = {
+  column: lattice.column,
+  lines: [...lattice.lines],
+  gaps: [...lattice.gaps],
+};
+
 /**
- * How well the dense sign's lattice shows in the `index`th glyph image of
- * `root`, from a screenshot of the image itself.
+ * How well a lattice of fine strokes shows in the `index`th glyph image of
+ * `root`: from a screenshot of the window, in device pixels, cut to the
+ * image's box, which also holds at a zoom factor other than 1, where an
+ * element's own screenshot is cut from the wrong place.
  */
 async function latticeOf(
   root: string,
   index: number,
   crop: number,
   name: string,
+  spec: LatticeSpec = denseLattice,
 ): Promise<Lattice> {
   const all = await browser.$$(glyphImages(root)).getElements();
   const element = all[index];
   if (element === undefined) throw new Error(`no image ${String(index)}`);
   await element.scrollIntoView({ block: "center" });
-  await browser.pause(200);
-  const shot = await browser.takeElementScreenshot(element.elementId);
-  const folder = path.join(output, "screenshots", run());
-  await mkdir(folder, { recursive: true });
-  await writeFile(
-    path.join(folder, `${name}.png`),
-    Buffer.from(shot, "base64"),
-  );
-  return browser.execute(
+  await browser.pause(300);
+  const shot = await browser.takeScreenshot();
+  const measured = await browser.execute(
     async (png, selector, at, left, wanted) => {
       const image = activeDocument.querySelectorAll(selector)[at];
       if (!image?.instanceOf(HTMLImageElement)) throw new Error("no image");
@@ -266,9 +292,35 @@ async function latticeOf(
       const ink = 0.2126 * r + 0.7152 * g + 0.0722 * b;
       const bytes = Uint8Array.from(atob(png), (c) => c.charCodeAt(0));
       const bitmap = await createImageBitmap(new Blob([bytes]));
-      const { data, width, height } =
-        window.inklineTest.canvas.readPixels(bitmap);
+      const ratio = bitmap.width / window.innerWidth;
+      const rect = image.getBoundingClientRect();
+      const cut = {
+        x: Math.round(rect.left * ratio),
+        y: Math.round(rect.top * ratio),
+        width: Math.max(1, Math.round(rect.width * ratio)),
+        height: Math.max(1, Math.round(rect.height * ratio)),
+      };
+      const canvas = new OffscreenCanvas(cut.width, cut.height);
+      const context = canvas.getContext("2d");
+      if (context === null) throw new Error("no 2D context");
+      context.drawImage(
+        bitmap,
+        cut.x,
+        cut.y,
+        cut.width,
+        cut.height,
+        0,
+        0,
+        cut.width,
+        cut.height,
+      );
       bitmap.close();
+      const { data, width, height } =
+        window.inklineTest.canvas.readPixels(canvas);
+      const blob = await canvas.convertToBlob({ type: "image/png" });
+      const cropped = new Uint8Array(await blob.arrayBuffer());
+      let text = "";
+      for (const byte of cropped) text += String.fromCharCode(byte);
       const lum = (x: number, y: number): number => {
         const i = (y * width + x) * 4;
         return (
@@ -299,10 +351,12 @@ async function latticeOf(
       };
       const mean = (values: readonly number[]): number =>
         values.reduce((total, value) => total + value, 0) / values.length;
+      const first = (wanted.lines[0] ?? 0) - 6;
+      const last = (wanted.lines.at(-1) ?? 0) + 6;
       const profile: number[] = [];
       for (
-        let d = Math.floor(28 * sy);
-        d <= Math.min(height - 1, Math.ceil(100 * sy));
+        let d = Math.floor(first * sy);
+        d <= Math.min(height - 1, Math.ceil(last * sy));
         d++
       ) {
         profile.push(Math.round(row(d) * 100) / 100);
@@ -324,18 +378,24 @@ async function latticeOf(
           ) / 100,
         resolved,
         profile,
+        png: btoa(text),
       };
     },
     shot,
     glyphImages(root),
     index,
     crop,
-    {
-      column: lattice.column,
-      lines: [...lattice.lines],
-      gaps: [...lattice.gaps],
-    },
+    { column: spec.column, lines: [...spec.lines], gaps: [...spec.gaps] },
   );
+  const folder = path.join(output, "screenshots", run());
+  await mkdir(folder, { recursive: true });
+  await writeFile(
+    path.join(folder, `${name}.png`),
+    Buffer.from(measured.png, "base64"),
+  );
+  const { png: _png, ...rest } = measured;
+  void _png;
+  return rest;
 }
 
 /** Sets the Symbol size setting, through Inkline's stored data and a reload. */
@@ -587,14 +647,20 @@ async function exportPdf(note: string, name: string): Promise<unknown> {
 describe("Symbols shown larger than the text (#167 §2)", function () {
   this.timeout(900_000);
   let crop = 0;
+  let fineCrop = 0;
 
   before(async function () {
     await loadModules();
     const made = await browser.executeObsidian(
-      async ({ app }, dense, wide, css, scale, big) => {
+      async ({ app }, dense, wide, css, scale, big, extra) => {
         const { canvas } = window.inklineTest;
         const sign = await canvas.saveInk({ strokes: dense }, undefined);
         const bar = await canvas.saveInk({ strokes: wide }, undefined);
+        const grille = await canvas.saveInk({ strokes: extra.fine }, undefined);
+        const longer = await canvas.saveInk(
+          { strokes: extra.wider },
+          undefined,
+        );
         if (app.vault.getFolderByPath("Glyphs") === null) {
           await app.vault.createFolder("Glyphs");
         }
@@ -606,6 +672,16 @@ describe("Symbols shown larger than the text (#167 §2)", function () {
           "Glyphs/wide.ink.png",
           bar.bytes.slice().buffer,
         );
+        await app.vault.createBinary(
+          "Glyphs/fine.ink.png",
+          grille.bytes.slice().buffer,
+        );
+        await app.vault.createBinary(
+          "Glyphs/wider.ink.png",
+          longer.bytes.slice().buffer,
+        );
+        await app.vault.create("Fine.md", extra.note);
+        await app.vault.create("FineLink.md", "A link to [[Fine]] here.\n");
         await app.vault.create("Scale.md", scale);
         await app.vault.create("Big.md", big);
         await app.vault.create("Host.md", "Embedded:\n\n![[Big]]\n");
@@ -647,6 +723,8 @@ describe("Symbols shown larger than the text (#167 §2)", function () {
         return {
           dense: { left: sign.left, width: sign.width },
           wide: { left: bar.left, width: bar.width },
+          fine: { left: grille.left, width: grille.width },
+          wider: { left: longer.left, width: longer.width },
           denseBytes: sign.bytes.length,
           snippet: { methods, applied },
           alphaAtColumn: [
@@ -659,8 +737,10 @@ describe("Symbols shown larger than the text (#167 §2)", function () {
       snippet,
       scaleNote,
       bigNote,
+      { fine: fineStrokes(), wider: widerStrokes(), note: fineNote },
     );
     crop = made.dense.left;
+    fineCrop = made.fine.left;
     await record("setup", made);
     const bytes = await browser.executeObsidian(async ({ app }) => {
       const file = app.vault.getFileByPath("Glyphs/dense.ink.png");
@@ -864,5 +944,164 @@ describe("Symbols shown larger than the text (#167 §2)", function () {
     await useScale(100);
     const perNote = await exportPdf("Big.md", "per-note");
     await record("pdf", { at500, perNote });
+  });
+
+  it("second: the finest grille and a 4,000-pixel symbol at 100 to 500%", async function () {
+    const views: Record<string, unknown> = {};
+    for (const percent of [100, 200, 300, 500]) {
+      await useScale(percent);
+      await open("Fine.md", "preview");
+      const root = container("preview");
+      await waitForImages(root, 2);
+      await saveScreenshot(`fine-${String(percent)}`);
+      views[String(percent)] = {
+        images: await measure(root),
+        fine: await latticeOf(
+          root,
+          0,
+          fineCrop,
+          `fine-${String(percent)}-paragraph`,
+          fineLattice,
+        ),
+      };
+    }
+    await record("second-fine", views);
+  });
+
+  it("second: on a display of 2 device pixels per CSS pixel", async function () {
+    const views: Record<string, unknown> = {};
+    try {
+      views.devicePixelRatio = await zoom(2);
+      for (const percent of [100, 200, 300, 500]) {
+        await useScale(percent);
+        await open("Scale.md", "preview");
+        await waitForImages(container("preview"), 3);
+        const dense = await latticeOf(
+          container("preview"),
+          0,
+          crop,
+          `zoom2-dense-${String(percent)}`,
+        );
+        const heading = await latticeOf(
+          container("preview"),
+          1,
+          crop,
+          `zoom2-dense-heading-${String(percent)}`,
+        );
+        await open("Fine.md", "preview");
+        await waitForImages(container("preview"), 2);
+        const fine = await latticeOf(
+          container("preview"),
+          0,
+          fineCrop,
+          `zoom2-fine-${String(percent)}`,
+          fineLattice,
+        );
+        await saveScreenshot(`zoom2-fine-window-${String(percent)}`);
+        views[String(percent)] = { dense, heading, fine };
+      }
+    } finally {
+      views.reset = await zoom(1);
+    }
+    await record("second-zoom2", views);
+  });
+
+  it("second: a 4,000-pixel symbol in a hover preview at 100%", async function () {
+    await useScale(100);
+    await open("FineLink.md", "preview");
+    await browser
+      .$(".workspace-leaf.mod-active .markdown-reading-view a.internal-link")
+      .moveTo();
+    try {
+      await waitForImages(".hover-popover", 2);
+      await browser.pause(300);
+      await saveScreenshot("hover-wider-100");
+      await record("second-hover", {
+        images: await measure(".hover-popover"),
+        popover: await browser.execute(
+          () =>
+            activeDocument
+              .querySelector(".hover-popover")
+              ?.getBoundingClientRect()
+              .toJSON() as unknown,
+        ),
+      });
+    } finally {
+      await browser
+        .action("pointer", { parameters: { pointerType: "mouse" } })
+        .move({ x: 2, y: 2 })
+        .perform();
+      await browser.pause(800);
+    }
+  });
+
+  it("second: opens Obsidian's image viewer on a symbol, at 100%", async function () {
+    await useScale(100);
+    const views: Record<string, unknown> = {};
+    for (const mode of ["preview", "source"] as const) {
+      await open("Scale.md", mode);
+      const root = container(mode);
+      await waitForImages(root, 3);
+      const all = await browser.$$(glyphImages(root)).getElements();
+      const first = all[0];
+      if (first === undefined) throw new Error("no sign");
+      await first.scrollIntoView({ block: "center" });
+      await browser.pause(200);
+      // Live Preview selects an image on the first click and opens the
+      // viewer on the second.
+      const clicks = mode === "source" ? 2 : 1;
+      let opened = false;
+      for (let click = 0; click < clicks && !opened; click++) {
+        await first.click();
+        await browser.pause(700);
+        opened = await browser.execute(
+          () => document.querySelector(".lightbox") !== null,
+        );
+      }
+      const shown = opened
+        ? await browser.execute(() => {
+            const image = document.querySelector(".lightbox img");
+            if (!image?.instanceOf(HTMLImageElement)) return "no image";
+            const rect = image.getBoundingClientRect();
+            return {
+              width: rect.width,
+              height: rect.height,
+              naturalHeight: image.naturalHeight,
+              tagged: image.classList.contains("inkline-symbol"),
+              window: { width: window.innerWidth, height: window.innerHeight },
+            };
+          })
+        : "the viewer did not open";
+      if (opened) {
+        await saveScreenshot(`viewer-${mode}`);
+        const lightbox = await browser.$(".lightbox img").getElement();
+        const shot = await browser.takeElementScreenshot(lightbox.elementId);
+        const folder = path.join(output, "screenshots", run());
+        await writeFile(
+          path.join(folder, `viewer-${mode}-image.png`),
+          Buffer.from(shot, "base64"),
+        );
+        // Its zoom, if it has one: a click on the picture.
+        await lightbox.click();
+        await browser.pause(700);
+        await saveScreenshot(`viewer-${mode}-zoomed`);
+        views[`${mode}-zoomed`] = await browser.execute(() => {
+          const image = document.querySelector(".lightbox img");
+          return image?.getBoundingClientRect().toJSON() as unknown;
+        });
+      }
+      views[mode] = shown;
+      await browser.keys(["Escape"]);
+      await browser.pause(400);
+      if (
+        await browser.execute(
+          () => document.querySelector(".lightbox") !== null,
+        )
+      ) {
+        await browser.keys(["Escape"]);
+        await browser.pause(400);
+      }
+    }
+    await record("viewer", views);
   });
 });

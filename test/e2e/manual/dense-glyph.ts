@@ -192,3 +192,57 @@ export function wideCorners(): Point[][] {
 export function wideStrokes(): PenStroke[] {
   return wideCorners().map((corners) => pen(corners, 12));
 }
+
+/**
+ * The finest lattice brush S can draw with a gap left: six horizontal
+ * strokes 9 pixels apart, from y 40 to 85, so 3-pixel gaps, between
+ * verticals at x 50, 70, 90, and 110. A column at x 60 crosses all six.
+ */
+export const fineLattice = {
+  column: 60,
+  lines: [40, 49, 58, 67, 76, 85],
+  gaps: [44.5, 53.5, 62.5, 71.5, 80.5],
+} as const;
+
+export function fineStrokes(): PenStroke[] {
+  const strokes: Point[][] = [];
+  for (const x of [50, 70, 90, 110]) {
+    strokes.push([
+      [x, fineLattice.lines[0]],
+      [x, fineLattice.lines[5]],
+    ]);
+  }
+  for (const y of fineLattice.lines) {
+    strokes.push([
+      [50, y],
+      [110, y],
+    ]);
+  }
+  // A foot on the baseline, so that it reads as a sign in a line.
+  strokes.push([
+    [40, 140],
+    [120, 140],
+  ]);
+  return strokes.map((corners) => pen(corners));
+}
+
+/**
+ * A symbol 4,000 pixels wide, 31 em: at 100% it is 500 CSS pixels in 16-pixel
+ * text, and at 200%, the most 0.9.2 allows, 1,000, wider than Obsidian's
+ * readable line.
+ */
+export function widerStrokes(): PenStroke[] {
+  const strokes: Point[][] = [
+    [
+      [8, 120],
+      [3992, 120],
+    ],
+  ];
+  for (let x = 8; x <= 3992; x += 80) {
+    strokes.push([
+      [x, 96],
+      [x, 144],
+    ]);
+  }
+  return strokes.map((corners) => pen(corners, 12));
+}
