@@ -24,6 +24,13 @@ even one a public release; earlier pre-releases carry a suffix such as
   own line, nor after a run of backticks that only a shorter run closes, and it
   reads each of a table's cells on its own. **Inkline: Edit symbol** is not
   offered on an embed in an indented code block, which shows it as text.
+- A symbol wider than the space it is in, as a very wide one can be in a hover
+  preview, a table cell, a narrow pane, or a PDF page, or at a larger Symbol
+  size, is no longer squeezed sideways. It shrinks evenly to fit, whole and in
+  the proportions it was drawn in, and stays on the baseline. Before, only its
+  width gave way, so a symbol near the widest a file can be showed about a
+  quarter too narrow at the default size in a hover preview
+  ([#241](https://github.com/viell-dev/slop-inkline/issues/241)).
 - A rename, from the library or the editor, no longer renames another file when
   the symbol is deleted and a file is put at its path while the rename saves the
   open notes or the drawing, or while Obsidian finishes indexing the vault or
