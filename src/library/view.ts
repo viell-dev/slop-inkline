@@ -115,6 +115,11 @@ interface TextPanel {
 /** The symbol library, in a sidebar. */
 export class SymbolLibraryView extends ItemView {
   readonly #texts: SymbolTexts;
+  /**
+   * Aborts as Inkline unloads. Obsidian closes the library then, and a save or
+   * rename still waiting writes nothing.
+   */
+  readonly #unloaded: AbortSignal;
   /** What the filter holds. */
   #query = "";
   /** The folder shown, or undefined for every folder. */
@@ -152,9 +157,10 @@ export class SymbolLibraryView extends ItemView {
     true,
   );
 
-  constructor(leaf: WorkspaceLeaf, texts: SymbolTexts) {
+  constructor(leaf: WorkspaceLeaf, texts: SymbolTexts, unloaded: AbortSignal) {
     super(leaf);
     this.#texts = texts;
+    this.#unloaded = unloaded;
   }
 
   /** Shows what changed, such as text the index has read since. */
@@ -783,7 +789,13 @@ export class SymbolLibraryView extends ItemView {
         fields.enabled = true;
         fields.focus();
       };
-      const writing = writeSymbolText(this.app, file, changes, fields.given);
+      const writing = writeSymbolText(
+        this.app,
+        file,
+        changes,
+        fields.given,
+        this.#unloaded,
+      );
       let waited = false;
       const waiting = (still: boolean): void => {
         if (closed) return;
@@ -811,15 +823,23 @@ export class SymbolLibraryView extends ItemView {
         },
         (failure: unknown) => {
           if (closed) return;
+          const reason =
+            failure instanceof Error
+              ? failure.message
+              : "The symbol could not be saved.";
+          // Gone with the library, as when Inkline unloads, what was typed
+          // would be lost without a word.
+          if (this.#editing !== anchor) {
+            new Notice(
+              `The readings and translations of ${entry.name} were not saved: ${reason}`,
+            );
+            return;
+          }
           again();
           if (failure instanceof TextMoved) {
             fields.take(failure.text);
           } else {
-            error.setText(
-              failure instanceof Error
-                ? failure.message
-                : "The symbol could not be saved.",
-            );
+            error.setText(reason);
           }
         },
       );
@@ -908,10 +928,13 @@ export class SymbolLibraryView extends ItemView {
               }
             };
       };
-      const renaming = renameSymbol(this.app, file, typed, {
-        told: waiting,
-        asked: () => modalOpen(form),
-      });
+      const renaming = renameSymbol(
+        this.app,
+        file,
+        typed,
+        { told: waiting, asked: () => modalOpen(form) },
+        this.#unloaded,
+      );
       void renaming.done.then(
         () => {
           // Nothing else says so, to a person who has looked away or left.

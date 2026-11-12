@@ -50,6 +50,15 @@ close the row meanwhile. If nothing changes, copy the name you typed and restart
 Obsidian, then
 [check the notes that use the symbol](./limits.md#a-file-written-at-the-moment-inkline-saves).
 
+**Unreleased: "The readings and translations of … were not saved: …"** The
+library's row closed before its save was done, as when Inkline is turned off or
+the library is closed while the save waits, and the reason says why it was not
+written. Open the symbol's readings and translations in the library again, and
+save them once more. A rename that the library had not yet handed to Obsidian
+when Inkline was turned off, even one waiting for Obsidian to finish another
+rename, says "… could not be renamed to …: Inkline was disabled" the same way,
+at once, and renames nothing.
+
 **"… is saved, but could not be renamed: …"** The drawing is saved under the old
 name, and the new name stays in the editor's name field, for the next save to
 try again. When the reason is that a note could not be saved first, Obsidian
