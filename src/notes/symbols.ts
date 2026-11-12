@@ -1507,8 +1507,9 @@ function newSymbol(
           named = await rename(host, renaming, wait);
           // Even once Inkline is disabled: Obsidian has renamed the file by
           // then, which nothing takes back, so stopping would leave the embed
-          // naming a file no longer there. This writes that one embed, and
-          // gives up within a few seconds.
+          // naming a file no longer there. This writes that one embed, and if
+          // the note's editor does not show the new name within five seconds,
+          // gives up with a notice.
           if (inserted && after !== undefined && named) {
             const now = embedFor(app, made.file, note.path);
             after = (await followRename(app, target, after, was, now)) ?? after;
