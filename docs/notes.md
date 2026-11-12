@@ -20,6 +20,9 @@ hover previews, text cards on a canvas, and popout windows.
 
 - **An explicit size** that Obsidian's embed syntax gives, as in
   `![[tower.ink.png|24]]`, is kept, and the symbol still stands on the baseline.
+- **Unreleased:** a symbol wider than the space it is in, as a very wide one can
+  be in a hover preview, a table cell, a narrow pane, or a PDF page, shrinks
+  evenly to fit, whole and on the baseline, rather than being squeezed sideways.
 - **Hovering** a symbol shows its name, or what its embed's alias or alt text
   says; screen readers read it too.
 - **A symbol file shown on its own**, in its own tab or as an image on a canvas,
