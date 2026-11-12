@@ -659,15 +659,28 @@ ruby.inkline-ruby > rt {
  * rather than running into the next one. The values are generated content,
  * which selections and copies leave out.
  */
-.inkline-word {
+.inkline-word,
+.inkline-glyph {
   display: inline-table;
   text-align: center;
   text-indent: 0;
 }
 
+/*
+ * Live Preview's embed is a block that Obsidian's own styles make inline
+ * only as the line's own child: inside a word it would stack.
+ */
+.cm-line .inkline-word > .internal-embed.image-embed {
+  display: inline-block;
+}
+
 .inkline-word[data-inkline-over]::before,
-.inkline-word[data-inkline-under]::after {
+.inkline-word[data-inkline-under]::after,
+.inkline-glyph[data-inkline-over]::before,
+.inkline-glyph[data-inkline-under]::after {
   display: table-caption;
+  /* Keeps neighbouring words' values apart. */
+  padding: 0 0.3em;
   color: var(--text-muted);
   font-size: 0.5em;
   font-style: normal;
@@ -688,6 +701,26 @@ ruby.inkline-ruby > rt {
   caption-side: bottom;
 }
 
+.inkline-glyph[data-inkline-over]::before {
+  content: attr(data-inkline-over);
+  caption-side: top;
+}
+
+.inkline-glyph[data-inkline-under]::after {
+  content: attr(data-inkline-under);
+  caption-side: bottom;
+}
+
+.inkline-word[data-inkline-over] .inkline-glyph::before,
+.inkline-word[data-inkline-under] .inkline-glyph::after {
+  display: none;
+}
+
+/* As with ruby, the embed takes the drop in Live Preview. */
+.cm-content .image-embed .image-wrapper .inkline-glyph img.inkline-symbol {
+  vertical-align: baseline;
+}
+
 /* The word's own values stand for its symbols'. */
 .inkline-word[data-inkline-over] ruby.inkline-ruby-over > rt,
 .inkline-word[data-inkline-under] ruby.inkline-ruby-under > rt {
@@ -695,11 +728,15 @@ ruby.inkline-ruby > rt {
 }
 
 .inkline-ruby-note .inkline-word::before,
-.inkline-ruby-note .inkline-word::after {
+.inkline-ruby-note .inkline-word::after,
+.inkline-ruby-note .inkline-glyph::before,
+.inkline-ruby-note .inkline-glyph::after {
   display: none;
 }
 
 .inkline-ruby-note .inkline-readings .inkline-word::before,
-.inkline-ruby-note .inkline-readings .inkline-word::after {
+.inkline-ruby-note .inkline-readings .inkline-word::after,
+.inkline-ruby-note .inkline-readings .inkline-glyph::before,
+.inkline-ruby-note .inkline-readings .inkline-glyph::after {
   display: table-caption;
 }

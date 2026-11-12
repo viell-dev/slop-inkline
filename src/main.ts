@@ -280,6 +280,10 @@ export default class InklinePlugin extends Plugin {
         ? Reflect.get(data, "rubyPrototype")
         : undefined;
     if (mode !== "all" && mode !== "note") return;
+    const glyphs: unknown =
+      typeof data === "object" && data !== null
+        ? Reflect.get(data, "rubyGlyphs")
+        : undefined;
     // Symbol files by the address of their images, made again on a change.
     let addresses: Map<string, string> | undefined;
     const fileOf = (src: string): string | undefined => {
@@ -314,7 +318,7 @@ export default class InklinePlugin extends Plugin {
           ? {}
           : { translation: text.translation[0] }),
       };
-    }, `inkline-ruby-${mode}`);
+    }, `inkline-ruby-${mode}`, glyphs === "caption" ? "caption" : "ruby");
     // Words: a lexicon kept as notes, grouped in every view.
     const views = new Set<EditorView>();
     const lexicon = new LexiconIndex(this.app, () => {

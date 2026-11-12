@@ -100,6 +100,21 @@ function wrapRuby(
   return ruby;
 }
 
+/**
+ * PROTOTYPE: how a symbol's own values show: as ruby, or as captions of an
+ * inline table around its image, which copying leaves out.
+ */
+let glyphStyle: "ruby" | "caption" = "ruby";
+
+/** PROTOTYPE: the class of the table around an image, in caption style. */
+const glyphClass = "inkline-glyph";
+
+/** PROTOTYPE: takes away the caption table Inkline put around `image`. */
+function unwrapGlyph(image: HTMLImageElement): void {
+  const parent = image.parentElement;
+  if (parent?.hasClass(glyphClass) === true) parent.replaceWith(image);
+}
+
 /** PROTOTYPE: whether `image` is inside ruby that a note's author wrote. */
 function inAuthorRuby(image: HTMLImageElement): boolean {
   for (let at = image.closest("ruby"); at !== null; ) {
@@ -122,10 +137,24 @@ function annotateImage(
   const wanted = reading !== "" || translation !== "";
   if (wanted && image.getAttribute(rubyMark) === key) {
     if (rubiesAround(image).length > 0) return;
+    if (image.parentElement?.hasClass(glyphClass) === true) return;
   }
   if (!wanted && !image.hasAttribute(rubyMark)) return;
   unwrapRuby(image);
+  unwrapGlyph(image);
   if (!wanted) return;
+  if (glyphStyle === "caption") {
+    const glyph = image.ownerDocument.createElement("span");
+    glyph.addClass(glyphClass);
+    if (reading !== "") glyph.setAttribute("data-inkline-over", reading);
+    if (translation !== "") {
+      glyph.setAttribute("data-inkline-under", translation);
+    }
+    image.replaceWith(glyph);
+    glyph.append(image);
+    image.setAttribute(rubyMark, key);
+    return;
+  }
   let base: Element = image;
   if (reading !== "") base = wrapRuby(base, reading, "over");
   if (translation !== "") {
@@ -276,6 +305,7 @@ export function untagImage(image: HTMLImageElement): void {
   if (!image.hasClass(symbolClass)) return;
   image.removeClass(symbolClass);
   unwrapRuby(image);
+  unwrapGlyph(image);
   image.style.removeProperty(maskProperty);
   image.style.removeProperty(dropProperty);
   unnameImage(image);
@@ -351,7 +381,12 @@ export class SymbolRenderer {
    * PROTOTYPE: shows readings and translations from `annotate` as ruby, with
    * `root` as a class on every watched document's root.
    */
-  annotateWith(annotate: Annotate | undefined, root: string): void {
+  annotateWith(
+    annotate: Annotate | undefined,
+    root: string,
+    style: "ruby" | "caption" = "ruby",
+  ): void {
+    glyphStyle = style;
     this.#annotate = annotate;
     for (const doc of this.#watching.keys()) {
       if (this.#rubyRoot !== "")

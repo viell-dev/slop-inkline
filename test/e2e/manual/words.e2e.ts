@@ -148,6 +148,9 @@ const wordsNote = [
   "",
   `Long ${longRun} end.`,
   "",
+  // A zero-width space, U+200B, as a word break that shows nowhere.
+  `Zwsp ${e("zig")}​${run("ring", "posts")} end.`,
+  "",
 ].join("\n");
 const wordLabels = [
   "Spaced",
@@ -157,6 +160,7 @@ const wordLabels = [
   "Neighbours",
   "Lines",
   "Long",
+  "Zwsp",
 ];
 
 /** Explicit marks around a word, with symbols the lexicon does not know. */
@@ -196,8 +200,9 @@ const formLabels = [
   "Gloss",
 ];
 
+// The inner ruby says "over": ruby-position is inherited from the outer one.
 const tier = (reading: string, name: string) =>
-  `<ruby>${img(name)}<rt>${reading}</rt></ruby>`;
+  `<ruby style="ruby-position: over">${img(name)}<rt>${reading}</rt></ruby>`;
 const nest = (inner: string, under: string) =>
   `<ruby style="ruby-position: under">${inner}<rt>${under}</rt></ruby>`;
 const box = (inner: string) =>
@@ -219,14 +224,24 @@ const structuresNote = [
   "",
   `Table ${table(river + caption("river", "bottom"))} ${table(ferry + caption("ferry crossing", "bottom"))} end.`,
   "",
-  `Whole ${nest(box(`<ruby>${img("hook")}${img("hook")}<rt>mmu</rt></ruby>`), "night")} end.`,
+  `Whole ${nest(box(`<ruby style="ruby-position: over">${img("hook")}${img("hook")}<rt>mmu</rt></ruby>`), "night")} end.`,
+  "",
+  `Wholenest ${nest(`<ruby style="ruby-position: over">${img("hook")}${img("hook")}<rt>mmu</rt></ruby>`, "night")} end.`,
   "",
   `Tablewhole ${table(caption("mmu", "top") + img("hook") + img("hook") + caption("night", "bottom"))} end.`,
   "",
   `Lines ${nest(box(river), "river")} first,<br>second ${table(river + caption("river", "bottom"))} line,<br>third line.`,
   "",
 ].join("\n");
-const structureLabels = ["Nest", "Box", "Table", "Whole", "Tablewhole", "Lines"];
+const structureLabels = [
+  "Nest",
+  "Box",
+  "Table",
+  "Whole",
+  "Wholenest",
+  "Tablewhole",
+  "Lines",
+];
 
 async function open(file: string, mode: Mode): Promise<void> {
   await browser.executeObsidian(
@@ -480,15 +495,27 @@ async function createVault(): Promise<void> {
 }
 
 /** Sets the prototype's mode and restarts Inkline, which reads it. */
-async function prototype(mode: "all" | undefined): Promise<void> {
-  await browser.executeObsidian(async ({ plugins }, chosen) => {
-    const data: unknown = await plugins.inkline.loadData();
-    const next: Record<string, unknown> =
-      typeof data === "object" && data !== null ? { ...data } : {};
-    if (chosen === undefined) delete next.rubyPrototype;
-    else next.rubyPrototype = chosen;
-    await plugins.inkline.saveData(next);
-  }, mode);
+async function prototype(
+  mode: "all" | undefined,
+  glyphs: "ruby" | "caption" = "ruby",
+): Promise<void> {
+  await browser.executeObsidian(
+    async ({ plugins }, chosen, style) => {
+      const data: unknown = await plugins.inkline.loadData();
+      const next: Record<string, unknown> =
+        typeof data === "object" && data !== null ? { ...data } : {};
+      if (chosen === undefined) {
+        delete next.rubyPrototype;
+        delete next.rubyGlyphs;
+      } else {
+        next.rubyPrototype = chosen;
+        next.rubyGlyphs = style;
+      }
+      await plugins.inkline.saveData(next);
+    },
+    mode,
+    glyphs,
+  );
   await obsidianPage.disablePlugin("inkline");
   await obsidianPage.enablePlugin("inkline");
 }
@@ -762,7 +789,9 @@ describe("Words of several symbols (#167, section 3)", function () {
     }));
   });
 
-  it("what Obsidian does with adjacent embeds and explicit marks", async function () {
+  // Measured in run 1: Obsidian's own behaviour does not change with the
+  // prototype's styles.
+  it.skip("what Obsidian does with adjacent embeds and explicit marks", async function () {
     const views: Record<string, unknown> = {};
     await open("Words.md", "preview");
     views.wordsReading = await measure(["Spaced", "Markdown"]);
@@ -799,8 +828,9 @@ describe("Words of several symbols (#167, section 3)", function () {
     results.structures = views;
   });
 
-  it("the prototype: words from a lexicon note", async function () {
-    await prototype("all");
+  for (const style of ["ruby", "caption"] as const) {
+  it(`the prototype: words from a lexicon note, symbols' values as ${style}`, async function () {
+    await prototype("all", style);
     await browser.waitUntil(
       async () => (await lexicon()).entries.length >= 5,
       { timeout: 30_000, timeoutMsg: "the lexicon was not read" },
@@ -865,9 +895,9 @@ describe("Words of several symbols (#167, section 3)", function () {
       selection?.removeAllRanges();
       return copied;
     });
-    await shoot("words-proto-reading-light");
+    await shoot(`words-${style}-reading-light`);
     await theme("obsidian");
-    await shoot("words-proto-reading-dark");
+    await shoot(`words-${style}-reading-dark`);
     await theme("moonstone");
     await open("Words.md", "source");
     await browser.waitUntil(async () => (await wordCount()) > 0, {
@@ -875,9 +905,9 @@ describe("Words of several symbols (#167, section 3)", function () {
       timeoutMsg: "no words in Live Preview",
     });
     views.live = await measure(wordLabels);
-    await shoot("words-proto-live-light");
+    await shoot(`words-${style}-live-light`);
     await theme("obsidian");
-    await shoot("words-proto-live-dark");
+    await shoot(`words-${style}-live-dark`);
     await theme("moonstone");
     // The cursor in a word: that word shows plain, as a link being edited.
     await browser.executeObsidian(({ app, obsidian }) => {
@@ -888,7 +918,7 @@ describe("Words of several symbols (#167, section 3)", function () {
     });
     await browser.pause(800);
     views.liveCursorInWord = await measure(["Spaced"]);
-    await saveScreenshot("words-proto-live-cursor");
+    await saveScreenshot(`words-${style}-live-cursor`);
     // The lexicon itself.
     await open("Lexicon.md", "preview");
     await shoot("words-lexicon-reading");
@@ -901,10 +931,49 @@ describe("Words of several symbols (#167, section 3)", function () {
     ] as const) {
       await open("Forms.md", mode);
       views[`forms-${name}`] = await measure(formLabels);
-      await shoot(`words-forms-proto-${name}`);
+      await shoot(`words-forms-${style}-${name}`);
     }
-    results.prototype = views;
+    views.styles = await browser.execute(() => {
+      // The rules that set how Obsidian shows an embed in Live Preview.
+      const rules: string[] = [];
+      const visit = (list: CSSRuleList) => {
+        for (const rule of Array.from(list)) {
+          if (rule instanceof CSSStyleRule) {
+            if (
+              /internal-embed|image-embed/.test(rule.selectorText) &&
+              rule.style.display !== ""
+            ) {
+              rules.push(
+                `${rule.selectorText} { display: ${rule.style.display} }`,
+              );
+            }
+          } else if (rule instanceof CSSGroupingRule) {
+            visit(rule.cssRules);
+          }
+        }
+      };
+      for (const sheet of Array.from(document.styleSheets)) {
+        try {
+          visit(sheet.cssRules);
+        } catch {
+          // Another origin's sheet.
+        }
+      }
+      const shown = (selector: string) => {
+        const found = activeDocument.querySelector(selector);
+        return found === null ? null : getComputedStyle(found).display;
+      };
+      return {
+        rules: rules.slice(0, 40),
+        loneEmbed: shown(".cm-line > .internal-embed.image-embed"),
+        wordEmbed: shown(
+          ".cm-line .inkline-word > .internal-embed.image-embed",
+        ),
+      };
+    });
+    results[`prototype-${style}`] = views;
   });
+  }
 
   it("the prototype in PDF export", async function () {
     await open("Words.md", "preview");
