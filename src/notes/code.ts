@@ -536,6 +536,10 @@ export function insideCodeSpan(
 ): boolean | undefined {
   // The text's runs, found once a run has found none to close it.
   let runs: Map<number, number[]> | undefined;
+  // The length of the run at `index`, once counted. A run that gives up its
+  // first backtick keeps the rest of its count, so that a long run is not
+  // counted again for each backtick it gives up.
+  let run = 0;
   let index = 0;
   while (index < at) {
     const char = text[index];
@@ -547,8 +551,7 @@ export function insideCodeSpan(
       index++;
       continue;
     }
-    let run = 0;
-    while (text[index + run] === "`") run++;
+    if (run === 0) while (text[index + run] === "`") run++;
     const close =
       runs === undefined
         ? nextRun(text, index + run, run)
@@ -557,10 +560,12 @@ export function insideCodeSpan(
       if (!complete) return undefined;
       runs ??= backtickRuns(text);
       index++;
+      run--;
       continue;
     }
     if (at > index && at <= close) return true;
     index = close + run;
+    run = 0;
   }
   return false;
 }

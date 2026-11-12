@@ -135,6 +135,18 @@ describe("insideCodeSpan", () => {
     expect(insideCodeSpan("`a ;;``", 3)).toBe(false);
   });
 
+  it("gives up a long run that nothing closes in linear time", () => {
+    // A run of n backticks that nothing closes gives them up one at a time.
+    // Counted again for each, it would take n²/2 reads, seconds for these
+    // where it takes milliseconds.
+    const run = "`".repeat(40_000);
+    const start = performance.now();
+    expect(insideCodeSpan(`x ${run} ;;`, 40_004)).toBe(false);
+    // Its last backtick still opens a span that a single one closes.
+    expect(insideCodeSpan(`x ${run} ;; \``, 40_004)).toBe(true);
+    expect(performance.now() - start).toBeLessThan(500);
+  });
+
   it("says when text after the index could close a span open before it", () => {
     expect(insideCodeSpan("a `b ;;", 5, false)).toBeUndefined();
     expect(insideCodeSpan("a `b ;;", 5)).toBe(false);
