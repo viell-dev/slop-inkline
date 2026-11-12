@@ -1654,6 +1654,31 @@ describe("The editor", function () {
       expect(await bytesOfFile("001.ink.png")).toEqual(replacement);
     });
 
+    it("renames nothing, and says so at once, once Inkline is disabled while Obsidian indexes the vault", async function () {
+      await saveWhileIndexing();
+      await obsidianPage.disablePlugin("inkline");
+      try {
+        expect(await editorOpen()).toBe(false);
+        // Said while Obsidian still waits for its index.
+        await waitForNotice(
+          "001.ink.png is saved, but could not be renamed: Inkline was disabled",
+        );
+        await letGo();
+        // The index catches up, and nothing follows it.
+        await browser.waitUntil(async () =>
+          browser.executeObsidian(
+            ({ app }) => app.metadataCache.getCache("Synced.md") !== null,
+          ),
+        );
+        await browser.pause(500);
+        expect(await symbolFiles()).toEqual(["001.ink.png"]);
+      } finally {
+        await obsidianPage.enablePlugin("inkline");
+        await loadModules();
+      }
+      expect(await strokeCount("001.ink.png")).toBe(2);
+    });
+
     it("says what happened to a symbol replaced as Obsidian moves it", async function () {
       await saveOne();
       await waitForLink("Editor.md", "001.ink.png");
@@ -1921,6 +1946,52 @@ describe("The editor", function () {
       "The door is marked with ![[gate.ink.png]] which means return.\n";
     expect(await noteText()).toBe(text);
     expect(await noteOnDisk("Editor.md")).toBe(text);
+  });
+
+  it("brings a new symbol's embed to its new name when Inkline is disabled during Obsidian's question", async function () {
+    await insert();
+    await draw(zigzag);
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    await nameSymbol("gate");
+    await browser.keys(["Control", "Enter"]);
+    await browser.waitUntil(
+      async () => (await topButton("Do not update")) !== undefined,
+    );
+    // Obsidian has the rename, which goes on without Inkline, and the embed
+    // follows it all the same.
+    await obsidianPage.disablePlugin("inkline");
+    try {
+      expect(await editorOpen()).toBe(false);
+      await clickTop("Do not update");
+      const text =
+        "The door is marked with ![[gate.ink.png]] which means return.\n";
+      await browser
+        .waitUntil(async () => (await noteOnDisk("Editor.md")) === text)
+        .catch(() => undefined);
+      expect(await noteOnDisk("Editor.md")).toBe(text);
+      expect(await symbolFiles()).toEqual(["gate.ink.png"]);
+      await browser.waitUntil(async () => (await noteText()) === text, {
+        timeoutMsg: "the note's editor kept the old embed",
+      });
+      // The symbol is saved, and its embed has followed it, so nothing says
+      // otherwise.
+      const notices = await browser.execute(() =>
+        [...document.querySelectorAll(".notice")].map(
+          (notice) => notice.textContent,
+        ),
+      );
+      expect(
+        notices.filter((notice) =>
+          /Could not save the symbol|could not be renamed|old name/.test(
+            notice,
+          ),
+        ),
+      ).toEqual([]);
+    } finally {
+      await obsidianPage.enablePlugin("inkline");
+      await loadModules();
+    }
   });
 
   it("keeps the editor open with the drawing when saving fails", async function () {
