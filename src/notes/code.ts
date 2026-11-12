@@ -24,7 +24,8 @@
 // - A table starts only at a paragraph's first line.
 //
 // These functions do not read HTML blocks, nor HTML, autolinks, wiki links,
-// comments, math, or links, which Obsidian reads before a code span.
+// comments, math, links and their addresses, emphasis, strikethrough, or
+// highlights, which Obsidian reads before a code span.
 
 /** A note's line, as its editor has it now; undefined past the note's end. */
 export type LineAt = (index: number) => string | undefined;

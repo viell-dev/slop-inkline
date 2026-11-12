@@ -18,7 +18,7 @@ export interface CodeCase {
 
 /** Why the check finds a code span where Obsidian reads something first. */
 const readFirst =
-  "Obsidian reads HTML, autolinks, wiki links, comments, math, and links before a code span; the check does not";
+  "Obsidian reads HTML, autolinks, wiki links, comments, math, links, emphasis, strikethrough, and highlights before a code span; the check does not";
 const htmlBlock = "the check does not read HTML blocks";
 
 export const codeCases: Readonly<Record<string, CodeCase>> = {
@@ -342,6 +342,37 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
     code: false,
     limit: readFirst,
   },
+  "a backtick in a link's address": {
+    note: "[x](y`) HERE`",
+    code: false,
+    limit: readFirst,
+  },
+  "a backtick in emphasis": {
+    note: "*`a* HERE`",
+    code: false,
+    limit: readFirst,
+  },
+  "a backtick in strong emphasis": {
+    note: "**`a** HERE`",
+    code: false,
+    limit: readFirst,
+  },
+  "a backtick in strong emphasis, over lines": {
+    note: "**`a\nHERE**`",
+    code: false,
+    limit: readFirst,
+  },
+  "a backtick in strikethrough": {
+    note: "~~`a~~ HERE`",
+    code: false,
+    limit: readFirst,
+  },
+  "a backtick in a highlight": {
+    note: "==`a== HERE`",
+    code: false,
+    limit: readFirst,
+  },
+  "a span in strong emphasis": { note: "**`a HERE` b**", code: true },
   "a span into an HTML block": {
     note: "`first\n<div>\nHERE`",
     code: false,
