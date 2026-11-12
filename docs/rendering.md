@@ -78,7 +78,11 @@ the height left over, which keeps its baseline on the text's. A line can't break
 inside a symbol as it can inside a long word, and a symbol that overflowed would
 be cut off at a preview's or a page's edge. In 0.9.2 only its width gave way, so
 such a symbol showed squeezed sideways. An image with an explicit size is as
-wide as Obsidian makes it.
+wide as Obsidian makes it. A snippet that gives `img.inkline-symbol` a width of
+its own gets the same: the ink whole and in its own shape, at the left of the
+box and three quarters of the way down, rather than stretched to fill it. A
+symbol that fits is drawn as before to within a pixel: exactly where its box
+lands on whole pixels, and elsewhere with its ink up to half a pixel off.
 
 With text colour on, Inkline's styles paint the ink with
 `background-color: currentColor`. To colour symbols differently from the text

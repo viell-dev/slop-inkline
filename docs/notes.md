@@ -23,6 +23,8 @@ hover previews, text cards on a canvas, and popout windows.
 - **Unreleased:** a symbol wider than the space it is in, as a very wide one can
   be in a hover preview, a table cell, a narrow pane, or a PDF page, shrinks
   evenly to fit, whole and on the baseline, rather than being squeezed sideways.
+  It still takes the whole width of that space, so in Live Preview a click
+  beside its ink on that line selects the symbol.
 - **Hovering** a symbol shows its name, or what its embed's alias or alt text
   says; screen readers read it too.
 - **A symbol file shown on its own**, in its own tab or as an image on a canvas,
