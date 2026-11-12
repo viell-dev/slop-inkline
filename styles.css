@@ -671,7 +671,7 @@ ruby.inkline-ruby > rt {
  * only as the line's own child: inside a word it would stack.
  */
 .cm-line .inkline-word > .internal-embed.image-embed {
-  display: inline-block;
+  display: inline-flex;
 }
 
 .inkline-word[data-inkline-over]::before,
@@ -679,8 +679,6 @@ ruby.inkline-ruby > rt {
 .inkline-glyph[data-inkline-over]::before,
 .inkline-glyph[data-inkline-under]::after {
   display: table-caption;
-  /* Keeps neighbouring words' values apart. */
-  padding: 0 0.3em;
   color: var(--text-muted);
   font-size: 0.5em;
   font-style: normal;
@@ -689,6 +687,12 @@ ruby.inkline-ruby > rt {
   text-align: center;
   white-space: nowrap;
   unicode-bidi: isolate;
+}
+
+/* Keeps neighbouring words' values apart, not a word's own symbols. */
+.inkline-word[data-inkline-over]::before,
+.inkline-word[data-inkline-under]::after {
+  padding: 0 0.3em;
 }
 
 .inkline-word[data-inkline-over]::before {

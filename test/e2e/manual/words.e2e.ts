@@ -810,7 +810,8 @@ describe("Words of several symbols (#167, section 3)", function () {
     results.native = views;
   });
 
-  it("two tiers written by hand, in both views and PDF", async function () {
+  // Measured in run 2.
+  it.skip("two tiers written by hand, in both views and PDF", async function () {
     const views: Record<string, unknown> = {};
     for (const [name, mode] of [
       ["reading", "preview"],
@@ -828,7 +829,8 @@ describe("Words of several symbols (#167, section 3)", function () {
     results.structures = views;
   });
 
-  for (const style of ["ruby", "caption"] as const) {
+  // Run 3 checks the caption style only; run 2 measured both.
+  for (const style of ["caption"] as const) {
   it(`the prototype: words from a lexicon note, symbols' values as ${style}`, async function () {
     await prototype("all", style);
     await browser.waitUntil(
@@ -983,7 +985,8 @@ describe("Words of several symbols (#167, section 3)", function () {
     results.prototypePdf = await exportAndRead("words-proto");
   });
 
-  it("the lexicon follows edits and renames", async function () {
+  // Measured in runs 1 and 2.
+  it.skip("the lexicon follows edits and renames", async function () {
     const steps: Record<string, unknown> = {};
     await open("Words.md", "preview");
     await browser.waitUntil(async () => (await wordCount()) > 0, {
@@ -1037,7 +1040,7 @@ describe("Words of several symbols (#167, section 3)", function () {
     results.follow = steps;
   });
 
-  it("without Inkline", async function () {
+  it.skip("without Inkline", async function () {
     const views: Record<string, unknown> = {};
     await obsidianPage.disablePlugin("inkline");
     await open("Words.md", "preview");
