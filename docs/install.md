@@ -179,7 +179,9 @@ when Inkline is on again.
 **Unreleased:** turning Inkline off also closes **Inkline: Insert existing
 symbol**, and stops a rename or a change of readings and translations that the
 library is still saving, with a notice saying so, so that you can make it again
-once Inkline is on.
+once Inkline is on. A rename that Obsidian has not begun, from the library or
+the editor, stops at once even if it is waiting for Obsidian to index the vault
+or finish another rename.
 
 If you installed Inkline with BRAT, also remove `viell-dev/slop-inkline` from
 the **Beta plugin list** in BRAT's settings, with its **×** button, twice: BRAT

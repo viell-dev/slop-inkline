@@ -55,8 +55,9 @@ library's row closed before its save was done, as when Inkline is turned off or
 the library is closed while the save waits, and the reason says why it was not
 written. Open the symbol's readings and translations in the library again, and
 save them once more. A rename that the library had not yet handed to Obsidian
-when Inkline was turned off says "… could not be renamed to …: Inkline was
-disabled" the same way, and renames nothing.
+when Inkline was turned off, even one waiting for Obsidian to finish another
+rename, says "… could not be renamed to …: Inkline was disabled" the same way,
+at once, and renames nothing.
 
 **"… is saved, but could not be renamed: …"** The drawing is saved under the old
 name, and the new name stays in the editor's name field, for the next save to
