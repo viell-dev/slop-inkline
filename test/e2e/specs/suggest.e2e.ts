@@ -186,6 +186,9 @@ const contexts: [string, string, boolean][] = [
   ["Escaped", "A \\`not code\nHERE` here.\n", true],
   ["Unmatched", "A `not code\nHERE here.\n", true],
   ["Unmatched run", "A ``not code\nHERE` here.\n", false],
+  // A callout's title line is read on its own.
+  ["Callout", "> [!note] A `title\n> with `code HERE` here.\n", false],
+  ["Callout's text", "> [!note] A `title\n> and text HERE` here.\n", true],
   // A fenced code block in a quote ends with the quote.
   ["Quote", "> ```\n> sample\n\nHERE\n", true],
   ["Nested quote", "> > ```\n> > sample\n>\n> HERE\n", true],

@@ -78,6 +78,14 @@ describe("insideCode", () => {
     expect(hereInCode("```\r\na\r\n```\r\nHERE")).toBe(false);
   });
 
+  it("reads titles nested in titles as deep as a line goes", () => {
+    // Each title is a callout's title line in turn. Read by recursion, a
+    // call for each, these would overflow the stack.
+    const line = `${"> [!a] ".repeat(20_000)}\`HERE\``;
+    expect(hereInCode(line)).toBe(true);
+    expect(insideCodeBlock(note(line), 0)).toBe(false);
+  });
+
   it("reads a long note's lines once each, and no further than needed", () => {
     const lines = Array.from(
       { length: 4000 },
@@ -176,6 +184,16 @@ describe("insideCodeBlock", () => {
     expect(insideCodeBlock(note("  ```\n;;a"), 1)).toBe(true);
     // Backticks in the info string make it text.
     expect(insideCodeBlock(note("``` a`b\n;;a"), 1)).toBe(false);
+  });
+
+  it("reads a callout's title as a note of one line", () => {
+    // A title that opens a fence or is indented as code is a code block,
+    // which ends with the title line.
+    const fenced = note("> [!note] ```\n> ![[a.ink.png]]");
+    expect(insideCodeBlock(fenced, 0)).toBe(true);
+    expect(insideCodeBlock(fenced, 1)).toBe(false);
+    expect(insideCodeBlock(note("> [!note]     ![[a.ink.png]]"), 0)).toBe(true);
+    expect(insideCodeBlock(note("> [!note] ![[a.ink.png]]"), 0)).toBe(false);
   });
 
   it("ends a fence in a quote or list item with it", () => {
