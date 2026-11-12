@@ -27,6 +27,14 @@ import {
   type EditorHost,
 } from "./notes/symbols.ts";
 import { SymbolTextIndex } from "./notes/text-index.ts";
+import type { EditorView } from "@codemirror/view";
+import {
+  LexiconIndex,
+  refreshWords,
+  symbolPath,
+  wordsExtension,
+} from "./notes/words.ts";
+import { segment, type Piece } from "./render/words.ts";
 import { SymbolRenderer } from "./render/symbols.ts";
 import { brushSizes } from "./editor/session.ts";
 import { InklineSettingTab } from "./settings-tab.ts";
@@ -272,20 +280,32 @@ export default class InklinePlugin extends Plugin {
         ? Reflect.get(data, "rubyPrototype")
         : undefined;
     if (mode !== "all" && mode !== "note") return;
-    const bySource = (src: string): TFile | undefined => {
-      const address = src.split(/[?#]/, 1)[0];
-      return this.app.vault
-        .getFiles()
-        .find(
-          (file) =>
-            isInkPath(file.path) &&
-            this.app.vault.getResourcePath(file).split(/[?#]/, 1)[0] ===
-              address,
-        );
+    // Symbol files by the address of their images, made again on a change.
+    let addresses: Map<string, string> | undefined;
+    const fileOf = (src: string): string | undefined => {
+      if (addresses === undefined) {
+        addresses = new Map();
+        for (const file of this.app.vault.getFiles()) {
+          if (!isInkPath(file.path)) continue;
+          addresses.set(
+            this.app.vault.getResourcePath(file).split(/[?#]/, 1)[0] ?? "",
+            file.path,
+          );
+        }
+      }
+      return addresses.get(src.split(/[?#]/, 1)[0] ?? "");
     };
+    const forget = (): void => {
+      addresses = undefined;
+    };
+    this.registerEvent(this.app.vault.on("create", forget));
+    this.registerEvent(this.app.vault.on("delete", forget));
+    this.registerEvent(this.app.vault.on("rename", forget));
     this.#renderer.annotateWith((src) => {
-      const file = bySource(src);
-      if (file === undefined) return undefined;
+      const path = fileOf(src);
+      const file =
+        path === undefined ? null : this.app.vault.getFileByPath(path);
+      if (file === null) return undefined;
       const text = this.#texts.textOf(file)?.text;
       if (text === undefined) return undefined;
       return {
@@ -295,6 +315,82 @@ export default class InklinePlugin extends Plugin {
           : { translation: text.translation[0] }),
       };
     }, `inkline-ruby-${mode}`);
+    // Words: a lexicon kept as notes, grouped in every view.
+    const views = new Set<EditorView>();
+    const lexicon = new LexiconIndex(this.app, () => {
+      this.#renderer.retag();
+      for (const view of views) {
+        view.dispatch({ effects: refreshWords.of(null) });
+      }
+    });
+    this.#prototypeLexicon = lexicon;
+    this.register(() => {
+      lexicon.stop();
+    });
+    this.#renderer.wordsWith({ fileOf, lexicon: () => lexicon.lexicon }, (link) => {
+      const path = symbolPath(
+        this.app,
+        link,
+        this.app.workspace.getActiveFile()?.path ?? "",
+      );
+      const file =
+        path === undefined ? null : this.app.vault.getFileByPath(path);
+      return file === null ? undefined : this.app.vault.getResourcePath(file);
+    });
+    this.registerEditorExtension(
+      wordsExtension(
+        () => lexicon.lexicon,
+        (link, from) => symbolPath(this.app, link, from),
+        views,
+      ),
+    );
+    this.registerEvent(
+      this.app.metadataCache.on("changed", (file, _data, cache) => {
+        if (lexicon.concerns(file, cache)) lexicon.schedule();
+      }),
+    );
+    this.registerEvent(
+      this.app.vault.on("rename", () => {
+        lexicon.schedule();
+      }),
+    );
+    this.registerEvent(
+      this.app.vault.on("delete", () => {
+        lexicon.schedule();
+      }),
+    );
+    this.app.workspace.onLayoutReady(() => {
+      lexicon.schedule();
+    });
+    this.registerEvent(
+      this.app.metadataCache.on("resolved", () => {
+        lexicon.schedule();
+      }),
+    );
+  }
+
+  /** PROTOTYPE: the lexicon, if the prototype runs. */
+  #prototypeLexicon: LexiconIndex | undefined;
+
+  /** PROTOTYPE, for the investigation's spec: what the lexicon holds. */
+  prototypeWords(paths: readonly string[] = []): {
+    entries: [string, unknown][];
+    longest: number;
+    builds: number[];
+    pieces: Piece[];
+  } {
+    const index = this.#prototypeLexicon;
+    if (index === undefined) {
+      return { entries: [], longest: 0, builds: [], pieces: [] };
+    }
+    return {
+      entries: Array.from(index.lexicon.entries.entries()).map(
+        ([key, entry]) => [key.split(String.fromCharCode(0)).join(" + "), entry],
+      ),
+      longest: index.lexicon.longest,
+      builds: index.builds,
+      pieces: segment(paths, index.lexicon),
+    };
   }
 
   /** Has open libraries show what the index has since read. */

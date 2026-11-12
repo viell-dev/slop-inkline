@@ -11,6 +11,7 @@ import {
   isSymbolUrl,
   symbolName,
 } from "./layout.ts";
+import { groupWords, ungroupWords, type WordSource } from "./words.ts";
 
 /** The class a symbol's image gets, which styles.css styles. */
 export const symbolClass = "inkline-symbol";
@@ -99,11 +100,22 @@ function wrapRuby(
   return ruby;
 }
 
+/** PROTOTYPE: whether `image` is inside ruby that a note's author wrote. */
+function inAuthorRuby(image: HTMLImageElement): boolean {
+  for (let at = image.closest("ruby"); at !== null; ) {
+    if (!at.hasClass(rubyClass)) return true;
+    at = at.parentElement?.closest("ruby") ?? null;
+  }
+  return false;
+}
+
 /** PROTOTYPE: gives `image` the ruby `annotation` asks for, or none. */
 function annotateImage(
   image: HTMLImageElement,
-  annotation: Annotation | undefined,
+  given: Annotation | undefined,
 ): void {
+  // The author's own ruby says what they want there.
+  const annotation = inAuthorRuby(image) ? undefined : given;
   const reading = annotation?.reading ?? "";
   const translation = annotation?.translation ?? "";
   const key = `${reading}\u0000${translation}`;
@@ -303,6 +315,10 @@ export class SymbolRenderer {
   #annotate: Annotate | undefined;
   /** PROTOTYPE: a class for every watched document's root, if any. */
   #rubyRoot = "";
+  /** PROTOTYPE: where words come from, if shown. */
+  #words: WordSource | undefined;
+  /** PROTOTYPE: the address of a symbol a link inside HTML names, if one. */
+  #resolve: ((link: string) => string | undefined) | undefined;
 
   constructor(vault: string) {
     this.#vault = vault;
@@ -349,7 +365,67 @@ export class SymbolRenderer {
   /** PROTOTYPE: tags every watched image again, as what they say changed. */
   retag(): void {
     for (const doc of this.#watching.keys()) {
+      this.#showEmbedsInHtml(doc.body);
       tagWithin(doc.body, this.#vault, this.#annotate);
+      if (this.#words !== undefined) groupWords(doc.body, this.#words);
+    }
+  }
+
+  /**
+   * PROTOTYPE: groups words from `words`, and shows symbols that a link
+   * inside inline HTML in Live Preview names, through `resolve`.
+   */
+  wordsWith(
+    words: WordSource | undefined,
+    resolve: ((link: string) => string | undefined) | undefined,
+  ): void {
+    this.#words = words;
+    this.#resolve = resolve;
+    this.retag();
+  }
+
+  /**
+   * PROTOTYPE: Live Preview shows inline HTML as a widget of the HTML alone,
+   * where `![[x.ink.png]]` stays text. Puts the symbol's image in its place,
+   * as Reading view would.
+   */
+  #showEmbedsInHtml(root: Node): void {
+    const resolve = this.#resolve;
+    if (resolve === undefined || !root.instanceOf(Element)) return;
+    const widgets = root.matches(".cm-html-embed")
+      ? [root]
+      : Array.from(root.querySelectorAll(".cm-content .cm-html-embed"));
+    const closest = root.closest(".cm-html-embed");
+    if (closest !== null) widgets.push(closest);
+    for (const widget of widgets) {
+      const doc = widget.ownerDocument;
+      const walker = doc.createTreeWalker(widget, NodeFilter.SHOW_TEXT);
+      const texts: Text[] = [];
+      for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+        if (node.instanceOf(Text)) texts.push(node);
+      }
+      for (const text of texts) {
+        const value = text.nodeValue ?? "";
+        const pattern = /!\[\[([^\[\]|#^]+?)(?:#[^\[\]|]*)?(?:\|([^\[\]]*))?\]\]/g;
+        let last = 0;
+        const parts: Node[] = [];
+        for (const match of value.matchAll(pattern)) {
+          const link = match[1] ?? "";
+          const src = resolve(link);
+          if (src === undefined) continue;
+          parts.push(doc.createTextNode(value.slice(last, match.index)));
+          const image = doc.createElement("img");
+          image.setAttribute("src", src);
+          image.setAttribute("alt", match[2] ?? link);
+          image.addClass("inkline-html-image");
+          image.setAttribute("data-inkline-source", match[0]);
+          parts.push(image);
+          last = match.index + match[0].length;
+        }
+        if (parts.length === 0) continue;
+        parts.push(doc.createTextNode(value.slice(last)));
+        text.replaceWith(...parts.filter((part) => part.nodeValue !== ""));
+      }
     }
   }
 
@@ -376,16 +452,29 @@ export class SymbolRenderer {
     if (view === null || view.closed) return;
     this.#configureDocument(doc);
     const observer = new view.MutationObserver((records) => {
+      const changed: Node[] = [];
       for (const record of records) {
         if (record.type === "attributes") {
           if (record.target.instanceOf(HTMLImageElement)) {
             tagImage(record.target, this.#vault, this.#annotate);
+            changed.push(record.target);
           }
           continue;
         }
         for (const node of Array.from(record.addedNodes)) {
+          this.#showEmbedsInHtml(node);
           tagWithin(node, this.#vault, this.#annotate);
+          changed.push(node);
         }
+      }
+      // PROTOTYPE: words, once their symbols are tagged.
+      const words = this.#words;
+      if (words !== undefined) {
+        for (const node of changed) {
+          if (node.isConnected) groupWords(node, words);
+        }
+        // What grouping moved is grouped already.
+        observer.takeRecords();
       }
     });
     observer.observe(doc.body, {
@@ -404,7 +493,9 @@ export class SymbolRenderer {
       observer.disconnect();
       view.removeEventListener("unload", closed);
     });
+    this.#showEmbedsInHtml(doc.body);
     tagWithin(doc.body, this.#vault, this.#annotate);
+    if (this.#words !== undefined) groupWords(doc.body, this.#words);
   }
 
   /** Stops tagging symbols in `doc`, and untags those it has. */
@@ -416,7 +507,15 @@ export class SymbolRenderer {
     doc.documentElement.style.removeProperty("--inkline-scale");
     doc.documentElement.removeClass("inkline-stored-color");
     if (this.#rubyRoot !== "") doc.documentElement.removeClass(this.#rubyRoot);
+    ungroupWords(doc);
     for (const image of Array.from(doc.getElementsByTagName("img"))) {
+      // PROTOTYPE: images Inkline put into Live Preview's HTML go again.
+      if (image.hasClass("inkline-html-image")) {
+        image.replaceWith(
+          doc.createTextNode(image.getAttribute("data-inkline-source") ?? ""),
+        );
+        continue;
+      }
       untagImage(image);
     }
   }

@@ -649,3 +649,57 @@ ruby.inkline-ruby > rt {
 .inkline-ruby-note .inkline-readings ruby.inkline-ruby > rt {
   display: revert;
 }
+
+/*
+ * PROTOTYPE for #167, section 3, not for release: a word of several
+ * symbols. Its element is an inline table, whose baseline is its first row's,
+ * the symbols' own, so they stay on the text's baseline; the word's meaning is
+ * a caption under it and a reading the lexicon gives a caption over it. A
+ * table is at least as wide as its caption, so a long meaning widens the word
+ * rather than running into the next one. The values are generated content,
+ * which selections and copies leave out.
+ */
+.inkline-word {
+  display: inline-table;
+  text-align: center;
+  text-indent: 0;
+}
+
+.inkline-word[data-inkline-over]::before,
+.inkline-word[data-inkline-under]::after {
+  display: table-caption;
+  color: var(--text-muted);
+  font-size: 0.5em;
+  font-style: normal;
+  font-weight: var(--font-normal);
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  unicode-bidi: isolate;
+}
+
+.inkline-word[data-inkline-over]::before {
+  content: attr(data-inkline-over);
+  caption-side: top;
+}
+
+.inkline-word[data-inkline-under]::after {
+  content: attr(data-inkline-under);
+  caption-side: bottom;
+}
+
+/* The word's own values stand for its symbols'. */
+.inkline-word[data-inkline-over] ruby.inkline-ruby-over > rt,
+.inkline-word[data-inkline-under] ruby.inkline-ruby-under > rt {
+  display: none;
+}
+
+.inkline-ruby-note .inkline-word::before,
+.inkline-ruby-note .inkline-word::after {
+  display: none;
+}
+
+.inkline-ruby-note .inkline-readings .inkline-word::before,
+.inkline-ruby-note .inkline-readings .inkline-word::after {
+  display: table-caption;
+}
