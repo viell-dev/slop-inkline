@@ -157,7 +157,7 @@ and run it in the Docker image:
 docker build --file test/e2e/Dockerfile --tag inkline-e2e .
 docker run --rm --init --shm-size=1g \
   --env E2E_PLUGIN_DIR=/brat \
-  --env E2E_BRAT_LATEST=0.9.2 --env E2E_BRAT_START=0.9.1 \
+  --env E2E_BRAT_LATEST=0.9.3 --env E2E_BRAT_START=0.9.2 \
   --volume inkline-obsidian-cache:/cache \
   --volume "$PWD/test-results/e2e:/out" --volume "$PWD/brat:/brat:ro" \
   inkline-e2e --spec test/e2e/manual/brat.e2e.ts
@@ -170,7 +170,8 @@ earlier version, it keeps the pixels, the note, and the preferences: the symbol
 opens as a picture to draw over, and the draft is dropped, as
 [the install guide](https://viell-dev.github.io/slop-inkline/install#update)
 says. So checking that strokes and a draft survive needs two published releases
-from `0.9.2` on.
+from `0.9.2` on, as the pair above is: `0.9.2` and `0.9.3` passed it on
+2026-11-12.
 
 Before any request, the check refuses a missing version, a latest one before
 `0.9.2`, and a start that is not earlier than the latest. Before BRAT's
