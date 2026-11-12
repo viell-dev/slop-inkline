@@ -104,6 +104,9 @@ must keep released files readable and looking the same, as
   no strokes opened as a picture, and says nothing of one whose record holds
   none
   ([editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)).
+- A picture to trace over, chosen with **Choose picture…** from a folder outside
+  the vault, shows on the drawing area, and puts no file in the vault
+  ([choose-picture.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/choose-picture.e2e.ts)).
 
 ### Symbols read as characters
 
@@ -205,6 +208,19 @@ must keep released files readable and looking the same, as
   first save that an interruption cut short finished from its draft (the same
   file, and
   [drafts.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/drafts.test.ts)).
+- **Unreleased:** a draft's base layer dropped from storage as soon as the draft
+  that replaces it is kept, and never before: kept when storage refuses the
+  replacement, and while another draft names it, a held one, a restored one, or
+  another editor's; and stored once when a stroke keeps a draft while it is
+  being stored ahead of a save. With room for two pictures in Obsidian's own
+  local storage, a draft is kept through copy after copy
+  ([base-memory.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/base-memory.e2e.ts)
+  and
+  [drafts.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/drafts.test.ts)).
+- **Unreleased:** a decoded base layer kept while Undo or Redo can reach it, and
+  shown again by them, and let go after a new change past an Undo, by a copy or
+  a stroke, and once it is further back than Undo goes
+  ([base-memory.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/base-memory.e2e.ts)).
 - A file changed on disk while the editor is open: taken in, asked about,
   reloaded with the drawing one undo away, never saved over when it cannot be
   read, and saved again where it was if deleted (the same file, and
@@ -232,7 +248,8 @@ must keep released files readable and looking the same, as
   and found again after the text moved
   ([editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)).
   Type to insert lists nothing in code or front matter, and the links it writes
-  lead back to their symbols
+  lead back to their symbols, from a note in a folder too, as paths from there
+  when Obsidian writes relative Markdown links
   ([suggest.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/suggest.e2e.ts)).
   What it counts as code is checked against how Obsidian renders a set of
   synthetic notes, in Obsidian and in unit tests, and against CommonMark for
@@ -448,8 +465,9 @@ drawing while **Copy from** or **Reload** reads.
 - Installing and updating through BRAT, an optional third-party route, has a
   separate check against the published releases. BRAT's own dialog installs the
   highest release and a chosen one, downloading only the three plugin files, and
-  an update from one to the other keeps the drawing, note and preferences, and
-  an open drawing as a draft
+  an update from one to the other keeps the drawing, note and preferences. From
+  0.9.2 on it keeps the strokes and an open drawing's draft too; from an earlier
+  release the symbol opens as a picture and the draft is dropped
   ([brat.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/manual/brat.e2e.ts)).
   It needs BRAT's release and GitHub, so it is run by hand and gates no release.
 - A publication that fails part way can run again without replacing anything
@@ -474,7 +492,9 @@ drawing while **Copy from** or **Reload** reads.
   Obsidian's
   ([version.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/version.test.ts)).
 - This site's commands, keys, defaults, Obsidian version, links, and example
-  embeds agree with the code
+  embeds agree with the code, as do the links, Obsidian and Node.js versions,
+  command names, and examples of the repository's own documents, and the
+  versions its BRAT recipe names
   ([docs.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/docs.test.ts)),
   and what deploys follows [Versions of this site](./versions.md)
   ([docs-source.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/docs-source.test.ts)).
@@ -509,6 +529,9 @@ the individual pull requests hold the inputs, results, and review discussion.
   attestations, then extracts the published ZIP and compares its files with the
   loose assets. This verifies our manual installation channel. It does not audit
   or endorse third-party installer plugins.
+- Memory is checked as whether anything can still reach a decoded base layer
+  once garbage is collected, not as how much memory Obsidian or its GPU process
+  uses.
 - The budgets are wall-clock times. Each leaves room for a slow machine, but
   heavy work beside a run can still exceed one; such a failure is investigated,
   not run again until it passes.

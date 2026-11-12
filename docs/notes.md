@@ -240,11 +240,25 @@ while its name is being edited cannot rename the replacement.
 [renaming in the editor](./drawing.md#the-name) does. If a note cannot be saved,
 the row says which one, and nothing is renamed.
 
+**Unreleased:** saving the notes can take a moment on a slow disk, and Obsidian
+makes a rename wait while it indexes notes, such as those just saved, or
+finishes another rename. The symbol is checked again once both are done, and
+Obsidian begins to move it in that same step. A symbol deleted and replaced
+meanwhile, or renamed elsewhere, is not renamed, and nor is one whose new name
+another symbol has taken meanwhile. The row says why and keeps the name you
+typed, and **Save** tries again, from the name the symbol has now. A symbol
+renamed elsewhere keeps the links that rename left: Obsidian's file explorer
+updates them as its settings say, but a rename by sync or another app leaves
+notes embedding the old name. A change that reaches the file at the very moment
+Obsidian moves it, such as one by another app, is not refused but reported: the
+row says what happened and where the symbol is, as
+[the limits](./limits.md#a-file-changed-as-obsidian-renames-it) describe.
+
 A rename can take a while in a much used symbol, as Obsidian updates each note
-that links to it, and for as long as you take over its question about links.
-Neither is a problem, and the row says nothing of them. If it stops, as on a
-drive that stops answering, the row says so after a few seconds, and **Cancel**
-or Esc close it; see
+that links to it, and for as long as you take over any rename's question about
+links. Neither is a problem, and the row says nothing of them. If it stops, as
+on a drive that stops answering, the row says so after a few seconds, and
+**Cancel** or Esc close it; see
 [what is kept](./limits.md#a-file-written-at-the-moment-inkline-saves).
 
 The list follows files and their links as they change. Obsidian's backlinks for

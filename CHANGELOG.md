@@ -24,6 +24,49 @@ even one a public release; earlier pre-releases carry a suffix such as
   own line, nor after a run of backticks that only a shorter run closes, and it
   reads each of a table's cells on its own. **Inkline: Edit symbol** is not
   offered on an embed in an indented code block, which shows it as text.
+- A rename, from the library or the editor, no longer renames another file when
+  the symbol is deleted and a file is put at its path while the rename saves the
+  open notes or the drawing, or while Obsidian finishes indexing the vault or
+  another rename before it moves the file. The symbol is checked again once
+  nothing is left to wait for, and Obsidian begins to move it in that same step.
+  A symbol deleted, replaced, or renamed elsewhere meanwhile, or whose new name
+  another symbol has taken, is not renamed: the name you typed stays to try
+  again. A change that still reaches the file before Obsidian moves it, such as
+  one made outside Obsidian at that moment, is reported with where the symbol is
+  now, rather than taken for a rename that went well
+  ([#218](https://github.com/viell-dev/slop-inkline/issues/218)).
+- Text typed in a note while a rename saves the other open notes is saved too
+  before the rename, so that Obsidian's update of the links can't write over it
+  ([#218](https://github.com/viell-dev/slop-inkline/issues/218)).
+- `COM¹`, `COM²`, `COM³`, `LPT¹`, `LPT²`, and `LPT³`, which Windows keeps for
+  its ports as it keeps `COM1`, are refused as a symbol's or a folder's name,
+  with an extension too. A symbol that already has such a name keeps it when
+  saved ([#225](https://github.com/viell-dev/slop-inkline/issues/225)).
+- A draft is no longer refused for room that pictures no draft needs take up.
+  Each **Copy from**, **Make ink**, or reload that gave the drawing a new base
+  layer kept the old one's picture in the vault's local storage too, until
+  Inkline next looked for drafts to offer, so a few of them in one editor could
+  fill it. The old picture now goes as soon as the draft that replaces it is
+  kept, and never before
+  ([#223](https://github.com/viell-dev/slop-inkline/issues/223)).
+- The editor no longer keeps every base layer it has shown in memory until it
+  closes. One that Undo and Redo can no longer reach, after a new change past an
+  Undo or once it is further back than Undo goes, is let go
+  ([#224](https://github.com/viell-dev/slop-inkline/issues/224)).
+- The guide said that symbols keep showing in other Markdown apps and on GitHub,
+  but those show Obsidian's own embed, such as `![[tower.ink.png]]`, as text.
+  [Without Inkline](https://viell-dev.github.io/slop-inkline/without-inkline#in-other-apps)
+  now says what another app needs, with the Obsidian settings that write such
+  links and an example from a note in a folder
+  ([#231](https://github.com/viell-dev/slop-inkline/issues/231)).
+- The description prepared for Obsidian's community directory said that Inkline
+  reads nothing outside your vault. It now says that it keeps drafts in
+  Obsidian's storage on your computer, and reads nothing else unless you choose,
+  drop, or paste a picture to trace over, which can come from anywhere. The
+  security policy says the same
+  ([#233](https://github.com/viell-dev/slop-inkline/issues/233)).
+- The README starts with installing Inkline and drawing a first symbol
+  ([#232](https://github.com/viell-dev/slop-inkline/issues/232)).
 
 ## 0.9.2 - 2026-11-07
 
@@ -541,7 +584,7 @@ Public stable publication remains on hold, as the earlier
 ### Changed
 
 - Releases are alphas for now, and until the first stable release the
-  [file format](https://viell-dev.github.io/slop-inkline/file-format#compatibility)
+  [file format](https://viell-dev.github.io/slop-inkline/file-format#versions)
   is a draft: a later alpha may change what symbol files hold, and need not open
   files an earlier one saved. The changelog says when that happens; this alpha
   opens every file the earlier releases saved.

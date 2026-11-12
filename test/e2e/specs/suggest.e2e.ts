@@ -79,18 +79,29 @@ async function waitForNote(text: string): Promise<void> {
   }
 }
 
+/** Sets one of Obsidian's own settings for links, which its API does not expose. */
+async function setLinkSetting(
+  key: "useMarkdownLinks" | "newLinkFormat",
+  value: unknown,
+): Promise<void> {
+  await browser.executeObsidian(
+    ({ app }, name, setting) => {
+      const vault: object = app.vault;
+      const settable = (
+        candidate: object,
+      ): candidate is { setConfig(key: string, value: unknown): void } =>
+        "setConfig" in candidate && typeof candidate.setConfig === "function";
+      if (!settable(vault)) throw new Error("Obsidian has no setConfig");
+      vault.setConfig(name, setting);
+    },
+    key,
+    value,
+  );
+}
+
 /** Turns Obsidian's Markdown links on or off, in place of wiki links. */
 async function useMarkdownLinks(on: boolean): Promise<void> {
-  await browser.executeObsidian(({ app }, value) => {
-    // Obsidian's own setting, which its API does not expose.
-    const vault: object = app.vault;
-    const settable = (
-      candidate: object,
-    ): candidate is { setConfig(key: string, value: unknown): void } =>
-      "setConfig" in candidate && typeof candidate.setConfig === "function";
-    if (!settable(vault)) throw new Error("Obsidian has no setConfig");
-    vault.setConfig("useMarkdownLinks", value);
-  }, on);
+  await setLinkSetting("useMarkdownLinks", on);
 }
 
 /** Adds symbols at `paths`, each the synthetic symbol. */
@@ -527,6 +538,56 @@ describe("Inserting a symbol you have", function () {
     } finally {
       await useMarkdownLinks(false);
       await deleteFiles(odd);
+    }
+  });
+
+  it("inserts a path from a note's folder when Obsidian writes relative links", async function () {
+    // As Without Inkline gives it, for apps that read a path from the note.
+    await useMarkdownLinks(true);
+    await setLinkSetting("newLinkFormat", "relative");
+    try {
+      await browser.executeObsidian(async ({ app }) => {
+        await app.vault.createFolder("Notes");
+        await app.vault.create("Notes/Relative.md", "The door reads HERE.\n");
+      });
+      await openAtMarker("Notes/Relative.md", "HERE");
+      await type(";;tower o");
+      await waitForSuggested(["tower one"]);
+      await browser.keys(["Enter"]);
+      await waitForNote("The door reads ![](../Glyphs/tower%20one.ink.png).\n");
+      await browser.executeObsidian(async ({ app, obsidian }) => {
+        await app.workspace.getActiveViewOfType(obsidian.MarkdownView)?.save();
+      });
+      // Obsidian leads it to the symbol, and Inkline shows it as one.
+      await browser.waitUntil(
+        async () =>
+          browser.executeObsidian(
+            ({ app }) =>
+              app.metadataCache.resolvedLinks["Notes/Relative.md"]?.[
+                "Glyphs/tower one.ink.png"
+              ] === 1,
+          ),
+        { timeoutMsg: "Obsidian did not resolve the relative link" },
+      );
+      await browser.waitUntil(
+        async () =>
+          browser.execute(() =>
+            Array.from(
+              activeDocument.querySelectorAll<HTMLImageElement>(
+                ".workspace-leaf.mod-active .markdown-source-view img.inkline-symbol",
+              ),
+            ).some(
+              (image) =>
+                image.src.includes("tower%20one") &&
+                image.complete &&
+                image.naturalWidth > 0,
+            ),
+          ),
+        { timeoutMsg: "the note does not show the symbol" },
+      );
+    } finally {
+      await setLinkSetting("newLinkFormat", "shortest");
+      await useMarkdownLinks(false);
     }
   });
 });
