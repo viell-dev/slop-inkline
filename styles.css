@@ -293,9 +293,24 @@ img.inkline-symbol {
   vertical-align: var(--inkline-drop, calc(-0.375em * var(--inkline-scale, 1)));
 }
 
+/*
+ * A symbol can't break across lines as a long word does, so one wider than
+ * its space, as one near the widest a file can be is in a hover preview, a
+ * table cell, or a narrow pane, shrinks evenly to fit it (#241). Its box
+ * takes the space's width and keeps the line's height, and its ink is drawn
+ * in that box whole and smaller: three quarters of the way down the height
+ * left over, as its baseline is three quarters of the way down it, so that
+ * the baseline stays on the text's. Overflowing would cut it off at a
+ * preview's or a page's edge, and shrinking only its width, as Obsidian's
+ * own max-width did, squeezed it.
+ */
 img.inkline-symbol:not([width], [height]) {
   width: auto;
+  max-width: 100%;
   height: calc(1.5em * var(--inkline-scale, 1));
+  object-fit: contain;
+  mask-size: contain;
+  mask-position: 0 75%;
 }
 
 /* Stored colour shows the PNG's own pixels, retaining the same layout. */
@@ -303,6 +318,10 @@ img.inkline-symbol:not([width], [height]) {
   background-color: transparent;
   mask-image: none;
   object-position: 50% 50%;
+}
+
+.inkline-stored-color img.inkline-symbol:not([width], [height]) {
+  object-position: 0 75%;
 }
 
 /*

@@ -125,6 +125,14 @@ must keep released files readable and looking the same, as
   settings are cleared on close. The test redirects the save dialog and
   suppresses the post-export viewer launch; the native PDF writer still runs
   ([pdf.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/pdf.e2e.ts)).
+- **Unreleased:** a symbol 4,000 pixels wide at the largest Symbol size, wider
+  than its space, keeps the proportions it was drawn in, within 5%, its baseline
+  on the text's, and its colour, in Reading view, Live Preview, table cells in
+  both, an embedded note, and a hover preview, in light and dark themes, in the
+  text colour and its stored colour, measured from screenshots
+  ([wide.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/wide.e2e.ts)),
+  and in a native PDF, in a heading where it is wider than the page, measured in
+  the rasterized page (pdf.e2e.ts).
 - Saving refreshes existing placements in Live Preview, Reading view and
   popouts, preserving note text, explicit widths and unrelated images. Names
   with spaces, percent signs and Unicode are covered, as are repeated file
@@ -512,8 +520,9 @@ the individual pull requests hold the inputs, results, and review discussion.
   they do not exercise operating-system file changes through its file watcher.
 - Obsidian's mobile apps are not tested, as Inkline does not support them.
 - Physical printer output is not checked. Native PDF export is covered on Linux
-  with default and explicitly sized embeds of one symbol; long notes containing
-  many different symbols are not covered by that fixture.
+  with default and explicitly sized embeds of one symbol, and, **Unreleased:**
+  one wider than the page; long notes containing many different symbols are not
+  covered by that fixture.
 - CI's runners have the DejaVu fonts, and the Docker image DejaVu and Noto; a
   theme's own font is checked through the guides' measurement, not by eye.
 - The release workflow checks the install ZIP's exact layout and bytes, extracts
