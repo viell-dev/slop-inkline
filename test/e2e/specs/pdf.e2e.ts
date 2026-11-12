@@ -577,9 +577,10 @@ describe("Native PDF export", function () {
         );
       }, toBase64(widePng()));
       await obsidianPage.openFile("Wide.md");
-      // Poppler draws the block's edges on whole pixels of the page, which at
-      // 96 DPI puts its height, 24 pixels there, out by up to 4%; at three
-      // times that, by about 1%.
+      // The PDF puts the shrunk mask on whole CSS pixels, 33 tall where 32.5
+      // is exact, which makes the ink 2% taller than its shape in these
+      // hosts. At 96 DPI Poppler puts the ink's edges, 24 pixels apart, on
+      // whole pixels too, as much again; at three times that, a third of it.
       const dpi = 288;
       const { snapshot, xml, raster } = await exportPdf(mode.name, dpi);
       /** A word's box in the page's pixels at that resolution. */
