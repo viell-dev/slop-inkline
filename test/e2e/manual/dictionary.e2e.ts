@@ -340,6 +340,9 @@ async function shoot(name: string): Promise<void> {
 
 async function createVault(): Promise<void> {
   await loadModules();
+  results.existing = await browser.executeObsidian(({ app }) =>
+    app.vault.getFiles().map((file) => file.path),
+  );
   await browser.executeObsidian(
     async ({ app }, all, notes) => {
       const { canvas, text } = window.inklineTest;
@@ -366,13 +369,16 @@ async function createVault(): Promise<void> {
         if (symbol.role.length > 0) {
           bytes = await text.writeKeyword(bytes, text.roleKeyword, symbol.role);
         }
-        await app.vault.createBinary(
-          `Glyphs/${symbol.name}.ink.png`,
-          bytes.slice().buffer,
-        );
+        const where = `Glyphs/${symbol.name}.ink.png`;
+        const there = app.vault.getFileByPath(where);
+        if (there === null) {
+          await app.vault.createBinary(where, bytes.slice().buffer);
+        } else await app.vault.modifyBinary(there, bytes.slice().buffer);
       }
       for (const [name, body] of Object.entries(notes)) {
-        await app.vault.create(name, body);
+        const there = app.vault.getFileByPath(name);
+        if (there === null) await app.vault.create(name, body);
+        else await app.vault.modify(there, body);
       }
     },
     symbols,
