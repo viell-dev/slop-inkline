@@ -1,0 +1,608 @@
+/* Inkline's styles. Released with main.js and manifest.json. */
+
+.inkline-editor {
+  width: min(960px, 92vw);
+}
+
+/* Obsidian's close control sits over the header's end. */
+.inkline-editor .modal-header {
+  padding-inline-end: var(--size-4-8);
+}
+
+/*
+ * The symbol's name, in the title's place and at its size, and beside it what
+ * shows its readings and translations, which adds no row to the editor.
+ */
+.inkline-editor .modal-title {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+}
+
+.inkline-editor .modal-title .inkline-name {
+  flex: 1 1 12em;
+  min-width: 0;
+  font: inherit;
+}
+
+.inkline-text-toggle {
+  flex: 0 1 auto;
+  display: flex;
+  gap: var(--size-4-3);
+  min-width: 0;
+  max-width: 50%;
+  height: auto;
+  padding: var(--size-4-1) var(--size-4-2);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-normal);
+  background: none;
+  box-shadow: none;
+}
+
+.inkline-text-toggle .inkline-values {
+  min-width: 0;
+  text-align: start;
+}
+
+.inkline-text-strip {
+  margin-bottom: var(--size-4-3);
+}
+
+.inkline-text-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12em, 1fr));
+  gap: var(--size-4-2);
+}
+
+.inkline-text-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-1);
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+/* Each line takes its own direction, as a field can hold two scripts. */
+.inkline-text-field textarea {
+  width: 100%;
+  resize: vertical;
+  unicode-bidi: plaintext;
+}
+
+.inkline-text-field textarea[aria-invalid="true"] {
+  border-color: var(--text-error);
+}
+
+.inkline-text-hint {
+  margin-top: var(--size-4-1);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.inkline-text-error {
+  color: var(--text-error);
+  overflow-wrap: anywhere;
+}
+
+.inkline-text-error:empty {
+  display: none;
+}
+
+/*
+ * A symbol's readings or translations, on one line. The row or the field for
+ * them has the whole of a list that this shortens.
+ */
+.inkline-values {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inkline-value-found {
+  color: var(--text-normal);
+  font-weight: var(--font-semibold);
+}
+
+.inkline-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-2);
+  margin-bottom: var(--size-4-3);
+}
+
+/* The toolbar's rows sit as close together as a row that wraps does. */
+.inkline-toolbar:has(+ .inkline-toolbar) {
+  margin-bottom: var(--size-4-2);
+}
+
+/*
+ * A picture to trace over: Move, Make ink, Remove picture, and what is being
+ * traced; then, while making ink, the threshold and what applies it.
+ */
+.inkline-picture,
+.inkline-convert {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--size-4-2);
+  margin-bottom: var(--size-4-3);
+}
+
+.inkline-picture-hint {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.inkline-convert label {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+}
+
+/*
+ * A pressed button: the accent, moved a third of the way from the text on it,
+ * Obsidian's --text-on-accent, white or black as the accent is dark or light,
+ * so that the text reads at 4.5:1 or better on Obsidian's accents. The colour
+ * is relative in srgb, whose channels run from 0 to 1 in every Chromium these
+ * Obsidian versions use; rgb()'s ran from 0 to 1 in Chromium 120 and from 0 to
+ * 255 later. The plain accent is the fallback where relative colours are not
+ * understood.
+ */
+.inkline-toolbar button[aria-pressed="true"],
+.inkline-picture button[aria-pressed="true"],
+.inkline-convert button[aria-pressed="true"] {
+  background-color: var(--interactive-accent);
+  background-color: color-mix(
+    in srgb,
+    var(--interactive-accent) 65%,
+    color(from var(--text-on-accent) srgb calc(1 - r) calc(1 - g) calc(1 - b))
+  );
+  color: var(--text-on-accent);
+}
+
+/*
+ * A button's icon, from Obsidian's own set, beside its text or alone, as the
+ * Editor buttons setting chooses. The icon takes the button's colour, so it
+ * follows the theme and the pressed and disabled states.
+ */
+.inkline-editor button.inkline-with-icon,
+.inkline-editor button.inkline-icon-only {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-4-1);
+}
+
+.inkline-editor button.inkline-icon-only {
+  padding-inline: var(--size-4-2);
+}
+
+.inkline-button-icon {
+  display: flex;
+}
+
+.inkline-button-icon .svg-icon {
+  width: var(--icon-s);
+  height: var(--icon-s);
+}
+
+.inkline-drawing {
+  position: relative;
+  overflow: hidden;
+}
+
+.inkline-brush-cursor {
+  position: absolute;
+  left: 0;
+  top: 0;
+  max-width: none;
+  transform-origin: 0 0;
+  image-rendering: pixelated;
+  will-change: transform;
+  pointer-events: none;
+}
+
+.inkline-surface {
+  --inkline-guide: var(--text-faint);
+  /* Each of the font's lines in a colour of the theme's; a CSS snippet can
+     set others. */
+  --inkline-guide-ascender: var(--color-purple);
+  --inkline-guide-cap-height: var(--color-blue);
+  --inkline-guide-x-height: var(--color-green);
+  --inkline-guide-baseline: var(--color-orange);
+  --inkline-guide-descender: var(--color-pink);
+  /* A shape being drawn with the eraser, which shows while it is drawn only. */
+  --inkline-erasing: var(--color-red);
+  display: block;
+  width: 100%;
+  height: var(--inkline-surface-height, 288px);
+  color: var(--text-normal);
+  background-color: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  cursor: crosshair;
+  /* Keep focus and drop outlines inside the drawing wrapper. */
+  outline-offset: -2px;
+  /* The surface handles pens and touch itself, without scrolling or zooming. */
+  touch-action: none;
+}
+
+/* The theme's default green and orange fall below 3:1 against a light
+   background, so light themes draw those lines darker. :where keeps this as
+   specific as one class, so that a snippet on body .inkline-surface wins. */
+:where(.theme-light) .inkline-surface {
+  --inkline-guide-x-height: #067a34;
+  --inkline-guide-baseline: #b35900;
+}
+
+/* Hide the system pointer only while a complete replacement is visible. */
+.inkline-surface.has-brush-cursor {
+  cursor: none;
+}
+
+/* Dragging moves the picture to trace over, rather than drawing. */
+.inkline-surface.is-moving {
+  cursor: grab;
+}
+
+.inkline-surface.is-dragging {
+  cursor: grabbing;
+}
+
+.inkline-surface:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+}
+
+/* After the focus outline, which a drag over the focused surface replaces. */
+.inkline-surface.is-drop-target {
+  outline: 2px dashed var(--interactive-accent);
+}
+
+/* A line of the note's text, with the symbol at its size there. */
+.inkline-preview {
+  margin-top: var(--size-4-2);
+  color: var(--text-normal);
+  font-family: var(--font-text);
+  font-size: var(--font-text-size);
+  line-height: var(--line-height-normal);
+}
+
+.inkline-status {
+  min-height: 1.5em;
+  margin-top: var(--size-4-2);
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+/*
+ * A symbol in a note, as a character: as tall as the line box, 1.5 em, with
+ * its baseline, 0.375 em above its bottom, on the text's, and its ink in the
+ * text colour, painted through a mask of its own pixels, which are moved out
+ * of sight. An explicit size, as ![[x.ink.png|24]] gives, is kept, and the
+ * observer works out its drop.
+ */
+img.inkline-symbol {
+  background-color: currentColor;
+  mask-image: var(--inkline-mask);
+  mask-size: 100% 100%;
+  mask-repeat: no-repeat;
+  object-position: -99999px 0;
+  vertical-align: var(--inkline-drop, calc(-0.375em * var(--inkline-scale, 1)));
+}
+
+img.inkline-symbol:not([width], [height]) {
+  width: auto;
+  height: calc(1.5em * var(--inkline-scale, 1));
+}
+
+/* Stored colour shows the PNG's own pixels, retaining the same layout. */
+.inkline-stored-color img.inkline-symbol {
+  background-color: transparent;
+  mask-image: none;
+  object-position: 50% 50%;
+}
+
+/*
+ * In the editor, Obsidian lines image embeds up with the bottom of the line:
+ * a symbol's stands on the baseline instead. Where the embed is the editor's
+ * own widget, its image is a block inside it, so the embed takes the drop,
+ * and the image keeps its own width rather than the embed's. In callouts,
+ * tables, and embedded notes, the editor shows rendered text, whose image is
+ * inline and drops itself.
+ */
+.cm-content .image-embed.inkline-symbol-embed {
+  vertical-align: baseline;
+}
+
+.cm-content .image-embed.inkline-symbol-embed:has(> .image-wrapper) {
+  vertical-align: var(--inkline-drop, calc(-0.375em * var(--inkline-scale, 1)));
+}
+
+.cm-content
+  .image-embed
+  .image-wrapper
+  img.inkline-symbol:not([width], [height]) {
+  width: auto;
+}
+
+/*
+ * Live Preview's resize handle is larger than a symbol at text size, and
+ * would take the pointer over all of it: a symbol is sized by the text, or
+ * by its link (#37). Its buttons, which Obsidian shows on an image 80 pixels
+ * or wider, would cover a wide symbol the same way.
+ */
+.cm-content .image-embed.inkline-symbol-embed .image-resize-corner,
+.cm-content .image-embed.inkline-symbol-embed .embed-actions {
+  display: none;
+}
+
+/*
+ * A symbol in a list of them: its picture in a column of its own, then its
+ * name, so that names line up whatever each symbol's width. The image's box is
+ * the column, 3 em wide, and the picture starts at its left. A symbol wider
+ * than the box shrinks to fit, whole and in proportion, rather than being cut
+ * or pushing its name along. The mask of a symbol in the text colour and the
+ * image of one in its stored colour both fit the box rather than fill it.
+ */
+.inkline-suggestion {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-3);
+}
+
+.inkline-suggestion img.inkline-suggestion-picture,
+.inkline-library img.inkline-library-picture {
+  flex: none;
+  object-fit: contain;
+  mask-size: contain;
+  mask-position: 0 50%;
+}
+
+.inkline-stored-color .inkline-suggestion img.inkline-suggestion-picture,
+.inkline-stored-color .inkline-library img.inkline-library-picture {
+  object-position: 0 50%;
+}
+
+.inkline-suggestion img.inkline-suggestion-picture {
+  width: calc(3em * var(--inkline-scale, 1));
+  height: calc(1.5em * var(--inkline-scale, 1));
+}
+
+/* A name with no spaces breaks too, rather than widen the list. */
+.inkline-suggestion-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.inkline-suggestion-folder {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+/*
+ * The symbol library: a filter, then a list of symbols, each a button that
+ * inserts it, with how many notes use it, which lists them.
+ */
+.inkline-library {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+}
+
+.inkline-library-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-2);
+}
+
+.inkline-library-search {
+  flex: 1 1 8em;
+  min-width: 0;
+}
+
+.inkline-library-folder {
+  flex: 1 1 6em;
+  min-width: 0;
+}
+
+/*
+ * A row: the button with its picture and name, then the others, on one line.
+ * That button takes what they leave, and it asks the line for the picture and
+ * a few words of name, however long the name is, so that the name wraps in its
+ * cell rather than pushing them down. They drop together, to the row's end,
+ * only in a sidebar too narrow for that much.
+ */
+.inkline-library-symbol {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--size-4-1);
+}
+
+.inkline-library-insert {
+  flex: 1 1 8.5em;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--size-4-1);
+  min-width: 0;
+  height: auto;
+  padding: var(--size-4-1);
+  text-align: start;
+  background: none;
+  box-shadow: none;
+}
+
+.inkline-library-insert:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+/* Larger than in text, to tell symbols apart, and painted as they are. */
+.inkline-library img.inkline-library-picture {
+  width: 3em;
+  height: 2em;
+}
+
+/* Obsidian's buttons keep their text on one line, which this one must not. */
+.inkline-library-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+/*
+ * Two lines of name and one of folder at most, so that a long one leaves the
+ * row about as tall as its neighbours. The row's tooltip has the whole of it.
+ */
+.inkline-library-name,
+.inkline-library-folder-name {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.inkline-library-folder-name {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  -webkit-line-clamp: 1;
+}
+
+.inkline-library-actions {
+  flex: none;
+  display: flex;
+  gap: var(--size-4-1);
+  margin-inline-start: auto;
+}
+
+/*
+ * Narrower than Obsidian's own padding, to leave the name room. The count is
+ * as wide as its longest usual text, so that every row's name has the same
+ * room, and every row's buttons drop at the same width.
+ */
+.inkline-library-uses,
+.inkline-library-rename,
+.inkline-library-edit-text {
+  height: auto;
+  padding-inline: var(--size-4-1);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  background: none;
+  box-shadow: none;
+}
+
+.inkline-library-uses {
+  min-width: 5.5em;
+}
+
+.inkline-library-edit-text {
+  padding-inline: 2px;
+}
+
+.inkline-library-edit-text .svg-icon {
+  width: var(--icon-xs);
+  height: var(--icon-xs);
+}
+
+/*
+ * What a symbol says about itself, under its row and in line with its name,
+ * past the picture's 3 em of the button's text, and the button's padding and
+ * gap. A row with none has nothing here, so that it keeps its height.
+ */
+.inkline-library-values {
+  flex-basis: 100%;
+  min-width: 0;
+  padding-inline-start: calc(3em + var(--size-4-1) + var(--size-4-1));
+  font-size: var(--font-ui-small);
+}
+
+.inkline-library-status {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.inkline-library-notes {
+  flex-basis: 100%;
+  margin: 0;
+  padding-inline-start: var(--size-4-8);
+  overflow-wrap: anywhere;
+  list-style: none;
+}
+
+.inkline-library-empty {
+  color: var(--text-muted);
+}
+
+.inkline-library-more {
+  width: 100%;
+  margin-top: var(--size-4-1);
+}
+
+.inkline-library-rename-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-1);
+  width: 100%;
+}
+
+.inkline-library-rename-form input {
+  flex: 1 1 8em;
+  min-width: 0;
+}
+
+.inkline-library-text-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-1);
+  width: 100%;
+  padding-block: var(--size-4-1);
+}
+
+/* Which symbol the fields are for, as they take the place of its row. */
+.inkline-library-text-title {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.inkline-text-note {
+  user-select: text;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  overflow-wrap: anywhere;
+}
+
+.inkline-text-note:empty {
+  display: none;
+}
+
+/* A save waiting for Obsidian, in the library's fields and the editor. */
+.inkline-save-wait {
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  overflow-wrap: anywhere;
+}
+
+.inkline-save-wait:empty {
+  display: none;
+}
+
+.inkline-library-rename-form .inkline-save-wait {
+  width: 100%;
+}
+
+.inkline-library-text-buttons {
+  display: flex;
+  gap: var(--size-4-1);
+}
+
+.inkline-library-rename-error {
+  width: 100%;
+  color: var(--text-error);
+  overflow-wrap: anywhere;
+}
