@@ -134,7 +134,7 @@ export async function build(
   layout: LayoutName,
   parts: readonly DrawnPart[],
   weight: Weight = "scaled",
-  band: Band = "ink",
+  band: Band = "body",
 ): Promise<Built> {
   const arrangement = arrange(layoutNamed(layout), parts, band);
   const composed = await compose(parts, arrangement, weight);

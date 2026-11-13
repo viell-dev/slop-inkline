@@ -78,7 +78,7 @@ const largeGroups: readonly (readonly string[])[] = [
   ["Layouts/T-across", "Layouts/T-mixed", "Layouts/S-skeleton", "Layouts/S-picture"],
 ];
 const large = largeGroups
-  .map((group) => group.map((file) => `![[${file}.ink.png]]`).join(""))
+  .map((group) => `Hx${group.map((file) => `![[${file}.ink.png]]`).join("")}`)
   .join("\n\n");
 
 type Mode = "source" | "preview";
