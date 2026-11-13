@@ -20,8 +20,9 @@ features:
       takes the colour of the text around it, in light and dark themes.
   - title: A plain PNG file
     details:
-      Each symbol is an image in your vault with an ordinary embed, so notes
-      still show it without the plugin, and in other Markdown apps.
+      Each symbol is an image in your vault with an ordinary embed, so your
+      notes still show it without the plugin, and other apps can show it from a
+      standard Markdown link.
   - title: Name it by its meaning
     details:
       Name a symbol in any script with your current guess at what it means, and

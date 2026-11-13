@@ -66,42 +66,6 @@ export function rankSymbols<T extends Candidate>(
 }
 
 /**
- * Whether column `ch` of `line` lies inside a code span: between a run of
- * backticks and the next run of the same length. A run that never closes is
- * text, as Markdown reads it.
- */
-export function insideCodeSpan(line: string, ch: number): boolean {
-  let index = 0;
-  while (index < line.length && index < ch) {
-    if (line[index] === "\\") {
-      index += 2;
-      continue;
-    }
-    if (line[index] !== "`") {
-      index++;
-      continue;
-    }
-    let run = 0;
-    while (line[index + run] === "`") run++;
-    const fence = "`".repeat(run);
-    let close = line.indexOf(fence, index + run);
-    // A longer run of backticks does not close a shorter one.
-    while (close !== -1 && line[close + run] === "`") {
-      let longer = run;
-      while (line[close + longer] === "`") longer++;
-      close = line.indexOf(fence, close + longer);
-    }
-    if (close === -1) {
-      index += run;
-      continue;
-    }
-    if (ch > index && ch <= close) return true;
-    index = close + run;
-  }
-  return false;
-}
-
-/**
  * Whether a symbol's `name` matches what was typed after the trigger with a
  * space in it: only by containing it, in any letter case. A fuzzy match
  * would skip the space, so that the words of a sentence after a trigger
@@ -281,64 +245,4 @@ export function findText(
     });
   }
   return found;
-}
-
-/** Whether `text` is a line of front matter's opening or closing `---`. */
-function isFrontMatterFence(text: string | undefined): boolean {
-  return text?.trimEnd() === "---";
-}
-
-/**
- * Whether line `line` of a note lies in its front matter or in a fenced
- * code block, where text such as a trigger is the note's own. `lineAt`
- * gives the note's lines as it is now, as the metadata cache, which follows
- * saves, may not yet, and undefined past its end, with or without a `\r`
- * at their ends; only the lines up to `line` are read, and the front
- * matter's. A fence's own lines are code, the info string after an opening
- * fence included. A fence may follow a quote's `>` markers or indentation;
- * one left open runs to the end of the note, as Markdown reads it. An
- * indented code block is not told apart from a list item's indented text,
- * and counts as text.
- */
-export function insideCodeBlock(
-  lineAt: (index: number) => string | undefined,
-  line: number,
-): boolean {
-  let from = 0;
-  if (isFrontMatterFence(lineAt(0))) {
-    let end = 1;
-    while (lineAt(end) !== undefined && !isFrontMatterFence(lineAt(end))) {
-      end++;
-    }
-    if (lineAt(end) !== undefined) {
-      if (line <= end) return true;
-      from = end + 1;
-    }
-  }
-  let fence: { mark: string; length: number } | undefined;
-  for (let index = from; index <= line; index++) {
-    // The line itself is code inside an open fence, its closing fence too,
-    // and is code too if it opens one.
-    if (index === line && fence !== undefined) return true;
-    const text = (lineAt(index) ?? "")
-      .replace(/\r$/, "")
-      .replace(/^(?:\s*>)*\s*/, "");
-    const run = /^(`{3,}|~{3,})(.*)$/.exec(text);
-    if (run === null) continue;
-    const marks = run[1] ?? "";
-    const rest = run[2] ?? "";
-    const mark = marks.charAt(0);
-    if (fence === undefined) {
-      // A backtick fence's info string holds no backticks.
-      if (mark === "`" && rest.includes("`")) continue;
-      fence = { mark, length: marks.length };
-    } else if (
-      mark === fence.mark &&
-      marks.length >= fence.length &&
-      rest.trim() === ""
-    ) {
-      fence = undefined;
-    }
-  }
-  return fence !== undefined;
 }

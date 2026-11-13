@@ -188,6 +188,28 @@ function parseLayer(value: unknown): StoredLayer | undefined {
     : undefined;
 }
 
+/**
+ * The key of the kept base layer that a stored draft names, if it names one,
+ * read without checking its strokes or reading the layer. A draft that
+ * {@link decode} would refuse still names its layer here: it keeps the layer
+ * until {@link DraftStore.list} drops both.
+ */
+function storedBaseKey(stored: unknown): string | undefined {
+  if (typeof stored !== "string") return undefined;
+  let value: unknown;
+  try {
+    value = JSON.parse(stored);
+  } catch {
+    return undefined;
+  }
+  return isRecord(value) &&
+    value.base === "kept" &&
+    isRecord(value.layer) &&
+    typeof value.layer.key === "string"
+    ? value.layer.key
+    : undefined;
+}
+
 interface Decoded {
   readonly draft: Draft;
   /** The key of the kept base layer it uses, if it could be read. */
@@ -390,6 +412,13 @@ export class DraftStore {
   /** Base layer PNGs stored or read, by key, and their keys by PNG. */
   readonly #pngs = new Map<string, Uint8Array>();
   readonly #keys = new WeakMap<Uint8Array, string>();
+  /**
+   * The key of the base layer that each draft this store kept names, or
+   * undefined for none, by the draft's id: a put would otherwise read back
+   * the draft it replaces to find it, which costs about as much again as
+   * writing the new one.
+   */
+  readonly #baseKeys = new Map<string, string | undefined>();
 
   constructor(storage: VaultStorage, now: () => number = Date.now) {
     this.#storage = storage;
@@ -480,13 +509,20 @@ export class DraftStore {
     if (this.#storedKey(png) !== undefined) return;
     if ((await slicedBasePngProblem(png, options)) !== undefined) return;
     const text = await toBase64Sliced(png, options);
+    // A stroke drawn meanwhile keeps a draft, whose put stores it at once; a
+    // second copy would only take up room that later drafts need.
+    if (this.#storedKey(png) !== undefined) return;
     const key = crypto.randomUUID();
     this.#storage.saveLocalStorage(basePrefix + key, text);
     await options.pause?.();
-    if (this.#kept(basePrefix + key, text, baseIndexKey, key)) {
-      this.#pngs.set(key, png);
-      this.#keys.set(png, key);
+    if (!this.#kept(basePrefix + key, text, baseIndexKey, key)) return;
+    // Or while this wrote it, and then this copy is the second.
+    if (this.#storedKey(png) !== undefined) {
+      this.#dropPng(key);
+      return;
     }
+    this.#pngs.set(key, png);
+    this.#keys.set(png, key);
   }
 
   #forgetPng(key: string): void {
@@ -503,6 +539,29 @@ export class DraftStore {
       this.#list(baseIndexKey).filter((other) => other !== key),
     );
     this.#forgetPng(key);
+  }
+
+  /** The key of the base layer that the stored draft `id` names, if any. */
+  #baseKeyOf(id: string): string | undefined {
+    return this.#baseKeys.has(id)
+      ? this.#baseKeys.get(id)
+      : storedBaseKey(this.#storage.loadLocalStorage(draftPrefix + id));
+  }
+
+  /**
+   * Removes the stored base layer `key` if no stored draft names it. Every
+   * draft is read from storage rather than from what this store knows, as an
+   * editor before a reload may have written it. Only a put or a removal asks,
+   * for the layer its draft stopped naming, so a layer stored ahead of the
+   * draft that will keep it is never dropped here, and drafts are read only
+   * when a base layer changes, not for every stroke.
+   */
+  #dropUnused(key: string): void {
+    for (const id of this.#list(indexKey)) {
+      const stored = this.#storage.loadLocalStorage(draftPrefix + id);
+      if (storedBaseKey(stored) === key) return;
+    }
+    this.#dropPng(key);
   }
 
   /** Marks a draft as an open editor's, so that no other is offered it. */
@@ -565,9 +624,11 @@ export class DraftStore {
    * Keeps a draft, replacing the one with its id, and returns whether it was
    * kept. A draft that reading would refuse, or that storage refuses, is not
    * kept, and the one it would have replaced stays. A kept base layer is
-   * stored once, the first time a draft uses it.
+   * stored once, the first time a draft uses it, and dropped once a draft
+   * kept in its place replaces the last one that named it.
    */
   put(draft: Draft): boolean {
+    const replaced = this.#baseKeyOf(draft.id);
     const { base } = draft;
     const png = base.kind === "kept" ? base.layer.png : undefined;
     const kept = png === undefined ? undefined : this.#keepPng(png);
@@ -578,17 +639,30 @@ export class DraftStore {
       decode(text, (key) => (key === baseKey ? png : undefined)) !==
         undefined &&
       this.#write(draftPrefix + draft.id, text, indexKey, draft.id);
-    // A base layer stored for a draft that was not kept is of no use.
-    if (!written && kept?.stored === true) this.#dropPng(kept.key);
-    return written;
+    if (!written) {
+      // A base layer stored for a draft that was not kept is of no use.
+      if (kept?.stored === true) this.#dropPng(kept.key);
+      return false;
+    }
+    this.#baseKeys.set(draft.id, baseKey);
+    // Not before: until this draft was kept, the one it replaced was the one
+    // to recover, with its base layer.
+    if (replaced !== undefined && replaced !== baseKey) {
+      this.#dropUnused(replaced);
+    }
+    return true;
   }
 
+  /** Removes a draft, and its base layer unless another draft names it. */
   remove(id: string): void {
+    const named = this.#baseKeyOf(id);
     this.#storage.saveLocalStorage(draftPrefix + id, null);
     this.#setList(
       indexKey,
       this.#list(indexKey).filter((other) => other !== id),
     );
+    this.#baseKeys.delete(id);
+    if (named !== undefined) this.#dropUnused(named);
   }
 
   /**

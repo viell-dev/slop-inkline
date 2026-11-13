@@ -16,13 +16,12 @@ import {
   type TFile,
 } from "obsidian";
 import { isInkPath } from "../format/ink-file.ts";
+import { insideCode } from "./code.ts";
 import { embedFor } from "./embeds.ts";
 import { symbolStem } from "./names.ts";
 import {
   findText,
   holdsTyped,
-  insideCodeBlock,
-  insideCodeSpan,
   rankSymbols,
   textQuery,
   triggerQuery,
@@ -233,12 +232,12 @@ export class SymbolSuggest extends EditorSuggest<SymbolMatch> {
     }
     if (found === undefined || this.#dismissed !== undefined) return null;
     // Not in code or front matter, where a trigger is the note's own text.
+    const lines = editor.lineCount();
     if (
-      insideCodeSpan(line, found.start) ||
-      insideCodeBlock(
-        (index) =>
-          index < editor.lineCount() ? editor.getLine(index) : undefined,
+      insideCode(
+        (index) => (index < lines ? editor.getLine(index) : undefined),
         cursor.line,
+        found.start,
       )
     ) {
       return null;
@@ -325,24 +324,47 @@ export class SymbolSuggest extends EditorSuggest<SymbolMatch> {
   }
 }
 
-/** The vault's symbols to search, inserting the one chosen. */
+/**
+ * The vault's symbols to search, inserting the one chosen. It closes as
+ * `unloaded` aborts, when Inkline unloads, as Obsidian leaves a plugin's
+ * dialogs open, and a choice that still reaches it then inserts nothing.
+ */
 export class SymbolSearch extends SuggestModal<SymbolMatch> {
   readonly #texts: SymbolTexts;
   readonly #notePath: string;
+  readonly #unloaded: AbortSignal;
   readonly #chosen: (embed: string) => void;
+  readonly #unload = (): void => {
+    this.close();
+  };
 
   constructor(
     app: App,
     texts: SymbolTexts,
     notePath: string,
+    unloaded: AbortSignal,
     chosen: (embed: string) => void,
   ) {
     super(app);
     this.#texts = texts;
     this.#notePath = notePath;
+    this.#unloaded = unloaded;
     this.#chosen = chosen;
     this.setPlaceholder("Insert which symbol?");
     this.emptyStateText = "No symbol has that name, reading, or translation.";
+  }
+
+  // The list listens for the unload from when it opens until it closes: one
+  // never opened has nothing to close, and the signal lasts as long as Inkline
+  // does, so the list stops listening to it as it closes.
+  override onOpen(): Promise<void> | void {
+    this.#unloaded.addEventListener("abort", this.#unload, { once: true });
+    return super.onOpen();
+  }
+
+  override onClose(): void {
+    this.#unloaded.removeEventListener("abort", this.#unload);
+    super.onClose();
   }
 
   override getSuggestions(query: string): SymbolMatch[] {
@@ -355,7 +377,7 @@ export class SymbolSearch extends SuggestModal<SymbolMatch> {
   }
 
   override onChooseSuggestion({ file }: SymbolMatch): void {
-    if (!stillThere(this.app, file)) return;
+    if (this.#unloaded.aborted || !stillThere(this.app, file)) return;
     this.#chosen(embedFor(this.app, file, this.#notePath));
   }
 }

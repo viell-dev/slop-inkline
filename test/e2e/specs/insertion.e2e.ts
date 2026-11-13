@@ -14,6 +14,7 @@ import {
   symbolFiles,
   topButton,
   waitForEditor,
+  waitForFailedSaves,
   waitForNext,
   waitForNotice,
   waitForPanes,
@@ -1420,24 +1421,27 @@ describe("A rename while the note holds unsaved text", function () {
   it("refuses a rename if the note cannot be saved, and changes nothing", async function () {
     const old = "![[001.ink.png]]";
     await insertAndWait();
-    await addBoth("Editor.md");
+    // Saves fail before the text is added, and until the file is read and
+    // the note's own save has failed as well as the rename's (#234).
     const restore = await failSaves();
     try {
+      await addBoth("Editor.md");
       await nameIt();
       await browser.keys(["Control", "s"]);
       await waitForNotice(
         "001.ink.png is saved, but could not be renamed: the note Editor could not be saved first",
       );
       await waitForStatus("Saved, but not renamed");
+      await waitForFailedSaves("Editor.md", 2);
+      await waitForFile(
+        "Editor.md",
+        `The door is marked with ${old} which means return.\n`,
+      );
     } finally {
       await restore();
     }
     expect(await symbolFiles()).toEqual(["001.ink.png"]);
     expect(await noteText()).toBe(withText(old));
-    await waitForFile(
-      "Editor.md",
-      `The door is marked with ${old} which means return.\n`,
-    );
     // The name stays in the field, for the next save to try.
     await browser.keys(["Control", "Enter"]);
     await clickTop("Just once");

@@ -21,10 +21,12 @@ export function symbolStem(fileName: string): string | undefined {
 const forbidden = '*"\\/<>:|?#^[]';
 
 /**
- * Names Windows keeps for devices, which no file there can have, alone or
- * before a dot, as Windows reads `CON.txt` as `CON`.
+ * Names Windows keeps for devices, which no file or folder there can have,
+ * alone or before a dot, as Windows reads `CON.txt` as `CON`. The ports take
+ * the digits 1 to 9, and the superscripts ¹, ², and ³ too, which Windows reads
+ * as digits there.
  */
-const reserved = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i;
+const reserved = /^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/i;
 
 /** The no-break spaces Obsidian turns into plain ones in a file's name. */
 const noBreakSpaces = new Set([0xa0, 0x202f]);

@@ -7,6 +7,12 @@ import { encodePng } from "../../support/png.ts";
 import { loadModules, toBase64 } from "../support/browser.ts";
 import { startOver } from "../support/editor.ts";
 import { outputDirectory } from "../support/harness.ts";
+import {
+  drawnRatio,
+  fullWidth,
+  wide,
+  widePng,
+} from "../support/wide-symbol.ts";
 
 interface PrintImage {
   tagged: boolean;
@@ -307,6 +313,157 @@ async function printedBlock(
   );
 }
 
+/** Inkline's display settings and Obsidian's theme for one export. */
+interface Mode {
+  name: string;
+  scale: number;
+  textColor: boolean;
+  theme: string;
+}
+
+/** Starts a test from an empty vault, with `mode`'s settings and theme. */
+async function startWith(mode: Mode): Promise<void> {
+  await startOver();
+  await browser.executeObsidian(async ({ plugins, app }, chosen) => {
+    await plugins.inkline.saveData({
+      symbolScale: chosen.scale,
+      textColor: chosen.textColor,
+    });
+    const change: unknown = Reflect.get(app, "changeTheme");
+    if (typeof change !== "function") throw new Error("no themes");
+    Reflect.apply(change, app, [chosen.theme]);
+  }, mode);
+  await obsidianPage.disablePlugin("inkline");
+  await obsidianPage.enablePlugin("inkline");
+  await loadModules();
+}
+
+/**
+ * Exports the open note with Obsidian's own command to `<name>.pdf` in the
+ * output directory, and returns what the print document showed, the PDF's
+ * words with their boxes, and its page rasterized at `dpi`, 96 unless given,
+ * all of which stay there beside it.
+ */
+async function exportPdf(name: string, dpi = 96) {
+  const output = outputDirectory(
+    process.env.E2E_OUTPUT_DIR,
+    path.resolve(import.meta.dirname, "../../.."),
+  );
+  const folder = path.join(
+    output,
+    "pdfs",
+    `${browser.getObsidianVersion()}-${browser.getObsidianInstallerVersion()}`,
+  );
+  await mkdir(folder, { recursive: true });
+  const prefix = path.join(folder, name);
+  const pdf = `${prefix}.pdf`;
+  const viewport = await browser.execute(() => ({
+    width: window.innerWidth,
+    height: window.innerHeight,
+  }));
+  await prepareExport(pdf);
+  try {
+    await browser.executeObsidianCommand("workspace:export-pdf");
+    await browser.$(".modal button.mod-cta").waitForDisplayed();
+    await browser.$(".modal button.mod-cta").click();
+    await browser.waitUntil(
+      async () => {
+        const error = await browser.execute(
+          () => window.inklinePrintProbe?.error,
+        );
+        if (typeof error === "string") throw new Error(error);
+        try {
+          return (await readFile(pdf)).subarray(0, 5).toString() === "%PDF-";
+        } catch {
+          return false;
+        }
+      },
+      { timeoutMsg: "native PDF was not written" },
+    );
+    await browser.waitUntil(
+      async () =>
+        browser.execute(
+          () =>
+            window.inklinePrintProbe?.closed === true &&
+            window.inklinePrintProbe.cleanupChecked,
+        ),
+      { timeoutMsg: "native export window did not close" },
+    );
+    await browser.waitUntil(
+      async () =>
+        browser.execute(
+          (before) =>
+            window.innerWidth === before.width &&
+            window.innerHeight === before.height,
+          viewport,
+        ),
+      { timeoutMsg: "native PDF export left the main window resized" },
+    );
+    const snapshot = await browser.execute(() => {
+      const probe = window.inklinePrintProbe;
+      if (probe === undefined) throw new Error("no print probe");
+      return {
+        images: probe.images,
+        scale: probe.scale,
+        stored: probe.stored,
+        cleaned: probe.cleaned,
+        viewerRequests: probe.viewerRequests,
+      };
+    });
+    await writeFile(`${prefix}.json`, JSON.stringify(snapshot, null, 2));
+    execFileSync("pdftoppm", [
+      "-singlefile",
+      "-r",
+      String(dpi),
+      "-png",
+      pdf,
+      prefix,
+    ]);
+    const xml = execFileSync("pdftotext", ["-bbox", pdf, "-"], {
+      encoding: "utf8",
+    });
+    await writeFile(`${prefix}.xml`, xml);
+    const raster = toBase64(new Uint8Array(await readFile(`${prefix}.png`)));
+    return { pdf, snapshot, xml, raster };
+  } finally {
+    await browser.execute(() => {
+      window.inklinePrintProbe?.restore();
+      delete window.inklinePrintProbe;
+    });
+  }
+}
+
+/**
+ * The block of ink in the rasterized PDF between two fixture words' lines,
+ * across the page, measured as on the screen: on the page, whose colour is
+ * the top row's, under the first word, and in the colour furthest from it.
+ */
+async function printedWide(png: string, above: Box, below: Box) {
+  return browser.execute(
+    async (encoded, top, bottom) => {
+      const bytes = Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0));
+      const image = await createImageBitmap(new Blob([bytes]));
+      const pixels = window.inklineTest.canvas.readPixels(image);
+      image.close();
+      const { inkBlock } = window.inklineTest;
+      const region = { left: 0, top, right: pixels.width, bottom };
+      const ground = inkBlock.commonColour(pixels, {
+        ...region,
+        bottom: top + 1,
+      });
+      const ink = inkBlock.furthestColour(pixels, region, ground);
+      return {
+        page: pixels.width,
+        ink: inkBlock.measureBlock(pixels, region, ground, ink) ?? null,
+      };
+    },
+    png,
+    // Clear of the words' own pixels.
+    above.bottom + 2,
+    below.top - 2,
+  );
+}
+
 describe("Native PDF export", function () {
   after(async function () {
     await startOver();
@@ -317,19 +474,7 @@ describe("Native PDF export", function () {
     { name: "stored-grey", scale: 150, textColor: false, theme: "moonstone" },
   ]) {
     it(`prints inline symbols in ${mode.name}, preserving explicit sizes and cleaning up`, async function () {
-      await startOver();
-      await browser.executeObsidian(async ({ plugins, app }, chosen) => {
-        await plugins.inkline.saveData({
-          symbolScale: chosen.scale,
-          textColor: chosen.textColor,
-        });
-        const change: unknown = Reflect.get(app, "changeTheme");
-        if (typeof change !== "function") throw new Error("no themes");
-        Reflect.apply(change, app, [chosen.theme]);
-      }, mode);
-      await obsidianPage.disablePlugin("inkline");
-      await obsidianPage.enablePlugin("inkline");
-      await loadModules();
+      await startWith(mode);
       await browser.executeObsidian(async ({ app }, encoded) => {
         const bytes = Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0));
         await app.vault.createBinary("block.ink.png", bytes.slice().buffer);
@@ -349,139 +494,137 @@ describe("Native PDF export", function () {
         );
       }, toBase64(block()));
       await obsidianPage.openFile("Print.md");
-      const output = outputDirectory(
-        process.env.E2E_OUTPUT_DIR,
-        path.resolve(import.meta.dirname, "../../.."),
+      const { pdf, snapshot, xml, raster } = await exportPdf(mode.name);
+      const [plain, sized, photo] = snapshot.images;
+      if (plain === undefined || sized === undefined || photo === undefined)
+        throw new Error("missing print images");
+      const scale = mode.scale / 100;
+      for (const [name, height, width] of [
+        ["Plain", 1.5 * plain.fontSize * scale, 0.5 * plain.fontSize * scale],
+        ["Sized", 72, 24],
+      ] as const) {
+        const { ink, text } = await printedBlock(
+          raster,
+          wordBox(xml, `${name}Before`),
+          wordBox(xml, `${name}After.`),
+          height,
+        );
+        expect(text.count).toBeGreaterThan(10);
+        expect(ink.count).toBeGreaterThan(10);
+        expect(Math.abs(ink.height - height / 2)).toBeLessThanOrEqual(2);
+        expect(Math.abs(ink.width - (width * 3) / 4)).toBeLessThanOrEqual(2);
+        expect(Math.abs(ink.bottom - text.bottom)).toBeLessThanOrEqual(2);
+        expect(
+          (mode.textColor ? ink.dark : ink.grey) / ink.count,
+        ).toBeGreaterThan(0.6);
+        expect((mode.textColor ? ink.grey : ink.dark) / ink.count).toBeLessThan(
+          0.05,
+        );
+      }
+      expect(plain.tagged).toBe(true);
+      expect(
+        Math.abs(plain.height - 1.5 * plain.fontSize * scale),
+      ).toBeLessThanOrEqual(1);
+      expect(plain.drop).not.toBeNull();
+      expect(
+        Math.abs((plain.drop ?? 0) - plain.height / 4),
+      ).toBeLessThanOrEqual(1);
+      expect(sized.width).toBe(24);
+      expect(sized.height).toBe(72);
+      expect(sized.drop).toBe(18);
+      expect(photo.tagged).toBe(false);
+      expect(photo.height).toBe(192);
+      expect(snapshot.scale).toBe(String(scale));
+      expect(snapshot.stored).toBe(!mode.textColor);
+      expect(snapshot.cleaned).toBe(true);
+      expect(
+        snapshot.viewerRequests.map((request) => request.filePath),
+      ).toEqual([pdf]);
+    });
+  }
+
+  // In a heading at the largest symbol size the symbol would be over 1,600
+  // CSS pixels wide, more than the export window's line and the page's.
+  for (const mode of [
+    {
+      name: "wide-text-colour",
+      scale: 200,
+      textColor: true,
+      theme: "obsidian",
+    },
+    {
+      name: "wide-stored-grey",
+      scale: 200,
+      textColor: false,
+      theme: "moonstone",
+    },
+  ]) {
+    it(`prints a symbol wider than the page whole and in proportion, in ${mode.name}`, async function () {
+      await startWith(mode);
+      await browser.executeObsidian(async ({ app }, encoded) => {
+        const bytes = Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0));
+        await app.vault.createBinary("wide.ink.png", bytes.buffer);
+        await app.vault.create(
+          "Wide.md",
+          [
+            "WideBefore words.",
+            "",
+            "# ![[wide.ink.png]] WideHeading",
+            "",
+            "WideAfter words.",
+            "",
+          ].join("\n"),
+        );
+      }, toBase64(widePng()));
+      await obsidianPage.openFile("Wide.md");
+      // The PDF puts the shrunk mask on whole CSS pixels, 33 tall where 32.5
+      // is exact, which makes the ink 2% taller than its shape in these
+      // hosts. At 96 DPI Poppler puts the ink's edges, 24 pixels apart, on
+      // whole pixels too, as much again; at three times that, a third of it.
+      const dpi = 288;
+      const { snapshot, xml, raster } = await exportPdf(mode.name, dpi);
+      /** A word's box in the page's pixels at that resolution. */
+      const word = (text: string): Box => {
+        const { left, top, right, bottom } = wordBox(xml, text);
+        const scaled = (value: number) => (value * dpi) / 96;
+        return {
+          left: scaled(left),
+          top: scaled(top),
+          right: scaled(right),
+          bottom: scaled(bottom),
+        };
+      };
+      const [image] = snapshot.images;
+      if (image === undefined) throw new Error("missing print image");
+      expect(image.tagged).toBe(true);
+      // Narrowed by a tenth or more, and the heading's line height still.
+      const scale = mode.scale / 100;
+      expect(image.width).toBeLessThan(0.9 * fullWidth(image.fontSize, scale));
+      expect(
+        Math.abs(image.height - 1.5 * image.fontSize * scale),
+      ).toBeLessThanOrEqual(1);
+      // The symbol is on a line of its own, and the heading's word after it.
+      const before = word("WideBefore");
+      const { page, ink } = await printedWide(
+        raster,
+        before,
+        word("WideHeading"),
       );
-      const folder = path.join(
-        output,
-        "pdfs",
-        `${browser.getObsidianVersion()}-${browser.getObsidianInstallerVersion()}`,
+      console.log(`${mode.name}: ${JSON.stringify({ image, page, ink })}`);
+      expect(ink).not.toBeNull();
+      if (ink === null) return;
+      expect(Math.abs(ink.width / ink.height / drawnRatio - 1)).toBeLessThan(
+        0.05,
       );
-      await mkdir(folder, { recursive: true });
-      const prefix = path.join(folder, mode.name);
-      const pdf = `${prefix}.pdf`;
-      const viewport = await browser.execute(() => ({
-        width: window.innerWidth,
-        height: window.innerHeight,
-      }));
-      await prepareExport(pdf);
-      try {
-        await browser.executeObsidianCommand("workspace:export-pdf");
-        await browser.$(".modal button.mod-cta").waitForDisplayed();
-        await browser.$(".modal button.mod-cta").click();
-        await browser.waitUntil(
-          async () => {
-            const error = await browser.execute(
-              () => window.inklinePrintProbe?.error,
-            );
-            if (typeof error === "string") throw new Error(error);
-            try {
-              return (
-                (await readFile(pdf)).subarray(0, 5).toString() === "%PDF-"
-              );
-            } catch {
-              return false;
-            }
-          },
-          { timeoutMsg: "native PDF was not written" },
-        );
-        await browser.waitUntil(
-          async () =>
-            browser.execute(
-              () =>
-                window.inklinePrintProbe?.closed === true &&
-                window.inklinePrintProbe.cleanupChecked,
-            ),
-          { timeoutMsg: "native export window did not close" },
-        );
-        await browser.waitUntil(
-          async () =>
-            browser.execute(
-              (before) =>
-                window.innerWidth === before.width &&
-                window.innerHeight === before.height,
-              viewport,
-            ),
-          { timeoutMsg: "native PDF export left the main window resized" },
-        );
-        const snapshot = await browser.execute(() => {
-          const probe = window.inklinePrintProbe;
-          if (probe === undefined) throw new Error("no print probe");
-          return {
-            images: probe.images,
-            scale: probe.scale,
-            stored: probe.stored,
-            cleaned: probe.cleaned,
-            viewerRequests: probe.viewerRequests,
-          };
-        });
-        await writeFile(`${prefix}.json`, JSON.stringify(snapshot, null, 2));
-        execFileSync("pdftoppm", [
-          "-singlefile",
-          "-r",
-          "96",
-          "-png",
-          pdf,
-          prefix,
-        ]);
-        const xml = execFileSync("pdftotext", ["-bbox", pdf, "-"], {
-          encoding: "utf8",
-        });
-        await writeFile(`${prefix}.xml`, xml);
-        const raster = toBase64(
-          new Uint8Array(await readFile(`${prefix}.png`)),
-        );
-        const [plain, sized, photo] = snapshot.images;
-        if (plain === undefined || sized === undefined || photo === undefined)
-          throw new Error("missing print images");
-        const scale = mode.scale / 100;
-        for (const [name, height, width] of [
-          ["Plain", 1.5 * plain.fontSize * scale, 0.5 * plain.fontSize * scale],
-          ["Sized", 72, 24],
-        ] as const) {
-          const { ink, text } = await printedBlock(
-            raster,
-            wordBox(xml, `${name}Before`),
-            wordBox(xml, `${name}After.`),
-            height,
-          );
-          expect(text.count).toBeGreaterThan(10);
-          expect(ink.count).toBeGreaterThan(10);
-          expect(Math.abs(ink.height - height / 2)).toBeLessThanOrEqual(2);
-          expect(Math.abs(ink.width - (width * 3) / 4)).toBeLessThanOrEqual(2);
-          expect(Math.abs(ink.bottom - text.bottom)).toBeLessThanOrEqual(2);
-          expect(
-            (mode.textColor ? ink.dark : ink.grey) / ink.count,
-          ).toBeGreaterThan(0.6);
-          expect(
-            (mode.textColor ? ink.grey : ink.dark) / ink.count,
-          ).toBeLessThan(0.05);
-        }
-        expect(plain.tagged).toBe(true);
-        expect(
-          Math.abs(plain.height - 1.5 * plain.fontSize * scale),
-        ).toBeLessThanOrEqual(1);
-        expect(plain.drop).not.toBeNull();
-        expect(
-          Math.abs((plain.drop ?? 0) - plain.height / 4),
-        ).toBeLessThanOrEqual(1);
-        expect(sized.width).toBe(24);
-        expect(sized.height).toBe(72);
-        expect(sized.drop).toBe(18);
-        expect(photo.tagged).toBe(false);
-        expect(photo.height).toBe(192);
-        expect(snapshot.scale).toBe(String(scale));
-        expect(snapshot.stored).toBe(!mode.textColor);
-        expect(snapshot.cleaned).toBe(true);
-        expect(
-          snapshot.viewerRequests.map((request) => request.filePath),
-        ).toEqual([pdf]);
-      } finally {
-        await browser.execute(() => {
-          window.inklinePrintProbe?.restore();
-          delete window.inklinePrintProbe;
-        });
+      // Whole, across the page's line, which the page prints at its own width:
+      // from the left margin, where the text starts, to the right one, as wide.
+      const across = (wide.block.right - wide.block.left) / wide.width;
+      const line = page - 2 * before.left;
+      expect(Math.abs(ink.left - before.left)).toBeLessThan(6);
+      expect(Math.abs(ink.width - line * across)).toBeLessThan(6);
+      for (const channel of ink.colour) {
+        if (mode.textColor) expect(channel).toBeLessThan(60);
+        else expect(Math.abs(channel - 126)).toBeLessThanOrEqual(8);
       }
     });
   }

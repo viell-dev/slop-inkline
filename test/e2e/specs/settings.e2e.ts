@@ -317,7 +317,11 @@ describe("Inkline settings", function () {
         0,
       );
       expect(changed?.mask).toBe("none");
-      expect(changed?.objectPosition).toBe("50% 50%");
+      // The image's own pixels in sight: filling an explicit size, and in a
+      // symbol's line box placed where they keep its baseline (#241).
+      expect(changed?.objectPosition).toBe(
+        original?.sized === true ? "50% 50%" : "0px 75%",
+      );
     }
     const first = await browser
       .$(".markdown-reading-view img.inkline-symbol")
