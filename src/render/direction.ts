@@ -10,7 +10,7 @@
 // A release would decide which runs are right to left from where their
 // symbols are, as a folder, rather than from a switch.
 
-import { type Extension, RangeSetBuilder } from "@codemirror/state";
+import { type Extension, Prec, RangeSetBuilder } from "@codemirror/state";
 import {
   Decoration,
   type DecorationSet,
@@ -137,7 +137,9 @@ const runsPlugin = ViewPlugin.fromClass(
 
 /** Live Preview's and Source mode's part of the prototype. */
 export const runsExtension: Extension = [
-  runsPlugin,
+  // Highest, so that Obsidian's embed widgets do not split the run's mark
+  // into one isolate for each symbol.
+  Prec.highest(runsPlugin),
   EditorView.bidiIsolatedRanges.of(
     (view) => view.plugin(runsPlugin)?.decorations ?? Decoration.none,
   ),

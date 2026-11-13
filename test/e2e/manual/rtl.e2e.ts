@@ -1055,6 +1055,83 @@ describe("Right to left (#167 §6)", function () {
     });
   }
 
+  it("puts the cursor where a click on a symbol or beside a run lands", async function () {
+    this.timeout(180_000);
+    await open("Keys.md", "source");
+    const clicks: Record<string, string[]> = {};
+    for (const [index, c] of keyCases.entries()) {
+      const line = index * 2;
+      const targets = await browser.executeObsidian(
+        ({ app, obsidian }, number) => {
+          const view = app.workspace.getActiveViewOfType(obsidian.MarkdownView);
+          if (view === null) throw new Error("no Markdown view");
+          const cm = Reflect.get(view.editor, "cm") as {
+            state: { doc: { line(n: number): { from: number } } };
+            domAtPos(pos: number): { node: Node };
+          };
+          let node: Node | null = cm.domAtPos(
+            cm.state.doc.line(number + 1).from,
+          ).node;
+          while (node !== null && !(node instanceof HTMLElement)) {
+            node = node.parentNode;
+          }
+          const lineElement = node?.closest(".cm-line");
+          if (lineElement === null || lineElement === undefined) return [];
+          const probe = Reflect.get(window, "inklineRtl") as {
+            name(image: Element): string;
+          };
+          const lineRect = lineElement.getBoundingClientRect();
+          const images = Array.from(
+            lineElement.querySelectorAll("img:not(.cm-widgetBuffer)"),
+          ).map((image) => {
+            const rect = image.getBoundingClientRect();
+            return {
+              what: `on ${probe.name(image)}`,
+              x: Math.round(rect.left + rect.width / 2),
+              y: Math.round(rect.top + rect.height / 2),
+            };
+          });
+          const middle = images[0]?.y ?? Math.round(lineRect.top + 12);
+          const lefts = images.map((image) => image.x);
+          const leftmost = Math.min(...lefts);
+          const rightmost = Math.max(...lefts);
+          return [
+            ...images,
+            { what: "left of the run", x: leftmost - 9, y: middle },
+            { what: "right of the run", x: rightmost + 9, y: middle },
+          ];
+        },
+        line,
+      );
+      const found: string[] = [];
+      for (const target of targets) {
+        // Away from the line first, so that a click on a selected symbol
+        // does not open Obsidian's image viewer.
+        await place(line === 0 ? 2 : 0, "start");
+        await browser
+          .action("pointer")
+          .move({ x: target.x, y: target.y, origin: "viewport" })
+          .down()
+          .up()
+          .perform();
+        await browser.pause(150);
+        const where = await browser.executeObsidian(({ app, obsidian }) => {
+          const view = app.workspace.getActiveViewOfType(
+            obsidian.MarkdownView,
+          );
+          if (view === null) return "no view";
+          const from = view.editor.getCursor("from");
+          const to = view.editor.getCursor("to");
+          return `${String(from.line)}:${String(from.ch)}-${String(to.line)}:${String(to.ch)}`;
+        });
+        found.push(`${target.what} x=${String(target.x)} -> ${where}`);
+        await browser.keys(["Escape"]);
+      }
+      clicks[c.id] = found;
+    }
+    await record("clicks", clicks);
+  });
+
   it("inserts symbols from ;; in a right-to-left line, and in an English one", async function () {
     await openAtMarker("Typing.md", "HERE");
     const steps: unknown[] = [];
