@@ -220,22 +220,41 @@ async function open(
   await settleImages();
 }
 
-/** Waits until every image in the active leaf has loaded. */
-async function settleImages(): Promise<void> {
-  await browser.waitUntil(
-    async () =>
-      browser.execute(() =>
-        Array.from(
-          activeDocument.querySelectorAll(".workspace-leaf.mod-active img"),
-        ).every(
-          (image) =>
-            image instanceof HTMLImageElement &&
-            image.complete &&
-            image.naturalWidth > 0,
-        ),
-      ),
-    { timeoutMsg: "images did not load" },
+/** Images in the active leaf that have not loaded, by their address. */
+async function unloaded(): Promise<string[]> {
+  return browser.execute(() =>
+    Array.from(
+      activeDocument.querySelectorAll(".workspace-leaf.mod-active img"),
+    )
+      .filter(
+        (image) =>
+          !(image instanceof HTMLImageElement) ||
+          !image.complete ||
+          image.naturalWidth === 0,
+      )
+      .filter((image) => !image.classList.contains("cm-widgetBuffer"))
+      .map((image) => image.getAttribute("src") ?? ""),
   );
+}
+
+/**
+ * Waits until every image in the active leaf has loaded, or for five
+ * seconds, and records those that did not, as one whose address Obsidian
+ * does not resolve.
+ */
+async function settleImages(): Promise<void> {
+  try {
+    await browser.waitUntil(async () => (await unloaded()).length === 0, {
+      timeout: 5000,
+    });
+  } catch {
+    const missing = await unloaded();
+    const list = (results["unloaded"] as string[] | undefined) ?? [];
+    for (const source of missing) {
+      if (!list.includes(source)) list.push(source);
+    }
+    results["unloaded"] = list;
+  }
   await browser.pause(150);
 }
 
