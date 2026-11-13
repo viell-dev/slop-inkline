@@ -916,6 +916,13 @@ describe("A dictionary of words and parts (#167, section 5)", function () {
     await open("Words.md", "source");
     results.renameLive = await measure(["Compound", "Both", "Built"]);
     await saveScreenshot("dictionary-after-rename-live");
+    // Closed and opened again, so that Reading view renders it anew.
+    await browser.executeObsidian(({ app }) => {
+      for (const leaf of app.workspace.getLeavesOfType("markdown")) leaf.detach();
+    });
+    await open("Words.md", "preview");
+    results.renameReopened = await measure(labels);
+    await saveScreenshot("dictionary-after-rename-reopened");
   });
 
   it("without Inkline", async function () {
