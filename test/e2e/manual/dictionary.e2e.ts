@@ -33,10 +33,10 @@ const results: Record<string, unknown> = {};
 type Mode = "source" | "preview";
 type Stroke = { tool: "pen"; size: number; points: number[] };
 
-const u = (values: number[]) => values.map((value) => value * 16);
+const u = (values: number[]) => values.map((value) => Math.round(value * 16));
 const pen = (points: number[], size = 160): Stroke => ({
   tool: "pen",
-  size,
+  size: Math.round(size),
   points: u(points),
 });
 
