@@ -77,10 +77,48 @@ function runsOf(view: EditorView): DecorationSet {
   return builder.finish();
 }
 
+/**
+ * The second switch: each symbol's embed is an isolate in CodeMirror's own
+ * model of the line's order, as its picture is a neutral object to the
+ * browser, while CodeMirror otherwise orders the embed's hidden text, whose
+ * file name is left to right. The page is not changed.
+ */
+export const neutralClass = "inkline-proto-neutral";
+
+const embedIsolate = Decoration.mark({ bidiIsolate: Direction.LTR });
+
+/** Each symbol embed in the lines `view` shows, while the switch is on. */
+function embedsOf(view: EditorView): DecorationSet {
+  const builder = new RangeSetBuilder<Decoration>();
+  const on =
+    view.dom.ownerDocument.documentElement.classList.contains(neutralClass);
+  if (!on) return builder.finish();
+  let last = -1;
+  for (const { from, to } of view.visibleRanges) {
+    let at = from;
+    while (at <= to) {
+      const line = view.state.doc.lineAt(at);
+      if (line.number > last) {
+        for (const match of line.text.matchAll(embed)) {
+          builder.add(
+            line.from + match.index,
+            line.from + match.index + match[0].length,
+            embedIsolate,
+          );
+        }
+        last = line.number;
+      }
+      at = line.to + 1;
+    }
+  }
+  return builder.finish();
+}
+
 /** Live Preview's and Source mode's part of the prototype. */
 export const runsExtension: Extension = [
   Prec.high(EditorView.decorations.of(runsOf)),
   EditorView.bidiIsolatedRanges.of(runsOf),
+  EditorView.bidiIsolatedRanges.of(embedsOf),
 ];
 
 /** Whether `node` is a symbol's embed in rendered text. */

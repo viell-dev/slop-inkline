@@ -45,6 +45,9 @@ const he1 = "שלום";
 const he2 = "עולם";
 /** The Hebrew letter shin, as a symbol's name. */
 const shin = "ש";
+/** "Marhaban" and "alam", two Arabic words. */
+const ar1 = "مرحبا";
+const ar2 = "عالم";
 
 /** Fills a rectangle of `pixels` with ink, from (x0, y0) to just before (x1, y1). */
 function fill(
@@ -142,6 +145,7 @@ const lineCases: Case[] = [
   { id: "reversed-workaround", text: run([3, 2, 1]) },
   { id: "soft-break", text: `${he1} ${run([1, 2])}\n${run([3, 4])} Hello` },
   { id: "zwsp-split", text: `${RLM}${run([1, 2])}${ZWSP}${run([3, 4])}` },
+  { id: "ar-around", text: `${ar1} ${run([1, 2, 3])} ${ar2}` },
 ];
 
 const linesNote = [
@@ -397,19 +401,43 @@ async function editorLines(): Promise<unknown[]> {
     const cm = Reflect.get(view.editor, "cm") as {
       posAtDOM(node: Node): number;
       contentDOM: HTMLElement;
-      state: { doc: { lineAt(pos: number): { number: number; text: string } } };
+      state: {
+        doc: {
+          lineAt(pos: number): { number: number; text: string; from: number };
+        };
+      };
+      bidiSpans(line: object): { from: number; to: number; level: number }[];
+      textDirectionAt(pos: number): number;
     };
     const content = cm.contentDOM;
     const lines = Array.from(content.querySelectorAll(".cm-line")).map(
       (line) => {
         let number = -1;
         let source = "";
+        let spans = "";
+        let cmDirection = -1;
         try {
           const at = cm.state.doc.lineAt(cm.posAtDOM(line));
           number = at.number;
           source = probe.esc(at.text).slice(0, 160);
+          spans = cm
+            .bidiSpans(at)
+            .map((span) => `${String(span.from)}-${String(span.to)}:${String(span.level)}`)
+            .join(" ");
+          cmDirection = cm.textDirectionAt(at.from);
         } catch {
           // A line CodeMirror does not map.
+        }
+        const image = line.querySelector("img:not(.cm-widgetBuffer)");
+        const chain: string[] = [];
+        for (
+          let node = image?.parentElement ?? null;
+          node !== null && node !== line;
+          node = node.parentElement
+        ) {
+          chain.push(
+            `${node.tagName.toLowerCase()}.${node.className.toString().split(" ").join(".")}[${getComputedStyle(node).display}]`,
+          );
         }
         return {
           number,
@@ -417,7 +445,12 @@ async function editorLines(): Promise<unknown[]> {
           ...probe.describe(line),
           widgets: Array.from(line.querySelectorAll(".cm-widgetBuffer"))
             .length,
-          html: line.innerHTML.length > 0,
+          runs: Array.from(line.querySelectorAll(".inkline-rtl-run")).map(
+            (run) => run.querySelectorAll("img:not(.cm-widgetBuffer)").length,
+          ),
+          spans,
+          cmDirection,
+          chain: chain.join(" < "),
         };
       },
     );
@@ -488,7 +521,7 @@ async function makeVault(): Promise<void> {
 
 /** Toggles a prototype's class on the main window's root. */
 async function prototype(
-  name: "inkline-proto-strong" | "inkline-proto-runs",
+  name: "inkline-proto-strong" | "inkline-proto-runs" | "inkline-proto-neutral",
   on: boolean,
 ): Promise<void> {
   await browser.executeObsidian(({ app, obsidian }, cls, wanted) => {
@@ -834,9 +867,21 @@ describe("Right to left (#167 §6)", function () {
     await record("versions", versions);
   });
 
+  afterEach(async function () {
+    // A test that failed with the editor open leaves it over the next one.
+    for (let tries = 0; tries < 5; tries++) {
+      if (!(await browser.$(".modal-container").isExisting())) break;
+      const discard = browser.$(".modal-container button=Discard");
+      if (await discard.isExisting()) await discard.click();
+      else await browser.keys(["Escape"]);
+      await browser.pause(300);
+    }
+  });
+
   after(async function () {
     await prototype("inkline-proto-strong", false);
     await prototype("inkline-proto-runs", false);
+    await prototype("inkline-proto-neutral", false);
   });
 
   it("orders the line cases in Reading view, Live Preview and Source mode", async function () {
@@ -929,8 +974,11 @@ describe("Right to left (#167 §6)", function () {
   });
 
   it("walks the cursor through symbols with the arrow keys", async function () {
-    for (const runs of [false, true]) {
+    for (const mode of ["plain", "neutral", "runs-neutral"] as const) {
+      const runs = mode === "runs-neutral";
+      const tag = mode === "plain" ? "" : `-${mode}`;
       await prototype("inkline-proto-runs", runs);
+      await prototype("inkline-proto-neutral", mode !== "plain");
       await open("Keys.md", "source");
       const walks: Record<string, string[]> = {};
       for (const [index, c] of keyCases.entries()) {
@@ -941,11 +989,8 @@ describe("Right to left (#167 §6)", function () {
           }
         }
       }
-      await record(runs ? "keys-runs" : "keys", walks);
-      await record(
-        runs ? "keys-runs-lines" : "keys-lines",
-        await editorLines(),
-      );
+      await record(`keys${tag}`, walks);
+      await record(`keys${tag}-lines`, await editorLines());
       // A selection of three steps from the start of each line.
       const selections: Record<string, string> = {};
       for (const [index, c] of keyCases.entries()) {
@@ -967,18 +1012,19 @@ describe("Right to left (#167 §6)", function () {
             },
           );
           if (index === 0 && key === "ArrowLeft") {
-            await shot(runs ? "keys-runs-selection-he" : "keys-selection-he");
+            await shot(`keys${tag}-selection-he`);
           }
         }
       }
-      await record(runs ? "selections-runs" : "selections", selections);
+      await record(`selections${tag}`, selections);
       await place(0, "start");
       await browser.keys(["ArrowLeft"]);
       await browser.keys(["ArrowLeft"]);
       await browser.pause(100);
-      await shot(runs ? "keys-runs-he-two-left" : "keys-he-two-left");
+      await shot(`keys${tag}-he-two-left`);
     }
     await prototype("inkline-proto-runs", false);
+    await prototype("inkline-proto-neutral", false);
   });
 
   it("inserts symbols from ;; in a right-to-left line, and in an English one", async function () {
@@ -1002,11 +1048,10 @@ describe("Right to left (#167 §6)", function () {
     await openAtMarker("Next.md", "HERE");
     await browser.executeObsidianCommand("inkline:insert-symbol");
     await waitForEditor();
-    const before = (
-      await browser.executeObsidian(({ app }) =>
-        app.vault.getFiles().filter((f) => f.path.endsWith(".ink.png")),
-      )
-    ).length;
+    const before = await browser.executeObsidian(
+      ({ app }) =>
+        app.vault.getFiles().filter((f) => f.path.endsWith(".ink.png")).length,
+    );
     await draw([
       [0.5, 0.2],
       [0.5, 0.8],
@@ -1104,6 +1149,8 @@ describe("Right to left (#167 §6)", function () {
     await record("pdf-lines", await exportPdf("lines"));
     await open("Classed.md", "preview");
     await record("pdf-classed", await exportPdf("classed"));
+    await open("Wrap.md", "preview");
+    await record("pdf-wrap", await exportPdf("wrap"));
   });
 
   it("orders them without Inkline, and in the dark theme", async function () {

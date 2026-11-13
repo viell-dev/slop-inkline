@@ -637,12 +637,19 @@ img.inkline-symbol:not([width], [height]) {
   direction: rtl;
 }
 
+/* Reading view's blocks take their direction from their text otherwise. */
+.inkline-rtl.markdown-preview-view [dir="auto"] {
+  unicode-bidi: isolate;
+}
+
 /*
  * PROTOTYPE: each symbol as a strong right-to-left character, by a
- * right-to-left mark after its embed, while the root has the class
+ * right-to-left mark on each side of its embed, while the root has the class
  * inkline-proto-strong.
  */
+.inkline-proto-strong span.internal-embed:has(> img.inkline-symbol)::before,
 .inkline-proto-strong span.internal-embed:has(> img.inkline-symbol)::after,
+.inkline-proto-strong .inkline-symbol-embed::before,
 .inkline-proto-strong .inkline-symbol-embed::after {
   content: "\200F";
 }
