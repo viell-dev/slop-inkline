@@ -240,7 +240,7 @@ async function exportPdf(name: string) {
   }
 }
 
-const styles = (process.env.STYLES ?? "styles-0.9.2,styles-0.9.3").split(",");
+const styles = (process.env.STYLES ?? "styles-print-filter").split(",");
 
 describe("PDF seams along symbols' boxes (#255)", function () {
   after(async function () {

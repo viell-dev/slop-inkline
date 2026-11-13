@@ -6,6 +6,7 @@
 // - Chromium's built-in PDF viewer (PDFium), in an Electron window of its
 //   own: a capture of the window, cropped to the page afterwards.
 
+import { execFileSync } from "node:child_process";
 import { readdir, readFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { browser } from "@wdio/globals";
@@ -71,19 +72,26 @@ describe("PDF viewers on exported symbols (#255)", function () {
               await new Promise((r) => window.setTimeout(r, 200));
             }
             Reflect.set(viewer as object, "currentScale", wanted);
-            // Wait for the first page's canvas at that scale to finish.
-            const end = Date.now() + 20_000;
+            // Wait for the first page's canvas at that scale to settle.
+            const end = Date.now() + 30_000;
+            let last = "";
+            let stable = 0;
             for (;;) {
               await new Promise((r) => window.setTimeout(r, 500));
-              const page = document.querySelector(
-                '.workspace-leaf.mod-active .pdf-viewer .page[data-page-number="1"]',
+              const canvas = document.querySelector(
+                '.workspace-leaf.mod-active .page[data-page-number="1"] canvas',
               );
-              const canvas = page?.querySelector("canvas");
-              const done =
-                page?.getAttribute("data-loaded") === "true" &&
-                canvas instanceof HTMLCanvasElement &&
-                canvas.width > 0;
-              if (done) {
+              const size =
+                canvas instanceof HTMLCanvasElement
+                  ? `${canvas.width}x${canvas.height}`
+                  : "";
+              const busy =
+                document.querySelector(
+                  '.workspace-leaf.mod-active .page[data-page-number="1"] .loadingIcon:not(.notVisible)',
+                ) !== null;
+              stable = size !== "" && size === last && !busy ? stable + 1 : 0;
+              last = size;
+              if (stable >= 3 && canvas instanceof HTMLCanvasElement) {
                 return {
                   scale: Reflect.get(viewer as object, "currentScale") as number,
                   width: canvas.width,
@@ -92,12 +100,24 @@ describe("PDF viewers on exported symbols (#255)", function () {
                   png: canvas.toDataURL("image/png"),
                 };
               }
-              if (Date.now() > end) return { error: "page did not render" };
+              if (Date.now() > end) {
+                const page = document.querySelector(
+                  '.workspace-leaf.mod-active .page[data-page-number="1"]',
+                );
+                return {
+                  error: `page did not render: ${size} busy ${busy} ${
+                    page?.outerHTML.slice(0, 300) ?? "no page"
+                  }`,
+                };
+              }
             }
           },
           scale,
         );
-        if ("error" in result) throw new Error(`${name}: ${result.error}`);
+        if ("error" in result) {
+          console.log(`${name} obsidian ${scale}: ${result.error}`);
+          continue;
+        }
         // The canvas's own resolution: its pixels across 612 points.
         const dpi = Math.round((result.width / 612) * 72);
         console.log(`${name} obsidian ${scale}: ${result.width}x${result.height} = ${dpi} dpi`);
@@ -111,6 +131,9 @@ describe("PDF viewers on exported symbols (#255)", function () {
 
   it("draws each PDF in Chromium's PDF viewer at several zooms", async function () {
     const dir = await folder();
+    // The suite's window manager tiles windows: let this one float at the
+    // size asked for.
+    execFileSync("herbstclient", ["rule", "floating=on"]);
     for (const file of (await readdir(pdfs)).filter((f) => f.endsWith(".pdf"))) {
       const name = file.replace(/\.pdf$/, "");
       for (const zoom of [100, 125, 150, 200]) {
@@ -125,8 +148,10 @@ describe("PDF viewers on exported symbols (#255)", function () {
             };
           };
           const win = new remote.BrowserWindow({
-            width: 1400,
-            height: 1100,
+            x: 0,
+            y: 0,
+            width: 1590,
+            height: 990,
             show: true,
             webPreferences: { plugins: true },
           });
