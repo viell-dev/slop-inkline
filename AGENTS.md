@@ -7,6 +7,45 @@ parallel work, attribution, and reports to other projects. This file adds only
 what is specific to this repository; [CONTRIBUTING.md](CONTRIBUTING.md) holds
 the setup, checks, and tests that apply to everyone.
 
+## What Inkline is for
+
+Inkline is for taking notes on a script that no font has. The owner made it for
+games with an invented language, where working out the language is the game: the
+player copies what the game shows, guesses, and revises. Such a script's symbols
+have no Unicode characters, so they cannot be typed, pasted, or searched for as
+text. Two needs follow, and they are the whole purpose of the first stable
+release:
+
+- **Notate:** write a symbol that cannot be typed into a note, as easily as a
+  letter. The editor sized to a line of text, tracing and Make ink, **Next**,
+  and showing a symbol in the line at the text's size and colour serve this.
+- **Reuse:** write that symbol again wherever it comes up, as easily. The `;;`
+  list, the library, names, the readings and translations by which the lists
+  find a symbol, renaming that every note follows, and **Copy from** serve this.
+
+Keeping drawings safe, and keeping notes readable without Inkline, are
+conditions on both: a symbol that can be lost or locked in is not easy to use.
+
+Judge features, wording, and reviews by those two needs.
+
+- **Describe Inkline by its purpose, not only its mechanism.** "Draws small
+  inline images" says how it works. It leaves out the reuse and whom it is for.
+- **Inkline does not work the language out, and does not hold what is known
+  about it.** Word lists, dictionaries, symbols built from other symbols, text
+  set over or under symbols, and writing directions are ideas for later, in
+  [#167](https://github.com/viell-dev/slop-inkline/issues/167). The owner allows
+  investigating them, and has approved none. That issue's comments, its "vision"
+  report included, describe what Inkline could become, not what it is for.
+  Readings and translations are in `1.0.0` so that a symbol can be found again,
+  and are not the start of a dictionary.
+- **A script that fonts have is not the case to design for.** A person who can
+  type or paste a script's characters does not need to draw them.
+- **People creating a constructed language with a script of its own** are served
+  by the same two needs and are named in the public documents. Their needs do
+  not set the direction where they differ from the player's.
+
+The owner decides changes to what Inkline is for, as [Releases](#releases) says.
+
 ## Repository boundary
 
 Everything the project needs lives in this repository. Never stage, copy, quote,

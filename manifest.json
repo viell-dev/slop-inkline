@@ -3,7 +3,7 @@
   "name": "Inkline",
   "version": "0.9.0",
   "minAppVersion": "1.13.4",
-  "description": "Draw symbols that sit inline in your notes like characters, saved as plain PNG images.",
+  "description": "Draw symbols that no font has, then write with them inline in your notes like characters. Each one is saved as a plain PNG image.",
   "author": "Viell",
   "authorUrl": "https://github.com/viell-dev",
   "isDesktopOnly": true

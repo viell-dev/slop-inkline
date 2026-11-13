@@ -23,10 +23,11 @@ features:
       Each symbol is an image in your vault with an ordinary embed, so your
       notes still show it without the plugin, and other apps can show it from a
       standard Markdown link.
-  - title: Name it by its meaning
+  - title: Written again in a few keys
     details:
-      Name a symbol in any script with your current guess at what it means, and
-      rename it as your reading changes; the notes that use it follow.
+      Type ;; and a few letters of a symbol's name to write it again in any
+      note. Name it with your current guess at what it means, and rename it as
+      your reading changes; the notes that use it follow.
   - title: Edit without loss
     details:
       The strokes are kept inside the file, so a symbol opens again exactly as
@@ -42,11 +43,20 @@ Inkline is a prerelease for Obsidian 1.13.4 or later, on desktop.
 
 ## What it is for
 
-Inkline is made for working out invented scripts, such as the languages of
-puzzle games like Chants of Sennaar: draw a symbol where you meet it, name it
-with your current guess at its meaning, rename it as your reading changes, and
-find every note that uses it. Conlang glyphs, ciphers, game marks, and personal
-shorthand work the same way.
+Inkline is made for games with an invented language, such as Chants of Sennaar,
+where working out the language is the game. The symbols of such a language are
+in no font, so you cannot type them into your notes. Inkline does two things
+about that:
+
+- **Write a symbol down easily.** Draw it where you meet it, or trace it from a
+  screenshot, and it sits in the line like a letter.
+- **Use it again easily.** Type `;;` and a few letters of its name to write it
+  again in any note. Name it with your current guess at its meaning, rename it
+  as your reading changes, and find every note that uses it.
+
+It serves anyone else who writes with symbols of their own in the same way:
+people creating a constructed language (a conlang) with a script of its own, and
+people using a cipher or a personal shorthand.
 
 It is not a whiteboard, a handwriting notebook, a font editor, or a set of
 ready-made symbols: it draws small symbols of your own, one at a time, for use

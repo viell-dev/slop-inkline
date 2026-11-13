@@ -1,4 +1,4 @@
-Inkline is for symbols that no font has, such as the invented scripts of puzzle games like Chants of Sennaar, conlang glyphs, ciphers, game marks, and personal shorthand.
+Inkline is for writing notes with symbols that no font has. It is made for games with an invented language, such as Chants of Sennaar, where working out the language is the game: you write each symbol down as easily as a letter, and use it again as often as it comes up. It serves people creating a constructed language (a conlang) with a script of its own in the same way, and people using a cipher or a personal shorthand.
 
 Draw a symbol in an editor sized to one line of text, with a mouse or a trackpad, or paste a screenshot and trace over it or turn it into ink. The symbol then sits in the line like a character, at the text's size and in its color. Name it with your current guess at its meaning, rename it as your reading changes, and find every note that uses it in the library. Type ;; and a few letters of its name to insert it again.
 

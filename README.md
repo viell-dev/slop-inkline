@@ -1,8 +1,8 @@
 # Inkline
 
-An Obsidian plugin for drawing symbols that no font has, so that you can write
-them in your notes as easily as letters. Each symbol sits inside the line of
-text like a character, at the text's size and in its color.
+An Obsidian plugin for symbols that no font has: draw one once, then write it in
+your notes as easily as a letter, as often as it comes up. Each symbol sits
+inside the line of text like a character, at the text's size and in its color.
 
 ## Install
 
@@ -47,11 +47,20 @@ how to get unsaved work back.
 
 ## What it is for
 
-It is made for working out invented scripts, such as the languages of puzzle
-games like Chants of Sennaar: draw a symbol where you meet it, name it with your
-current guess at its meaning, rename it as your reading changes, and find every
-note that uses it. Conlang glyphs, ciphers, game marks, and personal shorthand
-work the same way.
+Inkline is made for games with an invented language, such as Chants of Sennaar,
+where working out the language is the game. The symbols of such a language are
+in no font, so you cannot type them into your notes. Inkline does two things
+about that:
+
+- **Write a symbol down easily.** Draw it where you meet it, or trace it from a
+  screenshot, and it sits in the line like a letter.
+- **Use it again easily.** Type `;;` and a few letters of its name to write it
+  again in any note. Name it with your current guess at its meaning, rename it
+  as your reading changes, and find every note that uses it.
+
+It serves anyone else who writes with symbols of their own in the same way:
+people creating a constructed language (a conlang) with a script of its own, and
+people using a cipher or a personal shorthand.
 
 ![An invented inscription transcribed as inline symbols, beside the library showing the renamed sign and both notes that use it.](docs/screenshots/reading-dark.png)
 
