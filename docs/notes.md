@@ -281,3 +281,10 @@ for the exported note, even when you read it in a dark theme.
 
 Physical printer output has not been checked; the automated checks cover native
 PDF export on Linux and the resulting document's pixels and layout.
+
+In text colour, some PDF viewers draw a faint one-pixel line along an edge of a
+symbol's box at some zoom levels, Obsidian's own PDF view among them. It comes
+from how the browser Obsidian is built on writes a symbol's colour into the PDF,
+not from a mark in the symbol, and it was not seen when the PDF was drawn at 300
+dots per inch or more. Symbols in stored colour show no such line
+([#255](https://github.com/viell-dev/slop-inkline/issues/255)).
