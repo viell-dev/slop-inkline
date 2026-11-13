@@ -5,7 +5,8 @@
 // The measurements are made afterwards, outside Obsidian.
 //
 // STYLES picks the stylesheets, by the names of files in pdf-seam/ without
-// ".css", comma-separated; the default is "styles-0.9.2,styles-0.9.3".
+// ".css", comma-separated; the default is all three. styles-print-filter is
+// 0.9.3 with a mask-free print path, a prototype that is not a proposal.
 
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -240,7 +241,9 @@ async function exportPdf(name: string) {
   }
 }
 
-const styles = (process.env.STYLES ?? "styles-print-filter").split(",");
+const styles = (
+  process.env.STYLES ?? "styles-0.9.2,styles-0.9.3,styles-print-filter"
+).split(",");
 
 describe("PDF seams along symbols' boxes (#255)", function () {
   after(async function () {
