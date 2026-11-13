@@ -144,7 +144,10 @@ class EntryModal extends Modal {
     for (const file of symbols) {
       pictures.createEl("img", {
         cls: "inkline-dictionary-picture",
-        attr: { src: app.vault.getResourcePath(file), alt: file.basename },
+        attr: {
+          src: app.vault.getResourcePath(file),
+          alt: file.basename.replace(/.ink$/i, ""),
+        },
       });
     }
     const form = this.contentEl.createEl("form");
@@ -230,7 +233,7 @@ export async function addToDictionary(
     const [file] = files;
     if (file === undefined) return;
     const text = own[0];
-    const entry = await ask(app, files, `${file.basename}`, {
+    const entry = await ask(app, files, file.basename.replace(/.ink$/i, ""), {
       reading: text?.reading[0] ?? "",
       meaning: text?.translation[0] ?? "",
     }, "");

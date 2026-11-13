@@ -213,9 +213,11 @@ export class LexiconIndex {
           }
           if (reading === "" && meaning === "") continue;
           const own = paths.map((path) => this.translationOf(path));
+          // Only for a compound of symbols that each mean something: a
+          // syllable has no meaning to show.
           const literal =
-            paths.length > 1 && own.some((value) => value !== undefined)
-              ? own.map((value) => value ?? "?").join(" + ")
+            paths.length > 1 && own.every((value) => value !== undefined)
+              ? own.join(" + ")
               : undefined;
           entries.set(key, {
             ...(reading === "" ? {} : { reading }),

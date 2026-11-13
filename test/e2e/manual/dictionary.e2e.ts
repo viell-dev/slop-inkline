@@ -288,7 +288,7 @@ async function measure(wanted: readonly string[]): Promise<unknown[]> {
             under: word.getAttribute("data-inkline-under"),
             over: word.getAttribute("data-inkline-over"),
             literal: word.getAttribute("data-inkline-literal"),
-            title: word.getAttribute("title"),
+            tooltip: word.getAttribute("aria-label"),
           }),
         ),
         symbols: images.map((image) => {
@@ -734,12 +734,31 @@ describe("A dictionary of words and parts (#167, section 5)", function () {
       await shoot(`dictionary-${name}-dark`);
       await theme("moonstone");
     }
-    // The literal gloss on hover, in Reading view.
-    await open("Words.md", "preview");
-    const word = browser.$(".markdown-reading-view .inkline-word");
-    await word.moveTo();
-    await browser.pause(1500);
-    await saveScreenshot("dictionary-hover");
+    // The literal gloss on hover over a compound's meaning, in Reading view
+    // and in Live Preview.
+    for (const [name, mode] of [
+      ["reading", "preview"],
+      ["live", "source"],
+    ] as const) {
+      await open("Words.md", mode);
+      const word = await browser
+        .$(`.workspace-leaf.mod-active .${mode === "preview" ? "markdown-reading-view" : "cm-content"} .inkline-word[data-inkline-literal]`)
+        .getElement();
+      const size = await word.getSize();
+      await browser
+        .action("pointer")
+        .move({ origin: word, x: 0, y: Math.floor(size.height / 2) - 3 })
+        .perform();
+      await browser.pause(1500);
+      views[`${name}Tooltip`] = await browser.execute(() =>
+        Array.from(document.querySelectorAll(".tooltip")).map(
+          (tip) => tip.textContent,
+        ),
+      );
+      await saveScreenshot(`dictionary-hover-${name}`);
+      await browser.action("pointer").move({ x: 5, y: 5 }).perform();
+      await browser.pause(300);
+    }
     // The lexicon note itself.
     await open("Lexicon.md", "preview");
     await shoot("dictionary-lexicon-reading");
@@ -860,6 +879,10 @@ describe("A dictionary of words and parts (#167, section 5)", function () {
 
   it("follows a rename of a part and of a word's symbol", async function () {
     await browser.executeObsidian(async ({ app }) => {
+      // Obsidian's "Always update internal links", so that no question waits.
+      const setConfig: unknown = Reflect.get(app.vault, "setConfig");
+      if (typeof setConfig !== "function") throw new Error("no setConfig");
+      Reflect.apply(setConfig, app.vault, ["alwaysUpdateLinks", true]);
       for (const [from, to] of [
         ["Glyphs/adult.ink.png", "Glyphs/grown.ink.png"],
         ["Glyphs/roof.ink.png", "Glyphs/cover.ink.png"],

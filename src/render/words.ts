@@ -161,7 +161,13 @@ export function wordAttributes(entry: WordEntry): Record<string, string> {
     ...(entry.meaning === undefined ? {} : { [underAttribute]: entry.meaning }),
     ...(entry.literal === undefined
       ? {}
-      : { [literalAttribute]: entry.literal, title: entry.literal }),
+      : {
+          [literalAttribute]: entry.literal,
+          // Obsidian's own tooltip, from its meaning under the word: over
+          // the symbols, each symbol's name tooltip comes first.
+          "aria-label": entry.literal,
+          "data-tooltip-position": "bottom",
+        }),
   };
 }
 
@@ -267,7 +273,8 @@ function groupHolder(holder: Element, source: WordSource): void {
         overAttribute,
         underAttribute,
         literalAttribute,
-        "title",
+        "aria-label",
+        "data-tooltip-position",
       ]) {
         const value = word.getAttribute(name);
         if (value !== null) attributes[name] = value;
