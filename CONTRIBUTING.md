@@ -146,6 +146,15 @@ or text drawn by the host, a test may measure the pixels of a screenshot of the
 elements concerned, with stated tolerances. Test vaults in `test/e2e/vaults/`
 and every drawing a test uses are synthetic.
 
+The test vault keeps deleted files in its own `.trash` folder: its
+`.obsidian/app.json` sets Obsidian's **Deleted files** option, `trashOption`, to
+`local`. So a test that deletes a file with `app.fileManager.trashFile`, as a
+user would, deletes it wherever the suite runs. The system's trash fails in
+Docker. From Obsidian 1.15.1, a deletion it refuses leaves the file where it was
+and shows a notice, where earlier versions moved the file to `.trash` instead
+([#257](https://github.com/viell-dev/slop-inkline/issues/257)). A test about the
+system's trash itself would set the option back to `system`, and say why.
+
 `test/e2e/manual/brat.e2e.ts` checks installing and updating through BRAT
 against the published releases, on both default Obsidian versions. It stays
 outside the suite and gates no release, as it needs BRAT's own release and
