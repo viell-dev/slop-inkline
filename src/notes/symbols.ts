@@ -98,12 +98,27 @@ const openingNoticeAfter = 300;
 const writes = new WriteQueue();
 
 /**
- * The symbols Obsidian is renaming for Inkline. Asked to rename a file it is
- * already renaming, Obsidian says it has at once, then does so once the first
- * ends, so that nothing could tell whether the name was given, or say so if the
- * first never ends. The second is refused instead, as a failed rename is.
+ * The symbols Obsidian is renaming for Inkline, from the call to its
+ * `renameFile` until that ends, which lasts as long as its question about
+ * links. A second rename of one of them is refused at once, as a failed rename
+ * is, rather than waiting behind the first for as long as that takes.
+ *
+ * This covers Inkline's own renames of one symbol, not every rename Obsidian
+ * puts off. Asked for a rename of any file while it is moving the files of
+ * another, Obsidian takes it into that one: it says it has renamed the file at
+ * once, and moves it once the other's moves end, so nothing could tell whether
+ * the name was given. {@link renameSaved} asks only once Obsidian is moving
+ * nothing, where {@link moveWaits} can see that. Where it cannot,
+ * {@link watchMove} finds the file not yet moved when Obsidian says it is done.
  */
 const beingRenamed = new WeakSet<TFile>();
+
+/** Throws if Obsidian is renaming `file` for Inkline, as {@link beingRenamed}. */
+function notBeingRenamed(file: TFile): void {
+  if (beingRenamed.has(file)) {
+    throw new Error("Obsidian is still renaming this symbol.");
+  }
+}
 
 /** What the plugin lends the editors it opens. */
 export interface EditorHost {
@@ -116,8 +131,8 @@ export interface EditorHost {
   readonly drafts: DraftStore;
   /** What the vault's symbols say about themselves, as far as it is read. */
   readonly texts: SymbolTexts;
-  /** Whether the plugin is still loaded; nothing is written once it is not. */
-  readonly alive: () => boolean;
+  /** Aborts as the plugin unloads; nothing is written once it has. */
+  readonly unloaded: AbortSignal;
 }
 
 /** An `ArrayBuffer` holding exactly these bytes, as the vault takes. */
@@ -130,8 +145,12 @@ function parentPath(path: string): string {
   return slash === -1 ? "" : path.slice(0, slash);
 }
 
-function stillAlive(host: EditorHost): void {
-  if (!host.alive()) throw new Error("Inkline was disabled");
+/**
+ * Throws once `unloaded` has aborted, as Inkline unloads, so that nothing more
+ * is written.
+ */
+function stillAlive(unloaded: AbortSignal): void {
+  if (unloaded.aborted) throw new Error("Inkline was disabled");
 }
 
 /** The names of what a folder of the vault holds, `""` for its root. */
@@ -389,18 +408,71 @@ async function insertEmbed(
  * without going on if one cannot be saved. A save that fails rejects, and on
  * Obsidian 1.13 one that comes during another returns before its text is
  * written, so the file is read again to be sure.
+ *
+ * Each read waits, and a note found saved can be typed in while a later one is
+ * read. So this returns a check, which waits for nothing, of whether every open
+ * note's editor still holds the text found saved in it; a note opened since, or
+ * one whose tab shows another note now, has not been looked at, and fails it.
+ * Once `unloaded` aborts, it saves no more notes, and throws.
  */
-async function saveOpenNotes(app: App): Promise<void> {
+async function saveOpenNotes(
+  app: App,
+  unloaded: AbortSignal,
+): Promise<() => boolean> {
+  const found = new Map<MarkdownView, { file: TFile; text: string }>();
   for (const { view } of app.workspace.getLeavesOfType("markdown")) {
     if (!(view instanceof MarkdownView) || view.file === null) continue;
     const { file } = view;
-    const level = async (): Promise<boolean> =>
-      sameText(await app.vault.read(file), view.getViewData());
-    if (await level()) continue;
-    // Obsidian reports a save that fails, and keeps the editor's text.
-    if (!(await view.save().then(level, () => false))) {
+    /** What the editor holds, if the file holds it too. */
+    const saved = async (): Promise<string | undefined> => {
+      const text = await app.vault.read(file);
+      const shown = view.getViewData();
+      return sameText(text, shown) ? shown : undefined;
+    };
+    let text = await saved();
+    if (text === undefined) {
+      stillAlive(unloaded);
+      // Obsidian reports a save that fails, and keeps the editor's text.
+      text = await view.save().then(saved, () => undefined);
+    }
+    if (text === undefined) {
       throw new Error(`the note ${file.basename} could not be saved first`);
     }
+    found.set(view, { file, text });
+  }
+  return () =>
+    app.workspace.getLeavesOfType("markdown").every(({ view }) => {
+      if (!(view instanceof MarkdownView) || view.file === null) return true;
+      const seen = found.get(view);
+      return seen?.file === view.file && seen.text === view.getViewData();
+    });
+}
+
+/**
+ * How many times a rename goes through the open notes, for one typed in while
+ * they were being saved, before it gives up.
+ */
+const notePasses = 3;
+
+/**
+ * Waits for `waiting`, or until `unloaded` aborts, whichever comes first. The
+ * signal lasts as long as Inkline does, so this stops listening to it once the
+ * wait ends.
+ */
+async function unlessUnloaded(
+  waiting: Promise<void>,
+  unloaded: AbortSignal,
+): Promise<void> {
+  if (unloaded.aborted) return;
+  let unload = (): void => undefined;
+  const aborted = new Promise<void>((resolve) => {
+    unload = resolve;
+  });
+  unloaded.addEventListener("abort", unload, { once: true });
+  try {
+    await Promise.race([waiting, aborted]);
+  } finally {
+    unloaded.removeEventListener("abort", unload);
   }
 }
 
@@ -415,8 +487,264 @@ function notesLinking(app: App, path: string): Set<string> {
 }
 
 /**
- * Gives `file` the path `path` through Obsidian, so that the links to it follow
- * as its settings say. Every rename of a symbol comes through here.
+ * A rename of a symbol's file, as {@link renamingOf} checked it: the file, the
+ * path it had then, and the name it takes in that path's folder.
+ */
+interface Renaming {
+  readonly file: TFile;
+  /** Where the file was when its new name was checked. */
+  readonly from: string;
+  /** The file's name then, which notices call it by. */
+  readonly fileName: string;
+  /** The new name, without `.ink.png`. */
+  readonly name: string;
+  /** The new path, in the folder of `from`. */
+  readonly to: string;
+}
+
+/**
+ * Throws unless `renaming` still holds as it was checked: its file is still the
+ * vault's file at the path it had then, which one deleted, replaced by another
+ * file at that path, or renamed elsewhere is not, and no other file in that
+ * folder has come by the new name. The name's own rules depend only on what was
+ * typed and the file's name, which that keeps as it was.
+ */
+function confirmRenaming(app: App, renaming: Renaming): void {
+  const { file, from, name } = renaming;
+  if (app.vault.getFileByPath(from) !== file) {
+    throw new Error(
+      present(app, file)
+        ? `the file was renamed to ${file.path} meanwhile`
+        : "the file was deleted or replaced meanwhile",
+    );
+  }
+  claimName(app, parentPath(from), name, file);
+}
+
+/**
+ * What Obsidian's `renameFile` waits for before it moves a file, as far as
+ * {@link moveWaits} can see it.
+ */
+interface MoveWaits {
+  /**
+   * Whether `renameFile`, called now, would reach its move without waiting for
+   * anything: no rename moving files, none queued or asking about links, and
+   * the index caught up with the whole vault. Waits for nothing.
+   */
+  readonly clear: () => boolean;
+  /**
+   * Waits for the renames queued now, and then for the index, as `renameFile`
+   * would. More can start meanwhile, so {@link MoveWaits.clear} is asked
+   * again once it ends.
+   */
+  readonly settle: () => Promise<void>;
+}
+
+/**
+ * What Obsidian's `renameFile` waits for, where this version of Obsidian keeps
+ * it, or undefined, which leaves a rename as it was without this. None of it is
+ * in Obsidian's API, so this is the one place that reads it, and anything of
+ * another shape counts as missing (#10). It can go once Obsidian's API has a
+ * rename that moves a file only if it is still at its path, or a way to know
+ * that `renameFile` will not wait.
+ *
+ * In Obsidian 1.13.4 and 1.15.0, `renameFile` hands the move to the file
+ * manager's `runAsyncLinkUpdate`. While another rename is moving its files,
+ * which `inProgressUpdates` shows, that takes the move into that rename and
+ * resolves at once. Otherwise it queues the move on `updateQueue`, a promise
+ * chain behind every rename still moving files or asking about links, and then
+ * waits for the metadata cache's `onCleanCache`, which is when `isCacheClean`
+ * finds every file indexed and its links resolved. Only then does `vault.rename`
+ * move whatever is at the file's path, without checking that it is still the
+ * file. With all of that clear, `renameFile` reaches `vault.rename` within
+ * microtasks, before any event, timer, or person can come between, and that
+ * takes the file's path at once. The disk still does first what Obsidian had
+ * begun to do before, which {@link watchMove} hears of.
+ *
+ * The public `resolved` event cannot stand in for this: it comes only when the
+ * links were being resolved, so a wait for it, with the cache already clean,
+ * would never end, and it says nothing of the index or the queue.
+ */
+function moveWaits(app: App): MoveWaits | undefined {
+  const cache = app.metadataCache;
+  const manager = app.fileManager;
+  const isCacheClean: unknown = Reflect.get(cache, "isCacheClean");
+  const onCleanCache: unknown = Reflect.get(cache, "onCleanCache");
+  const queue: unknown = Reflect.get(manager, "updateQueue");
+  /** The promise that the last rename queued ends with. */
+  const last = (): unknown =>
+    typeof queue === "object" && queue !== null
+      ? Reflect.get(queue, "promise")
+      : undefined;
+  /** An array while a rename moves its files, of those taken into it. */
+  const moving = (): unknown => Reflect.get(manager, "inProgressUpdates");
+  const idle = moving();
+  if (
+    typeof isCacheClean !== "function" ||
+    typeof onCleanCache !== "function" ||
+    !(last() instanceof Promise) ||
+    !(idle === null || Array.isArray(idle))
+  ) {
+    return undefined;
+  }
+  const clean = (): boolean => Boolean(Reflect.apply(isCacheClean, cache, []));
+  const ignore = (): void => undefined;
+  /** The last queued rename's promise, once it was seen to end. */
+  let ended: unknown;
+  /**
+   * Set once Obsidian is found not to work as read above, so that a wait that
+   * could never end, or never wait, is not waited for.
+   */
+  let unlike = false;
+  return {
+    clear: () => unlike || (moving() === null && last() === ended && clean()),
+    settle: async () => {
+      const queued = last();
+      try {
+        if (queued instanceof Promise) await queued.then(ignore, ignore);
+        await new Promise<void>((resolve) => {
+          Reflect.apply(onCleanCache, cache, [resolve]);
+        });
+      } catch {
+        unlike = true;
+      }
+      ended = queued;
+      // Every rename queued has ended, which leaves none moving files.
+      if (last() === queued && clean() && moving() !== null) unlike = true;
+    },
+  };
+}
+
+/**
+ * A rename that something came between once Obsidian had it, so that the file
+ * may not be where it was asked to go, or another file may be there, or that
+ * Obsidian failed with the file at the new name all the same. Its message says
+ * what happened, and where the file is now.
+ */
+export class RenameDisturbed extends Error {
+  override name = "RenameDisturbed";
+  /** Whether the file has the new name now, all the same. */
+  readonly renamed: boolean;
+
+  constructor(message: string, renamed: boolean) {
+    super(message);
+    this.renamed = renamed;
+  }
+}
+
+/** What {@link watchMove} heard of a rename once Obsidian had it. */
+interface Move {
+  /**
+   * What came between the check and Obsidian's move of the file, if anything,
+   * with where the file is now. Once Obsidian is `done`, with no move heard
+   * of, that it has not moved it; once it has failed, with the file at the new
+   * path all the same, that it has the new name.
+   */
+  readonly disturbed: (done: boolean) => RenameDisturbed | undefined;
+  readonly stop: () => void;
+}
+
+/**
+ * Listens, from Inkline's last check of `renaming` until Obsidian moves the
+ * file, for anything else created, deleted, or renamed at the file's path or
+ * the new one, in any letter case, as Windows and macOS read names. Obsidian
+ * moves whatever is at the file's path, and nothing can stop a move it has
+ * begun, so this only tells: a change Obsidian had begun to write before the
+ * move, one made outside Obsidian at that moment, or, without
+ * {@link moveWaits}, one in Obsidian's own wait.
+ *
+ * A report takes where the file is from the file itself, which the vault
+ * keeps up to date, and not from what is at the new path, which can have come
+ * there any way. It says that Obsidian moved something only once Obsidian's
+ * rename went through, which moves nothing onto a file already there, and of
+ * a file heard going from the checked path to the new one.
+ */
+function watchMove(app: App, renaming: Renaming): Move {
+  const { file, from, to } = renaming;
+  const ours = new Set([from.toLowerCase(), to.toLowerCase()]);
+  const touches = (path: string): boolean => ours.has(path.toLowerCase());
+  /** Whether the file went from its path to the new one, by any rename. */
+  let moved = false;
+  /** Whether another file did, as Obsidian moves whatever is at the path. */
+  let movedOther = false;
+  let cause: string | undefined;
+  const saw = (what: string): void => {
+    if (!moved) cause ??= what;
+  };
+  const events = [
+    app.vault.on("create", (created) => {
+      if (touches(created.path)) saw(`${created.path} was created`);
+    }),
+    app.vault.on("delete", (deleted) => {
+      if (deleted === file) saw("the file was deleted");
+      else if (touches(deleted.path)) saw(`${deleted.path} was deleted`);
+    }),
+    app.vault.on("rename", (renamed, old) => {
+      if (renamed === file && old === from && renamed.path === to) {
+        moved = true;
+      } else if (renamed === file) {
+        saw(`the file was renamed to ${renamed.path}`);
+      } else if (touches(old) || touches(renamed.path)) {
+        if (old === from && renamed.path === to) movedOther = true;
+        saw(`${old} was renamed to ${renamed.path}`);
+      }
+    }),
+  ];
+  return {
+    disturbed: (done) => {
+      const named = present(app, file) && file.path === to;
+      const name = to.slice(to.lastIndexOf("/") + 1);
+      if (!done && named) {
+        // Obsidian failed with the file at the new name: a rename elsewhere
+        // to that very name left its move nowhere to go, or it moved the file
+        // and then failed to update the links. Either way, links may not
+        // have followed.
+        const unfinished = `Obsidian did not finish the rename, though the file is ${to} now, so links to it may still have the old name`;
+        return new RenameDisturbed(
+          cause === undefined
+            ? unfinished
+            : `${cause} while Obsidian was renaming it, and ${unfinished}`,
+          true,
+        );
+      }
+      if (cause === undefined) {
+        return !done || moved || named
+          ? undefined
+          : new RenameDisturbed(
+              "Obsidian had not renamed the file when it said it had, so it may still be renamed",
+              false,
+            );
+      }
+      // Where the file is, in the words a cause would use, so that a cause
+      // that says so already is not followed by the same words.
+      const where = named
+        ? `Obsidian renamed the file to ${name} all the same`
+        : !present(app, file)
+          ? "the file was deleted"
+          : file.path === from
+            ? `the file is still ${from}`
+            : `the file was renamed to ${file.path}`;
+      const outcomes = [
+        ...(where === cause ? [] : [where]),
+        ...(done && movedOther
+          ? [`Obsidian renamed another file to ${name}`]
+          : []),
+      ];
+      return new RenameDisturbed(
+        [`${cause} while Obsidian was renaming it`, ...outcomes].join(", and "),
+        named,
+      );
+    },
+    stop: () => {
+      for (const event of events) app.vault.offref(event);
+    },
+  };
+}
+
+/**
+ * Gives a symbol's file the path `renaming` chose, through Obsidian, so that the
+ * links to it follow as its settings say. Every rename of a symbol comes
+ * through here.
  *
  * Obsidian collects the offsets of a file's links, once its index has caught up
  * with what was saved, then asks whether to update them, and writes at those
@@ -425,19 +753,48 @@ function notesLinking(app: App, path: string): Set<string> {
  * write a link over other text. Saving every open note first leaves those saves
  * nothing to do. Throws, having renamed nothing, if a note cannot be saved.
  *
+ * Saving the notes waits, as can whatever came before this, and so does
+ * Obsidian's `renameFile` before it moves the file: for other renames, and for
+ * its index to catch up with the notes just saved. The vault goes on changing
+ * meanwhile: the symbol can be deleted and another file put at its path, which
+ * Obsidian would move in its place, or it can be renamed elsewhere, which
+ * Obsidian would undo, its new name taken, or a note typed in after it was
+ * saved. So the rename first waits for what Obsidian would, where
+ * {@link moveWaits} can see it, and then checks all that was checked again,
+ * with nothing waiting between that check, the call to `renameFile`, and
+ * Obsidian's move. The file moved is then the one checked, from the path it was
+ * checked at, to a name no other file has, with every open note saved. A note
+ * typed in meanwhile is saved again, up to {@link notePasses} times. Any other
+ * change throws, having renamed nothing, with the reason.
+ *
+ * What can still come between, a change Obsidian had begun to write before the
+ * move, one made outside Obsidian at that moment, or, where Obsidian's waits
+ * cannot be seen, one while Obsidian waits, {@link watchMove} hears of. Then this
+ * throws {@link RenameDisturbed}, which says what happened and where the file
+ * is, rather than resolving as if the rename went as asked. So it does when
+ * Obsidian fails with the file at the new name all the same, rather than
+ * rejecting as if nothing was renamed.
+ *
  * `wait` hears if that all stops for long enough, which only a person being
  * asked, or a report of the symbol or a note that links to it, puts off.
  * `starting` is called just before the rename reaches Obsidian, and can throw to
- * stop it: a note's save can take as long as any other. Throws, having renamed
- * nothing, if Obsidian is still renaming `file`.
+ * stop it: a note's save, or Obsidian's index, can take as long as anything
+ * else. Throws, having renamed nothing, if Obsidian is still renaming the file.
+ *
+ * Once `unloaded` aborts, as Inkline unloads, the rename throws at its next
+ * step, having renamed nothing and saved no more notes, unless Obsidian has it
+ * already. Its wait for Obsidian ends then too, as nothing of it is Obsidian's
+ * yet, and what Obsidian waits for, such as another rename's question, can
+ * last any time.
  */
 async function renameSaved(
   app: App,
-  file: TFile,
-  path: string,
+  renaming: Renaming,
   wait: RenameWait,
+  unloaded: AbortSignal,
   starting: () => void = () => undefined,
 ): Promise<void> {
+  const { file } = renaming;
   const notes = notesLinking(app, file.path);
   let moved = false;
   const reported = (changed: TAbstractFile): void => {
@@ -448,17 +805,42 @@ async function renameSaved(
     app.vault.on("rename", reported),
   ];
   const work = async (): Promise<void> => {
-    await saveOpenNotes(app);
-    starting();
-    if (beingRenamed.has(file)) {
-      throw new Error("Obsidian is still renaming this symbol.");
+    notBeingRenamed(file);
+    const waits = moveWaits(app);
+    let saved = false;
+    for (let pass = 0; pass < notePasses && !saved; pass++) {
+      stillAlive(unloaded);
+      const unchanged = await saveOpenNotes(app, unloaded);
+      // Saving a note sets Obsidian's index going again.
+      while (waits?.clear() === false) {
+        await unlessUnloaded(waits.settle(), unloaded);
+        stillAlive(unloaded);
+      }
+      saved = unchanged();
     }
+    if (!saved) {
+      throw new Error("the open notes kept changing while they were saved");
+    }
+    // Nothing from here waits until Obsidian has moved the file, where it lets
+    // its waits be seen, so that nothing checked, the notes above included,
+    // can change before it does.
+    stillAlive(unloaded);
+    confirmRenaming(app, renaming);
+    notBeingRenamed(file);
+    starting();
     beingRenamed.add(file);
+    const move = watchMove(app, renaming);
     try {
-      await app.fileManager.renameFile(file, path);
+      await app.fileManager.renameFile(file, renaming.to);
+    } catch (error) {
+      // What came between, if anything, is why Obsidian could not move it.
+      throw move.disturbed(false) ?? error;
     } finally {
       beingRenamed.delete(file);
+      move.stop();
     }
+    const disturbed = move.disturbed(true);
+    if (disturbed !== undefined) throw disturbed;
   };
   const moving = (): boolean => {
     const seen = moved;
@@ -576,21 +958,29 @@ function symbolFile(app: App, path: string): SymbolFile {
 }
 
 /**
- * Where `file` goes to take the name `name` chose, in its own folder, or
- * undefined to keep its name, as an empty name does for a symbol that has
- * one. Throws if another file there has that name.
+ * How `file` takes the name `name` chose, in its own folder, or undefined to
+ * keep its name, as an empty name does for a symbol that has one. Throws if
+ * another file there has that name. What this finds holds only until something
+ * waits, so {@link renameSaved} checks it again before the rename.
  */
-function renamedPath(
+function renamingOf(
   app: App,
   file: TFile,
   name: NameChoice,
-): string | undefined {
+): Renaming | undefined {
   if (name.kind !== "name" || symbolStem(file.name) === name.name) {
     return undefined;
   }
-  const folder = parentPath(file.path);
+  const from = file.path;
+  const folder = parentPath(from);
   claimName(app, folder, name.name, file);
-  return pathIn(folder, `${name.name}${inkExtension}`);
+  return {
+    file,
+    from,
+    fileName: file.name,
+    name: name.name,
+    to: pathIn(folder, `${name.name}${inkExtension}`),
+  };
 }
 
 /**
@@ -611,24 +1001,30 @@ function usesOf(app: App, path: string): SymbolUses {
 
 /**
  * Renames a symbol without writing its drawing, using the editor's name
- * rules and Obsidian's link updates. A deleted or replaced file is refused.
- * Rejects on failure, so the caller can keep the requested name to retry.
+ * rules and Obsidian's link updates. A file deleted, replaced, or renamed
+ * elsewhere, before the rename, while it saves the open notes, or while it
+ * waits for Obsidian, is refused. Rejects on failure, so the caller can keep
+ * the requested name to retry, and with {@link RenameDisturbed} if something
+ * came between once Obsidian had it, or Obsidian failed with the file renamed.
  * `wait` hears if it stops for long enough; {@link SymbolWork.stop} then stops
- * it, unless Obsidian has it, which cannot be taken back.
+ * it, unless Obsidian has it, which cannot be taken back. Once `unloaded`
+ * aborts, as Inkline unloads, it stops as well, as an editor's rename does,
+ * and at once if it is waiting for Obsidian.
  */
 export function renameSymbol(
   app: App,
   file: TFile,
   typed: string,
   wait: RenameWait,
+  unloaded: AbortSignal,
 ): SymbolWork {
   let stopped = false;
   let reached = false;
   const work = async (): Promise<void> => {
     stillSymbol(app, file);
-    const path = renamedPath(app, file, chosen(typed, file));
-    if (path === undefined) return;
-    await renameSaved(app, file, path, wait, () => {
+    const renaming = renamingOf(app, file, chosen(typed, file));
+    if (renaming === undefined) return;
+    await renameSaved(app, renaming, wait, unloaded, () => {
       if (stopped) throw new Error("The rename was stopped.");
       reached = true;
     });
@@ -678,16 +1074,20 @@ export interface SymbolWork {
  * text chunks, as {@link changedText} says, with every other byte as it was. No
  * note changes, as its name stays. A field changed since `seen`, by another
  * save or anything else, rejects with `TextMoved`, with nothing written; one
- * that this save leaves alone keeps what the other save gave it.
+ * that this save leaves alone keeps what the other save gave it. Once
+ * `unloaded` aborts, as Inkline unloads, it writes nothing more, as an
+ * editor's save.
  */
 export function writeSymbolText(
   app: App,
   file: TFile,
   changes: TextChanges,
   seen: SymbolText,
+  unloaded: AbortSignal,
 ): SymbolWork {
   const { access, stop } = stoppable<TFile>({
     check: (symbol) => {
+      stillAlive(unloaded);
       stillSymbol(app, symbol);
     },
     read: async (symbol) => new Uint8Array(await app.vault.readBinary(symbol)),
@@ -700,25 +1100,34 @@ export function writeSymbolText(
 }
 
 /**
- * Gives `file` the path `renamedPath` found, through Obsidian, so that the
- * links to it follow as its settings say; returns whether it succeeded or
- * no rename was requested. The drawing is written by then, so a rename that
- * fails says so in a notice and leaves the file as it is, rather than
- * failing the save.
+ * Gives a symbol's file the path {@link renamingOf} found, through Obsidian, so
+ * that the links to it follow as its settings say; returns whether the file has
+ * that name now, or no rename was requested. The drawing is written by then, so
+ * a rename that fails says so in a notice and leaves the file as it is, rather
+ * than failing the save. A save that wrote to another file than the one
+ * checked, as after that one was deleted, renames nothing: it is not the file
+ * checked. Nothing is renamed once Inkline is disabled, which saving the notes
+ * first leaves time for. A rename that something came between once Obsidian
+ * had it, or that Obsidian failed with the file renamed, says what happened,
+ * whatever the file's name now.
  */
 async function rename(
-  app: App,
-  file: TFile,
-  path: string | undefined,
+  host: EditorHost,
+  renaming: Renaming | undefined,
   wait: RenameWait,
 ): Promise<boolean> {
-  if (path === undefined) return true;
+  if (renaming === undefined) return true;
   try {
-    await renameSaved(app, file, path, wait);
+    await renameSaved(host.app, renaming, wait, host.unloaded);
     return true;
   } catch (error) {
+    const { fileName } = renaming;
+    if (error instanceof RenameDisturbed) {
+      new Notice(`${fileName} is saved, but ${error.message}`);
+      return error.renamed;
+    }
     new Notice(
-      `${file.name} is saved, but could not be renamed: ${message(error)}`,
+      `${fileName} is saved, but could not be renamed: ${message(error)}`,
     );
     return false;
   }
@@ -859,19 +1268,22 @@ function targetOf(view: MarkdownView): Target | undefined {
 /**
  * Lists the vault's symbols to search, and inserts the one chosen in the note
  * `view` shows, as a new symbol's embed goes in: at its cursor now, found
- * again once the choice is made, since the note can change meanwhile.
+ * again once the choice is made, since the note can change meanwhile. The
+ * list closes as `unloaded` aborts, when Inkline unloads, and nothing is
+ * inserted from it after that.
  */
 export function insertExistingSymbol(
   app: App,
   texts: SymbolTexts,
   view: MarkdownView,
+  unloaded: AbortSignal,
 ): void {
   const target = targetOf(view);
   if (target === undefined) return;
-  new SymbolSearch(app, texts, target.file.path, (embed) => {
+  new SymbolSearch(app, texts, target.file.path, unloaded, (embed) => {
     insertEmbed(app, target, embed)
       .then(() => {
-        returnFocus(app, target);
+        if (!unloaded.aborted) returnFocus(app, target);
       })
       .catch((error: unknown) => {
         new Notice(`The symbol could not be inserted: ${message(error)}`);
@@ -961,7 +1373,7 @@ function newSymbol(
     // A new symbol starts with no text, even after Next, as what someone takes
     // one symbol to be says nothing of the next.
     next: (chosen) => {
-      if (after === undefined || !host.alive()) {
+      if (after === undefined || host.unloaded.aborted) {
         // No editor takes the picture over.
         chosen.picture?.image.close();
         return;
@@ -1010,7 +1422,7 @@ function newSymbol(
       ...host.lifecycle,
       closed: (editor) => {
         host.lifecycle.closed(editor);
-        if (!host.alive() || (tools === undefined && !inserted)) return;
+        if (host.unloaded.aborted || (tools === undefined && !inserted)) return;
         // Following another, this one's point is just after that symbol.
         returnFocus(app, target, after ?? target.point);
       },
@@ -1023,7 +1435,7 @@ function newSymbol(
     // The editor learns what the file holds as soon as it is adopted or
     // written, so that a later failure leaves it still compared.
     write: async (bytes, _record, keepDraft, holds, typed, check, wait) => {
-      stillAlive(host);
+      stillAlive(host.unloaded);
       // Checked before anything is written, so that a refused name leaves
       // the vault as it was.
       const name = chosen(typed, made?.file);
@@ -1031,7 +1443,7 @@ function newSymbol(
       // hash can yield to an external rename. An unchanged name keeps that
       // rename instead of taking the file back to its name before the save.
       let renaming =
-        made === undefined ? undefined : renamedPath(app, made.file, name);
+        made === undefined ? undefined : renamingOf(app, made.file, name);
       let named = true;
       const fingerprint = await fingerprintOf(bytes);
       if (made === undefined && claim !== undefined) {
@@ -1040,10 +1452,10 @@ function newSymbol(
           made = { ...claimed, previous: undefined };
           adopted = true;
           holds(claimed.fingerprint);
-          renaming = renamedPath(app, made.file, name);
+          renaming = renamingOf(app, made.file, name);
         }
       }
-      stillAlive(host);
+      stillAlive(host.unloaded);
       if (made === undefined) {
         const path = await newSymbolPath(
           app,
@@ -1051,7 +1463,7 @@ function newSymbol(
           name,
           host.settings().symbolFolder,
         );
-        stillAlive(host);
+        stillAlive(host.unloaded);
         claim = { path, fingerprint };
         keepDraft();
         const file = await watchSave(
@@ -1085,15 +1497,20 @@ function newSymbol(
         if (renaming !== undefined) {
           // Obsidian updates the links as its settings say. The embed just
           // inserted, which the answer to its question can leave as it was,
-          // follows the symbol it was inserted for, and the next symbol goes
-          // after it.
+          // follows the symbol it was inserted for once the file has the name
+          // given, and the next symbol goes after it. A rename refused renamed
+          // nothing, and a file that has another name now, given elsewhere,
+          // leaves the embed to whatever renamed it, as every other link to
+          // the file is.
           const was = inserted ? embedFor(app, made.file, note.path) : "";
-          const from = made.file.path;
-          stillAlive(host);
-          named = await rename(app, made.file, renaming, wait);
-          // A rename that failed left the file, and its embed, as they were.
-          if (inserted && after !== undefined && made.file.path !== from) {
-            stillAlive(host);
+          stillAlive(host.unloaded);
+          named = await rename(host, renaming, wait);
+          // Even once Inkline is disabled: Obsidian has renamed the file by
+          // then, which nothing takes back, so stopping would leave the embed
+          // naming a file no longer there. This writes that one embed, and if
+          // the note's editor does not show the new name within five seconds,
+          // gives up with a notice.
+          if (inserted && after !== undefined && named) {
             const now = embedFor(app, made.file, note.path);
             after = (await followRename(app, target, after, was, now)) ?? after;
           }
@@ -1101,13 +1518,13 @@ function newSymbol(
       }
       if (inserted) return named;
       // Once Inkline is disabled, the editor's draft finishes the insertion.
-      stillAlive(host);
+      stillAlive(host.unloaded);
       const embed = embedFor(app, made.file, note.path);
       const existing = adopted
         ? await existingEmbed(app, target, made.file, embed)
         : undefined;
       if (existing === undefined) {
-        stillAlive(host);
+        stillAlive(host.unloaded);
         after = await watchSave(insertEmbed(app, target, embed), wait.told);
       } else {
         after = existing;
@@ -1243,7 +1660,7 @@ async function copySymbol(
     );
     choice.open();
   });
-  if (file === undefined || ended() || !host.alive()) return undefined;
+  if (file === undefined || ended() || host.unloaded.aborted) return undefined;
   let opened;
   let text;
   const stopSaying = sayOpening(file.name);
@@ -1282,7 +1699,8 @@ let opening: { readonly file: TFile } | undefined;
  * second click, goes on with the same read rather than opening it twice.
  */
 export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
-  if (opening?.file === file) return;
+  // A symbol's menu can stay open after Inkline unloads, with Edit symbol in it.
+  if (host.unloaded.aborted || opening?.file === file) return;
   const mine = { file };
   opening = mine;
   try {
@@ -1324,7 +1742,7 @@ async function openEditor(
     stopSaying();
   }
   // Inkline may have been disabled while the file was read.
-  if (!host.alive() || !wanted()) return;
+  if (host.unloaded.aborted || !wanted()) return;
   if (opened.kind === "newer-version") {
     new Notice(
       `${file.name} was saved by a newer version of Inkline. Update Inkline to edit it.`,
@@ -1369,11 +1787,11 @@ async function openEditor(
     lifecycle: host.lifecycle,
     file: () => symbolFile(app, symbol.path),
     write: async (saved, _record, _keepDraft, _holds, typed, check, wait) => {
-      stillAlive(host);
-      const renaming = renamedPath(app, symbol, chosen(typed, symbol));
+      stillAlive(host.unloaded);
+      const renaming = renamingOf(app, symbol, chosen(typed, symbol));
       symbol = await writeSymbol(host, symbol, saved, check, wait.told);
-      stillAlive(host);
-      return rename(app, symbol, renaming, wait);
+      stillAlive(host.unloaded);
+      return rename(host, renaming, wait);
     },
     uses: () => usesOf(app, symbol.path),
   }).open();

@@ -104,6 +104,9 @@ must keep released files readable and looking the same, as
   no strokes opened as a picture, and says nothing of one whose record holds
   none
   ([editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)).
+- A picture to trace over, chosen with **Choose picture…** from a folder outside
+  the vault, shows on the drawing area, and puts no file in the vault
+  ([choose-picture.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/choose-picture.e2e.ts)).
 
 ### Symbols read as characters
 
@@ -122,6 +125,14 @@ must keep released files readable and looking the same, as
   settings are cleared on close. The test redirects the save dialog and
   suppresses the post-export viewer launch; the native PDF writer still runs
   ([pdf.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/pdf.e2e.ts)).
+- A symbol 4,000 pixels wide at the largest Symbol size, wider than its space,
+  keeps the proportions it was drawn in, within 5%, its baseline on the text's,
+  and its colour, in Reading view, Live Preview, table cells in both, an
+  embedded note, and a hover preview, in light and dark themes, in the text
+  colour and its stored colour, measured from screenshots
+  ([wide.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/wide.e2e.ts)),
+  and in a native PDF, in a heading where it is wider than the page, measured in
+  the rasterized page (pdf.e2e.ts).
 - Saving refreshes existing placements in Live Preview, Reading view and
   popouts, preserving note text, explicit widths and unrelated images. Names
   with spaces, percent signs and Unicode are covered, as are repeated file
@@ -205,6 +216,19 @@ must keep released files readable and looking the same, as
   first save that an interruption cut short finished from its draft (the same
   file, and
   [drafts.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/drafts.test.ts)).
+- A draft's base layer dropped from storage as soon as the draft that replaces
+  it is kept, and never before: kept when storage refuses the replacement, and
+  while another draft names it, a held one, a restored one, or another editor's;
+  and stored once when a stroke keeps a draft while it is being stored ahead of
+  a save. With room for two pictures in Obsidian's own local storage, a draft is
+  kept through copy after copy
+  ([base-memory.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/base-memory.e2e.ts)
+  and
+  [drafts.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/drafts.test.ts)).
+- A decoded base layer kept while Undo or Redo can reach it, and shown again by
+  them, and let go after a new change past an Undo, by a copy or a stroke, and
+  once it is further back than Undo goes
+  ([base-memory.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/base-memory.e2e.ts)).
 - A file changed on disk while the editor is open: taken in, asked about,
   reloaded with the drawing one undo away, never saved over when it cannot be
   read, and saved again where it was if deleted (the same file, and
@@ -232,8 +256,15 @@ must keep released files readable and looking the same, as
   and found again after the text moved
   ([editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)).
   Type to insert lists nothing in code or front matter, and the links it writes
-  lead back to their symbols
+  lead back to their symbols, from a note in a folder too, as paths from there
+  when Obsidian writes relative Markdown links
   ([suggest.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/suggest.e2e.ts)).
+  What it counts as code is checked against how Obsidian renders a set of
+  synthetic notes, in Obsidian and in unit tests, and against CommonMark for
+  every short note of a set of lines on which the two agree
+  ([code-cases.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/support/code-cases.ts)
+  and
+  [code.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/code.test.ts)).
 - The cursor lands after a symbol from every route that inserts one, and typing
   goes on there: Save, Mod+S, a run from Next, both lists, and the library, past
   a link or an address, after the note's changes moved the place or took it
@@ -258,6 +289,20 @@ must keep released files readable and looking the same, as
   [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts),
   and
   [insertion.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/insertion.test.ts)).
+- Once Inkline is turned off, nothing it started acts: **Insert existing
+  symbol** closes, and a choice that still reaches it inserts nothing, while a
+  new one inserts once Inkline is on again; **Edit symbol** in a menu left open
+  does not even read the symbol; a library rename or change of readings still
+  waiting writes nothing, and says so, and the rename saves no open note; a
+  rename waiting for Obsidian's index or another rename, in the library or an
+  editor, stops at once, while one turned off during Obsidian's question about
+  links finishes, with a new symbol's embed following it to the new name; and a
+  layout callback that comes late, or turning Inkline off while it reads its
+  settings, leaves no tagged symbols, display settings, menus, or commands
+  behind, and the next load has them all
+  ([plugin.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/plugin.e2e.ts)
+  and
+  [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)).
 - Names and renames: what a file name cannot hold, names a folder already has,
   renames that fail, names given elsewhere during saving or hashing, and the
   reported outcome when an external rename follows a successful native rename
@@ -442,8 +487,9 @@ drawing while **Copy from** or **Reload** reads.
 - Installing and updating through BRAT, an optional third-party route, has a
   separate check against the published releases. BRAT's own dialog installs the
   highest release and a chosen one, downloading only the three plugin files, and
-  an update from one to the other keeps the drawing, note and preferences, and
-  an open drawing as a draft
+  an update from one to the other keeps the drawing, note and preferences. From
+  0.9.2 on it keeps the strokes and an open drawing's draft too; from an earlier
+  release the symbol opens as a picture and the draft is dropped
   ([brat.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/manual/brat.e2e.ts)).
   It needs BRAT's release and GitHub, so it is run by hand and gates no release.
 - A publication that fails part way can run again without replacing anything
@@ -468,7 +514,9 @@ drawing while **Copy from** or **Reload** reads.
   Obsidian's
   ([version.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/version.test.ts)).
 - This site's commands, keys, defaults, Obsidian version, links, and example
-  embeds agree with the code
+  embeds agree with the code, as do the links, Obsidian and Node.js versions,
+  command names, and examples of the repository's own documents, and the
+  versions its BRAT recipe names
   ([docs.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/docs.test.ts)),
   and what deploys follows [Versions of this site](./versions.md)
   ([docs-source.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/docs-source.test.ts)).
@@ -492,8 +540,9 @@ the individual pull requests hold the inputs, results, and review discussion.
   they do not exercise operating-system file changes through its file watcher.
 - Obsidian's mobile apps are not tested, as Inkline does not support them.
 - Physical printer output is not checked. Native PDF export is covered on Linux
-  with default and explicitly sized embeds of one symbol; long notes containing
-  many different symbols are not covered by that fixture.
+  with default and explicitly sized embeds of one symbol, and one wider than the
+  page; long notes containing many different symbols are not covered by that
+  fixture.
 - CI's runners have the DejaVu fonts, and the Docker image DejaVu and Noto; a
   theme's own font is checked through the guides' measurement, not by eye.
 - The release workflow checks the install ZIP's exact layout and bytes, extracts
@@ -503,6 +552,9 @@ the individual pull requests hold the inputs, results, and review discussion.
   attestations, then extracts the published ZIP and compares its files with the
   loose assets. This verifies our manual installation channel. It does not audit
   or endorse third-party installer plugins.
+- Memory is checked as whether anything can still reach a decoded base layer
+  once garbage is collected, not as how much memory Obsidian or its GPU process
+  uses.
 - The budgets are wall-clock times. Each leaves room for a slow machine, but
   heavy work beside a run can still exceed one; such a failure is investigated,
   not run again until it passes.

@@ -14,7 +14,7 @@ import path from "node:path";
 import { browser, expect } from "@wdio/globals";
 import { obsidianPage } from "wdio-obsidian-service";
 import packageJson from "../../../package.json" with { type: "json" };
-import { compareSemver } from "../../../scripts/lib/version.ts";
+import { keepsStrokesFrom, noStrokes } from "../../support/updates.ts";
 import { loadModules } from "../support/browser.ts";
 import {
   draw,
@@ -39,12 +39,7 @@ if (version === previous) {
   throw new Error("The checkout must name a different, new release version");
 }
 
-/** The first release of the format that every later release must read. */
-const finalFormat = "0.9.2";
-const keepsStrokes = compareSemver(previous, finalFormat) >= 0;
-
-/** Part of what the status line says of a file that holds no strokes. */
-const noStrokes = "as this file holds no strokes";
+const keepsStrokes = keepsStrokesFrom(previous);
 
 /** What a symbol's record says, as far as this check needs. */
 interface HeldRecord {

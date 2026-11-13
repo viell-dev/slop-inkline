@@ -20,7 +20,7 @@ import {
 import { writeText } from "../../../src/format/text.ts";
 import type { InkDocument } from "../../../src/ink/document.ts";
 import { blank, encodePng } from "../../support/png.ts";
-import { paused } from "../../support/slices.ts";
+import { noise, paused } from "../../support/slices.ts";
 
 const png = encodePng(blank(2, 2));
 const layer: BaseLayer = { x: 0, y: 0, width: 32, height: 32, png };
@@ -84,6 +84,32 @@ function draft(overrides: Partial<Draft> = {}): Draft {
     savedAt: 1000,
     ...overrides,
   };
+}
+
+/** The keys of the base layers stored. */
+function baseKeys(storage: MemoryStorage): string[] {
+  return storage.keys("inkline-draft-base:");
+}
+
+/** The base layers that the index lists, by the keys they are stored under. */
+function indexedBases(storage: MemoryStorage): unknown {
+  const keys = storage.loadLocalStorage("inkline-draft-bases");
+  return Array.isArray(keys)
+    ? keys.map((key) => `inkline-draft-base:${String(key)}`)
+    : keys;
+}
+
+/** A PNG of noise, so that its pixels take room, as a picture's do. */
+function noisePng(size: number): Uint8Array {
+  return encodePng({ width: size, height: size, data: noise(size * size * 4) });
+}
+
+/** A draft keeping `png` as its base layer. */
+function keeping(png: Uint8Array, overrides: Partial<Draft> = {}): Draft {
+  return draft({
+    base: { kind: "kept", layer: { ...layer, png } },
+    ...overrides,
+  });
 }
 
 describe("DraftStore", () => {
@@ -328,11 +354,142 @@ describe("DraftStore", () => {
     expect(lost?.base).toEqual({ kind: "lost" });
     expect(lost?.strokes).toEqual(written.strokes);
   });
+
+  it("drops a base layer once the draft that replaces its last is kept, without a list", () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 1000);
+    expect(store.put(keeping(png))).toBe(true);
+    const [first] = baseKeys(storage);
+    // A copy of another symbol, read afresh, is another PNG.
+    expect(store.put(keeping(png.slice()))).toBe(true);
+    const [second, ...others] = baseKeys(storage);
+    expect(others).toEqual([]);
+    expect(second).not.toBe(first);
+    expect(indexedBases(storage)).toEqual([second]);
+    expect(store.put(draft())).toBe(true);
+    expect(baseKeys(storage)).toEqual([]);
+    expect(store.put(keeping(png))).toBe(true);
+    store.remove("a");
+    expect(baseKeys(storage)).toEqual([]);
+    expect(storage.values.has("inkline-draft-bases")).toBe(false);
+  });
+
+  it("reads back only the draft it writes, not the one it replaces", () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 1000);
+    expect(store.put(keeping(png))).toBe(true);
+    const read: string[] = [];
+    const load = storage.loadLocalStorage.bind(storage);
+    storage.loadLocalStorage = (key): unknown => {
+      if (key.startsWith("inkline-draft:")) read.push(key);
+      return load(key);
+    };
+    // For each stroke: reading the draft it replaces would cost about as
+    // much again as writing the new one.
+    expect(store.put(keeping(png, { strokes: [stroke, stroke] }))).toBe(true);
+    expect(read).toEqual(["inkline-draft:a"]);
+  });
+
+  it("keeps the draft that storage refused to replace, with its base layer", () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 1000);
+    const original = keeping(png);
+    expect(store.put(original)).toBe(true);
+    const stored = baseKeys(storage);
+    storage.refused.add("inkline-draft:a");
+    expect(store.put(keeping(png.slice()))).toBe(false);
+    expect(store.put(draft())).toBe(false);
+    storage.refused.clear();
+    // Too little room for another base layer.
+    storage.quota = storage.used + 10;
+    expect(store.put(keeping(noisePng(16)))).toBe(false);
+    expect(baseKeys(storage)).toEqual(stored);
+    expect(new DraftStore(storage, () => 1000).list()).toEqual([original]);
+  });
+
+  it("keeps a base layer while any draft names it, a held one too", () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 1000);
+    const shared = keeping(png, { id: "b", savedAt: 900 });
+    expect(store.put(keeping(png))).toBe(true);
+    expect(store.put(shared)).toBe(true);
+    const stored = baseKeys(storage);
+    expect(stored).toHaveLength(1);
+    // As an editor holds a draft it offers back, or restored.
+    store.hold("b");
+    expect(store.put(draft())).toBe(true);
+    expect(baseKeys(storage)).toEqual(stored);
+    expect(new DraftStore(storage, () => 1000).list()).toEqual([
+      draft(),
+      shared,
+    ]);
+    store.remove("b");
+    expect(baseKeys(storage)).toEqual([]);
+  });
+
+  it("keeps a restored draft's base layer for the draft that replaces it", () => {
+    const storage = new MemoryStorage();
+    const written = keeping(noisePng(16));
+    expect(new DraftStore(storage, () => 1000).put(written)).toBe(true);
+    const [key] = baseKeys(storage);
+    if (key === undefined) throw new Error("no base layer stored");
+    // After a reload, another editor restores it as its own draft.
+    const store = new DraftStore(storage, () => 1000);
+    const [found] = store.forTarget(written.target);
+    if (found === undefined) throw new Error("no draft offered");
+    store.hold(found.id);
+    const own = { ...found, id: "b", savedAt: 2000 };
+    expect(store.put(own)).toBe(true);
+    store.remove(found.id);
+    store.release(found.id);
+    expect(baseKeys(storage)).toEqual([key]);
+    expect(storage.writes.get(key)).toBe(1);
+    expect(new DraftStore(storage, () => 1000).list()).toEqual([own]);
+  });
+
+  it("keeps a base layer that a draft another store wrote names", () => {
+    const storage = new MemoryStorage();
+    const first = new DraftStore(storage, () => 1000);
+    expect(first.put(keeping(png))).toBe(true);
+    const second = new DraftStore(storage, () => 1000);
+    const [found] = second.list();
+    if (found === undefined) throw new Error("no draft listed");
+    const other = { ...found, id: "b" };
+    expect(second.put(other)).toBe(true);
+    const stored = baseKeys(storage);
+    expect(stored).toHaveLength(1);
+    expect(first.put(draft())).toBe(true);
+    first.remove("a");
+    expect(baseKeys(storage)).toEqual(stored);
+    expect(new DraftStore(storage, () => 1000).list()).toEqual([other]);
+  });
+
+  it("keeps a draft through any number of new base layers with room for two", () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 1000);
+    const picture = noisePng(64);
+    expect(store.put(keeping(picture))).toBe(true);
+    const size = JSON.stringify(toBase64(picture)).length;
+    // The new base layer is stored before the draft that names it, and the
+    // old one dropped after; the index lists both meanwhile.
+    storage.quota = storage.used + size + 100;
+    expect(storage.quota).toBeLessThan(storage.used + 2 * size);
+    let last = picture;
+    for (let count = 0; count < 10; count++) {
+      // As Copy from or Make ink do, each time a PNG of its own.
+      last = picture.slice();
+      expect(store.put(keeping(last))).toBe(true);
+      expect(baseKeys(storage)).toHaveLength(1);
+    }
+    const [listed] = new DraftStore(storage, () => 1000).list();
+    expect(listed?.base).toEqual({
+      kind: "kept",
+      layer: { ...layer, png: last },
+    });
+  });
 });
 
 describe("DraftStore.keepBase", () => {
-  const baseKeys = (storage: MemoryStorage): string[] =>
-    storage.keys("inkline-draft-base:");
   const kept = draft({ base: { kind: "kept", layer } });
 
   it("stores a PNG for the draft that keeps it, once", async () => {
@@ -449,6 +606,73 @@ describe("DraftStore.keepBase", () => {
     storage.quota = Number.POSITIVE_INFINITY;
     expect(store.put(kept)).toBe(true);
     expect(store.list()[0]?.base).toEqual({ kind: "kept", layer });
+  });
+
+  it("stores no second copy of a PNG that a draft stored while it read it", async () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 1000);
+    const large = noisePng(200);
+    let drawn = false;
+    await paused((pause) =>
+      store.keepBase(large, {
+        pause: () => {
+          // A stroke drawn meanwhile keeps a draft, which stores the PNG.
+          if (!drawn && baseKeys(storage).length === 0) {
+            drawn = store.put(keeping(large));
+          }
+          return pause();
+        },
+      }),
+    );
+    expect(drawn).toBe(true);
+    // Not even for a moment: a large one takes long to write, and room.
+    const written = [...storage.writes.keys()].filter((key) =>
+      key.startsWith("inkline-draft-base:"),
+    );
+    expect(written).toEqual(baseKeys(storage));
+    expect(written).toHaveLength(1);
+  });
+
+  it("drops its own copy of a PNG that a draft stored while it wrote it", async () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 1000);
+    let wrote = false;
+    const save = storage.saveLocalStorage.bind(storage);
+    storage.saveLocalStorage = (key, value): void => {
+      if (key.startsWith("inkline-draft-base:") && value !== null) wrote = true;
+      save(key, value);
+    };
+    let drawn = false;
+    await store.keepBase(png, {
+      pause: () => {
+        if (wrote && !drawn) drawn = store.put(kept);
+        return Promise.resolve();
+      },
+    });
+    expect(drawn).toBe(true);
+    expect(baseKeys(storage)).toHaveLength(1);
+    expect(indexedBases(storage)).toEqual(baseKeys(storage));
+    expect(new DraftStore(storage, () => 1000).list()).toEqual([kept]);
+  });
+
+  it("keeps a PNG stored ahead of its draft while another draft's base layer goes", async () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 1000);
+    expect(store.put(kept)).toBe(true);
+    const prepared = noisePng(16);
+    let replaced = false;
+    await store.keepBase(prepared, {
+      pause: () => {
+        if (!replaced) replaced = store.put(draft());
+        return Promise.resolve();
+      },
+    });
+    expect(replaced).toBe(true);
+    const [key, ...others] = baseKeys(storage);
+    expect(others).toEqual([]);
+    expect(store.put(keeping(prepared, { id: "b" }))).toBe(true);
+    expect(baseKeys(storage)).toEqual([key]);
+    expect(storage.writes.get(key ?? "")).toBe(1);
   });
 });
 

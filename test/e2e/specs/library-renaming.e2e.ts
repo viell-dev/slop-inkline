@@ -7,10 +7,17 @@ import {
   createSymbol,
   delayVault,
   failSaves,
+  hold,
+  holdIndex,
+  letGo,
+  renamePastHold,
   restoreVault,
   startOver,
   symbolFiles,
   topButton,
+  waitForFailedSaves,
+  waitForHeld,
+  waitForIndexWait,
   waitForNotice,
   waitForPanes,
 } from "../support/editor.ts";
@@ -113,85 +120,6 @@ async function noteText(note: string): Promise<string> {
     if (file === null) throw new Error(`no ${path}`);
     return app.vault.read(file);
   }, note);
-}
-
-/** What a rename can stop in, as on a drive that stopped answering. */
-const holdable = {
-  /** Obsidian's own move of a file, in the real `renameFile`. */
-  move: { owner: "adapter", method: "rename", ending: ".ink.png" },
-  /** A note's save, which comes before the move. */
-  save: { owner: "adapter", method: "write", ending: ".md" },
-  /** A link's update in a note, which comes after the move. */
-  link: { owner: "vault", method: "process", ending: ".md" },
-} as const;
-
-/** Has `what` wait until {@link letGo}. */
-async function hold(what: keyof typeof holdable): Promise<void> {
-  await browser.executeObsidian(({ app }, { owner, method, ending }) => {
-    const target = owner === "adapter" ? app.vault.adapter : app.vault;
-    const original: unknown = Reflect.get(target, method);
-    if (typeof original !== "function") throw new Error(`no ${method}`);
-    let settle: (failure?: string) => void = () => undefined;
-    const gate = new Promise<void>((resolve, reject) => {
-      settle = (failure) => {
-        if (failure === undefined) resolve();
-        else reject(new Error(failure));
-      };
-    });
-    Reflect.set(window, "inklineHeldOwner", owner);
-    Reflect.set(window, "inklineHeldMethod", method);
-    Reflect.set(window, "inklineSettle", settle);
-    Reflect.set(
-      target,
-      method,
-      async (...args: unknown[]): Promise<unknown> => {
-        const [first] = args;
-        const path =
-          typeof first === "object" && first !== null
-            ? (Reflect.get(first, "path") as unknown)
-            : first;
-        if (typeof path === "string" && path.endsWith(ending)) {
-          Reflect.set(window, "inklineHeld", true);
-          await gate;
-        }
-        return Reflect.apply(original, target, args) as unknown;
-      },
-    );
-  }, holdable[what]);
-}
-
-/** Waits for what {@link hold} held to be reached. */
-async function waitForHeld(): Promise<void> {
-  await browser.waitUntil(async () =>
-    browser.execute(() => Reflect.get(window, "inklineHeld") === true),
-  );
-}
-
-/** Lets go what {@link hold} held, or fails it with `failure`. */
-async function letGo(failure?: string): Promise<void> {
-  await browser.executeObsidian(({ app }, reason) => {
-    const settle: unknown = Reflect.get(window, "inklineSettle");
-    const owner: unknown = Reflect.get(window, "inklineHeldOwner");
-    const method: unknown = Reflect.get(window, "inklineHeldMethod");
-    if (typeof method === "string") {
-      // Held, it became the object's own, over what its prototype has.
-      Reflect.deleteProperty(
-        owner === "adapter" ? app.vault.adapter : app.vault,
-        method,
-      );
-    }
-    for (const key of [
-      "inklineSettle",
-      "inklineHeldOwner",
-      "inklineHeldMethod",
-      "inklineHeld",
-    ]) {
-      Reflect.deleteProperty(window, key);
-    }
-    if (typeof settle === "function") {
-      Reflect.apply(settle, undefined, [reason ?? undefined]);
-    }
-  }, failure ?? null);
 }
 
 /** Has the page note down anything the form says of a wait, however brief. */
@@ -488,6 +416,196 @@ describe("Renaming in the symbol library", function () {
     }
   });
 
+  describe("when the symbol changes while a rename saves the open notes", function () {
+    /**
+     * Begins renaming `gate.ink.png`, which an open note embeds, to `typed`,
+     * and holds the rename where it reads that note to see whether it has text
+     * to save, as a slow disk could hold it for any time.
+     */
+    async function renameHeld(typed: string): Promise<void> {
+      await usedSymbol();
+      await browser.executeObsidian(async ({ app }) => {
+        const note = app.vault.getFileByPath("Uses 0.md");
+        if (note === null) throw new Error("no note");
+        await app.workspace.getLeaf(false).openFile(note);
+      });
+      await showLibrary();
+      await beginRename("gate", typed);
+      await hold("read");
+      await browser.keys(["Enter"]);
+      await waitForHeld();
+    }
+
+    afterEach(async function () {
+      await letGo();
+    });
+
+    it("refuses a symbol deleted and replaced meanwhile, and keeps the name", async function () {
+      await renameHeld("lintel");
+      await browser.executeObsidian(async ({ app }) => {
+        const file = app.vault.getFileByPath("gate.ink.png");
+        if (file === null) throw new Error("no gate");
+        await app.fileManager.trashFile(file);
+      });
+      await createSymbol("gate.ink.png", [1200, 1800]);
+      const replacement = await bytesOf("gate.ink.png");
+      await letGo();
+      await waitForError("the file was deleted or replaced meanwhile");
+      expect(await nameField().getValue()).toBe("lintel");
+      expect(await symbolFiles()).toEqual(["gate.ink.png"]);
+      expect(await bytesOf("gate.ink.png")).toBe(replacement);
+    });
+
+    it("refuses a symbol renamed elsewhere meanwhile, and renames it from there when asked again", async function () {
+      await renameHeld("lintel");
+      // Renamed as sync would, without Inkline.
+      await browser.executeObsidian(async ({ app }) => {
+        const file = app.vault.getFileByPath("gate.ink.png");
+        if (file === null) throw new Error("no gate");
+        await app.vault.rename(file, "arch.ink.png");
+      });
+      await letGo();
+      await waitForError("the file was renamed to arch.ink.png meanwhile");
+      expect(await nameField().getValue()).toBe("lintel");
+      expect(await symbolFiles()).toEqual(["arch.ink.png"]);
+      await browser.keys(["Enter"]);
+      await waitForName("lintel");
+      expect(await symbolFiles()).toEqual(["lintel.ink.png"]);
+    });
+
+    it("refuses a name another symbol took meanwhile, in any letter case", async function () {
+      await renameHeld("lintel");
+      await createSymbol("LINTEL.ink.png", [1200]);
+      await letGo();
+      await waitForError("already has a symbol named lintel");
+      expect(await nameField().getValue()).toBe("lintel");
+      expect(await symbolFiles()).toEqual(["LINTEL.ink.png", "gate.ink.png"]);
+    });
+  });
+
+  describe("when the symbol changes while Obsidian would wait to move it", function () {
+    /**
+     * Begins renaming `gate.ink.png`, which an open note embeds, to `typed`,
+     * with Obsidian's index held on another note, as on a slow disk or while
+     * sync brings in notes. Obsidian's `renameFile` waits for the index before
+     * it moves a file; this waits until the rename waits for it.
+     */
+    async function renameWhileIndexing(typed: string): Promise<void> {
+      await usedSymbol();
+      await browser.executeObsidian(async ({ app }) => {
+        const note = app.vault.getFileByPath("Uses 0.md");
+        if (note === null) throw new Error("no note");
+        await app.workspace.getLeaf(false).openFile(note);
+      });
+      await showLibrary();
+      await beginRename("gate", typed);
+      await holdIndex();
+      await browser.keys(["Enter"]);
+      await waitForIndexWait();
+    }
+
+    afterEach(async function () {
+      await letGo();
+    });
+
+    it("refuses a symbol deleted and replaced while Obsidian indexes the vault", async function () {
+      await renameWhileIndexing("lintel");
+      await browser.executeObsidian(async ({ app }) => {
+        const file = app.vault.getFileByPath("gate.ink.png");
+        if (file === null) throw new Error("no gate");
+        await app.fileManager.trashFile(file);
+      });
+      await createSymbol("gate.ink.png", [1200, 1800]);
+      const replacement = await bytesOf("gate.ink.png");
+      await letGo();
+      await waitForError("the file was deleted or replaced meanwhile");
+      expect(await nameField().getValue()).toBe("lintel");
+      expect(await symbolFiles()).toEqual(["gate.ink.png"]);
+      expect(await bytesOf("gate.ink.png")).toBe(replacement);
+    });
+
+    it("refuses a symbol renamed elsewhere while Obsidian indexes the vault, and keeps that name", async function () {
+      await renameWhileIndexing("lintel");
+      // Renamed as sync would, without Inkline.
+      await browser.executeObsidian(async ({ app }) => {
+        const file = app.vault.getFileByPath("gate.ink.png");
+        if (file === null) throw new Error("no gate");
+        await app.vault.rename(file, "arch.ink.png");
+      });
+      await letGo();
+      await waitForError("the file was renamed to arch.ink.png meanwhile");
+      expect(await nameField().getValue()).toBe("lintel");
+      expect(await symbolFiles()).toEqual(["arch.ink.png"]);
+    });
+
+    it("says what happened when the symbol is replaced as Obsidian moves it", async function () {
+      await usedSymbol();
+      await showLibrary();
+      await beginRename("gate", "lintel");
+      // Past every check, as a change already on its way to the disk, or one
+      // made outside Obsidian, would be.
+      await hold("move");
+      await browser.keys(["Enter"]);
+      await waitForHeld();
+      await browser.executeObsidian(async ({ app }) => {
+        const file = app.vault.getFileByPath("gate.ink.png");
+        if (file === null) throw new Error("no gate");
+        await app.fileManager.trashFile(file);
+      });
+      await createSymbol("gate.ink.png", [1200, 1800]);
+      const replacement = await bytesOf("gate.ink.png");
+      await letGo();
+      await waitForError(
+        "the file was deleted while Obsidian was renaming it, and Obsidian renamed another file to lintel.ink.png",
+      );
+      expect(await nameField().getValue()).toBe("lintel");
+      expect(await symbolFiles()).toEqual(["lintel.ink.png"]);
+      expect(await bytesOf("lintel.ink.png")).toBe(replacement);
+    });
+
+    it("says the symbol stays where it was when a file comes by the new name as Obsidian moves it", async function () {
+      await usedSymbol();
+      await showLibrary();
+      await beginRename("gate", "lintel");
+      await hold("move");
+      await browser.keys(["Enter"]);
+      await waitForHeld();
+      // As sync would bring in a file of that name.
+      await createSymbol("lintel.ink.png", [1200, 1800]);
+      const arrived = await bytesOf("lintel.ink.png");
+      await letGo();
+      // Obsidian moves nothing onto a file that is there.
+      await waitForError(
+        "lintel.ink.png was created while Obsidian was renaming it, and the file is still gate.ink.png",
+      );
+      expect(await nameField().getValue()).toBe("lintel");
+      expect(await symbolFiles()).toEqual(["gate.ink.png", "lintel.ink.png"]);
+      expect(await bytesOf("lintel.ink.png")).toBe(arrived);
+      expect(await noteText("Uses 0.md")).toContain("![[gate.ink.png]]");
+    });
+
+    it("says the symbol has the new name when it is renamed to it elsewhere as Obsidian moves it", async function () {
+      await usedSymbol();
+      await showLibrary();
+      await beginRename("gate", "lintel");
+      await hold("move");
+      await browser.keys(["Enter"]);
+      await waitForHeld();
+      // The very rename, as sync would make it, which leaves the links.
+      await renamePastHold("gate.ink.png", "lintel.ink.png");
+      await letGo();
+      await waitForError(
+        "Obsidian did not finish the rename, though the file is lintel.ink.png now, so links to it may still have the old name",
+      );
+      expect(await symbolFiles()).toEqual(["lintel.ink.png"]);
+      expect(await noteText("Uses 0.md")).toContain("![[gate.ink.png]]");
+      // Nothing is left to rename.
+      await browser.keys(["Enter"]);
+      await waitForName("lintel");
+      expect(await symbolFiles()).toEqual(["lintel.ink.png"]);
+    });
+  });
+
   describe("when Obsidian does not finish a rename", function () {
     /** Long enough for a rename to have waited, with a margin for a busy machine. */
     const waited = stalledAfter + 15_000;
@@ -629,6 +747,29 @@ describe("Renaming in the symbol library", function () {
       expect(await symbolFiles()).toEqual(["gate.ink.png"]);
     });
 
+    it("says what happened to a rename left behind that something came between", async function () {
+      await usedSymbol();
+      await showLibrary();
+      await beginRename("gate", "lintel");
+      await hold("move");
+      await browser.keys(["Enter"]);
+      await waitForHeld();
+      await waitForWait();
+      await formButton("Cancel").click();
+      await waitForName("gate");
+      await browser.executeObsidian(async ({ app }) => {
+        const file = app.vault.getFileByPath("gate.ink.png");
+        if (file === null) throw new Error("no gate");
+        await app.fileManager.trashFile(file);
+      });
+      await createSymbol("gate.ink.png", [1200, 1800]);
+      await letGo();
+      await waitForNotice(
+        "Renaming gate to lintel: the file was deleted while Obsidian was renaming it, and Obsidian renamed another file to lintel.ink.png",
+      );
+      expect(await symbolFiles()).toEqual(["lintel.ink.png"]);
+    });
+
     it("refuses a second rename while Obsidian has the first", async function () {
       await usedSymbol();
       await showLibrary();
@@ -675,9 +816,29 @@ describe("Renaming in the symbol library", function () {
       });
       await showLibrary();
       await beginRename("gate", "lintel");
-      await addUnsaved("Uses 0.md", "Opening.\n", "start");
       await hold("save");
-      await browser.keys(["Enter"]);
+      // The note saves itself two seconds after an edit, which on a busy
+      // machine can come before the rename's save: the rename then finds
+      // nothing to save, or finds that save held, and on Obsidian 1.13 a save
+      // during another returns at once, so the rename is refused. So the text
+      // is added and the rename begun in one step, as Enter in the field would
+      // begin it (#234).
+      await browser.executeObsidian(({ app, obsidian }, text) => {
+        const view = app.workspace
+          .getLeavesOfType("markdown")
+          .map((leaf) => leaf.view)
+          .find(
+            (open) =>
+              open instanceof obsidian.MarkdownView &&
+              open.file?.path === "Uses 0.md",
+          );
+        const form = document.querySelector(".inkline-library-rename-form");
+        if (!(view instanceof obsidian.MarkdownView))
+          throw new Error("no note");
+        if (!(form instanceof HTMLFormElement)) throw new Error("no form");
+        view.editor.replaceRange(text, view.editor.offsetToPos(0));
+        form.requestSubmit();
+      }, "Opening.\n");
       await waitForHeld();
       await waitForWait();
       await formButton("Cancel").click();
@@ -686,9 +847,36 @@ describe("Renaming in the symbol library", function () {
         false,
       );
       await letGo();
-      // The note's own save goes on, and nothing follows it.
+      // The note's save goes on, and nothing follows it.
       await browser.waitUntil(async () =>
         (await noteText("Uses 0.md")).startsWith("Opening."),
+      );
+      await browser.pause(500);
+      expect(await symbolFiles()).toEqual(["gate.ink.png"]);
+      expect(await noteText("Uses 0.md")).toContain("gate.ink.png");
+    });
+
+    it("stops a rename held in Obsidian's index, which then renames nothing", async function () {
+      await usedSymbol();
+      await showLibrary();
+      await beginRename("gate", "lintel");
+      await holdIndex();
+      await browser.keys(["Enter"]);
+      await waitForIndexWait();
+      const said = await waitForWait();
+      expect(said).toContain("Waiting for Obsidian to finish renaming a file.");
+      expect(await formButton("Cancel").isEnabled()).toBe(true);
+      await formButton("Cancel").click();
+      await waitForName("gate");
+      expect(await browser.$(".notice*=may still finish").isExisting()).toBe(
+        false,
+      );
+      await letGo();
+      // The index catches up, and nothing follows it.
+      await browser.waitUntil(async () =>
+        browser.executeObsidian(
+          ({ app }) => app.metadataCache.getCache("Synced.md") !== null,
+        ),
       );
       await browser.pause(500);
       expect(await symbolFiles()).toEqual(["gate.ink.png"]);
@@ -747,11 +935,10 @@ describe("Renaming in the symbol library", function () {
     const renamed = `${opening}The door  ![[lintel.ink.png]] today.\n`;
 
     /**
-     * Opens a note that embeds the symbol, begins renaming it in the library
-     * with Obsidian set to ask about links, and adds unsaved text to the note.
-     * The text comes last, as the note's blur saves what it holds by then.
+     * Opens a note that embeds the symbol, and begins renaming it in the
+     * library with Obsidian set to ask about links.
      */
-    async function renameWithText(): Promise<void> {
+    async function beginWithNote(): Promise<void> {
       await createSymbol("gate.ink.png");
       await setLinkUpdates(false);
       await browser.executeObsidian(async ({ app }, text) => {
@@ -767,6 +954,14 @@ describe("Renaming in the symbol library", function () {
       );
       await showLibrary();
       await beginRename("gate", "lintel");
+    }
+
+    /**
+     * {@link beginWithNote}, then adds unsaved text to the note. The text comes
+     * last, as the note's blur saves what it holds by then.
+     */
+    async function renameWithText(): Promise<void> {
+      await beginWithNote();
       await addUnsaved("Uses.md", opening, "start");
     }
 
@@ -793,18 +988,70 @@ describe("Renaming in the symbol library", function () {
       await browser.waitUntil(async () => (await onDisk()) === renamed);
     });
 
-    it("refuses the rename if the note cannot be saved, and changes nothing", async function () {
-      await renameWithText();
-      const restore = await failSaves();
+    it("saves text typed in a note while the rename reads another", async function () {
+      await createSymbol("gate.ink.png");
+      await setLinkUpdates(false);
+      const order = await browser.executeObsidian(
+        async ({ app, obsidian }, text) => {
+          const note = await app.vault.create("Uses.md", text);
+          await app.workspace.getLeaf(false).openFile(note);
+          const other = await app.vault.create("Other.md", "Nothing here.\n");
+          await app.workspace.getLeaf("split").openFile(other);
+          return app.workspace
+            .getLeavesOfType("markdown")
+            .map(({ view }) =>
+              view instanceof obsidian.MarkdownView ? view.file?.path : "",
+            );
+        },
+        saved,
+      );
+      // The rename reads the notes in this order, so that Uses.md has been
+      // found saved by the time it waits on Other.md.
+      expect(order).toEqual(["Uses.md", "Other.md"]);
+      await browser.waitUntil(async () =>
+        browser.executeObsidian(
+          ({ app }) =>
+            (app.metadataCache.resolvedLinks["Uses.md"]?.["gate.ink.png"] ??
+              0) > 0,
+        ),
+      );
+      await showLibrary();
+      await beginRename("gate", "lintel");
+      await hold("read", "Other.md");
       try {
         await browser.keys(["Enter"]);
+        await waitForHeld();
+        await addUnsaved("Uses.md", opening, "start");
+      } finally {
+        await letGo();
+      }
+      await browser.waitUntil(
+        async () => (await topButton("Just once")) !== undefined,
+      );
+      // An editor saves itself two seconds after an edit.
+      await browser.pause(2500);
+      await clickTop("Just once");
+      await waitForName("lintel");
+      await waitForPanes("Uses.md", renamed);
+      await browser.waitUntil(async () => (await onDisk()) === renamed);
+    });
+
+    it("refuses the rename if the note cannot be saved, and changes nothing", async function () {
+      await beginWithNote();
+      // Saves fail before the text is added, and until the file is read and
+      // the note's own save has failed as well as the rename's (#234).
+      const restore = await failSaves();
+      try {
+        await addUnsaved("Uses.md", opening, "start");
+        await browser.keys(["Enter"]);
         await waitForError("the note Uses could not be saved first");
+        await waitForFailedSaves("Uses.md", 2);
+        expect(await onDisk()).toBe(saved);
       } finally {
         await restore();
       }
       expect(await nameField().getValue()).toBe("lintel");
       expect(await symbolFiles()).toEqual(["gate.ink.png"]);
-      expect(await onDisk()).toBe(saved);
       await waitForPanes("Uses.md", `${opening}${saved}`);
       await browser.keys(["Enter"]);
       await clickTop("Just once");

@@ -508,8 +508,13 @@ export class InkEditorModal extends Modal {
   #status: HTMLElement | undefined;
   /** Says that a save is waiting for Obsidian, which outlasts the status. */
   #saveWait: HTMLElement | undefined;
-  /** Base layer images decoded for drawing, by their PNG. */
-  readonly #decoded = new Map<Uint8Array, DrawableBase>();
+  /**
+   * Base layer images decoded for drawing, by their PNG, each kept while
+   * something holds that PNG: a state that Undo or Redo can reach, the
+   * drawing as opened or saved, or a draft. One that only abandoned states
+   * held, after a new change past an Undo or past the history's limit, goes.
+   */
+  readonly #decoded = new WeakMap<Uint8Array, DrawableBase>();
   /** The base layer placed where the document puts it, for drawing. */
   #placed: { layer: BaseLayer; drawable: DrawableBase } | undefined;
   /** Whether the last draft written was kept; storage can refuse one. */
@@ -606,9 +611,14 @@ export class InkEditorModal extends Modal {
   /** The decoded base layer, where the document now puts it. */
   get #base(): DrawableBase | undefined {
     const layer = this.#session.document.base;
-    if (layer === undefined) return undefined;
-    const drawable = this.#decoded.get(layer.png);
-    if (drawable === undefined) return undefined;
+    const drawable =
+      layer === undefined ? undefined : this.#decoded.get(layer.png);
+    if (layer === undefined || drawable === undefined) {
+      // The last one placed would otherwise keep its image after the
+      // drawing let it go.
+      this.#placed = undefined;
+      return undefined;
+    }
     if (this.#placed?.layer !== layer) {
       this.#placed = {
         layer,

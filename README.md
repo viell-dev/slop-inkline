@@ -4,16 +4,59 @@ An Obsidian plugin for drawing symbols that no font has, so that you can write
 them in your notes as easily as letters. Each symbol sits inside the line of
 text like a character, at the text's size and in its color.
 
+## Install
+
+Inkline is a prerelease for Obsidian 1.13.4 or later on desktop. The 0.9
+releases lead to the first stable release, 1.0.0: from 0.9.2 on they are its
+release candidates, and the file format is final. A symbol saved by an earlier
+version opens as a picture to draw over, without its strokes.
+
+1. Download the install ZIP, `inkline-<version>.zip` of the highest version,
+   from the release's assets on
+   [GitHub releases](https://github.com/viell-dev/slop-inkline/releases).
+2. Extract it into your vault's `.obsidian/plugins/` directory. The ZIP holds
+   its own `inkline/` folder, so the plugin's three files end up in
+   `.obsidian/plugins/inkline/`.
+3. In Obsidian, open **Settings → Community plugins**, turn community plugins on
+   if needed, and enable **Inkline**.
+
+The [installation guide](https://viell-dev.github.io/slop-inkline/install)
+covers updates, older versions, and installing with BRAT. Release notes describe
+compatibility changes.
+
+Inkline is not in Obsidian's community plugin directory yet. The plan is that
+1.0.0 is its first release there, and that the directory offers public releases
+only. Every release, public or not, stays on GitHub with its install ZIP.
+
+## Your first symbol
+
+1. In a note, put the cursor where the symbol goes, and run **Inkline: Insert
+   symbol** from the command palette (Ctrl+P, or Cmd+P on macOS).
+2. Draw the symbol with a mouse or a trackpad. The lines across the drawing area
+   are guides at the text font's lines.
+3. Type a name, such as `tower`, in the field at the top, and press **Save**, or
+   Ctrl+Enter (Cmd+Enter on macOS). Inkline saves it as `tower.ink.png` and puts
+   its embed, `![[tower.ink.png]]`, where the cursor was. The note shows it in
+   the line, like a character.
+4. To use it again, type `;;tow` in any note, and press Enter.
+
+[Your first symbol](https://viell-dev.github.io/slop-inkline/start) in the guide
+goes on from there, and
+[Saving and recovery](https://viell-dev.github.io/slop-inkline/recovery) says
+how to get unsaved work back.
+
+## What it is for
+
 It is made for working out invented scripts, such as the languages of puzzle
 games like Chants of Sennaar: draw a symbol where you meet it, name it with your
 current guess at its meaning, rename it as your reading changes, and find every
 note that uses it. Conlang glyphs, ciphers, game marks, and personal shorthand
 work the same way.
 
+![An invented inscription transcribed as inline symbols, beside the library showing the renamed sign and both notes that use it.](docs/screenshots/reading-dark.png)
+
 Each symbol is a normal PNG file in your vault, embedded with a normal image
 link, so your notes still show it if you disable or uninstall the plugin.
-
-![An invented inscription transcribed as inline symbols, beside the library showing the renamed sign and both notes that use it.](docs/screenshots/reading-dark.png)
 
 Paste a picture to trace, then turn each sign into ink with **Make ink** and
 **Next**, or draw over it yourself:
@@ -26,22 +69,6 @@ The [user guide](https://viell-dev.github.io/slop-inkline/) covers installing
 the release ZIP, drawing and inserting symbols, saving and recovery, the
 keyboard, known limits, and reporting a problem. It describes the latest
 release, prereleases included.
-
-## Install
-
-Inkline is a prerelease for Obsidian 1.13.4 or later on desktop. Download the
-install ZIP from
-[GitHub releases](https://github.com/viell-dev/slop-inkline/releases) and
-extract it into your vault's `.obsidian/plugins/` directory; see the
-[installation guide](https://viell-dev.github.io/slop-inkline/install) for
-setup, updates, and older versions. Release notes describe compatibility
-changes. The 0.9 releases lead to the first stable release, 1.0.0: from 0.9.2 on
-they are its release candidates, and the file format is final. A symbol saved by
-an earlier version opens as a picture to draw over, without its strokes.
-
-Inkline is not in Obsidian's community plugin directory yet. The plan is that
-1.0.0 is its first release there, and that the directory offers public releases
-only. Every release, public or not, stays on GitHub with its install ZIP.
 
 ## Contributing
 

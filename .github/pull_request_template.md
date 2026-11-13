@@ -29,8 +29,9 @@ an unanswered human request; link it in the handoff as well.
 List the commands run, the inputs tried beyond the tests, the platforms and
 Obsidian versions checked, and the CI run. Say whether another agent reviewed
 the change, at which commit, and why or why not. Confirm that the documentation
-and tests agree with the change and that `CHANGELOG.md` lists it under
-`Unreleased`.
+and tests agree with the change, including each place that
+[What a change updates](https://github.com/viell-dev/slop-inkline/blob/main/CONTRIBUTING.md#what-a-change-updates)
+lists for it, and that `CHANGELOG.md` lists it under `Unreleased`.
 
 Confirm that guide changes describe the newest published release or visibly
 label unreleased behavior **Unreleased**, preserving the released instructions.

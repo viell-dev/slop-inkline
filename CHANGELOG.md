@@ -9,6 +9,103 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+## 0.9.3 - 2026-11-12
+
+This is the second release candidate of 1.0.0: a build meant to become 1.0.0
+unchanged, for its last checks. The owner is asked to try it in
+[their test request](https://github.com/viell-dev/slop-inkline/issues/212).
+
+0.9.2 did not become 1.0.0: a review of the whole code after it was published
+([#217](https://github.com/viell-dev/slop-inkline/issues/217)) found that a
+rename could move another file than the one you chose
+([#218](https://github.com/viell-dev/slop-inkline/issues/218)). That is fixed
+here, with the review's other findings. The file format is unchanged, so symbols
+and drafts from 0.9.2 open as they did.
+
+### Fixed
+
+- The `;;` list no longer opens in inline code that started on an earlier line
+  of its paragraph, where Enter put an embed into the code
+  ([#219](https://github.com/viell-dev/slop-inkline/issues/219)). A callout's
+  title line is read on its own, as Reading view shows it: inline code in it
+  ends with the line, and a table can start on the line under it
+  ([#248](https://github.com/viell-dev/slop-inkline/issues/248)).
+- The `;;` list opens again in the text after a quote or a list item holding a
+  fenced code block that was never closed: the block ends with the quote or the
+  item, as Reading view shows it. **Inkline: Edit symbol** works on an embed
+  there too ([#220](https://github.com/viell-dev/slop-inkline/issues/220)).
+- The list follows Reading view in a few more places where it differed: it lists
+  nothing in a code block made by indenting lines, which it now tells from a
+  list item's indented text, nor in a fenced code block opened on a list item's
+  own line, nor after a run of backticks that only a shorter run closes, and it
+  reads each of a table's cells on its own. **Inkline: Edit symbol** is not
+  offered on an embed in an indented code block, which shows it as text.
+- Turning Inkline off closes **Inkline: Insert existing symbol**, which stayed
+  open and could still insert a symbol into the note
+  ([#221](https://github.com/viell-dev/slop-inkline/issues/221)). Nothing else
+  Inkline started acts once it is off either: **Edit symbol** in a symbol's menu
+  left open does nothing, and a rename or a change of readings and translations
+  that the library was still saving stops and says so, as the editor's saves
+  already did, unless it had reached Obsidian. A rename that Obsidian has not
+  begun, from the library or the editor, saves no open note after that, and one
+  waiting for Obsidian to index the vault or finish another rename stops at
+  once. One that Obsidian has begun finishes, as before, and the embed of a new
+  symbol renamed as it was saved now follows it to the new name, where it kept
+  the old one, which no longer named a file. Turned off just as it starts,
+  before Obsidian's window is ready or while it reads its settings, Inkline no
+  longer goes on showing symbols as characters, or leaves its commands behind
+  ([#222](https://github.com/viell-dev/slop-inkline/issues/222)).
+- A symbol wider than the space it is in, as a very wide one can be in a hover
+  preview, a table cell, a narrow pane, or a PDF page, or at a larger Symbol
+  size, is no longer squeezed sideways. It shrinks evenly to fit, whole and in
+  the proportions it was drawn in, and stays on the baseline. Before, only its
+  width gave way, so a symbol near the widest a file can be showed about a
+  quarter too narrow at the default size in a hover preview
+  ([#241](https://github.com/viell-dev/slop-inkline/issues/241)).
+- A rename, from the library or the editor, no longer renames another file when
+  the symbol is deleted and a file is put at its path while the rename saves the
+  open notes or the drawing, or while Obsidian finishes indexing the vault or
+  another rename before it moves the file. The symbol is checked again once
+  nothing is left to wait for, and Obsidian begins to move it in that same step.
+  A symbol deleted, replaced, or renamed elsewhere meanwhile, or whose new name
+  another symbol has taken, is not renamed: the name you typed stays to try
+  again. A change that still reaches the file before Obsidian moves it, such as
+  one made outside Obsidian at that moment, is reported with where the symbol is
+  now, rather than taken for a rename that went well
+  ([#218](https://github.com/viell-dev/slop-inkline/issues/218)).
+- Text typed in a note while a rename saves the other open notes is saved too
+  before the rename, so that Obsidian's update of the links can't write over it
+  ([#218](https://github.com/viell-dev/slop-inkline/issues/218)).
+- `COM¹`, `COM²`, `COM³`, `LPT¹`, `LPT²`, and `LPT³`, which Windows keeps for
+  its ports as it keeps `COM1`, are refused as a symbol's or a folder's name,
+  with an extension too. A symbol that already has such a name keeps it when
+  saved ([#225](https://github.com/viell-dev/slop-inkline/issues/225)).
+- A draft is no longer refused for room that pictures no draft needs take up.
+  Each **Copy from**, **Make ink**, or reload that gave the drawing a new base
+  layer kept the old one's picture in the vault's local storage too, until
+  Inkline next looked for drafts to offer, so a few of them in one editor could
+  fill it. The old picture now goes as soon as the draft that replaces it is
+  kept, and never before
+  ([#223](https://github.com/viell-dev/slop-inkline/issues/223)).
+- The editor no longer keeps every base layer it has shown in memory until it
+  closes. One that Undo and Redo can no longer reach, after a new change past an
+  Undo or once it is further back than Undo goes, is let go
+  ([#224](https://github.com/viell-dev/slop-inkline/issues/224)).
+- The guide said that symbols keep showing in other Markdown apps and on GitHub,
+  but those show Obsidian's own embed, such as `![[tower.ink.png]]`, as text.
+  [Without Inkline](https://viell-dev.github.io/slop-inkline/without-inkline#in-other-apps)
+  now says what another app needs, with the Obsidian settings that write such
+  links and an example from a note in a folder
+  ([#231](https://github.com/viell-dev/slop-inkline/issues/231)).
+- The description prepared for Obsidian's community directory said that Inkline
+  reads nothing outside your vault. It now says that it keeps drafts in
+  Obsidian's storage on your computer, and reads nothing else unless you choose,
+  drop, or paste a picture to trace over, which can come from anywhere. The
+  security policy says the same
+  ([#233](https://github.com/viell-dev/slop-inkline/issues/233)).
+- The README starts with installing Inkline and drawing a first symbol
+  ([#232](https://github.com/viell-dev/slop-inkline/issues/232)).
+
 ## 0.9.2 - 2026-11-07
 
 This is the first release candidate of 1.0.0: a build meant to become 1.0.0
@@ -525,7 +622,7 @@ Public stable publication remains on hold, as the earlier
 ### Changed
 
 - Releases are alphas for now, and until the first stable release the
-  [file format](https://viell-dev.github.io/slop-inkline/file-format#compatibility)
+  [file format](https://viell-dev.github.io/slop-inkline/file-format#versions)
   is a draft: a later alpha may change what symbol files hold, and need not open
   files an earlier one saved. The changelog says when that happens; this alpha
   opens every file the earlier releases saved.
