@@ -27,6 +27,12 @@ import {
   type EditorHost,
 } from "./notes/symbols.ts";
 import { SymbolTextIndex } from "./notes/text-index.ts";
+import {
+  addToDictionary,
+  isPart,
+  isSymbolFile,
+  togglePart,
+} from "./notes/dictionary.ts";
 import type { EditorView } from "@codemirror/view";
 import {
   LexiconIndex,
@@ -34,7 +40,7 @@ import {
   symbolPath,
   wordsExtension,
 } from "./notes/words.ts";
-import { segment, type Piece } from "./render/words.ts";
+import { segment, segmentGreedy, type Piece } from "./render/words.ts";
 import { SymbolRenderer } from "./render/symbols.ts";
 import { brushSizes } from "./editor/session.ts";
 import { InklineSettingTab } from "./settings-tab.ts";
@@ -68,6 +74,8 @@ export default class InklinePlugin extends Plugin {
       this.#refreshLibraries();
       // PROTOTYPE (#167, section 3): ruby follows what the index has read.
       this.#renderer.retag();
+      // PROTOTYPE (#167, section 5): literal glosses use symbols' values.
+      this.#prototypeLexicon?.schedule();
     },
   );
   #drafts: DraftStore | undefined;
@@ -345,8 +353,48 @@ export default class InklinePlugin extends Plugin {
       for (const view of views) {
         view.dispatch({ effects: refreshWords.of(null) });
       }
+      // PROTOTYPE (#167, section 5): the library shows the indexes.
+      this.#refreshLibraries();
     });
     this.#prototypeLexicon = lexicon;
+    // PROTOTYPE (#167, section 5): the dictionary's commands and menu.
+    lexicon.translationOf = (path) => {
+      const file = this.app.vault.getFileByPath(path);
+      return file === null
+        ? undefined
+        : this.#texts.textOf(file)?.text.translation[0];
+    };
+    this.addCommand({
+      id: "prototype-add-to-dictionary",
+      name: "Add the selected symbols to the dictionary (prototype)",
+      editorCheckCallback: (checking, _editor, view) => {
+        if (!(view instanceof MarkdownView)) return false;
+        if (!checking) {
+          void addToDictionary(this.app, view, lexicon, this.#texts).catch(
+            (error: unknown) => {
+              new Notice(`Not added: ${String(error)}`);
+            },
+          );
+        }
+        return true;
+      },
+    });
+    this.registerEvent(
+      this.app.workspace.on("file-menu", (menu, file) => {
+        if (!isSymbolFile(file)) return;
+        const part = isPart(this.#texts, file);
+        menu.addItem((item) => {
+          item
+            .setTitle(part ? "Not only a part" : "Only a part of other symbols")
+            .setIcon("puzzle")
+            .onClick(() => {
+              void togglePart(this.app, file, this.#texts).then(() => {
+                this.#refreshLibraries();
+              });
+            });
+        });
+      }),
+    );
     this.register(() => {
       lexicon.stop();
     });
@@ -413,6 +461,53 @@ export default class InklinePlugin extends Plugin {
       longest: index.lexicon.longest,
       builds: index.builds,
       pieces: segment(paths, index.lexicon),
+    };
+  }
+
+  /** PROTOTYPE (#167, section 5), for the spec: the dictionary's indexes. */
+  prototypeDictionaryState(paths: readonly string[] = []): unknown {
+    const index = this.#prototypeLexicon;
+    if (index === undefined) return undefined;
+    const { rows, builtWith, inWords } = index.dictionary;
+    const named = (key: string) =>
+      key
+        .split(String.fromCharCode(0))
+        .map((path) => path.replace(/^.*\//, "").replace(/\.ink\.png$/, ""))
+        .join(" ");
+    const roles: Record<string, readonly string[]> = {};
+    for (const file of this.app.vault.getFiles()) {
+      if (!isInkPath(file.path)) continue;
+      const role = this.#texts.textOf(file)?.role;
+      if (role !== undefined) roles[named(file.path)] = role;
+    }
+    return {
+      rows: rows.map((row) => ({
+        ...row,
+        paths: named(row.paths.join(String.fromCharCode(0))),
+        parts: row.parts?.map((path) => named(path)),
+      })),
+      builtWith: Object.fromEntries(
+        Array.from(builtWith, ([part, users]) => [
+          named(part),
+          Array.from(users, named),
+        ]),
+      ),
+      inWords: Object.fromEntries(
+        Array.from(inWords, ([path, keys]) => [named(path), Array.from(keys, named)]),
+      ),
+      entries: Array.from(index.lexicon.entries, ([key, entry]) => [
+        named(key),
+        entry,
+      ]),
+      roles,
+      pieces: segment(paths, index.lexicon).map((piece) => ({
+        symbols: named(paths.slice(piece.start, piece.end).join(String.fromCharCode(0))),
+        meaning: piece.entry?.meaning,
+      })),
+      greedy: segmentGreedy(paths, index.lexicon).map((piece) => ({
+        symbols: named(paths.slice(piece.start, piece.end).join(String.fromCharCode(0))),
+        meaning: piece.entry?.meaning,
+      })),
     };
   }
 

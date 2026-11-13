@@ -32,6 +32,8 @@ import { writeAt } from "../notes/insertion.ts";
 import { insertionAt } from "../notes/links.ts";
 import { symbolStem } from "../notes/names.ts";
 import type { SymbolTexts } from "../notes/suggest.ts";
+import { prototypeDictionary } from "../notes/words.ts";
+import { wordKey } from "../render/words.ts";
 import {
   readSymbolText,
   RenameDisturbed,
@@ -514,6 +516,11 @@ export class SymbolLibraryView extends ItemView {
         text: entry.folder,
       });
     }
+    // PROTOTYPE (#167, section 5): a symbol that is only a part says so.
+    if (entry.text?.role?.includes("part") === true) {
+      row.addClass("inkline-library-part");
+      text.createDiv({ cls: "inkline-library-part-badge", text: "part" });
+    }
     // The row can shorten a long name or folder: this has the whole of both.
     setTooltip(
       insert,
@@ -571,6 +578,7 @@ export class SymbolLibraryView extends ItemView {
       this.#editText(row, entry, file);
     });
     this.#renderValues(row, entry);
+    this.#renderDictionary(row, entry);
     if (entry.notes.length === 0) {
       uses.disabled = true;
       return;
@@ -622,6 +630,56 @@ export class SymbolLibraryView extends ItemView {
         held,
         found?.field === field ? found.value : undefined,
       );
+    }
+  }
+
+  /**
+   * PROTOTYPE (#167, section 5): what the lexicon notes say of a symbol:
+   * what it is made of, the symbols made with it (a radical index), and the
+   * words written with it.
+   */
+  #renderDictionary(row: HTMLElement, entry: CatalogEntry): void {
+    const dictionary = prototypeDictionary();
+    const name = (path: string) =>
+      path.replace(/^.*\//, "").replace(/\.ink\.png$/i, "");
+    const lines: { label: string; text: string; role: string }[] = [];
+    const own = dictionary.byKey.get(wordKey([entry.path]));
+    if (own?.structure !== undefined) {
+      lines.push({ label: "Made of", text: own.structure, role: "made-of" });
+    }
+    const users = dictionary.builtWith.get(entry.path);
+    if (users !== undefined && users.size > 0) {
+      lines.push({
+        label: "Part of",
+        text: Array.from(users, name).sort().join(", "),
+        role: "part-of",
+      });
+    }
+    const words = dictionary.inWords.get(entry.path);
+    if (words !== undefined && words.size > 0) {
+      lines.push({
+        label: "In words",
+        text: Array.from(words, (key) => {
+          const found = dictionary.byKey.get(key);
+          return found?.meaning ?? found?.reading ?? key.split("\u0000").map(name).join(" ");
+        })
+          .sort()
+          .join(", "),
+        role: "in-words",
+      });
+    }
+    if (lines.length === 0) return;
+    const box = row.createDiv({ cls: "inkline-library-dictionary" });
+    for (const line of lines) {
+      const div = box.createDiv({
+        cls: "inkline-library-dictionary-line",
+        attr: { "data-inkline-dictionary": line.role },
+      });
+      div.createSpan({
+        cls: "inkline-library-dictionary-label",
+        text: `${line.label}: `,
+      });
+      div.createSpan({ text: line.text });
     }
   }
 

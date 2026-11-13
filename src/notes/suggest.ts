@@ -121,7 +121,15 @@ export function matchSymbols(
         },
       ];
     });
-  return rankSymbols(candidates);
+  // PROTOTYPE (#167, section 5): a symbol that is only a part of others is
+  // rarely written in text, so it comes after every other match.
+  const ranked = rankSymbols(candidates);
+  const part = (match: SymbolMatch) =>
+    texts.textOf(match.file)?.role?.includes("part") === true;
+  return [
+    ...ranked.filter((match) => !part(match)),
+    ...ranked.filter(part),
+  ];
 }
 
 /** The first symbols of {@link matchSymbols}, as many as a list shows. */
@@ -143,6 +151,7 @@ export function renderSymbol(
   file: TFile,
   el: HTMLElement,
   found?: FoundText,
+  part?: boolean,
 ): void {
   // Its picture is text, as the renderer paints symbols in text.
   el.addClass("inkline-suggestion", "inkline-text");
@@ -162,6 +171,10 @@ export function renderSymbol(
     text.createDiv({ cls: "inkline-suggestion-folder", text: folder.path });
   }
   if (found !== undefined) showValues(text, found.field, [found.value]);
+  // PROTOTYPE (#167, section 5): a part says so.
+  if (part === true) {
+    text.createDiv({ cls: "inkline-suggestion-part", text: "part" });
+  }
 }
 
 /**
@@ -285,7 +298,13 @@ export class SymbolSuggest extends EditorSuggest<SymbolMatch> {
   }
 
   override renderSuggestion(match: SymbolMatch, el: HTMLElement): void {
-    renderSymbol(this.app, match.file, el, match.found);
+    renderSymbol(
+      this.app,
+      match.file,
+      el,
+      match.found,
+      this.#texts.textOf(match.file)?.role?.includes("part"),
+    );
   }
 
   override selectSuggestion({ file }: SymbolMatch): void {
@@ -373,7 +392,13 @@ export class SymbolSearch extends SuggestModal<SymbolMatch> {
   }
 
   override renderSuggestion(match: SymbolMatch, el: HTMLElement): void {
-    renderSymbol(this.app, match.file, el, match.found);
+    renderSymbol(
+      this.app,
+      match.file,
+      el,
+      match.found,
+      this.#texts.textOf(match.file)?.role?.includes("part"),
+    );
   }
 
   override onChooseSuggestion({ file }: SymbolMatch): void {

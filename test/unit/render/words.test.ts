@@ -4,6 +4,7 @@ import {
   composedReading,
   type Lexicon,
   segment,
+  segmentGreedy,
   wordKey,
 } from "../../../src/render/words.ts";
 
@@ -61,7 +62,9 @@ describe("segment", () => {
     // "ab" + "cd" is meant, but "abc" is also a word: greedy takes it and
     // leaves "d" alone.
     const tricky = lexicon({ "a b": "AB", "c d": "CD", "a b c": "ABC" });
-    expect(split("a b c d", tricky)).toEqual(["ABC", "(d)"]);
+    expect(
+      segmentGreedy("a b c d".split(" "), tricky).map((p) => p.entry?.meaning ?? "-"),
+    ).toEqual(["ABC", "-"]);
   });
 });
 

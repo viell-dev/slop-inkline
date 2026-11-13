@@ -261,3 +261,73 @@ export async function writeText(
     before,
   });
 }
+
+// PROTOTYPE for #167, section 5, not for release: a keyword of a later
+// revision of the format, beside readings and translations. "Inkline role"
+// says what a symbol is for, one value per line, the main one first. Its one
+// value here is `part`: a building block of other symbols, such as a radical,
+// with no reading or meaning of its own and not written in text on its own.
+// The format already lets a later revision add a keyword without a new
+// version ("Without changing the version, a later revision ... may also add a
+// keyword"), and every reader of version 1 ignores one it does not know and
+// keeps it when it changes the file.
+
+/** PROTOTYPE: the keyword of a symbol's role. */
+export const roleKeyword = "Inkline role";
+
+/** PROTOTYPE: the role of a symbol that is only ever a part of others. */
+export const partRole = "part";
+
+/** PROTOTYPE: the values of the first usable chunk of any `Inkline` keyword. */
+export async function readKeyword(
+  chunks: readonly Chunk[],
+  keyword: string,
+  attempts = Infinity,
+): Promise<readonly string[]> {
+  const bytes = new TextEncoder().encode(keyword);
+  let tried = 0;
+  for (const chunk of chunks) {
+    if (!holdsKeyword(chunk, bytes)) continue;
+    if (tried++ === attempts) return [];
+    const values = await usableValues(chunk, bytes);
+    if (values !== undefined) return values;
+  }
+  return [];
+}
+
+/**
+ * PROTOTYPE: changes any `Inkline` keyword's values as {@link writeText} does
+ * a reading's or a translation's, by the format's "Changing the text".
+ */
+export async function writeKeyword(
+  bytes: Uint8Array,
+  keyword: string,
+  values: readonly string[],
+): Promise<Uint8Array> {
+  const problem = textProblem(values);
+  if (problem !== undefined) throw new TextError(problem);
+  const chunks = readChunks(bytes, (type) => isTextChunk({ type }));
+  const word = new TextEncoder().encode(keyword);
+  const removed = new Set<Chunk>();
+  let current: readonly string[] | undefined;
+  for (const chunk of chunks) {
+    if (!holdsKeyword(chunk, word)) continue;
+    const found = await usableValues(chunk, word);
+    if (found === undefined) continue;
+    removed.add(chunk);
+    current ??= found;
+  }
+  const unchanged =
+    (current ?? []).length === values.length &&
+    values.every((value, index) => value === current?.[index]);
+  if (unchanged) return bytes;
+  if (values.length === 0) return spliceChunks(bytes, chunks, removed);
+  const before = chunks.find(
+    (chunk) => chunk.type === "IDAT" || holdsKeyword(chunk, word),
+  );
+  if (before === undefined) throw new TextError("PNG has no image data");
+  return spliceChunks(bytes, chunks, removed, {
+    chunk: textChunk(word, values),
+    before,
+  });
+}

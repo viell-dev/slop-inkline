@@ -34,32 +34,18 @@ import {
   type WordEntry,
   wordKey,
 } from "../render/words.ts";
+import { cells, columnsOf, type Columns } from "./lexicon-table.ts";
+export {
+  changedRow,
+  columnsOf,
+  newRow,
+  rowCells,
+  type Columns,
+} from "./lexicon-table.ts";
 
 /** Whether a note's metadata makes it a lexicon. */
 function isLexicon(cache: CachedMetadata | null | undefined): boolean {
   return cache?.frontmatter?.["inkline"] === "lexicon";
-}
-
-/** The cells of a table row: their text and where each starts and ends. */
-function cells(row: string): { text: string; from: number; to: number }[] {
-  const bars: number[] = [];
-  let inLink = 0;
-  for (let at = 0; at < row.length; at++) {
-    if (row.startsWith("[[", at)) inLink++;
-    if (row.startsWith("]]", at) && inLink > 0) inLink--;
-    if (row[at] === "|" && row[at - 1] !== "\\" && inLink === 0) {
-      bars.push(at);
-    }
-  }
-  const found: { text: string; from: number; to: number }[] = [];
-  const starts = row.trimStart().startsWith("|") ? bars : [-1, ...bars];
-  for (let index = 0; index < starts.length; index++) {
-    const from = (starts[index] ?? 0) + 1;
-    const to = starts[index + 1] ?? row.length;
-    if (index === starts.length - 1 && row.slice(from).trim() === "") break;
-    found.push({ text: row.slice(from, to), from, to });
-  }
-  return found;
 }
 
 /** The vault's lexicon notes, read into one lexicon. */
@@ -98,10 +84,26 @@ export class LexiconIndex {
     window.clearTimeout(this.#timer);
   }
 
+  /** PROTOTYPE (#167, section 5): everything the lexicon notes say. */
+  get dictionary(): Dictionary {
+    return this.#dictionary;
+  }
+
+  #dictionary: Dictionary = emptyDictionary;
+
+  /** PROTOTYPE: a symbol's own main translation, for a literal gloss. */
+  translationOf: (path: string) => string | undefined = () => undefined;
+
   async rebuild(): Promise<void> {
     const { metadataCache, vault } = this.#app;
     const entries = new Map<string, WordEntry>();
     const notes = new Set<string>();
+    const rows: DictionaryRow[] = [];
+    const byKey = new Map<string, DictionaryRow>();
+    const builtWith = new Map<string, Set<string>>();
+    const inWords = new Map<string, Set<string>>();
+    const nameOf = (path: string) =>
+      path.replace(/^.*\//, "").replace(/\.ink\.png$/i, "");
     let longest = 0;
     for (const file of vault.getMarkdownFiles()) {
       const cache = metadataCache.getFileCache(file);
@@ -109,22 +111,36 @@ export class LexiconIndex {
       notes.add(file.path);
       const lines = (await vault.cachedRead(file)).split("\n");
       const embeds = cache?.embeds ?? [];
+      /** The symbols linked in `line` between columns `from` and `to`. */
+      const symbolsIn = (line: number, from: number, to: number) =>
+        embeds
+          .filter(
+            (embed) =>
+              embed.position.start.line === line &&
+              embed.position.start.col >= from &&
+              embed.position.end.col <= to,
+          )
+          .sort((a, b) => a.position.start.col - b.position.start.col);
+      const resolve = (link: string): string | undefined => {
+        const target = metadataCache.getFirstLinkpathDest(
+          getLinkpath(link),
+          file.path,
+        );
+        return target === null || !isInkPath(target.path)
+          ? undefined
+          : target.path;
+      };
       for (const section of cache?.sections ?? []) {
         if (section.type !== "table") continue;
+        const header = section.position.start.line;
+        const columns = columnsOf(cells(lines[header] ?? ""));
         // After the header and the line under it.
-        const first = section.position.start.line + 2;
+        const first = header + 2;
         for (let line = first; line <= section.position.end.line; line++) {
           const row = cells(lines[line] ?? "");
-          const word = row[0];
+          const word = row[columns.word];
           if (word === undefined) continue;
-          const here = embeds
-            .filter(
-              (embed) =>
-                embed.position.start.line === line &&
-                embed.position.start.col >= word.from &&
-                embed.position.end.col <= word.to,
-            )
-            .sort((a, b) => a.position.start.col - b.position.start.col);
+          const here = symbolsIn(line, word.from, word.to);
           if (here.length === 0) continue;
           // One word: its symbols with nothing between them.
           const apart = here.some(
@@ -134,41 +150,136 @@ export class LexiconIndex {
                 (here[index - 1]?.position.end.col ?? -1),
           );
           if (apart) continue;
-          const paths: string[] = [];
-          for (const embed of here) {
-            const target = metadataCache.getFirstLinkpathDest(
-              getLinkpath(embed.link),
-              file.path,
-            );
-            if (target === null || !isInkPath(target.path)) break;
-            paths.push(target.path);
-          }
+          const paths = here.flatMap((embed) => resolve(embed.link) ?? []);
           if (paths.length !== here.length) continue;
-          const reading = row[1]?.text.trim() ?? "";
-          const meaning = row[2]?.text.trim() ?? "";
-          if (reading === "" && meaning === "") continue;
+          const reading =
+            columns.reading === undefined
+              ? ""
+              : (row[columns.reading]?.text.trim() ?? "");
+          const meaning =
+            columns.meaning === undefined
+              ? ""
+              : (row[columns.meaning]?.text.trim() ?? "");
+          // What a symbol is made of, with an IDS-like layout between them.
+          const partsCell =
+            columns.parts === undefined ? undefined : row[columns.parts];
+          const partEmbeds =
+            partsCell === undefined
+              ? []
+              : symbolsIn(line, partsCell.from, partsCell.to);
+          const parts = partEmbeds.flatMap(
+            (embed) => resolve(embed.link) ?? [],
+          );
+          let structure: string | undefined;
+          if (partsCell !== undefined && parts.length > 0) {
+            const text = lines[line] ?? "";
+            let shown = "";
+            let at = partsCell.from;
+            for (const [index, embed] of partEmbeds.entries()) {
+              shown += text.slice(at, embed.position.start.col);
+              shown += ` ${nameOf(parts[index] ?? embed.link)} `;
+              at = embed.position.end.col;
+            }
+            shown += text.slice(at, partsCell.to);
+            structure = shown.replace(/\s+/g, " ").trim();
+          }
           const key = wordKey(paths);
-          if (entries.has(key)) continue;
+          if (byKey.has(key)) continue;
+          const entryRow: DictionaryRow = {
+            note: file.path,
+            line,
+            columns,
+            paths,
+            ...(reading === "" ? {} : { reading }),
+            ...(meaning === "" ? {} : { meaning }),
+            ...(parts.length === 0 ? {} : { parts }),
+            ...(structure === undefined ? {} : { structure }),
+          };
+          rows.push(entryRow);
+          byKey.set(key, entryRow);
+          if (paths.length === 1 && parts.length > 0) {
+            for (const part of parts) {
+              const users = builtWith.get(part) ?? new Set<string>();
+              users.add(paths[0] ?? "");
+              builtWith.set(part, users);
+            }
+          }
+          if (paths.length > 1) {
+            for (const path of paths) {
+              const words = inWords.get(path) ?? new Set<string>();
+              words.add(key);
+              inWords.set(path, words);
+            }
+          }
+          if (reading === "" && meaning === "") continue;
+          const own = paths.map((path) => this.translationOf(path));
+          const literal =
+            paths.length > 1 && own.some((value) => value !== undefined)
+              ? own.map((value) => value ?? "?").join(" + ")
+              : undefined;
           entries.set(key, {
             ...(reading === "" ? {} : { reading }),
             ...(meaning === "" ? {} : { meaning }),
+            ...(literal === undefined ? {} : { literal }),
           });
           longest = Math.max(longest, paths.length);
         }
       }
     }
     this.#lexicon = { entries, longest };
+    this.#dictionary = { rows, byKey, builtWith, inWords };
+    currentDictionary = this.#dictionary;
     this.#notes = notes;
     this.builds.push(Date.now());
     this.#changed();
   }
 }
 
+/** PROTOTYPE: a row of a lexicon note. */
+export interface DictionaryRow {
+  readonly note: string;
+  /** Its line in the note, from 0. */
+  readonly line: number;
+  readonly columns: Columns;
+  /** The word's symbols, or the one symbol a composition row is about. */
+  readonly paths: readonly string[];
+  readonly reading?: string;
+  readonly meaning?: string;
+  /** The symbols a one-symbol row says it is made of, in order. */
+  readonly parts?: readonly string[];
+  /** The parts cell with names for its embeds, such as `⿰ left adult`. */
+  readonly structure?: string;
+}
+
+/** PROTOTYPE: what every lexicon note says, with indexes built from it. */
+export interface Dictionary {
+  readonly rows: readonly DictionaryRow[];
+  readonly byKey: ReadonlyMap<string, DictionaryRow>;
+  /** Each part's path, and the symbols made with it: a radical index. */
+  readonly builtWith: ReadonlyMap<string, ReadonlySet<string>>;
+  /** Each symbol's path, and the keys of the words it is written in. */
+  readonly inWords: ReadonlyMap<string, ReadonlySet<string>>;
+}
+
+export const emptyDictionary: Dictionary = {
+  rows: [],
+  byKey: new Map(),
+  builtWith: new Map(),
+  inWords: new Map(),
+};
+
+/** PROTOTYPE: the dictionary now, for the library to show. */
+let currentDictionary: Dictionary = emptyDictionary;
+
+export function prototypeDictionary(): Dictionary {
+  return currentDictionary;
+}
+
 /** Asks Live Preview to group its words again, as the lexicon changed. */
 export const refreshWords = StateEffect.define<null>();
 
 /** A wiki embed or a Markdown image, and the link of either. */
-const embedPattern =
+export const embedPattern =
   /!\[\[([^[\]|#^]+?)(?:#[^[\]|]*)?(?:\|[^[\]]*)?\]\]|!\[[^[\]]*\]\(([^()\s]+)\)/g;
 
 /**

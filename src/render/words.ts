@@ -8,6 +8,11 @@
 export interface WordEntry {
   readonly reading?: string;
   readonly meaning?: string;
+  /**
+   * PROTOTYPE (#167, section 5): the symbols' own main translations, in
+   * order, as a literal gloss of a compound, such as "left + adult".
+   */
+  readonly literal?: string;
 }
 
 /** A word list: entries by {@link wordKey} of their symbols' file paths. */
@@ -38,7 +43,7 @@ export interface Piece {
  * word is a piece of its own, without an entry. A greedy match can split
  * wrongly where two splits are both words: see the report.
  */
-export function segment(
+export function segmentGreedy(
   paths: readonly string[],
   lexicon: Lexicon,
 ): Piece[] {
@@ -67,6 +72,70 @@ export function segment(
 }
 
 /**
+ * PROTOTYPE (#167, section 5): splits a run of symbols into known words, as
+ * {@link segmentGreedy} does, but choosing among every split: the one that
+ * leaves the fewest symbols outside known words, then the one with the
+ * fewest words, so that a compound wins over its parts, then the one whose
+ * first word is longest. Splitters for unspaced scripts choose a whole path
+ * like this rather than the first match (jieba, MeCab). They weigh words by
+ * how common they are, which the lexicon of a script being worked out does
+ * not know, so the count of words stands in for it.
+ */
+export function segment(
+  paths: readonly string[],
+  lexicon: Lexicon,
+): Piece[] {
+  const count = paths.length;
+  /** The best split from a place to the end: its first piece, and scores. */
+  interface Best {
+    readonly out: number;
+    readonly words: number;
+    readonly piece: Piece;
+  }
+  const better = (a: Best, b: Best | undefined) =>
+    b === undefined ||
+    a.out < b.out ||
+    (a.out === b.out && a.words < b.words);
+  const best: Best[] = [];
+  const score = (at: number) =>
+    at === count ? { out: 0, words: 0 } : (best[at] ?? { out: 0, words: 0 });
+  for (let at = count - 1; at >= 0; at--) {
+    let chosen: Best | undefined;
+    // Longest first, so that a tie keeps the longest first word.
+    for (
+      let length = Math.min(lexicon.longest, count - at);
+      length >= 1;
+      length--
+    ) {
+      const entry = lexicon.entries.get(wordKey(paths.slice(at, at + length)));
+      if (entry === undefined) continue;
+      const after = score(at + length);
+      const option: Best = {
+        out: after.out,
+        words: after.words + 1,
+        piece: { start: at, end: at + length, entry },
+      };
+      if (better(option, chosen)) chosen = option;
+    }
+    // A symbol left on its own only where no known word does as well.
+    const rest = score(at + 1);
+    const alone: Best = {
+      out: rest.out + 1,
+      words: rest.words,
+      piece: { start: at, end: at + 1 },
+    };
+    best[at] = chosen === undefined || better(alone, chosen) ? alone : chosen;
+  }
+  const pieces: Piece[] = [];
+  for (let at = 0; at < count; ) {
+    const piece = best[at]?.piece ?? { start: at, end: at + 1 };
+    pieces.push(piece);
+    at = piece.end;
+  }
+  return pieces;
+}
+
+/**
  * A word's reading made from its symbols' main readings, for comparison
  * with what a lexicon says: `?` stands for a symbol without one.
  */
@@ -82,12 +151,17 @@ export const wordClass = "inkline-word";
 /** Where a word's reading and meaning go, for styles.css to show. */
 export const overAttribute = "data-inkline-over";
 export const underAttribute = "data-inkline-under";
+/** PROTOTYPE (#167, section 5): a compound's literal gloss, shown on hover. */
+export const literalAttribute = "data-inkline-literal";
 
 /** The attributes a word's element gets for `entry`. */
 export function wordAttributes(entry: WordEntry): Record<string, string> {
   return {
     ...(entry.reading === undefined ? {} : { [overAttribute]: entry.reading }),
     ...(entry.meaning === undefined ? {} : { [underAttribute]: entry.meaning }),
+    ...(entry.literal === undefined
+      ? {}
+      : { [literalAttribute]: entry.literal, title: entry.literal }),
   };
 }
 
@@ -189,7 +263,12 @@ function groupHolder(holder: Element, source: WordSource): void {
     .map((word) => {
       const units = Array.from(word.children);
       const attributes: Record<string, string> = {};
-      for (const name of [overAttribute, underAttribute]) {
+      for (const name of [
+        overAttribute,
+        underAttribute,
+        literalAttribute,
+        "title",
+      ]) {
         const value = word.getAttribute(name);
         if (value !== null) attributes[name] = value;
       }

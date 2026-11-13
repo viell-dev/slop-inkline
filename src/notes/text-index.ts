@@ -5,7 +5,8 @@
 // the background in about a quarter of a minute. Plain, so that unit tests can
 // drive it; the plugin gives it the vault.
 
-import { readFileText } from "../format/text.ts";
+import { readFileText, readKeyword, roleKeyword, isTextChunk } from "../format/text.ts";
+import { readChunks } from "../format/png.ts";
 import { searchableText, type SearchableText } from "./search.ts";
 
 /**
@@ -175,6 +176,13 @@ export class SymbolTextIndex<File extends object> {
     }
     try {
       const text = await readFileText(bytes, maxIndexedAttempts);
+      // PROTOTYPE (#167, section 5): a symbol that is a part only.
+      const role = await readKeyword(
+        readChunks(bytes, (type) => isTextChunk({ type })),
+        roleKeyword,
+        maxIndexedAttempts,
+      );
+      if (role.length > 0) return { ...searchableText(text), role };
       return text.reading.length + text.translation.length === 0
         ? none
         : searchableText(text);

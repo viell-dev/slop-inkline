@@ -157,6 +157,8 @@ function folded(text: string): string {
  */
 export interface SearchableText {
   readonly text: SymbolText;
+  /** PROTOTYPE (#167, section 5): its "Inkline role" values, if any. */
+  readonly role?: readonly string[];
   readonly marked: Readonly<Record<TextField, string>>;
   /** The same without accents, such as a keyboard makes hard. */
   readonly plain: Readonly<Record<TextField, string>>;

@@ -763,3 +763,43 @@ ruby.inkline-ruby > rt {
 .inkline-ruby-note .inkline-readings .inkline-glyph::after {
   display: table-caption;
 }
+
+/*
+ * PROTOTYPE for #167, section 5, not for release: the dictionary. A symbol
+ * that is only a part of others says so in the library and the lists, and
+ * the library says what the lexicon notes say of each symbol.
+ */
+.inkline-library-part-badge,
+.inkline-suggestion-part {
+  display: inline-block;
+  width: fit-content;
+  padding: 0 0.4em;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.inkline-library-dictionary {
+  padding: 0 0 0.25em 0.5em;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.inkline-library-dictionary-label {
+  color: var(--text-faint);
+}
+
+.inkline-dictionary-symbols {
+  display: flex;
+  justify-content: center;
+  padding: 0.5em 0;
+  font-size: 2em;
+}
+
+.inkline-dictionary-field {
+  display: grid;
+  grid-template-columns: 6em 1fr;
+  align-items: center;
+  margin-bottom: 0.5em;
+}
