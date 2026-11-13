@@ -15,8 +15,10 @@ even one a public release; earlier pre-releases carry a suffix such as
   "Draw symbols that no font has, then write with them inline in your notes like
   characters. Each one is saved as a plain PNG image." The README, the guide's
   home page, and the directory listing say the same in more words: Inkline is
-  made for games with an invented language, to write a symbol down easily and to
-  use it again easily. Nothing about how Inkline works has changed.
+  for writing notes in a script that no font has, whether you are working it out
+  from a game or making it up for a language of your own, by writing a symbol
+  down easily and using it again easily. Nothing about how Inkline works has
+  changed.
 
 ## 0.9.3 - 2026-11-12
 

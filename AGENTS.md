@@ -9,12 +9,23 @@ the setup, checks, and tests that apply to everyone.
 
 ## What Inkline is for
 
-Inkline is for taking notes on a script that no font has. The owner made it for
-games with an invented language, where working out the language is the game: the
-player copies what the game shows, guesses, and revises. Such a script's symbols
-have no Unicode characters, so they cannot be typed, pasted, or searched for as
-text. Two needs follow, and they are the whole purpose of the first stable
-release:
+Inkline is for writing notes in a script that no font has. Such a script's
+symbols have no Unicode characters, so they cannot be typed, pasted, or searched
+for as text. People meet that from two directions, and both are what Inkline is
+for, equally:
+
+- **Working a script out:** a game has an invented language, and working it out
+  is the game. The player copies what the game shows, guesses, and revises. They
+  draw someone else's symbols.
+- **Making a script up:** a person creates a constructed language, a conlang,
+  with a script of its own. They draw their own symbols, and revise them too.
+
+The work is the same but for whose symbols they are. The owner uses Inkline the
+first way; that does not rank it above the second. Describe both wherever
+Inkline is described, or use words that cover both, and do not design for one at
+the other's cost.
+
+Two needs follow, and they are the whole purpose of the first stable release:
 
 - **Notate:** write a symbol that cannot be typed into a note, as easily as a
   letter. The editor sized to a line of text, tracing and Make ink, **Next**,
@@ -40,9 +51,6 @@ Judge features, wording, and reviews by those two needs.
   and are not the start of a dictionary.
 - **A script that fonts have is not the case to design for.** A person who can
   type or paste a script's characters does not need to draw them.
-- **People creating a constructed language with a script of its own** are served
-  by the same two needs and are named in the public documents. Their needs do
-  not set the direction where they differ from the player's.
 
 The owner decides changes to what Inkline is for, as [Releases](#releases) says.
 

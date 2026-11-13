@@ -47,20 +47,24 @@ how to get unsaved work back.
 
 ## What it is for
 
-Inkline is made for games with an invented language, such as Chants of Sennaar,
-where working out the language is the game. The symbols of such a language are
-in no font, so you cannot type them into your notes. Inkline does two things
-about that:
+Inkline is for writing notes in a script that no font has, so that you cannot
+type it. That is the same work from two directions:
 
-- **Write a symbol down easily.** Draw it where you meet it, or trace it from a
-  screenshot, and it sits in the line like a letter.
+- **Working a script out.** Some games, such as Chants of Sennaar, have an
+  invented language, and working it out is the game. You draw the symbols that
+  someone else made.
+- **Making a script up.** A constructed language (a conlang) can have a script
+  of its own. You draw the symbols that you make.
+
+Either way, Inkline does two things:
+
+- **Write a symbol down easily.** Draw it where you need it, or trace it from a
+  picture, and it sits in the line like a letter.
 - **Use it again easily.** Type `;;` and a few letters of its name to write it
-  again in any note. Name it with your current guess at its meaning, rename it
-  as your reading changes, and find every note that uses it.
+  again in any note. Name it with what it means, or with your current guess,
+  rename it as that changes, and find every note that uses it.
 
-It serves anyone else who writes with symbols of their own in the same way:
-people creating a constructed language (a conlang) with a script of its own, and
-people using a cipher or a personal shorthand.
+A cipher or a personal shorthand works the same way.
 
 ![An invented inscription transcribed as inline symbols, beside the library showing the renamed sign and both notes that use it.](docs/screenshots/reading-dark.png)
 

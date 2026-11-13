@@ -38,11 +38,12 @@ need in the notes and symbols you work with, not only a solution.
 Every request is weighed the same way, whoever makes it: users, the repository's
 owner, or the maintaining agents themselves. Two questions decide it:
 
-- **Does it belong in Inkline?** Inkline is for taking notes on a script that no
-  font has, first of all the invented language of a game whose player is working
-  that language out. It has two jobs: writing such a symbol into a note as
-  easily as a letter, and using it again as easily. A request belongs when it
-  makes one of those easier, safer, or truer to the script.
+- **Does it belong in Inkline?** Inkline is for writing notes in a script that
+  no font has: one a person is working out, as in a game with an invented
+  language, or one they are making up, as for a constructed language of their
+  own. It has two jobs: writing such a symbol into a note as easily as a letter,
+  and using it again as easily. A request belongs when it makes one of those
+  easier, safer, or truer to the script.
   [AGENTS.md](AGENTS.md#what-inkline-is-for) says how the features serve them.
   Help with the language itself, such as word lists, dictionaries, symbols built
   from parts, and text set over or under symbols, is beyond them: the owner
