@@ -17,6 +17,11 @@ The [issues](https://github.com/viell-dev/slop-inkline/issues) track each one.
   the main area, move it back to a sidebar to insert into a note.
 - **Physical printing** has not been checked. Native
   [PDF export](./notes.md#export-a-note-to-pdf) is verified on Linux.
+- **A faint line along a symbol's edge in a PDF.** In text colour, some PDF
+  viewers draw one at some zoom levels, as
+  [Export a note to PDF](./notes.md#export-a-note-to-pdf) says
+  ([#255](https://github.com/viell-dev/slop-inkline/issues/255)). Symbols in
+  stored colour show none.
 - **A size you write into an embed, wider than its space,** as
   `![[wide.ink.png|1000]]` in a hover preview, keeps the symbol's shape but sits
   it a few pixels below the baseline
