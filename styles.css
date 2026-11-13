@@ -625,3 +625,58 @@ img.inkline-symbol:not([width], [height]) {
   color: var(--text-error);
   overflow-wrap: anywhere;
 }
+
+/* Prototype for #167 §4.1, not for release: the Compose dialog. */
+.inkline-compose-layouts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-2);
+  margin-bottom: var(--size-4-3);
+}
+
+.inkline-compose-layout {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+}
+
+.inkline-compose-layout.is-chosen {
+  outline: 2px solid var(--interactive-accent);
+}
+
+.inkline-compose-letter {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.inkline-compose-letter.is-single {
+  font-size: 28px;
+}
+
+.inkline-compose-slots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-2);
+  margin-bottom: var(--size-4-3);
+}
+
+.inkline-compose-shown {
+  margin: var(--size-4-3) 0;
+}
+
+.inkline-compose-preview {
+  display: block;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.inkline-compose-text {
+  vertical-align: -0.375em;
+}
+
+.inkline-compose-status {
+  min-height: 3em;
+  color: var(--text-muted);
+}

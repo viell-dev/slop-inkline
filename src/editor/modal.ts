@@ -50,6 +50,11 @@ import {
 } from "../ink/pixels.ts";
 import { drawInk, type DrawableBase } from "../ink/render.ts";
 import { addPart, type Weight } from "./parts.ts";
+import {
+  ComposeDialog,
+  initialState,
+  type ComposeState,
+} from "./compose-dialog.ts";
 import { readText, writeText, type SymbolText } from "../format/text.ts";
 import { savingWaits, type RenameWait } from "../notes/file-writes.ts";
 import { chooseRename, symbolStem } from "../notes/names.ts";
@@ -545,6 +550,8 @@ export class InkEditorModal extends Modal {
    * Prototype for #167 §4: a symbol being placed as a part, shown as the
    * picture is, until A or Shift+A puts its strokes in.
    */
+  /** Prototype for #167 §4.1: the Compose dialog's last choices. */
+  #composeState: ComposeState | undefined;
   #part:
     | {
         readonly name: string;
@@ -780,6 +787,17 @@ export class InkEditorModal extends Modal {
         },
         "Copy from",
         "start from a copy of another symbol",
+      );
+      this.#addButton(
+        toolbar,
+        "compose",
+        "Compose",
+        "L",
+        () => {
+          this.#compose();
+        },
+        "Compose",
+        "start from a layout of other symbols, each at half size",
       );
     }
     this.#addButton(
@@ -1429,6 +1447,9 @@ export class InkEditorModal extends Modal {
     if (this.#options.copyFrom !== undefined) {
       key([], "v", () => {
         void this.#copy();
+      });
+      key([], "l", () => {
+        this.#compose();
       });
       key([], "a", () => {
         if (this.#part === undefined) void this.#choosePart();
@@ -2864,6 +2885,39 @@ export class InkEditorModal extends Modal {
     this.#announce(
       copy.ink.picture === true ? `${started}. ${noStrokes}` : started,
     );
+  }
+
+  /**
+   * Prototype for #167 §4.1: opens the Compose dialog, and puts what it makes
+   * in place of the drawing, as Copy from does, as one step for Undo.
+   */
+  #compose(): void {
+    const copyFrom = this.#options.copyFrom;
+    if (copyFrom === undefined || this.#choosing !== undefined) return;
+    const state = (this.#composeState ??= initialState());
+    const choosing = new AbortController();
+    this.#choosing = choosing;
+    const dialog = new ComposeDialog(this.app, state, copyFrom, (result) => {
+      this.#choosing = undefined;
+      if (result === undefined || this.#retired || this.#closing) return;
+      if (this.#saving !== undefined || this.#questions.size > 0) {
+        this.#announce("Not composed: the drawing was being saved");
+        return;
+      }
+      this.#session.end();
+      const { record, base } = result.composed;
+      if (record.base !== undefined && base !== undefined) {
+        this.#decoded.set(record.base.png, base);
+      }
+      this.#session.replace(record);
+      this.#fitView();
+      this.#changed();
+      this.#announce(`Composed: ${result.summary}. Undo takes it back`);
+    });
+    choosing.signal.addEventListener("abort", () => {
+      dialog.close();
+    });
+    dialog.open();
   }
 
   /**

@@ -25,3 +25,4 @@ export * as renderSymbols from "../../../src/render/symbols.ts";
 export * as code from "../../../src/notes/code.ts";
 export * as compose from "./compose.ts";
 export * as composeGraph from "./compose-graph.ts";
+export * as layoutScene from "./layout-scene.ts";
