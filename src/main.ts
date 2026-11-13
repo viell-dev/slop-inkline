@@ -27,6 +27,7 @@ import {
   type EditorHost,
 } from "./notes/symbols.ts";
 import { SymbolTextIndex } from "./notes/text-index.ts";
+import { runsExtension, wrapRuns } from "./render/direction.ts";
 import { SymbolRenderer } from "./render/symbols.ts";
 import { brushSizes } from "./editor/session.ts";
 import { InklineSettingTab } from "./settings-tab.ts";
@@ -127,6 +128,11 @@ export default class InklinePlugin extends Plugin {
     // PDF export window, which is not a workspace popout.
     this.registerMarkdownPostProcessor((element) => {
       if (this.#loaded) this.#renderer.watch(element.doc);
+    });
+    // PROTOTYPE for #167 section 6: runs of symbols right to left.
+    this.registerEditorExtension(runsExtension);
+    this.registerMarkdownPostProcessor((element) => {
+      wrapRuns(element);
     });
     this.#offerMenus(document);
     this.registerEvent(

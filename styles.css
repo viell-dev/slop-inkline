@@ -625,3 +625,24 @@ img.inkline-symbol:not([width], [height]) {
   color: var(--text-error);
   overflow-wrap: anywhere;
 }
+
+/*
+ * PROTOTYPE for #167 section 6, not for release. A note whose cssclasses
+ * hold inkline-rtl reads right to left: every block in Reading view and PDF,
+ * and every line in the editor, whatever Obsidian detected for it.
+ */
+.inkline-rtl.markdown-preview-view [dir],
+.inkline-rtl.markdown-preview-view p,
+.inkline-rtl .cm-line {
+  direction: rtl;
+}
+
+/*
+ * PROTOTYPE: each symbol as a strong right-to-left character, by a
+ * right-to-left mark after its embed, while the root has the class
+ * inkline-proto-strong.
+ */
+.inkline-proto-strong span.internal-embed:has(> img.inkline-symbol)::after,
+.inkline-proto-strong .inkline-symbol-embed::after {
+  content: "\200F";
+}
