@@ -422,7 +422,10 @@ async function editorLines(): Promise<unknown[]> {
           source = probe.esc(at.text).slice(0, 160);
           spans = cm
             .bidiSpans(at)
-            .map((span) => `${String(span.from)}-${String(span.to)}:${String(span.level)}`)
+            .map(
+              (span) =>
+                `${String(span.from)}-${String(span.to)}:${String(span.level)}`,
+            )
             .join(" ");
           cmDirection = cm.textDirectionAt(at.from);
         } catch {
@@ -443,8 +446,7 @@ async function editorLines(): Promise<unknown[]> {
           number,
           source,
           ...probe.describe(line),
-          widgets: Array.from(line.querySelectorAll(".cm-widgetBuffer"))
-            .length,
+          widgets: Array.from(line.querySelectorAll(".cm-widgetBuffer")).length,
           runs: Array.from(line.querySelectorAll(".inkline-rtl-run")).map(
             (run) => run.querySelectorAll("img:not(.cm-widgetBuffer)").length,
           ),
@@ -524,17 +526,21 @@ async function prototype(
   name: "inkline-proto-strong" | "inkline-proto-runs" | "inkline-proto-neutral",
   on: boolean,
 ): Promise<void> {
-  await browser.executeObsidian(({ app, obsidian }, cls, wanted) => {
-    document.documentElement.classList.toggle(cls, wanted);
-    // The editor's decorations follow the switch on its next update.
-    for (const leaf of app.workspace.getLeavesOfType("markdown")) {
-      if (!(leaf.view instanceof obsidian.MarkdownView)) continue;
-      const cm = Reflect.get(leaf.view.editor, "cm") as {
-        dispatch(spec: object): void;
-      };
-      cm.dispatch({});
-    }
-  }, name, on);
+  await browser.executeObsidian(
+    ({ app, obsidian }, cls, wanted) => {
+      document.documentElement.classList.toggle(cls, wanted);
+      // The editor's decorations follow the switch on its next update.
+      for (const leaf of app.workspace.getLeavesOfType("markdown")) {
+        if (!(leaf.view instanceof obsidian.MarkdownView)) continue;
+        const cm = Reflect.get(leaf.view.editor, "cm") as {
+          dispatch(spec: object): void;
+        };
+        cm.dispatch({});
+      }
+    },
+    name,
+    on,
+  );
   await browser.pause(200);
 }
 
@@ -647,9 +653,11 @@ async function markedText(): Promise<string> {
     if (view === null) throw new Error("no Markdown view");
     const text = view.editor.getValue();
     const at = view.editor.posToOffset(view.editor.getCursor());
-    const esc = (Reflect.get(window, "inklineRtl") as {
-      esc(t: string): string;
-    }).esc;
+    const esc = (
+      Reflect.get(window, "inklineRtl") as {
+        esc(t: string): string;
+      }
+    ).esc;
     return esc(`${text.slice(0, at)}|${text.slice(at)}`);
   });
 }
@@ -759,7 +767,11 @@ async function prepareExport(destination: string): Promise<void> {
         });
       };
       const observer = new MutationObserver(capture);
-      observer.observe(doc, { subtree: true, childList: true, attributes: true });
+      observer.observe(doc, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+      });
       child.addEventListener(
         "unload",
         () => {
@@ -818,8 +830,11 @@ async function exportPdf(name: string) {
     });
     await writeFile(`${prefix}.xml`, xml);
     const words = Array.from(
-      xml.matchAll(/<word xMin="([\d.]+)" yMin="([\d.]+)"[^>]*>([^<]+)<\/word>/g),
-      (m) => `${m[3] ?? ""}@${String(Math.round(Number(m[1])))},${String(Math.round(Number(m[2])))}`,
+      xml.matchAll(
+        /<word xMin="([\d.]+)" yMin="([\d.]+)"[^>]*>([^<]+)<\/word>/g,
+      ),
+      (m) =>
+        `${m[3] ?? ""}@${String(Math.round(Number(m[1])))},${String(Math.round(Number(m[2])))}`,
     );
     return { blocks, words };
   } finally {
@@ -973,59 +988,72 @@ describe("Right to left (#167 §6)", function () {
     }
   });
 
-  it("walks the cursor through symbols with the arrow keys", async function () {
-    for (const mode of ["plain", "neutral", "runs-neutral"] as const) {
-      const runs = mode === "runs-neutral";
-      const tag = mode === "plain" ? "" : `-${mode}`;
-      await prototype("inkline-proto-runs", runs);
-      await prototype("inkline-proto-neutral", mode !== "plain");
-      await open("Keys.md", "source");
-      const walks: Record<string, string[]> = {};
-      for (const [index, c] of keyCases.entries()) {
-        const line = index * 2;
-        for (const at of ["start", "end"] as const) {
-          for (const key of ["ArrowLeft", "ArrowRight"] as const) {
-            walks[`${c.id} from ${at} ${key}`] = await walk(line, at, key, 12);
-          }
-        }
-      }
-      await record(`keys${tag}`, walks);
-      await record(`keys${tag}-lines`, await editorLines());
-      // A selection of three steps from the start of each line.
-      const selections: Record<string, string> = {};
-      for (const [index, c] of keyCases.entries()) {
-        for (const key of ["ArrowLeft", "ArrowRight"] as const) {
-          await place(index * 2, "start");
-          for (let step = 0; step < 3; step++) {
-            await browser.keys(["Shift", key]);
-            await browser.pause(60);
-          }
-          selections[`${c.id} ${key}`] = await browser.executeObsidian(
-            ({ app, obsidian }) => {
-              const view = app.workspace.getActiveViewOfType(
-                obsidian.MarkdownView,
+  for (const mode of ["plain", "neutral", "runs", "runs-neutral"] as const) {
+    it(`walks the cursor through symbols with the arrow keys, ${mode}`, async function () {
+      this.timeout(180_000);
+      {
+        const runs = mode === "runs" || mode === "runs-neutral";
+        const tag = mode === "plain" ? "" : `-${mode}`;
+        await prototype("inkline-proto-runs", runs);
+        await prototype(
+          "inkline-proto-neutral",
+          mode === "neutral" || mode === "runs-neutral",
+        );
+        await open("Keys.md", "source");
+        const walks: Record<string, string[]> = {};
+        for (const [index, c] of keyCases.entries()) {
+          const line = index * 2;
+          for (const at of ["start", "end"] as const) {
+            for (const key of ["ArrowLeft", "ArrowRight"] as const) {
+              walks[`${c.id} from ${at} ${key}`] = await walk(
+                line,
+                at,
+                key,
+                12,
               );
-              const esc = (Reflect.get(window, "inklineRtl") as {
-                esc(t: string): string;
-              }).esc;
-              return esc(view?.editor.getSelection() ?? "");
-            },
-          );
-          if (index === 0 && key === "ArrowLeft") {
-            await shot(`keys${tag}-selection-he`);
+            }
           }
         }
+        await record(`keys${tag}`, walks);
+        await record(`keys${tag}-lines`, await editorLines());
+        // A selection of three steps from the start of each line.
+        const selections: Record<string, string> = {};
+        for (const [index, c] of keyCases.entries()) {
+          for (const key of ["ArrowLeft", "ArrowRight"] as const) {
+            await place(index * 2, "start");
+            for (let step = 0; step < 3; step++) {
+              await browser.keys(["Shift", key]);
+              await browser.pause(60);
+            }
+            selections[`${c.id} ${key}`] = await browser.executeObsidian(
+              ({ app, obsidian }) => {
+                const view = app.workspace.getActiveViewOfType(
+                  obsidian.MarkdownView,
+                );
+                const esc = (
+                  Reflect.get(window, "inklineRtl") as {
+                    esc(t: string): string;
+                  }
+                ).esc;
+                return esc(view?.editor.getSelection() ?? "");
+              },
+            );
+            if (index === 0 && key === "ArrowLeft") {
+              await shot(`keys${tag}-selection-he`);
+            }
+          }
+        }
+        await record(`selections${tag}`, selections);
+        await place(0, "start");
+        await browser.keys(["ArrowLeft"]);
+        await browser.keys(["ArrowLeft"]);
+        await browser.pause(100);
+        await shot(`keys${tag}-he-two-left`);
       }
-      await record(`selections${tag}`, selections);
-      await place(0, "start");
-      await browser.keys(["ArrowLeft"]);
-      await browser.keys(["ArrowLeft"]);
-      await browser.pause(100);
-      await shot(`keys${tag}-he-two-left`);
-    }
-    await prototype("inkline-proto-runs", false);
-    await prototype("inkline-proto-neutral", false);
-  });
+      await prototype("inkline-proto-runs", false);
+      await prototype("inkline-proto-neutral", false);
+    });
+  }
 
   it("inserts symbols from ;; in a right-to-left line, and in an English one", async function () {
     await openAtMarker("Typing.md", "HERE");
@@ -1122,9 +1150,11 @@ describe("Right to left (#167 §6)", function () {
               text = electron.clipboard?.readText() ?? "";
               html = electron.clipboard?.readHTML() ?? "";
             }
-            const esc = (Reflect.get(window, "inklineRtl") as {
-              esc(t: string): string;
-            }).esc;
+            const esc = (
+              Reflect.get(window, "inklineRtl") as {
+                esc(t: string): string;
+              }
+            ).esc;
             return {
               selection: esc(selection?.toString() ?? ""),
               text: esc(text).slice(0, 300),
@@ -1241,7 +1271,9 @@ describe("Right to left (#167 §6)", function () {
       await record(
         "rtl-ui-editor",
         await browser.execute(() => {
-          const line = document.querySelector(".inkline-editor .inkline-preview");
+          const line = document.querySelector(
+            ".inkline-editor .inkline-preview",
+          );
           if (line === null) return null;
           const rect = line.getBoundingClientRect();
           return {

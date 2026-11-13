@@ -653,3 +653,11 @@ img.inkline-symbol:not([width], [height]) {
 .inkline-proto-strong .inkline-symbol-embed::after {
   content: "\200F";
 }
+
+/*
+ * PROTOTYPE: Obsidian makes an embed inline only as the line's own child, so
+ * one inside a run's mark in Live Preview needs it too.
+ */
+.cm-line .inkline-rtl-run > .internal-embed.image-embed {
+  display: inline-flex;
+}

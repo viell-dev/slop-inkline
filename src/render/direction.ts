@@ -10,12 +10,14 @@
 // A release would decide which runs are right to left from where their
 // symbols are, as a folder, rather than from a switch.
 
-import { type Extension, Prec, RangeSetBuilder } from "@codemirror/state";
+import { type Extension, RangeSetBuilder } from "@codemirror/state";
 import {
   Decoration,
   type DecorationSet,
   Direction,
   EditorView,
+  ViewPlugin,
+  type ViewUpdate,
 } from "@codemirror/view";
 
 /** The prototype's switch, on the root of the main window. */
@@ -114,10 +116,31 @@ function embedsOf(view: EditorView): DecorationSet {
   return builder.finish();
 }
 
+/**
+ * The runs as a view plugin's decorations, which CodeMirror draws around
+ * Obsidian's embed widgets, as the words prototype of #167 section 3 found;
+ * given as a function to `EditorView.decorations`, the same marks wrapped
+ * only the text between the widgets.
+ */
+const runsPlugin = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+    constructor(view: EditorView) {
+      this.decorations = runsOf(view);
+    }
+    update(update: ViewUpdate): void {
+      this.decorations = runsOf(update.view);
+    }
+  },
+  { decorations: (plugin) => plugin.decorations },
+);
+
 /** Live Preview's and Source mode's part of the prototype. */
 export const runsExtension: Extension = [
-  Prec.high(EditorView.decorations.of(runsOf)),
-  EditorView.bidiIsolatedRanges.of(runsOf),
+  runsPlugin,
+  EditorView.bidiIsolatedRanges.of(
+    (view) => view.plugin(runsPlugin)?.decorations ?? Decoration.none,
+  ),
   EditorView.bidiIsolatedRanges.of(embedsOf),
 ];
 
