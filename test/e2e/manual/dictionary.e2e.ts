@@ -900,6 +900,22 @@ describe("A dictionary of words and parts (#167, section 5)", function () {
     };
     await open("Words.md", "preview");
     results.renameReading = await measure(["Compound", "Both", "Built"]);
+    results.renameImages = await browser.execute(() =>
+      Array.from(
+        document.querySelectorAll(".workspace-leaf.mod-active .markdown-reading-view p"),
+      ).map((p) => ({
+        text: (p.textContent ?? "").slice(0, 12),
+        all: Array.from(p.querySelectorAll("img")).map((image) =>
+          `${(image.getAttribute("src") ?? "").replace(/^.*\//, "").replace(/\?.*$/, "")}${image.classList.contains("inkline-symbol") ? "" : " (untagged)"}`,
+        ),
+      })),
+    );
+    await saveScreenshot("dictionary-after-rename");
+    await browser.pause(4000);
+    results.renameReadingLater = await measure(["Compound", "Both", "Built"]);
+    await open("Words.md", "source");
+    results.renameLive = await measure(["Compound", "Both", "Built"]);
+    await saveScreenshot("dictionary-after-rename-live");
   });
 
   it("without Inkline", async function () {
