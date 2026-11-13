@@ -40,7 +40,8 @@ const composites: readonly (readonly [string, string])[] = [
   ["E-clash", "side by side: notchR, notch (erasers meet)"],
   ["B-line", "stacked sun, sun: whole image as the box"],
   ["B-em", "stacked sun, sun: one em as the box"],
-  ["B-ink", "stacked sun, sun: the parts' ink as the box"],
+  ["B-ink", "stacked sun, sun: the parts' ink as the box, centred"],
+  ["B-body", "stacked sun, sun: the parts' top to the baseline"],
   ["B-hook", "stacked sun, hook (descender)"],
   ["W-between", "point up, widths 0.71"],
   ["W-kept", "point up, widths kept"],
@@ -67,20 +68,18 @@ const note = [
 ].join("\n");
 
 /** Every composite beside its parts, to show at the files' own pixel size. */
-const large = [
-  `${["sun", "tower", "wave", "mark"].map((name) => `![[Parts/${name}.ink.png]]`).join("")}`,
-  "",
-  composites
-    .slice(0, 11)
-    .map(([file]) => `![[Layouts/${file}.ink.png]]`)
-    .join(""),
-  "",
-  composites
-    .slice(11)
-    .map(([file]) => `![[Layouts/${file}.ink.png]]`)
-    .join(""),
-  "",
-].join("\n");
+const largeGroups: readonly (readonly string[])[] = [
+  ["Parts/sun", "Parts/tower", "Parts/wave", "Parts/mark", "Layouts/L-single"],
+  ["Layouts/L-across", "Layouts/L-stacked", "Layouts/L-up", "Layouts/L-right"],
+  ["Layouts/L-down", "Layouts/L-left", "Layouts/L-square", "Layouts/M-up"],
+  ["Layouts/E-reorder", "Layouts/E-clash", "Parts/notchR", "Parts/notch"],
+  ["Layouts/B-line", "Layouts/B-em", "Layouts/B-ink", "Layouts/B-body", "Layouts/B-hook"],
+  ["Layouts/L-up", "Layouts/W-between", "Layouts/W-kept", "Layouts/N-nested"],
+  ["Layouts/T-across", "Layouts/T-mixed", "Layouts/S-skeleton", "Layouts/S-picture"],
+];
+const large = largeGroups
+  .map((group) => group.map((file) => `![[${file}.ink.png]]`).join(""))
+  .join("\n\n");
 
 type Mode = "source" | "preview";
 
@@ -266,11 +265,14 @@ describe("Composing symbols by layout (#167 §4.1)", function () {
           files.set(name, bytes);
           const ink = await canvas.openInk(bytes);
           if (ink.kind !== "editable") throw new Error(`${name}: ${ink.kind}`);
-          opened.set(name, {
-            record: ink.document,
-            width: ink.width,
-            ...(ink.base === undefined ? {} : { base: ink.base }),
-          });
+          opened.set(
+            name,
+            layoutScene.composeDraw.measured({
+              record: ink.document,
+              width: ink.width,
+              ...(ink.base === undefined ? {} : { base: ink.base }),
+            }),
+          );
         };
 
         // The parts, saved as Inkline saves, then opened as Copy from opens.
@@ -292,7 +294,7 @@ describe("Composing symbols by layout (#167 §4.1)", function () {
           return found;
         };
         const partWidths = Object.fromEntries(
-          [...opened].map(([name, each]) => [name, each.width]),
+          [...opened].map(([name, each]) => [name, { width: each.width, rows: each.rows }]),
         );
 
         // The composites.
@@ -322,6 +324,7 @@ describe("Composing symbols by layout (#167 §4.1)", function () {
             band: made.band,
             ink: extent,
             sizes: saved.record.strokes.map((stroke) => stroke.size ?? null),
+            withBases: made.withBases,
           };
         };
         const b = layoutScene.build;
@@ -344,6 +347,7 @@ describe("Composing symbols by layout (#167 §4.1)", function () {
         await save("B-line", await b("stacked", [sun, sun], "scaled", "line"));
         await save("B-em", await b("stacked", [sun, sun], "scaled", "em"));
         await save("B-ink", await b("stacked", [sun, sun], "scaled", "ink"));
+        await save("B-body", await b("stacked", [sun, sun], "scaled", "body"));
         await save("B-hook", await b("stacked", [sun, part("hook")]));
         await save("W-between", await b("point-up", [sun, tower, wave], "between"));
         await save("W-kept", await b("point-up", [sun, tower, wave], "kept"));
@@ -351,6 +355,24 @@ describe("Composing symbols by layout (#167 §4.1)", function () {
         await save("T-mixed", await b("point-up", [part("ring"), sun, part("cross")]));
         const nestedPart = part("L-up");
         await save("N-nested", await b("point-up", [nestedPart, nestedPart, nestedPart]));
+
+        // What trying every order costs: four parts whose erasers reach
+        // each other try all 24; an ordinary square tries one.
+        const timed = async (list: Drawn[]) => {
+          const started = performance.now();
+          const made = await b("square", list);
+          return {
+            ms: Math.round((performance.now() - started) * 10) / 10,
+            tried: made.tried,
+            lost: made.chosen.lost,
+          };
+        };
+        const clash = [part("notchR"), part("notch"), part("notchR"), part("notch")];
+        const timings = {
+          ordinary: await timed([sun, tower, wave, mark]),
+          clash: await timed(clash),
+          clashAgain: await timed(clash),
+        };
 
         // Squeezed tall: side by side, each half as wide and as tall as it is.
         const { layouts: lay, composeDraw } = layoutScene;
@@ -439,6 +461,7 @@ describe("Composing symbols by layout (#167 §4.1)", function () {
         await app.vault.create("Large.md", big);
         return {
           partWidths,
+          timings,
           built,
           stretch: {
             tower: {
@@ -489,7 +512,7 @@ describe("Composing symbols by layout (#167 §4.1)", function () {
       recipe: { opened: string; keysAfterSave: unknown; sameStrokes: boolean };
       versionTwo: { kind: string };
     };
-    expect(Object.keys(scene.built)).toHaveLength(20);
+    expect(Object.keys(scene.built)).toHaveLength(21);
     expect(scene.built["L-up"]?.strokes).toBe(6);
     expect(scene.built["L-square"]?.strokes).toBe(11);
     // The notch's eraser reaches the sun in the usual order, not in another.
@@ -544,7 +567,7 @@ describe("Composing symbols by layout (#167 §4.1)", function () {
       await browser.pause(600);
       await saveScreenshot("layouts-preview-200");
       const all = (await shown(images("preview"))).filter((each) => each.tagged);
-      measured.at200 = all.slice(0, 3).map(({ height, fontSize }) => ({ height, fontSize }));
+      measured.at200 = all.slice(3, 6).map(({ height, fontSize }) => ({ height, fontSize }));
       // 1.5 em at 16 px is 24 px; 8 times that is the file's 192 rows.
       await symbolScale("8");
       await open("Large.md", "preview");
@@ -552,6 +575,19 @@ describe("Composing symbols by layout (#167 §4.1)", function () {
       for (const chosen of ["moonstone", "obsidian"] as const) {
         await theme(chosen);
         await saveScreenshot(`layouts-large-${chosen}`);
+        const paragraphs = await browser.$$(
+          ".workspace-leaf.mod-active .markdown-reading-view p",
+        );
+        let index = 0;
+        for (const paragraph of paragraphs) {
+          await paragraph.scrollIntoView();
+          await browser.pause(200);
+          await saveScreenshot(
+            `layouts-large-${chosen}-${String(index)}`,
+            paragraph as unknown as ReturnType<typeof browser.$>,
+          );
+          index++;
+        }
       }
       await theme("moonstone");
       const big = (await shown(images("preview"))).filter((each) => each.tagged);

@@ -53,10 +53,11 @@ describe("layouts", () => {
   });
 
   it("put two parts side by side at half size, centred in the band", () => {
-    const { placements, width, band } = arrange(layoutNamed("across"), [
-      bar(100),
-      bar(60),
-    ]);
+    const { placements, width, band } = arrange(
+      layoutNamed("across"),
+      [bar(100), bar(60)],
+      "ink",
+    );
     expect(band).toEqual({ top: 54, bottom: 144 });
     expect(width).toBe(80);
     expect(placements.map((p) => [p.x, p.scale])).toEqual([
@@ -70,8 +71,28 @@ describe("layouts", () => {
     }
   });
 
+  it("stand a stack on the baseline, its top part above with a gap", () => {
+    const { placements, band } = arrange(layoutNamed("stacked"), [
+      bar(100),
+      bar(60),
+    ]);
+    expect(band).toEqual({ top: 54, bottom: 144 });
+    // A part standing on the baseline at full size does so in the bottom row.
+    expect((placements[1]?.y ?? 0) + 144 * 0.5).toBeCloseTo(144);
+    expect((placements[0]?.y ?? 0) + 54 * 0.5).toBeCloseTo(144 - 90 - rowGap);
+    const across = arrange(layoutNamed("across"), [bar(100), bar(60)]);
+    // A lone row is centred on the middle of where two rows would be.
+    expect((across.placements[0]?.y ?? 0) + 54 * 0.5).toBeCloseTo(
+      144 - (90 + rowGap) / 2 - 22.5,
+    );
+  });
+
   it("stack two parts with a gap like the one across, filling the band", () => {
-    const { placements } = arrange(layoutNamed("stacked"), [bar(100), bar(60)]);
+    const { placements } = arrange(
+      layoutNamed("stacked"),
+      [bar(100), bar(60)],
+      "ink",
+    );
     const [top, bottom] = placements.map((p) => p.y + 54 * p.scale);
     expect(top).toBeCloseTo(54 - rowGap / 2);
     expect(bottom).toBeCloseTo(54 - rowGap / 2 + 45 + rowGap);

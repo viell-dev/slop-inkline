@@ -12,6 +12,7 @@ import { drawInk } from "../ink/render.ts";
 import {
   compose,
   drawRecord,
+  measured,
   type Composed,
   type DrawnPart,
 } from "./compose-draw.ts";
@@ -57,11 +58,11 @@ function at(span: Slot["row"]): number {
 function part(copy: SymbolCopy | undefined): DrawnPart | undefined {
   if (copy === undefined) return undefined;
   const { ink } = copy;
-  return {
+  return measured({
     record: ink.document,
     width: ink.width,
     ...(ink.base === undefined ? {} : { base: ink.base }),
-  };
+  });
 }
 
 export class ComposeDialog extends Modal {
@@ -270,6 +271,11 @@ export class ComposeDialog extends Modal {
     if (composed.mergedBases > 1) {
       said.push(
         `${String(composed.mergedBases)} parts are traced pictures: they share one picture layer.`,
+      );
+    }
+    if ((composed.withBases?.lost ?? 0) > 0) {
+      said.push(
+        `An eraser takes ${String(composed.withBases?.lost)} pixels from a traced picture, which no order helps.`,
       );
     }
     const summary = `${layout.label} of ${layout.slots

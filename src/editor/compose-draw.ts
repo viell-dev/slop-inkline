@@ -217,20 +217,55 @@ export interface Composed {
   readonly base?: DrawableBase;
   /** The order the parts' strokes went in, by the layout's slots present. */
   readonly order: readonly number[];
-  /** Copied in the natural order, against the parts on their own layers. */
+  /**
+   * Strokes copied in the natural order, against each part's strokes on a
+   * layer of its own: what erasers reaching other parts take.
+   */
   readonly natural: Difference;
-  /** Copied in the chosen order, against the parts on their own layers. */
+  /** The same, in the chosen order. */
   readonly chosen: Difference;
   /** How many orders were tried. */
   readonly tried: number;
   /** How many parts' base layers went into one. */
   readonly mergedBases: number;
+  /**
+   * With base layers, the whole record against the parts on their own
+   * layers: erasers reaching another part's picture, which no order helps,
+   * and the merged picture's resampling.
+   */
+  readonly withBases?: Difference & { readonly largest: number };
+}
+
+/** The parts without their base layers, for comparing strokes alone. */
+function strokesOnly(
+  parts: readonly (DrawnPart | undefined)[],
+): (DrawnPart | undefined)[] {
+  return parts.map((part) =>
+    part === undefined
+      ? undefined
+      : {
+          width: part.width,
+          record: { strokes: part.record.strokes },
+          ...(part.rows === undefined ? {} : { rows: part.rows }),
+        },
+  );
+}
+
+/** The largest difference in alpha between two drawings of one size. */
+function largest(a: OffscreenCanvas, b: OffscreenCanvas): number {
+  const first = readPixels(a).data;
+  const second = readPixels(b).data;
+  let most = 0;
+  for (let index = 3; index < first.length; index += 4) {
+    most = Math.max(most, Math.abs((first[index] ?? 0) - (second[index] ?? 0)));
+  }
+  return most;
 }
 
 /**
  * The parts copied into one version-1 record, in the first order in which
- * no part's eraser takes ink from another, or else the order that loses
- * least.
+ * no part's eraser takes ink from another part's strokes, or else the order
+ * that loses least. Every order of up to four parts is at most 24 drawings.
  */
 export async function compose(
   parts: readonly (DrawnPart | undefined)[],
@@ -239,7 +274,8 @@ export async function compose(
 ): Promise<Composed> {
   const width = canvasWidth(arrangement);
   const merged = await mergedBase(parts, arrangement);
-  const reference = drawLayered(parts, arrangement, weight);
+  const bare = strokesOnly(parts);
+  const reference = drawLayered(bare, arrangement, weight);
   const shifted = {
     ...arrangement,
     placements: arrangement.placements.map((placement) => ({
@@ -247,18 +283,14 @@ export async function compose(
       x: placement.x + margin,
     })),
   };
-  const drawBase =
-    merged === undefined
-      ? undefined
-      : { ...merged.drawable, x: merged.drawable.x + margin * unitsPerPixel };
   const candidates = orders(arrangement.placements.length);
   let natural: Difference | undefined;
   let best: { order: number[]; difference: Difference } | undefined;
   let tried = 0;
   for (const order of candidates) {
     tried++;
-    const strokes = copyStrokes(parts, shifted, weight, order);
-    const drawn = drawRecord({ strokes }, drawBase, width);
+    const strokes = copyStrokes(bare, shifted, weight, order);
+    const drawn = drawRecord({ strokes }, undefined, width);
     const found = difference(reference, drawn);
     natural ??= found;
     if (
@@ -275,20 +307,45 @@ export async function compose(
     throw new Error("no parts");
   }
   const strokes = copyStrokes(parts, arrangement, weight, best.order);
+  let withBases: Composed["withBases"];
+  if (merged !== undefined) {
+    const whole = drawLayered(parts, arrangement, weight);
+    const drawn = drawRecord(
+      { strokes: copyStrokes(parts, shifted, weight, best.order) },
+      { ...merged.drawable, x: merged.drawable.x + margin * unitsPerPixel },
+      width,
+    );
+    withBases = { ...difference(whole, drawn), largest: largest(whole, drawn) };
+  }
   const record: InkRecord =
-    merged === undefined
-      ? { strokes }
-      : { strokes, base: merged.layer };
+    merged === undefined ? { strokes } : { strokes, base: merged.layer };
   return {
     record,
-    ...(merged === undefined
-      ? {}
-      : { base: merged.drawable }),
+    ...(merged === undefined ? {} : { base: merged.drawable }),
     order: best.order,
     natural,
     chosen: best.difference,
     tried,
     mergedBases: present(parts).filter((part) => part.base !== undefined)
       .length,
+    ...(withBases === undefined ? {} : { withBases }),
   };
+}
+
+/**
+ * A part with the rows its ink covers, from its pixels: its strokes and any
+ * base layer, drawn as a save draws them.
+ */
+export function measured(part: DrawnPart): DrawnPart {
+  const canvas = drawRecord(part.record, part.base, Math.max(1, part.width));
+  const { data, width } = readPixels(canvas);
+  let top = Number.POSITIVE_INFINITY;
+  let bottom = Number.NEGATIVE_INFINITY;
+  for (let index = 3; index < data.length; index += 4) {
+    if ((data[index] ?? 0) < 64) continue;
+    const row = Math.floor((index - 3) / 4 / width);
+    top = Math.min(top, row);
+    bottom = Math.max(bottom, row + 1);
+  }
+  return top > bottom ? part : { ...part, rows: { top, bottom } };
 }

@@ -126,6 +126,7 @@ export interface Built {
   readonly mergedBases: number;
   readonly band: { top: number; bottom: number };
   readonly inked: number;
+  readonly withBases?: { differing: number; lost: number; largest: number };
 }
 
 /** A layout of parts composed as the dialog composes it. */
@@ -159,6 +160,7 @@ export async function build(
     mergedBases: composed.mergedBases,
     band: arrangement.band,
     inked: inked(drawn),
+    ...(composed.withBases === undefined ? {} : { withBases: composed.withBases }),
   };
 }
 

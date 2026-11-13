@@ -141,8 +141,13 @@ export function layoutNamed(name: LayoutName): Layout {
  * - `"em"`: one em standing on the baseline, as CJK fonts' ideographic box.
  * - `"ink"`: from the top of the highest part's ink to the bottom of the
  *   lowest, so the composite fills the height its parts fill at full size.
+ * - `"body"`: from the top of the highest part's ink to the baseline, with
+ *   the bottom row's parts on the baseline, as they stand at full size.
+ *
+ * `"line"` and `"ink"` centre the two rows on the band; `"em"` and `"body"`
+ * stand them on the baseline.
  */
-export type Band = "line" | "em" | "ink";
+export type Band = "line" | "em" | "ink" | "body";
 
 /** How a part's line widths follow its size. */
 export type Weight = "scaled" | "between" | "kept";
@@ -158,6 +163,11 @@ export function weightFactor(weight: Weight, scale: number): number {
 export interface Part {
   readonly record: InkRecord;
   readonly width: number;
+  /**
+   * The rows its ink covers, measured from its pixels, when known: a traced
+   * picture's base layer usually spans the whole image, ink or not.
+   */
+  readonly rows?: { readonly top: number; readonly bottom: number };
 }
 
 /** Where a part goes: a part pixel (px, py) lands at (x + px·s, y + py·s). */
@@ -222,12 +232,14 @@ export function bandOf(
   let top = Number.POSITIVE_INFINITY;
   let bottom = Number.NEGATIVE_INFINITY;
   for (const part of parts) {
-    const rows = inkRows(part.record);
+    const rows = part.rows ?? inkRows(part.record);
     if (rows === undefined) continue;
     top = Math.min(top, rows.top);
     bottom = Math.max(bottom, rows.bottom);
   }
-  return top > bottom ? bandOf(parts, "em") : { top, bottom };
+  if (band === "body") bottom = lineBox.baseline;
+  // Ink all below the baseline leaves no body: one em stands in.
+  return top >= bottom - 1 ? bandOf(parts, "em") : { top, bottom };
 }
 
 /**
@@ -245,7 +257,7 @@ export const rowGap = sideBearing;
 export function arrange(
   layout: Layout,
   parts: readonly (Part | undefined)[],
-  band: Band = "ink",
+  band: Band = "body",
 ): Arrangement {
   const present = parts.filter((part): part is Part => part !== undefined);
   const rows = bandOf(present, band);
@@ -254,9 +266,14 @@ export function arrange(
   const scale = single ? 1 : 0.5;
   const twoRows = layout.slots.some((slot) => slot.row !== "both");
   const cellHeight = height * scale;
-  const total = twoRows ? 2 * cellHeight + rowGap : cellHeight;
-  const middle = (rows.top + rows.bottom) / 2;
-  const top = middle - total / 2;
+  // Where two rows would go, whether or not the layout has two: a lone row
+  // or part is centred on their middle.
+  const stack = 2 * cellHeight + rowGap;
+  const top =
+    band === "em" || band === "body"
+      ? rows.bottom - stack
+      : (rows.top + rows.bottom) / 2 - stack / 2;
+  const middle = top + stack / 2;
 
   const widthOf = (index: number): number => (parts[index]?.width ?? 0) * scale;
   const columns = [0, 0];
