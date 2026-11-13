@@ -585,6 +585,7 @@ describe("A dictionary of words and parts (#167, section 5)", function () {
   });
 
   after(async function () {
+    await obsidianPage.enablePlugin("inkline");
     await writeFile(
       path.join(output, `dictionary-${version()}.json`),
       JSON.stringify(results, null, 2),
@@ -700,7 +701,6 @@ describe("A dictionary of words and parts (#167, section 5)", function () {
     await drawAndSave();
     steps.fieldedAfterEditor = await fileFacts("Glyphs/fielded.ink.png");
     results.v1 = steps;
-    await startOver();
   });
 
   it("the dictionary's indexes and splits", async function () {
