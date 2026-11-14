@@ -61,9 +61,10 @@ included.
 
 ## Insert a symbol you have
 
-Type `;;` and a few letters of a symbol's name, or of one of its
-[readings and translations](#readings-and-translations), in any script, to list
-the matching symbols with their pictures:
+Type the insert trigger, `;;` unless you changed it in the
+[settings](./settings.md), and a few letters of a symbol's name, or of one of
+its [readings and translations](#readings-and-translations), in any script, to
+list the matching symbols with their pictures:
 
 1. The list puts the best match first, then the symbols this note uses most,
    then the most recently changed, and shows up to 50.
@@ -71,15 +72,16 @@ the matching symbols with their pictures:
 3. Esc closes the list, and what you type after it stays text.
 
 Typed with a space, the name must hold what you typed, so that a sentence typed
-on after `;;` stops matching. `;;` in code, inline or fenced, and in front
-matter lists nothing: it is the note's own text there.
+on after the trigger stops matching. The trigger in code, inline or fenced, and
+in front matter lists nothing: it is the note's own text there.
 
 Code is where Reading view shows it. Inline code can run on from an earlier line
-of its paragraph, which the editor may not show as code, and `;;` lists nothing
-there either, nor in a code block made by indenting lines four spaces or a tab.
-A fenced code block in a quote or a list item ends with the quote or the item,
-even if it is never closed, so `;;` in the text after it lists again. A
-callout's title line is read on its own: inline code in it ends with the line.
+of its paragraph, which the editor may not show as code, and the trigger lists
+nothing there either, nor in a code block made by indenting lines four spaces or
+a tab. A fenced code block in a quote or a list item ends with the quote or the
+item, even if it is never closed, so the trigger in the text after it lists
+again. A callout's title line is read on its own: inline code in it ends with
+the line.
 
 **Inkline: Insert existing symbol** opens the same list as a search, and inserts
 the chosen symbol at the cursor. It places the symbol as **Inkline: Insert
@@ -87,11 +89,12 @@ symbol** does: just after a link or embed the cursor is inside, so that no link
 is split, and beside selected text, which stays. If the note changes while the
 search is open, the symbol still goes where the cursor was.
 
-Both find a symbol by a reading or translation whatever its name: `;;TA` lists a
-symbol with the reading `TA`, and a row found that way says so, under its name,
-as in `Reading: TA`. A value must hold what you typed, in any letter case, and
-with or without its accents; a name still matches loosely. The best match comes
-first, name or value, and of the two, the name.
+Both find a symbol by a reading or translation whatever its name: with the
+default trigger, `;;TA` lists a symbol with the reading `TA`, and a row found
+that way says so, under its name, as in `Reading: TA`. A value must hold what
+you typed, in any letter case, and with or without its accents; a name still
+matches loosely. The best match comes first, name or value, and of the two, the
+name.
 
 An accent is a mark on the letters of the Latin or Greek alphabet, or a stress
 mark in Cyrillic: `sa` finds `šá`, and typing `šá` asks for those accents. Any
@@ -152,13 +155,11 @@ the question, and how to make a variant instead.
 
 ## Names and renames
 
-A symbol's name is its file's name, which can be your current guess at it, or
-anything else that suits you. To record what a symbol means, and to correct a
-guess, use its [readings and translations](#readings-and-translations), which
-change no note. Rename it directly in the library, in its editor, as
-[Drawing in the editor](./drawing.md#the-name) describes, or rename its file in
-Obsidian in any way: an open editor follows a rename made elsewhere, and keeps
-the name given there, even one Inkline itself would not give.
+A symbol's name is its file's name, and can be anything that suits you. How it
+is read and what it means go in its
+[readings and translations](#readings-and-translations). Rename a symbol in
+[its editor](./drawing.md#the-name) or in
+[the library](#find-where-a-symbol-is-used).
 
 ## Readings and translations
 
@@ -169,20 +170,21 @@ language. Either can hold several values, one to a line, the main one first. The
 two lists are separate, so the second reading has nothing to do with the second
 translation.
 
-They are for what you currently take the symbol to be. The name stays what your
-notes link to, so correcting a guess here changes no note and needs no rename,
-and a symbol can be named anything while `;;TA` still finds it. A name and a
-reading that disagree are not a fault: Inkline never fills one in from the other
-or keeps them in step, and renaming a symbol leaves its readings as they are.
+The name stays what your notes link to, so editing a symbol's readings and
+translations changes no note and needs no rename, and a symbol can be named
+anything while they still find it. A name and a reading that disagree are not a
+fault: Inkline never fills one in from the other or keeps them in step, and
+renaming a symbol leaves its readings as they are.
 
 - Fill them in while drawing, from
   [beside the name in the editor](./drawing.md#readings-and-translations).
 - Change them without opening the editor, from the
   [library](#find-where-a-symbol-is-used). This works on a file the editor will
   not open, such as one whose strokes are damaged.
-- Find a symbol by them in [the `;;` list](#insert-a-symbol-you-have),
-  **Inkline: Insert existing symbol**,
-  [Copy from](./drawing.md#start-from-a-copy), and the library's filter.
+- Find a symbol by them in
+  [the insert trigger's list](#insert-a-symbol-you-have), **Inkline: Insert
+  existing symbol**, [Copy from](./drawing.md#start-from-a-copy), and the
+  library's filter.
 
 The values live in the file, in PNG text chunks that other programs can read, so
 they go with a copy of it. Some programs drop them; see

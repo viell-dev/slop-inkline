@@ -306,8 +306,8 @@ The list finds a symbol by its
 [readings and translations](#readings-and-translations) as well as its path, and
 a row found that way says so. The copy takes only the drawing: they stay with
 the symbol they were written for, and the status line says so. A variant is
-another symbol, which may be read differently, and a copied guess would go on
-being found after the original was corrected.
+another symbol, which may be read differently, and copied values would go on
+finding it after the original's were edited.
 
 ## Save
 

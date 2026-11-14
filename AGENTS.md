@@ -20,51 +20,35 @@ it.
 People meet that from two directions:
 
 - **Working a script out:** a game has an invented language, and working it out
-  is the game. The player copies what the game shows, guesses, and revises. They
-  draw someone else's symbols.
+  is the game. The player draws someone else's symbols, copying them from what
+  the game shows.
 - **Making a script up:** a person creates a constructed language, a conlang,
-  with a script of its own. They draw their own symbols, and revise them too.
+  with a script of its own. They draw their own symbols.
 
-The work is the same but for whose symbols they are. Give both the same weight
-wherever Inkline is described, or use words that cover both. Judge a request by
-the needs below, not by which of the two it comes from. Where the two pull
-apart, weigh it as any design choice and record the tradeoff.
+The work is the same but for whose symbols they are: both write the script among
+ordinary text, write the same symbols many times, and change what they record
+about a symbol over time. Give both the same weight wherever Inkline is
+described, or use words that cover both, and avoid wording that fits only one,
+such as calling what a symbol records a guess. Judge a request by the needs
+below, not by which of the two it comes from. Where the two pull apart, weigh it
+as any design choice and record the tradeoff. A cipher or a personal shorthand
+works the same way, and adds no commitments of its own.
 
 Two needs follow, and they are the core of the first stable release:
 
-- **Notate:** write a symbol that cannot be typed into a note, as easily as a
-  letter. The editor sized to a line of text, tracing and Make ink, **Next**,
-  and showing a symbol in the line at the text's size and colour serve this.
-- **Reuse:** write that symbol again wherever it comes up, as easily. The `;;`
-  list, the library, names, the readings and translations that a symbol records
-  and the lists find it by, renaming that every note follows, and **Copy from**
-  serve this.
+- **Notate:** write a symbol that cannot be typed into a note as easily as a
+  letter, where the person is writing, so that it reads as part of the text.
+- **Reuse:** write a symbol already drawn again, in any note, as easily, without
+  drawing it again or looking for its file. A symbol is one file however many
+  notes use it, and the lists find it by its name, a reading, or a translation.
 
 Keeping drawings safe, and keeping notes readable without Inkline, are
 conditions on both: a symbol that can be lost or locked in is not easy to use.
+"Easy" is the aim, not a measure: describe what Inkline does, and add no
+promises, such as a number of seconds or no need to draw well, that nobody set.
 
 **Describe Inkline by its purpose, not only its mechanism.** "Draws small inline
 images" says how it works. It leaves out the reuse and whom it is for.
-
-**Fitting the purpose is not permission to build.** These are three questions,
-and a yes to one is not a yes to the next:
-
-1. **Is it held?** Check this first. Every idea in
-   [#167](https://github.com/viell-dev/slop-inkline/issues/167) is for
-   investigation only, and none is approved for any release. The owner adds to
-   that issue; it holds ideas such as word lists and dictionaries, meanings for
-   runs of symbols, symbols built from other symbols, text set over or under
-   symbols, symbols wider than their place, sizes above today's limit, and
-   writing directions. Several of them would serve writing a script, and that
-   does not approve them. That issue's comments, its "vision" report included,
-   describe what Inkline could become, not what it is for or what is planned.
-   [The pen-input branch](#the-pen-input-branch) is another hold.
-2. **Does it serve the purpose?** It does when it makes notating or reusing a
-   symbol easier or safer, for either direction.
-3. **Is it in a release's agreed scope, and worth its cost?**
-   [RELEASING.md](RELEASING.md#the-stable-release-goal) lists what `1.0.0` does,
-   and [CONTRIBUTING.md](CONTRIBUTING.md#request-a-feature) says how a request
-   is weighed. A change to that goal is the owner's decision.
 
 **What Inkline records today is about one symbol.** Each symbol holds its
 readings and translations, filled in from the editor or the library, and the
@@ -74,7 +58,42 @@ of a language, are among #167's unapproved ideas.
 **A script the person can already type is not the case to design for.** Someone
 who can type or paste a script's characters seldom needs to draw them.
 
+**What Inkline is not:** a whiteboard, a diagram tool, a handwriting notebook, a
+paint program, a font editor, or a library of ready-made symbols. A request for
+one of those is declined, with the reason on the issue.
+
+**Fitting the purpose is not permission to build.** These are three questions,
+and a yes to one is not a yes to the next:
+
+1. **Is it held?** Check this first. Every idea in
+   [#167](https://github.com/viell-dev/slop-inkline/issues/167) is for
+   investigation only, and none is approved for any release, however well it
+   fits; the owner adds to that issue. Its comments, its "vision" report
+   included, describe what Inkline could become, not what it is for or what is
+   planned. [The pen-input branch](#the-pen-input-branch) is another hold.
+2. **Does it serve the purpose?** It does when it makes notating or reusing a
+   symbol easier or safer, for either direction.
+3. **Is it in a release's agreed scope, and worth its cost?**
+   [RELEASING.md](RELEASING.md#the-stable-release-goal) lists what `1.0.0` does,
+   and [CONTRIBUTING.md](CONTRIBUTING.md#request-a-feature) says how a request
+   is weighed. A change to that goal is the owner's decision.
+
+**Keep to that scope.** Agents that iterate on their own work tend to widen it a
+little at a time:
+
+- Describe what the current release does. A held idea, a research result, or a
+  possible future is not what Inkline is, does, or is for.
+- Research is not a plan. Investigations, experiment branches, and comments on
+  what Inkline could become approve nothing, however often they are repeated.
+- An agent's own idea, and a review suggestion that adds a capability, are
+  feature requests: weigh them by the three questions on an issue before
+  building anything.
+
 The owner decides changes to what Inkline is for, as [Releases](#releases) says.
+A change to this section updates the places that
+[What a change updates](CONTRIBUTING.md#what-a-change-updates) lists for what
+Inkline is for, and a change to those places checks that this section still
+agrees.
 
 ## Repository boundary
 

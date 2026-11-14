@@ -25,9 +25,9 @@ features:
       standard Markdown link.
   - title: Written again in a few keys
     details:
-      Type ;; and a few letters of a symbol's name, reading, or translation to
-      write it again in any note. Record how you read it and what you take it to
-      mean with the symbol, and correct that without changing a note.
+      Give a symbol a name, and record how it is read and what it means. Type
+      the insert trigger, ;; by default, and a few letters of any of them to
+      write it again in any note.
   - title: Edit without loss
     details:
       The strokes are kept inside the file, so a symbol opens again exactly as
@@ -56,10 +56,11 @@ Either way, Inkline does two things:
 
 - **Write a symbol down easily.** Draw it where you need it, or trace it from a
   picture, and it sits in the line like a letter.
-- **Use it again easily.** Type `;;` and a few letters of its name, of how it is
-  read, or of what it means, to write it again in any note. A symbol records its
-  readings and translations apart from its name, so correcting a guess changes
-  no note, and the library finds every note that uses it.
+- **Use it again easily.** A symbol has a name, and can record how it is read
+  and what it means. Type the insert trigger, `;;` unless you change it in the
+  settings, and a few letters of any of them to write the symbol again in any
+  note. Its readings and translations can be edited at any time without changing
+  a note, and the library finds every note that uses it.
 
 A cipher or a personal shorthand works the same way.
 
