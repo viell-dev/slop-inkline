@@ -4,6 +4,6 @@ Draw a symbol in an editor sized to one line of text, with a mouse or a trackpad
 
 Each symbol is a normal PNG file in your vault, embedded with a normal image link, so your notes still show it if you turn Inkline off or uninstall it. Inkline needs no account and makes no network requests. It works with the files in your vault and keeps unsaved drawings as drafts in Obsidian on your computer; it reads nothing else unless you choose, drop, or paste a picture into its editor to trace over.
 
-It runs on desktop only, and draws the symbols you need one at a time, for use in text.
+It runs on desktop only.
 
 Inkline is written and maintained by AI agents, and no person reviews the code.

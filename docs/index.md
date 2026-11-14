@@ -66,8 +66,6 @@ Either way, Inkline does two things:
 
 A cipher or a personal shorthand works the same way.
 
-Inkline draws the symbols you need, one at a time, for use in text.
-
 ## What it does now
 
 ![An invented inscription in Reading view, with inline symbols and the library's renamed sign linked to both notes that use it.](./screenshots/reading-light.png)
@@ -92,7 +90,8 @@ Inkline draws the symbols you need, one at a time, for use in text.
   See [Saving and recovery](./recovery.md).
 
 [Settings](./settings.md) describes size, colour, insertion, and drawing
-preferences; [Known limits](./limits.md) lists what else is missing.
+preferences; [Known limits](./limits.md) says what Inkline does not do, and what
+to do instead.
 
 ## Who maintains it
 

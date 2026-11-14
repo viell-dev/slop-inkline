@@ -27,9 +27,9 @@ even one a public release; earlier pre-releases carry a suffix such as
   setting can change it.
 - The README, the guide, and the directory listing say that a symbol takes the
   size and colour of the text around it by default, since the settings can
-  change both. The guide's home page and the listing say what Inkline draws, the
-  symbols you need one at a time for use in text, in place of a list of what it
-  is not, and Known limits no longer heads its general limits "Not there yet".
+  change both. The guide's home page and the listing no longer list what Inkline
+  is not, and Known limits no longer says what Inkline "does not do yet", or
+  heads its general limits "Not there yet".
 
 These change only text: nothing about how Inkline works has changed.
 

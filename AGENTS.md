@@ -63,10 +63,10 @@ about a symbol over time, one as they learn more and the other as the design
 changes. The difference is whose symbols are drawn.
 
 Wherever Inkline is described, give the two equal place, or use words that cover
-both. The owner has set no rule for design choices between them. Judge a feature
-by the two needs below, not by which direction asked for it, and weigh a choice
-that helps one direction and costs the other like any design choice, with the
-tradeoff recorded on its issue.
+both. The owner has set no rule for design choices between them. The
+maintainers' rule is to judge a feature by the two needs below, not by which
+direction asked for it, and to weigh a choice that helps one direction and costs
+the other like any design choice, with the tradeoff recorded on its issue.
 
 Other uses, such as a cipher or a personal shorthand, work the same way. They
 are welcome, and they add no commitments of their own: a change counts when it
@@ -178,8 +178,10 @@ rules keep the purpose and scope where the owner put them.
 - **Bound the scope by what Inkline is.** Say what it is and what it covers, and
   add no lists of what it is not: such a list reads as complete, goes stale as
   things change, and needs upkeep, while the core above already sets the bounds.
-  The user guide's known limits are different: they tell users what a feature
-  does not do and what to do instead.
+  Two records are different. The user guide's known limits tell users what a
+  feature does not do and what to do instead. The stable release goal's "Out of
+  scope" line records what the owner agreed for `1.0.0`: only the owner changes
+  it, and it is not copied or extended elsewhere.
 - **Research is not a plan.** Investigations, experiment branches, prototypes,
   and comments on what Inkline could become approve nothing. An idea does not
   become scope by being written down, repeated, or researched further.
@@ -215,7 +217,7 @@ should be assumed in advance.
 A change to this section updates the places that
 [What a change updates](CONTRIBUTING.md#what-a-change-updates) lists for what
 Inkline is for, and a change to those places checks that this section still
-agrees.
+agrees. A stable release updates what this section says about releases.
 
 ## Repository boundary
 
@@ -231,9 +233,8 @@ screenshots use synthetic vaults and drawings only.
 - Group code into a few cohesive modules rather than one export per file. Keep
   logic that does not need Obsidian in plain modules with unit tests, and keep
   Obsidian's classes thin.
-- The plugin uses web APIs only, no Node.js or Electron modules, so that mobile
-  can follow; the build fails on a Node.js import. Tools under `scripts/` and
-  `test/` run in Node.js.
+- The plugin uses web APIs only, no Node.js or Electron modules; the build fails
+  on a Node.js import. Tools under `scripts/` and `test/` run in Node.js.
 - Scripts are TypeScript that Node.js runs directly, so they use only erasable
   syntax and import files with their `.ts` extension.
 - `src/format/` reads and writes symbol files, and `src/ink/` draws them;
