@@ -60,9 +60,10 @@ Either way, Inkline does two things:
 
 - **Write a symbol down easily.** Draw it where you need it, or trace it from a
   picture, and it sits in the line like a letter.
-- **Use it again easily.** Type `;;` and a few letters of its name to write it
-  again in any note. Name it with what it means, or with your current guess,
-  rename it as that changes, and find every note that uses it.
+- **Use it again easily.** Type `;;` and a few letters of its name, of how it is
+  read, or of what it means, to write it again in any note. A symbol records its
+  readings and translations apart from its name, so correcting a guess changes
+  no note, and the library finds every note that uses it.
 
 A cipher or a personal shorthand works the same way.
 

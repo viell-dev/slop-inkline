@@ -153,10 +153,12 @@ the question, and how to make a variant instead.
 ## Names and renames
 
 A symbol's name is its file's name, which can be your current guess at it, or
-anything else that suits you. Rename it directly in the library, in its editor,
-as [Drawing in the editor](./drawing.md#the-name) describes, or rename its file
-in Obsidian in any way: an open editor follows a rename made elsewhere, and
-keeps the name given there, even one Inkline itself would not give.
+anything else that suits you. To record what a symbol means, and to correct a
+guess, use its [readings and translations](#readings-and-translations), which
+change no note. Rename it directly in the library, in its editor, as
+[Drawing in the editor](./drawing.md#the-name) describes, or rename its file in
+Obsidian in any way: an open editor follows a rename made elsewhere, and keeps
+the name given there, even one Inkline itself would not give.
 
 ## Readings and translations
 
