@@ -28,9 +28,10 @@ settings (`;;` unless changed), then a few letters of the symbol's name, and
 picks it from the list that opens.
 
 It runs in desktop Obsidian, and symbols are drawn with a mouse or a trackpad.
-AI agents build, test, document, and maintain it. The owner decides what it is
-for and what its releases cover. It has had no stable release yet; when the
-first is published is the owner's decision, as [Releases](#releases) says.
+AI agents build, test, document, and maintain it, and no person reviews the
+code. The owner decides what it is for and what its releases cover. It has had
+no stable release yet; when the first is published is the owner's decision, as
+[Releases](#releases) says.
 
 ### What it is for
 
@@ -187,7 +188,7 @@ rules keep the purpose and scope where the owner put them.
   things change, and needs upkeep, while the core above already sets the bounds.
   Two records are exceptions. The user guide's known limits tell users what a
   feature does not do and what to do instead. The stable release goal's "Out of
-  scope" line records what the owner agreed for `1.0.0`. Only the owner changes
+  scope" line records what the owner put outside `1.0.0`. Only the owner changes
   it; do not copy or extend it elsewhere.
 - **Research is not a plan.** Investigations, experiment branches, prototypes,
   and comments on what Inkline could become approve nothing. An idea does not

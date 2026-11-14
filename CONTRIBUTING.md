@@ -52,8 +52,9 @@ For any other request, two questions decide it, and it needs a yes to both:
   and using it again as easily. A request fits when it makes one of those easier
   or safer. It supports desktop Obsidian with a mouse or trackpad. The
   [stable release goal](RELEASING.md#the-stable-release-goal), which the owner
-  agreed, says what the first stable release covers. Adding to it is the owner's
-  decision, and so is adding what it puts out of scope, after that release too.
+  agreed, says what the first stable release covers. Until that release, adding
+  to it is the owner's decision. Adding what it puts out of scope stays the
+  owner's decision after that release too.
 - **Is the benefit worth what it adds?** That means the code, tests,
   documentation, and support it needs for as long as the project is maintained,
   and the risk it brings to saving and drawing, where mistakes cost people their
