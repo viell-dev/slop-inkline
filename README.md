@@ -1,8 +1,9 @@
 # Inkline
 
-An Obsidian plugin for drawing symbols that no font has, so that you can write
-them in your notes as easily as letters. Each symbol sits inside the line of
-text like a character, at the text's size and in its color.
+An Obsidian plugin for symbols that no font has: draw one once, then write it in
+your notes as easily as a letter, as often as it comes up. Each symbol sits
+inside the line of text like a character, by default at the text's size and in
+its color.
 
 ## Install
 
@@ -38,7 +39,8 @@ only. Every release, public or not, stays on GitHub with its install ZIP.
    Ctrl+Enter (Cmd+Enter on macOS). Inkline saves it as `tower.ink.png` and puts
    its embed, `![[tower.ink.png]]`, where the cursor was. The note shows it in
    the line, like a character.
-4. To use it again, type `;;tow` in any note, and press Enter.
+4. To use it again, type the insert trigger and the first letters of its name in
+   any note, as `;;tow` with the default trigger, and press Enter.
 
 [Your first symbol](https://viell-dev.github.io/slop-inkline/start) in the guide
 goes on from there, and
@@ -47,11 +49,25 @@ how to get unsaved work back.
 
 ## What it is for
 
-It is made for working out invented scripts, such as the languages of puzzle
-games like Chants of Sennaar: draw a symbol where you meet it, name it with your
-current guess at its meaning, rename it as your reading changes, and find every
-note that uses it. Conlang glyphs, ciphers, game marks, and personal shorthand
-work the same way.
+Inkline is for writing notes in a script that no font has, so you cannot type
+it. That is the same work from two directions:
+
+- **Working a script out.** Some games are built around an invented language,
+  and working it out is the game. You draw the symbols that someone else made.
+- **Making a script up.** A constructed language (a conlang) can have a script
+  of its own. You draw the symbols that you make.
+
+Either way, Inkline does two things:
+
+- **Write a symbol down easily.** Draw it where you need it, or trace it from a
+  picture, and it sits in the line like a letter.
+- **Use it again easily.** A symbol has a name, and can record how it is read
+  and what it means. Type the insert trigger, `;;` unless you change it in the
+  settings, and a few letters of any of them to write the symbol again in any
+  note. Its readings and translations can be edited at any time without changing
+  a note, and the library finds every note that uses it.
+
+A cipher or a personal shorthand works the same way.
 
 ![An invented inscription transcribed as inline symbols, beside the library showing the renamed sign and both notes that use it.](docs/screenshots/reading-dark.png)
 

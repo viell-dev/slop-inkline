@@ -381,22 +381,22 @@ must keep released files readable and looking the same, as
   [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts),
   and
   [file-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/file-writes.test.ts)).
-- The `;;` list, Insert existing symbol, Copy from, and the library's filter
-  find a symbol by a reading or translation whatever its name, and show why; an
-  accent needs no typing, and a mark that makes another sound counts, in kana,
-  Indic scripts, Thai, Arabic, Hebrew, and Cyrillic; the index follows files as
-  they are made, changed, renamed, moved with their folder, and deleted, goes on
-  past a damaged file and a costly one, lets a search work while it reads, and
-  finds what just changed before the rest
+- The insert trigger's list, Insert existing symbol, Copy from, and the
+  library's filter find a symbol by a reading or translation whatever its name,
+  and show why; an accent needs no typing, and a mark that makes another sound
+  counts, in kana, Indic scripts, Thai, Arabic, Hebrew, and Cyrillic; the index
+  follows files as they are made, changed, renamed, moved with their folder, and
+  deleted, goes on past a damaged file and a costly one, lets a search work
+  while it reads, and finds what just changed before the rest
   ([symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts),
   [search.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/search.test.ts),
   and
   [text-index.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/text-index.test.ts)).
-- Names line up in the `;;` list, Insert existing symbol, Copy from, and the
-  library, in both themes: every name and folder starts at the same x, at the
-  ends of the Symbol size setting, and beside a very long name or a picture that
-  will not load. A symbol as wide as the editor's surface, or wider, shows whole
-  and in proportion, in the text colour and its stored colour
+- Names line up in the insert trigger's list, Insert existing symbol, Copy from,
+  and the library, in both themes: every name and folder starts at the same x,
+  at the ends of the Symbol size setting, and beside a very long name or a
+  picture that will not load. A symbol as wide as the editor's surface, or
+  wider, shows whole and in proportion, in the text colour and its stored colour
   ([symbol-lists.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-lists.e2e.ts)).
 - In the library, in both themes, the list never scrolls sideways, in a sidebar
   from the narrowest Obsidian allows to a wide one, with 90-character names with

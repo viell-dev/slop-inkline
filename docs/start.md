@@ -14,10 +14,13 @@ It assumes Inkline is [installed](./install.md) and turned on.
    baseline, and descender, so that you can draw it at the size of the letters
    around it. The line of text under the drawing shows the symbol at its size in
    the text as you draw.
-4. Type a name for it in the field at the top, in any script: your current guess
-   at its meaning, such as `tower`. Leave it empty, and the symbol takes the
-   next free number in its folder, such as `001`.
-5. Press **Save**, or Ctrl+Enter (Cmd+Enter on macOS).
+4. Type a name for it in the field at the top, in any script, such as `tower`.
+   Leave it empty, and the symbol takes the next free number in its folder, such
+   as `001`.
+5. If you like, record how it is read and what it means, with the
+   [readings and translations](./drawing.md#readings-and-translations) button
+   beside the name.
+6. Press **Save**, or Ctrl+Enter (Cmd+Enter on macOS).
 
 Inkline creates the file `tower.ink.png` where Obsidian puts new attachments for
 that note, as **Settings → Files and links** says, or in the folder Inkline's
@@ -39,7 +42,8 @@ Press Save on the last one.
 
 ## Use it again
 
-In any note, type `;;` and the first letters of its name, then press Enter:
+In any note, type the insert trigger and the first letters of its name, then
+press Enter. With the default trigger, `;;`:
 
 ```md
 The gate shows ;;tow

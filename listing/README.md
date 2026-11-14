@@ -19,7 +19,7 @@ The text is in plain files so that it pastes without line breaks.
 | Screenshot                                 | What it shows                                                 |
 | ------------------------------------------ | ------------------------------------------------------------- |
 | [1-reading.png](screenshots/1-reading.png) | Symbols in a note, and the notes the library finds for one    |
-| [2-suggest.png](screenshots/2-suggest.png) | Inserting a symbol by typing `;;`                             |
+| [2-suggest.png](screenshots/2-suggest.png) | Inserting a symbol by typing the insert trigger               |
 | [3-drawing.png](screenshots/3-drawing.png) | Drawing on the guides of a line of text                       |
 | [4-tracing.png](screenshots/4-tracing.png) | Turning a pasted picture into ink                             |
 | [5-text.png](screenshots/5-text.png)       | Symbols following the size and color of headings and callouts |

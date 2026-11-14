@@ -9,6 +9,30 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Changed
+
+- Inkline's description in Obsidian's list of plugins now says what it is for:
+  "Draw symbols that no font has, then write with them inline in your notes like
+  characters. Each one is saved as a plain PNG image." The README, the guide's
+  home page, and the directory listing say the same in more words: Inkline is
+  for writing notes in a script that no font has, whether you are working it out
+  from a game or making it up for a language of your own, by writing a symbol
+  down easily and using it again easily.
+- The README and the guide describe a symbol's readings and translations as the
+  place for how it is read and what it means, which can be edited without
+  changing a note, and say that the list of symbols finds one by them as well as
+  by its name.
+- The README and the guide call the characters that open the list of symbols the
+  insert trigger, as its setting does, and give `;;` as its default, since the
+  setting can change it.
+- The README, the guide, and the directory listing say that a symbol takes the
+  size and colour of the text around it by default, since the settings can
+  change both. The guide's home page and the listing no longer list what Inkline
+  is not, and Known limits no longer says what Inkline "does not do yet", or
+  heads its general limits "Not there yet".
+
+These change only text: nothing about how Inkline works has changed.
+
 ## 0.9.3 - 2026-11-12
 
 This is the second release candidate of 1.0.0: a build meant to become 1.0.0

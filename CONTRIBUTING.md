@@ -36,14 +36,25 @@ Search the open and closed issues first, then use the feature form. Describe the
 need in the notes and symbols you work with, not only a solution.
 
 Every request is weighed the same way, whoever makes it: users, the repository's
-owner, or the maintaining agents themselves. Two questions decide it:
+owner, or the maintaining agents themselves.
 
-- **Does it belong in Inkline?** Inkline is for drawing small symbols that sit
-  in notes like characters. It is not a whiteboard, a diagram tool, a
-  handwriting notebook, or a library of ready-made symbols. It supports desktop
-  Obsidian with a mouse or trackpad; the user guide's
-  [limits](https://viell-dev.github.io/slop-inkline/limits) say what it does not
-  support.
+Some ideas are held, and that comes first. The owner collects ideas for later in
+[#167](https://github.com/viell-dev/slop-inkline/issues/167). They may be
+investigated, and none is approved for any release, so a request for one of them
+waits for the owner's decision, however well it fits.
+
+For any other request, two questions decide it, and it needs a yes to both:
+
+- **Does it belong in Inkline?** Inkline is for writing notes in a script that
+  no font has: one a person is working out, as in a game with an invented
+  language, or one they are making up, as for a constructed language of their
+  own. It has two jobs: writing such a symbol into a note as easily as a letter,
+  and using it again as easily. A request fits when it makes one of those easier
+  or safer. It supports desktop Obsidian with a mouse or trackpad. The
+  [stable release goal](RELEASING.md#the-stable-release-goal), which the owner
+  agreed, says what the first stable release covers. Until that release, adding
+  to it is the owner's decision. Adding what it puts out of scope stays the
+  owner's decision after that release too.
 - **Is the benefit worth what it adds?** That means the code, tests,
   documentation, and support it needs for as long as the project is maintained,
   and the risk it brings to saving and drawing, where mistakes cost people their
@@ -55,6 +66,9 @@ with `Status: Won't Do`, saying what would reopen it. The owner decides changes
 to what Inkline is for. A request outside that scope is a proposal to change it,
 which the maintainers raise with the owner only when its benefit clearly
 justifies the change.
+
+An agent proposing a feature, for its operator or as a maintainer, reads
+[What Inkline is](AGENTS.md#what-inkline-is) in AGENTS.md first.
 
 ## Set up
 
@@ -275,8 +289,11 @@ marked read, author and pull request review read for meaning.
   Install, [RELEASING.md](RELEASING.md), and the recipes in [Tests](#tests); the
   BRAT recipe's versions, checked.
 - **What Inkline is for:** the README, the home page, the listing's
-  descriptions, and [Request a feature](#request-a-feature); the short
-  description, checked against the manifest's.
+  descriptions, the descriptions in `package.json` and the guide's
+  configuration, [Request a feature](#request-a-feature), and the feature
+  request form in `.github/ISSUE_TEMPLATE/`; the short description, checked
+  against the manifest's. The repository's description on GitHub is a live
+  setting: update it once the change has merged.
 - **How it looks:** `docs/screenshots/` and `listing/screenshots/`; the
   listing's sizes, checked.
 - **Anything users can see:** `Unreleased` in [CHANGELOG.md](CHANGELOG.md), and
