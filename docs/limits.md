@@ -1,9 +1,9 @@
 # Known limits
 
-What Inkline does not do yet, or does not do everywhere, and what to do instead.
-The [issues](https://github.com/viell-dev/slop-inkline/issues) track each one.
+What Inkline does not do, or does not do everywhere, and what to do instead. The
+[issues](https://github.com/viell-dev/slop-inkline/issues) track each one.
 
-## Not there yet
+## In general
 
 - **Prerelease.** Install from GitHub releases, by hand or with BRAT; Inkline is
   not in Obsidian's community directory yet. See [Install](./install.md).

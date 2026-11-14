@@ -2,7 +2,7 @@
   "name": "inkline",
   "version": "0.9.3",
   "private": true,
-  "description": "An Obsidian plugin for drawing symbols that sit inline in your notes like characters.",
+  "description": "An Obsidian plugin for drawing symbols that no font has and writing with them inline in your notes like characters.",
   "license": "MIT",
   "type": "module",
   "engines": {

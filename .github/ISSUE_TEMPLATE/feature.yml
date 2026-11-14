@@ -33,8 +33,10 @@ body:
     attributes:
       label: Why it belongs in Inkline
       description: >-
-        Why a plugin for drawing inline symbols should do this, rather than
-        Obsidian, a drawing plugin, or another tool. Name another tool that does
-        it, if you know one.
+        Inkline is for writing notes in a script that no font has. Say how
+        this makes writing a symbol into a note, or using it again, easier or
+        safer, and why Inkline should do it rather than Obsidian, a drawing
+        plugin, or another tool. Name another tool that does it, if you know
+        one.
     validations:
       required: true

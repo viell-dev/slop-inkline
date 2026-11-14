@@ -31,7 +31,7 @@ const state = released
 export default defineConfig({
   title: "Inkline",
   description:
-    "An Obsidian plugin for drawing symbols that sit inline in your notes like characters, saved as plain PNG images.",
+    "An Obsidian plugin for drawing symbols that no font has and writing with them inline in your notes like characters, saved as plain PNG images.",
   lang: "en",
   base: "/slop-inkline/",
   cleanUrls: true,
