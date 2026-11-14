@@ -11,9 +11,10 @@ the setup, checks, and tests that apply to everyone.
 
 This section says what Inkline is, what it is for, what it covers, and where it
 might go. Read it before judging a feature, a review finding, or a description
-of Inkline. The owner decides what Inkline is for and what its releases cover.
-Where a decision of theirs, on an issue or a pull request, differs from this
-section, the decision wins, and this section is what to fix.
+of Inkline. It describes the plugin as it is and says nothing about what is
+planned beyond what the owner has decided. Where a decision of the owner's, on
+an issue or a pull request, differs from this section, the decision wins, and
+this section is what to fix.
 
 ### What it is
 
@@ -27,8 +28,9 @@ settings (`;;` unless changed), then a few letters of the symbol's name, and
 picks it from the list that opens.
 
 It runs in desktop Obsidian, and symbols are drawn with a mouse or a trackpad.
-It has had no stable release yet; when the first is published is the owner's
-decision, as [Releases](#releases) says.
+AI agents build, test, document, and maintain it. The owner decides what it is
+for and what its releases cover. It has had no stable release yet; when the
+first is published is the owner's decision, as [Releases](#releases) says.
 
 ### What it is for
 
@@ -62,11 +64,13 @@ text, both write the same symbols many times, and both change what they record
 about a symbol over time, one as they learn more and the other as the design
 changes. The difference is whose symbols are drawn.
 
-Wherever Inkline is described, give the two equal place, or use words that cover
-both. The owner has set no rule for design choices between them. The
-maintainers' rule is to judge a feature by the two needs below, not by which
-direction asked for it, and to weigh a choice that helps one direction and costs
-the other like any design choice, with the tradeoff recorded on its issue.
+The owner plays such games and intended Inkline primarily for that work, and
+counts its use for making a script up as good. Wherever Inkline is described,
+give the two equal place, or use words that cover both. The owner has set no
+rule for design choices between them. The maintainers' rule is to judge a
+feature by the two needs below, not by which direction asked for it, and to
+weigh a choice that helps one direction and costs the other like any design
+choice, with the tradeoff recorded on its issue.
 
 Other uses, such as a cipher or a personal shorthand, work the same way. They
 are welcome, and they add no commitments of their own: a change counts when it
@@ -141,7 +145,10 @@ date. An idea that fits the purpose is not approved by fitting it, and an idea
 that is held is not ruled out for good. The issue's comments, the agents'
 "vision" report among them, describe what Inkline could become, not what it is
 for or what is planned; [Vision](#vision) below is what the owner has said. Pen
-input is held as well, as [the pen-input branch](#the-pen-input-branch) says.
+input is held as well: the owner took it out of the first stable release in
+[#101](https://github.com/viell-dev/slop-inkline/issues/101), and its work is
+kept, unmerged, on [the pen-input branch](#the-pen-input-branch) for the owner's
+decision.
 
 ### Deciding what belongs
 
