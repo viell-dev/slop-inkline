@@ -76,7 +76,8 @@ and a yes to one is not a yes to the next:
 3. **Is it in a release's agreed scope, and worth its cost?**
    [RELEASING.md](RELEASING.md#the-stable-release-goal) lists what `1.0.0` does,
    and [CONTRIBUTING.md](CONTRIBUTING.md#request-a-feature) says how a request
-   is weighed. A change to that goal is the owner's decision.
+   is weighed. A change to that goal is the owner's decision, and what it puts
+   out of scope stays the owner's decision after `1.0.0` too.
 
 **Keep to that scope.** Agents that iterate on their own work tend to widen it a
 little at a time:

@@ -65,8 +65,8 @@ Either way, Inkline does two things:
 A cipher or a personal shorthand works the same way.
 
 It is not a whiteboard, a handwriting notebook, a font editor, or a set of
-ready-made symbols: it draws small symbols of your own, one at a time, for use
-in text.
+ready-made symbols: it draws the symbols you need, one at a time, for use in
+text.
 
 ## What it does now
 
