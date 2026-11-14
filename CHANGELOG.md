@@ -22,9 +22,11 @@ even one a public release; earlier pre-releases carry a suffix such as
   place for how it is read and what it means, which can be edited without
   changing a note, and say that the list of symbols finds one by them as well as
   by its name.
-- The README and the guide call the characters that open that list the insert
-  trigger, as its setting does, and give `;;` as its default, since the setting
-  can change it. Nothing about how Inkline works has changed.
+- The README and the guide call the characters that open the list of symbols the
+  insert trigger, as its setting does, and give `;;` as its default, since the
+  setting can change it.
+
+These change only text: nothing about how Inkline works has changed.
 
 ## 0.9.3 - 2026-11-12
 

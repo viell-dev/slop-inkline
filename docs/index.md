@@ -76,8 +76,9 @@ in text.
   trackpad, with guides at the text font's lines; trace over a screenshot, or
   turn it into ink, instead of drawing. See
   [Drawing in the editor](./drawing.md).
-- **Insert** it where you were writing, or type `;;` and a few letters of a
-  symbol you have to insert it again. See [Symbols in notes](./notes.md).
+- **Insert** it where you were writing, or type the insert trigger and a few
+  letters of a symbol you have to insert it again. See
+  [Symbols in notes](./notes.md).
 - **Name** and rename it in its editor, and **edit** it again from its menu, a
   command, or the file explorer.
 - **Record** how it is read and what it means, apart from its name, and find it
