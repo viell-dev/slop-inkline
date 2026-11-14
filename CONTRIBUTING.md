@@ -291,7 +291,7 @@ marked read, author and pull request review read for meaning.
   configuration, [Request a feature](#request-a-feature), and the feature
   request form in `.github/ISSUE_TEMPLATE/`; the short description, checked
   against the manifest's. The repository's description on GitHub is a live
-  setting: update it after the merge.
+  setting: update it once the change has merged.
 - **How it looks:** `docs/screenshots/` and `listing/screenshots/`; the
   listing's sizes, checked.
 - **Anything users can see:** `Unreleased` in [CHANGELOG.md](CHANGELOG.md), and
