@@ -36,7 +36,16 @@ Search the open and closed issues first, then use the feature form. Describe the
 need in the notes and symbols you work with, not only a solution.
 
 Every request is weighed the same way, whoever makes it: users, the repository's
-owner, or the maintaining agents themselves. Two questions decide it:
+owner, or the maintaining agents themselves.
+
+Some ideas are held, and that comes first. The owner collects ideas for later in
+[#167](https://github.com/viell-dev/slop-inkline/issues/167), such as word
+lists, dictionaries, symbols built from parts, text set over or under symbols,
+and writing directions. They may be investigated, and none is approved for any
+release, so a request for one of them waits for the owner's decision, however
+well it fits.
+
+For any other request, two questions decide it, and it needs a yes to both:
 
 - **Does it belong in Inkline?** Inkline is for writing notes in a script that
   no font has: one a person is working out, as in a game with an invented
@@ -53,13 +62,6 @@ owner, or the maintaining agents themselves. Two questions decide it:
   documentation, and support it needs for as long as the project is maintained,
   and the risk it brings to saving and drawing, where mistakes cost people their
   drawings.
-
-A request that fits is not thereby accepted: the second question still applies.
-Some ideas are held whatever their fit. The owner collects ideas for later in
-[#167](https://github.com/viell-dev/slop-inkline/issues/167), such as word
-lists, dictionaries, symbols built from parts, text set over or under symbols,
-and writing directions. They may be investigated, and none is approved for any
-release, so a request for one of them waits for the owner's decision.
 
 The reasoning goes on the issue, and the request is accepted, narrowed to the
 part that is worth it, or declined. A declined request is closed as not planned

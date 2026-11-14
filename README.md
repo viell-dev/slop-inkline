@@ -47,8 +47,8 @@ how to get unsaved work back.
 
 ## What it is for
 
-Inkline is for writing notes in a script that no font has, so that you cannot
-type it. That is the same work from two directions:
+Inkline is for writing notes in a script that no font has, so you cannot type
+it. That is the same work from two directions:
 
 - **Working a script out.** Some games, such as Chants of Sennaar, have an
   invented language, and working it out is the game. You draw the symbols that

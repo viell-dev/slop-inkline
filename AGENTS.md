@@ -51,14 +51,14 @@ and a yes to one is not a yes to the next:
 
 1. **Is it held?** Check this first. Every idea in
    [#167](https://github.com/viell-dev/slop-inkline/issues/167) is for
-   investigation only, and none is approved for any release: word lists and
-   dictionaries, meanings for runs of symbols, symbols built from other symbols,
-   text set over or under symbols, symbols wider than their place, sizes above
-   today's limit, and writing directions. Several of them would serve writing a
-   script, and that does not approve them. That issue's comments, its "vision"
-   report included, describe what Inkline could become, not what it is for or
-   what is planned. [The pen-input branch](#the-pen-input-branch) is another
-   hold.
+   investigation only, and none is approved for any release. The owner adds to
+   that issue; it holds ideas such as word lists and dictionaries, meanings for
+   runs of symbols, symbols built from other symbols, text set over or under
+   symbols, symbols wider than their place, sizes above today's limit, and
+   writing directions. Several of them would serve writing a script, and that
+   does not approve them. That issue's comments, its "vision" report included,
+   describe what Inkline could become, not what it is for or what is planned.
+   [The pen-input branch](#the-pen-input-branch) is another hold.
 2. **Does it serve the purpose?** It does when it makes notating or reusing a
    symbol easier or safer, for either direction.
 3. **Is it in a release's agreed scope, and worth its cost?**
@@ -72,7 +72,7 @@ lists find it by them. Meanings for words or runs of symbols, and a dictionary
 of a language, are among #167's unapproved ideas.
 
 **A script the person can already type is not the case to design for.** Someone
-who can type or paste a script's characters does not need to draw them.
+who can type or paste a script's characters seldom needs to draw them.
 
 The owner decides changes to what Inkline is for, as [Releases](#releases) says.
 

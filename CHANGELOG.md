@@ -17,8 +17,10 @@ even one a public release; earlier pre-releases carry a suffix such as
   home page, and the directory listing say the same in more words: Inkline is
   for writing notes in a script that no font has, whether you are working it out
   from a game or making it up for a language of your own, by writing a symbol
-  down easily and using it again easily. Nothing about how Inkline works has
-  changed.
+  down easily and using it again easily. They and the guide's pages on a first
+  symbol and on names now describe finding a symbol by its name, reading, or
+  translation, and correcting a guess in its readings and translations rather
+  than by renaming it. Nothing about how Inkline works has changed.
 
 ## 0.9.3 - 2026-11-12
 
