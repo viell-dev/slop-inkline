@@ -52,9 +52,8 @@ how to get unsaved work back.
 Inkline is for writing notes in a script that no font has, so you cannot type
 it. That is the same work from two directions:
 
-- **Working a script out.** Some games, such as Chants of Sennaar, have an
-  invented language, and working it out is the game. You draw the symbols that
-  someone else made.
+- **Working a script out.** Some games are built around an invented language,
+  and working it out is the game. You draw the symbols that someone else made.
 - **Making a script up.** A constructed language (a conlang) can have a script
   of its own. You draw the symbols that you make.
 
