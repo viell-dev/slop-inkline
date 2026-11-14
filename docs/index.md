@@ -5,7 +5,8 @@ hero:
   text: Symbols you draw, written like letters
   tagline:
     An Obsidian plugin for drawing symbols that no font has, which sit in the
-    line of text like characters, at the text's size and in its colour.
+    line of text like characters, by default at the text's size and in its
+    colour.
   actions:
     - theme: brand
       text: Draw your first symbol
@@ -17,7 +18,8 @@ features:
   - title: In the line, like a character
     details:
       A symbol stands on the text's baseline, grows with headings and zoom, and
-      takes the colour of the text around it, in light and dark themes.
+      by default takes the colour of the text around it, in light and dark
+      themes.
   - title: A plain PNG file
     details:
       Each symbol is an image in your vault with an ordinary embed, so your
@@ -64,9 +66,7 @@ Either way, Inkline does two things:
 
 A cipher or a personal shorthand works the same way.
 
-It is not a whiteboard, a handwriting notebook, a font editor, or a set of
-ready-made symbols: it draws the symbols you need, one at a time, for use in
-text.
+Inkline draws the symbols you need, one at a time, for use in text.
 
 ## What it does now
 

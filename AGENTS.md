@@ -7,90 +7,211 @@ parallel work, attribution, and reports to other projects. This file adds only
 what is specific to this repository; [CONTRIBUTING.md](CONTRIBUTING.md) holds
 the setup, checks, and tests that apply to everyone.
 
-## What Inkline is for
+## What Inkline is
 
-Inkline is for writing notes in a script that a person cannot type. The case in
-view is an invented script: its symbols have no standard Unicode characters, and
-the person has no font or keyboard layout for it, so the symbols cannot be
-typed, pasted, or searched for as text. The user documents say "symbols that no
-font has" as shorthand for that. It is not a technical claim: a script can be
-given a font through private-use characters, and a person who has one can type
-it.
+This section says what Inkline is, what it is for, what it covers, and where it
+might go. Read it before judging a feature, a review finding, or a description
+of Inkline. The owner decides what Inkline is for and what its releases cover.
+Where a decision of theirs, on an issue or a pull request, differs from this
+section, the decision wins, and this section is what to fix.
 
-People meet that from two directions:
+### What it is
 
-- **Working a script out:** a game has an invented language, and working it out
-  is the game. The player draws someone else's symbols, copying them from what
-  the game shows.
-- **Making a script up:** a person creates a constructed language, a conlang,
-  with a script of its own. They draw their own symbols.
+Inkline is a plugin for Obsidian, the note-taking app, for writing symbols that
+no font has into notes. A person draws a symbol once, in a small editor sized to
+a line of text, and Inkline saves it in the vault as a PNG image and embeds it
+in the note with an ordinary image link. The symbol then shows in the line like
+a character, by default at the size and colour of the text around it. To write
+it again, the person types the insert trigger, a few characters set in Inkline's
+settings (`;;` unless changed), then a few letters of the symbol's name, and
+picks it from the list that opens.
 
-The work is the same but for whose symbols they are: both write the script among
-ordinary text, write the same symbols many times, and change what they record
-about a symbol over time. Give both the same weight wherever Inkline is
-described, or use words that cover both, and avoid wording that fits only one,
-such as calling what a symbol records a guess. Judge a request by the needs
-below, not by which of the two it comes from. Where the two pull apart, weigh it
-as any design choice and record the tradeoff. A cipher or a personal shorthand
-works the same way, and adds no commitments of its own.
+It runs in desktop Obsidian, and symbols are drawn with a mouse or a trackpad.
+It has had no stable release yet; when the first is published is the owner's
+decision, as [Releases](#releases) says.
 
-Two needs follow, and they are the core of the first stable release:
+### What it is for
 
-- **Notate:** write a symbol that cannot be typed into a note as easily as a
-  letter, where the person is writing, so that it reads as part of the text.
-- **Reuse:** write a symbol already drawn again, in any note, as easily, without
-  drawing it again or looking for its file. A symbol is one file however many
-  notes use it, and the lists find it by its name, a reading, or a translation.
+Inkline is for keeping notes in a script that the person cannot type.
 
-Keeping drawings safe, and keeping notes readable without Inkline, are
-conditions on both: a symbol that can be lost or locked in is not easy to use.
-"Easy" is the aim, not a measure: describe what Inkline does, and add no
-promises, such as a number of seconds or no need to draw well, that nobody set.
+Computers store text as characters from Unicode, a standard list of the
+characters of the world's writing systems. A script that someone invented is
+usually not in it, so the person has no keyboard layout to type it and no font
+to show it. Without a tool, they fall back on stand-ins, such as a made-up name
+or a number for each symbol, and have to remember which stand-in is which.
+Inkline removes the stand-in: the symbol itself goes in the note.
 
-**Describe Inkline by its purpose, not only its mechanism.** "Draws small inline
-images" says how it works. It leaves out the reuse and whom it is for.
+"Symbols that no font has" is the plain way to say this to users, who know fonts
+better than Unicode. It is shorthand, not a technical claim: a script outside
+Unicode can still have a font, through characters Unicode leaves for private
+use, and a person who has such a font and a way to type it does not need Inkline
+for that script.
 
-**What Inkline records today is about one symbol.** Each symbol holds its
-readings and translations, filled in from the editor or the library, and the
-lists find it by them. Meanings for words or runs of symbols, and a dictionary
-of a language, are among #167's unapproved ideas.
+### Two directions
 
-**A script the person can already type is not the case to design for.** Someone
-who can type or paste a script's characters seldom needs to draw them.
+People come to a script they cannot type from two directions:
 
-**What Inkline is not:** a whiteboard, a diagram tool, a handwriting notebook, a
-paint program, a font editor, or a library of ready-made symbols. A request for
-one of those is declined, with the reason on the issue.
+- **Working one out.** Some games are built around an invented language, and
+  working out what its script says is the game. The player draws symbols that
+  someone else made, copying them from what the game shows.
+- **Making one up.** A person creating a constructed language, a conlang, can
+  give it a script of its own. They draw symbols they make themselves.
 
-**Fitting the purpose is not permission to build.** These are three questions,
-and a yes to one is not a yes to the next:
+The two are essentially the same work. Both write the script among ordinary
+text, both write the same symbols many times, and both change what they record
+about a symbol over time, one as they learn more and the other as the design
+changes. The difference is whose symbols are drawn.
 
-1. **Is it held?** Check this first. Every idea in
-   [#167](https://github.com/viell-dev/slop-inkline/issues/167) is for
-   investigation only, and none is approved for any release, however well it
-   fits; the owner adds to that issue. Its comments, its "vision" report
-   included, describe what Inkline could become, not what it is for or what is
-   planned. [The pen-input branch](#the-pen-input-branch) is another hold.
+Wherever Inkline is described, give the two equal place, or use words that cover
+both. The owner has set no rule for design choices between them. Judge a feature
+by the two needs below, not by which direction asked for it, and weigh a choice
+that helps one direction and costs the other like any design choice, with the
+tradeoff recorded on its issue.
+
+Other uses, such as a cipher or a personal shorthand, work the same way. They
+are welcome, and they add no commitments of their own: a change counts when it
+serves the two needs, whoever asks for it.
+
+### Two needs
+
+1. **Notate.** Writing a symbol that cannot be typed into a note should be as
+   easy as writing a letter. It happens where the person is writing, and the
+   result reads as part of the text, not as a picture set into a paragraph.
+2. **Reuse.** Writing a symbol already drawn should be as easy again, in any
+   note, without drawing it a second time or looking for its file. Each symbol
+   is one file, however many notes use it, so a change to it shows everywhere.
+
+Reuse matters as much as notation. A symbol is drawn once and written many
+times, so a tool that only put drawings into notes would meet the first need and
+leave the second undone.
+
+"Easy" is the aim, not a measured promise. Nothing here claims a number of
+seconds or keys, or that no drawing skill is needed. Tracing helps when a symbol
+already exists as a picture, as in a game; a shape that exists nowhere yet still
+has to be drawn.
+
+Both needs rest on two commitments Inkline already keeps:
+
+- **Keeping drawings safe.** Unsaved work is kept as a draft, and the editor
+  asks before it closes with changes that are not saved.
+- **Keeping notes readable without Inkline.** Each symbol is an ordinary PNG
+  file with an ordinary embed, so a note still shows it with Inkline turned off
+  or removed, and other apps can show the picture from a standard Markdown link.
+
+### What a symbol records
+
+A symbol has a name, which is its file's name and what notes link to. It can
+also record readings, how it is read aloud, and translations, what it means,
+filled in from the editor or the library. The lists that insert a symbol find it
+by its name, a reading, or a translation. Editing the readings and translations
+changes no note, and renaming a symbol updates the links to it as Obsidian's
+settings say. Today, what Inkline records is about one symbol at a time.
+
+### Scope
+
+**The first stable release.** The core is notating and reusing single symbols,
+with their readings and translations, in desktop Obsidian with a mouse or a
+trackpad. The first stable release, `1.0.0`, delivers it. Its exact feature list
+is the [stable release goal](RELEASING.md#the-stable-release-goal) the owner
+agreed, and only the owner changes it.
+
+The owner has confirmed that this target stands. In the owner's judgement,
+today's features are enough even for a script written right to left in words of
+several symbols, as long as it is not mixed much with the person's own language
+in one line. That is a judgement about the target, not a claim that Inkline
+supports writing directions.
+
+**Later releases.** The owner has not said what later releases cover, beyond the
+direction under [Vision](#vision), which approves nothing. Until the owner
+decides otherwise, the agreed scope after `1.0.0` stays the core above, and
+within it the maintainers weigh a request as
+[Deciding what belongs](#deciding-what-belongs) says. Growing Inkline beyond the
+core is a change of scope, and so is adding a capability the agreed goal
+explicitly put outside the first stable release, even one that would otherwise
+fit the core. Both are the owner's decision. When it is unclear whether a change
+does either, the maintainers establish whether it fits the agreed scope before
+building it, and a change that needs a wider scope is not built without the
+owner's decision.
+
+**Held ideas.** The owner collects ideas for Inkline's future in
+[#167](https://github.com/viell-dev/slop-inkline/issues/167), and adds to it.
+They are ideas only. Investigating whether one is possible is allowed, and
+nothing more: none is approved for any release, and none has a version or a
+date. An idea that fits the purpose is not approved by fitting it, and an idea
+that is held is not ruled out for good. The issue's comments, the agents'
+"vision" report among them, describe what Inkline could become, not what it is
+for or what is planned; [Vision](#vision) below is what the owner has said. Pen
+input is held as well, as [the pen-input branch](#the-pen-input-branch) says.
+
+### Deciding what belongs
+
+Ask three questions, in order. A yes to one is not a yes to the next.
+
+1. **Is it held?** An idea in #167, or one that depends on one, waits for the
+   owner, however well it fits. So does pen input.
 2. **Does it serve the purpose?** It does when it makes notating or reusing a
-   symbol easier or safer, for either direction.
-3. **Is it in a release's agreed scope, and worth its cost?**
-   [RELEASING.md](RELEASING.md#the-stable-release-goal) lists what `1.0.0` does,
-   and [CONTRIBUTING.md](CONTRIBUTING.md#request-a-feature) says how a request
-   is weighed. A change to that goal is the owner's decision, and what it puts
-   out of scope stays the owner's decision after `1.0.0` too.
+   symbol easier or safer, in either direction.
+3. **Is it in the agreed scope, and worth its cost?** Until `1.0.0`, the agreed
+   scope is the feature list of the stable release goal, and adding to that list
+   is the owner's decision. After it, the agreed scope is as Later releases
+   under [Scope](#scope) sets out. Within it, the maintainers accept, narrow, or
+   decline a request that serves the purpose and is not held, by its cost: the
+   code, tests, documentation, and support it needs for as long as the project
+   is maintained, and the risk it brings to people's drawings.
+   [Request a feature](CONTRIBUTING.md#request-a-feature) says how a request is
+   recorded and closed.
 
-**Keep to that scope.** Agents that iterate on their own work tend to widen it a
-little at a time:
+A request outside the purpose, or for something only the owner can add, is a
+proposal to change the scope. The maintainers raise it with the owner, in an
+issue with `Needs: Owner`, only when its benefit clearly justifies the change;
+otherwise they decline it, with the reason on the issue. Only the owner changes
+what Inkline is for, or the agreed goal of a stable release.
 
-- Describe what the current release does. A held idea, a research result, or a
-  possible future is not what Inkline is, does, or is for.
-- Research is not a plan. Investigations, experiment branches, and comments on
-  what Inkline could become approve nothing, however often they are repeated.
-- An agent's own idea, and a review suggestion that adds a capability, are
-  feature requests: weigh them by the three questions on an issue before
-  building anything.
+### Keeping to the scope
 
-The owner decides changes to what Inkline is for, as [Releases](#releases) says.
+Agents that iterate on their own work tend to widen it a little at a time. These
+rules keep the purpose and scope where the owner put them.
+
+- **Describe Inkline as it is.** Say what the current release does. Do not
+  describe a held idea, a research result, or a possible future as what Inkline
+  is, does, or is for.
+- **Bound the scope by what Inkline is.** Say what it is and what it covers, and
+  add no lists of what it is not: such a list reads as complete, goes stale as
+  things change, and needs upkeep, while the core above already sets the bounds.
+  The user guide's known limits are different: they tell users what a feature
+  does not do and what to do instead.
+- **Research is not a plan.** Investigations, experiment branches, prototypes,
+  and comments on what Inkline could become approve nothing. An idea does not
+  become scope by being written down, repeated, or researched further.
+- **An agent's own idea is a feature request.** So is a review suggestion that
+  adds a capability. Weigh it by the three questions on an issue, and build it
+  only if it passes them.
+- **An aim is not a promise.** "Easy" is the goal. A description claims only
+  what Inkline does now, and adds no measures the owner did not set.
+- **Say what it is for, not only how it works.** "Draws small inline images"
+  says how it works, and leaves out reuse and the people it is for.
+- **Keep both directions in view.** Wording that fits only one direction, such
+  as calling everything recorded about a symbol a guess, leaves the other out.
+
+### Vision
+
+This is where Inkline might go after its first stable release, as far as the
+owner has said. It is a direction, not a plan: nothing here is approved,
+scheduled, or promised.
+
+The owner has said that later versions might grow beyond single symbols, into
+features such as words, compound symbols, and dictionaries, and has called that
+a future problem.
+
+Unless the owner changes it, the purpose stays the same: helping a person write
+and reuse the symbols of a script they cannot type, from either direction. Each
+idea would be judged by that purpose and its cost, and approved or not by the
+owner. The owner has also said that how such features would look has no single
+answer: it depends on the script and on how the person takes notes. No design
+should be assumed in advance.
+
+### Keeping this section in step
+
 A change to this section updates the places that
 [What a change updates](CONTRIBUTING.md#what-a-change-updates) lists for what
 Inkline is for, and a change to those places checks that this section still

@@ -2,7 +2,8 @@
 
 An Obsidian plugin for symbols that no font has: draw one once, then write it in
 your notes as easily as a letter, as often as it comes up. Each symbol sits
-inside the line of text like a character, at the text's size and in its color.
+inside the line of text like a character, by default at the text's size and in
+its color.
 
 ## Install
 

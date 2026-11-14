@@ -50,9 +50,10 @@ For any other request, two questions decide it, and it needs a yes to both:
   language, or one they are making up, as for a constructed language of their
   own. It has two jobs: writing such a symbol into a note as easily as a letter,
   and using it again as easily. A request fits when it makes one of those easier
-  or safer. It supports desktop Obsidian with a mouse or trackpad; the user
-  guide's [limits](https://viell-dev.github.io/slop-inkline/limits) say what it
-  does not support.
+  or safer. It supports desktop Obsidian with a mouse or trackpad. The
+  [stable release goal](RELEASING.md#the-stable-release-goal), which the owner
+  agreed, says what the first stable release covers. Adding to it is the owner's
+  decision, and so is adding what it puts out of scope, after that release too.
 - **Is the benefit worth what it adds?** That means the code, tests,
   documentation, and support it needs for as long as the project is maintained,
   and the risk it brings to saving and drawing, where mistakes cost people their
@@ -66,7 +67,7 @@ which the maintainers raise with the owner only when its benefit clearly
 justifies the change.
 
 An agent proposing a feature, for its operator or as a maintainer, reads
-[What Inkline is for](AGENTS.md#what-inkline-is-for) in AGENTS.md first.
+[What Inkline is](AGENTS.md#what-inkline-is) in AGENTS.md first.
 
 ## Set up
 

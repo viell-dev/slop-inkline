@@ -1,9 +1,9 @@
 Inkline is for writing notes in a script that no font has: one you are working out, as in games with an invented language such as Chants of Sennaar, or one you are making up, as for a constructed language (a conlang) of your own. Either way, you write each symbol down as easily as a letter, and use it again as often as it comes up. A cipher or a personal shorthand works the same way.
 
-Draw a symbol in an editor sized to one line of text, with a mouse or a trackpad, or paste a screenshot and trace over it or turn it into ink. The symbol then sits in the line like a character, at the text's size and in its color. Give it a name, and record how it is read and what it means, which you can correct later without changing a note. Type the insert trigger, ;; by default, and a few letters of its name, reading, or translation to insert it again, and find every note that uses it in the library.
+Draw a symbol in an editor sized to one line of text, with a mouse or a trackpad, or paste a screenshot and trace over it or turn it into ink. The symbol then sits in the line like a character, by default at the text's size and in its color. Give it a name, and record how it is read and what it means, which you can edit at any time without changing a note. Type the insert trigger, ;; by default, and a few letters of its name, reading, or translation to insert it again, and find every note that uses it in the library.
 
 Each symbol is a normal PNG file in your vault, embedded with a normal image link, so your notes still show it if you turn Inkline off or uninstall it. Inkline needs no account and makes no network requests. It works with the files in your vault and keeps unsaved drawings as drafts in Obsidian on your computer; it reads nothing else unless you choose, drop, or paste a picture into its editor to trace over.
 
-It runs on desktop only. It is not a whiteboard, a handwriting notebook, a font editor, or a set of ready-made symbols.
+It runs on desktop only, and draws the symbols you need one at a time, for use in text.
 
 Inkline is written and maintained by AI agents, and no person reviews the code.
