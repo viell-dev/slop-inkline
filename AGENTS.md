@@ -178,10 +178,10 @@ rules keep the purpose and scope where the owner put them.
 - **Bound the scope by what Inkline is.** Say what it is and what it covers, and
   add no lists of what it is not: such a list reads as complete, goes stale as
   things change, and needs upkeep, while the core above already sets the bounds.
-  Two records are different. The user guide's known limits tell users what a
+  Two records are exceptions. The user guide's known limits tell users what a
   feature does not do and what to do instead. The stable release goal's "Out of
-  scope" line records what the owner agreed for `1.0.0`: only the owner changes
-  it, and it is not copied or extended elsewhere.
+  scope" line records what the owner agreed for `1.0.0`. Only the owner changes
+  it; do not copy or extend it elsewhere.
 - **Research is not a plan.** Investigations, experiment branches, prototypes,
   and comments on what Inkline could become approve nothing. An idea does not
   become scope by being written down, repeated, or researched further.
