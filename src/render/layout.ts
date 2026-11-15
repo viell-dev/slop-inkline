@@ -68,6 +68,33 @@ export function dropFor(height: number): string {
 }
 
 /**
+ * A symbol's width over its height, from its image's own size. Undefined
+ * while that is not known yet, as before it loads.
+ */
+export function aspectRatio(
+  naturalWidth: number,
+  naturalHeight: number,
+): number | undefined {
+  if (naturalWidth <= 0 || naturalHeight <= 0) return undefined;
+  return naturalWidth / naturalHeight;
+}
+
+/**
+ * The width, in CSS pixels, that an explicit size of only a width asks a
+ * symbol to show at, as `![[x.ink.png|1000]]` does: a space narrower than it
+ * shrinks the symbol evenly, its height following. Undefined for a size that
+ * gives a height, whose drop follows that height, and for no size.
+ */
+export function explicitWidth(
+  widthAttribute: string | null,
+  heightAttribute: string | null,
+): number | undefined {
+  if (heightAttribute !== null) return undefined;
+  const width = Number.parseFloat(widthAttribute ?? "");
+  return Number.isFinite(width) && width > 0 ? width : undefined;
+}
+
+/**
  * The height, in CSS pixels, at which a symbol with an explicit size shows:
  * its `height` attribute, or else its `width` attribute at its own aspect
  * ratio. Undefined while that is not known yet, as before it loads.
