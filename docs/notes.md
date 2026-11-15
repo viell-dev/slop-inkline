@@ -18,8 +18,19 @@ whether ink takes the text's colour or shows its stored grey pixels.
 This holds in Live Preview, Reading view, callouts, tables, embedded notes,
 hover previews, text cards on a canvas, and popout windows.
 
+- **Unreleased:** a symbol stands on the baseline wherever it falls in the line,
+  and the symbols of a line line up with each other. In 0.9.3, by where it fell,
+  its ink could sit three quarters of a pixel higher than the letters beside it
+  in Obsidian's default 16-pixel text, where it now stands exactly on their
+  baseline, and more at some other sizes. At some text sizes, Symbol sizes, and
+  zoom levels it still stands off the letters, by up to about a pixel at 100%
+  zoom and up to about two at other zoom levels, as
+  [Known limits](./limits.md#in-general) says.
 - **An explicit size** that Obsidian's embed syntax gives, as in
   `![[tower.ink.png|24]]`, is kept, and the symbol still stands on the baseline.
+  **Unreleased:** so does a size wider than the space the symbol is in, which
+  Obsidian shrinks evenly to fit; 0.9.3 sat such a symbol a few pixels below the
+  baseline.
 - A symbol wider than the space it is in, as a very wide one can be in a hover
   preview, a table cell, a narrow pane, or a PDF page, shrinks evenly to fit,
   whole and on the baseline, rather than being squeezed sideways. It still takes

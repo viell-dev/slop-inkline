@@ -56,12 +56,29 @@ even one a public release; earlier pre-releases carry a suffix such as
   size and colour of the text around it by default, since the settings can
   change both. The guide's home page and the listing no longer list what Inkline
   is not, and Known limits no longer says what Inkline "does not do yet", or
-  heads its general limits "Not there yet".
-
-These change only text, not how Inkline works.
+  heads its general limits "Not there yet". These four changes, from Inkline's
+  description to this one, change only text, not how Inkline works.
 
 ### Fixed
 
+- A symbol stands on the baseline of the text beside it wherever it falls in the
+  line, and the symbols of a line line up with each other
+  ([#261](https://github.com/viell-dev/slop-inkline/issues/261)). Before, by
+  where it fell, a symbol's ink could sit three quarters of a pixel higher than
+  the letters beside it in Obsidian's default 16-pixel text, so that two copies
+  of one symbol in a line could differ; now it stands exactly on their baseline
+  there. At some other text sizes, Symbol sizes, and zoom levels it can still
+  stand off the letters, as the text and the symbols are each drawn on whole
+  pixels of the screen: up to about a pixel at 100% zoom, and at other zoom
+  levels up to 1.75 pixels in Obsidian 1.13.4 and 1.00 in 1.15.1. The symbols of
+  a line stand within half a pixel of each other at 100% zoom, and within a
+  pixel at other zoom levels. Symbols shown in their stored colour were not
+  affected.
+- A symbol with a size written into its embed, such as `![[wide.ink.png|1000]]`,
+  that is wider than the space it is shown in stays on the baseline when
+  Obsidian shrinks it to fit, in notes, tables, hover previews and exported PDFs
+  ([#245](https://github.com/viell-dev/slop-inkline/issues/245)). Before, it sat
+  a few pixels below it: 7.5 pixels in a hover preview.
 - Turning Inkline off while Obsidian is still renaming a symbol you have just
   saved, as while it asks whether to update links, no longer leaves a draft that
   the editor offers back though the file holds the drawing. A stroke drawn after
@@ -77,7 +94,6 @@ These change only text, not how Inkline works.
   readings and translations, no longer shows a "Symbols" tooltip at the bottom
   of the list. Screen readers still hear the list's name
   ([#262](https://github.com/viell-dev/slop-inkline/issues/262)).
-
 - In a right-to-left interface, as Obsidian's in Hebrew, a symbol's picture in
   the insert trigger's list, Insert existing symbol, Copy from, and the library
   starts at the right of its column, as the mirrored row has it, rather than at

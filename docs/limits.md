@@ -38,7 +38,23 @@ What Inkline does not do, or does not do everywhere, and what to do instead. The
   it a few pixels below the baseline
   ([#245](https://github.com/viell-dev/slop-inkline/issues/245)). Inkline never
   writes such a size itself, and a symbol without one fits its space on the
-  baseline.
+  baseline. **Unreleased:** fixed, so that such a symbol stays on the baseline,
+  though its line keeps the room below the baseline that the size asked for:
+  `|1000` of a symbol 400 × 192 in a 700-pixel line leaves 36 pixels of line
+  below it. Remove the size, or make it narrower, to close it up.
+- **Up to a pixel or two off the baseline.** The letters of a line and the box a
+  symbol is drawn in each start on whole pixels of the screen, so at some text
+  sizes, Symbol sizes, and zoom levels a symbol stands above or below the
+  letters beside it: up to about a pixel at 100% zoom, and up to about two at
+  other zoom levels
+  ([#261](https://github.com/viell-dev/slop-inkline/issues/261)).
+  **Unreleased:** as measured, up to 1.75 pixels at other zoom levels in
+  Obsidian 1.13.4 and 1.00 in 1.15.1, where 0.9.3 reached 1.94 and 1.25. The
+  symbols of a line are within half a pixel of each other at 100% zoom, and
+  within a pixel at other zoom levels, and in Obsidian's default 16-pixel text
+  at 100% zoom a symbol stands exactly on the letters' baseline. In 0.9.3 the
+  symbols of a line in the text colour could also differ by up to three quarters
+  of a pixel, by where each fell.
 
 ## Links Obsidian writes
 

@@ -840,4 +840,34 @@ describe("Symbols in notes", function () {
     // slowdown of two or three times.
     expect(Math.min(...result.runs)).toBeLessThan(50);
   });
+
+  it("give a size with a height its drop before the image loads", async function () {
+    const given = await browser.executeObsidian(({ obsidian }) => {
+      const vault = obsidian.Platform.resourcePathPrefix;
+      // As ![[x.ink.png|40x60]] gives, for a file that does not load, so
+      // that its own size is never known: the height alone gives the drop.
+      const container = createDiv({ cls: "markdown-rendered" });
+      const image = container.createEl("img", {
+        attr: {
+          src: `${vault}Glyphs/never.ink.png`,
+          width: "40",
+          height: "60",
+          alt: "",
+        },
+      });
+      window.inklineTest.renderSymbols.tagWithin(container, vault);
+      return {
+        tagged: image.classList.contains("inkline-symbol"),
+        loaded: image.naturalWidth > 0,
+        drop: image.style.getPropertyValue("--inkline-drop"),
+        ratio: image.style.getPropertyValue("--inkline-ratio"),
+      };
+    });
+    expect(given).toEqual({
+      tagged: true,
+      loaded: false,
+      drop: "-15px",
+      ratio: "",
+    });
+  });
 });

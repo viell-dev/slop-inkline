@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  aspectRatio,
   cssUrl,
   dropFor,
   explicitHeight,
+  explicitWidth,
   isSymbolUrl,
   symbolName,
 } from "../../../src/render/layout.ts";
@@ -55,6 +57,37 @@ describe("dropFor", () => {
   it("puts a quarter of the height below the baseline", () => {
     expect(dropFor(24)).toBe("-6px");
     expect(dropFor(0)).toBe("0px");
+  });
+});
+
+describe("aspectRatio", () => {
+  it("is the image's own width over its height", () => {
+    expect(aspectRatio(84, 192)).toBe(0.4375);
+    expect(aspectRatio(4000, 192)).toBeCloseTo(20.8333, 4);
+  });
+
+  it("waits for the image's size", () => {
+    expect(aspectRatio(0, 0)).toBeUndefined();
+    expect(aspectRatio(84, 0)).toBeUndefined();
+  });
+});
+
+describe("explicitWidth", () => {
+  it("takes a size of only a width", () => {
+    expect(explicitWidth("1000", null)).toBe(1000);
+    expect(explicitWidth("24.5", null)).toBe(24.5);
+  });
+
+  it("ignores a size with a height, which keeps its height", () => {
+    expect(explicitWidth("40", "30")).toBeUndefined();
+    expect(explicitWidth(null, "30")).toBeUndefined();
+  });
+
+  it("ignores no size, and sizes that are not ones", () => {
+    expect(explicitWidth(null, null)).toBeUndefined();
+    expect(explicitWidth("wide", null)).toBeUndefined();
+    expect(explicitWidth("0", null)).toBeUndefined();
+    expect(explicitWidth("-5", null)).toBeUndefined();
   });
 });
 
