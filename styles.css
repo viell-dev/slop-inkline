@@ -403,7 +403,7 @@ img.inkline-symbol:not([width], [height]) {
 
 /*
  * The symbol library: a filter, then a list of symbols, each a button that
- * inserts it, with how many notes use it, which lists them.
+ * inserts it, with Uses, which lists the notes that use it, and Quick edit.
  */
 .inkline-library {
   display: flex;
@@ -509,13 +509,12 @@ img.inkline-symbol:not([width], [height]) {
 }
 
 /*
- * Narrower than Obsidian's own padding, to leave the name room. The count is
- * as wide as its longest usual text, so that every row's name has the same
- * room, and every row's buttons drop at the same width.
+ * Narrower than Obsidian's own padding, to leave the name room. Uses is as
+ * wide as it is with a count of two digits, so that every row's name has the
+ * same room, and every row's buttons drop at the same width.
  */
 .inkline-library-uses,
-.inkline-library-rename,
-.inkline-library-edit-text {
+.inkline-library-edit {
   height: auto;
   padding-inline: var(--size-4-1);
   color: var(--text-muted);
@@ -525,14 +524,19 @@ img.inkline-symbol:not([width], [height]) {
 }
 
 .inkline-library-uses {
-  min-width: 5.5em;
+  min-width: 5em;
+  font-variant-numeric: tabular-nums;
 }
 
-.inkline-library-edit-text {
-  padding-inline: 2px;
+.inkline-library-edit {
+  gap: var(--size-2-1);
 }
 
-.inkline-library-edit-text .svg-icon {
+.inkline-library-edit-icon {
+  display: flex;
+}
+
+.inkline-library-edit-icon .svg-icon {
   width: var(--icon-xs);
   height: var(--icon-xs);
 }
@@ -571,19 +575,8 @@ img.inkline-symbol:not([width], [height]) {
   margin-top: var(--size-4-1);
 }
 
-.inkline-library-rename-form {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--size-4-1);
-  width: 100%;
-}
-
-.inkline-library-rename-form input {
-  flex: 1 1 8em;
-  min-width: 0;
-}
-
-.inkline-library-text-form {
+/* Quick edit, in place of the row: the name, readings and translations. */
+.inkline-library-edit-form {
   display: flex;
   flex-direction: column;
   gap: var(--size-4-1);
@@ -591,13 +584,21 @@ img.inkline-symbol:not([width], [height]) {
   padding-block: var(--size-4-1);
 }
 
-/* Which symbol the fields are for, as they take the place of its row. */
-.inkline-library-text-title {
+/* Which symbol the fields are for, beside its name. */
+.inkline-library-edit-title {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: var(--size-4-2);
   min-width: 0;
-  overflow-wrap: anywhere;
+}
+
+.inkline-library-edit-title .inkline-text-field {
+  flex: 1 1 auto;
+}
+
+.inkline-library-edit-title input {
+  width: 100%;
+  min-width: 0;
 }
 
 .inkline-text-note {
@@ -622,17 +623,16 @@ img.inkline-symbol:not([width], [height]) {
   display: none;
 }
 
-.inkline-library-rename-form .inkline-save-wait {
-  width: 100%;
-}
-
-.inkline-library-text-buttons {
+.inkline-library-edit-buttons {
   display: flex;
   gap: var(--size-4-1);
 }
 
-.inkline-library-rename-error {
-  width: 100%;
+.inkline-library-edit-error {
   color: var(--text-error);
   overflow-wrap: anywhere;
+}
+
+.inkline-library-edit-error:empty {
+  display: none;
 }

@@ -1038,6 +1038,21 @@ export function renameSymbol(
   };
 }
 
+/**
+ * Whether {@link renameSymbol} would give `file` a new name from `typed`, as
+ * the vault is now, or throws with the reason it would refuse it: a name it
+ * cannot take or another symbol in its folder has, a file no longer in the
+ * vault, or one that Obsidian is still renaming. Renames nothing, so that the
+ * library can refuse a name before it writes anything else, and
+ * {@link renameSymbol} checks all of it again when it runs.
+ */
+export function checkRename(app: App, file: TFile, typed: string): boolean {
+  stillSymbol(app, file);
+  const renaming = renamingOf(app, file, chosen(typed, file));
+  if (renaming !== undefined) notBeingRenamed(file);
+  return renaming !== undefined;
+}
+
 /** Throws unless `file` is still the vault's symbol at its path. */
 function stillSymbol(app: App, file: TFile): void {
   if (!present(app, file) || !isInkPath(file.path)) {

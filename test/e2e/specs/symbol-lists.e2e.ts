@@ -265,9 +265,8 @@ interface LibraryRow {
   insert: Box;
   label: Box;
   uses: Box;
-  rename: Box;
-  /** What edits its readings and translations, the last of its buttons. */
-  text: Box;
+  /** Quick edit, the last of its buttons. */
+  edit: Box;
 }
 
 /** The library as it sits in its sidebar. */
@@ -322,8 +321,7 @@ async function measureLibrary(): Promise<Library> {
             insert: edges(part(".inkline-library-insert")),
             label: edges(label),
             uses: edges(part(".inkline-library-uses")),
-            rename: edges(part(".inkline-library-rename")),
-            text: edges(part(".inkline-library-edit-text")),
+            edit: edges(part(".inkline-library-edit")),
           };
         },
       ),
@@ -338,13 +336,13 @@ function expectInsideSidebar(shown: Library): void {
   for (const row of shown.rows) {
     expect(row.label.right).toBeLessThanOrEqual(row.insert.right + 0.5);
     expect(row.insert.right).toBeLessThanOrEqual(shown.list.right + 0.5);
-    expect(row.text.right).toBeLessThanOrEqual(shown.list.right + 0.5);
+    expect(row.edit.right).toBeLessThanOrEqual(shown.list.right + 0.5);
   }
 }
 
 /** Checks that both of a row's buttons follow its name, on the name's line. */
 function expectOneLine(row: LibraryRow): void {
-  for (const button of [row.uses, row.rename, row.text]) {
+  for (const button of [row.uses, row.edit]) {
     expect(button.left).toBeGreaterThanOrEqual(row.insert.right);
     expect(button.top).toBeLessThan(row.label.bottom);
     expect(button.bottom).toBeGreaterThan(row.label.top);
@@ -680,11 +678,11 @@ describe("Lists of symbols", function () {
         async () =>
           (await libraryRow("dot.ink.png")
             .$(".inkline-library-uses")
-            .getText()) === "1 note",
+            .getText()) === "Uses (1)",
       );
       const { rows } = await measureLibrary();
       expect(spread(rows.map(({ uses }) => uses.left))).toBeLessThan(0.5);
-      expect(spread(rows.map(({ rename }) => rename.left))).toBeLessThan(0.5);
+      expect(spread(rows.map(({ edit }) => edit.left))).toBeLessThan(0.5);
       expect(spread(rows.map(({ insert }) => insert.right))).toBeLessThan(0.5);
     });
 
@@ -720,11 +718,9 @@ describe("Lists of symbols", function () {
         for (const row of shown.rows) {
           // Side by side on the row's next line, at the row's end.
           expect(row.uses.top).toBeGreaterThanOrEqual(row.insert.bottom);
-          expect(row.rename.top).toBe(row.uses.top);
-          expect(row.rename.left).toBeGreaterThanOrEqual(row.uses.right);
-          expect(row.text.top).toBe(row.uses.top);
-          expect(row.text.left).toBeGreaterThanOrEqual(row.rename.right);
-          expect(Math.abs(row.text.right - shown.list.right)).toBeLessThan(0.5);
+          expect(row.edit.top).toBe(row.uses.top);
+          expect(row.edit.left).toBeGreaterThanOrEqual(row.uses.right);
+          expect(Math.abs(row.edit.right - shown.list.right)).toBeLessThan(0.5);
         }
         await saveScreenshot(`symbol-library-rows-${String(width)}`);
       });
@@ -800,7 +796,9 @@ describe("Lists of symbols", function () {
       await waitForRows(library.rows, count);
       const row = libraryRow(path);
       const uses = row.$(".inkline-library-uses");
-      await browser.waitUntil(async () => (await uses.getText()) === "1 note");
+      await browser.waitUntil(
+        async () => (await uses.getText()) === "Uses (1)",
+      );
 
       // The row's symbol inserts it, under its whole name.
       await row.$(".inkline-library-insert").click();
@@ -833,10 +831,14 @@ describe("Lists of symbols", function () {
         async () => (await measureLibrary()).rows.length === 1,
       );
 
-      // Rename shows the whole name, and renames it.
-      await libraryRow(path).$(".inkline-library-rename").click();
-      const field = browser.$(".inkline-library-rename-form input");
+      // Quick edit shows the whole name, and renames it.
+      await libraryRow(path).$(".inkline-library-edit").click();
+      const field = browser.$(".inkline-library-edit-form input");
       await field.waitForDisplayed();
+      await browser
+        .$(".inkline-library-edit-form")
+        .$("button=Save")
+        .waitForEnabled();
       expect(await field.getValue()).toBe(long);
       await field.setValue("shorter now");
       await browser.keys(["Enter"]);
