@@ -10,6 +10,11 @@ export interface CodeCase {
   /** Whether Obsidian renders the place of `HERE` as code. */
   readonly code: boolean;
   /**
+   * Whether Obsidian shows nothing at the place, as in a comment or a tag,
+   * where an embed shows nothing either; `code` is then true.
+   */
+  readonly hidden?: true;
+  /**
    * Why the check finds the other answer, where it knowingly does: what it
    * does not read.
    */
@@ -25,6 +30,15 @@ const tooLong =
 /** Why the check lists nothing after an open `<pre>`, where Obsidian shows text. */
 const tagWithheld =
   "the check lists nothing after a <pre> or <code> tag that the note has not closed, which only a browser could tell ends";
+/** Why the check lists nothing in an element's text, where Obsidian shows text. */
+const rawWithheld =
+  "the check lists nothing in the text of a <textarea> or another element that no tag but its own closing tag ends, where an embed shows as text";
+/** Why the check closes no `<code>` in a quote deep enough to keep it open. */
+const blocksWithheld =
+  "the check counts two elements for each quote, as for a callout, and closes no <code> with eight or more between, where a plain quote's one would close it";
+/** Why the check lists nothing after raw HTML it cannot read with certainty. */
+const unsureWithheld =
+  "the check lists nothing after raw HTML that Obsidian's own HTML may end or not, or that it does not read, such as a <script>, an <svg>, or a <math>";
 /** Why the check reads an item numbered 1 to 9 as indented more. */
 const itemOne =
   "Obsidian takes a column more from the text of an item numbered 1 to 9 when its marker is an odd number of columns wide; the check does not";
@@ -2295,4 +2309,514 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
   },
   "text after <coder>": { note: "Some <coder>a\n\nHERE", code: false },
   "text after </code> alone": { note: "Some </code> a\n\nHERE", code: false },
+  // What raw HTML holds as text closes nothing, as the browser reads it.
+  "a </code> in a comment": {
+    note: "<div><code><!-- </code> -->\n\nHERE\n\n</code>",
+    code: true,
+  },
+  "a </code> in a quoted attribute": {
+    note: '<div><code><span title="</code>">x</span>\n\nHERE\n\n</code>',
+    code: true,
+  },
+  "a </code> in a comment over lines": {
+    note: "<div><code><!--\n</code>\n-->\n\nHERE\n\n</code>",
+    code: true,
+  },
+  "a </code> in a quoted attribute over lines": {
+    note: '<div><code><span title="\n</code>\n">x</span>\n\nHERE\n\n</code>',
+    code: true,
+  },
+  "a </code> in a single-quoted attribute": {
+    note: "<div><code><span title='</code>'>x</span>\n\nHERE",
+    code: true,
+  },
+  "text after </code> after a comment": {
+    note: "<div><code><!-- x --></code>\n\nHERE\n\n</code>",
+    code: false,
+  },
+  "text after </code> after an attribute": {
+    note: '<div><code><span title="x">x</span></code>\n\nHERE\n\n</code>',
+    code: false,
+  },
+  "text after </code> after a comment over lines": {
+    note: "<div><code><!--\nx\n-->\n</code>\n\nHERE",
+    code: false,
+  },
+  "text after </code> after an attribute over lines": {
+    note: '<div><code><span title="\nx\n">x</span>\n</code>\n\nHERE',
+    code: false,
+  },
+  "text after </code> after a single-quoted attribute": {
+    note: "<div><code><span title='x'>x</span></code>\n\nHERE",
+    code: false,
+  },
+  "text after </code> after an unquoted attribute": {
+    note: "<div><code><span title=x></code>\n\nHERE",
+    code: false,
+  },
+  "text after </code> after a quote in an attribute's name": {
+    note: '<div><code><span "a></code>\n\nHERE',
+    code: false,
+  },
+  "text after </code> after a quote after = alone": {
+    note: '<div><code><span ="a></code>\n\nHERE',
+    code: false,
+  },
+  "text after </code> after a quote in an unquoted value": {
+    note: '<div><code><span title=a"b></code>\n\nHERE',
+    code: false,
+  },
+  "a </code> in an attribute quoted after a space": {
+    note: '<div><code><span a= "></code>">\n\nHERE',
+    code: true,
+  },
+  "text after </code> after <!-->": {
+    note: "<div><code><!--></code>\n\nHERE",
+    code: false,
+  },
+  "text after </code> after <!--->": {
+    note: "<div><code><!---></code>\n\nHERE",
+    code: false,
+  },
+  "text after </code> after a comment ending --!>": {
+    note: "<div><code><!-- a --!></code>\n\nHERE",
+    code: false,
+  },
+  "text after </code> after a comment ending --->": {
+    note: "<div><code><!-- a ---></code>\n\nHERE",
+    code: false,
+  },
+  "text after </code> after <!-- in a comment": {
+    note: "<div><code><!-- <!--></code>\n\nHERE",
+    code: false,
+  },
+  "a </code> in a comment past -- >": {
+    note: "<div><code><!-- a -- ></code> -->\n\nHERE",
+    code: true,
+  },
+  "a </code> in a comment past --!": {
+    note: "<div><code><!-- a --!</code> -->\n\nHERE",
+    code: true,
+  },
+  "a </code> in a comment past --!->": {
+    note: "<div><code><!-- a --!-></code> -->\n\nHERE",
+    code: true,
+  },
+  "a </code> in <? to its first >": {
+    note: "<div><code><? a </code> ?>\n\nHERE",
+    code: true,
+  },
+  "text after </code> after <? to its first >": {
+    note: "<div><code><? a > </code>\n\nHERE",
+    code: false,
+  },
+  "text after </code> after a declaration": {
+    note: "<div><code><!X a > </code>\n\nHERE",
+    code: false,
+  },
+  "a </code> in a doctype's quotes": {
+    note: '<div><code><!DOCTYPE a "</code>">\n\nHERE',
+    code: true,
+  },
+  "a </code> in CDATA to its first >": {
+    note: "<div><code><![CDATA[ </code> ]]>\n\nHERE",
+    code: true,
+  },
+  "text after </code> after CDATA to its first >": {
+    note: "<div><code><![CDATA[ a > </code> ]]>\n\nHERE",
+    code: false,
+  },
+  "a </code> in </ and a space": {
+    note: "<div><code></ </code> >\n\nHERE",
+    code: true,
+  },
+  "a </code> in </ and a digit": {
+    note: "<div><code></1</code>\n\nHERE",
+    code: true,
+  },
+  "text after </code> after </>": {
+    note: "<div><code></></code>\n\nHERE",
+    code: false,
+  },
+  // Nothing but its own closing tag ends the text of some elements.
+  "a </code> in a <textarea>": {
+    note: "<div><code><textarea></code></textarea>\n\nHERE",
+    code: true,
+  },
+  "a </code> in a <style>": {
+    note: "<div><code><style></code></style>\n\nHERE",
+    code: true,
+  },
+  "a </code> in a <title>": {
+    note: "<div><code><title></code></title>\n\nHERE",
+    code: true,
+  },
+  "a </code> in an <xmp>": {
+    note: "<div><code><xmp></code></xmp>\n\nHERE",
+    code: true,
+  },
+  "a </code> in an <iframe>": {
+    note: "<div><code><iframe></code></iframe>\n\nHERE",
+    code: true,
+  },
+  "a </code> in a <noembed>": {
+    note: "<div><code><noembed></code></noembed>\n\nHERE",
+    code: true,
+  },
+  "a </code> in a <noframes>": {
+    note: "<div><code><noframes></code></noframes>\n\nHERE",
+    code: true,
+  },
+  "a </code> in a <textarea/>": {
+    note: "<div><code><textarea/></code></textarea>\n\nHERE",
+    code: true,
+  },
+  "a </code> in a <textarea> past </textareax>": {
+    note: "<div><code><textarea></textareax></code></textarea>\n\nHERE",
+    code: true,
+  },
+  "text after </code> after a closed <textarea>": {
+    note: "<div><code><textarea>x</textarea></code>\n\nHERE",
+    code: false,
+  },
+  "text after </code> in a <noscript>": {
+    note: "<div><code><noscript></code></noscript>\n\nHERE",
+    code: false,
+  },
+  "text in a <textarea> over blank lines": {
+    note: "<div><textarea>\n\nHERE",
+    code: false,
+    limit: rawWithheld,
+  },
+  "text after a closed <textarea> over blank lines": {
+    note: "<div><textarea>\n\na\n\n</textarea>\n\nHERE",
+    code: false,
+  },
+  "text in a <textarea> from a paragraph": {
+    note: "Some <textarea> b\n\nHERE",
+    code: false,
+    limit: rawWithheld,
+  },
+  "a </code> in a <textarea> from a paragraph": {
+    note: "Some <code>a <textarea> b\n\n<div></code></div>\n\nHERE",
+    code: true,
+  },
+  "text in a <textarea> from a table's cell": {
+    note: "| a |\n| - |\n| <textarea> |\n\nHERE",
+    code: false,
+    limit: rawWithheld,
+  },
+  // Some elements hold a closing tag that closes nothing.
+  "a </code> in a <table>": {
+    note: "<div><code><table></code>\n\nHERE",
+    code: true,
+  },
+  "a </code> in a <table>'s cell": {
+    note: "<div><code><table><tr><td></code></td></tr></table>\n\nHERE",
+    code: true,
+  },
+  "a </code> in a <caption>": {
+    note: "<div><code><table><caption></code></caption></table>\n\nHERE",
+    code: true,
+  },
+  "a </code> in a <select>": {
+    note: "<div><code><select></code></select>\n\nHERE",
+    code: true,
+  },
+  "a </code> in a <template>": {
+    note: "<div><code><template></code></template>\n\nHERE",
+    code: true,
+  },
+  "a </code> in an <object>": {
+    note: "<div><code><object></code></object>\n\nHERE",
+    code: true,
+  },
+  "a </code> in an <applet>": {
+    note: "<div><code><applet></code></applet>\n\nHERE",
+    code: true,
+  },
+  "a </code> in a <marquee>": {
+    note: "<div><code><marquee></code></marquee>\n\nHERE",
+    code: true,
+  },
+  "text after </code> after a closed <table>": {
+    note: "<div><code><table></table></code>\n\nHERE",
+    code: false,
+  },
+  "text after </code> after a closed <select>": {
+    note: "<div><code><select></select></code>\n\nHERE",
+    code: false,
+  },
+  "text after </code> in a <table> opened before": {
+    note: "<div><table><code>a</code>\n\nHERE",
+    code: false,
+  },
+  "text after </code> in a cell opened before": {
+    note: "<div><table><td><code>a</code>\n\nHERE",
+    code: false,
+  },
+  "text after a <table> in an open <code>": {
+    note: "<div><code><table>\n\nHERE",
+    code: true,
+  },
+  "a </code> in a Markdown table's cell": {
+    note: "Some <code>a\n\n| x |\n| - |\n| </code> |\n\nHERE",
+    code: true,
+  },
+  "a </code> in a Markdown table's header": {
+    note: "Some <code>a\n\n| </code> |\n| - |\n| b |\n\nHERE",
+    code: true,
+  },
+  "text after a table whose header opens <code>": {
+    note: "| <code>a |\n| - |\n| b |\n\nHERE",
+    code: false,
+  },
+  "text after a table whose cell closes <code>": {
+    note: "| a |\n| - |\n| <code>b</code> |\n\nHERE",
+    code: false,
+  },
+  // Eight elements or more keep a copy of a <code> open past its </code>.
+  "a </code> past seven <div>": {
+    note: "<div><code><div><div><div><div><div><div><div>x</code>\n\nHERE",
+    code: false,
+  },
+  "a </code> past eight <div>": {
+    note: "<div><code><div><div><div><div><div><div><div><div>x</code>\n\nHERE",
+    code: true,
+  },
+  "a </code> past eight <blockquote>": {
+    note: "<div><code><blockquote><blockquote><blockquote><blockquote><blockquote><blockquote><blockquote><blockquote>x</code>\n\nHERE",
+    code: true,
+  },
+  "a </code> past ten <span>": {
+    note: "<div><code><span><span><span><span><span><span><span><span><span><span>x</code>\n\nHERE",
+    code: false,
+  },
+  "a </code> in three quotes": {
+    note: "<div><code>\n\n> > > a </code>\n\nHERE",
+    code: false,
+  },
+  "a </code> in six quotes": {
+    note: "<div><code>\n\n> > > > > > a </code>\n\nHERE",
+    code: false,
+    limit: blocksWithheld,
+  },
+  "a </code> in seven quotes": {
+    note: "<div><code>\n\n> > > > > > > a </code>\n\nHERE",
+    code: true,
+  },
+  "a </code> in three list items": {
+    note: "<div><code>\n\n- a\n  - a\n    - a </code>\n\nHERE",
+    code: false,
+  },
+  "a </code> in four list items": {
+    note: "<div><code>\n\n- a\n  - a\n    - a\n      - a </code>\n\nHERE",
+    code: true,
+  },
+  "a </code> in three numbered items": {
+    note: "<div><code>\n\n1. a\n   1. a\n      1. a </code>\n\nHERE",
+    code: false,
+  },
+  "a </code> in four numbered items": {
+    note: "<div><code>\n\n1. a\n   1. a\n      1. a\n         1. a </code>\n\nHERE",
+    code: true,
+  },
+  "a </code> in three callouts": {
+    note: "<div><code>\n\n> [!note] t\n> > [!note] t\n> > > [!note] t\n> > > a </code>\n\nHERE",
+    code: false,
+  },
+  "a </code> in four callouts": {
+    note: "<div><code>\n\n> [!note] t\n> > [!note] t\n> > > [!note] t\n> > > > [!note] t\n> > > > a </code>\n\nHERE",
+    code: true,
+  },
+  "a </code> in a heading": {
+    note: "<div><code>\n\n# a </code>\n\nHERE",
+    code: false,
+  },
+  // Footnotes, shown at the note's end, and definitions open and close nothing.
+  "a </code> in a footnote": {
+    note: "Some <code>a\n\n[^1]: b </code>\n\nHERE",
+    code: true,
+  },
+  "a </code> in a footnote with a reference": {
+    note: "Some <code>a\n\nb [^1]\n\n[^1]: c </code>\n\nHERE",
+    code: true,
+  },
+  "text after a footnote that closes </code>": {
+    note: "Some <code>a\n\n[^1]: c </code>\n\nd [^1] HERE",
+    code: true,
+  },
+  "a </code> in a footnote in a quote": {
+    note: "Some <code>a\n\n> [^1]: b </code>\n\nHERE",
+    code: true,
+  },
+  "a </code> in a footnote in an item": {
+    note: "Some <code>a\n\n- [^1]: b </code>\n\nHERE",
+    code: true,
+  },
+  "a </code> in a footnote indented three spaces": {
+    note: "Some <code>a\n\n   [^1]: c </code>\n\nHERE",
+    code: true,
+  },
+  "a </code> in a footnote of *": {
+    note: "Some <code>a\n\n[^a*b]: c </code>\n\nHERE",
+    code: true,
+  },
+  "a </code> in a footnote of [": {
+    note: "Some <code>a\n\n[^a[b]: c </code>\n\nHERE",
+    code: true,
+  },
+  "text after a footnote of an escaped ]": {
+    note: "Some <code>a\n\n[^a\\]b]: c </code>\n\nHERE",
+    code: false,
+  },
+  "text after [^a b]:": {
+    note: "Some <code>a\n\n[^a b]: c </code>\n\nHERE",
+    code: false,
+  },
+  "text after [^]:": {
+    note: "Some <code>a\n\n[^]: c </code>\n\nHERE",
+    code: false,
+  },
+  "text after [^1]: after a paragraph's line": {
+    note: "Some <code>a\n\nx\n[^1]: c </code>\n\nHERE",
+    code: false,
+  },
+  "text after a footnote that opens <code>": {
+    note: "Some [^1] c\n\n[^1]: <code>d\n\nHERE",
+    code: false,
+  },
+  "a </code> in an inline footnote": {
+    note: "Some <code>a ^[b </code>] c\n\nHERE",
+    code: true,
+  },
+  "text after </code> after an inline footnote": {
+    note: "Some <code>a ^[b] </code>\n\nHERE",
+    code: false,
+  },
+  "text after an inline footnote that opens <code>": {
+    note: "Some ^[b <code>] c\n\nHERE",
+    code: false,
+  },
+  "a </code> in a definition over lines": {
+    note: 'Some <code>a\n\n[x\ny]: z "</code>"\n\nHERE',
+    code: true,
+  },
+  "a </code> in an image's text": {
+    note: "Some <code>a\n\n![</code>](x.png)\n\nHERE",
+    code: true,
+  },
+  "a </code> in a link's title": {
+    note: 'Some <code>a [b](c "</code>")\n\nHERE',
+    code: true,
+  },
+  // Inline HTML is read as the browser reads it.
+  "a <code> after <? to its first >": {
+    note: "Some <? b > <code> ?>\n\nHERE",
+    code: true,
+  },
+  "a <code> after CDATA to its first >": {
+    note: "Some <![CDATA[ > <code> ]]>\n\nHERE",
+    code: true,
+  },
+  "a <code> after a declaration": {
+    note: "Some <!X > <code> >\n\nHERE",
+    code: true,
+  },
+  "text after </code> after an inline <?": {
+    note: "Some <code>a <? b > </code> ?>\n\nHERE",
+    code: false,
+  },
+  "text after an inline <!-- with --!>": {
+    note: "Some <code>a <!-- b --!> </code> -->\n\nHERE",
+    code: false,
+  },
+  "text after an inline <textarea> closed": {
+    note: "Some <code>a <textarea>b</textarea> </code>\n\nHERE",
+    code: false,
+  },
+  "a </code> in an inline attribute": {
+    note: 'Some <code>a <span title="</code>">b</span>\n\nHERE',
+    code: true,
+  },
+  "a </code> in an inline comment": {
+    note: "Some <code>a <!-- </code> -->\n\nHERE",
+    code: true,
+  },
+  // Where Obsidian shows nothing, an embed shows nothing.
+  "text in a comment over blank lines": {
+    note: "<div><!--\n\nHERE\n\n-->",
+    code: true,
+    hidden: true,
+  },
+  "text after an attribute <? leaves open": {
+    note: 'Some <? b > <span title=" ?>\n\nHERE',
+    code: true,
+    hidden: true,
+  },
+  "text in an inline tag": {
+    note: 'Some <span title="HERE">x</span>',
+    code: true,
+    hidden: true,
+  },
+  "text in an inline comment": {
+    note: "Some <!-- HERE -->",
+    code: true,
+    hidden: true,
+  },
+  "text in an inline <?": { note: "Some <? HERE ?>", code: true, hidden: true },
+  "text in an inline <b>": { note: "Some <b>HERE</b>", code: false },
+  "text after <plaintext>": {
+    note: "<div><code><plaintext></code>\n\nHERE",
+    code: true,
+    hidden: true,
+  },
+  // Where raw HTML leaves open what Obsidian's own HTML may end, nothing is certain.
+  "text after a comment that a paragraph ends": {
+    note: "<div><!--\n\na --> b\n\nHERE",
+    code: false,
+    limit: unsureWithheld,
+  },
+  "text after an attribute that a paragraph ends": {
+    note: '<div title="\n\na " b\n\nHERE',
+    code: false,
+    limit: unsureWithheld,
+  },
+  "text after a tag that a paragraph ends": {
+    note: "<div title=x\n\nHERE",
+    code: false,
+    limit: unsureWithheld,
+  },
+  "text after a comment that HTML ends": {
+    note: "<div><!--\n\n<div>-->\n\nHERE",
+    code: false,
+  },
+  "text after </code> after a comment that HTML ends": {
+    note: "<div><code><!--\n\nx\n\n<div>--></code>\n\nHERE",
+    code: false,
+    limit: unsureWithheld,
+  },
+  "text after a closed <script>": {
+    note: "<div><code><script></code></script></code>\n\nHERE",
+    code: false,
+    limit: unsureWithheld,
+  },
+  "a </code> in a <script>'s escaped text": {
+    note: "<div><code><script><!--<script></script></code>--></script>\n\nHERE",
+    code: true,
+  },
+  "text after an <svg>": {
+    note: "<svg>\n\nHERE",
+    code: false,
+    limit: unsureWithheld,
+  },
+  "text after </code> in an <svg>": {
+    note: "<div><code><svg></code></svg>\n\nHERE",
+    code: false,
+    limit: unsureWithheld,
+  },
+  "a </code> in an <svg>'s CDATA": {
+    note: "<div><code><svg><![CDATA[ a > </code> ]]></svg>\n\nHERE",
+    code: true,
+  },
 };

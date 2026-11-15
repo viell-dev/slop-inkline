@@ -79,10 +79,16 @@ describe("insideCode", () => {
     expect(hereInCode("> [!note]\n> <code>\n\nHERE")).toBe(true);
     expect(hereInCode("- <code>\n\n  HERE")).toBe(true);
     expect(hereInCode("1. a <code>b\n\n   HERE")).toBe(true);
-    // In a heading, a table's cell, and a callout's title.
+    // In a heading and a callout's title.
     expect(hereInCode("# <code>a\n\nHERE")).toBe(true);
-    expect(hereInCode("| a | <code>b |\n| - | - |\n\nHERE")).toBe(true);
     expect(hereInCode("> [!note] <code>\n\nHERE")).toBe(true);
+    // A table's cell closes with itself what it opens, and what it closes
+    // stays open, as the browser keeps a `<code>` open over the table.
+    expect(hereInCode("| a | <code>b |\n| - | - |\n\nHERE")).toBe(false);
+    expect(hereInCode("| a | <code>b |\n| - | - |\n| HERE |")).toBe(false);
+    expect(
+      hereInCode("Some <code>a\n\n| x |\n| - |\n| </code> |\n\nHERE"),
+    ).toBe(true);
     // Until it closes, in a later block too.
     expect(hereInCode("Some <code>a\n\nb</code> HERE")).toBe(false);
     expect(hereInCode("Some <code>a\n\nb</code>\n\nHERE")).toBe(false);
@@ -94,6 +100,74 @@ describe("insideCode", () => {
     expect(hereInCode("%%\n<code>\n%%\n\nHERE")).toBe(false);
     expect(hereInCode("See [[<code>]]\n\nHERE")).toBe(false);
     expect(hereInCode("---\nx: <code>\n---\nHERE")).toBe(false);
+  });
+
+  it("reads an HTML block's tags as the browser reads them", () => {
+    // Text in a comment or an attribute, on one line or over lines.
+    for (const tag of [
+      "<!-- </code> -->",
+      '<span title="</code>">x</span>',
+      "<span title='</code>'>x</span>",
+      "<!--\n</code>\n-->",
+      '<span title="\n</code>\n">x</span>',
+    ]) {
+      expect(hereInCode(`<div><code>${tag}\n\nHERE\n\n</code>`)).toBe(true);
+    }
+    // A real closing tag after them closes the `<code>`.
+    expect(hereInCode("<div><code><!-- x --></code>\n\nHERE")).toBe(false);
+    expect(
+      hereInCode('<div><code><span title="x">x</span></code>\n\nHERE'),
+    ).toBe(false);
+    expect(hereInCode("<div><code><!--\nx\n-->\n</code>\n\nHERE")).toBe(false);
+    // What a block of HTML leaves open before Obsidian's own HTML makes the
+    // rest uncertain; a later block of HTML that ends a comment goes on.
+    expect(hereInCode("<div><!--\n\nHERE\n\n-->")).toBe(true);
+    expect(hereInCode('<div title="\n\na\n\nHERE')).toBe(true);
+    expect(hereInCode("<div><!--\n\n<div>-->\n\nHERE")).toBe(false);
+    // A `<textarea>`'s text, in a block of HTML, a paragraph, or a cell.
+    expect(hereInCode("<div><textarea>\n\nHERE")).toBe(true);
+    expect(hereInCode("Some <textarea> b\n\nHERE")).toBe(true);
+    expect(hereInCode("| a |\n| - |\n| <textarea> |\n\nHERE")).toBe(true);
+    expect(hereInCode("<div><textarea>\n\na\n\n</textarea>\n\nHERE")).toBe(
+      false,
+    );
+    // Where the browser closes nothing: in a table, a `<select>`, and with
+    // eight elements or more between, as seven quotes and a paragraph make.
+    expect(
+      hereInCode("<div><code><table><td></code></td></table>\n\nHERE"),
+    ).toBe(true);
+    expect(hereInCode("<div><code><select></code></select>\n\nHERE")).toBe(
+      true,
+    );
+    expect(hereInCode("<div><code><table></table></code>\n\nHERE")).toBe(false);
+    expect(hereInCode(`<div><code>${"<div>".repeat(8)}</code>\n\nHERE`)).toBe(
+      true,
+    );
+    expect(hereInCode(`<div><code>${"<div>".repeat(7)}</code>\n\nHERE`)).toBe(
+      false,
+    );
+    expect(
+      hereInCode(`<div><code>\n\n${"> ".repeat(7)}a </code>\n\nHERE`),
+    ).toBe(true);
+    expect(
+      hereInCode(
+        "<div><code>\n\n- a\n  - a\n    - a\n      - a </code>\n\nHERE",
+      ),
+    ).toBe(true);
+    expect(
+      hereInCode("<div><code>\n\n- a\n  - a\n    - a </code>\n\nHERE"),
+    ).toBe(false);
+    // A footnote's text, shown at the note's end, and a definition over
+    // lines, which shows nothing, close nothing.
+    expect(hereInCode("Some <code>a\n\n[^1]: b </code>\n\nHERE")).toBe(true);
+    expect(hereInCode("Some [^1] c\n\n[^1]: <code>d\n\nHERE")).toBe(false);
+    expect(hereInCode('Some <code>a\n\n[x\ny]: z "</code>"\n\nHERE')).toBe(
+      true,
+    );
+    // Nothing is certain after a `<script>`, an `<svg>`, or a `<math>`.
+    for (const tag of ["script", "svg", "math"]) {
+      expect(hereInCode(`<div><${tag}></${tag}></div>\n\nHERE`)).toBe(true);
+    }
   });
 
   it("reads lines that end in a carriage return", () => {

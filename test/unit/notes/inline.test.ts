@@ -1,10 +1,6 @@
+import { isOpen, noTags, readHtml } from "../../../src/notes/html.ts";
 import { describe, expect, it } from "vitest";
-import {
-  insideInlineCode,
-  noTags,
-  tagsAfter,
-  tagsAfterHtml,
-} from "../../../src/notes/inline.ts";
+import { insideInlineCode, tagsAfter } from "../../../src/notes/inline.ts";
 
 describe("insideInlineCode", () => {
   it("knows an index between backticks", () => {
@@ -139,17 +135,45 @@ describe("insideInlineCode", () => {
     expect(insideInlineCode("Some `<code>` ;;", 14)).toBe(false);
   });
 
-  it("starts with the tags a note left open before the text", () => {
-    expect(insideInlineCode("a ;;", 2, true, { code: 1, pre: 0 })).toBe(true);
-    expect(insideInlineCode("</code> ;;", 8, true, { code: 1, pre: 0 })).toBe(
-      false,
+  it("starts with what the note left open before the text", () => {
+    const open = readHtml("<code>", noTags);
+    expect(insideInlineCode("a ;;", 2, true, open)).toBe(true);
+    expect(insideInlineCode("</code> ;;", 8, true, open)).toBe(false);
+    expect(isOpen(tagsAfter("a <code>b", noTags))).toBe(true);
+    expect(isOpen(tagsAfter("a</code> b", open))).toBe(false);
+    expect(tagsAfter("`<code>` [[<pre>]]", noTags)).toBe(noTags);
+  });
+
+  it("reads inline HTML as the browser reads it", () => {
+    const open = readHtml("<code>", noTags);
+    // Text in an attribute or a comment closes nothing.
+    expect(isOpen(tagsAfter('a <span title="</code>">b</span>', open))).toBe(
+      true,
     );
-    expect(tagsAfter("a <code>b", noTags)).toEqual({ code: 1, pre: 0 });
-    expect(tagsAfter("a</code> b", { code: 1, pre: 0 })).toEqual(noTags);
-    expect(tagsAfter("`<code>` [[<pre>]]", noTags)).toEqual(noTags);
-    expect(tagsAfterHtml('<div><code class="x">', noTags)).toEqual({
-      code: 1,
-      pre: 0,
-    });
+    expect(isOpen(tagsAfter("a <!-- </code> -->", open))).toBe(true);
+    // A `<?` and CDATA end at their first `>`, and what follows is read.
+    expect(isOpen(tagsAfter("Some <? b > <code> ?>", noTags))).toBe(true);
+    expect(isOpen(tagsAfter("Some <![CDATA[ > <code> ]]>", noTags))).toBe(true);
+    expect(isOpen(tagsAfter("Some <? b > </code> ?>", open))).toBe(false);
+    // What one leaves open, Obsidian's own HTML may end or not.
+    expect(tagsAfter('Some <? b > <span title=" ?>', noTags).unsure).toBe(true);
+    // A footnote's text, shown at the note's end, opens and closes nothing.
+    expect(isOpen(tagsAfter("Some ^[b <code>] c", noTags))).toBe(false);
+    expect(isOpen(tagsAfter("a ^[b </code>] c", open))).toBe(true);
+    // Strong text closes nothing opened before it, as the safe reading.
+    expect(isOpen(tagsAfter("a **b</code>** c", open))).toBe(true);
+    // A `<textarea>`'s text is text, to its own closing tag.
+    expect(isOpen(tagsAfter("a <textarea> b", noTags))).toBe(true);
+    expect(
+      isOpen(tagsAfter("a <textarea>b</code></textarea> </code>", open)),
+    ).toBe(false);
+  });
+
+  it("counts a place in an inline tag or comment as code", () => {
+    // An embed there shows nothing.
+    expect(insideInlineCode('Some <span title=";;">a</span>', 18)).toBe(true);
+    expect(insideInlineCode("Some <!-- ;; -->", 10)).toBe(true);
+    expect(insideInlineCode("Some <? ;; ?>", 8)).toBe(true);
+    expect(insideInlineCode("Some <b>;;</b>", 8)).toBe(false);
   });
 });

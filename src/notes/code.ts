@@ -70,8 +70,11 @@
 // - Everything after a `<code>` or `<pre>` tag, in any form, that the note
 //   has not closed, whatever blocks lie between: the browser keeps an open
 //   `<code>` open over blank lines and blocks, even out of a quote or a
-//   heading. Tags in code, front matter, and `%%` or `$$` blocks count for
-//   nothing, and so do those that inline.ts reads as text.
+//   heading. html.ts reads the note's raw HTML as the browser does, and says
+//   where a closing tag closes nothing, and what makes everything after it
+//   uncertain. Tags in code, front matter, `%%` or `$` blocks, and
+//   footnotes count for nothing, and so do those that inline.ts reads as
+//   text; a table's cell keeps to itself what it opens and closes.
 // - A paragraph's text that would take too long to read, as inline.ts says.
 // - A line that a later line of its item would make indented code: Obsidian
 //   takes fewer columns from all of an item's lines when one of them is
@@ -88,15 +91,15 @@
 // they withhold nothing that Obsidian shows as text.
 
 import {
-  closeTag,
-  insideInlineCode,
+  inBlock,
   isOpen,
+  mayChange,
   noTags,
   type OpenTags,
-  openTag,
-  tagsAfter,
-  tagsAfterHtml,
-} from "./inline.ts";
+  readHtmlLine,
+  settled,
+} from "./html.ts";
+import { closeTag, insideInlineCode, openTag, tagsAfter } from "./inline.ts";
 
 /** A note's line, as its editor has it now; undefined past the note's end. */
 export type LineAt = (index: number) => string | undefined;
@@ -617,6 +620,11 @@ class Blocks {
     return this.start === 0 ? this.text : this.text.slice(this.start);
   }
 
+  /** How many containers the last line read is in. */
+  get depth(): number {
+    return this.#containers.length;
+  }
+
   /** The index of the line being read. */
   #index = 0;
   /** The last item the line being read holds by its indentation, or -1. */
@@ -1109,28 +1117,36 @@ export function insideCode(lineAt: LineAt, line: number, ch: number): boolean {
   const from = afterFrontMatter(lineAt, line);
   if (from === undefined) return true;
   const blocks = new Blocks(lineAt);
-  // The tags open before the paragraph or line that holds `ch`.
+  // What raw HTML leaves open before the paragraph or line that holds `ch`.
   let tags = noTags;
-  // The text of the paragraph that holds the line, up to it, and whether it
-  // mentions a tag that opens or closes one.
+  // The lines of the paragraph that holds the line, up to it.
   let paragraph: string[] = [];
-  let tagged = false;
+  // The number of the block being read, for html.ts.
+  let block = 0;
   let kind: LineKind = "none";
   for (let index = from; index <= line; index++) {
+    const before = kind;
     kind = blocks.read(index);
     const text = blocks.content;
     if (kind === "continued") {
       paragraph.push(text);
-      tagged ||= mentionsTag(text);
       continue;
     }
-    if (tagged) tags = tagsAfter(paragraph.join("\n"), tags);
+    // A delimiter row makes the paragraph's one line a table's header.
+    if (paragraph.length > 0) {
+      tags = tagsOfParagraph(paragraph, tags, kind === "row");
+    }
     paragraph = [];
-    tagged = false;
-    if (kind === "paragraph") {
-      paragraph = [text];
-      tagged = mentionsTag(text);
-    } else if (index < line) tags = tagsOfLine(kind, blocks, tags);
+    if (kind !== "html" || before !== "html") {
+      // Obsidian's own HTML for the line follows the raw HTML before it.
+      if (kind !== "html" && !isWhite(text, 0)) tags = settled(tags);
+      block++;
+      // A list item may add two elements, a list and the item, and a
+      // callout two, itself and its content.
+      tags = inBlock(tags, block, 2 * blocks.depth);
+    }
+    if (kind === "paragraph") paragraph = [text];
+    else if (index < line) tags = tagsOfLine(kind, blocks, tags);
   }
   // An HTML block's code cannot be told from its lines, and an embed shows
   // as text in it: the list lists nothing there.
@@ -1164,8 +1180,10 @@ export function insideCode(lineAt: LineAt, line: number, ch: number): boolean {
   const position = joined.length - text.length + at;
   // A definition over the paragraph's first lines may end before `ch`,
   // which then starts a paragraph of its own. Where either reading finds
-  // code, the place counts as code.
+  // code, the place counts as code; a tag open before it stays open, as
+  // Obsidian shows nothing of a definition that might close it.
   const definitionEnd = paragraph.length > 1 ? definitionLines(joined) : -1;
+  if (definitionEnd !== -1 && isOpen(tags)) return true;
   const found =
     definitionEnd === -1 || definitionEnd > position
       ? insideInlineCode(joined, position, after !== "continued", tags)
@@ -1190,35 +1208,97 @@ export function insideCode(lineAt: LineAt, line: number, ch: number): boolean {
   );
 }
 
-/** Whether `text` holds what could open or close a `<code>` or `<pre>` tag. */
-function mentionsTag(text: string): boolean {
-  return text.includes("<") && /<\/?(?:code|pre)/i.test(text);
+/** A footnote's first line, whose text Obsidian shows at the note's end. */
+const footnoteStart = /^ {0,3}\[\^[^\]\s]+\]:/;
+
+/**
+ * What raw HTML leaves open after a paragraph of `lines`, with `tags` open
+ * before it; a table's header, if `header`.
+ */
+function tagsOfParagraph(
+  lines: readonly string[],
+  tags: OpenTags,
+  header: boolean,
+): OpenTags {
+  const first = lines[0] ?? "";
+  if (header) return tagsOfRow(first, tags);
+  if (footnoteStart.test(first)) return tags;
+  const text = lines.join("\n");
+  if (!mayChange(text, tags)) return tags;
+  // The paragraph's end counts as the line break after a definition.
+  const end = lines.length > 1 ? definitionLines(`${text}\n`) : -1;
+  if (end === -1) return tagsAfter(text, tags);
+  // A definition over the paragraph's first lines, which Obsidian may show
+  // nothing of: what it closes stays open.
+  const defined = tagsAfter(text.slice(0, end), tags, false);
+  return tagsAfter(text.slice(end), defined);
 }
 
 /**
- * The tags open after line `kind` of `blocks`, the last one read, which is
- * not a paragraph's, with `tags` open before it. Code, front matter, and
- * comment and math blocks hold no tags; an HTML block's lines are HTML.
+ * What raw HTML leaves open after line `kind` of `blocks`, the last one
+ * read, which is not a paragraph's, with `tags` open before it. Code, front
+ * matter, and comment and math blocks hold no tags; an HTML block's lines
+ * are HTML.
  */
 function tagsOfLine(kind: LineKind, blocks: Blocks, tags: OpenTags): OpenTags {
   const text = blocks.content;
   switch (kind) {
     case "html":
-      return tagsAfterHtml(text, tags);
+      return readHtmlLine(text, tags);
     case "line":
+      return tagsAfter(text, tags);
     case "row":
-      return mentionsTag(text) ? tagsAfter(text, tags) : tags;
+      return tagsOfRow(text, tags);
     case "title": {
-      if (!mentionsTag(blocks.text)) return tags;
+      if (!mayChange(blocks.text, tags)) return tags;
       const title = calloutTitle(blocks.text);
-      const titleText = title.lineAt(0) ?? "";
-      return title.kind !== "code" && mentionsTag(titleText)
-        ? tagsAfter(titleText, tags)
-        : tags;
+      return title.kind === "code"
+        ? tags
+        : tagsAfter(title.lineAt(0) ?? "", tags);
     }
     default:
       return tags;
   }
+}
+
+/**
+ * What raw HTML leaves open after a table's row `row`, with `tags` open
+ * before it. The browser closes with each cell what the cell opens, and keeps
+ * what was open before it open: only how what follows is read goes on.
+ */
+function tagsOfRow(row: string, tags: OpenTags): OpenTags {
+  let carried = tags;
+  for (const [start, end] of cellsOf(row)) {
+    carried = inCell(tags, tagsAfter(row.slice(start, end), carried));
+  }
+  return carried;
+}
+
+/** `tags` after a cell that `read` left: how what follows is read. */
+function inCell(tags: OpenTags, read: OpenTags): OpenTags {
+  const next = settled(read);
+  return {
+    ...tags,
+    mode: next.mode,
+    name: next.name,
+    closing: next.closing,
+    unsure: next.unsure,
+  };
+}
+
+/** Where each cell of table row `row` starts and ends. */
+function cellsOf(row: string): [number, number][] {
+  const cells: [number, number][] = [];
+  let start = 0;
+  for (let index = 0; index < row.length; index++) {
+    if (row[index] === "\\") index++;
+    else if (row[index] === "|") {
+      cells.push([start, index]);
+      start = index + 1;
+    }
+  }
+  cells.push([start, row.length]);
+  return cells;
 }
 
 /**
@@ -1233,24 +1313,17 @@ function definitionLines(text: string): number {
 
 /**
  * Whether column `ch` of a table's row `row` is in a code span in its cell,
- * or after a tag open before the row.
+ * or after a tag open before the row or in a cell before.
  */
 function insideCell(row: string, ch: number, tags: OpenTags): boolean {
-  let start = 0;
-  let end = row.length;
-  for (let index = 0; index < row.length; index++) {
-    if (row[index] === "\\") {
-      index++;
-    } else if (row[index] === "|") {
-      if (index < ch) {
-        start = index + 1;
-      } else {
-        end = index;
-        break;
-      }
+  let open = tags;
+  for (const [start, end] of cellsOf(row)) {
+    if (ch <= end) {
+      return (
+        insideInlineCode(row.slice(start, end), ch - start, true, open) === true
+      );
     }
+    open = inCell(tags, tagsAfter(row.slice(start, end), open));
   }
-  return (
-    insideInlineCode(row.slice(start, end), ch - start, true, tags) === true
-  );
+  return isOpen(open);
 }

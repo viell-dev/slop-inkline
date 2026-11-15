@@ -25,10 +25,11 @@
 //
 // A code span is a run of backticks and the next run as long. A run that none
 // closes leaves its first backtick as text, and the rest of the run can still
-// open a span. A `<code>` or `<pre>` tag, in any form, `<code/>` included as
-// the browser opens one so, makes what follows it code, to its closing tag;
-// one that strong text or a link leaves open stays open after it, as the
-// browser keeps it.
+// open a span. Inline HTML is read by html.ts, as the browser reads it, for the
+// `<code>` and `<pre>` tags it opens and closes; one that strong text or a
+// link leaves open stays open after it, as the browser keeps it, and one that
+// they close outside them stays open too, as the safe reading. A footnote's
+// text, which Obsidian shows at the note's end, opens and closes nothing here.
 //
 // Some constructs look for their end to the text's end, as Obsidian does, so
 // that a text of thousands of brackets that nothing closes takes a time that
@@ -36,22 +37,18 @@
 // take more than a number for its length cannot be read with certainty in
 // time, and every place in it counts as code.
 
+import {
+  isOpen,
+  mayChange,
+  noTags,
+  type OpenTags,
+  readHtml,
+  settled,
+  unsure,
+} from "./html.ts";
+
 /** Where `at` lies: in code, outside it, or not known until more text comes. */
 type Found = boolean | undefined;
-
-/** How many `<code>` and `<pre>` tags are open, which make what follows code. */
-export interface OpenTags {
-  readonly code: number;
-  readonly pre: number;
-}
-
-/** No tags open. */
-export const noTags: OpenTags = { code: 0, pre: 0 };
-
-/** Whether any of `tags` is open. */
-export function isOpen(tags: OpenTags): boolean {
-  return tags.code > 0 || tags.pre > 0;
-}
 
 /**
  * What starts at a place: where it ends, and where code is in it, or the text
@@ -63,6 +60,10 @@ interface Construct {
   readonly code?: readonly [number, number];
   /** Text read again on its own, from, to, and whether it is a link's. */
   readonly inner?: readonly [number, number, boolean];
+  /** Whether it is inline HTML, which the browser reads as it is. */
+  readonly html?: true;
+  /** Whether its text is a footnote's, which Obsidian shows elsewhere. */
+  readonly aside?: true;
 }
 
 /** A construct that may end in text not read yet. */
@@ -127,9 +128,7 @@ const lineBreaks = /\n/g;
 const lineEnds = /[\n\r\u2028\u2029]/g;
 const ats = /@/g;
 const closers = /\]\]/g;
-/** A `<code>` or `<pre>` tag in raw HTML, in any form, or its closing tag. */
-const htmlCodeTags = /<(\/?)(code|pre)(?=[\s/>]|$)/gi;
-const codeTagStarts = /<\/?(?:code|pre)/gi;
+const lessThans = /</g;
 
 /**
  * Where text that Obsidian reads stops, by character: 1 where a construct may
@@ -168,15 +167,24 @@ class Inline {
    */
   readonly #searches = new Map<RegExp, { from: number; found: number }>();
 
-  /** The `<code>` and `<pre>` tags open where the text starts. */
+  /** What raw HTML leaves open where the text starts. */
   readonly #tagsBefore: OpenTags;
+  /** Whether closing tags in the text close what is open. */
+  readonly #closes: boolean;
 
-  constructor(text: string, at: number, partial: boolean, tags: OpenTags) {
+  constructor(
+    text: string,
+    at: number,
+    partial: boolean,
+    tags: OpenTags,
+    closes = true,
+  ) {
     // Text that may go on goes on after a line break.
     this.#text = partial ? `${text}\n` : text;
     this.#at = at;
     this.#partial = partial;
     this.#tagsBefore = tags;
+    this.#closes = closes;
     this.#steps = minimumSteps + stepsPerChar * this.#text.length;
   }
 
@@ -185,7 +193,7 @@ class Inline {
     return this.#read(0, this.#text.length, false, this.#tagsBefore);
   }
 
-  /** The `<code>` and `<pre>` tags open at the text's end. */
+  /** What raw HTML leaves open at the text's end. */
   tags(): OpenTags {
     return this.#count(0, this.#text.length, false, this.#tagsBefore);
   }
@@ -225,7 +233,8 @@ class Inline {
         continue;
       }
       if (this.#at < found.end) {
-        if (isOpen(open)) return true;
+        // In a tag, a comment, or the like, an embed shows nothing.
+        if (isOpen(open) || found.html === true) return true;
         if (found.code !== undefined) {
           const [start, close] = found.code;
           return this.#at > start && this.#at <= close;
@@ -245,11 +254,12 @@ class Inline {
   }
 
   /**
-   * What the construct `found` at `place` does to the tags open: an HTML
-   * link's tags make what lies between them a link's text, and a `<code>`
-   * or `<pre>` tag, in any form, makes what follows it code, to its closing
-   * tag. One that a construct's text leaves open stays open after it, as the
-   * browser keeps it; one that it closes stays open too, as the safe reading.
+   * What the construct `found` at `place` does to what is open: an HTML
+   * link's tags make what lies between them a link's text, and inline HTML
+   * is read as the browser reads it. What a construct's text leaves open
+   * stays open after it, as the browser keeps it; what it closes of what was
+   * open before it stays open, as the safe reading. A footnote's text counts
+   * for nothing.
    */
   #tags(
     place: number,
@@ -258,31 +268,32 @@ class Inline {
     tags: OpenTags,
   ): [boolean, OpenTags] {
     let link = inLink;
-    let { code, pre } = tags;
-    if (found.inner !== undefined) {
+    let open = tags;
+    if (found.inner !== undefined && found.aside !== true) {
       const [innerFrom, innerTo, innerLink] = found.inner;
-      const mention = this.#search(codeTagStarts, innerFrom);
+      const mention = this.#search(lessThans, innerFrom);
       if (mention !== -1 && mention < innerTo) {
-        const inner = this.#count(innerFrom, innerTo, innerLink, noTags);
-        code += inner.code;
-        pre += inner.pre;
+        const inner = this.#count(innerFrom, innerTo, innerLink, {
+          ...open,
+          floor: { code: open.code.length, pre: open.pre },
+        });
+        open = { ...inner, floor: open.floor };
       }
     }
-    if (this.#text[place] === "<") {
+    if (found.html === true) {
       const tag = this.#text.slice(place, found.end);
       if (!link && /^<a /i.test(tag)) link = true;
       else if (link && /^<\/a>/i.test(tag)) link = false;
-      const opening = /^<(code|pre)(?=[\s/>])/i.exec(tag)?.[1]?.toLowerCase();
-      const closing = /^<\/(code|pre)\s*>/i.exec(tag)?.[1]?.toLowerCase();
-      if (opening === "code") code++;
-      else if (opening === "pre") pre++;
-      else if (closing === "code" && code > 0) code--;
-      else if (closing === "pre" && pre > 0) pre--;
+      if (mayChange(tag, open)) {
+        this.#step(tag.length);
+        // Obsidian's own HTML follows the construct.
+        open = settled(readHtml(tag, open, this.#closes));
+      }
     }
-    return [link, { code, pre }];
+    return [link, open];
   }
 
-  /** The tags open at `to`, reading the text from `from` with `tags` open. */
+  /** What is open at `to`, reading the text from `from` with `tags` open. */
   #count(from: number, to: number, link: boolean, tags: OpenTags): OpenTags {
     let place = from;
     let inLink = link;
@@ -614,7 +625,7 @@ class Inline {
     } else if (next === "!") end = this.#declaration(place, to);
     if (end === undefined || end === unended) return end;
     this.#step(end - place);
-    return { end };
+    return { end, html: true };
   }
 
   /** Where an opening tag whose name starts at `from` ends. */
@@ -832,8 +843,13 @@ class Inline {
         }
         if (char === "[") depth++;
         else if (char === "]") {
-          if (depth === 0)
-            return { end: index + 1, inner: [place + 2, index, false] };
+          if (depth === 0) {
+            return {
+              end: index + 1,
+              inner: [place + 2, index, false],
+              aside: true,
+            };
+          }
           depth--;
         }
       }
@@ -1127,11 +1143,11 @@ function runAfter(
 
 /**
  * Whether index `at` of `text`, a paragraph's text without its containers'
- * markers, lies inside a code span, or after a `<code>` or `<pre>` tag that
- * is still open, with `tags` open where the text starts, as Obsidian reads
- * the text; or in a text too long to read with certainty in time. When
- * `text` may go on, as a paragraph read only so far does, undefined says that
- * what started before `at` may end in the rest.
+ * markers, lies inside a code span, an inline tag or comment, or after a
+ * `<code>` or `<pre>` tag that is still open, with `tags` open where the
+ * text starts, as Obsidian reads the text; or in a text too long to read with
+ * certainty in time. When `text` may go on, as a paragraph read only so far
+ * does, undefined says that what started before `at` may end in the rest.
  */
 export function insideInlineCode(
   text: string,
@@ -1151,33 +1167,23 @@ export function insideInlineCode(
 }
 
 /**
- * The `<code>` and `<pre>` tags open after `text`, a paragraph's or a line's
- * text, with `tags` open where it starts: those it opens, in any form, and
- * does not close, outside its code spans and what else holds a tag as text.
+ * What raw HTML leaves open after `text`, a paragraph's or a line's text,
+ * with `tags` open where it starts: the inline HTML in it, outside its code
+ * spans and what else holds a tag as text, as the browser reads it. Where
+ * `closes` is false, as where Obsidian may show the text or not, closing
+ * tags close nothing.
  */
-export function tagsAfter(text: string, tags: OpenTags): OpenTags {
+export function tagsAfter(
+  text: string,
+  tags: OpenTags,
+  closes = true,
+): OpenTags {
+  if (!mayChange(text, tags)) return tags;
   try {
-    return new Inline(text, text.length, false, tags).tags();
+    return new Inline(text, text.length, false, tags, closes).tags();
   } catch (error) {
     if (!(error instanceof TooLong)) throw error;
-    // Read too long to be sure: as though one were open.
-    return { code: tags.code + 1, pre: tags.pre };
+    // Read too long to be sure of anything after.
+    return unsure(tags);
   }
-}
-
-/**
- * The `<code>` and `<pre>` tags open after `line`, a line of an HTML block,
- * whose text the browser reads as HTML, with `tags` open where it starts.
- */
-export function tagsAfterHtml(line: string, tags: OpenTags): OpenTags {
-  let { code, pre } = tags;
-  for (const found of line.matchAll(htmlCodeTags)) {
-    const name = (found[2] ?? "").toLowerCase();
-    if (found[1] === "/") {
-      if (name === "code" && code > 0) code--;
-      else if (name === "pre" && pre > 0) pre--;
-    } else if (name === "code") code++;
-    else pre++;
-  }
-  return { code, pre };
 }

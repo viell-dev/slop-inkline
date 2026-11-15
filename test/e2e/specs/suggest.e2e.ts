@@ -235,6 +235,30 @@ const contexts: [string, string, boolean][] = [
   ["Code space slash", "Some <code />HERE\n", false],
   ["Code attribute slash", 'Some <code class="x"/>HERE\n', false],
   ["Closed code", "Some <code>a</code>\n\nHERE\n", true],
+  // A closing tag in a comment or a quoted attribute closes nothing, on one
+  // line or over lines; a real one after them closes the `<code>`.
+  ["Code comment", "<div><code><!-- </code> -->\n\nHERE\n\n</code>\n", false],
+  [
+    "Code attribute",
+    '<div><code><span title="</code>">x</span>\n\nHERE\n\n</code>\n',
+    false,
+  ],
+  [
+    "Code comment lines",
+    "<div><code><!--\n</code>\n-->\n\nHERE\n\n</code>\n",
+    false,
+  ],
+  [
+    "Code attribute lines",
+    '<div><code><span title="\n</code>\n">x</span>\n\nHERE\n\n</code>\n',
+    false,
+  ],
+  ["Closed comment", "<div><code><!-- x --></code>\n\nHERE\n", true],
+  [
+    "Closed attribute",
+    '<div><code><span title="x">x</span></code>\n\nHERE\n',
+    true,
+  ],
 ];
 
 /**
@@ -640,7 +664,7 @@ describe("Where a trigger is code", function () {
       async ({ app, obsidian }, cases) => {
         const { insideCode } = window.inklineTest.code;
         const found: string[] = [];
-        for (const [name, { note, code, limit }] of cases) {
+        for (const [name, { note, code, hidden, limit }] of cases) {
           const shown = activeDocument.body.createDiv();
           const component = new obsidian.Component();
           component.load();
@@ -674,7 +698,8 @@ describe("Where a trigger is code", function () {
               before.length - 1,
               (before.at(-1) ?? "").length,
             );
-            if (rendered !== code) {
+            // Where Obsidian shows nothing, no text holds HERE.
+            if (rendered !== (hidden === true ? undefined : code)) {
               found.push(`${name}: Obsidian renders ${String(rendered)}`);
             }
             // Where the check knowingly differs, it finds the other answer.
