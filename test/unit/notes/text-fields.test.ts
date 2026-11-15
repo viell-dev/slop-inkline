@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   fieldLabel,
   fieldText,
+  fittedHeight,
   isBlank,
   isTouched,
   takeFile,
@@ -104,5 +105,39 @@ describe("fields", () => {
     expect(isBlank({ reading: [], translation: [] })).toBe(true);
     expect(isBlank({ reading: ["TA"], translation: [] })).toBe(false);
     expect(isBlank({ reading: [], translation: ["field"] })).toBe(false);
+  });
+});
+
+describe("fittedHeight", () => {
+  // Obsidian's field: 13 px text at a line height of 1.3, 4 px of padding and
+  // 1 px of border above and below, with a height that counts them.
+  const field = { padding: 8, border: 2, borderBox: true, line: 16.9 };
+
+  it("fits whole lines, from a scroll height rounded either way", () => {
+    // Five lines are 84.5 px of text, which with the padding the browser
+    // rounds to 92 or 93.
+    for (const scroll of [92, 93]) {
+      expect(fittedHeight({ ...field, scroll })).toBeCloseTo(94.5, 6);
+    }
+    expect(fittedHeight({ ...field, scroll: 42 })).toBeCloseTo(43.8, 6);
+  });
+
+  it("fits a line taller than the others, rather than cut it", () => {
+    // Five lines and 2 px more, as text in a taller fallback font can be.
+    expect(fittedHeight({ ...field, scroll: 95 })).toBeCloseTo(111.4, 6);
+  });
+
+  it("gives an empty field a line", () => {
+    expect(fittedHeight({ ...field, scroll: 8 })).toBeCloseTo(26.9, 6);
+  });
+
+  it("leaves out the padding and border where the height does", () => {
+    expect(
+      fittedHeight({ ...field, borderBox: false, scroll: 92 }),
+    ).toBeCloseTo(84.5, 6);
+  });
+
+  it("takes the scroll height as it is without a line height", () => {
+    expect(fittedHeight({ ...field, line: Number.NaN, scroll: 92 })).toBe(94);
   });
 });

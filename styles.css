@@ -75,6 +75,24 @@
   border-color: var(--text-error);
 }
 
+/*
+ * Fields that grow and shrink with their text, as Quick edit's do: from two
+ * lines to eight, with Obsidian's padding and border, scrolling past that. A
+ * field dragged to a height of its own keeps it. Where the browser lacks
+ * field-sizing, text-fields.ts sizes them by script, to the same heights.
+ */
+.inkline-text-fit textarea {
+  min-height: calc(2lh + 2 * var(--size-4-1) + 2 * var(--input-border-width));
+  max-height: calc(8lh + 2 * var(--size-4-1) + 2 * var(--input-border-width));
+  field-sizing: content;
+}
+
+/* How the script measures a field's text: as short as it goes, unscrolled. */
+.inkline-text-fit textarea.inkline-text-measure {
+  height: 0;
+  overflow-y: hidden;
+}
+
 .inkline-text-hint {
   margin-top: var(--size-4-1);
   color: var(--text-muted);
@@ -548,7 +566,8 @@ img.inkline-symbol[width]:not([height]):not(.image-wrapper > img),
  * a few words of name, however long the name is, so that the name wraps in its
  * cell rather than pushing them down. They drop together, to the row's end,
  * only in a sidebar too narrow for that much. What comes under them, the row's
- * values and its notes, has no gap above it, to keep with the row.
+ * values and its notes, has no gap of the row's above it: its own margin is
+ * the space that keeps it with the row.
  */
 .inkline-library-symbol {
   display: flex;
@@ -647,28 +666,53 @@ img.inkline-symbol[width]:not([height]):not(.image-wrapper > img),
 }
 
 /*
- * What a symbol says about itself, under its row and in line with its name,
- * past the picture's 3 em of the button's text, and the button's padding and
- * gap. A row with none has nothing here, so that it keeps its height.
+ * What a symbol says about itself, and the notes that use it once Uses lists
+ * them, under its row, from the row's start, at the size of Quick edit's
+ * labels, each with its label in bold. They have 4 px above them, under the
+ * row's buttons, and 4 px below, before the list's gap, and read as one list,
+ * with no space between them. A row with neither has nothing here, so that it
+ * keeps its height.
  */
-.inkline-library-values {
+.inkline-library-values,
+.inkline-library-notes {
   flex-basis: 100%;
   min-width: 0;
-  padding-inline-start: calc(3em + var(--size-4-1) + var(--size-4-1));
+  margin-block: var(--size-4-1);
   font-size: var(--font-ui-small);
+}
+
+.inkline-library-values:has(+ .inkline-library-notes) {
+  margin-block-end: 0;
+}
+
+.inkline-library-values + .inkline-library-notes {
+  margin-block-start: 0;
+}
+
+.inkline-library-values .inkline-values {
+  font-size: inherit;
+}
+
+.inkline-library-values .inkline-values-label,
+.inkline-library-notes-label {
+  font-weight: var(--font-bold);
+}
+
+.inkline-library-notes-label,
+.inkline-library-notes ul {
+  color: var(--text-muted);
+}
+
+.inkline-library-notes ul {
+  margin: 0;
+  padding-inline-start: var(--size-4-6);
+  overflow-wrap: anywhere;
+  list-style-type: disc;
 }
 
 .inkline-library-status {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
-}
-
-.inkline-library-notes {
-  flex-basis: 100%;
-  margin: 0;
-  padding-inline-start: var(--size-4-8);
-  overflow-wrap: anywhere;
-  list-style: none;
 }
 
 .inkline-library-empty {

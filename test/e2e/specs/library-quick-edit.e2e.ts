@@ -1,7 +1,7 @@
-// The library's rows and Quick edit in real Obsidian: the space that keeps what
-// a row shows under its name with that row, the list's name, which shows no
-// tooltip, and one Save of a symbol's name, readings, and translations, of each
-// alone, of nothing, a cancel, and one part failing. Every symbol and note is
+// The library's rows and Quick edit in real Obsidian: the list's name, which
+// shows no tooltip, and one Save of a symbol's name, readings, and
+// translations, of each alone, of nothing, a cancel, and one part failing.
+// library-look.e2e.ts has how the rows look. Every symbol and note is
 // synthetic.
 
 import { browser, expect } from "@wdio/globals";
@@ -451,68 +451,6 @@ describe("The library's rows", function () {
     await startOver();
   });
 
-  for (const theme of ["moonstone", "obsidian"] as const) {
-    it(`keep each row's readings and translations nearer it than the next row, in the ${theme} theme`, async function () {
-      await browser.executeObsidian(({ app }, wanted) => {
-        const change: unknown = Reflect.get(app, "changeTheme");
-        if (typeof change !== "function") throw new Error("no themes");
-        Reflect.apply(change, app, [wanted]);
-      }, theme);
-      await symbolWith("a plain.ink.png", {});
-      await symbolWith("b said.ink.png", {
-        reading: ["TA", "DA"],
-        translation: ["field"],
-      });
-      await symbolWith("c read.ink.png", { reading: ["KA"] });
-      await symbolWith("d last.ink.png", {});
-      await showLibrary();
-      await waitForValues("b said.ink.png", "Translation: field");
-      await waitForValues("c read.ink.png", "Reading: KA");
-      const rows = await browser.execute(() =>
-        Array.from(document.querySelectorAll(".inkline-library-symbol")).map(
-          (row) => {
-            const box = (element: Element | null) => {
-              if (element === null) return null;
-              const { top, bottom } = element.getBoundingClientRect();
-              return { top, bottom };
-            };
-            const insert = box(row.querySelector(".inkline-library-insert"));
-            const actions = box(row.querySelector(".inkline-library-actions"));
-            if (insert === null || actions === null) throw new Error("no row");
-            return {
-              path: row.getAttribute("data-inkline-path"),
-              top: row.getBoundingClientRect().top,
-              bottom: row.getBoundingClientRect().bottom,
-              // The line with the symbol and its buttons.
-              line: Math.max(insert.bottom, actions.bottom),
-              values: box(row.querySelector(".inkline-library-values")),
-            };
-          },
-        ),
-      );
-      expect(rows.map(({ path }) => path)).toEqual([
-        "a plain.ink.png",
-        "b said.ink.png",
-        "c read.ink.png",
-        "d last.ink.png",
-      ]);
-      // Each row's values sit at least 4 pixels nearer its own line than the
-      // next row, and rows with none still have space between them.
-      const nearer = 4;
-      for (const [index, row] of rows.entries()) {
-        const next = rows[index + 1];
-        if (next === undefined) continue;
-        expect(next.top - row.bottom).toBeGreaterThanOrEqual(nearer);
-        if (row.values === null) continue;
-        const above = row.values.top - row.line;
-        const below = next.top - row.values.bottom;
-        expect(above).toBeGreaterThanOrEqual(0);
-        expect(below - above).toBeGreaterThanOrEqual(nearer);
-      }
-      await saveScreenshot(`library-rows-spacing-${theme}`);
-    });
-  }
-
   it("show no tooltip over the list's empty space, and keep its name for a screen reader", async function () {
     // A name the row shortens, whose button's tooltip has the whole of it.
     const wanted =
@@ -658,10 +596,21 @@ describe("Quick edit in the library", function () {
       order.push(now.field ?? now.text);
     }
     expect(order).toEqual(["reading", "translation", "Save", "Cancel"]);
-    // One row at a time: another row's Quick edit goes back to this one.
-    await browser.$(rowOf("tower.ink.png")).$(".inkline-library-edit").click();
+    // One row at a time: another row's Quick edit waits, and Tab passes it.
+    const other = browser.$(rowOf("tower.ink.png")).$(".inkline-library-edit");
+    expect(await other.getProperty("disabled")).toBe(true);
+    await browser.keys(["Tab"]);
+    expect(await focused()).toMatchObject({
+      role: "insert",
+      path: "tower.ink.png",
+    });
+    await browser.keys(["Shift", "Tab"]);
+    expect((await focused()).text).toBe("Cancel");
+    // A click on it leaves the focus in this one.
+    await other.click();
+    await browser.pause(200);
     expect(await browser.$$(".inkline-library-edit-form").length).toBe(1);
-    expect((await focused()).tag).toBe("INPUT");
+    expect((await focused()).text).toBe("Cancel");
     await browser.keys(["Escape"]);
     await waitForClosed();
     expect(await focused()).toMatchObject({

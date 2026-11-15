@@ -166,6 +166,15 @@ export class SymbolLibraryView extends ItemView {
    */
   #editing: HTMLElement | undefined;
   #panel: EditPanel | undefined;
+  /**
+   * The other rows' buttons that wait while a row is in Quick edit, disabled
+   * until it closes: Uses and Show more, which hold off redrawing until then,
+   * so that a click would only take effect later, and Quick edit, as one row
+   * is edited at a time.
+   */
+  #waiting: HTMLButtonElement[] = [];
+  /** Says to a screen reader what a waiting button waits for. */
+  #waitNote: HTMLElement | undefined;
   /** The folders the folder field offers, by the index of their option. */
   #folders: readonly string[] = [];
   #list: HTMLElement | undefined;
@@ -256,8 +265,14 @@ export class SymbolLibraryView extends ItemView {
       attr: { role: "list" },
     });
     nameFor(list, root, "Symbols");
+    this.#waitNote = root.createSpan({
+      text: "Save or cancel Quick edit to use this.",
+      attr: { id: newId("wait"), hidden: "" },
+    });
     list.addEventListener("pointerdown", (event) => {
-      if (event.button === 0) this.#holdForPress(list.win);
+      if (event.button !== 0) return;
+      this.#holdForPress(list.win);
+      this.#keepFocusFrom(event);
     });
     list.addEventListener("keydown", (event) => {
       if (event.key === " " && !event.repeat) this.#holdForSpace(list.win);
@@ -306,6 +321,8 @@ export class SymbolLibraryView extends ItemView {
     this.#editing = undefined;
     this.#panel?.release();
     this.#panel = undefined;
+    this.#waiting = [];
+    this.#waitNote = undefined;
     this.#searchField = undefined;
     this.#folderField = undefined;
     this.#status = undefined;
@@ -613,7 +630,10 @@ export class SymbolLibraryView extends ItemView {
       this.#render();
     });
     if (!expanded) return;
-    const notes = row.createEl("ul", { cls: "inkline-library-notes" });
+    // Under its readings and translations, as the next line of their list.
+    const used = row.createDiv({ cls: "inkline-library-notes" });
+    used.createDiv({ cls: "inkline-library-notes-label", text: "Uses:" });
+    const notes = used.createEl("ul");
     for (const note of entry.notes) {
       const open = notes.createEl("li").createEl("a", {
         cls: "inkline-library-note",
@@ -658,11 +678,59 @@ export class SymbolLibraryView extends ItemView {
     }
   }
 
-  /** Stops the filters and the refreshes while a row is being edited. */
+  /**
+   * Stops the filters, the refreshes, and the other rows' buttons that wait for
+   * them while a row is being edited. A symbol's button, which inserts it, and
+   * the notes listed under a row, which open, still work.
+   */
   #startEditing(field: HTMLElement): void {
     this.#editing = field;
     if (this.#searchField !== undefined) this.#searchField.disabled = true;
     if (this.#folderField !== undefined) this.#folderField.disabled = true;
+    const waiting = this.#list?.querySelectorAll<HTMLButtonElement>(
+      ["uses", "edit", "more"]
+        .map((role) => `button[data-inkline-role="${role}"]`)
+        .join(","),
+    );
+    this.#waiting = Array.from(waiting ?? []).filter(
+      (button) => !button.disabled,
+    );
+    for (const button of this.#waiting) {
+      button.disabled = true;
+      if (this.#waitNote !== undefined) {
+        button.setAttribute("aria-describedby", this.#waitNote.id);
+      }
+    }
+  }
+
+  /** Gives back the buttons {@link #startEditing} disabled. */
+  #stopWaiting(): void {
+    for (const button of this.#waiting) {
+      button.disabled = false;
+      button.removeAttribute("aria-describedby");
+    }
+    this.#waiting = [];
+  }
+
+  /**
+   * Leaves the focus where it was when a press on the list is on a disabled
+   * button, which does nothing, as on another row's while one is in Quick edit.
+   * The browser would take the focus to the window, out of a field being typed
+   * in, where Esc and Mod+Enter work.
+   */
+  #keepFocusFrom(event: PointerEvent): void {
+    const pressed = event.targetNode;
+    const button =
+      pressed?.instanceOf(Element) === true ? pressed.closest("button") : null;
+    if (button?.disabled !== true) return;
+    const doc = button.doc;
+    const kept = doc.activeElement;
+    if (kept?.instanceOf(HTMLElement) !== true || kept === doc.body) return;
+    button.win.setTimeout(() => {
+      if (kept.isConnected && doc.activeElement === doc.body) {
+        kept.focus({ preventScroll: true });
+      }
+    });
   }
 
   /**
@@ -674,6 +742,8 @@ export class SymbolLibraryView extends ItemView {
     this.#editing = undefined;
     this.#panel?.release();
     this.#panel = undefined;
+    // Before the redraw, which a press under way can hold off.
+    this.#stopWaiting();
     if (this.#searchField !== undefined) this.#searchField.disabled = false;
     if (this.#folderField !== undefined) this.#folderField.disabled = false;
     this.#shown = "";
@@ -739,9 +809,14 @@ export class SymbolLibraryView extends ItemView {
     let said: "read" | "save" | undefined;
     /** Counts reads, so that only the latest is taken. */
     let reads = 0;
-    const fields = new TextFields(form, noText, () => {
-      if (!saving) say([]);
-    });
+    const fields = new TextFields(
+      form,
+      noText,
+      () => {
+        if (!saving) say([]);
+      },
+      { fit: true },
+    );
     fields.enabled = false;
     const error = form.createDiv({
       cls: "inkline-library-edit-error",
