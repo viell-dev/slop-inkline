@@ -18,6 +18,47 @@ const attempts = 3;
 const keepsChanging = "The file keeps changing, so it was left as it is.";
 
 /**
+ * Obsidian's line of disk operations, as far as a save needs to see it. Obsidian
+ * runs every read, write, and deletion of the vault's files in one line, in the
+ * order they were asked, and a write takes the file's path, not the file, when
+ * it joins the line. So whatever is asked of the disk while a save's last look
+ * at its file is under way, as by another plugin or a sync tool working through
+ * Obsidian, runs after that look and before the save's write: a deletion and a
+ * new file at the path would have the write land on the new file.
+ */
+export interface DiskLine {
+  /** What was asked of the disk last, to tell later whether more has been. */
+  readonly last: () => unknown;
+  /** Waits for everything asked of the disk so far. */
+  readonly settle: () => Promise<void>;
+}
+
+/**
+ * What a save's look at its file saw of the disk's {@link DiskLine}: what the
+ * line had last been asked once the look was asked, or undefined if it did not
+ * look. An object, as Obsidian's line is a promise, which an async function
+ * would wait for and resolve with the result of, rather than hand back.
+ */
+export interface Look {
+  readonly asked: unknown;
+}
+
+/**
+ * How many times a save waits for what was asked of the disk during its last
+ * look, and looks again, before it writes all the same, as it did before it
+ * waited at all: a vault whose plugins keep the disk busy must still save.
+ */
+const lineWaits = 3;
+
+/**
+ * Whether anything was asked of `line` since `asked`, what it had last been
+ * asked as a save's last look at its file was, so that the save waits for it.
+ */
+function askedSince(line: DiskLine | undefined, asked: unknown): boolean {
+  return line !== undefined && asked !== undefined && line.last() !== asked;
+}
+
+/**
  * How long, in milliseconds, a save goes on before a person is told that it is
  * waiting for Obsidian. In real Obsidian, by test/e2e/manual/save-time.e2e.ts on a
  * busy machine, a save of a file near the format's largest took at most 0.7 s,
@@ -187,6 +228,8 @@ export interface FileAccess<File> {
   readonly check: (file: File) => void;
   readonly read: (file: File) => Promise<Uint8Array>;
   readonly write: (file: File, bytes: ArrayBuffer) => Promise<void>;
+  /** The disk's line, where it can be seen, which reads and writes join. */
+  readonly line?: DiskLine | undefined;
 }
 
 /** {@link FileAccess} that a person can stop a save through, while it waits. */
@@ -247,24 +290,37 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
  * to what it cannot close: the file is read once more after `change`, however
  * long that took, and compared byte for byte, as a date and a size can stay the
  * same, and can lag the file. A file that differs is gone through again, so that
- * `change` sees it, and one that goes on changing is left alone.
+ * `change` sees it, and one that goes on changing is left alone. So is anything
+ * asked of the disk's {@link DiskLine} during that last read, which would come
+ * before the write: the save waits for it, and goes through again.
  */
 export async function changeFile<File>(
   access: FileAccess<File>,
   file: File,
   change: (bytes: Uint8Array) => Promise<Uint8Array>,
 ): Promise<void> {
-  for (let attempt = 0; attempt < attempts; attempt++) {
+  let waits = 0;
+  for (let attempt = 0; attempt < attempts;) {
     access.check(file);
     const bytes = await access.read(file);
     const changed = await change(bytes);
     if (changed === bytes) return;
     const buffer = changed.slice().buffer;
     access.check(file);
-    const last = await access.read(file);
+    const reading = access.read(file);
+    const asked = access.line?.last();
+    const last = await reading;
     // Once more, as the read can end with another file at this one's path.
     access.check(file);
-    if (!sameBytes(last, bytes)) continue;
+    if (!sameBytes(last, bytes)) {
+      attempt++;
+      continue;
+    }
+    if (askedSince(access.line, asked) && waits < lineWaits) {
+      waits++;
+      await access.line?.settle();
+      continue;
+    }
     await access.write(file, buffer);
     return;
   }
@@ -275,11 +331,17 @@ export async function changeFile<File>(
 export interface WholeFile<File> {
   /** The file to save over now, or null when there is none. */
   readonly current: () => File | null;
-  /** Rejects to stop the save, with nothing written. */
-  readonly check: () => Promise<void>;
+  /**
+   * Rejects to stop the save, with nothing written. Resolves with its
+   * {@link Look} at the file, for the save to tell whether more has been asked
+   * of the disk since.
+   */
+  readonly check: () => Promise<Look | undefined>;
   readonly write: (file: File) => Promise<void>;
   /** Makes the file, as there is none to save over. */
   readonly create: () => Promise<File>;
+  /** The disk's line, where it can be seen. */
+  readonly line?: DiskLine | undefined;
 }
 
 /**
@@ -288,14 +350,25 @@ export interface WholeFile<File> {
  * or replaced by another at its path, so what to save over is found here, in the
  * turn. It is found again after `check`, whose look at one file says nothing of
  * another, and a file that is not the one looked at is looked at in its turn.
+ * Anything asked of the disk's {@link DiskLine} after `check` looked would come
+ * before the write, so the save waits for it, and looks again.
  */
 export async function saveFile<File>(save: WholeFile<File>): Promise<File> {
-  for (let attempt = 0; attempt < attempts; attempt++) {
+  let waits = 0;
+  for (let attempt = 0; attempt < attempts;) {
     const checked = save.current();
-    await save.check();
+    const look = await save.check();
     const file = save.current();
-    if (file !== checked) continue;
+    if (file !== checked) {
+      attempt++;
+      continue;
+    }
     if (file === null) return save.create();
+    if (askedSince(save.line, look?.asked) && waits < lineWaits) {
+      waits++;
+      await save.line?.settle();
+      continue;
+    }
     await save.write(file);
     return file;
   }

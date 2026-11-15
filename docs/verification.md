@@ -397,6 +397,17 @@ must keep released files readable and looking the same, as
   ([symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts)
   and
   [file-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/file-writes.test.ts)).
+- **Unreleased:** a symbol deleted, and another file put at its path, through
+  Obsidian while a save reads it for the last time, by its file system, as
+  another plugin or a sync tool can, or by its vault: Quick edit refuses the
+  save and the new file keeps what it holds, and the editor asks about it. A
+  write that lands once the file was replaced says so, and keeps what was typed.
+  A save waits for what was asked of the disk during its last look, and writes
+  as before once the disk stays busy, or where Obsidian's line of disk
+  operations cannot be seen
+  ([write-identity.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/write-identity.e2e.ts)
+  and
+  [file-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/file-writes.test.ts)).
 - A write Obsidian does not finish, held back in the host: a save that takes
   less than the wait shows nothing; a save behind it in the library says so
   after the wait, keeps what was typed to copy, and finishes when the write
