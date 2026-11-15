@@ -942,9 +942,10 @@ export class SymbolLibraryView extends ItemView {
         if (report.moved !== undefined) fields.take(report.moved);
         say(report.lines, "save");
         // What the vault reported during the save, a rename elsewhere or a
-        // file gone, is taken in now.
+        // file gone, is taken in now. A write refused for a change on disk
+        // read the file itself, and the fields have taken what it found.
         renamed();
-        reread();
+        if (report.moved === undefined) reread();
         if (report.focus === "fields" && readable) fields.focus();
         else input.focus();
       });

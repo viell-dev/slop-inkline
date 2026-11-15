@@ -1144,6 +1144,31 @@ describe("Quick edit in the library", function () {
     expect(await formError().getText()).toContain("already has a symbol named");
   });
 
+  it("takes in a file deleted during the save once the row is given back", async function () {
+    await symbolWith("gate.ink.png", { reading: ["TA"] });
+    await showLibrary();
+    await quickEdit("gate.ink.png");
+    await area("reading").setValue("KA");
+    await holdSymbolRead("gate.ink.png");
+    await formButton("Save").click();
+    await waitForHeldRead();
+    // Deleted while the save reads it, which the row does not look at then.
+    await browser.executeObsidian(async ({ app }) => {
+      const file = app.vault.getFileByPath("gate.ink.png");
+      if (file === null) throw new Error("no gate");
+      await app.fileManager.trashFile(file);
+    });
+    await letReadGo();
+    await browser.waitUntil(async () => (await errorLines()).length > 0);
+    // What the save found stays, and Save is off for a file that has gone.
+    await browser.waitUntil(
+      async () => !(await formButton("Save").isEnabled()),
+    );
+    expect(await errorLines()).not.toEqual([]);
+    expect(await area("reading").getValue()).toBe("KA");
+    expect(await symbolFiles()).toEqual([]);
+  });
+
   it("keeps a name typed through a rename made elsewhere, and renames from there", async function () {
     await symbolWith("gate.ink.png", { reading: ["TA"] });
     await showLibrary();
