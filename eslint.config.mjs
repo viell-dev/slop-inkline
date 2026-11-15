@@ -22,6 +22,13 @@ export default defineConfig(
       tseslint.configs.strictTypeChecked,
       tseslint.configs.stylisticTypeChecked,
     ],
+    rules: {
+      // strictTypeChecked turns this back on. The recommended config runs
+      // obsidianmd/no-misused-promises in its place, the same rule without
+      // Obsidian's chaining then counted as a Promise, as the review does;
+      // both together report every real Promise twice.
+      "@typescript-eslint/no-misused-promises": "off",
+    },
     languageOptions: {
       parserOptions: {
         projectService: true,
