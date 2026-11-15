@@ -51,6 +51,17 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 These change only text: nothing about how Inkline works has changed.
 
+### Fixed
+
+- In a right-to-left interface, as Obsidian's in Hebrew, a symbol's picture in
+  the insert trigger's list, Insert existing symbol, Copy from, and the library
+  starts at the right of its column, as the mirrored row has it, rather than at
+  the left. Inkline's English in the editor and its Help and in the library
+  keeps its full stops and ellipses where English puts them: "Choose picture…"
+  no longer shows as "…Choose picture"
+  ([#256](https://github.com/viell-dev/slop-inkline/issues/256)). Notices and
+  tooltips still move them, as Known limits says.
+
 ## 0.9.3 - 2026-11-12
 
 This is the second release candidate of 1.0.0: a build meant to become 1.0.0

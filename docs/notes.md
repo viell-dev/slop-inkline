@@ -106,6 +106,8 @@ by its spelling, so `가` finds `각`, which starts with it.
 These lists, [Copy from](./drawing.md#start-from-a-copy), and the library give
 each picture a column of its own, so that names line up whatever each symbol's
 width. A symbol wider than the column shows whole, at a smaller size.
+**Unreleased:** in a right-to-left interface, which Obsidian mirrors, the column
+is at the right of the name, and each picture starts at the column's right.
 
 ## Edit a symbol
 

@@ -408,6 +408,15 @@ must keep released files readable and looking the same, as
   picture that will not load. A symbol as wide as the editor's surface, or
   wider, shows whole and in proportion, in the text colour and its stored colour
   ([symbol-lists.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-lists.e2e.ts)).
+- **Unreleased:** with Obsidian's interface in Hebrew, which mirrors its layout,
+  each of those lists puts a narrow symbol's picture right of its name and its
+  ink in the right half of the column, in the text colour and its stored colour,
+  and in English left of the name and in the left half, as before. In both, the
+  editor's, its Help's, and the settings' English keeps each sentence's words
+  and its full stop or ellipsis in English order, the preview's symbol stays
+  between its words, and in Hebrew the editor's layout is still mirrored and its
+  text on the right
+  ([right-to-left.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/right-to-left.e2e.ts)).
 - In the library, in both themes, the list never scrolls sideways, in a sidebar
   from the narrowest Obsidian allows to a wide one, with 90-character names with
   and without spaces, a deep folder, and wide symbols. In the default sidebar
