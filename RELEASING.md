@@ -437,7 +437,7 @@ GitHub's prerelease flag; public releases become the latest release.
 
 Once Inkline is listed, merging a public release makes `main` offer a version
 that has no release yet, and Obsidian's update fails for anyone who tries it
-until the release exists. The wait is CI on the merge commit, about 10 minutes,
+until the release exists. The wait is CI on the merge commit, about 30 minutes,
 and the Release workflow, about 2:
 
 1. Finish the review, check that the Directory checks workflow passed on the

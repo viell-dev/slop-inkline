@@ -44,7 +44,7 @@ jobs:
   e2e:
     name: e2e
     runs-on: ubuntu-latest
-    # The suite took 22 to 24 minutes on main until 2026-11-15, and 28 to 30
+    # The suite took 22 to 27 minutes on main until 2026-11-15, and 28 to 30
     # once that day's specs landed; a limit is a hang's ceiling, not a target.
     timeout-minutes: 45
     steps:
