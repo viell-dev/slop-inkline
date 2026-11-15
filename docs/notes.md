@@ -106,6 +106,8 @@ by its spelling, so `가` finds `각`, which starts with it.
 These lists, [Copy from](./drawing.md#start-from-a-copy), and the library give
 each picture a column of its own, so that names line up whatever each symbol's
 width. A symbol wider than the column shows whole, at a smaller size.
+**Unreleased:** in a right-to-left interface, which Obsidian mirrors, the column
+is at the right of the name, and each picture starts at the column's right.
 
 ## Edit a symbol
 
@@ -120,6 +122,21 @@ It is offered:
 - in a symbol's menu in the library;
 - as the command **Inkline: Edit symbol**, with the cursor on a symbol's embed,
   outside code and front matter.
+
+**Unreleased:** double-clicking a symbol opens it in the editor as well, where
+the second click reaches the symbol:
+
+- in Live Preview, a table in it included, and in popout windows;
+- on a canvas, in a card or a note that is not focused, and in a text card's own
+  editor.
+
+The first click does what it did before, such as selecting the picture or
+focusing the card, and neither Obsidian's image viewer nor the card's text
+opens. A double-click on any other picture, or on words, does what Obsidian does
+with it. In Reading view, embedded notes, hover previews, and a focused canvas
+card, a click on a picture opens Obsidian's image viewer, and in a callout in
+Live Preview a click shows the callout as text, so the second click lands
+elsewhere. There, right-click the symbol for **Edit symbol**.
 
 A symbol with a large base layer takes a moment to open, and a notice says so.
 Obsidian goes on answering meanwhile, so a key you press still reaches the note

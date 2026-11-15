@@ -2,6 +2,14 @@ import { browser, expect } from "@wdio/globals";
 import { obsidianPage } from "wdio-obsidian-service";
 import { encodePng } from "../../support/png.ts";
 import { loadModules, toBase64 } from "../support/browser.ts";
+import {
+  cursorInCard,
+  fitCards,
+  leaveCards,
+  openCanvas,
+  placeInCard,
+  placeInCardEditor,
+} from "../support/canvas.ts";
 import { createSymbol } from "../support/editor.ts";
 import {
   choose,
@@ -11,13 +19,8 @@ import {
   menuItems,
   menuLoaded,
 } from "../support/menus.ts";
+import { click, placeOf, rightClick, type Point } from "../support/pointer.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
-
-/** A place in the window, in its own pixels. */
-interface Point {
-  readonly x: number;
-  readonly y: number;
-}
 
 /** What a card's text holds, to tell cards apart. */
 const textCard = "Plain words";
@@ -52,65 +55,6 @@ async function open(path: string): Promise<void> {
     editor.focus();
     editor.setCursor(editor.lastLine(), 0);
   }, path);
-}
-
-/** The middle of the first element `selector` finds that has a size. */
-async function middleOf(selector: string): Promise<Point | null> {
-  return browser.execute((wanted) => {
-    for (const found of Array.from(document.querySelectorAll(wanted))) {
-      const box = found.getBoundingClientRect();
-      if (box.width === 0 || box.height === 0) continue;
-      return {
-        x: Math.round(box.x + box.width / 2),
-        y: Math.round(box.y + box.height / 2),
-      };
-    }
-    return null;
-  }, selector);
-}
-
-/** Waits until `read` gives a place that stays there, and gives it. */
-async function settled(
-  read: () => Promise<Point | null>,
-  what: string,
-): Promise<Point> {
-  let last: Point | null = null;
-  let held = 0;
-  return browser.waitUntil(
-    async () => {
-      const now = await read();
-      held =
-        now !== null && now.x === last?.x && now.y === last.y ? held + 1 : 0;
-      last = now;
-      return held >= 2 ? now : false;
-    },
-    { interval: 150, timeoutMsg: `${what} did not settle` },
-  );
-}
-
-/** The settled middle of the first of `selector` with a size. */
-async function placeOf(selector: string): Promise<Point> {
-  return settled(() => middleOf(selector), selector);
-}
-
-/** Presses the right button at `point`. */
-async function rightClick(point: Point): Promise<void> {
-  await browser
-    .action("pointer", { parameters: { pointerType: "mouse" } })
-    .move(point)
-    .down({ button: 2 })
-    .up({ button: 2 })
-    .perform();
-}
-
-/** Presses the left button at `point`. */
-async function click(point: Point): Promise<void> {
-  await browser
-    .action("pointer", { parameters: { pointerType: "mouse" } })
-    .move(point)
-    .down({ button: 0 })
-    .up({ button: 0 })
-    .perform();
 }
 
 /**
@@ -161,95 +105,6 @@ async function viewerOpen(): Promise<boolean> {
   return browser.execute(() => document.querySelector(".lightbox") !== null);
 }
 
-/**
- * Fits the active canvas's cards to its window, once they have drawn their
- * symbols: a canvas opens where it was last left, and a smaller window can
- * leave them out of sight.
- */
-async function fitCards(): Promise<void> {
-  await browser.$(".canvas-node img.inkline-symbol").waitForExist();
-  await browser.waitUntil(async () =>
-    browser.execute(() =>
-      Array.from(
-        document.querySelectorAll<HTMLImageElement>(".canvas-node img"),
-      ).every((image) => image.complete),
-    ),
-  );
-  const fit = browser.$(
-    '.workspace-leaf.mod-active .canvas-controls [aria-label*="fit" i]',
-  );
-  try {
-    await fit.waitForExist({ timeout: 3000 });
-  } catch (error) {
-    const labels = await browser.execute(() =>
-      Array.from(document.querySelectorAll(".canvas-controls *"))
-        .map((item) => item.getAttribute("aria-label"))
-        .filter((label) => label !== null),
-    );
-    throw new Error(`no fit control in ${labels.join(", ")}`, { cause: error });
-  }
-  await fit.click();
-  await placeOf(".canvas-node img.inkline-symbol");
-}
-
-/** Opens the canvas at `path`, with its cards in sight and none focused. */
-async function openCanvas(path: string): Promise<void> {
-  await browser.executeObsidian(async ({ app }, file) => {
-    const found = app.vault.getFileByPath(file);
-    if (found === null) throw new Error(`no ${file}`);
-    const leaf = app.workspace.getLeaf(false);
-    await leaf.openFile(found);
-    app.workspace.setActiveLeaf(leaf, { focus: true });
-  }, path);
-  await fitCards();
-  await leaveCards();
-}
-
-/** Clicks the canvas beside its cards, which ends any selection or editing. */
-async function leaveCards(): Promise<void> {
-  const blank = await browser.execute(() => {
-    const wrapper = document.querySelector(
-      ".workspace-leaf.mod-active .canvas-wrapper",
-    );
-    if (wrapper === null) throw new Error("no canvas");
-    const box = wrapper.getBoundingClientRect();
-    return { x: Math.round(box.x + 30), y: Math.round(box.y + 30) };
-  });
-  await click(blank);
-  await browser.waitUntil(async () =>
-    browser.execute(
-      () =>
-        document.querySelector(
-          ".canvas-node.is-focused, .canvas-node.is-selected",
-        ) === null,
-    ),
-  );
-}
-
-/** The middle of the last `selector` in the card whose text holds `card`. */
-async function placeInCard(card: string, selector: string): Promise<Point> {
-  return settled(
-    () =>
-      browser.execute(
-        (text, wanted) => {
-          const card = Array.from(
-            document.querySelectorAll(".canvas-node"),
-          ).find((node) => node.textContent.includes(text));
-          const found = Array.from(card?.querySelectorAll(wanted) ?? []).at(-1);
-          if (found === undefined) return null;
-          const box = found.getBoundingClientRect();
-          return {
-            x: Math.round(box.x + box.width / 2),
-            y: Math.round(box.y + box.height / 2),
-          };
-        },
-        card,
-        selector,
-      ),
-    `${selector} in the card with ${card}`,
-  );
-}
-
 /** Clicks the text card's last paragraph, which focuses the card. */
 async function focusTextCard(): Promise<void> {
   await click(await placeInCard(textCard, "p"));
@@ -265,48 +120,6 @@ async function editCard(text: string): Promise<void> {
   await choose("Edit");
   await browser.$(".canvas-node.is-editing iframe").waitForExist();
   await cursorInCard(text);
-}
-
-/** Puts the cursor at `text` in the card's editor. */
-async function cursorInCard(text: string): Promise<void> {
-  await browser.waitUntil(async () =>
-    browser.executeObsidian(({ app }, wanted) => {
-      const editor = app.workspace.activeEditor?.editor;
-      if (editor === undefined) return false;
-      const at = editor.getValue().indexOf(wanted);
-      if (at === -1) return false;
-      editor.focus();
-      editor.setCursor(editor.offsetToPos(at));
-      return true;
-    }, text),
-  );
-}
-
-/**
- * The middle of `selector` in the card's editor, in the window's pixels: the
- * editor is a document of its own, in a frame the canvas can scale.
- */
-async function placeInCardEditor(selector: string): Promise<Point> {
-  return settled(
-    () =>
-      browser.execute((wanted) => {
-        const frame = document.querySelector<HTMLIFrameElement>(
-          ".canvas-node.is-editing iframe",
-        );
-        const found = frame?.contentDocument?.querySelector(wanted);
-        if (frame === null || found === undefined || found === null) {
-          return null;
-        }
-        const outer = frame.getBoundingClientRect();
-        const box = found.getBoundingClientRect();
-        const scale = outer.width / frame.offsetWidth;
-        return {
-          x: Math.round(outer.x + (box.x + box.width / 2) * scale),
-          y: Math.round(outer.y + (box.y + box.height / 2) * scale),
-        };
-      }, selector),
-    `${selector} in the card's editor`,
-  );
 }
 
 /** The commands the command palette lists for `query`. */
