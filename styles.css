@@ -428,17 +428,28 @@ img.inkline-symbol:not([width], [height]) {
 }
 
 /*
+ * The rows, apart from one another, so that what a row shows under its name
+ * reads as part of it, not of the row below.
+ */
+.inkline-library-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+}
+
+/*
  * A row: the button with its picture and name, then the others, on one line.
  * That button takes what they leave, and it asks the line for the picture and
  * a few words of name, however long the name is, so that the name wraps in its
  * cell rather than pushing them down. They drop together, to the row's end,
- * only in a sidebar too narrow for that much.
+ * only in a sidebar too narrow for that much. What comes under them, the row's
+ * values and its notes, has no gap above it, to keep with the row.
  */
 .inkline-library-symbol {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--size-4-1);
+  gap: 0 var(--size-4-1);
 }
 
 .inkline-library-insert {

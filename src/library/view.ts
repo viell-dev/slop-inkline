@@ -103,6 +103,34 @@ function noteLabel(path: string): string {
   return path.toLowerCase().endsWith(".md") ? path.slice(0, -3) : path;
 }
 
+/** How many ids {@link newId} has given, so that each is new to its window. */
+let ids = 0;
+
+/** An id for an element of the library, which no other element has. */
+function newId(what: string): string {
+  ids += 1;
+  return `inkline-library-${what}-${String(ids)}`;
+}
+
+/**
+ * Names `element`, for a screen reader, with `text` in a hidden element of
+ * `parent` that it points to. Obsidian shows an element's `aria-label` as a
+ * tooltip wherever the pointer rests over it, even over empty space, which a
+ * list or a form is mostly made of, and it shows nothing for this.
+ */
+function nameFor(
+  element: HTMLElement,
+  parent: HTMLElement,
+  text: string,
+): HTMLElement {
+  const name = parent.createSpan({
+    text,
+    attr: { id: newId("name"), hidden: "" },
+  });
+  element.setAttribute("aria-labelledby", name.id);
+  return name;
+}
+
 /** The row whose readings and translations are being edited. */
 interface TextPanel {
   readonly file: TFile;
@@ -223,8 +251,9 @@ export class SymbolLibraryView extends ItemView {
     // Its pictures are text, as the renderer paints symbols in text.
     const list = root.createDiv({
       cls: ["inkline-library-list", textClass],
-      attr: { role: "list", "aria-label": "Symbols" },
+      attr: { role: "list" },
     });
+    nameFor(list, root, "Symbols");
     list.addEventListener("pointerdown", (event) => {
       if (event.button === 0) this.#holdForPress(list.win);
     });
