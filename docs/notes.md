@@ -83,6 +83,13 @@ item, even if it is never closed, so the trigger in the text after it lists
 again. A callout's title line is read on its own: inline code in it ends with
 the line.
 
+**Unreleased:** a backtick inside a wiki link, a link, text in square brackets,
+a `%%` comment, math, a web address, HTML, emphasis, strikethrough, or a
+highlight starts no inline code, as Reading view shows it. A tab after a quote's
+`>`, or after a list item's marker and a space, makes the text after it an
+indented code block. A line without `>` stays in its quote after any block in
+it, as it does after a paragraph.
+
 **Inkline: Insert existing symbol** opens the same list as a search, and inserts
 the chosen symbol at the cursor. It places the symbol as **Inkline: Insert
 symbol** does: just after a link or embed the cursor is inside, so that no link

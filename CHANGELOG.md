@@ -33,6 +33,27 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 These change only text: nothing about how Inkline works has changed.
 
+### Fixed
+
+- The `;;` list follows Reading view in more places when it tells code from
+  text, so that it neither opens in code nor stays closed in text there:
+  - A backtick inside a wiki link, a link, text in square brackets, a `%%`
+    comment, math, a web address, HTML, emphasis, strikethrough, or a highlight
+    starts no inline code
+    ([#243](https://github.com/viell-dev/slop-inkline/issues/243)).
+  - A tab after a quote's `>`, or after a list item's marker and a space, makes
+    the text after it an indented code block; spaces before a tab do not
+    ([#249](https://github.com/viell-dev/slop-inkline/issues/249)).
+  - A line without `>` stays in its quote after a heading, a code block, a
+    table, or a `>` alone, as it does after a paragraph
+    ([#250](https://github.com/viell-dev/slop-inkline/issues/250)).
+  - HTML blocks, `%%` comment and `$$` math blocks, link reference definitions,
+    task boxes, headings underlined with `===`, the line after an empty list
+    item, and the end of a table are read as Reading view reads them.
+
+  A few rare notes are still read otherwise
+  ([#271](https://github.com/viell-dev/slop-inkline/issues/271)).
+
 ## 0.9.3 - 2026-11-12
 
 This is the second release candidate of 1.0.0: a build meant to become 1.0.0
