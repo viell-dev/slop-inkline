@@ -14,6 +14,17 @@ import {
   type CommandResult,
   type PublishContext,
 } from "../../scripts/lib/github.ts";
+import {
+  specificationName,
+  specificationPath,
+} from "../../scripts/lib/version.ts";
+
+/**
+ * The checkout's specification, which the publish step finds where the
+ * workflow runs it, in the checkout of the commit it tags.
+ */
+const specification = readFileSync(specificationPath);
+const specificationFile = specificationName(specification.toString("utf8"));
 
 const repository = "viell-dev/slop-inkline";
 const commit = "c0ffee".padEnd(40, "0");
@@ -209,11 +220,12 @@ function context(overrides: Partial<PublishContext> = {}): PublishContext {
 
 /** Writes a release's files as the workflow's `prepare` job leaves them. */
 function build(version: string): void {
-  const files: Record<string, string> = {
+  const files: Record<string, string | Buffer> = {
     "main.js": `// synthetic build of ${version}\n`,
     "manifest.json": `${JSON.stringify({ id: "inkline", version })}\n`,
     "styles.css": ".synthetic {}\n",
     [`inkline-${version}.zip`]: `synthetic ZIP of ${version}\n`,
+    [specificationFile]: specification,
   };
   const sums = Object.entries(files).map(([name, content]) => {
     writeFileSync(join(directory, name), content);
@@ -227,16 +239,35 @@ function build(version: string): void {
 const publish = (version: string, overrides?: Partial<PublishContext>) =>
   publishCommand(["publish", version, directory], context(overrides));
 
-/** What a release must hold: the four files and their checksums. */
+/** What a release must hold: the five files and their checksums. */
 function assetNames(version: string): string[] {
   return [
     "SHA256SUMS",
     `inkline-${version}.zip`,
+    specificationFile,
     "main.js",
     "manifest.json",
     "styles.css",
   ].sort();
 }
+
+/** Replaces `name`'s line in SHA256SUMS, or drops it when `line` is empty. */
+function relist(name: string, line: string): void {
+  const path = join(directory, "SHA256SUMS");
+  const lines = readFileSync(path, "utf8")
+    .split("\n")
+    .filter((entry) => entry !== "");
+  const kept = lines.flatMap((entry) =>
+    entry.endsWith(`  ${name}`) ? (line === "" ? [] : [line]) : [entry],
+  );
+  expect(kept).not.toEqual(lines);
+  writeFileSync(path, kept.map((entry) => `${entry}\n`).join(""));
+}
+
+const digestOf = (content: string | Buffer): string =>
+  createHash("sha256").update(content).digest("hex");
+
+const listsExactly = `SHA256SUMS must list exactly the plugin files, the versioned install ZIP, and ${specificationFile}`;
 
 const only = (version: string): FakeRelease => {
   const found = gh.releases.filter((release) => release.tag_name === version);
@@ -350,8 +381,37 @@ describe("what it refuses before it changes anything", () => {
 
   it("refuses a build whose ZIP names another version", async () => {
     build("1.1.0");
-    await expect(publish("1.2.0")).rejects.toThrow(
-      "SHA256SUMS must list exactly the plugin files and versioned install ZIP",
+    await expect(publish("1.2.0")).rejects.toThrow(listsExactly);
+    expect(gh.calls).toEqual([]);
+  });
+
+  it("refuses a build without the specification", async () => {
+    build("1.0.0");
+    relist(specificationFile, "");
+    await expect(publish("1.0.0")).rejects.toThrow(listsExactly);
+    expect(gh.calls).toEqual([]);
+  });
+
+  it("refuses a specification named for another revision", async () => {
+    build("1.0.0");
+    const other = specificationFile.replace(
+      /-revision-\d+\.md$/,
+      "-revision-99.md",
+    );
+    expect(other).not.toBe(specificationFile);
+    writeFileSync(join(directory, other), specification);
+    relist(specificationFile, `${digestOf(specification)}  ${other}`);
+    await expect(publish("1.0.0")).rejects.toThrow(listsExactly);
+    expect(gh.calls).toEqual([]);
+  });
+
+  it("refuses a specification that is not the checkout's", async () => {
+    build("1.0.0");
+    const changed = Buffer.concat([specification, Buffer.from("\nAdded.\n")]);
+    writeFileSync(join(directory, specificationFile), changed);
+    relist(specificationFile, `${digestOf(changed)}  ${specificationFile}`);
+    await expect(publish("1.0.0")).rejects.toThrow(
+      `${specificationFile} is not this checkout's ${specificationPath}`,
     );
     expect(gh.calls).toEqual([]);
   });
@@ -434,8 +494,46 @@ describe("running again after a failure", () => {
       `${api}/releases/${String(partial.id)}`,
     ]);
     expect(only(version).id).not.toBe(partial.id);
-    expect(only(version).assets).toHaveLength(5);
+    expect(
+      only(version)
+        .assets.map((asset) => asset.name)
+        .sort(),
+    ).toEqual(assetNames(version));
     expect(only(version).draft).toBe(false);
+  });
+
+  it("replaces a draft that holds every file but the specification", async () => {
+    // As a run from before the specification travelled with a release would
+    // leave it.
+    const held = assetNames(version)
+      .filter((name) => name !== specificationFile)
+      .map((name) => ({
+        name,
+        digest: `sha256:${digestOf(readFileSync(join(directory, name)))}`,
+      }));
+    gh.releases.push({
+      id: 99,
+      tag_name: version,
+      target_commitish: commit,
+      assets: held,
+      draft: true,
+      prerelease: false,
+    });
+
+    await publish(version);
+    expect(gh.writes).toContainEqual([
+      "api",
+      "-X",
+      "DELETE",
+      `${api}/releases/99`,
+    ]);
+    expect(only(version).id).not.toBe(99);
+    expect(only(version).draft).toBe(false);
+    expect(
+      only(version)
+        .assets.map((asset) => asset.name)
+        .sort(),
+    ).toEqual(assetNames(version));
   });
 
   it("replaces a draft of the same files for another commit", async () => {

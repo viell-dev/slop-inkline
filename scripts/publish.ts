@@ -14,9 +14,11 @@
 //                                             failed part way
 //
 // It needs GH_TOKEN and GITHUB_REPOSITORY, as the workflow gives them, and,
-// to publish, GITHUB_SHA, the commit to tag, and the GitHub CLI. It imports
-// only Node.js and lib/, so that it runs without the dependencies. Everything
-// but the running of the CLI is in lib/github.ts, where tests can reach it.
+// to publish, GITHUB_SHA, the commit to tag, the GitHub CLI, and to run in a
+// checkout of that commit, whose copy of the format's specification the
+// release must carry. It imports only Node.js and lib/, so that it runs
+// without the dependencies. Everything but the running of the CLI is in
+// lib/github.ts, where tests can reach it.
 
 import { spawnSync } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";

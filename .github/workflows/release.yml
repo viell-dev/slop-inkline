@@ -91,13 +91,17 @@ jobs:
             echo "No unreleased changes." > release-notes.md
           fi
           cat release-notes.md
-      - name: Package the manual installation and record checksums
+      # The release carries a copy of the format's specification, named by
+      # its version and revision, so that each published version keeps the
+      # document that says what its files hold.
+      - name: Package the manual installation, copy the specification, and record checksums
         run: |
           mkdir release
           cp dist/main.js dist/manifest.json dist/styles.css release-notes.md release/
           node scripts/package.ts release
+          node scripts/release.ts specification release
           cd release
-          sha256sum main.js manifest.json styles.css inkline-*.zip > SHA256SUMS
+          sha256sum main.js manifest.json styles.css inkline-*.zip inkline-file-format-*.md > SHA256SUMS
           cat SHA256SUMS
       # The release's own files, in a test vault's plugin folder, where
       # Obsidian loads them, in the oldest and the latest versions the
@@ -173,6 +177,7 @@ jobs:
             release/manifest.json
             release/styles.css
             release/inkline-*.zip
+            release/inkline-file-format-*.md
       # Creates the release as a draft with the files, checks that it holds
       # them for this commit, and publishes it by its id, which creates the
       # tag. Run again after a failure part way, it resumes a draft that
@@ -203,7 +208,7 @@ jobs:
           sha256sum --check SHA256SUMS
           # The commit is what ties each file to its source: a pre-release's
           # manifest.json differs from the file in that commit.
-          for file in main.js manifest.json styles.css inkline-*.zip; do
+          for file in main.js manifest.json styles.css inkline-*.zip inkline-file-format-*.md; do
             gh attestation verify "$file" --repo "$GH_REPO" \
               --source-digest "$GITHUB_SHA" \
               --signer-workflow "$GH_REPO/.github/workflows/release.yml"
@@ -213,3 +218,7 @@ jobs:
           for file in main.js manifest.json styles.css; do
             cmp "$file" "extracted/inkline/$file"
           done
+          # The specification is the commit's own document, unchanged.
+          gh api --header "Accept: application/vnd.github.raw" \
+            "repos/$GH_REPO/contents/docs/file-format.md?ref=$GITHUB_SHA" > ../specification.md
+          cmp inkline-file-format-*.md ../specification.md

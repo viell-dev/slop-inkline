@@ -2,7 +2,9 @@
 // as RELEASING.md explains: Obsidian compares versions number by number, so it
 // would order a SemVer prerelease suffix wrongly. Releases before 0.9.0 carried
 // such a suffix, which still marks them as pre-releases. Obsidian's community
-// directory and app compatibility versions use only the numeric core.
+// directory and app compatibility versions use only the numeric core. The
+// names of the release's assets that carry a version are here too: the
+// install ZIP's, with Inkline's, and the specification's, with the format's.
 const number = "(?:0|[1-9]\\d*)";
 const core = `${number}\\.${number}\\.${number}`;
 const identifier = `(?:${number}|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)`;
@@ -28,6 +30,32 @@ export function installArchiveName(version: string): string {
     throw new Error(`Invalid release version: ${version}`);
   }
   return `inkline-${version}.zip`;
+}
+
+/** The file format's specification, from the repository's root. */
+export const specificationPath = "docs/file-format.md";
+
+/**
+ * The name of the release asset that is a copy of the file format's
+ * specification, from the format's version in the document's title and the
+ * revision on the line under it: `inkline-file-format-version-1-revision-1.md`
+ * for revision 1 of version 1. Both words are spelled out, as the document
+ * tells the two apart, and so that neither reads as Inkline's own version.
+ * Throws when the document does not open with them, so that a release never
+ * carries a copy it cannot name.
+ */
+export function specificationName(document: string): string {
+  const header =
+    /^# Inkline file format, version ([1-9]\d*)\r?\n\r?\nRevision ([1-9]\d*), \d{1,2} [A-Z][a-z]+ \d{4}\r?\n/.exec(
+      document,
+    );
+  if (header === null) {
+    throw new Error(
+      `${specificationPath} must open with "# Inkline file format, version <n>" and "Revision <n>, <day> <month> <year>" under it`,
+    );
+  }
+  const [, version = "", revision = ""] = header;
+  return `inkline-file-format-version-${version}-revision-${revision}.md`;
 }
 
 /** One dot-separated part of a SemVer prerelease suffix against another. */

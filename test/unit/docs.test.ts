@@ -352,6 +352,42 @@ describe("the documentation", () => {
     expect(problems).toEqual([]);
   });
 
+  it("keeps the file format's specification readable as a file of its own", () => {
+    // Each release carries a copy, with no site or repository around it, as
+    // RELEASING.md says: its links lead to its own headings, by the site's
+    // rules and by GitHub's, or to full addresses, and it uses none of the
+    // site's own syntax.
+    const text = page("file-format.md");
+    const lines = outsideFences(text).map((line) =>
+      line.replace(/`[^`]*`/g, ""),
+    );
+    const definitions = lines.flatMap((line) => {
+      const target = /^ {0,3}\[[^\]]+\]:\s*(\S+)/.exec(line)?.[1];
+      return target === undefined ? [] : [target];
+    });
+    const problems = [...links(text), ...definitions].flatMap((href) => {
+      if (href.startsWith("#")) {
+        const fragment = href.slice(1);
+        return anchors(text).includes(fragment) &&
+          anchors(text, githubAnchor).includes(fragment)
+          ? []
+          : [`${href}, no such heading`];
+      }
+      return href.startsWith("https://") ? [] : [`${href}, not a full address`];
+    });
+    for (const line of lines) {
+      if (
+        /^\s*:::/.test(line) ||
+        /\{#[^}]*\}|\[\[toc\]\]|\{\{|<\/?[A-Za-z][^>]*>/i.test(line)
+      ) {
+        problems.push(`the site's own syntax: ${line}`);
+      }
+    }
+    expect(text.startsWith("---")).toBe(false);
+    expect(links(text).length).toBeGreaterThan(20);
+    expect(problems).toEqual([]);
+  });
+
   it("links the repository's documents only to files, headings, and pages that exist", () => {
     const problems = documents.flatMap((name) =>
       links(source(name)).flatMap((href) => {

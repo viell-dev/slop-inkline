@@ -123,6 +123,21 @@ It is offered:
 - as the command **Inkline: Edit symbol**, with the cursor on a symbol's embed,
   outside code and front matter.
 
+**Unreleased:** double-clicking a symbol opens it in the editor as well, where
+the second click reaches the symbol:
+
+- in Live Preview, a table in it included, and in popout windows;
+- on a canvas, in a card or a note that is not focused, and in a text card's own
+  editor.
+
+The first click does what it did before, such as selecting the picture or
+focusing the card, and neither Obsidian's image viewer nor the card's text
+opens. A double-click on any other picture, or on words, does what Obsidian does
+with it. In Reading view, embedded notes, hover previews, and a focused canvas
+card, a click on a picture opens Obsidian's image viewer, and in a callout in
+Live Preview a click shows the callout as text, so the second click lands
+elsewhere. There, right-click the symbol for **Edit symbol**.
+
 A symbol with a large base layer takes a moment to open, and a notice says so.
 Obsidian goes on answering meanwhile, so a key you press still reaches the note
 until the editor is there. Asking for the same symbol again changes nothing, and
