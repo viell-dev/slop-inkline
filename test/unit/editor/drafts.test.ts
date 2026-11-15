@@ -7,6 +7,7 @@ import {
   drawingOf,
   fingerprintOf,
   restoreDraft,
+  restoresNothing,
   sameTarget,
   type Draft,
   type VaultStorage,
@@ -913,6 +914,77 @@ describe("restoreDraft", () => {
         draft({ base: { kind: "kept", layer: kept } }),
       ),
     ).toEqual({ strokes: [stroke], base: kept });
+  });
+});
+
+describe("restoresNothing", () => {
+  const opened: InkDocument = { strokes: [stroke], base: layer };
+
+  it("is true only when the file holds the same strokes, base layer and name", () => {
+    // The file's own base layer, or a kept one that is the same picture.
+    expect(restoresNothing(draft(), opened, "001")).toBe(true);
+    expect(
+      restoresNothing(
+        draft({
+          base: { kind: "kept", layer: { ...layer, png: png.slice() } },
+        }),
+        opened,
+        "001",
+      ),
+    ).toBe(true);
+    expect(
+      restoresNothing(
+        draft({ base: { kind: "none" } }),
+        { strokes: [stroke] },
+        "001",
+      ),
+    ).toBe(true);
+    // Its name, typed as the one the file has now, or none.
+    expect(restoresNothing(draft({ name: "001" }), opened, "001")).toBe(true);
+    // The grid it was drawn on is no part of the drawing.
+    expect(restoresNothing(draft({ gridOrigin: 7 }), opened, "001")).toBe(true);
+  });
+
+  it("is false for anything that restoring would bring back", () => {
+    const changed = (overrides: Partial<Draft>): boolean =>
+      restoresNothing(draft(overrides), opened, "001");
+    // A stroke more, one fewer, or one that differs in any part.
+    expect(changed({ strokes: [stroke, stroke] })).toBe(false);
+    expect(changed({ strokes: [] })).toBe(false);
+    expect(changed({ strokes: [{ ...stroke, points: [16, 33] }] })).toBe(false);
+    expect(changed({ strokes: [{ ...stroke, size: 512 }] })).toBe(false);
+    expect(changed({ strokes: [{ ...stroke, tool: "eraser" }] })).toBe(false);
+    // A base layer that differs in its picture or its place, or none.
+    for (const kept of [
+      { ...layer, png: encodePng(blank(3, 2)) },
+      { ...layer, x: 32 },
+      { ...layer, y: 32 },
+      { ...layer, width: 64 },
+      { ...layer, height: 64 },
+    ]) {
+      expect(changed({ base: { kind: "kept", layer: kept } })).toBe(false);
+    }
+    expect(changed({ base: { kind: "none" } })).toBe(false);
+    expect(
+      restoresNothing(
+        draft({ base: { kind: "kept", layer } }),
+        { strokes: [stroke] },
+        "001",
+      ),
+    ).toBe(false);
+    // One whose base layer cannot be read, whatever the file holds.
+    expect(changed({ base: { kind: "lost" } })).toBe(false);
+    expect(
+      restoresNothing(
+        draft({ base: { kind: "lost" } }),
+        { strokes: [stroke] },
+        "001",
+      ),
+    ).toBe(false);
+    // Another name, or any text typed, even what the file says.
+    expect(changed({ name: "gate" })).toBe(false);
+    expect(changed({ text: {} })).toBe(false);
+    expect(changed({ text: { reading: "" } })).toBe(false);
   });
 });
 

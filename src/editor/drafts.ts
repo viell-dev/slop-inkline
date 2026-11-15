@@ -348,13 +348,7 @@ export function draftBase(
 ): DraftBase {
   const layer = document.base;
   if (layer === undefined) return { kind: "none" };
-  const held = saved?.base;
-  return held !== undefined &&
-    samePng(held.png, layer.png) &&
-    held.x === layer.x &&
-    held.y === layer.y &&
-    held.width === layer.width &&
-    held.height === layer.height
+  return sameLayer(saved?.base, layer)
     ? { kind: "file" }
     : { kind: "kept", layer };
 }
@@ -379,6 +373,44 @@ export function restoreDraft(original: InkDocument, draft: Draft): InkDocument {
         ? original.base
         : undefined;
   return layer === undefined ? { strokes } : { strokes, base: layer };
+}
+
+/**
+ * Whether restoring `draft` over `opened`, the document its symbol's file
+ * holds, under the name `name`, would bring back nothing: the same strokes, the
+ * same base layer in the same place, and the same name, with no text typed. A
+ * draft whose kept base layer can no longer be read always brings back
+ * something, as what it held is not known. Its grid's origin does not count,
+ * as it changes no drawing.
+ */
+export function restoresNothing(
+  draft: Draft,
+  opened: InkDocument,
+  name: string,
+): boolean {
+  if (draft.text !== undefined || draft.base.kind === "lost") return false;
+  if (draft.name !== undefined && draft.name !== name) return false;
+  const restored = restoreDraft(opened, draft);
+  return (
+    sameLayer(restored.base, opened.base) &&
+    JSON.stringify(recordValue({ strokes: restored.strokes })) ===
+      JSON.stringify(recordValue({ strokes: opened.strokes }))
+  );
+}
+
+/** Whether two base layers, or none, are the same picture in the same place. */
+function sameLayer(
+  a: BaseLayer | undefined,
+  b: BaseLayer | undefined,
+): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return (
+    samePng(a.png, b.png) &&
+    a.x === b.x &&
+    a.y === b.y &&
+    a.width === b.width &&
+    a.height === b.height
+  );
 }
 
 /** A target after `from` was renamed to `to`, or the same target. */

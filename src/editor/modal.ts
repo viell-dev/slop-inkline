@@ -64,6 +64,7 @@ import {
   drawingOf,
   fingerprintOf,
   restoreDraft,
+  restoresNothing,
   sameTarget,
   type Draft,
   type DraftStore,
@@ -2696,49 +2697,26 @@ export class InkEditorModal extends Modal {
    * Settles the draft that {@link dispose} kept while a save ran, once that
    * save ends, which can be after Inkline is off: Obsidian finishes a rename
    * it has begun, which nothing takes back, and the draft names the file's
-   * path from before it. The editor follows the file no more, and anything may
-   * have written it since the save did, so it reads the file once more. If the
-   * file holds now exactly the bytes the save `written` names, and nothing
-   * changed in the editor since, it has every stroke the draft does, and the
-   * draft goes. Otherwise the draft is kept again for the file where it is now,
-   * still on its own base layer, which depends on nothing the file holds, and
-   * with the time it was kept, so that it expires as it would have.
+   * path from before it. The draft is kept again for the file where it is now,
+   * on its own base layer and with the time it was kept, so that it depends on
+   * nothing the file holds and expires as it would have. Whether the file
+   * holds everything it does is for the next editor of the file to tell, as it
+   * offers drafts ({@link #draftToOffer}): the file can change at any time
+   * after the save, and this editor follows it no more.
    *
    * This touches only this editor's own draft, once, and only while a list
    * would keep it: another load may have restored, discarded, or dropped it
-   * meanwhile, as one that expired, and nothing brings it back. It writes no
-   * file and no note.
+   * meanwhile, as one that expired, and nothing brings it back. It reads no
+   * file, removes no draft, and writes no file and no note.
    */
-  async #settleDraft(written: string | undefined): Promise<void> {
+  #settleDraft(): void {
     if (!this.#settling) return;
     this.#settling = false;
     const drafts = this.#options.drafts;
-    if (drafts === undefined) return;
-    const held =
-      written !== undefined &&
-      !this.#unsaved &&
-      (await this.#fileHolds(written));
-    // After the read, as another load may have used the draft meanwhile.
-    const keptAt = drafts.store.keptAt(this.#draftId);
-    if (keptAt === undefined) return;
-    if (held) {
-      drafts.store.remove(this.#draftId);
-      return;
-    }
+    const keptAt = drafts?.store.keptAt(this.#draftId);
+    if (drafts === undefined || keptAt === undefined) return;
     const draft = { ...this.#draft(drafts.target(), true), savedAt: keptAt };
     if (!drafts.store.put(draft)) this.#sayNotKept();
-  }
-
-  /** Whether the symbol's file holds now the bytes `fingerprint` names. */
-  async #fileHolds(fingerprint: string): Promise<boolean> {
-    try {
-      const bytes = await this.#options.file?.()?.read();
-      return (
-        bytes !== undefined && (await fingerprintOf(bytes)) === fingerprint
-      );
-    } catch {
-      return false;
-    }
   }
 
   /**
@@ -2762,6 +2740,32 @@ export class InkEditorModal extends Modal {
   }
 
   /**
+   * The newest draft another editor left for this symbol that restoring would
+   * bring something back from. A draft for a file that would bring back
+   * nothing, as the file holds its strokes, base layer and name, and it holds
+   * no text typed, is dropped instead of offered, as after a save that ended
+   * once Inkline was off. The editor follows the file from its opening, so a
+   * change to it after that is taken in or asked about as any other is. A new
+   * symbol's draft is always offered, as restoring it can finish its first
+   * save.
+   */
+  #draftToOffer(
+    drafts: NonNullable<EditorOptions["drafts"]>,
+  ): Draft | undefined {
+    const target = drafts.target();
+    for (const draft of drafts.store.forTarget(target)) {
+      if (
+        target.kind !== "file" ||
+        !restoresNothing(draft, this.#opened, this.#savedName)
+      ) {
+        return draft;
+      }
+      drafts.store.remove(draft.id);
+    }
+    return undefined;
+  }
+
+  /**
    * Offers back the newest draft another editor left for this symbol, once
    * any base layer it keeps is decoded, holding it meanwhile so that no other
    * editor offers it too. Dismissing the question keeps the draft for next
@@ -2771,7 +2775,7 @@ export class InkEditorModal extends Modal {
   async #offerDraft(): Promise<void> {
     const drafts = this.#options.drafts;
     if (drafts === undefined) return;
-    const [found] = drafts.store.forTarget(drafts.target());
+    const found = this.#draftToOffer(drafts);
     if (found === undefined) return;
     drafts.store.hold(found.id);
     this.#offered = found.id;
@@ -3389,11 +3393,6 @@ export class InkEditorModal extends Modal {
     this.#announce("Saving…");
     /** Starts this save again once it has ended, if it is to. */
     let again: (() => void) | undefined;
-    /**
-     * A fingerprint of the bytes it wrote, once the session took them as
-     * saved; undefined until then.
-     */
-    let saved: string | undefined;
     this.#saving = (async () => {
       try {
         // Ready for the draft that goes with the write below, which can't pause.
@@ -3452,7 +3451,6 @@ export class InkEditorModal extends Modal {
         this.#showTextSummary();
         this.#watch.took(written, drawn);
         this.#session.markSaved(document);
-        saved = written;
         this.#session.rebase(-left);
         this.#view?.shift(-left);
         // The picture moves with the drawing, so it stays where it was.
@@ -3478,7 +3476,7 @@ export class InkEditorModal extends Modal {
         this.#render();
         this.#keepDraft();
         // Or, if the editor was disposed while this ran, the draft it kept.
-        void this.#settleDraft(saved);
+        this.#settleDraft();
         // Changes reported while it ran, its own write among them.
         this.#checkFile();
         // Not yet, as what waits on this save must hear that it stopped first:
