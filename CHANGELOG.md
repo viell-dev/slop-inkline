@@ -37,9 +37,9 @@ These change only text, not how Inkline works.
 
 - Turning Inkline off while Obsidian is still renaming a symbol you have just
   saved, as while it asks whether to update links, no longer leaves a draft that
-  the editor offers back though the drawing was saved. A stroke drawn after that
-  save is offered back under the symbol's new name, where it used to stay in a
-  draft that nothing offered
+  the editor offers back though the file holds the drawing. A stroke drawn after
+  that save is offered back under the symbol's new name, with the picture it was
+  drawn over, where it used to stay in a draft that nothing offered
   ([#247](https://github.com/viell-dev/slop-inkline/issues/247)).
 
 ## 0.9.3 - 2026-11-12

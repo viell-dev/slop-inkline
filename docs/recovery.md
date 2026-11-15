@@ -58,8 +58,9 @@ loses at most a stroke still being drawn, and turning Inkline off loses nothing:
 it ends the stroke and keeps the draft. **Unreleased:** if Obsidian is still
 renaming the symbol you saved as you turn Inkline off, as while it asks about
 links, the draft follows the rename once Obsidian finishes it: it goes if the
-file holds the whole drawing, and otherwise waits under the file's new name. A
-picture you were tracing over is not kept.
+file still holds the drawing as you saved it, and otherwise waits under the
+file's new name, with its own copy of any picture you drew over and the time it
+was kept. A picture you were tracing over is not kept.
 
 Opening the same symbol again, or a new symbol in the same note, asks **Restore
 the unsaved drawing?**, with the time the draft was kept:
