@@ -64,6 +64,7 @@ import {
   drawingOf,
   fingerprintOf,
   restoreDraft,
+  restoresNothing,
   sameTarget,
   type Draft,
   type DraftStore,
@@ -501,8 +502,13 @@ export class InkEditorModal extends Modal {
   #hover: { pointerId: number; clientX: number; clientY: number } | undefined;
   #saving: Promise<boolean> | undefined;
   #closing = false;
-  /** Set when disposed: nothing more is saved or written as a draft. */
+  /**
+   * Set when disposed: nothing more is saved or written as a draft, but for
+   * {@link #settleDraft} once a save that was running then ends.
+   */
   #retired = false;
+  /** Whether a save was running when the editor was disposed, until it ends. */
+  #settling = false;
   #frame: number | undefined;
   #resize: ResizeObserver | undefined;
   #status: HTMLElement | undefined;
@@ -1087,18 +1093,23 @@ export class InkEditorModal extends Modal {
   /**
    * Closes the editor without asking, as when the plugin unloads: unsaved
    * strokes are kept as a draft, its questions close, and nothing more is
-   * saved or written as a draft, even by a save still running.
+   * saved or written as a draft, even by a save still running, which only
+   * settles that draft as it ends ({@link #settleDraft}).
    */
   dispose(): void {
     if (this.#retired) return;
     this.#session.end();
-    if (!this.#keepDraft()) {
-      new Notice(
-        `Inkline could not keep a draft of the latest changes to ${this.#displayName}.`,
-      );
-    }
+    if (!this.#keepDraft()) this.#sayNotKept();
+    this.#settling = this.#saving !== undefined;
     this.#retired = true;
     this.#finish();
+  }
+
+  /** Says that the latest changes are in no draft, once the editor is gone. */
+  #sayNotKept(): void {
+    new Notice(
+      `Inkline could not keep a draft of the latest changes to ${this.#displayName}.`,
+    );
   }
 
   #finish(): void {
@@ -2633,25 +2644,8 @@ export class InkEditorModal extends Modal {
       this.#forgetDraft();
       return true;
     }
-    const { document, saved } = this.#session;
-    const kept = drafts.store.put({
-      id: this.#draftId,
-      target: drafts.target(),
-      strokes: document.strokes,
-      base: draftBase(document, pending ? undefined : saved),
-      ...(this.#watch.fingerprint === undefined
-        ? {}
-        : { fingerprint: this.#watch.fingerprint }),
-      ...(this.#watch.drawing === undefined
-        ? {}
-        : { drawing: this.#watch.drawing }),
-      savedAt: Date.now(),
-      gridOrigin: this.#session.gridOrigin,
-      ...(this.#nameChanged ? { name: this.#typedName } : {}),
-      ...(this.#textFields?.touched === true
-        ? { text: this.#textFields.typed() }
-        : {}),
-    });
+    const { document } = this.#session;
+    const kept = drafts.store.put(this.#draft(drafts.target(), pending));
     if (!kept && this.#draftKept) {
       this.#announce("Draft not kept");
       new Notice(
@@ -2669,6 +2663,60 @@ export class InkEditorModal extends Modal {
     this.#draftKept = kept;
     if (kept) this.#replaced();
     return kept;
+  }
+
+  /**
+   * This editor's drawing as its draft for `target`. While the file may hold
+   * the drawing as it was or as a save writes it, the draft is `pending`, and
+   * keeps its own base layer, so that it does not depend on which version the
+   * file holds.
+   */
+  #draft(target: DraftTarget, pending: boolean): Draft {
+    const { document, saved } = this.#session;
+    return {
+      id: this.#draftId,
+      target,
+      strokes: document.strokes,
+      base: draftBase(document, pending ? undefined : saved),
+      ...(this.#watch.fingerprint === undefined
+        ? {}
+        : { fingerprint: this.#watch.fingerprint }),
+      ...(this.#watch.drawing === undefined
+        ? {}
+        : { drawing: this.#watch.drawing }),
+      savedAt: Date.now(),
+      gridOrigin: this.#session.gridOrigin,
+      ...(this.#nameChanged ? { name: this.#typedName } : {}),
+      ...(this.#textFields?.touched === true
+        ? { text: this.#textFields.typed() }
+        : {}),
+    };
+  }
+
+  /**
+   * Settles the draft that {@link dispose} kept while a save ran, once that
+   * save ends, which can be after Inkline is off: Obsidian finishes a rename
+   * it has begun, which nothing takes back, and the draft names the file's
+   * path from before it. The draft is kept again for the file where it is now,
+   * on its own base layer and with the time it was kept, so that it depends on
+   * nothing the file holds and expires as it would have. Whether the file
+   * holds everything it does is for the next editor of the file to tell, as it
+   * offers drafts ({@link #draftToOffer}): the file can change at any time
+   * after the save, and this editor follows it no more.
+   *
+   * This touches only this editor's own draft, once, and only while a list
+   * would keep it: another load may have restored, discarded, or dropped it
+   * meanwhile, as one that expired, and nothing brings it back. It reads no
+   * file, removes no draft, and writes no file and no note.
+   */
+  #settleDraft(): void {
+    if (!this.#settling) return;
+    this.#settling = false;
+    const drafts = this.#options.drafts;
+    const keptAt = drafts?.store.keptAt(this.#draftId);
+    if (drafts === undefined || keptAt === undefined) return;
+    const draft = { ...this.#draft(drafts.target(), true), savedAt: keptAt };
+    if (!drafts.store.put(draft)) this.#sayNotKept();
   }
 
   /**
@@ -2692,6 +2740,32 @@ export class InkEditorModal extends Modal {
   }
 
   /**
+   * The newest draft another editor left for this symbol that restoring would
+   * bring something back from. A draft for a file that would bring back
+   * nothing, as the file holds its strokes, base layer and name, and it holds
+   * no text typed, is dropped instead of offered, as after a save that ended
+   * once Inkline was off. The editor follows the file from its opening, so a
+   * change to it after that is taken in or asked about as any other is. A new
+   * symbol's draft is always offered, as restoring it can finish its first
+   * save.
+   */
+  #draftToOffer(
+    drafts: NonNullable<EditorOptions["drafts"]>,
+  ): Draft | undefined {
+    const target = drafts.target();
+    for (const draft of drafts.store.forTarget(target)) {
+      if (
+        target.kind !== "file" ||
+        !restoresNothing(draft, this.#opened, this.#savedName)
+      ) {
+        return draft;
+      }
+      drafts.store.remove(draft.id);
+    }
+    return undefined;
+  }
+
+  /**
    * Offers back the newest draft another editor left for this symbol, once
    * any base layer it keeps is decoded, holding it meanwhile so that no other
    * editor offers it too. Dismissing the question keeps the draft for next
@@ -2701,7 +2775,7 @@ export class InkEditorModal extends Modal {
   async #offerDraft(): Promise<void> {
     const drafts = this.#options.drafts;
     if (drafts === undefined) return;
-    const [found] = drafts.store.forTarget(drafts.target());
+    const found = this.#draftToOffer(drafts);
     if (found === undefined) return;
     drafts.store.hold(found.id);
     this.#offered = found.id;
@@ -3401,6 +3475,8 @@ export class InkEditorModal extends Modal {
         this.#updateButtons();
         this.#render();
         this.#keepDraft();
+        // Or, if the editor was disposed while this ran, the draft it kept.
+        this.#settleDraft();
         // Changes reported while it ran, its own write among them.
         this.#checkFile();
         // Not yet, as what waits on this save must hear that it stopped first:

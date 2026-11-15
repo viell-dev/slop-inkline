@@ -9,6 +9,8 @@ import {
   surface,
   waitForEditor,
 } from "../support/editor.ts";
+import { openCanvas, placeInCard } from "../support/canvas.ts";
+import { doubleClick } from "../support/pointer.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 
 const edited = "Glyphs/sign % one.ink.png";
@@ -37,6 +39,111 @@ async function visibleImages(): Promise<
   });
 }
 
+/**
+ * What the renderer gave a symbol's image for its size: its width over its
+ * height, its drop, and the width a size of only a width asks for, with the
+ * image's own size and the size its embed asks for.
+ */
+interface Measured {
+  src: string;
+  width: number;
+  height: number;
+  /** The `width` attribute, as `|24` gives, and the `height` one. */
+  sized: string | null;
+  tall: string | null;
+  ratio: string;
+  drop: string;
+  asked: string;
+}
+
+/**
+ * The loaded, shown images of symbols in a popout window's note, or in the
+ * editor of the canvas card being edited, with what the renderer gave them.
+ */
+async function measuredIn(place: "popout" | "card"): Promise<Measured[]> {
+  return browser.executeObsidian(({ app }, where) => {
+    const root =
+      where === "card"
+        ? document.querySelector<HTMLIFrameElement>(
+            ".canvas-node.is-editing iframe",
+          )?.contentDocument
+        : app.workspace
+            .getLeavesOfType("markdown")
+            .find((leaf) => leaf.view.containerEl.doc !== document)?.view
+            .containerEl;
+    if (root === null || root === undefined) return [];
+    return Array.from(root.querySelectorAll("img.inkline-symbol")).flatMap(
+      (image) => {
+        if (
+          !image.instanceOf(HTMLImageElement) ||
+          !image.complete ||
+          image.naturalWidth === 0 ||
+          image.getBoundingClientRect().width === 0
+        )
+          return [];
+        return [
+          {
+            src: image.src,
+            width: image.naturalWidth,
+            height: image.naturalHeight,
+            sized: image.getAttribute("width"),
+            tall: image.getAttribute("height"),
+            ratio: image.style.getPropertyValue("--inkline-ratio"),
+            drop: image.style.getPropertyValue("--inkline-drop"),
+            asked: image.style.getPropertyValue("--inkline-width"),
+          },
+        ];
+      },
+    );
+  }, place);
+}
+
+/**
+ * Whether what the renderer gave `image` follows its own size: its width
+ * over its height, and with a size of only a width, the drop and the width
+ * that size gives at that shape.
+ */
+function follows(image: Measured): boolean {
+  const ratio = Number.parseFloat(image.ratio);
+  if (!(Math.abs(ratio - image.width / image.height) < 1e-9)) return false;
+  if (image.sized === null || image.tall !== null) return image.asked === "";
+  const shown = (Number(image.sized) * image.height) / image.width;
+  return (
+    Math.abs(Number.parseFloat(image.drop) + shown / 4) < 1e-6 &&
+    image.asked === `${image.sized}px`
+  );
+}
+
+/** Saves `path` reshaped: one stroke from x 0 to `end`, in units. */
+async function reshape(path: string, end: number): Promise<number> {
+  return browser.executeObsidian(
+    async ({ app }, file, x) => {
+      const found = app.vault.getFileByPath(file);
+      if (found === null) throw new Error("no symbol");
+      const { bytes, width } = await window.inklineTest.canvas.saveInk(
+        {
+          strokes: [{ tool: "pen", size: 256, points: [0, 1000, x, 1000] }],
+        },
+        undefined,
+        [],
+      );
+      await app.vault.modifyBinary(found, bytes.slice().buffer);
+      return width;
+    },
+    path,
+    end,
+  );
+}
+
+/** Detaches every leaf in a popout window. */
+async function closePopouts(): Promise<void> {
+  await browser.executeObsidian(({ app }) => {
+    for (const leaf of app.workspace.getLeavesOfType("markdown")) {
+      if (leaf.view.containerEl.doc !== document) leaf.detach();
+    }
+  });
+}
+
 /** The actual saved width, decoded from bytes rather than a cached URL. */
 async function savedWidth(symbol = edited): Promise<number> {
   return browser.executeObsidian(async ({ app }, path) => {
@@ -62,6 +169,10 @@ describe("Saved symbol refresh", function () {
     await browser.executeObsidian(async ({ app }, contents) => {
       await app.vault.create("Refresh.md", contents);
     }, text);
+  });
+  // Whatever a test showed in a popout window goes with it, passed or not.
+  afterEach(async function () {
+    await closePopouts();
   });
   after(async function () {
     await startOver();
@@ -231,12 +342,24 @@ describe("Saved symbol refresh", function () {
         end,
       );
       expect(saved.sameTime).toBe(true);
-      await browser.waitUntil(async () => {
-        const current = await images();
-        return (
-          current[0]?.width === saved.width && current[1]?.width === saved.width
-        );
-      });
+      // What the renderer gave them follows the new shape too: the image's
+      // width over its height, and the |24's drop.
+      let shown: Measured[] = [];
+      await browser.waitUntil(
+        async () => {
+          const current = await images();
+          shown = await measuredIn("popout");
+          return (
+            current[0]?.width === saved.width &&
+            current[1]?.width === saved.width &&
+            shown.length === 3 &&
+            shown.every(follows)
+          );
+        },
+        {
+          timeoutMsg: `the popout's symbols did not follow their new shape: ${JSON.stringify(shown)}`,
+        },
+      );
       const after = await images();
       expect(after[0]?.src).not.toBe(before[0]?.src);
       expect(after[1]?.src).not.toBe(before[1]?.src);
@@ -245,5 +368,86 @@ describe("Saved symbol refresh", function () {
         expect(image.mask).toContain(image.src);
       before = after;
     }
+  });
+
+  it("measures symbols with sizes in a note first shown in a popout", async function () {
+    // A symbol and a note that no window has shown, so that the popout's
+    // images load after they are tagged.
+    await createSymbol("Glyphs/fresh.ink.png", [0, 800]);
+    await browser.executeObsidian(async ({ app }) => {
+      const file = await app.vault.create(
+        "Fresh.md",
+        "Fresh ![[Glyphs/fresh.ink.png|24]], ![[Glyphs/fresh.ink.png|1000]] and ![[Glyphs/fresh.ink.png]].\n",
+      );
+      await app.workspace
+        .openPopoutLeaf()
+        .openFile(file, { state: { mode: "preview" } });
+    });
+    let shown: Measured[] = [];
+    await browser.waitUntil(
+      async () => {
+        shown = await measuredIn("popout");
+        return shown.length === 3 && shown.every(follows);
+      },
+      {
+        timeoutMsg: `the popout's symbols were not measured: ${JSON.stringify(shown)}`,
+      },
+    );
+    expect(shown.map((image) => image.asked)).toEqual(["24px", "1000px", ""]);
+  });
+
+  it("keeps the symbols of a canvas card's own editor measured as one changes shape", async function () {
+    await browser.executeObsidian(async ({ app }, path) => {
+      await app.vault.create(
+        "Card.canvas",
+        JSON.stringify({
+          nodes: [
+            {
+              id: "card",
+              type: "text",
+              text: `Card ![[${path}]] and ![[${path}|24]] here.\n\nPlain words to open.`,
+              x: 0,
+              y: 0,
+              width: 420,
+              height: 200,
+            },
+          ],
+          edges: [],
+        }),
+      );
+    }, edited);
+    await openCanvas("Card.canvas");
+    // A double-click on its words opens the card's own editor, a document in
+    // a frame, which Inkline watches once it takes the focus. On a symbol, it
+    // would open the symbol instead.
+    await doubleClick(await placeInCard("Plain words", "p"));
+    await browser.$(".canvas-node.is-editing iframe").waitForExist();
+    let shown: Measured[] = [];
+    await browser.waitUntil(
+      async () => {
+        shown = await measuredIn("card");
+        return shown.length === 2 && shown.every(follows);
+      },
+      {
+        timeoutMsg: `the card's editor's symbols were not measured: ${JSON.stringify(shown)}`,
+      },
+    );
+    const before = shown[0]?.width;
+    const width = await reshape(edited, 6000);
+    expect(width).not.toBe(before);
+    await browser.waitUntil(
+      async () => {
+        shown = await measuredIn("card");
+        return (
+          shown.length === 2 &&
+          shown.every((image) => image.width === width) &&
+          shown.every(follows)
+        );
+      },
+      {
+        timeoutMsg: `the card's editor's symbols did not follow their new shape: ${JSON.stringify(shown)}`,
+      },
+    );
+    await saveScreenshot("refresh-card-editor");
   });
 });

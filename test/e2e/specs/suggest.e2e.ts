@@ -202,6 +202,63 @@ const contexts: [string, string, boolean][] = [
   // An indented code block, told from a list item's indented text.
   ["Indented", "Some text.\n\n    HERE\n", false],
   ["Item's text", "- A list item\n\n    HERE\n", true],
+  // What Obsidian reads before a code span takes its backticks.
+  [
+    "Wiki link",
+    "See [[odd`name]] and `code that\nruns on HERE` here.\n",
+    false,
+  ],
+  ["Comment", "%% a `comment %%\nthen HERE` here.\n", true],
+  ["Definition", "[ref]: `odd\n`code HERE` here.\n", false],
+  // A tab after a quote's `>` indents its text as code.
+  ["Tab", ">\tindented HERE\n", false],
+  // A line without `>` goes on in a quote after any block in it.
+  [
+    "Quote's heading",
+    "> # A heading\n`code that\n> runs on HERE` here.\n",
+    false,
+  ],
+  // An empty item takes in the line after it.
+  ["Empty item", "-\n ~~~\n- HERE\n", true],
+  // An HTML block lists nothing, as its code cannot be told from its text;
+  // the text after it lists, and so does ordinary inline HTML.
+  ["HTML code", "<pre><code>`HERE`</code></pre>\n", false],
+  ["After HTML", "<div>\nsample\n</div>\n\nHERE\n", true],
+  ["Inline HTML", "Some <b>bold</b> HERE text.\n", true],
+  // A `<code>` tag in a paragraph makes code to its `</code>`.
+  ["Code tag", "Some <code>inline HERE</code> text.\n", false],
+  // An open `<code>` stays open over blank lines, as the browser keeps it,
+  // and a slash does not close one; a closed one makes no code after it.
+  ["Open code", "<code>\n\nHERE\n\n</code>\n", false],
+  ["Open code tag", "Some <code>a\n\nHERE\n\n</code>\n", false],
+  ["Code slash", "Some <code/>HERE\n", false],
+  ["Code space slash", "Some <code />HERE\n", false],
+  ["Code attribute slash", 'Some <code class="x"/>HERE\n', false],
+  ["Closed code", "Some <code>a</code>\n\nHERE\n", true],
+  // A closing tag in a comment or a quoted attribute closes nothing, on one
+  // line or over lines; a real one after them closes the `<code>`.
+  ["Code comment", "<div><code><!-- </code> -->\n\nHERE\n\n</code>\n", false],
+  [
+    "Code attribute",
+    '<div><code><span title="</code>">x</span>\n\nHERE\n\n</code>\n',
+    false,
+  ],
+  [
+    "Code comment lines",
+    "<div><code><!--\n</code>\n-->\n\nHERE\n\n</code>\n",
+    false,
+  ],
+  [
+    "Code attribute lines",
+    '<div><code><span title="\n</code>\n">x</span>\n\nHERE\n\n</code>\n',
+    false,
+  ],
+  ["Closed comment", "<div><code><!-- x --></code>\n\nHERE\n", true],
+  [
+    "Closed attribute",
+    '<div><code><span title="x">x</span></code>\n\nHERE\n',
+    true,
+  ],
 ];
 
 /**
@@ -607,7 +664,7 @@ describe("Where a trigger is code", function () {
       async ({ app, obsidian }, cases) => {
         const { insideCode } = window.inklineTest.code;
         const found: string[] = [];
-        for (const [name, { note, code, limit }] of cases) {
+        for (const [name, { note, code, hidden, limit }] of cases) {
           const shown = activeDocument.body.createDiv();
           const component = new obsidian.Component();
           component.load();
@@ -641,7 +698,8 @@ describe("Where a trigger is code", function () {
               before.length - 1,
               (before.at(-1) ?? "").length,
             );
-            if (rendered !== code) {
+            // Where Obsidian shows nothing, no text holds HERE.
+            if (rendered !== (hidden === true ? undefined : code)) {
               found.push(`${name}: Obsidian renders ${String(rendered)}`);
             }
             // Where the check knowingly differs, it finds the other answer.

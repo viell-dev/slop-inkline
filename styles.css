@@ -303,14 +303,54 @@ img.inkline-symbol {
  * the baseline stays on the text's. Overflowing would cut it off at a
  * preview's or a page's edge, and shrinking only its width, as Obsidian's
  * own max-width did, squeezed it.
+ *
+ * The mask is as wide as the box, or as the symbol at the line's height if
+ * the box is wider, and as tall as that width gives (#261). Chromium works
+ * out a percentage of the box from its exact width, but `contain` from its
+ * width and height rounded to whole pixels, and then rounds the size again,
+ * so that where a box lay decided where its ink did: in 16-pixel text, a box
+ * 10.5 pixels wide drawn 10 wide drew its ink 0.75 pixels higher than one
+ * drawn 11 wide. Until the renderer has the symbol's width over its height,
+ * the box's width alone sizes the mask.
  */
 img.inkline-symbol:not([width], [height]) {
   width: auto;
   max-width: 100%;
   height: calc(1.5em * var(--inkline-scale, 1));
   object-fit: contain;
-  mask-size: contain;
+  mask-size: min(
+      100%,
+      calc(1.5em * var(--inkline-scale, 1) * var(--inkline-ratio, 100))
+    )
+    auto;
   mask-position: 0 75%;
+}
+
+/*
+ * An explicit size of only a width, as ![[x.ink.png|1000]] gives, can be
+ * wider than the symbol's space, and Obsidian then shrinks the symbol evenly
+ * to fit, its height following (#245). Its drop is worked out for the height
+ * it asks for, so the bottom margin takes back a quarter of the height that
+ * shrinking took away, and the symbol's baseline stays on the text's. The
+ * margin's percentage is of the same width as the image's max-width: 100%,
+ * the space's, so that this holds wherever the symbol is laid out, a PDF
+ * page included, which the page lays out again at its own width. Obsidian
+ * gives an image that max-width already; it is declared here too, as the
+ * margin is right only with it. In Live Preview the embed, which takes the
+ * drop, takes the margin too; see below.
+ */
+img.inkline-symbol[width]:not([height]) {
+  max-width: 100%;
+}
+
+img.inkline-symbol[width]:not([height]):not(.image-wrapper > img),
+.cm-content
+  .image-embed.inkline-symbol-embed:has(
+    > .image-wrapper > img[width]:not([height])
+  ) {
+  margin-bottom: calc(
+    max(0px, var(--inkline-width) - 100%) / var(--inkline-ratio) / 4
+  );
 }
 
 /* Stored colour shows the PNG's own pixels, retaining the same layout. */
@@ -345,6 +385,35 @@ img.inkline-symbol:not([width], [height]) {
   .image-wrapper
   img.inkline-symbol:not([width], [height]) {
   width: auto;
+}
+
+/*
+ * Obsidian's embed there is an inline flex box, which lines up by its
+ * image's bottom whatever its margin. With an explicit size of only a width,
+ * whether it fits or not, it is an inline block that clips what overflows
+ * it, which lines up by its bottom margin edge instead, so that the margin
+ * above lessens the drop as it does for an image in rendered text; where the
+ * size fits, the margin is none, and the embed sits as before. An inline
+ * block that shows what overflows takes its baseline from what is in it,
+ * the image's bottom again. Its wrapper, an inline flex box in Obsidian's
+ * styles, is a block-level flex box, so that the embed is as tall as the
+ * image and nothing in it overflows to be clipped; a plain block there, in a
+ * probe, put the image twice as far below the baseline.
+ */
+.cm-content
+  .image-embed.inkline-symbol-embed:has(
+    > .image-wrapper > img[width]:not([height])
+  ) {
+  display: inline-block;
+  overflow: hidden;
+}
+
+.cm-content
+  .image-embed.inkline-symbol-embed:has(
+    > .image-wrapper > img[width]:not([height])
+  )
+  > .image-wrapper {
+  display: flex;
 }
 
 /*

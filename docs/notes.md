@@ -18,8 +18,19 @@ whether ink takes the text's colour or shows its stored grey pixels.
 This holds in Live Preview, Reading view, callouts, tables, embedded notes,
 hover previews, text cards on a canvas, and popout windows.
 
+- **Unreleased:** a symbol stands on the baseline wherever it falls in the line,
+  and the symbols of a line line up with each other. In 0.9.3, by where it fell,
+  its ink could sit three quarters of a pixel higher than the letters beside it
+  in Obsidian's default 16-pixel text, where it now stands exactly on their
+  baseline, and more at some other sizes. At some text sizes, Symbol sizes, and
+  zoom levels it still stands off the letters, by up to about a pixel at 100%
+  zoom and up to about two at other zoom levels, as
+  [Known limits](./limits.md#in-general) says.
 - **An explicit size** that Obsidian's embed syntax gives, as in
   `![[tower.ink.png|24]]`, is kept, and the symbol still stands on the baseline.
+  **Unreleased:** so does a size wider than the space the symbol is in, which
+  Obsidian shrinks evenly to fit; 0.9.3 sat such a symbol a few pixels below the
+  baseline.
 - A symbol wider than the space it is in, as a very wide one can be in a hover
   preview, a table cell, a narrow pane, or a PDF page, shrinks evenly to fit,
   whole and on the baseline, rather than being squeezed sideways. It still takes
@@ -82,6 +93,31 @@ a tab. A fenced code block in a quote or a list item ends with the quote or the
 item, even if it is never closed, so the trigger in the text after it lists
 again. A callout's title line is read on its own: inline code in it ends with
 the line.
+
+**Unreleased:** inline code starts and ends where Reading view finds it. A
+backtick inside a wiki link, a link's address, a `%%` comment, math, a web
+address, or an HTML tag starts no inline code. Inline code can sit inside
+emphasis, strikethrough, a highlight, a link's text, or square brackets, and
+ends where they do: in `` **`a** b` `` nothing is code, while in ``**`code`**``
+the word is. A tab after a quote's `>`, or after a list item's marker and a
+space, makes the line indented code, unless it goes on in a paragraph. A line
+without `>` stays in its quote after any block in it, unless it starts a block
+that ends the quote, such as a heading or a list item. The trigger also lists
+nothing in a block of HTML, where an embed shows as text, nor in a paragraph too
+long to read in time, such as one of a thousand brackets that nothing closes.
+After a `<code>` or `<pre>` tag, in any form, `<code/>` included, the trigger
+lists nothing until the note closes it with `</code>` or `</pre>`, over blank
+lines and other blocks too: the list stays closed in all the text between, even
+where Reading view shows some of it as ordinary text. A closing tag counts only
+where the browser reads it as one: not inside an HTML comment, a quoted
+attribute, a `<textarea>` or `<style>`, a table's cell, or a footnote, and not
+past eight or more nested blocks. The trigger lists nothing inside an HTML tag
+or comment, a `%%` comment, or inline math either, where an embed shows nothing,
+nor in the text of a `<textarea>` or the like. After a comment, tag, or quote
+that a block of HTML leaves open, and after a `<script>`, an `<svg>`, or a
+`<math>`, the trigger lists nothing in the rest of the note. A few rare notes
+are still read otherwise, as
+[#271](https://github.com/viell-dev/slop-inkline/issues/271) lists.
 
 **Inkline: Insert existing symbol** opens the same list as a search, and inserts
 the chosen symbol at the cursor. It places the symbol as **Inkline: Insert

@@ -56,10 +56,72 @@ even one a public release; earlier pre-releases carry a suffix such as
   size and colour of the text around it by default, since the settings can
   change both. The guide's home page and the listing no longer list what Inkline
   is not, and Known limits no longer says what Inkline "does not do yet", or
-  heads its general limits "Not there yet".
+  heads its general limits "Not there yet". These four changes, from Inkline's
+  description to this one, change only text, not how Inkline works.
 
 ### Fixed
 
+- The `;;` list follows Reading view in more places when it tells code from
+  text, so that it neither opens in code nor stays closed in text there:
+  - Inline code starts and ends where Reading view finds it. A backtick inside a
+    wiki link, a link's address, a `%%` comment, math, a web address, or an HTML
+    tag starts none, and inline code inside emphasis, strikethrough, a
+    highlight, a link's text, or square brackets ends where they do: in
+    `` **`a** b` `` nothing is code, while ``**`code`**`` is code
+    ([#243](https://github.com/viell-dev/slop-inkline/issues/243)).
+  - A tab after a quote's `>`, or after a list item's marker and a space, makes
+    the line indented code, unless it goes on in a paragraph; spaces before a
+    tab do not ([#249](https://github.com/viell-dev/slop-inkline/issues/249)).
+  - A line without `>` stays in its quote after a heading, a code block, a
+    table, or a `>` alone, as it does after a paragraph, unless it starts a
+    block that ends the quote
+    ([#250](https://github.com/viell-dev/slop-inkline/issues/250)).
+  - `%%` comment and `$$` math blocks, link reference definitions, task boxes,
+    headings underlined with `===`, the line after an empty list item, and the
+    end of a table are read as Reading view reads them.
+  - The list lists nothing in a block of HTML, where an embed shows as text and
+    code, as in `<pre><code>`, cannot be told from text, nor in a paragraph too
+    long to read in time, such as one of a thousand brackets that nothing
+    closes. After a `<code>` or `<pre>` tag, in any form, `<code/>` included, it
+    lists nothing until the note closes it with `</code>` or `</pre>`, over
+    blank lines and other blocks too. A closing tag counts only where the
+    browser reads it as one: not inside an HTML comment, a quoted attribute, a
+    `<textarea>` or `<style>`, a table's cell, or a footnote, and not past eight
+    or more nested blocks. It lists nothing inside an HTML tag or comment, a
+    `%%` comment, or inline math, where an embed shows nothing, nor in a
+    `<textarea>`'s text, and nothing in the rest of a note after a comment, tag,
+    or quote that a block of HTML leaves open, or after a `<script>`, an
+    `<svg>`, or a `<math>`.
+
+  A few rare notes are still read otherwise
+  ([#271](https://github.com/viell-dev/slop-inkline/issues/271)).
+
+- A symbol stands on the baseline of the text beside it wherever it falls in the
+  line, and the symbols of a line line up with each other
+  ([#261](https://github.com/viell-dev/slop-inkline/issues/261)). Before, by
+  where it fell, a symbol's ink could sit three quarters of a pixel higher than
+  the letters beside it in Obsidian's default 16-pixel text, so that two copies
+  of one symbol in a line could differ; now it stands exactly on their baseline
+  there. At some other text sizes, Symbol sizes, and zoom levels it can still
+  stand off the letters, as the text and the symbols are each drawn on whole
+  pixels of the screen: up to about a pixel at 100% zoom, and at other zoom
+  levels up to 1.75 pixels in Obsidian 1.13.4 and 1.00 in 1.15.1. The symbols of
+  a line stand within half a pixel of each other at 100% zoom, and within a
+  pixel at other zoom levels. Symbols shown in their stored colour were not
+  affected.
+- A symbol with a size written into its embed, such as `![[wide.ink.png|1000]]`,
+  that is wider than the space it is shown in stays on the baseline when
+  Obsidian shrinks it to fit, in notes, tables, hover previews and exported PDFs
+  ([#245](https://github.com/viell-dev/slop-inkline/issues/245)). Before, it sat
+  a few pixels below it: 7.5 pixels in a hover preview.
+- Turning Inkline off while Obsidian is still renaming a symbol you have just
+  saved, as while it asks whether to update links, no longer leaves a draft that
+  the editor offers back though the file holds the drawing. A stroke drawn after
+  that save is offered back under the symbol's new name, with the picture it was
+  drawn over, where it used to stay in a draft that nothing offered
+  ([#247](https://github.com/viell-dev/slop-inkline/issues/247)). Opening a
+  symbol now drops, without asking, a draft that would bring back nothing its
+  file lacks.
 - The library's rows have space between them, so that the line of readings and
   translations under a row no longer reads as part of the row below it
   ([#262](https://github.com/viell-dev/slop-inkline/issues/262)).
