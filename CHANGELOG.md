@@ -40,7 +40,9 @@ These change only text, not how Inkline works.
   the editor offers back though the file holds the drawing. A stroke drawn after
   that save is offered back under the symbol's new name, with the picture it was
   drawn over, where it used to stay in a draft that nothing offered
-  ([#247](https://github.com/viell-dev/slop-inkline/issues/247)).
+  ([#247](https://github.com/viell-dev/slop-inkline/issues/247)). Opening a
+  symbol now drops, without asking, a draft that would bring back nothing its
+  file lacks.
 
 ## 0.9.3 - 2026-11-12
 
