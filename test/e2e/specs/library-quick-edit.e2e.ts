@@ -264,6 +264,21 @@ async function pointAt(x: number, y: number): Promise<string> {
   return browser.execute(() => String(Reflect.get(window, "inklinePointer")));
 }
 
+/**
+ * Moves the mouse a little in an empty part of the window, as a person has
+ * before they rest it anywhere. Obsidian, 1.13 and 1.15 alike, counts the
+ * mouse's moves so as to tell it from a touch, and shows no tooltip for a
+ * pointer it has seen move fewer than twice.
+ */
+async function warmUpPointer(): Promise<void> {
+  const pane = await boxOf(".workspace-split.mod-root");
+  for (const step of [0, 1, 2]) {
+    expect(
+      await pointAt(pane.left + 40 + 10 * step, pane.bottom - 40),
+    ).not.toContain("inkline");
+  }
+}
+
 /** The box of the first element `selector` finds. */
 async function boxOf(selector: string): Promise<Box> {
   return browser.execute((wanted) => {
@@ -395,17 +410,16 @@ describe("The library's rows", function () {
     await showLibrary();
     await waitForValues("b said.ink.png", "Reading: TA");
     // A tooltip that should show does, after Obsidian's delay, which says how
-    // long to wait for one that should not. Obsidian leaves out one that says
-    // what its element already shows whole, and the versions differ on others.
-    // Obsidian shows tooltips in a window that has the focus, as a person's
-    // has once they use it.
-    await browser.$(".inkline-library-search").click();
+    // long to wait for one that should not.
+    const long = await boxOf(
+      `${rowOf(`${wanted}.ink.png`)} .inkline-library-insert`,
+    );
+    await warmUpPointer();
     await watchTooltips();
     const start = Date.now();
-    await browser
-      .$(rowOf(`${wanted}.ink.png`))
-      .$(".inkline-library-insert")
-      .moveTo();
+    expect(
+      await pointAt((long.left + long.right) / 2, (long.top + long.bottom) / 2),
+    ).not.toBe("");
     try {
       await browser.waitUntil(async () =>
         browser.execute(
@@ -424,27 +438,29 @@ describe("The library's rows", function () {
     const patience = Math.max(1500, 3 * delay);
     await tooltipsSeen();
 
-    await watchTooltips();
+    // The long name's own can still be going as the pointer leaves.
+    const others = (seen: string[]) => [
+      ...new Set(seen.filter((text) => text !== wanted)),
+    ];
     const plain = await boxOf(rowOf("a plain.ink.png"));
     const said = await boxOf(rowOf("b said.ink.png"));
     const values = await boxOf(
       `${rowOf("b said.ink.png")} .inkline-library-values`,
     );
     const middle = (plain.left + plain.right) / 2;
-    // The space between two rows, and the line of a row's values.
-    expect(await pointAt(middle, (plain.bottom + said.top) / 2)).toContain(
-      "inkline-library-list",
-    );
-    await browser.pause(patience);
+    // The line of a row's values, and then the space between two rows.
+    await watchTooltips();
     expect(await pointAt(middle, (values.top + values.bottom) / 2)).toContain(
       "inkline-values",
     );
     await browser.pause(patience);
     await saveScreenshot("library-no-tooltip");
-    // The long name's own can still be going as the pointer leaves.
-    const others = (seen: string[]) => [
-      ...new Set(seen.filter((text) => text !== wanted)),
-    ];
+    expect(others(await tooltipsSeen())).toEqual([]);
+    await watchTooltips();
+    expect(await pointAt(middle, (plain.bottom + said.top) / 2)).toContain(
+      "inkline-library-list",
+    );
+    await browser.pause(patience);
     expect(others(await tooltipsSeen())).toEqual([]);
     const list = browser.$(".inkline-library-list");
     expect(await list.getAttribute("aria-label")).toBe(null);
