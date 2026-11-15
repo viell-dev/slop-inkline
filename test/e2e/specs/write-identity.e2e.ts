@@ -148,31 +148,38 @@ describe("A symbol replaced at its path as it is saved", function () {
     await startOver();
   });
 
-  /** Opens the library's fields for gate, and types the reading KA. */
+  const form = () => browser.$(".inkline-library-edit-form");
+
+  /** Opens Quick edit on gate, and types the reading KA. */
   async function typeInLibrary(): Promise<ReturnType<typeof browser.$>> {
     await browser.executeObsidianCommand("inkline:show-library");
     const row = browser.$(
       '.inkline-library-symbol[data-inkline-path="gate.ink.png"]',
     );
-    await row.$('[data-inkline-role="text"]').click();
-    const save = browser.$(".inkline-library-text-buttons button");
-    await browser.waitUntil(async () => save.isEnabled());
-    await browser.$('textarea[data-inkline-field="reading"]').setValue("KA");
+    await row.$(".inkline-library-edit").click();
+    const save = form().$("button=Save");
+    await save.waitForEnabled();
+    await form().$('textarea[data-inkline-field="reading"]').setValue("KA");
     return save;
   }
 
-  /** Checks that the library's fields stay, with KA typed, to save again. */
-  async function expectFieldsKept(): Promise<void> {
-    expect(await browser.$(".inkline-library-text-form").isExisting()).toBe(
-      true,
+  /** Waits for Quick edit's row to say `text`, of why it was not saved. */
+  async function waitForReason(text: string): Promise<void> {
+    await browser.waitUntil(async () =>
+      (await form().$(".inkline-library-edit-error").getText()).includes(text),
     );
+  }
+
+  /** Checks that Quick edit stays, with KA typed, to save again. */
+  async function expectFieldsKept(): Promise<void> {
+    expect(await form().isExisting()).toBe(true);
     expect(
-      await browser.$('textarea[data-inkline-field="reading"]').getValue(),
+      await form().$('textarea[data-inkline-field="reading"]').getValue(),
     ).toBe("KA");
   }
 
   for (const how of ["adapter", "vault"] as const) {
-    it(`leaves a new file alone from the library's fields, when the old went through the ${how}`, async function () {
+    it(`leaves a new file alone from Quick edit, when the old went through the ${how}`, async function () {
       await createSymbol("gate.ink.png");
       await giveReading("gate.ink.png", "TA");
       const save = await typeInLibrary();
@@ -180,11 +187,7 @@ describe("A symbol replaced at its path as it is saved", function () {
       await replaceDuringRead("gate.ink.png", 2, how);
       await save.click();
       expect(await waitForReplaced()).toBe(true);
-      await browser.waitUntil(async () =>
-        (await browser.$(".inkline-library-rename-error").getText()).includes(
-          "no longer in the vault",
-        ),
-      );
+      await waitForReason("no longer in the vault");
       // The new file keeps what it holds, and what was typed stays to save.
       expect(await readingOf("gate.ink.png")).toEqual(["theirs"]);
       await expectFieldsKept();
@@ -233,11 +236,7 @@ describe("A symbol replaced at its path as it is saved", function () {
       };
     });
     await save.click();
-    await browser.waitUntil(async () =>
-      (await browser.$(".inkline-library-rename-error").getText()).includes(
-        "deleted or replaced as it was written",
-      ),
-    );
+    await waitForReason("deleted or replaced as it was written");
     await expectFieldsKept();
   });
 });
