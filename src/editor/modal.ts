@@ -501,8 +501,13 @@ export class InkEditorModal extends Modal {
   #hover: { pointerId: number; clientX: number; clientY: number } | undefined;
   #saving: Promise<boolean> | undefined;
   #closing = false;
-  /** Set when disposed: nothing more is saved or written as a draft. */
+  /**
+   * Set when disposed: nothing more is saved or written as a draft, but for
+   * {@link #settleDraft} once a save that was running then ends.
+   */
   #retired = false;
+  /** Whether a save was running when the editor was disposed, until it ends. */
+  #settling = false;
   #frame: number | undefined;
   #resize: ResizeObserver | undefined;
   #status: HTMLElement | undefined;
@@ -1087,18 +1092,23 @@ export class InkEditorModal extends Modal {
   /**
    * Closes the editor without asking, as when the plugin unloads: unsaved
    * strokes are kept as a draft, its questions close, and nothing more is
-   * saved or written as a draft, even by a save still running.
+   * saved or written as a draft, even by a save still running, which only
+   * settles that draft as it ends ({@link #settleDraft}).
    */
   dispose(): void {
     if (this.#retired) return;
     this.#session.end();
-    if (!this.#keepDraft()) {
-      new Notice(
-        `Inkline could not keep a draft of the latest changes to ${this.#displayName}.`,
-      );
-    }
+    if (!this.#keepDraft()) this.#sayNotKept();
+    this.#settling = this.#saving !== undefined;
     this.#retired = true;
     this.#finish();
+  }
+
+  /** Says that the latest changes are in no draft, once the editor is gone. */
+  #sayNotKept(): void {
+    new Notice(
+      `Inkline could not keep a draft of the latest changes to ${this.#displayName}.`,
+    );
   }
 
   #finish(): void {
@@ -2633,25 +2643,8 @@ export class InkEditorModal extends Modal {
       this.#forgetDraft();
       return true;
     }
-    const { document, saved } = this.#session;
-    const kept = drafts.store.put({
-      id: this.#draftId,
-      target: drafts.target(),
-      strokes: document.strokes,
-      base: draftBase(document, pending ? undefined : saved),
-      ...(this.#watch.fingerprint === undefined
-        ? {}
-        : { fingerprint: this.#watch.fingerprint }),
-      ...(this.#watch.drawing === undefined
-        ? {}
-        : { drawing: this.#watch.drawing }),
-      savedAt: Date.now(),
-      gridOrigin: this.#session.gridOrigin,
-      ...(this.#nameChanged ? { name: this.#typedName } : {}),
-      ...(this.#textFields?.touched === true
-        ? { text: this.#textFields.typed() }
-        : {}),
-    });
+    const { document } = this.#session;
+    const kept = drafts.store.put(this.#draft(drafts.target(), pending));
     if (!kept && this.#draftKept) {
       this.#announce("Draft not kept");
       new Notice(
@@ -2669,6 +2662,60 @@ export class InkEditorModal extends Modal {
     this.#draftKept = kept;
     if (kept) this.#replaced();
     return kept;
+  }
+
+  /**
+   * This editor's drawing as its draft for `target`. While the file may hold
+   * the drawing as it was or as a save writes it, the draft is `pending`, and
+   * keeps its own base layer, so that it does not depend on which version the
+   * file holds.
+   */
+  #draft(target: DraftTarget, pending: boolean): Draft {
+    const { document, saved } = this.#session;
+    return {
+      id: this.#draftId,
+      target,
+      strokes: document.strokes,
+      base: draftBase(document, pending ? undefined : saved),
+      ...(this.#watch.fingerprint === undefined
+        ? {}
+        : { fingerprint: this.#watch.fingerprint }),
+      ...(this.#watch.drawing === undefined
+        ? {}
+        : { drawing: this.#watch.drawing }),
+      savedAt: Date.now(),
+      gridOrigin: this.#session.gridOrigin,
+      ...(this.#nameChanged ? { name: this.#typedName } : {}),
+      ...(this.#textFields?.touched === true
+        ? { text: this.#textFields.typed() }
+        : {}),
+    };
+  }
+
+  /**
+   * Settles the draft that {@link dispose} kept while a save ran, once that
+   * save ends, which can be after Inkline is off: Obsidian finishes a rename
+   * it has begun, which nothing takes back, and the draft names the file's
+   * path from before it. If the save wrote the drawing and nothing changed
+   * since, the file holds what the draft does, and the draft goes. Otherwise it
+   * is kept again, as {@link #keepDraft} would, for the file where it is now:
+   * against the file as the save wrote it, or on its own base layer after a
+   * save that failed, as the file may then hold either version.
+   *
+   * This touches only this editor's own draft, once, and only while it is
+   * still stored: another load may have restored or discarded it meanwhile,
+   * and nothing brings it back. It writes no file and no note.
+   */
+  #settleDraft(wrote: boolean): void {
+    if (!this.#settling) return;
+    this.#settling = false;
+    const drafts = this.#options.drafts;
+    if (drafts?.store.has(this.#draftId) !== true) return;
+    if (wrote && !this.#unsaved) {
+      drafts.store.remove(this.#draftId);
+    } else if (!drafts.store.put(this.#draft(drafts.target(), !wrote))) {
+      this.#sayNotKept();
+    }
   }
 
   /**
@@ -3319,6 +3366,8 @@ export class InkEditorModal extends Modal {
     this.#announce("Saving…");
     /** Starts this save again once it has ended, if it is to. */
     let again: (() => void) | undefined;
+    /** Whether it wrote the drawing, and the session took it as saved. */
+    let wrote = false;
     this.#saving = (async () => {
       try {
         // Ready for the draft that goes with the write below, which can't pause.
@@ -3377,6 +3426,7 @@ export class InkEditorModal extends Modal {
         this.#showTextSummary();
         this.#watch.took(written, drawn);
         this.#session.markSaved(document);
+        wrote = true;
         this.#session.rebase(-left);
         this.#view?.shift(-left);
         // The picture moves with the drawing, so it stays where it was.
@@ -3401,6 +3451,8 @@ export class InkEditorModal extends Modal {
         this.#updateButtons();
         this.#render();
         this.#keepDraft();
+        // Or, if the editor was disposed while this ran, the draft it kept.
+        this.#settleDraft(wrote);
         // Changes reported while it ran, its own write among them.
         this.#checkFile();
         // Not yet, as what waits on this save must hear that it stopped first:

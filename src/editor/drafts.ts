@@ -564,6 +564,17 @@ export class DraftStore {
     this.#dropPng(key);
   }
 
+  /**
+   * Whether the draft `id` is stored, from when a put keeps it until it is
+   * removed, by this store or another.
+   */
+  has(id: string): boolean {
+    return (
+      this.#list(indexKey).includes(id) &&
+      typeof this.#storage.loadLocalStorage(draftPrefix + id) === "string"
+    );
+  }
+
   /** Marks a draft as an open editor's, so that no other is offered it. */
   hold(id: string): void {
     this.#held.add(id);

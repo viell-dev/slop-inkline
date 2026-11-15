@@ -172,6 +172,26 @@ describe("DraftStore", () => {
     expect(storage.values.size).toBe(0);
   });
 
+  it("says whether a draft is stored, whichever store removed it", () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 5000);
+    const other = new DraftStore(storage, () => 5000);
+    expect(store.has("a")).toBe(false);
+    store.put(draft({ id: "a" }));
+    store.put(draft({ id: "b" }));
+    expect([store.has("a"), other.has("a")]).toEqual([true, true]);
+    other.remove("a");
+    expect([store.has("a"), store.has("b")]).toEqual([false, true]);
+    // Refused, it was never kept.
+    storage.refused.add("inkline-draft:c");
+    expect(store.put(draft({ id: "c" }))).toBe(false);
+    expect(store.has("c")).toBe(false);
+    // Listed by no index, it cannot be found, and counts as gone.
+    store.put(draft({ id: "d" }));
+    storage.saveLocalStorage("inkline-drafts", ["b"]);
+    expect(store.has("d")).toBe(false);
+  });
+
   it("follows renames of the symbol, of the note a new one is in, and of the file its first save made", () => {
     const store = new DraftStore(new MemoryStorage(), () => 5000);
     store.put(draft({ id: "file", savedAt: 3000 }));
