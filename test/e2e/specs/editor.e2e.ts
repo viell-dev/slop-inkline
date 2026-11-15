@@ -1,6 +1,7 @@
 import { browser, expect } from "@wdio/globals";
 import { Key } from "webdriverio";
 import { obsidianPage } from "wdio-obsidian-service";
+import { draftLifetime } from "../../../src/editor/drafts.ts";
 import { brushSizes } from "../../../src/editor/session.ts";
 import { unitsPerPixel } from "../../../src/format/record.ts";
 import { lineBox } from "../../../src/ink/geometry.ts";
@@ -2044,6 +2045,63 @@ describe("The editor", function () {
       await loadModules();
     }
 
+    /**
+     * The draft `id` as stored, which needs no Inkline: the path of the file it
+     * names, how it keeps its base layer, and when it was kept; null once gone.
+     */
+    async function storedDraft(
+      id: string,
+    ): Promise<{ path?: string; base?: string; savedAt?: number } | null> {
+      return browser.executeObsidian(({ app }, key) => {
+        const stored: unknown = app.loadLocalStorage(`inkline-draft:${key}`);
+        if (typeof stored !== "string") return null;
+        const draft = JSON.parse(stored) as {
+          target?: { path?: unknown };
+          base?: unknown;
+          savedAt?: unknown;
+        };
+        const path = draft.target?.path;
+        return {
+          ...(typeof path === "string" ? { path } : {}),
+          ...(typeof draft.base === "string" ? { base: draft.base } : {}),
+          ...(typeof draft.savedAt === "number"
+            ? { savedAt: draft.savedAt }
+            : {}),
+        };
+      }, id);
+    }
+
+    /**
+     * Makes the stored draft `id` a minute past its lifetime, as if it had
+     * waited that long, and returns when it now says it was kept.
+     */
+    async function expire(id: string): Promise<number> {
+      return browser.executeObsidian(
+        ({ app }, key, lifetime) => {
+          const stored: unknown = app.loadLocalStorage(`inkline-draft:${key}`);
+          if (typeof stored !== "string") throw new Error("no draft");
+          const draft = JSON.parse(stored) as Record<string, unknown>;
+          const savedAt = Date.now() - lifetime - 60_000;
+          app.saveLocalStorage(
+            `inkline-draft:${key}`,
+            JSON.stringify({ ...draft, savedAt }),
+          );
+          return savedAt;
+        },
+        id,
+        draftLifetime,
+      );
+    }
+
+    /** Waits for the old save's rename to end, once Obsidian updated the link. */
+    async function waitForLinkUpdate(): Promise<void> {
+      await browser.waitUntil(async () =>
+        (await noteOnDisk("Editor.md")).includes("![[gate.ink.png]]"),
+      );
+      // Then the save ends, and settles its draft.
+      await browser.pause(1000);
+    }
+
     /** What the topmost modal says. */
     async function topText(): Promise<string> {
       return browser.execute(
@@ -2084,6 +2142,69 @@ describe("The editor", function () {
       const [kept] = await keptDrafts();
       if (kept === undefined) throw new Error("no draft");
       return kept.id;
+    }
+
+    /**
+     * Opens the picture `square.ink.png`, whose pixels open as the base layer,
+     * draws a stroke over it, names it `gate`, and saves, holding Obsidian's
+     * move of the file, with the drawing written; then draws a stroke that is
+     * not part of the save. Returns the id of the draft that holds both
+     * strokes, and the base layer the save wrote.
+     */
+    async function saveSquareHeldInMove(): Promise<{
+      id: string;
+      base: unknown;
+    }> {
+      await createSquare();
+      await editFile("square.ink.png");
+      await draw(zigzag);
+      await nameSymbol("gate");
+      await hold("move");
+      await browser.keys(["Control", "s"]);
+      await waitForHeld();
+      const written = JSON.parse(await recordOf("square.ink.png")) as {
+        strokes: unknown[];
+        base?: unknown;
+      };
+      expect(written.strokes).toHaveLength(1);
+      expect(written.base).toBeDefined();
+      await draw(across);
+      await browser.waitUntil(
+        async () => (await keptDrafts())[0]?.strokes === 2,
+        { timeoutMsg: "no draft held the stroke drawn during the save" },
+      );
+      const [kept] = await keptDrafts();
+      if (kept === undefined) throw new Error("no draft");
+      return { id: kept.id, base: written.base };
+    }
+
+    /** A base layer's picture and size, without its place in the file. */
+    function picture(base: unknown): Record<string, unknown> {
+      if (typeof base !== "object" || base === null) {
+        throw new Error("no base layer");
+      }
+      const { png, width, height } = base as Record<string, unknown>;
+      return { png, width, height };
+    }
+
+    /**
+     * Restores the draft offered for `path`, saves it, and expects the file to
+     * hold both its strokes and the base layer `base`.
+     */
+    async function expectRestored(path: string, base: unknown): Promise<void> {
+      await editFile(path);
+      await clickTop("Restore");
+      await browser.keys(["Control", "Enter"]);
+      await waitClosed();
+      const restored = JSON.parse(await recordOf(path)) as {
+        strokes: unknown[];
+        base?: unknown;
+      };
+      expect(restored.strokes).toHaveLength(2);
+      // The same picture, where the strokes put it: its place in the file goes
+      // by how far left the drawing reaches, which the extra stroke changes.
+      expect(restored.base).toMatchObject(picture(base));
+      expect(await keptDrafts()).toEqual([]);
     }
 
     it("drops a new symbol's draft once the save that wrote it ends with Obsidian's question", async function () {
@@ -2150,6 +2271,7 @@ describe("The editor", function () {
         expect(await keptDrafts()).toMatchObject([
           { id, path: "001.ink.png", strokes: 3 },
         ]);
+        const kept = await storedDraft(id);
         await letGo();
         await clickTop("Just once");
         await browser.waitUntil(
@@ -2157,10 +2279,11 @@ describe("The editor", function () {
           { timeoutMsg: "the draft still named the file's old path" },
         );
         // The same draft, now for the file where it is, which holds the two
-        // strokes the save wrote.
+        // strokes the save wrote, kept when the person last changed it.
         expect(await keptDrafts()).toEqual([
           { id, path: "gate.ink.png", strokes: 3 },
         ]);
+        expect((await storedDraft(id))?.savedAt).toBe(kept?.savedAt);
         expect(await symbolFiles()).toEqual(["gate.ink.png"]);
         expect(await strokeCount("gate.ink.png")).toBe(2);
       } finally {
@@ -2211,6 +2334,110 @@ describe("The editor", function () {
       await browser.keys(["Control", "Enter"]);
       await waitClosed();
       expect(await strokeCount("gate.ink.png")).toBe(3);
+      expect(await keptDrafts()).toEqual([]);
+    });
+
+    it("keeps the draft's own base layer when the file changes elsewhere as Obsidian moves it", async function () {
+      const { id, base } = await saveSquareHeldInMove();
+      await obsidianPage.disablePlugin("inkline");
+      try {
+        expect(await storedDraft(id)).toMatchObject({
+          path: "square.ink.png",
+          base: "kept",
+        });
+        // As sync or another app would write it: three dots, no base layer.
+        await changeElsewhere("square.ink.png");
+        await letGo();
+        await browser.waitUntil(
+          async () => (await storedDraft(id))?.path === "gate.ink.png",
+          { timeoutMsg: "the draft still named the file's old path" },
+        );
+        // The file holds what was written elsewhere, which the draft must not
+        // depend on.
+        expect(await storedDraft(id)).toMatchObject({ base: "kept" });
+        expect(await strokeCount("gate.ink.png")).toBe(3);
+      } finally {
+        await enable();
+      }
+      await expectRestored("gate.ink.png", base);
+    });
+
+    it("keeps the draft's own base layer when Inkline, enabled again, saves the symbol as Obsidian moves it", async function () {
+      const { id, base } = await saveSquareHeldInMove();
+      await obsidianPage.disablePlugin("inkline");
+      await enable();
+      // Obsidian still holds the move. A new editor of the file leaves the
+      // draft for later, and saves another drawing over it, without the
+      // picture.
+      await editFile("square.ink.png");
+      await clickTop("Not now");
+      await browser.$('[data-inkline-button="clear"]').click();
+      await draw(down);
+      await browser.keys(["Control", "Enter"]);
+      await waitClosed();
+      const replaced = JSON.parse(await recordOf("square.ink.png")) as {
+        strokes: unknown[];
+        base?: unknown;
+      };
+      expect(replaced.strokes).toHaveLength(1);
+      expect(replaced.base).toBeUndefined();
+      await letGo();
+      // The old save ends just after Obsidian has moved the file, as no note
+      // links to it to ask about.
+      await browser.waitUntil(
+        async () => (await symbolFiles()).includes("gate.ink.png"),
+        { timeoutMsg: "Obsidian did not move the file" },
+      );
+      await browser.pause(1500);
+      expect(await storedDraft(id)).toMatchObject({
+        path: "gate.ink.png",
+        base: "kept",
+      });
+      await expectRestored("gate.ink.png", base);
+    });
+
+    it("leaves an expired draft to expire, though no list has dropped it", async function () {
+      await saveHeldInMove();
+      const id = await drawWhileHeld();
+      await obsidianPage.disablePlugin("inkline");
+      try {
+        const savedAt = await expire(id);
+        await letGo();
+        await clickTop("Just once");
+        await waitForLinkUpdate();
+        // Neither kept for the new name nor made new again.
+        expect(await storedDraft(id)).toEqual({
+          path: "001.ink.png",
+          base: "none",
+          savedAt,
+        });
+      } finally {
+        await enable();
+      }
+      // Opening lists the drafts, which drops it, and offers nothing.
+      await editFile("gate.ink.png");
+      expect(await topButton("Restore")).toBeUndefined();
+      await browser.keys(["Escape"]);
+      await waitClosed();
+      expect(await keptDrafts()).toEqual([]);
+    });
+
+    it("brings back no expired draft that Inkline, enabled again meanwhile, dropped", async function () {
+      await saveHeldInMove();
+      const id = await drawWhileHeld();
+      await obsidianPage.disablePlugin("inkline");
+      await expire(id);
+      await enable();
+      // Obsidian still holds the move. Opening the file lists the drafts,
+      // which drops the expired one, and offers nothing.
+      await editFile("001.ink.png");
+      expect(await topButton("Restore")).toBeUndefined();
+      await browser.keys(["Escape"]);
+      await waitClosed();
+      expect(await keptDrafts()).toEqual([]);
+      await letGo();
+      await clickTop("Just once");
+      await waitForLinkUpdate();
       expect(await keptDrafts()).toEqual([]);
     });
   });
