@@ -168,6 +168,15 @@ async function waitForSymbol(selector: string, scroll: boolean): Promise<void> {
         const image = activeDocument.querySelector(wanted);
         if (!image?.instanceOf(HTMLImageElement)) return false;
         if (!image.complete || image.naturalWidth === 0) return false;
+        // Measured by the renderer: its shape, and a size's own width.
+        if (image.style.getPropertyValue("--inkline-ratio") === "")
+          return false;
+        if (
+          image.hasAttribute("width") &&
+          !image.hasAttribute("height") &&
+          image.style.getPropertyValue("--inkline-width") === ""
+        )
+          return false;
         if (intoView) image.scrollIntoView({ block: "center" });
         return true;
       },
@@ -391,8 +400,9 @@ function expectAskedShrunk(shown: Shown): void {
     (box.width * (wide.block.right - wide.block.left)) / wide.width;
   expect(Math.abs(ink.width - across)).toBeLessThan(2);
   expect(Math.abs(ink.width / ink.height / drawnRatio - 1)).toBeLessThan(0.05);
-  // The block ends on the symbol's baseline, which is on the text's.
-  expect(Math.abs(ink.bottom - shown.baseline)).toBeLessThan(1.5);
+  // The block ends on the symbol's baseline, which is on the text's, within
+  // the 0.6 pixels measured and a little for the measuring.
+  expect(Math.abs(ink.bottom - shown.baseline)).toBeLessThan(0.75);
   for (const [channel, value] of shown.expected.entries()) {
     expect(Math.abs((ink.colour[channel] ?? 0) - value)).toBeLessThanOrEqual(
       24,

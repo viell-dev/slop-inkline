@@ -62,15 +62,33 @@ const conditions: readonly Condition[] = [
   { name: "20-pixel text", font: 20, scale: 1, zoom: 1 },
   { name: "16-pixel text zoomed to 200%", font: 16, scale: 1, zoom: 2 },
   { name: "17-pixel text zoomed to 200%", font: 17, scale: 1, zoom: 2 },
+  // Obsidian's Zoom in and Zoom out, a step each way.
+  { name: "16-pixel text zoomed to 120%", font: 16, scale: 1, zoom: 1.2 },
+  { name: "16-pixel text zoomed to 83%", font: 16, scale: 1, zoom: 1 / 1.2 },
 ];
 
 /**
  * Whether a symbol's ink baseline, three quarters of the way down its box,
- * lies a whole number of screen pixels below the box's top.
+ * lies a whole number of screen pixels below the box's top, with each CSS
+ * pixel a whole number of screen pixels. Zoomed to a fraction, as 83%, the
+ * page's CSS pixels do not fall on whole screen pixels, and Chromium rounds
+ * the text and the boxes from fractions of them.
  */
 function whole(condition: Condition): boolean {
   const down = 0.75 * 1.5 * condition.font * condition.scale * condition.zoom;
-  return Math.abs(down - Math.round(down)) < 1e-6;
+  return (
+    Number.isInteger(condition.zoom) && Math.abs(down - Math.round(down)) < 1e-6
+  );
+}
+
+/**
+ * How far apart the symbols of a line may be, in screen pixels, where their
+ * ink baseline is not on a whole pixel: half a pixel and a little at 100%,
+ * where Chromium 150 left up to 0.5 between boxes it resampled at different
+ * widths; at another zoom, up to a pixel, as measured up to 0.82 at 83%.
+ */
+function lineSpread(condition: Condition): number {
+  return condition.zoom === 1 ? 0.6 : 1;
 }
 
 /** One symbol or typed H, as measured, in screen pixels. */
@@ -83,6 +101,9 @@ interface Measured {
   readonly width: number;
   /** Where its ink ends, in screen pixels from the window's top. */
   readonly bottom: number | null;
+  /** A symbol's ink's left edge and width, in screen pixels. */
+  readonly inkLeft: number | null;
+  readonly inkWidth: number | null;
 }
 
 async function open(mode: "source" | "preview"): Promise<void> {
@@ -233,7 +254,26 @@ async function measure(stored: boolean): Promise<Measured[]> {
         left: number;
         width: number;
         bottom: number | null;
+        inkLeft: number | null;
+        inkWidth: number | null;
       }[] = [];
+      /** The block of `ink` in `box`, in screen pixels. */
+      const blockOf = (box: DOMRect, ink: readonly number[]) => {
+        const region = {
+          left: box.left * ratio,
+          top: box.top * ratio,
+          right: box.right * ratio,
+          bottom: box.bottom * ratio,
+        };
+        const { inkBlock } = window.inklineTest;
+        const ground = inkBlock.commonColour(pixels, region);
+        const [red = 0, green = 0, blue = 0] = ink;
+        return inkBlock.measureBlock(pixels, region, ground, [
+          red,
+          green,
+          blue,
+        ]);
+      };
       for (const image of Array.from(
         view.querySelectorAll("img.inkline-symbol"),
       )) {
@@ -242,12 +282,15 @@ async function measure(stored: boolean): Promise<Measured[]> {
         const ink = storedColour
           ? [126, 126, 126]
           : colourOf(getComputedStyle(image).color);
+        const block = blockOf(box, ink);
         found.push({
           kind: "symbol",
           line: lineOf(image.closest(".image-embed") ?? image),
           left: box.left * ratio,
           width: box.width * ratio,
           bottom: bottomOf(box, ink),
+          inkLeft: block?.left ?? null,
+          inkWidth: block?.width ?? null,
         });
       }
       const text = colourOf(getComputedStyle(view).color);
@@ -278,6 +321,8 @@ async function measure(stored: boolean): Promise<Measured[]> {
             left: box.left * ratio,
             width: box.width * ratio,
             bottom: bottomOf(box, text),
+            inkLeft: null,
+            inkWidth: null,
           });
         }
       }
@@ -322,6 +367,39 @@ function lines(measured: readonly Measured[]): Line[] {
       letterSpread: spread(letters),
     };
   });
+}
+
+/**
+ * Opens the note in `mode`, moves the pointer off it, and waits for its
+ * symbols to load and be measured, and for the page to draw them.
+ */
+async function show(mode: "source" | "preview"): Promise<void> {
+  await open(mode);
+  await browser
+    .action("pointer", { parameters: { pointerType: "mouse" } })
+    .move({ x: 2, y: 2 })
+    .perform();
+  await browser.waitUntil(async () =>
+    browser.execute(() => {
+      const images = Array.from(
+        activeDocument.querySelectorAll(
+          ".workspace-leaf.mod-active img.inkline-symbol",
+        ),
+      );
+      return (
+        images.length >= 4 &&
+        images.every(
+          (image) =>
+            image.instanceOf(HTMLImageElement) &&
+            image.complete &&
+            image.naturalWidth > 0 &&
+            image.style.getPropertyValue("--inkline-ratio") !== "",
+        )
+      );
+    }),
+  );
+  // Long enough for the page to draw what changed.
+  await browser.pause(300);
 }
 
 describe("Symbols on the text's baseline", function () {
@@ -383,32 +461,7 @@ describe("Symbols on the text's baseline", function () {
           await setPageZoom(condition.zoom);
           try {
             for (const mode of ["preview", "source"] as const) {
-              await open(mode);
-              await browser
-                .action("pointer", { parameters: { pointerType: "mouse" } })
-                .move({ x: 2, y: 2 })
-                .perform();
-              await browser.waitUntil(async () =>
-                browser.execute(() => {
-                  const images = Array.from(
-                    activeDocument.querySelectorAll(
-                      ".workspace-leaf.mod-active img.inkline-symbol",
-                    ),
-                  );
-                  return (
-                    images.length >= 4 &&
-                    images.every(
-                      (image) =>
-                        image.instanceOf(HTMLImageElement) &&
-                        image.complete &&
-                        image.naturalWidth > 0 &&
-                        image.style.getPropertyValue("--inkline-ratio") !== "",
-                    )
-                  );
-                }),
-              );
-              // Long enough for the page to draw what changed.
-              await browser.pause(300);
+              await show(mode);
               const measured = await measure(stored);
               const file = condition.name.replace(/\W+/g, "-").toLowerCase();
               await saveScreenshot(
@@ -439,7 +492,7 @@ describe("Symbols on the text's baseline", function () {
                 // The letters themselves agree, which checks the measuring.
                 expect(each.letterSpread).toBeLessThanOrEqual(0.1);
                 expect(each.symbolSpread).toBeLessThanOrEqual(
-                  exact ? 0.25 : 0.6,
+                  exact ? 0.25 : lineSpread(condition),
                 );
                 for (const offset of each.offsets) {
                   expect(Math.abs(offset)).toBeLessThanOrEqual(
@@ -453,6 +506,58 @@ describe("Symbols on the text's baseline", function () {
           }
         });
       }
+
+      it("draw a box a snippet makes wider whole, at the line's height and its left", async function () {
+        await display(100, !stored);
+        await textSize(16);
+        // A snippet's rule, as a stylesheet of its own, giving symbols in
+        // Reading view a width of 3 em, wider than these at the line's height.
+        await browser.execute(() => {
+          const sheet = new CSSStyleSheet();
+          sheet.replaceSync(
+            "body .markdown-rendered img.inkline-symbol { width: 3em; }",
+          );
+          document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+          Reflect.set(window, "inklineTestSnippet", sheet);
+        });
+        try {
+          await show("preview");
+          const measured = await measure(stored);
+          await saveScreenshot(
+            `baseline-${stored ? "stored" : "text"}-snippet`,
+          );
+          const shown = lines(measured);
+          const symbols = measured.filter((each) => each.kind === "symbol");
+          console.log(
+            `${colour}, a box 3 em wide: ${JSON.stringify(symbols.slice(0, 4))}`,
+          );
+          expect(symbols.length).toBeGreaterThanOrEqual(32);
+          for (const each of symbols) {
+            // The box is the snippet's, 48 pixels; the ink is the symbol's at
+            // the line's height, 24 pixels, so a block from x 1 to 9.5 of it.
+            expect(Math.abs(each.width - 48)).toBeLessThanOrEqual(0.5);
+            expect(each.inkWidth).not.toBeNull();
+            expect(Math.abs((each.inkWidth ?? 0) - 8.5)).toBeLessThanOrEqual(
+              0.5,
+            );
+            expect(
+              Math.abs((each.inkLeft ?? 0) - (each.left + 1)),
+            ).toBeLessThanOrEqual(0.5);
+          }
+          for (const each of shown) {
+            for (const offset of each.offsets) {
+              expect(Math.abs(offset)).toBeLessThanOrEqual(0.25);
+            }
+          }
+        } finally {
+          await browser.execute(() => {
+            const sheet: unknown = Reflect.get(window, "inklineTestSnippet");
+            document.adoptedStyleSheets = document.adoptedStyleSheets.filter(
+              (adopted) => adopted !== sheet,
+            );
+          });
+        }
+      });
     });
   }
 });
