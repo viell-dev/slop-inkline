@@ -23,8 +23,8 @@ import {
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 
-const nameField = () => browser.$(".inkline-library-rename-form input");
-const errorField = () => browser.$(".inkline-library-rename-error");
+const nameField = () => browser.$(".inkline-library-edit-form input");
+const errorField = () => browser.$(".inkline-library-edit-error");
 
 function row(name: string): ReturnType<typeof browser.$> {
   return browser.$(
@@ -45,8 +45,13 @@ async function beginRename(name: string, typed: string): Promise<void> {
       notice.remove();
     }
   });
-  await row(name).$(".inkline-library-rename").click();
+  await row(name).$(".inkline-library-edit").click();
   await nameField().waitForDisplayed();
+  // Save waits for the fields to read the file's readings and translations.
+  await browser
+    .$(".inkline-library-edit-form")
+    .$("button=Save")
+    .waitForEnabled();
   await nameField().setValue(typed);
 }
 
@@ -214,7 +219,8 @@ describe("Renaming in the symbol library", function () {
     );
     await browser.waitUntil(
       async () =>
-        (await row("tower").$(".inkline-library-uses").getText()) === "2 notes",
+        (await row("tower").$(".inkline-library-uses").getText()) ===
+        "Uses (2)",
     );
   });
 
@@ -231,7 +237,7 @@ describe("Renaming in the symbol library", function () {
       await browser.execute(() =>
         document.activeElement?.getAttribute("data-inkline-role"),
       ),
-    ).toBe("rename");
+    ).toBe("edit");
   });
 
   it("keeps an invalid or failed name to correct and retry", async function () {
@@ -298,7 +304,7 @@ describe("Renaming in the symbol library", function () {
         ({ app }) => app.vault.getFileByPath("arch.ink.png") === null,
       ),
     ).toBe(true);
-    await browser.$(".inkline-library-rename-form").$("button=Cancel").click();
+    await browser.$(".inkline-library-edit-form").$("button=Cancel").click();
     await waitForName("gate");
   });
 
@@ -315,7 +321,7 @@ describe("Renaming in the symbol library", function () {
     await createSymbol("tower.ink.png", [1200]);
     await row("tower").$(".inkline-library-insert").click({ button: "right" });
     await waitForNotice(
-      "tower changed or was deleted. Finish renaming to refresh the library.",
+      "tower changed or was deleted. Finish editing to refresh the library.",
     );
     expect(await browser.$(".menu").isExisting()).toBe(false);
     expect(await nameField().getValue()).toBe("arch");
@@ -327,7 +333,7 @@ describe("Renaming in the symbol library", function () {
     await beginRename("gate", "tower");
     await browser.execute(() => {
       document
-        .querySelector<HTMLInputElement>(".inkline-library-rename-form input")
+        .querySelector<HTMLInputElement>(".inkline-library-edit-form input")
         ?.setSelectionRange(2, 2);
     });
     await createSymbol("other.ink.png");
@@ -610,7 +616,7 @@ describe("Renaming in the symbol library", function () {
     /** Long enough for a rename to have waited, with a margin for a busy machine. */
     const waited = stalledAfter + 15_000;
 
-    const form = () => browser.$(".inkline-library-rename-form");
+    const form = () => browser.$(".inkline-library-edit-form");
     const formButton = (text: "Save" | "Cancel") => form().$(`button=${text}`);
     const waitLine = () => form().$(".inkline-save-wait");
 
@@ -832,7 +838,7 @@ describe("Renaming in the symbol library", function () {
               open instanceof obsidian.MarkdownView &&
               open.file?.path === "Uses 0.md",
           );
-        const form = document.querySelector(".inkline-library-rename-form");
+        const form = document.querySelector(".inkline-library-edit-form");
         if (!(view instanceof obsidian.MarkdownView))
           throw new Error("no note");
         if (!(form instanceof HTMLFormElement)) throw new Error("no form");

@@ -53,6 +53,23 @@ export class TextMoved extends Error {
   }
 }
 
+/**
+ * A rename that something came between once Obsidian had it, so that the file
+ * may not be where it was asked to go, or another file may be there, or that
+ * Obsidian failed with the file at the new name all the same. Its message says
+ * what happened, and where the file is now.
+ */
+export class RenameDisturbed extends Error {
+  override name = "RenameDisturbed";
+  /** Whether the file has the new name now, all the same. */
+  readonly renamed: boolean;
+
+  constructor(message: string, renamed: boolean) {
+    super(message);
+    this.renamed = renamed;
+  }
+}
+
 /** Says what is wrong with a file that fails the format's check. */
 export function unreadableText(error: unknown): unknown {
   return error instanceof PngError
