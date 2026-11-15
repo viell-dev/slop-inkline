@@ -3182,7 +3182,7 @@ describe("The editor", function () {
     }
   });
 
-  it("does not insert again an embed that an interrupted save inserted", async function () {
+  it("drops a new symbol's draft once its first save ends after Inkline is disabled", async function () {
     await insert();
     await draw(zigzag);
     // Close the note's tab, so that the insertion edits its file.
@@ -3197,13 +3197,66 @@ describe("The editor", function () {
         (await fileText("Editor.md")).includes("001.ink.png"),
       );
       await obsidianPage.disablePlugin("inkline");
-      // Let the old insertion finish.
-      await browser.pause(2500);
+      // Kept while the insertion is under way.
+      expect(await draftCount()).toBe(1);
+      // The old insertion finishes, and with it the save: the file and the
+      // note hold the drawing, so the draft goes.
+      await browser.waitUntil(async () => (await draftCount()) === 0, {
+        timeout: 5000,
+        timeoutMsg: "the draft stayed once the save ended",
+      });
     } finally {
       await restoreVault();
+      await obsidianPage.enablePlugin("inkline");
+      await loadModules();
     }
-    await obsidianPage.enablePlugin("inkline");
-    await loadModules();
+    await obsidianPage.openFile("Editor.md");
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await waitForEditor();
+    expect(await topButton("Restore")).toBeUndefined();
+    await browser.keys(["Escape"]);
+    await waitClosed();
+    expect(await symbolFiles()).toEqual(["001.ink.png"]);
+    expect((await fileText("Editor.md")).split("001.ink.png")).toHaveLength(2);
+  });
+
+  it("does not insert again an embed that an interrupted save inserted", async function () {
+    await insert();
+    await draw(zigzag);
+    // Close the note's tab, so that the insertion edits its file.
+    await browser.executeObsidian(({ app }) => {
+      for (const leaf of app.workspace.getLeavesOfType("markdown"))
+        leaf.detach();
+    });
+    // The insertion edits the note's file and then fails, after Inkline is
+    // disabled, as when it was cut short once the embed was written: the
+    // draft, which names the file, is what finishes the save.
+    await browser.executeObsidian(({ app }) => {
+      const vault = app.vault as typeof app.vault & {
+        inklineProcess?: typeof app.vault.process;
+      };
+      const process = vault.process.bind(vault);
+      vault.inklineProcess = process;
+      vault.process = async (...args) => {
+        await process(...args);
+        await new Promise((resolve) => window.setTimeout(resolve, 2000));
+        throw new Error("the note's save was cut short");
+      };
+    });
+    try {
+      await browser.keys(["Control", "s"]);
+      await browser.waitUntil(async () =>
+        (await fileText("Editor.md")).includes("001.ink.png"),
+      );
+      await obsidianPage.disablePlugin("inkline");
+      // Let the old insertion fail.
+      await browser.pause(2500);
+    } finally {
+      await unlockNotes();
+      await obsidianPage.enablePlugin("inkline");
+      await loadModules();
+    }
+    expect(await draftCount()).toBe(1);
     await obsidianPage.openFile("Editor.md");
     await browser.executeObsidianCommand("inkline:insert-symbol");
     await clickTop("Restore");
