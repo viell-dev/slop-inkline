@@ -67,12 +67,53 @@ describe("insideInlineCode", () => {
   it("reads thousands of constructs that nothing closes in bounded time", () => {
     // Each `[` and `*` looks for its end to the text's end, as Obsidian's
     // own reading does. Past a number of steps for the text's length, the
-    // text is read for code spans alone, as it was before these were read.
+    // place counts as code, whatever the text holds.
     for (const repeated of ["[a ", "*a ", "~~a ", "==a ", "<a b=", "$a "]) {
       const text = `${repeated.repeat(20_000)}\`;;\``;
       const start = performance.now();
       expect(insideInlineCode(text, text.length - 3)).toBe(true);
       expect(performance.now() - start).toBeLessThan(1000);
     }
+  });
+
+  it("counts a place as code where reading would take too long", () => {
+    // Read for code spans alone, as a fallback once did, the backtick in the
+    // wiki link would pair with the span's own, and `;;` would be text.
+    const text = `${"[a ".repeat(1000)}See [[odd\`name]] and \`;;\`.`;
+    expect(insideInlineCode(text, text.indexOf(";;"))).toBe(true);
+    // In plain text too: nothing is certain once reading stops.
+    const plain = `${"[a ".repeat(1000)}See ;; here.`;
+    expect(insideInlineCode(plain, plain.indexOf(";;"))).toBe(true);
+    // A few brackets read in time.
+    const few = `${"[a ".repeat(10)}See ;; here.`;
+    expect(insideInlineCode(few, few.indexOf(";;"))).toBe(false);
+  });
+
+  it("reads inline HTML of any length", () => {
+    // Around where a cutoff once ended a tag: a backtick in a long attribute
+    // opens no span, and the span after the tag is code.
+    for (let length = 4080; length <= 4110; length++) {
+      const text = `Text <span title="${"a".repeat(length)}\`">value</span> and \`;;\`.`;
+      expect(insideInlineCode(text, text.indexOf(";;"))).toBe(true);
+    }
+    const after = `Text <span title="${"a".repeat(4200)}">value</span> ;; here.`;
+    expect(insideInlineCode(after, after.indexOf(";;"))).toBe(false);
+    // A quote that never closes makes no tag, so its backtick opens a span,
+    // which the next backtick closes before `;;`.
+    const open = `Text <span title="${"a".repeat(4200)}\` and \`;; here.`;
+    expect(insideInlineCode(open, open.indexOf(";;"))).toBe(false);
+  });
+
+  it("reads what a <code> tag holds as code, to its </code>", () => {
+    expect(insideInlineCode("Some <code>a ;; b</code> c.", 13)).toBe(true);
+    expect(insideInlineCode("Some <code>a</code> ;; c.", 20)).toBe(false);
+    expect(insideInlineCode('Some <code class="x">;;</code>.', 21)).toBe(true);
+    // One that never closes holds the rest of the paragraph.
+    expect(insideInlineCode("Some <code>a ;; b", 13)).toBe(true);
+    // One that strong text leaves open stays open after it, as the browser
+    // keeps it.
+    expect(insideInlineCode("Some **a <code>b** ;;</code> c.", 19)).toBe(true);
+    // Other tags make no code.
+    expect(insideInlineCode("Some <kbd>;;</kbd> c.", 10)).toBe(false);
   });
 });

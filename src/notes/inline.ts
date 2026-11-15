@@ -25,7 +25,15 @@
 //
 // A code span is a run of backticks and the next run as long. A run that none
 // closes leaves its first backtick as text, and the rest of the run can still
-// open a span.
+// open a span. A `<code>` tag makes what follows it code, to its `</code>`,
+// and one that strong text or a link leaves open stays open after it, as the
+// browser keeps it.
+//
+// Some constructs look for their end to the text's end, as Obsidian does, so
+// that a text of thousands of brackets that nothing closes takes a time that
+// grows with its length squared. Reading counts its steps; a text that would
+// take more than a number for its length cannot be read with certainty in
+// time, and every place in it counts as code.
 
 /** Where `at` lies: in code, outside it, or not known until more text comes. */
 type Found = boolean | undefined;
@@ -88,15 +96,15 @@ const attribute =
 export const openTag = `<[A-Za-z][A-Za-z0-9-]*${attribute}*\\s*\\/?>`;
 /** A closing tag, as a pattern's source. */
 export const closeTag = "<\\/[A-Za-z][A-Za-z0-9-]*\\s*>";
-const inlineHtml = new RegExp(
-  `(?:${openTag}|${closeTag}|<!---->|<!--(?:-?[^>-])(?:-?[^-])*-->|<[?].*?[?]>|<![A-Za-z]+\\s+[^>]*>|<!\\[CDATA\\[[\\s\\S]*?\\]\\]>)`,
-  "y",
-);
-/** The most characters read for one piece of inline HTML. */
-const longestTag = 4096;
 /** A tag's name, which a backtick ends. */
 const tagName =
   /#[^\u2000-\u206F\u2E00-\u2E7F'!"#$%&()*+,.:;<=>?@^`{|}~[\]\\\s]+/y;
+/**
+ * Whether `char` ends an attribute's value without quotes: a space or a
+ * character before it, a quote, `=`, `<`, `>`, or a backtick.
+ */
+const endsUnquoted = (char: string) =>
+  char === "" || char <= " " || "\"'=<>`".includes(char);
 /** A comment on one line. */
 const comment = /%%.*?%%/y;
 // What the text is searched for ahead of where it is read.
@@ -104,7 +112,7 @@ const lineBreaks = /\n/g;
 const lineEnds = /[\n\r\u2028\u2029]/g;
 const ats = /@/g;
 const closers = /\]\]/g;
-const closingBrackets = />/g;
+const codeTagStarts = /<code/gi;
 
 /**
  * Where text that Obsidian reads stops, by character: 1 where a construct may
@@ -178,6 +186,8 @@ class Inline {
   #read(from: number, to: number, link: boolean): Found {
     let place = from;
     let inLink = link;
+    // How many `<code>` tags are open, which make what follows them code.
+    let codeTags = 0;
     while (place < to && place <= this.#at) {
       this.#step();
       const found = this.#construct(place, to, inLink);
@@ -187,6 +197,7 @@ class Inline {
         continue;
       }
       if (this.#at < found.end) {
+        if (codeTags > 0) return true;
         if (found.code !== undefined) {
           const [start, close] = found.code;
           return this.#at > start && this.#at <= close;
@@ -199,15 +210,59 @@ class Inline {
         }
         return false;
       }
-      // An HTML link's tags make what lies between them a link's text.
-      if (this.#text[place] === "<") {
-        const tag = this.#text.slice(place, found.end);
-        if (!inLink && /^<a /i.test(tag)) inLink = true;
-        else if (inLink && /^<\/a>/i.test(tag)) inLink = false;
-      }
+      [inLink, codeTags] = this.#tags(place, found, inLink, codeTags);
       place = found.end;
     }
-    return false;
+    return codeTags > 0;
+  }
+
+  /**
+   * What the construct `found` at `place` does to the tags open: an HTML
+   * link's tags make what lies between them a link's text, and a `<code>`
+   * tag makes what follows it code, to its `</code>`. One that a construct's
+   * text leaves open stays open after it, as the browser keeps it.
+   */
+  #tags(
+    place: number,
+    found: Construct,
+    inLink: boolean,
+    codeTags: number,
+  ): [boolean, number] {
+    let link = inLink;
+    let code = codeTags;
+    if (found.inner !== undefined) {
+      const [innerFrom, innerTo, innerLink] = found.inner;
+      const mention = this.#search(codeTagStarts, innerFrom);
+      if (mention !== -1 && mention < innerTo) {
+        code += this.#openCodeTags(innerFrom, innerTo, innerLink);
+      }
+    }
+    if (this.#text[place] === "<") {
+      const tag = this.#text.slice(place, found.end);
+      if (!link && /^<a /i.test(tag)) link = true;
+      else if (link && /^<\/a>/i.test(tag)) link = false;
+      if (/^<code(?=[\s>])/i.test(tag) && !tag.endsWith("/>")) code++;
+      else if (/^<\/code\s*>/i.test(tag) && code > 0) code--;
+    }
+    return [link, code];
+  }
+
+  /** How many `<code>` tags the text from `from` to `to` leaves open. */
+  #openCodeTags(from: number, to: number, link: boolean): number {
+    let place = from;
+    let inLink = link;
+    let codeTags = 0;
+    while (place < to) {
+      this.#step();
+      const found = this.#construct(place, to, inLink);
+      if (found === undefined || found === open) {
+        place = this.#locate(place + 1, from, to);
+        continue;
+      }
+      [inLink, codeTags] = this.#tags(place, found, inLink, codeTags);
+      place = found.end;
+    }
+    return codeTags;
   }
 
   /**
@@ -499,26 +554,126 @@ class Inline {
     return { end: char === "." ? index - 1 : index };
   }
 
+  /**
+   * Inline HTML, as CommonMark defines it: an opening or closing tag, a
+   * comment, a processing instruction, a declaration, or CDATA. Read in one
+   * pass, however long, and counted in steps as it goes.
+   */
   #html(place: number, to: number): Attempt {
+    const text = this.#text;
     const next = this.#char(place + 1, to);
-    if (!(isLetter(next) || "?!/".includes(next))) return undefined;
-    // Every kind ends in `>`: most at the first, which is tried first.
-    const close = this.#search(closingBrackets, place + 1);
-    if (close === -1 || close >= to) return this.#unended(to);
-    if (close - place >= longestTag) return undefined;
-    this.#step(close + 1 - place);
-    inlineHtml.lastIndex = 0;
-    const found = inlineHtml.exec(this.#text.slice(place, close + 1));
-    if (found !== null) return { end: place + found[0].length };
-    // One whose quoted value or comment holds a `>` ends further on. No
-    // tag is longer than this; reading one further would cost too much.
-    const limit = Math.min(to, place + longestTag);
-    this.#step(limit - place);
-    inlineHtml.lastIndex = 0;
-    const further = inlineHtml.exec(this.#text.slice(place, limit));
-    if (further !== null) return { end: place + further[0].length };
-    // A tag that more lines could finish.
-    return limit === to ? this.#unended(to) : undefined;
+    let end: number | typeof open | undefined;
+    if (isLetter(next)) end = this.#openingTag(place + 1, to);
+    else if (next === "/") end = this.#closingTag(place + 2, to);
+    else if (next === "?") {
+      // To the next `?>` on the line.
+      const close = text.indexOf("?>", place + 2);
+      this.#step((close === -1 ? to : close) - place);
+      const lineEnd = this.#search(lineEnds, place);
+      end =
+        close !== -1 && close + 2 <= to && (lineEnd === -1 || close < lineEnd)
+          ? close + 2
+          : lineEnd === -1 || lineEnd >= to
+            ? this.#unended(to)
+            : undefined;
+    } else if (next === "!") end = this.#declaration(place, to);
+    if (end === undefined || end === open) return end;
+    this.#step(end - place);
+    return { end };
+  }
+
+  /** Where an opening tag whose name starts at `from` ends. */
+  #openingTag(from: number, to: number): number | typeof open | undefined {
+    const text = this.#text;
+    let index = from;
+    while (index < to && /[A-Za-z0-9-]/.test(text[index] ?? "")) index++;
+    this.#step(index - from);
+    for (;;) {
+      const spaced = index;
+      while (index < to && /\s/.test(text[index] ?? "")) index++;
+      this.#step(index - spaced + 1);
+      if (index >= to) return this.#unended(to);
+      if (text[index] === ">") return index + 1;
+      if (text[index] === "/") {
+        if (index + 1 >= to) return this.#unended(to);
+        return text[index + 1] === ">" ? index + 2 : undefined;
+      }
+      // An attribute, after white space: its name, and a value.
+      if (index === spaced || !/[a-zA-Z_:]/.test(text[index] ?? "")) {
+        return undefined;
+      }
+      const name = index;
+      while (index < to && /[a-zA-Z0-9:._-]/.test(text[index] ?? "")) index++;
+      this.#step(index - name);
+      let value = index;
+      while (value < to && /\s/.test(text[value] ?? "")) value++;
+      if (value >= to) return this.#unended(to);
+      if (text[value] !== "=") continue;
+      value++;
+      while (value < to && /\s/.test(text[value] ?? "")) value++;
+      if (value >= to) return this.#unended(to);
+      const quote = text[value] ?? "";
+      if (quote === '"' || quote === "'") {
+        const close = text.indexOf(quote, value + 1);
+        this.#step((close === -1 ? to : close) - value);
+        if (close === -1 || close >= to) return this.#unended(to);
+        index = close + 1;
+      } else {
+        index = value;
+        while (index < to && !endsUnquoted(text[index] ?? "")) index++;
+        this.#step(index - value);
+        if (index === value) return undefined;
+      }
+    }
+  }
+
+  /** Where a closing tag whose name starts at `from` ends. */
+  #closingTag(from: number, to: number): number | typeof open | undefined {
+    const text = this.#text;
+    if (!isLetter(this.#char(from, to))) return undefined;
+    let index = from;
+    while (index < to && /[A-Za-z0-9-]/.test(text[index] ?? "")) index++;
+    while (index < to && /\s/.test(text[index] ?? "")) index++;
+    this.#step(index - from);
+    if (index >= to) return this.#unended(to);
+    return text[index] === ">" ? index + 1 : undefined;
+  }
+
+  /** Where a comment, a declaration, or CDATA that starts `<!` ends. */
+  #declaration(place: number, to: number): number | typeof open | undefined {
+    const text = this.#text;
+    const unended = (close: number) =>
+      close === -1 || close >= to ? this.#unended(to) : close;
+    if (text.startsWith("<!--", place)) {
+      if (text.startsWith("<!---->", place)) return place + 7;
+      // Its text starts with neither `>` nor `->`, and holds no `--`.
+      let start = place + 4;
+      if (text[start] === "-") start++;
+      const first = this.#char(start, to);
+      if (first === ">" || first === "-") return undefined;
+      const dashes = text.indexOf("--", start + 1);
+      this.#step((dashes === -1 ? to : dashes) - place);
+      const close = unended(dashes);
+      if (typeof close !== "number") return close;
+      if (close + 2 >= to) return this.#unended(to);
+      return text[close + 2] === ">" ? close + 3 : undefined;
+    }
+    if (text.startsWith("<![CDATA[", place)) {
+      const close = text.indexOf("]]>", place + 9);
+      this.#step((close === -1 ? to : close) - place);
+      const end = unended(close);
+      return typeof end === "number" ? end + 3 : end;
+    }
+    // A declaration: letters, white space, and anything to `>`.
+    let index = place + 2;
+    while (index < to && isLetter(text[index] ?? "")) index++;
+    if (index === place + 2) return undefined;
+    if (index >= to) return this.#unended(to);
+    if (!/\s/.test(text[index] ?? "")) return undefined;
+    const close = text.indexOf(">", index);
+    this.#step((close === -1 ? to : close) - place);
+    const end = unended(close);
+    return typeof end === "number" ? end + 1 : end;
   }
 
   /** `[[…]]` or `![[…]]`, on one line, with no `[[` in it. */
@@ -937,7 +1092,8 @@ function runAfter(
 
 /**
  * Whether index `at` of `text`, a paragraph's text without its containers'
- * markers, lies inside a code span, as Obsidian reads the text. When `text`
+ * markers, lies inside a code span or a `<code>` tag, as Obsidian reads the
+ * text, or in a text too long to read with certainty in time. When `text`
  * may go on, as a paragraph read only so far does, undefined says that what
  * started before `at` may end in the rest.
  */
@@ -950,75 +1106,9 @@ export function insideInlineCode(
     return new Inline(text, at, !complete).find();
   } catch (error) {
     if (!(error instanceof TooLong)) throw error;
-    // A text that would take too long to read so, as one of thousands of
-    // brackets that nothing closes would, is read for code spans alone.
-    return codeSpansAlone(text, at, complete);
-  }
-}
-
-/**
- * {@link insideInlineCode} by code spans alone, reading nothing that Obsidian
- * reads before them: in linear time, whatever the text.
- */
-function codeSpansAlone(
-  text: string,
-  at: number,
-  complete: boolean,
-): boolean | undefined {
-  // The text's runs, found once a run has found none to close it.
-  let runs: Map<number, number[]> | undefined;
-  // The length of the run at `index`, once counted. A run that gives up its
-  // first backtick keeps the rest of its count, so that a long run is not
-  // counted again for each backtick it gives up.
-  let run = 0;
-  let index = 0;
-  while (index < at) {
-    const char = text[index];
-    if (char === "\\") {
-      index += 2;
-      continue;
-    }
-    if (char !== "`") {
-      index++;
-      continue;
-    }
-    if (run === 0) while (text[index + run] === "`") run++;
-    const close =
-      runs === undefined
-        ? nextRun(text, index + run, run)
-        : runAfter(runs, index + run, run);
-    if (close === undefined) {
-      if (!complete) return undefined;
-      runs ??= backtickRuns(text);
-      index++;
-      run--;
-      continue;
-    }
-    if (at > index && at <= close) return true;
-    index = close + run;
-    run = 0;
-  }
-  return false;
-}
-
-/**
- * Where the first run of exactly `length` backticks at or after `from` in
- * `text` starts, or undefined if there is none: a longer run does not close a
- * shorter one.
- */
-function nextRun(
-  text: string,
-  from: number,
-  length: number,
-): number | undefined {
-  const fence = "`".repeat(length);
-  let search = from;
-  for (;;) {
-    const close = text.indexOf(fence, search);
-    if (close === -1) return undefined;
-    let run = 0;
-    while (text[close + run] === "`") run++;
-    if (run === length) return close;
-    search = close + run;
+    // A text that would take too long to read, as one of thousands of
+    // brackets that nothing closes would, cannot be read with certainty in
+    // time: the place counts as code, so that nothing is inserted there.
+    return true;
   }
 }
