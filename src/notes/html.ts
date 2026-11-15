@@ -272,6 +272,7 @@ export function inBlock(
   block: number,
   depth: number,
 ): OpenTags {
+  if (tags.block === block && tags.depth === depth) return tags;
   return { ...tags, block, depth };
 }
 
@@ -307,12 +308,13 @@ export function readHtml(
 
 /** A reading of raw HTML, from what is open before it. */
 class Reading {
-  #code: Opening[];
+  /** The tags' own lists until they change, then copies. */
+  #code: readonly Opening[];
   #pre: number;
   #mode: Mode;
   #name: string;
   #closing: boolean;
-  #guards: Record<string, number>;
+  #guards: Readonly<Record<string, number>>;
   #specials: number;
   #unsure = false;
   readonly #tags: OpenTags;
@@ -321,12 +323,12 @@ class Reading {
   constructor(tags: OpenTags, closes: boolean) {
     this.#tags = tags;
     this.#closes = closes;
-    this.#code = [...tags.code];
+    this.#code = tags.code;
     this.#pre = tags.pre;
     this.#mode = tags.mode;
     this.#name = tags.name;
     this.#closing = tags.closing;
-    this.#guards = { ...tags.guards };
+    this.#guards = tags.guards;
     this.#specials = tags.specials;
   }
 
@@ -587,15 +589,16 @@ class Reading {
     }
     if ((name === "code" || name === "pre") && this.#clear) {
       // Elements opened before the first tag open are below it.
-      this.#guards = {};
+      this.#guards = noTags.guards;
       this.#specials = 0;
     }
     if (name === "code") {
       if (this.#code.length >= maxOpen) this.#unsure = true;
-      this.#code.push({ specials: this.#specials, block: this.#tags.block });
+      const opening = { specials: this.#specials, block: this.#tags.block };
+      this.#code = [...this.#code, opening];
     } else if (name === "pre") this.#pre++;
     if (special.has(name)) this.#specials++;
-    if (guarding.has(name)) this.#guards[name] = (this.#guards[name] ?? 0) + 1;
+    if (guarding.has(name)) this.#count(name, 1);
     if (rawText.has(name)) this.#mode = "raw";
     else if (uncertain.has(name)) this.#unsure = true;
   }
@@ -603,9 +606,11 @@ class Reading {
   /** What closing tag `name` does. */
   #close(name: string): void {
     if (!this.#closes) return;
-    const guarded = Object.values(this.#guards).some((count) => count > 0);
+    const guarded =
+      this.#guards !== noTags.guards &&
+      Object.values(this.#guards).some((count) => count > 0);
     if (guarding.has(name) && (this.#guards[name] ?? 0) > 0) {
-      this.#guards[name] = (this.#guards[name] ?? 0) - 1;
+      this.#count(name, -1);
     }
     if (guarded) return;
     const { floor } = this.#tags;
@@ -617,8 +622,16 @@ class Reading {
         this.#specials -
         last.specials +
         (last.block === this.#tags.block ? 0 : this.#tags.depth + 1);
-      if (between < adoptionLimit) this.#code.pop();
+      if (between < adoptionLimit) this.#code = this.#code.slice(0, -1);
     }
+  }
+
+  /** Adds `change` to the count of guarding element `name` open. */
+  #count(name: string, change: number): void {
+    this.#guards = {
+      ...this.#guards,
+      [name]: (this.#guards[name] ?? 0) + change,
+    };
   }
 
   /** Whether no tag is open in the reading. */

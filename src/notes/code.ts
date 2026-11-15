@@ -1127,10 +1127,15 @@ export function insideCode(lineAt: LineAt, line: number, ch: number): boolean {
   const blocks = new Blocks(lineAt);
   // What raw HTML leaves open before the paragraph or line that holds `ch`.
   let tags = noTags;
-  // The lines of the paragraph that holds the line, up to it.
+  // The lines of the paragraph that holds the line, up to it, and whether
+  // any of them could change what is open.
   let paragraph: string[] = [];
+  let tagged = false;
   // The number of the block being read, for html.ts.
   let block = 0;
+  // How many elements its containers may add: a list item two, a list and
+  // the item, and a callout two, itself and its content.
+  let depth = 0;
   let kind: LineKind = "none";
   for (let index = from; index <= line; index++) {
     const before = kind;
@@ -1138,24 +1143,30 @@ export function insideCode(lineAt: LineAt, line: number, ch: number): boolean {
     const text = blocks.content;
     if (kind === "continued") {
       paragraph.push(text);
+      tagged ||= mayChange(text, tags);
       continue;
     }
     // A delimiter row makes the paragraph's one line a table's header.
-    if (paragraph.length > 0) {
-      tags = tagsOfParagraph(paragraph, tags, kind === "row");
+    if (tagged) {
+      const header = kind === "row";
+      tags = tagsOfParagraph(paragraph, inBlock(tags, block, depth), header);
     }
     paragraph = [];
+    tagged = false;
     if (kind !== "html" || before !== "html") {
       // Obsidian's own HTML for the line follows the raw HTML before it.
       if (kind !== "html" && !isWhite(text, 0)) tags = settled(tags);
       block++;
-      // A list item may add two elements, a list and the item, and a
-      // callout two, itself and its content.
-      tags = inBlock(tags, block, 2 * blocks.depth);
+      depth = 2 * blocks.depth;
     }
-    if (kind === "paragraph") paragraph = [text];
-    else if (index < line) tags = tagsOfLine(kind, blocks, tags);
+    if (kind === "paragraph") {
+      paragraph = [text];
+      tagged = mayChange(text, tags);
+    } else if (index < line && mayRead(kind, blocks, tags)) {
+      tags = tagsOfLine(kind, blocks, inBlock(tags, block, depth));
+    }
   }
+  tags = inBlock(tags, block, depth);
   // An HTML block's code cannot be told from its lines, and an embed shows
   // as text in it: the list lists nothing there, nor in a comment, where an
   // embed shows nothing.
@@ -1234,7 +1245,6 @@ function tagsOfParagraph(
   if (header) return tagsOfRow(first, tags);
   if (footnoteStart.test(first)) return tags;
   const text = lines.join("\n");
-  if (!mayChange(text, tags)) return tags;
   // The paragraph's end counts as the line break after a definition.
   const end = lines.length > 1 ? definitionLines(`${text}\n`) : -1;
   if (end === -1) return tagsAfter(text, tags);
@@ -1242,6 +1252,23 @@ function tagsOfParagraph(
   // nothing of: what it closes stays open.
   const defined = tagsAfter(text.slice(0, end), tags, false);
   return tagsAfter(text.slice(end), defined);
+}
+
+/** Whether line `kind` of `blocks`, the last read, could change `tags`. */
+function mayRead(kind: LineKind, blocks: Blocks, tags: OpenTags): boolean {
+  switch (kind) {
+    case "html":
+      return (
+        !tags.unsure && (tags.mode !== "text" || blocks.content.includes("<"))
+      );
+    case "line":
+    case "row":
+      return mayChange(blocks.content, tags);
+    case "title":
+      return mayChange(blocks.text, tags);
+    default:
+      return false;
+  }
 }
 
 /**
@@ -1260,7 +1287,6 @@ function tagsOfLine(kind: LineKind, blocks: Blocks, tags: OpenTags): OpenTags {
     case "row":
       return tagsOfRow(text, tags);
     case "title": {
-      if (!mayChange(blocks.text, tags)) return tags;
       const title = calloutTitle(blocks.text);
       return title.kind === "code" || title.kind === "hidden"
         ? tags
