@@ -409,6 +409,19 @@ must keep released files readable and looking the same, as
   other scripts work, errors keep the entered name for retry, a deleted and
   replaced file is refused, and repeated submission starts only one rename
   ([library-renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-renaming.e2e.ts)).
+- **Unreleased:** Quick edit in a library row saves a name alone, with links
+  following and the file's bytes as they were, readings and translations alone,
+  with no note touched, and both with one Save; with nothing changed, Cancel, or
+  Esc, it writes and renames nothing. A name another symbol has is refused
+  before anything is written. A rename that fails after the readings were
+  written keeps them saved and the name to try again, which then renames without
+  writing them twice; a write that fails renames nothing; and a save left while
+  its write waits renames nothing. A rename made elsewhere is followed by a name
+  nobody changed, and kept, and a name typed stays through it. Each row's
+  readings and translations sit nearer it than the next row, in both themes, and
+  the list and Quick edit keep their names for screen readers with no tooltip
+  over their empty space
+  ([library-quick-edit.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-quick-edit.e2e.ts)).
 
 ### Preferences are kept and apply where they are shown
 

@@ -71,6 +71,9 @@ changes, restart Obsidian:
   Obsidian has not begun it yet. One it has begun can still finish, and a notice
   says so, and says again when it ends, whether it worked or not. Until then
   another rename of that symbol is refused, and says why.
+- **Unreleased:** in the library's **Quick edit**, a save that changes the name
+  and the readings or translations writes them first. Leaving it while that
+  write waits leaves the name as it was, even if the write still finishes.
 - **In the editor,** the drawing is saved by then, and the name is in the draft.
 - **Obsidian moves the file before it updates the links.** A restart while it
   updates them leaves the notes it had not reached with the old name, whose

@@ -62,6 +62,23 @@ turned off, even one waiting for Obsidian to finish another rename, says "…
 could not be renamed to …: Inkline was disabled" the same way, at once, and
 renames nothing.
 
+**Unreleased: "The readings and translations are saved, but the symbol was not
+renamed:" in Quick edit.** The reason follows on the next line. The library
+wrote the readings and translations you typed, and then could not rename the
+symbol, for that reason. The name you typed stays in the row: deal with the
+reason, and **Save** again, which tries only the name. When something came
+between the rename and Obsidian, the row says only that they are saved, and the
+next line says what happened and where the symbol is now. A notice says the
+same, as "Saved …. … could not be renamed to …: …", if the row had closed by
+then.
+
+**Unreleased: "Nothing was renamed." in Quick edit.** The readings and
+translations could not be written, for the reason on the line above, so the
+library did not go on to the new name. Both stay in the row: deal with the
+reason, and **Save** again. A notice says the same, as "The readings and
+translations of … were not saved, and it was not renamed to …: …", if the row
+had closed by then.
+
 **"… is saved, but could not be renamed: …"** The drawing is saved under the old
 name, and the new name stays in the editor's name field, for the next save to
 try again. When the reason is that a note could not be saved first, Obsidian

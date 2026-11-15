@@ -11,6 +11,15 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ### Changed
 
+- In the library, **Quick edit** takes the place of **Rename** and the button
+  with the translation icon. It opens a symbol's name, readings, and
+  translations together in its row, and one **Save** writes the readings and
+  translations and then renames the symbol, with links following as before. A
+  name that would be refused is refused before anything is written. If one part
+  fails, the row says which, keeps everything you typed, and **Save** tries
+  again what is left. The count of notes that use a symbol is now the **Uses
+  (2)** button, which lists them as before
+  ([#263](https://github.com/viell-dev/slop-inkline/issues/263)).
 - Inkline's description in Obsidian's list of plugins now says what it is for:
   "Draw symbols that no font has, then write with them inline in your notes like
   characters. Each one is saved as a plain PNG image." The README, the guide's
@@ -31,7 +40,18 @@ even one a public release; earlier pre-releases carry a suffix such as
   is not, and Known limits no longer says what Inkline "does not do yet", or
   heads its general limits "Not there yet".
 
-These change only text: nothing about how Inkline works has changed.
+Apart from Quick edit, these change only text: nothing else about how Inkline
+works has changed.
+
+### Fixed
+
+- The library's rows have space between them, so that the line of readings and
+  translations under a row no longer reads as part of the row below it
+  ([#262](https://github.com/viell-dev/slop-inkline/issues/262)).
+- Resting the pointer over empty space in the library's list, or over a row's
+  readings and translations, no longer shows a "Symbols" tooltip at the bottom
+  of the list. Screen readers still hear the list's name
+  ([#262](https://github.com/viell-dev/slop-inkline/issues/262)).
 
 ## 0.9.3 - 2026-11-12
 

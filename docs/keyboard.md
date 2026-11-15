@@ -31,6 +31,14 @@ The button after **Rename** edits a symbol's readings and translations in its
 row. Enter starts another value, Tab moves on, Mod+Enter saves, and Esc cancels.
 Afterward focus returns to that button.
 
+**Unreleased:** **Quick edit** takes the place of **Rename** and the readings
+and translations button, and the usage count is the **Uses** button. Quick edit
+opens with the name selected, and Tab moves on through the readings,
+translations, **Save**, and **Cancel**. Enter in the name saves; in the readings
+or translations it starts another value. Mod+Enter saves from any field, and Esc
+cancels. Afterward focus returns to the symbol's Quick edit button, or to the
+filter if the symbol no longer shows.
+
 **Show more** moves the focus to the first of the new rows, so that Tab goes on
 from there.
 
@@ -104,6 +112,9 @@ and returns focus to the drawing area.
   pen, the eraser, Ellipse, Polygon, Toggle fill, the brush sizes, the guides,
   the grid, Zoom, Move, Make ink, and Light ink say whether they are on.
 - The drawing area keeps its accessible name without a hover tooltip.
+- **Unreleased:** the library's list of symbols and its Quick edit area keep
+  their names for screen readers without showing a tooltip where the pointer
+  rests.
 - The fields for readings and translations have labels, and say when a list
   cannot be saved. Each value in a list shows in its own direction, so
   right-to-left text reads as it should beside other text.
