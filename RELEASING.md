@@ -187,9 +187,11 @@ conditions above:
   without a change, as its cost is a moment's. Each defect still open is
   recorded with the reason it waits:
   - [#271](https://github.com/viell-dev/slop-inkline/issues/271): rarer layouts
-    where the `;;` list's check still reads code differently from Reading view.
-    In all but two the list stays closed where it could have opened, and in
-    those two no render has shown that Obsidian reads it as code;
+    where the `;;` list's check still reads a note differently from Reading
+    view. In most of them the list stays closed where it could have opened. In
+    two it could open in code, and no render has shown Obsidian reading either
+    as code. In a `$` math block it opens, as it always has, though an embed
+    typed there shows nothing;
   - [#255](https://github.com/viell-dev/slop-inkline/issues/255): a faint line
     along the edges of a symbol in some PDF viewers, not in Obsidian;
   - [#267](https://github.com/viell-dev/slop-inkline/issues/267): in a

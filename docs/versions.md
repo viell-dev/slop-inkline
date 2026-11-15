@@ -24,12 +24,12 @@ only the explicitly unreleased `0.0.0` guide can deploy.
 
 ## Copies of the file format
 
-**Unreleased:** from 0.9.4, the [file format](./file-format.md) is also kept
-outside this site, so that what a symbol file holds stays known if the site or
-the repository goes. Every GitHub release carries a copy of it as of the commit
-the release tags, named by the format's version and the document's revision,
-listed in the release's `SHA256SUMS` and attested with its other files. From
-1.0.0, each public release is also to ask
+From 0.9.4, the [file format](./file-format.md) is also kept outside this site,
+so that what a symbol file holds stays known if the site or the repository goes.
+Every GitHub release carries a copy of it as of the commit the release tags,
+named by the format's version and the document's revision, listed in the
+release's `SHA256SUMS` and attested with its other files. From 1.0.0, each
+public release is also to ask
 [Software Heritage](https://www.softwareheritage.org/) to archive the repository
 and the [Wayback Machine](https://web.archive.org/) to keep this site's format
 page, as the
