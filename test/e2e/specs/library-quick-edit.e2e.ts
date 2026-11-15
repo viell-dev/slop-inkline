@@ -11,6 +11,7 @@ import {
   createSymbol,
   hold,
   letGo,
+  renamePastHold,
   startOver,
   symbolFiles,
   waitForHeld,
@@ -235,6 +236,99 @@ async function renameAgain(): Promise<void> {
     Reflect.set(app.fileManager, "renameFile", original);
     Reflect.deleteProperty(app.fileManager, "inklineOriginalRename");
   });
+}
+
+/** Renames a symbol through the vault, as sync would, without Inkline. */
+async function renameElsewhere(from: string, to: string): Promise<void> {
+  await browser.executeObsidian(
+    async ({ app }, path, next) => {
+      const file = app.vault.getFileByPath(path);
+      if (file === null) throw new Error(`no ${path}`);
+      await app.vault.rename(file, next);
+    },
+    from,
+    to,
+  );
+}
+
+/** Opens `note` in a tab, which a rename saves and so reads first. */
+async function openNote(note: string): Promise<void> {
+  await browser.executeObsidian(async ({ app }, path) => {
+    const file = app.vault.getFileByPath(path);
+    if (file === null) throw new Error(`no ${path}`);
+    await app.workspace.getLeaf(false).openFile(file);
+  }, note);
+}
+
+/** Turns Inkline off, or on, as Settings does. */
+async function inkline(on: boolean): Promise<void> {
+  await browser.executeObsidian(async ({ app }, enable) => {
+    const plugins: unknown = Reflect.get(app, "plugins");
+    const method: unknown =
+      typeof plugins === "object" && plugins !== null
+        ? Reflect.get(plugins, enable ? "enablePlugin" : "disablePlugin")
+        : undefined;
+    if (typeof method !== "function") throw new Error("no plugin controls");
+    await (Reflect.apply(method, plugins, ["inkline"]) as Promise<void>);
+  }, on);
+}
+
+/**
+ * Holds the next read of the symbol at `path` until {@link letReadGo}, as a
+ * save reads its file in its turn before it writes.
+ */
+async function holdSymbolRead(path: string): Promise<void> {
+  await browser.executeObsidian(({ app }, wanted) => {
+    const read = app.vault.readBinary.bind(app.vault);
+    let go = (): void => undefined;
+    const gate = new Promise<void>((resolve) => {
+      go = resolve;
+    });
+    Reflect.set(window, "inklineLetReadGo", go);
+    Reflect.set(window, "inklineReadHeld", false);
+    app.vault.readBinary = async (file) => {
+      if (file.path !== wanted) return read(file);
+      Reflect.deleteProperty(app.vault, "readBinary");
+      Reflect.set(window, "inklineReadHeld", true);
+      await gate;
+      return read(file);
+    };
+  }, path);
+}
+
+/** Waits for the read {@link holdSymbolRead} holds to be reached. */
+async function waitForHeldRead(): Promise<void> {
+  await browser.waitUntil(async () =>
+    browser.execute(() => Reflect.get(window, "inklineReadHeld") === true),
+  );
+}
+
+/** Lets go the read {@link holdSymbolRead} holds, if there is one. */
+async function letReadGo(): Promise<void> {
+  await browser.execute(() => {
+    const go: unknown = Reflect.get(window, "inklineLetReadGo");
+    Reflect.deleteProperty(window, "inklineLetReadGo");
+    if (typeof go === "function") Reflect.apply(go, undefined, []);
+  });
+}
+
+/** The lines the row says, each as shown. */
+async function errorLines(): Promise<string[]> {
+  return browser.execute(() =>
+    Array.from(
+      document.querySelectorAll(".inkline-library-edit-error > div"),
+    ).map((line) => line.textContent),
+  );
+}
+
+/** Waits for the row's wait line, and returns what it says. */
+async function waitForWait(): Promise<string> {
+  const line = form().$(".inkline-save-wait");
+  await browser.waitUntil(async () => (await line.getText()) !== "", {
+    timeout: stalledAfter + 15_000,
+    timeoutMsg: "the row never said its save waits",
+  });
+  return line.getText();
 }
 
 /** Sets the right sidebar's width, as dragging its edge does. */
@@ -518,8 +612,10 @@ describe("Quick edit in the library", function () {
     await renameAgain();
     await browser.executeObsidian(({ app }) => {
       Reflect.deleteProperty(app.vault, "modifyBinary");
+      Reflect.deleteProperty(app.vault, "readBinary");
     });
     await letGo();
+    await letReadGo();
   });
 
   after(async function () {
@@ -832,6 +928,220 @@ describe("Quick edit in the library", function () {
     await waitForClosed();
     expect(await symbolFiles()).toEqual(["arch.ink.png"]);
     expect((await fieldsOf("arch.ink.png")).reading).toEqual(["KA"]);
+  });
+
+  it("refuses a rename once the symbol is renamed elsewhere while its readings are written", async function () {
+    await symbolWith("gate.ink.png", { reading: ["TA"] });
+    await showLibrary();
+    await quickEdit("gate.ink.png");
+    await nameField().setValue("arch");
+    await area("reading").setValue("KA");
+    await hold("write");
+    await formButton("Save").click();
+    await waitForHeld();
+    // As sync would, while the write waits for the disk.
+    await renameElsewhere("gate.ink.png", "synced.ink.png");
+    await letGo();
+    await browser.waitUntil(async () =>
+      (await formError().getText()).includes("renamed to synced.ink.png"),
+    );
+    expect(await errorLines()).toEqual([
+      "The readings and translations are saved, but the symbol was not renamed:",
+      "the file was renamed to synced.ink.png meanwhile",
+    ]);
+    expect(await symbolFiles()).toEqual(["synced.ink.png"]);
+    expect((await fieldsOf("synced.ink.png")).reading).toEqual(["KA"]);
+    expect(await nameField().getValue()).toBe("arch");
+    // Save again renames it from the name it has now.
+    await browser.keys(["Enter"]);
+    await waitForClosed();
+    expect(await symbolFiles()).toEqual(["arch.ink.png"]);
+    expect((await fieldsOf("arch.ink.png")).reading).toEqual(["KA"]);
+  });
+
+  it("says the readings are saved when the rename after them is left", async function () {
+    await symbolWith("gate.ink.png", { reading: ["TA"] });
+    await noteUsing("Uses.md", "gate.ink.png");
+    await openNote("Uses.md");
+    await showLibrary();
+    await quickEdit("gate.ink.png");
+    await nameField().setValue("arch");
+    await area("reading").setValue("KA");
+    // The rename reads the open note to see whether it has text to save.
+    await hold("read");
+    await formButton("Save").click();
+    await waitForHeld();
+    const said = await waitForWait();
+    expect(said).toContain("Waiting for Obsidian to finish renaming a file.");
+    expect(said).toContain("The readings and translations are saved.");
+    await formButton("Cancel").click();
+    await waitForClosed();
+    await waitForNotice("Saved gate. It was not renamed.");
+    await letGo();
+    await browser.pause(500);
+    expect(await symbolFiles()).toEqual(["gate.ink.png"]);
+    expect((await fieldsOf("gate.ink.png")).reading).toEqual(["KA"]);
+  });
+
+  it("says in a notice what was saved once Inkline is turned off during the rename", async function () {
+    await symbolWith("gate.ink.png", { reading: ["TA"] });
+    await noteUsing("Uses.md", "gate.ink.png");
+    await openNote("Uses.md");
+    await showLibrary();
+    await quickEdit("gate.ink.png");
+    await nameField().setValue("arch");
+    await area("reading").setValue("KA");
+    await hold("read");
+    await formButton("Save").click();
+    await waitForHeld();
+    try {
+      await inkline(false);
+      await letGo();
+      await waitForNotice(
+        "Saved gate. gate could not be renamed to arch: Inkline was disabled",
+      );
+    } finally {
+      await letGo();
+      await inkline(true);
+    }
+    expect(await symbolFiles()).toEqual(["gate.ink.png"]);
+    expect((await fieldsOf("gate.ink.png")).reading).toEqual(["KA"]);
+  });
+
+  it("says in a notice what was not done once Inkline is turned off during the write", async function () {
+    await symbolWith("gate.ink.png", { reading: ["TA"] });
+    await showLibrary();
+    await quickEdit("gate.ink.png");
+    await nameField().setValue("arch");
+    await area("reading").setValue("KA");
+    await holdSymbolRead("gate.ink.png");
+    await formButton("Save").click();
+    await waitForHeldRead();
+    try {
+      await inkline(false);
+      await letReadGo();
+      await waitForNotice(
+        "The readings and translations of gate were not saved, and it was not renamed to arch: Inkline was disabled",
+      );
+    } finally {
+      await letReadGo();
+      await inkline(true);
+    }
+    expect(await symbolFiles()).toEqual(["gate.ink.png"]);
+    expect((await fieldsOf("gate.ink.png")).reading).toEqual(["TA"]);
+  });
+
+  it("renames nothing when the file changed under the write, and says so", async function () {
+    await symbolWith("gate.ink.png", { reading: ["TA"] });
+    const before = await bytesOf("gate.ink.png");
+    await showLibrary();
+    await quickEdit("gate.ink.png");
+    await nameField().setValue("arch");
+    await area("reading").setValue("KA");
+    // The change reaches the write's read with the vault telling nobody.
+    await browser.executeObsidian(async ({ app }) => {
+      const file = app.vault.getFileByPath("gate.ink.png");
+      if (file === null) throw new Error("no gate");
+      const { text } = window.inklineTest;
+      const read = app.vault.readBinary.bind(app.vault);
+      const bytes = await text.writeText(
+        new Uint8Array(await read(file)),
+        "reading",
+        ["theirs"],
+      );
+      const buffer = bytes.slice().buffer;
+      app.vault.readBinary = () => {
+        Reflect.deleteProperty(app.vault, "readBinary");
+        return Promise.resolve(buffer);
+      };
+    });
+    await formButton("Save").click();
+    await browser.waitUntil(async () =>
+      (await formError().getText()).includes("nothing was saved or renamed"),
+    );
+    expect(await errorLines()).toEqual([
+      "The file changed meanwhile, so nothing was saved or renamed.",
+    ]);
+    expect(await symbolFiles()).toEqual(["gate.ink.png"]);
+    expect(await bytesOf("gate.ink.png")).toBe(before);
+    expect(await nameField().getValue()).toBe("arch");
+    expect(await area("reading").getValue()).toBe("KA");
+  });
+
+  it("says only that the readings are saved when the rename is disturbed after them", async function () {
+    await symbolWith("gate.ink.png", { reading: ["TA"] });
+    await noteUsing("Uses.md", "gate.ink.png");
+    await showLibrary();
+    await quickEdit("gate.ink.png");
+    await nameField().setValue("lintel");
+    await area("reading").setValue("KA");
+    // Past every check, as a change already on its way to the disk would be.
+    await hold("move");
+    await formButton("Save").click();
+    await waitForHeld();
+    // The very rename, as sync would make it, which leaves the links.
+    await renamePastHold("gate.ink.png", "lintel.ink.png");
+    await letGo();
+    await browser.waitUntil(async () =>
+      (await formError().getText()).includes("did not finish the rename"),
+    );
+    expect(await errorLines()).toEqual([
+      "The readings and translations are saved.",
+      "Obsidian did not finish the rename, though the file is lintel.ink.png now, so links to it may still have the old name",
+    ]);
+    expect(await symbolFiles()).toEqual(["lintel.ink.png"]);
+    expect((await fieldsOf("lintel.ink.png")).reading).toEqual(["KA"]);
+    // Nothing is left to save.
+    await browser.keys(["Enter"]);
+    await waitForClosed();
+    expect(await symbolFiles()).toEqual(["lintel.ink.png"]);
+  });
+
+  it("never renames a file back through two renames elsewhere, with the name untouched", async function () {
+    await symbolWith("gate.ink.png", { reading: ["TA"] });
+    await showLibrary();
+    await quickEdit("gate.ink.png");
+    await renameElsewhere("gate.ink.png", "arch.ink.png");
+    await browser.waitUntil(
+      async () => (await nameField().getValue()) === "arch",
+    );
+    await renameElsewhere("arch.ink.png", "portal.ink.png");
+    await browser.waitUntil(
+      async () => (await nameField().getValue()) === "portal",
+    );
+    await area("reading").setValue("KA");
+    await formButton("Save").click();
+    await waitForClosed();
+    expect(await symbolFiles()).toEqual(["portal.ink.png"]);
+    expect((await fieldsOf("portal.ink.png")).reading).toEqual(["KA"]);
+  });
+
+  it("keeps a refused name's reason through a change to the file", async function () {
+    await symbolWith("gate.ink.png", { reading: ["TA"] });
+    await createSymbol("tower.ink.png");
+    await showLibrary();
+    await quickEdit("gate.ink.png");
+    await nameField().setValue("TOWER");
+    await browser.keys(["Enter"]);
+    await browser.waitUntil(async () =>
+      (await formError().getText()).includes("already has a symbol named"),
+    );
+    // As sync would bring in a translation.
+    await browser.executeObsidian(async ({ app }) => {
+      const file = app.vault.getFileByPath("gate.ink.png");
+      if (file === null) throw new Error("no gate");
+      const { text } = window.inklineTest;
+      const bytes = await text.writeText(
+        new Uint8Array(await app.vault.readBinary(file)),
+        "translation",
+        ["door"],
+      );
+      await app.vault.modifyBinary(file, bytes.slice().buffer);
+    });
+    await browser.waitUntil(
+      async () => (await area("translation").getValue()) === "door",
+    );
+    expect(await formError().getText()).toContain("already has a symbol named");
   });
 
   it("keeps a name typed through a rename made elsewhere, and renames from there", async function () {
