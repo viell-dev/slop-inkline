@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { insideInlineCode } from "../../../src/notes/inline.ts";
+import {
+  insideInlineCode,
+  noTags,
+  tagsAfter,
+  tagsAfterHtml,
+} from "../../../src/notes/inline.ts";
 
 describe("insideInlineCode", () => {
   it("knows an index between backticks", () => {
@@ -115,5 +120,36 @@ describe("insideInlineCode", () => {
     expect(insideInlineCode("Some **a <code>b** ;;</code> c.", 19)).toBe(true);
     // Other tags make no code.
     expect(insideInlineCode("Some <kbd>;;</kbd> c.", 10)).toBe(false);
+  });
+
+  it("reads <code/> and <pre> as tags that open code, to their closing tag", () => {
+    // A slash closes no `<code>` in the browser.
+    for (const tag of ["<code/>", "<code />", '<code class="x"/>', "<CODE>"]) {
+      const text = `Some ${tag};; here.`;
+      expect(insideInlineCode(text, text.indexOf(";;"))).toBe(true);
+      const closed = `Some ${tag}a</code> ;; here.`;
+      expect(insideInlineCode(closed, closed.indexOf(";;"))).toBe(false);
+    }
+    expect(insideInlineCode("Some <pre>a ;;", 12)).toBe(true);
+    expect(insideInlineCode("Some <pre>a</pre> ;;", 18)).toBe(false);
+    // A closing tag of the other kind closes nothing.
+    expect(insideInlineCode("Some <code>a</pre> ;;", 19)).toBe(true);
+    // Not tags: a name that goes on, and one in a code span.
+    expect(insideInlineCode("Some <coder>a ;;", 14)).toBe(false);
+    expect(insideInlineCode("Some `<code>` ;;", 14)).toBe(false);
+  });
+
+  it("starts with the tags a note left open before the text", () => {
+    expect(insideInlineCode("a ;;", 2, true, { code: 1, pre: 0 })).toBe(true);
+    expect(insideInlineCode("</code> ;;", 8, true, { code: 1, pre: 0 })).toBe(
+      false,
+    );
+    expect(tagsAfter("a <code>b", noTags)).toEqual({ code: 1, pre: 0 });
+    expect(tagsAfter("a</code> b", { code: 1, pre: 0 })).toEqual(noTags);
+    expect(tagsAfter("`<code>` [[<pre>]]", noTags)).toEqual(noTags);
+    expect(tagsAfterHtml('<div><code class="x">', noTags)).toEqual({
+      code: 1,
+      pre: 0,
+    });
   });
 });
