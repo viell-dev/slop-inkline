@@ -86,6 +86,13 @@ reason, and **Save** again. A notice says the same, as "The readings and
 translations of … were not saved, and it was not renamed to …: …", if the row
 had closed by then.
 
+**Unreleased: "… the file was deleted or replaced as it was written, so what is
+at its path may hold this save."** The symbol's file was deleted, or another
+file put at its path, while Obsidian wrote this save, so the save may be in the
+file now at that path. What you drew or typed is still in the editor, or in the
+library's row. Look at the file at that path, and at your sync tool's history
+for what was there, then save again or close without saving.
+
 **"… is saved, but could not be renamed: …"** The drawing is saved under the old
 name, and the new name stays in the editor's name field, for the next save to
 try again. When the reason is that a note could not be saved first, Obsidian
