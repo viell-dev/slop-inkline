@@ -1,9 +1,10 @@
 // Where a note's text is code or front matter, as Obsidian renders the note:
 // there a trigger is the note's own text and lists nothing, and an embed shows
 // nothing. So does a place in a comment, math, or an HTML tag, where Obsidian
-// shows nothing. Plain functions, so that unit tests can check them; suggest.ts and
-// entries.ts use them. They read a note's lines as its editor has them now, as
-// the metadata cache, which follows saves, may not have them yet.
+// shows nothing. Plain functions, so that unit tests can check them;
+// suggest.ts and entries.ts use them. They read a note's lines as its editor
+// has them now, as the metadata cache, which follows saves, may not have them
+// yet.
 //
 // Obsidian reads a quote's lines and a list item's lines first, and then what
 // they hold as a note of its own. These functions follow its rules, found by
