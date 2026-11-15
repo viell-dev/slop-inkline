@@ -74,7 +74,7 @@
 //   `<code>` open over blank lines and blocks, even out of a quote or a
 //   heading. html.ts reads the note's raw HTML as the browser does, and says
 //   where a closing tag closes nothing, and what makes everything after it
-//   uncertain. Tags in code, front matter, `%%` or `$` blocks, and
+//   uncertain. Tags in code, front matter, `%%` or `$$` blocks, and
 //   footnotes count for nothing, and so do those that inline.ts reads as
 //   text; a table's cell keeps to itself what it opens and closes.
 // - A paragraph's text that would take too long to read, as inline.ts says.

@@ -175,7 +175,7 @@ describe("insideInlineCode", () => {
     expect(insideInlineCode("Some <!-- ;; -->", 10)).toBe(true);
     expect(insideInlineCode("Some <? ;; ?>", 8)).toBe(true);
     expect(insideInlineCode("Some $a ;;$ b", 8)).toBe(true);
-    expect(insideInlineCode("Some $;;$ b", 7)).toBe(true);
+    expect(insideInlineCode("Some $$;;$$ b", 7)).toBe(true);
     expect(insideInlineCode("Some %% ;; %% b", 8)).toBe(true);
     // Text around them, and in an element's text, shows.
     expect(insideInlineCode("Some <b>;;</b>", 8)).toBe(false);
