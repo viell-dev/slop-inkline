@@ -12,10 +12,12 @@
 // in 16-pixel text at 100% and 150%, the ink stands on the letters' baseline,
 // and the symbols of a line level, within 0.25 screen pixels, which allows
 // for the measuring. Elsewhere two whole-pixel roundings meet, the text's and
-// the box's, so the ink stands within 1.2 pixels of the letters' baseline,
-// as measured up to 1.06, and the symbols of a line within 0.6 of each other:
-// Chromium 150 resamples a mask into a whole-pixel rectangle whose width
-// depends on where the box falls, which left up to 0.5 between them.
+// the box's, so the ink stands within 1.2 pixels of the letters' baseline in
+// the conditions below, as measured up to 1.06, and the symbols of a line
+// within 0.6 of each other where each CSS pixel is a whole number of screen
+// pixels, and within one at other zoom levels: Chromium 150 resamples a mask
+// into a whole-pixel rectangle whose width depends on where the box falls,
+// which left up to 0.5 between them at 100% and 0.69 at 120%.
 
 import { browser, expect } from "@wdio/globals";
 import { obsidianPage } from "wdio-obsidian-service";
@@ -62,15 +64,32 @@ const conditions: readonly Condition[] = [
   { name: "20-pixel text", font: 20, scale: 1, zoom: 1 },
   { name: "16-pixel text zoomed to 200%", font: 16, scale: 1, zoom: 2 },
   { name: "17-pixel text zoomed to 200%", font: 17, scale: 1, zoom: 2 },
-  // Obsidian's Zoom in and Zoom out, a step each way.
-  { name: "16-pixel text zoomed to 120%", font: 16, scale: 1, zoom: 1.2 },
-  { name: "16-pixel text zoomed to 83%", font: 16, scale: 1, zoom: 1 / 1.2 },
+  // Obsidian's Zoom in and Zoom out move the zoom a step of the square root
+  // of 1.2 each way: 109.5% and 91.3% for one step, 120% for two in.
+  {
+    name: "16-pixel text zoomed in a step, to 109.5%",
+    font: 16,
+    scale: 1,
+    zoom: Math.sqrt(1.2),
+  },
+  {
+    name: "16-pixel text zoomed out a step, to 91.3%",
+    font: 16,
+    scale: 1,
+    zoom: 1 / Math.sqrt(1.2),
+  },
+  {
+    name: "16-pixel text zoomed in two steps, to 120%",
+    font: 16,
+    scale: 1,
+    zoom: 1.2,
+  },
 ];
 
 /**
  * Whether a symbol's ink baseline, three quarters of the way down its box,
  * lies a whole number of screen pixels below the box's top, with each CSS
- * pixel a whole number of screen pixels. Zoomed to a fraction, as 83%, the
+ * pixel a whole number of screen pixels. Zoomed to a fraction, as 91.3%, the
  * page's CSS pixels do not fall on whole screen pixels, and Chromium rounds
  * the text and the boxes from fractions of them.
  */
@@ -83,12 +102,14 @@ function whole(condition: Condition): boolean {
 
 /**
  * How far apart the symbols of a line may be, in screen pixels, where their
- * ink baseline is not on a whole pixel: half a pixel and a little at 100%,
- * where Chromium 150 left up to 0.5 between boxes it resampled at different
- * widths; at another zoom, up to a pixel, as measured up to 0.82 at 83%.
+ * ink baseline is not on a whole pixel: half a pixel and a little where each
+ * CSS pixel is a whole number of screen pixels, as Chromium 150 left up to
+ * 0.5 between boxes it resampled at different widths at 100%, and 0.00 at
+ * 200%; at other zoom levels, up to a pixel, as measured up to 0.69 at 120%,
+ * and up to 0.94 in other conditions.
  */
 function lineSpread(condition: Condition): number {
-  return condition.zoom === 1 ? 0.6 : 1;
+  return Number.isInteger(condition.zoom) ? 0.6 : 1;
 }
 
 /** One symbol or typed H, as measured, in screen pixels. */

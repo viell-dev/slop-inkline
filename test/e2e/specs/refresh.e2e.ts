@@ -9,6 +9,8 @@ import {
   surface,
   waitForEditor,
 } from "../support/editor.ts";
+import { openCanvas, placeInCard } from "../support/canvas.ts";
+import { doubleClick } from "../support/pointer.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 
 const edited = "Glyphs/sign % one.ink.png";
@@ -167,6 +169,10 @@ describe("Saved symbol refresh", function () {
     await browser.executeObsidian(async ({ app }, contents) => {
       await app.vault.create("Refresh.md", contents);
     }, text);
+  });
+  // Whatever a test showed in a popout window goes with it, passed or not.
+  afterEach(async function () {
+    await closePopouts();
   });
   after(async function () {
     await startOver();
@@ -362,7 +368,6 @@ describe("Saved symbol refresh", function () {
         expect(image.mask).toContain(image.src);
       before = after;
     }
-    await closePopouts();
   });
 
   it("measures symbols with sizes in a note first shown in a popout", async function () {
@@ -378,33 +383,29 @@ describe("Saved symbol refresh", function () {
         .openPopoutLeaf()
         .openFile(file, { state: { mode: "preview" } });
     });
-    try {
-      let shown: Measured[] = [];
-      await browser.waitUntil(
-        async () => {
-          shown = await measuredIn("popout");
-          return shown.length === 3 && shown.every(follows);
-        },
-        {
-          timeoutMsg: `the popout's symbols were not measured: ${JSON.stringify(shown)}`,
-        },
-      );
-      expect(shown.map((image) => image.asked)).toEqual(["24px", "1000px", ""]);
-    } finally {
-      await closePopouts();
-    }
+    let shown: Measured[] = [];
+    await browser.waitUntil(
+      async () => {
+        shown = await measuredIn("popout");
+        return shown.length === 3 && shown.every(follows);
+      },
+      {
+        timeoutMsg: `the popout's symbols were not measured: ${JSON.stringify(shown)}`,
+      },
+    );
+    expect(shown.map((image) => image.asked)).toEqual(["24px", "1000px", ""]);
   });
 
   it("keeps the symbols of a canvas card's own editor measured as one changes shape", async function () {
     await browser.executeObsidian(async ({ app }, path) => {
-      const file = await app.vault.create(
+      await app.vault.create(
         "Card.canvas",
         JSON.stringify({
           nodes: [
             {
               id: "card",
               type: "text",
-              text: `Card ![[${path}]] and ![[${path}|24]] here.`,
+              text: `Card ![[${path}]] and ![[${path}|24]] here.\n\nPlain words to open.`,
               x: 0,
               y: 0,
               width: 420,
@@ -414,15 +415,12 @@ describe("Saved symbol refresh", function () {
           edges: [],
         }),
       );
-      const leaf = app.workspace.getLeaf(false);
-      await leaf.openFile(file);
-      app.workspace.setActiveLeaf(leaf, { focus: true });
     }, edited);
-    const card = browser.$(".canvas-node .canvas-node-content");
-    await card.waitForDisplayed();
-    // A double-click opens the card's own editor, a document in a frame,
-    // which Inkline watches once it takes the focus.
-    await card.doubleClick();
+    await openCanvas("Card.canvas");
+    // A double-click on its words opens the card's own editor, a document in
+    // a frame, which Inkline watches once it takes the focus. On a symbol, it
+    // would open the symbol instead.
+    await doubleClick(await placeInCard("Plain words", "p"));
     await browser.$(".canvas-node.is-editing iframe").waitForExist();
     let shown: Measured[] = [];
     await browser.waitUntil(
