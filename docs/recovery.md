@@ -55,8 +55,11 @@ After each finished stroke, undo, redo, or clearing, and each change of name,
 the editor keeps a draft of the drawing in the vault's local storage, which
 Obsidian keeps on your computer for that vault. Closing Obsidian or a crash then
 loses at most a stroke still being drawn, and turning Inkline off loses nothing:
-it ends the stroke and keeps the draft. A picture you were tracing over is not
-kept.
+it ends the stroke and keeps the draft. **Unreleased:** if Obsidian is still
+renaming the symbol you saved as you turn Inkline off, as while it asks about
+links, the draft follows the rename once Obsidian finishes it: it goes if the
+file holds the whole drawing, and otherwise waits under the file's new name. A
+picture you were tracing over is not kept.
 
 Opening the same symbol again, or a new symbol in the same note, asks **Restore
 the unsaved drawing?**, with the time the draft was kept:

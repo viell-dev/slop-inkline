@@ -216,6 +216,11 @@ must keep released files readable and looking the same, as
   first save that an interruption cut short finished from its draft (the same
   file, and
   [drafts.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/drafts.test.ts)).
+  **Unreleased:** with Inkline disabled while Obsidian moves the file or asks
+  about links, the draft dropped once the save that wrote the drawing ends, a
+  stroke drawn during the save offered back under the file's new name, and a
+  draft that Inkline, enabled again meanwhile, restored never brought back (the
+  same file).
 - A draft's base layer dropped from storage as soon as the draft that replaces
   it is kept, and never before: kept when storage refuses the replacement, and
   while another draft names it, a held one, a restored one, or another editor's;
