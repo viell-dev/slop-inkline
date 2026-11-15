@@ -302,7 +302,9 @@ export default class InklinePlugin extends Plugin {
   /**
    * Ends this load, which closes Insert existing symbol's list, and closes
    * every open editor, keeping unsaved strokes as drafts that the editor
-   * offers back next time, and stops anything more being written.
+   * offers back next time, and stops anything more being written. A save
+   * still running then settles its editor's draft as it ends, as the rename
+   * that ends it moves the file from the path the draft names.
    */
   override onunload(): void {
     this.#lifetime.abort();

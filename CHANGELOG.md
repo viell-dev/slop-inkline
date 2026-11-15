@@ -58,8 +58,18 @@ even one a public release; earlier pre-releases carry a suffix such as
   is not, and Known limits no longer says what Inkline "does not do yet", or
   heads its general limits "Not there yet".
 
+These change only text, not how Inkline works.
+
 ### Fixed
 
+- Turning Inkline off while Obsidian is still renaming a symbol you have just
+  saved, as while it asks whether to update links, no longer leaves a draft that
+  the editor offers back though the file holds the drawing. A stroke drawn after
+  that save is offered back under the symbol's new name, with the picture it was
+  drawn over, where it used to stay in a draft that nothing offered
+  ([#247](https://github.com/viell-dev/slop-inkline/issues/247)). Opening a
+  symbol now drops, without asking, a draft that would bring back nothing its
+  file lacks.
 - The library's rows have space between them, so that the line of readings and
   translations under a row no longer reads as part of the row below it
   ([#262](https://github.com/viell-dev/slop-inkline/issues/262)).

@@ -193,7 +193,13 @@ the mark before renaming what it links to.
   the symbol again can offer it back though the drawing was saved. A stroke
   drawn after that save, before Obsidian moved the file, stays in a draft that
   is not offered ([#247](https://github.com/viell-dev/slop-inkline/issues/247)),
-  so save again before turning Inkline off.
+  so save again before turning Inkline off. **Unreleased:** the draft follows
+  the rename once Obsidian finishes it, and opening the symbol then offers it
+  only if it holds something the file does not, as when you drew after saving or
+  something else changed the file meanwhile. If the vault's local storage
+  refuses it then, it keeps the old name, and a notice says so. If Obsidian is
+  closed before it finishes, as with its question still open, the draft stays as
+  it was kept, so answer the question first.
 - A symbol file made to be slow to draw, by a stroke that turns back at nearly
   every point, can keep Obsidian busy for a long time when you open it in the
   editor, hours for the worst of them, from a file of a few kilobytes. Close
