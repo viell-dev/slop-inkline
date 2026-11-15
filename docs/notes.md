@@ -101,11 +101,12 @@ where Reading view shows some of it as ordinary text. A closing tag counts only
 where the browser reads it as one: not inside an HTML comment, a quoted
 attribute, a `<textarea>` or `<style>`, a table's cell, or a footnote, and not
 past eight or more nested blocks. The trigger lists nothing inside an HTML tag
-or comment either, nor in the text of a `<textarea>` or the like. After a
-comment, tag, or quote that a block of HTML leaves open, and after a `<script>`,
-an `<svg>`, or a `<math>`, the trigger lists nothing in the rest of the note. A
-few rare notes are still read otherwise, as
-[#271](https://github.com/viell-dev/slop-inkline/issues/271) lists.
+or comment, a `%%` comment, or math either, where an embed shows nothing, nor in
+the text of a `<textarea>` or the like. After a comment, tag, or quote that a
+block of HTML leaves open, and after a `<script>`, an `<svg>`, or a `<math>`,
+the trigger lists nothing in the rest of the note. A few rare notes are still
+read otherwise, as [#271](https://github.com/viell-dev/slop-inkline/issues/271)
+lists.
 
 **Inkline: Insert existing symbol** opens the same list as a search, and inserts
 the chosen symbol at the cursor. It places the symbol as **Inkline: Insert
