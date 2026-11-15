@@ -94,7 +94,7 @@ type Leaf =
   | { readonly kind: "table"; readonly header: string }
   | { readonly kind: "fence"; readonly mark: string; readonly length: number }
   /** An HTML block, which ends at a line that `end` matches, or an empty one. */
-  | { readonly kind: "html"; readonly end: RegExp | undefined }
+  | { readonly kind: "html"; readonly end: HtmlEnd | undefined }
   /** A `%%` comment block. */
   | { readonly kind: "comment" }
   /** A `$$` math block, opened by `length` of them. */
@@ -164,25 +164,34 @@ const definitionTitle = new RegExp(String.raw`^[ \t]*${title}[ \t]*$`);
 const blockTags =
   "address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h1|h2|h3|h4|h5|h6|head|header|hgroup|hr|html|iframe|legend|li|link|main|menu|menuitem|meta|nav|noframes|ol|optgroup|option|p|param|pre|section|source|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul";
 
+/** Whether a line of an HTML block ends it. */
+type HtmlEnd = (line: string) => boolean;
+
 /**
  * The kinds of HTML block: what starts one, from its `<`, what ends one, which
  * an empty line ends where it is undefined, and whether one may end a
- * paragraph.
+ * paragraph. These say where a Markdown reader, Obsidian's, ends a block of
+ * HTML, not what a browser would read as HTML: a comment ends at `-->` alone,
+ * as Obsidian has it.
  */
 const htmlBlocks: readonly {
   readonly start: RegExp;
-  readonly end: RegExp | undefined;
+  readonly end: HtmlEnd | undefined;
   readonly interrupts: boolean;
 }[] = [
   {
     start: /^<(?:script|pre|style)(?=\s|>|$)/i,
-    end: /<\/(?:script|pre|style)>/i,
+    end: (line) => /<\/(?:script|pre|style)>/i.test(line),
     interrupts: true,
   },
-  { start: /^<!--/, end: /-->/, interrupts: true },
-  { start: /^<\?/, end: /\?>/, interrupts: true },
-  { start: /^<![A-Za-z]/, end: />/, interrupts: true },
-  { start: /^<!\[CDATA\[/, end: /\]\]>/, interrupts: true },
+  { start: /^<!--/, end: (line) => line.includes("-->"), interrupts: true },
+  { start: /^<\?/, end: (line) => line.includes("?>"), interrupts: true },
+  { start: /^<![A-Za-z]/, end: (line) => line.includes(">"), interrupts: true },
+  {
+    start: /^<!\[CDATA\[/,
+    end: (line) => line.includes("]]>"),
+    interrupts: true,
+  },
   {
     start: new RegExp(`^</?(?:${blockTags})(?=\\s|/?>|$)`, "i"),
     end: undefined,
@@ -721,9 +730,7 @@ class Blocks {
         return "code";
       case "html":
         if (
-          leaf.end === undefined
-            ? at === text.length
-            : leaf.end.test(text.slice(at))
+          leaf.end === undefined ? at === text.length : leaf.end(text.slice(at))
         ) {
           this.#leaf = none;
         }
@@ -892,7 +899,7 @@ class Blocks {
     const html = mark === "<" ? opensHtml(text, at) : undefined;
     if (html !== undefined) {
       // Some kinds end on the line that holds their end, the first too.
-      const ended = html.end?.test(text.slice(at)) === true;
+      const ended = html.end?.(text.slice(at)) === true;
       this.#leaf = ended ? none : { kind: "html", end: html.end };
       return "none";
     }
