@@ -1,10 +1,6 @@
 import { fromMarkdown } from "mdast-util-from-markdown";
 import { describe, expect, it } from "vitest";
-import {
-  insideCode,
-  insideCodeBlock,
-  insideCodeSpan,
-} from "../../../src/notes/code.ts";
+import { insideCode, insideCodeBlock } from "../../../src/notes/code.ts";
 import { codeCases } from "../../support/code-cases.ts";
 
 /** A note's lines, as `insideCode` reads them. */
@@ -122,47 +118,6 @@ describe("insideCode", () => {
   });
 });
 
-describe("insideCodeSpan", () => {
-  it("knows an index between backticks", () => {
-    const line = "a `;;x` b";
-    expect(insideCodeSpan(line, 3)).toBe(true);
-    expect(insideCodeSpan(line, 6)).toBe(true);
-    expect(insideCodeSpan(line, 1)).toBe(false);
-    expect(insideCodeSpan(line, 8)).toBe(false);
-  });
-
-  it("matches runs of the same length, and leaves an unclosed run text", () => {
-    expect(insideCodeSpan("``a`;;``", 5)).toBe(true);
-    expect(insideCodeSpan("a ` ;;", 5)).toBe(false);
-    // An escaped backtick opens nothing.
-    expect(insideCodeSpan("\\`;;`", 3)).toBe(false);
-  });
-
-  it("leaves an unclosed run's first backtick as text, as Obsidian does", () => {
-    expect(insideCodeSpan("``a ;;`", 4)).toBe(true);
-    expect(insideCodeSpan("`a ;;``", 3)).toBe(false);
-  });
-
-  it("gives up a long run that nothing closes in linear time", () => {
-    // A run of n backticks that nothing closes gives them up one at a time.
-    // Counted again for each, it would take n²/2 reads, seconds for these
-    // where it takes milliseconds.
-    const run = "`".repeat(40_000);
-    const start = performance.now();
-    expect(insideCodeSpan(`x ${run} ;;`, 40_004)).toBe(false);
-    // Its last backtick still opens a span that a single one closes.
-    expect(insideCodeSpan(`x ${run} ;; \``, 40_004)).toBe(true);
-    expect(performance.now() - start).toBeLessThan(500);
-  });
-
-  it("says when text after the index could close a span open before it", () => {
-    expect(insideCodeSpan("a `b ;;", 5, false)).toBeUndefined();
-    expect(insideCodeSpan("a `b ;;", 5)).toBe(false);
-    expect(insideCodeSpan("a `b` ;;", 6, false)).toBe(false);
-    expect(insideCodeSpan("a `b ;;`", 5, false)).toBe(true);
-  });
-});
-
 describe("insideCodeBlock", () => {
   it("knows the lines of a fenced code block, of either mark", () => {
     const lines = note("a\n```js\n;;x\n```\n;;y\n~~~~\n;;z\n~~~~");
@@ -260,8 +215,8 @@ function commonMarkCode(text: string, at: number): boolean {
 
 describe("insideCode beside CommonMark", () => {
   // Lines whose notes Obsidian reads as CommonMark does: no lists, tables,
-  // tabs, or runs of backticks but fences, and below, no line that a
-  // quote's fence could go on through lazily.
+  // tabs, or runs of backticks but fences, and below, no line that goes on
+  // in a quote lazily where CommonMark would end it.
   const lines = [
     "",
     "a`b",
@@ -287,16 +242,13 @@ describe("insideCode beside CommonMark", () => {
   };
   /**
    * Whether line `index` of `note` holds text and leaves a quote right after
-   * a line in it, which a quote's fence goes on through in Obsidian: after a
-   * line with text, or, once a fence may be open, after a `>` alone.
+   * a line in it, which goes on in the quote in Obsidian after any block,
+   * a `>` alone or a fence included, where CommonMark goes on only in a
+   * paragraph.
    */
   const lazy = (note: readonly string[], index: number) => {
     const [a, b] = [depth(note[index - 1] ?? ""), depth(note[index] ?? "")];
-    return (
-      b.quotes < a.quotes &&
-      b.text &&
-      (a.text || note.slice(0, index).some((line) => line.includes("```")))
-    );
+    return b.quotes < a.quotes && b.text;
   };
 
   // This checks what is read, not how fast: the parser takes over a second

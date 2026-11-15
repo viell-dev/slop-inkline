@@ -202,6 +202,24 @@ const contexts: [string, string, boolean][] = [
   // An indented code block, told from a list item's indented text.
   ["Indented", "Some text.\n\n    HERE\n", false],
   ["Item's text", "- A list item\n\n    HERE\n", true],
+  // What Obsidian reads before a code span takes its backticks.
+  [
+    "Wiki link",
+    "See [[odd`name]] and `code that\nruns on HERE` here.\n",
+    false,
+  ],
+  ["Comment", "%% a `comment %%\nthen HERE` here.\n", true],
+  ["Definition", "[ref]: `odd\n`code HERE` here.\n", false],
+  // A tab after a quote's `>` indents its text as code.
+  ["Tab", ">\tindented HERE\n", false],
+  // A line without `>` goes on in a quote after any block in it.
+  [
+    "Quote's heading",
+    "> # A heading\n`code that\n> runs on HERE` here.\n",
+    false,
+  ],
+  // An empty item takes in the line after it.
+  ["Empty item", "-\n ~~~\n- HERE\n", true],
 ];
 
 /**

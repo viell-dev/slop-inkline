@@ -16,16 +16,15 @@ export interface CodeCase {
   readonly limit?: string;
 }
 
-/** Why the check finds a code span where Obsidian reads something first. */
-const readFirst =
-  "Obsidian reads HTML, autolinks, wiki links, comments, math, links, emphasis, strikethrough, and highlights before a code span; the check does not";
-const htmlBlock = "the check does not read HTML blocks";
-/** Why the check ends a quote where Obsidian keeps it. */
-const lazyQuote =
-  "Obsidian goes on in a quote at a line without its > after any block but a blank line; the check only after a paragraph, a fence, or a callout's title";
-/** Why the check finds text where a tab makes indented code. */
-const tabIndent =
-  "Obsidian keeps a tab after a quote's > or a space, or after a list item's marker and a space, as indentation of its own; the check does not";
+/** Why the check reads an item numbered 1 to 9 as indented more. */
+const itemOne =
+  "Obsidian takes a column more from the text of an item numbered 1 to 9 when its marker is an odd number of columns wide; the check does not";
+/** Why the check reads an item's line as indented more than Obsidian does. */
+const itemAfter =
+  "Obsidian takes fewer columns from all of an item's lines when one is indented less than its text; the check, only from the lines after that one";
+/** Why the check reads a definition as a paragraph. */
+const definitionLines =
+  "Obsidian reads a definition whose label or title runs on to another line, or whose address comes after a blank line; the check does not";
 
 export const codeCases: Readonly<Record<string, CodeCase>> = {
   // A code span runs through the lines of its paragraph.
@@ -244,7 +243,6 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
   "a quote's fence, then HTML": {
     note: "> ```\n> a\n<div>\nHERE",
     code: false,
-    limit: htmlBlock,
   },
   "a nested quote's fence, then the outer quote": {
     note: "> > ```\n> > a\n> HERE",
@@ -929,122 +927,1053 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
   "a backtick in HTML": {
     note: 'a <span title="`">first\nHERE`',
     code: false,
-    limit: readFirst,
   },
   "a backtick in an autolink": {
     note: "<http://a.b/`> first\nHERE`",
     code: false,
-    limit: readFirst,
   },
   "a backtick in a wiki link": {
     note: "[[a`b]] `first\nHERE`",
     code: true,
-    limit: readFirst,
   },
   "a backtick in a comment": {
     note: "%% `first %%\nHERE`",
     code: false,
-    limit: readFirst,
   },
   "a backtick in math": {
     note: "$`first$\nHERE`",
     code: false,
-    limit: readFirst,
   },
   "a backtick in a link's text": {
     note: "[`first](x)\nHERE`",
     code: false,
-    limit: readFirst,
   },
   "a backtick in a link's address": {
     note: "[x](y`) HERE`",
     code: false,
-    limit: readFirst,
   },
   "a backtick in brackets": {
     note: "[a`b] HERE`",
     code: false,
-    limit: readFirst,
   },
   "a backtick in emphasis": {
     note: "*`a* HERE`",
     code: false,
-    limit: readFirst,
   },
   "a backtick in strong emphasis": {
     note: "**`a** HERE`",
     code: false,
-    limit: readFirst,
   },
   "a backtick in strong emphasis, over lines": {
     note: "**`a\nHERE**`",
     code: false,
-    limit: readFirst,
   },
   "a backtick in strikethrough": {
     note: "~~`a~~ HERE`",
     code: false,
-    limit: readFirst,
   },
   "a backtick in a highlight": {
     note: "==`a== HERE`",
     code: false,
-    limit: readFirst,
   },
   "a backtick in emphasis in a callout's title": {
     note: "> [!note] *`a* HERE`",
     code: false,
-    limit: readFirst,
   },
   "a span in strong emphasis": { note: "**`a HERE` b**", code: true },
   "a span into an HTML block": {
     note: "`first\n<div>\nHERE`",
     code: false,
-    limit: htmlBlock,
   },
   // A quote's lines without their `>`.
   "a lazy line after a quote's heading": {
     note: "> # h\n`a\n> HERE`",
     code: true,
-    limit: lazyQuote,
   },
   "a lazy line after a quote's closed fence": {
     note: "> ```\n> x\n> ```\n`a\n> HERE`",
     code: true,
-    limit: lazyQuote,
   },
   "a lazy line after a quote's thematic break": {
     note: "> ***\n`a\n> HERE`",
     code: true,
-    limit: lazyQuote,
   },
   "a lazy line after a quote's > alone": {
     note: "> a\n>\n`b\n> HERE`",
     code: true,
-    limit: lazyQuote,
   },
   "a lazy line after a callout's > alone": {
     note: "> [!note]\n>\n`a\n> HERE`",
     code: true,
-    limit: lazyQuote,
   },
   // Tabs after a marker.
-  "a tab after >": { note: ">\tHERE", code: true, limit: tabIndent },
+  "a tab after >": { note: ">\tHERE", code: true },
   "a tab after > and a space": {
     note: "> \tHERE",
     code: true,
-    limit: tabIndent,
   },
   "a tab after > and two spaces": { note: ">  \tHERE", code: false },
   "a tab before a [!note]": {
     note: ">\t[!note] `a\n> `HERE`",
     code: true,
-    limit: tabIndent,
   },
   "a tab after a bullet and a space": {
     note: "- \tHERE",
     code: true,
-    limit: tabIndent,
   },
   "a tab after a bullet": { note: "-\tHERE", code: false },
+  // Tabs after a quote's or a list item's marker, and after spaces.
+  "a tab after > and three spaces": { note: ">   \tHERE", code: false },
+  "two tabs after >": { note: ">\t\tHERE", code: true },
+  "a tab after a nested quote's > and a space": {
+    note: "> > \tHERE",
+    code: true,
+  },
+  "a tab after a numbered item's marker and a space": {
+    note: "1. \tHERE",
+    code: true,
+  },
+  "a tab right after a numbered item's marker": {
+    note: "1.\tHERE",
+    code: false,
+  },
+  "a tab after a bullet and two spaces": { note: "-  \tHERE", code: true },
+  "a tab after a bullet and four spaces": { note: "-    \tHERE", code: true },
+  "a tab after a numbered item's marker and two spaces": {
+    note: "1.  \tHERE",
+    code: true,
+  },
+  "a tab after a number of two digits and a space": {
+    note: "10. \tHERE",
+    code: true,
+  },
+  "a tab after 1) and a space": { note: "1) \tHERE", code: true },
+  "a tab after an item's quote's >": { note: "- >\tHERE", code: true },
+  "a tab after a numbered item's quote's >": { note: "1. >\tHERE", code: true },
+  "a tab after a nested quote's >": { note: "> >\tHERE", code: true },
+  "a tab after an item's quote's > and a space": {
+    note: "- > \tHERE",
+    code: true,
+  },
+  "a tab after a quote's item's marker and a space": {
+    note: "> - \tHERE",
+    code: true,
+  },
+  "a tab after a quote's numbered item's marker": {
+    note: "> 1. \tHERE",
+    code: true,
+  },
+  "a tab between two >": { note: ">\t>HERE", code: true },
+  "a tab between two > and a space": { note: ">\t> HERE", code: true },
+  "a tab after a later > and a space": { note: "> \t> \tHERE", code: true },
+  "a tab after an indented quote's >": { note: "- a\n\n  >\tHERE", code: true },
+  "a tab after > in a paragraph": { note: "> a\n>\tHERE", code: false },
+  "a span after indented code from a tab after >": {
+    note: ">\t`a\n> HERE`",
+    code: false,
+  },
+  "a tab alone": { note: "\tHERE", code: true },
+  "a space and a tab": { note: " \tHERE", code: false },
+  "two spaces and a tab": { note: "  \tHERE", code: false },
+  "three spaces and a tab": { note: "   \tHERE", code: false },
+  "a space and two tabs": { note: " \t\tHERE", code: false },
+  "a tab and a space": { note: "\t HERE", code: true },
+  "a space and a tab after a paragraph": { note: "a\n\n \tHERE", code: false },
+  "two spaces and a tab after a paragraph": {
+    note: "a\n\n  \tHERE",
+    code: false,
+  },
+  "a tab and a space after a paragraph": { note: "a\n\n\t HERE", code: true },
+  "a tab after a callout's type and two spaces": {
+    note: "> [!note]  \tHERE",
+    code: false,
+  },
+  "a tab after a callout's type and a space": {
+    note: "> [!note] \tHERE",
+    code: true,
+  },
+  "two tabs after a callout's type": { note: "> [!note]\t\tHERE", code: true },
+  "two spaces and a tab in an item": { note: "- a\n\n  \tHERE", code: true },
+  "a tab in an item": { note: "- a\n\n\tHERE", code: false },
+  "a space and a tab in an item": { note: "- a\n\n \tHERE", code: false },
+  "two tabs in an item": { note: "- a\n\n\t\tHERE", code: true },
+  "a tab and two spaces in an item": { note: "- a\n\n\t  HERE", code: false },
+  "three spaces and a tab in an item": {
+    note: "- a\n\n   \tHERE",
+    code: false,
+  },
+  "a tab and four spaces in an item": { note: "- a\n\n\t    HERE", code: true },
+  "a tab in a numbered item": { note: "1. a\n\n\tHERE", code: false },
+  "two tabs in a numbered item": { note: "1. a\n\n\t\tHERE", code: true },
+  "seven spaces in an item at 10": {
+    note: "10. a\n\n       HERE",
+    code: false,
+  },
+  "eight spaces in an item at 10": {
+    note: "10. a\n\n        HERE",
+    code: true,
+  },
+  "seven spaces in an item at 1)": { note: "1) a\n\n       HERE", code: true },
+  "eight spaces in an indented item at 1": {
+    note: " 1. a\n\n        HERE",
+    code: true,
+  },
+  "seven spaces in an item at 1 with a line at three": {
+    note: "1. a\n   b\n\n       HERE",
+    code: true,
+  },
+  "four spaces in an item at 1": { note: "1. a\n\n    HERE", code: false },
+  "eight spaces in an item at 1 and two spaces": {
+    note: "1.  a\n\n        HERE",
+    code: true,
+  },
+  "a tab after a quote's paragraph": { note: "> a\n\tHERE", code: true },
+  "a space and a tab after a quote's paragraph": {
+    note: "> a\n \tHERE",
+    code: false,
+  },
+  "a span over a space and a tab after a quote": {
+    note: "> `a\n \tHERE`",
+    code: true,
+  },
+  "a span to a tab after a quote": { note: "> `a\n\tHERE`", code: true },
+  "a tab before >": { note: "\t> HERE", code: true },
+  "a space and a tab before >": { note: " \t> HERE", code: false },
+  "a span after two spaces and a tab before >": {
+    note: "  \t> `a\n> HERE`",
+    code: true,
+  },
+  "a span over a quote's line indented four": {
+    note: "> a\n    > `b\n> HERE`",
+    code: true,
+  },
+  "a quote's fence over a line indented four": {
+    note: "> ```\n    > b\nHERE",
+    code: true,
+  },
+  "a quote's fence over a line indented by a tab": {
+    note: "> ```\n\t> b\nHERE",
+    code: true,
+  },
+  "a quote's fence over a line indented five": {
+    note: "> ```\n     > HERE",
+    code: true,
+  },
+  "a span in an item after a tab": { note: "-\t`a\n\tHERE`", code: true },
+  "a span in a nested item after tabs": {
+    note: "- a\n\t- `b\n\t  HERE`",
+    code: true,
+  },
+  "a tab-indented list": { note: "\t- a\n\n\t\tHERE", code: true },
+  "a space and a tab in an item's fence": {
+    note: "- ```\n \tHERE",
+    code: true,
+  },
+  "a tab in a quote's fence": { note: "> ```\n>\tHERE", code: true },
+  "a space and a tab in a quote's fence": {
+    note: "> ```\n> \tHERE",
+    code: true,
+  },
+  "a fence after a tab, after a paragraph": {
+    note: "a\n\t```\nHERE",
+    code: false,
+  },
+  "a fence after a space and a tab, after a paragraph": {
+    note: "a\n \t```\nHERE",
+    code: false,
+  },
+  "a fence after a space and a tab": { note: " \t```\nHERE", code: true },
+  "a fence after two spaces and a tab": { note: "  \t```\nHERE", code: true },
+  "a fence closed after a space and a tab": {
+    note: "```\nx\n \t```\nHERE",
+    code: true,
+  },
+  "a fence closed after a tab": { note: "```\nx\n\t```\nHERE", code: true },
+  "an item's fence after a tab": { note: "- a\n\n\t```\n\tHERE", code: true },
+  "a fence after a bullet and a tab": { note: "-\t```\n\tHERE", code: true },
+  // A quote's lines without their `>`, after any block in it.
+  "a lazy line after a quote's heading, then blank": {
+    note: "> # h\n\n`a\n> HERE`",
+    code: false,
+  },
+  "a lazy line after a callout's > alone, with a space": {
+    note: "> a\n> \n`b\n> HERE`",
+    code: true,
+  },
+  "a lazy line after a quote's table": {
+    note: "> | a |\n> | - |\n`b\n> HERE`",
+    code: true,
+  },
+  "a lazy line with a pipe after a quote's table": {
+    note: "> | a |\n> | - |\n| `b\n> HERE` |",
+    code: true,
+  },
+  "a lazy line after a quote's item": {
+    note: "> - a\n`b\n> HERE`",
+    code: true,
+  },
+  "a heading after a quote's heading": {
+    note: "> # h\n# x\n> HERE",
+    code: false,
+  },
+  "an indented line after a quote's heading": {
+    note: "> # h\n    `a\n> HERE`",
+    code: false,
+  },
+  "a bullet after a quote's heading": {
+    note: "> # h\n- `a\n> HERE`",
+    code: false,
+  },
+  "a list at 2 after a quote's heading": {
+    note: "> # h\n2. `a\n> HERE`",
+    code: true,
+  },
+  "a list at 1 after a quote's heading": {
+    note: "> # h\n1. `a\n> HERE`",
+    code: false,
+  },
+  "HTML after a quote's heading": { note: "> # h\n<div>\n> HERE", code: false },
+  "a fence after a quote's heading": { note: "> # h\n```\n> HERE", code: true },
+  "a lazy line after a quote's heading, then a nested quote": {
+    note: "> # h\n`a\n> > HERE`",
+    code: false,
+  },
+  "a lazy line after a nested quote's heading": {
+    note: "> > # h\n`a\n> > HERE`",
+    code: true,
+  },
+  "a lazy line after a nested quote's heading, then the outer": {
+    note: "> > # h\n`a\n> HERE`",
+    code: true,
+  },
+  "two lazy lines after a quote's heading": {
+    note: "> # h\n`a\nHERE`",
+    code: true,
+  },
+  "a lazy line, then a span, after a quote's heading": {
+    note: "> # h\nb\n> `c\n> HERE`",
+    code: true,
+  },
+  "a heading's underline after a quote's heading": {
+    note: "> # h\nb\n===\n> HERE",
+    code: false,
+  },
+  "*** after a quote's heading": { note: "> # h\n***\n> HERE", code: false },
+  "a fence after a quote's closed fence": {
+    note: "> ```\n> x\n> ```\n```\n> HERE",
+    code: true,
+  },
+  "a lazy line after a quote's thematic break, then blank": {
+    note: "> ***\n`a\n\n> HERE`",
+    code: false,
+  },
+  "a lazy line under a quote's text and an underline": {
+    note: "> | ~~~a\n``` e `f` ***\n===\nb HERE `\n1.~~~# he `f`",
+    code: false,
+  },
+  "a lazy line in a quote's strikethrough": {
+    note: "> | ~~~a\n``` e `f` ***\nb HERE `\n1.~~~#",
+    code: true,
+  },
+  // Lines without a list item's indentation, after any block in it.
+  "a lazy line after an item's heading": {
+    note: "- # h\n`a\n  HERE`",
+    code: true,
+  },
+  "a lazy line after an item's heading, then the next": {
+    note: "- # h\n`a\n- HERE`",
+    code: false,
+  },
+  "a lazy line after an item's closed fence": {
+    note: "- ```\n  x\n  ```\n`a\n  HERE`",
+    code: true,
+  },
+  "a lazy line after an item's thematic break": {
+    note: "- ***\n`a\n  HERE`",
+    code: true,
+  },
+  "a lazy line after an item's thematic break under text": {
+    note: "- a\n  ***\n`b\n  HERE`",
+    code: true,
+  },
+  "two lazy lines after an item's heading": {
+    note: "- # h\n`a\nHERE`",
+    code: true,
+  },
+  "a quote after an item's heading": {
+    note: "- # h\n> `a\n  HERE`",
+    code: true,
+  },
+  "a blank line after an item's heading": {
+    note: "- # h\n\n`a\n  HERE`",
+    code: true,
+  },
+  "a heading after an item's heading": {
+    note: "- # h\n# `a\n  HERE`",
+    code: false,
+  },
+  "a lazy line after an item's later heading": {
+    note: "- a\n  # h\n`b\n  HERE`",
+    code: true,
+  },
+  "a lazy line after an item's heading after a blank": {
+    note: "- a\n\n  # h\n`b\n  HERE`",
+    code: true,
+  },
+  "a lazy line after an item's quote's > alone": {
+    note: "- > a\n  >\n`b\n  HERE`",
+    code: true,
+  },
+  "a lazy line after an item's table": {
+    note: "- | a |\n  | - |\n`b\n  HERE`",
+    code: true,
+  },
+  "a lazy line after a numbered item's heading": {
+    note: "1. # h\n`a\n   HERE`",
+    code: true,
+  },
+  "an indented line after an item's heading": {
+    note: "- # h\n    `a\n  HERE`",
+    code: true,
+  },
+  "HTML after an item's heading": { note: "- # h\n<div>\n  HERE", code: false },
+  "a lazy line after an empty item": { note: "-\n`a\n  HERE`", code: true },
+  "a lazy line and indented text after an empty item": {
+    note: "-\na\n\n    HERE",
+    code: false,
+  },
+  "a lazy line and a line at two after an empty item": {
+    note: "-\na\n\n  HERE",
+    code: false,
+  },
+  "a fence a space in, after an empty item, then an item": {
+    note: "-\n ~~~\n- HERE",
+    code: false,
+  },
+  "a fence a space in, after an empty item": {
+    note: "-\n ~~~\n HERE",
+    code: true,
+  },
+  "a fence two spaces in, after an empty item, then an item": {
+    note: "-\n  ~~~\n- HERE",
+    code: false,
+  },
+  "a fence a space in, after an empty item at 1": {
+    note: "1.\n ~~~\n2. HERE",
+    code: true,
+  },
+  "a fence two spaces in, after an empty item at 1": {
+    note: "1.\n  ~~~\n  HERE",
+    code: true,
+  },
+  "a span a space in, after an empty item": {
+    note: "-\n `a\n HERE`",
+    code: true,
+  },
+  "a span after an empty item": { note: "-\n`a\nHERE`", code: true },
+  "a span after an empty item and a blank line": {
+    note: "-\n\n`a\nHERE`",
+    code: true,
+  },
+  "a fence after an empty item with a space": {
+    note: "- \n ~~~\n HERE",
+    code: true,
+  },
+  "a fence after an empty *": { note: "*\n ```\n HERE", code: true },
+  "text a space in, then indented text, after an empty item": {
+    note: "-\n a\n\n    HERE",
+    code: false,
+  },
+  "text a space in, then five spaces, after an empty item": {
+    note: "-\n a\n\n     HERE",
+    code: true,
+  },
+  "a fence in a quote's item, then a list at 2": {
+    note: "> - ~~~\n2. HERE",
+    code: false,
+  },
+  "a span in a quote's item, then a list at 2": {
+    note: "> - `a\n2. HERE`",
+    code: false,
+  },
+  "a fence in a quote's item, then a *": {
+    note: "> - ~~~\n* HERE",
+    code: false,
+  },
+  "a fence in a quote's item, then a lazy line": {
+    note: "> - ~~~\nb\n> HERE",
+    code: true,
+  },
+  "a fence in an item's quote, then a list at 2": {
+    note: "- > ~~~\n2. HERE",
+    code: false,
+  },
+  "a span in a quote's second item": {
+    note: "> - a\n- `b\n> HERE`",
+    code: false,
+  },
+  "a fence in a quote's item at 1, then a list at 2": {
+    note: "> 1. ~~~\n2. HERE",
+    code: false,
+  },
+  "a fence in a quote's item, then the next": {
+    note: "> - ~~~\n- HERE",
+    code: false,
+  },
+  "a fence in a nested quote, then a lazy line": {
+    note: "> > ~~~\nb\n> HERE",
+    code: true,
+  },
+  "a fence in a quote's item, then a heading": {
+    note: "> - ```\n# HERE",
+    code: false,
+  },
+  "a fence in an item's quote, then lazy lines": {
+    note: "- > ```\nb\nHERE",
+    code: true,
+  },
+  "a span from a lazy line after an item's quote": {
+    note: "- > a\n`b\nHERE`",
+    code: true,
+  },
+  "a span from a lazy line after an item's quote's heading": {
+    note: "- > # h\n`b\n  > HERE`",
+    code: true,
+  },
+  "a span from a lazy line after a quote's item's heading": {
+    note: "> - # h\n`b\n> HERE`",
+    code: true,
+  },
+  "a span from a lazy line to a quote's item's text": {
+    note: "> - # h\n`b\n>   HERE`",
+    code: true,
+  },
+  "a span over a quote's line under an item's quote": {
+    note: "- a\n  > b\n`c\n  > HERE`",
+    code: true,
+  },
+  "a span after a quote's item and a blank line": {
+    note: "> - a\n>\n> `b\nHERE`",
+    code: true,
+  },
+  "an item's fence over two blank lines, then indented": {
+    note: "- ```\n\n\n  HERE",
+    code: true,
+  },
+  "a fence in an empty second item": {
+    note: "- a\n- \n  ```\n  HERE",
+    code: true,
+  },
+  "a span in a list of another bullet": {
+    note: "* a\n- `b\n  HERE`",
+    code: true,
+  },
+  "a span in a list of another number's mark": {
+    note: "1. a\n1) `b\n   HERE`",
+    code: true,
+  },
+  "a sibling item after a tab": {
+    note: " \t  -\n\t- | HERE ` - |\n",
+    code: false,
+  },
+  "a list of another bullet after a tab": {
+    note: "- a\n\t* `HERE`",
+    code: true,
+  },
+  "a thematic break after a tab in an item": {
+    note: "- a\n\t- - -\nHERE",
+    code: false,
+  },
+  "a list at 2 after a tab in an item": {
+    note: "1. a\n\t2. `b\n   HERE`",
+    code: true,
+  },
+  "a nested item after a tab": { note: "-   a\n\t- `b\n  HERE`", code: true },
+  "text a space in, then five spaces, in an item": {
+    note: "- a\n b\n\n     HERE",
+    code: true,
+  },
+  "text a space in, then four spaces, in an item": {
+    note: "- a\n b\n\n    HERE",
+    code: false,
+  },
+  "what starts as a marker in an item's fence": {
+    note: "- ```\n\t- `` \n-|\n\n1.aHERE`",
+    code: true,
+  },
+  "what starts as a marker in an item's fence, unblank": {
+    note: "- ```\n\t- x\n-|\n`a\nHERE`",
+    code: true,
+  },
+  "a bullet alone in an item's fence": {
+    note: "- ```\n\t-\n-|\n\nHERE",
+    code: false,
+  },
+  "what starts as a marker in a nested item": {
+    note: "- a\n\t- b\n-|\n\n`a\nHERE`",
+    code: true,
+  },
+  "an indented lazy line, then a quote, in an item": {
+    note: "* a\n* b\n    `x\n> HERE`",
+    code: false,
+  },
+  "indented code after a task's marker": {
+    note: "* [a] \t$$ x HERE",
+    code: true,
+  },
+  "a comment after a lazy line in an item": {
+    note: "* a \t$$ x\n    %% `x %%\nHERE`",
+    code: false,
+  },
+  "HTML after a task's marker": { note: "2. [a] </pre>g`HERE`", code: false },
+  // What Obsidian reads before a code span.
+  "a backtick in a wiki link, then text": {
+    note: "[[a`b]] HERE`",
+    code: false,
+  },
+  "a backtick in a wiki link after a space": {
+    note: "x [[a `b]] HERE`",
+    code: false,
+  },
+  "a backtick in an embed": { note: "![[a`b]] `HERE`", code: true },
+  "a wiki link over two lines": { note: "[[a`b\n]] HERE`", code: false },
+  "a wiki link in a wiki link's text": {
+    note: "[[a [[b`]] `HERE`",
+    code: true,
+  },
+  "a backtick in a wiki link's alias": { note: "[[a|b`c]] HERE`", code: false },
+  "a span over a wiki link's start": { note: "`a [[b` HERE]]", code: false },
+  "a backtick at a wiki link's end": { note: "[[a`]]` HERE`", code: true },
+  "a wiki link of a backtick": { note: "[[`]] `HERE`", code: true },
+  "a span after a wiki link": { note: "[[a]]`HERE`", code: true },
+  "a wiki link's text from a space and a backtick": {
+    note: "[[ `a]] HERE`",
+    code: false,
+  },
+  "an empty wiki link": { note: "[[]]` HERE`", code: true },
+  "a wiki link and a ]": { note: "[[a]]]`HERE`", code: true },
+  "a wiki link of a [": { note: "[[[a`]] HERE`", code: false },
+  "a backtick in an embed, then text": { note: "![[a`b]] HERE`", code: false },
+  "a backtick in a comment, then a span": { note: "%%`%% `HERE`", code: true },
+  "a backtick in a comment after text": {
+    note: "a %%b`c%% HERE`",
+    code: false,
+  },
+  "a comment block over two lines": { note: "%%a\nb`%% HERE`", code: false },
+  "a comment over two lines": { note: "a %%`\nb%% HERE`", code: true },
+  "a comment, then %%": { note: "%%`%%%% `HERE`", code: true },
+  "a % in what is not a comment": { note: "%% ` % HERE`", code: true },
+  "a span after a comment": { note: "a %% `b %% HERE `c`", code: false },
+  "a comment after %": { note: "%%%`%% HERE`", code: false },
+  "a backtick in math, then text": { note: "$`a$ HERE`", code: false },
+  "a backtick in display math": { note: "$$`a$$ HERE`", code: false },
+  "a $ before a space": { note: "$ `a$ HERE`", code: true },
+  "a $ after a space": { note: "$`a $ HERE`", code: true },
+  "a $ before a digit": { note: "$`a$1 HERE`", code: true },
+  "an escaped $": { note: "\\$`a$ HERE`", code: true },
+  "math over two lines": { note: "$`a\nb$ HERE`", code: false },
+  "a backtick in a link's title": { note: '[x](y "`") HERE`', code: false },
+  "a backtick in a link's address in <>": {
+    note: "[x](<y`>) HERE`",
+    code: false,
+  },
+  "a link's address with a space": { note: "[x](y `z) HERE`", code: true },
+  "a backtick in a link's text, then text": {
+    note: "[a`b](c) HERE`",
+    code: false,
+  },
+  "a backtick in an image's text": { note: "![a`b](c) HERE`", code: false },
+  "a link's address over two lines": { note: "[x](y`\nz) HERE`", code: true },
+  "a backtick in a reference's text": { note: "[a`b][c] HERE`", code: false },
+  "a backtick in a collapsed reference's text": {
+    note: "[a`b][] HERE`",
+    code: false,
+  },
+  "a backtick in brackets after [": { note: "[a [b`] HERE`", code: false },
+  "a backtick in a footnote's label": { note: "[^a`b] HERE`", code: false },
+  "a backtick in a footnote that a span leaves open": {
+    note: "^[a`b] HERE`",
+    code: false,
+  },
+  "a backtick in brackets over two lines": {
+    note: "[a\nb`] HERE`",
+    code: false,
+  },
+  "an escaped bracket": { note: "\\[a`b] HERE`", code: true },
+  "a span after brackets": { note: "[a]`b` HERE", code: false },
+  "a span after brackets and a space": { note: "[a] `b HERE`", code: true },
+  "a backtick in brackets, then a span": { note: "[`a] HERE `b`", code: false },
+  "a backtick in a reference's label": { note: "[c][a`b] HERE`", code: false },
+  "a backtick in brackets, then a line": { note: "[a`b]\nHERE`", code: false },
+  "a span in brackets": { note: "[a `b`] HERE", code: false },
+  "a span from brackets": { note: "[a `b] c` HERE", code: false },
+  "a backtick in emphasis by _": { note: "_`a_ HERE`", code: false },
+  "a backtick in strong emphasis by _": { note: "__`a__ HERE`", code: false },
+  "emphasis to the next *": { note: "*`a *b* HERE`", code: false },
+  "emphasis from a * and a space": { note: "x * `a* HERE`", code: false },
+  "strikethrough from ~~ and a space": { note: "~~ `a~~ HERE`", code: true },
+  "strikethrough to a space and ~~": { note: "~~`a ~~ HERE`", code: true },
+  "a highlight from == and a space": { note: "== `a== HERE`", code: true },
+  "a highlight of ===": { note: "===`a=== HERE`", code: false },
+  "emphasis to **": { note: "*`a** HERE`", code: true },
+  "emphasis over two lines": { note: "*`a\nb* HERE`", code: false },
+  "emphasis by _ in a word": { note: "a_`b_ HERE`", code: false },
+  "_ before a letter": { note: "x_`a_b HERE`", code: true },
+  "a span from emphasis": { note: "*a `b* c` HERE", code: false },
+  "emphasis from a span": { note: "`a *b` HERE*", code: false },
+  "strong emphasis before a letter": { note: "**`a**b HERE`", code: false },
+  "strikethrough over two lines": { note: "~~`a\nb~~ HERE`", code: false },
+  "a highlight over two lines": { note: "==`a\nb== HERE`", code: false },
+  "emphasis from a backtick and a space": { note: "*` a* HERE`", code: false },
+  "strong emphasis in emphasis": { note: "***`a*** HERE`", code: false },
+  "emphasis in strong emphasis": { note: "**a *`b* c** HERE`", code: false },
+  "a single ~": { note: "~`a~ HERE`", code: true },
+  "a backtick in a link's attribute": {
+    note: '<a href="`">x</a> HERE`',
+    code: false,
+  },
+  "a span after a tag": { note: "<br/>`HERE`", code: true },
+  "a tag that does not close": { note: "<span `a> HERE`", code: true },
+  "< and a backtick": { note: "x <`a> HERE`", code: true },
+  "a span after a tag that opens text": { note: "<b>`a</b> HERE`", code: true },
+  "a backtick in an email autolink": { note: "<a@b.c`> HERE`", code: false },
+  "an autolink with a space": { note: "<http://a.b/ `> HERE`", code: true },
+  "a backtick in an address": { note: "http://a.b/`c HERE`", code: false },
+  "a backtick in a www. address": { note: "www.a.b/`c HERE`", code: false },
+  "a span after an address": { note: "https://a.b `HERE`", code: true },
+  "an address in a word": { note: "xhttp://a.b/`c HERE`", code: false },
+  "an address in capitals": { note: "HTTP://a.b/`c HERE`", code: false },
+  "a www. address after a space": { note: "x www.a.b/`c HERE`", code: false },
+  "an address with no dot": { note: "http://a/`c HERE`", code: true },
+  "a span after an email address": { note: "a@b.c`d HERE`", code: true },
+  "a span after a tag's name": { note: "#a`b HERE`", code: true },
+  "a span after a tag's name after a space": {
+    note: "x #a`b HERE`",
+    code: true,
+  },
+  "a span after an escaped backslash": { note: "a \\\\`b` HERE", code: false },
+  "a backtick in a wiki link in a callout's title": {
+    note: "> [!note] [[a`b]] HERE`",
+    code: false,
+  },
+  "a backtick in a wiki link in a header": {
+    note: "| [[a`b]] | HERE` |\n| - | - |",
+    code: false,
+  },
+  "a backtick in a wiki link in a cell": {
+    note: "| a | b |\n| - | - |\n| [[`]] | `HERE` |",
+    code: true,
+  },
+  "a backtick in a wiki link in a heading": {
+    note: "# [[a`b]] HERE`",
+    code: false,
+  },
+  "a backtick in a wiki link in an item": {
+    note: "- [[a`b]] `c\n  HERE`",
+    code: true,
+  },
+  // Link reference definitions.
+  "a backtick in a definition in a quote": {
+    note: "> [x]: `a\n> `HERE`",
+    code: true,
+  },
+  "a backtick in a definition in an item": {
+    note: "- [x]: `a\n  `HERE`",
+    code: true,
+  },
+  "a backtick in a definition, then text": {
+    note: "[x]: `a\nHERE`",
+    code: false,
+  },
+  "a backtick in a definition of [!note]": {
+    note: "[!note]: `a\nHERE`",
+    code: false,
+  },
+  "a backtick in a definition of [!note] in a quote": {
+    note: "> [!note]: `a\n> `HERE`",
+    code: true,
+  },
+  "a definition, then a span": { note: "[x]: y\n`HERE`", code: true },
+  "a definition's address and more": { note: "[x]: y `a\nHERE`", code: true },
+  "a backtick in a definition's address in <>": {
+    note: "[x]: <`a>\n`HERE`",
+    code: true,
+  },
+  "a definition indented 3": { note: "   [x]: `a\n`HERE`", code: true },
+  "a definition indented 4": { note: "    [x]: `a\n`HERE`", code: true },
+  "a definition's title on its next line": {
+    note: '[x]: y\n"`a"\n`HERE`',
+    code: true,
+  },
+  "a definition under a paragraph": { note: "a\n[x]: `b\nHERE`", code: true },
+  "a backtick in a definition's title": {
+    note: '[x]: y "`a"\n`HERE`',
+    code: true,
+  },
+  "a backtick in a definition's title in '": {
+    note: "[x]: y '`a'\n`HERE`",
+    code: true,
+  },
+  "a backtick in a definition's title in ()": {
+    note: "[x]: y (`a)\n`HERE`",
+    code: true,
+  },
+  "two definitions": { note: "[x]: `a\n[y]: `b\n`HERE`", code: true },
+  "a definition's address and a backtick": {
+    note: "[x]: y z`\nHERE`",
+    code: true,
+  },
+  "a definition without a space": { note: "[x]:`a\n`HERE`", code: true },
+  "a label, a space and a colon": { note: "[x] : `a\n`HERE`", code: false },
+  "an empty label": { note: "[]: `a\n`HERE`", code: false },
+  "a definition of a span": { note: "[x]: `a`\nHERE", code: false },
+  "a definition's address in an unclosed <": {
+    note: "[x]: <a`\n`HERE`",
+    code: false,
+  },
+  "a definition after a heading": { note: "# h\n[x]: `a\n`HERE`", code: true },
+  "a definition, a blank line, and a span": {
+    note: "[x]: `a\n\n`HERE`",
+    code: true,
+  },
+  "a definition after a tab": { note: "\t[x]: `a\n`HERE`", code: true },
+  "a definition under a quote's line": {
+    note: "> a\n> [x]: `b\n> HERE`",
+    code: true,
+  },
+  "a definition's address of [": { note: "[x]: [`a\nHERE`", code: true },
+  "a definition's address and ]": { note: "[x]: `a]\nHERE`", code: true },
+  "a definition's title and a backtick": {
+    note: '[x]: y "a" `\nHERE`',
+    code: true,
+  },
+  "a definition's address on its next line": {
+    note: "[x]:\n<`a>\n`HERE`",
+    code: true,
+  },
+  "a definition's address and title on its next line": {
+    note: '[x]:\n`a "t"\n`HERE`',
+    code: true,
+  },
+  "a label, then two words": { note: "[x]:\nb c\n`HERE`", code: true },
+  "a definition's title in its own line": {
+    note: '[x]: y\n"t"\n`HERE`',
+    code: true,
+  },
+  "a definition's title and a word": {
+    note: '[x]: y\n"t" z\n`HERE`',
+    code: true,
+  },
+  "a definition's title that does not close": {
+    note: "[x]: y\n'`a\nHERE`",
+    code: true,
+  },
+  "a definition over an underline": {
+    note: "[x]: `a\n===\n`HERE`",
+    code: true,
+  },
+  // HTML blocks.
+  "a span in an HTML block": { note: "<div>\n`a\nHERE`", code: false },
+  "a span after an HTML block and a blank line": {
+    note: "<div>\n\n`a\nHERE`",
+    code: true,
+  },
+  "an HTML block over a line of spaces": {
+    note: "<div>\n   \n`a\nHERE`",
+    code: false,
+  },
+  "an HTML block over a line with a tab": {
+    note: "<div>\n\t\n`a\nHERE`",
+    code: false,
+  },
+  "an HTML block of a tag alone": { note: "<span>\n`a\nHERE`", code: false },
+  "a tag and text": { note: "<span> x\n`a\nHERE`", code: true },
+  "a tag alone under a paragraph": { note: "a\n<span>\n`b\nHERE`", code: true },
+  "a span after an HTML comment": { note: "<!--\n`a\n-->\nHERE`", code: false },
+  "a span in a <pre> block": { note: "<pre>\n`a\nHERE`", code: false },
+  "a span after a <pre> block": {
+    note: "<pre>\n`a\n</pre>\n`HERE`",
+    code: true,
+  },
+  "a fence in an HTML block": { note: "<div>\n```\nHERE", code: false },
+  "an HTML block indented 2": { note: "  <div>\n`a\nHERE`", code: false },
+  "an HTML block indented 4": { note: "    <div>\n`a\nHERE`", code: true },
+  "an HTML block in a quote": { note: "> <div>\n> `a\n> HERE`", code: false },
+  "a closing tag's HTML block": { note: "</div>\n`a\nHERE`", code: false },
+  "an HTML block in capitals": { note: "<DIV>\n`a\nHERE`", code: false },
+  "a span on an HTML block's line": { note: "<div>`a\nHERE`", code: false },
+  "a span after a space on an HTML block's line": {
+    note: "<div> `a\nHERE`",
+    code: false,
+  },
+  "an HTML block of an unknown tag": { note: "<divx>\n`a\nHERE`", code: false },
+  "a style block, then text": {
+    note: "<style>\n`b\nHERE`\n</style>\nHERE",
+    code: false,
+  },
+  "an HTML block in an item": { note: "- <div>\n  `a\n  HERE`", code: false },
+  "an HTML block after a quote": {
+    note: "> a\n<div>\n> `b\n> HERE`",
+    code: false,
+  },
+  "an HTML block under an item": {
+    note: "- a\n<div>\n`b\n  HERE`",
+    code: false,
+  },
+  "a quote in an HTML block": { note: "<div>\n> `a\n> HERE`", code: false },
+  "a tag alone in a span": { note: "`a\n<span>\nHERE`", code: true },
+  "an HTML block of a link": { note: '<a href="x">\n`b\nHERE`', code: false },
+  "a heading in an HTML block": { note: "<div>\n# `a\n`HERE`", code: false },
+  "a span after a table's HTML block": {
+    note: "<table>\n\n`a\nHERE`",
+    code: true,
+  },
+  "a blank line after an HTML block's line": {
+    note: "<div>\n`a\n\nHERE`",
+    code: false,
+  },
+  "an HTML block under an item, after a blank": {
+    note: "- a\n<div>\n\n  `b\n  HERE`",
+    code: true,
+  },
+  "a tag alone in a quote": { note: "> a\n<span>\n> `b\n> HERE`", code: true },
+  // Comments and math in blocks, headings by underline, and tables.
+  "a comment block over a fence": {
+    note: "%%\n```\n%%\n`a\nHERE`",
+    code: true,
+  },
+  "a span after a comment block on its line": {
+    note: "%%x\n`a\n%% `HERE`",
+    code: true,
+  },
+  "a comment block in a quote": { note: "> %%\n> `a\n\n`HERE`", code: true },
+  "a comment block after a paragraph": {
+    note: "a\n%%\n```\n%%\n`HERE`",
+    code: true,
+  },
+  "a span after a math block": { note: "$$\n`a\n$$\n`HERE`", code: true },
+  "a span after a math block of a line": {
+    note: "$$x\n`a\nb $$\n`HERE`",
+    code: true,
+  },
+  "a fence in a math block": { note: "$$\n```\n$$\nHERE", code: false },
+  "a fence in a math block after a paragraph": {
+    note: "a\n$$\n```\n$$\nHERE",
+    code: false,
+  },
+  "a span after a heading by =": { note: "`a\n===\nb` HERE`", code: true },
+  "a span after a heading by -": { note: "`a\n---\nb` HERE`", code: true },
+  "a span after a quote's heading by =": {
+    note: "> `a\n> ===\n> b` HERE`",
+    code: true,
+  },
+  "a span after an item's heading by =": {
+    note: "- `a\n  ===\n  b` HERE`",
+    code: true,
+  },
+  "an indented =": { note: "`a\n ===\nb` HERE`", code: false },
+  "= and a space": { note: "`a\n=== \nb` HERE`", code: false },
+  "a heading by a -": { note: "`a\n-\nb` HERE`", code: true },
+  "= under a paragraph's second line": {
+    note: "x\n`a\n===\nb` HERE`",
+    code: false,
+  },
+  "a heading by = under a tag": { note: "<div>\n===\nHERE", code: false },
+  "a quote's heading by =": { note: "> a\n===\nb `HERE`", code: true },
+  "a table, then a line without |": {
+    note: "| a |\n| - |\n| b |\n`c\nHERE`",
+    code: true,
+  },
+  "a table, then a span": { note: "| a |\n| - |\n`b\nHERE`", code: true },
+  "a table without outer pipes, then a paragraph": {
+    note: "a | b\n- | -\nc\n`d\nHERE`",
+    code: true,
+  },
+  "a table, then a line with | first only": {
+    note: "| a |\n| - |\n| b\n`c\nHERE`",
+    code: true,
+  },
+  "a delimiter row with outer pipes under a header without": {
+    note: "a | b\n| - | - |\n`c | HERE`",
+    code: true,
+  },
+  "a header after a space": {
+    note: " | a |\n| - |\n| `b | HERE` |",
+    code: true,
+  },
+  "a heading with | in a table": {
+    note: "| a |\n| - |\n# x | `HERE` |",
+    code: true,
+  },
+  "a delimiter row with | first only": {
+    note: "| a |\n|---\n| `b | HERE` |",
+    code: true,
+  },
+  "a delimiter row with an empty cell": {
+    note: "| a |\n| - || - |\n| `b | HERE` |",
+    code: true,
+  },
+  "a table, then a line indented 4": {
+    note: "| a |\n| - |\n    | `b | HERE` |",
+    code: true,
+  },
+  "a table without outer pipes, then a row with them": {
+    note: "a | b\n- | -\n| `c | HERE` |",
+    code: true,
+  },
+  "a table, then a line indented by a tab": {
+    note: "| a |\n| - |\n\t| `b | HERE` |",
+    code: true,
+  },
+  // Where the check differs from Obsidian, knowingly.
+  "three spaces and a tab in a numbered item": {
+    note: "1. a\n\n   \tHERE",
+    code: false,
+    limit: itemOne,
+  },
+  "seven spaces in a numbered item": {
+    note: "1. a\n\n       HERE",
+    code: false,
+    limit: itemOne,
+  },
+  "seven spaces in an item at 2": {
+    note: "2. a\n\n       HERE",
+    code: false,
+    limit: itemOne,
+  },
+  "nine spaces in an indented item at 1": {
+    note: "  1. a\n\n         HERE",
+    code: false,
+    limit: itemOne,
+  },
+  "seven spaces in an item at 9": {
+    note: "9. a\n\n       HERE",
+    code: false,
+    limit: itemOne,
+  },
+  "a line indented less after indented code in an item": {
+    note: "- a\n\n     HERE\n b",
+    code: true,
+    limit: itemAfter,
+  },
+  "a definition's title over two lines": {
+    note: '[x]: y "`a\nb"\n`HERE`',
+    code: true,
+    limit: definitionLines,
+  },
+  "a definition's label over two lines": {
+    note: "[x\ny]: `a\n`HERE`",
+    code: true,
+    limit: definitionLines,
+  },
+  "a definition's label over two lines, then text": {
+    note: "[x\n[^1]: `\nb HERE`",
+    code: false,
+    limit: definitionLines,
+  },
+  "a definition's address after a blank line": {
+    note: "[x]:\n\n`a\nHERE`",
+    code: false,
+    limit: definitionLines,
+  },
 };
