@@ -1,7 +1,7 @@
 // Where a note's text is code or front matter, as Obsidian renders the note:
 // there a trigger is the note's own text and lists nothing, and an embed shows
-// nothing. So does a place in a comment, math, or an HTML tag, where Obsidian
-// shows nothing. Plain functions, so that unit tests can check them;
+// nothing. So does a place in a comment, inline math, or an HTML tag, where
+// Obsidian shows nothing. Plain functions, so that unit tests can check them;
 // suggest.ts and entries.ts use them. They read a note's lines as its editor
 // has them now, as the metadata cache, which follows saves, may not have them
 // yet.
@@ -160,10 +160,9 @@ type Leaf =
  * - `html`, a line of an HTML block, which the browser reads, so that where
  *   it shows code cannot be told from its lines, and an embed in it shows as
  *   text;
- * - `hidden`, a line of a `%%` comment or a `$` math block, where an embed
- *   shows nothing;
+ * - `hidden`, a line of a `%%` comment block, where an embed shows nothing;
  * - `none`, a line with no text to read: a blank line, a thematic break, or
- *   a line of a definition's title.
+ *   a line of math or a definition's title.
  */
 type LineKind =
   | "code"
@@ -857,7 +856,7 @@ class Blocks {
         return "html";
       case "math":
         if (closesMath(text, at, leaf.length)) this.#leaf = none;
-        return "hidden";
+        return "none";
       case "comment": {
         const close = text.indexOf("%%", at);
         if (close === -1) return "hidden";
@@ -1012,7 +1011,7 @@ class Blocks {
     const math = mark === "$" ? opensMath(text, at, more) : 0;
     if (math > 0) {
       this.#leaf = { kind: "math", length: math };
-      return "hidden";
+      return "none";
     }
     if (mark === "%" && opensComment(text, at)) {
       this.#leaf = { kind: "comment" };
@@ -1158,8 +1157,8 @@ export function insideCode(lineAt: LineAt, line: number, ch: number): boolean {
     else if (index < line) tags = tagsOfLine(kind, blocks, tags);
   }
   // An HTML block's code cannot be told from its lines, and an embed shows
-  // as text in it: the list lists nothing there, nor in a comment or math,
-  // where an embed shows nothing.
+  // as text in it: the list lists nothing there, nor in a comment, where an
+  // embed shows nothing.
   if (kind === "code" || kind === "html" || kind === "hidden") return true;
   if (blocks.commented && ch < blocks.start) return true;
   if (kind === "none" || kind === "underline") return isOpen(tags);

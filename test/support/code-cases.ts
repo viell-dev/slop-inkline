@@ -39,6 +39,9 @@ const blocksWithheld =
 /** Why the check lists nothing after raw HTML it cannot read with certainty. */
 const unsureWithheld =
   "the check lists nothing after raw HTML that Obsidian's own HTML may end or not, or that it does not read, such as a <script>, an <svg>, or a <math>";
+/** Why the check lists in a math block, where Obsidian shows nothing. */
+const mathListed =
+  "the check lists in a $$ math block, as before, as it does not follow where Obsidian opens one: $$ before some characters starts none";
 /** Why the check reads an item numbered 1 to 9 as indented more. */
 const itemOne =
   "Obsidian takes a column more from the text of an item numbered 1 to 9 when its marker is an odd number of columns wide; the check does not";
@@ -2819,9 +2822,15 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
     note: "<div><code><svg><![CDATA[ a > </code> ]]></svg>\n\nHERE",
     code: true,
   },
-  // In a comment or math, Obsidian shows nothing, and an embed shows nothing.
+  // In a comment or math, Obsidian shows nothing, and an embed shows nothing;
+  // the check lists in a math block, as before.
   "text in a comment block": { note: "%%\nHERE\n%%", code: true, hidden: true },
-  "text in a math block": { note: "$$\nHERE\n$$", code: true, hidden: true },
+  "text in a math block": {
+    note: "$$\nHERE\n$$",
+    code: true,
+    hidden: true,
+    limit: mathListed,
+  },
   "text in a quote's comment block": {
     note: "> %%\n> HERE\n> %%",
     code: true,
@@ -2831,11 +2840,13 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
     note: "- $$\n  HERE\n  $$",
     code: true,
     hidden: true,
+    limit: mathListed,
   },
   "text in a math block after its $$": {
     note: "$$ a\nHERE\n$$",
     code: true,
     hidden: true,
+    limit: mathListed,
   },
   "text in a comment block's first lines": {
     note: "%% a\nHERE",
@@ -2880,5 +2891,6 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
     note: "[^1]: a \t`<pre>\n$$`` -->\n x %%HERE ` ~~\n* a===",
     code: true,
     hidden: true,
+    limit: mathListed,
   },
 };
