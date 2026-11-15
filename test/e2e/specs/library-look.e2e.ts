@@ -1,7 +1,8 @@
 // How the library's rows look and wait, in real Obsidian: what a row says
 // under it, its readings, translations, and the notes that use it, as one list
 // 4 px from the row and 12 px from the next, at the size of Quick edit's labels;
-// the other rows' buttons that wait while one row is in Quick edit; and Quick
+// a row in Quick edit, whose buttons stay above the form that takes their
+// place; the buttons that wait while one row is in Quick edit; and Quick
 // edit's fields, which fit their text on every Obsidian tested, with
 // field-sizing or without it. It also makes the guide's pictures of the
 // library, in both themes, as CONTRIBUTING.md says. Every symbol and note is
@@ -216,6 +217,73 @@ async function layout(): Promise<RowLayout[]> {
       },
     ),
   );
+}
+
+/** A row in Quick edit, as laid out, and the row after it. */
+async function editLayout(file: string) {
+  return browser.execute((path) => {
+    const row = document.querySelector(
+      `.inkline-library-symbol[data-inkline-path="${path}"]`,
+    );
+    if (row === null) throw new Error(`no row for ${path}`);
+    const box = (element: Element | null): Edges => {
+      if (element === null) throw new Error(`a part of ${path} is missing`);
+      const { top, bottom, left, right } = element.getBoundingClientRect();
+      return { top, bottom, left, right };
+    };
+    const part = (selector: string) => box(row.querySelector(selector));
+    const next = row.nextElementSibling;
+    return {
+      row: box(row),
+      insert: part(".inkline-library-insert"),
+      actions: part(".inkline-library-actions"),
+      form: part(".inkline-library-edit-form"),
+      name: part(".inkline-library-edit-form input"),
+      reading: part(
+        '.inkline-library-edit-form textarea[data-inkline-field="reading"]',
+      ),
+      next: next === null ? null : box(next),
+      /** What the row holds, by each part's first class. */
+      parts: Array.from(row.children).map((child) => child.classList[0]),
+      /** What shows under the buttons outside Quick edit. */
+      under: row.querySelectorAll(
+        ".inkline-library-values, .inkline-library-notes",
+      ).length,
+      pictures: row.querySelectorAll(".inkline-library-edit-form img").length,
+      uses:
+        row
+          .querySelector('[data-inkline-role="uses"]')
+          ?.getAttribute("aria-expanded") ?? null,
+    };
+  }, file);
+}
+
+/**
+ * How a row's Quick edit looks: its colours, how opaque its background is, out
+ * of 255, as a canvas paints it, its shadow, and what it says it shows.
+ */
+async function editLook(file: string) {
+  return browser.execute((path) => {
+    const edit = document.querySelector(
+      `.inkline-library-symbol[data-inkline-path="${path}"] [data-inkline-role="edit"]`,
+    );
+    if (edit === null) throw new Error(`no Quick edit for ${path}`);
+    const style = getComputedStyle(edit);
+    const canvas = document.createElement("canvas");
+    canvas.width = 1;
+    canvas.height = 1;
+    const context = canvas.getContext("2d");
+    if (context === null) throw new Error("no canvas");
+    context.fillStyle = style.backgroundColor;
+    context.fillRect(0, 0, 1, 1);
+    return {
+      expanded: edit.getAttribute("aria-expanded"),
+      background: style.backgroundColor,
+      opacity: context.getImageData(0, 0, 1, 1).data[3] ?? 0,
+      color: style.color,
+      shadow: style.boxShadow,
+    };
+  }, file);
 }
 
 /** A computed style's size and weight, as numbers. */
@@ -515,6 +583,9 @@ describe("The library's look", function () {
       expect(set.item.display).toBe("list-item");
       await pictureOfLibrary(`library-rows-${name}`);
 
+      const closed = await editLook("sun.ink.png");
+      expect(closed.expanded).toBe("false");
+      expect(closed.shadow).not.toBe("none");
       // Quick edit's labels are the size all of it takes.
       await quickEdit("sun.ink.png");
       const label = await formLabel();
@@ -528,6 +599,46 @@ describe("The library's look", function () {
         expect(type.size).toBe(label.size);
       }
       expect(set.item.size).toBe(label.size);
+      // The row's buttons stay where they were, at its top, and the form takes
+      // the place of what shows under them, as that sits: 4 px below them and
+      // 12 px above the next row, from the row's start to its end.
+      const editing = await editLayout("sun.ink.png");
+      expect(editing.parts).toEqual([
+        "inkline-library-insert",
+        "inkline-library-actions",
+        "inkline-library-edit-form",
+      ]);
+      expect(editing.under).toBe(0);
+      expect(editing.row.top).toBeCloseTo(sun.row.top, 0);
+      const line = Math.max(editing.insert.bottom, editing.actions.bottom);
+      expect(line).toBeCloseTo(sun.line, 0);
+      expect(editing.form.top - line).toBeCloseTo(gap.around, 0);
+      expect(editing.row.bottom - editing.form.bottom).toBeCloseTo(
+        gap.around,
+        0,
+      );
+      if (editing.next === null) throw new Error("no row after sun");
+      expect(editing.next.top - editing.form.bottom).toBeCloseTo(
+        gap.around + gap.rows,
+        0,
+      );
+      expect(editing.form.left).toBeCloseTo(editing.row.left, 0);
+      expect(editing.form.right).toBeCloseTo(editing.row.right, 0);
+      // The row's picture and name say which symbol it is for, so the name's
+      // field has no picture of its own, and is as wide as the others.
+      expect(editing.pictures).toBe(0);
+      expect(editing.name.left).toBeCloseTo(editing.reading.left, 0);
+      expect(editing.name.right).toBeCloseTo(editing.reading.right, 0);
+      // Its Quick edit is pressed, and its Uses waits, with its list closed.
+      expect(editing.uses).toBe("false");
+      await pointerAway();
+      // Flat and tinted where the others stand out, in another colour.
+      const pressed = await editLook("sun.ink.png");
+      expect(pressed.expanded).toBe("true");
+      expect(pressed.shadow).toBe("none");
+      expect(pressed.opacity).toBeGreaterThan(0);
+      expect(pressed.background).not.toBe(closed.background);
+      expect(pressed.color).not.toBe(closed.color);
       // Its readings fit their four lines, and the rows that wait say so.
       const reading = await fieldBox("reading");
       expect(reading.height).toBeCloseTo(linesHigh(reading, 4), 0);
@@ -539,6 +650,7 @@ describe("The library's look", function () {
         "arch.ink.png edit",
         "gate.ink.png uses",
         "gate.ink.png edit",
+        "sun.ink.png uses",
         "tower.ink.png uses",
         "tower.ink.png edit",
         "water.ink.png uses",
@@ -558,14 +670,16 @@ describe("The library's look", function () {
     const note = "Save or cancel Quick edit to use this.";
     const during = await buttons();
     // A button disabled already, as Uses with no notes is, stays as it was.
+    // The edited row's buttons stay too: its Uses waits as the others do, and
+    // its Quick edit, which closes it, works.
     expect(during).toEqual(
-      before
-        .filter(({ path }) => path !== "sun.ink.png")
-        .map((button) =>
-          button.role === "insert" || button.disabled
-            ? button
-            : { ...button, disabled: true, described: note },
-        ),
+      before.map((button) =>
+        button.role === "insert" ||
+        button.disabled ||
+        (button.path === "sun.ink.png" && button.role === "edit")
+          ? button
+          : { ...button, disabled: true, described: note },
+      ),
     );
     // A screen reader still hears what each is, and that it is unavailable.
     const gateUses = browser
@@ -580,10 +694,12 @@ describe("The library's look", function () {
     expect(await towerEdit.getComputedLabel()).toBe(
       "Quick edit the name, readings, and translations of tower",
     );
-    // Clicks on them do nothing, and leave the focus in the form.
+    // Clicks on them do nothing, and leave the focus in the form, as does one
+    // on the edited row's own Uses.
     await nameField().click();
     await gateUses.click();
     await towerEdit.click();
+    await browser.$(rowOf("sun.ink.png")).$(".inkline-library-uses").click();
     await browser.pause(200);
     expect(await browser.$$(".inkline-library-edit-form").length).toBe(1);
     expect(await nameField().getValue()).toBe("sun");
@@ -592,14 +708,14 @@ describe("The library's look", function () {
       inForm: true,
       path: "sun.ink.png",
     });
-    // The notes listed still open, and a symbol still inserts.
+    // The notes listed still open, and a symbol still inserts, the edited
+    // row's too.
     expect(
       await browser.$(rowOf("gate.ink.png")).$$(".inkline-library-note").length,
     ).toBe(2);
-    await browser
-      .$(rowOf("tower.ink.png"))
-      .$(".inkline-library-insert")
-      .click();
+    for (const file of ["tower.ink.png", "sun.ink.png"]) {
+      await browser.$(rowOf(file)).$(".inkline-library-insert").click();
+    }
     await browser.waitUntil(async () =>
       browser.executeObsidian(({ app, obsidian }) => {
         const view = app.workspace
@@ -612,7 +728,7 @@ describe("The library's look", function () {
           );
         return (
           view instanceof obsidian.MarkdownView &&
-          view.editor.getValue().includes("![[tower.ink.png]]")
+          view.editor.getValue().includes("![[tower.ink.png]]![[sun.ink.png]]")
         );
       }),
     );

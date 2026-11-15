@@ -9,6 +9,16 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Changed
+
+- While a row of the library is in Quick edit, its own buttons stay at its top:
+  the symbol, which still inserts it, **Uses**, which waits as the other rows'
+  do, and **Quick edit**, shown pressed, which closes the row as **Cancel**
+  does. The fields take the place of the readings, translations, and notes under
+  them, rather than of the whole row, and no longer repeat the symbol's picture
+  beside its name
+  ([#294](https://github.com/viell-dev/slop-inkline/issues/294)).
+
 ## 0.9.5 - 2026-11-15
 
 This is the fourth release candidate of 1.0.0: a build meant to become 1.0.0
