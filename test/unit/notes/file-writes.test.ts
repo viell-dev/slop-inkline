@@ -18,6 +18,7 @@ import {
   watchRename,
   watchSave,
   WriteQueue,
+  type DiskLine,
   type FileAccess,
 } from "../../../src/notes/file-writes.ts";
 import type { TextChanges } from "../../../src/notes/text-fields.ts";
@@ -509,7 +510,7 @@ describe("saveFile", () => {
           if (looks === 1) {
             // Nothing there to look at, and then there is.
             vault.put(path, theirs);
-            return Promise.resolve();
+            return Promise.resolve(undefined);
           }
           return Promise.reject(new Error("the editor asks first"));
         },
@@ -561,7 +562,7 @@ describe("saveFile", () => {
         current: () => now,
         check: () => {
           now = vault.put(path);
-          return Promise.resolve();
+          return Promise.resolve(undefined);
         },
         write: () => Promise.reject(new Error("not to write")),
         create: () => Promise.reject(new Error("not to make")),
@@ -967,5 +968,190 @@ describe("A save that waits for Obsidian", () => {
       changedText(bytes, typed, seen),
     );
     expect((await said(file)).reading).toEqual(["TYPED"]);
+  });
+});
+
+/**
+ * Obsidian's line of disk operations, as a test runs it: what is asked of it
+ * waits until it settles, and `last` changes with each thing asked. Like
+ * Obsidian's, `last` is a promise, which resolves with what the last thing
+ * asked returned, so that a save which hands it on through an async function,
+ * which would wait for it rather than return it, fails here.
+ */
+class FakeLine implements DiskLine {
+  #asked: Promise<unknown> = Promise.resolve(new ArrayBuffer(0));
+  readonly #waiting: (() => void)[] = [];
+  /** How many times a save has waited for it. */
+  settles = 0;
+
+  readonly last = (): unknown => this.#asked;
+
+  /** Asks the disk to `run` something, which happens once it settles. */
+  ask(run: () => void = () => undefined): void {
+    this.#asked = Promise.resolve(new ArrayBuffer(0));
+    this.#waiting.push(run);
+  }
+
+  readonly settle = (): Promise<void> => {
+    this.settles++;
+    for (const run of this.#waiting.splice(0)) run();
+    return Promise.resolve();
+  };
+}
+
+describe("a save and the disk's line", () => {
+  const typed = { reading: ["TYPED"] };
+
+  /** A library's save with `line`, as `writeSymbolText` runs it. */
+  function lineChange(
+    file: Fake,
+    line: DiskLine,
+    seen: SymbolText,
+  ): Promise<void> {
+    return changeFile({ ...access, line }, file, (bytes) =>
+      changedText(bytes, typed, seen),
+    );
+  }
+
+  it("lets a deletion asked during the library's last read run, and writes nothing to the file", async () => {
+    const file = fake();
+    const seen = await said(file);
+    const line = new FakeLine();
+    // The second read is the last before the write: asked while it is under
+    // way, as another plugin's deletion would be.
+    file.afterRead = async (reads) => {
+      await Promise.resolve();
+      if (reads === 2) {
+        line.ask(() => {
+          file.gone = true;
+        });
+      }
+    };
+    await expect(lineChange(file, line, seen)).rejects.toThrow(
+      "no longer there",
+    );
+    expect(line.settles).toBe(1);
+    expect(file.writes).toBe(0);
+  });
+
+  it("writes once nothing was asked of the disk during the last read", async () => {
+    const file = fake();
+    const seen = await said(file);
+    const line = new FakeLine();
+    file.afterRead = async (reads) => {
+      await Promise.resolve();
+      if (reads === 2) line.ask();
+    };
+    await lineChange(file, line, seen);
+    expect(line.settles).toBe(1);
+    expect(file.reads).toBe(4);
+    expect(file.writes).toBe(1);
+    expect((await said(file)).reading).toEqual(["TYPED"]);
+  });
+
+  it("writes all the same once the disk stays busy, as it did before waiting", async () => {
+    const file = fake();
+    const seen = await said(file);
+    const line = new FakeLine();
+    file.afterRead = async (reads) => {
+      await Promise.resolve();
+      if (reads % 2 === 0) line.ask();
+    };
+    await lineChange(file, line, seen);
+    expect(line.settles).toBe(3);
+    expect(file.writes).toBe(1);
+  });
+
+  it("waits for nothing where the line cannot be seen", async () => {
+    const file = fake();
+    const seen = await said(file);
+    await libraryChange(file, typed, seen);
+    expect(file.reads).toBe(2);
+    expect(file.writes).toBe(1);
+  });
+
+  it("lets a new file asked for after the editor's look come first, and asks about it", async () => {
+    const vault = new FakeVault();
+    const path = "a.ink.png";
+    const old = vault.put(path);
+    const theirs = await writeText(pinned, "reading", ["THEIRS"]);
+    const line = new FakeLine();
+    let replacement: Fake | undefined;
+    let looks = 0;
+    await expect(
+      saveFile({
+        current: () => vault.current(old),
+        check: async () => {
+          looks++;
+          const now = vault.current(old);
+          if (now === null) return undefined;
+          const bytes = await access.read(now);
+          const asked = line.last();
+          if (looks === 1) {
+            // Asked of the disk as the editor works out what it read.
+            line.ask(() => {
+              vault.delete(old);
+              replacement = vault.put(path, theirs);
+            });
+          }
+          if (bytes !== pinned) throw new Error("the editor asks first");
+          return { asked };
+        },
+        write: (now) => access.write(now, pinned.slice().buffer),
+        create: () => Promise.reject(new Error("not to make")),
+        line,
+      }),
+    ).rejects.toThrow("asks first");
+    expect(looks).toBe(2);
+    expect(replacement?.writes).toBe(0);
+    expect(replacement?.bytes).toBe(theirs);
+  });
+
+  it("looks once and waits for nothing for the editor when nothing more is asked", async () => {
+    const vault = new FakeVault();
+    const file = vault.put("a.ink.png");
+    const drawn = await writeText(pinned, "translation", ["DRAWN"]);
+    const line = new FakeLine();
+    let looks = 0;
+    const written = await saveFile({
+      current: () => vault.current(file),
+      // As the editor's look does: an async function, reading the file, that
+      // resolves with the line as it was once the read was asked.
+      check: async () => {
+        looks++;
+        const reading = access.read(file);
+        const look = { asked: line.last() };
+        await reading;
+        return look;
+      },
+      write: (now) => access.write(now, drawn.slice().buffer),
+      create: () => Promise.reject(new Error("not to make")),
+      line,
+    });
+    expect(written).toBe(file);
+    expect(looks).toBe(1);
+    expect(line.settles).toBe(0);
+    expect(file.bytes).toEqual(drawn);
+  });
+
+  it("writes all the same for the editor once the disk stays busy", async () => {
+    const vault = new FakeVault();
+    const file = vault.put("a.ink.png");
+    const drawn = await writeText(pinned, "translation", ["DRAWN"]);
+    const line = new FakeLine();
+    const written = await saveFile({
+      current: () => vault.current(file),
+      check: () => {
+        const asked = line.last();
+        line.ask();
+        return Promise.resolve({ asked });
+      },
+      write: (now) => access.write(now, drawn.slice().buffer),
+      create: () => Promise.reject(new Error("not to make")),
+      line,
+    });
+    expect(written).toBe(file);
+    expect(line.settles).toBe(3);
+    expect(file.bytes).toEqual(drawn);
   });
 });

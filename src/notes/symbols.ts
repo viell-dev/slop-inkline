@@ -53,6 +53,7 @@ import {
   watchRename,
   watchSave,
   WriteQueue,
+  type DiskLine,
   type RenameWait,
   type SaveWait,
 } from "./file-writes.ts";
@@ -97,6 +98,50 @@ const openingNoticeAfter = 300;
  * between: it was not there to read.
  */
 const writes = new WriteQueue();
+
+/**
+ * Why a save is refused once it has written, when its file was deleted, or
+ * another put at its path, by something asked of the disk ahead of the write.
+ */
+const replacedAsWritten =
+  "the file was deleted or replaced as it was written, so what is at its path may hold this save";
+
+/**
+ * Obsidian's line of disk operations, where this version of Obsidian keeps it,
+ * or undefined, which leaves a save as it was without this. None of it is in
+ * Obsidian's API, so this is the one place that reads it, and anything of
+ * another shape counts as missing (#10). It can go once Obsidian's API has a
+ * write that writes a file only if it is still the one at its path.
+ *
+ * In Obsidian 1.13.4 and 1.15.1, the desktop's file system adapter runs every
+ * read, write, existence check, and deletion of a vault's files in one promise
+ * chain, `promise`, which each joins at its end as it is asked: `readBinary` and
+ * `modifyBinary` ask the adapter at once, with the file's path. Whatever joins
+ * the chain while a save reads its file therefore runs before the save's write,
+ * and only once it runs does the vault drop a file deleted or add one created.
+ */
+function diskLine(app: App): DiskLine | undefined {
+  const { adapter } = app.vault;
+  const last = (): unknown => Reflect.get(adapter, "promise");
+  if (!(last() instanceof Promise)) return undefined;
+  const ignore = (): void => undefined;
+  return {
+    last,
+    settle: async () => {
+      const queued = last();
+      if (queued instanceof Promise) await queued.then(ignore, ignore);
+    },
+  };
+}
+
+/**
+ * The look an editor's save takes at its file, in the save's turn: the first
+ * read of a symbol asked meanwhile notes what the disk's line had last been
+ * asked once it was. Inkline's saves take turns, so one look is under way at a
+ * time. Another editor's read can come first, which only notes an earlier
+ * point, so that the save looks again.
+ */
+let looking: { asked: unknown } | undefined;
 
 /**
  * The symbols Obsidian is renaming for Inkline, from the call to its
@@ -934,9 +979,12 @@ function symbolFile(app: App, path: string): SymbolFile {
     path,
     read: async () => {
       const file = app.vault.getFileByPath(path);
-      return file === null
-        ? undefined
-        : new Uint8Array(await app.vault.readBinary(file));
+      if (file === null) return undefined;
+      const reading = app.vault.readBinary(file);
+      if (looking !== undefined && looking.asked === undefined) {
+        looking.asked = diskLine(app)?.last();
+      }
+      return new Uint8Array(await reading);
     },
   };
 }
@@ -1089,7 +1137,11 @@ export function writeSymbolText(
       stillSymbol(app, symbol);
     },
     read: async (symbol) => new Uint8Array(await app.vault.readBinary(symbol)),
-    write: (symbol, bytes) => app.vault.modifyBinary(symbol, bytes),
+    write: async (symbol, bytes) => {
+      await app.vault.modifyBinary(symbol, bytes);
+      if (!present(app, symbol)) throw new Error(replacedAsWritten);
+    },
+    line: diskLine(app),
   });
   const done = writes.run(() =>
     changeFile(access, file, (bytes) => changedText(bytes, changes, seen)),
@@ -1153,8 +1205,21 @@ async function writeSymbol(
       saveFile({
         current: () =>
           present(app, file) ? file : app.vault.getFileByPath(file.path),
-        check,
-        write: (now) => app.vault.modifyBinary(now, buffer),
+        check: async () => {
+          const look: { asked: unknown } = { asked: undefined };
+          looking = look;
+          try {
+            await check();
+          } finally {
+            if (looking === look) looking = undefined;
+          }
+          return look;
+        },
+        write: async (now) => {
+          await app.vault.modifyBinary(now, buffer);
+          if (!present(app, now)) throw new Error(replacedAsWritten);
+        },
+        line: diskLine(app),
         create: async () => {
           const folder = parentPath(file.path);
           if (
