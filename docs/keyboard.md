@@ -18,24 +18,15 @@ default, and a few letters of a symbol's name, or of a reading or translation,
 list your symbols as you type; the arrow keys choose one, Enter inserts it, and
 Esc closes the list.
 
-In the library, Tab reaches the filter, folder selector, symbol buttons, usage
-counts, and the notes in an expanded list. Enter activates a button or opens a
-note; Space also activates a button. Inserting keeps the focus in the library
-for the next symbol.
+In the library, Tab reaches the filter, the folder selector, each row's symbol,
+**Uses**, and **Quick edit** buttons, and the notes in an expanded list. Enter
+activates a button or opens a note; Space also activates a button. Inserting
+keeps the focus in the library for the next symbol.
 
-**Rename** edits a name in its row. Enter saves it, and Esc cancels it; the
-**Save** and **Cancel** buttons do the same. Afterward focus returns to the
-symbol's Rename button, or to the filter if the symbol no longer shows.
-
-The button after **Rename** edits a symbol's readings and translations in its
-row. Enter starts another value, Tab moves on, Mod+Enter saves, and Esc cancels.
-Afterward focus returns to that button.
-
-**Unreleased:** **Quick edit** takes the place of **Rename** and the readings
-and translations button, and the usage count is the **Uses** button. Quick edit
-opens with the name selected, and Tab moves on through the readings,
-translations, **Save**, and **Cancel**. Enter in the name saves; in the readings
-or translations it starts another value. Mod+Enter saves from any field, and Esc
+**Quick edit** opens a symbol's name, readings, and translations in its row,
+with the name selected, and Tab moves on through the readings, translations,
+**Save**, and **Cancel**. Enter in the name saves; in the readings or
+translations it starts another value. Mod+Enter saves from any field, and Esc
 cancels. Afterward focus returns to the symbol's Quick edit button, or to the
 filter if the symbol no longer shows.
 
@@ -112,17 +103,16 @@ and returns focus to the drawing area.
   pen, the eraser, Ellipse, Polygon, Toggle fill, the brush sizes, the guides,
   the grid, Zoom, Move, Make ink, and Light ink say whether they are on.
 - The drawing area keeps its accessible name without a hover tooltip.
-- **Unreleased:** the library's list of symbols and its Quick edit area keep
-  their names for screen readers without showing a tooltip where the pointer
-  rests.
+- The library's list of symbols and its Quick edit area keep their names for
+  screen readers without showing a tooltip where the pointer rests.
 - The fields for readings and translations have labels, and say when a list
   cannot be saved. Each value in a list shows in its own direction, so
   right-to-left text reads as it should beside other text.
-- **Unreleased:** in a right-to-left interface, as Obsidian's in Hebrew,
-  Inkline's screens are mirrored with Obsidian's, and its English, which it does
-  not translate, keeps its full stops and ellipses where English puts them, in
-  the editor and its Help, the library, and the settings. Notices and tooltips
-  still move them, as [Known limits](./limits.md#in-general) says.
+- In a right-to-left interface, as Obsidian's in Hebrew, Inkline's screens are
+  mirrored with Obsidian's, and its English, which it does not translate, keeps
+  its full stops and ellipses where English puts them, in the editor and its
+  Help, the library, and the settings. Notices and tooltips still move them, as
+  [Known limits](./limits.md#in-general) says.
 - The editor's status line, such as "Saving…", "Saved", or "Not saved" and why,
   is announced as it changes.
 - The editor puts the focus on the drawing area when it opens, and drawing puts

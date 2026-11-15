@@ -118,12 +118,12 @@ must keep released files readable and looking the same, as
   cards, and popout windows; symbol files on their own and images from outside
   the vault stay pictures; and with Inkline disabled, symbols are plain images
   (the same file).
-- **Unreleased:** symbols saved as Inkline saves them, ending on the baseline,
-  at 44 places across eleven lines of typed text, stand on the baseline of the
-  letters beside them, measured in screenshots to a fraction of a pixel: within
-  a quarter of a pixel, and of each other, in 16-pixel text at 100% and 150% and
-  zoomed to 200%; within 1.2 pixels, and of each other within 0.6, in 13-, 17-
-  and 20-pixel text, at 75%, and in 17-pixel text zoomed to 200%; and within 1.2
+- Symbols saved as Inkline saves them, ending on the baseline, at 44 places
+  across eleven lines of typed text, stand on the baseline of the letters beside
+  them, measured in screenshots to a fraction of a pixel: within a quarter of a
+  pixel, and of each other, in 16-pixel text at 100% and 150% and zoomed to
+  200%; within 1.2 pixels, and of each other within 0.6, in 13-, 17- and
+  20-pixel text, at 75%, and in 17-pixel text zoomed to 200%; and within 1.2
   pixels, and of each other within one, in 16-pixel text zoomed a step in and
   out, to 109.5% and 91.3%, and two steps in, to 120%; in Reading view and Live
   Preview, in the text colour and its stored colour. In a box a snippet makes
@@ -143,19 +143,18 @@ must keep released files readable and looking the same, as
   colour and its stored colour, measured from screenshots
   ([wide.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/wide.e2e.ts)),
   and in a native PDF, in a heading where it is wider than the page, measured in
-  the rasterized page (pdf.e2e.ts). **Unreleased:** so does the same symbol with
-  an explicit size of 1,000 pixels across, wider than each of those places, in
-  each of them and in a native PDF, where its ink ends on the baseline of a
-  numbered list's number beside it.
+  the rasterized page (pdf.e2e.ts). So does the same symbol with an explicit
+  size of 1,000 pixels across, wider than each of those places, in each of them
+  and in a native PDF, where its ink ends on the baseline of a numbered list's
+  number beside it.
 - Saving refreshes existing placements in Live Preview, Reading view and
   popouts, preserving note text, explicit widths and unrelated images. Names
   with spaces, percent signs and Unicode are covered, as are repeated file
   timestamps
   ([refresh.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/refresh.e2e.ts)).
-  **Unreleased:** in a popout and in a canvas card's own editor, a reshaped
-  symbol's width over its height, and an explicit size's drop, follow its new
-  shape, and a note first shown in a popout has its symbols measured (the same
-  file).
+  In a popout and in a canvas card's own editor, a reshaped symbol's width over
+  its height, and an explicit size's drop, follow its new shape, and a note
+  first shown in a popout has its symbols measured (the same file).
 
 ### The editor shows what its tools do
 
@@ -234,16 +233,16 @@ must keep released files readable and looking the same, as
   first save that an interruption cut short finished from its draft (the same
   file, and
   [drafts.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/drafts.test.ts)).
-  **Unreleased:** with Inkline disabled while Obsidian moves the file or asks
-  about links, the draft kept for the file's new name once the save ends, and
-  dropped without a question when the symbol opens holding all it holds; a
-  stroke drawn during the save offered back, kept as long as it would have been;
-  the draft kept, on its own base layer, and offered when the file changed
-  meanwhile or after, elsewhere or by Inkline enabled again, and restored with
-  its strokes and picture; and a draft that Inkline, enabled again meanwhile,
-  restored or dropped as expired, and one that expired, never brought back (the
-  same file). A draft that would restore nothing its file lacks dropped, and one
-  that differs in any stroke, its picture or its place, its name, or text typed,
+  With Inkline disabled while Obsidian moves the file or asks about links, the
+  draft kept for the file's new name once the save ends, and dropped without a
+  question when the symbol opens holding all it holds; a stroke drawn during the
+  save offered back, kept as long as it would have been; the draft kept, on its
+  own base layer, and offered when the file changed meanwhile or after,
+  elsewhere or by Inkline enabled again, and restored with its strokes and
+  picture; and a draft that Inkline, enabled again meanwhile, restored or
+  dropped as expired, and one that expired, never brought back (the same file).
+  A draft that would restore nothing its file lacks dropped, and one that
+  differs in any stroke, its picture or its place, its name, or text typed,
   offered
   ([drafts.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/drafts.test.ts)).
 - A draft's base layer dropped from storage as soon as the draft that replaces
@@ -351,15 +350,14 @@ must keep released files readable and looking the same, as
   items and works, on the symbol and off it; a card over a symbol adds nothing;
   and if the canvas's sheet over a card is renamed, its menu stays as it is
   ([symbol-menus.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-menus.e2e.ts)).
-- **Unreleased:** a double-click on a symbol opens that symbol in the editor,
-  once and without Obsidian's image viewer, in Live Preview, a table in it, a
-  popout window, a canvas card that is not focused, instead of the card's text,
-  a note on a canvas, and a text card's own editor. The first click still puts
-  the cursor at the embed, and a click on the selected symbol later does what it
-  does on a picture. A double-click on a picture, on words, beside a symbol on a
-  card, in Reading view, an embedded note, a hover preview, a focused card, or a
-  callout in Live Preview opens no editor, and once Inkline is off nothing
-  answers one
+- A double-click on a symbol opens that symbol in the editor, once and without
+  Obsidian's image viewer, in Live Preview, a table in it, a popout window, a
+  canvas card that is not focused, instead of the card's text, a note on a
+  canvas, and a text card's own editor. The first click still puts the cursor at
+  the embed, and a click on the selected symbol later does what it does on a
+  picture. A double-click on a picture, on words, beside a symbol on a card, in
+  Reading view, an embedded note, a hover preview, a focused card, or a callout
+  in Live Preview opens no editor, and once Inkline is off nothing answers one
   ([double-click.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/double-click.e2e.ts)).
 - The library lists symbols and their referring notes, filters by name and
   folder, follows file and link changes, and inserts successive symbols without
@@ -397,14 +395,13 @@ must keep released files readable and looking the same, as
   ([symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts)
   and
   [file-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/file-writes.test.ts)).
-- **Unreleased:** a symbol deleted, and another file put at its path, through
-  Obsidian while a save reads it for the last time, by its file system, as
-  another plugin or a sync tool can, or by its vault: Quick edit refuses the
-  save and the new file keeps what it holds, and the editor asks about it. A
-  write that lands once the file was replaced says so, and keeps what was typed.
-  A save waits for what was asked of the disk during its last look, and writes
-  as before once the disk stays busy, or where Obsidian's line of disk
-  operations cannot be seen
+- A symbol deleted, and another file put at its path, through Obsidian while a
+  save reads it for the last time, by its file system, as another plugin or a
+  sync tool can, or by its vault: Quick edit refuses the save and the new file
+  keeps what it holds, and the editor asks about it. A write that lands once the
+  file was replaced says so, and keeps what was typed. A save waits for what was
+  asked of the disk during its last look, and writes as before once the disk
+  stays busy, or where Obsidian's line of disk operations cannot be seen
   ([write-identity.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/write-identity.e2e.ts)
   and
   [file-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/file-writes.test.ts)).
@@ -449,10 +446,10 @@ must keep released files readable and looking the same, as
   picture that will not load. A symbol as wide as the editor's surface, or
   wider, shows whole and in proportion, in the text colour and its stored colour
   ([symbol-lists.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-lists.e2e.ts)).
-- **Unreleased:** with Obsidian's interface in Hebrew, which mirrors its layout,
-  each of those lists puts a narrow symbol's picture right of its name and its
-  ink in the right half of the column, in the text colour and its stored colour,
-  and in English left of the name and in the left half, as before. In both, the
+- With Obsidian's interface in Hebrew, which mirrors its layout, each of those
+  lists puts a narrow symbol's picture right of its name and its ink in the
+  right half of the column, in the text colour and its stored colour, and in
+  English left of the name and in the left half, as before. In both, the
   editor's, its Help's, and the settings' English keeps each sentence's words
   and its full stop or ellipsis in English order, the preview's symbol stays
   between its words, and in Hebrew the editor's layout is still mirrored and its
@@ -469,25 +466,25 @@ must keep released files readable and looking the same, as
   other scripts work, errors keep the entered name for retry, a deleted and
   replaced file is refused, and repeated submission starts only one rename
   ([library-renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-renaming.e2e.ts)).
-- **Unreleased:** Quick edit in a library row saves a name alone, with links
-  following and the file's bytes as they were, readings and translations alone,
-  with no note touched, and both with one Save; with nothing changed, Cancel, or
-  Esc, it writes and renames nothing. A name another symbol has is refused
-  before anything is written. A rename that fails after the readings were
-  written keeps them saved and the name to try again, which then renames without
-  writing them twice, and so does a symbol renamed elsewhere while they are
-  written, which is not renamed again; a rename that something came between says
-  only that they are saved. A write that fails, or that finds the file changed,
-  renames nothing; a save left while its write waits renames nothing, and one
-  left while its rename waits says the readings are saved. With Inkline turned
-  off during the write or the rename, a notice says what was and was not done. A
-  name nobody changed follows renames made elsewhere, one after another, and
-  never renames the file back; a name typed stays through them, and a refused
-  name's reason through a change to the file. Quick edit fits the narrowest
-  sidebar with a long name. Each row's readings and translations sit nearer it
-  than the next row, in both themes, and the list and Quick edit keep their
-  names for screen readers with no tooltip over their empty space. What each
-  outcome writes, renames, and says is also unit-tested
+- Quick edit in a library row saves a name alone, with links following and the
+  file's bytes as they were, readings and translations alone, with no note
+  touched, and both with one Save; with nothing changed, Cancel, or Esc, it
+  writes and renames nothing. A name another symbol has is refused before
+  anything is written. A rename that fails after the readings were written keeps
+  them saved and the name to try again, which then renames without writing them
+  twice, and so does a symbol renamed elsewhere while they are written, which is
+  not renamed again; a rename that something came between says only that they
+  are saved. A write that fails, or that finds the file changed, renames
+  nothing; a save left while its write waits renames nothing, and one left while
+  its rename waits says the readings are saved. With Inkline turned off during
+  the write or the rename, a notice says what was and was not done. A name
+  nobody changed follows renames made elsewhere, one after another, and never
+  renames the file back; a name typed stays through them, and a refused name's
+  reason through a change to the file. Quick edit fits the narrowest sidebar
+  with a long name. Each row's readings and translations sit nearer it than the
+  next row, in both themes, and the list and Quick edit keep their names for
+  screen readers with no tooltip over their empty space. What each outcome
+  writes, renames, and says is also unit-tested
   ([library-quick-edit.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-quick-edit.e2e.ts)
   and
   [quick-edit.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/library/quick-edit.test.ts)).
@@ -564,11 +561,11 @@ drawing while **Copy from** or **Reload** reads.
   [#144](https://github.com/viell-dev/slop-inkline/issues/144); from 0.9.2 on it
   must open with its strokes, or the check fails
   ([update.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/manual/update.e2e.ts)).
-  **Unreleased:** it also leaves the old release's editor open with an unsaved
-  stroke: from 0.9.2 on the draft must come back after the update and save both
-  strokes, and from an earlier release it is dropped. This runs separately from
-  ordinary CI because it needs both release artifacts; the release PR records
-  its inputs and results.
+  It also leaves the old release's editor open with an unsaved stroke: from
+  0.9.2 on the draft must come back after the update and save both strokes, and
+  from an earlier release it is dropped. This runs separately from ordinary CI
+  because it needs both release artifacts; the release PR records its inputs and
+  results.
 - Installing and updating through BRAT, an optional third-party route, has a
   separate check against the published releases. BRAT's own dialog installs the
   highest release and a chosen one, downloading only the three plugin files, and
@@ -583,7 +580,7 @@ drawing while **Copy from** or **Reload** reads.
   and against a fake of the GitHub CLI, with the exact commands that publish a
   public release and a pre-release
   ([publish-cli.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/publish-cli.test.ts)).
-- **Unreleased:** from 0.9.4, each release carries a copy of the
+- From 0.9.4, each release carries a copy of the
   [file format](./file-format.md). Publishing refuses one that is not the tagged
   commit's document byte for byte, or whose name does not give its version and
   revision

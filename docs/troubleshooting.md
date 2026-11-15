@@ -16,9 +16,9 @@ view has none.
 embed, outside code and front matter. A right-click on the symbol itself offers
 it, as [Edit a symbol](./notes.md#edit-a-symbol) lists.
 
-**Unreleased: a double-click on a symbol opens Obsidian's image viewer.** In
-Reading view, embedded notes, hover previews, and a focused canvas card, a click
-on any picture opens the viewer before a second click can make a double-click.
+**a double-click on a symbol opens Obsidian's image viewer.** In Reading view,
+embedded notes, hover previews, and a focused canvas card, a click on any
+picture opens the viewer before a second click can make a double-click.
 Right-click the symbol and choose **Edit symbol**, or double-click it in Live
 Preview.
 
@@ -68,30 +68,28 @@ turned off, even one waiting for Obsidian to finish another rename, says "…
 could not be renamed to …: Inkline was disabled" the same way, at once, and
 renames nothing.
 
-**Unreleased: "The readings and translations are saved, but the symbol was not
-renamed:" in Quick edit.** The reason follows on the next line. The library
-wrote the readings and translations you typed, and then could not rename the
-symbol, for that reason. The name you typed stays in the row: deal with the
-reason, and **Save** again, which tries only the name. When something came
-between the rename and Obsidian, the row says only that they are saved, and the
-next line says what happened and where the symbol is now. A notice says the
-same, as "Saved …. … could not be renamed to …: …", if the row had closed by
-then, and "Saved …. It was not renamed." if you closed the row while the rename
-waited.
+**"The readings and translations are saved, but the symbol was not renamed:" in
+Quick edit.** The reason follows on the next line. The library wrote the
+readings and translations you typed, and then could not rename the symbol, for
+that reason. The name you typed stays in the row: deal with the reason, and
+**Save** again, which tries only the name. When something came between the
+rename and Obsidian, the row says only that they are saved, and the next line
+says what happened and where the symbol is now. A notice says the same, as
+"Saved …. … could not be renamed to …: …", if the row had closed by then, and
+"Saved …. It was not renamed." if you closed the row while the rename waited.
 
-**Unreleased: "Nothing was renamed." in Quick edit.** The readings and
-translations could not be written, for the reason on the line above, so the
-library did not go on to the new name. Both stay in the row: deal with the
-reason, and **Save** again. A notice says the same, as "The readings and
-translations of … were not saved, and it was not renamed to …: …", if the row
-had closed by then.
+**"Nothing was renamed." in Quick edit.** The readings and translations could
+not be written, for the reason on the line above, so the library did not go on
+to the new name. Both stay in the row: deal with the reason, and **Save** again.
+A notice says the same, as "The readings and translations of … were not saved,
+and it was not renamed to …: …", if the row had closed by then.
 
-**Unreleased: "… the file was deleted or replaced as it was written, so what is
-at its path may hold this save."** The symbol's file was deleted, or another
-file put at its path, while Obsidian wrote this save, so the save may be in the
-file now at that path. What you drew or typed is still in the editor, or in the
-library's row. Look at the file at that path, and at your sync tool's history
-for what was there, then save again or close without saving.
+**"… the file was deleted or replaced as it was written, so what is at its path
+may hold this save"** The symbol's file was deleted, or another file put at its
+path, while Obsidian wrote this save, so the save may be in the file now at that
+path. What you drew or typed is still in the editor, or in the library's row.
+Look at the file at that path, and at your sync tool's history for what was
+there, then save again or close without saving.
 
 **"… is saved, but could not be renamed: …"** The drawing is saved under the old
 name, and the new name stays in the editor's name field, for the next save to

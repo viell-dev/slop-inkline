@@ -15,15 +15,15 @@ What Inkline does not do, or does not do everywhere, and what to do instead. The
   next 100. Filter them, or choose a folder, to narrow the list.
 - **Library insertion needs a sidebar.** If the library's tab is dragged into
   the main area, move it back to a sidebar to insert into a note.
-- **A double-click opens a symbol only where its second click reaches it**
-  (**Unreleased**). In Reading view, embedded notes, hover previews, and a
-  focused canvas card, the first click opens Obsidian's image viewer, and in a
-  callout in Live Preview it shows the callout as text
+- **A double-click opens a symbol only where its second click reaches it.** In
+  Reading view, embedded notes, hover previews, and a focused canvas card, the
+  first click opens Obsidian's image viewer, and in a callout in Live Preview it
+  shows the callout as text
   ([#264](https://github.com/viell-dev/slop-inkline/issues/264)). Right-click
   the symbol there for **Edit symbol**.
-- **Notices and tooltips in a right-to-left interface** (**Unreleased**) still
-  put the full stop or closing bracket of Inkline's English at the start, as
-  Obsidian draws them for every plugin
+- **Notices and tooltips in a right-to-left interface** still put the full stop
+  or closing bracket of Inkline's English at the start, as Obsidian draws them
+  for every plugin
   ([#267](https://github.com/viell-dev/slop-inkline/issues/267)). Inkline's own
   screens keep it in place.
 - **Physical printing** has not been checked. Native
@@ -34,27 +34,19 @@ What Inkline does not do, or does not do everywhere, and what to do instead. The
   ([#255](https://github.com/viell-dev/slop-inkline/issues/255)). Symbols in
   stored colour show none.
 - **A size you write into an embed, wider than its space,** as
-  `![[wide.ink.png|1000]]` in a hover preview, keeps the symbol's shape but sits
-  it a few pixels below the baseline
-  ([#245](https://github.com/viell-dev/slop-inkline/issues/245)). Inkline never
-  writes such a size itself, and a symbol without one fits its space on the
-  baseline. **Unreleased:** fixed, so that such a symbol stays on the baseline,
-  though its line keeps the room below the baseline that the size asked for:
-  `|1000` of a symbol 400 × 192 in a 700-pixel line leaves 36 pixels of line
-  below it. Remove the size, or make it narrower, to close it up.
+  `![[wide.ink.png|1000]]` in a hover preview, keeps the symbol's shape and its
+  baseline, but its line keeps the room below the baseline that the size asked
+  for: `|1000` of a symbol 400 × 192 in a 700-pixel line leaves 36 pixels of
+  line below it. Remove the size, or make it narrower, to close it up.
 - **Up to a pixel or two off the baseline.** The letters of a line and the box a
   symbol is drawn in each start on whole pixels of the screen, so at some text
   sizes, Symbol sizes, and zoom levels a symbol stands above or below the
   letters beside it: up to about a pixel at 100% zoom, and up to about two at
-  other zoom levels
-  ([#261](https://github.com/viell-dev/slop-inkline/issues/261)).
-  **Unreleased:** as measured, up to 1.75 pixels at other zoom levels in
-  Obsidian 1.13.4 and 1.00 in 1.15.1, where 0.9.3 reached 1.94 and 1.25. The
+  other zoom levels: as measured, up to 1.75 pixels in Obsidian 1.13.4 and 1.00
+  in 1.15.1 ([#261](https://github.com/viell-dev/slop-inkline/issues/261)). The
   symbols of a line are within half a pixel of each other at 100% zoom, and
   within a pixel at other zoom levels, and in Obsidian's default 16-pixel text
-  at 100% zoom a symbol stands exactly on the letters' baseline. In 0.9.3 the
-  symbols of a line in the text colour could also differ by up to three quarters
-  of a pixel, by where each fell.
+  at 100% zoom a symbol stands exactly on the letters' baseline.
 
 ## Links Obsidian writes
 
@@ -98,11 +90,10 @@ changes, restart Obsidian:
   Obsidian has not begun it yet. One it has begun can still finish, and a notice
   says so, and says again when it ends, whether it worked or not. Until then
   another rename of that symbol is refused, and says why.
-- **Unreleased:** in the library's **Quick edit**, a save that changes the name
-  and the readings or translations writes them first. Leaving it while that
-  write waits leaves the name as it was, even if the write still finishes.
-  Leaving it while the rename waits keeps them saved, as the row and a notice
-  say.
+- In the library's **Quick edit**, a save that changes the name and the readings
+  or translations writes them first. Leaving it while that write waits leaves
+  the name as it was, even if the write still finishes. Leaving it while the
+  rename waits keeps them saved, as the row and a notice say.
 - **In the editor,** the drawing is saved by then, and the name is in the draft.
 - **Obsidian moves the file before it updates the links.** A restart while it
   updates them leaves the notes it had not reached with the old name, whose
@@ -116,18 +107,18 @@ short, with the read straight before the write, and it does not rule it out. A
 change made before that read is noticed: the editor asks, and the library shows
 it. Your sync tool's own history is the way back from a change lost like this.
 
-**Unreleased:** a file deleted and another put at its path in that moment is the
-same, as Obsidian writes to a path, so the write lands on the new file. Obsidian
-reads and writes the vault's files one after another, and Inkline waits for
-anything another plugin or a sync tool asks of Obsidian during its last read,
-then looks again. That leaves a program writing to the disk outside Obsidian in
-the moment Obsidian writes, and a disk so busy that something is asked during
-each of three looks, after which Inkline writes as it did before it waited, as
-it does with a version of Obsidian that keeps its line where Inkline cannot see
-it. A save that finds its file gone once it has written says so, and keeps what
-you drew or typed. The first save of a new symbol is not looked at this way:
-Obsidian checks that nothing is at its path just before it writes, and only
-something asked in that moment comes between.
+A file deleted and another put at its path in that moment is the same, as
+Obsidian writes to a path, so the write lands on the new file. Obsidian reads
+and writes the vault's files one after another, and Inkline waits for anything
+another plugin or a sync tool asks of Obsidian during its last read, then looks
+again. That leaves a program writing to the disk outside Obsidian in the moment
+Obsidian writes, and a disk so busy that something is asked during each of three
+looks, after which Inkline writes as it did before it waited, as it does with a
+version of Obsidian that keeps its line where Inkline cannot see it. A save that
+finds its file gone once it has written says so, and keeps what you drew or
+typed. The first save of a new symbol is not looked at this way: Obsidian checks
+that nothing is at its path just before it writes, and only something asked in
+that moment comes between.
 
 ## A file changed as Obsidian renames it
 
@@ -218,14 +209,10 @@ the mark before renaming what it links to.
   full, it can then refuse the draft, and a notice
   [says so](./troubleshooting.md#common-problems): save to keep the changes.
 - If you turn Inkline off while Obsidian is still renaming a symbol you have
-  just saved, as while it asks about links, the editor keeps a draft. Opening
-  the symbol again can offer it back though the drawing was saved. A stroke
-  drawn after that save, before Obsidian moved the file, stays in a draft that
-  is not offered ([#247](https://github.com/viell-dev/slop-inkline/issues/247)),
-  so save again before turning Inkline off. **Unreleased:** the draft follows
-  the rename once Obsidian finishes it, and opening the symbol then offers it
-  only if it holds something the file does not, as when you drew after saving or
-  something else changed the file meanwhile. If the vault's local storage
+  just saved, as while it asks about links, the editor keeps a draft, which
+  follows the rename once Obsidian finishes it. Opening the symbol then offers
+  it only if it holds something the file does not, as when you drew after saving
+  or something else changed the file meanwhile. If the vault's local storage
   refuses it then, it keeps the old name, and a notice says so. If Obsidian is
   closed before it finishes, as with its question still open, the draft stays as
   it was kept, so answer the question first.
