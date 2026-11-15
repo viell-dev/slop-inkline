@@ -4,10 +4,11 @@
 // release. Missing inputs fail rather than silently skipping this check.
 //
 // The file format became final in 0.9.2, and the owner decided in #144 that
-// nothing saved before it need keep its strokes. So what an update must keep
-// goes by the previous release's version alone, and never by what the file
-// turns out to hold: from 0.9.2 on, a release that stopped reading the strokes
-// of the one before fails here, with no change to this file.
+// nothing saved before it need keep its strokes, nor its drafts. So what an
+// update must keep goes by the previous release's version alone, and never by
+// what the file turns out to hold: from 0.9.2 on, a release that stopped
+// reading the strokes or the drafts of the one before fails here, with no
+// change to this file.
 import { execFileSync } from "node:child_process";
 import { realpathSync } from "node:fs";
 import path from "node:path";
@@ -17,6 +18,7 @@ import packageJson from "../../../package.json" with { type: "json" };
 import { keepsStrokesFrom, noStrokes } from "../../support/updates.ts";
 import { loadModules } from "../support/browser.ts";
 import {
+  clickTop,
   draw,
   editFile,
   noteText,
@@ -28,11 +30,12 @@ import {
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 
-const zip = process.env.E2E_UPDATE_ZIP;
+const given = process.env.E2E_UPDATE_ZIP;
 const previous = process.env.E2E_PREVIOUS_VERSION;
-if (zip === undefined || previous === undefined) {
+if (given === undefined || previous === undefined) {
   throw new Error("E2E_UPDATE_ZIP and E2E_PREVIOUS_VERSION are required");
 }
+const zip = given;
 // package.json, as a pre-release's version never reaches manifest.json.
 const version = packageJson.version;
 if (version === previous) {
@@ -63,6 +66,15 @@ async function saved(): Promise<{ drawing: number[]; preferences: string }> {
       `${app.vault.configDir}/plugins/inkline/data.json`,
     ),
   }));
+}
+
+/** The symbol's file, as the disk has it. */
+async function symbolBytes(): Promise<number[]> {
+  return browser.executeObsidian(async ({ app }) =>
+    Array.from(
+      new Uint8Array(await app.vault.adapter.readBinary("001.ink.png")),
+    ),
+  );
 }
 
 /** Waits for the note to show `file` as a character, from its loaded image. */
@@ -111,19 +123,52 @@ async function status(): Promise<string> {
   return browser.$(".inkline-status").getText();
 }
 
+/** How many drafts the host's storage lists, under every release's key. */
+async function keptDrafts(): Promise<number> {
+  // Read as stored: the checkout's own DraftStore would drop an earlier
+  // release's drafts as it read them.
+  return browser.executeObsidian(({ app }) => {
+    const ids: unknown = app.loadLocalStorage("inkline-drafts");
+    return Array.isArray(ids) ? ids.length : 0;
+  });
+}
+
+/** The open vault's folder and configuration folder, if it is disposable. */
+async function disposableVault(): Promise<{ vault: string; config: string }> {
+  const location = await browser.executeObsidian(({ app, obsidian }) => {
+    if (!(app.vault.adapter instanceof obsidian.FileSystemAdapter))
+      throw new Error("The update check requires a desktop test vault");
+    return {
+      vault: app.vault.adapter.getBasePath(),
+      config: app.vault.configDir,
+    };
+  });
+  const vault = realpathSync(location.vault);
+  if (!vault.startsWith("/tmp/"))
+    throw new Error("This check only updates disposable Linux test vaults");
+  return { vault, config: location.config };
+}
+
+/**
+ * Updates the open vault's Inkline to the new release, as a person would by
+ * hand: turned off, the new ZIP extracted over its folder, which keeps
+ * data.json beside the three plugin files, and turned on again.
+ */
+async function update(vault: string, config: string): Promise<void> {
+  await obsidianPage.disablePlugin("inkline");
+  // Only verified project release ZIPs belong here.
+  execFileSync("unzip", ["-o", zip, "-d", path.join(vault, config, "plugins")]);
+  await obsidianPage.enablePlugin("inkline");
+  // Refresh the renderer, not WDIO's vault setup (which reinstalls the old
+  // source). This also reloads Obsidian's cached plugin manifest.
+  await browser.refresh();
+  await browser.waitUntil(async () => (await loadedVersion()) === version);
+  await loadModules();
+}
+
 describe("Updating the actual previous release", function () {
   it(`keeps the symbol, note and preferences of ${previous}${keepsStrokes ? ", strokes included" : ", as a picture"}`, async function () {
-    const location = await browser.executeObsidian(({ app, obsidian }) => {
-      if (!(app.vault.adapter instanceof obsidian.FileSystemAdapter))
-        throw new Error("The update check requires a desktop test vault");
-      return {
-        vault: app.vault.adapter.getBasePath(),
-        config: app.vault.configDir,
-      };
-    });
-    const vault = realpathSync(location.vault);
-    if (!vault.startsWith("/tmp/"))
-      throw new Error("This check only updates disposable Linux test vaults");
+    const { vault, config } = await disposableVault();
     expect(await loadedVersion()).toBe(previous);
     await openAtMarker("Editor.md", "HERE");
     await browser.executeObsidianCommand("inkline:insert-symbol");
@@ -157,21 +202,7 @@ describe("Updating the actual previous release", function () {
       });
     });
     const state = await saved();
-    await obsidianPage.disablePlugin("inkline");
-    // Exercise the documented extraction, preserving data.json beside the
-    // three plugin files. Only verified project release ZIPs belong here.
-    execFileSync("unzip", [
-      "-o",
-      zip,
-      "-d",
-      path.join(vault, location.config, "plugins"),
-    ]);
-    await obsidianPage.enablePlugin("inkline");
-    // Refresh the renderer, not WDIO's vault setup (which reinstalls the old
-    // source). This also reloads Obsidian's cached plugin manifest.
-    await browser.refresh();
-    await browser.waitUntil(async () => (await loadedVersion()) === version);
-    await loadModules();
+    await update(vault, config);
     // What the new release takes the file for, by the code that shipped.
     const held = JSON.parse(await recordOf("001.ink.png")) as HeldRecord;
     if (keepsStrokes) expect(held.strokes).toHaveLength(1);
@@ -260,5 +291,58 @@ describe("Updating the actual previous release", function () {
     await saveScreenshot("release-new-symbol");
     await browser.keys("Escape");
     await browser.$(".inkline-editor").waitForExist({ reverse: true });
+  });
+
+  it(`${keepsStrokes ? "keeps" : "drops"} the draft of a drawing left open in ${previous}`, async function () {
+    // A fresh copy of the vault, with the previous release installed again.
+    await browser.reloadObsidian({ vault: "test/e2e/vaults/basic" });
+    const { vault, config } = await disposableVault();
+    expect(await loadedVersion()).toBe(previous);
+    expect(await keptDrafts()).toBe(0);
+    await openAtMarker("Editor.md", "HERE");
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await waitForEditor();
+    await draw([
+      [0.3, 0.3],
+      [0.5, 0.7],
+      [0.7, 0.3],
+    ]);
+    await browser.keys(["Control", "Enter"]);
+    await browser.$(".inkline-editor").waitForExist({ reverse: true });
+    expect(await symbolFiles()).toEqual(["001.ink.png"]);
+    // A stroke drawn over it and left unsaved, with the editor open as the
+    // update comes, which closes it and keeps the draft.
+    await editFile("001.ink.png");
+    await draw([
+      [0.2, 0.8],
+      [0.8, 0.8],
+    ]);
+    await browser.waitUntil(async () => (await keptDrafts()) > 0, {
+      timeoutMsg: `${previous} kept no draft of the drawing`,
+    });
+    const drawing = await symbolBytes();
+    await update(vault, config);
+    expect(await keptDrafts()).toBe(1);
+    expect(await symbolBytes()).toEqual(drawing);
+    await editFile("001.ink.png");
+    if (!keepsStrokes) {
+      // Nothing to restore: the editor alone, with the picture to draw over.
+      await waitForStatus(noStrokes);
+      expect(await browser.$$(".modal-container").length).toBe(1);
+      expect(await keptDrafts()).toBe(0);
+      await saveScreenshot("release-draft-dropped");
+      // Closing with nothing done asks nothing and writes nothing.
+      await browser.keys("Escape");
+      await browser.$(".inkline-editor").waitForExist({ reverse: true });
+      expect(await symbolBytes()).toEqual(drawing);
+      return;
+    }
+    await clickTop("Restore");
+    await saveScreenshot("release-draft-restored");
+    await browser.keys(["Control", "Enter"]);
+    await browser.$(".inkline-editor").waitForExist({ reverse: true });
+    const restored = JSON.parse(await recordOf("001.ink.png")) as HeldRecord;
+    expect(restored.strokes).toHaveLength(2);
+    expect(await keptDrafts()).toBe(0);
   });
 });

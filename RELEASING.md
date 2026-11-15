@@ -597,13 +597,18 @@ project's test image. The check refuses missing inputs or a non-temporary vault,
 draws with the old release, saves a preference, extracts the new ZIP with
 `unzip`, reloads the host, and verifies the unchanged symbol file, note and
 preferences through another plugin reload, that the note still shows the symbol,
-and that a stroke drawn over it and a new symbol save and reopen.
+and that a stroke drawn over it and a new symbol save and reopen. Then, in a
+fresh copy of the vault, it leaves the old release's editor open over a saved
+symbol with an unsaved stroke, updates the same way, and opens the symbol again.
 
-What the symbol must open as goes by `E2E_PREVIOUS_VERSION` alone. From a
-release before `0.9.2` it is a picture to draw over, whose status line says why;
-from `0.9.2` on it is the strokes, so that a release that stopped reading them
-fails with no change to the check. It runs on both default host versions;
-inspect the resulting screenshots as well as the assertions.
+What the symbol must open as, and what becomes of its draft, go by
+`E2E_PREVIOUS_VERSION` alone. From a release before `0.9.2` the symbol is a
+picture to draw over, whose status line says why, and the draft is dropped, as
+[the install guide](docs/install.md#update) says, so the editor asks nothing.
+From `0.9.2` on it is the strokes, and the editor offers the draft back, which
+saves both strokes, so that a release that stopped reading either fails with no
+change to the check. It runs on both default host versions; inspect the
+resulting screenshots as well as the assertions.
 
 ## Documentation
 
