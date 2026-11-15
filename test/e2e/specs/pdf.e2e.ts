@@ -464,6 +464,70 @@ async function printedWide(png: string, above: Box, below: Box) {
   );
 }
 
+/**
+ * The line of a numbered list's first item in the rasterized PDF, between two
+ * fixture words' lines: where its number's pixels end, which is the line's
+ * baseline, and the block of ink after the number, measured as on the screen,
+ * on the page's colour and in the colour furthest from it.
+ */
+async function printedListLine(
+  png: string,
+  number: Box,
+  above: Box,
+  below: Box,
+) {
+  return browser.execute(
+    async (encoded, digits, top, bottom) => {
+      const bytes = Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0));
+      const image = await createImageBitmap(new Blob([bytes]));
+      const pixels = window.inklineTest.canvas.readPixels(image);
+      image.close();
+      const { inkBlock } = window.inklineTest;
+      const ground = inkBlock.commonColour(pixels, {
+        left: 0,
+        top,
+        right: pixels.width,
+        bottom: top + 1,
+      });
+      // The bottom edge of the number's lowest row that is not the page.
+      let numberBottom = -1;
+      for (let y = Math.floor(digits.top); y < Math.ceil(digits.bottom); y++) {
+        for (
+          let x = Math.floor(digits.left);
+          x < Math.ceil(digits.right);
+          x++
+        ) {
+          const at = (y * pixels.width + x) * 4;
+          const away = [0, 1, 2].some(
+            (channel) =>
+              Math.abs(
+                (pixels.data[at + channel] ?? 0) - (ground[channel] ?? 0),
+              ) > 40,
+          );
+          if (away) numberBottom = Math.max(numberBottom, y + 1);
+        }
+      }
+      // Clear of the number.
+      const region = {
+        left: Math.ceil(digits.right) + 2,
+        top,
+        right: pixels.width,
+        bottom,
+      };
+      const ink = inkBlock.furthestColour(pixels, region, ground);
+      return {
+        number: numberBottom,
+        ink: inkBlock.measureBlock(pixels, region, ground, ink) ?? null,
+      };
+    },
+    png,
+    number,
+    // Clear of the words' own pixels.
+    above.bottom + 2,
+    below.top - 2,
+  );
+}
+
 describe("Native PDF export", function () {
   after(async function () {
     await startOver();
@@ -626,6 +690,80 @@ describe("Native PDF export", function () {
         if (mode.textColor) expect(channel).toBeLessThan(60);
         else expect(Math.abs(channel - 126)).toBeLessThanOrEqual(8);
       }
+    });
+  }
+  // An explicit size wider than the page (#245). The print lays the note out
+  // again at the page's width, narrower than the export window's line, so the
+  // drop must follow the shown height in the print layout itself. A symbol
+  // shrunk to its whole line has no text beside it, so a numbered list's
+  // number, on the same line, gives the baseline.
+  for (const mode of [
+    {
+      name: "asked-text-colour",
+      scale: 100,
+      textColor: true,
+      theme: "obsidian",
+    },
+    {
+      name: "asked-stored-grey",
+      scale: 100,
+      textColor: false,
+      theme: "moonstone",
+    },
+  ]) {
+    it(`prints an explicit size wider than the page on the baseline, in ${mode.name}`, async function () {
+      await startWith(mode);
+      await browser.executeObsidian(async ({ app }, encoded) => {
+        const bytes = Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0));
+        await app.vault.createBinary("wide.ink.png", bytes.buffer);
+        await app.vault.create(
+          "Asked.md",
+          [
+            "AskedBefore words.",
+            "",
+            "1. ![[wide.ink.png|1000]]",
+            "",
+            "AskedAfter words.",
+            "",
+          ].join("\n"),
+        );
+      }, toBase64(widePng()));
+      await obsidianPage.openFile("Asked.md");
+      const dpi = 288;
+      const { snapshot, xml, raster } = await exportPdf(mode.name, dpi);
+      const word = (text: string): Box => {
+        const { left, top, right, bottom } = wordBox(xml, text);
+        const scaled = (value: number) => (value * dpi) / 96;
+        return {
+          left: scaled(left),
+          top: scaled(top),
+          right: scaled(right),
+          bottom: scaled(bottom),
+        };
+      };
+      const [image] = snapshot.images;
+      if (image === undefined) throw new Error("missing print image");
+      expect(image.tagged).toBe(true);
+      const line = await printedListLine(
+        raster,
+        word("1."),
+        word("AskedBefore"),
+        word("AskedAfter"),
+      );
+      console.log(`${mode.name}: ${JSON.stringify({ image, line })}`);
+      expect(line.number).toBeGreaterThan(0);
+      expect(line.ink).not.toBeNull();
+      if (line.ink === null) return;
+      // Shrunk by the page: narrower than the 1,000 CSS pixels asked for,
+      // and in its proportions.
+      expect(line.ink.width).toBeLessThan((0.9 * 1000 * dpi) / 96);
+      expect(
+        Math.abs(line.ink.width / line.ink.height / drawnRatio - 1),
+      ).toBeLessThan(0.05);
+      // On the number's baseline, within a CSS pixel and a half.
+      expect(Math.abs(line.ink.bottom - line.number)).toBeLessThan(
+        (1.5 * dpi) / 96,
+      );
     });
   }
 });

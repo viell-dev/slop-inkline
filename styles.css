@@ -326,6 +326,27 @@ img.inkline-symbol:not([width], [height]) {
   mask-position: 0 75%;
 }
 
+/*
+ * An explicit size of only a width, as ![[x.ink.png|1000]] gives, can be
+ * wider than the symbol's space, and Obsidian then shrinks the symbol evenly
+ * to fit, its height following (#245). Its drop is worked out for the height
+ * it asks for, so the bottom margin takes back a quarter of the height that
+ * shrinking took away, and the symbol's baseline stays on the text's. The
+ * margin's percentage is of the same width as Obsidian's max-width: 100%,
+ * the space's, so that this holds wherever the symbol is laid out, a PDF
+ * page included, which the page lays out again at its own width. In Live
+ * Preview the embed, which takes the drop, takes the margin too; see below.
+ */
+img.inkline-symbol[width]:not([height]):not(.image-wrapper > img),
+.cm-content
+  .image-embed.inkline-symbol-embed:has(
+    > .image-wrapper > img[width]:not([height])
+  ) {
+  margin-bottom: calc(
+    max(0px, var(--inkline-width) - 100%) / var(--inkline-ratio) / 4
+  );
+}
+
 /* Stored colour shows the PNG's own pixels, retaining the same layout. */
 .inkline-stored-color img.inkline-symbol {
   background-color: transparent;
@@ -358,6 +379,32 @@ img.inkline-symbol:not([width], [height]) {
   .image-wrapper
   img.inkline-symbol:not([width], [height]) {
   width: auto;
+}
+
+/*
+ * Obsidian's embed there is an inline flex box, which lines up by its
+ * image's bottom whatever its margin. With an explicit size of only a width,
+ * it is an inline block that clips what overflows it, which lines up by its
+ * bottom margin edge instead, so that the margin above lessens the drop as it
+ * does for an image in rendered text. An inline block that shows what
+ * overflows takes its baseline from what is in it, the image's bottom again.
+ * Its wrapper is a block, so that the embed is as tall as the image and
+ * nothing in it overflows to be clipped.
+ */
+.cm-content
+  .image-embed.inkline-symbol-embed:has(
+    > .image-wrapper > img[width]:not([height])
+  ) {
+  display: inline-block;
+  overflow: hidden;
+}
+
+.cm-content
+  .image-embed.inkline-symbol-embed:has(
+    > .image-wrapper > img[width]:not([height])
+  )
+  > .image-wrapper {
+  display: flex;
 }
 
 /*

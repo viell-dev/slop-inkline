@@ -2,8 +2,9 @@
 // pixels is at the larger symbol sizes, or in a hover preview at any, shrinks
 // to fit it evenly (#241): its ink keeps the proportions it was drawn in, and
 // its baseline stays on the text's, in every view that shows symbols as text,
-// in the text colour and in its stored colour, in light and dark themes.
-// Native PDF export is checked in pdf.e2e.ts.
+// in the text colour and in its stored colour, in light and dark themes. So
+// does one with an explicit size wider than its space, as |1000 is, which
+// Obsidian shrinks (#245). Native PDF export is checked in pdf.e2e.ts.
 
 import { browser, expect } from "@wdio/globals";
 import { obsidianPage } from "wdio-obsidian-service";
@@ -29,9 +30,14 @@ const wideNote = [
   "",
   "Before ![[Glyphs/wide.ink.png]] after.",
   "",
+  // Near the top, where a hover preview shows it without scrolling.
+  "Asked ![[Glyphs/wide.ink.png|1000]] after.",
+  "",
   "| Cell |",
   "| --- |",
   "| Before ![[Glyphs/wide.ink.png]] after. |",
+  // A table's cells split at a bare |, so the size's is escaped.
+  "| Asked ![[Glyphs/wide.ink.png\\|1000]] after. |",
   "",
   "Sized ![[Glyphs/wide.ink.png|300]] after.",
   "",
@@ -67,13 +73,13 @@ const places: readonly Place[] = [
     name: "a table cell in Reading view",
     note: "Wide.md",
     mode: "preview",
-    symbol: `${reading} td img.inkline-symbol`,
+    symbol: `${reading} td img.inkline-symbol:not([width])`,
   },
   {
     name: "a table cell in Live Preview",
     note: "Wide.md",
     mode: "source",
-    symbol: `${source} td img.inkline-symbol`,
+    symbol: `${source} td img.inkline-symbol:not([width])`,
   },
   {
     name: "an embedded note",
@@ -111,6 +117,20 @@ interface Shown {
   ink: Block | null;
   expected: Rgb;
 }
+
+/**
+ * The same places for the symbol with an explicit size of 1,000 pixels
+ * across, wider than each of them: 1,000 × 48 where it would fit.
+ */
+const askedPlaces: readonly Place[] = places.map((place) => ({
+  ...place,
+  symbol: place.symbol
+    .replace(":not([width])", "")
+    .replace("img.inkline-symbol", 'img.inkline-symbol[width="1000"]'),
+}));
+
+/** The width the explicit size asks for. */
+const asked = 1000;
 
 /** Opens `path` in the active leaf, in Live Preview or Reading view. */
 async function open(path: string, mode: "source" | "preview"): Promise<void> {
@@ -352,6 +372,34 @@ function expectEvenlyShrunk(shown: Shown): void {
   }
 }
 
+/**
+ * That `shown`, with an explicit size wider than its space, is shrunk evenly
+ * to that space by Obsidian, whole, in its proportions, and on the baseline.
+ */
+function expectAskedShrunk(shown: Shown): void {
+  const { box, space, ink } = shown;
+  expect(box.width).toBeLessThan(0.9 * asked);
+  expect(box.left).toBeGreaterThanOrEqual(space.left - 1);
+  expect(box.right).toBeLessThanOrEqual(space.right + 1);
+  // Its box keeps the symbol's own proportions.
+  expect(
+    Math.abs(box.height - (box.width * wide.height) / wide.width),
+  ).toBeLessThan(0.5);
+  expect(ink).not.toBeNull();
+  if (ink === null) return;
+  const across =
+    (box.width * (wide.block.right - wide.block.left)) / wide.width;
+  expect(Math.abs(ink.width - across)).toBeLessThan(2);
+  expect(Math.abs(ink.width / ink.height / drawnRatio - 1)).toBeLessThan(0.05);
+  // The block ends on the symbol's baseline, which is on the text's.
+  expect(Math.abs(ink.bottom - shown.baseline)).toBeLessThan(1.5);
+  for (const [channel, value] of shown.expected.entries()) {
+    expect(Math.abs((ink.colour[channel] ?? 0) - value)).toBeLessThanOrEqual(
+      24,
+    );
+  }
+}
+
 describe("Symbols wider than their space", function () {
   before(async function () {
     await loadModules();
@@ -400,9 +448,27 @@ describe("Symbols wider than their space", function () {
         });
       }
 
+      for (const place of askedPlaces) {
+        it(`keep an explicit size wider than its space on the baseline, in ${place.name}`, async function () {
+          for (const name of ["moonstone", "obsidian"] as const) {
+            await theme(name);
+            const file = place.name.replace(/\W+/g, "-").toLowerCase();
+            const shown = await shownIn(
+              place,
+              stored,
+              `wide-asked-${stored ? "stored" : "text"}-${name}-${file}`,
+            );
+            console.log(
+              `${colour}, ${name}, |${String(asked)}, ${place.name}: ${JSON.stringify(shown)}`,
+            );
+            expectAskedShrunk(shown);
+          }
+        });
+      }
+
       it("keep an explicit size that fits as it is", async function () {
         await theme("moonstone");
-        const sized = `${reading} p img.inkline-symbol[width]`;
+        const sized = `${reading} p img.inkline-symbol[width="300"]`;
         await open("Wide.md", "preview");
         await pointerAway();
         await waitForSymbol(sized, true);
