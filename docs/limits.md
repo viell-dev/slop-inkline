@@ -15,6 +15,11 @@ What Inkline does not do, or does not do everywhere, and what to do instead. The
   next 100. Filter them, or choose a folder, to narrow the list.
 - **Library insertion needs a sidebar.** If the library's tab is dragged into
   the main area, move it back to a sidebar to insert into a note.
+- **Notices and tooltips in a right-to-left interface** (**Unreleased**) still
+  put the full stop or closing bracket of Inkline's English at the start, as
+  Obsidian draws them for every plugin
+  ([#267](https://github.com/viell-dev/slop-inkline/issues/267)). Inkline's own
+  screens keep it in place.
 - **Physical printing** has not been checked. Native
   [PDF export](./notes.md#export-a-note-to-pdf) is verified on Linux.
 - **A faint line along a symbol's edge in a PDF.** In text colour, some PDF
