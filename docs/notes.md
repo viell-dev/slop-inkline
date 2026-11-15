@@ -92,10 +92,13 @@ the word is. A tab after a quote's `>`, or after a list item's marker and a
 space, makes the line indented code, unless it goes on in a paragraph. A line
 without `>` stays in its quote after any block in it, unless it starts a block
 that ends the quote, such as a heading or a list item. The trigger also lists
-nothing in a block of HTML, where an embed shows as text, nor between `<code>`
-and `</code>`, nor in a paragraph too long to read in time, such as one of a
-thousand brackets that nothing closes. A few rare notes are still read
-otherwise, as [#271](https://github.com/viell-dev/slop-inkline/issues/271)
+nothing in a block of HTML, where an embed shows as text, nor in a paragraph too
+long to read in time, such as one of a thousand brackets that nothing closes.
+After a `<code>` or `<pre>` tag, in any form, `<code/>` included, the trigger
+lists nothing until the note closes it with `</code>` or `</pre>`, over blank
+lines and other blocks too: the list stays closed in all the text between, even
+where Reading view shows some of it as ordinary text. A few rare notes are still
+read otherwise, as [#271](https://github.com/viell-dev/slop-inkline/issues/271)
 lists.
 
 **Inkline: Insert existing symbol** opens the same list as a search, and inserts

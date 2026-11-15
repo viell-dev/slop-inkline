@@ -72,9 +72,11 @@ These change only text: nothing about how Inkline works has changed.
     headings underlined with `===`, the line after an empty list item, and the
     end of a table are read as Reading view reads them.
   - The list lists nothing in a block of HTML, where an embed shows as text and
-    code, as in `<pre><code>`, cannot be told from text, nor between `<code>`
-    and `</code>`, nor in a paragraph too long to read in time, such as one of a
-    thousand brackets that nothing closes.
+    code, as in `<pre><code>`, cannot be told from text, nor in a paragraph too
+    long to read in time, such as one of a thousand brackets that nothing
+    closes. After a `<code>` or `<pre>` tag, in any form, `<code/>` included, it
+    lists nothing until the note closes it with `</code>` or `</pre>`, over
+    blank lines and other blocks too.
 
   A few rare notes are still read otherwise
   ([#271](https://github.com/viell-dev/slop-inkline/issues/271)).
