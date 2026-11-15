@@ -59,6 +59,13 @@ The ZIP has the same three plugin files as the loose assets. `SHA256SUMS`
 records SHA-256 checksums for both. The older 0.1.0 release predates the install
 ZIP; use the loose-file steps below for that version.
 
+**Unreleased:** from 0.9.4, a release also carries a copy of the
+[file format](./file-format.md) as that release has it, named by the format's
+version and the document's revision, such as
+`inkline-file-format-version-1-revision-1.md`. Installing does not need it: it
+is there so that what symbol files hold stays described wherever the release is
+kept.
+
 ## Install the loose files
 
 Download `main.js`, `manifest.json`, and `styles.css` from the same GitHub
