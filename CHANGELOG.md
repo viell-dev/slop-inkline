@@ -59,10 +59,11 @@ The changes in this section change only text, not how Inkline works.
   where it fell, a symbol's ink could sit three quarters of a pixel higher than
   the letters beside it in Obsidian's default 16-pixel text, so that two copies
   of one symbol in a line could differ; now it stands exactly on their baseline
-  there. At some other text and Symbol sizes it can still stand up to about a
-  pixel off, the same for every symbol of the line to within half a pixel, as
-  the text and the symbols are each drawn on whole pixels of the screen. Symbols
-  shown in their stored colour were not affected.
+  there. At some other text sizes, Symbol sizes, and zoom levels it can still
+  stand up to about a pixel off, as the text and the symbols are each drawn on
+  whole pixels of the screen, with the symbols of a line within half a pixel of
+  each other at 100% zoom and within a pixel at other zoom levels. Symbols shown
+  in their stored colour were not affected.
 - A symbol with a size written into its embed, such as `![[wide.ink.png|1000]]`,
   that is wider than the space it is shown in stays on the baseline when
   Obsidian shrinks it to fit, in notes, tables, hover previews and exported PDFs

@@ -100,14 +100,19 @@ again, so where a symbol fell in the line moved its ink. In 16-pixel text, a box
 wide, and in 17-pixel text the symbols of a line were up to 0.69 pixels apart.
 Now the ink of a symbol that fits is drawn at its box's own size wherever the
 box falls, and in a box wider than the symbol at the line's height, as a
-snippet's, whole at that height and at the left. In 16-pixel text, at the
-default 100% and at 150%, and in 16-pixel text zoomed to 200%, its baseline is
-on the baseline of the letters beside it, which Obsidian draws on whole pixels
-too. At other sizes the letters' baseline and the box's top each land on a whole
-pixel, and the ink's baseline lies three quarters of the way down the box, so it
-stands within about a pixel of the letters' baseline, and the symbols of a line
-within half a pixel of each other. Until the image has loaded, the box's width
-alone sizes the mask.
+snippet's, whole at that height and at the left. Its height is the line's times
+`--inkline-scale`, the Symbol size setting: a snippet that gives
+`img.inkline-symbol` a `height` of its own gets a box that tall, with the ink
+still at the line's height in it, three quarters of the way down the height left
+over, and so not on the baseline. In 16-pixel text, at the default 100% and at
+150%, and zoomed to 200%, a symbol's baseline is on the baseline of the letters
+beside it, which Obsidian draws on whole pixels too. At other text sizes, Symbol
+sizes, and zoom levels, the letters' baseline and the box's top each land on a
+whole pixel, and the ink's baseline lies three quarters of the way down the box,
+so it stands within about a pixel of the letters' baseline. The symbols of a
+line then stand within half a pixel of each other at 100% zoom, and within a
+pixel at other zoom levels: 0.69 apart at 120% in Obsidian 1.15.1. Until the
+image has loaded, the box's width alone sizes the mask.
 
 **Unreleased:** an explicit size of only a width that is wider than the symbol's
 space, as `|1000` in a hover preview, also keeps the symbol's baseline on the
@@ -120,15 +125,20 @@ percentage is of the same width as Obsidian's `max-width`, the space's, so the
 drop follows the height shown wherever the symbol is laid out. That includes PDF
 export, which lays the note out again at the page's width: `|1000` of a symbol
 that the export window showed 921 pixels wide printed about 650 wide, so a drop
-worked out by script from the window's layout would be wrong on the page. In
-Live Preview the embed takes the margin, and is an inline block that clips what
-overflows it, around a block holding the image, so that it lines up by its
-bottom margin edge, rather than Obsidian's inline flex box, which lines up by
-its image's bottom whatever its margin. The line keeps room below its baseline
-for the drop the size asks for, a quarter of that height: the margin raises the
-image within the room the drop makes rather than shortening the line. In 0.9.3
-such a symbol sat below the baseline by the difference: about 3.6 pixels with a
-700-pixel line, and 7.5 in a hover preview, for a symbol 4,000 × 192 at `|1000`.
+worked out by script from the window's layout would be wrong on the page.
+Inkline declares the image's `max-width: 100%` too, as the margin is right only
+with it. In Live Preview the embed takes the margin. Every embed there of a size
+of only a width, whether it fits or not, is an inline block that clips what
+overflows it, around a block-level flex box holding the image, so that it lines
+up by its bottom margin edge, rather than Obsidian's inline flex box, which
+lines up by its image's bottom whatever its margin; where the size fits, the
+margin is none and the embed sits as before. A plain block in place of the flex
+box, tried in a probe, put the image twice as far below the baseline. The line
+keeps room below its baseline for the drop the size asks for, a quarter of that
+height: the margin raises the image within the room the drop makes rather than
+shortening the line. In 0.9.3 such a symbol sat below the baseline by the
+difference: about 3.6 pixels with a 700-pixel line, and 7.5 in a hover preview,
+for a symbol 4,000 × 192 at `|1000`.
 
 With text colour on, Inkline's styles paint the ink with
 `background-color: currentColor`. To colour symbols differently from the text

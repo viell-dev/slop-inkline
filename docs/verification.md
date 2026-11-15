@@ -122,9 +122,12 @@ must keep released files readable and looking the same, as
   at 44 places across eleven lines of typed text, stand on the baseline of the
   letters beside them, measured in screenshots to a fraction of a pixel: within
   a quarter of a pixel, and of each other, in 16-pixel text at 100% and 150% and
-  zoomed to 200%; within about a pixel, and of each other within half of one, in
-  13-, 17- and 20-pixel text, at 75%, and in 17-pixel text zoomed to 200%; in
-  Reading view and Live Preview, in the text colour and its stored colour
+  zoomed to 200%; within 1.2 pixels, and of each other within 0.6, in 13-, 17-
+  and 20-pixel text and at 75%; and within 1.2 pixels, and of each other within
+  one, in 17-pixel text zoomed to 200% and in 16-pixel text zoomed in to 120%
+  and out to 83%; in Reading view and Live Preview, in the text colour and its
+  stored colour. In a box a snippet makes wider, the ink stays whole at the
+  line's height, at the box's left
   ([baseline.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/baseline.e2e.ts)).
 - Native PDF export, through Obsidian's real command and PDF writer: the output
   is rasterized independently with Poppler, and its pixels prove the symbol's
@@ -149,6 +152,10 @@ must keep released files readable and looking the same, as
   with spaces, percent signs and Unicode are covered, as are repeated file
   timestamps
   ([refresh.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/refresh.e2e.ts)).
+  **Unreleased:** in a popout and in a canvas card's own editor, a reshaped
+  symbol's width over its height, and an explicit size's drop, follow its new
+  shape, and a note first shown in a popout has its symbols measured (the same
+  file).
 
 ### The editor shows what its tools do
 
