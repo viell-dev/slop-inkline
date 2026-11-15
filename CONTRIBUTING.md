@@ -100,7 +100,7 @@ Prettier, the TypeScript checks of the plugin, the tests, the scripts, and the
 documentation site's configuration, the unit tests, the build, and the
 documentation site's build. `npm run format` applies Prettier. GitHub Actions
 runs `check` on Linux and Windows, and a dependency audit on Linux. The
-[plugin's guide](https://github.com/obsidianmd/eslint-plugin/blob/0.5.0/docs/configuration.md#community-plugin-scanner-configuration)
+[plugin's guide](https://github.com/obsidianmd/eslint-plugin/blob/0.5.1/docs/configuration.md#community-plugin-scanner-configuration)
 describes what the directory's scan runs.
 
 ## Tests
