@@ -8,8 +8,14 @@
 //                                             released from this checkout
 //   node scripts/release.ts notes <section>   print a changelog section, a
 //                                             version or "Unreleased"
+//   node scripts/release.ts specification <directory>
+//                                             copy the format's specification
+//                                             into <directory>, named by its
+//                                             version and revision, and print
+//                                             the copy's path
 
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import {
   isRecord,
   releaseNotes,
@@ -17,6 +23,7 @@ import {
   syncMetadata,
   type Metadata,
 } from "./lib/release.ts";
+import { specificationName, specificationPath } from "./lib/version.ts";
 
 async function readJson(path: string): Promise<unknown> {
   return JSON.parse(await readFile(path, "utf8"));
@@ -72,6 +79,26 @@ switch (command) {
     console.log(notes);
     break;
   }
+  case "specification": {
+    if (argument === undefined) {
+      fail("usage: release.ts specification <directory>");
+    }
+    // The bytes as they are, so that the copy is the commit's document.
+    const document = await readFile(specificationPath);
+    let name: string;
+    try {
+      name = specificationName(document.toString("utf8"));
+    } catch (error) {
+      fail(error instanceof Error ? error.message : String(error));
+    }
+    await mkdir(argument, { recursive: true });
+    const copy = join(argument, name);
+    await writeFile(copy, document);
+    console.log(copy);
+    break;
+  }
   default:
-    fail("usage: release.ts sync | check <version> | notes <section>");
+    fail(
+      "usage: release.ts sync | check <version> | notes <section> | specification <directory>",
+    );
 }

@@ -385,6 +385,42 @@ img.inkline-symbol:not([width], [height]) {
   object-position: 0 50%;
 }
 
+/*
+ * In a right-to-left interface, where Obsidian sets `mod-rtl` and mirrors its
+ * layout, a row's column is at the right of the name, and the picture starts
+ * at the column's right (#256). The mask and the image are placed by
+ * position, which has no value for the start side. A symbol in a note needs
+ * no such rule: one shrunk to its space fills its box's width.
+ */
+.mod-rtl .inkline-suggestion img.inkline-suggestion-picture,
+.mod-rtl .inkline-library img.inkline-library-picture {
+  mask-position: 100% 50%;
+}
+
+.inkline-stored-color
+  .mod-rtl
+  .inkline-suggestion
+  img.inkline-suggestion-picture,
+.inkline-stored-color .mod-rtl .inkline-library img.inkline-library-picture {
+  object-position: 100% 50%;
+}
+
+/*
+ * Inkline's own words are English, which a right-to-left interface would lay
+ * out from the right, moving the full stop or ellipsis at the end of a
+ * sentence to its start (#256). In Inkline's screens, each text runs in the
+ * direction of what it holds, as a field's lines do, and stays on the right,
+ * where the mirrored layout puts it: running left to right, it would
+ * otherwise start at the left. The settings tab, which Obsidian lays out
+ * from Inkline's definitions, already keeps its English in order.
+ */
+.mod-rtl
+  :is(.inkline-editor, .inkline-help, .inkline-library)
+  :is(p, li, h2, div, span, label) {
+  unicode-bidi: plaintext;
+  text-align: right;
+}
+
 .inkline-suggestion img.inkline-suggestion-picture {
   width: calc(3em * var(--inkline-scale, 1));
   height: calc(1.5em * var(--inkline-scale, 1));

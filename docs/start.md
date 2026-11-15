@@ -57,7 +57,8 @@ search.
 ## Change it
 
 Right-click the symbol and choose **Edit symbol**, or put the cursor on its
-embed and run **Inkline: Edit symbol**. The editor opens with every stroke as
+embed and run **Inkline: Edit symbol**. **Unreleased:** in Live Preview, a
+double-click on the symbol opens it too. The editor opens with every stroke as
 you drew it. Change the name in its field to rename the symbol: Obsidian updates
 the links to it in your notes, as its setting for updating internal links says.
 
