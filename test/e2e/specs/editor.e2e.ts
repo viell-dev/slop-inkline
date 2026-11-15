@@ -2006,7 +2006,18 @@ describe("The editor", function () {
     ] as const;
 
     afterEach(async function () {
+      await letReadsGo();
       await letGo();
+      // A test that stopped with Inkline off leaves it to be turned on.
+      const off = await browser.executeObsidian(({ app }) => {
+        const plugins: unknown = Reflect.get(app, "plugins");
+        const on: unknown =
+          typeof plugins === "object" && plugins !== null
+            ? Reflect.get(plugins, "enabledPlugins")
+            : undefined;
+        return !(on instanceof Set && on.has("inkline"));
+      });
+      if (off) await enable();
     });
 
     /**
@@ -2100,6 +2111,51 @@ describe("The editor", function () {
       );
       // Then the save ends, and settles its draft.
       await browser.pause(1000);
+    }
+
+    /**
+     * Holds back the result of every read of the file at `path` made while
+     * Inkline is disabled, as the file was when it was read, until
+     * {@link letReadsGo}: such as a look at the file by the save that was
+     * running as Inkline was turned off, if it makes one.
+     */
+    async function holdReadsWhileOff(path: string): Promise<void> {
+      await browser.executeObsidian(({ app }, file) => {
+        const { vault } = app;
+        const read = vault.readBinary.bind(vault);
+        let go = (): void => undefined;
+        const gate = new Promise<void>((resolve) => {
+          go = resolve;
+        });
+        Reflect.set(window, "inklineLetReadsGo", () => {
+          // Held, it is the vault's own, over what its prototype has.
+          Reflect.deleteProperty(vault, "readBinary");
+          go();
+        });
+        const enabled = (): boolean => {
+          const plugins: unknown = Reflect.get(app, "plugins");
+          const on: unknown =
+            typeof plugins === "object" && plugins !== null
+              ? Reflect.get(plugins, "enabledPlugins")
+              : undefined;
+          return on instanceof Set && on.has("inkline");
+        };
+        vault.readBinary = async (target) => {
+          const off = !enabled();
+          const bytes = await read(target);
+          if (off && target.path === file) await gate;
+          return bytes;
+        };
+      }, path);
+    }
+
+    /** Lets go what {@link holdReadsWhileOff} held. */
+    async function letReadsGo(): Promise<void> {
+      await browser.execute(() => {
+        const go: unknown = Reflect.get(window, "inklineLetReadsGo");
+        Reflect.deleteProperty(window, "inklineLetReadsGo");
+        if (typeof go === "function") Reflect.apply(go, undefined, []);
+      });
     }
 
     /** What the topmost modal says. */
@@ -2207,7 +2263,7 @@ describe("The editor", function () {
       expect(await keptDrafts()).toEqual([]);
     }
 
-    it("drops a new symbol's draft once the save that wrote it ends with Obsidian's question", async function () {
+    it("drops a new symbol's draft that the file holds, once the save that wrote it ends with Obsidian's question", async function () {
       await insert();
       await draw(zigzag);
       await browser.keys(["Control", "s"]);
@@ -2224,22 +2280,27 @@ describe("The editor", function () {
           { path: "gate.ink.png", strokes: 1 },
         ]);
         await clickTop("Do not update");
-        // The file holds every stroke the draft does.
-        await browser.waitUntil(async () => (await keptDrafts()).length === 0, {
-          timeoutMsg: "the draft stayed once the save that wrote it ended",
-        });
+        await waitForLinkUpdate();
+        // Kept for the file where it is: nothing decides, with Inkline off,
+        // whether the file holds it.
+        expect(await keptDrafts()).toMatchObject([
+          { path: "gate.ink.png", strokes: 1 },
+        ]);
         expect(await symbolFiles()).toEqual(["gate.ink.png"]);
       } finally {
         await enable();
       }
+      // The next editor of the file finds that it holds every stroke the draft
+      // does, and drops the draft without asking.
       await editFile("gate.ink.png");
       expect(await topButton("Restore")).toBeUndefined();
+      expect(await keptDrafts()).toEqual([]);
       await browser.keys(["Escape"]);
       await waitClosed();
       expect(await strokeCount("gate.ink.png")).toBe(1);
     });
 
-    it("drops a symbol's draft once the save that wrote it ends with Obsidian's move", async function () {
+    it("drops a symbol's draft that the file holds, once the save that wrote it ends with Obsidian's move", async function () {
       await saveHeldInMove();
       await obsidianPage.disablePlugin("inkline");
       try {
@@ -2249,15 +2310,20 @@ describe("The editor", function () {
         ]);
         await letGo();
         await clickTop("Just once");
-        await browser.waitUntil(async () => (await keptDrafts()).length === 0, {
-          timeoutMsg: "the draft stayed once the save that wrote it ended",
-        });
+        await browser.waitUntil(
+          async () => (await keptDrafts())[0]?.path === "gate.ink.png",
+          { timeoutMsg: "the draft still named the file's old path" },
+        );
+        expect(await keptDrafts()).toMatchObject([
+          { path: "gate.ink.png", strokes: 2 },
+        ]);
         expect(await symbolFiles()).toEqual(["gate.ink.png"]);
       } finally {
         await enable();
       }
       await editFile("gate.ink.png");
       expect(await topButton("Restore")).toBeUndefined();
+      expect(await keptDrafts()).toEqual([]);
       await browser.keys(["Escape"]);
       await waitClosed();
       expect(await strokeCount("gate.ink.png")).toBe(2);
@@ -2438,6 +2504,112 @@ describe("The editor", function () {
       await letGo();
       await clickTop("Just once");
       await waitForLinkUpdate();
+      expect(await keptDrafts()).toEqual([]);
+    });
+
+    it("keeps a draft that the file held when its save ended, though the file is replaced elsewhere after", async function () {
+      await saveHeldInMove();
+      const [kept] = await keptDrafts();
+      if (kept === undefined) throw new Error("no draft");
+      await obsidianPage.disablePlugin("inkline");
+      try {
+        // Whatever the old save reads of the file is the file as it was then.
+        await holdReadsWhileOff("gate.ink.png");
+        await letGo();
+        await clickTop("Just once");
+        await waitForLinkUpdate();
+        // As sync or another app would write it: three dots.
+        await changeElsewhere("gate.ink.png");
+        await letReadsGo();
+        await browser.pause(1000);
+        expect(await strokeCount("gate.ink.png")).toBe(3);
+        expect(await storedDraft(kept.id)).toMatchObject({
+          path: "gate.ink.png",
+        });
+      } finally {
+        await letReadsGo();
+        await enable();
+      }
+      // The file holds another drawing now, so the draft is offered.
+      await editFile("gate.ink.png");
+      await clickTop("Restore");
+      await browser.keys(["Control", "Enter"]);
+      await waitClosed();
+      expect(await strokeCount("gate.ink.png")).toBe(2);
+      expect(await keptDrafts()).toEqual([]);
+    });
+
+    it("leaves a draft that the file held when its save ended for the next editor of the file, which Inkline enabled again opens", async function () {
+      await saveHeldInMove();
+      const [kept] = await keptDrafts();
+      if (kept === undefined) throw new Error("no draft");
+      await obsidianPage.disablePlugin("inkline");
+      try {
+        await holdReadsWhileOff("gate.ink.png");
+        await letGo();
+        await clickTop("Just once");
+        await waitForLinkUpdate();
+        // Nothing has decided whether the file holds it.
+        expect(await storedDraft(kept.id)).toMatchObject({
+          path: "gate.ink.png",
+        });
+      } finally {
+        await enable();
+      }
+      // A new editor of the file shows what it holds, which is all the draft
+      // holds, so it drops the draft without asking. Then it saves another
+      // drawing over it, which is the person's own.
+      await editFile("gate.ink.png");
+      expect(await topButton("Restore")).toBeUndefined();
+      expect(await keptDrafts()).toEqual([]);
+      await browser.$('[data-inkline-button="clear"]').click();
+      await draw(across);
+      await browser.keys(["Control", "Enter"]);
+      await waitClosed();
+      await letReadsGo();
+      await browser.pause(1000);
+      expect(await keptDrafts()).toEqual([]);
+      expect(await strokeCount("gate.ink.png")).toBe(1);
+    });
+
+    it("offers the draft under the new name when Inkline, enabled again, saves the symbol before the old save ends", async function () {
+      await saveHeldInMove();
+      const [kept] = await keptDrafts();
+      if (kept === undefined) throw new Error("no draft");
+      await obsidianPage.disablePlugin("inkline");
+      await letGo();
+      // Obsidian has moved the file, and asks about the links. The old save
+      // waits on that, with its draft for the file where it was.
+      await browser.waitUntil(
+        async () => (await topButton("Just once")) !== undefined,
+      );
+      await hold("link");
+      await clickTop("Just once");
+      await waitForHeld();
+      await enable();
+      // A new editor of the file finds no draft for it, and saves another
+      // drawing over it.
+      await editFile("gate.ink.png");
+      expect(await topButton("Restore")).toBeUndefined();
+      await browser.$('[data-inkline-button="clear"]').click();
+      await draw(across);
+      await browser.keys(["Control", "Enter"]);
+      await waitClosed();
+      expect(await storedDraft(kept.id)).toMatchObject({
+        path: "001.ink.png",
+      });
+      await letGo();
+      await waitForLinkUpdate();
+      // The old save has ended: the draft is for the file where it is, which
+      // holds another drawing, so it is offered.
+      expect(await storedDraft(kept.id)).toMatchObject({
+        path: "gate.ink.png",
+      });
+      await editFile("gate.ink.png");
+      await clickTop("Restore");
+      await browser.keys(["Control", "Enter"]);
+      await waitClosed();
+      expect(await strokeCount("gate.ink.png")).toBe(2);
       expect(await keptDrafts()).toEqual([]);
     });
   });
@@ -3409,7 +3581,7 @@ describe("The editor", function () {
     }
   });
 
-  it("drops a new symbol's draft once its first save ends after Inkline is disabled", async function () {
+  it("drops a new symbol's draft that its file holds, once its first save ends after Inkline is disabled", async function () {
     await insert();
     await draw(zigzag);
     // Close the note's tab, so that the insertion edits its file.
@@ -3426,21 +3598,41 @@ describe("The editor", function () {
       await obsidianPage.disablePlugin("inkline");
       // Kept while the insertion is under way.
       expect(await draftCount()).toBe(1);
-      // The old insertion finishes, and with it the save: the file and the
-      // note hold the drawing, so the draft goes.
-      await browser.waitUntil(async () => (await draftCount()) === 0, {
-        timeout: 5000,
-        timeoutMsg: "the draft stayed once the save ended",
-      });
+      // The old insertion finishes, and with it the save: the draft is kept
+      // for the file, as the symbol is that file once its embed is in.
+      await browser.waitUntil(
+        async () => {
+          const [draft] = await storedDrafts();
+          return (
+            draft?.target !== null &&
+            typeof draft?.target === "object" &&
+            Reflect.get(draft.target, "kind") === "file"
+          );
+        },
+        {
+          timeout: 5000,
+          timeoutMsg: "the draft was not kept for the file once the save ended",
+        },
+      );
+      expect(await storedDrafts()).toMatchObject([
+        { target: { kind: "file", path: "001.ink.png" } },
+      ]);
     } finally {
       await restoreVault();
       await obsidianPage.enablePlugin("inkline");
       await loadModules();
     }
     await obsidianPage.openFile("Editor.md");
+    // A new symbol in the note is another symbol.
     await browser.executeObsidianCommand("inkline:insert-symbol");
     await waitForEditor();
     expect(await topButton("Restore")).toBeUndefined();
+    await browser.keys(["Escape"]);
+    await waitClosed();
+    // The file holds every stroke the draft does, so its editor drops it.
+    await editFile("001.ink.png");
+    expect(await topButton("Restore")).toBeUndefined();
+    expect(await draftCount()).toBe(0);
     await browser.keys(["Escape"]);
     await waitClosed();
     expect(await symbolFiles()).toEqual(["001.ink.png"]);
