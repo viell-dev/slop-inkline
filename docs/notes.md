@@ -18,19 +18,16 @@ whether ink takes the text's colour or shows its stored grey pixels.
 This holds in Live Preview, Reading view, callouts, tables, embedded notes,
 hover previews, text cards on a canvas, and popout windows.
 
-- **Unreleased:** a symbol stands on the baseline wherever it falls in the line,
-  and the symbols of a line line up with each other. In 0.9.3, by where it fell,
-  its ink could sit three quarters of a pixel higher than the letters beside it
-  in Obsidian's default 16-pixel text, where it now stands exactly on their
-  baseline, and more at some other sizes. At some text sizes, Symbol sizes, and
-  zoom levels it still stands off the letters, by up to about a pixel at 100%
-  zoom and up to about two at other zoom levels, as
+- A symbol stands on the baseline wherever it falls in the line, and the symbols
+  of a line line up with each other. In Obsidian's default 16-pixel text it
+  stands exactly on the letters' baseline. At some text sizes, Symbol sizes, and
+  zoom levels it stands off the letters, by up to about a pixel at 100% zoom and
+  up to about two at other zoom levels, as
   [Known limits](./limits.md#in-general) says.
 - **An explicit size** that Obsidian's embed syntax gives, as in
   `![[tower.ink.png|24]]`, is kept, and the symbol still stands on the baseline.
-  **Unreleased:** so does a size wider than the space the symbol is in, which
-  Obsidian shrinks evenly to fit; 0.9.3 sat such a symbol a few pixels below the
-  baseline.
+  So does a size wider than the space the symbol is in, which Obsidian shrinks
+  evenly to fit.
 - A symbol wider than the space it is in, as a very wide one can be in a hover
   preview, a table cell, a narrow pane, or a PDF page, shrinks evenly to fit,
   whole and on the baseline, rather than being squeezed sideways. It still takes
@@ -94,30 +91,30 @@ item, even if it is never closed, so the trigger in the text after it lists
 again. A callout's title line is read on its own: inline code in it ends with
 the line.
 
-**Unreleased:** inline code starts and ends where Reading view finds it. A
-backtick inside a wiki link, a link's address, a `%%` comment, math, a web
-address, or an HTML tag starts no inline code. Inline code can sit inside
-emphasis, strikethrough, a highlight, a link's text, or square brackets, and
-ends where they do: in `` **`a** b` `` nothing is code, while in ``**`code`**``
-the word is. A tab after a quote's `>`, or after a list item's marker and a
-space, makes the line indented code, unless it goes on in a paragraph. A line
-without `>` stays in its quote after any block in it, unless it starts a block
-that ends the quote, such as a heading or a list item. The trigger also lists
-nothing in a block of HTML, where an embed shows as text, nor in a paragraph too
-long to read in time, such as one of a thousand brackets that nothing closes.
-After a `<code>` or `<pre>` tag, in any form, `<code/>` included, the trigger
-lists nothing until the note closes it with `</code>` or `</pre>`, over blank
-lines and other blocks too: the list stays closed in all the text between, even
-where Reading view shows some of it as ordinary text. A closing tag counts only
-where the browser reads it as one: not inside an HTML comment, a quoted
-attribute, a `<textarea>` or `<style>`, a table's cell, or a footnote, and not
-past eight or more nested blocks. The trigger lists nothing inside an HTML tag
-or comment, a `%%` comment, or inline math either, where an embed shows nothing,
-nor in the text of a `<textarea>` or the like. After a comment, tag, or quote
-that a block of HTML leaves open, and after a `<script>`, an `<svg>`, or a
-`<math>`, the trigger lists nothing in the rest of the note. A few rare notes
-are still read otherwise, as
-[#271](https://github.com/viell-dev/slop-inkline/issues/271) lists.
+Inline code starts and ends where Reading view finds it. A backtick inside a
+wiki link, a link's address, a `%%` comment, math, a web address, or an HTML tag
+starts no inline code. Inline code can sit inside emphasis, strikethrough, a
+highlight, a link's text, or square brackets, and ends where they do: in
+`` **`a** b` `` nothing is code, while in ``**`code`**`` the word is. A tab
+after a quote's `>`, or after a list item's marker and a space, makes the line
+indented code, unless it goes on in a paragraph. A line without `>` stays in its
+quote after any block in it, unless it starts a block that ends the quote, such
+as a heading or a list item. The trigger also lists nothing in a block of HTML,
+where an embed shows as text, nor in a paragraph too long to read in time, such
+as one of a thousand brackets that nothing closes. After a `<code>` or `<pre>`
+tag, in any form, `<code/>` included, the trigger lists nothing until the note
+closes it with `</code>` or `</pre>`, over blank lines and other blocks too: the
+list stays closed in all the text between, even where Reading view shows some of
+it as ordinary text. A closing tag counts only where the browser reads it as
+one: not inside an HTML comment, a quoted attribute, a `<textarea>` or
+`<style>`, a table's cell, or a footnote, and not past eight or more nested
+blocks. The trigger lists nothing inside an HTML tag or comment, a `%%` comment,
+or inline math either, where an embed shows nothing, nor in the text of a
+`<textarea>` or the like. After a comment, tag, or quote that a block of HTML
+leaves open, and after a `<script>`, an `<svg>`, or a `<math>`, the trigger
+lists nothing in the rest of the note. A few rare notes are still read
+otherwise, as [#271](https://github.com/viell-dev/slop-inkline/issues/271)
+lists.
 
 **Inkline: Insert existing symbol** opens the same list as a search, and inserts
 the chosen symbol at the cursor. It places the symbol as **Inkline: Insert
@@ -141,9 +138,9 @@ by its spelling, so `가` finds `각`, which starts with it.
 
 These lists, [Copy from](./drawing.md#start-from-a-copy), and the library give
 each picture a column of its own, so that names line up whatever each symbol's
-width. A symbol wider than the column shows whole, at a smaller size.
-**Unreleased:** in a right-to-left interface, which Obsidian mirrors, the column
-is at the right of the name, and each picture starts at the column's right.
+width. A symbol wider than the column shows whole, at a smaller size. In a
+right-to-left interface, which Obsidian mirrors, the column is at the right of
+the name, and each picture starts at the column's right.
 
 ## Edit a symbol
 
@@ -159,8 +156,8 @@ It is offered:
 - as the command **Inkline: Edit symbol**, with the cursor on a symbol's embed,
   outside code and front matter.
 
-**Unreleased:** double-clicking a symbol opens it in the editor as well, where
-the second click reaches the symbol:
+Double-clicking a symbol opens it in the editor as well, where the second click
+reaches the symbol:
 
 - in Live Preview, a table in it included, and in popout windows;
 - on a canvas, in a card or a note that is not focused, and in a text card's own
@@ -257,44 +254,29 @@ by folder, the top folder first, then by name, with numbers in order.
   write successive symbols. A selection's text is kept; a cursor inside a link
   or embed puts the symbol just after it. Open a note in editing view first; a
   note in Reading view cannot take an insertion.
-- Click **1 note**, or **2 notes**, to list the notes that use a symbol, then
-  click a note to open it. Ctrl-click, or Cmd-click on macOS, opens a new tab.
+- Click **Uses (2)**, which counts the notes that use a symbol, to list them,
+  then click a note to open it. Ctrl-click, or Cmd-click on macOS, opens a new
+  tab.
 - Right-click a symbol for its file's menu, including **Edit symbol**.
-- Choose **Rename** beside a symbol to edit its name in that row. Enter or
-  **Save** renames it through Obsidian, so links follow according to Obsidian's
-  link settings. Esc or **Cancel** keeps the old name. An empty name also keeps
-  the old name. The same name rules apply as in the drawing editor.
-
-**Unreleased:** a row's buttons are **Uses (2)**, which lists the notes that use
-the symbol as the count does, and **Quick edit**, which takes the place of
-**Rename** and the button with the translation icon, as
-[Quick edit](#quick-edit) describes. Rows also have space between them, so that
-a line of readings and translations reads as part of the row above it.
+- Choose **Quick edit** beside a symbol to edit its name, readings, and
+  translations in that row, as [Quick edit](#quick-edit) describes.
 
 A row keeps its picture, name, and buttons on one line in the default sidebar. A
 long name wraps onto a second line and then shortens, and a long folder
 shortens, rather than running off the sidebar. Hold the pointer over the symbol
-for its whole name and folder. **Rename** also shows the whole name, without the
-pointer. In a sidebar narrower than about 285 pixels, the buttons drop below the
-name.
+for its whole name and folder. **Quick edit** also shows the whole name, without
+the pointer. In a sidebar too narrow for the name and the buttons, the buttons
+drop below the name.
 
 A symbol's [readings and translations](#readings-and-translations) show under
 its row, a line for each, which a long list shortens; a symbol with none keeps a
-row of the usual height.
+row of the usual height. Rows have space between them, so that those lines read
+as part of the row above them.
 
 - A row the filter found by a value shows it first, in bold, so a match with
   another name is no mystery. While Inkline is still reading the vault's
   symbols, as it does for a few seconds after Obsidian starts in a vault of
   thousands of them, a line says that more may match.
-- The button with the translation icon, beside **Rename**, edits them in that
-  row, one value to a line. **Save**, or Ctrl+Enter, or Cmd+Enter on macOS,
-  changes the file's text and nothing else: its drawing's bytes stay as they
-  are, and no note is touched. Esc or **Cancel** keeps what it held. Spaces
-  around a value and blank lines are left out, and a list over 4,096 bytes is
-  refused, with what you typed left for correction.
-- If the file changes while you edit, as by sync, a field you have not typed in
-  follows it. One you have typed in keeps your text, and a line says what saving
-  will replace.
 - The list draws 100 symbols at a time, so that typing in the filter stays
   quick. **Show more** adds the next 100.
 
@@ -304,7 +286,7 @@ any files and links that changed while you typed. Renaming changes the file's
 name, leaving its drawing's bytes as they are. A symbol deleted and replaced
 while its name is being edited cannot rename the replacement.
 
-**Rename** first saves every open note that holds unsaved text, as
+A rename first saves every open note that holds unsaved text, as
 [renaming in the editor](./drawing.md#the-name) does. If a note cannot be saved,
 the row says which one, and nothing is renamed.
 
@@ -337,17 +319,20 @@ the main area, return it to a sidebar before inserting.
 
 ### Quick edit
 
-**Unreleased.** **Quick edit** beside a symbol opens its name, readings, and
-translations together in its row, with the name selected. **Save**, Enter in the
-name, or Ctrl+Enter, or Cmd+Enter on macOS, in any field, saves what you
-changed. Esc or **Cancel** keeps everything as it was, and Save with nothing
-changed only closes the row. One row is edited at a time.
+**Quick edit** beside a symbol opens its name, readings, and translations
+together in its row, with the name selected and the readings and translations
+one value to a line. **Save**, Enter in the name, or Ctrl+Enter, or Cmd+Enter on
+macOS, in any field, saves what you changed. Esc or **Cancel** keeps everything
+as it was, and Save with nothing changed only closes the row. One row is edited
+at a time. An empty name keeps the old one, and the same name rules apply as in
+the drawing editor. Spaces around a value and blank lines are left out.
 
 One Save writes the readings and translations first, changing the file's text
-and nothing else, and then renames the symbol through Obsidian, as **Rename**
-does above, so that links follow. A name or a list that would be refused, such
-as a name another symbol in the folder has, is refused before anything is
-written, and everything you typed stays to correct.
+and nothing else: its drawing's bytes stay as they are, and no note is touched.
+It then renames the symbol through Obsidian, so that links follow according to
+Obsidian's link settings. A name or a list that would be refused, such as a name
+another symbol in the folder has, or a list over 4,096 bytes, is refused before
+anything is written, and everything you typed stays to correct.
 
 - If the readings and translations cannot be written, nothing is renamed. The
   row says why, and keeps the name and the text you typed.
@@ -362,10 +347,12 @@ written, and everything you typed stays to correct.
   has already begun can still finish, as
   [the limits](./limits.md#a-file-written-at-the-moment-inkline-saves) say.
 
-If the symbol is renamed elsewhere while its row is open, as by sync, a name you
-have not changed follows it, so that saving the readings and translations keeps
-that name. On a file whose readings and translations cannot be read when Quick
-edit opens, their fields stay closed, and the name can still change.
+If the file changes while its row is open, as by sync, a field you have not
+typed in follows it. One you have typed in keeps your text, and a line says what
+saving will replace. A name you have not changed follows a rename elsewhere, so
+that saving the readings and translations keeps that name. On a file whose
+readings and translations cannot be read when Quick edit opens, their fields
+stay closed, and the name can still change.
 
 ## Export a note to PDF
 
