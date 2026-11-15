@@ -239,6 +239,12 @@ by folder, the top folder first, then by name, with numbers in order.
   link settings. Esc or **Cancel** keeps the old name. An empty name also keeps
   the old name. The same name rules apply as in the drawing editor.
 
+**Unreleased:** a row's buttons are **Uses (2)**, which lists the notes that use
+the symbol as the count does, and **Quick edit**, which takes the place of
+**Rename** and the button with the translation icon, as
+[Quick edit](#quick-edit) describes. Rows also have space between them, so that
+a line of readings and translations reads as part of the row above it.
+
 A row keeps its picture, name, and buttons on one line in the default sidebar. A
 long name wraps onto a second line and then shortens, and a long folder
 shortens, rather than running off the sidebar. Hold the pointer over the symbol
@@ -302,6 +308,38 @@ the symbol file also list the notes that link to it.
 
 Keep the library in a sidebar to insert into a note. If its tab is dragged into
 the main area, return it to a sidebar before inserting.
+
+### Quick edit
+
+**Unreleased.** **Quick edit** beside a symbol opens its name, readings, and
+translations together in its row, with the name selected. **Save**, Enter in the
+name, or Ctrl+Enter, or Cmd+Enter on macOS, in any field, saves what you
+changed. Esc or **Cancel** keeps everything as it was, and Save with nothing
+changed only closes the row. One row is edited at a time.
+
+One Save writes the readings and translations first, changing the file's text
+and nothing else, and then renames the symbol through Obsidian, as **Rename**
+does above, so that links follow. A name or a list that would be refused, such
+as a name another symbol in the folder has, is refused before anything is
+written, and everything you typed stays to correct.
+
+- If the readings and translations cannot be written, nothing is renamed. The
+  row says why, and keeps the name and the text you typed.
+- If the rename fails after they were written, the row says that they are saved
+  and why the name is not, and keeps the name you typed: **Save** then tries
+  only the name again. So it does if the symbol is renamed elsewhere, as by
+  sync, while they are written: it is not renamed again, and **Save** renames it
+  from the name it has then.
+- A save left with **Cancel** or Esc while the readings and translations wait to
+  be written renames nothing, even if they are still written. One left while the
+  rename waits keeps them saved, and a notice says so. A rename that Obsidian
+  has already begun can still finish, as
+  [the limits](./limits.md#a-file-written-at-the-moment-inkline-saves) say.
+
+If the symbol is renamed elsewhere while its row is open, as by sync, a name you
+have not changed follows it, so that saving the readings and translations keeps
+that name. On a file whose readings and translations cannot be read when Quick
+edit opens, their fields stay closed, and the name can still change.
 
 ## Export a note to PDF
 

@@ -29,6 +29,15 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ### Changed
 
+- In the library, **Quick edit** takes the place of **Rename** and the button
+  with the translation icon. It opens a symbol's name, readings, and
+  translations together in its row, and one **Save** writes the readings and
+  translations and then renames the symbol, with links following as before. A
+  name that would be refused is refused before anything is written. If one part
+  fails, the row says which, keeps everything you typed, and **Save** tries
+  again what is left. The count of notes that use a symbol is now the **Uses
+  (2)** button, which lists them as before
+  ([#263](https://github.com/viell-dev/slop-inkline/issues/263)).
 - Inkline's description in Obsidian's list of plugins now says what it is for:
   "Draw symbols that no font has, then write with them inline in your notes like
   characters. Each one is saved as a plain PNG image." The README, the guide's
@@ -47,9 +56,8 @@ even one a public release; earlier pre-releases carry a suffix such as
   size and colour of the text around it by default, since the settings can
   change both. The guide's home page and the listing no longer list what Inkline
   is not, and Known limits no longer says what Inkline "does not do yet", or
-  heads its general limits "Not there yet".
-
-The changes in this section change only text, not how Inkline works.
+  heads its general limits "Not there yet". These four changes, from Inkline's
+  description to this one, change only text, not how Inkline works.
 
 ### Fixed
 
@@ -60,15 +68,24 @@ The changes in this section change only text, not how Inkline works.
   the letters beside it in Obsidian's default 16-pixel text, so that two copies
   of one symbol in a line could differ; now it stands exactly on their baseline
   there. At some other text sizes, Symbol sizes, and zoom levels it can still
-  stand up to about a pixel off, as the text and the symbols are each drawn on
-  whole pixels of the screen, with the symbols of a line within half a pixel of
-  each other at 100% zoom and within a pixel at other zoom levels. Symbols shown
-  in their stored colour were not affected.
+  stand off the letters, as the text and the symbols are each drawn on whole
+  pixels of the screen: up to about a pixel at 100% zoom, and at other zoom
+  levels up to 1.75 pixels in Obsidian 1.13.4 and 1.00 in 1.15.1. The symbols of
+  a line stand within half a pixel of each other at 100% zoom, and within a
+  pixel at other zoom levels. Symbols shown in their stored colour were not
+  affected.
 - A symbol with a size written into its embed, such as `![[wide.ink.png|1000]]`,
   that is wider than the space it is shown in stays on the baseline when
   Obsidian shrinks it to fit, in notes, tables, hover previews and exported PDFs
   ([#245](https://github.com/viell-dev/slop-inkline/issues/245)). Before, it sat
   a few pixels below it: 7.5 pixels in a hover preview.
+- The library's rows have space between them, so that the line of readings and
+  translations under a row no longer reads as part of the row below it
+  ([#262](https://github.com/viell-dev/slop-inkline/issues/262)).
+- Resting the pointer over empty space in the library's list, or over a row's
+  readings and translations, no longer shows a "Symbols" tooltip at the bottom
+  of the list. Screen readers still hear the list's name
+  ([#262](https://github.com/viell-dev/slop-inkline/issues/262)).
 - In a right-to-left interface, as Obsidian's in Hebrew, a symbol's picture in
   the insert trigger's list, Insert existing symbol, Copy from, and the library
   starts at the right of its column, as the mirrored row has it, rather than at
