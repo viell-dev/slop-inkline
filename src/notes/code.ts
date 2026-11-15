@@ -59,13 +59,28 @@
 //   they hold such a `|` and start like its first line.
 //
 // src/notes/inline.ts reads a paragraph's text for code spans as Obsidian
-// does. These functions do not follow a few rare rules of Obsidian's: a
-// definition whose label or title runs on to another line, or whose address
-// comes after a blank line; an HTML block's first line over an underline,
-// which is a heading; a footnote's text, which Obsidian reads as blocks; a
-// line indented less than an item's text, read after a line of the item it
-// would change; and the extra column Obsidian takes from the text of an item
-// numbered 1 to 9 when its marker is an odd number of columns wide.
+// does.
+//
+// Where these functions cannot be sure, they count a place as code, so that
+// nothing is inserted there in code:
+//
+// - Every line of an HTML block. Obsidian passes the block to the browser, so
+//   where it shows code, as in `<pre><code>`, cannot be told from its lines,
+//   and an embed in it shows as text anyway.
+// - A paragraph's text that would take too long to read, as inline.ts says.
+// - A line that a later line of its item would make indented code: Obsidian
+//   takes fewer columns from all of an item's lines when one of them is
+//   indented less than the item's text, which these functions read only
+//   after the lines before it.
+// - A paragraph whose first lines Obsidian may read as a definition, whose
+//   label or title runs on to another line: the place is code where either
+//   reading finds it.
+//
+// They do not follow a few rare rules of Obsidian's: a definition whose
+// address comes after a blank line; a footnote's text, which Obsidian reads
+// as blocks; and the extra column Obsidian takes from the text of an item
+// numbered 1 to 9 when its marker is an odd number of columns wide, where
+// they withhold nothing that Obsidian shows as text.
 
 import { closeTag, insideInlineCode, openTag } from "./inline.ts";
 
@@ -123,8 +138,11 @@ type Leaf =
  * - `title`, a callout's title line, whose title is read as a note of one
  *   line, as {@link calloutTitle} gives it;
  * - `underline`, a line that makes the paragraph line before it a heading;
+ * - `html`, a line of an HTML block, which the browser reads, so that where
+ *   it shows code cannot be told from its lines, and an embed in it shows as
+ *   text;
  * - `none`, a line with no text to read: a blank line, a thematic break, or
- *   a line of HTML, a comment, math, or a definition's title.
+ *   a line of a comment, math, or a definition's title.
  */
 type LineKind =
   | "code"
@@ -134,6 +152,7 @@ type LineKind =
   | "line"
   | "title"
   | "underline"
+  | "html"
   | "none";
 
 const none: Leaf = { kind: "none" };
@@ -159,6 +178,14 @@ const definitionAddress = new RegExp(
 );
 /** A definition's title on the line after it. */
 const definitionTitle = new RegExp(String.raw`^[ \t]*${title}[ \t]*$`);
+/**
+ * A definition over a paragraph's first lines: a label, an address, and a
+ * title, any of which can go on to a later line. A title that opens without
+ * closing makes it no definition.
+ */
+const definitionOverLines = new RegExp(
+  String.raw`^[ \t]*\[(?!\^)(?:\\[\s\S]|[^\]\\])+\]:[ \t\n]*(?:<[^>[\]]+>|[^\s[\]<][^\s[\]]*)(?:[ \t\n]+(?:"[^"]*"|'[^']*'|\([^)]*\))|(?![ \t\n]+["'(]))[ \t]*\n`,
+);
 
 /** The tags of CommonMark's sixth kind of HTML block. */
 const blockTags =
@@ -578,6 +605,16 @@ class Blocks {
 
   /** The index of the line being read. */
   #index = 0;
+  /** The last item the line being read holds by its indentation, or -1. */
+  #viaItem = -1;
+  /**
+   * The item whose text the line being read starts a block in, where fewer
+   * columns taken would make it indented code; or -1.
+   */
+  #lowerable = -1;
+  /** That item for the last line read, or for its paragraph's first line. */
+  #pending = -1;
+  #paragraphPending = -1;
   /** Whether a line follows the one being read. */
   readonly #more = (): boolean => this.has(this.#index + 1);
 
@@ -619,6 +656,53 @@ class Blocks {
 
   /** What line `index`, the next line of the note, is. */
   read(index: number): LineKind {
+    this.#viaItem = -1;
+    this.#lowerable = -1;
+    const kind = this.#readLine(index);
+    if (kind === "paragraph" || kind === "line")
+      this.#pending = this.#lowerable;
+    else if (kind === "continued") this.#pending = this.#paragraphPending;
+    else this.#pending = -1;
+    if (kind === "paragraph") this.#paragraphPending = this.#pending;
+    return kind;
+  }
+
+  /**
+   * Whether the text of line `line`, the last one read, may be indented code
+   * after all: when the item that holds it has a later line indented less
+   * than its text, which takes fewer columns from all of its lines.
+   */
+  mayBeCode(line: number): boolean {
+    const depth = this.#pending;
+    const item = this.#containers[depth];
+    if (item?.kind !== "item") return false;
+    let blank = false;
+    for (let index = line + 1; ; index++) {
+      const text = this.#lookAhead(index, depth);
+      if (text === undefined) return false;
+      const lead = skipBlank(text, 0);
+      if (isWhite(text, lead)) {
+        blank = true;
+        continue;
+      }
+      const columns = columnsOf(text, 0, lead);
+      if (columns < item.indent) {
+        if (itemStart(text, 0) !== undefined) return false;
+        const reach = columns + markerWidth(text, lead);
+        if (
+          reach < item.indent &&
+          reach <= 4 &&
+          (blank || endsItem(text, 0, () => true))
+        ) {
+          return false;
+        }
+        if (columns > 0 && columns < item.dedent) return true;
+      }
+      blank = false;
+    }
+  }
+
+  #readLine(index: number): LineKind {
     const text = withoutReturn(this.#line(index) ?? "");
     this.text = text;
     this.#index = index;
@@ -629,6 +713,8 @@ class Blocks {
     // The containers up to the last whose marker the line holds.
     let marked = 0;
     let ends = containers.length;
+    // The last item the line holds by its indentation.
+    let lastT = -1;
     for (let depth = 0; depth < containers.length; depth++) {
       const container = containers[depth];
       if (container === undefined) break;
@@ -651,6 +737,7 @@ class Blocks {
       }
       if (reaches(text, at, container.indent)) {
         at = strip(text, at, container.dedent);
+        lastT = depth;
         continue;
       }
       const lead = skipBlank(text, at);
@@ -703,6 +790,7 @@ class Blocks {
     }
     this.#blankFrom = isWhite(text, at) ? marked : undefined;
     this.start = at;
+    this.#viaItem = lastT;
     if (ends < containers.length) {
       containers.length = ends;
       this.#leaf = none;
@@ -729,12 +817,14 @@ class Blocks {
         if (closesFence(text, at, leaf)) this.#leaf = none;
         return "code";
       case "html":
-        if (
-          leaf.end === undefined ? at === text.length : leaf.end(text.slice(at))
-        ) {
+        if (leaf.end === undefined) {
+          // The empty line that ends it is not its own.
+          if (at !== text.length) return "html";
           this.#leaf = none;
+          return "none";
         }
-        return "none";
+        if (leaf.end(text.slice(at))) this.#leaf = none;
+        return "html";
       case "math":
         if (closesMath(text, at, leaf.length)) this.#leaf = none;
         return "none";
@@ -820,6 +910,16 @@ class Blocks {
     more: () => boolean,
   ): LineKind {
     const containers = this.#containers;
+    // A block that starts in an item the line holds by its indentation, with
+    // too few columns left to be code but enough if its item took fewer.
+    const item = containers.at(-1);
+    if (this.#viaItem === containers.length - 1 && item?.kind === "item") {
+      const lead = skipBlank(text, from);
+      const columns = columnsOf(text, from, lead);
+      if (lead < text.length && columns < 4 && columns + item.dedent - 1 >= 4) {
+        this.#lowerable = containers.length - 1;
+      }
+    }
     let at = from;
     let depth = marked;
     // Whether the last block the line starts is a quote, which may be a
@@ -901,7 +1001,7 @@ class Blocks {
       // Some kinds end on the line that holds their end, the first too.
       const ended = html.end?.(text.slice(at)) === true;
       this.#leaf = ended ? none : { kind: "html", end: html.end };
-      return "none";
+      return "html";
     }
     const label = mark === "[" ? definition.exec(text.slice(at)) : null;
     if (label !== null) {
@@ -999,7 +1099,9 @@ export function insideCode(lineAt: LineAt, line: number, ch: number): boolean {
     if (kind === "paragraph") paragraph = [text];
     else if (kind === "continued") paragraph.push(text);
   }
-  if (kind === "code") return true;
+  // An HTML block's code cannot be told from its lines, and an embed shows
+  // as text in it: the list lists nothing there.
+  if (kind === "code" || kind === "html") return true;
   if (kind === "none" || kind === "underline") return false;
   if (kind === "title") {
     const title = calloutTitle(blocks.text);
@@ -1007,6 +1109,9 @@ export function insideCode(lineAt: LineAt, line: number, ch: number): boolean {
   }
   // Markers, or a comment the line's text follows.
   if (ch < blocks.start) return false;
+  // A line that a later line of its item would make indented code, read
+  // before that line is: code, as nothing can be told for certain.
+  if (blocks.mayBeCode(line)) return true;
   const text = blocks.content;
   const at = ch - blocks.start;
   if (kind === "line") return insideInlineCode(text, at) === true;
@@ -1021,7 +1126,14 @@ export function insideCode(lineAt: LineAt, line: number, ch: number): boolean {
   }
   let joined = paragraph.join("\n");
   const position = joined.length - text.length + at;
-  const found = insideInlineCode(joined, position, after !== "continued");
+  // A definition over the paragraph's first lines may end before `ch`,
+  // which then starts a paragraph of its own. Where either reading finds
+  // code, the place counts as code.
+  const definitionEnd = paragraph.length > 1 ? definitionLines(joined) : -1;
+  const found =
+    definitionEnd === -1 || definitionEnd > position
+      ? insideInlineCode(joined, position, after !== "continued")
+      : undefined;
   if (found !== undefined) return found;
   // What started before `ch` may end in the rest of the paragraph.
   while (after === "continued") {
@@ -1029,7 +1141,23 @@ export function insideCode(lineAt: LineAt, line: number, ch: number): boolean {
     index++;
     after = blocks.has(index) ? blocks.read(index) : "none";
   }
-  return insideInlineCode(joined, position) === true;
+  if (insideInlineCode(joined, position) === true) return true;
+  return (
+    definitionEnd !== -1 &&
+    definitionEnd <= position &&
+    insideInlineCode(joined.slice(definitionEnd), position - definitionEnd) ===
+      true
+  );
+}
+
+/**
+ * Where a link reference definition that starts `text`, a paragraph's lines,
+ * and runs over more than its first line, ends, after its last line's break;
+ * or -1 for none.
+ */
+function definitionLines(text: string): number {
+  const found = definitionOverLines.exec(text);
+  return found === null ? -1 : found[0].length;
 }
 
 /** Whether column `ch` of a table's row `row` is in a code span in its cell. */

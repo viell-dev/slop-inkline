@@ -220,6 +220,13 @@ const contexts: [string, string, boolean][] = [
   ],
   // An empty item takes in the line after it.
   ["Empty item", "-\n ~~~\n- HERE\n", true],
+  // An HTML block lists nothing, as its code cannot be told from its text;
+  // the text after it lists, and so does ordinary inline HTML.
+  ["HTML code", "<pre><code>`HERE`</code></pre>\n", false],
+  ["After HTML", "<div>\nsample\n</div>\n\nHERE\n", true],
+  ["Inline HTML", "Some <b>bold</b> HERE text.\n", true],
+  // A `<code>` tag in a paragraph makes code to its `</code>`.
+  ["Code tag", "Some <code>inline HERE</code> text.\n", false],
 ];
 
 /**

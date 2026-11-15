@@ -16,12 +16,15 @@ export interface CodeCase {
   readonly limit?: string;
 }
 
+/** Why the check lists nothing in an HTML block, where Obsidian shows text. */
+const htmlWithheld =
+  "the check lists nothing in an HTML block, where code cannot be told from text by its lines and an embed shows as text";
+/** Why the check lists nothing in text that would take too long to read. */
+const tooLong =
+  "the check lists nothing in a paragraph that would take too long to read with certainty, as of a thousand brackets that nothing closes";
 /** Why the check reads an item numbered 1 to 9 as indented more. */
 const itemOne =
   "Obsidian takes a column more from the text of an item numbered 1 to 9 when its marker is an odd number of columns wide; the check does not";
-/** Why the check reads an item's line as indented more than Obsidian does. */
-const itemAfter =
-  "Obsidian takes fewer columns from all of an item's lines when one is indented less than its text; the check, only from the lines after that one";
 /** Why the check reads a definition as a paragraph. */
 const definitionLines =
   "Obsidian reads a definition whose label or title runs on to another line, or whose address comes after a blank line; the check does not";
@@ -243,6 +246,7 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
   "a quote's fence, then HTML": {
     note: "> ```\n> a\n<div>\nHERE",
     code: false,
+    limit: htmlWithheld,
   },
   "a nested quote's fence, then the outer quote": {
     note: "> > ```\n> > a\n> HERE",
@@ -984,6 +988,7 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
   "a span into an HTML block": {
     note: "`first\n<div>\nHERE`",
     code: false,
+    limit: htmlWithheld,
   },
   // A quote's lines without their `>`.
   "a lazy line after a quote's heading": {
@@ -1232,7 +1237,11 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
     note: "> # h\n1. `a\n> HERE`",
     code: false,
   },
-  "HTML after a quote's heading": { note: "> # h\n<div>\n> HERE", code: false },
+  "HTML after a quote's heading": {
+    note: "> # h\n<div>\n> HERE",
+    code: false,
+    limit: htmlWithheld,
+  },
   "a fence after a quote's heading": { note: "> # h\n```\n> HERE", code: true },
   "a lazy line after a quote's heading, then a nested quote": {
     note: "> # h\n`a\n> > HERE`",
@@ -1336,7 +1345,11 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
     note: "- # h\n    `a\n  HERE`",
     code: true,
   },
-  "HTML after an item's heading": { note: "- # h\n<div>\n  HERE", code: false },
+  "HTML after an item's heading": {
+    note: "- # h\n<div>\n  HERE",
+    code: false,
+    limit: htmlWithheld,
+  },
   "a lazy line after an empty item": { note: "-\n`a\n  HERE`", code: true },
   "a lazy line and indented text after an empty item": {
     note: "-\na\n\n    HERE",
@@ -1525,7 +1538,11 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
     note: "* a \t$$ x\n    %% `x %%\nHERE`",
     code: false,
   },
-  "HTML after a task's marker": { note: "2. [a] </pre>g`HERE`", code: false },
+  "HTML after a task's marker": {
+    note: "2. [a] </pre>g`HERE`",
+    code: false,
+    limit: htmlWithheld,
+  },
   // What Obsidian reads before a code span.
   "a backtick in a wiki link, then text": {
     note: "[[a`b]] HERE`",
@@ -1773,7 +1790,11 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
     code: true,
   },
   // HTML blocks.
-  "a span in an HTML block": { note: "<div>\n`a\nHERE`", code: false },
+  "a span in an HTML block": {
+    note: "<div>\n`a\nHERE`",
+    code: false,
+    limit: htmlWithheld,
+  },
   "a span after an HTML block and a blank line": {
     note: "<div>\n\n`a\nHERE`",
     code: true,
@@ -1781,49 +1802,107 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
   "an HTML block over a line of spaces": {
     note: "<div>\n   \n`a\nHERE`",
     code: false,
+    limit: htmlWithheld,
   },
   "an HTML block over a line with a tab": {
     note: "<div>\n\t\n`a\nHERE`",
     code: false,
+    limit: htmlWithheld,
   },
-  "an HTML block of a tag alone": { note: "<span>\n`a\nHERE`", code: false },
+  "an HTML block of a tag alone": {
+    note: "<span>\n`a\nHERE`",
+    code: false,
+    limit: htmlWithheld,
+  },
   "a tag and text": { note: "<span> x\n`a\nHERE`", code: true },
   "a tag alone under a paragraph": { note: "a\n<span>\n`b\nHERE`", code: true },
   "a span after an HTML comment": { note: "<!--\n`a\n-->\nHERE`", code: false },
-  "a span in a <pre> block": { note: "<pre>\n`a\nHERE`", code: false },
+  "a span in a <pre> block": {
+    note: "<pre>\n`a\nHERE`",
+    code: false,
+    limit: htmlWithheld,
+  },
   "a span after a <pre> block": {
     note: "<pre>\n`a\n</pre>\n`HERE`",
     code: true,
   },
-  "a fence in an HTML block": { note: "<div>\n```\nHERE", code: false },
-  "an HTML block indented 2": { note: "  <div>\n`a\nHERE`", code: false },
+  "a fence in an HTML block": {
+    note: "<div>\n```\nHERE",
+    code: false,
+    limit: htmlWithheld,
+  },
+  "an HTML block indented 2": {
+    note: "  <div>\n`a\nHERE`",
+    code: false,
+    limit: htmlWithheld,
+  },
   "an HTML block indented 4": { note: "    <div>\n`a\nHERE`", code: true },
-  "an HTML block in a quote": { note: "> <div>\n> `a\n> HERE`", code: false },
-  "a closing tag's HTML block": { note: "</div>\n`a\nHERE`", code: false },
-  "an HTML block in capitals": { note: "<DIV>\n`a\nHERE`", code: false },
-  "a span on an HTML block's line": { note: "<div>`a\nHERE`", code: false },
+  "an HTML block in a quote": {
+    note: "> <div>\n> `a\n> HERE`",
+    code: false,
+    limit: htmlWithheld,
+  },
+  "a closing tag's HTML block": {
+    note: "</div>\n`a\nHERE`",
+    code: false,
+    limit: htmlWithheld,
+  },
+  "an HTML block in capitals": {
+    note: "<DIV>\n`a\nHERE`",
+    code: false,
+    limit: htmlWithheld,
+  },
+  "a span on an HTML block's line": {
+    note: "<div>`a\nHERE`",
+    code: false,
+    limit: htmlWithheld,
+  },
   "a span after a space on an HTML block's line": {
     note: "<div> `a\nHERE`",
     code: false,
+    limit: htmlWithheld,
   },
-  "an HTML block of an unknown tag": { note: "<divx>\n`a\nHERE`", code: false },
+  "an HTML block of an unknown tag": {
+    note: "<divx>\n`a\nHERE`",
+    code: false,
+    limit: htmlWithheld,
+  },
   "a style block, then text": {
     note: "<style>\n`b\nHERE`\n</style>\nHERE",
     code: false,
+    limit: htmlWithheld,
   },
-  "an HTML block in an item": { note: "- <div>\n  `a\n  HERE`", code: false },
+  "an HTML block in an item": {
+    note: "- <div>\n  `a\n  HERE`",
+    code: false,
+    limit: htmlWithheld,
+  },
   "an HTML block after a quote": {
     note: "> a\n<div>\n> `b\n> HERE`",
     code: false,
+    limit: htmlWithheld,
   },
   "an HTML block under an item": {
     note: "- a\n<div>\n`b\n  HERE`",
     code: false,
+    limit: htmlWithheld,
   },
-  "a quote in an HTML block": { note: "<div>\n> `a\n> HERE`", code: false },
+  "a quote in an HTML block": {
+    note: "<div>\n> `a\n> HERE`",
+    code: false,
+    limit: htmlWithheld,
+  },
   "a tag alone in a span": { note: "`a\n<span>\nHERE`", code: true },
-  "an HTML block of a link": { note: '<a href="x">\n`b\nHERE`', code: false },
-  "a heading in an HTML block": { note: "<div>\n# `a\n`HERE`", code: false },
+  "an HTML block of a link": {
+    note: '<a href="x">\n`b\nHERE`',
+    code: false,
+    limit: htmlWithheld,
+  },
+  "a heading in an HTML block": {
+    note: "<div>\n# `a\n`HERE`",
+    code: false,
+    limit: htmlWithheld,
+  },
   "a span after a table's HTML block": {
     note: "<table>\n\n`a\nHERE`",
     code: true,
@@ -1878,7 +1957,11 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
     note: "x\n`a\n===\nb` HERE`",
     code: false,
   },
-  "a heading by = under a tag": { note: "<div>\n===\nHERE", code: false },
+  "a heading by = under a tag": {
+    note: "<div>\n===\nHERE",
+    code: false,
+    limit: htmlWithheld,
+  },
   "a quote's heading by =": { note: "> a\n===\nb `HERE`", code: true },
   "a table, then a line without |": {
     note: "| a |\n| - |\n| b |\n`c\nHERE`",
@@ -1925,7 +2008,7 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
     note: "| a |\n| - |\n\t| `b | HERE` |",
     code: true,
   },
-  // Where the check differs from Obsidian, knowingly.
+  // Items numbered 1 to 9, and what lines further on change.
   "three spaces and a tab in a numbered item": {
     note: "1. a\n\n   \tHERE",
     code: false,
@@ -1954,17 +2037,14 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
   "a line indented less after indented code in an item": {
     note: "- a\n\n     HERE\n b",
     code: true,
-    limit: itemAfter,
   },
   "a definition's title over two lines": {
     note: '[x]: y "`a\nb"\n`HERE`',
     code: true,
-    limit: definitionLines,
   },
   "a definition's label over two lines": {
     note: "[x\ny]: `a\n`HERE`",
     code: true,
-    limit: definitionLines,
   },
   "a definition's label over two lines, then text": {
     note: "[x\n[^1]: `\nb HERE`",
@@ -1975,5 +2055,147 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
     note: "[x]:\n\n`a\nHERE`",
     code: false,
     limit: definitionLines,
+  },
+  // Code in HTML, which the check lists nothing in, as in any HTML block.
+  "a span in HTML's code": {
+    note: "<pre><code>`HERE`</code></pre>",
+    code: true,
+  },
+  "a span in HTML's code under a heading": {
+    note: "# h\n<pre><code>`HERE`</code></pre>",
+    code: true,
+  },
+  "a span in HTML's code in a quote": {
+    note: "> <pre><code>`HERE`</code></pre>",
+    code: true,
+  },
+  "a span in HTML's code in a callout": {
+    note: "> [!note]\n> <pre><code>`HERE`</code></pre>",
+    code: true,
+  },
+  "a span in HTML's code in an item": {
+    note: "- <pre><code>`HERE`</code></pre>",
+    code: true,
+  },
+  "a span in HTML's code in a numbered item": {
+    note: "1. <pre><code>`HERE`</code></pre>",
+    code: true,
+  },
+  "a span in HTML's code in a task": {
+    note: "- [ ] <pre><code>`HERE`</code></pre>",
+    code: true,
+  },
+  "HTML's code without backticks": {
+    note: "<pre><code>HERE</code></pre>",
+    code: true,
+  },
+  "HTML's code over lines": {
+    note: "<pre><code>\na\nHERE\n</code></pre>",
+    code: true,
+  },
+  "text in an HTML block": {
+    note: "<div>\nsample HERE\n</div>",
+    code: false,
+    limit: htmlWithheld,
+  },
+  "text after an HTML block": {
+    note: "<div>\nsample\n</div>\n\nHERE",
+    code: false,
+  },
+  // A `<code>` tag in a paragraph makes code to its `</code>`.
+  "text in a <code> tag": {
+    note: "Some <code>inline HERE</code> text.",
+    code: true,
+  },
+  "text after a <code> tag": {
+    note: "Some <code>inline</code> HERE text.",
+    code: false,
+  },
+  "text in a <code> tag with an attribute": {
+    note: 'Some <code class="x">HERE</code>.',
+    code: true,
+  },
+  "text in a <code> tag over lines": {
+    note: "Some <code>inline\nHERE</code> text.",
+    code: true,
+  },
+  "text in a <code> tag that does not close": {
+    note: "Some <code>inline HERE text.",
+    code: true,
+  },
+  "strong text in a <code> tag": {
+    note: "Some <code>a **HERE** b</code>.",
+    code: true,
+  },
+  "a <code> tag in strong text": {
+    note: "Some **<code>HERE</code>** text.",
+    code: true,
+  },
+  "a <code> tag in strong text, then text": {
+    note: "Some **a <code>b** HERE</code> c.",
+    code: true,
+  },
+  "text in a <kbd> tag": { note: "Some <kbd>HERE</kbd> text.", code: false },
+  "text in a <b> tag": { note: "Some <b>bold</b> HERE text.", code: false },
+  "a <code> tag in a cell": {
+    note: "| a | b |\n| - | - |\n| <code>HERE</code> | c |",
+    code: true,
+  },
+  "a <code> tag in a heading": { note: "# A <code>HERE</code>", code: true },
+  // Inline HTML of any length.
+  "a backtick in a long attribute": {
+    note: 'Text <span title="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`">value</span> and `HERE`.',
+    code: true,
+  },
+  "a backtick after a long attribute": {
+    note: 'Text <span title="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa">value</span> and `HERE`.',
+    code: true,
+  },
+  "a long attribute that does not close": {
+    note: 'Text <span title="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa` and `HERE`.',
+    code: false,
+  },
+  // Text too long to read in time, which the check lists nothing in.
+  "a span after a thousand brackets and a wiki link": {
+    note: "[a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a See [[odd`name]] and `HERE`.",
+    code: true,
+  },
+  "text after a thousand brackets": {
+    note: "[a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a [a See HERE.",
+    code: false,
+    limit: tooLong,
+  },
+  // Definitions over lines, and an item's later lines.
+  "a definition's title over two lines, then text": {
+    note: '[x]: y "a\nb"\nHERE',
+    code: false,
+  },
+  "a definition's title that opens, then text": {
+    note: "[x]: y\n'a\nHERE",
+    code: false,
+  },
+  "a line indented less after text in an item": {
+    note: "- a\n\n     HERE\n  b",
+    code: false,
+  },
+  "a line indented less after two blank lines in an item": {
+    note: "- a\n\n     HERE\n\n b",
+    code: false,
+  },
+  "a line indented less after an item's paragraph": {
+    note: "- a\n\n     b\n     HERE\n b",
+    code: true,
+  },
+  "a line indented less after a heading in an item": {
+    note: "- a\n\n     # HERE\n b",
+    code: true,
+  },
+  "a line indented less in a numbered item": {
+    note: "1. a\n\n      HERE\n  b",
+    code: true,
+  },
+  "a later item after indented text": {
+    note: "- a\n\n     HERE\n- b",
+    code: false,
   },
 };
