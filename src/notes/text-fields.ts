@@ -152,7 +152,7 @@ class ContentFit {
     for (let at: Element | null = area; at !== null; at = at.parentElement) {
       if (at.scrollTop > 0) scrolled.push([at, at.scrollTop]);
     }
-    area.style.height = "";
+    area.style.removeProperty("height");
     area.addClass("inkline-text-measure");
     const style = area.win.getComputedStyle(area);
     const height = fittedHeight({
