@@ -33,6 +33,24 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 These change only text: nothing about how Inkline works has changed.
 
+### Fixed
+
+- A symbol stands on the baseline of the text beside it wherever it falls in the
+  line, and the symbols of a line line up with each other
+  ([#261](https://github.com/viell-dev/slop-inkline/issues/261)). Before, by
+  where it fell, a symbol's ink could sit three quarters of a pixel higher than
+  the letters beside it in Obsidian's default 16-pixel text, so that two copies
+  of one symbol in a line could differ; now it stands exactly on their baseline
+  there. At some other text and Symbol sizes it can still stand up to about a
+  pixel off, the same for every symbol of the line to within half a pixel, as
+  the text and the symbols are each drawn on whole pixels of the screen. Symbols
+  shown in their stored colour were not affected.
+- A symbol with a size written into its embed, such as `![[wide.ink.png|1000]]`,
+  that is wider than the space it is shown in stays on the baseline when
+  Obsidian shrinks it to fit, in notes, tables, hover previews and exported PDFs
+  ([#245](https://github.com/viell-dev/slop-inkline/issues/245)). Before, it sat
+  a few pixels below it: 7.5 pixels in a hover preview.
+
 ## 0.9.3 - 2026-11-12
 
 This is the second release candidate of 1.0.0: a build meant to become 1.0.0

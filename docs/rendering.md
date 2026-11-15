@@ -35,19 +35,25 @@ text and explicit image sizes stay unchanged.
 - The custom property `--inkline-mask`, a CSS `url()` of the image's own
   address, which masks its background, so that its ink shows in the text's
   colour.
+- **Unreleased:** once the image has loaded, the custom property
+  `--inkline-ratio`, its own width over its height, from which its mask is
+  sized.
 - For an image with a size of its own, as `![[x.ink.png|24]]` gives, the custom
   property `--inkline-drop`, how far below the baseline its bottom lies. Without
   it the drop is `-0.375em` times the configured scale, for an image 1.5 em tall
-  at the default 100%.
+  at the default 100%. **Unreleased:** for a size of only a width, as `|1000`
+  gives, also `--inkline-width`, that width in pixels, from which a narrower
+  space lessens the drop, as below.
 - In Live Preview, where the image is a block inside the editor's embed, that
   embed gets the class `inkline-symbol-embed`, and takes the drop in place of
-  the image. The resize handle Obsidian puts on an image embed there is hidden,
-  as it is larger than a symbol at text size, and so are the buttons it shows on
-  an image 80 pixels or wider, Zoom in and Edit this block. What Obsidian does
-  with a selected image stays: a second click opens its image viewer, where
-  Obsidian has one, as it does since 1.13.2, and `+`, `-`, and `0` resize it. A
-  drag that starts on a symbol is Obsidian's drag of an image, which puts a copy
-  of its embed where it ends.
+  the image, and, **Unreleased**, the properties above with it. The resize
+  handle Obsidian puts on an image embed there is hidden, as it is larger than a
+  symbol at text size, and so are the buttons it shows on an image 80 pixels or
+  wider, Zoom in and Edit this block. What Obsidian does with a selected image
+  stays: a second click opens its image viewer, where Obsidian has one, as it
+  does since 1.13.2, and `+`, `-`, and `0` resize it. A drag that starts on a
+  symbol is Obsidian's drag of an image, which puts a copy of its embed where it
+  ends.
 - The attribute `aria-label` with a name, which screen readers read as the
   image's name and Obsidian shows as a tooltip, above the image, once the
   pointer is on it: the text the embed's author wrote for the image, as a wiki
@@ -83,6 +89,46 @@ its own gets the same: the ink whole and in its own shape, at the left of the
 box and three quarters of the way down, rather than stretched to fill it. A
 symbol that fits is drawn as before to within a pixel: exactly where its box
 lands on whole pixels, and elsewhere with its ink up to half a pixel off.
+
+**Unreleased:** the mask is sized from its box's width rather than with
+`contain`: `min(100%, …)` of it, where the second value is the symbol's width at
+the line's height, `1.5em` times the scale times `--inkline-ratio`, and as tall
+as that width gives. Chromium works out a percentage of the box from its exact
+width, but `contain` from its size rounded to whole pixels, and then rounds it
+again, so where a symbol fell in the line moved its ink. In 16-pixel text, a box
+10.5 pixels wide drawn 10 wide drew its ink 0.75 pixels higher than one drawn 11
+wide, and in 17-pixel text the symbols of a line were up to 0.69 pixels apart.
+Now the ink of a symbol that fits is drawn at its box's own size wherever the
+box falls, and in a box wider than the symbol at the line's height, as a
+snippet's, whole at that height and at the left. In 16-pixel text, at the
+default 100% and at 150%, and in 16-pixel text zoomed to 200%, its baseline is
+on the baseline of the letters beside it, which Obsidian draws on whole pixels
+too. At other sizes the letters' baseline and the box's top each land on a whole
+pixel, and the ink's baseline lies three quarters of the way down the box, so it
+stands within about a pixel of the letters' baseline, and the symbols of a line
+within half a pixel of each other. Until the image has loaded, the box's width
+alone sizes the mask.
+
+**Unreleased:** an explicit size of only a width that is wider than the symbol's
+space, as `|1000` in a hover preview, also keeps the symbol's baseline on the
+text's. Obsidian shrinks such an image evenly to its space, with
+`max-width: 100%`, its height following, while its drop is worked out for the
+height the size asks for. A bottom margin takes back a quarter of the height
+that shrinking took away:
+`calc(max(0px, var(--inkline-width) - 100%) / var(--inkline-ratio) / 4)`. Its
+percentage is of the same width as Obsidian's `max-width`, the space's, so the
+drop follows the height shown wherever the symbol is laid out. That includes PDF
+export, which lays the note out again at the page's width: `|1000` of a symbol
+that the export window showed 921 pixels wide printed about 650 wide, so a drop
+worked out by script from the window's layout would be wrong on the page. In
+Live Preview the embed takes the margin, and is an inline block that clips what
+overflows it, around a block holding the image, so that it lines up by its
+bottom margin edge, rather than Obsidian's inline flex box, which lines up by
+its image's bottom whatever its margin. The line keeps room below its baseline
+for the drop the size asks for, a quarter of that height: the margin raises the
+image within the room the drop makes rather than shortening the line. In 0.9.3
+such a symbol sat below the baseline by the difference: about 3.6 pixels with a
+700-pixel line, and 7.5 in a hover preview, for a symbol 4,000 × 192 at `|1000`.
 
 With text colour on, Inkline's styles paint the ink with
 `background-color: currentColor`. To colour symbols differently from the text

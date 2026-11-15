@@ -118,6 +118,14 @@ must keep released files readable and looking the same, as
   cards, and popout windows; symbol files on their own and images from outside
   the vault stay pictures; and with Inkline disabled, symbols are plain images
   (the same file).
+- **Unreleased:** symbols saved as Inkline saves them, ending on the baseline,
+  at 44 places across eleven lines of typed text, stand on the baseline of the
+  letters beside them, measured in screenshots to a fraction of a pixel: within
+  a quarter of a pixel, and of each other, in 16-pixel text at 100% and 150% and
+  zoomed to 200%; within about a pixel, and of each other within half of one, in
+  13-, 17- and 20-pixel text, at 75%, and in 17-pixel text zoomed to 200%; in
+  Reading view and Live Preview, in the text colour and its stored colour
+  ([baseline.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/baseline.e2e.ts)).
 - Native PDF export, through Obsidian's real command and PDF writer: the output
   is rasterized independently with Poppler, and its pixels prove the symbol's
   size, baseline, text colour or stored grey, configured scale, and explicit
@@ -132,7 +140,10 @@ must keep released files readable and looking the same, as
   colour and its stored colour, measured from screenshots
   ([wide.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/wide.e2e.ts)),
   and in a native PDF, in a heading where it is wider than the page, measured in
-  the rasterized page (pdf.e2e.ts).
+  the rasterized page (pdf.e2e.ts). **Unreleased:** so does the same symbol with
+  an explicit size of 1,000 pixels across, wider than each of those places, in
+  each of them and in a native PDF, where its ink ends on the baseline of a
+  numbered list's number beside it.
 - Saving refreshes existing placements in Live Preview, Reading view and
   popouts, preserving note text, explicit widths and unrelated images. Names
   with spaces, percent signs and Unicode are covered, as are repeated file
