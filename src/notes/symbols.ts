@@ -46,6 +46,7 @@ import { embedFor } from "./embeds.ts";
 import {
   changedText,
   changeFile,
+  RenameDisturbed,
   saveFile,
   stoppable,
   unreadableText,
@@ -490,7 +491,7 @@ function notesLinking(app: App, path: string): Set<string> {
  * A rename of a symbol's file, as {@link renamingOf} checked it: the file, the
  * path it had then, and the name it takes in that path's folder.
  */
-interface Renaming {
+export interface Renaming {
   readonly file: TFile;
   /** Where the file was when its new name was checked. */
   readonly from: string;
@@ -613,23 +614,6 @@ function moveWaits(app: App): MoveWaits | undefined {
       if (last() === queued && clean() && moving() !== null) unlike = true;
     },
   };
-}
-
-/**
- * A rename that something came between once Obsidian had it, so that the file
- * may not be where it was asked to go, or another file may be there, or that
- * Obsidian failed with the file at the new name all the same. Its message says
- * what happened, and where the file is now.
- */
-export class RenameDisturbed extends Error {
-  override name = "RenameDisturbed";
-  /** Whether the file has the new name now, all the same. */
-  readonly renamed: boolean;
-
-  constructor(message: string, renamed: boolean) {
-    super(message);
-    this.renamed = renamed;
-  }
 }
 
 /** What {@link watchMove} heard of a rename once Obsidian had it. */
@@ -1000,57 +984,56 @@ function usesOf(app: App, path: string): SymbolUses {
 }
 
 /**
- * Renames a symbol without writing its drawing, using the editor's name
- * rules and Obsidian's link updates. A file deleted, replaced, or renamed
- * elsewhere, before the rename, while it saves the open notes, or while it
- * waits for Obsidian, is refused. Rejects on failure, so the caller can keep
- * the requested name to retry, and with {@link RenameDisturbed} if something
- * came between once Obsidian had it, or Obsidian failed with the file renamed.
- * `wait` hears if it stops for long enough; {@link SymbolWork.stop} then stops
- * it, unless Obsidian has it, which cannot be taken back. Once `unloaded`
- * aborts, as Inkline unloads, it stops as well, as an editor's rename does,
- * and at once if it is waiting for Obsidian.
+ * The rename that `typed` asks of `file`, as the vault is now, or undefined if
+ * it keeps its name; throws with the reason it is refused: a name it cannot
+ * take or another symbol in its folder has, a file no longer in the vault, or
+ * one that Obsidian is still renaming. Renames nothing, so that the library can
+ * refuse a name before it writes anything else, and then rename the file that
+ * was checked, from the path it was checked at, with {@link renameChecked}.
  */
-export function renameSymbol(
+export function checkRename(
   app: App,
   file: TFile,
   typed: string,
+): Renaming | undefined {
+  stillSymbol(app, file);
+  const renaming = renamingOf(app, file, chosen(typed, file));
+  if (renaming !== undefined) notBeingRenamed(file);
+  return renaming;
+}
+
+/**
+ * Renames a symbol as {@link checkRename} found it, without writing its
+ * drawing, using Obsidian's link updates. A file deleted, replaced, or renamed
+ * elsewhere since it was checked, as while the library wrote its readings
+ * first, or while the rename saves the open notes or waits for Obsidian, is
+ * refused, as is a name another symbol took meanwhile. Rejects on failure, so
+ * the caller can keep the requested name to retry, and with
+ * {@link RenameDisturbed} if something came between once Obsidian had it, or
+ * Obsidian failed with the file renamed. `wait` hears if it stops for long
+ * enough; {@link SymbolWork.stop} then stops it, unless Obsidian has it, which
+ * cannot be taken back. Once `unloaded` aborts, as Inkline unloads, it stops as
+ * well, as an editor's rename does, and at once if it is waiting for Obsidian.
+ */
+export function renameChecked(
+  app: App,
+  renaming: Renaming,
   wait: RenameWait,
   unloaded: AbortSignal,
 ): SymbolWork {
   let stopped = false;
   let reached = false;
-  const work = async (): Promise<void> => {
-    stillSymbol(app, file);
-    const renaming = renamingOf(app, file, chosen(typed, file));
-    if (renaming === undefined) return;
-    await renameSaved(app, renaming, wait, unloaded, () => {
-      if (stopped) throw new Error("The rename was stopped.");
-      reached = true;
-    });
-  };
+  const done = renameSaved(app, renaming, wait, unloaded, () => {
+    if (stopped) throw new Error("The rename was stopped.");
+    reached = true;
+  });
   return {
-    done: work(),
+    done,
     stop: () => {
       stopped = true;
       return !reached;
     },
   };
-}
-
-/**
- * Whether {@link renameSymbol} would give `file` a new name from `typed`, as
- * the vault is now, or throws with the reason it would refuse it: a name it
- * cannot take or another symbol in its folder has, a file no longer in the
- * vault, or one that Obsidian is still renaming. Renames nothing, so that the
- * library can refuse a name before it writes anything else, and
- * {@link renameSymbol} checks all of it again when it runs.
- */
-export function checkRename(app: App, file: TFile, typed: string): boolean {
-  stillSymbol(app, file);
-  const renaming = renamingOf(app, file, chosen(typed, file));
-  if (renaming !== undefined) notBeingRenamed(file);
-  return renaming !== undefined;
 }
 
 /** Throws unless `file` is still the vault's symbol at its path. */

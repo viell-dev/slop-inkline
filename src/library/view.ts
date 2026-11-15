@@ -23,12 +23,7 @@ import {
 import { isInkPath } from "../format/ink-file.ts";
 import { embedFor } from "../notes/embeds.ts";
 import { showLinkMenu } from "../notes/entries.ts";
-import {
-  renameWaits,
-  savingWaits,
-  TextMoved,
-  watchSave,
-} from "../notes/file-writes.ts";
+import { watchSave } from "../notes/file-writes.ts";
 import { writeAt } from "../notes/insertion.ts";
 import { insertionAt } from "../notes/links.ts";
 import { symbolStem } from "../notes/names.ts";
@@ -36,9 +31,9 @@ import type { SymbolTexts } from "../notes/suggest.ts";
 import {
   checkRename,
   readSymbolText,
-  RenameDisturbed,
-  renameSymbol,
+  renameChecked,
   writeSymbolText,
+  type Renaming,
 } from "../notes/symbols.ts";
 import {
   isBlank,
@@ -54,6 +49,18 @@ import {
   foldersOf,
   type CatalogEntry,
 } from "./catalog.ts";
+import {
+  followName,
+  leftNotice,
+  QuickSave,
+  reasonOf,
+  reportSave,
+  waitLine,
+  type Names,
+  type Steps,
+  type Told,
+  type Work,
+} from "./quick-edit.ts";
 
 /** The library's view type, as Obsidian registers and restores it. */
 export const libraryViewType = "inkline-library";
@@ -64,14 +71,6 @@ export const libraryViewType = "inkline-library";
  * filter waiting for seconds in a vault of thousands of symbols.
  */
 const rowsAtOnce = 100;
-
-/** What a person can do about a save in the fields that has waited that long. */
-const savingLeft =
-  "If nothing changes, copy what you typed and restart Obsidian. Cancel closes this, and stops the save if it still can.";
-
-/** What a person can do about a rename that has stopped that long. */
-const renameLeft =
-  "If nothing changes, copy the name you typed and restart Obsidian. Cancel closes this, and stops the rename if it still can.";
 
 /**
  * Whether a modal is open where `element` is, or where Obsidian opens one now.
@@ -102,11 +101,6 @@ function usesLabel(count: number): string {
 /** A note's path as the library shows it, without `.md`. */
 function noteLabel(path: string): string {
   return path.toLowerCase().endsWith(".md") ? path.slice(0, -3) : path;
-}
-
-/** A failure's message, or `otherwise` for one that is not an error. */
-function reasonOf(failure: unknown, otherwise: string): string {
-  return failure instanceof Error ? failure.message : otherwise;
 }
 
 /** How many ids {@link newId} has given, so that each is new to its window. */
@@ -694,22 +688,14 @@ export class SymbolLibraryView extends ItemView {
 
   /**
    * Quick edit: a symbol's name, readings, and translations, in its row,
-   * without opening the editor. One Save does what changed, in two steps, in
-   * the editor's order, which writes the drawing before it renames: first the
-   * readings and translations, into the file's text chunks and nothing else,
-   * as {@link writeSymbolText} does, and then the name, through Obsidian, as
-   * {@link renameSymbol} does, so that the links follow. With nothing changed,
-   * Save closes the row.
-   *
-   * What can refuse a save without trying it is checked before either step:
-   * the fields, and the name, as {@link checkRename} refuses it, so that a
-   * refused name writes nothing. A step that fails stops the save there, and
-   * the row stays open with what was typed, to correct or try again: a write
-   * that fails renames nothing, and a rename that fails leaves the readings
-   * and translations saved, as the row says, so that Save tries the name again.
-   *
-   * This works on a file the editor will not open, as it does not read the
-   * record, and the name can change on one whose text cannot be read. The
+   * without opening the editor. This shows the fields, checks what Save can
+   * refuse before anything is written, and gives the library's own write and
+   * rename to {@link QuickSave}, which runs them in turn; quick-edit.ts says
+   * what the row and notices say of how it went. The rename is of the file as
+   * {@link checkRename} checked it, from where it was then, so that one renamed
+   * elsewhere while the readings are written is refused rather than renamed
+   * again. This works on a file the editor will not open, as it does not read
+   * the record, and the name can change on one whose text cannot be read. The
    * fields follow the file if it changes meanwhile, as by sync, and the name a
    * rename elsewhere, except where something was typed, which stays, with a
    * note of what saving would replace in the fields.
@@ -719,10 +705,16 @@ export class SymbolLibraryView extends ItemView {
       this.#editing.focus();
       return;
     }
+    // The file's name now, which a rename elsewhere can have changed since the
+    // row was drawn.
+    const name = symbolStem(file.name) ?? file.basename;
     row.empty();
     const form = row.createEl("form", { cls: "inkline-library-edit-form" });
-    const heading = nameFor(form, form, `Quick edit ${entry.name}`);
-    const title = form.createDiv({ cls: "inkline-library-edit-title" });
+    const heading = nameFor(form, form, `Quick edit ${name}`);
+    const label = form.createEl("label", { cls: "inkline-text-field" });
+    label.createSpan({ text: "Name" });
+    // Which symbol the fields are for, beside its name.
+    const title = label.createDiv({ cls: "inkline-library-edit-title" });
     title.createEl("img", {
       cls: "inkline-library-picture",
       attr: {
@@ -731,30 +723,36 @@ export class SymbolLibraryView extends ItemView {
         "aria-hidden": "true",
       },
     });
-    const label = title.createEl("label", { cls: "inkline-text-field" });
-    label.createSpan({ text: "Name" });
-    const input = label.createEl("input", {
+    const input = title.createEl("input", {
       type: "text",
-      value: entry.name,
+      value: name,
       attr: { spellcheck: "false", autocomplete: "off" },
     });
     /** The file's name as the field was last given it, to tell what was typed. */
-    let given = entry.name;
+    let given = name;
     let saving = false;
     /** Whether the fields hold what the file says, and so can be typed in. */
     let readable = false;
-    /** How to leave a save, once it has waited long enough to be left. */
-    let leaveSave: (() => void) | undefined;
+    /** The save under way, which can be left once a step of it waits. */
+    let running: { save: QuickSave; names: () => Names } | undefined;
+    /** What the row's lines say: what reading the file found, or a save. */
+    let said: "read" | "save" | undefined;
     /** Counts reads, so that only the latest is taken. */
     let reads = 0;
     const fields = new TextFields(form, noText, () => {
-      if (!saving) error.setText("");
+      if (!saving) say([]);
     });
     fields.enabled = false;
     const error = form.createDiv({
       cls: "inkline-library-edit-error",
       attr: { role: "alert" },
     });
+    /** Says `lines` in the row, a line each, as what `kind` found. */
+    const say = (lines: readonly string[], kind?: "read" | "save"): void => {
+      error.empty();
+      for (const line of lines) error.createDiv({ text: line });
+      said = lines.length === 0 ? undefined : kind;
+    };
     const wait = form.createDiv({
       cls: "inkline-save-wait",
       attr: { role: "alert" },
@@ -775,16 +773,18 @@ export class SymbolLibraryView extends ItemView {
     const finish = (): void => {
       this.#stopEditing(input, file, "edit");
     };
-    /** Closes the row, once a save under way may be left. */
+    /**
+     * Closes the row, once a save under way may be left: that stops what it
+     * can, and the save goes no further. A notice says what was done.
+     */
     const leave = (): void => {
-      if (saving && leaveSave === undefined) return;
-      leaveSave?.();
+      if (running !== undefined) {
+        const left = running.save.leave();
+        if (left === undefined) return;
+        const notice = leftNotice(left, running.names());
+        if (notice !== undefined) new Notice(notice);
+      }
       finish();
-    };
-    /** Says `lines` in the row, a line each, as what went wrong. */
-    const fail = (...lines: string[]): void => {
-      error.empty();
-      for (const line of lines) error.createDiv({ text: line });
     };
     const reread = (): void => {
       if (saving) return;
@@ -796,7 +796,8 @@ export class SymbolLibraryView extends ItemView {
           readable = true;
           fields.enabled = true;
           save.disabled = false;
-          error.setText("");
+          // That settles what reading the file found, and nothing a save said.
+          if (said === "read") say([]);
         },
         (failure: unknown) => {
           if (!open() || read !== reads || saving) return;
@@ -805,15 +806,18 @@ export class SymbolLibraryView extends ItemView {
           readable = false;
           fields.enabled = false;
           save.disabled = this.app.vault.getFileByPath(file.path) !== file;
-          error.setText(reasonOf(failure, "The symbol could not be read."));
+          if (said !== "save") {
+            say([reasonOf(failure, "The symbol could not be read.")], "read");
+          }
         },
       );
     };
     const renamed = (): void => {
       if (saving) return;
       const now = symbolStem(file.name) ?? file.basename;
-      if (input.value === given) input.value = now;
-      given = now;
+      const field = followName({ typed: input.value, given }, now);
+      if (field.typed !== input.value) input.value = field.typed;
+      given = field.given;
       heading.setText(`Quick edit ${now}`);
     };
     // Obsidian takes Mod+Enter before the fields see it.
@@ -846,18 +850,20 @@ export class SymbolLibraryView extends ItemView {
       const was = given;
       const changes = fields.changes();
       const sent = fields.typed();
-      const writing = Object.keys(changes).length > 0;
-      let renaming: boolean;
+      let checked: Renaming | undefined;
       try {
         // Before anything is written, so that a refused name leaves the file
-        // as it was.
-        renaming = typed !== was && checkRename(this.app, file, typed);
+        // as it was. Only a name typed renames.
+        checked =
+          typed === was ? undefined : checkRename(this.app, file, typed);
       } catch (failure) {
-        fail(reasonOf(failure, "The symbol could not be renamed."));
+        say([reasonOf(failure, "The symbol could not be renamed.")], "save");
         input.focus();
         return;
       }
-      if (!writing && !renaming) {
+      const renaming = checked;
+      const writing = Object.keys(changes).length > 0;
+      if (!writing && renaming === undefined) {
         finish();
         return;
       }
@@ -873,174 +879,75 @@ export class SymbolLibraryView extends ItemView {
       cancel.disabled = true;
       input.readOnly = true;
       fields.enabled = false;
-      error.setText("");
-      let waited = false;
-      /** Whether the person left the row while a step waited. */
-      let left = false;
-      /** Whether the step they left was stopped, and so changes nothing. */
-      let stopped = false;
-      /** Whether the readings and translations are written. */
-      let saved = false;
-      /**
-       * Gives the row back, with what was typed, to correct or try again, and
-       * with the name the file has now, which a rename elsewhere during the
-       * save may have changed.
-       */
-      const again = (): void => {
+      say([]);
+      const steps: Steps = {
+        ...(writing
+          ? {
+              write: (told: Told): Work => {
+                const work = writeSymbolText(
+                  this.app,
+                  file,
+                  changes,
+                  fields.given,
+                  this.#unloaded,
+                );
+                return {
+                  done: watchSave(
+                    work.done.then(() => this.#texts.refresh(file)),
+                    told,
+                  ),
+                  stop: work.stop,
+                };
+              },
+            }
+          : {}),
+        ...(renaming === undefined
+          ? {}
+          : {
+              rename: (told: Told): Work =>
+                renameChecked(
+                  this.app,
+                  renaming,
+                  { told, asked: () => modalOpen(form) },
+                  this.#unloaded,
+                ),
+            }),
+      };
+      const quick = new QuickSave(steps, (step) => {
+        if (!open()) return;
+        wait.setText(step === undefined ? "" : waitLine(step, quick.written));
+        cancel.disabled = step === undefined;
+      });
+      const names = (): Names => ({
+        was,
+        typed,
+        now: symbolStem(file.name) ?? file.basename,
+      });
+      running = { save: quick, names };
+      void quick.run().then((outcome) => {
+        running = undefined;
+        const report = reportSave(outcome, names(), open());
+        if (report.notice !== undefined) new Notice(report.notice);
+        if (report.closes) {
+          finish();
+          return;
+        }
+        if (!open()) return;
         saving = false;
-        leaveSave = undefined;
         save.disabled = false;
         cancel.disabled = false;
         input.readOnly = false;
         fields.enabled = readable;
+        if (outcome.written) fields.saved(changes, sent);
+        if (report.moved !== undefined) fields.take(report.moved);
+        say(report.lines, "save");
+        // What the vault reported during the save, a rename elsewhere or a
+        // file gone, is taken in now.
         renamed();
-      };
-      const writeText = async (): Promise<void> => {
-        const work = writeSymbolText(
-          this.app,
-          file,
-          changes,
-          fields.given,
-          this.#unloaded,
-        );
-        const waiting = (still: boolean): void => {
-          if (!open()) return;
-          waited ||= still;
-          wait.setText(still ? `${savingWaits} ${savingLeft}` : "");
-          cancel.disabled = !still;
-          leaveSave = !still
-            ? undefined
-            : () => {
-                left = true;
-                stopped = work.stop();
-                if (!stopped) {
-                  new Notice(
-                    `Saving ${was} had reached Obsidian, so it may still finish.${renaming ? " It will not be renamed." : ""}`,
-                  );
-                }
-              };
-        };
-        await watchSave(
-          work.done.then(() => this.#texts.refresh(file)),
-          waiting,
-        );
-      };
-      const rename = async (): Promise<void> => {
-        const waiting = (still: boolean): void => {
-          if (!open()) return;
-          waited ||= still;
-          wait.setText(still ? `${renameWaits} ${renameLeft}` : "");
-          cancel.disabled = !still;
-          leaveSave = !still
-            ? undefined
-            : () => {
-                left = true;
-                stopped = work.stop();
-                if (!stopped) {
-                  new Notice(
-                    `Renaming ${was} had reached Obsidian, so it may still finish.`,
-                  );
-                }
-              };
-        };
-        const work = renameSymbol(
-          this.app,
-          file,
-          typed,
-          { told: waiting, asked: () => modalOpen(form) },
-          this.#unloaded,
-        );
-        await work.done;
-      };
-      const textFailed = (failure: unknown): void => {
-        const reason = reasonOf(failure, "The symbol could not be saved.");
-        // Gone with the library, as when Inkline unloads, what was typed
-        // would be lost without a word. One the person stopped wrote nothing,
-        // as they asked.
-        if (!open()) {
-          if (left && stopped) return;
-          new Notice(
-            renaming
-              ? `The readings and translations of ${was} were not saved, and it was not renamed to ${typed}: ${reason}`
-              : `The readings and translations of ${was} were not saved: ${reason}`,
-          );
-          return;
-        }
-        again();
-        if (failure instanceof TextMoved) {
-          fields.take(failure.text);
-          if (renaming) {
-            fail(
-              "The file changed meanwhile, so nothing was saved or renamed.",
-            );
-          }
-        } else {
-          fail(reason, ...(renaming ? ["Nothing was renamed."] : []));
-        }
-        if (readable) fields.focus();
+        reread();
+        if (report.focus === "fields" && readable) fields.focus();
         else input.focus();
-      };
-      const renameFailed = (failure: unknown): void => {
-        const reason = reasonOf(failure, "The symbol could not be renamed.");
-        const disturbed = failure instanceof RenameDisturbed;
-        // Gone with the library, the name typed would be lost without a word.
-        if (!open()) {
-          if (left && stopped) return;
-          const first = saved ? `Saved ${was}. ` : "";
-          new Notice(
-            disturbed
-              ? `${first}Renaming ${was} to ${typed}: ${reason}`
-              : `${first}${was} could not be renamed to ${typed}: ${reason}`,
-          );
-          return;
-        }
-        again();
-        // What came between a rename says where the file is now, which may
-        // have the new name all the same.
-        const first = disturbed
-          ? "The readings and translations are saved."
-          : "The readings and translations are saved, but the symbol was not renamed:";
-        fail(...(saved ? [first] : []), reason);
-        input.focus();
-      };
-      const run = async (): Promise<void> => {
-        if (writing) {
-          try {
-            await writeText();
-          } catch (failure) {
-            textFailed(failure);
-            return;
-          }
-          saved = true;
-          if (open()) fields.saved(changes, sent);
-          // Left while it waited, the row closed, and the rename with it.
-          if (left) {
-            new Notice(`Saved ${was}.`);
-            return;
-          }
-        }
-        if (renaming) {
-          try {
-            await rename();
-          } catch (failure) {
-            renameFailed(failure);
-            return;
-          }
-        }
-        // Nothing else says so, to a person who has looked away or left.
-        if (waited) {
-          const now = symbolStem(file.name) ?? file.basename;
-          new Notice(
-            !renaming
-              ? `Saved ${was}.`
-              : saved
-                ? `Saved ${was} and renamed it to ${now}.`
-                : `Renamed ${was} to ${now}.`,
-          );
-        }
-        finish();
-      };
-      void run();
+      });
     });
     reread();
     input.focus();

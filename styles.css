@@ -584,19 +584,19 @@ img.inkline-symbol:not([width], [height]) {
   padding-block: var(--size-4-1);
 }
 
-/* Which symbol the fields are for, beside its name. */
+/*
+ * Which symbol the fields are for, beside its name, under the name's label,
+ * which starts where the others do.
+ */
 .inkline-library-edit-title {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: var(--size-4-2);
   min-width: 0;
 }
 
-.inkline-library-edit-title .inkline-text-field {
-  flex: 1 1 auto;
-}
-
 .inkline-library-edit-title input {
+  flex: 1 1 auto;
   width: 100%;
   min-width: 0;
 }
