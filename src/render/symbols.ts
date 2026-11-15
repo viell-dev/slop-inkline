@@ -5,9 +5,11 @@
 // Obsidian adds them.
 
 import {
+  aspectRatio,
   cssUrl,
   dropFor,
   explicitHeight,
+  explicitWidth,
   isSymbolUrl,
   symbolName,
 } from "./layout.ts";
@@ -36,9 +38,19 @@ const textSelector = `.markdown-rendered, .cm-content, .${textClass}`;
  */
 export const embedClass = "inkline-symbol-embed";
 
-/** The custom properties a tagged image gets: its mask, and its drop. */
+/**
+ * The custom properties a tagged image gets: its mask; its width over its
+ * height, from which styles.css sizes the mask; and, with an explicit size,
+ * its drop, and the width a size of only a width asks for, from which
+ * styles.css lessens the drop where a narrower space shrinks it.
+ */
 const maskProperty = "--inkline-mask";
+const ratioProperty = "--inkline-ratio";
 const dropProperty = "--inkline-drop";
+const widthProperty = "--inkline-width";
+
+/** The properties that follow the image's size, which its embed gets too. */
+const sizeProperties = [ratioProperty, dropProperty, widthProperty];
 
 /**
  * The attribute a symbol's name goes in: Obsidian shows it as a tooltip on
@@ -136,26 +148,34 @@ export function tagImage(image: HTMLImageElement, vault: string): void {
     holders.push(embed);
   }
   if (!sized(image)) {
-    for (const holder of holders) holder.style.removeProperty(dropProperty);
-    return;
+    for (const holder of holders) {
+      holder.style.removeProperty(dropProperty);
+      holder.style.removeProperty(widthProperty);
+    }
   }
-  const drop = (): void => {
+  const measure = (): void => {
     // Untagged meanwhile, as when its address changed or Inkline stopped.
     if (!image.hasClass(symbolClass)) return;
-    const height = explicitHeight(
-      image.getAttribute("width"),
-      image.getAttribute("height"),
-      image.naturalWidth,
-      image.naturalHeight,
-    );
-    if (height === undefined) return;
+    const ratio = aspectRatio(image.naturalWidth, image.naturalHeight);
+    if (ratio === undefined) return;
+    const width = image.getAttribute("width");
+    const height = image.getAttribute("height");
+    const shown = sized(image)
+      ? explicitHeight(width, height, image.naturalWidth, image.naturalHeight)
+      : undefined;
+    const asked = sized(image) ? explicitWidth(width, height) : undefined;
     for (const holder of holders) {
-      holder.style.setProperty(dropProperty, dropFor(height));
+      holder.style.setProperty(ratioProperty, String(ratio));
+      if (shown !== undefined) {
+        holder.style.setProperty(dropProperty, dropFor(shown));
+      }
+      if (asked === undefined) holder.style.removeProperty(widthProperty);
+      else holder.style.setProperty(widthProperty, `${String(asked)}px`);
     }
   };
-  drop();
-  // The width alone gives the height only once the image's own size is known.
-  if (!image.complete) image.addEventListener("load", drop, { once: true });
+  measure();
+  // Its shape, and the height a width alone gives, are known once it loads.
+  if (!image.complete) image.addEventListener("load", measure, { once: true });
 }
 
 /** Removes what {@link tagImage} added. */
@@ -163,12 +183,12 @@ export function untagImage(image: HTMLImageElement): void {
   if (!image.hasClass(symbolClass)) return;
   image.removeClass(symbolClass);
   image.style.removeProperty(maskProperty);
-  image.style.removeProperty(dropProperty);
+  for (const property of sizeProperties) image.style.removeProperty(property);
   unnameImage(image);
   const embed = image.parentElement?.closest(`.${embedClass}`);
   if (embed?.instanceOf(HTMLElement) === true) {
     embed.removeClass(embedClass);
-    embed.style.removeProperty(dropProperty);
+    for (const property of sizeProperties) embed.style.removeProperty(property);
   }
 }
 
