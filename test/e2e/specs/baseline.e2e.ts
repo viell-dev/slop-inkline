@@ -534,15 +534,16 @@ describe("Symbols on the text's baseline", function () {
           expect(symbols.length).toBeGreaterThanOrEqual(32);
           for (const each of symbols) {
             // The box is the snippet's, 48 pixels; the ink is the symbol's at
-            // the line's height, 24 pixels, so a block from x 1 to 9.5 of it.
+            // the line's height, 24 pixels, so a block from x 1 to 9.5 of it,
+            // within the pixel that drawing on whole pixels can move its edges:
+            // it was 9.0 wide in the text colour and 8.1 in stored colour.
+            // Drawn as wide as the box, it would be 39 pixels wide.
             expect(Math.abs(each.width - 48)).toBeLessThanOrEqual(0.5);
             expect(each.inkWidth).not.toBeNull();
-            expect(Math.abs((each.inkWidth ?? 0) - 8.5)).toBeLessThanOrEqual(
-              0.5,
-            );
+            expect(Math.abs((each.inkWidth ?? 0) - 8.5)).toBeLessThanOrEqual(1);
             expect(
               Math.abs((each.inkLeft ?? 0) - (each.left + 1)),
-            ).toBeLessThanOrEqual(0.5);
+            ).toBeLessThanOrEqual(1);
           }
           for (const each of shown) {
             for (const offset of each.offsets) {
