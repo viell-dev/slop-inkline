@@ -169,11 +169,17 @@ describe("insideInlineCode", () => {
     ).toBe(false);
   });
 
-  it("counts a place in an inline tag or comment as code", () => {
+  it("counts a place in inline HTML, math, or a comment as code", () => {
     // An embed there shows nothing.
     expect(insideInlineCode('Some <span title=";;">a</span>', 18)).toBe(true);
     expect(insideInlineCode("Some <!-- ;; -->", 10)).toBe(true);
     expect(insideInlineCode("Some <? ;; ?>", 8)).toBe(true);
+    expect(insideInlineCode("Some $a ;;$ b", 8)).toBe(true);
+    expect(insideInlineCode("Some $;;$ b", 7)).toBe(true);
+    expect(insideInlineCode("Some %% ;; %% b", 8)).toBe(true);
+    // Text around them, and in an element's text, shows.
     expect(insideInlineCode("Some <b>;;</b>", 8)).toBe(false);
+    expect(insideInlineCode("Some $a$ ;;", 9)).toBe(false);
+    expect(insideInlineCode("Some %%a%% ;;", 11)).toBe(false);
   });
 });

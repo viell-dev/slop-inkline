@@ -2819,4 +2819,66 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
     note: "<div><code><svg><![CDATA[ a > </code> ]]></svg>\n\nHERE",
     code: true,
   },
+  // In a comment or math, Obsidian shows nothing, and an embed shows nothing.
+  "text in a comment block": { note: "%%\nHERE\n%%", code: true, hidden: true },
+  "text in a math block": { note: "$$\nHERE\n$$", code: true, hidden: true },
+  "text in a quote's comment block": {
+    note: "> %%\n> HERE\n> %%",
+    code: true,
+    hidden: true,
+  },
+  "text in an item's math block": {
+    note: "- $$\n  HERE\n  $$",
+    code: true,
+    hidden: true,
+  },
+  "text in a math block after its $$": {
+    note: "$$ a\nHERE\n$$",
+    code: true,
+    hidden: true,
+  },
+  "text in a comment block's first lines": {
+    note: "%% a\nHERE",
+    code: true,
+    hidden: true,
+  },
+  "text before a comment block's end": {
+    note: "%%\na HERE %%",
+    code: true,
+    hidden: true,
+  },
+  "text before a comment block's end and more": {
+    note: "%%\na HERE %% b",
+    code: true,
+    hidden: true,
+  },
+  "text in a quote before a comment block's end": {
+    note: "> %%\n> a HERE %% b",
+    code: true,
+    hidden: true,
+  },
+  "text after a comment block's end": { note: "%%\na %% b HERE", code: false },
+  "text in an inline comment of %%": {
+    note: "a %%HERE%% b",
+    code: true,
+    hidden: true,
+  },
+  "text in an inline comment of %% and spaces": {
+    note: "a %% x HERE %% b",
+    code: true,
+    hidden: true,
+  },
+  "text in inline math": { note: "a $HERE$ b", code: true, hidden: true },
+  "text in inline display math": {
+    note: "a $$HERE$$ b",
+    code: true,
+    hidden: true,
+  },
+  "text after a comment on one line": { note: "%% a %%\nHERE", code: false },
+  "text after a math block": { note: "$$\na\n$$\nHERE", code: false },
+  "text in math after a footnote that opens <pre>": {
+    note: "[^1]: a \t`<pre>\n$$`` -->\n x %%HERE ` ~~\n* a===",
+    code: true,
+    hidden: true,
+  },
 };

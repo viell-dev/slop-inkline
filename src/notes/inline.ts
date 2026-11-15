@@ -62,6 +62,8 @@ interface Construct {
   readonly inner?: readonly [number, number, boolean];
   /** Whether it is inline HTML, which the browser reads as it is. */
   readonly html?: true;
+  /** Whether Obsidian shows none of its text, as of math or a comment. */
+  readonly hidden?: true;
   /** Whether its text is a footnote's, which Obsidian shows elsewhere. */
   readonly aside?: true;
 }
@@ -233,8 +235,10 @@ class Inline {
         continue;
       }
       if (this.#at < found.end) {
-        // In a tag, a comment, or the like, an embed shows nothing.
-        if (isOpen(open) || found.html === true) return true;
+        // In a tag, a comment, math, or the like, an embed shows nothing.
+        if (isOpen(open) || found.html === true || found.hidden === true) {
+          return true;
+        }
         if (found.code !== undefined) {
           const [start, close] = found.code;
           return this.#at > start && this.#at <= close;
@@ -1087,7 +1091,7 @@ class Inline {
               else break;
             }
           }
-          return { end };
+          return { end, hidden: true };
         }
       } else if (char === "\\") index++;
       index++;
@@ -1102,7 +1106,7 @@ class Inline {
     const lineEnd = this.#search(lineEnds, place);
     this.#step(found?.[0].length ?? (lineEnd === -1 ? to : lineEnd) - place);
     if (found === null || place + found[0].length > to) return undefined;
-    return { end: place + found[0].length };
+    return { end: place + found[0].length, hidden: true };
   }
 }
 
@@ -1143,7 +1147,7 @@ function runAfter(
 
 /**
  * Whether index `at` of `text`, a paragraph's text without its containers'
- * markers, lies inside a code span, an inline tag or comment, or after a
+ * markers, lies inside a code span, inline HTML, math, or a comment, or after a
  * `<code>` or `<pre>` tag that is still open, with `tags` open where the
  * text starts, as Obsidian reads the text; or in a text too long to read with
  * certainty in time. When `text` may go on, as a paragraph read only so far

@@ -1,6 +1,7 @@
 // Where a note's text is code or front matter, as Obsidian renders the note:
 // there a trigger is the note's own text and lists nothing, and an embed shows
-// nothing. Plain functions, so that unit tests can check them; suggest.ts and
+// nothing. So does a place in a comment, math, or an HTML tag, where Obsidian
+// shows nothing. Plain functions, so that unit tests can check them; suggest.ts and
 // entries.ts use them. They read a note's lines as its editor has them now, as
 // the metadata cache, which follows saves, may not have them yet.
 //
@@ -158,8 +159,10 @@ type Leaf =
  * - `html`, a line of an HTML block, which the browser reads, so that where
  *   it shows code cannot be told from its lines, and an embed in it shows as
  *   text;
+ * - `hidden`, a line of a `%%` comment or a `$` math block, where an embed
+ *   shows nothing;
  * - `none`, a line with no text to read: a blank line, a thematic break, or
- *   a line of a comment, math, or a definition's title.
+ *   a line of a definition's title.
  */
 type LineKind =
   | "code"
@@ -170,6 +173,7 @@ type LineKind =
   | "title"
   | "underline"
   | "html"
+  | "hidden"
   | "none";
 
 const none: Leaf = { kind: "none" };
@@ -614,6 +618,8 @@ class Blocks {
   text = "";
   /** Where the text of the last line read starts, after its containers' markers. */
   start = 0;
+  /** Whether a comment ends before `start` on the last line read. */
+  commented = false;
 
   /** The text of the last line read, after its containers' markers. */
   get content(): string {
@@ -678,6 +684,7 @@ class Blocks {
 
   /** What line `index`, the next line of the note, is. */
   read(index: number): LineKind {
+    this.commented = false;
     this.#viaItem = -1;
     this.#lowerable = -1;
     const kind = this.#readLine(index);
@@ -849,13 +856,14 @@ class Blocks {
         return "html";
       case "math":
         if (closesMath(text, at, leaf.length)) this.#leaf = none;
-        return "none";
+        return "hidden";
       case "comment": {
         const close = text.indexOf("%%", at);
-        if (close === -1) return "none";
+        if (close === -1) return "hidden";
         // What follows the comment on its line starts a block.
         this.#leaf = none;
         this.start = close + 2;
+        this.commented = true;
         return this.#open(text, close + 2, marked, more);
       }
       case "definition": {
@@ -1003,11 +1011,11 @@ class Blocks {
     const math = mark === "$" ? opensMath(text, at, more) : 0;
     if (math > 0) {
       this.#leaf = { kind: "math", length: math };
-      return "none";
+      return "hidden";
     }
     if (mark === "%" && opensComment(text, at)) {
       this.#leaf = { kind: "comment" };
-      return "none";
+      return "hidden";
     }
     const fence = oneOf(mark, "`~") ? opensFence(text, at) : undefined;
     if (fence !== undefined) {
@@ -1149,8 +1157,10 @@ export function insideCode(lineAt: LineAt, line: number, ch: number): boolean {
     else if (index < line) tags = tagsOfLine(kind, blocks, tags);
   }
   // An HTML block's code cannot be told from its lines, and an embed shows
-  // as text in it: the list lists nothing there.
-  if (kind === "code" || kind === "html") return true;
+  // as text in it: the list lists nothing there, nor in a comment or math,
+  // where an embed shows nothing.
+  if (kind === "code" || kind === "html" || kind === "hidden") return true;
+  if (blocks.commented && ch < blocks.start) return true;
   if (kind === "none" || kind === "underline") return isOpen(tags);
   if (kind === "title") {
     if (isOpen(tags)) return true;
@@ -1252,7 +1262,7 @@ function tagsOfLine(kind: LineKind, blocks: Blocks, tags: OpenTags): OpenTags {
     case "title": {
       if (!mayChange(blocks.text, tags)) return tags;
       const title = calloutTitle(blocks.text);
-      return title.kind === "code"
+      return title.kind === "code" || title.kind === "hidden"
         ? tags
         : tagsAfter(title.lineAt(0) ?? "", tags);
     }
