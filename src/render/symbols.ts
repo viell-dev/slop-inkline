@@ -142,40 +142,50 @@ export function tagImage(image: HTMLImageElement, vault: string): void {
   image.style.setProperty(maskProperty, cssUrl(src));
   nameImage(image, src);
   const embed = image.parentElement?.closest(".image-embed");
-  const holders: HTMLElement[] = [image];
-  if (embed?.instanceOf(HTMLElement) === true) {
-    embed.addClass(embedClass);
-    holders.push(embed);
-  }
+  if (embed?.instanceOf(HTMLElement) === true) embed.addClass(embedClass);
   if (!sized(image)) {
-    for (const holder of holders) {
+    for (const holder of holdersOf(image)) {
       holder.style.removeProperty(dropProperty);
       holder.style.removeProperty(widthProperty);
     }
   }
-  const measure = (): void => {
-    // Untagged meanwhile, as when its address changed or Inkline stopped.
-    if (!image.hasClass(symbolClass)) return;
-    const ratio = aspectRatio(image.naturalWidth, image.naturalHeight);
-    if (ratio === undefined) return;
-    const width = image.getAttribute("width");
-    const height = image.getAttribute("height");
-    const shown = sized(image)
-      ? explicitHeight(width, height, image.naturalWidth, image.naturalHeight)
-      : undefined;
-    const asked = sized(image) ? explicitWidth(width, height) : undefined;
-    for (const holder of holders) {
-      holder.style.setProperty(ratioProperty, String(ratio));
-      if (shown !== undefined) {
-        holder.style.setProperty(dropProperty, dropFor(shown));
-      }
-      if (asked === undefined) holder.style.removeProperty(widthProperty);
-      else holder.style.setProperty(widthProperty, `${String(asked)}px`);
+  measureImage(image);
+}
+
+/** A tagged image, and in Live Preview the embed that takes its drop. */
+function holdersOf(image: HTMLImageElement): HTMLElement[] {
+  const embed = image.parentElement?.closest(`.${embedClass}`);
+  return embed?.instanceOf(HTMLElement) === true ? [image, embed] : [image];
+}
+
+/**
+ * Gives a tagged image the properties that follow its size, once its own
+ * size is known: its width over its height, and with an explicit size its
+ * drop and the width a size of only a width asks for. Before it loads it
+ * gets none, and the load listener of the document it is in, which
+ * {@link SymbolRenderer.watch} adds, calls this again: one listener for a
+ * document rather than one for each image, as tagging a thousand images
+ * measurably slowed with one each.
+ */
+function measureImage(image: HTMLImageElement): void {
+  // Untagged meanwhile, as when its address changed or Inkline stopped.
+  if (!image.hasClass(symbolClass)) return;
+  const ratio = aspectRatio(image.naturalWidth, image.naturalHeight);
+  if (ratio === undefined) return;
+  const width = image.getAttribute("width");
+  const height = image.getAttribute("height");
+  const shown = sized(image)
+    ? explicitHeight(width, height, image.naturalWidth, image.naturalHeight)
+    : undefined;
+  const asked = sized(image) ? explicitWidth(width, height) : undefined;
+  for (const holder of holdersOf(image)) {
+    holder.style.setProperty(ratioProperty, String(ratio));
+    if (shown !== undefined) {
+      holder.style.setProperty(dropProperty, dropFor(shown));
     }
-  };
-  measure();
-  // Its shape, and the height a width alone gives, are known once it loads.
-  if (!image.complete) image.addEventListener("load", measure, { once: true });
+    if (asked === undefined) holder.style.removeProperty(widthProperty);
+    else holder.style.setProperty(widthProperty, `${String(asked)}px`);
+  }
 }
 
 /** Removes what {@link tagImage} added. */
@@ -283,12 +293,20 @@ export class SymbolRenderer {
       // in place as an alias is edited, and which a name can come from.
       attributeFilter: ["src", "width", "height", "alt"],
     });
+    // An image's load does not bubble, but the document sees it on the way
+    // down, before the image does.
+    const loaded = (event: Event): void => {
+      const { target } = event;
+      if (target instanceof view.HTMLImageElement) measureImage(target);
+    };
+    doc.addEventListener("load", loaded, true);
     const closed = (): void => {
       this.unwatch(doc);
     };
     view.addEventListener("unload", closed, { once: true });
     this.#watching.set(doc, () => {
       observer.disconnect();
+      doc.removeEventListener("load", loaded, true);
       view.removeEventListener("unload", closed);
     });
     tagWithin(doc.body, this.#vault);
