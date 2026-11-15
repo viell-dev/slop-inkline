@@ -109,10 +109,13 @@ over, and so not on the baseline. In 16-pixel text, at the default 100% and at
 beside it, which Obsidian draws on whole pixels too. At other text sizes, Symbol
 sizes, and zoom levels, the letters' baseline and the box's top each land on a
 whole pixel, and the ink's baseline lies three quarters of the way down the box,
-so it stands within about a pixel of the letters' baseline. The symbols of a
-line then stand within half a pixel of each other at 100% zoom, and within a
-pixel at other zoom levels: 0.69 apart at 120% in Obsidian 1.15.1. Until the
-image has loaded, the box's width alone sizes the mask.
+so it stands off the letters' baseline by up to about a pixel at 100% zoom (1.06
+measured), and at other zoom levels by up to 1.75 pixels in Obsidian 1.13.4 and
+1.00 in 1.15.1 as measured, where `contain` reached 1.94 and 1.25. The symbols
+of a line then stand within half a pixel of each other at 100% zoom, and within
+a pixel at other zoom levels: as measured, up to 0.94 apart in Obsidian 1.15.1
+and 0.31 in 1.13.4. Until the image has loaded, the box's width alone sizes the
+mask.
 
 **Unreleased:** an explicit size of only a width that is wider than the symbol's
 space, as `|1000` in a hover preview, also keeps the symbol's baseline on the

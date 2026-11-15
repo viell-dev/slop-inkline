@@ -23,7 +23,8 @@ hover previews, text cards on a canvas, and popout windows.
   its ink could sit three quarters of a pixel higher than the letters beside it
   in Obsidian's default 16-pixel text, where it now stands exactly on their
   baseline, and more at some other sizes. At some text sizes, Symbol sizes, and
-  zoom levels it still stands up to about a pixel off, as
+  zoom levels it still stands off the letters, by up to about a pixel at 100%
+  zoom and up to about two at other zoom levels, as
   [Known limits](./limits.md#in-general) says.
 - **An explicit size** that Obsidian's embed syntax gives, as in
   `![[tower.ink.png|24]]`, is kept, and the symbol still stands on the baseline.
