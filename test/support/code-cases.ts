@@ -22,6 +22,9 @@ const htmlWithheld =
 /** Why the check lists nothing in text that would take too long to read. */
 const tooLong =
   "the check lists nothing in a paragraph that would take too long to read with certainty, as of a thousand brackets that nothing closes";
+/** Why the check lists nothing after an open `<pre>`, where Obsidian shows text. */
+const tagWithheld =
+  "the check lists nothing after a <pre> or <code> tag that the note has not closed, which only a browser could tell ends";
 /** Why the check reads an item numbered 1 to 9 as indented more. */
 const itemOne =
   "Obsidian takes a column more from the text of an item numbered 1 to 9 when its marker is an odd number of columns wide; the check does not";
@@ -2198,4 +2201,98 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
     note: "- a\n\n     HERE\n- b",
     code: false,
   },
+  // An open `<code>` or `<pre>` holds the list closed until it closes, over blank lines and blocks.
+  "text over blank lines in an open <code>": {
+    note: "<code>\n\nHERE\n\n</code>",
+    code: true,
+  },
+  "text over blank lines in a paragraph's open <code>": {
+    note: "Some <code>a\n\nHERE\n\n</code>",
+    code: true,
+  },
+  "text after <code/>": { note: "Some <code/>HERE", code: true },
+  "text after <code />": { note: "Some <code />HERE", code: true },
+  "text after <code class/>": {
+    note: 'Some <code class="x"/>HERE',
+    code: true,
+  },
+  "text a paragraph after <code/>": {
+    note: "Some <code/>a\n\nHERE",
+    code: true,
+  },
+  "text after <code/> and its </code>": {
+    note: "Some <code/>a</code> HERE",
+    code: false,
+  },
+  "text after a closed <code>": {
+    note: "Some <code>a</code>\n\nHERE",
+    code: false,
+  },
+  "text after a closed <code> on its own line": {
+    note: "<code>a</code>\n\nHERE",
+    code: false,
+  },
+  "text in a quote after an open <code>": {
+    note: "> <code>\n>\n> HERE",
+    code: true,
+  },
+  "text after a quote's open <code>": { note: "> <code>\n\nHERE", code: true },
+  "text after a callout's open <code>": {
+    note: "> [!note]\n> <code>\n\nHERE",
+    code: true,
+  },
+  "text in an item after an open <code>": {
+    note: "- <code>\n\n  HERE",
+    code: true,
+  },
+  "text after an item's open <code>": { note: "- <code>\n\nHERE", code: true },
+  "text in a numbered item after an open <code>": {
+    note: "1. a <code>b\n\n   HERE",
+    code: true,
+  },
+  "text after a heading's open <code>": {
+    note: "# A <code>b\n\nHERE",
+    code: true,
+  },
+  "text after an open <code> in strong text": {
+    note: "Some **a <code>b** c\n\nHERE",
+    code: true,
+  },
+  "text after an open <CODE>": { note: "Some <CODE>a\n\nHERE", code: true },
+  "text after an open <pre>": {
+    note: "Some <pre>a\n\nHERE",
+    code: false,
+    limit: tagWithheld,
+  },
+  "text over blank lines in an open <pre>": {
+    note: "<pre>\n\nHERE\n\n</pre>",
+    code: false,
+    limit: htmlWithheld,
+  },
+  "text after a closed <pre>": {
+    note: "Some <pre>a</pre>\n\nHERE",
+    code: false,
+  },
+  "text after <code> in a code span": {
+    note: "Use the `<code>` tag.\n\nHERE",
+    code: false,
+  },
+  "text after <code> in a fence": {
+    note: "```\n<code>\n```\n\nHERE",
+    code: false,
+  },
+  "text after <code> in indented code": {
+    note: "a\n\n    <code>\n\nHERE",
+    code: false,
+  },
+  "text after <code> in a comment block": {
+    note: "%%\n<code>\n%%\n\nHERE",
+    code: false,
+  },
+  "text after <code> in a wiki link": {
+    note: "See [[<code>]]\n\nHERE",
+    code: false,
+  },
+  "text after <coder>": { note: "Some <coder>a\n\nHERE", code: false },
+  "text after </code> alone": { note: "Some </code> a\n\nHERE", code: false },
 };

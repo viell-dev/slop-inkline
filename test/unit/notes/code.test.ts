@@ -68,6 +68,34 @@ describe("insideCode", () => {
     expect(hereInCode("---\nHERE")).toBe(false);
   });
 
+  it("keeps a <code> or <pre> the note opened open until it closes", () => {
+    // Over blank lines and blocks, as the browser keeps a `<code>` open.
+    expect(hereInCode("<code>\n\nHERE\n\n</code>")).toBe(true);
+    expect(hereInCode("Some <code>a\n\n# h\n\n- b\n\nHERE")).toBe(true);
+    expect(hereInCode("Some <code/>a\n\nHERE")).toBe(true);
+    expect(hereInCode("Some <pre>a\n\n> b\n\nHERE")).toBe(true);
+    // In quotes, callouts, and list items, and out of them.
+    expect(hereInCode("> <code>\n>\n> HERE")).toBe(true);
+    expect(hereInCode("> [!note]\n> <code>\n\nHERE")).toBe(true);
+    expect(hereInCode("- <code>\n\n  HERE")).toBe(true);
+    expect(hereInCode("1. a <code>b\n\n   HERE")).toBe(true);
+    // In a heading, a table's cell, and a callout's title.
+    expect(hereInCode("# <code>a\n\nHERE")).toBe(true);
+    expect(hereInCode("| a | <code>b |\n| - | - |\n\nHERE")).toBe(true);
+    expect(hereInCode("> [!note] <code>\n\nHERE")).toBe(true);
+    // Until it closes, in a later block too.
+    expect(hereInCode("Some <code>a\n\nb</code> HERE")).toBe(false);
+    expect(hereInCode("Some <code>a\n\nb</code>\n\nHERE")).toBe(false);
+    expect(hereInCode("<pre>\na\n</pre>\n\nHERE")).toBe(false);
+    // A tag in code, a code span, a comment, or a wiki link opens nothing.
+    expect(hereInCode("```\n<code>\n```\n\nHERE")).toBe(false);
+    expect(hereInCode("a\n\n    <code>\n\nHERE")).toBe(false);
+    expect(hereInCode("Use the `<code>` tag.\n\nHERE")).toBe(false);
+    expect(hereInCode("%%\n<code>\n%%\n\nHERE")).toBe(false);
+    expect(hereInCode("See [[<code>]]\n\nHERE")).toBe(false);
+    expect(hereInCode("---\nx: <code>\n---\nHERE")).toBe(false);
+  });
+
   it("reads lines that end in a carriage return", () => {
     expect(hereInCode("`a\r\nHERE`\r\n")).toBe(true);
     expect(hereInCode("> ```\r\n> a\r\n\r\nHERE\r\n")).toBe(false);

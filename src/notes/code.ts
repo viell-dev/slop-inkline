@@ -67,6 +67,11 @@
 // - Every line of an HTML block. Obsidian passes the block to the browser, so
 //   where it shows code, as in `<pre><code>`, cannot be told from its lines,
 //   and an embed in it shows as text anyway.
+// - Everything after a `<code>` or `<pre>` tag, in any form, that the note
+//   has not closed, whatever blocks lie between: the browser keeps an open
+//   `<code>` open over blank lines and blocks, even out of a quote or a
+//   heading. Tags in code, front matter, and `%%` or `$$` blocks count for
+//   nothing, and so do those that inline.ts reads as text.
 // - A paragraph's text that would take too long to read, as inline.ts says.
 // - A line that a later line of its item would make indented code: Obsidian
 //   takes fewer columns from all of an item's lines when one of them is
@@ -82,7 +87,16 @@
 // numbered 1 to 9 when its marker is an odd number of columns wide, where
 // they withhold nothing that Obsidian shows as text.
 
-import { closeTag, insideInlineCode, openTag } from "./inline.ts";
+import {
+  closeTag,
+  insideInlineCode,
+  isOpen,
+  noTags,
+  type OpenTags,
+  openTag,
+  tagsAfter,
+  tagsAfterHtml,
+} from "./inline.ts";
 
 /** A note's line, as its editor has it now; undefined past the note's end. */
 export type LineAt = (index: number) => string | undefined;
@@ -1085,44 +1099,66 @@ export function insideCodeBlock(lineAt: LineAt, line: number): boolean {
  * table's cells. The lines up to `line` are read, and those after it only as
  * far as its paragraph goes, and only while what started before `ch` may
  * still end there.
+ *
+ * After a `<code>` or `<pre>` tag that the note has not closed before `ch`,
+ * whatever lies between, the place counts as code too: the browser keeps an
+ * open `<code>` open over blank lines and blocks, and nothing short of the
+ * browser's own reading tells where it ends.
  */
 export function insideCode(lineAt: LineAt, line: number, ch: number): boolean {
   const from = afterFrontMatter(lineAt, line);
   if (from === undefined) return true;
   const blocks = new Blocks(lineAt);
-  // The text of the paragraph that holds the line, up to it.
+  // The tags open before the paragraph or line that holds `ch`.
+  let tags = noTags;
+  // The text of the paragraph that holds the line, up to it, and whether it
+  // mentions a tag that opens or closes one.
   let paragraph: string[] = [];
+  let tagged = false;
   let kind: LineKind = "none";
   for (let index = from; index <= line; index++) {
     kind = blocks.read(index);
     const text = blocks.content;
-    if (kind === "paragraph") paragraph = [text];
-    else if (kind === "continued") paragraph.push(text);
+    if (kind === "continued") {
+      paragraph.push(text);
+      tagged ||= mentionsTag(text);
+      continue;
+    }
+    if (tagged) tags = tagsAfter(paragraph.join("\n"), tags);
+    paragraph = [];
+    tagged = false;
+    if (kind === "paragraph") {
+      paragraph = [text];
+      tagged = mentionsTag(text);
+    } else if (index < line) tags = tagsOfLine(kind, blocks, tags);
   }
   // An HTML block's code cannot be told from its lines, and an embed shows
   // as text in it: the list lists nothing there.
   if (kind === "code" || kind === "html") return true;
-  if (kind === "none" || kind === "underline") return false;
+  if (kind === "none" || kind === "underline") return isOpen(tags);
   if (kind === "title") {
+    if (isOpen(tags)) return true;
     const title = calloutTitle(blocks.text);
     return ch >= title.start && insideCode(title.lineAt, 0, ch - title.start);
   }
   // Markers, or a comment the line's text follows.
-  if (ch < blocks.start) return false;
+  if (ch < blocks.start) return isOpen(tags);
   // A line that a later line of its item would make indented code, read
   // before that line is: code, as nothing can be told for certain.
   if (blocks.mayBeCode(line)) return true;
   const text = blocks.content;
   const at = ch - blocks.start;
-  if (kind === "line") return insideInlineCode(text, at) === true;
-  if (kind === "row") return insideCell(text, at);
+  if (kind === "line") return insideInlineCode(text, at, true, tags) === true;
+  if (kind === "row") return insideCell(text, at, tags);
   let index = line + 1;
   let after: LineKind = blocks.has(index) ? blocks.read(index) : "none";
   // A paragraph's first line is a table's header when the next line is its
   // delimiter row, and a heading over an underline.
-  if (kind === "paragraph" && after === "row") return insideCell(text, at);
+  if (kind === "paragraph" && after === "row") {
+    return insideCell(text, at, tags);
+  }
   if (kind === "paragraph" && after === "underline") {
-    return insideInlineCode(text, at) === true;
+    return insideInlineCode(text, at, true, tags) === true;
   }
   let joined = paragraph.join("\n");
   const position = joined.length - text.length + at;
@@ -1132,7 +1168,7 @@ export function insideCode(lineAt: LineAt, line: number, ch: number): boolean {
   const definitionEnd = paragraph.length > 1 ? definitionLines(joined) : -1;
   const found =
     definitionEnd === -1 || definitionEnd > position
-      ? insideInlineCode(joined, position, after !== "continued")
+      ? insideInlineCode(joined, position, after !== "continued", tags)
       : undefined;
   if (found !== undefined) return found;
   // What started before `ch` may end in the rest of the paragraph.
@@ -1141,13 +1177,48 @@ export function insideCode(lineAt: LineAt, line: number, ch: number): boolean {
     index++;
     after = blocks.has(index) ? blocks.read(index) : "none";
   }
-  if (insideInlineCode(joined, position) === true) return true;
+  if (insideInlineCode(joined, position, true, tags) === true) return true;
   return (
     definitionEnd !== -1 &&
     definitionEnd <= position &&
-    insideInlineCode(joined.slice(definitionEnd), position - definitionEnd) ===
-      true
+    insideInlineCode(
+      joined.slice(definitionEnd),
+      position - definitionEnd,
+      true,
+      tags,
+    ) === true
   );
+}
+
+/** Whether `text` holds what could open or close a `<code>` or `<pre>` tag. */
+function mentionsTag(text: string): boolean {
+  return text.includes("<") && /<\/?(?:code|pre)/i.test(text);
+}
+
+/**
+ * The tags open after line `kind` of `blocks`, the last one read, which is
+ * not a paragraph's, with `tags` open before it. Code, front matter, and
+ * comment and math blocks hold no tags; an HTML block's lines are HTML.
+ */
+function tagsOfLine(kind: LineKind, blocks: Blocks, tags: OpenTags): OpenTags {
+  const text = blocks.content;
+  switch (kind) {
+    case "html":
+      return tagsAfterHtml(text, tags);
+    case "line":
+    case "row":
+      return mentionsTag(text) ? tagsAfter(text, tags) : tags;
+    case "title": {
+      if (!mentionsTag(blocks.text)) return tags;
+      const title = calloutTitle(blocks.text);
+      const titleText = title.lineAt(0) ?? "";
+      return title.kind !== "code" && mentionsTag(titleText)
+        ? tagsAfter(titleText, tags)
+        : tags;
+    }
+    default:
+      return tags;
+  }
 }
 
 /**
@@ -1160,8 +1231,11 @@ function definitionLines(text: string): number {
   return found === null ? -1 : found[0].length;
 }
 
-/** Whether column `ch` of a table's row `row` is in a code span in its cell. */
-function insideCell(row: string, ch: number): boolean {
+/**
+ * Whether column `ch` of a table's row `row` is in a code span in its cell,
+ * or after a tag open before the row.
+ */
+function insideCell(row: string, ch: number, tags: OpenTags): boolean {
   let start = 0;
   let end = row.length;
   for (let index = 0; index < row.length; index++) {
@@ -1176,5 +1250,7 @@ function insideCell(row: string, ch: number): boolean {
       }
     }
   }
-  return insideInlineCode(row.slice(start, end), ch - start) === true;
+  return (
+    insideInlineCode(row.slice(start, end), ch - start, true, tags) === true
+  );
 }

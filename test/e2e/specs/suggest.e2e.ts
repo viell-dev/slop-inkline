@@ -227,6 +227,14 @@ const contexts: [string, string, boolean][] = [
   ["Inline HTML", "Some <b>bold</b> HERE text.\n", true],
   // A `<code>` tag in a paragraph makes code to its `</code>`.
   ["Code tag", "Some <code>inline HERE</code> text.\n", false],
+  // An open `<code>` stays open over blank lines, as the browser keeps it,
+  // and a slash does not close one; a closed one makes no code after it.
+  ["Open code", "<code>\n\nHERE\n\n</code>\n", false],
+  ["Open code tag", "Some <code>a\n\nHERE\n\n</code>\n", false],
+  ["Code slash", "Some <code/>HERE\n", false],
+  ["Code space slash", "Some <code />HERE\n", false],
+  ["Code attribute slash", 'Some <code class="x"/>HERE\n', false],
+  ["Closed code", "Some <code>a</code>\n\nHERE\n", true],
 ];
 
 /**
