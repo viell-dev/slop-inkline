@@ -15,6 +15,7 @@ import {
   MenuChoice,
   showSymbolMenu,
   symbolAt,
+  symbolDoubleClicked,
   symbolInBlock,
   symbolInRenderedNote,
   symbolOfImage,
@@ -43,8 +44,11 @@ export default class InklinePlugin extends Plugin {
   readonly #editors = new Set<InkEditorModal>();
   /** Shows symbols in notes as characters, in every window. */
   readonly #renderer = new SymbolRenderer(Platform.resourcePathPrefix);
-  /** What stops Inkline answering right-clicks, in each document it does. */
-  readonly #menuDocuments = new Map<Document, AbortController>();
+  /**
+   * What stops Inkline answering right-clicks and double-clicks, in each
+   * document it does.
+   */
+  readonly #answering = new Map<Document, AbortController>();
   /** The menus that hold Edit symbol already. */
   readonly #menusWithEdit = new WeakSet<Menu>();
   /** What the vault's symbols say about themselves, for searching. */
@@ -128,11 +132,11 @@ export default class InklinePlugin extends Plugin {
     this.registerMarkdownPostProcessor((element) => {
       if (this.#loaded) this.#renderer.watch(element.doc);
     });
-    this.#offerMenus(document);
+    this.#offerEditing(document);
     this.registerEvent(
       this.app.workspace.on("window-open", (win) => {
         this.#renderer.watch(win.doc);
-        this.#offerMenus(win.doc);
+        this.#offerEditing(win.doc);
       }),
     );
     this.registerEvent(
@@ -146,7 +150,7 @@ export default class InklinePlugin extends Plugin {
       if (!this.#loaded) return;
       this.app.workspace.iterateAllLeaves((leaf) => {
         this.#renderer.watch(leaf.view.containerEl.doc);
-        this.#offerMenus(leaf.view.containerEl.doc);
+        this.#offerEditing(leaf.view.containerEl.doc);
       });
       this.#indexText();
     });
@@ -305,8 +309,8 @@ export default class InklinePlugin extends Plugin {
     this.#texts.stop();
     // Symbols show as the plain images they are once Inkline is off.
     this.#renderer.stop();
-    for (const stop of this.#menuDocuments.values()) stop.abort();
-    this.#menuDocuments.clear();
+    for (const stop of this.#answering.values()) stop.abort();
+    this.#answering.clear();
     for (const editor of [...this.#editors]) editor.dispose();
   }
 
@@ -314,14 +318,15 @@ export default class InklinePlugin extends Plugin {
    * Answers a right-click on a symbol in a note, so that every symbol offers
    * Edit symbol. Where Obsidian builds a menu, for the image or for a block
    * around it, that menu takes the item; where it shows none, Inkline shows
-   * the symbol's. Once for each document, for as long as it lasts: a canvas
+   * the symbol's. A double-click that reaches a symbol opens it, as Edit
+   * symbol does. Once for each document, for as long as it lasts: a canvas
    * card's editor makes a new one each time it opens.
    */
-  #offerMenus(doc: Document): void {
+  #offerEditing(doc: Document): void {
     const view = doc.defaultView;
-    if (this.#menuDocuments.has(doc) || view === null || view.closed) return;
+    if (this.#answering.has(doc) || view === null || view.closed) return;
     const stop = new AbortController();
-    this.#menuDocuments.set(doc, stop);
+    this.#answering.set(doc, stop);
     const { signal } = stop;
     // A rendered note opens Obsidian's image viewer on a right-click unless
     // its default is prevented by then, so Inkline answers a symbol's
@@ -359,6 +364,38 @@ export default class InklinePlugin extends Plugin {
       },
       { signal },
     );
+    // In Live Preview, a click on a selected image opens Obsidian's image
+    // viewer, unless its default is prevented by then, and a double-click's
+    // first click selects it. So the viewer stays shut for a symbol's second
+    // click, and for any after it, while the first keeps what Obsidian does.
+    doc.addEventListener(
+      "click",
+      (event) => {
+        const image = symbolDoubleClicked(event);
+        if (
+          image !== undefined &&
+          image === event.targetNode &&
+          symbolOfImage(this.app, image) !== undefined
+        ) {
+          event.preventDefault();
+        }
+      },
+      { capture: true, signal },
+    );
+    // Preventing the double-click also stops a canvas card that is not
+    // focused from opening its text for editing.
+    doc.addEventListener(
+      "dblclick",
+      (event) => {
+        if (event.defaultPrevented) return;
+        const image = symbolDoubleClicked(event);
+        const file = image && symbolOfImage(this.app, image);
+        if (image === undefined || file === undefined) return;
+        event.preventDefault();
+        void this.editSymbol(file);
+      },
+      { capture: true, signal },
+    );
     // A canvas card's own editor is a document in a frame, which no workspace
     // event names, and which takes the focus as it opens.
     doc.addEventListener(
@@ -369,7 +406,7 @@ export default class InklinePlugin extends Plugin {
         const inner = frame.contentDocument;
         if (inner === null) return;
         this.#renderer.watch(inner);
-        this.#offerMenus(inner);
+        this.#offerEditing(inner);
       },
       { signal },
     );
@@ -377,7 +414,7 @@ export default class InklinePlugin extends Plugin {
     // stays in memory until the plugin unloads.
     const forget = (): void => {
       stop.abort();
-      this.#menuDocuments.delete(doc);
+      this.#answering.delete(doc);
     };
     view.addEventListener("pagehide", forget, { once: true, signal });
     view.addEventListener("unload", forget, { once: true, signal });

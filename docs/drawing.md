@@ -3,7 +3,8 @@
 ![The editor tracing a sign from a synthetic inscription, with font guides and the Make ink button.](./screenshots/tracing.png)
 
 The editor opens over the note for a new symbol, from **Inkline: Insert
-symbol**, or for one you have, from **Edit symbol**. Its parts, from the top:
+symbol**, or for one you have, from **Edit symbol**, or (**Unreleased**) a
+[double-click on it](./notes.md#edit-a-symbol). Its parts, from the top:
 
 - the **name field**, which holds the symbol's name, and, beside it, its
   [readings and translations](#readings-and-translations);
