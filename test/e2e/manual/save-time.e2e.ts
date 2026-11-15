@@ -98,7 +98,7 @@ async function secondLibrary(): Promise<void> {
 
 /** Opens the fields of `file` in the first library that shows it. */
 async function openFields(file: string): Promise<void> {
-  const button = `.inkline-library-symbol[data-inkline-path="${file}"] [data-inkline-role="text"]`;
+  const button = `.inkline-library-symbol[data-inkline-path="${file}"] [data-inkline-role="edit"]`;
   await browser.waitUntil(async () =>
     browser.execute((selector) => {
       const found = document.querySelector<HTMLElement>(selector);
@@ -109,7 +109,7 @@ async function openFields(file: string): Promise<void> {
   await browser.waitUntil(async () =>
     browser.execute(() => {
       const save = document.querySelector<HTMLButtonElement>(
-        ".inkline-library-text-buttons button",
+        ".inkline-library-edit-buttons button",
       );
       return save?.disabled === false;
     }),
@@ -126,7 +126,7 @@ async function timedLibrarySave(value: string, filtering: boolean) {
     async ({ app }, text, filter) => {
       const { mainThread } = window.inklineTest;
       const form = document.querySelector<HTMLFormElement>(
-        ".inkline-library-text-form",
+        ".inkline-library-edit-form",
       );
       const area = form?.querySelector("textarea");
       if (form === null || area === null || area === undefined) {
@@ -183,7 +183,7 @@ async function timedSaveBehind(large: string, small: string) {
     async (first, second) => {
       const forms = [
         ...document.querySelectorAll<HTMLFormElement>(
-          ".inkline-library-text-form",
+          ".inkline-library-edit-form",
         ),
       ];
       const set = (form: HTMLFormElement | undefined, text: string): void => {
@@ -325,7 +325,7 @@ describe("What saving a large symbol costs", function () {
       await browser.execute((wanted) => {
         // The second library's row, as the first's is a form now.
         const rows = document.querySelectorAll<HTMLElement>(
-          `.inkline-library-symbol[data-inkline-path="${wanted}"] [data-inkline-role="text"]`,
+          `.inkline-library-symbol[data-inkline-path="${wanted}"] [data-inkline-role="edit"]`,
         );
         [...rows].at(-1)?.click();
       }, small);
@@ -334,7 +334,7 @@ describe("What saving a large symbol costs", function () {
           () =>
             [
               ...document.querySelectorAll<HTMLButtonElement>(
-                ".inkline-library-text-buttons button[type=submit]",
+                ".inkline-library-edit-buttons button[type=submit]",
               ),
             ].filter((button) => !button.disabled).length === 2,
         ),
