@@ -61,6 +61,41 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ### Fixed
 
+- The `;;` list follows Reading view in more places when it tells code from
+  text, so that it neither opens in code nor stays closed in text there:
+  - Inline code starts and ends where Reading view finds it. A backtick inside a
+    wiki link, a link's address, a `%%` comment, math, a web address, or an HTML
+    tag starts none, and inline code inside emphasis, strikethrough, a
+    highlight, a link's text, or square brackets ends where they do: in
+    `` **`a** b` `` nothing is code, while ``**`code`**`` is code
+    ([#243](https://github.com/viell-dev/slop-inkline/issues/243)).
+  - A tab after a quote's `>`, or after a list item's marker and a space, makes
+    the line indented code, unless it goes on in a paragraph; spaces before a
+    tab do not ([#249](https://github.com/viell-dev/slop-inkline/issues/249)).
+  - A line without `>` stays in its quote after a heading, a code block, a
+    table, or a `>` alone, as it does after a paragraph, unless it starts a
+    block that ends the quote
+    ([#250](https://github.com/viell-dev/slop-inkline/issues/250)).
+  - `%%` comment and `$$` math blocks, link reference definitions, task boxes,
+    headings underlined with `===`, the line after an empty list item, and the
+    end of a table are read as Reading view reads them.
+  - The list lists nothing in a block of HTML, where an embed shows as text and
+    code, as in `<pre><code>`, cannot be told from text, nor in a paragraph too
+    long to read in time, such as one of a thousand brackets that nothing
+    closes. After a `<code>` or `<pre>` tag, in any form, `<code/>` included, it
+    lists nothing until the note closes it with `</code>` or `</pre>`, over
+    blank lines and other blocks too. A closing tag counts only where the
+    browser reads it as one: not inside an HTML comment, a quoted attribute, a
+    `<textarea>` or `<style>`, a table's cell, or a footnote, and not past eight
+    or more nested blocks. It lists nothing inside an HTML tag or comment, a
+    `%%` comment, or inline math, where an embed shows nothing, nor in a
+    `<textarea>`'s text, and nothing in the rest of a note after a comment, tag,
+    or quote that a block of HTML leaves open, or after a `<script>`, an
+    `<svg>`, or a `<math>`.
+
+  A few rare notes are still read otherwise
+  ([#271](https://github.com/viell-dev/slop-inkline/issues/271)).
+
 - A symbol stands on the baseline of the text beside it wherever it falls in the
   line, and the symbols of a line line up with each other
   ([#261](https://github.com/viell-dev/slop-inkline/issues/261)). Before, by
