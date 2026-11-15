@@ -440,6 +440,28 @@ must keep released files readable and looking the same, as
   other scripts work, errors keep the entered name for retry, a deleted and
   replaced file is refused, and repeated submission starts only one rename
   ([library-renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-renaming.e2e.ts)).
+- **Unreleased:** Quick edit in a library row saves a name alone, with links
+  following and the file's bytes as they were, readings and translations alone,
+  with no note touched, and both with one Save; with nothing changed, Cancel, or
+  Esc, it writes and renames nothing. A name another symbol has is refused
+  before anything is written. A rename that fails after the readings were
+  written keeps them saved and the name to try again, which then renames without
+  writing them twice, and so does a symbol renamed elsewhere while they are
+  written, which is not renamed again; a rename that something came between says
+  only that they are saved. A write that fails, or that finds the file changed,
+  renames nothing; a save left while its write waits renames nothing, and one
+  left while its rename waits says the readings are saved. With Inkline turned
+  off during the write or the rename, a notice says what was and was not done. A
+  name nobody changed follows renames made elsewhere, one after another, and
+  never renames the file back; a name typed stays through them, and a refused
+  name's reason through a change to the file. Quick edit fits the narrowest
+  sidebar with a long name. Each row's readings and translations sit nearer it
+  than the next row, in both themes, and the list and Quick edit keep their
+  names for screen readers with no tooltip over their empty space. What each
+  outcome writes, renames, and says is also unit-tested
+  ([library-quick-edit.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-quick-edit.e2e.ts)
+  and
+  [quick-edit.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/library/quick-edit.test.ts)).
 
 ### Preferences are kept and apply where they are shown
 

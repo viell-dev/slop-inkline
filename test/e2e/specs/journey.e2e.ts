@@ -234,10 +234,14 @@ describe("A deciphering session", function () {
     );
     await browser.waitUntil(
       async () =>
-        (await row("gate").$(".inkline-library-uses").getText()) === "2 notes",
+        (await row("gate").$(".inkline-library-uses").getText()) === "Uses (2)",
     );
-    await row("gate").$(".inkline-library-rename").click();
-    await browser.$(".inkline-library-rename-form input").setValue("return");
+    await row("gate").$(".inkline-library-edit").click();
+    await browser
+      .$(".inkline-library-edit-form")
+      .$("button=Save")
+      .waitForEnabled();
+    await browser.$(".inkline-library-edit-form input").setValue("return");
     await browser.keys(["Enter"]);
     await row("return").waitForExist();
     expect(await bytesOf("return.ink.png")).toBe(original);
@@ -251,7 +255,7 @@ describe("A deciphering session", function () {
     await browser.waitUntil(
       async () =>
         (await row("return").$(".inkline-library-uses").getText()) ===
-        "2 notes",
+        "Uses (2)",
     );
     await row("return").$(".inkline-library-uses").waitForClickable();
     await row("return").$(".inkline-library-uses").click();

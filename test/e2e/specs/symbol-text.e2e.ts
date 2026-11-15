@@ -245,22 +245,22 @@ function area(field: "reading" | "translation"): ReturnType<typeof browser.$> {
   return browser.$(`textarea[data-inkline-field="${field}"]`);
 }
 
-/** Opens the library's fields for `file`, once they have read the file. */
+/** Opens Quick edit for `file`, once its fields have read the file. */
 async function openFields(file: string): Promise<void> {
-  await row(file).$('[data-inkline-role="text"]').click();
+  await row(file).$('[data-inkline-role="edit"]').click();
   await browser.waitUntil(async () => {
     const save = formSave();
     return (await save.isExisting()) && (await save.isEnabled());
   });
 }
 
-const formSave = () => browser.$(".inkline-library-text-buttons button");
-const formError = () => browser.$(".inkline-library-rename-error");
+const formSave = () => browser.$(".inkline-library-edit-buttons button");
+const formError = () => browser.$(".inkline-library-edit-error");
 const formNote = () => browser.$(".inkline-text-note");
 
 /** The form's fields are gone, as after a save or a cancel. */
 async function waitForClosedForm(): Promise<void> {
-  await browser.$(".inkline-library-text-form").waitForExist({ reverse: true });
+  await browser.$(".inkline-library-edit-form").waitForExist({ reverse: true });
 }
 
 /** Sets a text area's value as typing would. */
@@ -381,7 +381,7 @@ async function type(text: string): Promise<void> {
 /** Saves the library's fields, under an editor or not. */
 function saveFields(): void {
   document
-    .querySelector<HTMLFormElement>(".inkline-library-text-form")
+    .querySelector<HTMLFormElement>(".inkline-library-edit-form")
     ?.requestSubmit();
 }
 
@@ -408,7 +408,7 @@ async function atNextWrite(
           // The fields still to save, if another library's are busy.
           [
             ...document.querySelectorAll<HTMLFormElement>(
-              ".inkline-library-text-form",
+              ".inkline-library-edit-form",
             ),
           ]
             .find(
@@ -518,7 +518,7 @@ async function fieldsInSecondLibrary(
       .getLeaf("split")
       .setViewState({ type: "inkline-library", active: false });
   });
-  const button = `.inkline-library-symbol[data-inkline-path="${file}"] [data-inkline-role="text"]`;
+  const button = `.inkline-library-symbol[data-inkline-path="${file}"] [data-inkline-role="edit"]`;
   await browser.waitUntil(async () =>
     browser.execute((selector) => {
       const found = document.querySelector<HTMLElement>(selector);
@@ -531,7 +531,7 @@ async function fieldsInSecondLibrary(
       (name, value) => {
         const form = [
           ...document.querySelectorAll<HTMLFormElement>(
-            ".inkline-library-text-form",
+            ".inkline-library-edit-form",
           ),
         ].find(
           (each) =>
@@ -554,7 +554,7 @@ async function fieldsInSecondLibrary(
 
 /** How many of the library's fields are open. */
 async function openForms(): Promise<number> {
-  return browser.$$(".inkline-library-text-form").length;
+  return browser.$$(".inkline-library-edit-form").length;
 }
 
 /**
@@ -1306,7 +1306,7 @@ describe("A symbol's readings and translations", function () {
         await browser.execute(() =>
           document.activeElement?.getAttribute("data-inkline-role"),
         ),
-      ).toBe("text");
+      ).toBe("edit");
       const after = await browser.executeObsidian(async ({ app }) => {
         const file = app.vault.getFileByPath("Uses.md");
         return file === null
@@ -1394,7 +1394,7 @@ describe("A symbol's readings and translations", function () {
       });
     }
 
-    it("refuses a file that is not a whole PNG, and leaves it", async function () {
+    it("refuses the text of a file that is not a whole PNG, and leaves it, though it can rename it", async function () {
       const bytes = await readFile(path.join(fixtures, "v1-strokes.ink.png"));
       await browser.executeObsidian(async ({ app }, data) => {
         const file = Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
@@ -1403,14 +1403,25 @@ describe("A symbol's readings and translations", function () {
           file.subarray(0, file.length - 20).slice().buffer,
         );
       }, toBase64(bytes));
+      const before = await bytesOf("Cut.ink.png");
       await showLibrary();
-      await row("Cut.ink.png").$('[data-inkline-role="text"]').click();
+      await row("Cut.ink.png").$('[data-inkline-role="edit"]').click();
       await browser.waitUntil(async () =>
         (await formError().getText()).includes("not a whole PNG"),
       );
-      expect(await formSave().isEnabled()).toBe(false);
+      // Its fields cannot be typed in, and its name can change.
+      expect(await area("reading").getProperty("readOnly")).toBe(true);
+      expect(await formSave().isEnabled()).toBe(true);
       await browser.keys(["Escape"]);
       await waitForClosedForm();
+      expect(await bytesOf("Cut.ink.png")).toBe(before);
+      await row("Cut.ink.png").$('[data-inkline-role="edit"]').click();
+      await browser.waitUntil(async () => formSave().isEnabled());
+      await browser.$(".inkline-library-edit-form input").setValue("Whole");
+      await browser.keys(["Enter"]);
+      await waitForClosedForm();
+      expect(await symbolFiles()).toEqual(["Whole.ink.png"]);
+      expect(await bytesOf("Whole.ink.png")).toBe(before);
     });
 
     it("keeps a list it cannot read, behind the value typed", async function () {
@@ -1540,11 +1551,11 @@ describe("A symbol's readings and translations", function () {
           .getLeaf("split")
           .setViewState({ type: "inkline-library", active: false });
       });
-      const buttons = `.inkline-library-symbol[data-inkline-path="${file}"] [data-inkline-role="text"]`;
+      const buttons = `.inkline-library-symbol[data-inkline-path="${file}"] [data-inkline-role="edit"]`;
       await browser.waitUntil(
         async () => (await browser.$$(buttons).length) === 2,
       );
-      const saves = ".inkline-library-text-buttons button[type=submit]";
+      const saves = ".inkline-library-edit-buttons button[type=submit]";
       await browser.execute((selector) => {
         for (const button of document.querySelectorAll<HTMLElement>(selector)) {
           button.click();
@@ -1560,7 +1571,7 @@ describe("A symbol's readings and translations", function () {
       await browser.execute(
         (values) => {
           const forms = document.querySelectorAll<HTMLFormElement>(
-            ".inkline-library-text-form",
+            ".inkline-library-edit-form",
           );
           forms.forEach((form, index) => {
             const [field, text] = values[index] ?? [];
@@ -1753,7 +1764,7 @@ describe("A symbol's readings and translations", function () {
           await browser.execute(() => {
             [
               ...document.querySelectorAll<HTMLFormElement>(
-                ".inkline-library-text-form",
+                ".inkline-library-edit-form",
               ),
             ]
               .find(
@@ -2014,8 +2025,8 @@ describe("A symbol's readings and translations", function () {
       await symbolWith("ka.ink.png", { reading: ["TA"] });
       await showLibrary();
       await waitForValues("ka.ink.png", "Reading: TA");
-      await row("ka.ink.png").$('[data-inkline-role="rename"]').click();
-      await browser.$(".inkline-library-rename-form input").setValue("ga");
+      await openFields("ka.ink.png");
+      await browser.$(".inkline-library-edit-form input").setValue("ga");
       await browser.keys(["Enter"]);
       await waitForValues("ga.ink.png", "Reading: TA");
       expect((await fieldsOf("ga.ink.png")).reading).toEqual(["TA"]);
@@ -2317,7 +2328,9 @@ describe("A symbol's readings and translations", function () {
           .setViewState({ type: "inkline-library", active: false });
       });
       const button =
-        '[data-inkline-path="Other.ink.png"] [data-inkline-role="rename"]';
+        '[data-inkline-path="Other.ink.png"] [data-inkline-role="edit"]';
+      // The third library's form is the one with nothing typed in it, once its
+      // fields have read the file and Save can go: the second has a reading.
       await browser.waitUntil(async () =>
         browser.execute((selector) => {
           for (const found of document.querySelectorAll<HTMLElement>(
@@ -2325,18 +2338,31 @@ describe("A symbol's readings and translations", function () {
           )) {
             found.click();
           }
-          return (
-            document.querySelector(".inkline-library-rename-form") !== null
+          return [
+            ...document.querySelectorAll<HTMLFormElement>(
+              ".inkline-library-edit-form",
+            ),
+          ].some(
+            (form) =>
+              form.querySelector<HTMLTextAreaElement>("textarea")?.value ===
+                "DA" &&
+              form.querySelector<HTMLButtonElement>("button[type=submit]")
+                ?.disabled === false,
           );
         }, button),
       );
       await browser.execute(() => {
-        const renaming = document.querySelector<HTMLFormElement>(
-          ".inkline-library-rename-form",
+        const renaming = [
+          ...document.querySelectorAll<HTMLFormElement>(
+            ".inkline-library-edit-form",
+          ),
+        ].find(
+          (form) =>
+            form.querySelector<HTMLTextAreaElement>("textarea")?.value === "DA",
         );
         const name = renaming?.querySelector("input");
-        if (renaming === null || name === null || name === undefined) {
-          throw new Error("no rename form");
+        if (renaming === undefined || name === null || name === undefined) {
+          throw new Error("no form to rename in");
         }
         name.value = "Renamed";
         renaming.requestSubmit();
