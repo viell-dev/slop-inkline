@@ -119,9 +119,10 @@ elsewhere, by sync, another app, or another editor, is not lost to a save:
 
 ## Files Inkline cannot read
 
-- **A symbol saved by a newer version of Inkline** opens with a notice to update
-  Inkline instead of in the editor, so that this version never saves over what
-  it does not understand.
+- **A symbol saved in a newer version of the file format** than this Inkline
+  reads opens with a notice to update Inkline instead of in the editor, so that
+  this version never saves over what it does not understand. A symbol that a
+  later Inkline saved in a format this one reads opens as usual.
 - **A symbol whose strokes cannot be read**, because the file was damaged or a
   program wrote them wrongly, does not open either, and a notice says so, so
   that saving never replaces strokes that might still be recovered. It still
@@ -134,6 +135,37 @@ elsewhere, by sync, another app, or another editor, is not lost to a save:
   not open, and a notice says why.
 - A symbol whose image is damaged, but whose strokes are whole, opens as usual,
   and saving it draws the image again.
+
+## Drafts whose symbol is gone or does not open
+
+The editor offers a draft only when it opens a symbol at the path the draft was
+kept for. Drafts follow a rename that Obsidian makes while Inkline is on. A
+draft stays unseen when its symbol's file then stops opening, as one cut short
+by a crash while it was saved, and when the file is renamed or deleted in a way
+Inkline does not see, as while it is off. **Unreleased:** when a symbol does not
+open because its file is not a valid PNG or its strokes cannot be read, the
+notice says so if a draft of it is kept.
+
+A draft not restored within 30 days is dropped. To get one back before then:
+
+- **A symbol renamed or moved while Inkline was off:** rename it back to the
+  name and folder it had, then open it, and choose **Restore**.
+- **A symbol that does not open, or was deleted:**
+  1. Move its file out of the vault, if you might want what it holds, or delete
+     it.
+  2. Start a new symbol, draw anything, such as a dot, type the file's name, and
+     save it. If it is saved in another folder, move it to the folder the file
+     was in, as in Obsidian's file explorer. Its save puts its embed where you
+     started it: delete that if the note did not need it.
+  3. Open the new symbol. It asks **Restore the unsaved drawing?**, and says
+     that the symbol was saved again since the draft was kept. Choose
+     **Restore**, which puts the draft's drawing in place of what you drew, and
+     save.
+
+The draft brings back its strokes, and any name, readings, and translations you
+had typed. A base layer, the picture to draw over, comes back only if the draft
+kept its own, as when it had changed since the symbol was last saved: otherwise
+the draft used the file's, which the new symbol does not have.
 
 ## Pictures without strokes
 

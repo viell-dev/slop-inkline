@@ -30,9 +30,17 @@ title line into the callout. With no symbols in the vault yet, the trigger shows
 nothing, and **Inkline: Insert existing symbol** says so. Typed with a space, a
 name matches only symbols whose names hold what you typed.
 
-**"… was saved by a newer version of Inkline."** Update Inkline, as
+**"… was saved by a newer version of Inkline."** The symbol is in a newer
+version of the file format than this Inkline reads. Update Inkline, as
 [Install](./install.md#update) describes; this version will not edit the symbol,
 so that it never loses what the newer one stored.
+
+**"… Unsaved changes to it are kept as a draft. To get them back, see Saving and
+recovery in Inkline's guide."** **Unreleased.** The symbol did not open, as its
+file is not a valid PNG or its strokes cannot be read, and the editor had kept a
+draft of it, as when a crash cut short a save.
+[Drafts whose symbol is gone or does not open](./recovery.md#drafts-whose-symbol-is-gone-or-does-not-open)
+says how to get the draft back.
 
 **"Opened as a picture to draw over, as this file holds no strokes …"** The file
 holds a picture but no strokes to edit, as every symbol saved before 0.9.2 does.
@@ -90,6 +98,12 @@ path, while Obsidian wrote this save, so the save may be in the file now at that
 path. What you drew or typed is still in the editor, or in the library's row.
 Look at the file at that path, and at your sync tool's history for what was
 there, then save again or close without saving.
+
+**"… is saved, but was not inserted, as the note it was for, …, was deleted."**
+**Unreleased.** The note you started the symbol in was deleted while you drew,
+as by sync or on another device. The symbol is saved in its file: insert it
+where you want it with **Inkline: Insert existing symbol** or the
+[insert trigger](./notes.md#insert-a-symbol-you-have).
 
 **"… is saved, but could not be renamed: …"** The drawing is saved under the old
 name, and the new name stays in the editor's name field, for the next save to

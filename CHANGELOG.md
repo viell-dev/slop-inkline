@@ -9,6 +9,48 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Changed
+
+- When a symbol does not open, because its file is not a valid PNG or its
+  strokes cannot be read, and Inkline keeps a draft of it, as after a crash cut
+  short a save, the notice says that the draft is kept. The editor offers a
+  draft only for a symbol that opens at the draft's path, so such a draft used
+  to wait unseen until it expired.
+  [Saving and recovery](https://viell-dev.github.io/slop-inkline/recovery#drafts-whose-symbol-is-gone-or-does-not-open)
+  now says how to get it back, and how to get back a draft whose symbol was
+  renamed or deleted while Inkline was off.
+
+### Fixed
+
+- A new symbol whose note was deleted while it was drawn, as by sync or on
+  another device, is saved, and a notice says that it was not inserted, as its
+  note was deleted. The editor then closes as after any save. Its file used to
+  be written, while the editor said "Not saved" with a path on the disk, and
+  every save after failed the same way, so that only **Discard** closed it.
+- A new symbol with nothing drawn, no stroke of the pen and no picture as its
+  base layer, is not saved: Save, Mod+S, and **Next** leave the editor open, and
+  its status line says "Not saved: nothing drawn yet". An untouched new editor
+  used to save an empty symbol and insert it, and a second click on **Next**,
+  landing on the next editor, did the same. A symbol that has a file still saves
+  when erased to nothing.
+- The editor's **Help**, the **Zoom** button's tooltip, and the line Zoom shows
+  as it turns on said that the arrow keys move along a zoomed drawing. Only the
+  left and right arrow keys do; the up and down arrow keys move the drawing.
+- The guide said that a symbol saved by a newer version of Inkline does not
+  open. It is a symbol saved in a newer version of the file format that does
+  not: one that a later Inkline saved in a format this one reads opens as usual.
+- [Known limits](https://viell-dev.github.io/slop-inkline/limits#files-and-sizes)
+  now says that symbols saved without a name take the lowest free number on
+  every device, so that two devices can give two symbols the same name before
+  they sync, and a sync tool keep only one of them, and that a new symbol can
+  take the number of a deleted one that a note still embeds
+  ([#299](https://github.com/viell-dev/slop-inkline/issues/299)).
+- [Known limits](https://viell-dev.github.io/slop-inkline/limits#in-general) now
+  says that a line whose first letter is in a symbol's name, as
+  `8 ![[مرحبا.ink.png]]`, runs in that name's direction in Live Preview, and not
+  in Reading view, and how to give the line its own
+  ([#301](https://github.com/viell-dev/slop-inkline/issues/301)).
+
 ## 0.9.5 - 2026-11-15
 
 This is the fourth release candidate of 1.0.0: a build meant to become 1.0.0

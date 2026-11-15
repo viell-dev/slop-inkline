@@ -1582,13 +1582,44 @@ function newSymbol(
       if (inserted) return named;
       // Once Inkline is disabled, the editor's draft finishes the insertion.
       stillAlive(host.unloaded);
-      const embed = embedFor(app, made.file, note.path);
-      const existing = adopted
-        ? await existingEmbed(app, target, made.file, embed)
-        : undefined;
+      const saved = made.file;
+      const embed = embedFor(app, saved, note.path);
+      /**
+       * Whether the note was deleted, as by sync or on another device, so
+       * that there is nowhere to insert the embed. The symbol is saved, and
+       * says so: an error would keep the editor open over a saved file, with
+       * every save failing the same way.
+       */
+      const noteGone = (): boolean => {
+        if (present(app, note)) return false;
+        new Notice(
+          `${saved.name} is saved, but was not inserted, as the note it was for, ${note.basename}, was deleted.`,
+        );
+        // Nothing is left to insert: later saves only write the file, which
+        // the draft is for from now on, and Next opens no editor after it.
+        inserted = true;
+        return true;
+      };
+      if (noteGone()) return named;
+      let existing: InsertionPoint | undefined;
+      try {
+        existing = adopted
+          ? await existingEmbed(app, target, saved, embed)
+          : undefined;
+      } catch (error) {
+        // Deleted as it was read.
+        if (noteGone()) return named;
+        throw error;
+      }
       if (existing === undefined) {
         stillAlive(host.unloaded);
-        after = await watchSave(insertEmbed(app, target, embed), wait.told);
+        try {
+          after = await watchSave(insertEmbed(app, target, embed), wait.told);
+        } catch (error) {
+          // Deleted as the embed was being written.
+          if (noteGone()) return named;
+          throw error;
+        }
       } else {
         after = existing;
       }
@@ -1774,6 +1805,27 @@ export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
 }
 
 /**
+ * `text`, a notice that `file` did not open, with a sentence after it when the
+ * vault keeps a draft for the file. An editor offers a draft only for a symbol
+ * that opens at the path the draft was kept for, so a draft for a file cut
+ * short or damaged after it was kept would otherwise wait unseen until it
+ * expires. A new symbol's draft is not counted, as a new symbol in its note
+ * offers it. Nothing is read once Inkline is unloading, as reading the drafts
+ * drops expired ones.
+ */
+function withKeptDraft(host: EditorHost, file: TFile, text: string): string {
+  if (
+    host.unloaded.aborted ||
+    host.drafts.forTarget({ kind: "file", path: file.path }).length === 0
+  ) {
+    return text;
+  }
+  // The reason a file could not be read ends with no full stop of its own.
+  const stop = /[.!?…]$/.test(text) ? "" : ".";
+  return `${text}${stop} Unsaved changes to it are kept as a draft. To get them back, see Saving and recovery in Inkline's guide.`;
+}
+
+/**
  * Reads `file` and opens the editor on it, unless the person went on to
  * something else meanwhile. The newest open is the one they want, which
  * `wanted` says. A modal opened since has the keyboard, and an editor coming up
@@ -1799,7 +1851,13 @@ async function openEditor(
     drawing = await drawingOf(bytes);
     text = await readFileText(bytes);
   } catch (error) {
-    new Notice(`Could not open ${file.name}: ${message(error)}`);
+    new Notice(
+      withKeptDraft(
+        host,
+        file,
+        `Could not open ${file.name}: ${message(error)}`,
+      ),
+    );
     return;
   } finally {
     stopSaying();
@@ -1814,7 +1872,11 @@ async function openEditor(
   }
   if (opened.kind === "damaged") {
     new Notice(
-      `The strokes in ${file.name} cannot be read, so it was not opened, which keeps them as they are. To go on from what it shows, use Copy from in a new symbol.`,
+      withKeptDraft(
+        host,
+        file,
+        `The strokes in ${file.name} cannot be read, so it was not opened, which keeps them as they are. To go on from what it shows, use Copy from in a new symbol.`,
+      ),
     );
     return;
   }

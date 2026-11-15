@@ -9,7 +9,11 @@ import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import manifest from "../../manifest.json" with { type: "json" };
 import packageJson from "../../package.json" with { type: "json" };
-import { compareSemver } from "../../scripts/lib/version.ts";
+import {
+  compareSemver,
+  isPrerelease,
+  stableVersionPattern,
+} from "../../scripts/lib/version.ts";
 import { emptyDocument } from "../../src/ink/document.ts";
 import { brushSizes, DrawingSession } from "../../src/editor/session.ts";
 import { textLinks } from "../../src/notes/links.ts";
@@ -164,6 +168,69 @@ function documentLinkProblem(name: string, href: string): string | undefined {
   return undefined;
 }
 
+/**
+ * The documents that say whether Inkline has had a public release, by their
+ * paths from the repository's root.
+ */
+const releaseStatusDocuments = [
+  "docs/index.md",
+  "docs/install.md",
+  "README.md",
+  "docs/limits.md",
+];
+
+/**
+ * How those documents say what holds only while every release is a
+ * pre-release: that Inkline is one, that every release so far is one, in a
+ * box or a known limit titled "Prerelease", or that Inkline is not in
+ * Obsidian's community directory yet.
+ */
+const prereleaseOnly = [
+  /\bInkline is a pre-?release\b/gi,
+  /\bevery release so far is a pre-?release\b/gi,
+  /::: \w+ Pre-?release\b/gi,
+  /\*\*Pre-?release\.\*\*/gi,
+  /\bnot in Obsidian['’]s community (?:plugin )?directory yet\b/gi,
+  /\*\*Planned, not available yet\.\*\*/gi,
+];
+
+/** What `text` says, in those ways, that holds only before a public release. */
+function prereleaseClaims(text: string): string[] {
+  // As one line, since Prettier may break a sentence anywhere.
+  const flat = text.replace(/\s+/g, " ");
+  return prereleaseOnly.flatMap((pattern) =>
+    [...flat.matchAll(pattern)].map((match) => match[0]),
+  );
+}
+
+/** Whether `version` is a public release's: an even minor version. */
+function isPublic(version: string): boolean {
+  return stableVersionPattern.test(version) && !isPrerelease(version);
+}
+
+/**
+ * What is wrong with what `documents`, by their paths, say of the releases,
+ * when the checkout's `package.json` and `manifest.json` name `versions`. From
+ * the first public version, which `package.json` names for its release and
+ * `manifest.json` keeps naming after it, a document must not say that every
+ * release is a pre-release or that Inkline is not in Obsidian's directory yet.
+ * Before it, each says one of them, so that a change of wording that these
+ * patterns miss fails here, rather than passing at the public release.
+ */
+function releaseStatusProblems(
+  versions: readonly string[],
+  documents: Readonly<Record<string, string>>,
+): string[] {
+  const published = versions.some(isPublic);
+  return Object.entries(documents).flatMap(([path, text]) => {
+    const claims = prereleaseClaims(text);
+    if (published) return claims.map((claim) => `${path}: "${claim}"`);
+    return claims.length === 0
+      ? [`${path}: says nothing of the releases being pre-releases`]
+      : [];
+  });
+}
+
 /** The commands' names, as the plugin adds them. */
 function commandNames(): string[] {
   return [
@@ -305,6 +372,59 @@ describe("the documentation", () => {
         unreleased,
       );
     }
+  });
+
+  it("says that every release is a pre-release until a public version is named, and then never", () => {
+    const documents = Object.fromEntries(
+      releaseStatusDocuments.map((path) => [path, source(path)]),
+    );
+    expect(
+      releaseStatusProblems([packageJson.version, manifest.version], documents),
+    ).toEqual([]);
+  });
+
+  it("finds a document that still calls every release a pre-release once a public version is named", () => {
+    // In the documents' own wording, as Prettier breaks it.
+    const stale = {
+      "docs/index.md":
+        "---\nlayout: home\n---\n\n::: info Prerelease\n\nInkline is a prerelease for Obsidian 1.13.4 or later, on\ndesktop.\n\n:::\n",
+      "docs/install.md":
+        "::: info Prerelease\n\nIt is not\nin Obsidian's community plugin directory yet.\n\n:::\n\nTake the highest version number. Every release so far is a pre-release.\n\n## The community directory\n\n**Planned, not available yet.** The plan is…\n",
+      "README.md":
+        "Inkline is a prerelease for Obsidian 1.13.4 or later on desktop.\n\nInkline is not in Obsidian's community plugin directory yet.\n",
+      "docs/limits.md":
+        "- **Prerelease.** Install from GitHub releases, by hand or with BRAT; Inkline is\n  not in Obsidian's community directory yet.\n",
+    };
+    const found = [
+      'docs/index.md: "Inkline is a prerelease"',
+      'docs/index.md: "::: info Prerelease"',
+      'docs/install.md: "Every release so far is a pre-release"',
+      'docs/install.md: "::: info Prerelease"',
+      `docs/install.md: "not in Obsidian's community plugin directory yet"`,
+      'docs/install.md: "**Planned, not available yet.**"',
+      'README.md: "Inkline is a prerelease"',
+      `README.md: "not in Obsidian's community plugin directory yet"`,
+      'docs/limits.md: "**Prerelease.**"',
+      `docs/limits.md: "not in Obsidian's community directory yet"`,
+    ];
+    // The first public release, and a pre-release after it, which
+    // manifest.json shows by naming the public one.
+    expect(releaseStatusProblems(["1.0.0", "1.0.0"], stale)).toEqual(found);
+    expect(releaseStatusProblems(["1.1.0", "1.0.0"], stale)).toEqual(found);
+    // Before any, as now, with manifest.json at a pre-release.
+    expect(releaseStatusProblems(["0.9.5", "0.9.0"], stale)).toEqual([]);
+    // Pages for a public release, which say none of it, pass then, and fail
+    // before it.
+    const updated = {
+      "docs/index.md": "::: info Public release\n\nInkline 1.0.0 is out.\n",
+      "README.md":
+        "Inkline is in Obsidian's community plugin directory. A release with an\nodd minor version is a pre-release.\n",
+    };
+    expect(releaseStatusProblems(["1.0.0", "1.0.0"], updated)).toEqual([]);
+    expect(releaseStatusProblems(["0.9.5", "0.9.0"], updated)).toEqual([
+      "docs/index.md: says nothing of the releases being pre-releases",
+      "README.md: says nothing of the releases being pre-releases",
+    ]);
   });
 
   it("quotes notices as the plugin words them", () => {
