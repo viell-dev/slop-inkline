@@ -482,8 +482,11 @@ drawing while **Copy from** or **Reload** reads.
   [#144](https://github.com/viell-dev/slop-inkline/issues/144); from 0.9.2 on it
   must open with its strokes, or the check fails
   ([update.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/manual/update.e2e.ts)).
-  This runs separately from ordinary CI because it needs both release artifacts;
-  the release PR records its inputs and results.
+  **Unreleased:** it also leaves the old release's editor open with an unsaved
+  stroke: from 0.9.2 on the draft must come back after the update and save both
+  strokes, and from an earlier release it is dropped. This runs separately from
+  ordinary CI because it needs both release artifacts; the release PR records
+  its inputs and results.
 - Installing and updating through BRAT, an optional third-party route, has a
   separate check against the published releases. BRAT's own dialog installs the
   highest release and a chosen one, downloading only the three plugin files, and
