@@ -122,9 +122,10 @@ reads and writes the vault's files one after another, and Inkline waits for
 anything another plugin or a sync tool asks of Obsidian during its last read,
 then looks again. That leaves a program writing to the disk outside Obsidian in
 the moment Obsidian writes, and a disk so busy that something is asked during
-each of three looks, after which Inkline writes as it did before it waited. A
-save that finds its file gone once it has written says so, and keeps what you
-drew or typed. The first save of a new symbol is not looked at this way:
+each of three looks, after which Inkline writes as it did before it waited, as
+it does with a version of Obsidian that keeps its line where Inkline cannot see
+it. A save that finds its file gone once it has written says so, and keeps what
+you drew or typed. The first save of a new symbol is not looked at this way:
 Obsidian checks that nothing is at its path just before it writes, and only
 something asked in that moment comes between.
 

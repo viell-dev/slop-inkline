@@ -129,14 +129,17 @@ even one a public release; earlier pre-releases carry a suffix such as
   readings and translations, no longer shows a "Symbols" tooltip at the bottom
   of the list. Screen readers still hear the list's name
   ([#262](https://github.com/viell-dev/slop-inkline/issues/262)).
-- A symbol deleted, and another file put at its path, by another plugin or a
-  sync tool working through Obsidian while Inkline saved it, no longer has the
-  save written over the new file. Obsidian reads and writes the vault's files
-  one after another, so what was asked of it during a save's last look at the
-  file came before the save's write. A save now waits for it and looks again:
-  the library refuses a symbol that has gone, and the editor asks about a file
-  that changed. A save that finds its file gone once it has written says so, and
-  keeps what was drawn or typed
+- A save no longer writes over a file that another plugin or a sync tool,
+  working through Obsidian, put at a symbol's path in its place while the save
+  looked at the symbol for the last time. Obsidian reads and writes the vault's
+  files one after another, so what was asked of it during that look came before
+  the save's write. A save now waits for it and looks again: the library refuses
+  a symbol that has gone, and the editor asks about a file that changed. On a
+  disk still busy after three such looks, or in a version of Obsidian that keeps
+  its line where Inkline cannot see it, a save writes as before, as
+  [Known limits](https://viell-dev.github.io/slop-inkline/limits#a-file-written-at-the-moment-inkline-saves)
+  says. A save that finds its file gone once it has written says so, and keeps
+  what was drawn or typed
   ([#280](https://github.com/viell-dev/slop-inkline/issues/280)).
 
 - In a right-to-left interface, as Obsidian's in Hebrew, a symbol's picture in

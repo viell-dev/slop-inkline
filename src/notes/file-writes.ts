@@ -34,6 +34,16 @@ export interface DiskLine {
 }
 
 /**
+ * What a save's look at its file saw of the disk's {@link DiskLine}: what the
+ * line had last been asked once the look was asked, or undefined if it did not
+ * look. An object, as Obsidian's line is a promise, which an async function
+ * would wait for and resolve with the result of, rather than hand back.
+ */
+export interface Look {
+  readonly asked: unknown;
+}
+
+/**
  * How many times a save waits for what was asked of the disk during its last
  * look, and looks again, before it writes all the same, as it did before it
  * waited at all: a vault whose plugins keep the disk busy must still save.
@@ -322,11 +332,11 @@ export interface WholeFile<File> {
   /** The file to save over now, or null when there is none. */
   readonly current: () => File | null;
   /**
-   * Rejects to stop the save, with nothing written. Resolves with what the
-   * disk's line had last been asked once its look at the file was asked, if it
-   * looked, for the save to tell whether more has been since.
+   * Rejects to stop the save, with nothing written. Resolves with its
+   * {@link Look} at the file, for the save to tell whether more has been asked
+   * of the disk since.
    */
-  readonly check: () => Promise<unknown>;
+  readonly check: () => Promise<Look | undefined>;
   readonly write: (file: File) => Promise<void>;
   /** Makes the file, as there is none to save over. */
   readonly create: () => Promise<File>;
@@ -347,14 +357,14 @@ export async function saveFile<File>(save: WholeFile<File>): Promise<File> {
   let waits = 0;
   for (let attempt = 0; attempt < attempts;) {
     const checked = save.current();
-    const asked = await save.check();
+    const look = await save.check();
     const file = save.current();
     if (file !== checked) {
       attempt++;
       continue;
     }
     if (file === null) return save.create();
-    if (askedSince(save.line, asked) && waits < lineWaits) {
+    if (askedSince(save.line, look?.asked) && waits < lineWaits) {
       waits++;
       await save.line?.settle();
       continue;

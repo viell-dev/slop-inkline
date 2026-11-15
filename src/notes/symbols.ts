@@ -1213,7 +1213,7 @@ async function writeSymbol(
           } finally {
             if (looking === look) looking = undefined;
           }
-          return look.asked;
+          return look;
         },
         write: async (now) => {
           await app.vault.modifyBinary(now, buffer);

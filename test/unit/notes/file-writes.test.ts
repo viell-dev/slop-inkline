@@ -510,7 +510,7 @@ describe("saveFile", () => {
           if (looks === 1) {
             // Nothing there to look at, and then there is.
             vault.put(path, theirs);
-            return Promise.resolve();
+            return Promise.resolve(undefined);
           }
           return Promise.reject(new Error("the editor asks first"));
         },
@@ -562,7 +562,7 @@ describe("saveFile", () => {
         current: () => now,
         check: () => {
           now = vault.put(path);
-          return Promise.resolve();
+          return Promise.resolve(undefined);
         },
         write: () => Promise.reject(new Error("not to write")),
         create: () => Promise.reject(new Error("not to make")),
@@ -973,10 +973,13 @@ describe("A save that waits for Obsidian", () => {
 
 /**
  * Obsidian's line of disk operations, as a test runs it: what is asked of it
- * waits until it settles, and `last` changes with each thing asked.
+ * waits until it settles, and `last` changes with each thing asked. Like
+ * Obsidian's, `last` is a promise, which resolves with what the last thing
+ * asked returned, so that a save which hands it on through an async function,
+ * which would wait for it rather than return it, fails here.
  */
 class FakeLine implements DiskLine {
-  #asked = 0;
+  #asked: Promise<unknown> = Promise.resolve(new ArrayBuffer(0));
   readonly #waiting: (() => void)[] = [];
   /** How many times a save has waited for it. */
   settles = 0;
@@ -985,7 +988,7 @@ class FakeLine implements DiskLine {
 
   /** Asks the disk to `run` something, which happens once it settles. */
   ask(run: () => void = () => undefined): void {
-    this.#asked++;
+    this.#asked = Promise.resolve(new ArrayBuffer(0));
     this.#waiting.push(run);
   }
 
@@ -1092,7 +1095,7 @@ describe("a save and the disk's line", () => {
             });
           }
           if (bytes !== pinned) throw new Error("the editor asks first");
-          return asked;
+          return { asked };
         },
         write: (now) => access.write(now, pinned.slice().buffer),
         create: () => Promise.reject(new Error("not to make")),
@@ -1102,6 +1105,33 @@ describe("a save and the disk's line", () => {
     expect(looks).toBe(2);
     expect(replacement?.writes).toBe(0);
     expect(replacement?.bytes).toBe(theirs);
+  });
+
+  it("looks once and waits for nothing for the editor when nothing more is asked", async () => {
+    const vault = new FakeVault();
+    const file = vault.put("a.ink.png");
+    const drawn = await writeText(pinned, "translation", ["DRAWN"]);
+    const line = new FakeLine();
+    let looks = 0;
+    const written = await saveFile({
+      current: () => vault.current(file),
+      // As the editor's look does: an async function, reading the file, that
+      // resolves with the line as it was once the read was asked.
+      check: async () => {
+        looks++;
+        const reading = access.read(file);
+        const look = { asked: line.last() };
+        await reading;
+        return look;
+      },
+      write: (now) => access.write(now, drawn.slice().buffer),
+      create: () => Promise.reject(new Error("not to make")),
+      line,
+    });
+    expect(written).toBe(file);
+    expect(looks).toBe(1);
+    expect(line.settles).toBe(0);
+    expect(file.bytes).toEqual(drawn);
   });
 
   it("writes all the same for the editor once the disk stays busy", async () => {
@@ -1114,7 +1144,7 @@ describe("a save and the disk's line", () => {
       check: () => {
         const asked = line.last();
         line.ask();
-        return Promise.resolve(asked);
+        return Promise.resolve({ asked });
       },
       write: (now) => access.write(now, drawn.slice().buffer),
       create: () => Promise.reject(new Error("not to make")),
