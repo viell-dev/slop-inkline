@@ -87,6 +87,7 @@ even one a public release; earlier pre-releases carry a suffix such as
 
   A few rare notes are still read otherwise
   ([#271](https://github.com/viell-dev/slop-inkline/issues/271)).
+
 - The library's rows have space between them, so that the line of readings and
   translations under a row no longer reads as part of the row below it
   ([#262](https://github.com/viell-dev/slop-inkline/issues/262)).
