@@ -83,7 +83,13 @@ even one a public release; earlier pre-releases carry a suffix such as
     long to read in time, such as one of a thousand brackets that nothing
     closes. After a `<code>` or `<pre>` tag, in any form, `<code/>` included, it
     lists nothing until the note closes it with `</code>` or `</pre>`, over
-    blank lines and other blocks too.
+    blank lines and other blocks too. A closing tag counts only where the
+    browser reads it as one: not inside an HTML comment, a quoted attribute, a
+    `<textarea>` or `<style>`, a table's cell, or a footnote, and not past eight
+    or more nested blocks. It lists nothing inside an HTML tag or comment, nor
+    in a `<textarea>`'s text, and nothing in the rest of a note after a comment,
+    tag, or quote that a block of HTML leaves open, or after a `<script>`, an
+    `<svg>`, or a `<math>`.
 
   A few rare notes are still read otherwise
   ([#271](https://github.com/viell-dev/slop-inkline/issues/271)).
