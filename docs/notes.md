@@ -300,14 +300,19 @@ written, and everything you typed stays to correct.
   row says why, and keeps the name and the text you typed.
 - If the rename fails after they were written, the row says that they are saved
   and why the name is not, and keeps the name you typed: **Save** then tries
-  only the name again.
-- A save left with **Cancel** or Esc while it waits for Obsidian renames
-  nothing, even if the readings and translations are still written.
+  only the name again. So it does if the symbol is renamed elsewhere, as by
+  sync, while they are written: it is not renamed again, and **Save** renames it
+  from the name it has then.
+- A save left with **Cancel** or Esc while the readings and translations wait to
+  be written renames nothing, even if they are still written. One left while the
+  rename waits keeps them saved, and a notice says so. A rename that Obsidian
+  has already begun can still finish, as
+  [the limits](./limits.md#a-file-written-at-the-moment-inkline-saves) say.
 
 If the symbol is renamed elsewhere while its row is open, as by sync, a name you
 have not changed follows it, so that saving the readings and translations keeps
-that name. On a file whose readings and translations cannot be read, their
-fields stay closed, and the name can still change.
+that name. On a file whose readings and translations cannot be read when Quick
+edit opens, their fields stay closed, and the name can still change.
 
 ## Export a note to PDF
 

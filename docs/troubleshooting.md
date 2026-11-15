@@ -70,7 +70,8 @@ reason, and **Save** again, which tries only the name. When something came
 between the rename and Obsidian, the row says only that they are saved, and the
 next line says what happened and where the symbol is now. A notice says the
 same, as "Saved …. … could not be renamed to …: …", if the row had closed by
-then.
+then, and "Saved …. It was not renamed." if you closed the row while the rename
+waited.
 
 **Unreleased: "Nothing was renamed." in Quick edit.** The readings and
 translations could not be written, for the reason on the line above, so the

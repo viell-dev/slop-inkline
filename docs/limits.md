@@ -74,6 +74,8 @@ changes, restart Obsidian:
 - **Unreleased:** in the library's **Quick edit**, a save that changes the name
   and the readings or translations writes them first. Leaving it while that
   write waits leaves the name as it was, even if the write still finishes.
+  Leaving it while the rename waits keeps them saved, as the row and a notice
+  say.
 - **In the editor,** the drawing is saved by then, and the name is in the draft.
 - **Obsidian moves the file before it updates the links.** A restart while it
   updates them leaves the notes it had not reached with the old name, whose
