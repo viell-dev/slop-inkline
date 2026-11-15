@@ -4,8 +4,10 @@
 # The image holds the system libraries, Node.js, the dependencies, and a build
 # of the plugin. It never holds Obsidian: Obsidian's terms do not allow
 # redistributing it, so the tests download it into the volume mounted at /cache.
-# Node.js is the major version .nvmrc names, pinned by digest.
-FROM node:24-bookworm-slim@sha256:a5f4366e834695d5f363b920c104953a535d3a9864d1bdf74566a0ebe01daee5
+# Node.js is a release of the major version .nvmrc names, pinned by digest.
+# The tag names the whole version: while it named only `24`, Dependabot
+# offered no update, and the image kept 24.22.0 past two security releases.
+FROM node:24.22.3-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54
 
 RUN apt-get update \
   && apt-get install --yes --no-install-recommends \
