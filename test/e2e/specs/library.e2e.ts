@@ -159,7 +159,7 @@ async function pressOn(selector: string): Promise<void> {
 }
 
 /** A button in the row of `file`. */
-function inRow(file: string, button: "insert" | "rename"): string {
+function inRow(file: string, button: "insert" | "edit"): string {
   return `[data-inkline-path="${file}"] .inkline-library-${button}`;
 }
 
@@ -225,9 +225,9 @@ describe("The symbol library", function () {
     ).toBe(true);
     await waitForNames(["001", "gate", "tower"]);
     expect(await rows()).toEqual([
-      { name: "001", folder: "", uses: "2 notes", painted: true },
-      { name: "gate", folder: "Runes", uses: "Not used", painted: true },
-      { name: "tower", folder: "Runes", uses: "1 note", painted: true },
+      { name: "001", folder: "", uses: "Uses (2)", painted: true },
+      { name: "gate", folder: "Runes", uses: "Uses (0)", painted: true },
+      { name: "tower", folder: "Runes", uses: "Uses (1)", painted: true },
     ]);
     // A symbol no note uses has nothing to list.
     expect(
@@ -319,7 +319,7 @@ describe("The symbol library", function () {
     await browser.executeObsidian(async ({ app }) => {
       await app.vault.create("More.md", "See ![[gate.ink.png]].\n");
     });
-    await browser.waitUntil(async () => (await rows())[0]?.uses === "2 notes");
+    await browser.waitUntil(async () => (await rows())[0]?.uses === "Uses (2)");
     expect(
       await browser.execute(() => ({
         note: document.activeElement?.classList.contains(
@@ -344,7 +344,7 @@ describe("The symbol library", function () {
       if (file === null) throw new Error("no Uses.md");
       await app.fileManager.trashFile(file);
     });
-    await browser.waitUntil(async () => (await rows())[0]?.uses === "Not used");
+    await browser.waitUntil(async () => (await rows())[0]?.uses === "Uses (0)");
     expect(
       await browser.execute(() =>
         document.activeElement?.classList.contains("inkline-library-insert"),
@@ -441,7 +441,7 @@ describe("The symbol library", function () {
     await browser.keys(["Enter"]);
     await waitForText("Selection.md", "Keep both![[gate.ink.png]] words.\n");
     // The metadata-cache refresh replaces the row after the note saves.
-    await browser.waitUntil(async () => (await rows())[0]?.uses === "1 note");
+    await browser.waitUntil(async () => (await rows())[0]?.uses === "Uses (1)");
     expect(
       await browser.execute(() => document.activeElement?.className),
     ).toContain("inkline-library-insert");
@@ -537,7 +537,7 @@ describe("The symbol library", function () {
     await browser.waitUntil(
       async () =>
         (await rows()).find((found) => found.name === "tower")?.uses ===
-        "1 note",
+        "Uses (1)",
     );
     await browser.executeObsidian(async ({ app }) => {
       const file = app.vault.getFileByPath("arch.ink.png");
@@ -569,7 +569,7 @@ describe("The symbol library", function () {
   describe("with a press under way", function () {
     const names = async (): Promise<string[]> =>
       (await rows()).map((shown) => shown.name);
-    const form = () => browser.$(".inkline-library-rename-form");
+    const form = () => browser.$(".inkline-library-edit-form");
 
     /** A note to insert into, open with the cursor where it was `HERE`. */
     async function openNote(): Promise<void> {
@@ -587,7 +587,7 @@ describe("The symbol library", function () {
       await createSymbol("gate.ink.png");
       await showLibrary();
       await waitForNames(["gate"]);
-      await pressOn(inRow("gate.ink.png", "rename"));
+      await pressOn(inRow("gate.ink.png", "edit"));
       await createSymbol("tower.ink.png");
       await pastRedraw();
       expect(await names()).toEqual(["gate"]);
@@ -601,7 +601,7 @@ describe("The symbol library", function () {
       await createSymbol("gate.ink.png");
       await showLibrary();
       await waitForNames(["gate"]);
-      await browser.$(inRow("gate.ink.png", "rename")).execute((button) => {
+      await browser.$(inRow("gate.ink.png", "edit")).execute((button) => {
         if (button.instanceOf(HTMLElement)) button.focus();
       });
       const key = browser.action("key");
@@ -679,13 +679,13 @@ describe("The symbol library", function () {
       await openNote();
       await showLibrary();
       await waitForNames(["gate", "tower"]);
-      await row("gate").$(".inkline-library-rename").click();
+      await row("gate").$(".inkline-library-edit").click();
       await form().waitForExist();
       await pressOn(inRow("tower.ink.png", "insert"));
       await browser.execute(() => {
         const cancel = Array.from(
           document.querySelectorAll<HTMLElement>(
-            ".inkline-library-rename-form button",
+            ".inkline-library-edit-form button",
           ),
         ).find((button) => button.textContent === "Cancel");
         if (cancel === undefined) throw new Error("no Cancel");
@@ -700,7 +700,7 @@ describe("The symbol library", function () {
       await createSymbol("gate.ink.png");
       await showLibrary();
       await waitForNames(["gate"]);
-      await pressOn(inRow("gate.ink.png", "rename"));
+      await pressOn(inRow("gate.ink.png", "edit"));
       await createSymbol("tower.ink.png");
       await pastRedraw();
       expect(await names()).toEqual(["gate"]);

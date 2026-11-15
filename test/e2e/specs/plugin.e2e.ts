@@ -80,15 +80,17 @@ async function waitForText(text: string): Promise<void> {
   }
 }
 
-/** The library's form for a new name. */
-const renameForm = () => browser.$(".inkline-library-rename-form");
+/** The library's Quick edit, where a new name is typed. */
+const renameForm = () => browser.$(".inkline-library-edit-form");
 
 /** Opens the library, and types `typed` as its only symbol's new name. */
 async function beginRename(typed: string): Promise<void> {
   await browser.executeObsidianCommand("inkline:show-library");
-  await browser.$(".inkline-library-rename").waitForExist();
-  await browser.$(".inkline-library-rename").click();
+  await browser.$(".inkline-library-edit").waitForExist();
+  await browser.$(".inkline-library-edit").click();
   await renameForm().$("input").waitForDisplayed();
+  // Save waits for the fields to read the file's readings and translations.
+  await renameForm().$("button=Save").waitForEnabled();
   await renameForm().$("input").setValue(typed);
 }
 
@@ -514,10 +516,10 @@ describe("What Inkline started, once it unloads", function () {
 
   it("stops a library save of readings still waiting as it unloads, and says so", async function () {
     await browser.executeObsidianCommand("inkline:show-library");
-    const button = browser.$('[data-inkline-role="text"]');
+    const button = browser.$('[data-inkline-role="edit"]');
     await button.waitForExist();
     await button.click();
-    const save = browser.$(".inkline-library-text-buttons button");
+    const save = browser.$(".inkline-library-edit-buttons button");
     await browser.waitUntil(
       async () => (await save.isExisting()) && (await save.isEnabled()),
     );
