@@ -492,8 +492,11 @@ drawing while **Copy from** or **Reload** reads.
   [#144](https://github.com/viell-dev/slop-inkline/issues/144); from 0.9.2 on it
   must open with its strokes, or the check fails
   ([update.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/manual/update.e2e.ts)).
-  This runs separately from ordinary CI because it needs both release artifacts;
-  the release PR records its inputs and results.
+  **Unreleased:** it also leaves the old release's editor open with an unsaved
+  stroke: from 0.9.2 on the draft must come back after the update and save both
+  strokes, and from an earlier release it is dropped. This runs separately from
+  ordinary CI because it needs both release artifacts; the release PR records
+  its inputs and results.
 - Installing and updating through BRAT, an optional third-party route, has a
   separate check against the published releases. BRAT's own dialog installs the
   highest release and a chosen one, downloading only the three plugin files, and
@@ -508,6 +511,15 @@ drawing while **Copy from** or **Reload** reads.
   and against a fake of the GitHub CLI, with the exact commands that publish a
   public release and a pre-release
   ([publish-cli.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/publish-cli.test.ts)).
+- **Unreleased:** from 0.9.4, each release carries a copy of the
+  [file format](./file-format.md). Publishing refuses one that is not the tagged
+  commit's document byte for byte, or whose name does not give its version and
+  revision
+  ([publish-cli.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/publish-cli.test.ts)),
+  and after publication the workflow compares the downloaded copy with that
+  document and verifies its attestation. The document links only to its own
+  headings and to full addresses, so that the copy reads on its own
+  ([docs.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/docs.test.ts)).
 - A public release that cannot be published can be rolled back and resumed: the
   release guide's own commands run in a synthetic repository, and each state
   passes the checks CI runs

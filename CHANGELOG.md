@@ -19,6 +19,13 @@ even one a public release; earlier pre-releases carry a suffix such as
   card open its text, and the first click does what it did before. In Reading
   view, embedded notes, hover previews, and a focused canvas card, a click opens
   the image viewer as before, so right-click a symbol there for **Edit symbol**.
+- Each release now carries a copy of the
+  [file format](https://viell-dev.github.io/slop-inkline/file-format)'s
+  specification as of that release, named by the format's version and the
+  document's revision: `inkline-file-format-version-1-revision-1.md`. It is
+  listed in `SHA256SUMS` and attested like the other files, so that what symbol
+  files hold stays described wherever a release is kept. Installing does not
+  need it: the install ZIP and the three plugin files are as before.
 
 ### Changed
 

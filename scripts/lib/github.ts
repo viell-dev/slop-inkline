@@ -11,6 +11,8 @@ import {
   installArchiveName,
   isPrerelease,
   releaseVersionPattern,
+  specificationName,
+  specificationPath,
   versionOrderProblems,
 } from "./version.ts";
 import {
@@ -143,11 +145,18 @@ function order(context: PublishContext, version: string): void {
   );
 }
 
-/** The files `directory`'s SHA256SUMS lists, and that file itself. */
+/**
+ * The files `directory`'s SHA256SUMS lists, and that file itself: the plugin
+ * files, the install ZIP, and the copy of the format's specification, which
+ * must be the checkout's own, byte for byte, as the checkout is the commit
+ * the release tags.
+ */
 async function builtFiles(
   directory: string,
   version: string,
 ): Promise<BuiltFile[]> {
+  const specification = await readFile(specificationPath);
+  const specificationFile = specificationName(specification.toString("utf8"));
   const sums = await readFile(join(directory, "SHA256SUMS"));
   const listed = sums
     .toString("utf8")
@@ -165,6 +174,7 @@ async function builtFiles(
     "manifest.json",
     "styles.css",
     installArchiveName(version),
+    specificationFile,
   ].sort();
   if (
     listed.length !== expected.length ||
@@ -174,7 +184,7 @@ async function builtFiles(
       .some((name, index) => name !== expected[index])
   ) {
     throw new Error(
-      "SHA256SUMS must list exactly the plugin files and versioned install ZIP",
+      `SHA256SUMS must list exactly the plugin files, the versioned install ZIP, and ${specificationFile}`,
     );
   }
   for (const file of listed) {
@@ -183,6 +193,14 @@ async function builtFiles(
     if (actual !== file.sha256) {
       throw new Error(`${file.name} does not match SHA256SUMS`);
     }
+  }
+  const copied = listed.find((file) => file.name === specificationFile);
+  if (
+    copied?.sha256 !== createHash("sha256").update(specification).digest("hex")
+  ) {
+    throw new Error(
+      `${specificationFile} is not this checkout's ${specificationPath}`,
+    );
   }
   return [
     ...listed,
