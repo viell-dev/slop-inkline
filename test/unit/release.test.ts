@@ -1,4 +1,7 @@
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import manifest from "../../manifest.json" with { type: "json" };
 import packageJson from "../../package.json" with { type: "json" };
@@ -12,6 +15,10 @@ import {
   syncMetadata,
   type Metadata,
 } from "../../scripts/lib/release.ts";
+import {
+  specificationName,
+  specificationPath,
+} from "../../scripts/lib/version.ts";
 
 const released: Metadata = {
   packageJson: { version: "0.2.0" },
@@ -476,4 +483,50 @@ describe("syncMetadata", () => {
       metadataProblems({ packageJson: { version: "0.2.0" }, ...synced }),
     ).toEqual([]);
   });
+});
+
+describe("the specification step", () => {
+  // As the Release workflow runs it, from the repository's root. Each test
+  // starts Node.js, which loads the script and the Markdown parser it imports:
+  // in a full parallel run on Windows one start took 7.8 seconds, so Vitest's
+  // five were too few. The tests promise nothing about speed, only what the
+  // step writes.
+  const startup = 30_000;
+  const run = (...args: string[]) =>
+    spawnSync(process.execPath, ["scripts/release.ts", ...args], {
+      encoding: "utf8",
+    });
+
+  it(
+    "copies the specification, byte for byte, under its versioned name",
+    () => {
+      const directory = mkdtempSync(join(tmpdir(), "inkline-specification-"));
+      try {
+        const output = join(directory, "release");
+        const result = run("specification", output);
+        expect(result.stderr).toBe("");
+        expect(result.status).toBe(0);
+        const document = readFileSync(specificationPath);
+        const copy = join(output, specificationName(document.toString("utf8")));
+        expect(result.stdout.trim()).toBe(copy);
+        expect(readdirSync(output)).toEqual([basename(copy)]);
+        expect(readFileSync(copy).equals(document)).toBe(true);
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    },
+    startup,
+  );
+
+  it(
+    "names its arguments when it has none",
+    () => {
+      const result = run("specification");
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(
+        "usage: release.ts specification <directory>",
+      );
+    },
+    startup,
+  );
 });

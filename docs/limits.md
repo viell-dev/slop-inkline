@@ -15,6 +15,17 @@ What Inkline does not do, or does not do everywhere, and what to do instead. The
   next 100. Filter them, or choose a folder, to narrow the list.
 - **Library insertion needs a sidebar.** If the library's tab is dragged into
   the main area, move it back to a sidebar to insert into a note.
+- **A double-click opens a symbol only where its second click reaches it**
+  (**Unreleased**). In Reading view, embedded notes, hover previews, and a
+  focused canvas card, the first click opens Obsidian's image viewer, and in a
+  callout in Live Preview it shows the callout as text
+  ([#264](https://github.com/viell-dev/slop-inkline/issues/264)). Right-click
+  the symbol there for **Edit symbol**.
+- **Notices and tooltips in a right-to-left interface** (**Unreleased**) still
+  put the full stop or closing bracket of Inkline's English at the start, as
+  Obsidian draws them for every plugin
+  ([#267](https://github.com/viell-dev/slop-inkline/issues/267)). Inkline's own
+  screens keep it in place.
 - **Physical printing** has not been checked. Native
   [PDF export](./notes.md#export-a-note-to-pdf) is verified on Linux.
 - **A faint line along a symbol's edge in a PDF.** In text colour, some PDF
