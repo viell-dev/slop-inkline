@@ -670,8 +670,21 @@ describe("The library's look", function () {
     await more.click();
     await formButton("Cancel").click();
     await waitForClosed();
+    // Closing redraws the list, Show more with it, which takes a moment on a
+    // busy host: wait for the new button, then give a click held from Quick
+    // edit time to show more rows, which it must not.
+    await browser.waitUntil(
+      async () =>
+        await browser.execute(() => {
+          const button = document.querySelector(".inkline-library-more");
+          return button instanceof HTMLButtonElement && !button.disabled;
+        }),
+      { timeoutMsg: "Show more did not come back enabled after Quick edit" },
+    );
     await browser.pause(400);
-    expect(await more.getProperty("disabled")).toBe(false);
+    expect(
+      await browser.$(".inkline-library-more").getProperty("disabled"),
+    ).toBe(false);
     expect(await browser.$$(".inkline-library-symbol").length).toBe(100);
   });
 
