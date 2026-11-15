@@ -172,24 +172,59 @@ describe("DraftStore", () => {
     expect(storage.values.size).toBe(0);
   });
 
-  it("says whether a draft is stored, whichever store removed it", () => {
+  it("says when a draft was kept, while a list would keep it, whichever store removed it", () => {
     const storage = new MemoryStorage();
     const store = new DraftStore(storage, () => 5000);
     const other = new DraftStore(storage, () => 5000);
-    expect(store.has("a")).toBe(false);
-    store.put(draft({ id: "a" }));
-    store.put(draft({ id: "b" }));
-    expect([store.has("a"), other.has("a")]).toEqual([true, true]);
+    expect(store.keptAt("a")).toBeUndefined();
+    store.put(draft({ id: "a", savedAt: 1000 }));
+    store.put(draft({ id: "b", savedAt: 2000 }));
+    expect([store.keptAt("a"), other.keptAt("a")]).toEqual([1000, 1000]);
     other.remove("a");
-    expect([store.has("a"), store.has("b")]).toEqual([false, true]);
+    expect([store.keptAt("a"), store.keptAt("b")]).toEqual([undefined, 2000]);
     // Refused, it was never kept.
     storage.refused.add("inkline-draft:c");
     expect(store.put(draft({ id: "c" }))).toBe(false);
-    expect(store.has("c")).toBe(false);
+    expect(store.keptAt("c")).toBeUndefined();
     // Listed by no index, it cannot be found, and counts as gone.
     store.put(draft({ id: "d" }));
     storage.saveLocalStorage("inkline-drafts", ["b"]);
-    expect(store.has("d")).toBe(false);
+    expect(store.keptAt("d")).toBeUndefined();
+    // Stored, but not as a draft of its own id, nor as one at all.
+    storage.saveLocalStorage("inkline-drafts", ["b", "e", "f"]);
+    storage.saveLocalStorage(
+      "inkline-draft:e",
+      storage.loadLocalStorage("inkline-draft:b"),
+    );
+    storage.saveLocalStorage("inkline-draft:f", "{");
+    expect([store.keptAt("e"), store.keptAt("f")]).toEqual([
+      undefined,
+      undefined,
+    ]);
+  });
+
+  it("counts an expired draft as gone before any list drops it, and drops nothing itself", () => {
+    const storage = new MemoryStorage();
+    let now = 1000;
+    const store = new DraftStore(storage, () => now);
+    store.put(draft({ id: "old", savedAt: 1000 }));
+    store.put(draft({ id: "new", savedAt: 1000 + draftLifetime }));
+    now = 1000 + draftLifetime;
+    expect([store.keptAt("old"), store.keptAt("new")]).toEqual([
+      1000,
+      1000 + draftLifetime,
+    ]);
+    now += 1;
+    // Expired, though still stored and listed, until a list drops it.
+    expect(store.keptAt("old")).toBeUndefined();
+    expect(storage.loadLocalStorage("inkline-drafts")).toEqual(["old", "new"]);
+    expect(storage.keys("inkline-draft:")).toHaveLength(2);
+    // Once one has, it is as gone.
+    expect(store.list().map(({ id }) => id)).toEqual(["new"]);
+    expect([store.keptAt("old"), store.keptAt("new")]).toEqual([
+      undefined,
+      1000 + draftLifetime,
+    ]);
   });
 
   it("follows renames of the symbol, of the note a new one is in, and of the file its first save made", () => {

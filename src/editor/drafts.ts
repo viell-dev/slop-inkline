@@ -565,14 +565,31 @@ export class DraftStore {
   }
 
   /**
-   * Whether the draft `id` is stored, from when a put keeps it until it is
-   * removed, by this store or another.
+   * When the stored draft `id` was kept, while {@link list} would still keep
+   * it: listed, stored in this layout under its own id, and not expired.
+   * Undefined once any store has removed or dropped it, and once it has
+   * expired, though no list has dropped it yet. It reads that one draft, and
+   * drops nothing, unlike a list.
    */
-  has(id: string): boolean {
-    return (
-      this.#list(indexKey).includes(id) &&
-      typeof this.#storage.loadLocalStorage(draftPrefix + id) === "string"
-    );
+  keptAt(id: string): number | undefined {
+    if (!this.#list(indexKey).includes(id)) return undefined;
+    const stored = this.#storage.loadLocalStorage(draftPrefix + id);
+    if (typeof stored !== "string") return undefined;
+    let value: unknown;
+    try {
+      value = JSON.parse(stored);
+    } catch {
+      return undefined;
+    }
+    if (!isRecord(value) || value.version !== draftVersion || value.id !== id) {
+      return undefined;
+    }
+    const { savedAt } = value;
+    return typeof savedAt === "number" &&
+      Number.isFinite(savedAt) &&
+      this.#now() - savedAt <= draftLifetime
+      ? savedAt
+      : undefined;
   }
 
   /** Marks a draft as an open editor's, so that no other is offered it. */
