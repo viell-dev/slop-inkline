@@ -601,6 +601,14 @@ img.inkline-symbol:not([width], [height]) {
   min-width: 0;
 }
 
+/*
+ * One field under another, as a sidebar has room for no more, and as narrow
+ * as the narrowest sidebar: the editor's fields ask for 12 em each.
+ */
+.inkline-library-edit-form .inkline-text-fields {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .inkline-text-note {
   user-select: text;
   color: var(--text-muted);

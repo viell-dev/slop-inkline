@@ -237,6 +237,25 @@ async function renameAgain(): Promise<void> {
   });
 }
 
+/** Sets the right sidebar's width, as dragging its edge does. */
+async function setSidebar(width: number): Promise<void> {
+  await browser.executeObsidian(({ app }, size) => {
+    const sidebar = app.workspace.rightSplit;
+    const setSize: unknown = Reflect.get(sidebar, "setSize");
+    if (typeof setSize !== "function") throw new Error("no sidebar size");
+    Reflect.apply(setSize, sidebar, [size]);
+  }, width);
+}
+
+/** How wide the library's list is, and how far what it holds reaches. */
+async function listWidths(): Promise<{ client: number; scroll: number }> {
+  return browser.execute(() => {
+    const list = document.querySelector(".inkline-library-list");
+    if (list === null) throw new Error("no list");
+    return { client: list.clientWidth, scroll: list.scrollWidth };
+  });
+}
+
 /**
  * Moves the pointer to `x`, `y` in the window, as a person's mouse would, and
  * returns the classes of what the page heard the pointer move over there, so
@@ -553,6 +572,25 @@ describe("Quick edit in the library", function () {
       role: "edit",
       path: "gate.ink.png",
     });
+  });
+
+  it("fits the narrowest sidebar, a long name and all", async function () {
+    const name = "a name long enough to go on past the end of the list";
+    await symbolWith(`${name}.ink.png`, { reading: ["TA"] });
+    await showLibrary();
+    // The narrowest Obsidian lets a sidebar be, less the library's padding.
+    await setSidebar(200);
+    try {
+      await browser.waitUntil(async () => (await listWidths()).client === 176);
+      await quickEdit(`${name}.ink.png`);
+      await area("translation").setValue("a translation long enough to wrap");
+      const widths = await listWidths();
+      expect(widths.scroll).toBeLessThanOrEqual(widths.client);
+      expect(await nameField().getValue()).toBe(name);
+      await saveScreenshot("library-quick-edit-narrow");
+    } finally {
+      await setSidebar(300);
+    }
   });
 
   it("saves a new name alone, with links following, and leaves the file's bytes", async function () {
