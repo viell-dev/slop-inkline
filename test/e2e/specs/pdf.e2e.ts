@@ -20,6 +20,11 @@ interface PrintImage {
   height: number;
   drop: number | null;
   fontSize: number;
+  /** What the renderer gave it: its width over its height, and a size's. */
+  ratio: string;
+  asked: string;
+  /** Whether it is an image of the export window's own, or the main one's. */
+  ownWindow: boolean;
 }
 
 interface PrintProbe {
@@ -167,8 +172,14 @@ async function prepareExport(destination: string): Promise<void> {
         probe.stored = doc.documentElement.classList.contains(
           "inkline-stored-color",
         );
+        // The export window's own image class, to tell its images from the
+        // main window's.
+        const own: unknown = Reflect.get(child, "HTMLImageElement");
+        const ownPrototype: unknown =
+          typeof own === "function" ? Reflect.get(own, "prototype") : null;
         probe.images = images.map((image) => {
           const rect = image.getBoundingClientRect();
+          const inline = image.instanceOf(HTMLElement) ? image.style : null;
           const style = child.getComputedStyle(image);
           const align = Number.parseFloat(style.verticalAlign);
           return {
@@ -177,6 +188,9 @@ async function prepareExport(destination: string): Promise<void> {
             height: rect.height,
             drop: Number.isFinite(align) ? -align : null,
             fontSize: Number.parseFloat(style.fontSize),
+            ratio: inline?.getPropertyValue("--inkline-ratio") ?? "",
+            asked: inline?.getPropertyValue("--inkline-width") ?? "",
+            ownWindow: Object.getPrototypeOf(image) === ownPrototype,
           };
         });
       };
@@ -596,6 +610,14 @@ describe("Native PDF export", function () {
       expect(sized.width).toBe(24);
       expect(sized.height).toBe(72);
       expect(sized.drop).toBe(18);
+      // The export window's renderer measured both, whichever window's
+      // images they are.
+      console.log(
+        `${mode.name}: images of the export window's own: ${JSON.stringify(snapshot.images.map((image) => image.ownWindow))}`,
+      );
+      expect(Number.parseFloat(plain.ratio)).toBeCloseTo(1 / 3, 9);
+      expect(Number.parseFloat(sized.ratio)).toBeCloseTo(1 / 3, 9);
+      expect(sized.asked).toBe("24px");
       expect(photo.tagged).toBe(false);
       expect(photo.height).toBe(192);
       expect(snapshot.scale).toBe(String(scale));
@@ -744,6 +766,11 @@ describe("Native PDF export", function () {
       const [image] = snapshot.images;
       if (image === undefined) throw new Error("missing print image");
       expect(image.tagged).toBe(true);
+      expect(Number.parseFloat(image.ratio)).toBeCloseTo(
+        wide.width / wide.height,
+        9,
+      );
+      expect(image.asked).toBe("1000px");
       const line = await printedListLine(
         raster,
         word("1."),

@@ -159,10 +159,11 @@ function holdersOf(image: HTMLImageElement): HTMLElement[] {
 }
 
 /**
- * Gives a tagged image the properties that follow its size, once its own
- * size is known: its width over its height, and with an explicit size its
- * drop and the width a size of only a width asks for. Before it loads it
- * gets none, and the load listener of the document it is in, which
+ * Gives a tagged image the properties that follow its size: with an explicit
+ * size, its drop, at once for a size with a height and once the image's own
+ * size is known for one of only a width; and once that is known, its width
+ * over its height, and the width a size of only a width asks for. Before it
+ * loads, the load listener of the document it is in, which
  * {@link SymbolRenderer.watch} adds, calls this again: one listener for a
  * document rather than one for each image, as tagging a thousand images
  * measurably slowed with one each.
@@ -170,22 +171,40 @@ function holdersOf(image: HTMLImageElement): HTMLElement[] {
 function measureImage(image: HTMLImageElement): void {
   // Untagged meanwhile, as when its address changed or Inkline stopped.
   if (!image.hasClass(symbolClass)) return;
-  const ratio = aspectRatio(image.naturalWidth, image.naturalHeight);
-  if (ratio === undefined) return;
+  const holders = holdersOf(image);
   const width = image.getAttribute("width");
   const height = image.getAttribute("height");
-  const shown = sized(image)
-    ? explicitHeight(width, height, image.naturalWidth, image.naturalHeight)
-    : undefined;
-  const asked = sized(image) ? explicitWidth(width, height) : undefined;
-  for (const holder of holdersOf(image)) {
-    holder.style.setProperty(ratioProperty, String(ratio));
+  if (sized(image)) {
+    const shown = explicitHeight(
+      width,
+      height,
+      image.naturalWidth,
+      image.naturalHeight,
+    );
     if (shown !== undefined) {
-      holder.style.setProperty(dropProperty, dropFor(shown));
+      for (const holder of holders) {
+        holder.style.setProperty(dropProperty, dropFor(shown));
+      }
     }
+  }
+  const ratio = aspectRatio(image.naturalWidth, image.naturalHeight);
+  if (ratio === undefined) return;
+  const asked = sized(image) ? explicitWidth(width, height) : undefined;
+  for (const holder of holders) {
+    holder.style.setProperty(ratioProperty, String(ratio));
     if (asked === undefined) holder.style.removeProperty(widthProperty);
     else holder.style.setProperty(widthProperty, `${String(asked)}px`);
   }
+}
+
+/**
+ * Whether an event's target is a node. A load's target in a popout window,
+ * or in a canvas card's editor frame, is an image of the main window's, of
+ * which that window's own `HTMLImageElement` knows nothing: Obsidian's
+ * `instanceOf` tells it apart in any window, but needs a node.
+ */
+function isNode(target: EventTarget | null): target is Node {
+  return target !== null && "nodeType" in target;
 }
 
 /** Removes what {@link tagImage} added. */
@@ -297,7 +316,9 @@ export class SymbolRenderer {
     // down, before the image does.
     const loaded = (event: Event): void => {
       const { target } = event;
-      if (target instanceof view.HTMLImageElement) measureImage(target);
+      if (isNode(target) && target.instanceOf(HTMLImageElement)) {
+        measureImage(target);
+      }
     };
     doc.addEventListener("load", loaded, true);
     const closed = (): void => {
