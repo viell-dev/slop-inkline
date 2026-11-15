@@ -498,6 +498,15 @@ drawing while **Copy from** or **Reload** reads.
   and against a fake of the GitHub CLI, with the exact commands that publish a
   public release and a pre-release
   ([publish-cli.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/publish-cli.test.ts)).
+- **Unreleased:** from 0.9.4, each release carries a copy of the
+  [file format](./file-format.md). Publishing refuses one that is not the tagged
+  commit's document byte for byte, or whose name does not give its version and
+  revision
+  ([publish-cli.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/publish-cli.test.ts)),
+  and after publication the workflow compares the downloaded copy with that
+  document and verifies its attestation. The document links only to its own
+  headings and to full addresses, so that the copy reads on its own
+  ([docs.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/docs.test.ts)).
 - A public release that cannot be published can be rolled back and resumed: the
   release guide's own commands run in a synthetic repository, and each state
   passes the checks CI runs

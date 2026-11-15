@@ -3,12 +3,13 @@
 A release is a GitHub release whose tag is the version, with no `v` prefix,
 carrying the three files Obsidian installs: `main.js`, `manifest.json`, and
 `styles.css`, plus `inkline-<version>.zip` containing those files inside an
-`inkline/` directory for extraction into `.obsidian/plugins/`. The
+`inkline/` directory for extraction into `.obsidian/plugins/`, and a copy of
+[the format's specification](#the-formats-specification). The
 [Release workflow](.github/workflows/release.yml) builds them from `main`,
-attests their build provenance, and publishes the loose files and ZIP with a
-`SHA256SUMS` file. Published versions, tags, and release assets are never
-replaced: a correction gets a new version. The repository's immutable releases
-setting enforces this for published releases.
+attests their build provenance, and publishes the loose files, the ZIP, and the
+specification with a `SHA256SUMS` file. Published versions, tags, and release
+assets are never replaced: a correction gets a new version. The repository's
+immutable releases setting enforces this for published releases.
 
 Versions are plain `x.y.z`, with no `v` prefix, build metadata or prerelease
 suffix. **An odd minor version is a pre-release, and an even one a public
@@ -72,7 +73,8 @@ it and is refused, so a fix for the public line is the next public release,
 Every release, public or pre-release, is a GitHub release with the install ZIP
 and the loose files: Obsidian's own installer and BRAT download `main.js`,
 `manifest.json`, and `styles.css` by name, and the ZIP is for installing by
-hand, the route the [install guide](docs/install.md) describes. BRAT is an
+hand, the route the [install guide](docs/install.md) describes. From 0.9.4, each
+also carries the format's specification, which no installer reads. BRAT is an
 optional alternative, never a requirement
 ([#149](https://github.com/viell-dev/slop-inkline/issues/149)). The first public
 release, `1.0.0`, is also the first in Obsidian's community directory, which
@@ -233,6 +235,46 @@ and Obsidian's review refuses `0.0.0` as a placeholder.
 manifest's `minAppVersion`: it takes the highest version there that the app can
 run. Only public releases belong in it, and it is empty until `1.0.0`.
 
+## The format's specification
+
+Every release from 0.9.4 on carries a copy of
+[docs/file-format.md](docs/file-format.md), so that each published version keeps
+the document that says what its symbol files hold, even if this repository and
+the guide are gone
+([#194](https://github.com/viell-dev/slop-inkline/issues/194)). The copy is the
+document of the commit the release tags, byte for byte, named by the format's
+version in its title and the revision under it:
+`inkline-file-format-version-1-revision-1.md` for revision 1 of version 1. The
+document tells a version of the format from a revision of itself, so the name
+spells out both, and neither number reads as Inkline's own, which the ZIP's name
+gives. `node scripts/release.ts specification <directory>` writes the copy, and
+refuses a document whose title and revision it cannot read. The publish step
+refuses a copy that is not the checkout's own, and the verify job compares the
+published copy with the commit's document.
+
+The name gives the revision, not the bytes. From `1.0.0`, a change to the
+normative text makes a new revision and so a new name, but an informative
+section, such as What Inkline does, can change within one. Until then the
+document stays at revision 1, and a change to its normative text moves only the
+date under the title, as [AGENTS.md](AGENTS.md#code) says. The date and
+`SHA256SUMS` tell such copies apart.
+
+Pre-releases carry it too, so that building, checking, attesting, and verifying
+it are in use before `1.0.0`, as the rest of a release's path is. Nothing that
+installs Inkline reads it: Obsidian's installer downloads `manifest.json`,
+`main.js`, and `styles.css` from the release by name, as
+[its guide](https://docs.obsidian.md/Plugins/Releasing/Submit+your+plugin) says,
+and BRAT looks each up by its exact name among the release's assets
+([BRAT 2.2.0](https://github.com/TfTHacker/obsidian42-brat/blob/e61b74abc5c967cd31fb01654b796ad651da6250/src/features/githubUtils.ts#L335-L349)),
+as the ZIP and `SHA256SUMS` beside them already show. The install ZIP still
+holds only the three plugin files.
+
+The document reads as a file of its own: it links only to its own headings and
+to full addresses, and uses none of the guide's own syntax, which
+`test/unit/docs.test.ts` keeps true. Its links to the pinned fixtures lead to
+`main`, where those files never change from `1.0.0`, and the copy of the
+repository that [Archive copies](#archive-copies) asks for holds them too.
+
 ## Human release testing
 
 A person must install and use a representative candidate before the first stable
@@ -354,7 +396,8 @@ Run the Release workflow from the Actions tab or with
    already published passes this step, so that a publication can resume; the
    publish step then accepts only that same build.
 3. It builds the files, makes a reproducible install ZIP, verifies its exact
-   layout and bytes, and records checksums for all four assets.
+   layout and bytes, copies the format's specification, and records checksums
+   for all five assets.
 4. It extracts the ZIP with the system archive tool and puts its `inkline/`
    directory in a test vault's plugin folder, where Obsidian loads them, in the
    manifest's `minAppVersion` on its oldest installer and in the latest public
@@ -503,7 +546,8 @@ synthetic repository, and puts each state through the checks CI runs.
 ## Verify
 
 The `verify publication` job downloads the published assets, checks them against
-`SHA256SUMS`, and verifies each file's attestation. If it fails because GitHub
+`SHA256SUMS`, verifies each file's attestation, and checks that the copy of the
+specification is the commit's `docs/file-format.md`. If it fails because GitHub
 did not answer, rerun that job alone with `gh run rerun <run-id> --failed`. If
 the files or their attestations are wrong, the release is published and stays,
 so record the defect and release a new version. To check by hand:
@@ -576,6 +620,50 @@ refuses any other ref and waits while main's prepared version has not been
 published, so users keep the existing installable guide. Unreleased behavior
 must be identified explicitly. No documentation branch or tag move is needed;
 [docs/versions.md](docs/versions.md) describes the policy.
+
+## Archive copies
+
+For a public release, once it is published and verified and its guide is
+deployed, ask two public archives to keep copies, so that the format's
+specification outlives this repository and its site
+([#194](https://github.com/viell-dev/slop-inkline/issues/194)). Neither needs an
+account or a token. Pre-releases skip this step. A failure here changes nothing
+about the release: ask again later. Record both results in the release pull
+request with the verification.
+
+1. Ask Software Heritage to archive the repository, tags included:
+
+   ```sh
+   curl --fail --request POST "https://archive.softwareheritage.org/api/1/origin/save/git/url/https://github.com/viell-dev/slop-inkline/"
+   ```
+
+   It answers with the request, whose `save_request_status` is `accepted` for a
+   repository on GitHub. The same address without `--request POST` lists the
+   requests: wait until the new one's `save_task_status` is `succeeded`, and ask
+   again if it is `failed`. Anonymous use is limited to 120 requests an hour.
+   Then check that the archive holds the release's tag. The latest visit, from
+
+   ```sh
+   curl --fail "https://archive.softwareheritage.org/api/1/origin/https://github.com/viell-dev/slop-inkline/visit/latest/?require_snapshot=true"
+   ```
+
+   must have a `date` after the publication and a `status` of `full`, and its
+   `snapshot` must list `refs/tags/<version>` first among its `branches` at
+   `https://archive.softwareheritage.org/api/1/snapshot/<snapshot>/?branches_from=refs/tags/<version>&branches_count=1`.
+
+2. Ask the Wayback Machine to keep the guide's format page, by opening this
+   address in a browser or with:
+
+   ```sh
+   curl --fail --output /dev/null "https://web.archive.org/save/https://viell-dev.github.io/slop-inkline/file-format"
+   ```
+
+   Anonymous saves are limited to a few a minute, and an answer of 429 means to
+   wait and ask again. To check that it took,
+   `https://archive.org/wayback/available?url=https://viell-dev.github.io/slop-inkline/file-format&timestamp=<YYYYMMDD>`
+   gives the capture closest to that day: its `timestamp` must be from the day
+   of the save and its `status` `200`, and the page at its `url` must name the
+   release in its footer.
 
 ## The community directory
 
