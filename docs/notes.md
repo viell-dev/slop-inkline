@@ -83,12 +83,20 @@ item, even if it is never closed, so the trigger in the text after it lists
 again. A callout's title line is read on its own: inline code in it ends with
 the line.
 
-**Unreleased:** a backtick inside a wiki link, a link, text in square brackets,
-a `%%` comment, math, a web address, HTML, emphasis, strikethrough, or a
-highlight starts no inline code, as Reading view shows it. A tab after a quote's
-`>`, or after a list item's marker and a space, makes the text after it an
-indented code block. A line without `>` stays in its quote after any block in
-it, as it does after a paragraph.
+**Unreleased:** inline code starts and ends where Reading view finds it. A
+backtick inside a wiki link, a link's address, a `%%` comment, math, a web
+address, or an HTML tag starts no inline code. Inline code can sit inside
+emphasis, strikethrough, a highlight, a link's text, or square brackets, and
+ends where they do: in `` **`a** b` `` nothing is code, while in ``**`code`**``
+the word is. A tab after a quote's `>`, or after a list item's marker and a
+space, makes the line indented code, unless it goes on in a paragraph. A line
+without `>` stays in its quote after any block in it, unless it starts a block
+that ends the quote, such as a heading or a list item. The trigger also lists
+nothing in a block of HTML, where an embed shows as text, nor between `<code>`
+and `</code>`, nor in a paragraph too long to read in time, such as one of a
+thousand brackets that nothing closes. A few rare notes are still read
+otherwise, as [#271](https://github.com/viell-dev/slop-inkline/issues/271)
+lists.
 
 **Inkline: Insert existing symbol** opens the same list as a search, and inserts
 the chosen symbol at the cursor. It places the symbol as **Inkline: Insert

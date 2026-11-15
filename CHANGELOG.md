@@ -37,19 +37,26 @@ These change only text: nothing about how Inkline works has changed.
 
 - The `;;` list follows Reading view in more places when it tells code from
   text, so that it neither opens in code nor stays closed in text there:
-  - A backtick inside a wiki link, a link, text in square brackets, a `%%`
-    comment, math, a web address, HTML, emphasis, strikethrough, or a highlight
-    starts no inline code
+  - Inline code starts and ends where Reading view finds it. A backtick inside a
+    wiki link, a link's address, a `%%` comment, math, a web address, or an HTML
+    tag starts none, and inline code inside emphasis, strikethrough, a
+    highlight, a link's text, or square brackets ends where they do: in
+    `` **`a** b` `` nothing is code, while ``**`code`**`` is code
     ([#243](https://github.com/viell-dev/slop-inkline/issues/243)).
   - A tab after a quote's `>`, or after a list item's marker and a space, makes
-    the text after it an indented code block; spaces before a tab do not
-    ([#249](https://github.com/viell-dev/slop-inkline/issues/249)).
+    the line indented code, unless it goes on in a paragraph; spaces before a
+    tab do not ([#249](https://github.com/viell-dev/slop-inkline/issues/249)).
   - A line without `>` stays in its quote after a heading, a code block, a
-    table, or a `>` alone, as it does after a paragraph
+    table, or a `>` alone, as it does after a paragraph, unless it starts a
+    block that ends the quote
     ([#250](https://github.com/viell-dev/slop-inkline/issues/250)).
-  - HTML blocks, `%%` comment and `$$` math blocks, link reference definitions,
-    task boxes, headings underlined with `===`, the line after an empty list
-    item, and the end of a table are read as Reading view reads them.
+  - `%%` comment and `$$` math blocks, link reference definitions, task boxes,
+    headings underlined with `===`, the line after an empty list item, and the
+    end of a table are read as Reading view reads them.
+  - The list lists nothing in a block of HTML, where an embed shows as text and
+    code, as in `<pre><code>`, cannot be told from text, nor between `<code>`
+    and `</code>`, nor in a paragraph too long to read in time, such as one of a
+    thousand brackets that nothing closes.
 
   A few rare notes are still read otherwise
   ([#271](https://github.com/viell-dev/slop-inkline/issues/271)).
