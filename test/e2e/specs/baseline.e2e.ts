@@ -9,12 +9,13 @@
 // Both are drawn on whole pixels of the screen: a letter's baseline, and the
 // top of a symbol's box, whose ink baseline lies three quarters of the way
 // down it. Where that lies a whole number of screen pixels down the box, as
-// in 16-pixel text at 100% and 150%, the ink stands on the letters' baseline
-// within the measurement's quarter of a pixel. Elsewhere two whole-pixel
-// roundings meet, the text's and the box's, so the ink stands within a pixel
-// of the letters' baseline, and symbols of a line within the half pixel that
-// Chromium's resampling of a mask leaves between boxes drawn at different
-// widths.
+// in 16-pixel text at 100% and 150%, the ink stands on the letters' baseline,
+// and the symbols of a line level, within 0.25 screen pixels, which allows
+// for the measuring. Elsewhere two whole-pixel roundings meet, the text's and
+// the box's, so the ink stands within 1.2 pixels of the letters' baseline,
+// as measured up to 1.06, and the symbols of a line within 0.6 of each other:
+// Chromium 150 resamples a mask into a whole-pixel rectangle whose width
+// depends on where the box falls, which left up to 0.5 between them.
 
 import { browser, expect } from "@wdio/globals";
 import { obsidianPage } from "wdio-obsidian-service";
