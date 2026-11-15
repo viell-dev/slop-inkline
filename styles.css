@@ -303,13 +303,26 @@ img.inkline-symbol {
  * the baseline stays on the text's. Overflowing would cut it off at a
  * preview's or a page's edge, and shrinking only its width, as Obsidian's
  * own max-width did, squeezed it.
+ *
+ * The mask is as wide as the box, or as the symbol at the line's height if
+ * the box is wider, and as tall as that width gives (#261). Chromium works
+ * out a percentage of the box from its exact width, but `contain` from its
+ * width and height rounded to whole pixels, and then rounds the size again,
+ * so that where a box lay decided where its ink did: in 16-pixel text, a box
+ * 10.5 pixels wide drawn 10 wide drew its ink 0.75 pixels higher than one
+ * drawn 11 wide. Until the renderer has the symbol's width over its height,
+ * the box's width alone sizes the mask.
  */
 img.inkline-symbol:not([width], [height]) {
   width: auto;
   max-width: 100%;
   height: calc(1.5em * var(--inkline-scale, 1));
   object-fit: contain;
-  mask-size: contain;
+  mask-size: min(
+      100%,
+      calc(1.5em * var(--inkline-scale, 1) * var(--inkline-ratio, 100))
+    )
+    auto;
   mask-position: 0 75%;
 }
 
