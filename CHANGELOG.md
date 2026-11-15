@@ -9,6 +9,28 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Changed
+
+- In the library, a symbol's readings and translations start at the row's edge,
+  at the size of Quick edit's labels, with **Readings:** and **Translations:**
+  in bold, and with 4 px more space above and below them, so that a row that has
+  them is 12 px from the next. The notes that **Uses** lists follow them as part
+  of the same list, under a bold **Uses:**, each with a bullet, at the same size
+  ([#289](https://github.com/viell-dev/slop-inkline/issues/289)).
+- Quick edit's readings and translations fields grow and shrink with what they
+  hold, from two lines to eight, and scroll past that. A field dragged to a
+  height of its own keeps it
+  ([#289](https://github.com/viell-dev/slop-inkline/issues/289)).
+
+### Fixed
+
+- While a row is in Quick edit, the other rows' **Uses** and **Quick edit**
+  buttons, and **Show more**, are disabled until it closes. A click on **Uses**
+  used to open or close its list only once the form closed, and one on another
+  **Quick edit** only put the focus back in the open form, which looked like
+  nothing. A symbol's button still inserts it meanwhile, and the notes listed
+  still open ([#289](https://github.com/viell-dev/slop-inkline/issues/289)).
+
 ## 0.9.4 - 2026-11-15
 
 This is the third release candidate of 1.0.0: a build meant to become 1.0.0 with

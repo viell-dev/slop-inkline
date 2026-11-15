@@ -207,6 +207,21 @@ version, and refuses to start with fewer than 50 left.
 pictures for Obsidian's community directory listing, as
 [listing/README.md](listing/README.md) says.
 
+The guide's pictures in `docs/screenshots/` come from two specs of the suite,
+with synthetic symbols and notes. `test/e2e/specs/journey.e2e.ts` writes
+`journey-tracing.png`, `journey-light.png`, and `journey-dark.png`, which go
+there as `tracing.png`, `reading-light.png`, and `reading-dark.png`.
+`test/e2e/specs/library-look.e2e.ts` writes the library's, in the default
+sidebar at twice its size, as `library-rows-light.png`, `library-rows-dark.png`,
+`library-quick-edit-light.png`, and `library-quick-edit-dark.png`, which go
+there by the same names. Make them from the latest Obsidian, and copy them from
+`test-results/e2e/screenshots/<versions>/`:
+
+```sh
+OBSIDIAN_VERSIONS=latest/latest npm run test:e2e:docker -- \
+  --spec test/e2e/specs/journey.e2e.ts --spec test/e2e/specs/library-look.e2e.ts
+```
+
 `test/e2e/manual/save-time.e2e.ts` stays outside it too: it measures how long a
 save of a large symbol takes and what that does to the rest of the plugin, which
 is how the wait before a stalled save's message was chosen. It writes

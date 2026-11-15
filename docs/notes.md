@@ -273,6 +273,16 @@ its row, a line for each, which a long list shortens; a symbol with none keeps a
 row of the usual height. Rows have space between them, so that those lines read
 as part of the row above them.
 
+**Unreleased:** those lines start at the row's edge, at the size of Quick edit's
+labels, with **Readings:** and **Translations:** in bold, and have a little more
+space above and below them. The notes that **Uses** lists follow them as part of
+the same list, under a bold **Uses:**, one to a line with a bullet.
+
+<p>
+<img src="./screenshots/library-rows-light.png" width="300" alt="The library in the light theme, with five synthetic symbols. Under gate, its readings, its translations, and the two notes that use it, under a bold Uses label. Under sun, its readings and translations, under tower its one translation, and under water the note that uses it.">
+<img src="./screenshots/library-rows-dark.png" width="300" alt="The same library in the dark theme.">
+</p>
+
 - A row the filter found by a value shows it first, in bold, so a match with
   another name is no mystery. While Inkline is still reading the vault's
   symbols, as it does for a few seconds after Obsidian starts in a vault of
@@ -326,6 +336,18 @@ macOS, in any field, saves what you changed. Esc or **Cancel** keeps everything
 as it was, and Save with nothing changed only closes the row. One row is edited
 at a time. An empty name keeps the old one, and the same name rules apply as in
 the drawing editor. Spaces around a value and blank lines are left out.
+
+**Unreleased:** the readings and translations fields grow and shrink with what
+they hold, from two lines to eight, and scroll past that. Drag a field's corner
+to give it a height of its own, which it then keeps. While a row is in Quick
+edit, the other rows' **Uses** and **Quick edit** buttons, and **Show more**,
+are unavailable until you save or cancel it; a click on one does nothing.
+Clicking a symbol still inserts it, and a note listed under a row still opens.
+
+<p>
+<img src="./screenshots/library-quick-edit-light.png" width="300" alt="The library in the light theme with sun in Quick edit: its name selected, its four readings in a field four lines high, and its two translations. The other rows' Uses and Quick edit buttons are dimmed.">
+<img src="./screenshots/library-quick-edit-dark.png" width="300" alt="The same Quick edit in the dark theme.">
+</p>
 
 One Save writes the readings and translations first, changing the file's text
 and nothing else: its drawing's bytes stay as they are, and no note is touched.

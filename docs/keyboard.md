@@ -30,6 +30,12 @@ translations it starts another value. Mod+Enter saves from any field, and Esc
 cancels. Afterward focus returns to the symbol's Quick edit button, or to the
 filter if the symbol no longer shows.
 
+**Unreleased:** while a row is in Quick edit, Tab passes over the other rows'
+**Uses** and **Quick edit** buttons and **Show more**, which wait for it to
+close. A screen reader names them as before, says that they are unavailable, and
+says to save or cancel Quick edit to use them. A click on one leaves the focus
+where it was.
+
 **Show more** moves the focus to the first of the new rows, so that Tab goes on
 from there.
 
