@@ -1,6 +1,6 @@
 // Where a symbol in a note can be opened for editing from: the embed at the
-// cursor, for a command, and a symbol's image, for a right-click, wherever it
-// is. editSymbol in symbols.ts opens it.
+// cursor, for a command, and a symbol's image, for a right-click or a
+// double-click, wherever it is. editSymbol in symbols.ts opens it.
 
 import {
   Component,
@@ -129,6 +129,38 @@ export function symbolInBlock(event: MouseEvent): HTMLImageElement | undefined {
   return noteAround(image)?.hasClass("markdown-source-view") === true
     ? image
     : undefined;
+}
+
+/**
+ * Whether `event` is a click of the main button with no key held, as a
+ * double-click that opens a symbol is: Shift, Ctrl, Alt, or Cmd with a click
+ * keep what Obsidian does with them, as extending a selection.
+ */
+function plainClick(event: MouseEvent): boolean {
+  return (
+    event.button === 0 &&
+    !event.shiftKey &&
+    !event.ctrlKey &&
+    !event.altKey &&
+    !event.metaKey
+  );
+}
+
+/**
+ * The symbol that a double-click, or a click after the first of one, lands
+ * on in a note, if any: its image in an editor or a rendered note, or one
+ * under the sheet a canvas keeps over a card that is not focused. A click
+ * that Obsidian answers by covering the symbol or redrawing it, as Reading
+ * view's image viewer and a Live Preview callout shown as text do, leaves
+ * the next click nothing to land on.
+ */
+export function symbolDoubleClicked(
+  event: MouseEvent,
+): HTMLImageElement | undefined {
+  if (event.detail < 2 || !plainClick(event)) return undefined;
+  const image = asSymbol(event.targetNode);
+  if (image === undefined) return symbolUnderCardSheet(event);
+  return noteAround(image) === null ? undefined : image;
 }
 
 /** The leaf whose view holds `element`, if any, as a hover preview has none. */

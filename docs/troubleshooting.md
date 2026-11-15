@@ -16,6 +16,12 @@ view has none.
 embed, outside code and front matter. A right-click on the symbol itself offers
 it, as [Edit a symbol](./notes.md#edit-a-symbol) lists.
 
+**Unreleased: a double-click on a symbol opens Obsidian's image viewer.** In
+Reading view, embedded notes, hover previews, and a focused canvas card, a click
+on any picture opens the viewer before a second click can make a double-click.
+Right-click the symbol and choose **Edit symbol**, or double-click it in Live
+Preview.
+
 **Typing the insert trigger lists nothing.** The list does not open in code or
 front matter, nor when a space follows the trigger straight away. Code is where
 Reading view shows it, which can differ from how the editor colors it: a pair of

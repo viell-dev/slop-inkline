@@ -321,6 +321,16 @@ must keep released files readable and looking the same, as
   items and works, on the symbol and off it; a card over a symbol adds nothing;
   and if the canvas's sheet over a card is renamed, its menu stays as it is
   ([symbol-menus.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-menus.e2e.ts)).
+- **Unreleased:** a double-click on a symbol opens that symbol in the editor,
+  once and without Obsidian's image viewer, in Live Preview, a table in it, a
+  popout window, a canvas card that is not focused, instead of the card's text,
+  a note on a canvas, and a text card's own editor. The first click still puts
+  the cursor at the embed, and a click on the selected symbol later does what it
+  does on a picture. A double-click on a picture, on words, beside a symbol on a
+  card, in Reading view, an embedded note, a hover preview, a focused card, or a
+  callout in Live Preview opens no editor, and once Inkline is off nothing
+  answers one
+  ([double-click.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/double-click.e2e.ts)).
 - The library lists symbols and their referring notes, filters by name and
   folder, follows file and link changes, and inserts successive symbols without
   replacing selected text or splitting a link
@@ -398,6 +408,15 @@ must keep released files readable and looking the same, as
   picture that will not load. A symbol as wide as the editor's surface, or
   wider, shows whole and in proportion, in the text colour and its stored colour
   ([symbol-lists.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-lists.e2e.ts)).
+- **Unreleased:** with Obsidian's interface in Hebrew, which mirrors its layout,
+  each of those lists puts a narrow symbol's picture right of its name and its
+  ink in the right half of the column, in the text colour and its stored colour,
+  and in English left of the name and in the left half, as before. In both, the
+  editor's, its Help's, and the settings' English keeps each sentence's words
+  and its full stop or ellipsis in English order, the preview's symbol stays
+  between its words, and in Hebrew the editor's layout is still mirrored and its
+  text on the right
+  ([right-to-left.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/right-to-left.e2e.ts)).
 - In the library, in both themes, the list never scrolls sideways, in a sidebar
   from the narrowest Obsidian allows to a wide one, with 90-character names with
   and without spaces, a deep folder, and wide symbols. In the default sidebar
@@ -504,8 +523,11 @@ drawing while **Copy from** or **Reload** reads.
   [#144](https://github.com/viell-dev/slop-inkline/issues/144); from 0.9.2 on it
   must open with its strokes, or the check fails
   ([update.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/manual/update.e2e.ts)).
-  This runs separately from ordinary CI because it needs both release artifacts;
-  the release PR records its inputs and results.
+  **Unreleased:** it also leaves the old release's editor open with an unsaved
+  stroke: from 0.9.2 on the draft must come back after the update and save both
+  strokes, and from an earlier release it is dropped. This runs separately from
+  ordinary CI because it needs both release artifacts; the release PR records
+  its inputs and results.
 - Installing and updating through BRAT, an optional third-party route, has a
   separate check against the published releases. BRAT's own dialog installs the
   highest release and a chosen one, downloading only the three plugin files, and
@@ -520,6 +542,15 @@ drawing while **Copy from** or **Reload** reads.
   and against a fake of the GitHub CLI, with the exact commands that publish a
   public release and a pre-release
   ([publish-cli.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/publish-cli.test.ts)).
+- **Unreleased:** from 0.9.4, each release carries a copy of the
+  [file format](./file-format.md). Publishing refuses one that is not the tagged
+  commit's document byte for byte, or whose name does not give its version and
+  revision
+  ([publish-cli.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/publish-cli.test.ts)),
+  and after publication the workflow compares the downloaded copy with that
+  document and verifies its attestation. The document links only to its own
+  headings and to full addresses, so that the copy reads on its own
+  ([docs.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/docs.test.ts)).
 - A public release that cannot be published can be rolled back and resumed: the
   release guide's own commands run in a synthetic repository, and each state
   passes the checks CI runs

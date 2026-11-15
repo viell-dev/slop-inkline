@@ -9,6 +9,24 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Added
+
+- Double-clicking a symbol opens it in the editor, as **Edit symbol** does, in
+  Live Preview, a table in Live Preview, a canvas card or note that is not
+  focused, and a canvas text card's own editor
+  ([#264](https://github.com/viell-dev/slop-inkline/issues/264)). Obsidian's
+  image viewer no longer opens on the second click there, nor does the canvas
+  card open its text, and the first click does what it did before. In Reading
+  view, embedded notes, hover previews, and a focused canvas card, a click opens
+  the image viewer as before, so right-click a symbol there for **Edit symbol**.
+- Each release now carries a copy of the
+  [file format](https://viell-dev.github.io/slop-inkline/file-format)'s
+  specification as of that release, named by the format's version and the
+  document's revision: `inkline-file-format-version-1-revision-1.md`. It is
+  listed in `SHA256SUMS` and attested like the other files, so that what symbol
+  files hold stays described wherever a release is kept. Installing does not
+  need it: the install ZIP and the three plugin files are as before.
+
 ### Changed
 
 - In the library, **Quick edit** takes the place of **Rename** and the button
@@ -40,9 +58,6 @@ even one a public release; earlier pre-releases carry a suffix such as
   is not, and Known limits no longer says what Inkline "does not do yet", or
   heads its general limits "Not there yet".
 
-Apart from Quick edit, these change only text: nothing else about how Inkline
-works has changed.
-
 ### Fixed
 
 - The library's rows have space between them, so that the line of readings and
@@ -52,6 +67,15 @@ works has changed.
   readings and translations, no longer shows a "Symbols" tooltip at the bottom
   of the list. Screen readers still hear the list's name
   ([#262](https://github.com/viell-dev/slop-inkline/issues/262)).
+
+- In a right-to-left interface, as Obsidian's in Hebrew, a symbol's picture in
+  the insert trigger's list, Insert existing symbol, Copy from, and the library
+  starts at the right of its column, as the mirrored row has it, rather than at
+  the left. Inkline's English in the editor and its Help and in the library
+  keeps its full stops and ellipses where English puts them: "Choose picture…"
+  no longer shows as "…Choose picture"
+  ([#256](https://github.com/viell-dev/slop-inkline/issues/256)). Notices and
+  tooltips still move them, as Known limits says.
 
 ## 0.9.3 - 2026-11-12
 
