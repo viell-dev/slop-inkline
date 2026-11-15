@@ -487,20 +487,19 @@ must keep released files readable and looking the same, as
   ([library-quick-edit.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-quick-edit.e2e.ts)
   and
   [quick-edit.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/library/quick-edit.test.ts)).
-- Each row's readings and translations sit nearer it than the next row, in both
-  themes. **Unreleased:** measured in both themes, they and the notes Uses lists
-  are 4 px below the row's buttons and 12 px above the next row, with no space
-  between them, where a row with neither is 8 px from the next. They start at
-  the row's edge, at the size of Quick edit's labels, with their labels and
-  **Uses:** in bold and the notes bulleted, and the notes open, in a new tab
-  with Ctrl. While a row is in Quick edit, the other rows' Uses and Quick edit,
-  and Show more, are disabled, keep their names for screen readers and say why,
-  and leave the focus in the form when clicked, while a symbol still inserts;
-  once it closes they work again, with no click kept from meanwhile. Quick
-  edit's fields open fitting what they hold, grow a line at a time from two
-  lines to eight and shrink back, fit a line that wraps, and keep a height they
-  are dragged to, by `field-sizing` on Obsidian 1.15.1 and by script on
-  installer 1.5.8, to the same heights
+- Measured in both themes, each row's readings and translations, and the notes
+  Uses lists, are 4 px below the row's buttons and 12 px above the next row,
+  with no space between them, where a row with neither is 8 px from the next.
+  They start at the row's edge, at the size of Quick edit's labels, with their
+  labels and **Uses:** in bold and the notes bulleted, and the notes open, in a
+  new tab with Ctrl. While a row is in Quick edit, the other rows' Uses and
+  Quick edit, and Show more, are disabled, keep their names for screen readers
+  and say why, and leave the focus in the form when clicked, while a symbol
+  still inserts; once it closes they work again, with no click kept from
+  meanwhile. Quick edit's fields open fitting what they hold, grow a line at a
+  time from two lines to eight and shrink back, fit a line that wraps, and keep
+  a height they are dragged to, by `field-sizing` on Obsidian 1.15.1 and by
+  script on installer 1.5.8, to the same heights
   ([library-look.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-look.e2e.ts)
   and
   [text-fields.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/text-fields.test.ts)).

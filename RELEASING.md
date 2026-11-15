@@ -147,41 +147,41 @@ libraries.
 Obsidian's directory, as the owner decided in
 [#141](https://github.com/viell-dev/slop-inkline/issues/141) on 2026-11-05. The
 builds before it are pre-releases: `0.9.0` is the first beta, `0.9.2` the first
-rc, `0.9.3` the second, and `0.9.4` the third.
+rc, `0.9.3` the second, `0.9.4` the third, and `0.9.5` the fourth.
 
-### Why 0.9.4 is an rc
+### Why 0.9.5 is an rc
 
-0.9.3 was the second rc. The owner's pass on it, in
-[#212](https://github.com/viell-dev/slop-inkline/issues/212), found it close to
-ready and asked for changes before `1.0.0`, so 0.9.3 could not become `1.0.0`
-unchanged. 0.9.4 makes them, with the fixes found since, so that `1.0.0` can be
-0.9.4 with a new version number and its documents. It meets each of the
-conditions above:
+0.9.4 was the third rc. The owner's pass on it, in
+[#289](https://github.com/viell-dev/slop-inkline/issues/289), asked for four
+changes to the library before `1.0.0`, so 0.9.4 could not become `1.0.0`
+unchanged. 0.9.5 makes them and nothing else, so that `1.0.0` can be 0.9.5 with
+a new version number and its documents. It meets each of the conditions above:
 
 - **The owner's reports are handled.** Their report on the beta, `0.9.1`, in
   [#150](https://github.com/viell-dev/slop-inkline/issues/150), was delivered in
-  0.9.3. Their pass on 0.9.3 asked for four changes, and each has been
-  delivered:
-  - symbols on the text's baseline,
-    [#261](https://github.com/viell-dev/slop-inkline/issues/261);
-  - space between the library's rows, and no stray tooltip,
-    [#262](https://github.com/viell-dev/slop-inkline/issues/262);
-  - one Quick edit for a symbol's name, readings and translations, with Uses its
-    own button, [#263](https://github.com/viell-dev/slop-inkline/issues/263);
-  - a double-click on a symbol opening the editor,
-    [#264](https://github.com/viell-dev/slop-inkline/issues/264), where Obsidian
-    lets a click through.
+  0.9.3, and their pass on 0.9.3, in
+  [#212](https://github.com/viell-dev/slop-inkline/issues/212), in 0.9.4. Their
+  pass on 0.9.4 asked for four changes to the library, each delivered in
+  [#293](https://github.com/viell-dev/slop-inkline/pull/293):
+  - more space above and below a symbol's readings and translations, with their
+    labels in bold, at the row's edge and the size of Quick edit's labels;
+  - Quick edit's fields growing and shrinking with what they hold;
+  - the other rows' Uses and Quick edit buttons disabled while a row is in Quick
+    edit;
+  - the notes that Uses lists under a bold label, with bullets, as one list with
+    the readings and translations.
 
-  They change the interface, so the owner tries 0.9.4 in a pass of its own.
+  The owner asked to judge them from screenshots, so the request for 0.9.5 shows
+  them rather than asking for an install.
 
-- **No known defect blocks ordinary use.** 0.9.4 fixes the defects that 0.9.3
+- **No known defect blocks ordinary use.** 0.9.4 fixed the defects that 0.9.3
   left open: [#243](https://github.com/viell-dev/slop-inkline/issues/243),
   [#245](https://github.com/viell-dev/slop-inkline/issues/245),
   [#247](https://github.com/viell-dev/slop-inkline/issues/247),
   [#249](https://github.com/viell-dev/slop-inkline/issues/249),
   [#250](https://github.com/viell-dev/slop-inkline/issues/250), and one found
-  since, [#280](https://github.com/viell-dev/slop-inkline/issues/280): a save
-  could write over a file that another plugin or a sync tool had put at the
+  since, [#280](https://github.com/viell-dev/slop-inkline/issues/280), where a
+  save could write over a file that another plugin or a sync tool had put at the
   symbol's path in its place as the save looked at it for the last time.
   [#238](https://github.com/viell-dev/slop-inkline/issues/238) was closed
   without a change, as its cost is a moment's. Each defect still open is
@@ -190,7 +190,7 @@ conditions above:
     where the `;;` list's check still reads a note differently from Reading
     view. In most of them the list stays closed where it could have opened. In
     two it could open in code, and no render has shown Obsidian reading either
-    as code. In a `$` math block it opens, as it always has, though an embed
+    as code. In a `$$` math block it opens, as it always has, though an embed
     typed there shows nothing;
   - [#255](https://github.com/viell-dev/slop-inkline/issues/255): a faint line
     along the edges of a symbol in some PDF viewers, not in Obsidian;
@@ -209,8 +209,9 @@ conditions above:
 - **The format has stopped changing.** The review the owner asked for ended
   after ten cycles, with all four reviewers agreeing on the same commit, and
   tests hold its limits and pinned files
-  ([#197](https://github.com/viell-dev/slop-inkline/issues/197)). Nothing in
-  0.9.4 changes it; each release now carries its specification as an asset.
+  ([#197](https://github.com/viell-dev/slop-inkline/issues/197)). Nothing since
+  0.9.2 changes it, and each release from 0.9.4 carries its specification as an
+  asset.
 
 The owner's pass on it decides what follows, and the hold in
 [#5](https://github.com/viell-dev/slop-inkline/issues/5) stands.
