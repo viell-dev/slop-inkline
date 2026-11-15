@@ -117,7 +117,11 @@ export default class InklinePlugin extends Plugin {
         change: (key, value) => this.#change(key, value),
       }),
     );
-    this.#renderer.watch(document);
+    // The main window's document, which the workspace itself is in: every
+    // other window's is watched as it opens, and those already open once the
+    // layout is ready.
+    const main = this.app.workspace.containerEl.doc;
+    this.#renderer.watch(main);
     // Obsidian can leave existing embeds pointing at the old resource URL
     // after an image changes. Refresh both their pixels and their ink mask.
     this.registerEvent(
@@ -132,7 +136,7 @@ export default class InklinePlugin extends Plugin {
     this.registerMarkdownPostProcessor((element) => {
       if (this.#loaded) this.#renderer.watch(element.doc);
     });
-    this.#offerEditing(document);
+    this.#offerEditing(main);
     this.registerEvent(
       this.app.workspace.on("window-open", (win) => {
         this.#renderer.watch(win.doc);
