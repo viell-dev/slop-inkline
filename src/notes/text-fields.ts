@@ -86,6 +86,99 @@ export function takeFile(
   };
 }
 
+/** A field's box, as the browser measures it, to fit the field to its text. */
+export interface FieldBox {
+  /** Its scroll height, which counts its text and its padding. */
+  readonly scroll: number;
+  /** Its padding above and below. */
+  readonly padding: number;
+  /** Its border above and below. */
+  readonly border: number;
+  /** Whether its height counts its padding and border, as Obsidian's does. */
+  readonly borderBox: boolean;
+  /** The height of a line of its text, or NaN where the styles give none. */
+  readonly line: number;
+}
+
+/**
+ * The height that shows the whole of a field's text, as `field-sizing: content`
+ * gives it, before the styles' least and most height. The text is whole lines,
+ * and the browser rounds the scroll height to a whole pixel, so the text is
+ * the whole lines that its scroll height reaches, less a pixel for rounding.
+ */
+export function fittedHeight(box: FieldBox): number {
+  const measured = box.scroll - box.padding;
+  const text =
+    box.line > 1
+      ? Math.max(1, Math.ceil((measured - 1) / box.line)) * box.line
+      : measured;
+  return box.borderBox ? text + box.padding + box.border : text;
+}
+
+/** The sum of two lengths of a computed style, such as `4px` and `4px`. */
+function pixels(start: string, end: string): number {
+  return Number.parseFloat(start) + Number.parseFloat(end);
+}
+
+/**
+ * Sizes a field to its text, where the browser has no `field-sizing`, as the
+ * styles ask: Obsidian's installer 1.5.8, the oldest it supports, has Chromium
+ * 120, and `field-sizing` came in 123. The styles still give the least and most
+ * height. As with `field-sizing`, a field dragged to a height of its own keeps
+ * it: the drag sets a height that is not the one this gave.
+ */
+class ContentFit {
+  readonly #area: HTMLTextAreaElement;
+  /** The height this last gave the field, to tell one dragged to. */
+  #given = "";
+  /** The field's width then, as text wraps again when it changes. */
+  #width = -1;
+
+  constructor(area: HTMLTextAreaElement) {
+    this.#area = area;
+    // A sidebar made narrower, or a field shown that was hidden.
+    new ResizeObserver(() => {
+      if (area.clientWidth !== this.#width) this.fit();
+    }).observe(area);
+  }
+
+  /** Fits the field to what it holds now. */
+  fit(): void {
+    const area = this.#area;
+    if (area.style.height !== this.#given || !area.isShown()) return;
+    // Measuring shrinks the field for a moment, which would take with it the
+    // scroll of the list it is in, when that is scrolled to its end.
+    const scrolled: [Element, number][] = [];
+    for (let at: Element | null = area; at !== null; at = at.parentElement) {
+      if (at.scrollTop > 0) scrolled.push([at, at.scrollTop]);
+    }
+    area.style.removeProperty("height");
+    area.addClass("inkline-text-measure");
+    const style = area.win.getComputedStyle(area);
+    const height = fittedHeight({
+      scroll: area.scrollHeight,
+      padding: pixels(style.paddingTop, style.paddingBottom),
+      border: pixels(style.borderTopWidth, style.borderBottomWidth),
+      borderBox: style.boxSizing === "border-box",
+      line: Number.parseFloat(style.lineHeight),
+    });
+    area.removeClass("inkline-text-measure");
+    area.style.height = `${String(height)}px`;
+    for (const [element, top] of scrolled) element.scrollTop = top;
+    this.#given = area.style.height;
+    this.#width = area.clientWidth;
+  }
+}
+
+/** How {@link TextFields} shows its fields. */
+export interface FieldOptions {
+  /**
+   * Whether each field grows and shrinks with its text, between the least and
+   * most height the styles give, as Quick edit's do.
+   */
+  readonly fit?: boolean;
+}
+
 /** What a field's values are called, as a label. */
 export function fieldLabel(field: TextField, count: number): string {
   const word = field === "reading" ? "Reading" : "Translation";
@@ -131,6 +224,8 @@ export function showValues(
 export class TextFields {
   readonly #changed: () => void;
   readonly #areas = new Map<TextField, HTMLTextAreaElement>();
+  /** What sizes each field by script, where the styles cannot. */
+  readonly #fits = new Map<TextField, ContentFit>();
   readonly #errors = new Map<TextField, HTMLElement>();
   /** Says what saving would replace, for the fields in {@link #replacing}. */
   readonly #note: HTMLElement;
@@ -138,10 +233,20 @@ export class TextFields {
   readonly #replacing = new Set<TextField>();
   #given: SymbolText;
 
-  constructor(parent: HTMLElement, given: SymbolText, changed: () => void) {
+  constructor(
+    parent: HTMLElement,
+    given: SymbolText,
+    changed: () => void,
+    options: FieldOptions = {},
+  ) {
     this.#given = given;
     this.#changed = changed;
-    const fields = parent.createDiv({ cls: "inkline-text-fields" });
+    const fit = options.fit === true;
+    const fields = parent.createDiv({
+      cls: fit
+        ? ["inkline-text-fields", "inkline-text-fit"]
+        : "inkline-text-fields",
+    });
     for (const field of textFields) {
       const label = fields.createEl("label", { cls: "inkline-text-field" });
       label.createSpan({ text: fieldLabel(field, 2) });
@@ -156,13 +261,17 @@ export class TextFields {
           autocomplete: "off",
         },
       });
-      area.value = fieldText(given[field]);
+      this.#areas.set(field, area);
+      if (fit && !CSS.supports("field-sizing", "content")) {
+        this.#fits.set(field, new ContentFit(area));
+      }
+      this.#put(field, fieldText(given[field]));
       area.addEventListener("input", () => {
+        this.#fits.get(field)?.fit();
         this.#check();
         this.#showReplaced();
         this.#changed();
       });
-      this.#areas.set(field, area);
       this.#errors.set(
         field,
         label.createDiv({
@@ -183,6 +292,14 @@ export class TextFields {
 
   #typed(field: TextField): string {
     return this.#areas.get(field)?.value ?? fieldText(this.#given[field]);
+  }
+
+  /** Puts `text` in the field, which takes its size from it. */
+  #put(field: TextField, text: string): void {
+    const area = this.#areas.get(field);
+    if (area === undefined) return;
+    area.value = text;
+    this.#fits.get(field)?.fit();
   }
 
   /** Whether a person has changed either field. */
@@ -231,9 +348,8 @@ export class TextFields {
   /** Puts back what a draft kept. */
   restore(typed: TypedText): void {
     for (const field of textFields) {
-      const area = this.#areas.get(field);
       const text = typed[field];
-      if (area !== undefined && text !== undefined) area.value = text;
+      if (text !== undefined) this.#put(field, text);
     }
     this.#check();
   }
@@ -302,7 +418,7 @@ export class TextFields {
         area.value,
         now[field],
       );
-      area.value = typed;
+      this.#put(field, typed);
       if (conflict) {
         conflicts.push(field);
         this.#replacing.add(field);
@@ -324,10 +440,7 @@ export class TextFields {
 
   /** Drops what was typed in `fields`, for what the file says. */
   drop(fields: readonly TextField[]): void {
-    for (const field of fields) {
-      const area = this.#areas.get(field);
-      if (area !== undefined) area.value = fieldText(this.#given[field]);
-    }
+    for (const field of fields) this.#put(field, fieldText(this.#given[field]));
     this.#check();
     this.#showReplaced();
   }
@@ -340,14 +453,9 @@ export class TextFields {
   saved(changes: TextChanges, sent: TypedText): void {
     this.#given = { ...this.#given, ...changes };
     for (const field of textFields) {
-      const area = this.#areas.get(field);
       const values = changes[field];
-      if (
-        area !== undefined &&
-        values !== undefined &&
-        area.value === sent[field]
-      ) {
-        area.value = fieldText(values);
+      if (values !== undefined && this.#typed(field) === sent[field]) {
+        this.#put(field, fieldText(values));
       }
     }
     this.#check();
