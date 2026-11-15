@@ -25,7 +25,6 @@
     "version": "node scripts/release.ts sync && git add manifest.json versions.json"
   },
   "devDependencies": {
-    "@eslint/js": "9.39.5",
     "@types/mocha": "10.0.10",
     "@types/node": "24.19.2",
     "@wdio/cli": "9.33.1",
@@ -47,12 +46,6 @@
     "wdio-obsidian-reporter": "3.5.0",
     "wdio-obsidian-service": "3.5.0",
     "webdriverio": "9.33.1"
-  },
-  "overrides": {
-    "eslint-plugin-obsidianmd": {
-      "obsidian": "$obsidian",
-      "typescript": "$typescript"
-    }
   },
   "allowScripts": {
     "esbuild": true,
