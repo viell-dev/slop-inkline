@@ -9,6 +9,21 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+## 0.9.4 - 2026-11-15
+
+This is the third release candidate of 1.0.0: a build meant to become 1.0.0 with
+only its version number and documents changed, for its last checks. The owner is
+asked to try it in
+[their test request](https://github.com/viell-dev/slop-inkline/issues/289).
+
+0.9.3 did not become 1.0.0: the owner's pass on it
+([#212](https://github.com/viell-dev/slop-inkline/issues/212)) asked for symbols
+to stand on the text's baseline, space between the library's rows, one Quick
+edit for a symbol's name, readings, and translations, and a double-click that
+opens a symbol in the editor. They are all here, with the fixes found since. The
+file format is unchanged, so symbols and drafts from 0.9.2 and 0.9.3 open as
+they did.
+
 ### Added
 
 - Double-clicking a symbol opens it in the editor, as **Edit symbol** does, in

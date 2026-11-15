@@ -178,8 +178,11 @@ conditions above:
   left open: [#243](https://github.com/viell-dev/slop-inkline/issues/243),
   [#245](https://github.com/viell-dev/slop-inkline/issues/245),
   [#247](https://github.com/viell-dev/slop-inkline/issues/247),
-  [#249](https://github.com/viell-dev/slop-inkline/issues/249), and
-  [#250](https://github.com/viell-dev/slop-inkline/issues/250).
+  [#249](https://github.com/viell-dev/slop-inkline/issues/249),
+  [#250](https://github.com/viell-dev/slop-inkline/issues/250), and one found
+  since, [#280](https://github.com/viell-dev/slop-inkline/issues/280): a save
+  could write over a file that another plugin or a sync tool had put at the
+  symbol's path in its place as the save looked at it for the last time.
   [#238](https://github.com/viell-dev/slop-inkline/issues/238) was closed
   without a change, as its cost is a moment's. Each defect still open is
   recorded with the reason it waits:
