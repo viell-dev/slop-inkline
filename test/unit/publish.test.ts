@@ -136,10 +136,16 @@ describe("ciProblems", () => {
 });
 
 const commit = "c".repeat(40);
+/** What a release holds, as the Release workflow builds it. */
 const files: BuiltFile[] = [
   { name: "main.js", sha256: "a".repeat(64) },
   { name: "manifest.json", sha256: "b".repeat(64) },
   { name: "styles.css", sha256: "c".repeat(64) },
+  { name: "inkline-0.1.0.zip", sha256: "e".repeat(64) },
+  {
+    name: "inkline-file-format-version-1-revision-1.md",
+    sha256: "f".repeat(64),
+  },
   { name: "SHA256SUMS", sha256: "d".repeat(64) },
 ];
 const asUploaded = (built: readonly BuiltFile[]): Draft["assets"] =>
@@ -509,5 +515,11 @@ describe("holdsBuild", () => {
         files,
       ),
     ).toBe(false);
+    // A release made before the specification travelled with it.
+    const before = draft.assets.filter(
+      (asset) => !asset.name.startsWith("inkline-file-format-"),
+    );
+    expect(before).toHaveLength(files.length - 1);
+    expect(holdsBuild({ ...draft, assets: before }, files)).toBe(false);
   });
 });
