@@ -9,6 +9,17 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Added
+
+- Double-clicking a symbol opens it in the editor, as **Edit symbol** does, in
+  Live Preview, a table in Live Preview, a canvas card or note that is not
+  focused, and a canvas text card's own editor
+  ([#264](https://github.com/viell-dev/slop-inkline/issues/264)). Obsidian's
+  image viewer no longer opens on the second click there, nor does the canvas
+  card open its text, and the first click does what it did before. In Reading
+  view, embedded notes, hover previews, and a focused canvas card, a click opens
+  the image viewer as before, so right-click a symbol there for **Edit symbol**.
+
 ### Changed
 
 - Inkline's description in Obsidian's list of plugins now says what it is for:

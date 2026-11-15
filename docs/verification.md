@@ -321,6 +321,16 @@ must keep released files readable and looking the same, as
   items and works, on the symbol and off it; a card over a symbol adds nothing;
   and if the canvas's sheet over a card is renamed, its menu stays as it is
   ([symbol-menus.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-menus.e2e.ts)).
+- **Unreleased:** a double-click on a symbol opens that symbol in the editor,
+  once and without Obsidian's image viewer, in Live Preview, a table in it, a
+  popout window, a canvas card that is not focused, instead of the card's text,
+  a note on a canvas, and a text card's own editor. The first click still puts
+  the cursor at the embed, and a click on the selected symbol later does what it
+  does on a picture. A double-click on a picture, on words, beside a symbol on a
+  card, in Reading view, an embedded note, a hover preview, a focused card, or a
+  callout in Live Preview opens no editor, and once Inkline is off nothing
+  answers one
+  ([double-click.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/double-click.e2e.ts)).
 - The library lists symbols and their referring notes, filters by name and
   folder, follows file and link changes, and inserts successive symbols without
   replacing selected text or splitting a link
