@@ -28,11 +28,7 @@ export function docsSource(request: DocsRequest): DocsSource {
       error: true,
     };
   }
-  const latest = request.releases[0];
-  if (latest === undefined && request.version === "0.0.0") {
-    return { deploy: true, ref: "main", version: "unreleased" };
-  }
-  if (request.version !== latest) {
+  if (request.version !== request.releases[0]) {
     return {
       deploy: false,
       reason: `The guide for ${request.version} waits until that release is published.`,

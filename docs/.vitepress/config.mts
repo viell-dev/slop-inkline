@@ -1,7 +1,8 @@
 // The documentation site, built with VitePress and served by GitHub Pages.
 // The Pages workflow sets DOCS_COMMIT, the commit it builds, and
-// DOCS_VERSION, the release the site describes, or "unreleased" for the
-// development version on main; versions.md describes which it deploys.
+// DOCS_VERSION, the release the site describes; versions.md describes which
+// it deploys. A build without them, as on a pull request or a developer's
+// machine, says that it describes the unreleased development version.
 
 import { execFileSync } from "node:child_process";
 import { writeFile } from "node:fs/promises";

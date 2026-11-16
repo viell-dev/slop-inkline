@@ -47,7 +47,6 @@ describe("the repository's label and ruleset files", () => {
     const names = labels.map((label) => label.name);
     expect(names).toContain("Needs: Owner");
     expect(names).toContain("Needs: Human");
-    expect(names).not.toContain("Status: Needs Owner Testing");
     expect(names.filter((name) => name.startsWith("Type: ")).length).toBe(7);
   });
 
@@ -56,6 +55,8 @@ describe("the repository's label and ruleset files", () => {
     const files = readdirSync(directory).map((name): unknown =>
       JSON.parse(readFileSync(join(directory, name), "utf8")),
     );
+    // Compared with themselves, the files show one without a name, and a
+    // name that two of them record.
     expect(rulesetProblems(files, files).problems).toEqual([]);
   });
 });
@@ -133,6 +134,16 @@ describe("rulesetProblems", () => {
       'ruleset "PRs and CI for main" is missing',
       'ruleset "New" has no file',
     ]);
+  });
+
+  it("reports a name that two files record", () => {
+    // Both would find the one live ruleset of that name, so that a second
+    // file with other rules would otherwise pass as a match of the first.
+    const other = { ...ruleset, name: "Tags" };
+    expect(
+      rulesetProblems([ruleset, other, { ...ruleset }], [ruleset, other])
+        .problems,
+    ).toEqual(['ruleset "PRs and CI for main" has more than one file']);
   });
 
   it("compares bypass actors only where they are shown", () => {

@@ -436,18 +436,16 @@ On a branch from `main`:
    with the planned release date, and add an empty `## Unreleased` above it. The
    section becomes the release notes, so write it for users.
 4. Update the user guide in `docs/` and the README for the release, including
-   the manual ZIP installation and update path. For the first public release,
-   that includes the "Prerelease" boxes on the home and install pages, and what
-   the README, the install page, and the known limits say of pre-releases: once
-   `package.json` names a public version, `test/unit/docs.test.ts` fails while
-   any of them says that Inkline is a prerelease, that every release so far is
-   one, or that there is no public release yet. What they say of Obsidian's
-   community directory must hold both before and after it lists Inkline, as the
-   release is published before the owner submits it there: lead with installing
-   from Obsidian's community plugins, with the ZIP from the latest release as
-   the way in while Inkline does not show there, so that the listing needs no
-   change to them. Remove **Unreleased** labels only from behavior included in
-   this release; retain labels for later work.
+   the manual ZIP installation and update path. `test/unit/docs.test.ts` fails
+   while the home or install page, the README, or the known limits say that
+   Inkline is a prerelease, that every release so far is one, or that there is
+   no release yet, public or of any kind, as none of it is true since `1.0.0`.
+   What they say of Obsidian's community directory must hold both before and
+   after it lists Inkline, as the release is published before the owner submits
+   it there: lead with installing from Obsidian's community plugins, with the
+   ZIP from the latest release as the way in while Inkline does not show there,
+   so that the listing needs no change to them. Remove **Unreleased** labels
+   only from behavior included in this release; retain labels for later work.
 5. Run `node scripts/release.ts check <version>` and
    `node scripts/publish.ts order <version>`, which the workflow runs too. The
    first checks that `package.json` names the version, that the changelog

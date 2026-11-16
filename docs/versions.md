@@ -19,8 +19,7 @@ release, or a moved tag.
 Preparing a new software version can put its guide on main before its download
 exists. The Pages workflow reads the version from `package.json`, which names
 pre-releases as well as public releases, and keeps the existing site until that
-version is published; then it is run again on `main`. Before the first release,
-only the explicitly unreleased `0.0.0` guide can deploy.
+version is published; then it is run again on `main`.
 
 ## Copies of the file format
 

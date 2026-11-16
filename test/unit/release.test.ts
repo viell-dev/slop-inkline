@@ -8,7 +8,6 @@ import packageJson from "../../package.json" with { type: "json" };
 import versions from "../../versions.json" with { type: "json" };
 import {
   builtManifest,
-  lastManifestPrerelease,
   metadataProblems,
   releaseNotes,
   releaseProblems,
@@ -83,16 +82,6 @@ describe("metadataProblems", () => {
     expect(metadataProblems(released)).toEqual([]);
   });
 
-  it("accepts an unreleased repository without a versions entry", () => {
-    expect(
-      metadataProblems({
-        packageJson: { version: "0.0.0" },
-        manifest: { version: "0.0.0", minAppVersion: "1.13.4" },
-        versions: {},
-      }),
-    ).toEqual([]);
-  });
-
   it("reports a manifest version that differs from package.json", () => {
     expect(
       metadataProblems({
@@ -117,17 +106,17 @@ describe("metadataProblems", () => {
     expect(metadataProblems(prepared)).toEqual([]);
   });
 
-  it("accepts the pre-releases that follow the last one the manifest named", () => {
+  it("reports a manifest left at a pre-release while a later one is prepared", () => {
+    // As 0.9.0 was until 1.0.0, which no manifest may name again.
     expect(
       metadataProblems({
-        packageJson: { version: "0.9.1" },
-        manifest: {
-          version: lastManifestPrerelease,
-          minAppVersion: "1.13.4",
-        },
-        versions: {},
+        packageJson: { version: "1.1.0" },
+        manifest: { version: "0.9.0", minAppVersion: "1.13.4" },
+        versions: { "1.0.0": "1.13.4" },
       }),
-    ).toEqual([]);
+    ).toEqual([
+      "manifest.json version 0.9.0 is a pre-release, which Obsidian would offer to every user",
+    ]);
   });
 
   it("reports a pre-release's version in the manifest", () => {
@@ -377,18 +366,6 @@ describe("releaseNotes", () => {
 describe("releaseProblems", () => {
   it("accepts a prepared release", () => {
     expect(releaseProblems(released, changelog, "0.2.0")).toEqual([]);
-  });
-
-  it("refuses the unreleased placeholder version", () => {
-    const placeholder: Metadata = {
-      packageJson: { version: "0.0.0" },
-      manifest: { version: "0.0.0", minAppVersion: "1.13.4" },
-      versions: {},
-    };
-    expect(releaseProblems(placeholder, changelog, "0.0.0")).toEqual([
-      "0.0.0 is not a releasable version",
-      'CHANGELOG.md has no non-empty "## 0.0.0 - YYYY-MM-DD" section',
-    ]);
   });
 
   it("refuses a version the files do not carry", () => {
