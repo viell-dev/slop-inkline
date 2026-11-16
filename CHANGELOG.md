@@ -32,6 +32,13 @@ their ZIP or with BRAT.
 
 ### Changed
 
+- While a row of the library is in Quick edit, its own buttons stay at its top:
+  the symbol, which still inserts it, **Uses**, which waits as the other rows'
+  do, and **Quick edit**, shown pressed, which closes the row as **Cancel**
+  does. The fields take the place of the readings, translations, and notes under
+  them, rather than of the whole row, and no longer repeat the symbol's picture
+  beside its name
+  ([#294](https://github.com/viell-dev/slop-inkline/issues/294)).
 - When a symbol does not open, because its file is not a valid PNG or its
   strokes cannot be read, and Inkline keeps a draft of it, as after a crash cut
   short a save, the notice says that the draft is kept. The editor offers a

@@ -2327,8 +2327,9 @@ describe("A symbol's readings and translations", function () {
           .getLeaf("split")
           .setViewState({ type: "inkline-library", active: false });
       });
+      // Only a Quick edit whose form is closed: one that is open would close.
       const button =
-        '[data-inkline-path="Other.ink.png"] [data-inkline-role="edit"]';
+        '[data-inkline-path="Other.ink.png"] [data-inkline-role="edit"][aria-expanded="false"]';
       // The third library's form is the one with nothing typed in it, once its
       // fields have read the file and Save can go: the second has a reading.
       await browser.waitUntil(async () =>

@@ -131,9 +131,18 @@ function nameFor(
   return name;
 }
 
+/** The folder a file is in, as the library names it: "" for the top folder. */
+function folderOf(file: TFile): string {
+  return file.parent === null || file.parent.isRoot() ? "" : file.parent.path;
+}
+
 /** The row being edited in Quick edit. */
 interface EditPanel {
   readonly file: TFile;
+  /** The row, whose buttons head the form. */
+  readonly row: HTMLElement;
+  /** Closes the row as Cancel does. */
+  readonly leave: () => void;
   /** Reads the file again, after the vault says it changed or went. */
   readonly reread: () => void;
   /** Follows a new name the file was given, after the vault says so. */
@@ -167,10 +176,10 @@ export class SymbolLibraryView extends ItemView {
   #editing: HTMLElement | undefined;
   #panel: EditPanel | undefined;
   /**
-   * The other rows' buttons that wait while a row is in Quick edit, disabled
-   * until it closes: Uses and Show more, which hold off redrawing until then,
-   * so that a click would only take effect later, and Quick edit, as one row
-   * is edited at a time.
+   * The buttons that wait while a row is in Quick edit, disabled until it
+   * closes: every row's Uses, the edited row's too, and Show more, which hold
+   * off redrawing until then, so that a click would only take effect later,
+   * and the other rows' Quick edit, as one row is edited at a time.
    */
   #waiting: HTMLButtonElement[] = [];
   /** Says to a screen reader what a waiting button waits for. */
@@ -348,10 +357,7 @@ export class SymbolLibraryView extends ItemView {
         return {
           path: file.path,
           name: symbolStem(file.name) ?? file.basename,
-          folder:
-            file.parent === null || file.parent.isRoot()
-              ? ""
-              : file.parent.path,
+          folder: folderOf(file),
           ...(text === undefined ? {} : { text }),
         };
       }),
@@ -559,24 +565,15 @@ export class SymbolLibraryView extends ItemView {
         "aria-hidden": "true",
       },
     });
-    const text = insert.createDiv({ cls: "inkline-library-text" });
-    text.createDiv({ cls: "inkline-library-name", text: entry.name });
-    if (entry.folder !== "") {
-      text.createDiv({
-        cls: "inkline-library-folder-name",
-        text: entry.folder,
-      });
-    }
-    // The row can shorten a long name or folder: this has the whole of both.
-    setTooltip(
-      insert,
-      entry.folder === "" ? entry.name : `${entry.folder}/${entry.name}`,
-    );
+    insert.createDiv({ cls: "inkline-library-text" });
     insert.addEventListener("click", () => {
       this.#insert(file);
     });
     row.addEventListener("contextmenu", (event) => {
-      if (row.querySelector("form") !== null) return;
+      // Quick edit's fields keep the menu for their text.
+      const target = event.targetNode;
+      const form = row.querySelector("form");
+      if (target !== null && form?.contains(target) === true) return;
       event.preventDefault();
       if (this.app.vault.getFileByPath(file.path) !== file) {
         const next =
@@ -600,10 +597,11 @@ export class SymbolLibraryView extends ItemView {
       },
     });
     // Its icon and words, as a row has little room beside a name; its tooltip
-    // says what it edits, and a screen reader hears that too.
+    // says what it edits, and a screen reader hears that too. It opens the
+    // form under the row's buttons, and closes it again, as Uses does its list.
     const edit = actions.createEl("button", {
       cls: "inkline-library-edit",
-      attr: { "data-inkline-role": "edit" },
+      attr: { "data-inkline-role": "edit", "aria-expanded": "false" },
     });
     setIcon(
       edit.createSpan({
@@ -613,12 +611,18 @@ export class SymbolLibraryView extends ItemView {
       "pencil",
     );
     edit.createSpan({ text: "Quick edit" });
-    setTooltip(
-      edit,
-      `Quick edit the name, readings, and translations of ${entry.name}`,
-    );
-    edit.addEventListener("click", () => {
-      this.#quickEdit(row, entry, file);
+    this.#title(row, entry.name, entry.folder);
+    edit.addEventListener("click", (event) => {
+      // Only the first click of a double-click opens or closes the row: a
+      // later one would undo it, closing the form just opened, or opening a
+      // new one over what was just dropped. It gives the focus back to an
+      // open form's name.
+      if (event.detail > 1) {
+        this.#editing?.focus();
+        return;
+      }
+      if (this.#panel?.row === row) this.#panel.leave();
+      else this.#quickEdit(row, file);
     });
     this.#renderValues(row, entry);
     if (entry.notes.length === 0) {
@@ -659,6 +663,32 @@ export class SymbolLibraryView extends ItemView {
   }
 
   /**
+   * Names a row's symbol: in its button, with its folder, and in the tooltips
+   * of that button and of Quick edit, which say the whole of a name or folder
+   * that the row shortens.
+   */
+  #title(row: HTMLElement, name: string, folder: string): void {
+    const insert = row.querySelector<HTMLElement>(
+      '[data-inkline-role="insert"]',
+    );
+    const text = insert?.querySelector<HTMLElement>(".inkline-library-text");
+    const edit = row.querySelector<HTMLElement>('[data-inkline-role="edit"]');
+    if (insert === null || text === null || text === undefined) return;
+    text.empty();
+    text.createDiv({ cls: "inkline-library-name", text: name });
+    if (folder !== "") {
+      text.createDiv({ cls: "inkline-library-folder-name", text: folder });
+    }
+    setTooltip(insert, folder === "" ? name : `${folder}/${name}`);
+    if (edit !== null) {
+      setTooltip(
+        edit,
+        `Quick edit the name, readings, and translations of ${name}`,
+      );
+    }
+  }
+
+  /**
    * Shows what a symbol says about itself, under its row, with a value the
    * filter found first. A symbol with none keeps a row of the usual height.
    */
@@ -679,11 +709,13 @@ export class SymbolLibraryView extends ItemView {
   }
 
   /**
-   * Stops the filters, the refreshes, and the other rows' buttons that wait for
-   * them while a row is being edited. A symbol's button, which inserts it, and
-   * the notes listed under a row, which open, still work.
+   * Stops the filters, the refreshes, and the buttons that wait for them while
+   * a row is being edited: Uses, the edited row's too, the other rows' Quick
+   * edit, and Show more. A symbol's button, which inserts it, the notes listed
+   * under a row, which open, and the edited row's own Quick edit, `own`, which
+   * closes it, still work.
    */
-  #startEditing(field: HTMLElement): void {
+  #startEditing(field: HTMLElement, own: HTMLButtonElement): void {
     this.#editing = field;
     if (this.#searchField !== undefined) this.#searchField.disabled = true;
     if (this.#folderField !== undefined) this.#folderField.disabled = true;
@@ -693,7 +725,7 @@ export class SymbolLibraryView extends ItemView {
         .join(","),
     );
     this.#waiting = Array.from(waiting ?? []).filter(
-      (button) => !button.disabled,
+      (button) => button !== own && !button.disabled,
     );
     for (const button of this.#waiting) {
       button.disabled = true;
@@ -757,43 +789,55 @@ export class SymbolLibraryView extends ItemView {
   }
 
   /**
-   * Quick edit: a symbol's name, readings, and translations, in its row,
-   * without opening the editor. This shows the fields, checks what Save can
-   * refuse before anything is written, and gives the library's own write and
-   * rename to {@link QuickSave}, which runs them in turn; quick-edit.ts says
-   * what the row and notices say of how it went. The rename is of the file as
-   * {@link checkRename} checked it, from where it was then, so that one renamed
-   * elsewhere while the readings are written is refused rather than renamed
-   * again. This works on a file the editor will not open, as it does not read
-   * the record, and the name can change on one whose text cannot be read. The
-   * fields follow the file if it changes meanwhile, as by sync, and the name a
-   * rename elsewhere, except where something was typed, which stays, with a
-   * note of what saving would replace in the fields.
+   * Quick edit: a symbol's name, readings, and translations, in its row under
+   * its buttons, without opening the editor. This shows the fields, checks
+   * what Save can refuse before anything is written, and gives the library's
+   * own write and rename to {@link QuickSave}, which runs them in turn;
+   * quick-edit.ts says what the row and notices say of how it went. The
+   * rename is of the file as {@link checkRename} checked it, from where it was
+   * then, so that one renamed elsewhere while the readings are written is
+   * refused rather than renamed again. This works on a file the editor will
+   * not open, as it does not read the record, and the name can change on one
+   * whose text cannot be read. The fields follow the file if it changes
+   * meanwhile, as by sync, and the name a rename elsewhere, except where
+   * something was typed, which stays, with a note of what saving would replace
+   * in the fields. The row's buttons follow a rename elsewhere too.
    */
-  #quickEdit(row: HTMLElement, entry: CatalogEntry, file: TFile): void {
+  #quickEdit(row: HTMLElement, file: TFile): void {
     if (this.#editing !== undefined) {
       this.#editing.focus();
       return;
     }
+    // A row closed during a press on the list keeps its form until the press
+    // ends and the list is drawn again. No row opens until then, so that the
+    // list never holds a closed form beside an open one.
+    if (this.#list?.querySelector(".inkline-library-edit-form") !== null) {
+      return;
+    }
+    const own = row.querySelector<HTMLButtonElement>(
+      'button[data-inkline-role="edit"]',
+    );
+    if (own === null) return;
     // The file's name now, which a rename elsewhere can have changed since the
     // row was drawn.
     const name = symbolStem(file.name) ?? file.basename;
-    row.empty();
+    this.#title(row, name, folderOf(file));
+    // The row's buttons stay, and head the form, which takes the place of what
+    // shows under them. Its picture and name there say which symbol it is for.
+    for (const under of row.querySelectorAll(
+      ":scope > .inkline-library-values, :scope > .inkline-library-notes",
+    )) {
+      under.remove();
+    }
+    row
+      .querySelector('[data-inkline-role="uses"]')
+      ?.setAttribute("aria-expanded", "false");
+    own.setAttribute("aria-expanded", "true");
     const form = row.createEl("form", { cls: "inkline-library-edit-form" });
     const heading = nameFor(form, form, `Quick edit ${name}`);
     const label = form.createEl("label", { cls: "inkline-text-field" });
     label.createSpan({ text: "Name" });
-    // Which symbol the fields are for, beside its name.
-    const title = label.createDiv({ cls: "inkline-library-edit-title" });
-    title.createEl("img", {
-      cls: "inkline-library-picture",
-      attr: {
-        src: this.app.vault.getResourcePath(file),
-        alt: "",
-        "aria-hidden": "true",
-      },
-    });
-    const input = title.createEl("input", {
+    const input = label.createEl("input", {
       type: "text",
       value: name,
       attr: { spellcheck: "false", autocomplete: "off" },
@@ -842,7 +886,15 @@ export class SymbolLibraryView extends ItemView {
       attr: { type: "button" },
     });
     save.disabled = true;
-    this.#startEditing(input);
+    /**
+     * Lets Cancel, and the row's own Quick edit, which closes the row as Cancel
+     * does, be used, or not while a save cannot yet be left.
+     */
+    const cancellable = (can: boolean): void => {
+      cancel.disabled = !can;
+      own.disabled = !can;
+    };
+    this.#startEditing(input, own);
     /** Whether the row is still being edited, in a library still open. */
     const open = (): boolean => this.#editing === input;
     const finish = (): void => {
@@ -894,6 +946,9 @@ export class SymbolLibraryView extends ItemView {
       if (field.typed !== input.value) input.value = field.typed;
       given = field.given;
       heading.setText(`Quick edit ${now}`);
+      // The row's buttons above, which name it too.
+      this.#title(row, now, folderOf(file));
+      row.setAttribute("data-inkline-path", file.path);
     };
     // Obsidian takes Mod+Enter before the fields see it.
     const keys = new Scope(this.app.scope);
@@ -905,21 +960,31 @@ export class SymbolLibraryView extends ItemView {
     this.app.keymap.pushScope(keys);
     this.#panel = {
       file,
+      row,
+      leave,
       reread,
       renamed,
       release: () => {
         this.app.keymap.popScope(keys);
+        own.setAttribute("aria-expanded", "false");
       },
     };
     cancel.addEventListener("click", leave);
-    form.addEventListener("keydown", (event) => {
+    // In the fields, and on the row's Quick edit just above them, which closes
+    // the row too.
+    const escape = (event: KeyboardEvent): void => {
       if (event.key !== "Escape" || event.isComposing) return;
       event.preventDefault();
       event.stopPropagation();
       leave();
-    });
+    };
+    form.addEventListener("keydown", escape);
+    own.addEventListener("keydown", escape);
     form.addEventListener("submit", (event) => {
       event.preventDefault();
+      // A form closed during a press stays until the list is drawn again, and
+      // saves nothing meanwhile.
+      if (!open()) return;
       if (saving || save.disabled || fields.problem() !== undefined) return;
       const typed = input.value;
       const was = given;
@@ -951,7 +1016,7 @@ export class SymbolLibraryView extends ItemView {
       }
       saving = true;
       save.disabled = true;
-      cancel.disabled = true;
+      cancellable(false);
       input.readOnly = true;
       fields.enabled = false;
       say([]);
@@ -991,7 +1056,7 @@ export class SymbolLibraryView extends ItemView {
       const quick = new QuickSave(steps, (step) => {
         if (!open()) return;
         wait.setText(step === undefined ? "" : waitLine(step, quick.written));
-        cancel.disabled = step === undefined;
+        cancellable(step !== undefined);
       });
       const names = (): Names => ({
         was,
@@ -1010,7 +1075,7 @@ export class SymbolLibraryView extends ItemView {
         if (!open()) return;
         saving = false;
         save.disabled = false;
-        cancel.disabled = false;
+        cancellable(true);
         input.readOnly = false;
         fields.enabled = readable;
         if (outcome.written) fields.saved(changes, sent);

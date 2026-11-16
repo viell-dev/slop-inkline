@@ -566,8 +566,8 @@ img.inkline-symbol[width]:not([height]):not(.image-wrapper > img),
  * a few words of name, however long the name is, so that the name wraps in its
  * cell rather than pushing them down. They drop together, to the row's end,
  * only in a sidebar too narrow for that much. What comes under them, the row's
- * values and its notes, has no gap of the row's above it: its own margin is
- * the space that keeps it with the row.
+ * values and its notes, or Quick edit's form in their place, has no gap of the
+ * row's above it: its own margin is the space that keeps it with the row.
  */
 .inkline-library-symbol {
   display: flex;
@@ -586,8 +586,6 @@ img.inkline-symbol[width]:not([height]):not(.image-wrapper > img),
   height: auto;
   padding: var(--size-4-1);
   text-align: start;
-  background: none;
-  box-shadow: none;
 }
 
 .inkline-library-insert:hover {
@@ -643,8 +641,6 @@ img.inkline-symbol[width]:not([height]):not(.image-wrapper > img),
   padding-inline: var(--size-4-1);
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
-  background: none;
-  box-shadow: none;
 }
 
 .inkline-library-uses {
@@ -663,6 +659,22 @@ img.inkline-symbol[width]:not([height]):not(.image-wrapper > img),
 .inkline-library-edit-icon .svg-icon {
   width: var(--icon-xs);
   height: var(--icon-xs);
+}
+
+/*
+ * A row's Quick edit while its form is open under the row's buttons, pressed,
+ * as a click on it closes the form again: flat, in the colours Obsidian gives
+ * an icon button that is on, where the others stand out in Obsidian's colours
+ * for a button, with a shadow. Obsidian draws the focus ring as a shadow too,
+ * which stays.
+ */
+.inkline-library-edit[aria-expanded="true"] {
+  color: var(--icon-color-active);
+  background-color: var(--background-modifier-active-hover);
+}
+
+.inkline-library-edit[aria-expanded="true"]:not(:focus-visible) {
+  box-shadow: none;
 }
 
 /*
@@ -724,28 +736,21 @@ img.inkline-symbol[width]:not([height]):not(.image-wrapper > img),
   margin-top: var(--size-4-1);
 }
 
-/* Quick edit, in place of the row: the name, readings and translations. */
+/*
+ * Quick edit: the name, readings and translations, each the row's width,
+ * under the row's buttons in place of what shows there, and as that sits, 4 px
+ * below the buttons and 4 px above the list's gap.
+ */
 .inkline-library-edit-form {
+  flex-basis: 100%;
   display: flex;
   flex-direction: column;
   gap: var(--size-4-1);
-  width: 100%;
-  padding-block: var(--size-4-1);
-}
-
-/*
- * Which symbol the fields are for, beside its name, under the name's label,
- * which starts where the others do.
- */
-.inkline-library-edit-title {
-  display: flex;
-  align-items: center;
-  gap: var(--size-4-2);
   min-width: 0;
+  margin-block: var(--size-4-1);
 }
 
-.inkline-library-edit-title input {
-  flex: 1 1 auto;
+.inkline-library-edit-form .inkline-text-field input {
   width: 100%;
   min-width: 0;
 }

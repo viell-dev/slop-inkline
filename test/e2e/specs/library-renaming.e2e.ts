@@ -55,8 +55,16 @@ async function beginRename(name: string, typed: string): Promise<void> {
   await nameField().setValue(typed);
 }
 
+/**
+ * Waits for a row named `name` that is not in Quick edit, whose buttons, name
+ * and all, stay above its form, and checks that no form is left open.
+ */
 async function waitForName(name: string): Promise<void> {
-  await row(name).waitForExist();
+  await browser
+    .$(
+      `//div[contains(@class, "inkline-library-symbol")][not(.//form)][.//div[contains(@class, "inkline-library-name")][text()="${name}"]]`,
+    )
+    .waitForExist();
   expect(await nameField().isExisting()).toBe(false);
 }
 
