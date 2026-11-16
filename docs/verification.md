@@ -228,14 +228,14 @@ must keep released files readable and looking the same, as
 - The close question, saving from it, a failed save that keeps the editor open,
   strokes drawn while a save runs, and a stroke still being drawn when saving
   ([editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)).
-- **Unreleased:** a new symbol whose note was deleted saved by Mod+S, Save,
-  **Next**, and the close question, with a notice that it was not inserted, and
-  saved again without it; one whose note was deleted after it went in saved and
-  renamed, with **Next** starting no other; a note put at the deleted one's
-  path, while a restored save read it or as the embed was written, left as it
-  was; a new symbol with nothing drawn, or only the eraser's strokes, not saved
-  by any of them, nor by clicks on **Next** that reach the next editor, while a
-  symbol with a file saves when cleared (the same file).
+- A new symbol whose note was deleted saved by Mod+S, Save, **Next**, and the
+  close question, with a notice that it was not inserted, and saved again
+  without it; one whose note was deleted after it went in saved and renamed,
+  with **Next** starting no other; a note put at the deleted one's path, while a
+  restored save read it or as the embed was written, left as it was; a new
+  symbol with nothing drawn, or only the eraser's strokes, not saved by any of
+  them, nor by clicks on **Next** that reach the next editor, while a symbol
+  with a file saves when cleared (the same file).
 - Drafts: kept when Inkline is disabled, through a restart while a save writes
   the file, when the storage refuses one, offered to one editor at a time, and a
   first save that an interruption cut short finished from its draft (the same
@@ -253,12 +253,11 @@ must keep released files readable and looking the same, as
   differs in any stroke, its picture or its place, its name, or text typed,
   offered
   ([drafts.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/drafts.test.ts)).
-- **Unreleased:** a symbol whose file was cut short after its draft was kept
-  does not open, and its notice says the draft is kept; a new symbol given its
-  name, once the file is deleted, and moved into its folder, offers the draft,
-  which brings back its strokes but not the file's own base layer. A symbol
-  renamed while Inkline is off offers its draft once renamed back, and not
-  before
+- A symbol whose file was cut short after its draft was kept does not open, and
+  its notice says the draft is kept; a new symbol given its name, once the file
+  is deleted, and moved into its folder, offers the draft, which brings back its
+  strokes but not the file's own base layer. A symbol renamed while Inkline is
+  off offers its draft once renamed back, and not before
   ([editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)).
 - A draft's base layer dropped from storage as soon as the draft that replaces
   it is kept, and never before: kept when storage refuses the replacement, and
@@ -497,19 +496,19 @@ must keep released files readable and looking the same, as
   renames the file back; a name typed stays through them, and a refused name's
   reason through a change to the file. Quick edit fits the narrowest sidebar
   with a long name, and the list and Quick edit keep their names for screen
-  readers with no tooltip over their empty space. **Unreleased:** the row's own
-  Quick edit says that its form is open, and closes it as Cancel does, by click,
-  Enter, or Esc, dropping what was typed and keeping the focus, and only the
-  first click of a double-click opens or closes it. A row closed by Esc during a
-  press on its Quick edit keeps its form until the press ends, and that form
-  saves nothing; the release, a click on the same Quick edit, opens no second
-  form, and nor does another row's Quick edit from the keyboard meanwhile. It is
-  unavailable while Cancel is, during a save, and a save left with it, by click
-  or by Esc, renames nothing, or says that the readings are saved when the
-  rename waits. Shift+Tab from the name reaches it and then the symbol, past
-  Uses, and the row's buttons follow a rename made elsewhere, into another
-  folder. Its symbol shows the file's menu, and its fields do not. What each
-  outcome writes, renames, and says is also unit-tested
+  readers with no tooltip over their empty space. The row's own Quick edit says
+  that its form is open, and closes it as Cancel does, by click, Enter, or Esc,
+  dropping what was typed and keeping the focus, and only the first click of a
+  double-click opens or closes it. A row closed by Esc during a press on its
+  Quick edit keeps its form until the press ends, and that form saves nothing;
+  the release, a click on the same Quick edit, opens no second form, and nor
+  does another row's Quick edit from the keyboard meanwhile. It is unavailable
+  while Cancel is, during a save, and a save left with it, by click or by Esc,
+  renames nothing, or says that the readings are saved when the rename waits.
+  Shift+Tab from the name reaches it and then the symbol, past Uses, and the
+  row's buttons follow a rename made elsewhere, into another folder. Its symbol
+  shows the file's menu, and its fields do not. What each outcome writes,
+  renames, and says is also unit-tested
   ([library-quick-edit.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-quick-edit.e2e.ts)
   and
   [quick-edit.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/library/quick-edit.test.ts)).
@@ -525,13 +524,12 @@ must keep released files readable and looking the same, as
   meanwhile. Quick edit's fields open fitting what they hold, grow a line at a
   time from two lines to eight and shrink back, fit a line that wraps, and keep
   a height they are dragged to, by `field-sizing` on Obsidian 1.15.1 and by
-  script on installer 1.5.8, to the same heights. **Unreleased:** a row in Quick
-  edit keeps its symbol, Uses and Quick edit where they were, and the form takes
-  the place of what shows under them, 4 px below the buttons and 12 px above the
-  next row, across the row, with the name's field as wide as the others; the
-  row's Uses waits with the others', its Quick edit shows pressed, with
-  Obsidian's focus ring when the keyboard reaches it, and its symbol still
-  inserts
+  script on installer 1.5.8, to the same heights. A row in Quick edit keeps its
+  symbol, Uses and Quick edit where they were, and the form takes the place of
+  what shows under them, 4 px below the buttons and 12 px above the next row,
+  across the row, with the name's field as wide as the others; the row's Uses
+  waits with the others', its Quick edit shows pressed, with Obsidian's focus
+  ring when the keyboard reaches it, and its symbol still inserts
   ([library-look.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-look.e2e.ts)
   and
   [text-fields.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/text-fields.test.ts)).

@@ -30,11 +30,11 @@ translations it starts another value. Mod+Enter saves from any field, and Esc
 cancels. Afterward focus returns to the symbol's Quick edit button, or to the
 filter if the symbol no longer shows.
 
-**Unreleased:** the row's symbol and **Quick edit** buttons stay above the
-fields, so Shift+Tab from the name reaches **Quick edit** and then the symbol;
-the row's **Uses** waits with the other rows'. **Quick edit** tells a screen
-reader that its fields are open, and Enter, Space, or Esc on it closes them as
-**Cancel** does, with the focus staying on it.
+The row's symbol and **Quick edit** buttons stay above the fields, so Shift+Tab
+from the name reaches **Quick edit** and then the symbol; the row's **Uses**
+waits with the other rows'. **Quick edit** tells a screen reader that its fields
+are open, and Enter, Space, or Esc on it closes them as **Cancel** does, with
+the focus staying on it.
 
 While a row is in Quick edit, Tab passes over the other rows' **Uses** and
 **Quick edit** buttons and **Show more**, which wait for it to close. A screen

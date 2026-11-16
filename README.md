@@ -7,27 +7,38 @@ its color.
 
 ## Install
 
-Inkline is a prerelease for Obsidian 1.13.4 or later on desktop. The 0.9
-releases lead to the first stable release, 1.0.0: from 0.9.2 on they are its
-release candidates, and the file format is final. A symbol saved by an earlier
-version opens as a picture to draw over, without its strokes.
+Inkline runs in Obsidian 1.13.4 or later on desktop. 1.0.0 is its first stable
+release, and its file format is frozen: symbols saved by 0.9.2 or later open as
+they are, and every symbol saved from now on keeps opening and looking the same.
+A symbol saved by a version before 0.9.2 opens as a picture to draw over,
+without its strokes.
 
-1. Download the install ZIP, `inkline-<version>.zip` of the highest version,
-   from the release's assets on
-   [GitHub releases](https://github.com/viell-dev/slop-inkline/releases).
+1. In Obsidian, open **Settings → Community plugins**, turn community plugins on
+   if needed, and select **Browse**.
+2. Search for **Inkline**, select it, then select **Install** and **Enable**.
+
+If Inkline does not show there yet, install the ZIP from the latest release:
+
+1. Download the install ZIP, `inkline-<version>.zip`, from the assets of the
+   release marked **Latest** on
+   [GitHub releases](https://github.com/viell-dev/slop-inkline/releases): the
+   newest public release, such as 1.0.0.
 2. Extract it into your vault's `.obsidian/plugins/` directory. The ZIP holds
    its own `inkline/` folder, so the plugin's three files end up in
    `.obsidian/plugins/inkline/`.
 3. In Obsidian, open **Settings → Community plugins**, turn community plugins on
    if needed, and enable **Inkline**.
 
-The [installation guide](https://viell-dev.github.io/slop-inkline/install)
-covers updates, older versions, and installing with BRAT. Release notes describe
-compatibility changes.
+Once Inkline shows in Obsidian's community plugins, Obsidian offers its updates,
+however you installed it; until then, update a ZIP installation by hand. The
+[installation guide](https://viell-dev.github.io/slop-inkline/install) covers
+updates, pre-releases, older versions, and installing with BRAT. Release notes
+describe compatibility changes.
 
-Inkline is not in Obsidian's community plugin directory yet. The plan is that
-1.0.0 is its first release there, and that the directory offers public releases
-only. Every release, public or not, stays on GitHub with its install ZIP.
+A public release has an even minor version, as 1.0.0, and a pre-release an odd
+one, as 1.1.0, for trying changes before the next public release. Obsidian's
+community plugins offer public releases only. Every release, public or not,
+stays on GitHub with its install ZIP.
 
 ## Your first symbol
 

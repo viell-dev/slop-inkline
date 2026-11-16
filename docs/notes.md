@@ -58,10 +58,10 @@ The embed goes where the cursor was when you ran the command:
 - just after a link, an embed, or a web address the cursor was in, so that no
   link is split. After a bare web address, which only a space ends, a space
   comes first;
-- **Unreleased:** nowhere, if the note was deleted while you drew, as by sync or
-  on another device. The symbol is saved without its embed, a notice says so,
-  and the editor closes as after any save, without opening another for **Next**.
-  Insert the symbol where you want it as
+- nowhere, if the note was deleted while you drew, as by sync or on another
+  device. The symbol is saved without its embed, a notice says so, and the
+  editor closes as after any save, without opening another for **Next**. Insert
+  the symbol where you want it as
   [a symbol you have](#insert-a-symbol-you-have). A note put at the deleted
   one's path meanwhile is another note, and is left as it is. If the note is
   deleted after the symbol went in, later saves and renames of the symbol still
@@ -350,11 +350,11 @@ rows' **Uses** and **Quick edit** buttons, and **Show more**, are unavailable
 until you save or cancel it; a click on one does nothing. Clicking a symbol
 still inserts it, and a note listed under a row still opens.
 
-**Unreleased:** the row's own buttons stay at its top while it is in Quick edit,
-and the fields take the place of the readings, translations, and notes listed
-under them, which show again once it closes. Its symbol still inserts it, and
-shows its file's menu on a right-click, and its **Uses** waits with the other
-rows'. Its **Quick edit** shows pressed, and closes the row as **Cancel** does.
+The row's own buttons stay at its top while it is in Quick edit, and the fields
+take the place of the readings, translations, and notes listed under them, which
+show again once it closes. Its symbol still inserts it, and shows its file's
+menu on a right-click, and its **Uses** waits with the other rows'. Its **Quick
+edit** shows pressed, and closes the row as **Cancel** does.
 
 <p>
 <img src="./screenshots/library-quick-edit-light.png" width="300" alt="The library in the light theme with sun in Quick edit. Sun's picture, name, Uses button, and pressed Quick edit button stay at the top of its row, and under them its name, selected, its four readings in a field four lines high, and its two translations. Sun's Uses and the other rows' Uses and Quick edit buttons are dimmed.">
