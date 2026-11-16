@@ -3043,26 +3043,6 @@ describe("The editor", function () {
     expect(await failureShown()).toBe(false);
   });
 
-  it("saves and renames a symbol whose note was deleted after it went in", async function () {
-    await insert();
-    await draw(zigzag);
-    await browser.keys(["Control", "s"]);
-    await waitForStatus("Saved");
-    await trashNote("Editor.md");
-    await nameSymbol("tower");
-    await browser.keys(["Control", "s"]);
-    await browser.waitUntil(
-      async () => (await browser.$(".inkline-status").getText()) === "Saved",
-      { timeoutMsg: "the rename's save did not end as saved" },
-    );
-    expect(await symbolFiles()).toEqual(["tower.ink.png"]);
-    await browser.keys(["Control", "Enter"]);
-    await waitClosed();
-    expect(await symbolFiles()).toEqual(["tower.ink.png"]);
-    expect(await strokeCount("tower.ink.png")).toBe(1);
-    expect(await failureShown()).toBe(false);
-  });
-
   /**
    * Holds the first call of the vault's `method` on Editor.md, before or
    * after its own work, until {@link releaseHold}, and records that it began,
@@ -3141,13 +3121,138 @@ describe("The editor", function () {
 
   const replacement = "Another note, put where Editor.md was.\n";
 
-  /** Deletes Editor.md, as sync can, and puts another note at its path. */
-  async function replaceNote(): Promise<void> {
+  /**
+   * Deletes Editor.md, as sync can, and puts another note at its path, which
+   * holds `text`.
+   */
+  async function replaceNote(text = replacement): Promise<void> {
     await trashNote("Editor.md");
-    await browser.executeObsidian(async ({ app }, text) => {
-      await app.vault.create("Editor.md", text);
-    }, replacement);
+    await browser.executeObsidian(async ({ app }, content) => {
+      await app.vault.create("Editor.md", content);
+    }, text);
   }
+
+  /**
+   * Records every call of the vault's `process` that is given Editor.md's
+   * file as it is now, once the vault no longer has that file at its path,
+   * until {@link stopWatchingNote}. Each call goes on to Obsidian's own.
+   */
+  async function watchNote(): Promise<void> {
+    await browser.executeObsidian(({ app }) => {
+      const note = app.vault.getFileByPath("Editor.md");
+      if (note === null) throw new Error("no Editor.md");
+      const original: unknown = Reflect.get(app.vault, "process");
+      if (typeof original !== "function") throw new Error("no process");
+      const calls: string[] = [];
+      Reflect.set(window, "inklineGoneNoteCalls", calls);
+      Reflect.set(app.vault, "inklineWatched-process", original);
+      Reflect.set(app.vault, "process", (...args: unknown[]): unknown => {
+        if (args[0] === note && app.vault.getFileByPath(note.path) !== note) {
+          calls.push(note.path);
+        }
+        const result: unknown = Reflect.apply(original, app.vault, args);
+        return result;
+      });
+    });
+  }
+
+  /** How many calls {@link watchNote} recorded. */
+  async function goneNoteCalls(): Promise<number> {
+    return browser.execute(() => {
+      const calls: unknown = Reflect.get(window, "inklineGoneNoteCalls");
+      return Array.isArray(calls) ? calls.length : -1;
+    });
+  }
+
+  async function stopWatchingNote(): Promise<void> {
+    await browser.executeObsidian(({ app }) => {
+      const original: unknown = Reflect.get(
+        app.vault,
+        "inklineWatched-process",
+      );
+      if (typeof original === "function") {
+        Reflect.set(app.vault, "process", original);
+      }
+    });
+  }
+
+  /** The status line once a save has ended, saved or not. */
+  async function savedOrNot(): Promise<string> {
+    let shown = "";
+    await browser.waitUntil(
+      async () => {
+        shown = await browser.$(".inkline-status").getText();
+        return shown.startsWith("Saved") || shown.startsWith("Not saved");
+      },
+      { timeoutMsg: "the save did not end" },
+    );
+    return shown;
+  }
+
+  it("saves and renames a symbol whose note was deleted after it went in, leaving that note alone", async function () {
+    await insert();
+    await draw(zigzag);
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    await watchNote();
+    try {
+      await trashNote("Editor.md");
+      await nameSymbol("tower");
+      await browser.keys(["Control", "s"]);
+      // The rename's save, not the first one's.
+      await browser.waitUntil(
+        async () => (await symbolFiles())[0] === "tower.ink.png",
+      );
+      const status = await savedOrNot();
+      // Nothing was asked to write into the deleted note.
+      expect(await goneNoteCalls()).toBe(0);
+      expect(status).toBe("Saved");
+    } finally {
+      await stopWatchingNote();
+    }
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    expect(await symbolFiles()).toEqual(["tower.ink.png"]);
+    expect(await strokeCount("tower.ink.png")).toBe(1);
+    expect(await failureShown()).toBe(false);
+  });
+
+  it("leaves a note put in the deleted one's place as a rename followed the embed into it", async function () {
+    await insert();
+    await draw(zigzag);
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    // The note as the save left it: the replacement holds the same embed in
+    // the same text, so that following the rename there would change it.
+    const before = await noteText();
+    expect(before).toBe(
+      "The door is marked with ![[001.ink.png]] which means return.\n",
+    );
+    await waitForLink("Editor.md", "001.ink.png");
+    // Obsidian leaves the embed, and Inkline's own following of the rename
+    // is the only write into the note, which is held as it begins.
+    await holdNote("process", "before");
+    try {
+      await nameSymbol("tower");
+      await browser.keys(["Control", "s"]);
+      await clickTop("Do not update");
+      await waitForHold();
+      // The held write comes after the rename, as following it does; the
+      // note's own saves come before it.
+      expect(await symbolFiles()).toEqual(["tower.ink.png"]);
+      await replaceNote(before);
+    } finally {
+      await releaseHold("process");
+    }
+    const status = await savedOrNot();
+    expect(await noteOnDisk("Editor.md")).toBe(before);
+    expect(status).toBe("Saved");
+    expect(await symbolFiles()).toEqual(["tower.ink.png"]);
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    expect(await noteOnDisk("Editor.md")).toBe(before);
+    expect(await failureShown()).toBe(false);
+  });
 
   it("leaves a note put in the deleted one's place while a restored save read it", async function () {
     await interruptInsertion();
