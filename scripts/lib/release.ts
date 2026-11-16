@@ -9,13 +9,6 @@ import {
   stableVersionPattern,
 } from "./version.ts";
 
-/**
- * The one pre-release manifest.json may name: the last before pre-releases
- * stopped reaching it, as nothing is listed until 1.0.0 replaces it. It cannot
- * be 0.0.0 until then, which Obsidian's review refuses as a placeholder.
- */
-export const lastManifestPrerelease = "0.9.0";
-
 export interface Metadata {
   /** Parsed `package.json`. */
   readonly packageJson: unknown;
@@ -51,10 +44,7 @@ function prereleaseManifestProblems(
   ) {
     return [`manifest.json version ${String(manifestVersion)} is not x.y.z`];
   }
-  if (
-    isPrerelease(manifestVersion) &&
-    manifestVersion !== lastManifestPrerelease
-  ) {
+  if (isPrerelease(manifestVersion)) {
     return [
       `manifest.json version ${manifestVersion} is a pre-release, which Obsidian would offer to every user`,
     ];
