@@ -251,7 +251,12 @@ From the repository's root,
 `sha256sum --text <file> >> test/fixtures/pinned.sha256` adds a new file's line,
 and `sha256sum --check test/fixtures/pinned.sha256` checks them all.
 [AGENTS.md](AGENTS.md#code) says what may change there, which from `1.0.0` is
-nothing but new lines.
+nothing but new lines. `npm run check:pinned` checks that: it fails when a line
+the list had in a release from `1.0.0` on is missing or different now. It reads
+the release tags, so a clone without them fails until `git fetch --tags origin`
+fetches them; a shallow clone stays shallow with
+`git fetch --no-tags --depth=1 origin '+refs/tags/*:refs/tags/*'`. It is not
+part of `check`, which a shallow clone must pass; CI runs it on Linux.
 
 CI runs the end-to-end tests on Linux for every pull request, and the Docker
 image weekly and on request. Outside Docker, CI splits the suite over four jobs
