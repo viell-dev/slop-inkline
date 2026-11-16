@@ -781,6 +781,7 @@ describe("parseRecordSliced", () => {
       ok: false,
       detail: `nested more than ${String(limits.depth)} deep`,
     });
+    expect(tooDeep.result).toEqual(parseRecord(nested));
   });
 });
 

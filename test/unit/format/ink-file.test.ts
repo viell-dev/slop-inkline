@@ -128,7 +128,7 @@ describe("version 1 golden files", () => {
 
     it(`holds ${name}'s ink in one grey, in every pixel`, async () => {
       const bytes = await readFile(path.join(fixtures, `${name}.ink.png`));
-      const { width, data } = decodeRgba(new Uint8Array(bytes));
+      const { width: across, data } = decodeRgba(new Uint8Array(bytes));
       // Counted in a plain loop and compared once: an expect for each of tens
       // of thousands of pixels took seconds (#269). The first few that differ
       // are kept, with where they are, to say where a file deviates.
@@ -141,7 +141,7 @@ describe("version 1 golden files", () => {
           other++;
           if (first.length < 5) {
             const pixel = at / 4;
-            const place = `(${String(pixel % width)}, ${String(Math.floor(pixel / width))})`;
+            const place = `(${String(pixel % across)}, ${String(Math.floor(pixel / across))})`;
             first.push(`${place}: ${colour.join(", ")}`);
           }
         }

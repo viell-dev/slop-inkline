@@ -37,7 +37,7 @@ function appWith(
     },
   };
   // embedFor calls only these two of App's methods.
-  return { app: fake as unknown as App, resolved };
+  return { app: fake as App, resolved };
 }
 
 describe("embedFor", () => {
