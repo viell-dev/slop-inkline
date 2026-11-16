@@ -140,6 +140,143 @@ function area(field: "reading" | "translation"): ReturnType<typeof browser.$> {
   return form().$(`textarea[data-inkline-field="${field}"]`);
 }
 
+/** The button of `role` in `file`'s row, above Quick edit's form when open. */
+function rowButton(
+  file: string,
+  role: "insert" | "uses" | "edit",
+): ReturnType<typeof browser.$> {
+  return browser.$(rowOf(file)).$(`button[data-inkline-role="${role}"]`);
+}
+
+/**
+ * The ways to leave gate's Quick edit while its save waits, as a person
+ * would: Cancel, and the row's own Quick edit, by click or by Esc.
+ */
+const leavers = [
+  ["Cancel", async () => formButton("Cancel").click()],
+  [
+    "the row's Quick edit",
+    async () => rowButton("gate.ink.png", "edit").click(),
+  ],
+  [
+    "Esc on the row's Quick edit",
+    async () => {
+      await browser.execute(
+        (selector) => {
+          document.querySelector<HTMLElement>(selector)?.focus();
+        },
+        `${rowOf("gate.ink.png")} button[data-inkline-role="edit"]`,
+      );
+      expect(await focused()).toMatchObject({
+        role: "edit",
+        path: "gate.ink.png",
+      });
+      await browser.keys(["Escape"]);
+    },
+  ],
+] as const;
+
+/**
+ * Waits past the double-click time, a few hundred milliseconds, so that the
+ * next click on the same place is a click of its own.
+ */
+async function pastDoubleClick(): Promise<void> {
+  await browser.pause(1000);
+}
+
+/**
+ * The mouse. A press and its release need this one id: an action under another
+ * is another pointer, at the corner of the window, and lets this one go with
+ * no click.
+ */
+const mouse = () =>
+  browser.action("pointer", {
+    id: "mouse",
+    parameters: { pointerType: "mouse" },
+  });
+
+/** Holds the main button down on the button of `role` in `file`'s row. */
+async function pressOn(
+  file: string,
+  role: "insert" | "uses" | "edit",
+): Promise<void> {
+  const at = await browser.execute(
+    (row, wanted) => {
+      const target = document.querySelector(
+        `${row} button[data-inkline-role="${wanted}"]`,
+      );
+      if (target === null) throw new Error(`no ${wanted} in ${row}`);
+      const box = target.getBoundingClientRect();
+      return {
+        x: Math.round(box.left + box.width / 2),
+        y: Math.round(box.top + box.height / 2),
+      };
+    },
+    rowOf(file),
+    role,
+  );
+  await mouse()
+    .move({ origin: "viewport", ...at })
+    .down()
+    .perform(true);
+}
+
+/** Lets go of the button {@link pressOn} holds down, where the mouse is. */
+async function release(): Promise<void> {
+  await mouse().up().perform();
+}
+
+/**
+ * Has the page note every click from now on, for {@link clicksSeen}, as the
+ * role and row of the button it was on, and its count, as `edit gate.ink.png
+ * 1`.
+ */
+async function watchClicks(): Promise<void> {
+  await browser.execute(() => {
+    const seen: string[] = [];
+    Reflect.set(window, "inklineClicks", seen);
+    window.addEventListener(
+      "click",
+      (event) => {
+        const target = event.target;
+        const button =
+          target instanceof Element
+            ? target.closest("[data-inkline-role]")
+            : null;
+        const role = button?.getAttribute("data-inkline-role") ?? "-";
+        const path =
+          button
+            ?.closest("[data-inkline-path]")
+            ?.getAttribute("data-inkline-path") ?? "-";
+        seen.push(`${role} ${path} ${String(event.detail)}`);
+      },
+      true,
+    );
+  });
+}
+
+/** The clicks heard since {@link watchClicks}. */
+async function clicksSeen(): Promise<string[]> {
+  return browser.execute(() => {
+    const seen: unknown = Reflect.get(window, "inklineClicks");
+    return Array.isArray(seen) ? seen.map(String) : [];
+  });
+}
+
+/** How many Quick edit forms the library holds. */
+async function formCount(): Promise<number> {
+  return browser.$$(".inkline-library-edit-form").length;
+}
+
+/** The titles of the items in the menus open now. */
+async function menuItems(): Promise<string[]> {
+  return browser.execute(() =>
+    Array.from(document.querySelectorAll(".menu .menu-item-title")).map(
+      (item) => item.textContent,
+    ),
+  );
+}
+
 /** Opens Quick edit on `file`'s row, once its fields have read the file. */
 async function quickEdit(file: string): Promise<void> {
   await browser.$(rowOf(file)).$(".inkline-library-edit").click();
@@ -547,6 +684,8 @@ describe("Quick edit in the library", function () {
   });
 
   afterEach(async function () {
+    // A press a failed test left held down.
+    await browser.releaseActions();
     await renameAgain();
     await browser.executeObsidian(({ app }) => {
       Reflect.deleteProperty(app.vault, "modifyBinary");
@@ -752,6 +891,253 @@ describe("Quick edit in the library", function () {
     });
   }
 
+  it("heads the form with the row's buttons, whose Quick edit closes it as Cancel does", async function () {
+    await symbolWith("gate.ink.png", {
+      reading: ["TA"],
+      translation: ["door"],
+    });
+    await noteUsing("Uses.md", "gate.ink.png");
+    const before = await bytesOf("gate.ink.png");
+    await showLibrary();
+    const row = () => browser.$(rowOf("gate.ink.png"));
+    const uses = () => rowButton("gate.ink.png", "uses");
+    const own = () => rowButton("gate.ink.png", "edit");
+    await uses().click();
+    await row().$(".inkline-library-notes").waitForExist();
+    expect(await own().getAttribute("aria-expanded")).toBe("false");
+    await quickEdit("gate.ink.png");
+    // The symbol, Uses and Quick edit stay, and the form takes the place of
+    // the readings, translations and notes under them.
+    expect(await row().$(".inkline-library-name").getText()).toBe("gate");
+    expect(await row().$(".inkline-library-picture").isExisting()).toBe(true);
+    expect(await row().$(".inkline-library-values").isExisting()).toBe(false);
+    expect(await row().$(".inkline-library-notes").isExisting()).toBe(false);
+    expect(await row().$(".inkline-library-edit-form").isExisting()).toBe(true);
+    expect(await rowButton("gate.ink.png", "insert").isEnabled()).toBe(true);
+    // Its Uses waits, as the other rows' do, and shows no list meanwhile.
+    expect(await uses().isEnabled()).toBe(false);
+    expect(await uses().getAttribute("aria-expanded")).toBe("false");
+    // Its Quick edit says that its form is open, and still works.
+    expect(await own().isEnabled()).toBe(true);
+    expect(await own().getAttribute("aria-expanded")).toBe("true");
+    expect(await own().getComputedRole()).toBe("button");
+    expect(await own().getComputedLabel()).toBe(
+      "Quick edit the name, readings, and translations of gate",
+    );
+    // Back from the name, Tab reaches it and then the symbol, past Uses.
+    await browser.keys(["Shift", "Tab"]);
+    expect(await focused()).toMatchObject({
+      role: "edit",
+      path: "gate.ink.png",
+    });
+    await browser.keys(["Shift", "Tab"]);
+    expect(await focused()).toMatchObject({
+      role: "insert",
+      path: "gate.ink.png",
+    });
+    await browser.keys(["Tab"]);
+    await browser.keys(["Tab"]);
+    expect(await focused()).toMatchObject({
+      tag: "INPUT",
+      path: "gate.ink.png",
+    });
+    // A click on it drops what was typed, as Cancel does, and keeps the focus.
+    await nameField().setValue("arch");
+    await area("reading").setValue("KA");
+    await own().click();
+    await waitForClosed();
+    expect(await symbolFiles()).toEqual(["gate.ink.png"]);
+    expect(await bytesOf("gate.ink.png")).toBe(before);
+    expect(await focused()).toMatchObject({
+      role: "edit",
+      path: "gate.ink.png",
+    });
+    expect(await own().getAttribute("aria-expanded")).toBe("false");
+    // What showed under the buttons shows again.
+    expect(await row().$(".inkline-library-values").getText()).toContain(
+      "Reading: TA",
+    );
+    expect(await row().$$(".inkline-library-note").length).toBe(1);
+    expect(await uses().getAttribute("aria-expanded")).toBe("true");
+    // From the keyboard, Space opens it, and Enter or Esc on it closes it.
+    for (const key of ["Enter", "Escape"]) {
+      await browser.keys([" "]);
+      await formButton("Save").waitForEnabled();
+      expect(await focused()).toMatchObject({
+        tag: "INPUT",
+        path: "gate.ink.png",
+      });
+      await browser.keys(["Shift", "Tab"]);
+      expect(await focused()).toMatchObject({ role: "edit" });
+      await browser.keys([key]);
+      await waitForClosed();
+      expect(await focused()).toMatchObject({
+        role: "edit",
+        path: "gate.ink.png",
+      });
+    }
+    // A double-click opens it, and the second click leaves it open, with the
+    // focus back on the name, still selected.
+    await pastDoubleClick();
+    await own().doubleClick();
+    await formButton("Save").waitForEnabled();
+    await browser.pause(300);
+    expect(await browser.$$(".inkline-library-edit-form").length).toBe(1);
+    expect(await own().getAttribute("aria-expanded")).toBe("true");
+    expect(await focused()).toMatchObject({
+      tag: "INPUT",
+      path: "gate.ink.png",
+    });
+    expect(
+      await browser.execute(() => {
+        const active = document.activeElement;
+        return active instanceof HTMLInputElement
+          ? active.value.slice(
+              active.selectionStart ?? 0,
+              active.selectionEnd ?? 0,
+            )
+          : null;
+      }),
+    ).toBe("gate");
+    // On the open row, a double-click closes it, dropping what was typed, and
+    // its second click opens no new form.
+    await area("reading").setValue("KA");
+    await pastDoubleClick();
+    await own().doubleClick();
+    await waitForClosed();
+    await browser.pause(300);
+    expect(await browser.$$(".inkline-library-edit-form").length).toBe(0);
+    expect(await own().getAttribute("aria-expanded")).toBe("false");
+    expect(await bytesOf("gate.ink.png")).toBe(before);
+    expect(await focused()).toMatchObject({
+      role: "edit",
+      path: "gate.ink.png",
+    });
+  });
+
+  it("opens no second form when the row is closed during a press on its Quick edit, and saves nothing from the one it keeps", async function () {
+    await symbolWith("gate.ink.png", { reading: ["TA"] });
+    const before = await bytesOf("gate.ink.png");
+    await showLibrary();
+    await quickEdit("gate.ink.png");
+    await area("reading").setValue("KA");
+    await pastDoubleClick();
+    await watchClicks();
+    await pressOn("gate.ink.png", "edit");
+    try {
+      // Esc on the button the press focused closes the row. The list holds
+      // off drawing again until the press ends, so the form stays till then.
+      expect(await focused()).toMatchObject({
+        role: "edit",
+        path: "gate.ink.png",
+      });
+      await browser.keys(["Escape"]);
+      await browser.pause(200);
+      expect(await formCount()).toBe(1);
+      expect(
+        await rowButton("gate.ink.png", "edit").getAttribute("aria-expanded"),
+      ).toBe("false");
+      // That form saves nothing.
+      await browser.execute(() => {
+        document
+          .querySelector<HTMLFormElement>(".inkline-library-edit-form")
+          ?.requestSubmit();
+      });
+      await browser.pause(500);
+      expect(await bytesOf("gate.ink.png")).toBe(before);
+    } finally {
+      await release();
+    }
+    // The press ends on the button, so its release is a click on it, which
+    // opens no form while the list still holds the closed one. The list then
+    // draws the row closed.
+    await browser.waitUntil(async () => (await clicksSeen()).length > 0, {
+      timeoutMsg: "the release clicked nothing",
+    });
+    expect(await clicksSeen()).toEqual(["edit gate.ink.png 1"]);
+    await waitForClosed();
+    await browser.pause(500);
+    expect(await formCount()).toBe(0);
+    expect(await bytesOf("gate.ink.png")).toBe(before);
+    expect(await focused()).toMatchObject({
+      role: "edit",
+      path: "gate.ink.png",
+    });
+  });
+
+  it("opens no other row while a row closed during a press keeps its form", async function () {
+    await symbolWith("gate.ink.png", { reading: ["TA"] });
+    await symbolWith("sun.ink.png", { reading: ["SO"] });
+    const before = await bytesOf("gate.ink.png");
+    await showLibrary();
+    await quickEdit("gate.ink.png");
+    await area("reading").setValue("KA");
+    await pastDoubleClick();
+    await pressOn("gate.ink.png", "edit");
+    try {
+      await browser.keys(["Escape"]);
+      await browser.pause(200);
+      expect(await formCount()).toBe(1);
+      // Sun's Quick edit no longer waits, and from the keyboard opens nothing
+      // until the list is drawn again without gate's form.
+      expect(await rowButton("sun.ink.png", "edit").isEnabled()).toBe(true);
+      await browser.execute(
+        (selector) => {
+          document.querySelector<HTMLElement>(selector)?.focus();
+        },
+        `${rowOf("sun.ink.png")} button[data-inkline-role="edit"]`,
+      );
+      expect(await focused()).toMatchObject({
+        role: "edit",
+        path: "sun.ink.png",
+      });
+      await browser.keys(["Enter"]);
+      await browser.pause(300);
+      expect(await formCount()).toBe(1);
+      expect(
+        await browser
+          .$(rowOf("sun.ink.png"))
+          .$(".inkline-library-edit-form")
+          .isExisting(),
+      ).toBe(false);
+      expect(
+        await rowButton("sun.ink.png", "edit").getAttribute("aria-expanded"),
+      ).toBe("false");
+    } finally {
+      await release();
+    }
+    // Once the press ends, the list is drawn with no form, and sun opens.
+    await waitForClosed();
+    await rowButton("sun.ink.png", "edit").click();
+    await formButton("Save").waitForEnabled();
+    expect(await formCount()).toBe(1);
+    expect(
+      await browser
+        .$(rowOf("sun.ink.png"))
+        .$(".inkline-library-edit-form")
+        .isExisting(),
+    ).toBe(true);
+    expect(await area("reading").getValue()).toBe("SO");
+    expect(await bytesOf("gate.ink.png")).toBe(before);
+  });
+
+  it("shows the symbol's menu from its row in Quick edit, and leaves the fields their own", async function () {
+    await symbolWith("gate.ink.png", { reading: ["TA"] });
+    await showLibrary();
+    await quickEdit("gate.ink.png");
+    // In a field, the menu is the one for its text, not the file's.
+    await nameField().click({ button: "right" });
+    await browser.pause(300);
+    expect(await menuItems()).not.toContain("Edit symbol");
+    // On the symbol above, the file's menu, as on any other row.
+    await rowButton("gate.ink.png", "insert").click({ button: "right" });
+    await browser.waitUntil(async () =>
+      (await menuItems()).includes("Edit symbol"),
+    );
+    expect(await menuItems()).toContain("Open in new tab");
+    await saveScreenshot("library-quick-edit-menu");
+  });
+
   it("refuses a name before it writes anything, and keeps all that was typed", async function () {
     await symbolWith("gate.ink.png", { reading: ["TA"] });
     await createSymbol("tower.ink.png");
@@ -833,31 +1219,39 @@ describe("Quick edit in the library", function () {
     expect((await fieldsOf("arch.ink.png")).reading).toEqual(["KA"]);
   });
 
-  it("does not rename once left while its readings wait to be written", async function () {
-    await symbolWith("gate.ink.png", { reading: ["TA"] });
-    await showLibrary();
-    await quickEdit("gate.ink.png");
-    await nameField().setValue("arch");
-    await area("reading").setValue("KA");
-    await hold("write");
-    await formButton("Save").click();
-    await waitForHeld();
-    const wait = form().$(".inkline-save-wait");
-    await browser.waitUntil(async () => (await wait.getText()) !== "", {
-      timeout: stalledAfter + 15_000,
+  for (const [how, leave] of leavers) {
+    it(`does not rename once left with ${how} while its readings wait to be written`, async function () {
+      await symbolWith("gate.ink.png", { reading: ["TA"] });
+      await showLibrary();
+      await quickEdit("gate.ink.png");
+      await nameField().setValue("arch");
+      await area("reading").setValue("KA");
+      await hold("write");
+      await formButton("Save").click();
+      await waitForHeld();
+      // Until the save says it waits, neither can leave it.
+      const wait = form().$(".inkline-save-wait");
+      expect(await wait.getText()).toBe("");
+      expect(await formButton("Cancel").isEnabled()).toBe(false);
+      expect(await rowButton("gate.ink.png", "edit").isEnabled()).toBe(false);
+      await browser.waitUntil(async () => (await wait.getText()) !== "", {
+        timeout: stalledAfter + 15_000,
+      });
+      expect(await wait.getText()).toContain(
+        "Waiting for Obsidian to finish writing a file.",
+      );
+      expect(await formButton("Cancel").isEnabled()).toBe(true);
+      expect(await rowButton("gate.ink.png", "edit").isEnabled()).toBe(true);
+      await leave();
+      await waitForClosed();
+      await waitForNotice("so it may still finish. It will not be renamed.");
+      await letGo();
+      await waitForNotice("Saved gate.");
+      await browser.pause(500);
+      expect(await symbolFiles()).toEqual(["gate.ink.png"]);
+      expect((await fieldsOf("gate.ink.png")).reading).toEqual(["KA"]);
     });
-    expect(await wait.getText()).toContain(
-      "Waiting for Obsidian to finish writing a file.",
-    );
-    await formButton("Cancel").click();
-    await waitForClosed();
-    await waitForNotice("so it may still finish. It will not be renamed.");
-    await letGo();
-    await waitForNotice("Saved gate.");
-    await browser.pause(500);
-    expect(await symbolFiles()).toEqual(["gate.ink.png"]);
-    expect((await fieldsOf("gate.ink.png")).reading).toEqual(["KA"]);
-  });
+  }
 
   it("follows a rename made elsewhere when the name is untouched, and keeps it", async function () {
     await symbolWith("gate.ink.png", { reading: ["TA"] });
@@ -908,29 +1302,32 @@ describe("Quick edit in the library", function () {
     expect((await fieldsOf("arch.ink.png")).reading).toEqual(["KA"]);
   });
 
-  it("says the readings are saved when the rename after them is left", async function () {
-    await symbolWith("gate.ink.png", { reading: ["TA"] });
-    await noteUsing("Uses.md", "gate.ink.png");
-    await openNote("Uses.md");
-    await showLibrary();
-    await quickEdit("gate.ink.png");
-    await nameField().setValue("arch");
-    await area("reading").setValue("KA");
-    // The rename reads the open note to see whether it has text to save.
-    await hold("read");
-    await formButton("Save").click();
-    await waitForHeld();
-    const said = await waitForWait();
-    expect(said).toContain("Waiting for Obsidian to finish renaming a file.");
-    expect(said).toContain("The readings and translations are saved.");
-    await formButton("Cancel").click();
-    await waitForClosed();
-    await waitForNotice("Saved gate. It was not renamed.");
-    await letGo();
-    await browser.pause(500);
-    expect(await symbolFiles()).toEqual(["gate.ink.png"]);
-    expect((await fieldsOf("gate.ink.png")).reading).toEqual(["KA"]);
-  });
+  for (const [how, leave] of leavers) {
+    it(`says the readings are saved when the rename after them is left with ${how}`, async function () {
+      await symbolWith("gate.ink.png", { reading: ["TA"] });
+      await noteUsing("Uses.md", "gate.ink.png");
+      await openNote("Uses.md");
+      await showLibrary();
+      await quickEdit("gate.ink.png");
+      await nameField().setValue("arch");
+      await area("reading").setValue("KA");
+      // The rename reads the open note to see whether it has text to save.
+      await hold("read");
+      await formButton("Save").click();
+      await waitForHeld();
+      const said = await waitForWait();
+      expect(said).toContain("Waiting for Obsidian to finish renaming a file.");
+      expect(said).toContain("The readings and translations are saved.");
+      expect(await rowButton("gate.ink.png", "edit").isEnabled()).toBe(true);
+      await leave();
+      await waitForClosed();
+      await waitForNotice("Saved gate. It was not renamed.");
+      await letGo();
+      await browser.pause(500);
+      expect(await symbolFiles()).toEqual(["gate.ink.png"]);
+      expect((await fieldsOf("gate.ink.png")).reading).toEqual(["KA"]);
+    });
+  }
 
   it("says in a notice what was saved once Inkline is turned off during the rename", async function () {
     await symbolWith("gate.ink.png", { reading: ["TA"] });
@@ -1123,18 +1520,32 @@ describe("Quick edit in the library", function () {
     await showLibrary();
     await quickEdit("gate.ink.png");
     await nameField().setValue("lintel");
+    // As sync would, into another folder.
     await browser.executeObsidian(async ({ app }) => {
       const file = app.vault.getFileByPath("gate.ink.png");
       if (file === null) throw new Error("no gate");
-      await app.vault.rename(file, "arch.ink.png");
+      await app.vault.createFolder("Signs");
+      await app.vault.rename(file, "Signs/arch.ink.png");
     });
     // The form's name follows the file, and the name typed stays.
     await browser.waitUntil(
       async () => (await form().getComputedLabel()) === "Quick edit arch",
     );
     expect(await nameField().getValue()).toBe("lintel");
+    // The row's buttons above it name the symbol as it is now.
+    const row = browser.$(rowOf("Signs/arch.ink.png"));
+    expect(await row.$(".inkline-library-edit-form").isExisting()).toBe(true);
+    expect(await row.$(".inkline-library-name").getText()).toBe("arch");
+    expect(await row.$(".inkline-library-folder-name").getText()).toBe("Signs");
+    expect(
+      await rowButton("Signs/arch.ink.png", "edit").getComputedLabel(),
+    ).toBe("Quick edit the name, readings, and translations of arch");
     await browser.keys(["Enter"]);
     await waitForClosed();
-    expect(await symbolFiles()).toEqual(["lintel.ink.png"]);
+    expect(await symbolFiles()).toEqual(["Signs/lintel.ink.png"]);
+    expect(await focused()).toMatchObject({
+      role: "edit",
+      path: "Signs/lintel.ink.png",
+    });
   });
 });
