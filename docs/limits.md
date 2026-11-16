@@ -26,6 +26,13 @@ What Inkline does not do, or does not do everywhere, and what to do instead. The
   for every plugin
   ([#267](https://github.com/viell-dev/slop-inkline/issues/267)). Inkline's own
   screens keep it in place.
+- **A line whose first letter is in a symbol's name** runs in that name's
+  direction in Live Preview. `8 ![[مرحبا.ink.png]]` runs right to left there,
+  and left to right in Reading view. Live Preview takes a line's direction from
+  the first letter of the text as you wrote it, which here is inside the embed,
+  and Reading view from the text it shows, where a symbol shows no letters
+  ([#301](https://github.com/viell-dev/slop-inkline/issues/301)). A word of your
+  own before the symbol gives the line its direction in both.
 - **Physical printing** has not been checked. Native
   [PDF export](./notes.md#export-a-note-to-pdf) is verified on Linux.
 - **A faint line along a symbol's edge in a PDF.** In text colour, some PDF
@@ -181,6 +188,16 @@ the mark before renaming what it links to.
 ## Files and sizes
 
 - A symbol is at most 4096 pixels wide, 32 times the height of its text.
+- **A symbol saved without a name takes the lowest number free in its folder,**
+  as `001`, filling gaps, and every device picks it the same way. Two devices
+  that each make one before they sync give their symbols the same name, and a
+  sync tool then keeps one file of the two: Obsidian Sync keeps the one changed
+  last, so the other drawing is replaced without a word. On one device, a new
+  symbol can take the number of one you deleted, and a note that still embeds
+  the deleted one then shows the new one
+  ([#299](https://github.com/viell-dev/slop-inkline/issues/299)). Name symbols
+  as you make them, or let sync finish before you make new ones on a second
+  device.
 - **A symbol saved before 0.9.2 keeps its look but not its strokes.** The file
   format became final in that release, and no later version reads the strokes of
   earlier files. The symbol stays in your notes and opens as a

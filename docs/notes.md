@@ -57,7 +57,15 @@ The embed goes where the cursor was when you ran the command:
   note, with a notice that says so;
 - just after a link, an embed, or a web address the cursor was in, so that no
   link is split. After a bare web address, which only a space ends, a space
-  comes first.
+  comes first;
+- **Unreleased:** nowhere, if the note was deleted while you drew, as by sync or
+  on another device. The symbol is saved without its embed, a notice says so,
+  and the editor closes as after any save, without opening another for **Next**.
+  Insert the symbol where you want it as
+  [a symbol you have](#insert-a-symbol-you-have). A note put at the deleted
+  one's path meanwhile is another note, and is left as it is. If the note is
+  deleted after the symbol went in, later saves and renames of the symbol still
+  work, and **Next** says that it started no other symbol.
 
 The cursor then lands just after the symbol, as after a typed character, so you
 can type on at once, in a table cell in Live Preview too. Text you had selected

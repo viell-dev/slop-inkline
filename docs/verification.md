@@ -228,6 +228,14 @@ must keep released files readable and looking the same, as
 - The close question, saving from it, a failed save that keeps the editor open,
   strokes drawn while a save runs, and a stroke still being drawn when saving
   ([editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)).
+- **Unreleased:** a new symbol whose note was deleted saved by Mod+S, Save,
+  **Next**, and the close question, with a notice that it was not inserted, and
+  saved again without it; one whose note was deleted after it went in saved and
+  renamed, with **Next** starting no other; a note put at the deleted one's
+  path, while a restored save read it or as the embed was written, left as it
+  was; a new symbol with nothing drawn, or only the eraser's strokes, not saved
+  by any of them, nor by clicks on **Next** that reach the next editor, while a
+  symbol with a file saves when cleared (the same file).
 - Drafts: kept when Inkline is disabled, through a restart while a save writes
   the file, when the storage refuses one, offered to one editor at a time, and a
   first save that an interruption cut short finished from its draft (the same
@@ -245,6 +253,13 @@ must keep released files readable and looking the same, as
   differs in any stroke, its picture or its place, its name, or text typed,
   offered
   ([drafts.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/drafts.test.ts)).
+- **Unreleased:** a symbol whose file was cut short after its draft was kept
+  does not open, and its notice says the draft is kept; a new symbol given its
+  name, once the file is deleted, and moved into its folder, offers the draft,
+  which brings back its strokes but not the file's own base layer. A symbol
+  renamed while Inkline is off offers its draft once renamed back, and not
+  before
+  ([editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)).
 - A draft's base layer dropped from storage as soon as the draft that replaces
   it is kept, and never before: kept when storage refuses the replacement, and
   while another draft names it, a held one, a restored one, or another editor's;
@@ -641,6 +656,11 @@ drawing while **Copy from** or **Reload** reads.
   ([docs.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/docs.test.ts)),
   and what deploys follows [Versions of this site](./versions.md)
   ([docs-source.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/docs-source.test.ts)).
+- Until `package.json` or `manifest.json` names a public version, the home and
+  install pages, the README, and Known limits say that Inkline is a pre-release.
+  From then, none of them says that every release is one, or that there is no
+  public release yet
+  ([docs.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/docs.test.ts)).
 
 ## Checks shown to fail
 

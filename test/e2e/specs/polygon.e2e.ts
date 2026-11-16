@@ -356,10 +356,14 @@ describe("Polygon", function () {
 
   it("takes the eraser chosen while placing, and keeps Polygon on through Next", async function () {
     await openPolygon(false);
+    // A line of the pen first, as Next does not save a new symbol that has
+    // only the eraser's strokes.
+    await click([0.2, 0.2], [0.2, 0.7], [0.2, 0.7]);
+    await draftStrokes(1);
     await click([0.3, 0.3]);
     await browser.keys("e");
     await click([0.6, 0.6], [0.6, 0.6]);
-    const [erased] = await draftStrokes(1);
+    const [, erased] = await draftStrokes(2);
     expect(erased?.tool).toBe("eraser");
     expect(erased?.points).toHaveLength(4);
     await browser.execute(() => {
