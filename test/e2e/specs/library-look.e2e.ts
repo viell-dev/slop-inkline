@@ -788,7 +788,13 @@ describe("The library's look", function () {
         .filter((button) => button.disabled)
         .map(({ path, role }) => `${String(path)} ${String(role)}`),
     ).toEqual(["arch.ink.png uses"]);
-    expect(await gateUses.getAttribute("aria-expanded")).toBe("true");
+    // Found again: closing the form drew the list anew, gate's row with it.
+    expect(
+      await browser
+        .$(rowOf("gate.ink.png"))
+        .$(".inkline-library-uses")
+        .getAttribute("aria-expanded"),
+    ).toBe("true");
     expect(
       await browser.$(rowOf("gate.ink.png")).$$(".inkline-library-note").length,
     ).toBe(2);
