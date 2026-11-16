@@ -86,18 +86,30 @@ jobs:
       - run: sh test/e2e/session.sh
         env:
           E2E_SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
+      # Only after the tests passed: that this execution wrote its own record,
+      # for exactly this shard's spec files, each passed on every version. A
+      # re-run that tested nothing then fails here, rather than leaving an
+      # earlier attempt's artifact as the newest of its name for e2e to read.
+      - name: Check that this shard ran and passed its spec files
+        env:
+          E2E_SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
+        run: node test/e2e/shards.ts shard "$E2E_SHARD" test-results/e2e
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           # Artifact names must be unique within a run.
           name: e2e-results-${{ matrix.shard }}
           path: test-results/e2e
-          if-no-files-found: warn
+          # A shard that failed before its output existed fails here too; the
+          # job has failed either way.
+          if-no-files-found: error
           retention-days: 30
 
   # The check the ruleset and the release check require. It passes only when
-  # every shard passed and the shards together ran every spec file in
-  # test/e2e/specs exactly once, on as many Obsidian versions each. GitHub
+  # every shard passed and the shards' records together show every spec file
+  # in test/e2e/specs run exactly once and passed on each of the default
+  # Obsidian versions, with every launcher's exit code 0, so that it does not
+  # rest on the shards' results alone, which a partial re-run can change. GitHub
   # counts a skipped required job as passing, so this job must never be
   # skippable: `always()` runs it after a failed or cancelled shard too, and
   # its first step then fails.
