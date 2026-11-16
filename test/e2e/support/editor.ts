@@ -324,24 +324,50 @@ export async function waitForStatus(
   }
 }
 
+/** How long {@link settledSurface} waits, as `waitforTimeout` would. */
+const settleTimeout = 20_000;
+
 /**
  * Waits for the surface to stop growing, as the modal does when it opens,
- * and returns its size.
+ * and returns its size: until two reads of its size 50 ms apart agree. The
+ * reads and the waits between them run in the page, in one round trip.
  */
 export async function settledSurface(): Promise<{
   width: number;
   height: number;
 }> {
-  const canvas = surface();
-  await canvas.waitForDisplayed();
-  let size = await canvas.getSize();
-  await browser.waitUntil(async () => {
-    const previous = size;
-    await browser.pause(50);
-    size = await canvas.getSize();
-    return size.width === previous.width && size.height === previous.height;
-  });
-  return size;
+  await surface().waitForDisplayed();
+  const settled = await browser.execute(async (timeout) => {
+    // The element surface() finds, in the window the test is in.
+    const read = () => {
+      const canvas = document.querySelector(".inkline-editor .inkline-surface");
+      if (canvas === null) return null;
+      const { width, height } = canvas.getBoundingClientRect();
+      return { width, height };
+    };
+    const until = performance.now() + timeout;
+    let size = read();
+    for (;;) {
+      const previous = size;
+      await new Promise((resolve) => window.setTimeout(resolve, 50));
+      size = read();
+      if (
+        previous !== null &&
+        size !== null &&
+        size.width === previous.width &&
+        size.height === previous.height
+      ) {
+        return size;
+      }
+      if (performance.now() > until) return null;
+    }
+  }, settleTimeout);
+  if (settled === null) {
+    throw new Error(
+      `the surface did not settle in ${String(settleTimeout)} ms`,
+    );
+  }
+  return settled;
 }
 
 /**
