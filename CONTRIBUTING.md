@@ -72,8 +72,10 @@ An agent proposing a feature, for its operator or as a maintainer, reads
 
 ## Set up
 
-Development needs Node.js 24 or newer, with the npm it ships. [.nvmrc](.nvmrc)
-names the version line that CI uses, so `nvm use` or `fnm use` picks it.
+Development needs Node.js 24.22.1 or a later 24 release, or 26.12.1 or newer,
+with the npm it ships, as WebdriverIO, which runs the end-to-end tests, needs
+them. [.nvmrc](.nvmrc) names the version line that CI uses, so `nvm use` or
+`fnm use` picks it.
 
 ```sh
 git clone https://github.com/viell-dev/slop-inkline.git
