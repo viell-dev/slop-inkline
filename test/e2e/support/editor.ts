@@ -324,48 +324,45 @@ export async function waitForStatus(
   }
 }
 
-/** How long {@link settledSurface} waits, as `waitforTimeout` would. */
-const settleTimeout = 20_000;
-
 /**
  * Waits for the surface to stop growing, as the modal does when it opens,
  * and returns its size: until two reads of its size 50 ms apart agree. The
- * reads and the waits between them run in the page, in one round trip.
+ * reads and the waits between them run in the page, in one round trip. The
+ * size is the element's layout size in whole pixels, `offsetWidth` and
+ * `offsetHeight`, which is what WebDriver's element rect, and so
+ * `getSize()`, gives in Obsidian's chromedriver.
  */
 export async function settledSurface(): Promise<{
   width: number;
   height: number;
 }> {
   await surface().waitForDisplayed();
-  const settled = await browser.execute(async (timeout) => {
+  const timeout = browser.options.waitforTimeout ?? 20_000;
+  const settled = await browser.execute(async (wait) => {
     // The element surface() finds, in the window the test is in.
     const read = () => {
       const canvas = document.querySelector(".inkline-editor .inkline-surface");
-      if (canvas === null) return null;
-      const { width, height } = canvas.getBoundingClientRect();
-      return { width, height };
+      // Obsidian's check, since a popout's elements can come from either
+      // window.
+      if (canvas?.instanceOf(HTMLElement) !== true) return null;
+      return { width: canvas.offsetWidth, height: canvas.offsetHeight };
     };
-    const until = performance.now() + timeout;
+    const until = performance.now() + wait;
     let size = read();
-    for (;;) {
+    while (size !== null) {
       const previous = size;
       await new Promise((resolve) => window.setTimeout(resolve, 50));
       size = read();
-      if (
-        previous !== null &&
-        size !== null &&
-        size.width === previous.width &&
-        size.height === previous.height
-      ) {
+      if (size?.width === previous.width && size.height === previous.height) {
         return size;
       }
-      if (performance.now() > until) return null;
+      if (performance.now() > until) return "unsettled";
     }
-  }, settleTimeout);
-  if (settled === null) {
-    throw new Error(
-      `the surface did not settle in ${String(settleTimeout)} ms`,
-    );
+    return "missing";
+  }, timeout);
+  if (settled === "missing") throw new Error("the surface went missing");
+  if (settled === "unsettled") {
+    throw new Error(`the surface did not settle in ${String(timeout)} ms`);
   }
   return settled;
 }
@@ -779,46 +776,38 @@ interface ModalState {
 /** The longest {@link startOver} waits after acting on a modal. */
 const modalPause = 300;
 
-/** The modals of the window the test is in. */
-async function modalState(): Promise<ModalState> {
-  return browser.execute(() => {
-    const containers = document.querySelectorAll(".modal-container");
-    const top = Array.from(containers).at(-1);
-    return {
-      count: containers.length,
-      discard:
-        top !== undefined &&
-        Array.from(top.querySelectorAll("button")).some(
-          (button) => button.textContent.trim() === "Discard",
-        ),
-    };
-  });
-}
-
 /**
- * After {@link startOver} acted on the modals as they were `before`, waits
- * `longest` ms, or less once what it acts on next is there: a modal fewer,
- * or a Discard button on top that was not, once that modal's opening
- * animations have finished. Any other change, such as a modal more without
- * one, waits the whole time, as a modal that is still being built might.
+ * Waits after {@link startOver} acted on the modals as they were `before`,
+ * in the window the test is in, and gives them as they then are: `longest`
+ * ms, or less once what it acts on next is there, a modal fewer, or a
+ * Discard button on top that was not, once that modal's opening animations
+ * have finished. Any other change, such as a modal more without one, waits
+ * the whole time, as a modal that is still being built might. With no
+ * `before`, it only reads them.
  */
-async function modalsAfter(before: ModalState, longest: number): Promise<void> {
-  await browser.execute(
+async function waitForModalChange(
+  before?: ModalState,
+  longest = 0,
+): Promise<ModalState> {
+  return browser.execute(
     async (was, wait) => {
       const until = performance.now() + wait;
       const left = () => until - performance.now();
       const pause = (ms: number) =>
         new Promise((resolve) => window.setTimeout(resolve, ms));
-      while (left() > 0) {
+      for (;;) {
         const containers = document.querySelectorAll(".modal-container");
         const top = Array.from(containers).at(-1);
-        const discard =
-          top !== undefined &&
-          Array.from(top.querySelectorAll("button")).some(
-            (button) => button.textContent.trim() === "Discard",
-          );
-        if (containers.length < was.count) return;
-        if (top !== undefined && discard && !was.discard) {
+        const now = {
+          count: containers.length,
+          discard:
+            top !== undefined &&
+            Array.from(top.querySelectorAll("button")).some(
+              (button) => button.textContent.trim() === "Discard",
+            ),
+        };
+        if (was === null || left() <= 0 || now.count < was.count) return now;
+        if (top !== undefined && now.discard && !was.discard) {
           const opening = top
             .getAnimations({ subtree: true })
             .filter(
@@ -826,17 +815,18 @@ async function modalsAfter(before: ModalState, longest: number): Promise<void> {
                 animation.playState !== "finished" &&
                 animation.effect?.getComputedTiming().endTime !== Infinity,
             );
-          if (opening.length === 0) return;
+          if (opening.length === 0) return now;
           await Promise.race([
             Promise.allSettled(opening.map((animation) => animation.finished)),
             pause(left()),
           ]);
-          return;
+          // Read again: the animations can end with the modal changed.
+          continue;
         }
         await pause(Math.min(10, left()));
       }
     },
-    before,
+    before ?? null,
     longest,
   );
 }
@@ -847,14 +837,16 @@ async function modalsAfter(before: ModalState, longest: number): Promise<void> {
  * same state.
  */
 export async function startOver(): Promise<void> {
+  let modals: ModalState | undefined;
   await browser.waitUntil(
     async () => {
-      const before = await modalState();
+      const before = modals ?? (await waitForModalChange());
+      modals = undefined;
       if (before.count === 0) return true;
       const discard = await topButton("Discard");
       if (discard !== undefined) await discard.click();
       else await browser.keys(["Escape"]);
-      await modalsAfter(before, modalPause);
+      modals = await waitForModalChange(before, modalPause);
       return false;
     },
     { interval: 1, timeoutMsg: "modals stayed open" },
