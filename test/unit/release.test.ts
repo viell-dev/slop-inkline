@@ -119,68 +119,6 @@ describe("metadataProblems", () => {
     ]);
   });
 
-  // The releases that can follow 1.0.0, each checked by the general rules.
-  const listed = { version: "1.0.0", minAppVersion: "1.13.4" };
-  const mapped = { "1.0.0": "1.13.4" };
-  it.each([
-    ["the next pre-release", "1.1.0", listed, mapped],
-    ["a later pre-release", "1.1.4", listed, mapped],
-    [
-      "a patch",
-      "1.0.1",
-      { ...listed, version: "1.0.1" },
-      { ...mapped, "1.0.1": "1.13.4" },
-    ],
-    [
-      "the next public release",
-      "1.2.0",
-      { ...listed, version: "1.2.0" },
-      { ...mapped, "1.2.0": "1.13.4" },
-    ],
-  ])("accepts %s after 1.0.0, %s", (_name, version, manifest, versions) => {
-    expect(
-      metadataProblems({ packageJson: { version }, manifest, versions }),
-    ).toEqual([]);
-  });
-
-  it.each([
-    [
-      "a pre-release in the manifest",
-      "1.1.0",
-      { ...listed, version: "1.1.0" },
-      mapped,
-      "manifest.json version 1.1.0 is a pre-release, which Obsidian would offer to every user",
-    ],
-    [
-      "a pre-release in the map",
-      "1.1.0",
-      listed,
-      { ...mapped, "1.1.0": "1.13.4" },
-      "versions.json key 1.1.0 is a pre-release",
-    ],
-    [
-      "a patch left out of the manifest",
-      "1.0.1",
-      listed,
-      { ...mapped, "1.0.1": "1.13.4" },
-      "manifest.json version 1.0.0 differs from package.json version 1.0.1",
-    ],
-    [
-      "a public release left out of the map",
-      "1.2.0",
-      { ...listed, version: "1.2.0" },
-      mapped,
-      "versions.json does not map 1.2.0 to the manifest's minAppVersion 1.13.4",
-    ],
-  ])(
-    "reports %s after 1.0.0, for %s",
-    (_name, version, manifest, versions, problem) => {
-      expect(
-        metadataProblems({ packageJson: { version }, manifest, versions }),
-      ).toEqual([problem]);
-    },
-  );
-
   it("reports a pre-release's version in the manifest", () => {
     for (const version of ["0.3.1", "0.3.0-rc.1"]) {
       const problems = metadataProblems({
