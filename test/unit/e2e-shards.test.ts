@@ -551,6 +551,25 @@ describe("durations", () => {
   it("refuses a file of another shape, naming it", () => {
     const good = record({ "a.e2e.ts": passedOn() });
     expect(parseDurations(JSON.parse(JSON.stringify(good)), "d")).toEqual(good);
+    // Built from the checked parts, so anything else the file holds is left
+    // behind.
+    expect(
+      parseDurations(
+        {
+          ...good,
+          extra: true,
+          specs: {
+            "a.e2e.ts": {
+              "latest/latest": { ...worker(), extra: true },
+            },
+          },
+        },
+        "d",
+      ),
+    ).toEqual({
+      ...good,
+      specs: { "a.e2e.ts": { "latest/latest": worker() } },
+    });
     for (const bad of [
       { ...good, shard: 2 },
       { ...good, versions: "latest/latest" },

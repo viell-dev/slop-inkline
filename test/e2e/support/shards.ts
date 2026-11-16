@@ -217,6 +217,13 @@ function isExitCode(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value);
 }
 
+function isStringList(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.every((item: unknown) => typeof item === "string")
+  );
+}
+
 function isWorkerRun(value: unknown): value is WorkerRun {
   return (
     isRecord(value) &&
@@ -239,8 +246,7 @@ export function parseDurations(value: unknown, source: string): Durations {
   const { shard, versions, exitCode, specs } = value;
   if (
     !(shard === null || typeof shard === "string") ||
-    !Array.isArray(versions) ||
-    !versions.every((version) => typeof version === "string") ||
+    !isStringList(versions) ||
     !isExitCode(exitCode) ||
     !isRecord(specs)
   ) {
@@ -248,14 +254,31 @@ export function parseDurations(value: unknown, source: string): Durations {
       `${source} must hold "shard", a string or null, "versions", a list of strings, "exitCode", a whole number, and "specs", an object`,
     );
   }
+  const malformed = (spec: string): Error =>
+    new Error(
+      `${source} must give ${spec} an object of Obsidian versions to "resolved", "seconds", and "exitCode"`,
+    );
+  const checked: Record<string, Record<string, WorkerRun>> = {};
   for (const [spec, runs] of Object.entries(specs)) {
-    if (!isRecord(runs) || !Object.values(runs).every(isWorkerRun)) {
-      throw new Error(
-        `${source} must give ${spec} an object of Obsidian versions to "resolved", "seconds", and "exitCode"`,
-      );
+    if (!isRecord(runs)) throw malformed(spec);
+    const workers: Record<string, WorkerRun> = {};
+    for (const [version, run] of Object.entries(runs)) {
+      if (!isWorkerRun(run)) throw malformed(spec);
+      workers[version] = {
+        resolved: run.resolved,
+        seconds: run.seconds,
+        exitCode: run.exitCode,
+      };
     }
+    checked[spec] = workers;
   }
-  return value as unknown as Durations;
+  return {
+    format: durationsFormat,
+    shard,
+    versions: [...versions],
+    exitCode,
+    specs: checked,
+  };
 }
 
 /** A {@link durationsFile} that a run wrote, and where it was found. */
