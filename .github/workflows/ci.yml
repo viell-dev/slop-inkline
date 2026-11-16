@@ -17,30 +17,6 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  verify:
-    # The ruleset requires these names; keep them stable.
-    name: verify (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
-      - run: npm run check
-      # Audits what ships: the bundled runtime dependencies. The test tools'
-      # advisories wait for WebdriverIO 10 support; see issue #9.
-      - if: runner.os == 'Linux'
-        run: npm audit --omit=dev --audit-level=low
-
   # The end-to-end suite, split over shards that run side by side, each on
   # every Obsidian version. test/e2e/wdio.conf.mts balances them by the
   # seconds in test/e2e/weights.json. The job `e2e` below reports the outcome
@@ -66,26 +42,34 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci
-      - run: npm run build
-      - name: Resolve the Obsidian versions
-        env:
-          PRINT_OBSIDIAN_CACHE_KEY: "1"
-        run: |
-          node test/e2e/wdio.conf.mts | grep '^obsidian-cache-key:' > obsidian-versions.txt
-          cat obsidian-versions.txt
-          rm -rf .obsidian-cache
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: .obsidian-cache
-          key: obsidian-${{ runner.os }}-${{ hashFiles('obsidian-versions.txt') }}
-      - name: Install the virtual display, test fonts, and PDF tools
-        run: |
-          sudo apt-get update -q
-          sudo apt-get install -q --yes --no-install-recommends fonts-dejavu-core herbstluftwm poppler-utils x11-xserver-utils xvfb
-      - run: sh test/e2e/session.sh
+      # PROBE ONLY, not for merge: writes this shard's record in the real
+      # format from the real assignment, failing shards 2 and 3 in attempt 1.
+      - name: Write a probe record
         env:
           E2E_SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
+        run: |
+          sleep 45
+          mkdir -p test-results/e2e
+          node --input-type=module <<'PROBE'
+          import { writeFileSync } from "node:fs";
+          import * as h from "./test/e2e/support/harness.ts";
+          const shard = h.parseShard(process.env.E2E_SHARD);
+          const specs = await h.specFiles("test/e2e/specs");
+          const weights = await h.readWeights("test/e2e/weights.json");
+          const mine = h.assignShards(specs, weights, shard.total)[shard.index - 1];
+          const fail = process.env.GITHUB_RUN_ATTEMPT === "1" && [2, 3].includes(shard.index);
+          const record = {
+            format: h.durationsFormat,
+            shard: process.env.E2E_SHARD,
+            versions: [...h.defaultObsidianVersions],
+            exitCode: fail ? 1 : 0,
+            specs: Object.fromEntries(mine.map((spec, i) => [spec, Object.fromEntries(
+              h.defaultObsidianVersions.map((v) => [v, { resolved: v, seconds: 1, exitCode: fail && i === 0 ? 1 : 0 }]))])),
+          };
+          writeFileSync("test-results/e2e/durations.json", JSON.stringify(record, null, 2));
+          console.log(`attempt ${process.env.GITHUB_RUN_ATTEMPT}, shard ${process.env.E2E_SHARD}, ${mine.length} specs, fail: ${fail}`);
+          process.exit(fail ? 1 : 0);
+          PROBE
       # Only after the tests passed: that this execution wrote its own record,
       # for exactly this shard's spec files, each passed on every version. A
       # re-run that tested nothing then fails here, rather than leaving an
@@ -139,28 +123,3 @@ jobs:
       # Node.js's own modules only, so no npm ci.
       - name: Check that the shards ran every spec file
         run: node test/e2e/shards.ts check e2e-shards
-
-  # The image the owner and agents run locally with `npm run test:e2e:docker`.
-  # Weekly and on request, so that it keeps working without slowing every pull
-  # request.
-  e2e-docker:
-    name: e2e in Docker
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    # The same suite, with the image's build before it.
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: .nvmrc
-      - run: npm run test:e2e:docker
-      - if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: e2e-docker-results
-          path: test-results/e2e
-          if-no-files-found: warn
-          retention-days: 30
