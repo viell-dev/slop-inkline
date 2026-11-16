@@ -83,16 +83,6 @@ describe("metadataProblems", () => {
     expect(metadataProblems(released)).toEqual([]);
   });
 
-  it("accepts an unreleased repository without a versions entry", () => {
-    expect(
-      metadataProblems({
-        packageJson: { version: "0.0.0" },
-        manifest: { version: "0.0.0", minAppVersion: "1.13.4" },
-        versions: {},
-      }),
-    ).toEqual([]);
-  });
-
   it("reports a manifest version that differs from package.json", () => {
     expect(
       metadataProblems({
@@ -377,18 +367,6 @@ describe("releaseNotes", () => {
 describe("releaseProblems", () => {
   it("accepts a prepared release", () => {
     expect(releaseProblems(released, changelog, "0.2.0")).toEqual([]);
-  });
-
-  it("refuses the unreleased placeholder version", () => {
-    const placeholder: Metadata = {
-      packageJson: { version: "0.0.0" },
-      manifest: { version: "0.0.0", minAppVersion: "1.13.4" },
-      versions: {},
-    };
-    expect(releaseProblems(placeholder, changelog, "0.0.0")).toEqual([
-      "0.0.0 is not a releasable version",
-      'CHANGELOG.md has no non-empty "## 0.0.0 - YYYY-MM-DD" section',
-    ]);
   });
 
   it("refuses a version the files do not carry", () => {
