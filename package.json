@@ -21,6 +21,7 @@
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs",
+    "check:pinned": "node scripts/pinned.ts",
     "check": "npm run lint && npm run format:check && npm run typecheck && npm run test && npm run build && npm run docs:build",
     "version": "node scripts/release.ts sync && git add manifest.json versions.json"
   },
