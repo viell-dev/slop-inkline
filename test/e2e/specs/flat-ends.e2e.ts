@@ -203,10 +203,6 @@ describe("Flat ends on the grid", function () {
   beforeEach(async function () {
     await startOver();
   });
-  after(async function () {
-    await startOver();
-  });
-
   it("leaves a line along the baseline whole, with round ends", async function () {
     await openOnGrid();
     // The owner's simplest case in #150: left to right along the baseline.

@@ -326,22 +326,45 @@ export async function waitForStatus(
 
 /**
  * Waits for the surface to stop growing, as the modal does when it opens,
- * and returns its size.
+ * and returns its size: until two reads of its size 50 ms apart agree. The
+ * reads and the waits between them run in the page, in one round trip. The
+ * size is the element's layout size in whole pixels, `offsetWidth` and
+ * `offsetHeight`, which is what WebDriver's element rect, and so
+ * `getSize()`, gives in Obsidian's chromedriver.
  */
 export async function settledSurface(): Promise<{
   width: number;
   height: number;
 }> {
-  const canvas = surface();
-  await canvas.waitForDisplayed();
-  let size = await canvas.getSize();
-  await browser.waitUntil(async () => {
-    const previous = size;
-    await browser.pause(50);
-    size = await canvas.getSize();
-    return size.width === previous.width && size.height === previous.height;
-  });
-  return size;
+  await surface().waitForDisplayed();
+  const timeout = browser.options.waitforTimeout ?? 20_000;
+  const settled = await browser.execute(async (wait) => {
+    // The element surface() finds, in the window the test is in.
+    const read = () => {
+      const canvas = document.querySelector(".inkline-editor .inkline-surface");
+      // Obsidian's check, since a popout's elements can come from either
+      // window.
+      if (canvas?.instanceOf(HTMLElement) !== true) return null;
+      return { width: canvas.offsetWidth, height: canvas.offsetHeight };
+    };
+    const until = performance.now() + wait;
+    let size = read();
+    while (size !== null) {
+      const previous = size;
+      await new Promise((resolve) => window.setTimeout(resolve, 50));
+      size = read();
+      if (size?.width === previous.width && size.height === previous.height) {
+        return size;
+      }
+      if (performance.now() > until) return "unsettled";
+    }
+    return "missing";
+  }, timeout);
+  if (settled === "missing") throw new Error("the surface went missing");
+  if (settled === "unsettled") {
+    throw new Error(`the surface did not settle in ${String(timeout)} ms`);
+  }
+  return settled;
 }
 
 /**
@@ -420,9 +443,7 @@ export async function editorGrid(): Promise<{
   spacing: number;
   rows: number[];
 }> {
-  if (!(await browser.execute(() => "inklineTest" in window))) {
-    await loadModules();
-  }
+  await loadModules();
   return browser.executeObsidian(async ({ app }) => {
     const { guides, settings, view } = window.inklineTest;
     const line = activeDocument.querySelector(
@@ -746,21 +767,89 @@ export async function timedEditorSave() {
   });
 }
 
+/** How many modals are open, and whether the topmost has a Discard button. */
+interface ModalState {
+  readonly count: number;
+  readonly discard: boolean;
+}
+
+/** The longest {@link startOver} waits after acting on a modal. */
+const modalPause = 300;
+
+/**
+ * Waits after {@link startOver} acted on the modals as they were `before`,
+ * in the window the test is in, and gives them as they then are: `longest`
+ * ms, or less once what it acts on next is there, a modal fewer, or a
+ * Discard button on top that was not, once that modal's opening animations
+ * have finished. Any other change, such as a modal more without one, waits
+ * the whole time, as a modal that is still being built might. With no
+ * `before`, it only reads them.
+ */
+async function waitForModalChange(
+  before?: ModalState,
+  longest = 0,
+): Promise<ModalState> {
+  return browser.execute(
+    async (was, wait) => {
+      const until = performance.now() + wait;
+      const left = () => until - performance.now();
+      const pause = (ms: number) =>
+        new Promise((resolve) => window.setTimeout(resolve, ms));
+      for (;;) {
+        const containers = document.querySelectorAll(".modal-container");
+        const top = Array.from(containers).at(-1);
+        const now = {
+          count: containers.length,
+          discard:
+            top !== undefined &&
+            Array.from(top.querySelectorAll("button")).some(
+              (button) => button.textContent.trim() === "Discard",
+            ),
+        };
+        if (was === null || left() <= 0 || now.count < was.count) return now;
+        if (top !== undefined && now.discard && !was.discard) {
+          const opening = top
+            .getAnimations({ subtree: true })
+            .filter(
+              (animation) =>
+                animation.playState !== "finished" &&
+                animation.effect?.getComputedTiming().endTime !== Infinity,
+            );
+          if (opening.length === 0) return now;
+          await Promise.race([
+            Promise.allSettled(opening.map((animation) => animation.finished)),
+            pause(left()),
+          ]);
+          // Read again: the animations can end with the modal changed.
+          continue;
+        }
+        await pause(Math.min(10, left()));
+      }
+    },
+    before ?? null,
+    longest,
+  );
+}
+
 /**
  * Closes every modal, discarding unsaved drawings, and every note, then
  * restores the vault and clears drafts, so that each test starts from the
  * same state.
  */
 export async function startOver(): Promise<void> {
+  let modals: ModalState | undefined;
   await browser.waitUntil(
     async () => {
-      if (!(await browser.$(".modal-container").isExisting())) return true;
+      const before = modals ?? (await waitForModalChange());
+      modals = undefined;
+      if (before.count === 0) return true;
       const discard = await topButton("Discard");
       if (discard !== undefined) await discard.click();
       else await browser.keys(["Escape"]);
+      modals = await waitForModalChange(before, modalPause);
       return false;
     },
-    { interval: 300, timeoutMsg: "modals stayed open" },
+    { interval: 1, timeoutMsg: "modals stayed open" },
   );
   await browser.executeObsidian(async ({ app, obsidian }) => {
     // A note's tab saves what it holds when it closes, without waiting, so

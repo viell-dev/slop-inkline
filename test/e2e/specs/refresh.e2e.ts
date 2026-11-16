@@ -158,6 +158,40 @@ async function savedWidth(symbol = edited): Promise<number> {
   }, symbol);
 }
 
+/**
+ * The canvas card's editor frame, for a failure's message: how many frames
+ * edit a card, whether the frame's document and images are the ones `mark`
+ * marked, whether Inkline watches the document, which gives it its scale,
+ * and each image's address and tag. With `mark`, it marks them first.
+ */
+async function cardFrame(mark = false): Promise<string> {
+  return browser.execute((marking) => {
+    const frames = document.querySelectorAll(".canvas-node.is-editing iframe");
+    const frame = frames.item(0);
+    const doc =
+      frame instanceof HTMLIFrameElement ? frame.contentDocument : null;
+    if (doc === null) return JSON.stringify({ frames: frames.length });
+    const images = Array.from(doc.querySelectorAll("img.inkline-symbol"));
+    // A property and not an attribute, which the card's editor would see
+    // change.
+    if (marking) {
+      for (const marked of [doc, ...images]) {
+        Reflect.set(marked, "inklineTestMarked", true);
+      }
+    }
+    return JSON.stringify({
+      frames: frames.length,
+      sameDocument: Reflect.get(doc, "inklineTestMarked") === true,
+      watched: doc.documentElement.style.getPropertyValue("--inkline-scale"),
+      focused: doc.hasFocus(),
+      images: images.map((image) => ({
+        src: image.getAttribute("src"),
+        same: Reflect.get(image, "inklineTestMarked") === true,
+      })),
+    });
+  }, mark);
+}
+
 describe("Saved symbol refresh", function () {
   before(async function () {
     await loadModules();
@@ -174,10 +208,6 @@ describe("Saved symbol refresh", function () {
   afterEach(async function () {
     await closePopouts();
   });
-  after(async function () {
-    await startOver();
-  });
-
   for (const mode of ["source", "preview"] as const) {
     for (const stored of [false, true]) {
       it(`updates existing ${mode} instances in ${stored ? "stored" : "text"} colour`, async function () {
@@ -433,21 +463,31 @@ describe("Saved symbol refresh", function () {
       },
     );
     const before = shown[0]?.width;
+    // Marked, so that a failure can tell whether these are still the frame
+    // and the images that were measured (#281).
+    const measured = await cardFrame(true);
     const width = await reshape(edited, 6000);
     expect(width).not.toBe(before);
-    await browser.waitUntil(
-      async () => {
+    try {
+      await browser.waitUntil(async () => {
         shown = await measuredIn("card");
         return (
           shown.length === 2 &&
           shown.every((image) => image.width === width) &&
           shown.every(follows)
         );
-      },
-      {
-        timeoutMsg: `the card's editor's symbols did not follow their new shape: ${JSON.stringify(shown)}`,
-      },
-    );
+      });
+    } catch (error) {
+      // Read for the message alone: if the read fails too, the failure it
+      // was to explain is still the one reported.
+      const now = await cardFrame().catch(
+        (failed: unknown) => `not read: ${String(failed)}`,
+      );
+      throw new Error(
+        `the card's editor's symbols did not follow their new shape: ${JSON.stringify(shown)}; the frame when measured: ${measured}; and now: ${now}`,
+        { cause: error },
+      );
+    }
     await saveScreenshot("refresh-card-editor");
   });
 });

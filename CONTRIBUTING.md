@@ -113,7 +113,10 @@ without Obsidian; `npm test` runs them. Code that needs the browser's own
 implementation, such as canvas encoding or how far a stream reads ahead, is also
 tested in Obsidian's renderer: an end-to-end spec calls `loadModules()` from
 `test/e2e/support/browser.ts`, which bundles `test/e2e/browser/entry.ts` and
-makes the plugin's modules available there as `window.inklineTest`.
+makes the plugin's modules available there as `window.inklineTest`. It bundles
+once for each spec file, and loads the bundle only into a window that does not
+have it yet, so a spec calls it again in each window it opens and after Obsidian
+reloads.
 
 End-to-end tests live in `test/e2e/` and run the built plugin in real Obsidian
 through WebdriverIO and
@@ -160,8 +163,17 @@ never compared with reference images: a test reads state, positions, or pixels
 back from Obsidian. Where what Obsidian shows on the screen is itself the
 subject and the DOM, a canvas or a saved file cannot give it, as with a CSS mask
 or text drawn by the host, a test may measure the pixels of a screenshot of the
-elements concerned, with stated tolerances. Test vaults in `test/e2e/vaults/`
-and every drawing a test uses are synthetic.
+elements concerned, with stated tolerances. A screenshot of the window that a
+test measures is the one it saves, with `saveScreenshotData()` from
+`test/e2e/support/screenshots.ts`. Test vaults in `test/e2e/vaults/` and every
+drawing a test uses are synthetic.
+
+Each spec file runs in a WebdriverIO session of its own, which
+wdio-obsidian-service starts with a new copy of the test vault and a new
+Electron user data directory, which holds local storage. So a spec file starts
+from the vault as it is in the repository, and need not reset what its last test
+leaves behind; its tests still reset between them, as `startOver()` in
+`test/e2e/support/editor.ts` does.
 
 The test vault keeps deleted files in its own `.trash` folder: its
 `.obsidian/app.json` sets Obsidian's **Deleted files** option, `trashOption`, to

@@ -543,10 +543,6 @@ async function printedListLine(
 }
 
 describe("Native PDF export", function () {
-  after(async function () {
-    await startOver();
-  });
-
   for (const mode of [
     { name: "text-colour", scale: 100, textColor: true, theme: "obsidian" },
     { name: "stored-grey", scale: 150, textColor: false, theme: "moonstone" },

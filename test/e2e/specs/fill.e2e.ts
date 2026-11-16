@@ -142,10 +142,6 @@ describe("Fill", function () {
   beforeEach(async function () {
     await startOver();
   });
-  after(async function () {
-    await startOver();
-  });
-
   it("fills a polygon closed on its first corner, and not an open one", async function () {
     await openEditor();
     await browser.keys(["Shift", "g"]);

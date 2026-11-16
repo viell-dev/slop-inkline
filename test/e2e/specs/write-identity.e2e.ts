@@ -144,10 +144,6 @@ describe("A symbol replaced at its path as it is saved", function () {
     });
   });
 
-  after(async function () {
-    await startOver();
-  });
-
   const form = () => browser.$(".inkline-library-edit-form");
 
   /** Opens Quick edit on gate, and types the reading KA. */

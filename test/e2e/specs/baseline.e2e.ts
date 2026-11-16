@@ -23,7 +23,7 @@ import { browser, expect } from "@wdio/globals";
 import { obsidianPage } from "wdio-obsidian-service";
 import { loadModules } from "../support/browser.ts";
 import { setPageZoom } from "../support/cursor.ts";
-import { saveScreenshot } from "../support/screenshots.ts";
+import { saveScreenshotData } from "../support/screenshots.ts";
 
 /**
  * The note: each line a typed H, the two symbols, another H, the symbols
@@ -174,10 +174,12 @@ async function textSize(px: number | null): Promise<void> {
  * Measures every symbol and typed H in view in a screenshot of the window:
  * where each one's ink ends, from the share of the way each pixel lies from
  * the ground's colour to the ink's. A row its edge crosses counts in part,
- * so that the bottom is found to a fraction of a pixel.
+ * so that the bottom is found to a fraction of a pixel. The screenshot is
+ * saved as `artifact`.
  */
-async function measure(stored: boolean): Promise<Measured[]> {
+async function measure(stored: boolean, artifact: string): Promise<Measured[]> {
   const shot = await browser.takeScreenshot();
+  await saveScreenshotData(artifact, shot);
   return browser.execute(
     async (png, storedColour) => {
       const bytes = Uint8Array.from(atob(png), (c) => c.charCodeAt(0));
@@ -483,9 +485,9 @@ describe("Symbols on the text's baseline", function () {
           try {
             for (const mode of ["preview", "source"] as const) {
               await show(mode);
-              const measured = await measure(stored);
               const file = condition.name.replace(/\W+/g, "-").toLowerCase();
-              await saveScreenshot(
+              const measured = await measure(
+                stored,
                 `baseline-${stored ? "stored" : "text"}-${mode}-${file}`,
               );
               const shown = lines(measured);
@@ -543,8 +545,8 @@ describe("Symbols on the text's baseline", function () {
         });
         try {
           await show("preview");
-          const measured = await measure(stored);
-          await saveScreenshot(
+          const measured = await measure(
+            stored,
             `baseline-${stored ? "stored" : "text"}-snippet`,
           );
           const shown = lines(measured);

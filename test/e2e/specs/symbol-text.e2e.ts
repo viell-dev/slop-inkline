@@ -614,10 +614,6 @@ describe("A symbol's readings and translations", function () {
     await makeNote();
   });
 
-  after(async function () {
-    await startOver();
-  });
-
   describe("in the editor", function () {
     it("adds no row until asked, and says how to enter several", async function () {
       await newSymbol();

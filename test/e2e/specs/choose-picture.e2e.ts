@@ -119,10 +119,6 @@ describe("Choose picture", function () {
   beforeEach(async function () {
     await startOver();
   });
-  after(async function () {
-    await startOver();
-  });
-
   it("opens the system's file dialog from its button, and says so in its hint", async function () {
     await openEditor();
     const hint = await browser.$(".inkline-picture-hint").getText();

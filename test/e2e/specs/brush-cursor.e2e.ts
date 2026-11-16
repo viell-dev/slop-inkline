@@ -21,10 +21,6 @@ describe("Fixed brush bitmap", function () {
     await waitForEditor();
   });
 
-  after(async function () {
-    await startOver();
-  });
-
   afterEach(async function () {
     await setPageZoom(1);
   });

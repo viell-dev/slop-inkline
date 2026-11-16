@@ -268,10 +268,6 @@ describe("Opening a large symbol", function () {
     await startOver();
   });
 
-  after(async function () {
-    await startOver();
-  });
-
   for (const { file, side, spacing, least, budget } of symbols) {
     it(`keeps the page answering, and finds what it always found: ${file}`, async function () {
       await largeSymbol(file, side, spacing);
@@ -440,10 +436,6 @@ describe("While a symbol opens", function () {
 
   afterEach(async function () {
     await restoreVault();
-  });
-
-  after(async function () {
-    await startOver();
   });
 
   it("opens it once, however often it is asked for", async function () {

@@ -31,6 +31,18 @@ export async function saveScreenshot(
   else await element.saveScreenshot(file);
 }
 
+/**
+ * Saves a screenshot already taken, as `browser.takeScreenshot()` gives it,
+ * where {@link saveScreenshot} would save it: for the artifact of a test that
+ * measures a screenshot to be the very frame it measured.
+ */
+export async function saveScreenshotData(
+  name: string,
+  png: string,
+): Promise<void> {
+  await writeFile(await screenshotFile(name), Buffer.from(png, "base64"));
+}
+
 /** A part of the window, in CSS pixels from its top left corner. */
 export interface Clip {
   readonly x: number;

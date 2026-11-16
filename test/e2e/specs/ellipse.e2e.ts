@@ -93,10 +93,6 @@ describe("Ellipse", function () {
   beforeEach(async function () {
     await startOver();
   });
-  after(async function () {
-    await startOver();
-  });
-
   it("draws an ellipse across the box dragged with O, then freehand again", async function () {
     await openEditor();
     await browser.keys("o");

@@ -584,10 +584,6 @@ describe("The library's rows", function () {
     });
   });
 
-  after(async function () {
-    await startOver();
-  });
-
   it("show no tooltip over the list's empty space, and keep its name for a screen reader", async function () {
     // A name the row shortens, whose button's tooltip has the whole of it.
     const wanted =
@@ -693,10 +689,6 @@ describe("Quick edit in the library", function () {
     });
     await letGo();
     await letReadGo();
-  });
-
-  after(async function () {
-    await startOver();
   });
 
   it("opens on the name, with the readings and translations, and takes the keys", async function () {

@@ -201,10 +201,6 @@ describe("The symbol library", function () {
     });
   });
 
-  after(async function () {
-    await startOver();
-  });
-
   it("lists every symbol, with its folder and the notes that use it", async function () {
     await createSymbol("001.ink.png");
     await createSymbol("Runes/tower.ink.png");

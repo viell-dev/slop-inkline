@@ -822,10 +822,6 @@ describe("The editor", function () {
     await startOver();
   });
 
-  after(async function () {
-    await startOver();
-  });
-
   it("starts each test from the vault as it was, with a note's save under way", async function () {
     const original = await fileText("Editor.md");
     await openAtMarker("Editor.md", "HERE");

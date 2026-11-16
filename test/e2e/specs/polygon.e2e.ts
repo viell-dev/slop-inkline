@@ -160,10 +160,6 @@ describe("Polygon", function () {
   beforeEach(async function () {
     await startOver();
   });
-  after(async function () {
-    await startOver();
-  });
-
   it("closes a rectangle on its first corner, with sharp corners in the saved image", async function () {
     await openPolygon(true);
     await shiftClick([0.35, 0.3], [0.65, 0.3], [0.65, 0.7], [0.35, 0.7]);

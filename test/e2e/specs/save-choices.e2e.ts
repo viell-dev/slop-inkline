@@ -130,10 +130,6 @@ describe("Saving a symbol used elsewhere", function () {
     await createSymbol(tower);
     await writeNotes(uses);
   });
-  after(async function () {
-    await startOver();
-  });
-
   it("asks before replacing it everywhere, and Keep editing saves nothing", async function () {
     const before = await bytesOf(tower);
     await editFile(tower);
