@@ -317,6 +317,11 @@ still find it after the original's were edited.
 - Mod+S saves and keeps the editor open.
 - **Next** (Mod+Shift+Enter), for a new symbol, saves and inserts it, then opens
   a blank editor for the symbol that follows it.
+- **Unreleased:** a new symbol with nothing drawn, no stroke of the pen and no
+  picture as its base layer, is not saved. Save, Mod+S, and **Next** leave the
+  editor open, and the status line says "Not saved: nothing drawn yet", so that
+  a second click on Next makes no empty symbol. A symbol that has a file still
+  saves when you erase it to nothing.
 
 Saving an edited symbol updates its existing placements in open notes and popout
 windows, in both text-colour and stored-grey modes. Notes keep their text and

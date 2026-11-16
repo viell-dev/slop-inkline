@@ -111,9 +111,10 @@ says why. Saving one stores strokes from then on. Unsaved drawings kept as
 [drafts](./recovery.md#drafts-after-a-crash) by an earlier version are dropped,
 so finish what you are drawing before you update.
 
-A symbol saved by a newer version than the one you have opens with a notice to
-update Inkline rather than in the editor, so that it is never saved over by a
-version that does not understand it.
+A symbol saved in a newer version of the file format than the one your Inkline
+reads opens with a notice to update Inkline rather than in the editor, so that
+it is never saved over by a version that does not understand it. A symbol that a
+later Inkline saved in a format your version reads opens as usual.
 
 ## Install with BRAT
 

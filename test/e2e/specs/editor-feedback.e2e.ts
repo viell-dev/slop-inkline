@@ -6,8 +6,11 @@ import {
   openAtMarker,
   recordOf,
   startOver,
+  storedDrafts,
   surface,
+  symbolFiles,
   waitForEditor,
+  waitForStatus,
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 
@@ -148,10 +151,14 @@ describe("Editor feedback", function () {
     expect(await surface().getCSSProperty("cursor")).toMatchObject({
       value: "crosshair",
     });
+    // The footprint drew nothing: a new symbol with nothing drawn is not
+    // saved, and no stroke of either tool was kept as a draft.
     await browser.keys(["Control", "Enter"]);
-    await surface().waitForExist({ reverse: true });
-    const saved: unknown = JSON.parse(await recordOf("001.ink.png"));
-    expect(saved).toMatchObject({ strokes: [] });
+    await waitForStatus("Not saved: nothing drawn yet");
+    expect(await symbolFiles()).toEqual([]);
+    expect((await storedDrafts()).flatMap(({ strokes }) => strokes)).toEqual(
+      [],
+    );
   });
 
   it("restores the fallback cursor on cancellation and Help", async function () {

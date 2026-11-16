@@ -797,7 +797,7 @@ export class InkEditorModal extends Modal {
         this.#toggleZoom();
       },
       "Zoom",
-      "a taller view of the drawing, twice as large, with twice as many grid cells each way; the wheel or the arrow keys move along it",
+      "a taller view of the drawing, twice as large, with twice as many grid cells each way; the wheel or the left and right arrow keys move along it",
     );
     this.#addButton(toolbar, "save", "Save", "Mod+Enter", () => {
       void this.#saveAndClose();
@@ -2215,7 +2215,7 @@ export class InkEditorModal extends Modal {
     this.#render();
     this.#announce(
       view.magnified
-        ? "Zoomed in: the wheel or the arrow keys move along the drawing"
+        ? "Zoomed in: the wheel or the left and right arrow keys move along the drawing"
         : "Zoomed out",
     );
   }
@@ -2567,7 +2567,7 @@ export class InkEditorModal extends Modal {
       "Flat ends (T), with the grid on, stops a freehand end that Shift put on a row flush with that row, rather than rounding past it, if it comes in at 45° or steeper; one running along the row stays round. It is off until you turn it on, and shapes are never cut.",
       "Undo (Mod+Z) and Redo (Mod+Shift+Z) step through changes. Clear removes the drawing and can be undone.",
       "Up and Down, or the up and down arrow keys, move the whole drawing a pixel at a time, or a grid cell's width with Shift, as to sit a shape on a line. One Undo takes back moves made in a row.",
-      "Zoom (Z) shows the drawing up to twice as large in a taller view, for fine detail; the wheel or the arrow keys move along it, and Fit (F) centres it. While zoomed, the grid has twice as many cells each way, and keeps every point of the usual grid. Saved symbols stay the same size in notes.",
+      "Zoom (Z) shows the drawing up to twice as large in a taller view, for fine detail; the wheel or the left and right arrow keys move along it, and Fit (F) centres it. While zoomed, the grid has twice as many cells each way, and keeps every point of the usual grid. Saved symbols stay the same size in notes.",
       "Paste, drop, or choose (Choose picture…) a picture to trace. Move positions it; the wheel scales it. Make ink converts the visible picture into editable ink. The tracing picture itself is not saved.",
       "Name the symbol, then Save (Mod+Enter). For a new symbol, Next (Mod+Shift+Enter) saves it and starts another. Mod is Ctrl on Windows/Linux, Cmd on macOS.",
       "Readings and translations, beside the name, say how the symbol is read and what it means, apart from its name: one per line, the main one first. Saving keeps them with the symbol, and the lists find a symbol by them. The library changes them without opening the editor.",
@@ -3363,6 +3363,19 @@ export class InkEditorModal extends Modal {
   }
 
   /**
+   * Whether this is a new symbol, with no file yet, that holds nothing to
+   * show: no stroke of the pen and no base layer. Saving it would make an
+   * empty file and put its embed in the note, as a second click on Next did
+   * in the editor that the first opened. A symbol that has a file still saves
+   * when it is erased to nothing.
+   */
+  #nothingToMake(): boolean {
+    if (this.#options.file?.() !== undefined) return false;
+    const { strokes, base } = this.#session.document;
+    return base === undefined && !strokes.some(({ tool }) => tool === "pen");
+  }
+
+  /**
    * Saves the drawing as it is now, with a stroke still being drawn ended
    * first. Only one save runs at a time; strokes drawn meanwhile stay
    * unsaved. After a save, the session moves into the saved file's
@@ -3376,6 +3389,10 @@ export class InkEditorModal extends Modal {
     if (this.#session.drawing) {
       this.#session.end();
       this.#changed();
+    }
+    if (this.#nothingToMake()) {
+      this.#announce("Not saved: nothing drawn yet");
+      return Promise.resolve(false);
     }
     // Before anything is written, as text that cannot be saved is a reason not
     // to save what goes with it: the strokes wait, in the draft.

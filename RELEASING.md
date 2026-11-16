@@ -374,11 +374,17 @@ On a branch from `main`:
 3. Rename `## Unreleased` in `CHANGELOG.md` to `## <version> - <YYYY-MM-DD>`,
    with the planned release date, and add an empty `## Unreleased` above it. The
    section becomes the release notes, so write it for users.
-4. Update the user guide in `docs/` for the release: the "No release yet" boxes
-   on the home and install pages, and the manual ZIP installation and update
-   path. `test/unit/docs.test.ts` fails until they no longer say there is no
-   release. Remove **Unreleased** labels only from behavior included in this
-   release; retain labels for later work.
+4. Update the user guide in `docs/` and the README for the release, including
+   the manual ZIP installation and update path. For the first public release,
+   that includes the "Prerelease" boxes on the home and install pages, and what
+   the README, the install page, and the known limits say of pre-releases: once
+   `package.json` names a public version, `test/unit/docs.test.ts` fails while
+   any of them says that Inkline is a prerelease, that every release so far is
+   one, or that there is no public release yet. What they say of Obsidian's
+   community directory follows the listing, not the version: the release is
+   published before the owner submits it there, so say what is true on the day,
+   and update it once the directory lists Inkline. Remove **Unreleased** labels
+   only from behavior included in this release; retain labels for later work.
 5. Run `node scripts/release.ts check <version>` and
    `node scripts/publish.ts order <version>`, which the workflow runs too. The
    first checks that `package.json` names the version, that the changelog
