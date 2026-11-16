@@ -612,9 +612,16 @@ export class SymbolLibraryView extends ItemView {
     );
     edit.createSpan({ text: "Quick edit" });
     this.#title(row, entry.name, entry.folder);
-    edit.addEventListener("click", () => {
-      if (this.#panel?.row === row) this.#panel.leave();
-      else this.#quickEdit(row, file);
+    edit.addEventListener("click", (event) => {
+      if (this.#panel?.row !== row) {
+        this.#quickEdit(row, file);
+      } else if (event.detail > 1) {
+        // The second click of a double-click that opened the row keeps it
+        // open, and gives the focus back to its name.
+        this.#editing?.focus();
+      } else {
+        this.#panel.leave();
+      }
     });
     this.#renderValues(row, entry);
     if (entry.notes.length === 0) {

@@ -854,6 +854,28 @@ describe("Quick edit in the library", function () {
         path: "gate.ink.png",
       });
     }
+    // A double-click opens it, and the second click leaves it open, with the
+    // focus back on the name, still selected.
+    await own().doubleClick();
+    await formButton("Save").waitForEnabled();
+    await browser.pause(300);
+    expect(await browser.$$(".inkline-library-edit-form").length).toBe(1);
+    expect(await own().getAttribute("aria-expanded")).toBe("true");
+    expect(await focused()).toMatchObject({
+      tag: "INPUT",
+      path: "gate.ink.png",
+    });
+    expect(
+      await browser.execute(() => {
+        const active = document.activeElement;
+        return active instanceof HTMLInputElement
+          ? active.value.slice(
+              active.selectionStart ?? 0,
+              active.selectionEnd ?? 0,
+            )
+          : null;
+      }),
+    ).toBe("gate");
   });
 
   it("shows the symbol's menu from its row in Quick edit, and leaves the fields their own", async function () {
