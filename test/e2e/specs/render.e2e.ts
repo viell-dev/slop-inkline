@@ -5,7 +5,7 @@ import { browser, expect } from "@wdio/globals";
 import { obsidianPage } from "wdio-obsidian-service";
 import { encodePng } from "../../support/png.ts";
 import { loadModules, toBase64 } from "../support/browser.ts";
-import { saveScreenshot } from "../support/screenshots.ts";
+import { saveScreenshot, waitForPaint } from "../support/screenshots.ts";
 
 /**
  * A synthetic symbol: 64 × 192 pixels, the line box at 128 px per em, with
@@ -290,7 +290,10 @@ describe("Symbols in notes", function () {
             if (typeof change !== "function") throw new Error("no themes");
             Reflect.apply(change, app, [chosen]);
           }, theme);
-          await browser.pause(300);
+          await waitForPaint({
+            images: images(mode),
+            theme: theme === "obsidian" ? "dark" : "light",
+          });
           await saveScreenshot(`render-colour-${mode}-${theme}`);
           const { text, grey } = await colours(images(mode));
           // The block is 3/4 of the width and half the height: 3/8 of it.

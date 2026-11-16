@@ -10,7 +10,7 @@ import { browser, expect } from "@wdio/globals";
 import { obsidianPage } from "wdio-obsidian-service";
 import type { Block, Rgb } from "../../support/ink-block.ts";
 import { loadModules, toBase64 } from "../support/browser.ts";
-import { saveScreenshot } from "../support/screenshots.ts";
+import { saveScreenshotData, waitForPaint } from "../support/screenshots.ts";
 import {
   drawnRatio,
   fullWidth,
@@ -184,18 +184,23 @@ async function waitForSymbol(selector: string, scroll: boolean): Promise<void> {
       scroll,
     ),
   );
-  // Long enough for the page to draw what scrolled into view.
-  await browser.pause(300);
+  await waitForPaint({ images: selector });
 }
 
 /**
  * How the symbol at `selector` shows: its box and its line's baseline, read
  * from the page, and its ink, measured in a screenshot of the window, as a
  * mask's ink can only be. The ground is the colour along the bottom of the
- * box, below the baseline, where the symbol has no ink.
+ * box, below the baseline, where the symbol has no ink. The screenshot is
+ * saved as `artifact`.
  */
-async function measure(selector: string, stored: boolean): Promise<Shown> {
+async function measure(
+  selector: string,
+  stored: boolean,
+  artifact: string,
+): Promise<Shown> {
   const shot = await browser.takeScreenshot();
+  await saveScreenshotData(artifact, shot);
   return browser.execute(
     async (wanted, png, storedColour) => {
       const image = activeDocument.querySelector(wanted);
@@ -320,7 +325,7 @@ async function theme(name: "moonstone" | "obsidian"): Promise<void> {
     if (typeof change !== "function") throw new Error("no themes");
     Reflect.apply(change, app, [chosen]);
   }, name);
-  await browser.pause(300);
+  await waitForPaint({ theme: name === "obsidian" ? "dark" : "light" });
 }
 
 /**
@@ -336,15 +341,13 @@ async function shownIn(
   if (place.hover !== true) {
     await pointerAway();
     await waitForSymbol(place.symbol, true);
-    const shown = await measure(place.symbol, stored);
-    await saveScreenshot(shot);
+    const shown = await measure(place.symbol, stored, shot);
     return shown;
   }
   await browser.$(`${reading} a.internal-link`).moveTo();
   try {
     await waitForSymbol(place.symbol, false);
-    const shown = await measure(place.symbol, stored);
-    await saveScreenshot(shot);
+    const shown = await measure(place.symbol, stored, shot);
     return shown;
   } finally {
     await pointerAway();
@@ -482,8 +485,11 @@ describe("Symbols wider than their space", function () {
         await open("Wide.md", "preview");
         await pointerAway();
         await waitForSymbol(sized, true);
-        const shown = await measure(sized, stored);
-        await saveScreenshot(`wide-${stored ? "stored" : "text"}-sized`);
+        const shown = await measure(
+          sized,
+          stored,
+          `wide-${stored ? "stored" : "text"}-sized`,
+        );
         console.log(`${colour}, |300: ${JSON.stringify(shown)}`);
         // 300 wide at the symbol's own proportions, whatever the setting.
         const tall = (300 * wide.height) / wide.width;

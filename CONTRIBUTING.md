@@ -160,8 +160,11 @@ never compared with reference images: a test reads state, positions, or pixels
 back from Obsidian. Where what Obsidian shows on the screen is itself the
 subject and the DOM, a canvas or a saved file cannot give it, as with a CSS mask
 or text drawn by the host, a test may measure the pixels of a screenshot of the
-elements concerned, with stated tolerances. Test vaults in `test/e2e/vaults/`
-and every drawing a test uses are synthetic.
+elements concerned, with stated tolerances. Before the screenshot, it waits with
+`waitForPaint()` from `test/e2e/support/screenshots.ts` rather than for a set
+time, and a screenshot of the window that it measures is the one it saves, with
+`saveScreenshotData()`. Test vaults in `test/e2e/vaults/` and every drawing a
+test uses are synthetic.
 
 Each spec file runs in a WebdriverIO session of its own, which
 wdio-obsidian-service starts with a new copy of the test vault and a new
