@@ -258,20 +258,22 @@ export function parseDurations(value: unknown, source: string): Durations {
     new Error(
       `${source} must give ${spec} an object of Obsidian versions to "resolved", "seconds", and "exitCode"`,
     );
-  const checked: Record<string, Record<string, WorkerRun>> = {};
-  for (const [spec, runs] of Object.entries(specs)) {
-    if (!isRecord(runs)) throw malformed(spec);
-    const workers: Record<string, WorkerRun> = {};
-    for (const [version, run] of Object.entries(runs)) {
-      if (!isWorkerRun(run)) throw malformed(spec);
-      workers[version] = {
-        resolved: run.resolved,
-        seconds: run.seconds,
-        exitCode: run.exitCode,
-      };
-    }
-    checked[spec] = workers;
-  }
+  // Object.fromEntries defines each key as the object's own, so that a file
+  // naming a spec or a version `__proto__` gets an entry the checks report,
+  // where an assignment would set the object's prototype and say nothing.
+  const checked = Object.fromEntries(
+    Object.entries(specs).map(([spec, runs]) => {
+      if (!isRecord(runs)) throw malformed(spec);
+      const workers = Object.fromEntries(
+        Object.entries(runs).map(([version, run]) => {
+          if (!isWorkerRun(run)) throw malformed(spec);
+          const { resolved, seconds, exitCode: ended } = run;
+          return [version, { resolved, seconds, exitCode: ended }];
+        }),
+      );
+      return [spec, workers];
+    }),
+  );
   return {
     format: durationsFormat,
     shard,

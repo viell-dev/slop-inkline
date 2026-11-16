@@ -600,6 +600,34 @@ describe("durations", () => {
       );
     }
   });
+
+  it("keeps a spec file or a version named __proto__ as an entry, to report", () => {
+    // JSON.parse gives such a key as the object's own. Assigned to a plain
+    // object it would become the prototype instead, and the checks, which
+    // read own keys, would say nothing of it.
+    const passed = JSON.stringify(worker());
+    const parsed = parseDurations(
+      JSON.parse(
+        `{"format":${String(durationsFormat)},"shard":null,"versions":${JSON.stringify(pairs)},"exitCode":0,"specs":{"a.e2e.ts":{"__proto__":${passed}},"__proto__":{"b.e2e.ts":${passed}}}}`,
+      ),
+      "d.json",
+    );
+    expect(Object.keys(parsed.specs)).toEqual(["a.e2e.ts", "__proto__"]);
+    expect(Object.getPrototypeOf(parsed.specs)).toBe(Object.prototype);
+    expect(Object.keys(parsed.specs["a.e2e.ts"] ?? {})).toEqual(["__proto__"]);
+    expect(
+      coverageProblems(
+        ["a.e2e.ts", "b.e2e.ts"],
+        [{ source: "d.json", durations: parsed }],
+        pairs,
+      ),
+    ).toEqual([
+      "d.json names __proto__, which is not one of the spec files expected",
+      ...pairs.map((pair) => `a.e2e.ts did not run on Obsidian ${pair}`),
+      "a.e2e.ts ran on Obsidian __proto__, not expected",
+      "b.e2e.ts is in no durations.json",
+    ]);
+  });
 });
 
 describe("mergeWeights", () => {
