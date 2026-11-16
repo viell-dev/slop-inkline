@@ -25,6 +25,9 @@ limits.
 2. Select **Browse**, search for **Inkline**, and select it.
 3. Select **Install**, then **Enable**.
 
+Inkline's page in the directory is
+<https://community.obsidian.md/plugins/inkline>.
+
 Inkline is ready: run **Inkline: Insert symbol** from the command palette in a
 note, as [Your first symbol](./start.md) shows.
 
