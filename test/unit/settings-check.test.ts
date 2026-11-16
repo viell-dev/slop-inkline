@@ -31,23 +31,6 @@ const ruleset = {
   ],
 };
 
-/** The names that more than one of `rulesets` records, each once. */
-function duplicateNames(rulesets: readonly unknown[]): string[] {
-  const names = rulesets.map((file): unknown =>
-    typeof file === "object" && file !== null
-      ? Reflect.get(file, "name")
-      : undefined,
-  );
-  return [
-    ...new Set(
-      names.filter(
-        (name, index): name is string =>
-          typeof name === "string" && names.indexOf(name) !== index,
-      ),
-    ),
-  ];
-}
-
 describe("the repository's label and ruleset files", () => {
   it("list each label once, with a colour and a description", () => {
     // In any letter case, as GitHub refuses two labels that differ only so.
@@ -72,19 +55,9 @@ describe("the repository's label and ruleset files", () => {
     const files = readdirSync(directory).map((name): unknown =>
       JSON.parse(readFileSync(join(directory, name), "utf8")),
     );
-    // Compared with themselves, the files only show one without a name: the
-    // live rulesets are looked up by name, so two files of one name would
-    // both find the same one.
+    // Compared with themselves, the files show one without a name, and a
+    // name that two of them record.
     expect(rulesetProblems(files, files).problems).toEqual([]);
-    expect(duplicateNames(files)).toEqual([]);
-  });
-
-  it("finds a ruleset name that two files record", () => {
-    const other = { ...ruleset, name: "Tags" };
-    expect(duplicateNames([ruleset, other, { ...ruleset }])).toEqual([
-      "PRs and CI for main",
-    ]);
-    expect(duplicateNames([ruleset, other])).toEqual([]);
   });
 });
 
@@ -161,6 +134,16 @@ describe("rulesetProblems", () => {
       'ruleset "PRs and CI for main" is missing',
       'ruleset "New" has no file',
     ]);
+  });
+
+  it("reports a name that two files record", () => {
+    // Both would find the one live ruleset of that name, so that a second
+    // file with other rules would otherwise pass as a match of the first.
+    const other = { ...ruleset, name: "Tags" };
+    expect(
+      rulesetProblems([ruleset, other, { ...ruleset }], [ruleset, other])
+        .problems,
+    ).toEqual(['ruleset "PRs and CI for main" has more than one file']);
   });
 
   it("compares bypass actors only where they are shown", () => {

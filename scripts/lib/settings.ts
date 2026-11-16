@@ -163,6 +163,12 @@ export function rulesetProblems(
       problems.push("a ruleset file has no name");
       continue;
     }
+    // Looked up by name, two files of one name would both find the same
+    // live ruleset, and neither would be reported.
+    if (names.has(name)) {
+      problems.push(`ruleset "${name}" has more than one file`);
+      continue;
+    }
     names.add(name);
     const found = liveByName.get(name);
     if (found === undefined) {
