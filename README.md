@@ -29,9 +29,8 @@ If Inkline does not show there yet, install the ZIP from the latest release:
 3. In Obsidian, open **Settings → Community plugins**, turn community plugins on
    if needed, and enable **Inkline**.
 
-Obsidian offers updates for Inkline installed from its community plugins. Update
-a ZIP installation by hand, or install Inkline from the community plugins once
-it shows there. The
+Once Inkline shows in Obsidian's community plugins, Obsidian offers its updates,
+however you installed it; until then, update a ZIP installation by hand. The
 [installation guide](https://viell-dev.github.io/slop-inkline/install) covers
 updates, pre-releases, older versions, and installing with BRAT. Release notes
 describe compatibility changes.

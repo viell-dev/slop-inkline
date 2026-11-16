@@ -97,11 +97,11 @@ install ZIP as well, run `node scripts/package.ts dist test-results/package`.
 
 ## Update
 
-Obsidian offers each new public release as an update to Inkline installed from
-its community plugins, under **Settings → Community plugins**, as
-[The community directory](#the-community-directory) says. Update a ZIP
-installation by hand, as below, or install Inkline from the community plugins
-once it shows there. Move to a pre-release by hand too:
+Once Inkline shows in Obsidian's community plugins, Obsidian offers each new
+public release as an update under **Settings → Community plugins**, however you
+installed it, as [The community directory](#the-community-directory) says. Until
+then, update a ZIP installation by hand, as below. Move to a pre-release by hand
+too:
 
 1. Save any open drawing, then turn Inkline off under **Settings → Community
    plugins**.
@@ -175,6 +175,8 @@ Obsidian's community plugins, under **Settings → Community plugins → Browse*
 offer Inkline's public releases, from 1.0.0 on, as
 [Install from Obsidian's community plugins](#install-from-obsidian-s-community-plugins)
 shows. If Inkline does not show there yet, install the [ZIP](#install-the-zip).
+Once it shows there, Obsidian offers each new public release to every
+installation of Inkline, from its community plugins or from a ZIP.
 
 The directory offers public releases only, those with an even minor version.
 Pre-releases stay on the
