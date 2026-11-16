@@ -656,10 +656,9 @@ drawing while **Copy from** or **Reload** reads.
   ([docs.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/docs.test.ts)),
   and what deploys follows [Versions of this site](./versions.md)
   ([docs-source.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/docs-source.test.ts)).
-- Until `package.json` or `manifest.json` names a public version, the home and
-  install pages, the README, and Known limits say that Inkline is a pre-release.
-  From then, none of them says that every release is one, or that there is no
-  public release yet
+- Since 1.0.0, none of the home and install pages, the README, and Known limits
+  says that Inkline is a pre-release, that every release is one, or that there
+  is no public release yet
   ([docs.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/docs.test.ts)).
 
 ## Checks shown to fail
