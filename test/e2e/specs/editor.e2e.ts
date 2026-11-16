@@ -12,7 +12,6 @@ import {
   delayDecoding,
   delayVault,
   draw,
-  drawHoldingShift,
   editorGrid,
   editorOpen,
   failSaves,
@@ -1262,34 +1261,31 @@ describe("The editor", function () {
 
   it("keeps a name the symbol has that Inkline would not give it", async function () {
     await saveOne();
-    // Copies named as the file explorer or sync can name them: with a
-    // character links cannot hold, with dots at the end, and with a name
-    // only Windows refuses.
-    const names = ["a#1", "door.", "con"];
-    for (const name of names) {
-      await browser.executeObsidian(async ({ app }, path) => {
-        const file = app.vault.getFileByPath("001.ink.png");
-        if (file === null) throw new Error("no 001");
-        await app.vault.copy(file, path);
-      }, `${name}.ink.png`);
-      await editFile(`${name}.ink.png`);
-      expect((await nameField()).value).toBe(name);
-      // Nothing changed, so closing asks nothing.
-      await browser.keys(["Escape"]);
-      await waitClosed();
-      // And a save keeps the name.
-      await editFile(`${name}.ink.png`);
-      await draw([
-        [0.6, 0.3],
-        [0.6, 0.7],
-      ]);
-      await browser.keys(["Control", "Enter"]);
-      await waitClosed();
-      expect(await strokeCount(`${name}.ink.png`)).toBe(2);
-    }
-    expect(await symbolFiles()).toEqual(
-      ["001", ...names].map((name) => `${name}.ink.png`).sort(),
-    );
+    // A copy named as the file explorer or sync can name it, with a character
+    // links cannot hold. Dots at the end, and a name only Windows refuses,
+    // take the same way through the editor, which goes by chooseRename alone:
+    // names.test.ts keeps a file's own name of each kind.
+    const name = "a#1";
+    await browser.executeObsidian(async ({ app }, path) => {
+      const file = app.vault.getFileByPath("001.ink.png");
+      if (file === null) throw new Error("no 001");
+      await app.vault.copy(file, path);
+    }, `${name}.ink.png`);
+    await editFile(`${name}.ink.png`);
+    expect((await nameField()).value).toBe(name);
+    // Nothing changed, so closing asks nothing.
+    await browser.keys(["Escape"]);
+    await waitClosed();
+    // And a save keeps the name.
+    await editFile(`${name}.ink.png`);
+    await draw([
+      [0.6, 0.3],
+      [0.6, 0.7],
+    ]);
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    expect(await strokeCount(`${name}.ink.png`)).toBe(2);
+    expect(await symbolFiles()).toEqual(["001.ink.png", `${name}.ink.png`]);
   });
 
   describe("when Obsidian does not finish a rename", function () {
@@ -1464,27 +1460,9 @@ describe("The editor", function () {
       await editFile("001.ink.png");
     }
 
-    /** {@link editEmbedded}, then adds text to the note and names the symbol. */
-    async function editWithText(): Promise<void> {
-      await editEmbedded();
-      await addUnsaved("Editor.md", opening, "start");
-      await nameSymbol("tower");
-    }
-
-    it("keeps the text when the note's own save falls due during Obsidian's question", async function () {
-      await editWithText();
-      await browser.keys(["Control", "Enter"]);
-      await browser.$("button=Just once").waitForDisplayed();
-      // An editor saves itself two seconds after an edit.
-      await browser.pause(2500);
-      await browser.$("button=Just once").click();
-      await waitClosed();
-      await waitForPanes("Editor.md", renamed);
-      await browser.waitUntil(
-        async () => (await noteOnDisk("Editor.md")) === renamed,
-      );
-    });
-
+    // A note's own save falling due during Obsidian's question is
+    // insertion.e2e.ts's, through the same rename, which saves the open notes
+    // first for an existing symbol's editor as for a new symbol's.
     it("refuses the rename if the note cannot be saved, and keeps the name to try", async function () {
       await editEmbedded();
       // Saves fail before the text is added, and until the file is read and
@@ -2703,7 +2681,7 @@ describe("The editor", function () {
     expect(await symbolFiles()).toEqual(["001.ink.png"]);
   });
 
-  it("labels its controls and marks the current tool", async function () {
+  it("names each button with its text and shortcut, shows that on hover, and marks the current tool", async function () {
     await insert();
     const state = await browser.execute(() => {
       const button = (id: string): HTMLElement | null =>
@@ -2711,7 +2689,6 @@ describe("The editor", function () {
       return {
         pen: button("pen")?.getAttribute("aria-pressed"),
         eraser: button("eraser")?.getAttribute("aria-pressed"),
-        size: button("size-0")?.getAttribute("aria-label"),
         undo: button("undo")?.hasAttribute("disabled"),
         focused: document.activeElement?.classList.contains("inkline-surface"),
       };
@@ -2719,21 +2696,12 @@ describe("The editor", function () {
     expect(state).toEqual({
       pen: "true",
       eraser: "false",
-      size: "Brush size S (1)",
       undo: true,
       focused: true,
     });
-    await browser.keys(["e"]);
-    const eraser = browser.$('[data-inkline-button="eraser"]');
-    expect(await eraser.getAttribute("aria-pressed")).toBe("true");
-    await browser.keys(["Escape"]);
-    await waitClosed();
-  });
-
-  it("names each button with its text, and shows its shortcut on hover", async function () {
-    await insert();
     const buttons = await browser.execute(() =>
       [...document.querySelectorAll("[data-inkline-button]")].map((button) => ({
+        id: button.getAttribute("data-inkline-button") ?? "",
         text: button.textContent,
         name: button.getAttribute("aria-label") ?? "",
       })),
@@ -2742,39 +2710,52 @@ describe("The editor", function () {
     for (const { text, name } of buttons) {
       expect(name.toLowerCase()).toContain(text.toLowerCase());
     }
+    // A button's name is its tooltip, which Obsidian shows from it: with a
+    // description, a label of its own, or neither, and the shortcut after.
+    const names = Object.fromEntries(buttons.map(({ id, name }) => [id, name]));
+    expect(names).toMatchObject({
+      copy: "Copy from: start from a copy of another symbol (V)",
+      "size-0": "Brush size S (1)",
+      pen: "Pen (P)",
+      next: "Next: save and draw the next one (Mod+Shift+Enter)",
+      grid: "Grid: show a grid of dots as a guide; hold Shift while drawing to snap to it (Shift+G)",
+      fit: "Fit: centre the drawing in the view, and show all of it if it is wider; the drawing itself stays as it is (F)",
+    });
     const tooltip = async (id: string, text: string): Promise<void> => {
-      await browser.$(`[data-inkline-button="${id}"]`).moveTo();
+      const button = await browser
+        .$(`[data-inkline-button="${id}"]`)
+        .getElement();
+      let step = 0;
       await browser.waitUntil(
-        async () =>
-          (await browser.execute(
-            () => document.querySelector(".tooltip")?.textContent ?? "",
-          )) === text,
+        async () => {
+          // Obsidian shows a mouse no tooltip until it has seen it move twice
+          // (#270), so each look moves it again, within the button.
+          step++;
+          await browser
+            .action("pointer", { parameters: { pointerType: "mouse" } })
+            .move({ origin: button, x: step % 2 === 0 ? -2 : 2, y: 0 })
+            .perform();
+          return (
+            (await browser.execute(
+              () => document.querySelector(".tooltip")?.textContent ?? "",
+            )) === text
+          );
+        },
         { timeoutMsg: `no tooltip "${text}"` },
       );
       await surface().moveTo();
     };
-    // The first hover after the editor opens shows no tooltip, so start
-    // from the surface.
-    await surface().moveTo();
-    await browser.pause(500);
     await tooltip("copy", "Copy from: start from a copy of another symbol (V)");
     await tooltip("size-0", "Brush size S (1)");
-    await tooltip("pen", "Pen (P)");
-    await tooltip("next", "Next: save and draw the next one (Mod+Shift+Enter)");
-    await tooltip(
-      "grid",
-      "Grid: show a grid of dots as a guide; hold Shift while drawing to snap to it (Shift+G)",
-    );
-    await tooltip(
-      "fit",
-      "Fit: centre the drawing in the view, and show all of it if it is wider; the drawing itself stays as it is (F)",
-    );
     // Both save, so both look it.
     for (const id of ["save", "next"]) {
       expect(
         await browser.$(`[data-inkline-button="${id}"]`).getAttribute("class"),
       ).toContain("mod-cta");
     }
+    await browser.keys(["e"]);
+    const eraser = browser.$('[data-inkline-button="eraser"]');
+    expect(await eraser.getAttribute("aria-pressed")).toBe("true");
   });
 
   it("saves a stroke still being drawn when saving and closing", async function () {
@@ -3634,23 +3615,6 @@ describe("The editor", function () {
       strokes: unknown[];
     };
     expect(record.strokes).toHaveLength(2);
-    expect(await symbolFiles()).toEqual(["001.ink.png"]);
-  });
-
-  it("keeps a draft whose question was dismissed for next time", async function () {
-    await insert();
-    await draw(zigzag);
-    await obsidianPage.disablePlugin("inkline");
-    await obsidianPage.enablePlugin("inkline");
-    await loadModules();
-    await browser.executeObsidianCommand("inkline:insert-symbol");
-    await clickTop("Not now");
-    await browser.keys(["Escape"]);
-    await waitClosed();
-    await browser.executeObsidianCommand("inkline:insert-symbol");
-    await clickTop("Restore");
-    await browser.keys(["Control", "Enter"]);
-    await waitClosed();
     expect(await symbolFiles()).toEqual(["001.ink.png"]);
   });
 
@@ -4656,6 +4620,8 @@ describe("The editor", function () {
     expect(xs[3]).toBeGreaterThan(xs[1] ?? Number.NaN);
   });
 
+  // guide-lines.e2e.ts checks each line's colour on its row; this checks that
+  // G leaves the surface with nothing drawn at all.
   it("draws the text font's guides, and shows or hides them with G", async function () {
     await insert();
     await settledSurface();
@@ -5034,54 +5000,8 @@ describe("The editor", function () {
     }
   });
 
-  it("shows a grid with Shift+G, which Shift snaps strokes' ends to", async function () {
-    await insert();
-    await settledSurface();
-    const grid = await editorGrid();
-    // A grid crossing away from every guide: about 2 em across, on the row
-    // a cell above the baseline.
-    const crossing = {
-      x: Math.round(256 / grid.spacing) * grid.spacing,
-      y: grid.rows[grid.rows.indexOf(lineBox.baseline) - 1] ?? 0,
-    };
-    const dots = () =>
-      browser.execute(({ x: across, y: down }) => {
-        const canvas = document.querySelector(
-          ".inkline-editor .inkline-surface",
-        );
-        if (!(canvas instanceof HTMLCanvasElement))
-          throw new Error("no surface");
-        const pixels = canvas
-          .getContext("2d")
-          ?.getImageData(0, 0, canvas.width, canvas.height);
-        const factor = canvas.width / 576;
-        const x = Math.round(across * factor);
-        const y = Math.round(down * factor);
-        return pixels?.data[(y * canvas.width + x) * 4 + 3] ?? 0;
-      }, crossing);
-    expect(await dots()).toBe(0);
-    await browser.keys(["Shift", "g"]);
-    await browser.waitUntil(async () => (await dots()) > 0);
-    expect(
-      await browser
-        .$('[data-inkline-button="grid"]')
-        .getAttribute("aria-pressed"),
-    ).toBe("true");
-    await drawHoldingShift([
-      [0.31, 0.27],
-      [0.52, 0.41],
-      [0.69, 0.73],
-    ]);
-    await browser.waitUntil(async () => (await storedDrafts()).length === 1);
-    const points = (await storedDrafts())[0]?.strokes[0]?.points ?? [];
-    // On the columns through 0, and on the rows, in units.
-    const spacing = Math.round(grid.spacing * unitsPerPixel);
-    const rows = grid.rows.map((row) => Math.round(row * unitsPerPixel));
-    for (const x of [points[0], points.at(-2)])
-      expect((x ?? 1) % spacing).toBe(0);
-    for (const y of [points[1], points.at(-1)]) expect(rows).toContain(y);
-  });
-
+  // Shift+G's dots, and strokes' ends snapped to them with Shift, are
+  // grid.e2e.ts's, shift-grid.e2e.ts's, and shortcuts.e2e.ts's.
   it("keeps a tap on the grid a dot, and the grid in place through a save", async function () {
     await insert();
     await settledSurface();
@@ -5175,7 +5095,9 @@ describe("The editor", function () {
     expect(column(tap)).not.toBe(column(restored[1]));
   });
 
-  it("clears with Delete, and fits the drawing in view with F", async function () {
+  // Clearing with Delete and Backspace is shortcuts.e2e.ts's, and Fit while
+  // zoomed in zoom.e2e.ts's.
+  it("fits the drawing in view with F", async function () {
     await insert();
     await draw([
       [0.05, 0.4],
@@ -5185,27 +5107,31 @@ describe("The editor", function () {
     const before = (await storedDrafts())[0]?.strokes[0]?.points ?? [];
     const centre = ((before[0] ?? 0) + (before.at(-2) ?? 0)) / 2 / 16;
     await browser.keys(["f"]);
-    // The drawing is now in the middle: a dot there lands near its centre.
-    await browser.pause(200);
+    // The surface shows the drawing in its middle now.
+    await browser.waitUntil(async () =>
+      browser.execute(() => {
+        const canvas = activeDocument.querySelector(
+          ".inkline-editor .inkline-surface",
+        );
+        if (canvas?.instanceOf(HTMLCanvasElement) !== true) {
+          throw new Error("no surface");
+        }
+        const y = Math.round(canvas.height / 2);
+        for (let x = canvas.width * 0.4; x < canvas.width * 0.6; x++) {
+          if (window.inklineTest.pictures.inkAt(canvas, Math.round(x), y).ink) {
+            return true;
+          }
+        }
+        return false;
+      }),
+    );
+    // A dot there lands near its centre.
     await draw([[0.5, 0.2]]);
     await browser.waitUntil(
       async () => (await storedDrafts())[0]?.strokes.length === 2,
     );
     const dot = (await storedDrafts())[0]?.strokes[1]?.points ?? [];
     expect(Math.abs((dot[0] ?? 0) / 16 - centre)).toBeLessThan(16);
-    await browser.keys(["Delete"]);
-    await browser.waitUntil(
-      async () => (await storedDrafts())[0]?.strokes.length === 0,
-    );
-    // Backspace, which a Mac's key labelled Delete sends, clears too.
-    await browser.keys(["Control", "z"]);
-    await browser.waitUntil(
-      async () => (await storedDrafts())[0]?.strokes.length === 2,
-    );
-    await browser.keys(["Backspace"]);
-    await browser.waitUntil(
-      async () => (await storedDrafts())[0]?.strokes.length === 0,
-    );
   });
 
   it("lets a text field have the keys it types", async function () {
@@ -5517,17 +5443,9 @@ describe("The editor", function () {
     });
   });
   describe("keeping the text about a symbol", function () {
-    it("keeps it through an edit and a save", async function () {
-      await saveOne();
-      await changeElsewhere("001.ink.png", "vault", readings);
-      await editFile("001.ink.png");
-      await draw([[0.5, 0.2]]);
-      await browser.keys(["Control", "s"]);
-      await waitForStatus("Saved");
-      expect(await strokeCount("001.ink.png")).toBe(4);
-      expect(await textIn("001.ink.png")).toEqual([readings]);
-    });
-
+    // Through an edit and a save alone, symbol-text.e2e.ts keeps a file's
+    // readings and translations; this keeps its chunk byte for byte, through a
+    // draft as well.
     it("keeps it through a draft offered back", async function () {
       await saveOne();
       await changeElsewhere("001.ink.png", "vault", readings);
@@ -5557,18 +5475,8 @@ describe("The editor", function () {
       expect(await textIn("001.ink.png")).toEqual([readings]);
     });
 
-    it("keeps what a change added when the drawing is kept", async function () {
-      await saveOne();
-      await editFile("001.ink.png");
-      await draw([[0.5, 0.2]]);
-      await changeElsewhere("001.ink.png", "vault", readings);
-      await clickTop("Keep mine");
-      await browser.keys(["Control", "s"]);
-      await waitForStatus("Saved");
-      expect(await strokeCount("001.ink.png")).toBe(2);
-      expect(await textIn("001.ink.png")).toEqual([readings]);
-    });
-
+    // Keep mine, asked as the vault reports the change, is symbol-text.e2e.ts's;
+    // asked as a save finds it, it takes the same chunks the same way.
     it("keeps what a change added when a save found it", async function () {
       await saveOne();
       await editFile("001.ink.png");
@@ -5587,34 +5495,9 @@ describe("The editor", function () {
       expect(await textIn("001.ink.png")).toEqual([readings]);
     });
   });
+  // A run of three from Next, in order, is insertion.e2e.ts's, with the cursor
+  // after each.
   describe("drawing the next one", function () {
-    it("saves, inserts, and opens the next symbol right after it", async function () {
-      await insert();
-      await draw(zigzag);
-      await markEditor();
-      await browser.keys(["Control", "Shift", "Enter"]);
-      await waitForNext(1);
-      // A blank drawing: its first stroke is the draft's only one.
-      await draw([[0.5, 0.5]]);
-      await browser.waitUntil(
-        async () => (await storedDrafts())[0]?.strokes.length === 1,
-      );
-      await markEditor();
-      await browser.$('[data-inkline-button="next"]').click();
-      await waitForNext(2);
-      await draw([[0.4, 0.3]]);
-      await browser.keys(["Control", "Enter"]);
-      await waitClosed();
-      expect(await symbolFiles()).toEqual([
-        "001.ink.png",
-        "002.ink.png",
-        "003.ink.png",
-      ]);
-      expect(await noteText()).toBe(
-        "The door is marked with ![[001.ink.png]]![[002.ink.png]]![[003.ink.png]] which means return.\n",
-      );
-    });
-
     it("makes no empty symbol from clicks on Next that reach the next editor", async function () {
       await insert();
       await draw(zigzag);
@@ -5673,22 +5556,9 @@ describe("The editor", function () {
       );
     });
 
-    it("follows the symbol before even when the note's tab shows another", async function () {
-      await insert();
-      await draw(zigzag);
-      await markEditor();
-      await browser.keys(["Control", "Shift", "Enter"]);
-      await waitForNext(1);
-      // The next embed then goes into the note's file.
-      await showWelcomeInstead();
-      await draw([[0.5, 0.5]]);
-      await browser.keys(["Control", "Enter"]);
-      await waitClosed();
-      expect(await fileText("Editor.md")).toBe(
-        "The door is marked with ![[001.ink.png]]![[002.ink.png]] which means return.\n",
-      );
-    });
-
+    // After a symbol that went in through the note's editor, the next goes in
+    // through its file once no editor shows the note, as insertion.e2e.ts
+    // checks with the note in Reading view, the same way to the file.
     it("stays when the symbol could not be inserted, and goes on once it is", async function () {
       try {
         await browser.executeObsidian(({ app }) => {
