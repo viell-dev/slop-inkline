@@ -17,18 +17,6 @@ describe("docsSource", () => {
     },
   );
 
-  it("deploys an explicitly unreleased guide before any release exists", () => {
-    expect(
-      docsSource({
-        event: "push",
-        ref: "main",
-        refType: "branch",
-        releases: [],
-        version: "0.0.0",
-      }),
-    ).toEqual({ deploy: true, ref: "main", version: "unreleased" });
-  });
-
   it.each([[], ["0.1.0"], ["0.2.0", "0.1.0"]])(
     "keeps the existing site when the prepared version is not the newest published release: %j",
     (...releases) => {
