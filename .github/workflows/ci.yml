@@ -41,12 +41,23 @@ jobs:
       - if: runner.os == 'Linux'
         run: npm audit --omit=dev --audit-level=low
 
-  e2e:
-    name: e2e
+  # The end-to-end suite, split over shards that run side by side, each on
+  # every Obsidian version. test/e2e/wdio.conf.mts balances them by the
+  # seconds in test/e2e/weights.json. The job `e2e` below reports the outcome
+  # under the name the ruleset requires, so no shard's name may be `e2e`.
+  e2e-shard:
+    name: e2e (${{ matrix.shard }}/${{ strategy.job-total }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # The number of shards is this list's length, which E2E_SHARD and the
+        # name read as strategy.job-total. The e2e job fails if the shards
+        # together miss or repeat a spec file.
+        shard: [1, 2, 3, 4]
     runs-on: ubuntu-latest
-    # The suite took 22 to 27 minutes on main until 2026-11-15, and 28 to 30
-    # once that day's specs landed; a limit is a hang's ceiling, not a target.
-    timeout-minutes: 45
+    # The unsharded suite took 28 to 30 minutes on main by 2026-11-16; a shard
+    # should take about 8.5. A limit is a hang's ceiling, not a target.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -73,13 +84,49 @@ jobs:
           sudo apt-get update -q
           sudo apt-get install -q --yes --no-install-recommends fonts-dejavu-core herbstluftwm poppler-utils x11-xserver-utils xvfb
       - run: sh test/e2e/session.sh
+        env:
+          E2E_SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: e2e-results
+          # Artifact names must be unique within a run.
+          name: e2e-results-${{ matrix.shard }}
           path: test-results/e2e
           if-no-files-found: warn
           retention-days: 30
+
+  # The check the ruleset and the release check require. It passes only when
+  # every shard passed and the shards together ran every spec file in
+  # test/e2e/specs exactly once, on as many Obsidian versions each. GitHub
+  # counts a skipped required job as passing, so this job must never be
+  # skippable: `always()` runs it after a failed or cancelled shard too, and
+  # its first step then fails.
+  e2e:
+    name: e2e
+    needs: e2e-shard
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check that every shard passed
+        env:
+          SHARDS: ${{ needs.e2e-shard.result }}
+        run: |
+          echo "The shards ended: $SHARDS"
+          test "$SHARDS" = success
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: e2e-results-*
+          path: e2e-shards
+      # Node.js's own modules only, so no npm ci.
+      - name: Check that the shards ran every spec file
+        run: node test/e2e/shards.ts check e2e-shards
 
   # The image the owner and agents run locally with `npm run test:e2e:docker`.
   # Weekly and on request, so that it keeps working without slowing every pull
