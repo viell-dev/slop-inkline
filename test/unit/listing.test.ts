@@ -30,6 +30,8 @@ describe("the listing's material", () => {
   it("has a long description with no emoji", () => {
     const description = text("long-description.txt");
     expect(description.length).toBeGreaterThan(250);
+    // The listing form counts the text and takes up to 1,000 characters.
+    expect(description.trim().length).toBeLessThanOrEqual(1000);
     expect(description).not.toMatch(/\p{Extended_Pictographic}/u);
     // Each paragraph is one line, so that it pastes without line breaks.
     expect(description.trim().split("\n\n").length).toBe(

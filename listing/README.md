@@ -1,20 +1,29 @@
 # Community directory listing
 
-What the listing form in Obsidian's community directory asks for, ready to paste
-and select. Submitting and updating the listing are the owner's steps, with
-their sign-in, as [#141](https://github.com/viell-dev/slop-inkline/issues/141)
-describes. Under **Edit listing** in the dashboard:
+Inkline is listed at <https://community.obsidian.md/plugins/inkline>, from
+`1.0.0`, with the values below, as the owner entered them on 2026-11-16 (#309).
+This is what the listing form in Obsidian's community directory asks for, ready
+to paste and select. Submitting and updating the listing are the owner's steps,
+with their sign-in, as
+[#141](https://github.com/viell-dev/slop-inkline/issues/141) describes. Under
+**Edit listing** in the dashboard:
 
 | Field             | Enter                                                       |
 | ----------------- | ----------------------------------------------------------- |
 | Short description | The whole of [short-description.txt](short-description.txt) |
 | Long description  | The whole of [long-description.txt](long-description.txt)   |
-| Categories        | Drawing, Images, Languages                                  |
+| Categories        | Drawing, Icons, Languages                                   |
 | Payment type      | Free                                                        |
-| Icon              | [icon.png](icon.png)                                        |
+| Icon              | Obsidian's `pencil-line`, in the default purple             |
 | Screenshots       | The five below, in this order                               |
 
-The text is in plain files so that it pastes without line breaks.
+The text is in plain files so that it pastes without line breaks. The form takes
+a long description of up to 1,000 characters, and the listing's page shows it as
+one paragraph, without its line breaks, so each paragraph ends a sentence.
+
+The owner chose one of Obsidian's own icons for the listing.
+[icon.png](icon.png), made from [icon.svg](icon.svg), is kept for a custom icon,
+and is not used.
 
 | Screenshot                                 | What it shows                                                 |
 | ------------------------------------------ | ------------------------------------------------------------- |
