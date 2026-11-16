@@ -32,6 +32,7 @@ on:
       - test/e2e/session.sh
       - test/e2e/specs/package.e2e.ts
       - test/e2e/support/harness.ts
+      - test/e2e/support/shards.ts
       - test/e2e/wdio.conf.mts
 
 permissions:
