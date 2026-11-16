@@ -17,6 +17,8 @@ without its strokes.
    if needed, and select **Browse**.
 2. Search for **Inkline**, select it, then select **Install** and **Enable**.
 
+Its page in the directory is <https://community.obsidian.md/plugins/inkline>.
+
 If Inkline does not show there yet, install the ZIP from the latest release:
 
 1. Download the install ZIP, `inkline-<version>.zip`, from the assets of the
