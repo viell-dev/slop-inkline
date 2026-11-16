@@ -744,6 +744,77 @@ export async function timedEditorSave() {
   });
 }
 
+/** How many modals are open, and whether the topmost has a Discard button. */
+interface ModalState {
+  readonly count: number;
+  readonly discard: boolean;
+}
+
+/** The longest {@link startOver} waits after acting on a modal. */
+const modalPause = 300;
+
+/** The modals of the window the test is in. */
+async function modalState(): Promise<ModalState> {
+  return browser.execute(() => {
+    const containers = document.querySelectorAll(".modal-container");
+    const top = Array.from(containers).at(-1);
+    return {
+      count: containers.length,
+      discard:
+        top !== undefined &&
+        Array.from(top.querySelectorAll("button")).some(
+          (button) => button.textContent.trim() === "Discard",
+        ),
+    };
+  });
+}
+
+/**
+ * After {@link startOver} acted on the modals as they were `before`, waits
+ * `longest` ms, or less once what it acts on next is there: a modal fewer,
+ * or a Discard button on top that was not, once that modal's opening
+ * animations have finished. Any other change, such as a modal more without
+ * one, waits the whole time, as a modal that is still being built might.
+ */
+async function modalsAfter(before: ModalState, longest: number): Promise<void> {
+  await browser.execute(
+    async (was, wait) => {
+      const until = performance.now() + wait;
+      const left = () => until - performance.now();
+      const pause = (ms: number) =>
+        new Promise((resolve) => window.setTimeout(resolve, ms));
+      while (left() > 0) {
+        const containers = document.querySelectorAll(".modal-container");
+        const top = Array.from(containers).at(-1);
+        const discard =
+          top !== undefined &&
+          Array.from(top.querySelectorAll("button")).some(
+            (button) => button.textContent.trim() === "Discard",
+          );
+        if (containers.length < was.count) return;
+        if (top !== undefined && discard && !was.discard) {
+          const opening = top
+            .getAnimations({ subtree: true })
+            .filter(
+              (animation) =>
+                animation.playState !== "finished" &&
+                animation.effect?.getComputedTiming().endTime !== Infinity,
+            );
+          if (opening.length === 0) return;
+          await Promise.race([
+            Promise.allSettled(opening.map((animation) => animation.finished)),
+            pause(left()),
+          ]);
+          return;
+        }
+        await pause(Math.min(10, left()));
+      }
+    },
+    before,
+    longest,
+  );
+}
+
 /**
  * Closes every modal, discarding unsaved drawings, and every note, then
  * restores the vault and clears drafts, so that each test starts from the
@@ -752,13 +823,15 @@ export async function timedEditorSave() {
 export async function startOver(): Promise<void> {
   await browser.waitUntil(
     async () => {
-      if (!(await browser.$(".modal-container").isExisting())) return true;
+      const before = await modalState();
+      if (before.count === 0) return true;
       const discard = await topButton("Discard");
       if (discard !== undefined) await discard.click();
       else await browser.keys(["Escape"]);
+      await modalsAfter(before, modalPause);
       return false;
     },
-    { interval: 300, timeoutMsg: "modals stayed open" },
+    { interval: 1, timeoutMsg: "modals stayed open" },
   );
   await browser.executeObsidian(async ({ app, obsidian }) => {
     // A note's tab saves what it holds when it closes, without waiting, so
