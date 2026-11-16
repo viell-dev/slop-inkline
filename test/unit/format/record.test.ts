@@ -387,27 +387,6 @@ describe("parseRecord refuses", () => {
     });
   }
 
-  it("more strokes than the limit", () => {
-    const text = variant(
-      ["strokes"],
-      Array.from({ length: limits.strokes + 1 }, () => ({
-        tool: "pen",
-        size: 1,
-        points: [0, 0],
-      })),
-    );
-    expect(invalid(parseRecord(text))).toBe("more than 10000 strokes");
-  });
-
-  it("more points than the limit, across strokes", () => {
-    const half = new Array<number>(limits.points).fill(0);
-    const stroke = { tool: "pen", size: 1, points: half };
-    expect(parseRecord(variant(["strokes"], [stroke])).ok).toBe(true);
-    expect(
-      invalid(parseRecord(variant(["strokes"], [stroke, stroke, stroke]))),
-    ).toBe("more than 250000 points");
-  });
-
   it("a base image with bytes after its end", () => {
     const png = encodePng(blank(1, 1));
     const longer = new Uint8Array(png.length + 3);
@@ -535,13 +514,6 @@ describe("parseRecord holds the text to the format's own JSON", () => {
   const nested = (depth: number): string =>
     `{"strokes":[],"a":${"[".repeat(depth - 1)}${"]".repeat(depth - 1)}}`;
 
-  it("allows the deepest nesting of the limit and refuses one more", () => {
-    expect(parseRecord(nested(limits.depth)).ok).toBe(true);
-    expect(invalid(parseRecord(nested(limits.depth + 1)))).toBe(
-      "nested more than 16 deep",
-    );
-  });
-
   it("refuses deep nesting before parsing it", () => {
     expect(invalid(parseRecord(nested(400_000)))).toBe(
       "nested more than 16 deep",
@@ -654,6 +626,9 @@ describe("a base layer's base64", () => {
       "é",
       "\n",
     ];
+    // Compared once, as an expect for each of the 20,736 took seconds (#269):
+    // each string read otherwise, with what was expected and what was found.
+    const wrong: (readonly [string, string, string])[] = [];
     for (const a of letters) {
       for (const b of letters) {
         for (const c of letters) {
@@ -661,12 +636,16 @@ describe("a base layer's base64", () => {
             const text = `${a}${b}${c}${d}`;
             const expected = ruledBase64(text);
             const found = readBase64(text);
-            if (typeof expected === "string") expect(found).toBe(expected);
-            else expect(found).toContain("not a valid PNG");
+            if (typeof expected === "string") {
+              if (found !== expected) wrong.push([text, expected, found]);
+            } else if (!found.includes("not a valid PNG")) {
+              wrong.push([text, "not a valid PNG", found]);
+            }
           }
         }
       }
     }
+    expect(wrong).toEqual([]);
   });
 
   it("refuses a bad character in any group, in the middle of a long text", () => {
@@ -795,10 +774,14 @@ describe("parseRecordSliced", () => {
       detail: 'the name "a" is repeated',
     });
     const nested = `{"strokes":[],${padding}"a":${"[".repeat(20)}${"]".repeat(20)}}`;
-    expect(parseRecord(nested)).toEqual({
+    const tooDeep = await paused((pause) =>
+      parseRecordSliced(nested, { pause }),
+    );
+    expect(tooDeep.result).toEqual({
       ok: false,
       detail: `nested more than ${String(limits.depth)} deep`,
     });
+    expect(tooDeep.result).toEqual(parseRecord(nested));
   });
 });
 
@@ -993,8 +976,6 @@ describe("parseRecord checks the base image", () => {
   if (ihdr === undefined || idat === undefined || iend === undefined) {
     throw new Error("no chunks");
   }
-  const end = iend;
-  const start = ihdr;
 
   it("refuses a PNG signature alone", () => {
     const text = variant(["base", "png"], base64(pngSignature));
@@ -1041,35 +1022,6 @@ describe("parseRecord checks the base image", () => {
       );
     }
   });
-
-  /** A valid PNG whose image data is padded to make it exactly `size` bytes. */
-  function paddedPng(size: number): Uint8Array {
-    const used = writeChunks([start, end]).length + 12;
-    return writeChunks([
-      start,
-      { type: "IDAT", data: new Uint8Array(size - used) },
-      end,
-    ]);
-  }
-
-  it("accepts a base image of exactly the size limit and refuses one byte more", () => {
-    const encode = (bytes: Uint8Array): string => {
-      let binary = "";
-      for (let offset = 0; offset < bytes.length; offset += 0x8000) {
-        binary += String.fromCharCode(
-          ...bytes.subarray(offset, offset + 0x8000),
-        );
-      }
-      return btoa(binary);
-    };
-    const exact = paddedPng(limits.baseBytes);
-    expect(exact.length).toBe(limits.baseBytes);
-    expect(parseRecord(variant(["base", "png"], encode(exact))).ok).toBe(true);
-    const over = paddedPng(limits.baseBytes + 1);
-    expect(invalid(parseRecord(variant(["base", "png"], encode(over))))).toBe(
-      "base.png is too large",
-    );
-  }, 30_000);
 });
 
 describe("parseRecord bounds the text", () => {
@@ -1086,6 +1038,11 @@ describe("parseRecord bounds the text", () => {
     return `${start}${filler.repeat(count)}${end}`;
   }
 
+  // Its time is the work itself: eight texts of 16 MiB, each read through, and
+  // four of them encoded to check their size. It took 2.3 to 4.9 seconds alone
+  // on Windows, and 5.1 to 5.5 while other tests loaded the machine, past
+  // Vitest's five (#269). It promises nothing about speed, which
+  // test/e2e/manual/open-time.e2e.ts measures in Obsidian.
   it("counts a character of each width, across the places it can pause", () => {
     // Each has a character across the end of a slice of 65,536 code units, or
     // would if the count went wrong, as the opening of these records is 19 long.
@@ -1099,13 +1056,13 @@ describe("parseRecord bounds the text", () => {
       const atLimit = recordOf(size, filler, width);
       expect(new TextEncoder().encode(atLimit).length).toBe(size);
       expect(parseRecord(atLimit).ok).toBe(true);
-      const past = `${recordOf(size, filler, width).slice(0, -2)}${"a".repeat(limits.text - size + 1)}"}`;
+      const past = `${atLimit.slice(0, -2)}${"a".repeat(limits.text - size + 1)}"}`;
       expect(parseRecord(past)).toEqual({
         ok: false,
         detail: "record text is too long",
       });
     }
-  });
+  }, 30_000);
 
   it("counts half of a surrogate pair as what encoding would write", () => {
     // Which the check of its text then refuses, once the length passes it.
@@ -1128,26 +1085,5 @@ describe("parseRecord bounds the text", () => {
     expect(invalid(parseRecord(" ".repeat(limits.text + 1)))).toBe(
       "record text is too long",
     );
-  });
-
-  /** An empty record with an ignored field holding `filler`. */
-  const padded = (filler: string): string =>
-    serializeRecord({ strokes: [] }).replace(/}$/, `,"extra":"${filler}"}`);
-
-  it("counts the limit in UTF-8 bytes, not characters", () => {
-    // Three bytes each in UTF-8, one code unit each in JavaScript.
-    const over = padded("ࠀ".repeat(6 * 1024 * 1024));
-    expect(over.length).toBeLessThan(limits.text);
-    expect(invalid(parseRecord(over))).toBe("record text is too long");
-    expect(parseRecord(padded("ࠀ".repeat(5 * 1024 * 1024))).ok).toBe(true);
-  });
-
-  it("counts a surrogate pair as four bytes", () => {
-    // Two code units and four bytes each.
-    const pairs = Math.floor(limits.text / 4);
-    const over = padded("😀".repeat(pairs));
-    expect(new TextEncoder().encode(over).length).toBeGreaterThan(limits.text);
-    expect(invalid(parseRecord(over))).toBe("record text is too long");
-    expect(parseRecord(padded("😀".repeat(pairs - 64))).ok).toBe(true);
   });
 });

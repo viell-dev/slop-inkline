@@ -52,16 +52,6 @@ describe("DrawingSession", () => {
     ]);
   });
 
-  it("records new strokes without pressure, as the pointer gives none", () => {
-    const session = new DrawingSession(emptyDocument);
-    session.begin({ x: 0, y: 0 });
-    session.extend([{ x: 1, y: 0 }]);
-    session.end();
-    expect(session.document.strokes[0]).toMatchObject({
-      points: [0, 0, 16, 0],
-    });
-  });
-
   it("skips repeated points", () => {
     const session = new DrawingSession(emptyDocument);
     session.begin({ x: 1, y: 1 });

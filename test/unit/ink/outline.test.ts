@@ -389,6 +389,14 @@ describe("polygon strokes", () => {
     expect(bounds?.top).toBeCloseTo(-6.626, 3);
     expect(bounds?.right).toBeCloseTo(22.626, 3);
     expect(bounds?.bottom).toBeCloseTo(150.626, 3);
+    // Within the corners' box, grown by what a corner cut at twice the width
+    // can reach along an axis: twice the width along its bisector, and half
+    // the width across it.
+    const grow = Math.hypot(2, 0.5) + 1e-9;
+    // Compared once, as an expect for each coordinate of each piece took about
+    // a second (#269): each point outside its box, or not a number, with the
+    // corners it came from.
+    const outside: (readonly [readonly number[], number, number])[] = [];
     // Corners in a line, as units put them, every way round.
     for (let a = -40; a <= 40; a += 3) {
       for (let b = -40; b <= 40; b += 7) {
@@ -400,19 +408,18 @@ describe("polygon strokes", () => {
           ).flat();
           const xs = points.filter((_, at) => at % 2 === 0).map((x) => x / 16);
           const ys = points.filter((_, at) => at % 2 === 1).map((y) => y / 16);
-          // Within the corners' box, grown by what a corner cut at twice the
-          // width can reach along an axis: twice the width along its
-          // bisector, and half the width across it.
-          const grow = Math.hypot(2, 0.5) + 1e-9;
+          const left = Math.min(...xs) - grow;
+          const right = Math.max(...xs) + grow;
+          const top = Math.min(...ys) - grow;
+          const bottom = Math.max(...ys) + grow;
           for (const [x, y] of pieces) {
-            expect(x).toBeGreaterThanOrEqual(Math.min(...xs) - grow);
-            expect(x).toBeLessThanOrEqual(Math.max(...xs) + grow);
-            expect(y).toBeGreaterThanOrEqual(Math.min(...ys) - grow);
-            expect(y).toBeLessThanOrEqual(Math.max(...ys) + grow);
+            const within = x >= left && x <= right && y >= top && y <= bottom;
+            if (!within) outside.push([points, x, y]);
           }
         }
       }
     }
+    expect(outside).toEqual([]);
   });
 
   it("wind every piece one way far from the origin", () => {
@@ -435,7 +442,7 @@ describe("polygon strokes", () => {
     }
   });
 
-  it("give nothing for no corners, or a lone corner with flat ends", () => {
+  it("give nothing for no corners", () => {
     expect(polygonPieces([], 2, false)).toEqual([]);
   });
 });

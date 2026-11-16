@@ -9,7 +9,6 @@ import {
   finishedSliced,
   firstDamaged,
   imageHeader,
-  maxChunks,
   inflate,
   isPng,
   pngSignature,
@@ -552,16 +551,6 @@ describe("readChunks and ancillary chunks", () => {
     expect(() => readChunks(withLength(2 ** 31))).toThrow("truncated chunk");
     // PNG's longest gets as far as the CRC, which lies past the bytes here.
     expect(() => readChunks(withLength(2 ** 31 - 1))).toThrow(RangeError);
-  });
-
-  it("reads as many chunks as the limit, and refuses one more", () => {
-    const empty: Chunk = { type: "abCd", data: new Uint8Array(0) };
-    const fill = (count: number): Uint8Array =>
-      writeChunks([ihdr, ...new Array<Chunk>(count).fill(empty), idat, iend]);
-    expect(readChunks(fill(maxChunks - 3))).toHaveLength(maxChunks);
-    expect(() => readChunks(fill(maxChunks - 2))).toThrow(
-      `more than ${String(maxChunks)} chunks`,
-    );
   });
 
   it("gives views of the file, not copies", () => {

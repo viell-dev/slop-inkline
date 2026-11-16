@@ -160,15 +160,21 @@ describe("every position of the slider", () => {
     });
 
     it(`softens no edge, in ${name}`, () => {
+      // Each threshold's two ramps are the same for light and dark ink, so
+      // they are worked out once for both (#269).
+      const edges = thresholds.map((threshold) => ({
+        threshold,
+        ramp: ramped(values)(threshold),
+        own: contrastAlone(values)(threshold),
+      }));
       for (const light of [true, false]) {
-        const softer = thresholds.filter((threshold) => {
-          const ramp = ramped(values)(threshold);
-          const own = contrastAlone(values)(threshold);
-          return (
-            partial(thresholdAlpha(values, threshold, light, ramp)) >
-            partial(thresholdAlpha(values, threshold, light, own))
-          );
-        });
+        const softer = edges
+          .filter(
+            ({ threshold, ramp, own }) =>
+              partial(thresholdAlpha(values, threshold, light, ramp)) >
+              partial(thresholdAlpha(values, threshold, light, own)),
+          )
+          .map(({ threshold }) => threshold);
         expect(softer).toEqual([]);
       }
     });
