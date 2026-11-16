@@ -5,9 +5,6 @@ What Inkline does not do, or does not do everywhere, and what to do instead. The
 
 ## In general
 
-- **Not in the directory yet.** Inkline is not in Obsidian's community directory
-  yet: install it from GitHub releases, by hand or with BRAT, until it is. See
-  [Install](./install.md).
 - **Desktop only.** Obsidian's mobile apps do not offer Inkline. The host tests
   run on Linux; Windows and macOS should work but are not tested.
 - **Mouse or trackpad.** A drawing tablet's pen or a touchscreen draws as a

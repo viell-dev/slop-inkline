@@ -1,16 +1,9 @@
 # Install
 
-::: info Not in the directory yet
-
-Inkline is distributed through
-[GitHub releases](https://github.com/viell-dev/slop-inkline/releases). It is not
-in Obsidian's community plugin directory yet; see
-[The community directory](#the-community-directory). Install the release files
-manually; no separate installer plugin is needed. If you would rather have
-updates arrive by themselves, [BRAT](#install-with-brat) is an optional
-alternative.
-
-:::
+Install Inkline from Obsidian's community plugins, or by hand with the install
+ZIP from [GitHub releases](https://github.com/viell-dev/slop-inkline/releases);
+no separate installer plugin is needed. If you would rather have updates arrive
+by themselves, [BRAT](#install-with-brat) is an optional alternative.
 
 ## What you need
 
@@ -24,6 +17,19 @@ Each change is tested in Obsidian 1.13.4, on the oldest installer that can run
 it, and in the latest public release of Obsidian. The host tests run on Linux;
 see [Promises and evidence](./verification.md) for the tested platforms and
 limits.
+
+## Install from Obsidian's community plugins
+
+1. In Obsidian, open **Settings → Community plugins**, and turn community
+   plugins on if needed.
+2. Select **Browse**, search for **Inkline**, and select it.
+3. Select **Install**, then **Enable**.
+
+Inkline is ready: run **Inkline: Insert symbol** from the command palette in a
+note, as [Your first symbol](./start.md) shows.
+
+If Inkline does not show there yet, install the ZIP from the latest release,
+below.
 
 ## Install the ZIP
 
@@ -91,10 +97,11 @@ install ZIP as well, run `node scripts/package.ts dist test-results/package`.
 
 ## Update
 
-Once Obsidian's community plugin directory lists Inkline, Obsidian offers each
-new public release as an update under **Settings → Community plugins**, however
-you installed it, as [The community directory](#the-community-directory) says.
-Until then, and to move to a pre-release, update by hand:
+Obsidian offers each new public release as an update to Inkline installed from
+its community plugins, under **Settings → Community plugins**, as
+[The community directory](#the-community-directory) says. Update a ZIP
+installation by hand, as below, or install Inkline from the community plugins
+once it shows there. Move to a pre-release by hand too:
 
 1. Save any open drawing, then turn Inkline off under **Settings → Community
    plugins**.
@@ -164,11 +171,10 @@ installs it at once.
 
 ## The community directory
 
-**Not listed yet.** 1.0.0, the first public release, is published on GitHub
-first, and then submitted to Obsidian's community plugin directory, which lists
-a plugin once Obsidian's review passes. Until Inkline is listed, install the
-[ZIP](#install-the-zip). Once it is, you can install it under **Settings →
-Community plugins → Browse**, and Obsidian offers its updates.
+Obsidian's community plugins, under **Settings → Community plugins → Browse**,
+offer Inkline's public releases, from 1.0.0 on, as
+[Install from Obsidian's community plugins](#install-from-obsidian-s-community-plugins)
+shows. If Inkline does not show there yet, install the [ZIP](#install-the-zip).
 
 The directory offers public releases only, those with an even minor version.
 Pre-releases stay on the
@@ -176,10 +182,10 @@ Pre-releases stay on the
 release keeps its ZIP and loose files, and BRAT remains an optional way to
 follow them.
 
-Once Inkline is listed, Obsidian offers its updates to every installation of it,
-however it was installed: someone on a 0.9 pre-release, or on an earlier public
-release, is offered the newest public release. Someone on a later pre-release,
-such as `1.1.0`, stays on it until a public release is higher, such as `1.2.0`.
+Obsidian offers the newest public release only when it is higher than the
+version installed: someone on a 0.9 pre-release, or on an earlier public
+release, is offered it. Someone on a later pre-release, such as `1.1.0`, stays
+on it until a public release is higher, such as `1.2.0`.
 
 ## Turn off or remove
 

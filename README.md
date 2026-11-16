@@ -13,8 +13,11 @@ they are, and every symbol saved from now on keeps opening and looking the same.
 A symbol saved by a version before 0.9.2 opens as a picture to draw over,
 without its strokes.
 
-Inkline is not in Obsidian's community plugin directory yet, so install it from
-GitHub:
+1. In Obsidian, open **Settings → Community plugins**, turn community plugins on
+   if needed, and select **Browse**.
+2. Search for **Inkline**, select it, then select **Install** and **Enable**.
+
+If Inkline does not show there yet, install the ZIP from the latest release:
 
 1. Download the install ZIP, `inkline-<version>.zip`, from the assets of the
    release marked **Latest** on
@@ -26,15 +29,17 @@ GitHub:
 3. In Obsidian, open **Settings → Community plugins**, turn community plugins on
    if needed, and enable **Inkline**.
 
-The [installation guide](https://viell-dev.github.io/slop-inkline/install)
-covers updates, pre-releases, older versions, and installing with BRAT. Release
-notes describe compatibility changes.
+Obsidian offers updates for Inkline installed from its community plugins. Update
+a ZIP installation by hand, or install Inkline from the community plugins once
+it shows there. The
+[installation guide](https://viell-dev.github.io/slop-inkline/install) covers
+updates, pre-releases, older versions, and installing with BRAT. Release notes
+describe compatibility changes.
 
 A public release has an even minor version, as 1.0.0, and a pre-release an odd
-one, as 1.1.0, for trying changes before the next public release. Once the
-community plugin directory lists Inkline, it offers the public releases, under
-**Settings → Community plugins → Browse**, with their updates. Every release,
-public or not, stays on GitHub with its install ZIP.
+one, as 1.1.0, for trying changes before the next public release. Obsidian's
+community plugins offer public releases only. Every release, public or not,
+stays on GitHub with its install ZIP.
 
 ## Your first symbol
 

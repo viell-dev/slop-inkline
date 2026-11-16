@@ -39,9 +39,9 @@ features:
 ::: info Install
 
 Inkline runs in Obsidian 1.13.4 or later, on desktop, and 1.0.0 is its first
-stable release. It is not in Obsidian's community plugin directory yet:
-[install the release ZIP](./install.md) from GitHub, then draw your first
-symbol.
+stable release. [Install it](./install.md) from Obsidian's community plugins,
+then draw your first symbol. If Inkline does not show there yet,
+[install the ZIP](./install.md#install-the-zip) from the latest release.
 
 :::
 

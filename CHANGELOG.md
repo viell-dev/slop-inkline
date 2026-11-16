@@ -20,15 +20,15 @@ and every symbol saved from now on keeps opening and looking the same in later
 versions. A symbol saved by a version before 0.9.2 still looks as it did, and
 opens as a picture to draw over, as it has since 0.9.2.
 
-**To install it,** download `inkline-1.0.0.zip` from this release's assets and
-extract it into your vault's `.obsidian/plugins/` directory, replacing an
-earlier version's three files, as
-[the install guide](https://viell-dev.github.io/slop-inkline/install) says. Once
-Obsidian's community plugin directory lists Inkline, you can also install it
-under **Settings → Community plugins → Browse**, and Obsidian offers its
-updates. The directory offers public releases only, those with an even minor
-version. Later pre-releases, such as 1.1.0, are on GitHub only, to install by
-their ZIP or with BRAT.
+**To install it,** use Obsidian's community plugins, under **Settings →
+Community plugins → Browse**, once Inkline appears there; Obsidian then offers
+its updates. Or install it now with `inkline-1.0.0.zip` from this release's
+assets: extract it into your vault's `.obsidian/plugins/` directory, replacing
+an earlier version's three files, as
+[the install guide](https://viell-dev.github.io/slop-inkline/install) says.
+Obsidian's community plugins offer public releases only, those with an even
+minor version. Later pre-releases, such as 1.1.0, are on GitHub only, to install
+by their ZIP or with BRAT.
 
 ### Changed
 

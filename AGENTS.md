@@ -418,7 +418,8 @@ the owner in an issue with `Needs: Owner`.
 prerelease on GitHub once it is ready by those steps, without asking the owner
 for each one. The owner's explicit stable-publication hold in
 [#5](https://github.com/viell-dev/slop-inkline/issues/5) remains binding until
-the owner lifts it there, as the release guide explains. The owner decided in
+the owner lifts it there, as the release guide explains; the owner lifted it for
+`1.0.0` on 2026-11-16. The owner decided in
 [#141](https://github.com/viell-dev/slop-inkline/issues/141) that `1.0.0` is
 also the first release in Obsidian's community directory. Submitting it there is
 the owner's own step, with their sign-in, once it is published on GitHub, as

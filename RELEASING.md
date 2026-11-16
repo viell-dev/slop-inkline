@@ -89,8 +89,8 @@ of direction as well as the agreed goal, human evidence, and blocker
 dispositions below. The release tracker in #5 links the applicable human test
 requests and remaining work. For `1.0.0`, the goal's conditions, the human
 evidence, and the open defects are recorded in
-[Why 1.0.0 meets the goal](#why-100-meets-the-goal); the hold stands until the
-owner lifts it in #5.
+[Why 1.0.0 meets the goal](#why-100-meets-the-goal), and the owner lifted the
+hold for it in #5 on 2026-11-16.
 
 Submitting the plugin to Obsidian's community directory is the owner's own step,
 with their sign-in, as [The community directory](#the-community-directory) says.
@@ -167,7 +167,7 @@ asked for one more, and four independent checks of it found nothing critical. So
   owner asked for, that a library row in Quick edit keeps its own buttons, the
   symbol, **Uses**, and **Quick edit**, above the form.
 
-It meets each condition of the stable stage above, but the last:
+It meets each condition of the stable stage above:
 
 - **The owner's passes are handled.** Each asked for changes, and a later
   release made every one:
@@ -271,10 +271,9 @@ It meets each condition of the stable stage above, but the last:
   a new format version, and a change to the format document's normative text
   makes a new revision.
 
-**Stable publication waits on the owner lifting the hold in
-[#5](https://github.com/viell-dev/slop-inkline/issues/5),** the stable stage's
-last condition. Nothing in this section, in the release pull request, or in a
-passing check lifts it.
+**The owner lifted the hold in
+[#5](https://github.com/viell-dev/slop-inkline/issues/5) for `1.0.0` on
+2026-11-16,** the stable stage's last condition, after the evidence above.
 
 ## Where a version is recorded
 
@@ -443,10 +442,12 @@ On a branch from `main`:
    `package.json` names a public version, `test/unit/docs.test.ts` fails while
    any of them says that Inkline is a prerelease, that every release so far is
    one, or that there is no public release yet. What they say of Obsidian's
-   community directory follows the listing, not the version: the release is
-   published before the owner submits it there, so say what is true on the day,
-   and update it once the directory lists Inkline. Remove **Unreleased** labels
-   only from behavior included in this release; retain labels for later work.
+   community directory must hold both before and after it lists Inkline, as the
+   release is published before the owner submits it there: lead with installing
+   from Obsidian's community plugins, with the ZIP from the latest release as
+   the way in while Inkline does not show there, so that the listing needs no
+   change to them. Remove **Unreleased** labels only from behavior included in
+   this release; retain labels for later work.
 5. Run `node scripts/release.ts check <version>` and
    `node scripts/publish.ts order <version>`, which the workflow runs too. The
    first checks that `package.json` names the version, that the changelog
