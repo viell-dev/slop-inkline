@@ -14,13 +14,13 @@
 //   node test/e2e/shards.ts weights <directory>...
 //     Rewrites test/e2e/weights.json from the runs under the directories.
 //
-// It imports only Node.js's own modules, through support/harness.ts, so that
+// It imports only Node.js's own modules, through support/shards.ts, so that
 // CI runs it without installing the dependencies. Everything but reading the
 // process's arguments and environment is in shardsCommand, which unit tests
 // run.
 
 import path from "node:path";
-import { shardsCommand } from "./support/harness.ts";
+import { shardsCommand } from "./support/shards.ts";
 
 process.exitCode = await shardsCommand(process.argv.slice(2), {
   specsDir: path.join(import.meta.dirname, "specs"),

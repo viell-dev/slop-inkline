@@ -21,25 +21,27 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseObsidianVersions } from "wdio-obsidian-service";
 import {
-  assignShards,
   durationsFile,
-  durationsFormat,
   outputDirectory,
-  parseShard,
   pluginDirectory,
   prepareOutput,
-  readWeights,
   requestedVersions,
   sessionDisplays,
   setting,
+  workerDisplay,
+  workerVersion,
+} from "./support/harness.ts";
+import {
+  assignShards,
+  durationsFormat,
+  parseShard,
+  readWeights,
   shardSeconds,
   specFiles,
   specName,
-  workerDisplay,
-  workerVersion,
   type Durations,
   type WorkerRun,
-} from "./support/harness.ts";
+} from "./support/shards.ts";
 
 const root = path.resolve(import.meta.dirname, "../..");
 const specsDir = path.join(import.meta.dirname, "specs");
