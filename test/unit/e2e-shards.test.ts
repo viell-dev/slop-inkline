@@ -161,17 +161,23 @@ describe("weights and shards", () => {
 
   // This reads only the table and the list of spec files, so it cannot tell
   // whether the table still matches how long the files take; the shards'
-  // logs and durations.json show that. A failure means the table cannot be
-  // split into four shards within 10% of each other, because one file
-  // outweighs a fair share: split that file, or change the number of shards
-  // in .github/workflows/ci.yml and here.
-  it("can split the table into four shards within 10% of each other", () => {
-    const totals = assignShards(specs, weights, 4).map((shard) =>
-      shardSeconds(shard, weights),
-    );
+  // logs and durations.json show that. A failure means the greedy assignment
+  // of the current table puts four shards more than 10% apart. Greedy is not
+  // optimal, so a better split may exist; first look at the assignment the
+  // message prints. Then split a spec file that dominates its shard, or
+  // change the number of shards in .github/workflows/ci.yml and here.
+  it("splits the table into four shards within 10% of each other", () => {
+    const shards = assignShards(specs, weights, 4);
+    const totals = shards.map((shard) => shardSeconds(shard, weights));
+    const assignment = shards
+      .map(
+        (shard, index) =>
+          `shard ${String(index + 1)}: ${String(totals[index])} s, ${shard.join(" ")}`,
+      )
+      .join("; ");
     expect(
       Math.max(...totals),
-      `four shards weigh ${totals.join(", ")} s: one spec file outweighs a fair share, so split it, or change the number of shards in ci.yml and in this test`,
+      `the greedy assignment puts the shards more than 10% apart (${assignment}): split a spec file that dominates its shard, or change the number of shards in ci.yml and in this test`,
     ).toBeLessThanOrEqual(Math.min(...totals) * 1.1);
   });
 

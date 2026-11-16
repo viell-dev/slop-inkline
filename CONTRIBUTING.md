@@ -290,10 +290,11 @@ It takes each measured spec file's slower version, keeps the weight of one that
 did not run, and drops a file that no longer exists. When a shard was re-run,
 its run has an artifact of that name from each attempt, and `gh run download`
 leaves one `durations.json` in its directory: for run 43941401108 it was the
-later attempt's. A unit test fails when the table cannot be split into four
-shards within 10% of each other, which happens when one spec file outweighs a
-fair share; refreshing does not help then. Split that file, or change the number
-of shards in `.github/workflows/ci.yml` and in that test.
+later attempt's. A unit test fails when the greedy assignment of the current
+table puts four shards more than 10% apart. The assignment is not optimal, so a
+better split may exist; start with the assignment the failure prints. Then split
+a spec file that dominates its shard, or change the number of shards in
+`.github/workflows/ci.yml` and in that test.
 
 The Directory checks workflow runs Obsidian's own action on every pull request,
 which checks the plugin much as the community directory does. It is not a

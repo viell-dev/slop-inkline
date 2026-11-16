@@ -83,6 +83,15 @@ if (shard !== undefined) {
 // Each requested pair is resolved on its own, so that the capabilities stay
 // one for each request, in order, even where two resolve to the same version:
 // a worker's version index then names its request.
+//
+// Known limit: if two requests resolve to the same version, as earliest and
+// latest would once the manifest's minAppVersion is the newest release, both
+// capabilities run the same spec files at once and share the output paths
+// keyed by the resolved version, such as pdfs/<version>/, which pdf.e2e.ts
+// reads back, and screenshots/<version>/. That can fail a test, never pass
+// one falsely. The library's own resolution ran one capability for them. The
+// fix then is to run one capability for requests that resolve alike, and
+// record its result under each of those requests.
 const requested = requestedVersions(process.env.OBSIDIAN_VERSIONS);
 const versions: [string, string][] = [];
 for (const request of requested) {
