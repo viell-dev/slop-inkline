@@ -149,8 +149,8 @@ own files, and `test/e2e/specs/package.e2e.ts` checks that the test vault holds
 exactly those. `npm run test:e2e:docker` always installs the build it makes in
 its image.
 
-Screenshots and logs go to `test-results/e2e/`, which CI uploads as an artifact;
-a failed test leaves a screenshot named after it. `E2E_OUTPUT_DIR` picks another
+Screenshots and logs go to `test-results/e2e/`, which CI uploads as artifacts; a
+failed test leaves a screenshot named after it. `E2E_OUTPUT_DIR` picks another
 directory, which must be new, empty, or an earlier run's output: the harness
 marks its directory and refuses to clean any other. Screenshots are for review,
 never compared with reference images: a test reads state, positions, or pixels
@@ -251,7 +251,32 @@ and `sha256sum --check test/fixtures/pinned.sha256` checks them all.
 nothing but new lines.
 
 CI runs the end-to-end tests on Linux for every pull request, and the Docker
-image weekly and on request.
+image weekly and on request. Outside Docker, CI splits the suite over four jobs
+that run side by side, `e2e (1/4)` to `e2e (4/4)`, each on both Obsidian
+versions, which keeps the wait to about a quarter of the suite. `E2E_SHARD`,
+such as `2/4`, runs one such shard anywhere; unset, every spec file runs, as in
+Docker and the Release workflow. The shards are balanced by the seconds in
+`test/e2e/weights.json`, named by the spec file's path under `test/e2e/specs`. A
+spec file the table does not list counts as its median, so a new one runs
+without editing it. Each shard's log lists the files it runs.
+
+Every run writes `durations.json` to the output directory, with the seconds each
+spec file took on each version, and each shard uploads its output as the
+artifact `e2e-results-1` to `e2e-results-4`. The job named `e2e`, which `main`
+requires, passes only when all four shards passed and their `durations.json`
+files name every spec file exactly once, each on as many versions as the others,
+so that a file that runs nowhere fails it.
+
+When the shards drift apart, or a unit test says the table is out of balance,
+refresh the table from a recent run of CI on `main` and commit it:
+
+```sh
+gh run download <run-id> --pattern 'e2e-results-*' --dir <dir>
+node test/e2e/shards.ts weights <dir>
+```
+
+It takes each measured spec file's slower version, keeps the weight of one that
+did not run, and drops a file that no longer exists.
 
 The Directory checks workflow runs Obsidian's own action on every pull request,
 which checks the plugin much as the community directory does. It is not a
