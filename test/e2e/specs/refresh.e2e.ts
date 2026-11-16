@@ -172,9 +172,12 @@ async function cardFrame(mark = false): Promise<string> {
       frame instanceof HTMLIFrameElement ? frame.contentDocument : null;
     if (doc === null) return JSON.stringify({ frames: frames.length });
     const images = Array.from(doc.querySelectorAll("img.inkline-symbol"));
+    // A property and not an attribute, which the card's editor would see
+    // change.
     if (marking) {
-      Reflect.set(doc, "inklineTestMarked", true);
-      for (const image of images) image.setAttribute("data-inkline-test", "");
+      for (const marked of [doc, ...images]) {
+        Reflect.set(marked, "inklineTestMarked", true);
+      }
     }
     return JSON.stringify({
       frames: frames.length,
@@ -183,7 +186,7 @@ async function cardFrame(mark = false): Promise<string> {
       focused: doc.hasFocus(),
       images: images.map((image) => ({
         src: image.getAttribute("src"),
-        same: image.hasAttribute("data-inkline-test"),
+        same: Reflect.get(image, "inklineTestMarked") === true,
       })),
     });
   }, mark);
@@ -475,8 +478,13 @@ describe("Saved symbol refresh", function () {
         );
       });
     } catch (error) {
+      // Read for the message alone: if the read fails too, the failure it
+      // was to explain is still the one reported.
+      const now = await cardFrame().catch(
+        (failed: unknown) => `not read: ${String(failed)}`,
+      );
       throw new Error(
-        `the card's editor's symbols did not follow their new shape: ${JSON.stringify(shown)}; the frame when measured: ${measured}; and now: ${await cardFrame()}`,
+        `the card's editor's symbols did not follow their new shape: ${JSON.stringify(shown)}; the frame when measured: ${measured}; and now: ${now}`,
         { cause: error },
       );
     }

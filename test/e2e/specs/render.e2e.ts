@@ -400,7 +400,8 @@ describe("Symbols in notes", function () {
       app.workspace.setActiveLeaf(leaf, { focus: true });
     });
     const own = ".workspace-leaf.mod-active .image-container img";
-    await browser.$(own).waitForExist();
+    // Its height is read, so it has to have loaded.
+    await waitForLoaded(own, 1);
     const [picture] = await shown(own);
     expect(picture?.tagged).toBe(false);
     expect(picture?.height).toBe(192);
