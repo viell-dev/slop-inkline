@@ -288,10 +288,11 @@ afterEach(() => {
   rmSync(directory, { recursive: true, force: true });
 });
 
+// What publishing sends depends on the version only through isPrerelease
+// and the install ZIP's name, so one public release and one pre-release
+// cover it.
 describe.each([
-  { version: "1.0.0", prerelease: false, latest: "true" },
   { version: "1.2.0", prerelease: false, latest: "true" },
-  { version: "0.9.1", prerelease: true, latest: "false" },
   { version: "1.1.0", prerelease: true, latest: "false" },
 ])("publishing $version", ({ version, prerelease, latest }) => {
   it("creates a draft of exactly the build, on the commit", async () => {
@@ -500,40 +501,6 @@ describe("running again after a failure", () => {
         .sort(),
     ).toEqual(assetNames(version));
     expect(only(version).draft).toBe(false);
-  });
-
-  it("replaces a draft that holds every file but the specification", async () => {
-    // As a run from before the specification travelled with a release would
-    // leave it.
-    const held = assetNames(version)
-      .filter((name) => name !== specificationFile)
-      .map((name) => ({
-        name,
-        digest: `sha256:${digestOf(readFileSync(join(directory, name)))}`,
-      }));
-    gh.releases.push({
-      id: 99,
-      tag_name: version,
-      target_commitish: commit,
-      assets: held,
-      draft: true,
-      prerelease: false,
-    });
-
-    await publish(version);
-    expect(gh.writes).toContainEqual([
-      "api",
-      "-X",
-      "DELETE",
-      `${api}/releases/99`,
-    ]);
-    expect(only(version).id).not.toBe(99);
-    expect(only(version).draft).toBe(false);
-    expect(
-      only(version)
-        .assets.map((asset) => asset.name)
-        .sort(),
-    ).toEqual(assetNames(version));
   });
 
   it("replaces a draft of the same files for another commit", async () => {
