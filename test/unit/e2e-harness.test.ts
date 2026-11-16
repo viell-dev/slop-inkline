@@ -13,8 +13,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   assignShards,
   coverageProblems,
+  defaultObsidianVersions,
   defaultWeight,
   durationsFile,
+  durationsFormat,
   mergeWeights,
   outputDirectory,
   parseDurations,
@@ -25,14 +27,20 @@ import {
   prepareOutput,
   readDurations,
   readWeights,
+  requestedVersions,
   sessionDisplays,
   setting,
+  shardProblems,
   shardSeconds,
+  shardsCommand,
+  shardsUsage,
   specFiles,
   specName,
   workerDisplay,
+  workerVersion,
   type Durations,
   type ShardRun,
+  type WorkerRun,
 } from "../e2e/support/harness.ts";
 
 const specsDir = path.resolve("test/e2e/specs");
@@ -209,6 +217,31 @@ describe("parseShard", () => {
   });
 });
 
+describe("workerVersion and requestedVersions", () => {
+  it("reads a worker's version index from its id", () => {
+    expect(workerVersion("0-0")).toBe(0);
+    expect(workerVersion("1-27")).toBe(1);
+    expect(workerVersion("x-1")).toBeUndefined();
+    expect(workerVersion("-1")).toBeUndefined();
+    expect(workerVersion("")).toBeUndefined();
+  });
+
+  it("requests the default versions unless OBSIDIAN_VERSIONS names others", () => {
+    expect(defaultObsidianVersions).toEqual([
+      "earliest/earliest",
+      "latest/latest",
+    ]);
+    expect(requestedVersions(undefined)).toEqual(defaultObsidianVersions);
+    expect(requestedVersions(" ")).toEqual(defaultObsidianVersions);
+    expect(requestedVersions("latest/latest")).toEqual(["latest/latest"]);
+    // As wdio-obsidian-service splits them, at spaces or commas.
+    expect(requestedVersions(" 1.13.4/1.5.8,latest/latest ")).toEqual([
+      "1.13.4/1.5.8",
+      "latest/latest",
+    ]);
+  });
+});
+
 describe("specName", () => {
   const directory = path.resolve("checkout", "test", "e2e", "specs");
 
@@ -218,6 +251,39 @@ describe("specName", () => {
     expect(specName(pathToFileURL(file).href, directory)).toBe(
       "area/editor.e2e.ts",
     );
+  });
+});
+
+describe("specFiles", () => {
+  let directory: string;
+
+  beforeEach(async () => {
+    directory = await mkdtemp(path.join(tmpdir(), "inkline-specs-"));
+  });
+
+  afterEach(async () => {
+    await rm(directory, { recursive: true, force: true });
+  });
+
+  it("lists spec files at any depth, by forward-slashed paths", async () => {
+    await mkdir(path.join(directory, "area", "deeper"), { recursive: true });
+    for (const file of [
+      "b.e2e.ts",
+      "a.e2e.ts",
+      "helper.ts",
+      "notes.md",
+      path.join("area", "c.e2e.ts"),
+      path.join("area", "deeper", "d.e2e.ts"),
+      path.join("area", "support.ts"),
+    ]) {
+      await writeFile(path.join(directory, file), "");
+    }
+    expect(await specFiles(directory)).toEqual([
+      "a.e2e.ts",
+      "area/c.e2e.ts",
+      "area/deeper/d.e2e.ts",
+      "b.e2e.ts",
+    ]);
   });
 });
 
@@ -262,16 +328,26 @@ describe("weights and shards", () => {
     },
   );
 
-  // A failure here means the spec files' times have moved since the table
-  // was measured. Refresh it from a recent run of CI on main, as
-  // CONTRIBUTING.md's Tests say:
-  //   gh run download <run-id> --pattern 'e2e-results-*' --dir <dir>
-  //   node test/e2e/shards.ts weights <dir>
-  it("balances four shards to within 10% by the table", () => {
+  it.each([0, -1, 1.5, Number.NaN])("refuses %s shards", (total) => {
+    expect(() => assignShards(specs, weights, total)).toThrow(
+      `the spec files need at least 1 shard, not ${String(total)}`,
+    );
+  });
+
+  // This reads only the table and the list of spec files, so it cannot tell
+  // whether the table still matches how long the files take; the shards'
+  // logs and durations.json show that. A failure means the table cannot be
+  // split into four shards within 10% of each other, because one file
+  // outweighs a fair share: split that file, or change the number of shards
+  // in .github/workflows/ci.yml and here.
+  it("can split the table into four shards within 10% of each other", () => {
     const totals = assignShards(specs, weights, 4).map((shard) =>
       shardSeconds(shard, weights),
     );
-    expect(Math.max(...totals)).toBeLessThanOrEqual(Math.min(...totals) * 1.1);
+    expect(
+      Math.max(...totals),
+      `four shards weigh ${totals.join(", ")} s: one spec file outweighs a fair share, so split it, or change the number of shards in ci.yml and in this test`,
+    ).toBeLessThanOrEqual(Math.min(...totals) * 1.1);
   });
 
   it("places a spec file that the table does not list", () => {
@@ -297,6 +373,7 @@ describe("weights and shards", () => {
     expect(defaultWeight({ a: 7 })).toBe(7);
     expect(defaultWeight({ a: 1, b: 100, c: 3 })).toBe(3);
     expect(defaultWeight({ a: 1, b: 100, c: 3, d: 5 })).toBe(4);
+    expect(shardSeconds(["a", "z"], { a: 1, b: 100, c: 3 })).toBe(4);
   });
 
   it("refuses a table that is not spec files to seconds", () => {
@@ -312,85 +389,297 @@ describe("weights and shards", () => {
   });
 });
 
+const pairs = [...defaultObsidianVersions];
+
+/** A worker that ran a spec file on a version, passing unless told. */
+function worker(exitCode = 0, resolved = "1.15.1/1.15.1"): WorkerRun {
+  return { resolved, seconds: 10, exitCode };
+}
+
+/** Workers that passed a spec file on each of `versions`. */
+function passedOn(
+  versions: readonly string[] = pairs,
+): Record<string, WorkerRun> {
+  return Object.fromEntries(versions.map((version) => [version, worker()]));
+}
+
+function record(
+  specs: Durations["specs"],
+  options: Partial<Pick<Durations, "shard" | "exitCode" | "versions">> = {},
+): Durations {
+  return {
+    format: durationsFormat,
+    shard: options.shard ?? null,
+    versions: options.versions ?? pairs,
+    exitCode: options.exitCode ?? 0,
+    specs,
+  };
+}
+
+function run(
+  source: string,
+  specs: Durations["specs"],
+  options: Partial<Pick<Durations, "shard" | "exitCode" | "versions">> = {},
+): ShardRun {
+  return { source, durations: record(specs, options) };
+}
+
 describe("coverageProblems", () => {
   const specs = ["a.e2e.ts", "b.e2e.ts", "c.e2e.ts"];
-  const both = { "1.13.4/1.13.4": 10, "1.15.2/1.15.2": 12 };
 
-  function run(
-    source: string,
-    times: Durations["specs"],
-    shard: string | null = null,
-  ): ShardRun {
-    return { source, durations: { shard, specs: times } };
-  }
-
-  it("passes when the shards ran every spec file once on every version", () => {
+  it("passes when the shards ran and passed every spec file once on every version", () => {
     expect(
-      coverageProblems(specs, [
-        run("1", { "a.e2e.ts": both }, "1/2"),
-        run("2", { "b.e2e.ts": both, "c.e2e.ts": both }, "2/2"),
-      ]),
+      coverageProblems(
+        specs,
+        [
+          run("1", { "a.e2e.ts": passedOn() }, { shard: "1/2" }),
+          run(
+            "2",
+            { "b.e2e.ts": passedOn(), "c.e2e.ts": passedOn() },
+            { shard: "2/2" },
+          ),
+        ],
+        pairs,
+      ),
     ).toEqual([]);
   });
 
-  it("passes when the latest version moved between shards", () => {
+  it("passes when latest resolved to another version in another shard", () => {
     expect(
-      coverageProblems(specs, [
-        run("1", { "a.e2e.ts": both, "b.e2e.ts": both }),
-        run("2", { "c.e2e.ts": { "1.13.4/1.13.4": 1, "1.15.3/1.15.3": 1 } }),
-      ]),
+      coverageProblems(
+        specs,
+        [
+          run("1", { "a.e2e.ts": passedOn(), "b.e2e.ts": passedOn() }),
+          run("2", {
+            "c.e2e.ts": {
+              "earliest/earliest": worker(0, "1.13.4/1.5.8"),
+              "latest/latest": worker(0, "1.15.2/1.15.2"),
+            },
+          }),
+        ],
+        pairs,
+      ),
     ).toEqual([]);
   });
 
   it("fails, naming the spec file, when one ran nowhere", () => {
     expect(
-      coverageProblems(specs, [
-        run("1", { "a.e2e.ts": both }),
-        run("2", { "c.e2e.ts": both }),
-      ]),
-    ).toEqual(["b.e2e.ts ran in no shard"]);
+      coverageProblems(
+        specs,
+        [
+          run("1", { "a.e2e.ts": passedOn() }),
+          run("2", { "c.e2e.ts": passedOn() }),
+        ],
+        pairs,
+      ),
+    ).toEqual(["b.e2e.ts is in no durations.json"]);
   });
 
   it("fails, naming the spec file, when one ran in two shards", () => {
     expect(
-      coverageProblems(specs, [
-        run("1", { "a.e2e.ts": both, "b.e2e.ts": both }),
-        run("2", { "b.e2e.ts": both, "c.e2e.ts": both }),
-      ]),
-    ).toEqual(["b.e2e.ts ran in more than one shard: 1, 2"]);
+      coverageProblems(
+        specs,
+        [
+          run("1", { "a.e2e.ts": passedOn(), "b.e2e.ts": passedOn() }),
+          run("2", { "b.e2e.ts": passedOn(), "c.e2e.ts": passedOn() }),
+        ],
+        pairs,
+      ),
+    ).toEqual(["b.e2e.ts is in more than one durations.json: 1, 2"]);
   });
 
-  it("fails, naming the spec file, when one ran on fewer versions", () => {
+  // A partial re-run: shards 2 and 3 failed, only shard 2 was run again and
+  // passed, and shard 3's first record, uploaded after its failure, is still
+  // the newest of its name. Every spec file is there once, so only the
+  // recorded exit codes can tell.
+  it("fails, naming the spec file and version, when a shard's record holds a failure", () => {
     expect(
-      coverageProblems(specs, [
-        run("1", { "a.e2e.ts": both, "b.e2e.ts": both }),
-        run("2", { "c.e2e.ts": { "1.15.2/1.15.2": 12 } }),
-      ]),
-    ).toEqual(["c.e2e.ts ran on 1 Obsidian versions, where others ran on 2"]);
-  });
-
-  it("fails when nothing ran on any version, or nothing was recorded", () => {
-    expect(
-      coverageProblems(specs, [
-        run("1", { "a.e2e.ts": {}, "b.e2e.ts": {}, "c.e2e.ts": {} }),
-      ]),
-    ).toEqual(["no spec file ran on any Obsidian version"]);
-    expect(coverageProblems(specs, [])).toEqual([
-      "no shard recorded a durations.json",
+      coverageProblems(
+        specs,
+        [
+          run("e2e-results-1", { "a.e2e.ts": passedOn() }, { shard: "1/3" }),
+          run("e2e-results-2", { "b.e2e.ts": passedOn() }, { shard: "2/3" }),
+          run(
+            "e2e-results-3",
+            {
+              "c.e2e.ts": {
+                "earliest/earliest": worker(0, "1.13.4/1.5.8"),
+                "latest/latest": worker(1),
+              },
+            },
+            { shard: "3/3", exitCode: 1 },
+          ),
+        ],
+        pairs,
+      ),
+    ).toEqual([
+      "e2e-results-3: the run ended with exit code 1",
+      "c.e2e.ts failed on Obsidian latest/latest (1.15.1/1.15.1), with exit code 1",
     ]);
   });
 
-  it("fails when a run names a spec file that does not exist", () => {
+  it("fails when a launcher failed, though every worker it recorded passed", () => {
     expect(
-      coverageProblems(specs, [
-        run("1", {
-          "a.e2e.ts": both,
-          "b.e2e.ts": both,
-          "c.e2e.ts": both,
-          "gone.e2e.ts": both,
-        }),
-      ]),
-    ).toEqual(["1 names gone.e2e.ts, which is not a spec file"]);
+      coverageProblems(
+        specs,
+        [
+          run(
+            "1",
+            {
+              "a.e2e.ts": passedOn(),
+              "b.e2e.ts": passedOn(),
+              "c.e2e.ts": passedOn(),
+            },
+            { exitCode: 1 },
+          ),
+        ],
+        pairs,
+      ),
+    ).toEqual(["1: the run ended with exit code 1"]);
+  });
+
+  it("fails when every spec file ran on only one of the two versions", () => {
+    const one = ["latest/latest"];
+    expect(
+      coverageProblems(
+        specs,
+        [
+          run(
+            "1",
+            {
+              "a.e2e.ts": passedOn(one),
+              "b.e2e.ts": passedOn(one),
+              "c.e2e.ts": passedOn(one),
+            },
+            { versions: one },
+          ),
+        ],
+        pairs,
+      ),
+    ).toEqual([
+      "1: the run requested Obsidian latest/latest, not earliest/earliest latest/latest",
+      "a.e2e.ts did not run on Obsidian earliest/earliest",
+      "b.e2e.ts did not run on Obsidian earliest/earliest",
+      "c.e2e.ts did not run on Obsidian earliest/earliest",
+    ]);
+  });
+
+  it("fails when the spec files ran on two versions, but the wrong ones", () => {
+    const wrong = ["latest/latest", "1.14.4/1.14.4"];
+    const problems = coverageProblems(
+      specs,
+      [
+        run(
+          "1",
+          {
+            "a.e2e.ts": passedOn(wrong),
+            "b.e2e.ts": passedOn(wrong),
+            "c.e2e.ts": passedOn(wrong),
+          },
+          { versions: wrong },
+        ),
+      ],
+      pairs,
+    );
+    expect(problems).toContain(
+      "a.e2e.ts did not run on Obsidian earliest/earliest",
+    );
+    expect(problems).toContain(
+      "a.e2e.ts ran on Obsidian 1.14.4/1.14.4, not expected",
+    );
+  });
+
+  it("fails rather than pass with nothing to expect or nothing recorded", () => {
+    const all = run("1", { "a.e2e.ts": passedOn() });
+    expect(coverageProblems([], [all], pairs)).toEqual([
+      "there are no spec files to expect",
+    ]);
+    expect(coverageProblems(specs, [all], [])).toEqual([
+      "there are no Obsidian versions to expect",
+    ]);
+    expect(coverageProblems(specs, [], pairs)).toEqual([
+      "no run recorded a durations.json",
+    ]);
+  });
+
+  it("fails when a run names a spec file that is not expected", () => {
+    expect(
+      coverageProblems(
+        specs,
+        [
+          run("1", {
+            "a.e2e.ts": passedOn(),
+            "b.e2e.ts": passedOn(),
+            "c.e2e.ts": passedOn(),
+            "gone.e2e.ts": passedOn(),
+          }),
+        ],
+        pairs,
+      ),
+    ).toEqual([
+      "1 names gone.e2e.ts, which is not one of the spec files expected",
+    ]);
+  });
+});
+
+describe("shardProblems", () => {
+  const shard = { index: 2, total: 3 };
+  const assigned = ["b.e2e.ts", "d.e2e.ts"];
+  const own = run(
+    "out/durations.json",
+    { "b.e2e.ts": passedOn(), "d.e2e.ts": passedOn() },
+    { shard: "2/3" },
+  );
+
+  it("passes when this execution ran and passed exactly its spec files", () => {
+    expect(shardProblems(shard, assigned, own, pairs)).toEqual([]);
+  });
+
+  // A re-run whose tests exited 0 having run nothing: this execution wrote
+  // no record, and the artifact of the earlier, failed attempt is the newest
+  // of its name. The shard's own check fails, and so would e2e's.
+  it("fails a re-run that wrote no record, at the shard and at e2e", () => {
+    const earlier = run(
+      "e2e-results-2/durations.json",
+      {
+        "b.e2e.ts": passedOn(),
+        "d.e2e.ts": { ...passedOn(), "latest/latest": worker(1) },
+      },
+      { shard: "2/3", exitCode: 1 },
+    );
+    expect(shardProblems(shard, assigned, undefined, pairs)).toEqual([
+      "shard 2/3 wrote no durations.json",
+    ]);
+    expect(coverageProblems(assigned, [earlier], pairs)).toEqual([
+      "e2e-results-2/durations.json: the run ended with exit code 1",
+      "d.e2e.ts failed on Obsidian latest/latest (1.15.1/1.15.1), with exit code 1",
+    ]);
+  });
+
+  it("fails a record of another shard, or of other spec files", () => {
+    expect(
+      shardProblems(
+        shard,
+        assigned,
+        { ...own, durations: { ...own.durations, shard: "3/3" } },
+        pairs,
+      ),
+    ).toEqual(["out/durations.json was written by shard 3/3, not 2/3"]);
+    expect(
+      shardProblems(
+        shard,
+        assigned,
+        run(
+          "out",
+          { "b.e2e.ts": passedOn(), "c.e2e.ts": passedOn() },
+          { shard: "2/3" },
+        ),
+        pairs,
+      ),
+    ).toEqual([
+      "out names c.e2e.ts, which is not one of the spec files expected",
+      "d.e2e.ts is in no durations.json",
+    ]);
   });
 });
 
@@ -411,10 +700,9 @@ describe("durations", () => {
       await mkdir(path.join(artifact, "logs"), { recursive: true });
       await writeFile(
         path.join(artifact, durationsFile),
-        JSON.stringify({
-          shard: `${shard}/2`,
-          specs: { [`${shard}.e2e.ts`]: { "1.15.2/1.15.2": 3 } },
-        }),
+        JSON.stringify(
+          record({ [`${shard}.e2e.ts`]: passedOn() }, { shard: `${shard}/2` }),
+        ),
       );
     }
     const runs = await readDurations(directory);
@@ -424,25 +712,66 @@ describe("durations", () => {
     );
   });
 
-  it("refuses a file of another shape, naming it", () => {
-    expect(() => parseDurations({ specs: {} }, "d.json")).toThrow(
-      'd.json must hold "shard", a string or null, and "specs", an object',
-    );
+  it("refuses the first format, which recorded no exit codes", () => {
     expect(() =>
-      parseDurations({ shard: null, specs: { "a.e2e.ts": 3 } }, "d.json"),
-    ).toThrow("d.json must give a.e2e.ts an object of Obsidian versions");
-    expect(
-      parseDurations({ shard: "1/4", specs: { "a.e2e.ts": { v: 3 } } }, "d"),
-    ).toEqual({ shard: "1/4", specs: { "a.e2e.ts": { v: 3 } } });
+      parseDurations(
+        { shard: "1/4", specs: { "a.e2e.ts": { "1.15.1/1.15.1": 3 } } },
+        "d.json",
+      ),
+    ).toThrow(
+      "d.json is not a format 2 durations.json; run the suite again with this harness",
+    );
+  });
+
+  it("refuses a file of another shape, naming it", () => {
+    const good = record({ "a.e2e.ts": passedOn() });
+    expect(parseDurations(JSON.parse(JSON.stringify(good)), "d")).toEqual(good);
+    for (const bad of [
+      { ...good, shard: 2 },
+      { ...good, versions: "latest/latest" },
+      { ...good, exitCode: undefined },
+      { ...good, exitCode: 0.5 },
+      { ...good, specs: [] },
+    ]) {
+      expect(() => parseDurations(bad, "d.json")).toThrow(
+        'd.json must hold "shard", a string or null, "versions", a list of strings, "exitCode", a whole number, and "specs", an object',
+      );
+    }
+    for (const workers of [
+      3,
+      { "latest/latest": 3 },
+      { "latest/latest": { resolved: "1.15.1/1.15.1", seconds: 3 } },
+      { "latest/latest": { seconds: 3, exitCode: 0 } },
+    ]) {
+      expect(() =>
+        parseDurations({ ...good, specs: { "a.e2e.ts": workers } }, "d.json"),
+      ).toThrow(
+        'd.json must give a.e2e.ts an object of Obsidian versions to "resolved", "seconds", and "exitCode"',
+      );
+    }
   });
 });
 
 describe("mergeWeights", () => {
   it("takes the slower version's whole seconds, keeps unmeasured weights, and drops the rest", () => {
     const old = { "a.e2e.ts": 10, "b.e2e.ts": 20, "gone.e2e.ts": 30 };
+    const timed = (seconds: number): WorkerRun => ({
+      ...worker(),
+      seconds,
+    });
     const runs: Durations[] = [
-      { shard: "1/2", specs: { "c.e2e.ts": { old: 4.4, new: 6.5 } } },
-      { shard: "2/2", specs: { "a.e2e.ts": { old: 12.4, new: 11.9 } } },
+      record({
+        "c.e2e.ts": {
+          "earliest/earliest": timed(4.4),
+          "latest/latest": timed(6.5),
+        },
+      }),
+      record({
+        "a.e2e.ts": {
+          "earliest/earliest": timed(12.4),
+          "latest/latest": timed(11.9),
+        },
+      }),
     ];
     const merged = mergeWeights(old, runs, [
       "c.e2e.ts",
@@ -452,5 +781,163 @@ describe("mergeWeights", () => {
     ]);
     expect(merged).toEqual({ "a.e2e.ts": 12, "b.e2e.ts": 20, "c.e2e.ts": 7 });
     expect(Object.keys(merged)).toEqual(["a.e2e.ts", "b.e2e.ts", "c.e2e.ts"]);
+  });
+});
+
+describe("shardsCommand", () => {
+  let directory: string;
+  let specs: string;
+  let weights: string;
+  let output: string[];
+  let errors: string[];
+
+  beforeEach(async () => {
+    directory = await mkdtemp(path.join(tmpdir(), "inkline-shards-"));
+    specs = path.join(directory, "specs");
+    weights = path.join(directory, "weights.json");
+    await mkdir(specs);
+    for (const file of ["a.e2e.ts", "b.e2e.ts", "c.e2e.ts"]) {
+      await writeFile(path.join(specs, file), "");
+    }
+    // a alone outweighs b and c together, so 2 shards give [a] and [b, c].
+    await writeFile(weights, JSON.stringify({ "a.e2e.ts": 9, "b.e2e.ts": 2 }));
+    output = [];
+    errors = [];
+  });
+
+  afterEach(async () => {
+    await rm(directory, { recursive: true, force: true });
+  });
+
+  async function command(
+    args: readonly string[],
+    obsidianVersions?: string,
+  ): Promise<number> {
+    return shardsCommand(args, {
+      specsDir: specs,
+      weightsFile: weights,
+      obsidianVersions,
+      log: (message) => output.push(message),
+      error: (message) => errors.push(message),
+    });
+  }
+
+  async function write(dir: string, durations: unknown): Promise<void> {
+    await mkdir(path.join(directory, dir), { recursive: true });
+    await writeFile(
+      path.join(directory, dir, durationsFile),
+      typeof durations === "string" ? durations : JSON.stringify(durations),
+    );
+  }
+
+  it.each([
+    [[]],
+    [["bogus", "x"]],
+    [["check"]],
+    [["check", "a", "b"]],
+    [["shard", "1/2"]],
+    [["shard", "1/2", "a", "b"]],
+    [["weights"]],
+  ])("prints the usage and exits 2 for %j", async (args) => {
+    expect(await command(args)).toBe(2);
+    expect(errors).toEqual([shardsUsage]);
+  });
+
+  it("checks downloaded shards: 0 when they cover the suite, 1 when not", async () => {
+    await write(
+      "runs/e2e-results-1",
+      record({ "a.e2e.ts": passedOn() }, { shard: "1/2" }),
+    );
+    await write(
+      "runs/e2e-results-2",
+      record(
+        { "b.e2e.ts": passedOn(), "c.e2e.ts": passedOn() },
+        { shard: "2/2" },
+      ),
+    );
+    expect(await command(["check", path.join(directory, "runs")])).toBe(0);
+    expect(errors).toEqual([]);
+    expect(output.at(-1)).toBe(
+      "The 2 runs ran and passed each of the 3 spec files once, on Obsidian earliest/earliest latest/latest.",
+    );
+
+    // Told to expect other versions, the same records fail.
+    expect(
+      await command(["check", path.join(directory, "runs")], "latest/latest"),
+    ).toBe(1);
+    expect(errors[0]).toContain("the run requested Obsidian");
+  });
+
+  it("checks a shard's own output", async () => {
+    await write("out", record({ "a.e2e.ts": passedOn() }, { shard: "1/2" }));
+    expect(await command(["shard", "1/2", path.join(directory, "out")])).toBe(
+      0,
+    );
+    expect(errors).toEqual([]);
+
+    expect(await command(["shard", "2/2", path.join(directory, "out")])).toBe(
+      1,
+    );
+    expect(errors).toContain(
+      `error: ${path.join(directory, "out", durationsFile)} was written by shard 1/2, not 2/2`,
+    );
+
+    errors = [];
+    expect(await command(["shard", "1/2", path.join(directory, "none")])).toBe(
+      1,
+    );
+    expect(errors).toEqual(["error: shard 1/2 wrote no durations.json"]);
+
+    errors = [];
+    expect(await command(["shard", "3/2", path.join(directory, "out")])).toBe(
+      1,
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(/^error: E2E_SHARD is "3\/2"/);
+  });
+
+  it("ends a malformed or older durations.json in one line, exit code 1", async () => {
+    await write("old/e2e-results-1", {
+      shard: "1/2",
+      specs: { "a.e2e.ts": { "1.15.1/1.15.1": 3 } },
+    });
+    expect(await command(["check", path.join(directory, "old")])).toBe(1);
+    expect(errors).toEqual([
+      `error: ${path.join(directory, "old", "e2e-results-1", durationsFile)} is not a format 2 durations.json; run the suite again with this harness`,
+    ]);
+
+    errors = [];
+    await write("broken/e2e-results-1", "{ not json");
+    expect(await command(["check", path.join(directory, "broken")])).toBe(1);
+    expect(errors).toEqual([
+      `error: ${path.join(directory, "broken", "e2e-results-1", durationsFile)} is not JSON`,
+    ]);
+
+    errors = [];
+    expect(await command(["check", path.join(directory, "missing")])).toBe(1);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(/^error: ENOENT/);
+  });
+
+  it("rewrites the weights from downloaded runs", async () => {
+    const timed = (seconds: number): WorkerRun => ({ ...worker(), seconds });
+    await write(
+      "runs/e2e-results-1",
+      record({
+        "c.e2e.ts": {
+          "earliest/earliest": timed(3.6),
+          "latest/latest": timed(1),
+        },
+      }),
+    );
+    expect(await command(["weights", path.join(directory, "runs")])).toBe(0);
+    expect(await readFile(weights, "utf8")).toBe(
+      '{\n  "a.e2e.ts": 9,\n  "b.e2e.ts": 2,\n  "c.e2e.ts": 4\n}\n',
+    );
+
+    expect(await command(["weights", path.join(directory, "specs")])).toBe(1);
+    expect(errors).toEqual([
+      `error: no durations.json under ${path.join(directory, "specs")}`,
+    ]);
   });
 });

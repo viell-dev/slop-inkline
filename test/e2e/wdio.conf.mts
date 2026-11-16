@@ -1,18 +1,21 @@
 // End-to-end tests in real Obsidian, through WebdriverIO and
 // wdio-obsidian-service. Build the plugin first; the suite loads dist/.
 //
-// OBSIDIAN_VERSIONS lists "appVersion/installerVersion" pairs. The default
-// tests the manifest's minAppVersion on the oldest installer that can run it,
-// which is the oldest Electron a user can have, and the latest public release.
-// Beta builds need an Obsidian Insider account, which the project does not use.
+// OBSIDIAN_VERSIONS lists "appVersion/installerVersion" pairs; the default,
+// defaultObsidianVersions in support/harness.ts, tests the manifest's
+// minAppVersion on the oldest installer that can run it, which is the oldest
+// Electron a user can have, and the latest public release. Beta builds need an
+// Obsidian Insider account, which the project does not use.
 //
 // E2E_SHARD, as "i/n", runs only the i-th of n shards of the spec files, each
 // still on every version; CI runs the shards as jobs side by side. The shards
 // are balanced by the seconds in weights.json rather than by count, as the
 // files' times differ a hundredfold. Unset, every spec file runs. Every run
-// writes durations.json to the output directory, which CI's e2e job reads to
-// check that the shards together ran every spec file, and test/e2e/shards.ts
-// reads to refresh the weights.
+// writes durations.json to the output directory: each worker's time and exit
+// code, by spec file and requested version, and the launcher's exit code.
+// test/e2e/shards.ts reads it, in CI to check that each shard, and the shards
+// together, ran and passed every spec file on every version, and to refresh
+// the weights.
 
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -20,18 +23,22 @@ import { parseObsidianVersions } from "wdio-obsidian-service";
 import {
   assignShards,
   durationsFile,
+  durationsFormat,
   outputDirectory,
   parseShard,
   pluginDirectory,
   prepareOutput,
   readWeights,
+  requestedVersions,
   sessionDisplays,
   setting,
   shardSeconds,
   specFiles,
   specName,
   workerDisplay,
+  workerVersion,
   type Durations,
+  type WorkerRun,
 } from "./support/harness.ts";
 
 const root = path.resolve(import.meta.dirname, "../..");
@@ -47,9 +54,12 @@ const printCacheKey =
 // The shard comes first, so that a wrong E2E_SHARD stops the run before it
 // touches the output.
 const shard = parseShard(process.env.E2E_SHARD);
-let specs = [path.join(specsDir, "**/*.e2e.ts")];
+// The suite is specFiles(), for a whole run as for a shard, so that the
+// shards' checks and the run agree on what it holds. A --spec on the command
+// line replaces this list, as the Release workflow's does.
+const all = await specFiles(specsDir);
+let specs = all.map((spec) => path.join(specsDir, spec));
 if (shard !== undefined) {
-  const all = await specFiles(specsDir);
   const weights = await readWeights(
     path.join(import.meta.dirname, "weights.json"),
   );
@@ -68,10 +78,19 @@ if (shard !== undefined) {
   specs = mine.map((spec) => path.join(specsDir, spec));
 }
 
-const versions = await parseObsidianVersions(
-  setting(process.env.OBSIDIAN_VERSIONS) ?? "earliest/earliest latest/latest",
-  { cacheDir },
-);
+// Each requested pair is resolved on its own, so that the capabilities stay
+// one for each request, in order, even where two resolve to the same version:
+// a worker's version index then names its request.
+const requested = requestedVersions(process.env.OBSIDIAN_VERSIONS);
+const versions: [string, string][] = [];
+for (const request of requested) {
+  versions.push(...(await parseObsidianVersions(request, { cacheDir })));
+}
+if (versions.length !== requested.length) {
+  throw new Error(
+    `OBSIDIAN_VERSIONS requests ${String(requested.length)} versions, but they resolved to ${String(versions.length)}`,
+  );
+}
 // CI runs this file on its own to key its Obsidian download cache on the
 // resolved versions.
 if (printCacheKey) {
@@ -97,10 +116,11 @@ const display =
 if (display !== undefined) process.env.DISPLAY = display;
 
 // The launcher times each worker, which runs one spec file on one version,
-// from start to exit, Obsidian's start included. A retried spec keeps its
-// last attempt's time.
+// from start to exit, Obsidian's start included, and keeps its exit code. A
+// retried spec file keeps its last attempt, as WebdriverIO's result does;
+// the suite sets no retries.
 const started = new Map<string, number>();
-const durations: Record<string, Record<string, number>> = {};
+const durations: Record<string, Record<string, WorkerRun>> = {};
 
 export const config: WebdriverIO.Config = {
   runner: "local",
@@ -130,23 +150,34 @@ export const config: WebdriverIO.Config = {
   onWorkerStart: (cid) => {
     started.set(cid, performance.now());
   },
-  onWorkerEnd: (cid, _exitCode, workerSpecs) => {
+  onWorkerEnd: (cid, exitCode, workerSpecs) => {
     const start = started.get(cid);
-    // A worker's id counts its version from 0, as workerDisplay reads it.
-    const version = versions[Number(cid.split("-")[0])];
-    if (start === undefined || version === undefined) return;
-    const seconds = Math.round((performance.now() - start) / 100) / 10;
+    const index = workerVersion(cid);
+    const request = index === undefined ? undefined : requested[index];
+    const version = index === undefined ? undefined : versions[index];
+    // A worker this cannot place is left out, which the checks report as a
+    // spec file that did not run.
+    if (start === undefined || request === undefined || version === undefined)
+      return;
+    const run: WorkerRun = {
+      resolved: version.join("/"),
+      seconds: Math.round((performance.now() - start) / 100) / 10,
+      exitCode,
+    };
     for (const spec of workerSpecs) {
       const name = specName(spec, specsDir);
-      durations[name] = { ...durations[name], [version.join("/")]: seconds };
+      durations[name] = { ...durations[name], [request]: run };
     }
   },
-  onComplete: async () => {
+  onComplete: async (exitCode) => {
     const record: Durations = {
+      format: durationsFormat,
       shard:
         shard === undefined
           ? null
           : `${String(shard.index)}/${String(shard.total)}`,
+      versions: requested,
+      exitCode,
       specs: durations,
     };
     await writeFile(
