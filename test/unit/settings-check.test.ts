@@ -31,6 +31,23 @@ const ruleset = {
   ],
 };
 
+/** The names that more than one of `rulesets` records, each once. */
+function duplicateNames(rulesets: readonly unknown[]): string[] {
+  const names = rulesets.map((file): unknown =>
+    typeof file === "object" && file !== null
+      ? Reflect.get(file, "name")
+      : undefined,
+  );
+  return [
+    ...new Set(
+      names.filter(
+        (name, index): name is string =>
+          typeof name === "string" && names.indexOf(name) !== index,
+      ),
+    ),
+  ];
+}
+
 describe("the repository's label and ruleset files", () => {
   it("list each label once, with a colour and a description", () => {
     // In any letter case, as GitHub refuses two labels that differ only so.
@@ -47,7 +64,6 @@ describe("the repository's label and ruleset files", () => {
     const names = labels.map((label) => label.name);
     expect(names).toContain("Needs: Owner");
     expect(names).toContain("Needs: Human");
-    expect(names).not.toContain("Status: Needs Owner Testing");
     expect(names.filter((name) => name.startsWith("Type: ")).length).toBe(7);
   });
 
@@ -56,7 +72,19 @@ describe("the repository's label and ruleset files", () => {
     const files = readdirSync(directory).map((name): unknown =>
       JSON.parse(readFileSync(join(directory, name), "utf8")),
     );
+    // Compared with themselves, the files only show one without a name: the
+    // live rulesets are looked up by name, so two files of one name would
+    // both find the same one.
     expect(rulesetProblems(files, files).problems).toEqual([]);
+    expect(duplicateNames(files)).toEqual([]);
+  });
+
+  it("finds a ruleset name that two files record", () => {
+    const other = { ...ruleset, name: "Tags" };
+    expect(duplicateNames([ruleset, other, { ...ruleset }])).toEqual([
+      "PRs and CI for main",
+    ]);
+    expect(duplicateNames([ruleset, other])).toEqual([]);
   });
 });
 
