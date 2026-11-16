@@ -15,6 +15,11 @@ on:
 permissions:
   contents: read
 
+# As in CI: a pull request's newer push ends the run of the one before.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   directory:
     name: directory checks
