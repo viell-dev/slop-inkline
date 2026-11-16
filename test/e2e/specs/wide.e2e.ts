@@ -10,7 +10,7 @@ import { browser, expect } from "@wdio/globals";
 import { obsidianPage } from "wdio-obsidian-service";
 import type { Block, Rgb } from "../../support/ink-block.ts";
 import { loadModules, toBase64 } from "../support/browser.ts";
-import { saveScreenshotData, waitForPaint } from "../support/screenshots.ts";
+import { saveScreenshotData } from "../support/screenshots.ts";
 import {
   drawnRatio,
   fullWidth,
@@ -184,7 +184,8 @@ async function waitForSymbol(selector: string, scroll: boolean): Promise<void> {
       scroll,
     ),
   );
-  await waitForPaint({ images: selector });
+  // Long enough for the page to draw what scrolled into view.
+  await browser.pause(300);
 }
 
 /**
@@ -325,7 +326,7 @@ async function theme(name: "moonstone" | "obsidian"): Promise<void> {
     if (typeof change !== "function") throw new Error("no themes");
     Reflect.apply(change, app, [chosen]);
   }, name);
-  await waitForPaint({ theme: name === "obsidian" ? "dark" : "light" });
+  await browser.pause(300);
 }
 
 /**

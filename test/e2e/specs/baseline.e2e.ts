@@ -23,7 +23,7 @@ import { browser, expect } from "@wdio/globals";
 import { obsidianPage } from "wdio-obsidian-service";
 import { loadModules } from "../support/browser.ts";
 import { setPageZoom } from "../support/cursor.ts";
-import { saveScreenshotData, waitForPaint } from "../support/screenshots.ts";
+import { saveScreenshotData } from "../support/screenshots.ts";
 
 /**
  * The note: each line a typed H, the two symbols, another H, the symbols
@@ -397,15 +397,18 @@ function lines(measured: readonly Measured[]): Line[] {
  * symbols to load and be measured, and for the page to draw them.
  */
 async function show(mode: "source" | "preview"): Promise<void> {
-  const symbols = ".workspace-leaf.mod-active img.inkline-symbol";
   await open(mode);
   await browser
     .action("pointer", { parameters: { pointerType: "mouse" } })
     .move({ x: 2, y: 2 })
     .perform();
   await browser.waitUntil(async () =>
-    browser.execute((selector) => {
-      const images = Array.from(activeDocument.querySelectorAll(selector));
+    browser.execute(() => {
+      const images = Array.from(
+        activeDocument.querySelectorAll(
+          ".workspace-leaf.mod-active img.inkline-symbol",
+        ),
+      );
       return (
         images.length >= 4 &&
         images.every(
@@ -416,9 +419,10 @@ async function show(mode: "source" | "preview"): Promise<void> {
             image.style.getPropertyValue("--inkline-ratio") !== "",
         )
       );
-    }, symbols),
+    }),
   );
-  await waitForPaint({ images: symbols });
+  // Long enough for the page to draw what changed.
+  await browser.pause(300);
 }
 
 describe("Symbols on the text's baseline", function () {
