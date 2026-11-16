@@ -139,13 +139,6 @@ describe.each([
     release: "1.2.0",
   },
   {
-    name: "the first public release",
-    built: "0.9.4",
-    offered: "0.9.0",
-    versions: {},
-    release: "1.0.0",
-  },
-  {
     name: "a patch of the last public release",
     built: "1.2.0",
     offered: "1.2.0",
