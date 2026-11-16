@@ -152,8 +152,8 @@ own files, and `test/e2e/specs/package.e2e.ts` checks that the test vault holds
 exactly those. `npm run test:e2e:docker` always installs the build it makes in
 its image.
 
-Screenshots and logs go to `test-results/e2e/`, which CI uploads as an artifact;
-a failed test leaves a screenshot named after it. `E2E_OUTPUT_DIR` picks another
+Screenshots and logs go to `test-results/e2e/`, which CI uploads as artifacts; a
+failed test leaves a screenshot named after it. `E2E_OUTPUT_DIR` picks another
 directory, which must be new, empty, or an earlier run's output: the harness
 marks its directory and refuses to clean any other. Screenshots are for review,
 never compared with reference images: a test reads state, positions, or pixels
@@ -254,7 +254,50 @@ and `sha256sum --check test/fixtures/pinned.sha256` checks them all.
 nothing but new lines.
 
 CI runs the end-to-end tests on Linux for every pull request, and the Docker
-image weekly and on request.
+image weekly and on request. Outside Docker, CI splits the suite over four jobs
+that run side by side, `e2e (1/4)` to `e2e (4/4)`, each on both Obsidian
+versions, which keeps the wait to about a quarter of the suite. `E2E_SHARD`,
+such as `2/4`, runs one such shard in a direct run, `npm run test:e2e` or
+`sh test/e2e/session.sh`; `npm run test:e2e:docker` does not pass it on, so a
+Docker run is never a shard. Unset, every spec file under `test/e2e/specs` runs,
+at any depth, and `--spec` runs only the files it names, as the Release
+workflow's run of two files does. The shards are balanced by the seconds in
+`test/e2e/weights.json`, named by the spec file's path under `test/e2e/specs`. A
+spec file the table does not list counts as its median, so a new one runs
+without editing it. Each shard's log lists the files it runs.
+
+Every run writes `durations.json` to the output directory: for each spec file
+and each requested Obsidian version, such as `latest/latest`, the version it
+resolved to, the seconds its worker took, and the worker's exit code, with the
+run's own exit code. Each shard then checks its own record, with
+`node test/e2e/shards.ts shard <i/n> test-results/e2e`: it fails unless this run
+wrote it, for exactly that shard's spec files, each passed on every version.
+Each shard uploads its output as the artifact `e2e-results-1` to
+`e2e-results-4`. The job named `e2e`, which `main` requires, passes only when
+all four shards passed and their records, read with
+`node test/e2e/shards.ts check <dir>`, show every spec file exactly once, passed
+on both default versions, so that a file that runs nowhere, fails, or runs on
+too few versions fails it, even after a re-run of some of the shards. Both
+checks expect the versions `OBSIDIAN_VERSIONS` names, the default pair when it
+is unset.
+
+To refresh the table, download a recent run of CI on `main` and commit the
+result:
+
+```sh
+gh run download <run-id> --pattern 'e2e-results-*' --dir <dir>
+node test/e2e/shards.ts weights <dir>
+```
+
+It takes each measured spec file's slower version, keeps the weight of one that
+did not run, and drops a file that no longer exists. When a shard was re-run,
+its run has an artifact of that name from each attempt, and `gh run download`
+leaves one `durations.json` in its directory: for run 43941401108 it was the
+later attempt's. A unit test fails when the greedy assignment of the current
+table puts four shards more than 10% apart. The assignment is not optimal, so a
+better split may exist; start with the assignment the failure prints. Then split
+a spec file that dominates its shard, or change the number of shards in
+`.github/workflows/ci.yml` and in that test.
 
 The Directory checks workflow runs Obsidian's own action on every pull request,
 which checks the plugin much as the community directory does. It is not a

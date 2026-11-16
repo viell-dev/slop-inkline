@@ -1,15 +1,26 @@
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  defaultObsidianVersions,
+  durationsFile,
   outputDirectory,
-  pluginDirectory,
   ownerMarker,
+  pluginDirectory,
   prepareOutput,
+  requestedVersions,
   sessionDisplays,
   setting,
   workerDisplay,
+  workerVersion,
 } from "../e2e/support/harness.ts";
 
 describe("setting", () => {
@@ -68,6 +79,10 @@ describe("prepareOutput", () => {
     });
     await mkdir(path.join(directory, "pdfs"));
     await writeFile(path.join(directory, "pdfs", "old-export.pdf"), "%PDF-");
+    await writeFile(
+      path.join(directory, durationsFile),
+      '{"shard":null,"specs":{}}',
+    );
   }
 
   it("claims a directory that does not exist yet", async () => {
@@ -79,6 +94,9 @@ describe("prepareOutput", () => {
   it("claims an empty directory", async () => {
     await prepareOutput(directory);
     expect(await readdir(directory)).toEqual([ownerMarker]);
+    expect(await readFile(path.join(directory, ownerMarker), "utf8")).toBe(
+      "Output of Inkline's end-to-end tests. Each run replaces logs/, screenshots/, pdfs/, and durations.json.\n",
+    );
   });
 
   it("replaces its own previous output and keeps anything else", async () => {
@@ -138,5 +156,40 @@ describe("sessionDisplays and workerDisplay", () => {
     expect(sessionDisplays(undefined, 5)).toEqual([]);
     expect(sessionDisplays(" ", 5)).toEqual([]);
     expect(workerDisplay("0-0", [])).toBeUndefined();
+  });
+});
+
+describe("workerVersion and requestedVersions", () => {
+  it("reads a worker's version index from its id", () => {
+    expect(workerVersion("0-0")).toBe(0);
+    expect(workerVersion("1-27")).toBe(1);
+    expect(workerVersion("x-1")).toBeUndefined();
+    expect(workerVersion("-1")).toBeUndefined();
+    expect(workerVersion("")).toBeUndefined();
+  });
+
+  it("requests the default versions unless OBSIDIAN_VERSIONS names others", () => {
+    expect(defaultObsidianVersions).toEqual([
+      "earliest/earliest",
+      "latest/latest",
+    ]);
+    expect(requestedVersions(undefined)).toEqual(defaultObsidianVersions);
+    expect(requestedVersions(" ")).toEqual(defaultObsidianVersions);
+    expect(requestedVersions("latest/latest")).toEqual(["latest/latest"]);
+    // As wdio-obsidian-service splits them, at spaces or commas.
+    expect(requestedVersions(" 1.13.4/1.5.8,latest/latest ")).toEqual([
+      "1.13.4/1.5.8",
+      "latest/latest",
+    ]);
+  });
+
+  // A record keeps one worker for each request, so the second would
+  // overwrite the first.
+  it("refuses a version named twice", () => {
+    for (const value of ["latest/latest latest/latest", "a/b,c/d a/b"]) {
+      expect(() => requestedVersions(value)).toThrow(
+        /^OBSIDIAN_VERSIONS names (latest\/latest|a\/b) twice; name each version once$/,
+      );
+    }
   });
 });
