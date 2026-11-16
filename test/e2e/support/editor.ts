@@ -832,11 +832,92 @@ async function waitForModalChange(
 }
 
 /**
+ * The methods of Obsidian's objects that tests replace, by the object they
+ * are on. A replacement is the object's own, over what its prototype has, so
+ * that removing it puts Obsidian's back.
+ */
+const replaceable = {
+  vault: [
+    "copy",
+    "create",
+    "createBinary",
+    "modify",
+    "modifyBinary",
+    "process",
+    "read",
+    "readBinary",
+    "rename",
+  ],
+  adapter: ["read", "readBinary", "rename", "write", "writeBinary"],
+  fileManager: ["renameFile", "trashFile"],
+  subtle: ["digest"],
+} as const;
+
+/**
+ * Takes away whatever a test held or replaced and did not put back, as a test
+ * that fails midway leaves it, so that one failure does not become many: it
+ * fails every operation still held by {@link hold} or
+ * {@link holdDecoding}, and any other gate a test registered in the
+ * renderer's `inklineLetGos`; undoes {@link delayVault} and
+ * {@link delayDecoding}; and removes every replacement of a method in
+ * `replaceable` that Obsidian's object did not have as its own when this
+ * first ran in the window, with the originals tests keep beside them under
+ * names that start with `inkline`. {@link startOver} does this first.
+ */
+export async function undoStubs(): Promise<void> {
+  await browser.execute(() => {
+    const gates: unknown = Reflect.get(window, "inklineLetGos");
+    Reflect.deleteProperty(window, "inklineLetGos");
+    if (Array.isArray(gates)) {
+      for (const gate of gates as unknown[]) {
+        if (typeof gate === "function") Reflect.apply(gate, undefined, []);
+      }
+    }
+    Reflect.deleteProperty(window, "inklineFollowedStatus");
+  });
+  await restoreVault();
+  await restoreDecoding();
+  await browser.executeObsidian(({ app }, methods) => {
+    const owners: Record<keyof typeof methods, object> = {
+      vault: app.vault,
+      adapter: app.vault.adapter,
+      fileManager: app.fileManager,
+      subtle: crypto.subtle,
+    };
+    // What Obsidian had as its own when the window was new, which is left.
+    const known: unknown = Reflect.get(window, "inklineOwnMethods");
+    const own = Array.isArray(known) ? known : [];
+    if (!Array.isArray(known)) {
+      for (const [owner, names] of Object.entries(methods)) {
+        const target = owners[owner as keyof typeof methods];
+        for (const name of names) {
+          if (Object.hasOwn(target, name)) own.push(`${owner}.${name}`);
+        }
+      }
+      Reflect.set(window, "inklineOwnMethods", own);
+    }
+    for (const [owner, names] of Object.entries(methods)) {
+      const target = owners[owner as keyof typeof methods];
+      for (const name of names) {
+        if (Object.hasOwn(target, name) && !own.includes(`${owner}.${name}`)) {
+          Reflect.deleteProperty(target, name);
+        }
+      }
+      for (const key of Object.keys(target)) {
+        if (key.startsWith("inkline")) Reflect.deleteProperty(target, key);
+      }
+    }
+  }, replaceable);
+}
+
+/**
  * Closes every modal, discarding unsaved drawings, and every note, then
  * restores the vault and clears drafts, so that each test starts from the
- * same state.
+ * same state. It first takes away what a test held or replaced, with
+ * {@link undoStubs}.
  */
 export async function startOver(): Promise<void> {
+  await undoStubs();
   let modals: ModalState | undefined;
   await browser.waitUntil(
     async () => {
@@ -896,8 +977,6 @@ export async function startOver(): Promise<void> {
     }
   });
   await freeStorage();
-  await restoreVault();
-  await restoreDecoding();
   await obsidianPage.resetVault();
 }
 
