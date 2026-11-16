@@ -29,9 +29,9 @@ picks it from the list that opens.
 
 It runs in desktop Obsidian, and symbols are drawn with a mouse or a trackpad.
 AI agents build, test, document, and maintain it, and no person reviews the
-code. The owner decides what it is for and what its releases cover. `1.0.0` is
-its first stable release; when it is published is the owner's decision, as
-[Releases](#releases) says.
+code. The owner decides what it is for and what its releases cover. Its first
+stable release, `1.0.0`, was published on 2026-11-16, at the owner's decision,
+as [Releases](#releases) says.
 
 ### What it is for
 
