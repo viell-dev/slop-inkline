@@ -658,7 +658,7 @@ drawing while **Copy from** or **Reload** reads.
   ([docs-source.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/docs-source.test.ts)).
 - Since 1.0.0, none of the home and install pages, the README, and Known limits
   says that Inkline is a pre-release, that every release is one, or that there
-  is no public release yet
+  is no release yet, public or of any kind
   ([docs.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/docs.test.ts)).
 
 ## Checks shown to fail

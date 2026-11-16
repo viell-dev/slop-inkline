@@ -439,13 +439,13 @@ On a branch from `main`:
    the manual ZIP installation and update path. `test/unit/docs.test.ts` fails
    while the home or install page, the README, or the known limits say that
    Inkline is a prerelease, that every release so far is one, or that there is
-   no public release yet, as none of it is true since `1.0.0`. What they say of
-   Obsidian's community directory must hold both before and after it lists
-   Inkline, as the release is published before the owner submits it there: lead
-   with installing from Obsidian's community plugins, with the ZIP from the
-   latest release as the way in while Inkline does not show there, so that the
-   listing needs no change to them. Remove **Unreleased** labels only from
-   behavior included in this release; retain labels for later work.
+   no release yet, public or of any kind, as none of it is true since `1.0.0`.
+   What they say of Obsidian's community directory must hold both before and
+   after it lists Inkline, as the release is published before the owner submits
+   it there: lead with installing from Obsidian's community plugins, with the
+   ZIP from the latest release as the way in while Inkline does not show there,
+   so that the listing needs no change to them. Remove **Unreleased** labels
+   only from behavior included in this release; retain labels for later work.
 5. Run `node scripts/release.ts check <version>` and
    `node scripts/publish.ts order <version>`, which the workflow runs too. The
    first checks that `package.json` names the version, that the changelog
