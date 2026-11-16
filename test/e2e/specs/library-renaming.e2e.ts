@@ -176,10 +176,6 @@ describe("Renaming in the symbol library", function () {
     await setLinkUpdates(true);
   });
 
-  after(async function () {
-    await startOver();
-  });
-
   it("renames the file and its referring links without changing its drawing", async function () {
     await createSymbol("Runes/gate.ink.png");
     const original = await bytesOf("Runes/gate.ink.png");

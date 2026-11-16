@@ -66,10 +66,6 @@ describe("The editor's shortcuts", function () {
     await startOver();
     await openEditor();
   });
-  after(async function () {
-    await startOver();
-  });
-
   it("chooses the tools and the shapes", async function () {
     expect(await pressed("pen")).toBe("true");
     await press("e", "eraser", true);

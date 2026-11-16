@@ -42,10 +42,6 @@ describe("Editor feedback", function () {
     }, originalTheme);
   });
 
-  after(async function () {
-    await startOver();
-  });
-
   for (const theme of ["theme-light", "theme-dark"]) {
     it(`keeps the close control clear of the name in ${theme}`, async function () {
       await insert();

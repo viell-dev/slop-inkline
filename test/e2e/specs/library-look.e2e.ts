@@ -528,10 +528,6 @@ describe("The library's look", function () {
     await useTheme("moonstone");
   });
 
-  after(async function () {
-    await startOver();
-  });
-
   for (const [theme, name] of [
     ["moonstone", "light"],
     ["obsidian", "dark"],

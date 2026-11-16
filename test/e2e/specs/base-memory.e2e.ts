@@ -210,10 +210,6 @@ describe("Base layers nothing needs", function () {
     await startOver();
   });
 
-  after(async function () {
-    await startOver();
-  });
-
   it("keeps a draft through copy after copy with room in storage for two pictures", async function () {
     // Noise, so that its picture takes room as a real one's does.
     await writeNoise("noise.ink.png", 256);

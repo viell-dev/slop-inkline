@@ -125,10 +125,6 @@ describe("The grid snaps only while Shift is held", function () {
   beforeEach(async function () {
     await startOver();
   });
-  after(async function () {
-    await startOver();
-  });
-
   it("leaves a plain click in the middle of four grid points where it was clicked", async function () {
     const grid = await openOnGrid();
     const middle = cellMiddle(grid, 18, 6);

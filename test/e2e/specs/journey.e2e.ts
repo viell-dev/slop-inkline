@@ -116,10 +116,6 @@ describe("A deciphering session", function () {
     await loadModules();
   });
 
-  after(async function () {
-    await startOver();
-  });
-
   it("copies an inscription, reuses and revises its signs, and rereads it in both themes", async function () {
     this.timeout(120_000);
     await browser.executeObsidian(async ({ app }, glyphs) => {

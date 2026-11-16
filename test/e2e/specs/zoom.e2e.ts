@@ -92,10 +92,6 @@ describe("Zoom", function () {
   beforeEach(async function () {
     await startOver();
   });
-  after(async function () {
-    await startOver();
-  });
-
   it("shows the drawing taller with Z or the button, as far as the window allows", async function () {
     await openEditor();
     const usual = await surfaceSize();

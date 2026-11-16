@@ -47,10 +47,6 @@ describe("Moving the drawing", function () {
   beforeEach(async function () {
     await startOver();
   });
-  after(async function () {
-    await startOver();
-  });
-
   it("moves it a pixel with the arrow keys and a cell with Shift, and undoes them together", async function () {
     await openEditor();
     await draw(stroke);

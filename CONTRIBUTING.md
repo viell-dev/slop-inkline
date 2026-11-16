@@ -163,6 +163,13 @@ or text drawn by the host, a test may measure the pixels of a screenshot of the
 elements concerned, with stated tolerances. Test vaults in `test/e2e/vaults/`
 and every drawing a test uses are synthetic.
 
+Each spec file runs in a WebdriverIO session of its own, which
+wdio-obsidian-service starts with a new copy of the test vault and a new
+Electron user data directory, which holds local storage. So a spec file starts
+from the vault as it is in the repository, and need not reset what its last test
+leaves behind; its tests still reset between them, as `startOver()` in
+`test/e2e/support/editor.ts` does.
+
 The test vault keeps deleted files in its own `.trash` folder: its
 `.obsidian/app.json` sets Obsidian's **Deleted files** option, `trashOption`, to
 `local`. So a test that deletes a file with `app.fileManager.trashFile`, as a

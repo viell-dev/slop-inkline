@@ -174,10 +174,6 @@ describe("Saved symbol refresh", function () {
   afterEach(async function () {
     await closePopouts();
   });
-  after(async function () {
-    await startOver();
-  });
-
   for (const mode of ["source", "preview"] as const) {
     for (const stored of [false, true]) {
       it(`updates existing ${mode} instances in ${stored ? "stored" : "text"} colour`, async function () {

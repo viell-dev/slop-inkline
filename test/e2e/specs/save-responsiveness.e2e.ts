@@ -124,10 +124,6 @@ describe("Saving a large symbol", function () {
     await startOver();
   });
 
-  after(async function () {
-    await startOver();
-  });
-
   for (const { file, side, spacing, least, budget } of symbols) {
     it(`keeps the page answering, and writes what it always wrote: ${file}`, async function () {
       await writeNoise(file, side, spacing);
