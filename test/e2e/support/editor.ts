@@ -420,9 +420,7 @@ export async function editorGrid(): Promise<{
   spacing: number;
   rows: number[];
 }> {
-  if (!(await browser.execute(() => "inklineTest" in window))) {
-    await loadModules();
-  }
+  await loadModules();
   return browser.executeObsidian(async ({ app }) => {
     const { guides, settings, view } = window.inklineTest;
     const line = activeDocument.querySelector(

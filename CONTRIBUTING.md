@@ -110,7 +110,10 @@ without Obsidian; `npm test` runs them. Code that needs the browser's own
 implementation, such as canvas encoding or how far a stream reads ahead, is also
 tested in Obsidian's renderer: an end-to-end spec calls `loadModules()` from
 `test/e2e/support/browser.ts`, which bundles `test/e2e/browser/entry.ts` and
-makes the plugin's modules available there as `window.inklineTest`.
+makes the plugin's modules available there as `window.inklineTest`. It bundles
+once for each spec file, and loads the bundle only into a window that does not
+have it yet, so a spec calls it again in each window it opens and after Obsidian
+reloads.
 
 End-to-end tests live in `test/e2e/` and run the built plugin in real Obsidian
 through WebdriverIO and
