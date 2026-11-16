@@ -72,9 +72,21 @@ export const defaultObsidianVersions = [
  */
 export function requestedVersions(value: string | undefined): string[] {
   const text = setting(value);
-  return text === undefined
-    ? [...defaultObsidianVersions]
-    : text.split(/[\s,]+/).filter((version) => version !== "");
+  const versions =
+    text === undefined
+      ? [...defaultObsidianVersions]
+      : text.split(/[\s,]+/).filter((version) => version !== "");
+  // A record keeps one worker for each request, so a repeated one would
+  // overwrite the other's.
+  const repeated = versions.find(
+    (version, index) => versions.indexOf(version) !== index,
+  );
+  if (repeated !== undefined) {
+    throw new Error(
+      `OBSIDIAN_VERSIONS names ${repeated} twice; name each version once`,
+    );
+  }
+  return versions;
 }
 
 /**

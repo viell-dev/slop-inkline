@@ -182,4 +182,14 @@ describe("workerVersion and requestedVersions", () => {
       "latest/latest",
     ]);
   });
+
+  // A record keeps one worker for each request, so the second would
+  // overwrite the first.
+  it("refuses a version named twice", () => {
+    for (const value of ["latest/latest latest/latest", "a/b,c/d a/b"]) {
+      expect(() => requestedVersions(value)).toThrow(
+        /^OBSIDIAN_VERSIONS names (latest\/latest|a\/b) twice; name each version once$/,
+      );
+    }
+  });
 });
