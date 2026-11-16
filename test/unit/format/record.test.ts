@@ -654,6 +654,9 @@ describe("a base layer's base64", () => {
       "é",
       "\n",
     ];
+    // Compared once, as an expect for each of the 20,736 took seconds (#269):
+    // each string read otherwise, with what was expected and what was found.
+    const wrong: (readonly [string, string, string])[] = [];
     for (const a of letters) {
       for (const b of letters) {
         for (const c of letters) {
@@ -661,12 +664,16 @@ describe("a base layer's base64", () => {
             const text = `${a}${b}${c}${d}`;
             const expected = ruledBase64(text);
             const found = readBase64(text);
-            if (typeof expected === "string") expect(found).toBe(expected);
-            else expect(found).toContain("not a valid PNG");
+            if (typeof expected === "string") {
+              if (found !== expected) wrong.push([text, expected, found]);
+            } else if (!found.includes("not a valid PNG")) {
+              wrong.push([text, "not a valid PNG", found]);
+            }
           }
         }
       }
     }
+    expect(wrong).toEqual([]);
   });
 
   it("refuses a bad character in any group, in the middle of a long text", () => {
@@ -1086,6 +1093,11 @@ describe("parseRecord bounds the text", () => {
     return `${start}${filler.repeat(count)}${end}`;
   }
 
+  // Its time is the work itself: eight texts of 16 MiB, each read through, and
+  // four of them encoded to check their size. It took 2.3 to 4.9 seconds alone
+  // on Windows, and 5.1 to 5.5 while other tests loaded the machine, past
+  // Vitest's five (#269). It promises nothing about speed, which
+  // test/e2e/manual/open-time.e2e.ts measures in Obsidian.
   it("counts a character of each width, across the places it can pause", () => {
     // Each has a character across the end of a slice of 65,536 code units, or
     // would if the count went wrong, as the opening of these records is 19 long.
@@ -1099,13 +1111,13 @@ describe("parseRecord bounds the text", () => {
       const atLimit = recordOf(size, filler, width);
       expect(new TextEncoder().encode(atLimit).length).toBe(size);
       expect(parseRecord(atLimit).ok).toBe(true);
-      const past = `${recordOf(size, filler, width).slice(0, -2)}${"a".repeat(limits.text - size + 1)}"}`;
+      const past = `${atLimit.slice(0, -2)}${"a".repeat(limits.text - size + 1)}"}`;
       expect(parseRecord(past)).toEqual({
         ok: false,
         detail: "record text is too long",
       });
     }
-  });
+  }, 30_000);
 
   it("counts half of a surrogate pair as what encoding would write", () => {
     // Which the check of its text then refuses, once the length passes it.
