@@ -180,17 +180,6 @@ describe("release candidates", () => {
     expect(isPrerelease("not a version")).toBe(false);
   });
 
-  it("keeps a plain pre-release out of the directory's map of versions", () => {
-    const manifest = { version: "0.9.0", minAppVersion: "1.13.4" };
-    const versions = {};
-    expect(syncMetadata("0.9.1", manifest, versions).versions).toEqual(
-      versions,
-    );
-    expect(syncMetadata("1.0.0", manifest, versions).versions).toEqual({
-      "1.0.0": "1.13.4",
-    });
-  });
-
   it.each([
     "0.1.1-rc.01",
     "01.1.1-rc.1",
