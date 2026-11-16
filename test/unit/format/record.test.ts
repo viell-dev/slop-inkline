@@ -774,7 +774,10 @@ describe("parseRecordSliced", () => {
       detail: 'the name "a" is repeated',
     });
     const nested = `{"strokes":[],${padding}"a":${"[".repeat(20)}${"]".repeat(20)}}`;
-    expect(parseRecord(nested)).toEqual({
+    const tooDeep = await paused((pause) =>
+      parseRecordSliced(nested, { pause }),
+    );
+    expect(tooDeep.result).toEqual({
       ok: false,
       detail: `nested more than ${String(limits.depth)} deep`,
     });

@@ -153,7 +153,7 @@ describe("readSettings", () => {
     };
     expect(readSettings(stored, sizes)).toEqual(stored);
     // Earlier versions stored a Pen pressure setting, which is gone.
-    expect(readSettings({ ...stored }, sizes)).toEqual(stored);
+    expect(readSettings({ ...stored, pressure: false }, sizes)).toEqual(stored);
   });
 
   it("keeps the default for each value it cannot read, and ignores others", () => {

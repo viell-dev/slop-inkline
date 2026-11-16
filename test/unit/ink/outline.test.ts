@@ -442,7 +442,7 @@ describe("polygon strokes", () => {
     }
   });
 
-  it("give nothing for no corners, or a lone corner with flat ends", () => {
+  it("give nothing for no corners", () => {
     expect(polygonPieces([], 2, false)).toEqual([]);
   });
 });
