@@ -273,9 +273,13 @@ screenshots use synthetic vaults and drawings only.
     no line ever changes or goes. A wrong hash means the change that caused it
     is wrong, so fix that change, and never update the list to make the test
     pass, even when a new browser makes the pinned files look like the easy
-    thing to regenerate: they are the only record of how symbols looked. The
-    limits in `limits.test.ts` are as fixed: a number there changes only with a
-    new format version, which keeps the old one's.
+    thing to regenerate: they are the only record of how symbols looked. CI
+    enforces this on every pull request: `npm run check:pinned` fails when a
+    line the list had in a release from `1.0.0` on, by its immutable tag, is
+    missing or different now. Such a failure means the change is wrong, as a
+    wrong hash does: never update the list, the tags, or the check to pass it.
+    The limits in `limits.test.ts` are as fixed: a number there changes only
+    with a new format version, which keeps the old one's.
   - `src/ink/freehand.ts` is part of the format, adapted from perfect-freehand
     so that no package update can change it. Keep it and the steps in the
     format's document saying the same thing.

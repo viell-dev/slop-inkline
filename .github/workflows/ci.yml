@@ -35,6 +35,18 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      # From 1.0.0, test/fixtures/pinned.sha256 only grows, as AGENTS.md says:
+      # every line it had in a release must still be in it. The release tags
+      # are what it is compared with, as the ruleset makes them immutable. The
+      # checkout is shallow and has no tags, and the repository is public, so
+      # fetching them needs no credentials. Linux only: the check reads Git,
+      # which is the same on both systems.
+      - name: Fetch the release tags
+        if: runner.os == 'Linux'
+        run: git fetch --no-tags --depth=1 origin '+refs/tags/*:refs/tags/*'
+      - name: Check that the pinned list only grows
+        if: runner.os == 'Linux'
+        run: npm run check:pinned
       - run: npm run check
       # Audits what ships: the bundled runtime dependencies. The test tools'
       # advisories wait for WebdriverIO 10 support; see issue #9.
