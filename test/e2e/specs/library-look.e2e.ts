@@ -286,6 +286,28 @@ async function editLook(file: string) {
   }, file);
 }
 
+/**
+ * What has the focus, and how it shows: whether the browser shows its focus,
+ * as it does for the keyboard, and the shadow Obsidian draws its ring with.
+ */
+async function focusRing() {
+  return browser.execute(() => {
+    const active = document.activeElement;
+    if (active === null) throw new Error("nothing has the focus");
+    return {
+      role: active.getAttribute("data-inkline-role"),
+      path:
+        active
+          .closest("[data-inkline-path]")
+          ?.getAttribute("data-inkline-path") ?? null,
+      text: active.tagName === "BUTTON" ? active.textContent : null,
+      expanded: active.getAttribute("aria-expanded"),
+      visible: active.matches(":focus-visible"),
+      shadow: getComputedStyle(active).boxShadow,
+    };
+  });
+}
+
 /** A computed style's size and weight, as numbers. */
 interface Type {
   readonly size: number;
@@ -657,6 +679,21 @@ describe("The library's look", function () {
         "water.ink.png edit",
       ]);
       await pictureOfLibrary(`library-quick-edit-${name}`);
+      // Reached by the keyboard, back from the name, the pressed Quick edit
+      // shows Obsidian's focus ring, the one a focused Cancel has.
+      await browser.keys(["Shift", "Tab"]);
+      const pressedRing = await focusRing();
+      for (let step = 0; step < 5; step++) await browser.keys(["Tab"]);
+      const cancelRing = await focusRing();
+      expect(pressedRing).toMatchObject({
+        role: "edit",
+        path: "sun.ink.png",
+        expanded: "true",
+        visible: true,
+      });
+      expect(cancelRing).toMatchObject({ text: "Cancel", visible: true });
+      expect(cancelRing.shadow).not.toBe("none");
+      expect(pressedRing.shadow).toBe(cancelRing.shadow);
       await formButton("Cancel").click();
       await waitForClosed();
     });

@@ -176,10 +176,10 @@ export class SymbolLibraryView extends ItemView {
   #editing: HTMLElement | undefined;
   #panel: EditPanel | undefined;
   /**
-   * The other rows' buttons that wait while a row is in Quick edit, disabled
-   * until it closes: Uses and Show more, which hold off redrawing until then,
-   * so that a click would only take effect later, and Quick edit, as one row
-   * is edited at a time.
+   * The buttons that wait while a row is in Quick edit, disabled until it
+   * closes: every row's Uses, the edited row's too, and Show more, which hold
+   * off redrawing until then, so that a click would only take effect later,
+   * and the other rows' Quick edit, as one row is edited at a time.
    */
   #waiting: HTMLButtonElement[] = [];
   /** Says to a screen reader what a waiting button waits for. */
@@ -613,14 +613,20 @@ export class SymbolLibraryView extends ItemView {
     edit.createSpan({ text: "Quick edit" });
     this.#title(row, entry.name, entry.folder);
     edit.addEventListener("click", (event) => {
-      if (this.#panel?.row !== row) {
-        this.#quickEdit(row, file);
-      } else if (event.detail > 1) {
-        // The second click of a double-click that opened the row keeps it
-        // open, and gives the focus back to its name.
+      // Only the first click of a double-click opens or closes the row: a
+      // later one would undo it, closing the form just opened, or opening a
+      // new one over what was just dropped. It gives the focus back to an
+      // open form's name.
+      if (event.detail > 1) {
         this.#editing?.focus();
-      } else {
+        return;
+      }
+      if (this.#panel?.row === row) {
         this.#panel.leave();
+      } else if (row.querySelector(":scope > form") === null) {
+        // A row closed during a press keeps its form until the press ends
+        // and the list is drawn again: it opens again only after that.
+        this.#quickEdit(row, file);
       }
     });
     this.#renderValues(row, entry);
@@ -959,6 +965,7 @@ export class SymbolLibraryView extends ItemView {
       renamed,
       release: () => {
         this.app.keymap.popScope(keys);
+        own.setAttribute("aria-expanded", "false");
       },
     };
     cancel.addEventListener("click", leave);
@@ -974,6 +981,9 @@ export class SymbolLibraryView extends ItemView {
     own.addEventListener("keydown", escape);
     form.addEventListener("submit", (event) => {
       event.preventDefault();
+      // A form closed during a press stays until the list is drawn again, and
+      // saves nothing meanwhile.
+      if (!open()) return;
       if (saving || save.disabled || fields.problem() !== undefined) return;
       const typed = input.value;
       const was = given;

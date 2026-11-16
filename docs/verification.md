@@ -484,13 +484,15 @@ must keep released files readable and looking the same, as
   with a long name, and the list and Quick edit keep their names for screen
   readers with no tooltip over their empty space. **Unreleased:** the row's own
   Quick edit says that its form is open, and closes it as Cancel does, by click,
-  Enter, or Esc, dropping what was typed and keeping the focus, while a
-  double-click opens it and leaves it open; it is unavailable while Cancel is,
-  during a save, and a save left with it renames nothing. Shift+Tab from the
-  name reaches it and then the symbol, past Uses, and the row's buttons follow a
-  rename made elsewhere, into another folder. Its symbol shows the file's menu,
-  and its fields do not. What each outcome writes, renames, and says is also
-  unit-tested
+  Enter, or Esc, dropping what was typed and keeping the focus, and only the
+  first click of a double-click opens or closes it. A row closed during a press
+  on it opens no second form, and the form it keeps until the press ends saves
+  nothing. It is unavailable while Cancel is, during a save, and a save left
+  with it, by click or by Esc, renames nothing, or says that the readings are
+  saved when the rename waits. Shift+Tab from the name reaches it and then the
+  symbol, past Uses, and the row's buttons follow a rename made elsewhere, into
+  another folder. Its symbol shows the file's menu, and its fields do not. What
+  each outcome writes, renames, and says is also unit-tested
   ([library-quick-edit.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-quick-edit.e2e.ts)
   and
   [quick-edit.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/library/quick-edit.test.ts)).
@@ -510,8 +512,9 @@ must keep released files readable and looking the same, as
   edit keeps its symbol, Uses and Quick edit where they were, and the form takes
   the place of what shows under them, 4 px below the buttons and 12 px above the
   next row, across the row, with the name's field as wide as the others; the
-  row's Uses waits with the others', its Quick edit shows pressed, and its
-  symbol still inserts
+  row's Uses waits with the others', its Quick edit shows pressed, with
+  Obsidian's focus ring when the keyboard reaches it, and its symbol still
+  inserts
   ([library-look.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-look.e2e.ts)
   and
   [text-fields.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/text-fields.test.ts)).

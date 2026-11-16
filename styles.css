@@ -586,8 +586,6 @@ img.inkline-symbol[width]:not([height]):not(.image-wrapper > img),
   height: auto;
   padding: var(--size-4-1);
   text-align: start;
-  background: none;
-  box-shadow: none;
 }
 
 .inkline-library-insert:hover {
@@ -643,8 +641,6 @@ img.inkline-symbol[width]:not([height]):not(.image-wrapper > img),
   padding-inline: var(--size-4-1);
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
-  background: none;
-  box-shadow: none;
 }
 
 .inkline-library-uses {
@@ -669,11 +665,15 @@ img.inkline-symbol[width]:not([height]):not(.image-wrapper > img),
  * A row's Quick edit while its form is open under the row's buttons, pressed,
  * as a click on it closes the form again: flat, in the colours Obsidian gives
  * an icon button that is on, where the others stand out in Obsidian's colours
- * for a button, with a shadow.
+ * for a button, with a shadow. Obsidian draws the focus ring as a shadow too,
+ * which stays.
  */
 .inkline-library-edit[aria-expanded="true"] {
   color: var(--icon-color-active);
   background-color: var(--background-modifier-active-hover);
+}
+
+.inkline-library-edit[aria-expanded="true"]:not(:focus-visible) {
   box-shadow: none;
 }
 
