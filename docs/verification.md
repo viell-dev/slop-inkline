@@ -500,14 +500,16 @@ must keep released files readable and looking the same, as
   readers with no tooltip over their empty space. **Unreleased:** the row's own
   Quick edit says that its form is open, and closes it as Cancel does, by click,
   Enter, or Esc, dropping what was typed and keeping the focus, and only the
-  first click of a double-click opens or closes it. A row closed during a press
-  on it opens no second form, and the form it keeps until the press ends saves
-  nothing. It is unavailable while Cancel is, during a save, and a save left
-  with it, by click or by Esc, renames nothing, or says that the readings are
-  saved when the rename waits. Shift+Tab from the name reaches it and then the
-  symbol, past Uses, and the row's buttons follow a rename made elsewhere, into
-  another folder. Its symbol shows the file's menu, and its fields do not. What
-  each outcome writes, renames, and says is also unit-tested
+  first click of a double-click opens or closes it. A row closed by Esc during a
+  press on its Quick edit keeps its form until the press ends, and that form
+  saves nothing; the release, a click on the same Quick edit, opens no second
+  form, and nor does another row's Quick edit from the keyboard meanwhile. It is
+  unavailable while Cancel is, during a save, and a save left with it, by click
+  or by Esc, renames nothing, or says that the readings are saved when the
+  rename waits. Shift+Tab from the name reaches it and then the symbol, past
+  Uses, and the row's buttons follow a rename made elsewhere, into another
+  folder. Its symbol shows the file's menu, and its fields do not. What each
+  outcome writes, renames, and says is also unit-tested
   ([library-quick-edit.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-quick-edit.e2e.ts)
   and
   [quick-edit.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/library/quick-edit.test.ts)).

@@ -621,13 +621,8 @@ export class SymbolLibraryView extends ItemView {
         this.#editing?.focus();
         return;
       }
-      if (this.#panel?.row === row) {
-        this.#panel.leave();
-      } else if (row.querySelector(":scope > form") === null) {
-        // A row closed during a press keeps its form until the press ends
-        // and the list is drawn again: it opens again only after that.
-        this.#quickEdit(row, file);
-      }
+      if (this.#panel?.row === row) this.#panel.leave();
+      else this.#quickEdit(row, file);
     });
     this.#renderValues(row, entry);
     if (entry.notes.length === 0) {
@@ -811,6 +806,12 @@ export class SymbolLibraryView extends ItemView {
   #quickEdit(row: HTMLElement, file: TFile): void {
     if (this.#editing !== undefined) {
       this.#editing.focus();
+      return;
+    }
+    // A row closed during a press on the list keeps its form until the press
+    // ends and the list is drawn again. No row opens until then, so that the
+    // list never holds a closed form beside an open one.
+    if (this.#list?.querySelector(".inkline-library-edit-form") !== null) {
       return;
     }
     const own = row.querySelector<HTMLButtonElement>(

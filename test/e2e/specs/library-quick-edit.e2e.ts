@@ -184,6 +184,90 @@ async function pastDoubleClick(): Promise<void> {
   await browser.pause(1000);
 }
 
+/**
+ * The mouse. A press and its release need this one id: an action under another
+ * is another pointer, at the corner of the window, and lets this one go with
+ * no click.
+ */
+const mouse = () =>
+  browser.action("pointer", {
+    id: "mouse",
+    parameters: { pointerType: "mouse" },
+  });
+
+/** Holds the main button down on the button of `role` in `file`'s row. */
+async function pressOn(
+  file: string,
+  role: "insert" | "uses" | "edit",
+): Promise<void> {
+  const at = await browser.execute(
+    (row, wanted) => {
+      const target = document.querySelector(
+        `${row} button[data-inkline-role="${wanted}"]`,
+      );
+      if (target === null) throw new Error(`no ${wanted} in ${row}`);
+      const box = target.getBoundingClientRect();
+      return {
+        x: Math.round(box.left + box.width / 2),
+        y: Math.round(box.top + box.height / 2),
+      };
+    },
+    rowOf(file),
+    role,
+  );
+  await mouse()
+    .move({ origin: "viewport", ...at })
+    .down()
+    .perform(true);
+}
+
+/** Lets go of the button {@link pressOn} holds down, where the mouse is. */
+async function release(): Promise<void> {
+  await mouse().up().perform();
+}
+
+/**
+ * Has the page note every click from now on, for {@link clicksSeen}, as the
+ * role and row of the button it was on, and its count, as `edit gate.ink.png
+ * 1`.
+ */
+async function watchClicks(): Promise<void> {
+  await browser.execute(() => {
+    const seen: string[] = [];
+    Reflect.set(window, "inklineClicks", seen);
+    window.addEventListener(
+      "click",
+      (event) => {
+        const target = event.target;
+        const button =
+          target instanceof Element
+            ? target.closest("[data-inkline-role]")
+            : null;
+        const role = button?.getAttribute("data-inkline-role") ?? "-";
+        const path =
+          button
+            ?.closest("[data-inkline-path]")
+            ?.getAttribute("data-inkline-path") ?? "-";
+        seen.push(`${role} ${path} ${String(event.detail)}`);
+      },
+      true,
+    );
+  });
+}
+
+/** The clicks heard since {@link watchClicks}. */
+async function clicksSeen(): Promise<string[]> {
+  return browser.execute(() => {
+    const seen: unknown = Reflect.get(window, "inklineClicks");
+    return Array.isArray(seen) ? seen.map(String) : [];
+  });
+}
+
+/** How many Quick edit forms the library holds. */
+async function formCount(): Promise<number> {
+  return browser.$$(".inkline-library-edit-form").length;
+}
+
 /** The titles of the items in the menus open now. */
 async function menuItems(): Promise<string[]> {
   return browser.execute(() =>
@@ -600,6 +684,8 @@ describe("Quick edit in the library", function () {
   });
 
   afterEach(async function () {
+    // A press a failed test left held down.
+    await browser.releaseActions();
     await renameAgain();
     await browser.executeObsidian(({ app }) => {
       Reflect.deleteProperty(app.vault, "modifyBinary");
@@ -936,19 +1022,21 @@ describe("Quick edit in the library", function () {
     await quickEdit("gate.ink.png");
     await area("reading").setValue("KA");
     await pastDoubleClick();
-    const button = await rowButton("gate.ink.png", "edit").getElement();
-    await browser
-      .action("pointer")
-      .move({ origin: button })
-      .down({ button: 0 })
-      .perform(true);
+    await watchClicks();
+    await pressOn("gate.ink.png", "edit");
     try {
       // Esc on the button the press focused closes the row. The list holds
       // off drawing again until the press ends, so the form stays till then.
+      expect(await focused()).toMatchObject({
+        role: "edit",
+        path: "gate.ink.png",
+      });
       await browser.keys(["Escape"]);
       await browser.pause(200);
-      expect(await browser.$$(".inkline-library-edit-form").length).toBe(1);
-      expect(await button.getAttribute("aria-expanded")).toBe("false");
+      expect(await formCount()).toBe(1);
+      expect(
+        await rowButton("gate.ink.png", "edit").getAttribute("aria-expanded"),
+      ).toBe("false");
       // That form saves nothing.
       await browser.execute(() => {
         document
@@ -958,18 +1046,79 @@ describe("Quick edit in the library", function () {
       await browser.pause(500);
       expect(await bytesOf("gate.ink.png")).toBe(before);
     } finally {
-      await browser.action("pointer").up({ button: 0 }).perform();
+      await release();
     }
-    // The release clicks the button, which opens no second form, and the
-    // list then draws the row closed.
+    // The press ends on the button, so its release is a click on it, which
+    // opens no form while the list still holds the closed one. The list then
+    // draws the row closed.
+    await browser.waitUntil(async () => (await clicksSeen()).length > 0, {
+      timeoutMsg: "the release clicked nothing",
+    });
+    expect(await clicksSeen()).toEqual(["edit gate.ink.png 1"]);
     await waitForClosed();
     await browser.pause(500);
-    expect(await browser.$$(".inkline-library-edit-form").length).toBe(0);
+    expect(await formCount()).toBe(0);
     expect(await bytesOf("gate.ink.png")).toBe(before);
     expect(await focused()).toMatchObject({
       role: "edit",
       path: "gate.ink.png",
     });
+  });
+
+  it("opens no other row while a row closed during a press keeps its form", async function () {
+    await symbolWith("gate.ink.png", { reading: ["TA"] });
+    await symbolWith("sun.ink.png", { reading: ["SO"] });
+    const before = await bytesOf("gate.ink.png");
+    await showLibrary();
+    await quickEdit("gate.ink.png");
+    await area("reading").setValue("KA");
+    await pastDoubleClick();
+    await pressOn("gate.ink.png", "edit");
+    try {
+      await browser.keys(["Escape"]);
+      await browser.pause(200);
+      expect(await formCount()).toBe(1);
+      // Sun's Quick edit no longer waits, and from the keyboard opens nothing
+      // until the list is drawn again without gate's form.
+      expect(await rowButton("sun.ink.png", "edit").isEnabled()).toBe(true);
+      await browser.execute(
+        (selector) => {
+          document.querySelector<HTMLElement>(selector)?.focus();
+        },
+        `${rowOf("sun.ink.png")} button[data-inkline-role="edit"]`,
+      );
+      expect(await focused()).toMatchObject({
+        role: "edit",
+        path: "sun.ink.png",
+      });
+      await browser.keys(["Enter"]);
+      await browser.pause(300);
+      expect(await formCount()).toBe(1);
+      expect(
+        await browser
+          .$(rowOf("sun.ink.png"))
+          .$(".inkline-library-edit-form")
+          .isExisting(),
+      ).toBe(false);
+      expect(
+        await rowButton("sun.ink.png", "edit").getAttribute("aria-expanded"),
+      ).toBe("false");
+    } finally {
+      await release();
+    }
+    // Once the press ends, the list is drawn with no form, and sun opens.
+    await waitForClosed();
+    await rowButton("sun.ink.png", "edit").click();
+    await formButton("Save").waitForEnabled();
+    expect(await formCount()).toBe(1);
+    expect(
+      await browser
+        .$(rowOf("sun.ink.png"))
+        .$(".inkline-library-edit-form")
+        .isExisting(),
+    ).toBe(true);
+    expect(await area("reading").getValue()).toBe("SO");
+    expect(await bytesOf("gate.ink.png")).toBe(before);
   });
 
   it("shows the symbol's menu from its row in Quick edit, and leaves the fields their own", async function () {
