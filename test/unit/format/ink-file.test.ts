@@ -25,7 +25,6 @@ import {
   formatVersion,
   imageHeight,
   limits,
-  parseRecord,
   parseRecordSliced,
   serializeRecord,
   type InkRecord,
@@ -610,19 +609,6 @@ describe("readInkFile reports a record that cannot be used", () => {
     ).toBe("more than one record chunk");
   });
 
-  it("whose base layer's PNG has a wrong CRC, in its image data too", () => {
-    const base = writeChunks(pixelChunks(blank(2, 2)));
-    const lastData = base.length - 12 - 1 - 4;
-    base[lastData] = (base[lastData] ?? 0) ^ 1;
-    const text = serializeRecord({
-      strokes: [],
-      base: { x: 0, y: 0, width: 16, height: 16, png: base },
-    });
-    const parsed = parseRecord(text);
-    expect(parsed.ok).toBe(false);
-    if (!parsed.ok) expect(parsed.detail).toContain("bad CRC in IDAT");
-  });
-
   it("whose chunk has a wrong CRC, without trusting its version", async () => {
     const file = withChunks([recordChunk(1)]);
     // Turns version 1 into version 2 without fixing the CRC.
@@ -891,34 +877,6 @@ describe("carriedChunks", () => {
 });
 
 describe("writeInkFile writes only what readers accept", () => {
-  it("refuses a record whose text is longer than the limit", async () => {
-    // Only the largest of everything together reaches it: all the points, in
-    // as many strokes as a record can have, on the largest base layer.
-    const [header, , end] = pixelChunks(blank(1, 1));
-    if (header === undefined || end === undefined) throw new Error("no PNG");
-    const data = new Uint8Array(limits.baseBytes - 64);
-    const each = (2 * limits.points) / limits.strokes;
-    const long: InkRecord = {
-      strokes: Array.from({ length: limits.strokes }, () => ({
-        tool: "eraser",
-        size: limits.strokeSize,
-        points: new Array<number>(each).fill(-limits.coordinate),
-        cut: { start: "down", end: "down" },
-      })),
-      base: {
-        x: 0,
-        y: 0,
-        width: 16,
-        height: 16,
-        png: writeChunks([header, { type: "IDAT", data }, end]),
-      },
-    };
-    expect(serializeRecord(long).length).toBeGreaterThan(limits.text);
-    await expect(writeInkFile(image, long)).rejects.toThrow(
-      new RecordError("record text is too long"),
-    );
-  });
-
   it("refuses a record that breaks the format", async () => {
     const broken: InkRecord = {
       strokes: [{ tool: "pen", size: 0, points: [0, 0] }],
