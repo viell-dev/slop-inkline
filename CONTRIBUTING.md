@@ -98,8 +98,11 @@ npm run check
 (`eslint-plugin-obsidianmd`) and typescript-eslint's strict type-checked rules,
 Prettier, the TypeScript checks of the plugin, the tests, the scripts, and the
 documentation site's configuration, the unit tests, the build, and the
-documentation site's build. `npm run format` applies Prettier. GitHub Actions
-runs `check` on Linux and Windows, and a dependency audit on Linux. The
+documentation site's build. A lint warning fails `check` as an error does, so
+that a rule an update of the plugin adds as advice is seen before it merges:
+follow it, or turn it off in `eslint.config.mjs` with the reason beside it.
+`npm run format` applies Prettier. GitHub Actions runs `check` on Linux and
+Windows, and a dependency audit on Linux. The
 [plugin's guide](https://github.com/obsidianmd/eslint-plugin/blob/0.5.1/docs/configuration.md#community-plugin-scanner-configuration)
 describes what the directory's scan runs.
 

@@ -11,7 +11,7 @@
   "scripts": {
     "build": "node scripts/build.ts",
     "dev": "node scripts/build.ts --watch",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings 0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc -p tsconfig.json && tsc -p test && tsc -p test/e2e && tsc -p scripts && tsc -p docs/.vitepress",
