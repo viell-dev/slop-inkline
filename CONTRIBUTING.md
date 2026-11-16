@@ -395,9 +395,11 @@ them also get an independent review by another agent, as
   bundles its runtime libraries, which go in `dependencies`; tools go in
   `devDependencies`. Add a runtime library only when the need cannot be met in a
   few lines, and say why in the pull request.
-- CI audits `dependencies`, the code that ships. Development-tool advisories and
-  their handling are tracked in
-  [#9](https://github.com/viell-dev/slop-inkline/issues/9).
+- CI audits `dependencies`, the code that ships. It does not audit the
+  development tools, so that an advisory published for one of them does not fail
+  every unrelated pull request: Dependabot's alerts report those, and the pinned
+  overview [#10](https://github.com/viell-dev/slop-inkline/issues/10) tracks the
+  ones that wait on a dependency.
 - `allowScripts` in `package.json` lists which dependencies may run install
   scripts. npm warns about any other; approve one only if the project needs its
   script.
