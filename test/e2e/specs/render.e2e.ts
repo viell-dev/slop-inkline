@@ -134,6 +134,45 @@ async function waitForTagged(selector: string, count: number): Promise<void> {
 }
 
 /**
+ * Waits for `total` images in `selector`, each loaded, with a size of its
+ * own, and each symbol among them measured by the renderer. An embed's
+ * image comes a moment after the note shows, and loads after that, so a
+ * test that reads every image of a view, the ordinary photo too, waits for
+ * them all.
+ */
+async function waitForLoaded(selector: string, total: number): Promise<void> {
+  let seen = "";
+  try {
+    await browser.waitUntil(async () => {
+      const found = await browser.execute(
+        (wanted) =>
+          Array.from(activeDocument.querySelectorAll(wanted)).map((node) =>
+            node.instanceOf(HTMLImageElement)
+              ? {
+                  loaded: node.complete && node.naturalWidth > 0,
+                  measured:
+                    !node.classList.contains("inkline-symbol") ||
+                    node.style.getPropertyValue("--inkline-ratio") !== "",
+                }
+              : { loaded: false, measured: false },
+          ),
+        selector,
+      );
+      seen = JSON.stringify(found);
+      return (
+        found.length === total &&
+        found.every((image) => image.loaded && image.measured)
+      );
+    });
+  } catch (error) {
+    throw new Error(
+      `waited for ${String(total)} loaded images, but saw ${seen}`,
+      { cause: error },
+    );
+  }
+}
+
+/**
  * The share of the first symbol's area, on the screen, in its text colour,
  * and in the stored grey, from a screenshot of it.
  */
@@ -255,6 +294,7 @@ describe("Symbols in notes", function () {
     it(`stand on the baseline, as tall as the line box, in ${name}`, async function () {
       await open("Render.md", mode);
       await waitForTagged(images(mode), 2);
+      await waitForLoaded(images(mode), 3);
       const [plain, sized, photo] = await shown(images(mode));
       await saveScreenshot(`render-${mode}`);
       if (plain === undefined || sized === undefined || photo === undefined) {
@@ -336,6 +376,8 @@ describe("Symbols in notes", function () {
     await open("Contexts.md", "source");
     // One each in the callout and the table, and two in the embedded note.
     await waitForTagged(images("source"), 4);
+    // The embedded note's photo is the fifth.
+    await waitForLoaded(images("source"), 5);
     const all = await shown(images("source"));
     for (const image of all.filter((each) => each.tagged)) {
       // A quarter of its height below the baseline, however tall it is.
@@ -443,6 +485,8 @@ describe("Symbols in notes", function () {
     // them, as Obsidian does when it shows a file anew.
     await open("Render.md", "preview");
     await waitForTagged(images("preview"), 2);
+    // The photo's address is read below.
+    await waitForLoaded(images("preview"), 3);
     /** The first image's address, and its mask and tag. */
     const first = (src?: string) =>
       browser.execute(
