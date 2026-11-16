@@ -142,9 +142,9 @@ The editor offers a draft only when it opens a symbol at the path the draft was
 kept for. Drafts follow a rename that Obsidian makes while Inkline is on. A
 draft stays unseen when its symbol's file then stops opening, as one cut short
 by a crash while it was saved, and when the file is renamed or deleted in a way
-Inkline does not see, as while it is off. **Unreleased:** when a symbol does not
-open because its file is not a valid PNG or its strokes cannot be read, the
-notice says so if a draft of it is kept.
+Inkline does not see, as while it is off. When a symbol does not open because
+its file is not a valid PNG or its strokes cannot be read, the notice says so if
+a draft of it is kept.
 
 A draft not restored within 30 days is dropped. To get one back before then:
 

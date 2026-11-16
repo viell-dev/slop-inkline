@@ -36,9 +36,9 @@ version of the file format than this Inkline reads. Update Inkline, as
 so that it never loses what the newer one stored.
 
 **"… Unsaved changes to it are kept as a draft. To get them back, see Saving and
-recovery in Inkline's guide."** **Unreleased.** The symbol did not open, as its
-file is not a valid PNG or its strokes cannot be read, and the editor had kept a
-draft of it, as when a crash cut short a save.
+recovery in Inkline's guide."** The symbol did not open, as its file is not a
+valid PNG or its strokes cannot be read, and the editor had kept a draft of it,
+as when a crash cut short a save.
 [Drafts whose symbol is gone or does not open](./recovery.md#drafts-whose-symbol-is-gone-or-does-not-open)
 says how to get the draft back.
 
@@ -100,15 +100,15 @@ Look at the file at that path, and at your sync tool's history for what was
 there, then save again or close without saving.
 
 **"… is saved, but was not inserted, as the note it was for, …, was deleted."**
-**Unreleased.** The note you started the symbol in was deleted while you drew,
-as by sync or on another device. The symbol is saved in its file: insert it
-where you want it with **Inkline: Insert existing symbol** or the
+The note you started the symbol in was deleted while you drew, as by sync or on
+another device. The symbol is saved in its file: insert it where you want it
+with **Inkline: Insert existing symbol** or the
 [insert trigger](./notes.md#insert-a-symbol-you-have).
 
-**"No next symbol was started, as the note it was for, …, was deleted."**
-**Unreleased.** You pressed **Next** after the note you were drawing symbols
-into was deleted, as by sync or on another device. The symbol you were on is
-saved; there is no note for the next one to go into.
+**"No next symbol was started, as the note it was for, …, was deleted."** You
+pressed **Next** after the note you were drawing symbols into was deleted, as by
+sync or on another device. The symbol you were on is saved; there is no note for
+the next one to go into.
 
 **"… is saved, but could not be renamed: …"** The drawing is saved under the old
 name, and the new name stays in the editor's name field, for the next save to

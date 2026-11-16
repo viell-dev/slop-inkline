@@ -1,11 +1,11 @@
 # Install
 
-::: info Prerelease
+::: info Not in the directory yet
 
 Inkline is distributed through
 [GitHub releases](https://github.com/viell-dev/slop-inkline/releases). It is not
 in Obsidian's community plugin directory yet; see
-[the plan for 1.0.0](#the-community-directory). Install the release files
+[The community directory](#the-community-directory). Install the release files
 manually; no separate installer plugin is needed. If you would rather have
 updates arrive by themselves, [BRAT](#install-with-brat) is an optional
 alternative.
@@ -17,8 +17,8 @@ alternative.
 - Obsidian **1.13.4 or later** on desktop, with a mouse or a trackpad. Inkline
   is tested on Linux; Windows and macOS should work but are not tested.
   Obsidian's mobile apps do not offer it.
-- A vault to try it in. A new vault, or a copy of one, keeps your own notes out
-  of the way while you try a prerelease.
+- A vault. To try Inkline, or a pre-release of it, without touching your own
+  notes, use a new vault or a copy of one.
 
 Each change is tested in Obsidian 1.13.4, on the oldest installer that can run
 it, and in the latest public release of Obsidian. The host tests run on Linux;
@@ -28,15 +28,16 @@ limits.
 ## Install the ZIP
 
 1. Open the [releases page](https://github.com/viell-dev/slop-inkline/releases)
-   and download **inkline-&lt;version&gt;.zip** from the release's **Assets**.
-   Take the highest version number. Every release so far is a pre-release. From
-   0.9.0 on, a pre-release has an odd minor version, such as `0.9.0` or `1.1.2`,
-   and a public release an even one, such as `1.0.0`; earlier pre-releases have
-   a suffix, such as `0.3.0-alpha.8`. The 0.9 releases lead to 1.0.0: 0.9.0 and
-   0.9.1 are betas, and from 0.9.2 on they are release candidates, each meant to
-   become 1.0.0 unchanged. The file format is final from 0.9.2, so a symbol
-   saved by an earlier version opens as a picture, as [Update](#update) says.
-   GitHub's **Source code** archives contain source files, not the built plugin.
+   and download **inkline-&lt;version&gt;.zip** from the **Assets** of the
+   release marked **Latest**, the newest public release, such as `1.0.0`. A
+   public release has an even minor version. A pre-release, marked
+   **Pre-release**, has an odd one, such as `1.1.0`, and is for trying changes
+   before the next public release; take one only if you want to. Releases before
+   0.9.0 have a suffix instead, such as `0.3.0-alpha.8`, and are pre-releases
+   too. 1.0.0 is the first stable release, and the file format is frozen: a
+   symbol saved by 0.9.2 or later opens as it is, and one saved by an earlier
+   version opens as a picture, as [Update](#update) says. GitHub's **Source
+   code** archives contain source files, not the built plugin.
 2. Extract the ZIP into your vault's `.obsidian/plugins/` directory. The ZIP
    contains its own `inkline/` folder, so the result must be:
 
@@ -90,6 +91,11 @@ install ZIP as well, run `node scripts/package.ts dist test-results/package`.
 
 ## Update
 
+Once Obsidian's community plugin directory lists Inkline, Obsidian offers each
+new public release as an update under **Settings → Community plugins**, however
+you installed it, as [The community directory](#the-community-directory) says.
+Until then, and to move to a pre-release, update by hand:
+
 1. Save any open drawing, then turn Inkline off under **Settings → Community
    plugins**.
 2. Download the newer release's install ZIP and extract it into the same
@@ -137,10 +143,10 @@ show that it works, not that it is safe to use, and BRAT does not check
    and select **Add plugin**.
 
 **latest** always takes the highest version number, whether or not GitHub marks
-that release as a pre-release: BRAT has no setting to leave pre-releases out.
-Every release so far is a pre-release, so it gives you the newest of them. To
-stay on public releases once there are some, choose a public version, such as
-`1.0.0`, and change it yourself.
+that release as a pre-release: BRAT has no setting to leave pre-releases out. So
+once a pre-release such as `1.1.0` is published, **latest** moves to it, and to
+every pre-release after it. To stay on public releases, choose a public version,
+such as `1.0.0`, and change it yourself when the next one comes out.
 
 With **latest**, BRAT looks for a new version about a minute after Obsidian
 starts, unless you turn off **Auto-update plugins at startup** in its settings,
@@ -158,21 +164,22 @@ installs it at once.
 
 ## The community directory
 
-**Planned, not available yet.** The plan is that 1.0.0, the first public
-release, is also the first release in Obsidian's community plugin directory, so
-that you can install it under **Settings → Community plugins → Browse** and
-Obsidian offers its updates.
+**Not listed yet.** 1.0.0, the first public release, is published on GitHub
+first, and then submitted to Obsidian's community plugin directory, which lists
+a plugin once Obsidian's review passes. Until Inkline is listed, install the
+[ZIP](#install-the-zip). Once it is, you can install it under **Settings →
+Community plugins → Browse**, and Obsidian offers its updates.
 
-The directory will offer public releases only, those with an even minor version.
+The directory offers public releases only, those with an even minor version.
 Pre-releases stay on the
 [releases page](https://github.com/viell-dev/slop-inkline/releases), where every
 release keeps its ZIP and loose files, and BRAT remains an optional way to
 follow them.
 
-Obsidian offers its updates to every installed plugin with a directory entry,
-however you installed it. Someone on a 0.9 pre-release will be offered 1.0.0.
-Someone on a later pre-release, such as `1.1.0`, stays on it until a public
-release is higher, such as `1.2.0`.
+Once Inkline is listed, Obsidian offers its updates to every installation of it,
+however it was installed: someone on a 0.9 pre-release, or on an earlier public
+release, is offered the newest public release. Someone on a later pre-release,
+such as `1.1.0`, stays on it until a public release is higher, such as `1.2.0`.
 
 ## Turn off or remove
 

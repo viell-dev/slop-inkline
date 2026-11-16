@@ -36,10 +36,12 @@ features:
       drawn, however often you edit it.
 ---
 
-::: info Prerelease
+::: info Install
 
-Inkline is a prerelease for Obsidian 1.13.4 or later, on desktop.
-[Install the release ZIP](./install.md), then draw your first symbol.
+Inkline runs in Obsidian 1.13.4 or later, on desktop, and 1.0.0 is its first
+stable release. It is not in Obsidian's community plugin directory yet:
+[install the release ZIP](./install.md) from GitHub, then draw your first
+symbol.
 
 :::
 

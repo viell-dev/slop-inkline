@@ -29,8 +29,8 @@ picks it from the list that opens.
 
 It runs in desktop Obsidian, and symbols are drawn with a mouse or a trackpad.
 AI agents build, test, document, and maintain it, and no person reviews the
-code. The owner decides what it is for and what its releases cover. It has had
-no stable release yet; when the first is published is the owner's decision, as
+code. The owner decides what it is for and what its releases cover. `1.0.0` is
+its first stable release; when it is published is the owner's decision, as
 [Releases](#releases) says.
 
 ### What it is for
@@ -417,11 +417,14 @@ the owner in an issue with `Needs: Owner`.
 [RELEASING.md](RELEASING.md) is the process. The maintaining agents publish a
 prerelease on GitHub once it is ready by those steps, without asking the owner
 for each one. The owner's explicit stable-publication hold in
-[#5](https://github.com/viell-dev/slop-inkline/issues/5) remains binding, as the
-release guide explains. Submitting the plugin to Obsidian's community directory,
-or changing what Inkline is for or where it is distributed, needs the owner's
-decision. `manifest.json` on `main` is what Obsidian offers, so a pre-release's
-version stays out of it; see
+[#5](https://github.com/viell-dev/slop-inkline/issues/5) remains binding until
+the owner lifts it there, as the release guide explains. The owner decided in
+[#141](https://github.com/viell-dev/slop-inkline/issues/141) that `1.0.0` is
+also the first release in Obsidian's community directory. Submitting it there is
+the owner's own step, with their sign-in, once it is published on GitHub, as
+#141 lists. Changing what Inkline is for or where it is distributed needs the
+owner's decision. `manifest.json` on `main` is what Obsidian offers, so a
+pre-release's version stays out of it; see
 [RELEASING.md](RELEASING.md#where-a-version-is-recorded).
 
 ## The prototype branch

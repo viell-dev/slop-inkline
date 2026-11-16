@@ -1,9 +1,9 @@
 # Community directory listing
 
 What the listing form in Obsidian's community directory asks for, ready to paste
-and select. Submitting it needs the owner's decision and sign-in, as
-[#141](https://github.com/viell-dev/slop-inkline/issues/141) describes. Under
-**Edit listing** in the dashboard:
+and select. Submitting it is the owner's step, with their sign-in, once `1.0.0`
+is published, as [#141](https://github.com/viell-dev/slop-inkline/issues/141)
+describes. Under **Edit listing** in the dashboard:
 
 | Field             | Enter                                                       |
 | ----------------- | ----------------------------------------------------------- |

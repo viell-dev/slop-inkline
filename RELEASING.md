@@ -77,8 +77,8 @@ hand, the route the [install guide](docs/install.md) describes. From 0.9.4, each
 also carries the format's specification, which no installer reads. BRAT is an
 optional alternative, never a requirement
 ([#149](https://github.com/viell-dev/slop-inkline/issues/149)). The first public
-release, `1.0.0`, is also the first in Obsidian's community directory, which
-lists public releases only.
+release, `1.0.0`, is also the first to go to Obsidian's community directory,
+which lists public releases only.
 
 The maintaining agents publish prereleases once ready by the steps below,
 without asking the owner for each one: GitHub releases are the plugin's channel.
@@ -87,10 +87,15 @@ without asking the owner for each one: GitHub releases are the plugin's channel.
 testing does not lift it. A stable release requires the owner's explicit change
 of direction as well as the agreed goal, human evidence, and blocker
 dispositions below. The release tracker in #5 links the applicable human test
-requests and remaining work.
+requests and remaining work. For `1.0.0`, the goal's conditions, the human
+evidence, and the open defects are recorded in
+[Why 1.0.0 meets the goal](#why-100-meets-the-goal); the hold stands until the
+owner lifts it in #5.
 
-Submitting the plugin to Obsidian's community directory, or a change of what
-Inkline is for or where it is distributed, needs the owner's decision.
+Submitting the plugin to Obsidian's community directory is the owner's own step,
+with their sign-in, as [The community directory](#the-community-directory) says.
+A change of what Inkline is for or where it is distributed needs the owner's
+decision.
 
 ## The stable release goal
 
@@ -147,45 +152,62 @@ libraries.
 Obsidian's directory, as the owner decided in
 [#141](https://github.com/viell-dev/slop-inkline/issues/141) on 2026-11-05. The
 builds before it are pre-releases: `0.9.0` is the first beta, `0.9.2` the first
-rc, `0.9.3` the second, `0.9.4` the third, and `0.9.5` the fourth.
+rc, `0.9.3` the second, `0.9.4` the third, and `0.9.5` the fourth and last.
+`1.0.0` is `0.9.5` with the changes recorded below.
 
-### Why 0.9.5 is an rc
+### Why 1.0.0 meets the goal
 
-0.9.4 was the third rc. The owner's pass on it, in
-[#289](https://github.com/viell-dev/slop-inkline/issues/289), asked for four
-changes to the library before `1.0.0`, so 0.9.4 could not become `1.0.0`
-unchanged. 0.9.5 makes them and nothing else, so that `1.0.0` can be 0.9.5 with
-a new version number and its documents. It meets each of the conditions above:
+`0.9.5` was the fourth rc. The owner's pass on it found its changes right and
+asked for one more, and four independent checks of it found nothing critical. So
+`1.0.0` is `0.9.5` with two changes, a new version number, and its documents:
 
-- **The owner's reports are handled.** Their report on the beta, `0.9.1`, in
-  [#150](https://github.com/viell-dev/slop-inkline/issues/150), was delivered in
-  0.9.3, and their pass on 0.9.3, in
-  [#212](https://github.com/viell-dev/slop-inkline/issues/212), in 0.9.4. Their
-  pass on 0.9.4 asked for four changes to the library, each delivered in
-  [#293](https://github.com/viell-dev/slop-inkline/pull/293):
-  - more space above and below a symbol's readings and translations, with their
-    labels in bold, at the row's edge and the size of Quick edit's labels;
-  - Quick edit's fields growing and shrinking with what they hold;
-  - the other rows' Uses and Quick edit buttons disabled while a row is in Quick
-    edit;
-  - the notes that Uses lists under a bold label, with bullets, as one list with
-    the readings and translations.
+- [#303](https://github.com/viell-dev/slop-inkline/pull/303): the fixes for what
+  those checks found in saving, drafts, and the guide;
+- [#305](https://github.com/viell-dev/slop-inkline/pull/305): the change the
+  owner asked for, that a library row in Quick edit keeps its own buttons, the
+  symbol, **Uses**, and **Quick edit**, above the form.
 
-  The owner asked to judge them from screenshots, so the request for 0.9.5 shows
-  them rather than asking for an install.
+It meets each condition of the stable stage above, but the last:
 
-- **No known defect blocks ordinary use.** 0.9.4 fixed the defects that 0.9.3
-  left open: [#243](https://github.com/viell-dev/slop-inkline/issues/243),
-  [#245](https://github.com/viell-dev/slop-inkline/issues/245),
-  [#247](https://github.com/viell-dev/slop-inkline/issues/247),
-  [#249](https://github.com/viell-dev/slop-inkline/issues/249),
-  [#250](https://github.com/viell-dev/slop-inkline/issues/250), and one found
-  since, [#280](https://github.com/viell-dev/slop-inkline/issues/280), where a
-  save could write over a file that another plugin or a sync tool had put at the
-  symbol's path in its place as the save looked at it for the last time.
-  [#238](https://github.com/viell-dev/slop-inkline/issues/238) was closed
-  without a change, as its cost is a moment's. Each defect still open is
-  recorded with the reason it waits:
+- **The owner's passes are handled.** Each asked for changes, and a later
+  release made every one:
+  - on the beta, `0.9.1`, in
+    [#150](https://github.com/viell-dev/slop-inkline/issues/150), on 2026-11-06:
+    flat ends that cut only along a row, the grid snapping only with Shift, the
+    cursor after **Save** or **Next**, and names lined up in the lists, all in
+    `0.9.2`;
+  - on `0.9.3`, in [#212](https://github.com/viell-dev/slop-inkline/issues/212),
+    on 2026-11-14, after trying its six tasks: symbols on the text's baseline,
+    space between the library's rows, one Quick edit for a symbol's name,
+    readings, and translations, and a double-click that opens the editor, all in
+    `0.9.4`;
+  - on `0.9.4`, in [#289](https://github.com/viell-dev/slop-inkline/issues/289),
+    on 2026-11-15: more space around a symbol's readings and translations, with
+    their labels in bold, Quick edit's fields growing with what they hold, the
+    other rows' buttons disabled during Quick edit, and a labelled, bulleted
+    list of uses, all in `0.9.5`
+    ([#293](https://github.com/viell-dev/slop-inkline/pull/293)). The owner
+    asked to judge the next rc from screenshots;
+  - on `0.9.5`, in [#294](https://github.com/viell-dev/slop-inkline/issues/294),
+    on 2026-11-15, from screenshots: the four changes look right, and the one
+    more change, which #305 makes.
+
+- **The human evidence.** The owner used `0.9.3` and `0.9.4` in their passes,
+  and judged `0.9.5` from screenshots, as they asked. In #294 they decided that
+  #305's change needs no further check from them: that is their decision on the
+  human pass for `1.0.0`. The maintaining agents' own assessment, apart from
+  that decision, is that #303 reuses those passes as a routine fix, as
+  [Human release testing](#human-release-testing) allows: it changes how a save
+  ends only for a note deleted while its symbol is drawn and for a new symbol
+  with nothing drawn, adds to a notice when a symbol that does not open has a
+  draft, and corrects texts, and changes no step of the tasks the owner tried.
+
+- **No release blockers.** Four independent agents checked `0.9.5`'s code before
+  `1.0.0`, for the safety of drawings, the user's journey and what the documents
+  claim, readiness for release and for the directory, and use in Obsidian by
+  hand. None found anything critical. What they found is fixed in #303 or
+  recorded in an issue. Each defect or limit still open is recorded with the
+  reason it waits:
   - [#271](https://github.com/viell-dev/slop-inkline/issues/271): rarer layouts
     where the `;;` list's check still reads a note differently from Reading
     view. In most of them the list stays closed where it could have opened. In
@@ -199,22 +221,60 @@ a new version number and its documents. It meets each of the conditions above:
     which Obsidian draws, moves to the start;
   - [#279](https://github.com/viell-dev/slop-inkline/issues/279): what a Quick
     edit row shows when a read and a save both report something, which never
-    changes what is written.
+    changes what is written;
+  - [#298](https://github.com/viell-dev/slop-inkline/issues/298): the editor
+    offers a draft only for a symbol that opens at the draft's path. Since #303,
+    the notice for a symbol that does not open says that its draft is kept, and
+    the guide gives a way back that host tests confirm; the issue proposes an
+    easier one;
+  - [#299](https://github.com/viell-dev/slop-inkline/issues/299): symbols saved
+    without a name take the lowest free number on every device, so two devices
+    can pick the same name before they sync, and a deleted symbol's number can
+    be taken again. Known limits says so, and how to avoid it; whether names
+    should change is a design choice still to make;
+  - [#300](https://github.com/viell-dev/slop-inkline/issues/300): a later change
+    to the layout of drafts would drop the drafts an earlier version kept. Every
+    release from `0.9.2` on, `1.0.0` included, uses the same layout, so no
+    update to `1.0.0` drops one; the issue proposes a rule before any change;
+  - [#301](https://github.com/viell-dev/slop-inkline/issues/301): a line whose
+    first letter is in a symbol's name runs in that name's direction in Live
+    Preview, as Obsidian's editor sets it. Known limits says how to give the
+    line its own;
+  - [#302](https://github.com/viell-dev/slop-inkline/issues/302): the editor's
+    status line can keep a message that no longer applies, after **Fit** or
+    while **Make ink** is open, and the Docker test runner ignores
+    `E2E_OUTPUT_DIR`. Neither changes what is saved or shown in a note;
+  - [#304](https://github.com/viell-dev/slop-inkline/issues/304): a test read a
+    library button just as its row was drawn again, once, in Obsidian 1.13.4
+    under load. It is recorded with
+    [#266](https://github.com/viell-dev/slop-inkline/issues/266),
+    [#281](https://github.com/viell-dev/slop-inkline/issues/281),
+    [#292](https://github.com/viell-dev/slop-inkline/issues/292), and
+    [#296](https://github.com/viell-dev/slop-inkline/issues/296), observations
+    in the tests whose cause is not known, each seen once; none lost or changed
+    a drawing.
 
   A symbol can still sit up to about a pixel off the baseline at 100% zoom, a
   little more at other zooms, as the guide's known limits say. The refactoring
   the review of 0.9.2 asked for, #226 to #228, waits until after `1.0.0`, so
-  that the build the owner tries is the one that ships.
+  that `1.0.0` stays the build the owner judged, with only the two changes
+  above.
 
-- **The format has stopped changing.** The review the owner asked for ended
-  after ten cycles, with all four reviewers agreeing on the same commit, and
-  tests hold its limits and pinned files
-  ([#197](https://github.com/viell-dev/slop-inkline/issues/197)). Nothing since
-  0.9.2 changes it, and each release from 0.9.4 carries its specification as an
-  asset.
+- **The format has stopped changing, and is frozen from `1.0.0`.** The review
+  the owner asked for ended after ten cycles, with all four reviewers agreeing
+  on the same commit, and tests hold its limits and pinned files
+  ([#197](https://github.com/viell-dev/slop-inkline/issues/197)). Nothing in
+  `src/format`, `src/ink`, `test/fixtures`, or `docs/file-format.md` has changed
+  since `0.9.2`, so symbols saved by `0.9.2` and later open in `1.0.0` as they
+  are. From `1.0.0`, as [AGENTS.md](AGENTS.md#code) says, the pinned files never
+  change and their list of hashes only grows, a change to how a record draws is
+  a new format version, and a change to the format document's normative text
+  makes a new revision.
 
-The owner's pass on it decides what follows, and the hold in
-[#5](https://github.com/viell-dev/slop-inkline/issues/5) stands.
+**Stable publication waits on the owner lifting the hold in
+[#5](https://github.com/viell-dev/slop-inkline/issues/5),** the stable stage's
+last condition. Nothing in this section, in the release pull request, or in a
+passing check lifts it.
 
 ## Where a version is recorded
 
@@ -243,13 +303,15 @@ version. The version comes from the tagged commit rather than from the
 workflow's input, so building that commit gives the same bytes, and the
 attestations name that commit.
 
-Until `1.0.0`, `manifest.json` stays at `0.9.0`, the last pre-release to reach
-it. It has no public release to name, nothing reads it while nothing is listed,
-and Obsidian's review refuses `0.0.0` as a placeholder.
+From `1.0.0`, the first public release, `manifest.json` names the last public
+release. Before it, `manifest.json` stayed at `0.9.0`, the last pre-release to
+reach it, as it had no public release to name, nothing read it while nothing was
+listed, and Obsidian's review refuses `0.0.0` as a placeholder.
 
 `versions.json` is what Obsidian falls back on for an app older than the
 manifest's `minAppVersion`: it takes the highest version there that the app can
-run. Only public releases belong in it, and it is empty until `1.0.0`.
+run. Only public releases belong in it, and `1.0.0` is its first entry, mapped
+to Obsidian 1.13.4; it was empty before.
 
 ## The format's specification
 
@@ -695,7 +757,8 @@ request with the verification.
 ## The community directory
 
 New plugins are submitted through Obsidian's developer dashboard at
-community.obsidian.md, which needs the owner's decision and sign-in:
+community.obsidian.md, which needs the owner's sign-in. The owner has decided
+that `1.0.0` goes there first, and submits it once it is published on GitHub:
 [#141](https://github.com/viell-dev/slop-inkline/issues/141) lists what it takes
 and what only the owner can do. [listing/](listing/README.md) holds what the
 listing form asks for, and the steps above keep a pre-release's version off

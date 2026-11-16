@@ -9,6 +9,27 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+## 1.0.0 - 2026-11-16
+
+This is Inkline's first stable release. It is 0.9.5, the last release candidate,
+with the changes below.
+
+**The file format is frozen from this release.** Symbols saved by 0.9.2 or later
+open as they are, strokes included, as the format has not changed since then,
+and every symbol saved from now on keeps opening and looking the same in later
+versions. A symbol saved by a version before 0.9.2 still looks as it did, and
+opens as a picture to draw over, as it has since 0.9.2.
+
+**To install it,** download `inkline-1.0.0.zip` from this release's assets and
+extract it into your vault's `.obsidian/plugins/` directory, replacing an
+earlier version's three files, as
+[the install guide](https://viell-dev.github.io/slop-inkline/install) says. Once
+Obsidian's community plugin directory lists Inkline, you can also install it
+under **Settings → Community plugins → Browse**, and Obsidian offers its
+updates. The directory offers public releases only, those with an even minor
+version. Later pre-releases, such as 1.1.0, are on GitHub only, to install by
+their ZIP or with BRAT.
+
 ### Changed
 
 - When a symbol does not open, because its file is not a valid PNG or its
