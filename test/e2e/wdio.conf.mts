@@ -151,6 +151,10 @@ export const config: WebdriverIO.Config = {
   })),
   services: ["obsidian"],
   reporters: ["obsidian"],
+  // test/e2e/session.sh starts the displays, one for each version. On Linux
+  // without a display, WebdriverIO would start one of its own, shared by
+  // every worker, where the versions' windows resize each other.
+  displayServerEnabled: false,
   cacheDir,
   outputDir: path.join(outputDir, "logs"),
   injectGlobals: false,
