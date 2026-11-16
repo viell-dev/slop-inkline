@@ -3012,6 +3012,187 @@ describe("The editor", function () {
     expect(await draftCount()).toBe(0);
   });
 
+  /** Whether a notice says a save or an insertion failed. */
+  async function failureShown(): Promise<boolean> {
+    return (await notices()).some((text) =>
+      /ENOENT|Not saved|Could not|could not/.test(text),
+    );
+  }
+
+  it("opens no next editor for a note deleted after its symbol went in, and says so", async function () {
+    await insert();
+    await draw(zigzag);
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    expect(await noteText()).toContain("![[001.ink.png]]");
+    await trashNote("Editor.md");
+    await draw([
+      [0.6, 0.3],
+      [0.6, 0.7],
+    ]);
+    await browser.$('[data-inkline-button="next"]').click();
+    await waitClosed();
+    await waitForNotice(
+      "No next symbol was started, as the note it was for, Editor, was deleted.",
+    );
+    await browser.pause(500);
+    expect(await editorOpen()).toBe(false);
+    expect(await symbolFiles()).toEqual(["001.ink.png"]);
+    expect(await strokeCount("001.ink.png")).toBe(2);
+    expect(await draftCount()).toBe(0);
+    expect(await failureShown()).toBe(false);
+  });
+
+  it("saves and renames a symbol whose note was deleted after it went in", async function () {
+    await insert();
+    await draw(zigzag);
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    await trashNote("Editor.md");
+    await nameSymbol("tower");
+    await browser.keys(["Control", "s"]);
+    await browser.waitUntil(
+      async () => (await browser.$(".inkline-status").getText()) === "Saved",
+      { timeoutMsg: "the rename's save did not end as saved" },
+    );
+    expect(await symbolFiles()).toEqual(["tower.ink.png"]);
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    expect(await symbolFiles()).toEqual(["tower.ink.png"]);
+    expect(await strokeCount("tower.ink.png")).toBe(1);
+    expect(await failureShown()).toBe(false);
+  });
+
+  /**
+   * Holds the first call of the vault's `method` on Editor.md, before or
+   * after its own work, until {@link releaseHold}, and records that it began,
+   * for {@link waitForHold}, so that a test can change the note meanwhile.
+   */
+  async function holdNote(
+    method: "read" | "process",
+    when: "before" | "after",
+  ): Promise<void> {
+    await browser.executeObsidian(
+      ({ app, obsidian }, name, first) => {
+        const original: unknown = Reflect.get(app.vault, name);
+        if (typeof original !== "function") throw new Error(`no ${name}`);
+        const hold = { started: false, released: false, taken: false };
+        Reflect.set(window, "inklineHold", hold);
+        Reflect.set(app.vault, `inklineHeld-${name}`, original);
+        const wait = async (): Promise<void> => {
+          hold.started = true;
+          while (!hold.released) {
+            await new Promise((resolve) => window.setTimeout(resolve, 20));
+          }
+        };
+        Reflect.set(
+          app.vault,
+          name,
+          async (...args: unknown[]): Promise<unknown> => {
+            const [file] = args;
+            const mine =
+              !hold.taken &&
+              file instanceof obsidian.TFile &&
+              file.path === "Editor.md";
+            if (mine) hold.taken = true;
+            if (mine && first === "before") await wait();
+            const result: unknown = await Reflect.apply(
+              original,
+              app.vault,
+              args,
+            );
+            if (mine && first === "after") await wait();
+            return result;
+          },
+        );
+      },
+      method,
+      when,
+    );
+  }
+
+  async function waitForHold(): Promise<void> {
+    await browser.waitUntil(
+      async () =>
+        browser.execute(() => {
+          const hold: unknown = Reflect.get(window, "inklineHold");
+          return (
+            typeof hold === "object" &&
+            hold !== null &&
+            Reflect.get(hold, "started") === true
+          );
+        }),
+      { timeoutMsg: "the held call on Editor.md did not begin" },
+    );
+  }
+
+  /** Lets the held call go on, and puts the vault's method back. */
+  async function releaseHold(method: "read" | "process"): Promise<void> {
+    await browser.executeObsidian(({ app }, name) => {
+      const hold: unknown = Reflect.get(window, "inklineHold");
+      if (typeof hold === "object" && hold !== null) {
+        Reflect.set(hold, "released", true);
+      }
+      const original: unknown = Reflect.get(app.vault, `inklineHeld-${name}`);
+      if (typeof original === "function")
+        Reflect.set(app.vault, name, original);
+    }, method);
+  }
+
+  const replacement = "Another note, put where Editor.md was.\n";
+
+  /** Deletes Editor.md, as sync can, and puts another note at its path. */
+  async function replaceNote(): Promise<void> {
+    await trashNote("Editor.md");
+    await browser.executeObsidian(async ({ app }, text) => {
+      await app.vault.create("Editor.md", text);
+    }, replacement);
+  }
+
+  it("leaves a note put in the deleted one's place while a restored save read it", async function () {
+    await interruptInsertion();
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await clickTop("Restore");
+    // No editor of the note, so that the save reads its file for the embed
+    // the interrupted save may have inserted.
+    await showWelcomeInstead();
+    await holdNote("read", "after");
+    try {
+      await browser.keys(["Control", "Enter"]);
+      await waitForHold();
+      await replaceNote();
+    } finally {
+      await releaseHold("read");
+    }
+    await waitClosed();
+    await waitForNotice(
+      "001.ink.png is saved, but was not inserted, as the note it was for, Editor, was deleted.",
+    );
+    expect(await noteOnDisk("Editor.md")).toBe(replacement);
+    expect(await symbolFiles()).toEqual(["001.ink.png"]);
+    expect(await draftCount()).toBe(0);
+  });
+
+  it("leaves a note put in the deleted one's place as the embed was being written", async function () {
+    await insert();
+    await draw(zigzag);
+    await showWelcomeInstead();
+    await holdNote("process", "before");
+    try {
+      await browser.keys(["Control", "Enter"]);
+      await waitForHold();
+      await replaceNote();
+    } finally {
+      await releaseHold("process");
+    }
+    await waitClosed();
+    await waitForNotice(
+      "001.ink.png is saved, but was not inserted, as the note it was for, Editor, was deleted.",
+    );
+    expect(await noteOnDisk("Editor.md")).toBe(replacement);
+    expect(await symbolFiles()).toEqual(["001.ink.png"]);
+  });
+
   it("tries the insertion again on the next save after it fails", async function () {
     await browser.executeObsidian(({ app }) => {
       const vault = app.vault as typeof app.vault & {

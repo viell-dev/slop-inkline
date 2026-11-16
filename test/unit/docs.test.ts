@@ -182,16 +182,18 @@ const releaseStatusDocuments = [
 /**
  * How those documents say what holds only while every release is a
  * pre-release: that Inkline is one, that every release so far is one, in a
- * box or a known limit titled "Prerelease", or that Inkline is not in
- * Obsidian's community directory yet.
+ * box or a known limit titled "Prerelease", or that there is no public release
+ * yet. What they say of Obsidian's community directory is not among them: a
+ * public release is published before the owner submits it there, so on the
+ * day it is still true that the directory does not list it.
  */
 const prereleaseOnly = [
   /\bInkline is a pre-?release\b/gi,
   /\bevery release so far is a pre-?release\b/gi,
   /::: \w+ Pre-?release\b/gi,
   /\*\*Pre-?release\.\*\*/gi,
-  /\bnot in Obsidian['’]s community (?:plugin )?directory yet\b/gi,
-  /\*\*Planned, not available yet\.\*\*/gi,
+  /\bno (?:public|stable) releases?(?: yet| so far)?\b/gi,
+  /\bpublic releases? once there (?:are|is) (?:some|one)\b/gi,
 ];
 
 /** What `text` says, in those ways, that holds only before a public release. */
@@ -213,9 +215,9 @@ function isPublic(version: string): boolean {
  * when the checkout's `package.json` and `manifest.json` name `versions`. From
  * the first public version, which `package.json` names for its release and
  * `manifest.json` keeps naming after it, a document must not say that every
- * release is a pre-release or that Inkline is not in Obsidian's directory yet.
- * Before it, each says one of them, so that a change of wording that these
- * patterns miss fails here, rather than passing at the public release.
+ * release is a pre-release, or that there is no public release. Before it,
+ * each says one of them, so that a change of wording that these patterns miss
+ * fails here, rather than passing at the public release.
  */
 function releaseStatusProblems(
   versions: readonly string[],
@@ -389,23 +391,21 @@ describe("the documentation", () => {
       "docs/index.md":
         "---\nlayout: home\n---\n\n::: info Prerelease\n\nInkline is a prerelease for Obsidian 1.13.4 or later, on\ndesktop.\n\n:::\n",
       "docs/install.md":
-        "::: info Prerelease\n\nIt is not\nin Obsidian's community plugin directory yet.\n\n:::\n\nTake the highest version number. Every release so far is a pre-release.\n\n## The community directory\n\n**Planned, not available yet.** The plan is…\n",
+        "::: info Prerelease\n\nIt is not\nin Obsidian's community plugin directory yet.\n\n:::\n\nTake the highest version number. Every release so far is a pre-release.\n\nTo stay on public releases once there are some, choose a public version.\n",
       "README.md":
         "Inkline is a prerelease for Obsidian 1.13.4 or later on desktop.\n\nInkline is not in Obsidian's community plugin directory yet.\n",
       "docs/limits.md":
         "- **Prerelease.** Install from GitHub releases, by hand or with BRAT; Inkline is\n  not in Obsidian's community directory yet.\n",
     };
+    // What they say of the directory is not among them.
     const found = [
       'docs/index.md: "Inkline is a prerelease"',
       'docs/index.md: "::: info Prerelease"',
       'docs/install.md: "Every release so far is a pre-release"',
       'docs/install.md: "::: info Prerelease"',
-      `docs/install.md: "not in Obsidian's community plugin directory yet"`,
-      'docs/install.md: "**Planned, not available yet.**"',
+      'docs/install.md: "public releases once there are some"',
       'README.md: "Inkline is a prerelease"',
-      `README.md: "not in Obsidian's community plugin directory yet"`,
       'docs/limits.md: "**Prerelease.**"',
-      `docs/limits.md: "not in Obsidian's community directory yet"`,
     ];
     // The first public release, and a pre-release after it, which
     // manifest.json shows by naming the public one.
@@ -425,6 +425,25 @@ describe("the documentation", () => {
       "docs/index.md: says nothing of the releases being pre-releases",
       "README.md: says nothing of the releases being pre-releases",
     ]);
+    // A public release is published before Obsidian's directory lists it, so
+    // its documents may truly say that the listing is still to come.
+    const listingPending = {
+      "README.md":
+        "Inkline 1.0.0 is its first public release. It is not in Obsidian's\ncommunity plugin directory yet: the listing waits for Obsidian's review.\n",
+      "docs/install.md":
+        "## The community directory\n\n**Planned, not available yet.** Obsidian has not listed\nInkline yet.\n",
+      "docs/limits.md":
+        "- **Not in the directory yet.** Inkline is not in Obsidian's community\n  directory yet. See [Install](./install.md).\n",
+    };
+    expect(releaseStatusProblems(["1.0.0", "1.0.0"], listingPending)).toEqual(
+      [],
+    );
+    // A claim that there is no public release yet is one.
+    expect(
+      releaseStatusProblems(["1.0.0", "1.0.0"], {
+        "README.md": "Inkline has had no stable release yet.\n",
+      }),
+    ).toEqual(['README.md: "no stable release yet"']);
   });
 
   it("quotes notices as the plugin words them", () => {

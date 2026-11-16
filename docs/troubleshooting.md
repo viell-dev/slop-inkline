@@ -105,6 +105,11 @@ as by sync or on another device. The symbol is saved in its file: insert it
 where you want it with **Inkline: Insert existing symbol** or the
 [insert trigger](./notes.md#insert-a-symbol-you-have).
 
+**"No next symbol was started, as the note it was for, …, was deleted."**
+**Unreleased.** You pressed **Next** after the note you were drawing symbols
+into was deleted, as by sync or on another device. The symbol you were on is
+saved; there is no note for the next one to go into.
+
 **"… is saved, but could not be renamed: …"** The drawing is saved under the old
 name, and the new name stays in the editor's name field, for the next save to
 try again. When the reason is that a note could not be saved first, Obsidian

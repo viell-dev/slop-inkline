@@ -377,12 +377,14 @@ On a branch from `main`:
 4. Update the user guide in `docs/` and the README for the release, including
    the manual ZIP installation and update path. For the first public release,
    that includes the "Prerelease" boxes on the home and install pages, and what
-   the README, the install page, and the known limits say of pre-releases and of
-   Obsidian's community directory: once `package.json` names a public version,
-   `test/unit/docs.test.ts` fails while any of them says that Inkline is a
-   prerelease, that every release so far is one, or that it is not in the
-   directory yet. Remove **Unreleased** labels only from behavior included in
-   this release; retain labels for later work.
+   the README, the install page, and the known limits say of pre-releases: once
+   `package.json` names a public version, `test/unit/docs.test.ts` fails while
+   any of them says that Inkline is a prerelease, that every release so far is
+   one, or that there is no public release yet. What they say of Obsidian's
+   community directory follows the listing, not the version: the release is
+   published before the owner submits it there, so say what is true on the day,
+   and update it once the directory lists Inkline. Remove **Unreleased** labels
+   only from behavior included in this release; retain labels for later work.
 5. Run `node scripts/release.ts check <version>` and
    `node scripts/publish.ts order <version>`, which the workflow runs too. The
    first checks that `package.json` names the version, that the changelog

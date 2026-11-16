@@ -26,7 +26,11 @@ even one a public release; earlier pre-releases carry a suffix such as
   another device, is saved, and a notice says that it was not inserted, as its
   note was deleted. The editor then closes as after any save. Its file used to
   be written, while the editor said "Not saved" with a path on the disk, and
-  every save after failed the same way, so that only **Discard** closed it.
+  every save after failed the same way, so that only **Discard** closed it. If
+  the note is deleted after the symbol went in, later saves and renames of the
+  symbol work, where a rename used to say "Not saved" too, and **Next** says
+  that it started no other symbol, where it used to open one for the deleted
+  note. A note put at the deleted one's path is never given the embed.
 - A new symbol with nothing drawn, no stroke of the pen and no picture as its
   base layer, is not saved: Save, Mod+S, and **Next** leave the editor open, and
   its status line says "Not saved: nothing drawn yet". An untouched new editor

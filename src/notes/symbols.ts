@@ -385,6 +385,36 @@ async function pointAfterChange(
 }
 
 /**
+ * Thrown when the note an embed is for is no longer the vault's file at its
+ * path: deleted, as by sync or on another device, or deleted and another put
+ * in its place, which must not take an embed meant for the first.
+ */
+class NoteGone extends Error {
+  constructor(note: TFile) {
+    super(`${note.basename} was deleted`);
+    this.name = "NoteGone";
+  }
+}
+
+/**
+ * Changes the text of the file of `note` as `change` says, or throws
+ * {@link NoteGone} and writes nothing once the note is no longer the vault's
+ * file at its path. A note put at that path since is another, so the check is
+ * made again inside Obsidian's `process`, between its read and its write.
+ */
+async function processNote(
+  app: App,
+  note: TFile,
+  change: (text: string) => string,
+): Promise<void> {
+  if (!present(app, note)) throw new NoteGone(note);
+  await app.vault.process(note, (text) => {
+    if (!present(app, note)) throw new NoteGone(note);
+    return change(text);
+  });
+}
+
+/**
  * Inserts an embed into the target note at the position found again from its
  * surrounding text: through a live editor of the note when there is one,
  * since it may hold changes not yet on disk, otherwise into the note's file,
@@ -402,6 +432,7 @@ async function insertEmbed(
   embed: string,
 ): Promise<InsertionPoint> {
   const { file, point } = target;
+  if (!present(app, file)) throw new NoteGone(file);
   const view = liveView(app, file, target.view);
   if (view !== undefined) {
     const editor = view.editor;
@@ -426,7 +457,7 @@ async function insertEmbed(
   const outcome: { appended: boolean; after?: InsertionPoint } = {
     appended: false,
   };
-  await app.vault.process(file, (text) => {
+  await processNote(app, file, (text) => {
     const found = findPoint(text, point);
     const place = found === undefined ? undefined : insertionAt(text, found);
     if (place !== undefined) {
@@ -935,7 +966,7 @@ async function followRename(
   const until = Date.now() + settleLimit;
   for (;;) {
     let after: InsertionPoint | undefined;
-    await app.vault.process(file, (text) => {
+    await processNote(app, file, (text) => {
       const found = locate(text);
       if (found === undefined) return text;
       const renamed = found.old ? replaced(text, found.start) : text;
@@ -1436,9 +1467,17 @@ function newSymbol(
     // A new symbol starts with no text, even after Next, as what someone takes
     // one symbol to be says nothing of the next.
     next: (chosen) => {
-      if (after === undefined || host.unloaded.aborted) {
+      // A note deleted after this symbol went in has nowhere for the next.
+      const gone =
+        after !== undefined && !host.unloaded.aborted && !present(app, note);
+      if (after === undefined || host.unloaded.aborted || gone) {
         // No editor takes the picture over.
         chosen.picture?.image.close();
+        if (gone) {
+          new Notice(
+            `No next symbol was started, as the note it was for, ${note.basename}, was deleted.`,
+          );
+        }
         return;
       }
       newSymbol(host, { ...target, point: after }, chosen);
@@ -1572,10 +1611,17 @@ function newSymbol(
           // then, which nothing takes back, so stopping would leave the embed
           // naming a file no longer there. This writes that one embed, and if
           // the note's editor does not show the new name within five seconds,
-          // gives up with a notice.
-          if (inserted && after !== undefined && named) {
+          // gives up with a notice. A note deleted since has no embed to
+          // follow, and the symbol is saved and renamed all the same.
+          if (inserted && after !== undefined && named && present(app, note)) {
             const now = embedFor(app, made.file, note.path);
-            after = (await followRename(app, target, after, was, now)) ?? after;
+            try {
+              after =
+                (await followRename(app, target, after, was, now)) ?? after;
+            } catch (error) {
+              // Deleted as the embed was followed.
+              if (present(app, note)) throw error;
+            }
           }
         }
       }
@@ -1611,6 +1657,9 @@ function newSymbol(
         if (noteGone()) return named;
         throw error;
       }
+      // A read that ends well can still end after the note was deleted, or
+      // replaced by another at its path, which must not take the embed.
+      if (noteGone()) return named;
       if (existing === undefined) {
         stillAlive(host.unloaded);
         try {
