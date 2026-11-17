@@ -23,9 +23,9 @@ import {
   symbolFiles,
   waitForStatus,
 } from "../support/editor.ts";
+import { type Box } from "../support/pointer.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 import {
-  type Box,
   near,
   pastePicture,
   pictureHint,

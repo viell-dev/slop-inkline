@@ -12,6 +12,7 @@ import {
   startOver,
   waitForEditor,
 } from "../support/editor.ts";
+import { type Box, boxOf } from "../support/pointer.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 import { framesDrawn } from "../support/waits.ts";
 
@@ -74,14 +75,6 @@ interface Placed {
   /** Where the ink shows across the picture, from 0 at its left to 1. */
   inkLeft: number;
   inkRight: number;
-}
-
-/** A box on the screen, in the window's pixels. */
-interface Box {
-  left: number;
-  right: number;
-  top: number;
-  bottom: number;
 }
 
 /**
@@ -267,21 +260,6 @@ async function lineBoxes(scope: string): Promise<Box[]> {
       bottom: box.bottom,
     }));
   }, scope);
-}
-
-/** The box of the first element `selector` finds in the window. */
-async function boxOf(selector: string): Promise<Box> {
-  return browser.execute((wanted) => {
-    const found = document.querySelector(wanted);
-    if (found === null) throw new Error(`no ${wanted}`);
-    const box = found.getBoundingClientRect();
-    return {
-      left: box.left,
-      right: box.right,
-      top: box.top,
-      bottom: box.bottom,
-    };
-  }, selector);
 }
 
 /** Opens Inkline's settings, in their own window or in the main one. */

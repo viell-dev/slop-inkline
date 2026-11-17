@@ -2,14 +2,8 @@
 // shows it, in end-to-end tests.
 
 import { browser } from "@wdio/globals";
+import { type Box } from "./pointer.ts";
 import { waitOrSay } from "./waits.ts";
-
-export interface Box {
-  left: number;
-  top: number;
-  right: number;
-  bottom: number;
-}
 
 /**
  * A new symbol's surface, for placing a picture: device pixels per document

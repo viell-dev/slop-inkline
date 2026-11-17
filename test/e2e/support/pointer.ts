@@ -9,6 +9,24 @@ export interface Point {
   readonly y: number;
 }
 
+/** A box's edges: an element's, in the window's pixels, or one read elsewhere. */
+export interface Box {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+/** The box of the first element `selector` finds. */
+export async function boxOf(selector: string): Promise<Box> {
+  return browser.execute((wanted) => {
+    const found = document.querySelector(wanted);
+    if (found === null) throw new Error(`no ${wanted}`);
+    const { left, right, top, bottom } = found.getBoundingClientRect();
+    return { left, right, top, bottom };
+  }, selector);
+}
+
 /** The middle of the first element `selector` finds that has a size. */
 async function middleOf(selector: string): Promise<Point | null> {
   return browser.execute((wanted) => {

@@ -18,8 +18,9 @@ import {
   waitForHeld,
   waitForNotice,
 } from "../support/editor.ts";
-import { boxOf, pointAt, warmUpPointer } from "../support/hover.ts";
+import { pointAt, warmUpPointer } from "../support/hover.ts";
 import { menuItems } from "../support/menus.ts";
+import { boxOf } from "../support/pointer.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 import { showLibrary } from "../support/symbol-text-library.ts";
 import { type Fields, fieldsOf } from "../support/symbol-text.ts";

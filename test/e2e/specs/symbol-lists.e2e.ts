@@ -11,6 +11,7 @@ import {
   waitForEditor,
 } from "../support/editor.ts";
 import { warmUpPointer } from "../support/hover.ts";
+import { type Box } from "../support/pointer.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 
 /** A symbol: its path, and the x of each of its strokes, in file units. */
@@ -248,14 +249,6 @@ async function resizeLibrary(width: number): Promise<void> {
     async () =>
       (await widthsOf(library.holder)).client === width - sidebarPadding,
   );
-}
-
-/** An element's edges, in pixels. */
-interface Box {
-  left: number;
-  right: number;
-  top: number;
-  bottom: number;
 }
 
 /** Where a row of the library puts its parts. */

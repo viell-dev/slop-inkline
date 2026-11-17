@@ -7,6 +7,7 @@ import { encodePng } from "../../support/png.ts";
 import { loadModules, toBase64 } from "../support/browser.ts";
 import { startOver } from "../support/editor.ts";
 import { outputDirectory } from "../support/harness.ts";
+import { type Box } from "../support/pointer.ts";
 import {
   drawnRatio,
   fullWidth,
@@ -43,13 +44,6 @@ declare global {
   interface Window {
     inklinePrintProbe?: PrintProbe;
   }
-}
-
-interface Box {
-  left: number;
-  top: number;
-  right: number;
-  bottom: number;
 }
 
 /** An opaque grey block ending on the baseline of a 64 × 192 symbol. */

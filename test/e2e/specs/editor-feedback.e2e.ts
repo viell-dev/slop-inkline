@@ -5,7 +5,7 @@ import { loadModules } from "../support/browser.ts";
 import { cursorImage, hasBrushCursor } from "../support/cursor.ts";
 import { insert } from "../support/editing.ts";
 import { settledDots } from "../support/grid.ts";
-import { boxOf, pointAt, warmUpPointer } from "../support/hover.ts";
+import { pointAt, warmUpPointer } from "../support/hover.ts";
 import {
   draw,
   editorGrid,
@@ -19,6 +19,7 @@ import {
   waitForNext,
   waitForStatus,
 } from "../support/editor.ts";
+import { boxOf } from "../support/pointer.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 
 /** The texts of the tooltips Obsidian shows now. */
