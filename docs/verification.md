@@ -167,7 +167,8 @@ must keep released files readable and looking the same, as
 - The brush circle follows the nominal tool size and drawing-area scale. Pen and
   Eraser keep separate sizes, including through **Next**. The close button stays
   clear of the name field, and the drawing area's accessible name produces no
-  hover tooltip, in as long again as a button's tooltip took to show
+  hover tooltip, for three times as long as a button's tooltip took to show, at
+  least 1.5 s
   ([editor-feedback.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor-feedback.e2e.ts)).
 - Each font line is drawn in its own colour from the theme's CSS custom
   property, in light and dark themes, read back from the drawing area's pixels;
