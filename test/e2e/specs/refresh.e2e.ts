@@ -158,38 +158,143 @@ async function savedWidth(symbol = edited): Promise<number> {
   }, symbol);
 }
 
+type Place = "popout" | "card";
+
 /**
- * The canvas card's editor frame, for a failure's message: how many frames
- * edit a card, whether the frame's document and images are the ones `mark`
- * marked, whether Inkline watches the document, which gives it its scale,
- * and each image's address and tag. With `mark`, it marks them first.
+ * What a failure needs to know about `place`, the popout window's note or the
+ * canvas card being edited: how many popout leaves or editing frames there
+ * are; whether its document is the one `mark` marked, Inkline watches it,
+ * which gives it its scale, and it has the focus; what {@link recordChanges}
+ * saw as the symbol changed; and each symbol's image there, shown or hidden,
+ * with its address, whether it is the one marked, and its load and tag. With
+ * `mark`, it marks the document and images first, by a property and not an
+ * attribute, which Obsidian would see change.
  */
-async function cardFrame(mark = false): Promise<string> {
-  return browser.execute((marking) => {
-    const frames = document.querySelectorAll(".canvas-node.is-editing iframe");
-    const frame = frames.item(0);
-    const doc =
-      frame instanceof HTMLIFrameElement ? frame.contentDocument : null;
-    if (doc === null) return JSON.stringify({ frames: frames.length });
-    const images = Array.from(doc.querySelectorAll("img.inkline-symbol"));
-    // A property and not an attribute, which the card's editor would see
-    // change.
-    if (marking) {
-      for (const marked of [doc, ...images]) {
-        Reflect.set(marked, "inklineTestMarked", true);
+async function placeState(place: Place, mark = false): Promise<string> {
+  return browser.executeObsidian(
+    ({ app }, where, marking) => {
+      const leaves = app.workspace
+        .getLeavesOfType("markdown")
+        .filter((leaf) => leaf.view.containerEl.doc !== document);
+      const frames = document.querySelectorAll(
+        ".canvas-node.is-editing iframe",
+      );
+      const frame = frames.item(0);
+      const doc =
+        where === "card"
+          ? frame instanceof HTMLIFrameElement
+            ? frame.contentDocument
+            : null
+          : (leaves[0]?.view.containerEl.doc ?? null);
+      const root =
+        where === "card" ? doc : (leaves[0]?.view.containerEl ?? null);
+      const count = where === "card" ? frames.length : leaves.length;
+      if (doc === null || root === null) return JSON.stringify({ count });
+      const images = Array.from(root.getElementsByTagName("img")).filter(
+        (image) => image.getAttribute("src")?.includes(".ink.png") === true,
+      );
+      if (marking) {
+        for (const marked of [doc, ...images]) {
+          Reflect.set(marked, "inklineTestMarked", true);
+        }
       }
+      const atChange: unknown = Reflect.get(window, "inklineTestChanges");
+      return JSON.stringify({
+        count,
+        sameDocument: Reflect.get(doc, "inklineTestMarked") === true,
+        watched: doc.documentElement.style.getPropertyValue("--inkline-scale"),
+        focused: doc.hasFocus(),
+        atChange: atChange ?? null,
+        images: images.map((image) => ({
+          src: image.getAttribute("src"),
+          same: Reflect.get(image, "inklineTestMarked") === true,
+          tagged: image.classList.contains("inkline-symbol"),
+          complete: image.complete,
+          width: image.naturalWidth,
+          shown: image.getBoundingClientRect().width,
+          ratio: image.style.getPropertyValue("--inkline-ratio"),
+        })),
+      });
+    },
+    place,
+    mark,
+  );
+}
+
+/**
+ * Records, for a failure's message, what each change to a file in the vault
+ * finds in `place` once Inkline has refreshed it: whether Inkline watches the
+ * document, and each symbol's image there, with its address and whether
+ * {@link placeState} marked it. Inkline's own listener runs first, as it was
+ * added first. Without `place`, it stops recording.
+ */
+async function recordChanges(place?: Place): Promise<void> {
+  await browser.executeObsidian(({ app }, where) => {
+    const previous: unknown = Reflect.get(window, "inklineTestRecorder");
+    if (typeof previous === "object" && previous !== null) {
+      app.vault.offref(previous);
     }
-    return JSON.stringify({
-      frames: frames.length,
-      sameDocument: Reflect.get(doc, "inklineTestMarked") === true,
-      watched: doc.documentElement.style.getPropertyValue("--inkline-scale"),
-      focused: doc.hasFocus(),
-      images: images.map((image) => ({
-        src: image.getAttribute("src"),
-        same: Reflect.get(image, "inklineTestMarked") === true,
-      })),
+    Reflect.deleteProperty(window, "inklineTestRecorder");
+    Reflect.deleteProperty(window, "inklineTestChanges");
+    if (where === null) return;
+    const changes: unknown[] = [];
+    Reflect.set(window, "inklineTestChanges", changes);
+    const recorder = app.vault.on("modify", (file) => {
+      const frame = document.querySelector(".canvas-node.is-editing iframe");
+      const view = app.workspace
+        .getLeavesOfType("markdown")
+        .find((leaf) => leaf.view.containerEl.doc !== document)
+        ?.view.containerEl;
+      // The frame's document is of the frame's own window, which the main
+      // window's `Document` does not know, so it is found and not tested.
+      const doc =
+        where === "card"
+          ? frame instanceof HTMLIFrameElement
+            ? frame.contentDocument
+            : null
+          : (view?.doc ?? null);
+      const root = where === "card" ? doc : (view ?? null);
+      changes.push({
+        file: file.path,
+        watched:
+          doc?.documentElement.style.getPropertyValue("--inkline-scale") ??
+          null,
+        images: Array.from(root?.getElementsByTagName("img") ?? []).flatMap(
+          (image) =>
+            image.getAttribute("src")?.includes(".ink.png") === true
+              ? [
+                  {
+                    src: image.getAttribute("src"),
+                    same: Reflect.get(image, "inklineTestMarked") === true,
+                  },
+                ]
+              : [],
+        ),
+      });
     });
-  }, mark);
+    Reflect.set(window, "inklineTestRecorder", recorder);
+  }, place ?? null);
+}
+
+/**
+ * Waits for `condition` as `browser.waitUntil` does, and if it times out,
+ * fails with the message `say` makes then. A message given to waitUntil
+ * itself is made before the wait starts, so it cannot tell what the wait
+ * last saw (#281). If `say` fails too, the timeout is still what is reported.
+ */
+async function waitOrSay(
+  condition: () => Promise<boolean>,
+  say: () => Promise<string>,
+): Promise<void> {
+  try {
+    await browser.waitUntil(condition);
+  } catch (error) {
+    const message = await say().catch(
+      (failed: unknown) =>
+        `the wait timed out, and its state was not read: ${String(failed)}`,
+    );
+    throw new Error(message, { cause: error });
+  }
 }
 
 describe("Saved symbol refresh", function () {
@@ -206,6 +311,7 @@ describe("Saved symbol refresh", function () {
   });
   // Whatever a test showed in a popout window goes with it, passed or not.
   afterEach(async function () {
+    await recordChanges();
     await closePopouts();
   });
   // In the text colour only. Showing the stored colour is a class on the
@@ -339,6 +445,10 @@ describe("Saved symbol refresh", function () {
     await browser.waitUntil(async () => (await images()).length === 3);
     let before = await images();
     for (const end of [4000, 6000]) {
+      // Marked, so that a failure can tell whether these are still the
+      // window and the images that were there before the change (#281).
+      const measured = await placeState("popout", true);
+      await recordChanges("popout");
       const saved = await browser.executeObsidian(
         async ({ app }, path, x) => {
           const file = app.vault.getFileByPath(path);
@@ -370,7 +480,7 @@ describe("Saved symbol refresh", function () {
       // What the renderer gave them follows the new shape too: the image's
       // width over its height, and the |24's drop.
       let shown: Measured[] = [];
-      await browser.waitUntil(
+      await waitOrSay(
         async () => {
           const current = await images();
           shown = await measuredIn("popout");
@@ -381,9 +491,8 @@ describe("Saved symbol refresh", function () {
             shown.every(follows)
           );
         },
-        {
-          timeoutMsg: `the popout's symbols did not follow their new shape: ${JSON.stringify(shown)}`,
-        },
+        async () =>
+          `the popout's symbols did not follow their new shape, ${String(saved.width)} wide: ${JSON.stringify(shown)}; the popout before the change: ${measured}; and now: ${await placeState("popout")}`,
       );
       const after = await images();
       expect(after[0]?.src).not.toBe(before[0]?.src);
@@ -409,14 +518,13 @@ describe("Saved symbol refresh", function () {
         .openFile(file, { state: { mode: "preview" } });
     });
     let shown: Measured[] = [];
-    await browser.waitUntil(
+    await waitOrSay(
       async () => {
         shown = await measuredIn("popout");
         return shown.length === 3 && shown.every(follows);
       },
-      {
-        timeoutMsg: `the popout's symbols were not measured: ${JSON.stringify(shown)}`,
-      },
+      async () =>
+        `the popout's symbols were not measured: ${JSON.stringify(shown)}; the popout now: ${await placeState("popout")}`,
     );
     expect(shown.map((image) => image.asked)).toEqual(["24px", "1000px", ""]);
   });
@@ -448,41 +556,33 @@ describe("Saved symbol refresh", function () {
     await doubleClick(await placeInCard("Plain words", "p"));
     await browser.$(".canvas-node.is-editing iframe").waitForExist();
     let shown: Measured[] = [];
-    await browser.waitUntil(
+    await waitOrSay(
       async () => {
         shown = await measuredIn("card");
         return shown.length === 2 && shown.every(follows);
       },
-      {
-        timeoutMsg: `the card's editor's symbols were not measured: ${JSON.stringify(shown)}`,
-      },
+      async () =>
+        `the card's editor's symbols were not measured: ${JSON.stringify(shown)}; the frame now: ${await placeState("card")}`,
     );
     const before = shown[0]?.width;
     // Marked, so that a failure can tell whether these are still the frame
     // and the images that were measured (#281).
-    const measured = await cardFrame(true);
+    const measured = await placeState("card", true);
+    await recordChanges("card");
     const width = await reshape(edited, 6000);
     expect(width).not.toBe(before);
-    try {
-      await browser.waitUntil(async () => {
+    await waitOrSay(
+      async () => {
         shown = await measuredIn("card");
         return (
           shown.length === 2 &&
           shown.every((image) => image.width === width) &&
           shown.every(follows)
         );
-      });
-    } catch (error) {
-      // Read for the message alone: if the read fails too, the failure it
-      // was to explain is still the one reported.
-      const now = await cardFrame().catch(
-        (failed: unknown) => `not read: ${String(failed)}`,
-      );
-      throw new Error(
-        `the card's editor's symbols did not follow their new shape: ${JSON.stringify(shown)}; the frame when measured: ${measured}; and now: ${now}`,
-        { cause: error },
-      );
-    }
+      },
+      async () =>
+        `the card's editor's symbols did not follow their new shape: ${JSON.stringify(shown)}; the frame when measured: ${measured}; and now: ${await placeState("card")}`,
+    );
     await saveScreenshot("refresh-card-editor");
   });
 });
