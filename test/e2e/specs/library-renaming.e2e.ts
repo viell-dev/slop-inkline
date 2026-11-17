@@ -454,9 +454,10 @@ describe("Renaming in the symbol library", function () {
       await letGo();
     });
 
-    // A symbol deleted and replaced meanwhile is editor.e2e.ts's "saves a
-    // symbol deleted and replaced while open notes are saved": the same hold, in
-    // the same check of the rename, which the library says as the two below.
+    // A symbol deleted and replaced meanwhile is rename-races.e2e.ts's "saves
+    // a symbol deleted and replaced while open notes are saved": the same hold,
+    // in the same check of the rename, which the library says as the two
+    // below.
     it("refuses a symbol renamed elsewhere meanwhile, and renames it from there when asked again", async function () {
       await renameHeld("lintel");
       // Renamed as sync would, without Inkline.
@@ -509,9 +510,9 @@ describe("Renaming in the symbol library", function () {
       await letGo();
     });
 
-    // A symbol deleted and replaced is editor.e2e.ts's "saves a symbol deleted
-    // and replaced while Obsidian indexes the vault": the same wait, in the same
-    // check of the rename, which the library says as the test below.
+    // A symbol deleted and replaced is rename-races.e2e.ts's "saves a symbol
+    // deleted and replaced while Obsidian indexes the vault": the same wait, in
+    // the same check of the rename, which the library says as the test below.
     it("refuses a symbol renamed elsewhere while Obsidian indexes the vault, and keeps that name", async function () {
       await renameWhileIndexing("lintel");
       // Renamed as sync would, without Inkline.
@@ -527,12 +528,12 @@ describe("Renaming in the symbol library", function () {
     });
 
     // What comes between once Obsidian moves the file, a replacement, a file
-    // at the new name, or the very rename made elsewhere, is editor.e2e.ts's
-    // three tests "as Obsidian moves it": the same hold, heard by the same
-    // watch of the move, and said in the same words. The library shows what it
-    // is told as above, and library-quick-edit.e2e.ts's "says only that the
-    // readings are saved when the rename is disturbed after them" has the row
-    // that then has nothing left to save.
+    // at the new name, or the very rename made elsewhere, is
+    // rename-races.e2e.ts's three tests "as Obsidian moves it": the same hold,
+    // heard by the same watch of the move, and said in the same words. The
+    // library shows what it is told as above, and library-quick-edit.e2e.ts's
+    // "says only that the readings are saved when the rename is disturbed after
+    // them" has the row that then has nothing left to save.
   });
 
   describe("when Obsidian does not finish a rename", function () {

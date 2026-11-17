@@ -13,7 +13,7 @@ import {
  * Every single key of the editor, pressed in real Obsidian, with what it
  * should change read back from the buttons. The owner's review of
  * 0.3.0-alpha.8 pointed out that a person shouldn't be asked to try these; the
- * keys that save or close have their own tests in `editor.e2e.ts`.
+ * keys that save or close have their own tests in `saving.e2e.ts`.
  */
 
 async function openEditor(): Promise<void> {
