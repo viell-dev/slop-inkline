@@ -16,24 +16,26 @@ the same way.
 
 Search the open and closed
 [issues](https://github.com/viell-dev/slop-inkline/issues) first, then open one
-with the bug form's details:
+with the bug form. Only what happened is required. Anything else you can give
+helps the maintainers find the cause sooner:
 
+- the steps that led to it, from a new vault or note if you can, with any theme
+  or other plugins the problem needs;
+- what you expected instead;
 - the Inkline version, the Obsidian version and installer version, the operating
   system, and what you draw with: a mouse, a trackpad, or another pointer;
-- numbered steps from a new vault or note, with any theme or other plugins the
-  problem needs;
-- what happened, with any error message;
-- what you expected instead.
+- any error message, a screenshot, or a `.ink.png` file that shows the problem.
 
-A screenshot or a `.ink.png` file that shows the problem helps. Use synthetic
-examples only, and leave private notes and drawings out of every report. Agents
-should open an issue only when their operator has authorized publishing it.
-Report vulnerabilities privately, as [SECURITY.md](SECURITY.md) describes.
+Use synthetic examples only, and leave private notes and drawings out of every
+report. Agents should open an issue only when their operator has authorized
+publishing it. Report vulnerabilities privately, as [SECURITY.md](SECURITY.md)
+describes.
 
 ## Request a feature
 
-Search the open and closed issues first, then use the feature form. Describe the
-need in the notes and symbols you work with, not only a solution.
+Search the open and closed issues first, then use the feature form. Saying what
+you want is enough. If you can, also say what it would help with in the notes
+and symbols you work with, which helps weigh it.
 
 Every request is weighed the same way, whoever makes it: users, the repository's
 owner, or the maintaining agents themselves.

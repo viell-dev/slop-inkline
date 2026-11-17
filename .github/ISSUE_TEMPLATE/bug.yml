@@ -1,27 +1,16 @@
 name: Bug report
 description:
   Report a symbol that draws, saves, or shows wrongly, a crash, or another
-  reproducible defect
+  defect
 labels: ["Type: Bug"]
 body:
-  - type: checkboxes
-    id: searched
-    attributes:
-      label: Existing issues
-      options:
-        - label: I searched the open and closed issues and found no report of this.
-          required: true
-        - label: I follow the project's [code of
-            conduct](https://github.com/viell-dev/slop-inkline/blob/main/CODE_OF_CONDUCT.md).
-          required: true
   - type: textarea
-    id: environment
+    id: actual
     attributes:
-      label: Versions
+      label: What happened
       description: >-
-        The Inkline version, the Obsidian version and installer version (both in
-        Settings, General), the operating system, and the input device you draw
-        with: a mouse, a trackpad, or another pointer.
+        What went wrong, in your own words. A sentence is enough. Leave private
+        notes and drawings out.
     validations:
       required: true
   - type: textarea
@@ -29,27 +18,34 @@ body:
     attributes:
       label: Steps to reproduce
       description: >-
-        Numbered steps from a new vault or note. Use a synthetic example; never
-        attach private notes. Mention any theme or other plugins that the
-        problem needs.
-      value: |
-        1.
-    validations:
-      required: true
-  - type: textarea
-    id: actual
-    attributes:
-      label: Actual result
-      description: >-
-        What happened, with any error notice or message from the developer
-        console (View, Toggle developer tools). A screenshot or a `.ink.png`
-        file that shows the problem helps, if it holds nothing private.
-    validations:
-      required: true
+        Optional. What you did before it happened, from a new vault or note if
+        you can, with any theme or other plugin it needs.
   - type: textarea
     id: expected
     attributes:
-      label: Expected result
-      description: What you expected instead and why.
-    validations:
-      required: true
+      label: What you expected
+      description: Optional. What you expected to happen instead.
+  - type: textarea
+    id: environment
+    attributes:
+      label: Versions
+      description: >-
+        Optional. The Inkline version, the Obsidian version and installer
+        version (both in Settings, General), the operating system, and what
+        you draw with: a mouse, a trackpad, or another pointer.
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Messages and files
+      description: >-
+        Optional. Any error notice, a message from the developer console (View,
+        Toggle developer tools), a screenshot, or a `.ink.png` file that shows
+        the problem, if it holds nothing private.
+  - type: checkboxes
+    id: conduct
+    attributes:
+      label: Code of conduct
+      options:
+        - label: I follow the project's [code of
+            conduct](https://github.com/viell-dev/slop-inkline/blob/main/CODE_OF_CONDUCT.md).
+          required: true
