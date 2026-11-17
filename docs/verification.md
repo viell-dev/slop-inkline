@@ -109,7 +109,7 @@ must keep released files readable and looking the same, as
   cannot be used is not opened (the same file). The editor says why a file with
   no strokes opened as a picture, and says nothing of one whose record holds
   none
-  ([editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)).
+  ([opening-symbols.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/opening-symbols.e2e.ts)).
 - A picture to trace over, chosen with **Choose picture…** from a folder outside
   the vault, shows on the drawing area, and puts no file in the vault
   ([choose-picture.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/choose-picture.e2e.ts)).
@@ -235,7 +235,7 @@ must keep released files readable and looking the same, as
 
 - The close question, saving from it, a failed save that keeps the editor open,
   strokes drawn while a save runs, and a stroke still being drawn when saving
-  ([editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)).
+  ([saving.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/saving.e2e.ts)).
 - A new symbol whose note was deleted saved by Mod+S, Save, **Next**, and the
   close question, with a notice that it was not inserted, and saved again
   without it; one whose note was deleted after it went in saved and renamed,
@@ -243,11 +243,19 @@ must keep released files readable and looking the same, as
   restored save read it or as the embed was written, left as it was; a new
   symbol with nothing drawn, or only the eraser's strokes, not saved by any of
   them, nor by clicks on **Next** that reach the next editor, while a symbol
-  with a file saves when cleared (the same file).
+  with a file saves when cleared
+  ([note-insertion.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/note-insertion.e2e.ts)
+  for the deleted notes, and
+  [saving.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/saving.e2e.ts)
+  and
+  [next-symbol.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/next-symbol.e2e.ts)
+  for nothing drawn).
 - Drafts: kept when Inkline is disabled, through a restart while a save writes
   the file, when the storage refuses one, offered to one editor at a time, and a
-  first save that an interruption cut short finished from its draft (the same
-  file, and
+  first save that an interruption cut short finished from its draft
+  ([drafts.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/drafts.e2e.ts),
+  [interrupted-saves.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/interrupted-saves.e2e.ts),
+  and
   [drafts.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/drafts.test.ts)).
   With Inkline disabled while Obsidian moves the file or asks about links, the
   draft kept for the file's new name once the save ends, and dropped without a
@@ -256,7 +264,8 @@ must keep released files readable and looking the same, as
   own base layer, and offered when the file changed meanwhile or after,
   elsewhere or by Inkline enabled again, and restored with its strokes and
   picture; and a draft that Inkline, enabled again meanwhile, restored or
-  dropped as expired, and one that expired, never brought back (the same file).
+  dropped as expired, and one that expired, never brought back
+  ([rename-while-disabled.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/rename-while-disabled.e2e.ts)).
   A draft that would restore nothing its file lacks dropped, and one that
   differs in any stroke, its picture or its place, its name, or text typed,
   offered
@@ -266,7 +275,9 @@ must keep released files readable and looking the same, as
   is deleted, and moved into its folder, offers the draft, which brings back its
   strokes but not the file's own base layer. A symbol renamed while Inkline is
   off offers its draft once renamed back, and not before
-  ([editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)).
+  ([opening-symbols.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/opening-symbols.e2e.ts)
+  and
+  [drafts.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/drafts.e2e.ts)).
 - A draft's base layer dropped from storage as soon as the draft that replaces
   it is kept, and never before: kept when storage refuses the replacement, and
   while another draft names it, a held one, a restored one, or another editor's;
@@ -282,7 +293,9 @@ must keep released files readable and looking the same, as
   ([base-memory.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/base-memory.e2e.ts)).
 - A file changed on disk while the editor is open: taken in, asked about,
   reloaded with the drawing one undo away, never saved over when it cannot be
-  read, and saved again where it was if deleted (the same file, and
+  read, and saved again where it was if deleted
+  ([file-changes.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/file-changes.e2e.ts)
+  and
   [disk.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/disk.test.ts)).
 - A change to a symbol's text alone told from a change to its drawing, byte for
   byte: taken in without a question, by the library's save or a change on disk,
@@ -290,7 +303,7 @@ must keep released files readable and looking the same, as
   a change **Keep mine** replaces; found as a save starts, which goes on,
   through **Next** too; and text typed in a field the file changed kept, with
   what saving replaces shown, and a save that finds that first writing nothing
-  ([symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts),
+  ([symbol-text-on-disk.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text-on-disk.e2e.ts),
   [text.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/format/text.test.ts),
   and
   [disk.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/disk.test.ts)).
@@ -305,7 +318,7 @@ must keep released files readable and looking the same, as
 - In Obsidian: a symbol goes after a link, an embed, or an address the cursor
   was in; into the note it was started in, through its live editor or its file;
   and found again after the text moved
-  ([editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)).
+  ([note-insertion.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/note-insertion.e2e.ts)).
   Type to insert lists nothing in code or front matter, and the links it writes
   lead back to their symbols, from a note in a folder too, as paths from there
   when Obsidian writes relative Markdown links
@@ -337,9 +350,12 @@ must keep released files readable and looking the same, as
   the library, or an existing symbol's editor, saves the open notes first, and
   is refused with nothing changed if one cannot be saved. A reload held past the
   editor's own save loses no text, and running out of time writes nothing
-  ([insertion.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/insertion.e2e.ts),
+  ([cursor-placement.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/cursor-placement.e2e.ts),
+  [table-cells.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/table-cells.e2e.ts),
+  [line-endings.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/line-endings.e2e.ts),
+  [unsaved-text-renames.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/unsaved-text-renames.e2e.ts),
   [library-renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-renaming.e2e.ts),
-  [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts),
+  [renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/renaming.e2e.ts),
   and
   [insertion.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/insertion.test.ts)).
 - Once Inkline is turned off, nothing it started acts: **Insert existing
@@ -356,15 +372,20 @@ must keep released files readable and looking the same, as
   ([plugin.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/plugin.e2e.ts),
   [library-quick-edit.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-quick-edit.e2e.ts)
   for the change of readings, and
-  [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)).
+  [rename-races.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/rename-races.e2e.ts)
+  and
+  [renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/renaming.e2e.ts)).
 - Names and renames: what a file name cannot hold, names a folder already has,
   renames that fail, names given elsewhere during saving or hashing, and the
   reported outcome when an external rename follows a successful native rename
-  ([names.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/names.test.ts)
+  ([names.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/names.test.ts),
+  [naming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/naming.e2e.ts),
+  [renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/renaming.e2e.ts),
   and
-  [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)).
+  [rename-races.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/rename-races.e2e.ts)).
 - Keyboard focus before the editor's first animation frame, and intentional
-  name-field typing across that frame (the same host tests).
+  name-field typing across that frame
+  ([drawing.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/drawing.e2e.ts)).
 - Edit symbol only where the cursor or the pointer is on a symbol, in every
   entry point
   ([entry.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/entry.e2e.ts)).
@@ -405,7 +426,9 @@ must keep released files readable and looking the same, as
   and never written over unseen; a value at the limit, and bidirectional
   controls kept to their own value; a name and a reading that disagree, through
   a rename; and Copy from leaving them behind
-  ([symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts)).
+  ([symbol-text-editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text-editor.e2e.ts)
+  and
+  [symbol-text-library.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text-library.e2e.ts)).
 - Two saves of one symbol that meet, with each held between its read and its
   write: two from libraries keep both fields, or refuse the later of two to one
   field with what is there; a library's that goes first stops an editor's until
@@ -419,7 +442,7 @@ must keep released files readable and looking the same, as
   does not cover
   ([file-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/file-writes.test.ts)
   and
-  [symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts)).
+  [symbol-text-concurrent-saves.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text-concurrent-saves.e2e.ts)).
 - A symbol deleted, and another file put at its path, through Obsidian while a
   save reads it for the last time, by its file system, as another plugin or a
   sync tool can, or by its vault: Quick edit refuses the save and the new file
@@ -438,7 +461,7 @@ must keep released files readable and looking the same, as
   are in a draft, unless none could be kept, goes on drawing, and gives them
   back after a restart. However long a write takes, no save behind it reads or
   writes
-  ([symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts)
+  ([symbol-text-unfinished-writes.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text-unfinished-writes.e2e.ts)
   and
   [file-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/file-writes.test.ts)).
 - A rename Obsidian does not finish, with its own move, a note's save, or a
@@ -451,7 +474,7 @@ must keep released files readable and looking the same, as
   is refused until then; a failure gives the form back; and the editor does the
   same
   ([library-renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-renaming.e2e.ts),
-  [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts),
+  [renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/renaming.e2e.ts),
   and
   [file-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/file-writes.test.ts)).
 - The insert trigger's list, Insert existing symbol, Copy from, and the
@@ -459,7 +482,7 @@ must keep released files readable and looking the same, as
   and show why; the index follows files as they are made, changed, renamed,
   moved with their folder, and deleted, lets a search work while it reads, and
   finds what just changed before the rest
-  ([symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts)).
+  ([symbol-text-search.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text-search.e2e.ts)).
   All of them search alike: an accent needs no typing, and a mark that makes
   another sound counts, in kana, Indic scripts, Thai, Arabic, Hebrew, and
   Cyrillic
@@ -526,7 +549,7 @@ must keep released files readable and looking the same, as
   ([library-quick-edit.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-quick-edit.e2e.ts),
   [library-renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-renaming.e2e.ts)
   for a name alone,
-  [symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts)
+  [symbol-text-library.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text-library.e2e.ts)
   for readings and translations alone, and
   [quick-edit.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/library/quick-edit.test.ts)).
 - Measured in both themes, each row's readings and translations, and the notes
@@ -572,7 +595,7 @@ must keep released files readable and looking the same, as
 
 - Each control is labelled, its tooltip shows its key, toggles say whether they
   are on, and keys give way to a text field
-  ([editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)).
+  ([drawing.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/drawing.e2e.ts)).
 - This site lists every command and every button's key as the code has them
   ([docs.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/docs.test.ts)).
 
@@ -584,9 +607,9 @@ Each of these asserts a budget beside its correctness checks:
 | ----------------------------------------------------------------------------------------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------- |
 | Tagging a thousand symbols in a note, the fastest of five runs                                                    | 50 ms       | [render.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/render.e2e.ts)                           |
 | Searching 5,000 symbols as each letter of a name, reading, or translation is typed, each query's fastest of three | 100 ms      | [scale.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/scale.e2e.ts)                             |
-| Keeping a draft with a large base layer, after the first                                                          | 50 ms each  | [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)                           |
+| Keeping a draft with a large base layer, after the first                                                          | 50 ms each  | [drafts.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/drafts.e2e.ts)                           |
 | Previewing the ink of a 4K screenshot                                                                             | 300 ms      | [ink.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/ink.e2e.ts)                                 |
-| Saving, without waiting for the window to be idle                                                                 | 700 ms each | [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)                           |
+| Saving, without waiting for the window to be idle                                                                 | 700 ms each | [saving.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/saving.e2e.ts)                           |
 | The longest task and frame of saving nearly the largest file a symbol can be, the shortest of three               | 400 ms      | [save-responsiveness.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/save-responsiveness.e2e.ts) |
 | The same for a symbol of the most pixels it can have                                                              | 200 ms      | [save-responsiveness.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/save-responsiveness.e2e.ts) |
 | The longest task and frame of opening nearly the largest file a symbol can be, the shortest of three              | 250 ms      | [open-responsiveness.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/open-responsiveness.e2e.ts) |

@@ -194,9 +194,9 @@ export const durationsFormat = 2;
  *   "versions": ["earliest/earliest", "latest/latest"],
  *   "exitCode": 0,
  *   "specs": {
- *     "editor.e2e.ts": {
- *       "earliest/earliest": { "resolved": "1.13.4/1.5.8", "seconds": 331.2, "exitCode": 0 },
- *       "latest/latest": { "resolved": "1.15.1/1.15.1", "seconds": 338.0, "exitCode": 0 }
+ *     "renaming.e2e.ts": {
+ *       "earliest/earliest": { "resolved": "1.13.4/1.5.8", "seconds": 61.4, "exitCode": 0 },
+ *       "latest/latest": { "resolved": "1.15.1/1.15.1", "seconds": 51.8, "exitCode": 0 }
  *     }
  *   }
  * }

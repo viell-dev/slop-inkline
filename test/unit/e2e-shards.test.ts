@@ -123,7 +123,7 @@ describe("weights and shards", () => {
 
   it("lists the spec files on disk", () => {
     expect(specs.length).toBeGreaterThan(0);
-    expect(specs).toContain("editor.e2e.ts");
+    expect(specs).toContain("plugin.e2e.ts");
     expect(specs).toEqual([...specs].sort());
   });
 
