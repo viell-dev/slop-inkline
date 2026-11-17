@@ -10,6 +10,7 @@ import {
   startOver,
   waitForEditor,
 } from "../support/editor.ts";
+import { warmUpPointer } from "../support/hover.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 
 /** A symbol: its path, and the x of each of its strokes, in file units. */
@@ -356,6 +357,7 @@ function libraryRow(path: string): ReturnType<typeof browser.$> {
 
 /** Holds the pointer over a row's symbol until `wanted` shows as a tooltip. */
 async function tooltipOver(path: string, wanted: string): Promise<Box> {
+  await warmUpPointer();
   await libraryRow(path).$(".inkline-library-insert").moveTo();
   let shown = "";
   try {
@@ -531,13 +533,19 @@ describe("Lists of symbols", function () {
     });
   });
 
-  for (const list of lists) {
+  // The library's own are "keep each row on one line by default" below, in
+  // both themes, with these symbols, the very long names, and more.
+  for (const list of lists.filter((shown) => shown !== library)) {
     for (const theme of themes) {
-      it(`line names up in ${list.name}, in the ${theme} theme`, async function () {
+      it(`line names up in ${list.name}, beside a very long one, in the ${theme} theme`, async function () {
+        await createSymbol(`${long}.ink.png`, [400, 4000, 8600]);
+        await createSymbol(`${unbroken}.ink.png`, [400, 4000, 8600]);
         await useTheme(theme);
         await list.open();
-        await waitForRows(list.rows, symbols.length);
-        expectLinedUp(await rowsOf(list.rows), symbols.length);
+        await waitForRows(list.rows, symbols.length + 2);
+        expectLinedUp(await rowsOf(list.rows), symbols.length + 2);
+        const { client, scroll } = await widthsOf(list.holder);
+        expect(scroll).toBeLessThanOrEqual(client);
         await expectWhole(list.rows, surface);
         await expectWhole(list.rows, wider);
         await saveScreenshot(`symbol-list-${list.name}-${theme}`);
@@ -617,19 +625,6 @@ describe("Lists of symbols", function () {
       await browser.$(".prompt").waitForExist({ reverse: true });
     }
   });
-
-  for (const list of lists) {
-    it(`keep names in line beside a very long one in ${list.name}`, async function () {
-      await createSymbol(`${long}.ink.png`, [400, 4000, 8600]);
-      await createSymbol(`${unbroken}.ink.png`, [400, 4000, 8600]);
-      await list.open();
-      await waitForRows(list.rows, symbols.length + 2);
-      expectLinedUp(await rowsOf(list.rows), symbols.length + 2);
-      const { client, scroll } = await widthsOf(list.holder);
-      expect(scroll).toBeLessThanOrEqual(client);
-      await saveScreenshot(`symbol-list-long-name-${list.name}`);
-    });
-  }
 
   describe("in the library's sidebar", function () {
     const count = symbols.length + demanding.length;
@@ -794,14 +789,13 @@ describe("Lists of symbols", function () {
       await openAtMarker("List.md", "HERE");
       await library.open();
       await waitForRows(library.rows, count);
-      const row = libraryRow(path);
-      const uses = row.$(".inkline-library-uses");
+      const uses = () => libraryRow(path).$(".inkline-library-uses");
       await browser.waitUntil(
-        async () => (await uses.getText()) === "Uses (1)",
+        async () => (await uses().getText()) === "Uses (1)",
       );
 
       // The row's symbol inserts it, under its whole name.
-      await row.$(".inkline-library-insert").click();
+      await libraryRow(path).$(".inkline-library-insert").click();
       await browser.waitUntil(async () =>
         browser.executeObsidian(
           ({ app, obsidian }, name) =>
@@ -816,11 +810,18 @@ describe("Lists of symbols", function () {
         ),
       );
 
-      // Its count lists its note, whose unbroken name stays in the sidebar.
-      await uses.click();
-      const note = libraryRow(path).$(".inkline-library-note");
-      await note.waitForExist();
-      expect(await note.getProperty("textContent")).toBe(noteName);
+      // Its count lists its notes, the unbroken name staying in the sidebar.
+      // The note it went into counts once it is saved, which draws the row
+      // again with new buttons, so they are found afresh after that (#304).
+      await browser.waitUntil(
+        async () => (await uses().getText()) === "Uses (2)",
+      );
+      await uses().click();
+      const notes = () => libraryRow(path).$$(".inkline-library-note");
+      await browser.waitUntil(async () => (await notes().length) === 2);
+      expect(
+        await notes().map(async (note) => note.getProperty("textContent")),
+      ).toEqual(["List", noteName]);
       expectInsideSidebar(await measureLibrary());
       await saveScreenshot("symbol-library-rows-notes");
 

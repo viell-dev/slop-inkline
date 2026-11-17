@@ -72,8 +72,10 @@ An agent proposing a feature, for its operator or as a maintainer, reads
 
 ## Set up
 
-Development needs Node.js 24 or newer, with the npm it ships. [.nvmrc](.nvmrc)
-names the version line that CI uses, so `nvm use` or `fnm use` picks it.
+Development needs Node.js 24.22.1 or a later 24 release, or 26.12.1 or newer,
+with the npm it ships, as WebdriverIO, which runs the end-to-end tests, needs
+them. [.nvmrc](.nvmrc) names the version line that CI uses, so `nvm use` or
+`fnm use` picks it.
 
 ```sh
 git clone https://github.com/viell-dev/slop-inkline.git
@@ -410,9 +412,11 @@ them also get an independent review by another agent, as
   bundles its runtime libraries, which go in `dependencies`; tools go in
   `devDependencies`. Add a runtime library only when the need cannot be met in a
   few lines, and say why in the pull request.
-- CI audits `dependencies`, the code that ships. Development-tool advisories and
-  their handling are tracked in
-  [#9](https://github.com/viell-dev/slop-inkline/issues/9).
+- CI audits `dependencies`, the code that ships. It does not audit the
+  development tools, so that an advisory published for one of them does not fail
+  every unrelated pull request: Dependabot's alerts report those, and the pinned
+  overview [#10](https://github.com/viell-dev/slop-inkline/issues/10) tracks the
+  ones that wait on a dependency.
 - `allowScripts` in `package.json` lists which dependencies may run install
   scripts. npm warns about any other; approve one only if the project needs its
   script.

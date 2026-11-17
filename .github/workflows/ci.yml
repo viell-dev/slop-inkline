@@ -48,8 +48,9 @@ jobs:
         if: runner.os == 'Linux'
         run: npm run check:pinned
       - run: npm run check
-      # Audits what ships: the bundled runtime dependencies. The test tools'
-      # advisories wait for WebdriverIO 10 support; see issue #9.
+      # Audits what ships: the bundled runtime dependencies. The development
+      # tools' advisories are tracked by Dependabot's alerts and issue #10,
+      # so that one published tomorrow does not fail unrelated pull requests.
       - if: runner.os == 'Linux'
         run: npm audit --omit=dev --audit-level=low
 

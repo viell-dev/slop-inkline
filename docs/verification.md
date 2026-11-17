@@ -351,8 +351,9 @@ must keep released files readable and looking the same, as
   layout callback that comes late, or turning Inkline off while it reads its
   settings, leaves no tagged symbols, display settings, menus, or commands
   behind, and the next load has them all
-  ([plugin.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/plugin.e2e.ts)
-  and
+  ([plugin.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/plugin.e2e.ts),
+  [library-quick-edit.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-quick-edit.e2e.ts)
+  for the change of readings, and
   [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)).
 - Names and renames: what a file name cannot hold, names a folder already has,
   renames that fail, names given elsewhere during saving or hashing, and the
@@ -512,14 +513,19 @@ must keep released files readable and looking the same, as
   Quick edit keeps its form until the press ends, and that form saves nothing;
   the release, a click on the same Quick edit, opens no second form, and nor
   does another row's Quick edit from the keyboard meanwhile. It is unavailable
-  while Cancel is, during a save, and a save left with it, by click or by Esc,
-  renames nothing, or says that the readings are saved when the rename waits.
-  Shift+Tab from the name reaches it and then the symbol, past Uses, and the
-  row's buttons follow a rename made elsewhere, into another folder. Its symbol
-  shows the file's menu, and its fields do not. What each outcome writes,
-  renames, and says is also unit-tested
-  ([library-quick-edit.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-quick-edit.e2e.ts)
-  and
+  while Cancel is, during a save. A save left with it renames nothing, shown
+  with Esc while the write waits, or says that the readings are saved, shown
+  with a click while the rename waits; every way of leaving ends in the one
+  handler, so each way and each step is shown once. Shift+Tab from the name
+  reaches it and then the symbol, past Uses, and the row's buttons follow a
+  rename made elsewhere, into another folder. Its symbol shows the file's menu,
+  and its fields do not. What each outcome writes, renames, and says is also
+  unit-tested
+  ([library-quick-edit.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-quick-edit.e2e.ts),
+  [library-renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-renaming.e2e.ts)
+  for a name alone,
+  [symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts)
+  for readings and translations alone, and
   [quick-edit.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/library/quick-edit.test.ts)).
 - Measured in both themes, each row's readings and translations, and the notes
   Uses lists, are 4 px below the row's buttons and 12 px above the next row,
