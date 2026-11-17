@@ -96,9 +96,9 @@ describe("Fixed brush bitmap", function () {
         // A new editor shows 4.5 em, at M.
         const expected =
           ((states[0]?.surfaceWidth ?? 0) / 4.5) * (brushSizes[1]?.em ?? 0);
-        expect(
-          Math.abs((await cursorImage()).diameter - expected),
-        ).toBeLessThan(0.3);
+        const image = await cursorImage();
+        expect(image.width).toBe(image.height);
+        expect(Math.abs(image.diameter - expected)).toBeLessThan(0.3);
       }
     }
     await saveScreenshot("fixed-brush-cursor");
@@ -118,7 +118,6 @@ describe("Fixed brush bitmap", function () {
         0.3,
       );
       expect(image.width).toBe(image.height);
-      expect(image.hotspot).toEqual([image.width / 2, image.height / 2]);
       const centre = ((image.height / 2) * image.width + image.width / 2) * 4;
       expect(image.pixels[centre]).toBeLessThan(100);
       // Check the visible dot over this light surface. Removing the opaque

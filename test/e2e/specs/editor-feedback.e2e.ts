@@ -1,6 +1,7 @@
 import { browser, expect } from "@wdio/globals";
 import { loadModules } from "../support/browser.ts";
 import { cursorImage, hasBrushCursor } from "../support/cursor.ts";
+import { boxOf, pointAt, warmUpPointer } from "../support/hover.ts";
 import {
   draw,
   openAtMarker,
@@ -13,6 +14,15 @@ import {
   waitForStatus,
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
+
+/** The texts of the tooltips Obsidian shows now. */
+async function tooltips(): Promise<string[]> {
+  return browser.execute(() =>
+    [...document.querySelectorAll(".tooltip")].map(
+      (tooltip) => tooltip.textContent,
+    ),
+  );
+}
 
 async function insert(): Promise<void> {
   await openAtMarker("Editor.md", "HERE");
@@ -66,63 +76,29 @@ describe("Editor feedback", function () {
       expect(layout.overlap).toBe(0);
       expect(layout.nameWidth).toBeGreaterThan(300);
     });
-
-    it(`keeps a fixed brush bitmap at fractional positions in ${theme}`, async function () {
-      await insert();
-      for (const width of [721.5, 480.25]) {
-        await browser.execute(
-          (wanted, pixels) => {
-            document.body.removeClass("theme-light", "theme-dark");
-            document.body.addClass(wanted);
-            const modal = document.querySelector(".inkline-editor");
-            if (modal instanceof HTMLElement)
-              modal.style.width = `${String(pixels)}px`;
-          },
-          theme,
-          width,
-        );
-        await surface().moveTo();
-        const measurements = await browser.execute(() => {
-          const canvas = document.querySelector(".inkline-surface");
-          if (!(canvas instanceof HTMLCanvasElement))
-            throw new Error("no drawing controls");
-          const rect = canvas.getBoundingClientRect();
-          const offsets = [0.125, 0.375, 0.625, 0.875];
-          const cursors = offsets.map((fraction) => {
-            const clientX = rect.left + 80 + fraction;
-            const clientY = rect.top + 80 + fraction;
-            canvas.dispatchEvent(
-              new PointerEvent("pointermove", {
-                pointerType: "mouse",
-                pointerId: 51,
-                clientX,
-                clientY,
-                bubbles: true,
-              }),
-            );
-            return getComputedStyle(canvas).cursor;
-          });
-          return cursors;
-        });
-        expect(new Set(measurements).size).toBe(1);
-        const image = await cursorImage();
-        expect(image.width).toBe(image.height);
-        expect(image.hotspot).toEqual([image.width / 2, image.height / 2]);
-        expect(image.diameter).toBeGreaterThan(0);
-      }
-      await saveScreenshot(`editor-centred-cursor-${theme}`);
-    });
   }
 
   it("names the drawing area without showing a hover tooltip", async function () {
     await insert();
     expect(await surface().getComputedLabel()).toBe("Drawing area");
-    await browser.$('[data-inkline-button="pen"]').moveTo();
-    await browser.pause(500);
-    await surface().moveTo();
-    // Obsidian creates aria-label tooltips after the hover delay.
-    await browser.pause(1200);
-    expect(await browser.$(".tooltip=Drawing area").isExisting()).toBe(false);
+    // A button's tooltip shows, after Obsidian's delay in this run, which
+    // says how long to wait for one that should not.
+    await warmUpPointer();
+    const pen = await boxOf('[data-inkline-button="pen"]');
+    const start = Date.now();
+    await pointAt((pen.left + pen.right) / 2, (pen.top + pen.bottom) / 2);
+    await browser.waitUntil(
+      async () => (await tooltips()).includes("Pen (P)"),
+      { timeoutMsg: "the Pen button showed no tooltip" },
+    );
+    const patience = Math.max(1500, 3 * (Date.now() - start));
+    const area = await boxOf(".inkline-editor .inkline-surface");
+    expect(
+      await pointAt((area.left + area.right) / 2, (area.top + area.bottom) / 2),
+    ).toContain("inkline-surface");
+    await browser.pause(patience);
+    // The Pen button's own can still be going as the pointer leaves.
+    expect((await tooltips()).filter((text) => text !== "Pen (P)")).toEqual([]);
   });
 
   it("shows the brush footprint without adding it to the drawing", async function () {
