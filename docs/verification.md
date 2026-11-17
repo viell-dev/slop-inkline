@@ -515,8 +515,11 @@ must keep released files readable and looking the same, as
   row's buttons follow a rename made elsewhere, into another folder. Its symbol
   shows the file's menu, and its fields do not. What each outcome writes,
   renames, and says is also unit-tested
-  ([library-quick-edit.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-quick-edit.e2e.ts)
-  and
+  ([library-quick-edit.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-quick-edit.e2e.ts),
+  [library-renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-renaming.e2e.ts)
+  for a name alone,
+  [symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts)
+  for readings and translations alone, and
   [quick-edit.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/library/quick-edit.test.ts)).
 - Measured in both themes, each row's readings and translations, and the notes
   Uses lists, are 4 px below the row's buttons and 12 px above the next row,
