@@ -875,11 +875,13 @@ describe("A symbol's readings and translations", function () {
       }
 
       /**
-       * Has the editor keep the stroke as a draft, and turns Inkline off and
-       * on, which leaves the draft where a restart of Obsidian does, as the
-       * test of typed text above shows: these tests are about the question
-       * that offers it, and a draft kept through a restart of Obsidian is
-       * shown by the test of a held write below.
+       * Has the editor keep its changes as a draft, and turns Inkline off and
+       * on, which closes the editor and keeps the draft again as it does. The
+       * tests that use this are about the wording of the question that offers
+       * the draft, which is the same however the editor went. That a draft
+       * kept as the strokes and the text were made comes back after Obsidian
+       * itself restarts, with no save under way, is shown by "says to look
+       * over text a draft would put back, and restores it after a restart".
        */
       async function leaveDraft(): Promise<void> {
         await browser.waitUntil(
@@ -1124,17 +1126,32 @@ describe("A symbol's readings and translations", function () {
         expect(await strokes()).toBe(2);
       });
 
-      it("says to look over text a draft would put back", async function () {
-        await symbolWith(file, { reading: ["TA"], translation: ["field"] });
-        await editFile(file);
-        await showFields();
+      // A restart of Obsidian, unlike turning Inkline off, closes no editor,
+      // so the draft that comes back is the one kept as the stroke was drawn
+      // and the text typed, as after a crash. No save is under way, so it is
+      // the draft of the drawing as the file holds it.
+      it("says to look over text a draft would put back, and restores it after a restart", async function () {
+        await withStroke();
         await fill("reading", "typed");
-        await leaveDraft();
+        await browser.waitUntil(
+          async () => (await storedDrafts()).length === 1,
+        );
+        await browser.reloadObsidian();
+        await loadModules();
         await changeOnDisk(file, { translation: ["plot"] });
         await editFile(file);
         const said = await draftQuestion();
         expect(said).toContain("look over what you typed");
         expect(said).not.toContain("may not line up");
+        await clickTop("Restore");
+        await area("reading").waitForDisplayed();
+        expect(await area("reading").getValue()).toBe("typed");
+        await saveAndClose();
+        expect(await fieldsOf(file)).toEqual({
+          reading: ["typed"],
+          translation: ["plot"],
+        });
+        expect(await strokes()).toBe(2);
       });
 
       it("still says so of a draft whose drawing changed", async function () {
