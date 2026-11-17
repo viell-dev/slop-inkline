@@ -12,6 +12,7 @@ import {
 import { openCanvas, placeInCard } from "../support/canvas.ts";
 import { doubleClick } from "../support/pointer.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
+import { waitOrSay } from "../support/waits.ts";
 
 const edited = "Glyphs/sign % one.ink.png";
 const untouched = "Glyphs/sign-other.ink.png";
@@ -274,27 +275,6 @@ async function recordChanges(place?: Place): Promise<void> {
     });
     Reflect.set(window, "inklineTestRecorder", recorder);
   }, place ?? null);
-}
-
-/**
- * Waits for `condition` as `browser.waitUntil` does, and if it times out,
- * fails with the message `say` makes then. A message given to waitUntil
- * itself is made before the wait starts, so it cannot tell what the wait
- * last saw (#281). If `say` fails too, the timeout is still what is reported.
- */
-async function waitOrSay(
-  condition: () => Promise<boolean>,
-  say: () => Promise<string>,
-): Promise<void> {
-  try {
-    await browser.waitUntil(condition);
-  } catch (error) {
-    const message = await say().catch(
-      (failed: unknown) =>
-        `the wait timed out, and its state was not read: ${String(failed)}`,
-    );
-    throw new Error(message, { cause: error });
-  }
 }
 
 describe("Saved symbol refresh", function () {

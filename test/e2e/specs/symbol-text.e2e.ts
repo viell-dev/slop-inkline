@@ -31,6 +31,7 @@ import {
   waitForStatus,
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
+import { waitOrSay } from "../support/waits.ts";
 
 const fixtures = path.resolve(import.meta.dirname, "../../fixtures/format");
 
@@ -1968,9 +1969,14 @@ describe("A symbol's readings and translations", function () {
       await showLibrary();
       const rowCount = () => browser.$$(".inkline-library-symbol").length;
       const waitForCount = async (count: number): Promise<void> => {
-        await browser.waitUntil(async () => (await rowCount()) === count, {
-          timeoutMsg: `not ${String(count)} rows, but ${String(await rowCount())}`,
-        });
+        let rows = -1;
+        await waitOrSay(
+          async () => {
+            rows = await rowCount();
+            return rows === count;
+          },
+          () => `not ${String(count)} rows, but ${String(rows)}`,
+        );
       };
       const more = () => browser.$(".inkline-library-more");
       const focusMore = async (): Promise<void> => {
