@@ -317,15 +317,20 @@ describe("the documentation", () => {
     expect(source("README.md")).toMatch(named);
   });
 
-  it("names the Node.js version the package needs", () => {
-    const major = /^>=(\d+)\.0\.0$/.exec(packageJson.engines.node)?.[1];
-    expect(major).toBeDefined();
+  it("names the Node.js versions the package needs", () => {
+    // A release of one line, and any release from one of a later line on, as
+    // WebdriverIO's own range has them.
+    const range = /^\^(\d+)\.(\d+\.\d+) \|\| >=(\d+\.\d+\.\d+)$/.exec(
+      packageJson.engines.node,
+    );
+    expect(range).not.toBeNull();
+    const [, line = "", rest = "", later = ""] = range ?? [];
     const flat = (text: string) => text.replace(/\s+/g, " ");
     expect(flat(source("CONTRIBUTING.md"))).toContain(
-      `Node.js ${major ?? ""} or newer`,
+      `Node.js ${line}.${rest} or a later ${line} release, or ${later} or newer`,
     );
     expect(flat(page("install.md"))).toContain(
-      `[Node.js](https://nodejs.org/) ${major ?? ""} or later`,
+      `[Node.js](https://nodejs.org/) ${line}.${rest} or a later ${line} release, or ${later} or later`,
     );
   });
 
