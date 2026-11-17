@@ -33,10 +33,9 @@ describe("the listing's material", () => {
     // The listing form counts the text and takes up to 1,000 characters.
     expect(description.trim().length).toBeLessThanOrEqual(1000);
     expect(description).not.toMatch(/\p{Extended_Pictographic}/u);
-    // Each paragraph is one line, so that it pastes without line breaks.
-    expect(description.trim().split("\n\n").length).toBe(
-      description.trim().split("\n").filter(Boolean).length,
-    );
+    // The listing shows it as one paragraph, without line breaks, so it is
+    // written as one and pastes as one (#314).
+    expect(description.trim()).not.toMatch(/[\r\n]/);
   });
 
   it("has up to five screenshots of the size and weight the listing takes", () => {
