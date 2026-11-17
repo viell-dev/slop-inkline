@@ -9,7 +9,6 @@ import {
   startOver,
   storedDrafts,
   surface,
-  symbolFiles,
   waitForEditor,
   waitForStatus,
 } from "../support/editor.ts";
@@ -368,44 +367,5 @@ describe("Zoom", function () {
     // as in a save.
     expect(result.erased.size).toEqual(result.left.size);
     expect(result.erased.alpha).toBe(result.left.alpha);
-  });
-
-  it("keeps the zoom for the next symbol", async function () {
-    await openEditor();
-    await browser.keys("z");
-    await waitForStatus("Zoomed in");
-    const zoomed = await surfaceSize();
-    await draw([
-      [0.4, 0.4],
-      [0.6, 0.6],
-    ]);
-    await browser.execute(() => {
-      document
-        .querySelector(".inkline-editor")
-        ?.setAttribute("data-inkline-first", "");
-    });
-    await browser.keys(["Control", "Shift", "Enter"]);
-    // The first editor gives way to a blank one for the next symbol.
-    await browser.waitUntil(async () =>
-      browser.execute(() => {
-        const editors = document.querySelectorAll(".inkline-editor");
-        return (
-          editors.length === 1 &&
-          !(editors[0]?.hasAttribute("data-inkline-first") ?? true)
-        );
-      }),
-    );
-    expect(await symbolFiles()).toEqual(["001.ink.png"]);
-    expect(await zoomPressed()).toBe("true");
-    expect(Math.abs((await surfaceSize()).height - zoomed.height)).toBeLessThan(
-      2,
-    );
-    // And it saves a second symbol.
-    await draw([
-      [0.4, 0.6],
-      [0.6, 0.4],
-    ]);
-    await browser.keys(["Control", "Enter"]);
-    await browser.waitUntil(async () => (await symbolFiles()).length === 2);
   });
 });

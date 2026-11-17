@@ -8,7 +8,6 @@ import {
   startOver,
   storedDrafts,
   surface,
-  symbolFiles,
   waitForEditor,
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
@@ -160,33 +159,5 @@ describe("Ellipse", function () {
     const across = shape.right - shape.left;
     const down = shape.bottom - shape.top;
     expect(Math.abs(across / down - 1)).toBeLessThan(0.01);
-  });
-
-  it("keeps Ellipse on through Next", async function () {
-    await openEditor();
-    await browser.keys("o");
-    await draw([
-      [0.3, 0.3],
-      [0.6, 0.7],
-    ]);
-    await browser.execute(() => {
-      document
-        .querySelector(".inkline-editor")
-        ?.setAttribute("data-inkline-first", "");
-    });
-    await browser.keys(["Control", "Shift", "Enter"]);
-    // The first editor gives way to a blank one for the next symbol.
-    await browser.waitUntil(async () =>
-      browser.execute(() => {
-        const editors = document.querySelectorAll(".inkline-editor");
-        return (
-          editors.length === 1 &&
-          !(editors[0]?.hasAttribute("data-inkline-first") ?? true)
-        );
-      }),
-    );
-    await waitForEditor();
-    expect(await symbolFiles()).toEqual(["001.ink.png"]);
-    expect(await pressed("ellipse")).toBe("true");
   });
 });

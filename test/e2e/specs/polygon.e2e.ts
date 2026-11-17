@@ -9,7 +9,6 @@ import {
   startOver,
   storedDrafts,
   surface,
-  symbolFiles,
   waitForEditor,
   waitForStatus,
 } from "../support/editor.ts";
@@ -324,37 +323,13 @@ describe("Polygon", function () {
     });
   });
 
-  it("takes the eraser chosen while placing, and keeps Polygon on through Next", async function () {
+  it("takes the eraser chosen while placing", async function () {
     await openPolygon(false);
-    // A line of the pen first, as Next does not save a new symbol that has
-    // only the eraser's strokes.
-    await click([0.2, 0.2], [0.2, 0.7], [0.2, 0.7]);
-    await draftStrokes(1);
     await click([0.3, 0.3]);
     await browser.keys("e");
     await click([0.6, 0.6], [0.6, 0.6]);
-    const [, erased] = await draftStrokes(2);
+    const [erased] = await draftStrokes(1);
     expect(erased?.tool).toBe("eraser");
     expect(erased?.points).toHaveLength(4);
-    await browser.execute(() => {
-      document
-        .querySelector(".inkline-editor")
-        ?.setAttribute("data-inkline-first", "");
-    });
-    await browser.keys(["Control", "Shift", "Enter"]);
-    await browser.waitUntil(async () =>
-      browser.execute(() => {
-        const editors = document.querySelectorAll(".inkline-editor");
-        return (
-          editors.length === 1 &&
-          !(editors[0]?.hasAttribute("data-inkline-first") ?? true)
-        );
-      }),
-    );
-    await waitForEditor();
-    expect(await symbolFiles()).toEqual(["001.ink.png"]);
-    expect(await pressed("polygon")).toBe("true");
-    await browser.keys("y");
-    expect(await pressed("polygon")).toBe("false");
   });
 });

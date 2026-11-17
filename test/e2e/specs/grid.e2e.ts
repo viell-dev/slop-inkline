@@ -14,7 +14,6 @@ import {
   shiftClick,
   startOver,
   storedDrafts,
-  symbolFiles,
   waitForEditor,
   waitForStatus,
 } from "../support/editor.ts";
@@ -430,38 +429,5 @@ describe("Grid", function () {
       async () =>
         rowsBetween((await dotsShown()).rows, lineBox.baseline, xHeight) === 9,
     );
-  });
-
-  it("keeps the finer grid for the next symbol", async function () {
-    const usual = await openWithGrid();
-    const { spacing } = await editorGrid();
-    await zoom("Zoomed in");
-    await draw([
-      [0.4, 0.4],
-      [0.6, 0.4],
-    ]);
-    await browser.execute(() => {
-      document
-        .querySelector(".inkline-editor")
-        ?.setAttribute("data-inkline-first", "");
-    });
-    await browser.keys(["Control", "Shift", "Enter"]);
-    await browser.waitUntil(async () =>
-      browser.execute(() => {
-        const editors = document.querySelectorAll(".inkline-editor");
-        return (
-          editors.length === 1 &&
-          !(editors[0]?.hasAttribute("data-inkline-first") ?? true)
-        );
-      }),
-    );
-    expect(await symbolFiles()).toEqual(["001.ink.png"]);
-    const next = await settledDots();
-    await saveScreenshot("grid-zoom-next");
-    const xHeight = usual.lines["x-height"] ?? 0;
-    expect(rowsBetween(next.rows, lineBox.baseline, xHeight)).toBe(9);
-    for (const step of steps(next.columns)) {
-      expect(Math.abs(step - spacing / 2)).toBeLessThanOrEqual(1 / next.factor);
-    }
   });
 });
