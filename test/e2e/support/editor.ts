@@ -858,7 +858,10 @@ const replaceable = {
  * that fails midway leaves it, so that one failure does not become many.
  *
  * It ends every operation still held by {@link hold} or {@link holdDecoding},
- * or by any other gate a test registered in the renderer's `inklineLetGos`.
+ * or by any other gate that a test left. Each gate keeps how to end what it
+ * holds as a property of the renderer's window, named `inklineAtEnd-` and a
+ * name of the gate's own, which this calls once and removes.
+ *
  * What Obsidian itself does is let go, as if the test had let it go: what
  * {@link hold} holds as `move`, `save`, or `index`, on the adapter, or as
  * `link`. Failing it would reject it inside Obsidian's own rename or link
@@ -870,19 +873,18 @@ const replaceable = {
  *
  * It then takes {@link hold}'s gate away, so that a later {@link waitForHeld}
  * or {@link letGo} cannot take it for its own; undoes {@link delayVault} and
- * {@link delayDecoding}; and removes every replacement of a method in
+ * {@link holdDecoding}; and removes every replacement of a method in
  * `replaceable` that Obsidian's object did not have as its own when this
  * first ran in the window, with the originals tests keep beside them under
  * names that start with `inkline`. {@link startOver} does this first.
  */
 export async function undoStubs(): Promise<void> {
   await browser.execute(() => {
-    const gates: unknown = Reflect.get(window, "inklineLetGos");
-    Reflect.deleteProperty(window, "inklineLetGos");
-    if (Array.isArray(gates)) {
-      for (const gate of gates as unknown[]) {
-        if (typeof gate === "function") Reflect.apply(gate, undefined, []);
-      }
+    for (const key of Object.keys(window)) {
+      if (!key.startsWith("inklineAtEnd-")) continue;
+      const end: unknown = Reflect.get(window, key);
+      Reflect.deleteProperty(window, key);
+      if (typeof end === "function") Reflect.apply(end, undefined, []);
     }
     // Its gate, settled now, which a later test's waitForHeld() or letGo()
     // would otherwise take for its own.
@@ -1014,7 +1016,7 @@ export async function delayVault(
   when: "before" | "after" = "after",
 ): Promise<void> {
   await browser.executeObsidian(
-    ({ app }, method, wait, first) => {
+    ({ app }, method, wait, when) => {
       const original: unknown = Reflect.get(app.vault, method);
       if (typeof original !== "function") throw new Error(`no ${method}`);
       const pause = () =>
@@ -1028,13 +1030,13 @@ export async function delayVault(
         async (...args: unknown[]): Promise<unknown> => {
           calls.started++;
           try {
-            if (first === "before") await pause();
+            if (when === "before") await pause();
             const result: unknown = await Reflect.apply(
               original,
               app.vault,
               args,
             );
-            if (first === "after") await pause();
+            if (when === "after") await pause();
             return result;
           } finally {
             calls.ended++;
@@ -1177,7 +1179,7 @@ export async function hold(
   when: "before" | "after" = "before",
 ): Promise<void> {
   await browser.executeObsidian(
-    ({ app }, { owner, method, obsidians }, end, at) => {
+    ({ app }, { owner, method, obsidians }, end, when) => {
       const target = owner === "adapter" ? app.vault.adapter : app.vault;
       const original: unknown = Reflect.get(target, method);
       if (typeof original !== "function") throw new Error(`no ${method}`);
@@ -1197,12 +1199,12 @@ export async function hold(
             ? (Reflect.get(file, "path") as unknown)
             : file;
         const held = typeof path === "string" && path.endsWith(end);
-        if (held && at === "before") {
+        if (held && when === "before") {
           gate.reached = true;
           await released;
         }
         const result: unknown = await Reflect.apply(original, target, args);
-        if (held && at === "after") {
+        if (held && when === "after") {
           gate.reached = true;
           await released;
         }
@@ -1218,20 +1220,27 @@ export async function hold(
         // What a let-go puts back: the object's own method, if it had one,
         // as a stub of the test's that this holds over.
         ownBefore: Object.hasOwn(target, method),
+        // One of its own, as a test can hold again once it has let go.
+        atEnd: `inklineAtEnd-hold-${crypto.randomUUID()}`,
       };
       Reflect.set(window, "inklineHoldGate", gate);
-      const registered: unknown = Reflect.get(window, "inklineLetGos");
-      const letGos = Array.isArray(registered) ? registered : [];
-      letGos.push(() => {
+      Reflect.set(window, gate.atEnd, () => {
         settle(obsidians ? undefined : "The test ended with this held.");
       });
-      Reflect.set(window, "inklineLetGos", letGos);
       Reflect.set(target, method, wrapper);
     },
     holdable[what],
     ending,
     when,
   );
+}
+
+/** Has `what` wait as {@link hold} does, once it has done its work. */
+export async function holdAfter(
+  what: keyof typeof holdable,
+  ending: string = holdable[what].ending,
+): Promise<void> {
+  await hold(what, ending, "after");
 }
 
 /**
@@ -1267,8 +1276,9 @@ export async function letGo(failure?: string): Promise<void> {
     const gate: unknown = Reflect.get(window, "inklineHoldGate");
     Reflect.deleteProperty(window, "inklineHoldGate");
     if (typeof gate !== "object" || gate === null) return;
-    const { owner, method, settle, wrapper, original, ownBefore } =
+    const { owner, method, settle, wrapper, original, ownBefore, atEnd } =
       gate as Record<string, unknown>;
+    if (typeof atEnd === "string") Reflect.deleteProperty(window, atEnd);
     const target = owner === "adapter" ? app.vault.adapter : app.vault;
     if (typeof method === "string" && Reflect.get(target, method) === wrapper) {
       if (ownBefore === true) Reflect.set(target, method, original);
@@ -1342,27 +1352,6 @@ export async function waitForIndexWait(): Promise<void> {
 }
 
 /**
- * Makes `createImageBitmap`, which decodes base layers, take `ms` longer,
- * until {@link restoreDecoding}.
- */
-export async function delayDecoding(ms: number): Promise<void> {
-  await browser.execute((wait) => {
-    const original: unknown = Reflect.get(window, "createImageBitmap");
-    if (typeof original !== "function") throw new Error("no createImageBitmap");
-    Reflect.set(window, "inklineCreateImageBitmap", original);
-    Reflect.set(
-      window,
-      "createImageBitmap",
-      async (...args: unknown[]): Promise<unknown> => {
-        await new Promise((resolve) => window.setTimeout(resolve, wait));
-        const result: unknown = await Reflect.apply(original, window, args);
-        return result;
-      },
-    );
-  }, ms);
-}
-
-/**
  * Has the next call of `createImageBitmap`, as when a draft's base layer is
  * decoded to offer the draft, wait until {@link letDecodingGo}, until
  * {@link restoreDecoding}; the calls after it go on. It notes when the
@@ -1379,10 +1368,7 @@ export async function holdDecoding(): Promise<void> {
     const state = { held: false, closed: false };
     Reflect.set(window, "inklineHeldDecoding", state);
     Reflect.set(window, "inklineLetDecodingGo", go);
-    const registered: unknown = Reflect.get(window, "inklineLetGos");
-    const letGos = Array.isArray(registered) ? registered : [];
-    letGos.push(go);
-    Reflect.set(window, "inklineLetGos", letGos);
+    Reflect.set(window, "inklineAtEnd-decoding", go);
     Reflect.set(window, "inklineCreateImageBitmap", original);
     let first = true;
     Reflect.set(
@@ -1454,7 +1440,7 @@ export async function waitForDecoded(): Promise<void> {
   );
 }
 
-/** Undoes {@link delayDecoding} and {@link holdDecoding}. */
+/** Undoes {@link holdDecoding}. */
 export async function restoreDecoding(): Promise<void> {
   await browser.execute(() => {
     Reflect.deleteProperty(window, "inklineLetDecodingGo");
@@ -1488,9 +1474,13 @@ export async function followSave(): Promise<void> {
  * Waits for the save that {@link followSave} followed to end. A save says on
  * its editor's status line how it ended, whether the editor is open or not,
  * and does everything else it does as it ends in that same turn, such as
- * keeping the draft of an editor closed while it ran.
+ * keeping the draft of an editor closed while it ran. With `or`, it waits
+ * until either the save has ended or `or.until` holds, as `or.what` says.
  */
-export async function waitForSaveEnd(): Promise<void> {
+export async function waitForSaveEnd(or?: {
+  what: string;
+  until: () => Promise<boolean>;
+}): Promise<void> {
   let said = "";
   try {
     await browser.waitUntil(async () => {
@@ -1498,12 +1488,18 @@ export async function waitForSaveEnd(): Promise<void> {
         const status: unknown = Reflect.get(window, "inklineFollowedStatus");
         return status instanceof Element ? status.textContent : "no status";
       });
-      return said.startsWith("Saved") || said.startsWith("Not saved");
+      return (
+        said.startsWith("Saved") ||
+        said.startsWith("Not saved") ||
+        (or !== undefined && (await or.until()))
+      );
     });
   } catch (error) {
-    throw new Error(`waited for a save to end, but its status said "${said}"`, {
-      cause: error,
-    });
+    const alternative = or === undefined ? "" : `, or ${or.what},`;
+    throw new Error(
+      `waited for a save to end${alternative} but its status said "${said}"`,
+      { cause: error },
+    );
   }
 }
 
