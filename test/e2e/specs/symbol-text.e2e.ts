@@ -874,13 +874,18 @@ describe("A symbol's readings and translations", function () {
         ]);
       }
 
-      /** Has the editor keep the stroke as a draft, and restarts Obsidian. */
+      /**
+       * Has the editor keep the stroke as a draft, and turns Inkline off and
+       * on, which leaves the draft where a restart of Obsidian does, as the
+       * test of typed text above shows: these tests are about the question
+       * that offers it, and a draft kept through a restart of Obsidian is
+       * shown by the test of a held write below.
+       */
       async function leaveDraft(): Promise<void> {
         await browser.waitUntil(
           async () => (await storedDrafts()).length === 1,
         );
-        await browser.reloadObsidian();
-        await loadModules();
+        await restartInkline();
       }
 
       /** What the question about a draft says, once it opens. */
