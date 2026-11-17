@@ -796,14 +796,13 @@ describe("Lists of symbols", function () {
       await openAtMarker("List.md", "HERE");
       await library.open();
       await waitForRows(library.rows, count);
-      const row = libraryRow(path);
-      const uses = row.$(".inkline-library-uses");
+      const uses = () => libraryRow(path).$(".inkline-library-uses");
       await browser.waitUntil(
-        async () => (await uses.getText()) === "Uses (1)",
+        async () => (await uses().getText()) === "Uses (1)",
       );
 
       // The row's symbol inserts it, under its whole name.
-      await row.$(".inkline-library-insert").click();
+      await libraryRow(path).$(".inkline-library-insert").click();
       await browser.waitUntil(async () =>
         browser.executeObsidian(
           ({ app, obsidian }, name) =>
@@ -818,11 +817,18 @@ describe("Lists of symbols", function () {
         ),
       );
 
-      // Its count lists its note, whose unbroken name stays in the sidebar.
-      await uses.click();
-      const note = libraryRow(path).$(".inkline-library-note");
-      await note.waitForExist();
-      expect(await note.getProperty("textContent")).toBe(noteName);
+      // Its count lists its notes, the unbroken name staying in the sidebar.
+      // The note it went into counts once it is saved, which draws the row
+      // again with new buttons, so they are found afresh after that (#304).
+      await browser.waitUntil(
+        async () => (await uses().getText()) === "Uses (2)",
+      );
+      await uses().click();
+      const notes = () => libraryRow(path).$$(".inkline-library-note");
+      await browser.waitUntil(async () => (await notes().length) === 2);
+      expect(
+        await notes().map(async (note) => note.getProperty("textContent")),
+      ).toEqual(["List", noteName]);
       expectInsideSidebar(await measureLibrary());
       await saveScreenshot("symbol-library-rows-notes");
 
