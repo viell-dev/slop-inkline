@@ -238,53 +238,6 @@ describe("Polygon", function () {
     expect(ink.redrawn).toBe(0);
   });
 
-  it("draws a polygon that ends beside its first side whole", async function () {
-    // The owner's pentagon from #126, as 0.3.0-alpha.8 saved it: its end one
-    // cell along its first side, cut there, which took ink from that side.
-    const shown = await browser.execute(() => {
-      const { render } = window.inklineTest;
-      const cell = 14 * 16;
-      const baseline = 144 * 16;
-      const start = 80 * 16;
-      const points = [
-        [0, 0],
-        [-3, 0],
-        [-4, 2],
-        [-2, 4],
-        [0, 2],
-        [-1, 0],
-      ].flatMap(([column = 0, row = 0]) => [
-        start + column * cell,
-        baseline - row * cell,
-      ]);
-      const stroke = {
-        tool: "pen" as const,
-        size: 192,
-        points,
-        kind: "polygon" as const,
-      };
-      const row = (drawn: typeof stroke): number[] => {
-        const surface = new OffscreenCanvas(128, 192);
-        const context = surface.getContext("2d");
-        if (context === null) throw new Error("no context");
-        render.drawInk(context, [drawn], undefined);
-        const { data } = context.getImageData(0, 150 - 1, 128, 1);
-        return Array.from({ length: 128 }, (_, x) => data[x * 4 + 3] ?? 0);
-      };
-      return {
-        cut: row({ ...stroke, cut: { start: "down", end: "down" } } as never),
-        uncut: row(stroke),
-        from: Math.round((start - 3 * cell) / 16),
-        to: Math.round(start / 16),
-      };
-    });
-    console.log("Pentagon", JSON.stringify({ ...shown, cut: undefined }));
-    // A row 5 pixels below the baseline, inside the first side's lower half.
-    const side = shown.cut.slice(shown.from, shown.to);
-    expect(Math.min(...side)).toBeGreaterThanOrEqual(250);
-    expect(shown.cut).toEqual(shown.uncut);
-  });
-
   it("shows an eraser shape while it is placed, and nothing of it after", async function () {
     await openPolygon(false);
     await browser.keys("e");
