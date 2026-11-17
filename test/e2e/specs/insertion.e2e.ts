@@ -248,21 +248,30 @@ async function writeFile(path: string, text: string): Promise<void> {
 /**
  * Holds back how the note's editors take a change on disk by `delay`
  * milliseconds, as a slow disk would. Obsidian keeps that step in the view's
- * private `loadFileInternal`, and the view goes with the test.
+ * private `loadFileInternal`, and the view goes with the test. Each held
+ * reload is counted as it starts and once it has finished, for
+ * {@link waitForHeldReloads}.
  */
 async function slowReload(path: string, delay: number): Promise<void> {
   await browser.executeObsidian(
     ({ app, obsidian }, file, wait) => {
+      const count = { started: 0, finished: 0 };
+      Reflect.set(window, "inklineHeldReloads", count);
       for (const { view } of app.workspace.getLeavesOfType("markdown")) {
         if (!(view instanceof obsidian.MarkdownView)) continue;
         if (view.file?.path !== file) continue;
         const load: unknown = Reflect.get(view, "loadFileInternal");
         if (typeof load !== "function") throw new Error("no reload to hold");
         const held = async (...args: unknown[]): Promise<unknown> => {
-          await new Promise((resolve) => {
-            window.setTimeout(resolve, wait);
-          });
-          return Reflect.apply(load, view, args) as unknown;
+          count.started++;
+          try {
+            await new Promise((resolve) => {
+              window.setTimeout(resolve, wait);
+            });
+            return (await Reflect.apply(load, view, args)) as unknown;
+          } finally {
+            count.finished++;
+          }
         };
         Reflect.set(view, "loadFileInternal", held);
       }
@@ -273,27 +282,88 @@ async function slowReload(path: string, delay: number): Promise<void> {
 }
 
 /**
+ * Waits until a reload that {@link slowReload} held has started, and every
+ * one that started has finished, with the editor showing what it loaded.
+ */
+async function waitForHeldReloads(): Promise<void> {
+  let count = "none";
+  try {
+    await browser.waitUntil(
+      async () => {
+        const { started, finished } = await browser.execute(() => {
+          const held: unknown = Reflect.get(window, "inklineHeldReloads");
+          const read = (key: string): number => {
+            const value: unknown = Reflect.get(Object(held), key);
+            return typeof value === "number" ? value : -1;
+          };
+          return { started: read("started"), finished: read("finished") };
+        });
+        count = `${String(started)} started, ${String(finished)} finished`;
+        return started > 0 && finished === started;
+      },
+      { timeout: 20_000 },
+    );
+  } catch (error) {
+    throw new Error(`held reloads did not finish: ${count}`, {
+      cause: error,
+    });
+  }
+}
+
+/**
  * Holds what reads a note through `vault.cachedRead` by `delay` milliseconds
  * after the read, with the text it read, as Obsidian's reload does while it
- * writes the file. Returns what takes that back.
+ * writes the file. Counts the reads it holds, for {@link waitForHeldReads}.
+ * Returns what takes that back.
  */
 async function slowCachedRead(delay: number): Promise<() => Promise<void>> {
   await browser.executeObsidian(({ app }, wait) => {
     const { vault } = app;
     const read = vault.cachedRead.bind(vault);
+    const held = { pending: 0 };
+    Reflect.set(window, "inklineHeldReads", held);
     vault.cachedRead = async (file) => {
-      const text = await read(file);
-      await new Promise((resolve) => {
-        window.setTimeout(resolve, wait);
-      });
-      return text;
+      held.pending++;
+      try {
+        const text = await read(file);
+        await new Promise((resolve) => {
+          window.setTimeout(resolve, wait);
+        });
+        return text;
+      } finally {
+        // Counted down once what waits for the read has had it.
+        window.setTimeout(() => {
+          held.pending--;
+        });
+      }
     };
   }, delay);
   return async () => {
     await browser.executeObsidian(({ app }) => {
       Reflect.deleteProperty(app.vault, "cachedRead");
+      Reflect.deleteProperty(window, "inklineHeldReads");
     });
   };
+}
+
+/**
+ * Waits until no read {@link slowCachedRead} holds is under way, on two
+ * looks a frame apart, so that what a read gave has been taken in.
+ */
+async function waitForHeldReads(): Promise<void> {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(async () => {
+        const idle = (): boolean => {
+          const held: unknown = Reflect.get(window, "inklineHeldReads");
+          return Reflect.get(Object(held), "pending") === 0;
+        };
+        if (!idle()) return false;
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        return idle();
+      }),
+    { timeout: 20_000, timeoutMsg: "held reads did not finish" },
+  );
 }
 
 /** Closes every tab of the note at `path`. */
@@ -1314,7 +1384,8 @@ describe("A rename while the note holds unsaved text", function () {
             await gone();
             await waitForNote(withText(renamed));
             await waitForFile("Editor.md", withText(renamed));
-            await browser.pause(2 * hold + 1000);
+            // Past every held read, whose text would revert the note's.
+            await waitForHeldReads();
             expect(await noteText()).toBe(withText(renamed));
             await waitForFile("Editor.md", withText(renamed));
           } finally {
@@ -1348,8 +1419,10 @@ describe("A rename while the note holds unsaved text", function () {
       // The editor's own save lands, and the reload after it finds nothing to
       // do. That loses the rename step, as the notice says, and never the text.
       await waitForFile("Editor.md", withText(old));
-      await browser.pause(3000);
+      // Once the held reload has landed, which can be after the save.
+      await waitForHeldReloads();
       expect(await noteText()).toBe(withText(old));
+      await waitForFile("Editor.md", withText(old));
     });
 
     it("keeps the text and the next symbol's place through Next", async function () {
