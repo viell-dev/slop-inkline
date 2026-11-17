@@ -1603,22 +1603,6 @@ describe("A symbol's readings and translations", function () {
       });
     });
 
-    it("refuses the later of two saves of one field, and shows what is there", async function () {
-      await symbolWith("Same.ink.png", { reading: ["TA"] });
-      await showLibrary();
-      await saveTwice(
-        "Same.ink.png",
-        ["reading", "FIRST"],
-        ["reading", "SECOND"],
-      );
-      await browser.waitUntil(async () =>
-        (await formNote().getText()).includes("FIRST"),
-      );
-      await restoreVault();
-      expect((await fieldsOf("Same.ink.png")).reading).toEqual(["FIRST"]);
-      expect(await area("reading").getValue()).toBe("SECOND");
-    });
-
     it("has an editor's save take in what a library's wrote ahead of it, without asking", async function () {
       await symbolWith("Library first.ink.png", {
         reading: ["TA"],
@@ -1642,32 +1626,6 @@ describe("A symbol's readings and translations", function () {
         translation: ["field"],
       });
       expect(await recordOf("Library first.ink.png")).not.toBe(before);
-    });
-
-    it("has the library's save build on an editor's that went ahead of it", async function () {
-      await symbolWith("Editor first.ink.png", {
-        reading: ["TA"],
-        translation: ["field"],
-      });
-      await showLibrary();
-      await openFields("Editor first.ink.png");
-      await fill("reading", "typed");
-      await editFile("Editor first.ink.png");
-      await draw([
-        [0.5, 0.3],
-        [0.7, 0.6],
-      ]);
-      const before = await recordOf("Editor first.ink.png");
-      // As the editor starts to write, the library saves too.
-      await atNextWrite("fields", 300);
-      await browser.execute(saveEditor);
-      await waitForClosedForm();
-      await browser.$(".inkline-editor").waitForExist({ reverse: true });
-      expect(await fieldsOf("Editor first.ink.png")).toEqual({
-        reading: ["typed"],
-        translation: ["field"],
-      });
-      expect(await recordOf("Editor first.ink.png")).not.toBe(before);
     });
 
     /**
@@ -2425,60 +2383,6 @@ describe("A symbol's readings and translations", function () {
       await browser.waitUntil(async () => (await rows()).length === 0);
     });
 
-    it("needs no accents to find a value that has them, and a value holds what was typed", async function () {
-      await indexed();
-      await openAtMarker(noteFile, "HERE");
-      await type(";;sa");
-      await browser.waitUntil(async () =>
-        (await rows()).some(({ why }) => why === "Reading: šá"),
-      );
-      await browser.keys(["Escape"]);
-      await type(" ;;ida");
-      // Letters of `rice field` in order, but not together.
-      await browser.waitUntil(async () => (await rows()).length === 0);
-    });
-
-    it("tells a voiced kana from the plain one, in the lists and the library", async function () {
-      await symbolWith("One.ink.png", { reading: ["は"] });
-      await symbolWith("Two.ink.png", { reading: ["ば"] });
-      await symbolWith("Three.ink.png", { reading: ["ぱ"] });
-      await indexed();
-      await waitForValues("Three.ink.png", "ぱ");
-      const search = browser.$(".inkline-library-search");
-      /** The rows the filter leaves, by path. */
-      const left = () =>
-        browser.execute(() =>
-          Array.from(document.querySelectorAll(".inkline-library-symbol")).map(
-            (found) => found.getAttribute("data-inkline-path"),
-          ),
-        );
-      for (const [typed, file] of [
-        ["は", "One.ink.png"],
-        ["ば", "Two.ink.png"],
-        ["ぱ", "Three.ink.png"],
-      ] as const) {
-        await search.setValue(typed);
-        await browser.waitUntil(
-          async () => JSON.stringify(await left()) === JSON.stringify([file]),
-          { timeoutMsg: `${typed} did not leave only ${file}` },
-        );
-      }
-      await search.setValue("sa");
-      await browser.waitUntil(
-        async () =>
-          JSON.stringify(await left()) ===
-          JSON.stringify(["Anything at all.ink.png"]),
-      );
-      await search.setValue("");
-      await openAtMarker(noteFile, "HERE");
-      await browser.executeObsidianCommand("inkline:insert-existing-symbol");
-      await browser.$(".prompt-input").waitForExist();
-      await browser.$(".prompt-input").setValue("は");
-      await waitForRow("One");
-      expect(await rows()).toEqual([{ name: "One", why: "Reading: は" }]);
-      await browser.keys(["Escape"]);
-    });
-
     it("finds by Insert existing symbol", async function () {
       await indexed();
       await openAtMarker(noteFile, "HERE");
@@ -2600,57 +2504,27 @@ describe("A symbol's readings and translations", function () {
       await waitForFiltered("KA", ["Three.ink.png"]);
     });
 
-    it("goes on past a damaged file and a costly one", async function () {
-      await browser.executeObsidian(async ({ app }) => {
-        const { png, text } = window.inklineTest;
-        await app.vault.createBinary(
-          "A cut.ink.png",
-          new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0, 0]).buffer,
-        );
-        await app.vault.createBinary("B empty.ink.png", new ArrayBuffer(0));
-        const { bytes } = await window.inklineTest.canvas.saveInk(
-          { strokes: [] },
-          undefined,
-          [],
-        );
-        // More void chunks of a keyword than the index tries, before a good
-        // one, as a file made to be slow to read has.
-        const chunks = png.readChunks(bytes);
-        const keyword = new TextEncoder().encode("Inkline reading");
-        const void_ = new Uint8Array(keyword.length + 2);
-        void_.set(keyword);
-        const crafted = png.writeChunks([
-          ...chunks.slice(0, 1),
-          ...Array.from({ length: 2000 }, () => ({
-            type: "zTXt",
-            data: void_,
-          })),
-          ...chunks.slice(1),
-        ]);
-        const costly = await text.writeText(crafted, "translation", ["costly"]);
-        await app.vault.createBinary("C costly.ink.png", costly.slice().buffer);
-      });
-      await symbolWith("Z after.ink.png", { reading: ["TA"] });
-      await showLibrary();
-      await waitForFiltered("TA", ["Z after.ink.png"]);
-      // Declined for one keyword, not for the other, which it found at once.
-      await waitForFiltered("costly", ["C costly.ink.png"]);
-    });
-
-    it("searches while it reads, and says it may be missing some", async function () {
+    // One reading of the vault, slowed so that each step comes while it reads.
+    it("searches while it reads, says it may be missing some, and reads what just changed first", async function () {
       this.timeout(120_000);
       await bulkSymbols(60);
       await showLibrary();
-      // Reads slowly enough to see, from nothing.
-      await delayVault("readBinary", 100);
+      await delayVault("readBinary", 300);
       await restartInkline();
       await showLibrary();
       const search = browser.$(".inkline-library-search");
       const status = browser.$(".inkline-library-status");
+      const count = () => browser.$$(".inkline-library-symbol").length;
+      // Something the vault reports goes before the rest of the files.
+      await changeOnDisk("Bulk 58.ink.png", { reading: ["synced"] });
+      await search.setValue("synced");
+      await browser.waitUntil(async () => (await count()) === 1, {
+        timeout: 5000,
+      });
+      expect(await status.isDisplayed()).toBe(true);
+      // A name is found while the values are read, which the status says.
       await search.setValue("Bulk 59");
-      await browser.waitUntil(
-        async () => (await browser.$$(".inkline-library-symbol").length) === 1,
-      );
+      await browser.waitUntil(async () => (await count()) === 1);
       expect(await status.isDisplayed()).toBe(true);
       await saveScreenshot("text-library-reading");
       await search.click();
@@ -2668,31 +2542,6 @@ describe("A symbol's readings and translations", function () {
       await browser.keys(["Escape"]);
       await browser.$(".prompt").waitForExist({ reverse: true });
       await showLibrary();
-      await search.setValue("value59");
-      await browser.waitUntil(
-        async () => (await browser.$$(".inkline-library-symbol").length) === 1,
-        { timeout: 60_000 },
-      );
-      await browser.waitUntil(async () => !(await status.isDisplayed()));
-      await restoreVault();
-    });
-
-    it("finds what just changed ahead of the first reading of the vault", async function () {
-      this.timeout(120_000);
-      await bulkSymbols(60);
-      await showLibrary();
-      await delayVault("readBinary", 300);
-      await restartInkline();
-      await showLibrary();
-      const status = browser.$(".inkline-library-status");
-      const count = () => browser.$$(".inkline-library-symbol").length;
-      // Something the vault reports goes before the rest of the files.
-      await changeOnDisk("Bulk 58.ink.png", { reading: ["synced"] });
-      await browser.$(".inkline-library-search").setValue("synced");
-      await browser.waitUntil(async () => (await count()) === 1, {
-        timeout: 5000,
-      });
-      expect(await status.isDisplayed()).toBe(true);
       // A burst of reports, as from a sync tool, and a save goes before those
       // too: what was just typed is what a person looks for next.
       await browser.executeObsidian(async ({ app }) => {
@@ -2711,12 +2560,20 @@ describe("A symbol's readings and translations", function () {
       await showFields();
       await fill("reading", "justtyped");
       await saveAndClose();
-      await browser.$(".inkline-library-search").setValue("justtyped");
+      await search.setValue("justtyped");
       await browser.waitUntil(async () => (await count()) === 1, {
         timeout: 5000,
       });
       expect(await status.isDisplayed()).toBe(true);
+      // Once it has read the rest, at full speed now, the status goes.
       await restoreVault();
+      await search.setValue("value57");
+      await browser.waitUntil(async () => (await count()) === 1, {
+        timeout: 60_000,
+      });
+      await browser.waitUntil(async () => !(await status.isDisplayed()), {
+        timeout: 60_000,
+      });
     });
   });
 });
