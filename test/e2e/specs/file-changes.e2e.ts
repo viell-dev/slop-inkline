@@ -407,9 +407,9 @@ describe("The editor", function () {
     });
   });
   describe("keeping the text about a symbol", function () {
-    // Through an edit and a save alone, symbol-text.e2e.ts keeps a file's
-    // readings and translations; this keeps its chunk byte for byte, through a
-    // draft as well.
+    // Through an edit and a save alone, symbol-text-editor.e2e.ts keeps a
+    // file's readings and translations; this keeps its chunk byte for byte,
+    // through a draft as well.
     it("keeps it through a draft offered back", async function () {
       await saveOne();
       await changeElsewhere("001.ink.png", "vault", readings);
@@ -439,8 +439,9 @@ describe("The editor", function () {
       expect(await textIn("001.ink.png")).toEqual([readings]);
     });
 
-    // Keep mine, asked as the vault reports the change, is symbol-text.e2e.ts's;
-    // asked as a save finds it, it takes the same chunks the same way.
+    // Keep mine, asked as the vault reports the change, is
+    // symbol-text-editor.e2e.ts's; asked as a save finds it, it takes the same
+    // chunks the same way.
     it("keeps what a change added when a save found it", async function () {
       await saveOne();
       await editFile("001.ink.png");

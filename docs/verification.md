@@ -303,7 +303,7 @@ must keep released files readable and looking the same, as
   a change **Keep mine** replaces; found as a save starts, which goes on,
   through **Next** too; and text typed in a field the file changed kept, with
   what saving replaces shown, and a save that finds that first writing nothing
-  ([symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts),
+  ([symbol-text-on-disk.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text-on-disk.e2e.ts),
   [text.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/format/text.test.ts),
   and
   [disk.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/disk.test.ts)).
@@ -426,7 +426,9 @@ must keep released files readable and looking the same, as
   and never written over unseen; a value at the limit, and bidirectional
   controls kept to their own value; a name and a reading that disagree, through
   a rename; and Copy from leaving them behind
-  ([symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts)).
+  ([symbol-text-editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text-editor.e2e.ts)
+  and
+  [symbol-text-library.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text-library.e2e.ts)).
 - Two saves of one symbol that meet, with each held between its read and its
   write: two from libraries keep both fields, or refuse the later of two to one
   field with what is there; a library's that goes first stops an editor's until
@@ -440,7 +442,7 @@ must keep released files readable and looking the same, as
   does not cover
   ([file-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/file-writes.test.ts)
   and
-  [symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts)).
+  [symbol-text-concurrent-saves.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text-concurrent-saves.e2e.ts)).
 - A symbol deleted, and another file put at its path, through Obsidian while a
   save reads it for the last time, by its file system, as another plugin or a
   sync tool can, or by its vault: Quick edit refuses the save and the new file
@@ -459,7 +461,7 @@ must keep released files readable and looking the same, as
   are in a draft, unless none could be kept, goes on drawing, and gives them
   back after a restart. However long a write takes, no save behind it reads or
   writes
-  ([symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts)
+  ([symbol-text-unfinished-writes.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text-unfinished-writes.e2e.ts)
   and
   [file-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/file-writes.test.ts)).
 - A rename Obsidian does not finish, with its own move, a note's save, or a
@@ -480,7 +482,7 @@ must keep released files readable and looking the same, as
   and show why; the index follows files as they are made, changed, renamed,
   moved with their folder, and deleted, lets a search work while it reads, and
   finds what just changed before the rest
-  ([symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts)).
+  ([symbol-text-search.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text-search.e2e.ts)).
   All of them search alike: an accent needs no typing, and a mark that makes
   another sound counts, in kana, Indic scripts, Thai, Arabic, Hebrew, and
   Cyrillic
@@ -547,7 +549,7 @@ must keep released files readable and looking the same, as
   ([library-quick-edit.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-quick-edit.e2e.ts),
   [library-renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-renaming.e2e.ts)
   for a name alone,
-  [symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts)
+  [symbol-text-library.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text-library.e2e.ts)
   for readings and translations alone, and
   [quick-edit.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/library/quick-edit.test.ts)).
 - Measured in both themes, each row's readings and translations, and the notes

@@ -2,8 +2,8 @@
 // shows no tooltip, and one Save of a symbol's name, readings, and
 // translations, of nothing, a cancel, and one part failing. A new name alone is
 // in library-renaming.e2e.ts, and readings and translations alone in
-// symbol-text.e2e.ts. library-look.e2e.ts has how the rows look. Every symbol
-// and note is synthetic.
+// symbol-text-library.e2e.ts. library-look.e2e.ts has how the rows look. Every
+// symbol and note is synthetic.
 
 import { browser, expect } from "@wdio/globals";
 import { stalledAfter } from "../../../src/notes/file-writes.ts";
@@ -712,8 +712,8 @@ describe("Quick edit in the library", function () {
   });
 
   // A new name alone is library-renaming.e2e.ts's first two tests, and the
-  // readings and translations alone symbol-text.e2e.ts's "changes only the
-  // text chunks, and no note": the same Save, through the same steps.
+  // readings and translations alone symbol-text-library.e2e.ts's "changes only
+  // the text chunks, and no note": the same Save, through the same steps.
   it("saves a name, readings and translations with one Save", async function () {
     await symbolWith("gate.ink.png", {
       reading: ["TA"],
