@@ -16,6 +16,7 @@ import {
   fillStorage,
   freeStorage,
   markEditor,
+  noteText,
   openAtMarker,
   recordOf,
   restoreVault,
@@ -2450,6 +2451,20 @@ describe("A symbol's readings and translations", function () {
       ]);
       await type("ood");
       await browser.waitUntil(async () => (await rows()).length === 0);
+      // With nothing listed, Enter is the note's own: a new line, no symbol.
+      await browser.keys(["Enter"]);
+      // The editor's new line drops the space after the cursor.
+      let text = "";
+      try {
+        await browser.waitUntil(async () => {
+          text = await noteText();
+          return text === "Write ;;rice food\non.\n";
+        });
+      } catch (error) {
+        throw new Error(`Enter left ${JSON.stringify(text)}`, {
+          cause: error,
+        });
+      }
     });
 
     it("finds by Insert existing symbol", async function () {
