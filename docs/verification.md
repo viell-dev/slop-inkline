@@ -308,12 +308,14 @@ must keep released files readable and looking the same, as
   lead back to their symbols, from a note in a folder too, as paths from there
   when Obsidian writes relative Markdown links
   ([suggest.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/suggest.e2e.ts)).
-  What it counts as code is checked against how Obsidian renders a set of
-  synthetic notes, in Obsidian and in unit tests, and against CommonMark for
-  every short note of a set of lines on which the two agree
-  ([code-cases.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/support/code-cases.ts)
+  What it counts as code is checked in unit tests against a set of synthetic
+  notes, each as Obsidian renders it, which a test in Obsidian checks, and
+  against CommonMark for every short note of a set of lines on which the two
+  agree
+  ([code-cases.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/support/code-cases.ts),
+  [code.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/code.test.ts),
   and
-  [code.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/code.test.ts)).
+  [suggest.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/suggest.e2e.ts)).
 - The cursor lands after a symbol from every route that inserts one, and typing
   goes on there: Save, Mod+S, a run from Next, both lists, and the library, past
   a link or an address, after the note's changes moved the place or took it
@@ -451,15 +453,16 @@ must keep released files readable and looking the same, as
   [file-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/file-writes.test.ts)).
 - The insert trigger's list, Insert existing symbol, Copy from, and the
   library's filter find a symbol by a reading or translation whatever its name,
-  and show why; an accent needs no typing, and a mark that makes another sound
-  counts, in kana, Indic scripts, Thai, Arabic, Hebrew, and Cyrillic; the index
-  follows files as they are made, changed, renamed, moved with their folder, and
-  deleted, goes on past a damaged file and a costly one, lets a search work
-  while it reads, and finds what just changed before the rest
-  ([symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts),
-  [search.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/search.test.ts),
-  and
-  [text-index.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/text-index.test.ts)).
+  and show why; the index follows files as they are made, changed, renamed,
+  moved with their folder, and deleted, lets a search work while it reads, and
+  finds what just changed before the rest
+  ([symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts)).
+  All of them search alike: an accent needs no typing, and a mark that makes
+  another sound counts, in kana, Indic scripts, Thai, Arabic, Hebrew, and
+  Cyrillic
+  ([search.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/search.test.ts)),
+  and the index goes on past a damaged file and a costly one
+  ([text-index.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/text-index.test.ts)).
 - Names line up in the insert trigger's list, Insert existing symbol, Copy from,
   and the library, in both themes: every name and folder starts at the same x,
   at the ends of the Symbol size setting, and beside a very long name or a
