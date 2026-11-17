@@ -3,6 +3,7 @@ import { encodePng } from "../../support/png.ts";
 import { codeCases, triggerCases } from "../../support/code-cases.ts";
 import { toBase64 } from "../support/browser.ts";
 import { noteText, openAtMarker, waitForNotice } from "../support/editor.ts";
+import { type } from "../support/insertion.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 
 /** A synthetic symbol: the line box, with a grey block in it. */
@@ -52,11 +53,6 @@ async function waitForSuggested(names: string[]): Promise<void> {
       { cause: error },
     );
   }
-}
-
-/** Types `text` into the focused editor, a key at a time. */
-async function type(text: string): Promise<void> {
-  for (const key of text) await browser.keys([key]);
 }
 
 /** Waits for the note to read `text`, failing with what it last read. */

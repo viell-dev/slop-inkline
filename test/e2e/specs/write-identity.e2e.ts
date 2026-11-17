@@ -9,10 +9,10 @@
 
 import { browser, expect } from "@wdio/globals";
 import { loadModules } from "../support/browser.ts";
+import { editFile } from "../support/editing.ts";
 import {
   createSymbol,
   draw,
-  editFile,
   startOver,
   waitForStatus,
 } from "../support/editor.ts";

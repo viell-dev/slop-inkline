@@ -5,6 +5,7 @@
 
 import { browser, expect } from "@wdio/globals";
 import { loadModules } from "../support/browser.ts";
+import { editFile } from "../support/editing.ts";
 import {
   clickTop,
   draw,
@@ -28,7 +29,6 @@ import {
 import {
   area,
   changeOnDisk,
-  editFile,
   fieldsOf,
   fill,
   letWriteGo,

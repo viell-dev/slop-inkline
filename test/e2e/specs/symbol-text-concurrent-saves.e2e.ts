@@ -5,6 +5,7 @@
 
 import { browser, expect } from "@wdio/globals";
 import { loadModules } from "../support/browser.ts";
+import { editFile } from "../support/editing.ts";
 import {
   delayVault,
   draw,
@@ -24,7 +25,6 @@ import {
   waitForClosedForm,
 } from "../support/symbol-text-library.ts";
 import {
-  editFile,
   fieldsOf,
   fill,
   letWriteGo,

@@ -2,6 +2,7 @@ import { browser, expect } from "@wdio/globals";
 import { unitsPerPixel } from "../../../src/format/record.ts";
 import { lineBox } from "../../../src/ink/geometry.ts";
 import { loadModules } from "../support/browser.ts";
+import { pressed } from "../support/editing.ts";
 import {
   draw,
   drawShifted,
@@ -33,12 +34,6 @@ interface Place {
 interface Lattice {
   readonly spacing: number;
   readonly rows: readonly number[];
-}
-
-async function pressed(id: string): Promise<string | null> {
-  return browser
-    .$(`[data-inkline-button="${id}"]`)
-    .getAttribute("aria-pressed");
 }
 
 /** Opens the editor for a new symbol with the grid on, and returns the grid. */

@@ -6,6 +6,7 @@
 import { browser, expect } from "@wdio/globals";
 import { stalledAfter } from "../../../src/notes/file-writes.ts";
 import { loadModules } from "../support/browser.ts";
+import { editFile } from "../support/editing.ts";
 import {
   clickTop,
   createSymbol,
@@ -32,8 +33,6 @@ import {
   waitForValues,
 } from "../support/symbol-text-library.ts";
 import {
-  bytesOf,
-  editFile,
   fieldsOf,
   fill,
   letWriteGo,
@@ -41,6 +40,7 @@ import {
   newSymbol,
   symbolWith,
 } from "../support/symbol-text.ts";
+import { bytesOf } from "../support/vault-files.ts";
 
 /**
  * Has the next write to the vault wait for {@link letWriteGo}, as one on a drive

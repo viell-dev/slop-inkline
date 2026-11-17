@@ -1,5 +1,6 @@
 import { browser, expect } from "@wdio/globals";
 import { loadModules } from "../support/browser.ts";
+import { save, zigzag } from "../support/editing.ts";
 import {
   draw,
   openAtMarker,
@@ -13,12 +14,10 @@ import {
   createNote,
   marked,
   next,
-  save,
   setLinkUpdates,
   showAs,
   waitForFile,
   waitForNote,
-  zigzag,
 } from "../support/insertion.ts";
 
 /** Writes `text` to the note's file as it is, as another program would. */

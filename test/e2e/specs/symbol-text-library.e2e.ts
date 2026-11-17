@@ -7,6 +7,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { browser, expect } from "@wdio/globals";
 import { loadModules, toBase64 } from "../support/browser.ts";
+import { editFile } from "../support/editing.ts";
 import {
   createSymbol,
   openAtMarker,
@@ -14,6 +15,7 @@ import {
   startOver,
   symbolFiles,
 } from "../support/editor.ts";
+import { type } from "../support/insertion.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 import {
   formError,
@@ -28,9 +30,7 @@ import {
 } from "../support/symbol-text-library.ts";
 import {
   area,
-  bytesOf,
   changeOnDisk,
-  editFile,
   fieldsOf,
   fill,
   fixtures,
@@ -40,8 +40,8 @@ import {
   paste,
   showFields,
   symbolWith,
-  type,
 } from "../support/symbol-text.ts";
+import { bytesOf } from "../support/vault-files.ts";
 import { waitOrSay } from "../support/waits.ts";
 
 /**

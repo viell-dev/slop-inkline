@@ -12,6 +12,7 @@ import {
   waitForStatus,
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
+import { bytesOf } from "../support/vault-files.ts";
 
 /** Three distinct synthetic glyphs, spaced so one fits the editor at a time. */
 const marks: readonly Mark[] = [
@@ -39,16 +40,6 @@ async function textOf(path: string): Promise<string> {
         return view.editor.getValue();
     }
     throw new Error(`no live editor for ${wanted}`);
-  }, path);
-}
-
-async function bytesOf(path: string): Promise<string> {
-  return browser.executeObsidian(async ({ app }, wanted) => {
-    const file = app.vault.getFileByPath(wanted);
-    if (file === null) throw new Error(`no ${wanted}`);
-    return Array.from(new Uint8Array(await app.vault.readBinary(file))).join(
-      ",",
-    );
   }, path);
 }
 

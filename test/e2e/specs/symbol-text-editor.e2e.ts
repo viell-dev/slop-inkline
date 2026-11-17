@@ -7,6 +7,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { browser, expect } from "@wdio/globals";
 import { loadModules, toBase64 } from "../support/browser.ts";
+import { editFile } from "../support/editing.ts";
 import {
   clickTop,
   draw,
@@ -23,9 +24,7 @@ import {
 import { saveScreenshot } from "../support/screenshots.ts";
 import {
   area,
-  bytesOf,
   changeOnDisk,
-  editFile,
   fieldsOf,
   fill,
   fixtures,
@@ -40,6 +39,7 @@ import {
   symbolWith,
   toggle,
 } from "../support/symbol-text.ts";
+import { bytesOf } from "../support/vault-files.ts";
 
 describe("A symbol's readings and translations", function () {
   before(async function () {

@@ -1,5 +1,6 @@
 import { browser, expect } from "@wdio/globals";
 import { loadModules } from "../support/browser.ts";
+import { pressed } from "../support/editing.ts";
 import {
   draw,
   drawHoldingShift,
@@ -56,12 +57,6 @@ function fit(points: readonly number[]): {
     off,
     closed: first?.[0] === last?.[0] && first?.[1] === last?.[1],
   };
-}
-
-async function pressed(id: string): Promise<string | null> {
-  return browser
-    .$(`[data-inkline-button="${id}"]`)
-    .getAttribute("aria-pressed");
 }
 
 async function openEditor(): Promise<void> {

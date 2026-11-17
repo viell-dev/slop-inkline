@@ -2,6 +2,7 @@ import { browser, expect } from "@wdio/globals";
 import { Key } from "webdriverio";
 
 import { loadModules } from "../support/browser.ts";
+import { editFile } from "../support/editing.ts";
 import {
   clickTop,
   createSymbol,
@@ -11,7 +12,6 @@ import {
   startOver,
   storedDrafts,
   symbolFiles,
-  waitForEditor,
   waitForStatus,
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
@@ -57,7 +57,7 @@ async function notesText(paths: readonly string[]): Promise<string[]> {
 }
 
 /** A fingerprint of the bytes of the file at `path`, or undefined if none. */
-async function bytesOf(path: string): Promise<string | undefined> {
+async function digestOf(path: string): Promise<string | undefined> {
   return browser.executeObsidian(async ({ app }, filePath) => {
     const file = app.vault.getFileByPath(filePath);
     if (file === null) return undefined;
@@ -75,15 +75,6 @@ async function bytesOf(path: string): Promise<string | undefined> {
 async function strokesIn(path: string): Promise<number> {
   const record = JSON.parse(await recordOf(path)) as { strokes?: unknown[] };
   return record.strokes?.length ?? -1;
-}
-
-async function editFile(path: string): Promise<void> {
-  await browser.executeObsidian(({ app, plugins }, filePath) => {
-    const file = app.vault.getFileByPath(filePath);
-    if (file === null) throw new Error(`no ${filePath}`);
-    void plugins.inkline.editSymbol(file);
-  }, path);
-  await waitForEditor();
 }
 
 /** The topmost question's title and text, once one shows `title`. */
@@ -131,7 +122,7 @@ describe("Saving a symbol used elsewhere", function () {
     await writeNotes(uses);
   });
   it("asks before replacing it everywhere, and Keep editing saves nothing", async function () {
-    const before = await bytesOf(tower);
+    const before = await digestOf(tower);
     await editFile(tower);
     await draw([
       [0.3, 0.3],
@@ -150,7 +141,7 @@ describe("Saving a symbol used elsewhere", function () {
     await clickTop("Keep editing");
     await waitForStatus("Not saved: kept editing");
     expect(await editorOpen()).toBe(true);
-    expect(await bytesOf(tower)).toBe(before);
+    expect(await digestOf(tower)).toBe(before);
     // The drawing stays unsaved, and kept as a draft.
     expect(await storedDrafts()).toHaveLength(1);
     // Esc answers it the same way.
@@ -159,11 +150,11 @@ describe("Saving a symbol used elsewhere", function () {
     await browser.keys([Key.Escape]);
     await waitForStatus("Not saved: kept editing");
     expect(await editorOpen()).toBe(true);
-    expect(await bytesOf(tower)).toBe(before);
+    expect(await digestOf(tower)).toBe(before);
   });
 
   it("replaces it with Replace, and asks no more in that editor", async function () {
-    const before = await bytesOf(tower);
+    const before = await digestOf(tower);
     const notes = await notesText(Object.keys(uses));
     await editFile(tower);
     await draw([
@@ -174,7 +165,7 @@ describe("Saving a symbol used elsewhere", function () {
     await question("Change tower everywhere?");
     await clickTop("Replace");
     await waitForStatus("Saved");
-    expect(await bytesOf(tower)).not.toBe(before);
+    expect(await digestOf(tower)).not.toBe(before);
     expect(await strokesIn(tower)).toBe(2);
     await draw([[0.7, 0.4]]);
     await browser.keys([Key.Ctrl, "s"]);
@@ -185,7 +176,7 @@ describe("Saving a symbol used elsewhere", function () {
   });
 
   it("asks once when closing with changes: Replace, Discard or Keep drawing", async function () {
-    const before = await bytesOf(tower);
+    const before = await digestOf(tower);
     await editFile(tower);
     await draw([
       [0.3, 0.3],
@@ -205,14 +196,14 @@ describe("Saving a symbol used elsewhere", function () {
     expect(await modals()).toBe(0);
     expect(await strokesIn(tower)).toBe(2);
     // Discard leaves the symbol as it was saved, with no draft.
-    const saved = await bytesOf(tower);
+    const saved = await digestOf(tower);
     await editFile(tower);
     await draw([[0.7, 0.4]]);
     await browser.keys([Key.Escape]);
     await question("Save the changes to tower?");
     await clickTop("Discard");
     await browser.waitUntil(async () => !(await editorOpen()));
-    expect(await bytesOf(tower)).toBe(saved);
+    expect(await digestOf(tower)).toBe(saved);
     expect(await storedDrafts()).toEqual([]);
     expect(before).not.toBe(saved);
   });

@@ -35,15 +35,6 @@ export async function noteOnDisk(path: string): Promise<string> {
   }, path);
 }
 
-/** A note's text as its file holds it. */
-export async function fileText(path: string): Promise<string> {
-  return browser.executeObsidian(async ({ app }, filePath) => {
-    const file = app.vault.getFileByPath(filePath);
-    if (file === null) throw new Error(`no ${filePath}`);
-    return app.vault.read(file);
-  }, path);
-}
-
 /** A picture, `square.ink.png`: a black square, which opens as a base layer. */
 export async function createSquare(): Promise<void> {
   await browser.executeObsidian(async ({ app }) => {
@@ -140,6 +131,17 @@ export async function writeSymbol(
     path,
     xs,
   );
+}
+
+/** The bytes of a file, as text to compare. */
+export async function bytesOf(file: string): Promise<string> {
+  return browser.executeObsidian(async ({ app }, wanted) => {
+    const found = app.vault.getFileByPath(wanted);
+    if (found === null) throw new Error(`no ${wanted}`);
+    return Array.from(new Uint8Array(await app.vault.readBinary(found))).join(
+      ",",
+    );
+  }, file);
 }
 
 /** A file's bytes, as numbers, to compare from outside the renderer. */

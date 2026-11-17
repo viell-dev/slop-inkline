@@ -2,6 +2,7 @@ import { browser, expect } from "@wdio/globals";
 import { obsidianPage } from "wdio-obsidian-service";
 import { defaultSettings } from "../../../src/settings.ts";
 import { loadModules } from "../support/browser.ts";
+import { waitClosed } from "../support/editing.ts";
 import {
   draw,
   editorOpen,
@@ -13,7 +14,8 @@ import {
   waitForStatus,
 } from "../support/editor.ts";
 
-const zigzag: [number, number][] = [
+/** A stroke of three points, shorter than `zigzag`. */
+const shortZigzag: [number, number][] = [
   [0.3, 0.3],
   [0.4, 0.6],
   [0.5, 0.3],
@@ -70,10 +72,6 @@ async function insertInNote(): Promise<void> {
   await waitForEditor();
 }
 
-async function waitClosed(): Promise<void> {
-  await browser.$(".inkline-editor").waitForExist({ reverse: true });
-}
-
 describe("Where new symbols go", function () {
   let original = "/";
 
@@ -99,7 +97,7 @@ describe("Where new symbols go", function () {
     it(`follows Obsidian's place for attachments, ${mode}, with no folder set`, async function () {
       await setAttachmentFolder(setting);
       await insertInNote();
-      await draw(zigzag);
+      await draw(shortZigzag);
       await browser.keys(["Control", "Enter"]);
       await waitClosed();
       expect(await symbolFiles()).toEqual([`${folder}001.ink.png`]);
@@ -111,11 +109,11 @@ describe("Where new symbols go", function () {
     await setAttachmentFolder("./");
     await setSymbolFolder("Signs/Script");
     await insertInNote();
-    await draw(zigzag);
+    await draw(shortZigzag);
     await browser.keys(["Control", "Shift", "Enter"]);
     await browser.waitUntil(async () => (await symbolFiles()).length === 1);
     await waitForEditor();
-    await draw(zigzag);
+    await draw(shortZigzag);
     await browser.keys(["Control", "Enter"]);
     await waitClosed();
     expect(await symbolFiles()).toEqual([
@@ -132,7 +130,7 @@ describe("Where new symbols go", function () {
     });
     await setSymbolFolder("Signs/Script");
     await insertInNote();
-    await draw(zigzag);
+    await draw(shortZigzag);
     await browser.keys(["Control", "Enter"]);
     await waitForStatus("Signs is a file");
     expect(await editorOpen()).toBe(true);
@@ -155,7 +153,7 @@ describe("Where new symbols go", function () {
     });
     await setSymbolFolder("signs/Script");
     await insertInNote();
-    await draw(zigzag);
+    await draw(shortZigzag);
     await browser.keys(["Control", "Enter"]);
     await waitClosed();
     expect(await symbolFiles()).toEqual(["Signs/Script/001.ink.png"]);

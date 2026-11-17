@@ -12,10 +12,10 @@ import { browser } from "@wdio/globals";
 import type { TFile } from "obsidian";
 import { obsidianPage } from "wdio-obsidian-service";
 import { loadModules } from "../support/browser.ts";
+import { editFile } from "../support/editing.ts";
 import {
   createSymbol,
   draw,
-  editFile,
   startOver,
   timedEditorOpen,
   timedEditorSave,

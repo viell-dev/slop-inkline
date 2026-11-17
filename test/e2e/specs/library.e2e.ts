@@ -8,6 +8,8 @@ import {
   waitForEditor,
   waitForNotice,
 } from "../support/editor.ts";
+import { menuItems } from "../support/menus.ts";
+import { showLibrary } from "../support/symbol-text-library.ts";
 
 /** What a row of the library shows. */
 interface Row {
@@ -15,12 +17,6 @@ interface Row {
   folder: string;
   uses: string;
   painted: boolean;
-}
-
-/** Shows the library, with the command, and waits for its list. */
-async function showLibrary(): Promise<void> {
-  await browser.executeObsidianCommand("inkline:show-library");
-  await browser.$(".inkline-library-list").waitForExist();
 }
 
 /** The library's rows, top first. */
@@ -78,23 +74,20 @@ async function editorText(path: string): Promise<string> {
   }, path);
 }
 
-/** Waits for Obsidian's metadata cache to know that `note` links to `file`. */
-async function waitForLink(note: string, file: string): Promise<void> {
+/**
+ * Waits for Obsidian's metadata cache to know that `note` links to `file`,
+ * without saving the note first as `waitForLink` does.
+ */
+async function waitForLinkWithoutSaving(
+  note: string,
+  file: string,
+): Promise<void> {
   await browser.waitUntil(async () =>
     browser.executeObsidian(
       ({ app }, from, to) =>
         (app.metadataCache.resolvedLinks[from]?.[to] ?? 0) > 0,
       note,
       file,
-    ),
-  );
-}
-
-/** The titles of the menu that is open, top first. */
-async function menuItems(): Promise<string[]> {
-  return browser.execute(() =>
-    Array.from(document.querySelectorAll(".menu .menu-item-title")).map(
-      (item) => item.textContent,
     ),
   );
 }
@@ -212,8 +205,8 @@ describe("The symbol library", function () {
       );
       await app.vault.create("More.md", "Again ![[001.ink.png]].\n");
     });
-    await waitForLink("Uses.md", "Runes/tower.ink.png");
-    await waitForLink("More.md", "001.ink.png");
+    await waitForLinkWithoutSaving("Uses.md", "Runes/tower.ink.png");
+    await waitForLinkWithoutSaving("More.md", "001.ink.png");
     await showLibrary();
     // In the right sidebar, by folder, the top folder first, then by name.
     expect(
@@ -279,7 +272,7 @@ describe("The symbol library", function () {
     await browser.executeObsidian(async ({ app }) => {
       await app.vault.create("Read#this.md", "See ![[gate.ink.png]].\n");
     });
-    await waitForLink("Read#this.md", "gate.ink.png");
+    await waitForLinkWithoutSaving("Read#this.md", "gate.ink.png");
     await showLibrary();
     await waitForNames(["gate"]);
     await row("gate").$(".inkline-library-uses").click();
@@ -303,7 +296,7 @@ describe("The symbol library", function () {
     await browser.executeObsidian(async ({ app }) => {
       await app.vault.create("Uses.md", "See ![[gate.ink.png]].\n");
     });
-    await waitForLink("Uses.md", "gate.ink.png");
+    await waitForLinkWithoutSaving("Uses.md", "gate.ink.png");
     await showLibrary();
     await waitForNames(["gate"]);
     await row("gate").$(".inkline-library-uses").click();
@@ -331,7 +324,7 @@ describe("The symbol library", function () {
     await browser.executeObsidian(async ({ app }) => {
       await app.vault.create("Uses.md", "See ![[gate.ink.png]].\n");
     });
-    await waitForLink("Uses.md", "gate.ink.png");
+    await waitForLinkWithoutSaving("Uses.md", "gate.ink.png");
     await showLibrary();
     await waitForNames(["gate"]);
     await row("gate").$(".inkline-library-uses").click();
@@ -529,7 +522,7 @@ describe("The symbol library", function () {
     await browser.executeObsidian(async ({ app }) => {
       await app.vault.create("Plain.md", "Nothing here but [[Welcome]].\n");
     });
-    await waitForLink("Plain.md", "Welcome.md");
+    await waitForLinkWithoutSaving("Plain.md", "Welcome.md");
     await browser.pause(500);
     expect(
       await browser.$(".inkline-library-symbol[data-test-mark]").isExisting(),

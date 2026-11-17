@@ -105,17 +105,6 @@ export async function symbolWith(
   await changeOnDisk(file, fields);
 }
 
-/** The bytes of a file, as text to compare. */
-export async function bytesOf(file: string): Promise<string> {
-  return browser.executeObsidian(async ({ app }, wanted) => {
-    const found = app.vault.getFileByPath(wanted);
-    if (found === null) throw new Error(`no ${wanted}`);
-    return Array.from(new Uint8Array(await app.vault.readBinary(found))).join(
-      ",",
-    );
-  }, file);
-}
-
 /** A text area of the form or editor open now. */
 export function area(
   field: "reading" | "translation",
@@ -151,16 +140,6 @@ export async function paste(
     field,
     text,
   );
-}
-
-/** Opens the editor on a symbol file. */
-export async function editFile(file: string): Promise<void> {
-  await browser.executeObsidian(({ app, plugins }, wanted) => {
-    const found = app.vault.getFileByPath(wanted);
-    if (found === null) throw new Error(`no ${wanted}`);
-    void plugins.inkline.editSymbol(found);
-  }, file);
-  await waitForEditor();
 }
 
 /** Starts a new symbol in the note. */
@@ -201,11 +180,6 @@ export async function restartInkline(): Promise<void> {
     await (disable.call(plugins, "inkline") as Promise<void>);
     await (enable.call(plugins, "inkline") as Promise<void>);
   });
-}
-
-/** Types `text` a key at a time, as a person does. */
-export async function type(text: string): Promise<void> {
-  for (const key of text) await browser.keys([key]);
 }
 
 /** Saves the editor. */

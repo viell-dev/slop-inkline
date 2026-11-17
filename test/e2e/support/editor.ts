@@ -705,16 +705,6 @@ export async function writeNoise(
   );
 }
 
-/** Opens the editor on a symbol file. */
-export async function editFile(file: string): Promise<void> {
-  await browser.executeObsidian(({ app, plugins }, wanted) => {
-    const found = app.vault.getFileByPath(wanted);
-    if (found === null) throw new Error(`no ${wanted}`);
-    void plugins.inkline.editSymbol(found);
-  }, file);
-  await waitForEditor();
-}
-
 /**
  * Opens the editor on a symbol file, and reports what that took: until it was
  * there, and until it had painted, and what the main thread went through

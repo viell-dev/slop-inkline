@@ -19,13 +19,11 @@ import {
   waitForNotice,
 } from "../support/editor.ts";
 import { boxOf, pointAt, warmUpPointer } from "../support/hover.ts";
+import { menuItems } from "../support/menus.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
-
-/** Fields to give a symbol. */
-interface Fields {
-  readonly reading?: readonly string[];
-  readonly translation?: readonly string[];
-}
+import { showLibrary } from "../support/symbol-text-library.ts";
+import { type Fields, fieldsOf } from "../support/symbol-text.ts";
+import { bytesOf } from "../support/vault-files.ts";
 
 /** A symbol at `file` that says `fields` about itself. */
 async function symbolWith(file: string, fields: Fields): Promise<void> {
@@ -47,31 +45,6 @@ async function symbolWith(file: string, fields: Fields): Promise<void> {
     file,
     fields,
   );
-}
-
-/** What a file's fields say, from the file itself. */
-async function fieldsOf(file: string): Promise<{
-  reading: readonly string[];
-  translation: readonly string[];
-}> {
-  return browser.executeObsidian(async ({ app }, wanted) => {
-    const found = app.vault.getFileByPath(wanted);
-    if (found === null) throw new Error(`no ${wanted}`);
-    const { png, text } = window.inklineTest;
-    const bytes = new Uint8Array(await app.vault.readBinary(found));
-    return text.readText(png.readChunks(bytes));
-  }, file);
-}
-
-/** A file's bytes, to compare. */
-async function bytesOf(file: string): Promise<string> {
-  return browser.executeObsidian(async ({ app }, wanted) => {
-    const found = app.vault.getFileByPath(wanted);
-    if (found === null) throw new Error(`no ${wanted}`);
-    return Array.from(new Uint8Array(await app.vault.readBinary(found))).join(
-      ",",
-    );
-  }, file);
 }
 
 /** A note's text and when it was last written, from its file. */
@@ -112,11 +85,6 @@ async function updateLinks(): Promise<void> {
     if (typeof setConfig !== "function") throw new Error("no vault settings");
     Reflect.apply(setConfig, app.vault, ["alwaysUpdateLinks", true]);
   });
-}
-
-async function showLibrary(): Promise<void> {
-  await browser.executeObsidianCommand("inkline:show-library");
-  await browser.$(".inkline-library-list").waitForExist();
 }
 
 /** The selector of the library's row for `file`. */
@@ -260,15 +228,6 @@ async function clicksSeen(): Promise<string[]> {
 /** How many Quick edit forms the library holds. */
 async function formCount(): Promise<number> {
   return browser.$$(".inkline-library-edit-form").length;
-}
-
-/** The titles of the items in the menus open now. */
-async function menuItems(): Promise<string[]> {
-  return browser.execute(() =>
-    Array.from(document.querySelectorAll(".menu .menu-item-title")).map(
-      (item) => item.textContent,
-    ),
-  );
 }
 
 /** Opens Quick edit on `file`'s row, once its fields have read the file. */

@@ -1,6 +1,7 @@
 import { browser, expect } from "@wdio/globals";
 import type { Stroke } from "../../../src/format/record.ts";
 import { loadModules } from "../support/browser.ts";
+import { pressed, save } from "../support/editing.ts";
 import {
   openAtMarker,
   recordOf,
@@ -13,12 +14,6 @@ import {
   waitForStatus,
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
-
-async function pressed(id: string): Promise<string | null> {
-  return browser
-    .$(`[data-inkline-button="${id}"]`)
-    .getAttribute("aria-pressed");
-}
 
 /** Opens the editor for a new symbol, with Polygon on and the XL brush. */
 async function openPolygon(grid: boolean): Promise<void> {
@@ -70,11 +65,6 @@ async function draftStrokes(
   );
   const [draft] = await storedDrafts();
   return draft?.strokes ?? [];
-}
-
-async function save(): Promise<void> {
-  await browser.keys(["Control", "Enter"]);
-  await browser.$(".inkline-editor").waitForExist({ reverse: true });
 }
 
 async function savedStrokes(): Promise<Stroke[]> {

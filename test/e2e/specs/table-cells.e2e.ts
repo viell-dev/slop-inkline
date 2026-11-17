@@ -1,5 +1,6 @@
 import { browser, expect } from "@wdio/globals";
 import { loadModules } from "../support/browser.ts";
+import { save, waitClosed, zigzag } from "../support/editing.ts";
 import {
   createSymbol,
   draw,
@@ -12,12 +13,9 @@ import {
   chooseExisting,
   next,
   rewrite,
-  save,
   searchExisting,
   setLinkUpdates,
   type,
-  waitClosed,
-  zigzag,
 } from "../support/insertion.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 import { intoCell, waitForLastRow } from "../support/table-cell.ts";

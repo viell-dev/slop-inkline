@@ -12,7 +12,7 @@ import {
   waitForHeld,
   startOver,
 } from "../support/editor.ts";
-import { fileText } from "../support/vault-files.ts";
+import { noteOnDisk } from "../support/vault-files.ts";
 
 describe("The editor", function () {
   before(async function () {
@@ -34,7 +34,7 @@ describe("The editor", function () {
   });
 
   it("starts each test from the vault as it was, with a note's save under way", async function () {
-    const original = await fileText("Editor.md");
+    const original = await noteOnDisk("Editor.md");
     await openAtMarker("Editor.md", "HERE");
     // A save held across the reset, as a slow disk would hold one, by a delay
     // rather than a gate, as it is the reset itself that has to wait it out.
@@ -48,7 +48,7 @@ describe("The editor", function () {
     await startOver();
     // Had the reset not waited for it, the save would land after it.
     await waitForDelayed("modify");
-    expect(await fileText("Editor.md")).toBe(original);
+    expect(await noteOnDisk("Editor.md")).toBe(original);
   });
 
   it("starts each test with nothing held, after one that failed with an operation held", async function () {
@@ -92,7 +92,7 @@ describe("The editor", function () {
         return outcome ?? {};
       }, key);
     }
-    const original = await fileText("Editor.md");
+    const original = await noteOnDisk("Editor.md");
     // A read held at its gate, as a test that failed between waitForHeld()
     // and letGo() leaves it, and the cleanup that the next test starts with.
     await hold("read", "Editor.md");

@@ -4,6 +4,7 @@
 
 import { browser, expect } from "@wdio/globals";
 import { loadModules } from "../support/browser.ts";
+import { editFile } from "../support/editing.ts";
 import {
   createSymbol,
   delayVault,
@@ -13,6 +14,7 @@ import {
   startOver,
   waitForStatus,
 } from "../support/editor.ts";
+import { type } from "../support/insertion.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 import {
   row,
@@ -23,7 +25,6 @@ import {
 } from "../support/symbol-text-library.ts";
 import {
   changeOnDisk,
-  editFile,
   fill,
   letWriteGo,
   makeNote,
@@ -33,7 +34,6 @@ import {
   saveAndClose,
   showFields,
   symbolWith,
-  type,
 } from "../support/symbol-text.ts";
 
 /** Bulk files, each with a reading of its own, for an index to take time over. */

@@ -6,25 +6,17 @@
 
 import { browser, expect } from "@wdio/globals";
 import { loadModules } from "../support/browser.ts";
+import { insert } from "../support/editing.ts";
 import {
   draw,
   fillStorage,
   freeStorage,
-  openAtMarker,
   startOver,
   surface,
-  waitForEditor,
   waitForStatus,
   writeNoise,
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
-
-/** Starts a new symbol in Editor.md, whose draft is the only one. */
-async function insert(): Promise<void> {
-  await openAtMarker("Editor.md", "HERE");
-  await browser.executeObsidianCommand("inkline:insert-symbol");
-  await waitForEditor();
-}
 
 /** Starts the drawing again from a copy of the symbol `name`. */
 async function copy(name: string): Promise<void> {

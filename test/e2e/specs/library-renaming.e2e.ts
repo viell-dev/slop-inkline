@@ -21,6 +21,8 @@ import {
   waitForPanes,
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
+import { showLibrary } from "../support/symbol-text-library.ts";
+import { bytesOf, noteOnDisk } from "../support/vault-files.ts";
 
 const nameField = () => browser.$(".inkline-library-edit-form input");
 const errorField = () => browser.$(".inkline-library-edit-error");
@@ -29,11 +31,6 @@ function row(name: string): ReturnType<typeof browser.$> {
   return browser.$(
     `//div[contains(@class, "inkline-library-symbol")][.//div[contains(@class, "inkline-library-name")][text()="${name}"]]`,
   );
-}
-
-async function showLibrary(): Promise<void> {
-  await browser.executeObsidianCommand("inkline:show-library");
-  await browser.$(".inkline-library-list").waitForExist();
 }
 
 async function beginRename(name: string, typed: string): Promise<void> {
@@ -67,17 +64,6 @@ async function waitForName(name: string): Promise<void> {
   expect(await nameField().isExisting()).toBe(false);
 }
 
-/** Exact PNG bytes, independent of its name and Obsidian's image cache. */
-async function bytesOf(path: string): Promise<string> {
-  return browser.executeObsidian(async ({ app }, path) => {
-    const file = app.vault.getFileByPath(path);
-    if (file === null) throw new Error(`no ${path}`);
-    return Array.from(new Uint8Array(await app.vault.readBinary(file))).join(
-      ",",
-    );
-  }, path);
-}
-
 async function waitForError(text: string): Promise<void> {
   await browser.waitUntil(async () =>
     (await errorField().getText()).includes(text),
@@ -97,8 +83,14 @@ async function setLinkUpdates(always: boolean): Promise<void> {
   }, always);
 }
 
-/** Waits for a note to link to `symbol`, in Obsidian's index. */
-async function waitForLink(note: string, symbol: string): Promise<void> {
+/**
+ * Waits for a note to link to `symbol`, in Obsidian's index, without saving
+ * the note first as `waitForLink` does.
+ */
+async function waitForLinkWithoutSaving(
+  note: string,
+  symbol: string,
+): Promise<void> {
   await browser.waitUntil(async () =>
     browser.executeObsidian(
       ({ app }, from, to) =>
@@ -121,17 +113,8 @@ async function usedSymbol(count = 1): Promise<void> {
     }
   }, count);
   for (let at = 0; at < count; at++) {
-    await waitForLink(`Uses ${String(at)}.md`, "gate.ink.png");
+    await waitForLinkWithoutSaving(`Uses ${String(at)}.md`, "gate.ink.png");
   }
-}
-
-/** A note's text as its file holds it. */
-async function noteText(note: string): Promise<string> {
-  return browser.executeObsidian(async ({ app }, path) => {
-    const file = app.vault.getFileByPath(path);
-    if (file === null) throw new Error(`no ${path}`);
-    return app.vault.read(file);
-  }, note);
 }
 
 /** Has the page note down anything the form says of a wait, however brief. */
@@ -577,7 +560,7 @@ describe("Renaming in the symbol library", function () {
       await clickTop("Just once");
       await waitForName("lintel");
       expect(await sawWait()).toBe(false);
-      expect(await noteText("Uses 0.md")).toContain("lintel.ink.png");
+      expect(await noteOnDisk("Uses 0.md")).toContain("lintel.ink.png");
       expect(await browser.$(".notice*=Renamed").isExisting()).toBe(false);
     });
 
@@ -596,7 +579,7 @@ describe("Renaming in the symbol library", function () {
       });
       expect(await sawWait()).toBe(false);
       for (let at = 0; at < notes; at++) {
-        expect(await noteText(`Uses ${String(at)}.md`)).toContain("lintel");
+        expect(await noteOnDisk(`Uses ${String(at)}.md`)).toContain("lintel");
       }
     });
 
@@ -655,7 +638,7 @@ describe("Renaming in the symbol library", function () {
       await letGo();
       await waitForName("lintel");
       await waitForNotice("Renamed gate to lintel");
-      expect(await noteText("Uses 0.md")).toContain("lintel.ink.png");
+      expect(await noteOnDisk("Uses 0.md")).toContain("lintel.ink.png");
     });
 
     it("says so if a rename left behind fails, with the name typed", async function () {
@@ -719,7 +702,7 @@ describe("Renaming in the symbol library", function () {
       await waitForName("lintel");
       await waitForNotice("Renamed gate to lintel");
       expect(await symbolFiles()).toEqual(["lintel.ink.png"]);
-      expect(await noteText("Uses 0.md")).toContain("lintel.ink.png");
+      expect(await noteOnDisk("Uses 0.md")).toContain("lintel.ink.png");
     });
 
     it("gives the form back when a rename held back fails", async function () {
@@ -780,11 +763,11 @@ describe("Renaming in the symbol library", function () {
       await letGo();
       // The note's save goes on, and nothing follows it.
       await browser.waitUntil(async () =>
-        (await noteText("Uses 0.md")).startsWith("Opening."),
+        (await noteOnDisk("Uses 0.md")).startsWith("Opening."),
       );
       await browser.pause(500);
       expect(await symbolFiles()).toEqual(["gate.ink.png"]);
-      expect(await noteText("Uses 0.md")).toContain("gate.ink.png");
+      expect(await noteOnDisk("Uses 0.md")).toContain("gate.ink.png");
     });
 
     it("stops a rename held in Obsidian's index, which then renames nothing", async function () {
@@ -811,7 +794,7 @@ describe("Renaming in the symbol library", function () {
       );
       await browser.pause(500);
       expect(await symbolFiles()).toEqual(["gate.ink.png"]);
-      expect(await noteText("Uses 0.md")).toContain("gate.ink.png");
+      expect(await noteOnDisk("Uses 0.md")).toContain("gate.ink.png");
     });
 
     it("counts from the answer, for a rename held after Obsidian's question", async function () {
@@ -835,7 +818,7 @@ describe("Renaming in the symbol library", function () {
       await letGo();
       await waitForName("lintel");
       await waitForNotice("Renamed gate to lintel");
-      expect(await noteText("Uses 0.md")).toContain("lintel.ink.png");
+      expect(await noteOnDisk("Uses 0.md")).toContain("lintel.ink.png");
     });
 
     it("takes the message back when Obsidian's question opens at last", async function () {
@@ -856,7 +839,7 @@ describe("Renaming in the symbol library", function () {
       expect(await formButton("Cancel").isEnabled()).toBe(false);
       await clickTop("Just once");
       await waitForName("lintel");
-      expect(await noteText("Uses 0.md")).toContain("lintel.ink.png");
+      expect(await noteOnDisk("Uses 0.md")).toContain("lintel.ink.png");
     });
   });
 
