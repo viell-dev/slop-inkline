@@ -1347,41 +1347,107 @@ describe("A rename while the note holds unsaved text", function () {
     });
 
     it("writes the embed itself once a save undid Obsidian's", async function () {
+      const old = "![[001.ink.png]]";
       // At Obsidian's own write after the answer, every editor saves what it
-      // holds, which still has the old embed.
+      // holds, which still has the old embed. Every write of the note from
+      // here on is kept in order: what `vault.modify`, through which an
+      // editor saves, wrote, and what a `vault.process`, through which
+      // Inkline writes a note, read from the file and wrote. So is how many
+      // writes there were at Obsidian's, and whether the saves have ended.
       const saveAtNextWrite = async (): Promise<void> => {
         await browser.executeObsidian(({ app, obsidian }) => {
-          Reflect.set(window, "inklineSavedOnModify", false);
-          const saves = app.vault.on("modify", (file) => {
-            if (file.path !== "Editor.md") return;
-            app.vault.offref(saves);
-            Reflect.set(window, "inklineSavedOnModify", true);
-            for (const { view } of app.workspace.getLeavesOfType("markdown")) {
-              if (view instanceof obsidian.MarkdownView) void view.save();
+          const { vault } = app;
+          const seen: {
+            writes: { how: string; given?: string; text: string }[];
+            fired?: number;
+            saved: boolean;
+          } = { writes: [], saved: false };
+          Reflect.set(window, "inklineSaveOnModify", seen);
+          const modify = vault.modify.bind(vault);
+          vault.modify = async (file, text, options) => {
+            if (file.path === "Editor.md") {
+              seen.writes.push({ how: "modify", text });
             }
+            return modify(file, text, options);
+          };
+          const process = vault.process.bind(vault);
+          vault.process = async (file, change, options) =>
+            process(
+              file,
+              (given) => {
+                const text = change(given);
+                if (file.path === "Editor.md") {
+                  seen.writes.push({ how: "process", given, text });
+                }
+                return text;
+              },
+              options,
+            );
+          const saves = vault.on("modify", (file) => {
+            if (file.path !== "Editor.md") return;
+            vault.offref(saves);
+            seen.fired = seen.writes.length;
+            const saving: Promise<void>[] = [];
+            for (const { view } of app.workspace.getLeavesOfType("markdown")) {
+              if (view instanceof obsidian.MarkdownView) {
+                saving.push(view.save());
+              }
+            }
+            void Promise.all(saving).then(() => {
+              seen.saved = true;
+            });
           });
           Reflect.set(window, "inklineStopSaveOnModify", () => {
-            app.vault.offref(saves);
+            vault.offref(saves);
+            Reflect.deleteProperty(vault, "modify");
+            Reflect.deleteProperty(vault, "process");
           });
         });
       };
+      /** What {@link saveAtNextWrite} has kept. */
+      const seen = () =>
+        browser.execute(
+          () =>
+            Reflect.get(window, "inklineSaveOnModify") as {
+              writes: { how: string; given?: string; text: string }[];
+              fired?: number;
+              saved: boolean;
+            },
+        );
       try {
         await askAndHold(["Control", "Enter"], saveAtNextWrite);
         await waitClosed();
         await waitForNote(withText(renamed));
         await waitForFile("Editor.md", withText(renamed));
         expect(await marked("Editor.md")).toEqual([withText(`${renamed}|`)]);
+        await browser.waitUntil(async () => (await seen()).saved, {
+          timeoutMsg: "the saves at Obsidian's write did not end",
+        });
+        const { writes, fired = 0 } = await seen();
+        // The saves came at Obsidian's write of the new embed into the file,
+        // which holds none of the unsaved text, not at the note's own save,
+        // and wrote the old embed back, with that text.
+        expect(fired).toBeGreaterThan(0);
+        expect(writes[fired - 1]?.text).toBe(
+          `The door is marked with ${renamed} which means return.\n`,
+        );
+        const after = writes.slice(fired);
+        expect(after).toContainEqual({ how: "modify", text: withText(old) });
+        const undone = after.findIndex(
+          ({ how, text }) => how === "modify" && text === withText(old),
+        );
+        // Then Inkline found the old embed in the file, and wrote the new one.
         expect(
-          await browser.execute(
-            () => Reflect.get(window, "inklineSavedOnModify") === true,
-          ),
-        ).toBe(true);
+          after
+            .slice(undone + 1)
+            .filter(({ how }) => how === "process")
+            .map(({ given, text }) => [given, text]),
+        ).toContainEqual([withText(old), withText(renamed)]);
       } finally {
-        // Gone already if it saved, and taken away here if it never did.
         await browser.execute(() => {
           const stop: unknown = Reflect.get(window, "inklineStopSaveOnModify");
           Reflect.deleteProperty(window, "inklineStopSaveOnModify");
-          Reflect.deleteProperty(window, "inklineSavedOnModify");
+          Reflect.deleteProperty(window, "inklineSaveOnModify");
           if (typeof stop === "function") Reflect.apply(stop, undefined, []);
         });
       }
