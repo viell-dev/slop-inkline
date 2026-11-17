@@ -344,16 +344,21 @@ for (const language of ["en", "he"] as const) {
     });
 
     for (const list of lists) {
-      for (const stored of [false, true]) {
-        const colour = stored ? "stored colour" : "the text colour";
-        it(`starts a picture at its column's start in ${list.name}, in ${colour}`, async function () {
+      it(`starts a picture at its column's start in ${list.name}, in the text colour and its stored colour`, async function () {
+        await list.open();
+        await waitForRows(list.rows);
+        // The stored colour is a class on the window's root, which only the
+        // style answers to, so the list open in the text colour shows it too.
+        for (const stored of [false, true]) {
           if (stored) {
-            await browser.execute(() => {
+            await browser.execute(async () => {
               document.documentElement.addClass("inkline-stored-color");
+              // Drawn so, for the screenshot of the picture.
+              await new Promise((resolve) => {
+                requestAnimationFrame(() => requestAnimationFrame(resolve));
+              });
             });
           }
-          await list.open();
-          await waitForRows(list.rows);
           const row = await placed(list.rows);
           await saveScreenshot(
             `${language}-${list.name.replace(/\W+/g, "-")}-${stored ? "stored" : "text"}`,
@@ -368,8 +373,8 @@ for (const language of ["en", "he"] as const) {
             expect(row.pictureRight).toBeLessThan(row.nameLeft);
             expect(row.inkRight).toBeLessThan(0.5);
           }
-        });
-      }
+        }
+      });
     }
 
     it("keeps the editor's English in order, where its layout puts it", async function () {
