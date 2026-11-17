@@ -143,15 +143,18 @@ function rowButton(
 
 /**
  * The ways to leave gate's Quick edit while its save waits, as a person
- * would: Cancel, and the row's own Quick edit, by click or by Esc.
+ * would: Cancel, and the row's own Quick edit, by click or by Esc. Each calls
+ * the row's one way of leaving, whichever step of the save waits, and that
+ * step alone decides what is said, which quick-edit.test.ts checks for each
+ * step; so the tests share the ways out between the two steps.
  */
-const leavers = [
-  ["Cancel", async () => formButton("Cancel").click()],
-  [
+const leavers = {
+  cancel: ["Cancel", async () => formButton("Cancel").click()],
+  click: [
     "the row's Quick edit",
     async () => rowButton("gate.ink.png", "edit").click(),
   ],
-  [
+  escape: [
     "Esc on the row's Quick edit",
     async () => {
       await browser.execute(
@@ -167,7 +170,7 @@ const leavers = [
       await browser.keys(["Escape"]);
     },
   ],
-] as const;
+} as const;
 
 /**
  * Waits past the double-click time, a few hundred milliseconds, so that the
@@ -1152,7 +1155,7 @@ describe("Quick edit in the library", function () {
     expect((await fieldsOf("arch.ink.png")).reading).toEqual(["KA"]);
   });
 
-  for (const [how, leave] of leavers) {
+  for (const [how, leave] of [leavers.cancel, leavers.escape]) {
     it(`does not rename once left with ${how} while its readings wait to be written`, async function () {
       await symbolWith("gate.ink.png", { reading: ["TA"] });
       await showLibrary();
@@ -1235,7 +1238,7 @@ describe("Quick edit in the library", function () {
     expect((await fieldsOf("arch.ink.png")).reading).toEqual(["KA"]);
   });
 
-  for (const [how, leave] of leavers) {
+  for (const [how, leave] of [leavers.click]) {
     it(`says the readings are saved when the rename after them is left with ${how}`, async function () {
       await symbolWith("gate.ink.png", { reading: ["TA"] });
       await noteUsing("Uses.md", "gate.ink.png");
