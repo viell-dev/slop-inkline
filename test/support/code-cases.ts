@@ -2894,3 +2894,104 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
     limit: mathListed,
   },
 };
+
+/**
+ * Notes by name, with HERE where a trigger is typed: in code that started on an
+ * earlier line, where the insert trigger lists nothing, and in the text beside
+ * it, where it lists. The unit tests check that src/notes/code.ts finds each as
+ * `code` says, with the trigger typed in place of HERE too;
+ * test/e2e/specs/suggest.e2e.ts that Obsidian renders each so, and types the
+ * trigger into some of them.
+ */
+export const triggerCases: Readonly<Record<string, CodeCase>> = {
+  // A code span runs through its paragraph's lines.
+  Span: { note: "A `code span\nthat runs on HERE` here.\n", code: true },
+  "Span ended": { note: "A `code span\nthat ends` HERE.\n", code: false },
+  "Span in a quote": {
+    note: "> A `code span\nthat runs on HERE` here.\n",
+    code: true,
+  },
+  "Span over a blank": { note: "A `not code\n\nHERE` here.\n", code: false },
+  Escaped: { note: "A \\`not code\nHERE` here.\n", code: false },
+  Unmatched: { note: "A `not code\nHERE here.\n", code: false },
+  "Unmatched run": { note: "A ``not code\nHERE` here.\n", code: true },
+  // A callout's title line is read on its own.
+  Callout: {
+    note: "> [!note] A `title\n> with `code HERE` here.\n",
+    code: true,
+  },
+  "Callout's text": {
+    note: "> [!note] A `title\n> and text HERE` here.\n",
+    code: false,
+  },
+  // A fenced code block in a quote ends with the quote.
+  Quote: { note: "> ```\n> sample\n\nHERE\n", code: false },
+  "Nested quote": { note: "> > ```\n> > sample\n>\n> HERE\n", code: false },
+  "Quote's fence": { note: "> ```\n> sample\n>\n> HERE\n", code: true },
+  "Nested fence": { note: "> > ```\n> > sample\n> > HERE\n", code: true },
+  // And one in a list item, with the item.
+  "Item's fence": { note: "- ```\n  sample\n  HERE\n", code: true },
+  List: { note: "- A list item\n  ```\n  sample\n\nHERE\n", code: false },
+  // One the note opened runs to its end, through blank lines.
+  "Open fence": { note: "```\nsample\n\n\nHERE\n", code: true },
+  // An indented code block, told from a list item's indented text.
+  Indented: { note: "Some text.\n\n    HERE\n", code: true },
+  "Item's text": { note: "- A list item\n\n    HERE\n", code: false },
+  // What Obsidian reads before a code span takes its backticks.
+  "Wiki link": {
+    note: "See [[odd`name]] and `code that\nruns on HERE` here.\n",
+    code: true,
+  },
+  Comment: { note: "%% a `comment %%\nthen HERE` here.\n", code: false },
+  Definition: { note: "[ref]: `odd\n`code HERE` here.\n", code: true },
+  // A tab after a quote's `>` indents its text as code.
+  Tab: { note: ">\tindented HERE\n", code: true },
+  // A line without `>` goes on in a quote after any block in it.
+  "Quote's heading": {
+    note: "> # A heading\n`code that\n> runs on HERE` here.\n",
+    code: true,
+  },
+  // An empty item takes in the line after it.
+  "Empty item": { note: "-\n ~~~\n- HERE\n", code: false },
+  // An HTML block lists nothing, as its code cannot be told from its text;
+  // the text after it lists, and so does ordinary inline HTML.
+  "HTML code": { note: "<pre><code>`HERE`</code></pre>\n", code: true },
+  "After HTML": { note: "<div>\nsample\n</div>\n\nHERE\n", code: false },
+  "Inline HTML": { note: "Some <b>bold</b> HERE text.\n", code: false },
+  // A `<code>` tag in a paragraph makes code to its `</code>`.
+  "Code tag": { note: "Some <code>inline HERE</code> text.\n", code: true },
+  // An open `<code>` stays open over blank lines, as the browser keeps it,
+  // and a slash does not close one; a closed one makes no code after it.
+  "Open code": { note: "<code>\n\nHERE\n\n</code>\n", code: true },
+  "Open code tag": { note: "Some <code>a\n\nHERE\n\n</code>\n", code: true },
+  "Code slash": { note: "Some <code/>HERE\n", code: true },
+  "Code space slash": { note: "Some <code />HERE\n", code: true },
+  "Code attribute slash": { note: 'Some <code class="x"/>HERE\n', code: true },
+  "Closed code": { note: "Some <code>a</code>\n\nHERE\n", code: false },
+  // A closing tag in a comment or a quoted attribute closes nothing, on one
+  // line or over lines; a real one after them closes the `<code>`.
+  "Code comment": {
+    note: "<div><code><!-- </code> -->\n\nHERE\n\n</code>\n",
+    code: true,
+  },
+  "Code attribute": {
+    note: '<div><code><span title="</code>">x</span>\n\nHERE\n\n</code>\n',
+    code: true,
+  },
+  "Code comment lines": {
+    note: "<div><code><!--\n</code>\n-->\n\nHERE\n\n</code>\n",
+    code: true,
+  },
+  "Code attribute lines": {
+    note: '<div><code><span title="\n</code>\n">x</span>\n\nHERE\n\n</code>\n',
+    code: true,
+  },
+  "Closed comment": {
+    note: "<div><code><!-- x --></code>\n\nHERE\n",
+    code: false,
+  },
+  "Closed attribute": {
+    note: '<div><code><span title="x">x</span></code>\n\nHERE\n',
+    code: false,
+  },
+};

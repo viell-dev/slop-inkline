@@ -1,7 +1,7 @@
 import { fromMarkdown } from "mdast-util-from-markdown";
 import { describe, expect, it } from "vitest";
 import { insideCode, insideCodeBlock } from "../../../src/notes/code.ts";
-import { codeCases } from "../../support/code-cases.ts";
+import { codeCases, triggerCases } from "../../support/code-cases.ts";
 
 /** A note's lines, as `insideCode` reads them. */
 function note(text: string): (index: number) => string | undefined {
@@ -26,6 +26,18 @@ describe("insideCode", () => {
     it(`finds code where Obsidian renders it: ${name}`, () => {
       // Where the check knowingly differs, it finds the other answer.
       expect(hereInCode(text)).toBe(limit === undefined ? code : !code);
+    });
+  }
+
+  for (const [name, { note: text, code }] of Object.entries(triggerCases)) {
+    it(`finds code where the insert trigger lists nothing: ${name}`, () => {
+      expect(hereInCode(text)).toBe(code);
+      // With the trigger and a name typed in place of HERE, as the list
+      // reads the line.
+      const { line, ch } = marker(text);
+      expect(insideCode(note(text.replace("HERE", ";;arc")), line, ch)).toBe(
+        code,
+      );
     });
   }
 
