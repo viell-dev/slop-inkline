@@ -870,24 +870,36 @@ describe("The editor", function () {
 
   it("starts each test with nothing held, after one that failed with an operation held", async function () {
     /**
-     * Reads Editor.md through the vault, its outcome kept as `key`: not as
-     * `error`, which WebdriverIO takes for an error of its own.
+     * Reads Editor.md through the vault, or, `process`, changes it into
+     * itself, its outcome kept as `key`: not as `error`, which WebdriverIO
+     * takes for an error of its own.
      */
-    async function startRead(key: string): Promise<void> {
-      await browser.executeObsidian(({ app }, name) => {
-        const file = app.vault.getFileByPath("Editor.md");
-        if (file === null) throw new Error("no Editor.md");
-        const outcome: { text?: string; failure?: string } = {};
-        Reflect.set(window, name, outcome);
-        app.vault.read(file).then(
-          (text) => {
-            outcome.text = text;
-          },
-          (error: unknown) => {
-            outcome.failure = error instanceof Error ? error.message : "?";
-          },
-        );
-      }, key);
+    async function startRead(
+      key: string,
+      how: "read" | "process" = "read",
+    ): Promise<void> {
+      await browser.executeObsidian(
+        ({ app }, name, method) => {
+          const file = app.vault.getFileByPath("Editor.md");
+          if (file === null) throw new Error("no Editor.md");
+          const outcome: { text?: string; failure?: string } = {};
+          Reflect.set(window, name, outcome);
+          const reading =
+            method === "read"
+              ? app.vault.read(file)
+              : app.vault.process(file, (text) => text);
+          reading.then(
+            (text) => {
+              outcome.text = text;
+            },
+            (error: unknown) => {
+              outcome.failure = error instanceof Error ? error.message : "?";
+            },
+          );
+        },
+        key,
+        how,
+      );
     }
     async function outcomeOf(
       key: string,
@@ -952,9 +964,20 @@ describe("The editor", function () {
       { timeoutMsg: "the later read stayed held" },
     );
     expect(await outcomeOf("inklineLaterRead")).toEqual({ text: original });
+    // What Obsidian does itself, as a link's update, is let go instead.
+    await hold("link", "Editor.md");
+    await startRead("inklineLinkUpdate", "process");
+    await waitForHeld();
+    await undoStubs();
+    await browser.waitUntil(
+      async () => Object.keys(await outcomeOf("inklineLinkUpdate")).length > 0,
+      { timeoutMsg: "the link's update stayed held" },
+    );
+    expect(await outcomeOf("inklineLinkUpdate")).toEqual({ text: original });
     await browser.execute(() => {
       Reflect.deleteProperty(window, "inklineEarlierRead");
       Reflect.deleteProperty(window, "inklineLaterRead");
+      Reflect.deleteProperty(window, "inklineLinkUpdate");
     });
   });
 
@@ -2165,6 +2188,12 @@ describe("The editor", function () {
       [0.3, 0.5],
       [0.7, 0.5],
     ] as const;
+
+    // Obsidian's own move or link update, held, goes on as it would, so that
+    // a failed test leaves no rejection inside Obsidian's rename.
+    afterEach(async function () {
+      await letGo();
+    });
 
     /**
      * The drafts in the vault's local storage, as stored, which needs no

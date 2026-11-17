@@ -855,12 +855,21 @@ const replaceable = {
 
 /**
  * Takes away whatever a test held or replaced and did not put back, as a test
- * that fails midway leaves it, so that one failure does not become many: it
- * fails every operation still held by {@link hold} or
- * {@link holdDecoding}, and any other gate a test registered in the
- * renderer's `inklineLetGos`, and takes {@link hold}'s gate away, so that a
- * later {@link waitForHeld} or {@link letGo} cannot take it for its own;
- * undoes {@link delayVault} and
+ * that fails midway leaves it, so that one failure does not become many.
+ *
+ * It ends every operation still held by {@link hold} or {@link holdDecoding},
+ * or by any other gate a test registered in the renderer's `inklineLetGos`.
+ * What Obsidian itself does is let go, as if the test had let it go: what
+ * {@link hold} holds as `move`, `save`, or `index`, on the adapter, or as
+ * `link`. Failing it would reject it inside Obsidian's own rename or link
+ * update, which need not recover for the tests after it. Only Inkline's own
+ * vault calls that {@link hold} holds are failed, with "The test ended with
+ * this held.", so that what they would do next does not happen. What
+ * {@link holdDecoding} holds is let go, and so must be what a gate of a spec
+ * file holds on the adapter or `fileManager`.
+ *
+ * It then takes {@link hold}'s gate away, so that a later {@link waitForHeld}
+ * or {@link letGo} cannot take it for its own; undoes {@link delayVault} and
  * {@link delayDecoding}; and removes every replacement of a method in
  * `replaceable` that Obsidian's object did not have as its own when this
  * first ran in the window, with the originals tests keep beside them under
@@ -1086,33 +1095,66 @@ export async function restoreVault(): Promise<void> {
   );
 }
 
-/** What a save or a rename can stop in, as on a drive that stopped answering. */
+/**
+ * What a save or a rename can stop in, as on a drive that stopped answering.
+ * `obsidians` marks what Obsidian itself does, which {@link undoStubs} lets
+ * go rather than fails, as {@link undoStubs} says.
+ */
 const holdable = {
   /** Obsidian's own move of a file, in the real `renameFile`. */
-  move: { owner: "adapter", method: "rename", ending: ".ink.png" },
+  move: {
+    owner: "adapter",
+    method: "rename",
+    ending: ".ink.png",
+    obsidians: true,
+  },
   /** A note's save, which comes before the move. */
-  save: { owner: "adapter", method: "write", ending: ".md" },
+  save: { owner: "adapter", method: "write", ending: ".md", obsidians: true },
   /**
    * A note's read, as a rename reads each open note before the move, to see
    * whether it has text to save.
    */
-  read: { owner: "vault", method: "read", ending: ".md" },
+  read: { owner: "vault", method: "read", ending: ".md", obsidians: false },
   /** A symbol's save, which comes before an editor's rename. */
-  write: { owner: "vault", method: "modifyBinary", ending: ".ink.png" },
+  write: {
+    owner: "vault",
+    method: "modifyBinary",
+    ending: ".ink.png",
+    obsidians: false,
+  },
   /** A new symbol's first save, which makes its file. */
-  create: { owner: "vault", method: "createBinary", ending: ".ink.png" },
+  create: {
+    owner: "vault",
+    method: "createBinary",
+    ending: ".ink.png",
+    obsidians: false,
+  },
   /**
    * A symbol's read, as opening it reads it, or a look at it before a save or
    * after the vault reports a change to it.
    */
-  readSymbol: { owner: "vault", method: "readBinary", ending: ".ink.png" },
-  /** A link's update in a note, which comes after the move. */
-  link: { owner: "vault", method: "process", ending: ".md" },
+  readSymbol: {
+    owner: "vault",
+    method: "readBinary",
+    ending: ".ink.png",
+    obsidians: false,
+  },
+  /**
+   * A link's update in a note, which comes after the move. Inkline inserts
+   * its embeds through the same method, which this holds as well, and
+   * {@link undoStubs} lets go too.
+   */
+  link: { owner: "vault", method: "process", ending: ".md", obsidians: true },
   /**
    * Obsidian's index reading a note it has not indexed yet, which it reads as
    * bytes. Obsidian's `renameFile` waits for the index before the move.
    */
-  index: { owner: "adapter", method: "readBinary", ending: ".md" },
+  index: {
+    owner: "adapter",
+    method: "readBinary",
+    ending: ".md",
+    obsidians: true,
+  },
 } as const;
 
 /**
@@ -1120,7 +1162,8 @@ const holdable = {
  * `ending`, `what`'s own by default: before it starts its work, or, `after`,
  * once it has done it and before its caller hears. Failed by {@link letGo},
  * it rejects, having done its work if it was held after it. A test that ends
- * with one held leaves it to {@link undoStubs}, which fails it.
+ * with one held leaves it to {@link undoStubs}, which lets it go if Obsidian
+ * owns it and fails it otherwise.
  *
  * Each call makes a gate of its own, the renderer's `inklineHoldGate` until
  * the next call replaces it whole: what reaches the gate,
@@ -1134,7 +1177,7 @@ export async function hold(
   when: "before" | "after" = "before",
 ): Promise<void> {
   await browser.executeObsidian(
-    ({ app }, { owner, method }, end, at) => {
+    ({ app }, { owner, method, obsidians }, end, at) => {
       const target = owner === "adapter" ? app.vault.adapter : app.vault;
       const original: unknown = Reflect.get(target, method);
       if (typeof original !== "function") throw new Error(`no ${method}`);
@@ -1180,7 +1223,7 @@ export async function hold(
       const registered: unknown = Reflect.get(window, "inklineLetGos");
       const letGos = Array.isArray(registered) ? registered : [];
       letGos.push(() => {
-        settle("The test ended with this held.");
+        settle(obsidians ? undefined : "The test ended with this held.");
       });
       Reflect.set(window, "inklineLetGos", letGos);
       Reflect.set(target, method, wrapper);
