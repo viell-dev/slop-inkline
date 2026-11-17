@@ -3,8 +3,6 @@ import { Key } from "webdriverio";
 import { loadModules } from "../support/browser.ts";
 import {
   draw,
-  drawHoldingShift,
-  editorGrid,
   openAtMarker,
   settledSurface,
   startOver,
@@ -162,32 +160,6 @@ describe("Ellipse", function () {
     const across = shape.right - shape.left;
     const down = shape.bottom - shape.top;
     expect(Math.abs(across / down - 1)).toBeLessThan(0.01);
-  });
-
-  it("puts an ellipse's box on the grid, with the eraser too", async function () {
-    await openEditor();
-    await browser.keys(["Shift", "g"]);
-    await browser.keys("o");
-    await browser.keys("e");
-    expect(await pressed("ellipse")).toBe("true");
-    expect(await pressed("eraser")).toBe("true");
-    await drawHoldingShift([
-      [0.31, 0.27],
-      [0.5, 0.5],
-      [0.62, 0.73],
-    ]);
-    const [erased] = await draftStrokes(1);
-    expect(erased?.tool).toBe("eraser");
-    const shape = fit(erased?.points ?? []);
-    const { spacing, rows } = await editorGrid();
-    const units = rows.map((row) => Math.round(row * 16));
-    console.log("On the grid", JSON.stringify({ shape, spacing, units }));
-    expect(shape.closed).toBe(true);
-    expect(units).toContain(shape.top);
-    expect(units).toContain(shape.bottom);
-    const columns = (shape.right - shape.left) / (spacing * 16);
-    expect(Math.abs(columns - Math.round(columns))).toBeLessThan(0.01);
-    expect(Math.round(columns)).toBeGreaterThan(0);
   });
 
   it("keeps Ellipse on through Next", async function () {

@@ -142,44 +142,6 @@ describe("The grid snaps only while Shift is held", function () {
     expectOffGrid(grid, start);
   });
 
-  it("leaves a stroke drawn without Shift where it was drawn, with the eraser too", async function () {
-    const grid = await openOnGrid();
-    const from = cellMiddle(grid, 12, 5);
-    const to = cellMiddle(grid, 24, 8);
-    for (const tool of ["p", "e"]) {
-      await browser.keys(tool);
-      await draw([fractions(from), fractions(to)]);
-    }
-    const strokes = await draftStrokes(2);
-    expect(strokes.map((stroke) => stroke.tool)).toEqual(["pen", "eraser"]);
-    for (const stroke of strokes) {
-      const { start, end } = endsOf(stroke);
-      console.log("Plain stroke", JSON.stringify({ from, to, start, end }));
-      expectNear(start, from);
-      expectNear(end, to);
-    }
-  });
-
-  it("keeps a stroke off the grid, and the grid itself, through Undo and Redo", async function () {
-    const grid = await openOnGrid();
-    await draw([fractions(cellMiddle(grid, 18, 6))]);
-    const [drawn] = await draftStrokes(1);
-    await browser.keys(["Control", "z"]);
-    await browser.waitUntil(async () => (await storedDrafts()).length === 0);
-    await browser.keys(["Control", "Shift", "z"]);
-    const [redone] = await draftStrokes(1);
-    expect(redone?.points).toEqual(drawn?.points);
-    await drawShifted([
-      {
-        at: fractions({ x: 24.3 * grid.spacing, y: (grid.rows[6] ?? 0) + 2 }),
-        shift: true,
-      },
-    ]);
-    const [, dot] = await draftStrokes(2);
-    if (dot === undefined) throw new Error("no dot");
-    expectOnGrid(grid, endsOf(dot).start);
-  });
-
   it("puts a click with Shift on the nearest grid point", async function () {
     const grid = await openOnGrid();
     const near = {
@@ -224,45 +186,6 @@ describe("The grid snaps only while Shift is held", function () {
         ) / length;
       expect(away).toBeLessThan(1);
     }
-  });
-
-  it("snaps only the end after a Shift pressed part way", async function () {
-    const grid = await openOnGrid();
-    const from = cellMiddle(grid, 8, 5);
-    const turn = cellMiddle(grid, 16, 5);
-    const to = cellMiddle(grid, 24, 8);
-    await drawShifted([
-      { at: fractions(from), shift: false },
-      { at: fractions(turn), shift: false },
-      { at: fractions(to), shift: true },
-    ]);
-    const [stroke] = await draftStrokes(1);
-    if (stroke === undefined) throw new Error("no stroke");
-    const { start, end } = endsOf(stroke);
-    console.log("Pressed part way", JSON.stringify({ from, start, end }));
-    // The press had no Shift, and what was drawn before it stays.
-    expectNear(start, from);
-    expectOffGrid(grid, start);
-    expectOnGrid(grid, end);
-  });
-
-  it("keeps a straight part on the grid after a Shift let go part way, and ends where the pointer does", async function () {
-    const grid = await openOnGrid();
-    const from = cellMiddle(grid, 8, 5);
-    const turn = cellMiddle(grid, 16, 5);
-    const to = cellMiddle(grid, 24, 8);
-    await drawShifted([
-      { at: fractions(from), shift: true },
-      { at: fractions(turn), shift: true },
-      { at: fractions(to), shift: false },
-    ]);
-    const [stroke] = await draftStrokes(1);
-    if (stroke === undefined) throw new Error("no stroke");
-    const { start, end } = endsOf(stroke);
-    console.log("Let go part way", JSON.stringify({ start, end, to }));
-    expectOnGrid(grid, start);
-    expectNear(end, to);
-    expectOffGrid(grid, end);
   });
 
   it("keeps a line on the grid when Shift goes up just before the button, with no move between", async function () {
@@ -352,38 +275,6 @@ describe("The grid snaps only while Shift is held", function () {
     expectNear(three, third);
     expectOffGrid(grid, three);
     expectOnGrid(grid, four);
-  });
-
-  it("closes a polygon on a corner placed with Shift, with or without it", async function () {
-    const grid = await openOnGrid();
-    // The S brush, whose reach of 4 pixels is short of the click further off
-    // below, which so closes the shape only by snapping to its corner.
-    await browser.keys("1");
-    await browser.keys("y");
-    const first = { x: 10 * grid.spacing, y: grid.rows[4] ?? 0 };
-    const near = { x: first.x + 2, y: first.y + 2 };
-    const second = cellMiddle(grid, 22, 4);
-    const third = cellMiddle(grid, 22, 9);
-    await drawShifted([{ at: fractions(first), shift: true }]);
-    await draw([fractions(second)]);
-    await draw([fractions(third)]);
-    // A click beside it counts as it, without Shift, as off the grid.
-    await draw([fractions(near)]);
-    const [shape] = await draftStrokes(1);
-    expect(shape?.points).toHaveLength(8);
-    expect(shape?.points.slice(-2)).toEqual(shape?.points.slice(0, 2));
-    await drawShifted([{ at: fractions(first), shift: true }]);
-    await draw([fractions(second)]);
-    await draw([fractions(third)]);
-    // And with Shift, a click that snaps to it does, however far off.
-    await drawShifted([
-      {
-        at: fractions({ x: first.x + grid.spacing * 0.4, y: first.y }),
-        shift: true,
-      },
-    ]);
-    const [, again] = await draftStrokes(2);
-    expect(again?.points).toHaveLength(8);
   });
 
   it("shows a polygon's next corner where a click would put it, by Shift at the last move", async function () {

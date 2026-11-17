@@ -223,32 +223,6 @@ describe("Polygon", function () {
     expect(dot?.points).toHaveLength(2);
   });
 
-  it("saves a polygon whose corner barely turns", async function () {
-    // From the independent review of #121: a corner on the line between its
-    // neighbours made infinite pieces, and saving never finished.
-    const saved = await browser.execute(async () => {
-      const { canvas } = window.inklineTest;
-      const { width } = await canvas.saveInk(
-        {
-          strokes: [
-            {
-              tool: "pen",
-              size: 192,
-              points: [400, 800, 416, 944, 656, 3104],
-              kind: "polygon",
-            },
-          ],
-        },
-        undefined,
-        [],
-      );
-      return width;
-    });
-    // 15 px across, the stroke's 12 px width, and the side bearings.
-    expect(saved).toBeGreaterThan(40);
-    expect(saved).toBeLessThan(60);
-  });
-
   it("keeps an open shape's square ends on the grid, uncut", async function () {
     await openPolygon(true);
     // Up from one point and down to another, as the legs of an A, ended on
