@@ -849,7 +849,9 @@ const replaceable = {
  * vault calls that {@link hold} holds are failed, with "The test ended with
  * this held.", so that what they would do next does not happen. What
  * {@link holdDecoding} holds is let go, and so must be what a gate of a spec
- * file holds on the adapter or `fileManager`.
+ * file holds on the adapter or `fileManager`. So is what `holdNextRead` and
+ * `holdNextWrite` in support/symbol-text.ts hold, as their tests' own
+ * clean-up let it go before these gates registered here.
  *
  * It then takes {@link hold}'s gate away, so that a later {@link waitForHeld}
  * or {@link letGo} cannot take it for its own; undoes {@link delayVault} and

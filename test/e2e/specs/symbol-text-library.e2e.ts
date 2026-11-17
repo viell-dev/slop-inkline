@@ -11,7 +11,6 @@ import { editFile } from "../support/editing.ts";
 import {
   createSymbol,
   openAtMarker,
-  restoreVault,
   startOver,
   symbolFiles,
 } from "../support/editor.ts";
@@ -34,7 +33,6 @@ import {
   fieldsOf,
   fill,
   fixtures,
-  letWriteGo,
   makeNote,
   noteFile,
   paste,
@@ -80,23 +78,6 @@ describe("A symbol's readings and translations", function () {
       app.workspace.detachLeavesOfType("inkline-library");
     });
     await makeNote();
-  });
-
-  // The stubs below take themselves away only when the call they wait for
-  // comes, which a failed test may never make: one left behind would hold up
-  // or change the reads and writes of every later test.
-  afterEach(async function () {
-    await browser.execute(() => {
-      const go: unknown = Reflect.get(window, "inklineLetReadGo");
-      Reflect.deleteProperty(window, "inklineLetReadGo");
-      if (typeof go === "function") Reflect.apply(go, undefined, []);
-    });
-    await letWriteGo();
-    await restoreVault();
-    await browser.executeObsidian(({ app }) => {
-      Reflect.deleteProperty(app.vault, "readBinary");
-      Reflect.deleteProperty(app.vault, "modifyBinary");
-    });
   });
 
   describe("in the library", function () {

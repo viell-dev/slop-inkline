@@ -35,42 +35,14 @@ import {
 import {
   fieldsOf,
   fill,
+  holdNextWrite,
   letWriteGo,
   makeNote,
   newSymbol,
   symbolWith,
+  waitForHeldWrite,
 } from "../support/symbol-text.ts";
 import { bytesOf } from "../support/vault-files.ts";
-
-/**
- * Has the next write to the vault wait for {@link letWriteGo}, as one on a drive
- * that has stopped answering does, and returns once it is waiting.
- */
-async function holdNextWrite(): Promise<void> {
-  await browser.executeObsidian(({ app }) => {
-    const write = app.vault.modifyBinary.bind(app.vault);
-    let go = (): void => undefined;
-    const gate = new Promise<void>((resolve) => {
-      go = resolve;
-    });
-    Reflect.set(window, "inklineLetWriteGo", () => {
-      go();
-    });
-    app.vault.modifyBinary = async (...args) => {
-      app.vault.modifyBinary = write;
-      Reflect.set(window, "inklineWriteHeld", true);
-      await gate;
-      return write(...args);
-    };
-  });
-}
-
-/** Waits for a write that {@link holdNextWrite} set up to reach the vault. */
-async function waitForHeldWrite(): Promise<void> {
-  await browser.waitUntil(async () =>
-    browser.execute(() => Reflect.get(window, "inklineWriteHeld") === true),
-  );
-}
 
 describe("A symbol's readings and translations", function () {
   before(async function () {
@@ -83,23 +55,6 @@ describe("A symbol's readings and translations", function () {
       app.workspace.detachLeavesOfType("inkline-library");
     });
     await makeNote();
-  });
-
-  // The stubs below take themselves away only when the call they wait for
-  // comes, which a failed test may never make: one left behind would hold up
-  // or change the reads and writes of every later test.
-  afterEach(async function () {
-    await browser.execute(() => {
-      const go: unknown = Reflect.get(window, "inklineLetReadGo");
-      Reflect.deleteProperty(window, "inklineLetReadGo");
-      if (typeof go === "function") Reflect.apply(go, undefined, []);
-    });
-    await letWriteGo();
-    await restoreVault();
-    await browser.executeObsidian(({ app }) => {
-      Reflect.deleteProperty(app.vault, "readBinary");
-      Reflect.deleteProperty(app.vault, "modifyBinary");
-    });
   });
 
   describe("when Obsidian does not finish a write", function () {

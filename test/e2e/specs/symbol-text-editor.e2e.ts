@@ -13,7 +13,6 @@ import {
   draw,
   markEditor,
   recordOf,
-  restoreVault,
   startOver,
   surface,
   symbolFiles,
@@ -28,7 +27,6 @@ import {
   fieldsOf,
   fill,
   fixtures,
-  letWriteGo,
   makeNote,
   newSymbol,
   paste,
@@ -52,25 +50,6 @@ describe("A symbol's readings and translations", function () {
       app.workspace.detachLeavesOfType("inkline-library");
     });
     await makeNote();
-  });
-
-  // No test of this file sets the stubs that this takes away: a held read or
-  // write, and a replaced read or write of the vault. It is kept from the
-  // suite these tests were split from, so that they run under the hooks they
-  // always ran under. Whether this file needs it is for the change that makes
-  // one clean-up of this and `undoStubs()` (#228).
-  afterEach(async function () {
-    await browser.execute(() => {
-      const go: unknown = Reflect.get(window, "inklineLetReadGo");
-      Reflect.deleteProperty(window, "inklineLetReadGo");
-      if (typeof go === "function") Reflect.apply(go, undefined, []);
-    });
-    await letWriteGo();
-    await restoreVault();
-    await browser.executeObsidian(({ app }) => {
-      Reflect.deleteProperty(app.vault, "readBinary");
-      Reflect.deleteProperty(app.vault, "modifyBinary");
-    });
   });
 
   describe("in the editor", function () {

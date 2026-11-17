@@ -27,7 +27,8 @@ import {
 import {
   fieldsOf,
   fill,
-  letWriteGo,
+  holdNextRead,
+  letReadGo,
   makeNote,
   saveEditor,
   symbolWith,
@@ -74,38 +75,6 @@ async function atNextWrite(
   );
 }
 
-/** Has the next read of `file` wait for {@link letReadGo}. */
-async function holdNextRead(file: string): Promise<void> {
-  await browser.executeObsidian(({ app }, wanted) => {
-    const held = app.vault.getFileByPath(wanted);
-    if (held === null) throw new Error(`no ${wanted}`);
-    const read = app.vault.readBinary.bind(app.vault);
-    let go = (): void => undefined;
-    const gate = new Promise<void>((resolve) => {
-      go = resolve;
-    });
-    Reflect.set(window, "inklineLetReadGo", () => {
-      go();
-    });
-    app.vault.readBinary = async (asked) => {
-      if (asked !== held) return read(asked);
-      app.vault.readBinary = read;
-      await gate;
-      return read(asked);
-    };
-  }, file);
-}
-
-/** Lets go a read that {@link holdNextRead} held. */
-async function letReadGo(): Promise<void> {
-  await browser.execute(() => {
-    const go: unknown = Reflect.get(window, "inklineLetReadGo");
-    Reflect.deleteProperty(window, "inklineLetReadGo");
-    if (typeof go !== "function") throw new Error("no held read");
-    Reflect.apply(go, undefined, []);
-  });
-}
-
 /**
  * Answers Keep mine for as long as the editor asks, until it closes. In one step
  * in the page, as a modal that closes under a driver's element holds it up.
@@ -133,23 +102,6 @@ describe("A symbol's readings and translations", function () {
       app.workspace.detachLeavesOfType("inkline-library");
     });
     await makeNote();
-  });
-
-  // The stubs below take themselves away only when the call they wait for
-  // comes, which a failed test may never make: one left behind would hold up
-  // or change the reads and writes of every later test.
-  afterEach(async function () {
-    await browser.execute(() => {
-      const go: unknown = Reflect.get(window, "inklineLetReadGo");
-      Reflect.deleteProperty(window, "inklineLetReadGo");
-      if (typeof go === "function") Reflect.apply(go, undefined, []);
-    });
-    await letWriteGo();
-    await restoreVault();
-    await browser.executeObsidian(({ app }) => {
-      Reflect.deleteProperty(app.vault, "readBinary");
-      Reflect.deleteProperty(app.vault, "modifyBinary");
-    });
   });
 
   describe("in the library", function () {
