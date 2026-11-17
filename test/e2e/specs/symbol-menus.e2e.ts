@@ -420,7 +420,9 @@ describe("Edit symbol in Obsidian's own menus", function () {
         editor.setValue(note);
         editor.setCursor(editor.lastLine(), 0);
       }, tableNote);
-      await browser.$(`${table} img.inkline-symbol`).waitForExist();
+      await browser
+        .$(`${table} img.inkline-symbol`, { strict: false })
+        .waitForExist();
     }
 
     /** The first column's rows, top first, by what the note holds. */
@@ -599,7 +601,9 @@ describe("Edit symbol in Obsidian's own menus", function () {
     it("adds Edit symbol to the menu of several selected cards", async function () {
       await openCanvas("Board.canvas");
       await browser.keys(["Control", "a"]);
-      await browser.$(".canvas-node.is-selected").waitForExist();
+      await browser
+        .$(".canvas-node.is-selected", { strict: false })
+        .waitForExist();
       const items = await menuAt(await placeInCard(textCard, symbolOne));
       expect(items).toContain("Create group");
       expect(editItems(items)).toBe(1);

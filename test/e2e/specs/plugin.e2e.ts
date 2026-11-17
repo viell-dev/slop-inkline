@@ -544,7 +544,12 @@ describe("What Inkline started, once it unloads", function () {
       await browser.pause(500);
       expect(await tagged()).toBe(0);
       // Nor does a listener give its menu Edit symbol.
-      const image = browser.$(".markdown-source-view img");
+      // The first symbol's image, not one of the editor's empty images
+      // beside each embed.
+      const image = browser.$(
+        ".markdown-source-view img:not(.cm-widgetBuffer)",
+        { strict: false },
+      );
       await browser.waitUntil(async () =>
         image.getProperty("complete").then((complete) => complete === true),
       );
@@ -561,7 +566,9 @@ describe("What Inkline started, once it unloads", function () {
       });
     }
     await obsidianPage.enablePlugin("inkline");
-    await browser.$(".markdown-source-view img.inkline-symbol").waitForExist();
+    await browser
+      .$(".markdown-source-view img.inkline-symbol", { strict: false })
+      .waitForExist();
     expect(await windowScale()).toBe("1");
   });
 

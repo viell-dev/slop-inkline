@@ -38,6 +38,12 @@ async function openSettings(): Promise<void> {
   await setting("Insert trigger").waitForDisplayed();
 }
 
+/**
+ * A setting's dropdown. Obsidian puts a hidden copy beside it, holding only
+ * the chosen option, to measure the width it fits.
+ */
+const dropdown = "select:not(.is-measuring)";
+
 /** The row of a setting, by its visible label. */
 function setting(name: string): ReturnType<typeof browser.$> {
   return browser.$(
@@ -125,10 +131,10 @@ describe("Inkline settings", function () {
     await openSettings();
     expect(await setting("Insert trigger").$("input").getValue()).toBe(";;");
     expect(await setting("Symbol folder").$("input").getValue()).toBe("");
-    expect(await setting("Brush size").$("select").getValue()).toBe("1");
+    expect(await setting("Brush size").$(dropdown).getValue()).toBe("1");
     expect(await setting("Symbol size").$("input").getValue()).toBe("100");
     expect(await setting("Grid size").$("input").getValue()).toBe("5");
-    expect(await setting("Editor buttons").$("select").getValue()).toBe("both");
+    expect(await setting("Editor buttons").$(dropdown).getValue()).toBe("both");
     // Pen pressure was removed with pen-device support (#101).
     expect(await setting("Pen pressure").isExisting()).toBe(false);
     for (const name of [
@@ -169,7 +175,7 @@ describe("Inkline settings", function () {
     await setting("Insert trigger").$("input").setValue("::");
     await waitForStored({ trigger: "::" });
     await setting("Insert trigger").$("input").setValue("word");
-    await setting("Brush size").$("select").click();
+    await setting("Brush size").$(dropdown).click();
     await closeSettings();
     await waitForStored({ trigger: "::" });
     await openAtMarker("Editor.md", "HERE");
@@ -198,14 +204,14 @@ describe("Inkline settings", function () {
     await waitForStored({ symbolFolder: "Signs/Script" });
     await setting("Symbol folder").$("input").setValue("../Signs");
     // A change stored after it shows that the refused folder stored nothing.
-    await setting("Brush size").$("select").selectByAttribute("value", "2");
+    await setting("Brush size").$(dropdown).selectByAttribute("value", "2");
     await waitForStored({ brushSize: 2, symbolFolder: "Signs/Script" });
     await closeSettings();
   });
 
   it("stores Editor buttons from its dropdown and applies it to a new editor", async function () {
     await openSettings();
-    const select = setting("Editor buttons").$("select");
+    const select = setting("Editor buttons").$(dropdown);
     expect(await select.getValue()).toBe("both");
     const choices = await select
       .$$("option")
@@ -225,7 +231,7 @@ describe("Inkline settings", function () {
 
   it("keeps drawing defaults across reload and applies them to a new editor", async function () {
     await openSettings();
-    await setting("Brush size").$("select").selectByAttribute("value", "3");
+    await setting("Brush size").$(dropdown).selectByAttribute("value", "3");
     await toggle("Show in a new editor");
     await waitForStored({ brushSize: 3, guides: false });
     await closeSettings();
@@ -281,7 +287,9 @@ describe("Inkline settings", function () {
         .getLeaf(false)
         .openFile(note, { state: { mode: "preview" } });
     });
-    await browser.$(".markdown-reading-view img.inkline-symbol").waitForExist();
+    await browser
+      .$(".markdown-reading-view img.inkline-symbol", { strict: false })
+      .waitForExist();
     const sizes = () =>
       browser.execute(() =>
         Array.from(
@@ -321,7 +329,7 @@ describe("Inkline settings", function () {
       );
     }
     const first = await browser
-      .$(".markdown-reading-view img.inkline-symbol")
+      .$(".markdown-reading-view img.inkline-symbol", { strict: false })
       .getElement();
     await saveScreenshot("settings-stored-colour");
     const shot = await browser.takeElementScreenshot(first.elementId);

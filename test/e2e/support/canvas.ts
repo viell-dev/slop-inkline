@@ -9,7 +9,9 @@ import { click, placeOf, settled, type Point } from "./pointer.ts";
  * leave them out of sight.
  */
 export async function fitCards(): Promise<void> {
-  await browser.$(".canvas-node img.inkline-symbol").waitForExist();
+  await browser
+    .$(".canvas-node img.inkline-symbol", { strict: false })
+    .waitForExist();
   await browser.waitUntil(async () =>
     browser.execute(() =>
       Array.from(
