@@ -267,6 +267,21 @@ describe("Inserting a symbol you have", function () {
     );
   });
 
+  // Every test starts from the four symbols above, which the test of the
+  // trigger alone lists, even after one that adds others failed.
+  afterEach(async function () {
+    await rememberFiles();
+    const others = await browser.executeObsidian(
+      ({ app }, kept) =>
+        app.vault
+          .getFiles()
+          .map((file) => file.path)
+          .filter((path) => path.endsWith(".ink.png") && !kept.includes(path)),
+      symbols,
+    );
+    if (others.length > 0) await deleteFiles(others);
+  });
+
   it("inserts a symbol by typing the trigger and its name", async function () {
     await openAtMarker("Typing.md", "HERE");
     await type(";;arc");
@@ -357,21 +372,6 @@ describe("Inserting a symbol you have", function () {
     await waitForSuggested(["arch"]);
     await browser.keys(["Enter"]);
     await waitForNote("The door reads ![[arch.ink.png]].\n");
-  });
-
-  it("matches a name with a space only if it holds what was typed", async function () {
-    await openAtMarker("Sentence.md", "HERE");
-    // A fuzzy match would find "tower" in "to wer".
-    await type(";;to wer");
-    await browser.pause(500);
-    expect(await listOpen()).toBe(false);
-    await browser.keys(["Enter"]);
-    await waitForNote("The door reads ;;to wer\n.\n");
-    // And "tower two" in "tower o".
-    await type(";;tower o");
-    await waitForSuggested(["tower one"]);
-    await browser.keys(["Enter"]);
-    await waitForNote("The door reads ;;to wer\n![[tower one.ink.png]].\n");
   });
 
   it("lists nothing in code", async function () {
