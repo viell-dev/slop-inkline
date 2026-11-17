@@ -92,33 +92,25 @@ describe("The file format in Obsidian's renderer", function () {
   });
 
   for (const name of Object.keys(goldenFiles)) {
-    it(`reads the golden file ${name}`, async function () {
+    it(`reads ${name}, draws it as the file's pixels show it, and saves it again unchanged`, async function () {
       const bytes = await readFile(path.join(fixtures, `${name}.ink.png`));
+      // What the unit tests read in Node.js, read here with Chromium's own
+      // DecompressionStream inflating the record.
       const expected = await readFile(
         path.join(fixtures, `${name}.json`),
         "utf8",
       );
-      const text = await browser.execute(async (base64: string) => {
-        const { inkFile, record } = window.inklineTest;
-        const data = Uint8Array.from(atob(base64), (char) =>
-          char.charCodeAt(0),
-        );
-        const source = await inkFile.readInkFile(data);
-        return source.kind === "record"
-          ? `${record.serializeRecord(source.record)}\n`
-          : JSON.stringify(source);
-      }, toBase64(bytes));
-      expect(text).toBe(expected);
-    });
-
-    it(`draws ${name} as the file's pixels show it, and saves it again unchanged`, async function () {
-      const bytes = await readFile(path.join(fixtures, `${name}.ink.png`));
       const result = await browser.execute(
         async (base64: string, levels: number) => {
-          const { canvas, record, render } = window.inklineTest;
+          const { canvas, inkFile, record, render } = window.inklineTest;
           const data = Uint8Array.from(atob(base64), (char) =>
             char.charCodeAt(0),
           );
+          const source = await inkFile.readInkFile(data);
+          const read =
+            source.kind === "record"
+              ? `${record.serializeRecord(source.record)}\n`
+              : JSON.stringify(source);
           const opened = await canvas.openInk(data);
           if (opened.kind !== "editable") throw new Error(opened.kind);
           const stored = canvas.readPixels(await canvas.decodePng(data));
@@ -165,6 +157,7 @@ describe("The file format in Obsidian's renderer", function () {
             if (difference > levels) moved++;
           }
           return {
+            read,
             ink,
             differing,
             worst,
@@ -179,7 +172,9 @@ describe("The file format in Obsidian's renderer", function () {
         toBase64(bytes),
         tolerance.levels,
       );
-      console.log(`${name} against its pixels`, JSON.stringify(result));
+      const { read, ...measured } = result;
+      console.log(`${name} against its pixels`, JSON.stringify(measured));
+      expect(read).toBe(expected);
       if (name === "v1-base-reduced") expect(result.worst).toBe(0);
       const { share, worst } = name === "v1-base" ? baseTolerance : tolerance;
       expect(result.ink).toBeGreaterThan(100);

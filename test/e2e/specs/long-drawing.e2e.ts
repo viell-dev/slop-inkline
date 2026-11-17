@@ -3,6 +3,7 @@
 // but what doing it all again would.
 
 import { browser, expect } from "@wdio/globals";
+import type { SequenceReport } from "../browser/long-drawing.ts";
 import { loadModules } from "../support/browser.ts";
 
 /**
@@ -25,6 +26,14 @@ const runs = [
 
 const steps = 80;
 
+/**
+ * The most one sequence may take, in ms, as long as the script limit that its
+ * one call has. On Obsidian 1.13.4, the slower version, in Docker on Windows 11
+ * beside other jobs, the eight took 12 to 69 s each, 294 s together, against
+ * the 300 s they once shared. In CI the slowest took 17.8 s.
+ */
+const sequenceLimit = 120_000;
+
 /** How many dots, and how far across, for the budget. */
 const count = 3000;
 const span = 3000;
@@ -45,18 +54,20 @@ describe("A long drawing", function () {
     await loadModules();
     // A run compares a hundred frames in one script, longer on a slow machine
     // than WebDriver's usual limit for one.
-    await browser.setTimeout({ script: 120_000 });
+    await browser.setTimeout({ script: sequenceLimit });
   });
 
-  it("always has the ends and pixels of a full measurement, through every way of changing it", async function () {
-    const totals = new Map<string, number>();
-    let frames = 0;
-    let addedPen = 0;
-    let addedEraser = 0;
-    let saves = 0;
-    let savesAPixelOff = 0;
-    let refused = 0;
-    for (const { seed, reach, ratio, straddles } of runs) {
+  // Each sequence is a test of its own, with its own limit, so that a
+  // failure names its seed, and the runs it passed are what the test after
+  // them adds up. They are this suite's first tests, not a suite inside it,
+  // which Mocha would run after the tests below: the measurements those make
+  // come after the sequences, as they always have.
+  const reports: SequenceReport[] = [];
+
+  for (const { seed, reach, ratio, straddles } of runs) {
+    it(`always has the ends and pixels of a full measurement, through every way of changing it: seed ${String(seed)}, ${String(reach)} px across at ${String(ratio)}x, ${String(straddles)} strokes across a tile's edge`, async function () {
+      this.timeout(sequenceLimit);
+      const started = performance.now();
       const report = await browser.execute(
         (seed, steps, reach, ratio, straddles) =>
           window.inklineTest.longDrawing.runSequence(
@@ -72,7 +83,25 @@ describe("A long drawing", function () {
         ratio,
         straddles,
       );
+      console.log(
+        `Seed ${String(seed)}: ${String(report.frames)} frames compared in ${((performance.now() - started) / 1000).toFixed(1)} s`,
+      );
       expect(report.mismatch).toBeUndefined();
+      reports.push(report);
+    });
+  }
+
+  it("makes every change in those sequences, between them, and adds both kinds of stroke to the frame before", function () {
+    // Only a sequence that passed counts, so a failed one fails this too.
+    expect(reports.length).toBe(runs.length);
+    const totals = new Map<string, number>();
+    let frames = 0;
+    let addedPen = 0;
+    let addedEraser = 0;
+    let saves = 0;
+    let savesAPixelOff = 0;
+    let refused = 0;
+    for (const report of reports) {
       for (const [name, times] of Object.entries(report.operations)) {
         totals.set(name, (totals.get(name) ?? 0) + times);
       }

@@ -208,68 +208,63 @@ describe("Saved symbol refresh", function () {
   afterEach(async function () {
     await closePopouts();
   });
+  // In the text colour only. Showing the stored colour is a class on the
+  // root, which changes only styles.css's paint, not the image's box, and
+  // refreshing does the same either way; these tests read the images'
+  // addresses, sizes, and masks, which the colour does not change.
   for (const mode of ["source", "preview"] as const) {
-    for (const stored of [false, true]) {
-      it(`updates existing ${mode} instances in ${stored ? "stored" : "text"} colour`, async function () {
-        await browser.executeObsidian(
-          async ({ app }, viewMode, grey) => {
-            const file = app.vault.getFileByPath("Refresh.md");
-            if (file === null) throw new Error("no note");
-            await app.workspace
-              .getLeaf(false)
-              .openFile(file, { state: { mode: viewMode, source: false } });
-            document.documentElement.toggleClass("inkline-stored-color", grey);
-          },
-          mode,
-          stored,
-        );
-        await browser.waitUntil(
-          async () => (await visibleImages()).length === 3,
-        );
-        const before = await visibleImages();
-        const first = before[0];
-        if (first === undefined) throw new Error("no first symbol");
-        await browser.executeObsidian(async ({ app, plugins }, path) => {
-          const file = app.vault.getFileByPath(path);
-          if (file === null) throw new Error("no symbol");
-          await plugins.inkline.editSymbol(file);
-        }, edited);
-        await waitForEditor();
-        await browser.$('[data-inkline-button="clear"]').click();
-        await draw([
-          [0.3, 0.4],
-          [0.7, 0.4],
-        ]);
-        await browser.keys(["Control", "Enter"]);
-        // The note uses it twice, so saving asks whether to change both.
-        await clickTop("Replace");
-        await surface().waitForExist({ reverse: true });
-        const expected = await savedWidth();
-        expect(expected).not.toBe(first.naturalWidth);
-        await browser.waitUntil(
-          async () => {
-            const current = await visibleImages();
-            return (
-              current[0]?.naturalWidth === expected &&
-              current[1]?.naturalWidth === expected
-            );
-          },
-          {
-            timeout: 5000,
-            timeoutMsg:
-              "existing instances retained the old image width after saving",
-          },
-        );
-        const after = await visibleImages();
-        expect(after[2]).toEqual(before[2]);
-        expect(after[1]?.width).toBeCloseTo(24, 0);
-        for (const instance of after.slice(0, 2)) {
-          expect(instance.mask).toContain(instance.src);
-        }
-        expect(await noteText()).toBe(text);
-        await saveScreenshot(`refresh-${mode}-${stored ? "stored" : "text"}`);
-      });
-    }
+    it(`updates existing ${mode} instances in text colour`, async function () {
+      await browser.executeObsidian(async ({ app }, viewMode) => {
+        const file = app.vault.getFileByPath("Refresh.md");
+        if (file === null) throw new Error("no note");
+        await app.workspace
+          .getLeaf(false)
+          .openFile(file, { state: { mode: viewMode, source: false } });
+      }, mode);
+      await browser.waitUntil(async () => (await visibleImages()).length === 3);
+      const before = await visibleImages();
+      const first = before[0];
+      if (first === undefined) throw new Error("no first symbol");
+      await browser.executeObsidian(async ({ app, plugins }, path) => {
+        const file = app.vault.getFileByPath(path);
+        if (file === null) throw new Error("no symbol");
+        await plugins.inkline.editSymbol(file);
+      }, edited);
+      await waitForEditor();
+      await browser.$('[data-inkline-button="clear"]').click();
+      await draw([
+        [0.3, 0.4],
+        [0.7, 0.4],
+      ]);
+      await browser.keys(["Control", "Enter"]);
+      // The note uses it twice, so saving asks whether to change both.
+      await clickTop("Replace");
+      await surface().waitForExist({ reverse: true });
+      const expected = await savedWidth();
+      expect(expected).not.toBe(first.naturalWidth);
+      await browser.waitUntil(
+        async () => {
+          const current = await visibleImages();
+          return (
+            current[0]?.naturalWidth === expected &&
+            current[1]?.naturalWidth === expected
+          );
+        },
+        {
+          timeout: 5000,
+          timeoutMsg:
+            "existing instances retained the old image width after saving",
+        },
+      );
+      const after = await visibleImages();
+      expect(after[2]).toEqual(before[2]);
+      expect(after[1]?.width).toBeCloseTo(24, 0);
+      for (const instance of after.slice(0, 2)) {
+        expect(instance.mask).toContain(instance.src);
+      }
+      expect(await noteText()).toBe(text);
+      await saveScreenshot(`refresh-${mode}-text`);
+    });
   }
 
   it("refreshes a symbol with a Unicode filename", async function () {

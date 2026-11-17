@@ -145,8 +145,9 @@ must keep released files readable and looking the same, as
 - A symbol 4,000 pixels wide at the largest Symbol size, wider than its space,
   keeps the proportions it was drawn in, within 5%, its baseline on the text's,
   and its colour, in Reading view, Live Preview, table cells in both, an
-  embedded note, and a hover preview, in light and dark themes, in the text
-  colour and its stored colour, measured from screenshots
+  embedded note, and a hover preview, in the text colour in light and dark
+  themes, and in its stored colour in the light theme, as nothing Inkline does
+  in the stored colour depends on the theme, measured from screenshots
   ([wide.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/wide.e2e.ts)),
   and in a native PDF, in a heading where it is wider than the page, measured in
   the rasterized page (pdf.e2e.ts). So does the same symbol with an explicit
