@@ -533,13 +533,19 @@ describe("Lists of symbols", function () {
     });
   });
 
-  for (const list of lists) {
+  // The library's own are "keep each row on one line by default" below, in
+  // both themes, with these symbols, the very long names, and more.
+  for (const list of lists.filter((shown) => shown !== library)) {
     for (const theme of themes) {
-      it(`line names up in ${list.name}, in the ${theme} theme`, async function () {
+      it(`line names up in ${list.name}, beside a very long one, in the ${theme} theme`, async function () {
+        await createSymbol(`${long}.ink.png`, [400, 4000, 8600]);
+        await createSymbol(`${unbroken}.ink.png`, [400, 4000, 8600]);
         await useTheme(theme);
         await list.open();
-        await waitForRows(list.rows, symbols.length);
-        expectLinedUp(await rowsOf(list.rows), symbols.length);
+        await waitForRows(list.rows, symbols.length + 2);
+        expectLinedUp(await rowsOf(list.rows), symbols.length + 2);
+        const { client, scroll } = await widthsOf(list.holder);
+        expect(scroll).toBeLessThanOrEqual(client);
         await expectWhole(list.rows, surface);
         await expectWhole(list.rows, wider);
         await saveScreenshot(`symbol-list-${list.name}-${theme}`);
@@ -619,19 +625,6 @@ describe("Lists of symbols", function () {
       await browser.$(".prompt").waitForExist({ reverse: true });
     }
   });
-
-  for (const list of lists) {
-    it(`keep names in line beside a very long one in ${list.name}`, async function () {
-      await createSymbol(`${long}.ink.png`, [400, 4000, 8600]);
-      await createSymbol(`${unbroken}.ink.png`, [400, 4000, 8600]);
-      await list.open();
-      await waitForRows(list.rows, symbols.length + 2);
-      expectLinedUp(await rowsOf(list.rows), symbols.length + 2);
-      const { client, scroll } = await widthsOf(list.holder);
-      expect(scroll).toBeLessThanOrEqual(client);
-      await saveScreenshot(`symbol-list-long-name-${list.name}`);
-    });
-  }
 
   describe("in the library's sidebar", function () {
     const count = symbols.length + demanding.length;
