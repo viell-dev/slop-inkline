@@ -9,18 +9,20 @@ import { stalledAfter } from "../../../src/notes/file-writes.ts";
 import { loadModules } from "../support/browser.ts";
 import {
   addUnsaved,
-  delayDecoding,
   delayVault,
   draw,
-  drawHoldingShift,
   editorGrid,
   editorOpen,
   failSaves,
+  followSave,
   guideRows,
   fillStorage,
   freeStorage,
   hold,
+  holdAfter,
+  holdDecoding,
   holdIndex,
+  letDecodingGo,
   letGo,
   markEditor,
   noteText,
@@ -31,13 +33,18 @@ import {
   restoreVault,
   settledSurface,
   storedDrafts,
+  undoStubs,
+  waitForDecoded,
+  waitForDelayed,
   waitForEditor,
   waitForFailedSaves,
   waitForHeld,
+  waitForHeldDecoding,
   waitForIndexWait,
   waitForNext,
   waitForNotice,
   waitForPanes,
+  waitForSaveEnd,
   shiftClick,
   startOver,
   surface,
@@ -134,6 +141,18 @@ async function noteOnDisk(path: string): Promise<string> {
 
 async function waitClosed(): Promise<void> {
   await browser.$(".inkline-editor").waitForExist({ reverse: true });
+}
+
+/** Whether Inkline is enabled, which needs no Inkline to tell. */
+async function inklineOn(): Promise<boolean> {
+  return browser.executeObsidian(({ app }) => {
+    const plugins: unknown = Reflect.get(app, "plugins");
+    const on: unknown =
+      typeof plugins === "object" && plugins !== null
+        ? Reflect.get(plugins, "enabledPlugins")
+        : undefined;
+    return on instanceof Set && on.has("inkline");
+  });
 }
 
 /**
@@ -822,11 +841,22 @@ describe("The editor", function () {
     await startOver();
   });
 
+  // A test that fails midway can leave a file operation held or replaced, or
+  // Inkline off, which every test after it would then fail on.
+  afterEach(async function () {
+    await undoStubs();
+    if (!(await inklineOn())) {
+      await obsidianPage.enablePlugin("inkline");
+      await loadModules();
+    }
+  });
+
   it("starts each test from the vault as it was, with a note's save under way", async function () {
     const original = await fileText("Editor.md");
     await openAtMarker("Editor.md", "HERE");
+    // A save held across the reset, as a slow disk would hold one, by a delay
+    // rather than a gate, as it is the reset itself that has to wait it out.
     await delayVault("modify", 1500, "before");
-    // A save held across the reset, as a slow disk would hold one.
     await browser.executeObsidian(({ app, obsidian }) => {
       const view = app.workspace.getActiveViewOfType(obsidian.MarkdownView);
       if (view === null) throw new Error("no Markdown view");
@@ -834,8 +864,124 @@ describe("The editor", function () {
       void view.save();
     });
     await startOver();
-    await browser.pause(2000);
+    // Had the reset not waited for it, the save would land after it.
+    await waitForDelayed("modify");
     expect(await fileText("Editor.md")).toBe(original);
+  });
+
+  it("starts each test with nothing held, after one that failed with an operation held", async function () {
+    /**
+     * Reads Editor.md through the vault, or, `process`, changes it into
+     * itself, its outcome kept as `key`: not as `error`, which WebdriverIO
+     * takes for an error of its own.
+     */
+    async function startRead(
+      key: string,
+      how: "read" | "process" = "read",
+    ): Promise<void> {
+      await browser.executeObsidian(
+        ({ app }, name, method) => {
+          const file = app.vault.getFileByPath("Editor.md");
+          if (file === null) throw new Error("no Editor.md");
+          const outcome: { text?: string; failure?: string } = {};
+          Reflect.set(window, name, outcome);
+          const reading =
+            method === "read"
+              ? app.vault.read(file)
+              : app.vault.process(file, (text) => text);
+          reading.then(
+            (text) => {
+              outcome.text = text;
+            },
+            (error: unknown) => {
+              outcome.failure = error instanceof Error ? error.message : "?";
+            },
+          );
+        },
+        key,
+        how,
+      );
+    }
+    async function outcomeOf(
+      key: string,
+    ): Promise<{ text?: string; failure?: string }> {
+      return browser.execute((name) => {
+        const outcome: unknown = Reflect.get(window, name);
+        return outcome ?? {};
+      }, key);
+    }
+    const original = await fileText("Editor.md");
+    // A read held at its gate, as a test that failed between waitForHeld()
+    // and letGo() leaves it, and the cleanup that the next test starts with.
+    await hold("read", "Editor.md");
+    await startRead("inklineEarlierRead");
+    await waitForHeld();
+    await undoStubs();
+    await browser.waitUntil(
+      async () => (await outcomeOf("inklineEarlierRead")).failure !== undefined,
+      { timeoutMsg: "the earlier read stayed held" },
+    );
+    expect(await outcomeOf("inklineEarlierRead")).toEqual({
+      failure: "The test ended with this held.",
+    });
+    // The next test's gate, straight after that cleanup, as it would come:
+    // it is not reached until its own operation reaches it. Half a second
+    // can only show that it is not reached yet, but a gate left marked
+    // reached would be seen in the first look, at once.
+    await hold("read", "Editor.md");
+    const reachedEarly = await waitForHeld(500).then(
+      () => true,
+      () => false,
+    );
+    expect(reachedEarly).toBe(false);
+    await startRead("inklineLaterRead");
+    await waitForHeld();
+    expect(await outcomeOf("inklineLaterRead")).toEqual({});
+    await letGo();
+    await browser.waitUntil(
+      async () => (await outcomeOf("inklineLaterRead")).text !== undefined,
+      { timeoutMsg: "the later read stayed held" },
+    );
+    expect(await outcomeOf("inklineLaterRead")).toEqual({ text: original });
+    // What Obsidian does itself, as a link's update, is let go instead.
+    await hold("link", "Editor.md");
+    await startRead("inklineLinkUpdate", "process");
+    await waitForHeld();
+    await undoStubs();
+    await browser.waitUntil(
+      async () => Object.keys(await outcomeOf("inklineLinkUpdate")).length > 0,
+      { timeoutMsg: "the link's update stayed held" },
+    );
+    expect(await outcomeOf("inklineLinkUpdate")).toEqual({ text: original });
+    // A later test's own replacement of the method that gate held, which a
+    // bare letGo() in its finally must leave alone: cleanup took the gate.
+    await browser.executeObsidian(({ app }) => {
+      const process = app.vault.process.bind(app.vault);
+      const own = async (...asked: Parameters<typeof process>) =>
+        process(...asked);
+      app.vault.process = own;
+      Reflect.set(window, "inklineOwnProcess", own);
+    });
+    try {
+      await letGo();
+      expect(
+        await browser.executeObsidian(
+          ({ app }) =>
+            Reflect.get(app.vault, "process") ===
+            Reflect.get(window, "inklineOwnProcess"),
+        ),
+      ).toBe(true);
+    } finally {
+      await browser.executeObsidian(({ app }) => {
+        Reflect.deleteProperty(app.vault, "process");
+        Reflect.deleteProperty(window, "inklineOwnProcess");
+      });
+    }
+    await browser.execute(() => {
+      Reflect.deleteProperty(window, "inklineEarlierRead");
+      Reflect.deleteProperty(window, "inklineLaterRead");
+      Reflect.deleteProperty(window, "inklineLinkUpdate");
+    });
   });
 
   it("saves a drawing as a new symbol and inserts it where the cursor was", async function () {
@@ -1262,34 +1408,31 @@ describe("The editor", function () {
 
   it("keeps a name the symbol has that Inkline would not give it", async function () {
     await saveOne();
-    // Copies named as the file explorer or sync can name them: with a
-    // character links cannot hold, with dots at the end, and with a name
-    // only Windows refuses.
-    const names = ["a#1", "door.", "con"];
-    for (const name of names) {
-      await browser.executeObsidian(async ({ app }, path) => {
-        const file = app.vault.getFileByPath("001.ink.png");
-        if (file === null) throw new Error("no 001");
-        await app.vault.copy(file, path);
-      }, `${name}.ink.png`);
-      await editFile(`${name}.ink.png`);
-      expect((await nameField()).value).toBe(name);
-      // Nothing changed, so closing asks nothing.
-      await browser.keys(["Escape"]);
-      await waitClosed();
-      // And a save keeps the name.
-      await editFile(`${name}.ink.png`);
-      await draw([
-        [0.6, 0.3],
-        [0.6, 0.7],
-      ]);
-      await browser.keys(["Control", "Enter"]);
-      await waitClosed();
-      expect(await strokeCount(`${name}.ink.png`)).toBe(2);
-    }
-    expect(await symbolFiles()).toEqual(
-      ["001", ...names].map((name) => `${name}.ink.png`).sort(),
-    );
+    // A copy named as the file explorer or sync can name it, with a character
+    // links cannot hold. Dots at the end, and a name only Windows refuses,
+    // take the same way through the editor, which goes by chooseRename alone:
+    // names.test.ts keeps a file's own name of each kind.
+    const name = "a#1";
+    await browser.executeObsidian(async ({ app }, path) => {
+      const file = app.vault.getFileByPath("001.ink.png");
+      if (file === null) throw new Error("no 001");
+      await app.vault.copy(file, path);
+    }, `${name}.ink.png`);
+    await editFile(`${name}.ink.png`);
+    expect((await nameField()).value).toBe(name);
+    // Nothing changed, so closing asks nothing.
+    await browser.keys(["Escape"]);
+    await waitClosed();
+    // And a save keeps the name.
+    await editFile(`${name}.ink.png`);
+    await draw([
+      [0.6, 0.3],
+      [0.6, 0.7],
+    ]);
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    expect(await strokeCount(`${name}.ink.png`)).toBe(2);
+    expect(await symbolFiles()).toEqual(["001.ink.png", `${name}.ink.png`]);
   });
 
   describe("when Obsidian does not finish a rename", function () {
@@ -1464,27 +1607,9 @@ describe("The editor", function () {
       await editFile("001.ink.png");
     }
 
-    /** {@link editEmbedded}, then adds text to the note and names the symbol. */
-    async function editWithText(): Promise<void> {
-      await editEmbedded();
-      await addUnsaved("Editor.md", opening, "start");
-      await nameSymbol("tower");
-    }
-
-    it("keeps the text when the note's own save falls due during Obsidian's question", async function () {
-      await editWithText();
-      await browser.keys(["Control", "Enter"]);
-      await browser.$("button=Just once").waitForDisplayed();
-      // An editor saves itself two seconds after an edit.
-      await browser.pause(2500);
-      await browser.$("button=Just once").click();
-      await waitClosed();
-      await waitForPanes("Editor.md", renamed);
-      await browser.waitUntil(
-        async () => (await noteOnDisk("Editor.md")) === renamed,
-      );
-    });
-
+    // A note's own save falling due during Obsidian's question is
+    // insertion.e2e.ts's, through the same rename, which saves the open notes
+    // first for an existing symbol's editor as for a new symbol's.
     it("refuses the rename if the note cannot be saved, and keeps the name to try", async function () {
       await editEmbedded();
       // Saves fail before the text is added, and until the file is read and
@@ -1836,13 +1961,15 @@ describe("The editor", function () {
       [0.6, 0.7],
     ]);
     // Renamed as the file explorer or sync would, while the save writes.
-    await delayVault("modifyBinary", 1500, "before");
+    await hold("write");
     await browser.keys(["Control", "s"]);
+    await waitForHeld();
     await browser.executeObsidian(async ({ app }) => {
       const file = app.vault.getFileByPath("001.ink.png");
       if (file === null) throw new Error("no 001");
       await app.vault.rename(file, "tower.ink.png");
     });
+    await letGo();
     // No rename was asked, so none failed.
     await waitForStatus("Saved");
     expect(await browser.$(".inkline-status").getText()).toBe("Saved");
@@ -2065,19 +2192,10 @@ describe("The editor", function () {
       [0.7, 0.5],
     ] as const;
 
+    // Obsidian's own move or link update, held, goes on as it would, so that
+    // a failed test leaves no rejection inside Obsidian's rename.
     afterEach(async function () {
-      await letReadsGo();
       await letGo();
-      // A test that stopped with Inkline off leaves it to be turned on.
-      const off = await browser.executeObsidian(({ app }) => {
-        const plugins: unknown = Reflect.get(app, "plugins");
-        const on: unknown =
-          typeof plugins === "object" && plugins !== null
-            ? Reflect.get(plugins, "enabledPlugins")
-            : undefined;
-        return !(on instanceof Set && on.has("inkline"));
-      });
-      if (off) await enable();
     });
 
     /**
@@ -2164,20 +2282,31 @@ describe("The editor", function () {
       );
     }
 
-    /** Waits for the old save's rename to end, once Obsidian updated the link. */
-    async function waitForLinkUpdate(): Promise<void> {
+    /**
+     * Waits for Obsidian to have updated the link in `Editor.md`, which comes
+     * at the end of its rename.
+     */
+    async function waitForLinkInNote(): Promise<void> {
       await browser.waitUntil(async () =>
         (await noteOnDisk("Editor.md")).includes("![[gate.ink.png]]"),
       );
-      // Then the save ends, and settles its draft.
-      await browser.pause(1000);
+    }
+
+    /**
+     * Waits for the old save's rename to end, once Obsidian updated the link,
+     * and the save with it, which settles its draft as it ends.
+     */
+    async function waitForLinkUpdate(): Promise<void> {
+      await waitForLinkInNote();
+      await waitForSaveEnd();
     }
 
     /**
      * Holds back the result of every read of the file at `path` made while
      * Inkline is disabled, as the file was when it was read, until
      * {@link letReadsGo}: such as a look at the file by the save that was
-     * running as Inkline was turned off, if it makes one.
+     * running as Inkline was turned off, if it makes one. Each read held is
+     * counted, for {@link waitForSaveEndOrRead}.
      */
     async function holdReadsWhileOff(path: string): Promise<void> {
       await browser.executeObsidian(({ app }, file) => {
@@ -2187,11 +2316,15 @@ describe("The editor", function () {
         const gate = new Promise<void>((resolve) => {
           go = resolve;
         });
-        Reflect.set(window, "inklineLetReadsGo", () => {
+        const held = { reads: 0 };
+        Reflect.set(window, "inklineReadsHeld", held);
+        const letReadsGo = () => {
           // Held, it is the vault's own, over what its prototype has.
           Reflect.deleteProperty(vault, "readBinary");
           go();
-        });
+        };
+        Reflect.set(window, "inklineLetReadsGo", letReadsGo);
+        Reflect.set(window, "inklineAtEnd-readsWhileOff", letReadsGo);
         const enabled = (): boolean => {
           const plugins: unknown = Reflect.get(app, "plugins");
           const on: unknown =
@@ -2203,10 +2336,33 @@ describe("The editor", function () {
         vault.readBinary = async (target) => {
           const off = !enabled();
           const bytes = await read(target);
-          if (off && target.path === file) await gate;
+          if (off && target.path === file) {
+            held.reads++;
+            await gate;
+          }
           return bytes;
         };
       }, path);
+    }
+
+    /**
+     * Waits for the old save to end, or to be held reading its file by
+     * {@link holdReadsWhileOff}, which it cannot end before: either way, what
+     * it reads of the file is the file as it is now.
+     */
+    async function waitForSaveEndOrRead(): Promise<void> {
+      await waitForSaveEnd({
+        what: "to be held reading the file",
+        until: async () =>
+          browser.execute(() => {
+            const held: unknown = Reflect.get(window, "inklineReadsHeld");
+            return (
+              typeof held === "object" &&
+              held !== null &&
+              Number(Reflect.get(held, "reads")) > 0
+            );
+          }),
+      });
     }
 
     /** Lets go what {@link holdReadsWhileOff} held. */
@@ -2214,6 +2370,7 @@ describe("The editor", function () {
       await browser.execute(() => {
         const go: unknown = Reflect.get(window, "inklineLetReadsGo");
         Reflect.deleteProperty(window, "inklineLetReadsGo");
+        Reflect.deleteProperty(window, "inklineAtEnd-readsWhileOff");
         if (typeof go === "function") Reflect.apply(go, undefined, []);
       });
     }
@@ -2230,7 +2387,8 @@ describe("The editor", function () {
     /**
      * Opens the editor of `001.ink.png`, which `Editor.md` embeds, adds a
      * stroke, names it `gate`, and saves, holding Obsidian's move of the file,
-     * with the drawing written.
+     * with the drawing written. The save is followed, for
+     * {@link waitForSaveEnd}.
      */
     async function saveHeldInMove(): Promise<void> {
       await saveOne();
@@ -2241,6 +2399,7 @@ describe("The editor", function () {
       await hold("move");
       await browser.keys(["Control", "s"]);
       await waitForHeld();
+      await followSave();
       expect(await strokeCount("001.ink.png")).toBe(2);
     }
 
@@ -2278,6 +2437,7 @@ describe("The editor", function () {
       await hold("move");
       await browser.keys(["Control", "s"]);
       await waitForHeld();
+      await followSave();
       const written = JSON.parse(await recordOf("square.ink.png")) as {
         strokes: unknown[];
         base?: unknown;
@@ -2333,6 +2493,7 @@ describe("The editor", function () {
       await browser.waitUntil(
         async () => (await topButton("Do not update")) !== undefined,
       );
+      await followSave();
       await obsidianPage.disablePlugin("inkline");
       try {
         // Kept while the save waits, for the file Obsidian has moved by now.
@@ -2449,10 +2610,7 @@ describe("The editor", function () {
       await letGo();
       await clickTop("Just once");
       // The old save ends once Obsidian has updated the link.
-      await browser.waitUntil(async () =>
-        (await noteOnDisk("Editor.md")).includes("![[gate.ink.png]]"),
-      );
-      await browser.pause(1000);
+      await waitForLinkUpdate();
       const drafts = await keptDrafts();
       expect(drafts).toHaveLength(1);
       expect(drafts[0]).toMatchObject({ path: "gate.ink.png", strokes: 3 });
@@ -2514,7 +2672,7 @@ describe("The editor", function () {
         async () => (await symbolFiles()).includes("gate.ink.png"),
         { timeoutMsg: "Obsidian did not move the file" },
       );
-      await browser.pause(1500);
+      await waitForSaveEnd();
       expect(await storedDraft(id)).toMatchObject({
         path: "gate.ink.png",
         base: "kept",
@@ -2577,11 +2735,12 @@ describe("The editor", function () {
         await holdReadsWhileOff("gate.ink.png");
         await letGo();
         await clickTop("Just once");
-        await waitForLinkUpdate();
+        await waitForLinkInNote();
+        await waitForSaveEndOrRead();
         // As sync or another app would write it: three dots.
         await changeElsewhere("gate.ink.png");
         await letReadsGo();
-        await browser.pause(1000);
+        await waitForSaveEnd();
         expect(await strokeCount("gate.ink.png")).toBe(3);
         expect(await storedDraft(kept.id)).toMatchObject({
           path: "gate.ink.png",
@@ -2608,7 +2767,8 @@ describe("The editor", function () {
         await holdReadsWhileOff("gate.ink.png");
         await letGo();
         await clickTop("Just once");
-        await waitForLinkUpdate();
+        await waitForLinkInNote();
+        await waitForSaveEndOrRead();
         // Nothing has decided whether the file holds it.
         expect(await storedDraft(kept.id)).toMatchObject({
           path: "gate.ink.png",
@@ -2627,7 +2787,7 @@ describe("The editor", function () {
       await browser.keys(["Control", "Enter"]);
       await waitClosed();
       await letReadsGo();
-      await browser.pause(1000);
+      await waitForSaveEnd();
       expect(await keptDrafts()).toEqual([]);
       expect(await strokeCount("gate.ink.png")).toBe(1);
     });
@@ -2703,7 +2863,7 @@ describe("The editor", function () {
     expect(await symbolFiles()).toEqual(["001.ink.png"]);
   });
 
-  it("labels its controls and marks the current tool", async function () {
+  it("names each button with its text and shortcut, shows that on hover, and marks the current tool", async function () {
     await insert();
     const state = await browser.execute(() => {
       const button = (id: string): HTMLElement | null =>
@@ -2711,7 +2871,6 @@ describe("The editor", function () {
       return {
         pen: button("pen")?.getAttribute("aria-pressed"),
         eraser: button("eraser")?.getAttribute("aria-pressed"),
-        size: button("size-0")?.getAttribute("aria-label"),
         undo: button("undo")?.hasAttribute("disabled"),
         focused: document.activeElement?.classList.contains("inkline-surface"),
       };
@@ -2719,21 +2878,12 @@ describe("The editor", function () {
     expect(state).toEqual({
       pen: "true",
       eraser: "false",
-      size: "Brush size S (1)",
       undo: true,
       focused: true,
     });
-    await browser.keys(["e"]);
-    const eraser = browser.$('[data-inkline-button="eraser"]');
-    expect(await eraser.getAttribute("aria-pressed")).toBe("true");
-    await browser.keys(["Escape"]);
-    await waitClosed();
-  });
-
-  it("names each button with its text, and shows its shortcut on hover", async function () {
-    await insert();
     const buttons = await browser.execute(() =>
       [...document.querySelectorAll("[data-inkline-button]")].map((button) => ({
+        id: button.getAttribute("data-inkline-button") ?? "",
         text: button.textContent,
         name: button.getAttribute("aria-label") ?? "",
       })),
@@ -2742,39 +2892,52 @@ describe("The editor", function () {
     for (const { text, name } of buttons) {
       expect(name.toLowerCase()).toContain(text.toLowerCase());
     }
+    // A button's name is its tooltip, which Obsidian shows from it: with a
+    // description, a label of its own, or neither, and the shortcut after.
+    const names = Object.fromEntries(buttons.map(({ id, name }) => [id, name]));
+    expect(names).toMatchObject({
+      copy: "Copy from: start from a copy of another symbol (V)",
+      "size-0": "Brush size S (1)",
+      pen: "Pen (P)",
+      next: "Next: save and draw the next one (Mod+Shift+Enter)",
+      grid: "Grid: show a grid of dots as a guide; hold Shift while drawing to snap to it (Shift+G)",
+      fit: "Fit: centre the drawing in the view, and show all of it if it is wider; the drawing itself stays as it is (F)",
+    });
     const tooltip = async (id: string, text: string): Promise<void> => {
-      await browser.$(`[data-inkline-button="${id}"]`).moveTo();
+      const button = await browser
+        .$(`[data-inkline-button="${id}"]`)
+        .getElement();
+      let step = 0;
       await browser.waitUntil(
-        async () =>
-          (await browser.execute(
-            () => document.querySelector(".tooltip")?.textContent ?? "",
-          )) === text,
+        async () => {
+          // Obsidian shows a mouse no tooltip until it has seen it move twice
+          // (#270), so each look moves it again, within the button.
+          step++;
+          await browser
+            .action("pointer", { parameters: { pointerType: "mouse" } })
+            .move({ origin: button, x: step % 2 === 0 ? -2 : 2, y: 0 })
+            .perform();
+          return (
+            (await browser.execute(
+              () => document.querySelector(".tooltip")?.textContent ?? "",
+            )) === text
+          );
+        },
         { timeoutMsg: `no tooltip "${text}"` },
       );
       await surface().moveTo();
     };
-    // The first hover after the editor opens shows no tooltip, so start
-    // from the surface.
-    await surface().moveTo();
-    await browser.pause(500);
     await tooltip("copy", "Copy from: start from a copy of another symbol (V)");
     await tooltip("size-0", "Brush size S (1)");
-    await tooltip("pen", "Pen (P)");
-    await tooltip("next", "Next: save and draw the next one (Mod+Shift+Enter)");
-    await tooltip(
-      "grid",
-      "Grid: show a grid of dots as a guide; hold Shift while drawing to snap to it (Shift+G)",
-    );
-    await tooltip(
-      "fit",
-      "Fit: centre the drawing in the view, and show all of it if it is wider; the drawing itself stays as it is (F)",
-    );
     // Both save, so both look it.
     for (const id of ["save", "next"]) {
       expect(
         await browser.$(`[data-inkline-button="${id}"]`).getAttribute("class"),
       ).toContain("mod-cta");
     }
+    await browser.keys(["e"]);
+    const eraser = browser.$('[data-inkline-button="eraser"]');
+    expect(await eraser.getAttribute("aria-pressed")).toBe("true");
   });
 
   it("saves a stroke still being drawn when saving and closing", async function () {
@@ -2803,37 +2966,19 @@ describe("The editor", function () {
   });
 
   it("stays open when strokes are drawn while saving", async function () {
-    await browser.executeObsidian(({ app }) => {
-      const vault = app.vault as typeof app.vault & {
-        inklineCreateBinary?: typeof app.vault.createBinary;
-      };
-      const create = vault.createBinary.bind(vault);
-      vault.inklineCreateBinary = create;
-      vault.createBinary = async (path, data, options) => {
-        await new Promise((resolve) => window.setTimeout(resolve, 1500));
-        return create(path, data, options);
-      };
-    });
-    try {
-      await insert();
-      await draw(zigzag);
-      await browser.keys(["Control", "Enter"]);
-      await draw([
-        [0.3, 0.2],
-        [0.7, 0.2],
-      ]);
-      await waitForStatus("changed while saving");
-      expect(await editorOpen()).toBe(true);
-    } finally {
-      await browser.executeObsidian(({ app }) => {
-        const vault = app.vault as typeof app.vault & {
-          inklineCreateBinary?: typeof app.vault.createBinary;
-        };
-        if (vault.inklineCreateBinary !== undefined) {
-          vault.createBinary = vault.inklineCreateBinary;
-        }
-      });
-    }
+    await insert();
+    await draw(zigzag);
+    // The save waits to make the file until the stroke is drawn.
+    await hold("create");
+    await browser.keys(["Control", "Enter"]);
+    await waitForHeld();
+    await draw([
+      [0.3, 0.2],
+      [0.7, 0.2],
+    ]);
+    await letGo();
+    await waitForStatus("changed while saving");
+    expect(await editorOpen()).toBe(true);
     await browser.keys(["Control", "Enter"]);
     await waitClosed();
     const record = JSON.parse(await recordOf("001.ink.png")) as {
@@ -3049,7 +3194,7 @@ describe("The editor", function () {
     when: "before" | "after",
   ): Promise<void> {
     await browser.executeObsidian(
-      ({ app, obsidian }, name, first) => {
+      ({ app, obsidian }, name, when) => {
         const original: unknown = Reflect.get(app.vault, name);
         if (typeof original !== "function") throw new Error(`no ${name}`);
         const hold = { started: false, released: false, taken: false };
@@ -3071,13 +3216,13 @@ describe("The editor", function () {
               file instanceof obsidian.TFile &&
               file.path === "Editor.md";
             if (mine) hold.taken = true;
-            if (mine && first === "before") await wait();
+            if (mine && when === "before") await wait();
             const result: unknown = await Reflect.apply(
               original,
               app.vault,
               args,
             );
-            if (mine && first === "after") await wait();
+            if (mine && when === "after") await wait();
             return result;
           },
         );
@@ -3637,23 +3782,6 @@ describe("The editor", function () {
     expect(await symbolFiles()).toEqual(["001.ink.png"]);
   });
 
-  it("keeps a draft whose question was dismissed for next time", async function () {
-    await insert();
-    await draw(zigzag);
-    await obsidianPage.disablePlugin("inkline");
-    await obsidianPage.enablePlugin("inkline");
-    await loadModules();
-    await browser.executeObsidianCommand("inkline:insert-symbol");
-    await clickTop("Not now");
-    await browser.keys(["Escape"]);
-    await waitClosed();
-    await browser.executeObsidianCommand("inkline:insert-symbol");
-    await clickTop("Restore");
-    await browser.keys(["Control", "Enter"]);
-    await waitClosed();
-    expect(await symbolFiles()).toEqual(["001.ink.png"]);
-  });
-
   it("closes its questions when the plugin is disabled, keeping the draft", async function () {
     await insert();
     await draw(zigzag);
@@ -3669,64 +3797,53 @@ describe("The editor", function () {
 
   it("does not open an editor for a file read after the plugin was disabled", async function () {
     await saveOne();
+    // The editor's read of the file waits until Inkline is off.
+    await hold("readSymbol");
     await browser.executeObsidian(({ app, plugins }) => {
-      const vault = app.vault as typeof app.vault & {
-        inklineReadBinary?: typeof app.vault.readBinary;
-      };
-      const read = vault.readBinary.bind(vault);
-      vault.inklineReadBinary = read;
-      vault.readBinary = async (file) => {
-        await new Promise((resolve) => window.setTimeout(resolve, 1000));
-        return read(file);
-      };
       const file = app.vault.getFileByPath("001.ink.png");
       if (file === null) throw new Error("no file");
-      void plugins.inkline.editSymbol(file);
+      const opened = { done: false };
+      Reflect.set(window, "inklineOpened", opened);
+      void plugins.inkline.editSymbol(file).finally(() => {
+        opened.done = true;
+      });
     });
+    await waitForHeld();
     await obsidianPage.disablePlugin("inkline");
-    await browser.pause(1500);
+    await letGo();
+    // Whatever it decided, opening has ended.
+    await browser.waitUntil(async () =>
+      browser.execute(() => {
+        const opened: unknown = Reflect.get(window, "inklineOpened");
+        return (
+          typeof opened === "object" &&
+          opened !== null &&
+          Reflect.get(opened, "done") === true
+        );
+      }),
+    );
     expect(await editorOpen()).toBe(false);
-    await browser.executeObsidian(({ app }) => {
-      const vault = app.vault as typeof app.vault & {
-        inklineReadBinary?: typeof app.vault.readBinary;
-      };
-      if (vault.inklineReadBinary !== undefined)
-        vault.readBinary = vault.inklineReadBinary;
-    });
     await obsidianPage.enablePlugin("inkline");
   });
 
   it("does not let an old save's completion drop a newer editor's draft", async function () {
     await saveOne();
-    await browser.executeObsidian(({ app }) => {
-      const vault = app.vault as typeof app.vault & {
-        inklineModifyBinary?: typeof app.vault.modifyBinary;
-      };
-      const modify = vault.modifyBinary.bind(vault);
-      vault.inklineModifyBinary = modify;
-      vault.modifyBinary = async (file, data, options) => {
-        await modify(file, data, options);
-        await new Promise((resolve) => window.setTimeout(resolve, 2500));
-      };
-    });
     await editFile("001.ink.png");
     await draw([
       [0.5, 0.2],
       [0.5, 0.8],
     ]);
+    // The save writes the file, and ends only once a newer editor has
+    // taken its draft over and drawn.
+    await holdAfter("write");
     await browser.keys(["Control", "s"]);
+    await waitForHeld();
+    await followSave();
     await draw([
       [0.3, 0.2],
       [0.7, 0.2],
     ]);
     await obsidianPage.disablePlugin("inkline");
-    await browser.executeObsidian(({ app }) => {
-      const vault = app.vault as typeof app.vault & {
-        inklineModifyBinary?: typeof app.vault.modifyBinary;
-      };
-      if (vault.inklineModifyBinary !== undefined)
-        vault.modifyBinary = vault.inklineModifyBinary;
-    });
     await obsidianPage.enablePlugin("inkline");
     await loadModules();
     await editFile("001.ink.png");
@@ -3735,8 +3852,8 @@ describe("The editor", function () {
       [0.3, 0.8],
       [0.7, 0.8],
     ]);
-    // Let the old save finish.
-    await browser.pause(3000);
+    await letGo();
+    await waitForSaveEnd();
     expect(await draftCount()).toBe(1);
   });
 
@@ -3919,35 +4036,17 @@ describe("The editor", function () {
   });
 
   it("finishes a first save that disabling interrupted, with the file it made", async function () {
-    await browser.executeObsidian(({ app }) => {
-      const vault = app.vault as typeof app.vault & {
-        inklineCreateBinary?: typeof app.vault.createBinary;
-      };
-      const create = vault.createBinary.bind(vault);
-      vault.inklineCreateBinary = create;
-      vault.createBinary = async (path, data, options) => {
-        const file = await create(path, data, options);
-        await new Promise((resolve) => window.setTimeout(resolve, 2000));
-        return file;
-      };
-    });
-    try {
-      await insert();
-      await draw(zigzag);
-      await browser.keys(["Control", "s"]);
-      await browser.waitUntil(async () => (await symbolFiles()).length === 1);
-      await obsidianPage.disablePlugin("inkline");
-      // Let the old save finish.
-      await browser.pause(2500);
-    } finally {
-      await browser.executeObsidian(({ app }) => {
-        const vault = app.vault as typeof app.vault & {
-          inklineCreateBinary?: typeof app.vault.createBinary;
-        };
-        if (vault.inklineCreateBinary !== undefined)
-          vault.createBinary = vault.inklineCreateBinary;
-      });
-    }
+    await insert();
+    await draw(zigzag);
+    // The file is made, and the save goes on only once Inkline is off.
+    await holdAfter("create");
+    await browser.keys(["Control", "s"]);
+    await waitForHeld();
+    await browser.waitUntil(async () => (await symbolFiles()).length === 1);
+    await followSave();
+    await obsidianPage.disablePlugin("inkline");
+    await letGo();
+    await waitForSaveEnd();
     // Disabled, Inkline inserted nothing; the draft will.
     expect(await noteText()).toBe(
       "The door is marked with  which means return.\n",
@@ -4121,22 +4220,21 @@ describe("The editor", function () {
   });
 
   it("names the file a first save is making in the draft before making it", async function () {
-    await delayVault("createBinary", 2000);
-    try {
-      await insert();
-      await draw(zigzag);
-      await browser.keys(["Control", "s"]);
-      await browser.waitUntil(async () => (await symbolFiles()).length === 1);
-      const [draft] = await storedDrafts();
-      expect(draft?.target).toMatchObject({
-        kind: "new",
-        note: "Editor.md",
-        file: { path: "001.ink.png" },
-      });
-      await waitForStatus("Saved");
-    } finally {
-      await restoreVault();
-    }
+    await insert();
+    await draw(zigzag);
+    // The file is made, and the save has not ended.
+    await holdAfter("create");
+    await browser.keys(["Control", "s"]);
+    await waitForHeld();
+    await browser.waitUntil(async () => (await symbolFiles()).length === 1);
+    const [draft] = await storedDrafts();
+    expect(draft?.target).toMatchObject({
+      kind: "new",
+      note: "Editor.md",
+      file: { path: "001.ink.png" },
+    });
+    await letGo();
+    await waitForStatus("Saved");
   });
 
   it("drops a new symbol's draft that its file holds, once its first save ends after Inkline is disabled", async function () {
@@ -4147,15 +4245,19 @@ describe("The editor", function () {
       for (const leaf of app.workspace.getLeavesOfType("markdown"))
         leaf.detach();
     });
-    await delayVault("process", 2000);
+    // The embed is written, and the insertion goes on only once Inkline is
+    // off.
+    await holdAfter("link");
     try {
       await browser.keys(["Control", "s"]);
+      await waitForHeld();
       await browser.waitUntil(async () =>
         (await fileText("Editor.md")).includes("001.ink.png"),
       );
       await obsidianPage.disablePlugin("inkline");
       // Kept while the insertion is under way.
       expect(await draftCount()).toBe(1);
+      await letGo();
       // The old insertion finishes, and with it the save: the draft is kept
       // for the file, as the symbol is that file once its embed is in.
       await browser.waitUntil(
@@ -4176,7 +4278,7 @@ describe("The editor", function () {
         { target: { kind: "file", path: "001.ink.png" } },
       ]);
     } finally {
-      await restoreVault();
+      await letGo();
       await obsidianPage.enablePlugin("inkline");
       await loadModules();
     }
@@ -4208,28 +4310,19 @@ describe("The editor", function () {
     // The insertion edits the note's file and then fails, after Inkline is
     // disabled, as when it was cut short once the embed was written: the
     // draft, which names the file, is what finishes the save.
-    await browser.executeObsidian(({ app }) => {
-      const vault = app.vault as typeof app.vault & {
-        inklineProcess?: typeof app.vault.process;
-      };
-      const process = vault.process.bind(vault);
-      vault.inklineProcess = process;
-      vault.process = async (...args) => {
-        await process(...args);
-        await new Promise((resolve) => window.setTimeout(resolve, 2000));
-        throw new Error("the note's save was cut short");
-      };
-    });
+    await holdAfter("link");
     try {
       await browser.keys(["Control", "s"]);
+      await waitForHeld();
       await browser.waitUntil(async () =>
         (await fileText("Editor.md")).includes("001.ink.png"),
       );
+      await followSave();
       await obsidianPage.disablePlugin("inkline");
-      // Let the old insertion fail.
-      await browser.pause(2500);
+      await letGo("the note's save was cut short");
+      await waitForSaveEnd();
     } finally {
-      await unlockNotes();
+      await letGo();
       await obsidianPage.enablePlugin("inkline");
       await loadModules();
     }
@@ -4247,19 +4340,18 @@ describe("The editor", function () {
     await interruptInsertion();
     await browser.executeObsidianCommand("inkline:insert-symbol");
     await clickTop("Restore");
-    await delayVault("readBinary", 1500);
-    try {
-      await browser.keys(["Control", "Enter"]);
-      await browser.pause(300);
-      await browser.executeObsidian(async ({ app }) => {
-        const file = app.vault.getFileByPath("001.ink.png");
-        if (file === null) throw new Error("no 001.ink.png");
-        await app.vault.modifyBinary(file, new ArrayBuffer(10));
-      });
-      await waitClosed();
-    } finally {
-      await restoreVault();
-    }
+    // The save's read of the file it claims comes back once the file has
+    // changed, with what the file held before.
+    await holdAfter("readSymbol");
+    await browser.keys(["Control", "Enter"]);
+    await waitForHeld();
+    await browser.executeObsidian(async ({ app }) => {
+      const file = app.vault.getFileByPath("001.ink.png");
+      if (file === null) throw new Error("no 001.ink.png");
+      await app.vault.modifyBinary(file, new ArrayBuffer(10));
+    });
+    await letGo();
+    await waitClosed();
     expect(await symbolFiles()).toEqual(["001.ink.png", "002.ink.png"]);
     const size = await browser.executeObsidian(
       ({ app }) => app.vault.getFileByPath("001.ink.png")?.stat.size,
@@ -4302,23 +4394,23 @@ describe("The editor", function () {
         await createSquare();
         await editFile("square.ink.png");
         await browser.$('[data-inkline-button="clear"]').click();
-        await delayVault("modifyBinary", 2500, when);
-        try {
-          await browser.keys(["Control", "s"]);
-          await waitForStatus("Saving…");
-          await browser.keys(["Control", "z"]);
-          if (stroke) {
-            await draw([
-              [0.45, 0.8],
-              [0.55, 0.8],
-            ]);
-          }
-          await obsidianPage.disablePlugin("inkline");
-          // Let the old save finish: the file then holds the cleared drawing.
-          await browser.pause(3000);
-        } finally {
-          await restoreVault();
+        // Held until Inkline is off.
+        await hold("write", undefined, when);
+        await browser.keys(["Control", "s"]);
+        await waitForHeld();
+        await waitForStatus("Saving…");
+        await followSave();
+        await browser.keys(["Control", "z"]);
+        if (stroke) {
+          await draw([
+            [0.45, 0.8],
+            [0.55, 0.8],
+          ]);
         }
+        await obsidianPage.disablePlugin("inkline");
+        // The old save finishes: the file then holds the cleared drawing.
+        await letGo();
+        await waitForSaveEnd();
         expect(
           (JSON.parse(await recordOf("square.ink.png")) as { base?: unknown })
             .base,
@@ -4521,14 +4613,16 @@ describe("The editor", function () {
 
   it("does not offer a note's draft once the new symbol was saved meanwhile", async function () {
     await plantKeptDraft();
-    await delayDecoding(3000);
+    // The draft's base layer is decoded to offer it once the symbol is saved.
+    await holdDecoding();
     try {
       await insert();
+      await waitForHeldDecoding();
       await draw(zigzag);
       await browser.keys(["Control", "s"]);
       await waitForStatus("Saved");
-      // Let the decoding finish.
-      await browser.pause(3500);
+      await letDecodingGo();
+      await waitForDecoded();
       expect(await topButton("Restore")).toBeUndefined();
     } finally {
       await restoreDecoding();
@@ -4540,15 +4634,18 @@ describe("The editor", function () {
 
   it("does not offer a draft over the question before closing", async function () {
     await plantKeptDraft();
-    await delayDecoding(3000);
+    // The draft's base layer is decoded to offer it once the question is up.
+    await holdDecoding();
     try {
       await insert();
+      await waitForHeldDecoding();
       await draw(zigzag);
       await browser.keys(["Escape"]);
       await browser.waitUntil(
         async () => (await topButton("Keep drawing")) !== undefined,
       );
-      await browser.pause(3500);
+      await letDecodingGo();
+      await waitForDecoded();
       expect(await topButton("Restore")).toBeUndefined();
       expect(await topButton("Keep drawing")).toBeDefined();
     } finally {
@@ -4580,20 +4677,16 @@ describe("The editor", function () {
         [0.5, 0.8],
       ]);
       // The next write waits, and fails once Inkline is disabled.
-      await browser.executeObsidian(({ app }) => {
-        const original: unknown = Reflect.get(app.vault, "modifyBinary");
-        Reflect.set(app.vault, "inklineDelayed-modifyBinary", original);
-        Reflect.set(app.vault, "modifyBinary", async () => {
-          await new Promise((resolve) => window.setTimeout(resolve, 1500));
-          throw new Error("the disk is gone");
-        });
-      });
+      await hold("write");
       await browser.keys(["Control", "s"]);
+      await waitForHeld();
       await waitForStatus("Saving…");
+      await followSave();
       await obsidianPage.disablePlugin("inkline");
-      await browser.pause(2000);
+      await letGo("the disk is gone");
+      await waitForSaveEnd();
     } finally {
-      await restoreVault();
+      await letGo();
       await browser.executeObsidian(({ app }) => {
         const vault = app.vault as typeof app.vault & {
           inklineProcess?: typeof app.vault.process;
@@ -4656,6 +4749,8 @@ describe("The editor", function () {
     expect(xs[3]).toBeGreaterThan(xs[1] ?? Number.NaN);
   });
 
+  // guide-lines.e2e.ts checks each line's colour on its row; this checks that
+  // G leaves the surface with nothing drawn at all.
   it("draws the text font's guides, and shows or hides them with G", async function () {
     await insert();
     await settledSurface();
@@ -5034,54 +5129,8 @@ describe("The editor", function () {
     }
   });
 
-  it("shows a grid with Shift+G, which Shift snaps strokes' ends to", async function () {
-    await insert();
-    await settledSurface();
-    const grid = await editorGrid();
-    // A grid crossing away from every guide: about 2 em across, on the row
-    // a cell above the baseline.
-    const crossing = {
-      x: Math.round(256 / grid.spacing) * grid.spacing,
-      y: grid.rows[grid.rows.indexOf(lineBox.baseline) - 1] ?? 0,
-    };
-    const dots = () =>
-      browser.execute(({ x: across, y: down }) => {
-        const canvas = document.querySelector(
-          ".inkline-editor .inkline-surface",
-        );
-        if (!(canvas instanceof HTMLCanvasElement))
-          throw new Error("no surface");
-        const pixels = canvas
-          .getContext("2d")
-          ?.getImageData(0, 0, canvas.width, canvas.height);
-        const factor = canvas.width / 576;
-        const x = Math.round(across * factor);
-        const y = Math.round(down * factor);
-        return pixels?.data[(y * canvas.width + x) * 4 + 3] ?? 0;
-      }, crossing);
-    expect(await dots()).toBe(0);
-    await browser.keys(["Shift", "g"]);
-    await browser.waitUntil(async () => (await dots()) > 0);
-    expect(
-      await browser
-        .$('[data-inkline-button="grid"]')
-        .getAttribute("aria-pressed"),
-    ).toBe("true");
-    await drawHoldingShift([
-      [0.31, 0.27],
-      [0.52, 0.41],
-      [0.69, 0.73],
-    ]);
-    await browser.waitUntil(async () => (await storedDrafts()).length === 1);
-    const points = (await storedDrafts())[0]?.strokes[0]?.points ?? [];
-    // On the columns through 0, and on the rows, in units.
-    const spacing = Math.round(grid.spacing * unitsPerPixel);
-    const rows = grid.rows.map((row) => Math.round(row * unitsPerPixel));
-    for (const x of [points[0], points.at(-2)])
-      expect((x ?? 1) % spacing).toBe(0);
-    for (const y of [points[1], points.at(-1)]) expect(rows).toContain(y);
-  });
-
+  // Shift+G's dots, and strokes' ends snapped to them with Shift, are
+  // grid.e2e.ts's, shift-grid.e2e.ts's, and shortcuts.e2e.ts's.
   it("keeps a tap on the grid a dot, and the grid in place through a save", async function () {
     await insert();
     await settledSurface();
@@ -5175,7 +5224,9 @@ describe("The editor", function () {
     expect(column(tap)).not.toBe(column(restored[1]));
   });
 
-  it("clears with Delete, and fits the drawing in view with F", async function () {
+  // Clearing with Delete and Backspace is shortcuts.e2e.ts's, and Fit while
+  // zoomed in zoom.e2e.ts's.
+  it("fits the drawing in view with F", async function () {
     await insert();
     await draw([
       [0.05, 0.4],
@@ -5185,27 +5236,31 @@ describe("The editor", function () {
     const before = (await storedDrafts())[0]?.strokes[0]?.points ?? [];
     const centre = ((before[0] ?? 0) + (before.at(-2) ?? 0)) / 2 / 16;
     await browser.keys(["f"]);
-    // The drawing is now in the middle: a dot there lands near its centre.
-    await browser.pause(200);
+    // The surface shows the drawing in its middle now.
+    await browser.waitUntil(async () =>
+      browser.execute(() => {
+        const canvas = activeDocument.querySelector(
+          ".inkline-editor .inkline-surface",
+        );
+        if (canvas?.instanceOf(HTMLCanvasElement) !== true) {
+          throw new Error("no surface");
+        }
+        const y = Math.round(canvas.height / 2);
+        for (let x = canvas.width * 0.4; x < canvas.width * 0.6; x++) {
+          if (window.inklineTest.pictures.inkAt(canvas, Math.round(x), y).ink) {
+            return true;
+          }
+        }
+        return false;
+      }),
+    );
+    // A dot there lands near its centre.
     await draw([[0.5, 0.2]]);
     await browser.waitUntil(
       async () => (await storedDrafts())[0]?.strokes.length === 2,
     );
     const dot = (await storedDrafts())[0]?.strokes[1]?.points ?? [];
     expect(Math.abs((dot[0] ?? 0) / 16 - centre)).toBeLessThan(16);
-    await browser.keys(["Delete"]);
-    await browser.waitUntil(
-      async () => (await storedDrafts())[0]?.strokes.length === 0,
-    );
-    // Backspace, which a Mac's key labelled Delete sends, clears too.
-    await browser.keys(["Control", "z"]);
-    await browser.waitUntil(
-      async () => (await storedDrafts())[0]?.strokes.length === 2,
-    );
-    await browser.keys(["Backspace"]);
-    await browser.waitUntil(
-      async () => (await storedDrafts())[0]?.strokes.length === 0,
-    );
   });
 
   it("lets a text field have the keys it types", async function () {
@@ -5446,27 +5501,40 @@ describe("The editor", function () {
       await saveOne();
       await editFile("001.ink.png");
       await draw([[0.5, 0.2]]);
-      // The next read of the file comes back 3 s late, with what it read.
+      // The reads of the file that a report of it starts come back only once
+      // the save has written the drawing, with what they read before. Every
+      // read is counted.
       await browser.executeObsidian(({ app }) => {
-        Reflect.set(
-          app.vault,
-          "inklineDelayed-readBinary",
-          Reflect.get(app.vault, "readBinary"),
-        );
         const read = app.vault.readBinary.bind(app.vault);
-        let late = true;
+        const reads = { started: 0, held: 0, holding: true };
+        Reflect.set(window, "inklineReads", reads);
+        let go = (): void => undefined;
+        const gate = new Promise<void>((resolve) => {
+          go = resolve;
+        });
+        Reflect.set(window, "inklineLetOvertakenReadsGo", go);
         app.vault.readBinary = async (file) => {
+          reads.started++;
+          const late = reads.holding;
           const bytes = await read(file);
           if (late) {
-            late = false;
-            await new Promise((resolve) => window.setTimeout(resolve, 3000));
+            reads.held++;
+            await gate;
           }
           return bytes;
         };
       });
       try {
-        // A report of the file, unchanged, starts that read; the save then
-        // writes the drawing before it comes back.
+        const reads = () =>
+          browser.execute(
+            () =>
+              Reflect.get(window, "inklineReads") as {
+                started: number;
+                held: number;
+              },
+          );
+        // A report of the file, unchanged, starts the editor's read of it, and
+        // the index's; the save then writes the drawing before they come back.
         await browser.executeObsidian(async ({ app }) => {
           const file = app.vault.getFileByPath("001.ink.png");
           if (file === null) throw new Error("no file");
@@ -5475,19 +5543,72 @@ describe("The editor", function () {
             await app.vault.adapter.readBinary(file.path),
           );
         });
+        await browser.waitUntil(async () => {
+          const { started, held } = await reads();
+          return started > 0 && held === started;
+        });
+        await browser.execute(() => {
+          const state: unknown = Reflect.get(window, "inklineReads");
+          if (typeof state === "object" && state !== null) {
+            Reflect.set(state, "holding", false);
+          }
+        });
         await browser.keys(["Control", "s"]);
         await waitForStatus("Saved");
-        await browser.pause(3500);
+        // The editor takes the late read in, or sets it aside, and then looks
+        // at the file again, as the save that ran meanwhile has it do: it then
+        // fingerprints the file as the save left it, which nothing else does.
+        await browser.executeObsidian(async ({ app }) => {
+          const saved = new Uint8Array(
+            await app.vault.adapter.readBinary("001.ink.png"),
+          );
+          const looked = { again: false };
+          Reflect.set(window, "inklineLookedAgain", looked);
+          const digest = crypto.subtle.digest.bind(crypto.subtle);
+          crypto.subtle.digest = async (algorithm, data) => {
+            const bytes = ArrayBuffer.isView(data)
+              ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+              : new Uint8Array(data);
+            if (
+              bytes.length === saved.length &&
+              bytes.every((byte, at) => byte === saved[at])
+            ) {
+              looked.again = true;
+            }
+            return digest(algorithm, data);
+          };
+          const go: unknown = Reflect.get(window, "inklineLetOvertakenReadsGo");
+          if (typeof go === "function") Reflect.apply(go, undefined, []);
+        });
+        await browser.waitUntil(
+          async () =>
+            browser.execute(() => {
+              const looked: unknown = Reflect.get(window, "inklineLookedAgain");
+              return (
+                typeof looked === "object" &&
+                looked !== null &&
+                Reflect.get(looked, "again") === true
+              );
+            }),
+          { timeoutMsg: "the editor did not look at the file again" },
+        );
+        // The late read showed the file before the save: not a change.
+        expect(await browser.$(".inkline-status").getText()).toBe("Saved");
+        expect(await topButton("Keep mine")).toBeUndefined();
+        await draw([[0.6, 0.2]]);
+        await browser.waitUntil(
+          async () => (await storedDrafts())[0]?.strokes.length === 3,
+        );
       } finally {
-        await restoreVault();
+        await browser.executeObsidian(({ app }) => {
+          // Both replacements are the objects' own, over their prototypes'.
+          Reflect.deleteProperty(app.vault, "readBinary");
+          Reflect.deleteProperty(crypto.subtle, "digest");
+          const go: unknown = Reflect.get(window, "inklineLetOvertakenReadsGo");
+          Reflect.deleteProperty(window, "inklineLetOvertakenReadsGo");
+          if (typeof go === "function") Reflect.apply(go, undefined, []);
+        });
       }
-      // The late read showed the file before the save: not a change.
-      expect(await browser.$(".inkline-status").getText()).toBe("Saved");
-      expect(await topButton("Keep mine")).toBeUndefined();
-      await draw([[0.6, 0.2]]);
-      await browser.waitUntil(
-        async () => (await storedDrafts())[0]?.strokes.length === 3,
-      );
     });
 
     it("follows a new symbol's file when its first save could not insert it", async function () {
@@ -5517,17 +5638,9 @@ describe("The editor", function () {
     });
   });
   describe("keeping the text about a symbol", function () {
-    it("keeps it through an edit and a save", async function () {
-      await saveOne();
-      await changeElsewhere("001.ink.png", "vault", readings);
-      await editFile("001.ink.png");
-      await draw([[0.5, 0.2]]);
-      await browser.keys(["Control", "s"]);
-      await waitForStatus("Saved");
-      expect(await strokeCount("001.ink.png")).toBe(4);
-      expect(await textIn("001.ink.png")).toEqual([readings]);
-    });
-
+    // Through an edit and a save alone, symbol-text.e2e.ts keeps a file's
+    // readings and translations; this keeps its chunk byte for byte, through a
+    // draft as well.
     it("keeps it through a draft offered back", async function () {
       await saveOne();
       await changeElsewhere("001.ink.png", "vault", readings);
@@ -5557,18 +5670,8 @@ describe("The editor", function () {
       expect(await textIn("001.ink.png")).toEqual([readings]);
     });
 
-    it("keeps what a change added when the drawing is kept", async function () {
-      await saveOne();
-      await editFile("001.ink.png");
-      await draw([[0.5, 0.2]]);
-      await changeElsewhere("001.ink.png", "vault", readings);
-      await clickTop("Keep mine");
-      await browser.keys(["Control", "s"]);
-      await waitForStatus("Saved");
-      expect(await strokeCount("001.ink.png")).toBe(2);
-      expect(await textIn("001.ink.png")).toEqual([readings]);
-    });
-
+    // Keep mine, asked as the vault reports the change, is symbol-text.e2e.ts's;
+    // asked as a save finds it, it takes the same chunks the same way.
     it("keeps what a change added when a save found it", async function () {
       await saveOne();
       await editFile("001.ink.png");
@@ -5587,34 +5690,9 @@ describe("The editor", function () {
       expect(await textIn("001.ink.png")).toEqual([readings]);
     });
   });
+  // A run of three from Next, in order, is insertion.e2e.ts's, with the cursor
+  // after each.
   describe("drawing the next one", function () {
-    it("saves, inserts, and opens the next symbol right after it", async function () {
-      await insert();
-      await draw(zigzag);
-      await markEditor();
-      await browser.keys(["Control", "Shift", "Enter"]);
-      await waitForNext(1);
-      // A blank drawing: its first stroke is the draft's only one.
-      await draw([[0.5, 0.5]]);
-      await browser.waitUntil(
-        async () => (await storedDrafts())[0]?.strokes.length === 1,
-      );
-      await markEditor();
-      await browser.$('[data-inkline-button="next"]').click();
-      await waitForNext(2);
-      await draw([[0.4, 0.3]]);
-      await browser.keys(["Control", "Enter"]);
-      await waitClosed();
-      expect(await symbolFiles()).toEqual([
-        "001.ink.png",
-        "002.ink.png",
-        "003.ink.png",
-      ]);
-      expect(await noteText()).toBe(
-        "The door is marked with ![[001.ink.png]]![[002.ink.png]]![[003.ink.png]] which means return.\n",
-      );
-    });
-
     it("makes no empty symbol from clicks on Next that reach the next editor", async function () {
       await insert();
       await draw(zigzag);
@@ -5673,22 +5751,9 @@ describe("The editor", function () {
       );
     });
 
-    it("follows the symbol before even when the note's tab shows another", async function () {
-      await insert();
-      await draw(zigzag);
-      await markEditor();
-      await browser.keys(["Control", "Shift", "Enter"]);
-      await waitForNext(1);
-      // The next embed then goes into the note's file.
-      await showWelcomeInstead();
-      await draw([[0.5, 0.5]]);
-      await browser.keys(["Control", "Enter"]);
-      await waitClosed();
-      expect(await fileText("Editor.md")).toBe(
-        "The door is marked with ![[001.ink.png]]![[002.ink.png]] which means return.\n",
-      );
-    });
-
+    // After a symbol that went in through the note's editor, the next goes in
+    // through its file once no editor shows the note, as insertion.e2e.ts
+    // checks with the note in Reading view, the same way to the file.
     it("stays when the symbol could not be inserted, and goes on once it is", async function () {
       try {
         await browser.executeObsidian(({ app }) => {
@@ -5722,12 +5787,19 @@ describe("The editor", function () {
     it("opens one next editor however often Next is asked during its save", async function () {
       await insert();
       await draw(zigzag);
-      await delayVault("createBinary", 1500);
+      // The file is made, and the save ends only once Next is asked again.
+      await holdAfter("create");
       await markEditor();
       await browser.$('[data-inkline-button="next"]').click();
+      await waitForHeld();
       await browser.keys(["Control", "Shift", "Enter"]);
       await browser.keys(["Control", "Shift", "Enter"]);
+      await letGo();
       await waitForNext(1);
+      // Today, Next asked again goes no further than that save, which opens
+      // the next editor in the turn it ends; but a Next that started a save
+      // of its own would open another later, writing the same file, so only
+      // a while with no other editor shows that none opens.
       await browser.pause(2000);
       expect(await browser.$$(".inkline-editor").length).toBe(1);
     });
@@ -5873,11 +5945,13 @@ describe("The editor", function () {
       await writeSymbol("tower.ink.png", [800]);
       await insert();
       await draw(zigzag);
-      await delayVault("createBinary", 1500);
       // Save and close, then the choice, while the save still runs.
+      await holdAfter("create");
       await browser.keys(["Control", "Enter"]);
+      await waitForHeld();
       await browser.keys(["v"]);
       await browser.$(".prompt-input").waitForDisplayed();
+      await letGo();
       await waitClosed();
       await browser.$(".prompt").waitForExist({ reverse: true });
     });
@@ -6028,7 +6102,8 @@ describe("The editor", function () {
         async () =>
           (await browser.$$(".inkline-editor").getElements()).length === 2,
       );
-      await browser.pause(300);
+      // Both have drawn their first frame, which gives the top one the keys.
+      await waitForEditor();
       await pastePicture("red");
       await waitForPicture((box) => box !== undefined, "red", 1);
       await browser.pause(300);
@@ -6206,7 +6281,10 @@ describe("The editor", function () {
       ]);
       await browser.keys(["Control", "s"]);
       await waitForStatus("Saved");
-      await browser.pause(100);
+      // The save says so at once, and the surface shows its result on the
+      // next frame: until then it still shows the picture where it was. So
+      // after two frames, the picture is read once, as the save left it.
+      await waitForEditor();
       expect(near(await pictureShown(), placed, 1)).toBe(true);
       await markEditor();
       await browser.keys(["Control", "Shift", "Enter"]);
