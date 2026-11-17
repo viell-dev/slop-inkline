@@ -326,8 +326,8 @@ describe("The editor", function () {
     }
 
     // A note's own save falling due during Obsidian's question is
-    // insertion.e2e.ts's, through the same rename, which saves the open notes
-    // first for an existing symbol's editor as for a new symbol's.
+    // unsaved-text-renames.e2e.ts's, through the same rename, which saves the
+    // open notes first for an existing symbol's editor as for a new symbol's.
     it("refuses the rename if the note cannot be saved, and keeps the name to try", async function () {
       await editEmbedded();
       // Saves fail before the text is added, and until the file is read and

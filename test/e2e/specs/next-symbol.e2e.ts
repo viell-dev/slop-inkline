@@ -52,8 +52,8 @@ describe("The editor", function () {
       await loadModules();
     }
   });
-  // A run of three from Next, in order, is insertion.e2e.ts's, with the cursor
-  // after each.
+  // A run of three from Next, in order, is cursor-placement.e2e.ts's, with the
+  // cursor after each.
   describe("drawing the next one", function () {
     it("makes no empty symbol from clicks on Next that reach the next editor", async function () {
       await insert();
@@ -114,8 +114,9 @@ describe("The editor", function () {
     });
 
     // After a symbol that went in through the note's editor, the next goes in
-    // through its file once no editor shows the note, as insertion.e2e.ts
-    // checks with the note in Reading view, the same way to the file.
+    // through its file once no editor shows the note, as
+    // cursor-placement.e2e.ts checks with the note in Reading view, the same
+    // way to the file.
     it("stays when the symbol could not be inserted, and goes on once it is", async function () {
       try {
         await browser.executeObsidian(({ app }) => {

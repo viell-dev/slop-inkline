@@ -350,7 +350,10 @@ must keep released files readable and looking the same, as
   the library, or an existing symbol's editor, saves the open notes first, and
   is refused with nothing changed if one cannot be saved. A reload held past the
   editor's own save loses no text, and running out of time writes nothing
-  ([insertion.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/insertion.e2e.ts),
+  ([cursor-placement.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/cursor-placement.e2e.ts),
+  [table-cells.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/table-cells.e2e.ts),
+  [line-endings.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/line-endings.e2e.ts),
+  [unsaved-text-renames.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/unsaved-text-renames.e2e.ts),
   [library-renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-renaming.e2e.ts),
   [renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/renaming.e2e.ts),
   and
