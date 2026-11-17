@@ -183,8 +183,8 @@ async function imagesKept(): Promise<boolean[]> {
 
 /**
  * Waits for the editor's window to draw two more frames, and to run a task
- * after them: the editor lets a picture go on the frame that draws without it,
- * as its view holds the last one it drew until then.
+ * after them, so that what the editor leaves for its next frame after a
+ * change is done.
  */
 async function afterFrames(): Promise<void> {
   await browser.execute(async () => {
@@ -200,19 +200,26 @@ async function afterFrames(): Promise<void> {
 
 /**
  * That the images recorded are kept, or not, as `expected` says, in the order
- * they were decoded. Right after a change, the editor can still hold a picture
- * it is letting go until its next frame (#266), so this waits for each that
- * should be gone to go, collecting garbage on each look, and a leak fails by
- * the time limit. A picture still there at the first look proves nothing for
- * one that should be kept, so the editor draws its frames first, and then
- * they are all checked once more.
+ * they were decoded. A picture that should have gone was once found still kept
+ * straight after a change (#266). What held it is not established: by a
+ * reading of the editor, nothing of its own does by then. So this waits for
+ * each that should be gone to go, collecting garbage on each look, and a leak
+ * fails by the time limit; and it says so when one look was not enough, so
+ * that a recurrence leaves what was kept and for how long. A picture still
+ * there at the first look proves nothing for one that should be kept, so the
+ * editor draws its frames first, and then they are all checked once more.
  */
 async function expectKept(expected: readonly boolean[]): Promise<void> {
   let kept: boolean[] | undefined;
+  let first: boolean[] | undefined;
+  let looks = 0;
+  const started = performance.now();
   await browser
     .waitUntil(
       async () => {
         kept = await imagesKept();
+        first ??= kept;
+        looks++;
         return JSON.stringify(kept) === JSON.stringify(expected);
       },
       {
@@ -224,6 +231,11 @@ async function expectKept(expected: readonly boolean[]): Promise<void> {
       if (kept !== undefined) expect(kept).toEqual(expected);
       throw error;
     });
+  if (looks > 1) {
+    console.log(
+      `The images kept were ${JSON.stringify(first)} at first and ${JSON.stringify(expected)} after ${String(looks)} looks, ${(performance.now() - started).toFixed(0)} ms (#266)`,
+    );
+  }
   await afterFrames();
   expect(await imagesKept()).toEqual(expected);
 }
@@ -250,8 +262,8 @@ async function waitForDecoded(count: number): Promise<void> {
 
 /**
  * The most the test of decoded pictures may take, in ms, which is more than
- * Mocha's usual minute. In Docker on Windows 11, beside other jobs, it took 52
- * to 97 s on both Obsidian versions, 82 to 87 s of it the taps that WebDriver
+ * Mocha's usual minute. In Docker on Windows 11, beside other jobs, it took up
+ * to 97 s on both Obsidian versions, most of it the taps that WebDriver
  * sends; in CI, its whole spec took under 30 s.
  */
 const memoryLimit = 240_000;

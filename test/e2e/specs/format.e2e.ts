@@ -173,8 +173,8 @@ describe("The file format in Obsidian's renderer", function () {
         tolerance.levels,
       );
       const { read, ...measured } = result;
-      expect(read).toBe(expected);
       console.log(`${name} against its pixels`, JSON.stringify(measured));
+      expect(read).toBe(expected);
       if (name === "v1-base-reduced") expect(result.worst).toBe(0);
       const { share, worst } = name === "v1-base" ? baseTolerance : tolerance;
       expect(result.ink).toBeGreaterThan(100);

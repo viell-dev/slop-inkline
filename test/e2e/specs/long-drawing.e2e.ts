@@ -30,8 +30,7 @@ const steps = 80;
  * The most one sequence may take, in ms, as long as the script limit that its
  * one call has. On Obsidian 1.13.4, the slower version, in Docker on Windows 11
  * beside other jobs, the eight took 12 to 69 s each, 294 s together, against
- * the 300 s they once shared. CI ran the whole spec in about 85 s, about 3.6
- * times as fast, which puts the slowest at about 19 s there.
+ * the 300 s they once shared. In CI the slowest took 17.8 s.
  */
 const sequenceLimit = 120_000;
 
@@ -58,89 +57,89 @@ describe("A long drawing", function () {
     await browser.setTimeout({ script: sequenceLimit });
   });
 
-  describe("always has the ends and pixels of a full measurement, through every way of changing it", function () {
-    // Each sequence is a test of its own, with its own limit, so that a
-    // failure names its seed, and the runs it passed are what the last test
-    // adds up.
-    const reports: SequenceReport[] = [];
+  // Each sequence is a test of its own, with its own limit, so that a
+  // failure names its seed, and the runs it passed are what the test after
+  // them adds up. They are this suite's first tests, not a suite inside it,
+  // which Mocha would run after the tests below: the measurements those make
+  // come after the sequences, as they always have.
+  const reports: SequenceReport[] = [];
 
-    for (const { seed, reach, ratio, straddles } of runs) {
-      it(`in the sequence of seed ${String(seed)}, ${String(reach)} px across at ${String(ratio)}x, ${String(straddles)} strokes across a tile's edge`, async function () {
-        this.timeout(sequenceLimit);
-        const started = performance.now();
-        const report = await browser.execute(
-          (seed, steps, reach, ratio, straddles) =>
-            window.inklineTest.longDrawing.runSequence(
-              seed,
-              steps,
-              reach,
-              ratio,
-              straddles,
-            ),
-          seed,
-          steps,
-          reach,
-          ratio,
-          straddles,
-        );
-        console.log(
-          `Seed ${String(seed)}: ${String(report.frames)} frames compared in ${((performance.now() - started) / 1000).toFixed(1)} s`,
-        );
-        expect(report.mismatch).toBeUndefined();
-        reports.push(report);
-      });
-    }
-
-    it("between them, makes every change, and adds both kinds of stroke to the frame before", function () {
-      // Only a sequence that passed counts, so a failed one fails this too.
-      expect(reports.length).toBe(runs.length);
-      const totals = new Map<string, number>();
-      let frames = 0;
-      let addedPen = 0;
-      let addedEraser = 0;
-      let saves = 0;
-      let savesAPixelOff = 0;
-      let refused = 0;
-      for (const report of reports) {
-        for (const [name, times] of Object.entries(report.operations)) {
-          totals.set(name, (totals.get(name) ?? 0) + times);
-        }
-        frames += report.frames;
-        addedPen += report.addedPen;
-        addedEraser += report.addedEraser;
-        saves += report.saves;
-        savesAPixelOff += report.savesAPixelOff;
-        refused += report.refused;
-      }
-      console.log(
-        `${String(frames)} frames compared, ${String(addedPen)} adding a pen stroke and ${String(addedEraser)} an eraser's, ${String(saves)} saves, ${String(savesAPixelOff)} a pixel off, ${String(refused)} refused as too wide: ${JSON.stringify(Object.fromEntries(totals))}`,
+  for (const { seed, reach, ratio, straddles } of runs) {
+    it(`always has the ends and pixels of a full measurement, through every way of changing it: seed ${String(seed)}, ${String(reach)} px across at ${String(ratio)}x, ${String(straddles)} strokes across a tile's edge`, async function () {
+      this.timeout(sequenceLimit);
+      const started = performance.now();
+      const report = await browser.execute(
+        (seed, steps, reach, ratio, straddles) =>
+          window.inklineTest.longDrawing.runSequence(
+            seed,
+            steps,
+            reach,
+            ratio,
+            straddles,
+          ),
+        seed,
+        steps,
+        reach,
+        ratio,
+        straddles,
       );
-      // The runs do what they are for: every operation, and both kinds of
-      // stroke added to the frame before, which is what the view shortens.
-      expect([...totals.keys()].sort()).toEqual([
-        "across",
-        "add a base layer",
-        "clear",
-        "drop the base layer",
-        "ellipse",
-        "far dot",
-        "fit",
-        "freehand",
-        "move",
-        "pan",
-        "polygon",
-        "redo",
-        "restore",
-        "save",
-        "straddle",
-        "undo",
-        "zoom",
-      ]);
-      expect(addedPen).toBeGreaterThan(50);
-      expect(addedEraser).toBeGreaterThan(20);
-      // A save a pixel from a full measurement is the rare exception (#159).
-      expect(savesAPixelOff).toBeLessThan(saves / 20);
+      console.log(
+        `Seed ${String(seed)}: ${String(report.frames)} frames compared in ${((performance.now() - started) / 1000).toFixed(1)} s`,
+      );
+      expect(report.mismatch).toBeUndefined();
+      reports.push(report);
     });
+  }
+
+  it("makes every change in those sequences, between them, and adds both kinds of stroke to the frame before", function () {
+    // Only a sequence that passed counts, so a failed one fails this too.
+    expect(reports.length).toBe(runs.length);
+    const totals = new Map<string, number>();
+    let frames = 0;
+    let addedPen = 0;
+    let addedEraser = 0;
+    let saves = 0;
+    let savesAPixelOff = 0;
+    let refused = 0;
+    for (const report of reports) {
+      for (const [name, times] of Object.entries(report.operations)) {
+        totals.set(name, (totals.get(name) ?? 0) + times);
+      }
+      frames += report.frames;
+      addedPen += report.addedPen;
+      addedEraser += report.addedEraser;
+      saves += report.saves;
+      savesAPixelOff += report.savesAPixelOff;
+      refused += report.refused;
+    }
+    console.log(
+      `${String(frames)} frames compared, ${String(addedPen)} adding a pen stroke and ${String(addedEraser)} an eraser's, ${String(saves)} saves, ${String(savesAPixelOff)} a pixel off, ${String(refused)} refused as too wide: ${JSON.stringify(Object.fromEntries(totals))}`,
+    );
+    // The runs do what they are for: every operation, and both kinds of
+    // stroke added to the frame before, which is what the view shortens.
+    expect([...totals.keys()].sort()).toEqual([
+      "across",
+      "add a base layer",
+      "clear",
+      "drop the base layer",
+      "ellipse",
+      "far dot",
+      "fit",
+      "freehand",
+      "move",
+      "pan",
+      "polygon",
+      "redo",
+      "restore",
+      "save",
+      "straddle",
+      "undo",
+      "zoom",
+    ]);
+    expect(addedPen).toBeGreaterThan(50);
+    expect(addedEraser).toBeGreaterThan(20);
+    // A save a pixel from a full measurement is the rare exception (#159).
+    expect(savesAPixelOff).toBeLessThan(saves / 20);
   });
 
   it("measures an added stroke as a full measurement does, across a tile's edge", async function () {

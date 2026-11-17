@@ -251,6 +251,7 @@ describe("Saved symbol refresh", function () {
           );
         },
         {
+          timeout: 5000,
           timeoutMsg:
             "existing instances retained the old image width after saving",
         },

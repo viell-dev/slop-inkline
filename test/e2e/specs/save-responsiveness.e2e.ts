@@ -153,10 +153,13 @@ describe("Saving a large symbol", function () {
         Math.min(...runs.map(each));
       // Work done all in one go would have one frame as long as nearly all of
       // the save, however fast the machine is; in slices, each frame is a
-      // small part of it.
-      for (const run of runs) {
-        expect(run.totalMs).toBeGreaterThan(2 * run.thread.longestFrameMs);
-      }
+      // small part of it. The shortest of the three of each, as for the
+      // budgets below and as open-responsiveness.e2e.ts asks of an open: one
+      // frame that something else held up, in one save, says nothing of the
+      // slicing, and on a fast machine it need not be long to be half a save.
+      expect(shortest((run) => run.totalMs)).toBeGreaterThan(
+        2 * shortest((run) => run.thread.longestFrameMs),
+      );
       // No frames would look like no long ones. A few are enough to show the
       // count works, and no more can be asked of a fast machine's short save.
       expect(shortest((run) => run.thread.frames)).toBeGreaterThan(2);
