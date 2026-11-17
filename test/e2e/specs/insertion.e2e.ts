@@ -1315,7 +1315,14 @@ describe("A rename while the note holds unsaved text", function () {
   // embed, and writing it there too would double it. The editor's blur as a
   // modal closes saves the note, which a reload under way would then undo.
   describe("when Obsidian is slow to reload the note", function () {
-    async function askAndHold(keys: string[]): Promise<void> {
+    /**
+     * Renames the symbol, and adds text during Obsidian's question, with the
+     * reload held; runs `meanwhile` just before the answer.
+     */
+    async function askAndHold(
+      keys: string[],
+      meanwhile?: () => Promise<void>,
+    ): Promise<void> {
       await insertAndWait();
       await markEditor();
       await slowReload("Editor.md", 300);
@@ -1325,6 +1332,7 @@ describe("A rename while the note holds unsaved text", function () {
         async () => (await topButton("Just once")) !== undefined,
       );
       await addBoth("Editor.md");
+      await meanwhile?.();
       await clickTop("Just once");
     }
 
@@ -1339,20 +1347,44 @@ describe("A rename while the note holds unsaved text", function () {
     });
 
     it("writes the embed itself once a save undid Obsidian's", async function () {
-      await browser.executeObsidian(({ app, obsidian }) => {
-        const saves = app.vault.on("modify", (file) => {
-          if (file.path !== "Editor.md") return;
-          app.vault.offref(saves);
-          for (const { view } of app.workspace.getLeavesOfType("markdown")) {
-            if (view instanceof obsidian.MarkdownView) void view.save();
-          }
+      // At Obsidian's own write after the answer, every editor saves what it
+      // holds, which still has the old embed.
+      const saveAtNextWrite = async (): Promise<void> => {
+        await browser.executeObsidian(({ app, obsidian }) => {
+          Reflect.set(window, "inklineSavedOnModify", false);
+          const saves = app.vault.on("modify", (file) => {
+            if (file.path !== "Editor.md") return;
+            app.vault.offref(saves);
+            Reflect.set(window, "inklineSavedOnModify", true);
+            for (const { view } of app.workspace.getLeavesOfType("markdown")) {
+              if (view instanceof obsidian.MarkdownView) void view.save();
+            }
+          });
+          Reflect.set(window, "inklineStopSaveOnModify", () => {
+            app.vault.offref(saves);
+          });
         });
-      });
-      await askAndHold(["Control", "Enter"]);
-      await waitClosed();
-      await waitForNote(withText(renamed));
-      await waitForFile("Editor.md", withText(renamed));
-      expect(await marked("Editor.md")).toEqual([withText(`${renamed}|`)]);
+      };
+      try {
+        await askAndHold(["Control", "Enter"], saveAtNextWrite);
+        await waitClosed();
+        await waitForNote(withText(renamed));
+        await waitForFile("Editor.md", withText(renamed));
+        expect(await marked("Editor.md")).toEqual([withText(`${renamed}|`)]);
+        expect(
+          await browser.execute(
+            () => Reflect.get(window, "inklineSavedOnModify") === true,
+          ),
+        ).toBe(true);
+      } finally {
+        // Gone already if it saved, and taken away here if it never did.
+        await browser.execute(() => {
+          const stop: unknown = Reflect.get(window, "inklineStopSaveOnModify");
+          Reflect.deleteProperty(window, "inklineStopSaveOnModify");
+          Reflect.deleteProperty(window, "inklineSavedOnModify");
+          if (typeof stop === "function") Reflect.apply(stop, undefined, []);
+        });
+      }
     });
 
     // A save that starts once the reload has read the file has it take that
