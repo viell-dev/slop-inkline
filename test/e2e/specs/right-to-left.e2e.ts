@@ -85,18 +85,21 @@ interface Box {
 
 /**
  * Switches Obsidian's interface to `language`, which takes a restart, as
- * choosing it in Obsidian's settings does.
+ * choosing it in Obsidian's settings does, unless it is the language already.
  */
 async function useLanguage(language: "en" | "he"): Promise<void> {
-  await browser.execute((wanted) => {
+  const changed = await browser.execute((wanted) => {
     // Obsidian keeps the interface's language for the whole app, under this
     // key of its own in the window's storage: a vault's storage, which
-    // plugins use for their own data, holds its keys apart from it.
+    // plugins use for their own data, holds its keys apart from it. Without
+    // it, the interface is in English.
     const stored = window.localStorage;
+    if ((stored.getItem("language") ?? "en") === wanted) return false;
     if (wanted === "en") stored.removeItem("language");
     else stored.setItem("language", wanted);
+    return true;
   }, language);
-  await browser.reloadObsidian();
+  if (changed) await browser.reloadObsidian();
   await loadModules();
   const rtl = await browser.execute(() =>
     document.body.classList.contains("mod-rtl"),
@@ -344,16 +347,21 @@ for (const language of ["en", "he"] as const) {
     });
 
     for (const list of lists) {
-      for (const stored of [false, true]) {
-        const colour = stored ? "stored colour" : "the text colour";
-        it(`starts a picture at its column's start in ${list.name}, in ${colour}`, async function () {
+      it(`starts a picture at its column's start in ${list.name}, in the text colour and its stored colour`, async function () {
+        await list.open();
+        await waitForRows(list.rows);
+        // The stored colour is a class on the window's root, which only the
+        // style answers to, so the list open in the text colour shows it too.
+        for (const stored of [false, true]) {
           if (stored) {
-            await browser.execute(() => {
+            await browser.execute(async () => {
               document.documentElement.addClass("inkline-stored-color");
+              // Drawn so, for the screenshot of the picture.
+              await new Promise((resolve) => {
+                requestAnimationFrame(() => requestAnimationFrame(resolve));
+              });
             });
           }
-          await list.open();
-          await waitForRows(list.rows);
           const row = await placed(list.rows);
           await saveScreenshot(
             `${language}-${list.name.replace(/\W+/g, "-")}-${stored ? "stored" : "text"}`,
@@ -368,8 +376,8 @@ for (const language of ["en", "he"] as const) {
             expect(row.pictureRight).toBeLessThan(row.nameLeft);
             expect(row.inkRight).toBeLessThan(0.5);
           }
-        });
-      }
+        }
+      });
     }
 
     it("keeps the editor's English in order, where its layout puts it", async function () {

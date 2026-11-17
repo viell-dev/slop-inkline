@@ -1,8 +1,9 @@
 // The library's rows and Quick edit in real Obsidian: the list's name, which
 // shows no tooltip, and one Save of a symbol's name, readings, and
-// translations, of each alone, of nothing, a cancel, and one part failing.
-// library-look.e2e.ts has how the rows look. Every symbol and note is
-// synthetic.
+// translations, of nothing, a cancel, and one part failing. A new name alone is
+// in library-renaming.e2e.ts, and readings and translations alone in
+// symbol-text.e2e.ts. library-look.e2e.ts has how the rows look. Every symbol
+// and note is synthetic.
 
 import { browser, expect } from "@wdio/globals";
 import { stalledAfter } from "../../../src/notes/file-writes.ts";
@@ -17,20 +18,13 @@ import {
   waitForHeld,
   waitForNotice,
 } from "../support/editor.ts";
+import { boxOf, pointAt, warmUpPointer } from "../support/hover.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 
 /** Fields to give a symbol. */
 interface Fields {
   readonly reading?: readonly string[];
   readonly translation?: readonly string[];
-}
-
-/** An element's edges, in pixels. */
-interface Box {
-  left: number;
-  right: number;
-  top: number;
-  bottom: number;
 }
 
 /** A symbol at `file` that says `fields` about itself. */
@@ -149,16 +143,16 @@ function rowButton(
 }
 
 /**
- * The ways to leave gate's Quick edit while its save waits, as a person
- * would: Cancel, and the row's own Quick edit, by click or by Esc.
+ * Two of the ways to leave gate's Quick edit while its save waits, as a
+ * person would: Cancel, and Esc on the row's own Quick edit. The third, a
+ * click on that button, has a test of its own. Each calls the row's one way
+ * of leaving, whichever step of the save waits, and that step alone decides
+ * what is said, which quick-edit.test.ts checks for each step; so the tests
+ * share the ways out between the two steps.
  */
-const leavers = [
-  ["Cancel", async () => formButton("Cancel").click()],
-  [
-    "the row's Quick edit",
-    async () => rowButton("gate.ink.png", "edit").click(),
-  ],
-  [
+const leavers = {
+  cancel: ["Cancel", async () => formButton("Cancel").click()],
+  escape: [
     "Esc on the row's Quick edit",
     async () => {
       await browser.execute(
@@ -174,7 +168,7 @@ const leavers = [
       await browser.keys(["Escape"]);
     },
   ],
-] as const;
+} as const;
 
 /**
  * Waits past the double-click time, a few hundred milliseconds, so that the
@@ -488,58 +482,6 @@ async function listWidths(): Promise<{ client: number; scroll: number }> {
 }
 
 /**
- * Moves the pointer to `x`, `y` in the window, as a person's mouse would, and
- * returns the classes of what the page heard the pointer move over there, so
- * that a check of what shows there knows the pointer reached it.
- */
-async function pointAt(x: number, y: number): Promise<string> {
-  await browser.execute(() => {
-    Reflect.deleteProperty(window, "inklinePointer");
-    document.addEventListener(
-      "mousemove",
-      ({ target }) => {
-        Reflect.set(
-          window,
-          "inklinePointer",
-          target instanceof HTMLElement ? target.className : "",
-        );
-      },
-      { capture: true, once: true },
-    );
-  });
-  await browser
-    .action("pointer")
-    .move({ origin: "viewport", x: Math.round(x), y: Math.round(y) })
-    .perform();
-  return browser.execute(() => String(Reflect.get(window, "inklinePointer")));
-}
-
-/**
- * Moves the mouse a little in an empty part of the window, as a person has
- * before they rest it anywhere. Obsidian, 1.13 and 1.15 alike, counts the
- * mouse's moves so as to tell it from a touch, and shows no tooltip for a
- * pointer it has seen move fewer than twice.
- */
-async function warmUpPointer(): Promise<void> {
-  const pane = await boxOf(".workspace-split.mod-root");
-  for (const step of [0, 1, 2]) {
-    expect(
-      await pointAt(pane.left + 40 + 10 * step, pane.bottom - 40),
-    ).not.toContain("inkline");
-  }
-}
-
-/** The box of the first element `selector` finds. */
-async function boxOf(selector: string): Promise<Box> {
-  return browser.execute((wanted) => {
-    const found = document.querySelector(wanted);
-    if (found === null) throw new Error(`no ${wanted}`);
-    const { left, right, top, bottom } = found.getBoundingClientRect();
-    return { left, right, top, bottom };
-  }, selector);
-}
-
-/**
  * Has the page note every tooltip Obsidian shows from now on, however brief,
  * for {@link tooltipsSeen}.
  */
@@ -769,49 +711,9 @@ describe("Quick edit in the library", function () {
     }
   });
 
-  it("saves a new name alone, with links following, and leaves the file's bytes", async function () {
-    await symbolWith("gate.ink.png", { reading: ["TA"] });
-    await noteUsing("Uses.md", "gate.ink.png");
-    const before = await bytesOf("gate.ink.png");
-    await showLibrary();
-    await quickEdit("gate.ink.png");
-    await nameField().setValue("arch");
-    await browser.keys(["Enter"]);
-    await waitForClosed();
-    expect(await symbolFiles()).toEqual(["arch.ink.png"]);
-    expect(await bytesOf("arch.ink.png")).toBe(before);
-    await browser.waitUntil(async () =>
-      ((await noteOf("Uses.md"))?.text ?? "").includes("![[arch.ink.png]]"),
-    );
-    await browser.waitUntil(
-      async () => (await focused()).path === "arch.ink.png",
-    );
-    expect((await focused()).role).toBe("edit");
-  });
-
-  it("saves readings and translations alone, and leaves the name and the notes", async function () {
-    await symbolWith("gate.ink.png", { reading: ["TA"] });
-    await noteUsing("Uses.md", "gate.ink.png");
-    const note = await noteOf("Uses.md");
-    await showLibrary();
-    await quickEdit("gate.ink.png");
-    await area("reading").setValue("KA\nGA");
-    await area("translation").setValue("door");
-    await formButton("Save").click();
-    await waitForClosed();
-    expect(await symbolFiles()).toEqual(["gate.ink.png"]);
-    expect(await fieldsOf("gate.ink.png")).toEqual({
-      reading: ["KA", "GA"],
-      translation: ["door"],
-    });
-    await waitForValues("gate.ink.png", "Readings: KA, GA");
-    expect(await noteOf("Uses.md")).toEqual(note);
-    expect(await focused()).toMatchObject({
-      role: "edit",
-      path: "gate.ink.png",
-    });
-  });
-
+  // A new name alone is library-renaming.e2e.ts's first two tests, and the
+  // readings and translations alone symbol-text.e2e.ts's "changes only the
+  // text chunks, and no note": the same Save, through the same steps.
   it("saves a name, readings and translations with one Save", async function () {
     await symbolWith("gate.ink.png", {
       reading: ["TA"],
@@ -861,14 +763,14 @@ describe("Quick edit in the library", function () {
     expect(await writesSince()).toBe(0);
   });
 
-  for (const [how, leave] of [
-    ["Cancel", async () => formButton("Cancel").click()],
-    ["Esc", async () => browser.keys(["Escape"])],
-  ] as const) {
-    it(`leaves everything as it was with ${how}`, async function () {
-      await symbolWith("gate.ink.png", { reading: ["TA"] });
-      const before = await bytesOf("gate.ink.png");
-      await showLibrary();
+  it("leaves everything as it was with Cancel, and with Esc", async function () {
+    await symbolWith("gate.ink.png", { reading: ["TA"] });
+    const before = await bytesOf("gate.ink.png");
+    await showLibrary();
+    for (const leave of [
+      async () => formButton("Cancel").click(),
+      async () => browser.keys(["Escape"]),
+    ]) {
       await quickEdit("gate.ink.png");
       await nameField().setValue("arch");
       await area("reading").setValue("KA");
@@ -880,8 +782,8 @@ describe("Quick edit in the library", function () {
         role: "edit",
         path: "gate.ink.png",
       });
-    });
-  }
+    }
+  });
 
   it("heads the form with the row's buttons, whose Quick edit closes it as Cancel does", async function () {
     await symbolWith("gate.ink.png", {
@@ -1211,7 +1113,7 @@ describe("Quick edit in the library", function () {
     expect((await fieldsOf("arch.ink.png")).reading).toEqual(["KA"]);
   });
 
-  for (const [how, leave] of leavers) {
+  for (const [how, leave] of [leavers.cancel, leavers.escape]) {
     it(`does not rename once left with ${how} while its readings wait to be written`, async function () {
       await symbolWith("gate.ink.png", { reading: ["TA"] });
       await showLibrary();
@@ -1245,26 +1147,6 @@ describe("Quick edit in the library", function () {
     });
   }
 
-  it("follows a rename made elsewhere when the name is untouched, and keeps it", async function () {
-    await symbolWith("gate.ink.png", { reading: ["TA"] });
-    await showLibrary();
-    await quickEdit("gate.ink.png");
-    // Renamed as sync would, without Inkline.
-    await browser.executeObsidian(async ({ app }) => {
-      const file = app.vault.getFileByPath("gate.ink.png");
-      if (file === null) throw new Error("no gate");
-      await app.vault.rename(file, "arch.ink.png");
-    });
-    await browser.waitUntil(
-      async () => (await nameField().getValue()) === "arch",
-    );
-    await area("reading").setValue("KA");
-    await formButton("Save").click();
-    await waitForClosed();
-    expect(await symbolFiles()).toEqual(["arch.ink.png"]);
-    expect((await fieldsOf("arch.ink.png")).reading).toEqual(["KA"]);
-  });
-
   it("refuses a rename once the symbol is renamed elsewhere while its readings are written", async function () {
     await symbolWith("gate.ink.png", { reading: ["TA"] });
     await showLibrary();
@@ -1294,32 +1176,30 @@ describe("Quick edit in the library", function () {
     expect((await fieldsOf("arch.ink.png")).reading).toEqual(["KA"]);
   });
 
-  for (const [how, leave] of leavers) {
-    it(`says the readings are saved when the rename after them is left with ${how}`, async function () {
-      await symbolWith("gate.ink.png", { reading: ["TA"] });
-      await noteUsing("Uses.md", "gate.ink.png");
-      await openNote("Uses.md");
-      await showLibrary();
-      await quickEdit("gate.ink.png");
-      await nameField().setValue("arch");
-      await area("reading").setValue("KA");
-      // The rename reads the open note to see whether it has text to save.
-      await hold("read");
-      await formButton("Save").click();
-      await waitForHeld();
-      const said = await waitForWait();
-      expect(said).toContain("Waiting for Obsidian to finish renaming a file.");
-      expect(said).toContain("The readings and translations are saved.");
-      expect(await rowButton("gate.ink.png", "edit").isEnabled()).toBe(true);
-      await leave();
-      await waitForClosed();
-      await waitForNotice("Saved gate. It was not renamed.");
-      await letGo();
-      await browser.pause(500);
-      expect(await symbolFiles()).toEqual(["gate.ink.png"]);
-      expect((await fieldsOf("gate.ink.png")).reading).toEqual(["KA"]);
-    });
-  }
+  it("says the readings are saved when the rename after them is left with the row's Quick edit", async function () {
+    await symbolWith("gate.ink.png", { reading: ["TA"] });
+    await noteUsing("Uses.md", "gate.ink.png");
+    await openNote("Uses.md");
+    await showLibrary();
+    await quickEdit("gate.ink.png");
+    await nameField().setValue("arch");
+    await area("reading").setValue("KA");
+    // The rename reads the open note to see whether it has text to save.
+    await hold("read");
+    await formButton("Save").click();
+    await waitForHeld();
+    const said = await waitForWait();
+    expect(said).toContain("Waiting for Obsidian to finish renaming a file.");
+    expect(said).toContain("The readings and translations are saved.");
+    expect(await rowButton("gate.ink.png", "edit").isEnabled()).toBe(true);
+    await rowButton("gate.ink.png", "edit").click();
+    await waitForClosed();
+    await waitForNotice("Saved gate. It was not renamed.");
+    await letGo();
+    await browser.pause(500);
+    expect(await symbolFiles()).toEqual(["gate.ink.png"]);
+    expect((await fieldsOf("gate.ink.png")).reading).toEqual(["KA"]);
+  });
 
   it("says in a notice what was saved once Inkline is turned off during the rename", async function () {
     await symbolWith("gate.ink.png", { reading: ["TA"] });
@@ -1435,6 +1315,8 @@ describe("Quick edit in the library", function () {
     expect(await symbolFiles()).toEqual(["lintel.ink.png"]);
   });
 
+  // Its first rename elsewhere is the one a name untouched follows, and the
+  // second follows on from there.
   it("never renames a file back through two renames elsewhere, with the name untouched", async function () {
     await symbolWith("gate.ink.png", { reading: ["TA"] });
     await showLibrary();

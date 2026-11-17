@@ -335,24 +335,7 @@ describe("What Inkline started, once it unloads", function () {
     }
   });
 
-  it("stops a library rename still waiting as it unloads, and says so", async function () {
-    await openAtMarker("Unload.md", "ONE");
-    await beginRename("renamed");
-    // A rename saves the open notes first, reading each.
-    const held = await holdVault("read", "Unload.md");
-    try {
-      await renameForm().$("button=Save").click();
-      await held.reached();
-      await obsidianPage.disablePlugin("inkline");
-    } finally {
-      await held.release();
-    }
-    await waitForNotice(
-      "tower could not be renamed to renamed: Inkline was disabled",
-    );
-    expect(await symbolFiles()).toEqual(["tower.ink.png"]);
-  });
-
+  // It checks what the rename says and that the symbol keeps its name, too.
   it("saves no note for a library rename once it unloads", async function () {
     await open("Unload.md", "live");
     // Text that the note's file lacks, which a rename saves first. The note's
@@ -508,37 +491,11 @@ describe("What Inkline started, once it unloads", function () {
     });
   });
 
-  it("stops a library save of readings still waiting as it unloads, and says so", async function () {
-    await browser.executeObsidianCommand("inkline:show-library");
-    const button = browser.$('[data-inkline-role="edit"]');
-    await button.waitForExist();
-    await button.click();
-    const save = browser.$(".inkline-library-edit-buttons button");
-    await browser.waitUntil(
-      async () => (await save.isExisting()) && (await save.isEnabled()),
-    );
-    await browser.$('textarea[data-inkline-field="reading"]').setValue("tau");
-    // A save reads the file in its turn, before it writes.
-    const held = await holdVault("readBinary", "tower.ink.png");
-    try {
-      await save.click();
-      await held.reached();
-      await obsidianPage.disablePlugin("inkline");
-    } finally {
-      await held.release();
-    }
-    await waitForNotice(
-      "The readings and translations of tower were not saved: Inkline was disabled",
-    );
-    const text = await browser.executeObsidian(async ({ app }) => {
-      const file = app.vault.getFileByPath("tower.ink.png");
-      if (file === null) throw new Error("no tower.ink.png");
-      return window.inklineTest.text.readFileText(
-        new Uint8Array(await app.vault.readBinary(file)),
-      );
-    });
-    expect(text).toEqual({ reading: [], translation: [] });
-  });
+  // A library save of readings still waiting as Inkline unloads is
+  // library-quick-edit.e2e.ts's "says in a notice what was not done once
+  // Inkline is turned off during the write": the same hold of the save's read
+  // of the symbol, the same notice, which names the rename asked for too, and
+  // the readings left as they were.
 
   it("ignores a layout callback that comes after it unloads, and tags symbols when it loads", async function () {
     await browser.executeObsidian(async ({ app }) => {
