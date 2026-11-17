@@ -2,7 +2,7 @@
 // pixels is at the larger symbol sizes, or in a hover preview at any, shrinks
 // to fit it evenly (#241): its ink keeps the proportions it was drawn in, and
 // its baseline stays on the text's, in every view that shows symbols as text,
-// in the text colour and in its stored colour, in light and dark themes. So
+// in the text colour in light and dark themes, and in its stored colour. So
 // does one with an explicit size wider than its space, as |1000 is, which
 // Obsidian shrinks (#245). Native PDF export is checked in pdf.e2e.ts.
 
@@ -438,6 +438,13 @@ describe("Symbols wider than their space", function () {
 
   for (const stored of [false, true]) {
     const colour = stored ? "stored colour" : "text colour";
+    // The text colour is the theme's. The stored colour is the file's own
+    // grey, and nothing in how a symbol is laid out or shown in it, in
+    // styles.css or src/render/, depends on the theme, so one theme shows
+    // what the other would.
+    const themes = stored
+      ? (["moonstone"] as const)
+      : (["moonstone", "obsidian"] as const);
 
     describe(`in the ${colour}`, function () {
       before(async function () {
@@ -446,7 +453,7 @@ describe("Symbols wider than their space", function () {
 
       for (const place of places) {
         it(`shrink evenly, on the baseline, in ${place.name}`, async function () {
-          for (const name of ["moonstone", "obsidian"] as const) {
+          for (const name of themes) {
             await theme(name);
             const file = place.name.replace(/\W+/g, "-").toLowerCase();
             const shown = await shownIn(
@@ -464,7 +471,7 @@ describe("Symbols wider than their space", function () {
 
       for (const place of askedPlaces) {
         it(`keep an explicit size wider than its space on the baseline, in ${place.name}`, async function () {
-          for (const name of ["moonstone", "obsidian"] as const) {
+          for (const name of themes) {
             await theme(name);
             const file = place.name.replace(/\W+/g, "-").toLowerCase();
             const shown = await shownIn(
