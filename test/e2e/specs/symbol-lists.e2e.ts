@@ -10,6 +10,7 @@ import {
   startOver,
   waitForEditor,
 } from "../support/editor.ts";
+import { warmUpPointer } from "../support/hover.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 
 /** A symbol: its path, and the x of each of its strokes, in file units. */
@@ -356,6 +357,7 @@ function libraryRow(path: string): ReturnType<typeof browser.$> {
 
 /** Holds the pointer over a row's symbol until `wanted` shows as a tooltip. */
 async function tooltipOver(path: string, wanted: string): Promise<Box> {
+  await warmUpPointer();
   await libraryRow(path).$(".inkline-library-insert").moveTo();
   let shown = "";
   try {
