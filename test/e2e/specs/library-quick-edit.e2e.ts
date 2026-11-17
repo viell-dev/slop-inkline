@@ -365,8 +365,8 @@ async function inkline(on: boolean): Promise<void> {
 }
 
 /**
- * Holds the next read of the symbol at `path` until {@link letReadGo}, as a
- * save reads its file in its turn before it writes.
+ * Holds the next read of the symbol at `path` until {@link letSymbolReadGo},
+ * as a save reads its file in its turn before it writes.
  */
 async function holdSymbolRead(path: string): Promise<void> {
   await browser.executeObsidian(({ app }, wanted) => {
@@ -395,7 +395,7 @@ async function waitForHeldRead(): Promise<void> {
 }
 
 /** Lets go the read {@link holdSymbolRead} holds, if there is one. */
-async function letReadGo(): Promise<void> {
+async function letSymbolReadGo(): Promise<void> {
   await browser.execute(() => {
     const go: unknown = Reflect.get(window, "inklineLetReadGo");
     Reflect.deleteProperty(window, "inklineLetReadGo");
@@ -590,7 +590,7 @@ describe("Quick edit in the library", function () {
       Reflect.deleteProperty(app.vault, "readBinary");
     });
     await letGo();
-    await letReadGo();
+    await letSymbolReadGo();
   });
 
   it("opens on the name, with the readings and translations, and takes the keys", async function () {
@@ -1197,12 +1197,12 @@ describe("Quick edit in the library", function () {
     await waitForHeldRead();
     try {
       await inkline(false);
-      await letReadGo();
+      await letSymbolReadGo();
       await waitForNotice(
         "The readings and translations of gate were not saved, and it was not renamed to arch: Inkline was disabled",
       );
     } finally {
-      await letReadGo();
+      await letSymbolReadGo();
       await inkline(true);
     }
     expect(await symbolFiles()).toEqual(["gate.ink.png"]);
@@ -1338,7 +1338,7 @@ describe("Quick edit in the library", function () {
       if (file === null) throw new Error("no gate");
       await app.fileManager.trashFile(file);
     });
-    await letReadGo();
+    await letSymbolReadGo();
     await browser.waitUntil(async () => (await errorLines()).length > 0);
     // What the save found stays, and Save is off for a file that has gone.
     await browser.waitUntil(

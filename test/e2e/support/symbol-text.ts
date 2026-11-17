@@ -230,9 +230,10 @@ export async function letReadGo(): Promise<void> {
 
 /**
  * Has the next write to the vault wait for {@link letWriteGo}, as one on a drive
- * that has stopped answering does, and returns once it is waiting. Its gate
- * registers with `undoStubs()` in support/editor.ts, which lets the write go
- * if a test ends with it held.
+ * that has stopped answering does. It returns once the gate is in place, which
+ * is before any write has come: {@link waitForHeldWrite} waits until one has
+ * reached it. Its gate registers with `undoStubs()` in support/editor.ts,
+ * which lets the write go if a test ends with it held.
  */
 export async function holdNextWrite(): Promise<void> {
   await browser.executeObsidian(({ app }) => {
