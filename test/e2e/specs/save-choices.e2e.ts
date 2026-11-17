@@ -229,9 +229,26 @@ describe("Saving a symbol used elsewhere", function () {
     // Only the preview: no stroke is drawn.
     await browser.keys("i");
     await waitForStatus("Making ink of the picture");
-    await browser.pause(300);
+    // The preview is what the editor draws in the frame that I asks for.
+    await browser.execute(
+      () =>
+        new Promise<void>((resolve) => {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              resolve();
+            });
+          });
+        }),
+    );
     await browser.keys([Key.Ctrl, "s"]);
     await question("Change tower everywhere?");
+    // Asked about the preview, before any ink was made: ink made first, as
+    // a save makes it, would also have been a change to ask about.
+    expect(await browser.$(".inkline-status").getText()).toContain(
+      "Making ink of the picture",
+    );
+    const asked = JSON.parse(await recordOf(tower)) as { base?: unknown };
+    expect(asked.base).toBeUndefined();
     await clickTop("Replace");
     await waitForStatus("Saved");
     expect(await modals()).toBe(1);

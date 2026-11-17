@@ -45,12 +45,14 @@ describe("Brush cursor contrast", function () {
     await surface().moveTo();
   });
   afterEach(async function () {
-    await startOver();
+    // The zoom and the theme first: a reset that throws ends the hook, and
+    // would leave 200% zoom to the tests after it.
     await setPageZoom(1);
     await browser.execute((themes) => {
       document.body.removeClass("theme-light", "theme-dark");
       for (const theme of themes) document.body.addClass(theme);
     }, originalTheme);
+    await startOver();
   });
 
   it("keeps one thin outline with contrasting pixels on light, dark and grey", async function () {

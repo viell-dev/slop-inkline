@@ -137,8 +137,12 @@ function rowsBetween(rows: readonly number[], from: number, to: number) {
   return rows.filter((row) => row > top + 1 && row < bottom - 1).length;
 }
 
+/** Whether a test has stored settings of its own. */
+let settingsStored = false;
+
 /** Starts Inkline again with its settings stored as `changes` say. */
 async function storeSettings(changes: Partial<Settings>): Promise<void> {
+  settingsStored = true;
   await obsidianPage.disablePlugin("inkline");
   await browser.executeObsidian(
     async ({ app }, settings) => {
@@ -216,11 +220,14 @@ describe("Grid", function () {
   });
   beforeEach(async function () {
     await startOver();
-    await storeSettings({});
   });
-  after(async function () {
+  afterEach(async function () {
+    // Each test starts with the default settings, which only a test that
+    // stores others needs Inkline started again for.
+    if (!settingsStored) return;
     await startOver();
     await storeSettings({});
+    settingsStored = false;
   });
 
   it("puts a row of dots on each font line, 5 cells across the x-height", async function () {

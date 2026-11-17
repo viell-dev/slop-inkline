@@ -1,13 +1,12 @@
 import { browser, expect } from "@wdio/globals";
-import { Key } from "webdriverio";
 import { loadModules } from "../support/browser.ts";
 import {
   draw,
+  drawHoldingShift,
   openAtMarker,
   settledSurface,
   startOver,
   storedDrafts,
-  surface,
   waitForEditor,
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
@@ -127,29 +126,11 @@ describe("Ellipse", function () {
     await openEditor();
     await browser.$('[data-inkline-button="ellipse"]').click();
     expect(await pressed("ellipse")).toBe("true");
-    const { width, height } = await settledSurface();
-    const canvas = await surface().getElement();
-    const at = (x: number, y: number) => ({
-      origin: canvas,
-      x: Math.round((x - 0.5) * width),
-      y: Math.round((y - 0.5) * height),
-    });
-    await browser.actions([
-      browser
-        .action("key")
-        .down(Key.Shift)
-        .pause(10)
-        .pause(10)
-        .pause(10)
-        .pause(10)
-        .up(Key.Shift),
-      browser
-        .action("pointer", { parameters: { pointerType: "mouse" } })
-        .move(at(0.3, 0.2))
-        .down()
-        .move({ ...at(0.4, 0.5), duration: 50 })
-        .move({ ...at(0.45, 0.8), duration: 50 })
-        .up(),
+    // Shift goes down before the press and up after the release.
+    await drawHoldingShift([
+      [0.3, 0.2],
+      [0.4, 0.5],
+      [0.45, 0.8],
     ]);
     const [circle] = await draftStrokes(1);
     const shape = fit(circle?.points ?? []);

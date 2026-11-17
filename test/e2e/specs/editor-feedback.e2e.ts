@@ -181,9 +181,9 @@ describe("Editor feedback", function () {
     }, originalTheme);
   });
 
-  for (const theme of ["theme-light", "theme-dark"]) {
-    it(`keeps the close control clear of the name in ${theme}`, async function () {
-      await insert();
+  it("keeps the close control clear of the name in light and dark themes", async function () {
+    await insert();
+    for (const theme of ["theme-light", "theme-dark"]) {
       const layout = await browser.execute((wanted) => {
         document.body.removeClass("theme-light", "theme-dark");
         document.body.addClass(wanted);
@@ -202,10 +202,10 @@ describe("Editor feedback", function () {
         };
       }, theme);
       await saveScreenshot(`editor-feedback-${theme}`);
-      expect(layout.overlap).toBe(0);
+      expect([theme, layout.overlap]).toEqual([theme, 0]);
       expect(layout.nameWidth).toBeGreaterThan(300);
-    });
-  }
+    }
+  });
 
   it("names the drawing area without showing a hover tooltip", async function () {
     await insert();
