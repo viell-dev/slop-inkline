@@ -899,6 +899,16 @@ export async function startOver(): Promise<void> {
   await restoreVault();
   await restoreDecoding();
   await obsidianPage.resetVault();
+  // A notice outlives the test that raised it, as Obsidian's "Updated 1 link
+  // in 1 file." after a rename does, and stands over the top right of the
+  // window for seconds, over the library's buttons. WebdriverIO 9 sent a
+  // click it intercepted again, up to three times; WebdriverIO 10 does not.
+  // So each test starts with no notice of the one before.
+  await browser.execute(() => {
+    for (const notice of document.querySelectorAll(".notice")) {
+      notice.remove();
+    }
+  });
 }
 
 const delayable = [

@@ -208,12 +208,6 @@ describe("What Inkline started, once it unloads", function () {
   beforeEach(async function () {
     if (!(await isLoaded())) await obsidianPage.enablePlugin("inkline");
     await startOver();
-    // A notice from the test before can lie over a button and take the click.
-    await browser.execute(() => {
-      for (const notice of document.querySelectorAll(".notice")) {
-        notice.remove();
-      }
-    });
     await createSymbol("tower.ink.png");
     await browser.executeObsidian(async ({ app }) => {
       await app.vault.create("Unload.md", "First ONE, then TWO.\n");
