@@ -289,7 +289,7 @@ describe("The symbol library", function () {
         browser.executeObsidian(
           ({ app }) => app.workspace.getActiveFile()?.path === "Read#this.md",
         ),
-      { timeout: 3000, timeoutMsg: "the exact referring note did not open" },
+      { timeoutMsg: "the exact referring note did not open" },
     );
     expect(
       await browser.executeObsidian(
@@ -388,17 +388,18 @@ describe("The symbol library", function () {
       }
       throw new Error("Copy.md is not open");
     });
-    await browser.pause(300);
-    expect(
-      await browser.executeObsidian(({ app, obsidian }) => {
-        const editor = app.workspace.getActiveViewOfType(
-          obsidian.MarkdownView,
-        )?.editor;
-        return editor === undefined
-          ? -1
-          : editor.posToOffset(editor.getCursor());
-      }),
-    ).toBe(inside);
+    await browser.waitUntil(
+      async () =>
+        (await browser.executeObsidian(({ app, obsidian }) => {
+          const editor = app.workspace.getActiveViewOfType(
+            obsidian.MarkdownView,
+          )?.editor;
+          return editor === undefined
+            ? -1
+            : editor.posToOffset(editor.getCursor());
+        })) === inside,
+      { timeoutMsg: "the cursor was not inside the link" },
+    );
     await row("gate").$(".inkline-library-insert").click();
     await waitForText(
       "Copy.md",

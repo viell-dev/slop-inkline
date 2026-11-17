@@ -30,10 +30,7 @@ async function openSettings(): Promise<void> {
       }
       return false;
     },
-    {
-      timeout: 5000,
-      timeoutMsg: "Inkline's settings tab did not open in any window",
-    },
+    { timeoutMsg: "Inkline's settings tab did not open in any window" },
   );
   const tab = browser.$(".vertical-tab-nav-item=Inkline");
   await tab.waitForDisplayed();
