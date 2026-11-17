@@ -131,12 +131,28 @@ async function paletteOffers(query: string): Promise<string[]> {
   await browser.waitUntil(async () =>
     input.getValue().then((value) => value === query),
   );
-  // The list follows the typing a moment later.
-  await browser.pause(300);
-  return browser.execute(() =>
-    Array.from(document.querySelectorAll(".prompt .suggestion-title")).map(
-      (title) => title.textContent,
-    ),
+  // The list follows the input, with every row it keeps showing what matched
+  // the query, or says that nothing did. On 1.13.4 and 1.15.1 it does so in
+  // the same step as the input, so this finds it there at once.
+  return browser.waitUntil(
+    async () =>
+      browser.execute(() => {
+        const prompt = document.querySelector(".prompt");
+        if (prompt === null) return false;
+        const rows = Array.from(prompt.querySelectorAll(".suggestion-item"));
+        const followed =
+          prompt.querySelector(".suggestion-empty") !== null ||
+          (rows.length > 0 &&
+            rows.every(
+              (row) => row.querySelector(".suggestion-highlight") !== null,
+            ));
+        return followed
+          ? Array.from(prompt.querySelectorAll(".suggestion-title")).map(
+              (title) => title.textContent,
+            )
+          : false;
+      }),
+    { timeoutMsg: `the palette's list did not follow ${query}` },
   );
 }
 
