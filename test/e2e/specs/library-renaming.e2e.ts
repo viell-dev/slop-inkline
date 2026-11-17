@@ -631,28 +631,26 @@ describe("Renaming in the symbol library", function () {
       expect(await symbolFiles()).toEqual(["lintel.ink.png"]);
     });
 
-    for (const [how, leave] of [
-      ["Cancel", async () => formButton("Cancel").click()],
-      ["Esc", async () => browser.keys(["Escape"])],
-    ] as const) {
-      it(`leaves a rename held back with ${how}, says it may still finish, and it does`, async function () {
-        await usedSymbol();
-        await showLibrary();
-        await beginRename("gate", "lintel");
-        await hold("move");
-        // By the mouse, as Save takes the focus with it when it goes off.
-        await formButton("Save").click();
-        await waitForHeld();
-        await waitForWait();
-        await leave();
-        await waitForName("gate");
-        await waitForNotice("may still finish");
-        await letGo();
-        await waitForName("lintel");
-        await waitForNotice("Renamed gate to lintel");
-        expect(await noteText("Uses 0.md")).toContain("lintel.ink.png");
-      });
-    }
+    // Leaving with Cancel is "refuses a second rename while Obsidian has the
+    // first" below, which goes on to the end of the rename as this does. Esc in
+    // the field is a handler of its own.
+    it("leaves a rename held back with Esc, says it may still finish, and it does", async function () {
+      await usedSymbol();
+      await showLibrary();
+      await beginRename("gate", "lintel");
+      await hold("move");
+      // By the mouse, as Save takes the focus with it when it goes off.
+      await formButton("Save").click();
+      await waitForHeld();
+      await waitForWait();
+      await browser.keys(["Escape"]);
+      await waitForName("gate");
+      await waitForNotice("may still finish");
+      await letGo();
+      await waitForName("lintel");
+      await waitForNotice("Renamed gate to lintel");
+      expect(await noteText("Uses 0.md")).toContain("lintel.ink.png");
+    });
 
     it("says so if a rename left behind fails, with the name typed", async function () {
       await usedSymbol();
@@ -704,6 +702,7 @@ describe("Renaming in the symbol library", function () {
       await waitForWait();
       await formButton("Cancel").click();
       await waitForName("gate");
+      await waitForNotice("may still finish");
       await beginRename("gate", "arch");
       await browser.keys(["Enter"]);
       // Obsidian would say this one was done, with nothing renamed.
@@ -712,7 +711,9 @@ describe("Renaming in the symbol library", function () {
       await formButton("Cancel").click();
       await letGo();
       await waitForName("lintel");
+      await waitForNotice("Renamed gate to lintel");
       expect(await symbolFiles()).toEqual(["lintel.ink.png"]);
+      expect(await noteText("Uses 0.md")).toContain("lintel.ink.png");
     });
 
     it("gives the form back when a rename held back fails", async function () {
