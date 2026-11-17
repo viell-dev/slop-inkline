@@ -330,20 +330,21 @@ in `docs/`, which the Pages workflow deploys to GitHub Pages. `npm run docs:dev`
 serves it with live reload, and `npm run docs:build`, part of `check`, builds it
 and fails on a link to a page that does not exist. `test/unit/docs.test.ts`
 checks that the site lists every command and every button's key as the code has
-them, gives the defaults and the Obsidian version the code and manifest have,
-links only to headings and repository files that exist, and gives example embeds
-that read as symbols. It holds the repository's own Markdown documents, such as
-this one and the README, to the same: their links, by GitHub's rules, the
-Obsidian and Node.js versions, the commands they name, their examples, and the
-versions of the BRAT recipe above.
+them, gives the code's defaults and the public release's minimum Obsidian
+version, links only to headings and repository files that exist, and gives
+example embeds that read as symbols. It holds the repository's own Markdown
+documents, such as this one and the README, to the same: their links, by
+GitHub's rules, the Obsidian and Node.js versions, the commands they name, their
+examples, and the versions of the BRAT recipe above.
 
 A change that users can see updates the guide in the same pull request. The
-guide deploys from `main` and describes the newest published release. Clearly
-label behavior absent from that release **Unreleased**, keeping the released
-instructions usable. Author and PR review check that distinction before merge; a
-changelog entry alone does not label the guide. A release PR removes the labels
-only for behavior included in that release. [docs/versions.md](docs/versions.md)
-describes deployment and corrections.
+guide deploys from `main` and describes the newest public release. Clearly label
+behavior absent from that release **Unreleased**, keeping the released
+instructions usable. Author and PR review check the labels in the guide before
+merge. A changelog entry also needs a label in the guide if the guide covers the
+change. A pre-release PR keeps the labels. A public release PR removes them for
+behavior it ships. [docs/versions.md](docs/versions.md) describes deployment and
+corrections.
 
 ### What a change updates
 
@@ -356,9 +357,11 @@ marked read, author and pull request review read for meaning.
 - **A command, button, key, default, or notice:** the guide's keyboard,
   settings, drawing, and troubleshooting pages, and the README's first steps,
   checked; the editor's **Help** and its tooltips, read.
-- **The Obsidian or Node.js version, or the platforms:** `manifest.json` and
-  `package.json` own them. The README, the home and install pages, and Set up
-  above, checked; Known limits and the listing's long description, read.
+- **The Obsidian or Node.js version, or the platforms:** `versions.json` records
+  the public release's minimum Obsidian version. `manifest.json` and
+  `package.json` record the build's requirements. The README, the home and
+  install pages, and Set up above, checked. Known limits and the listing's long
+  description, read.
 - **What Inkline reads, writes, or sends:** [SECURITY.md](SECURITY.md), the
   listing's long description, and the guide's drawing and recovery pages, read.
 - **What a symbol file holds, or how it draws:** the file format and Without

@@ -3,10 +3,10 @@ name: Pages
 # Builds the documentation site from this run's own commit and deploys it to
 # GitHub Pages, as docs/versions.md describes, then reads the deployed site
 # back and fails unless every page is that commit. Deployments use protected
-# main, including documentation corrections. A prepared release waits for
-# publication before the guide advertises it. Run on request with
-# `gh workflow run pages.yml --ref main`. It builds its own commit, so
-# that no other code runs in it, and it can deploy Pages and nothing else:
+# main, including documentation corrections. The guide describes the newest
+# public release and waits for a prepared public version to be published.
+# Run on request with `gh workflow run pages.yml --ref main`. It builds its own
+# commit, so that no other code runs in it, and it can deploy Pages only:
 # no job may push, tag, or publish a release. CI builds the site for every
 # pull request, in `npm run check`.
 

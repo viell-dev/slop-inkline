@@ -33,6 +33,7 @@ and tests agree with the change, including each place that
 [What a change updates](https://github.com/viell-dev/slop-inkline/blob/main/CONTRIBUTING.md#what-a-change-updates)
 lists for it, and that `CHANGELOG.md` lists it under `Unreleased`.
 
-Confirm that guide changes describe the newest published release or visibly
-label unreleased behavior **Unreleased**, preserving the released instructions.
-For a release PR, remove those labels only for behavior included in the release.
+Confirm that guide changes describe the newest public release and visibly label
+behavior absent from it **Unreleased**, preserving the public release's
+instructions. Keep the labels in a pre-release PR. In a public release PR,
+remove them only for behavior it ships.

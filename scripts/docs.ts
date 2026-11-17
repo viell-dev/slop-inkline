@@ -13,7 +13,8 @@
 
 import { appendFile, readFile } from "node:fs/promises";
 import { setTimeout as sleep } from "node:timers/promises";
-import { docsSource, isRecord, type DocsRequest } from "./lib/docs.ts";
+import { docsSource, isRecord, type DocsRelease } from "./lib/docs.ts";
+import { releaseVersionPattern } from "./lib/version.ts";
 
 const repository = process.env.GITHUB_REPOSITORY ?? "viell-dev/slop-inkline";
 const token = process.env.GH_TOKEN;
@@ -35,21 +36,53 @@ async function api(path: string): Promise<unknown> {
   return response.json();
 }
 
-/** The published releases' tags, newest first. */
-async function releases(): Promise<string[]> {
-  const listed = await api(`repos/${repository}/releases?per_page=100`);
-  if (!Array.isArray(listed)) fail("the releases are not a list");
-  return listed
-    .flatMap((release) =>
-      isRecord(release) &&
-      release.draft === false &&
-      typeof release.tag_name === "string" &&
-      typeof release.published_at === "string"
-        ? [{ tag: release.tag_name, at: Date.parse(release.published_at) }]
-        : [],
-    )
-    .sort((a, b) => b.at - a.at)
-    .map((release) => release.tag);
+/** Published releases, in descending order of publication. */
+async function releases(): Promise<DocsRelease[]> {
+  const published: (DocsRelease & { at: number })[] = [];
+  const pageSize = 100;
+  for (let page = 1; ; page++) {
+    const response = await api(
+      `repos/${repository}/releases?per_page=${String(pageSize)}&page=${String(page)}`,
+    );
+    if (!Array.isArray(response)) fail("the releases are not a list");
+    const listed: unknown[] = response;
+    for (const release of listed) {
+      if (!isRecord(release)) fail("the releases list contains a non-object");
+      if (release.draft === true) continue;
+      if (
+        release.draft !== false ||
+        typeof release.prerelease !== "boolean" ||
+        typeof release.tag_name !== "string" ||
+        typeof release.published_at !== "string" ||
+        !Number.isFinite(Date.parse(release.published_at))
+      ) {
+        fail("the releases list contains an invalid published release");
+      }
+      published.push({
+        tag: release.tag_name,
+        prerelease: release.prerelease,
+        at: Date.parse(release.published_at),
+      });
+    }
+    if (listed.length < pageSize) break;
+  }
+  return published.sort((a, b) => b.at - a.at);
+}
+
+async function readVersion(
+  file: "package.json" | "manifest.json",
+): Promise<string> {
+  const json: unknown = JSON.parse(
+    await readFile(new URL(`../${file}`, import.meta.url), "utf8"),
+  );
+  if (
+    !isRecord(json) ||
+    typeof json.version !== "string" ||
+    !releaseVersionPattern.test(json.version)
+  ) {
+    fail(`${file} has no valid version`);
+  }
+  return json.version;
 }
 
 async function resolve(): Promise<void> {
@@ -57,29 +90,25 @@ async function resolve(): Promise<void> {
   if (event !== "push" && event !== "dispatch") {
     fail(`EVENT is ${String(event)}, not push or dispatch`);
   }
-  const tags = await releases();
   // The ref this run is on, and builds.
   const ref = process.env.REF ?? "main";
   const refType = process.env.REF_TYPE;
   if (refType !== "branch" && refType !== "tag") {
     fail(`REF_TYPE is ${String(refType)}, not branch or tag`);
   }
-  // package.json, as manifest.json keeps the last public release through a
-  // line of pre-releases, and the guide describes the newest of them.
-  const packageJson: unknown = JSON.parse(
-    await readFile(new URL("../package.json", import.meta.url), "utf8"),
-  );
-  if (!isRecord(packageJson) || typeof packageJson.version !== "string") {
-    fail("package.json has no version");
-  }
-  const request: DocsRequest = {
+  const [published, packageVersion, manifestVersion] = await Promise.all([
+    releases(),
+    readVersion("package.json"),
+    readVersion("manifest.json"),
+  ]);
+  const source = docsSource({
     event,
     ref,
     refType,
-    releases: tags,
-    version: packageJson.version,
-  };
-  const source = docsSource(request);
+    releases: published,
+    packageVersion,
+    manifestVersion,
+  });
   if (!source.deploy) {
     console.log(source.reason);
     await output({ deploy: "false" });

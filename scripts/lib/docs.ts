@@ -1,11 +1,18 @@
-// The current-release guide lives on protected main. Preparing a version that
-// cannot yet be installed leaves the published site alone until publication.
+import { isPrerelease, stableVersionPattern } from "./version.ts";
+
+export interface DocsRelease {
+  readonly tag: string;
+  readonly prerelease: boolean;
+}
+
 export interface DocsRequest {
   readonly event: "push" | "dispatch";
   readonly ref: string;
   readonly refType: "branch" | "tag";
-  readonly releases: readonly string[];
-  readonly version: string;
+  /** Published releases, newest first. */
+  readonly releases: readonly DocsRelease[];
+  readonly packageVersion: string;
+  readonly manifestVersion: string;
 }
 
 export type DocsSource =
@@ -28,12 +35,23 @@ export function docsSource(request: DocsRequest): DocsSource {
       error: true,
     };
   }
-  if (request.version !== request.releases[0]) {
+  const latestPublic = request.releases.find(
+    ({ tag, prerelease }) =>
+      !prerelease && stableVersionPattern.test(tag) && !isPrerelease(tag),
+  );
+  // Before the first public release, the manifest still named a pre-release.
+  const beforeFirstPublic =
+    latestPublic === undefined && isPrerelease(request.manifestVersion);
+  const version = beforeFirstPublic
+    ? request.packageVersion
+    : request.manifestVersion;
+  const published = beforeFirstPublic ? request.releases[0] : latestPublic;
+  if (version !== published?.tag) {
     return {
       deploy: false,
-      reason: `The guide for ${request.version} waits until that release is published.`,
+      reason: `The guide for ${version} waits until that version is the newest published ${beforeFirstPublic ? "release" : "public release"}.`,
       error: false,
     };
   }
-  return { deploy: true, ref: "main", version: request.version };
+  return { deploy: true, ref: "main", version };
 }

@@ -1,14 +1,15 @@
 // Checks that the documentation site, and the repository's own documents that
 // GitHub shows, say what the code does: the commands, the editor's keys, the
-// defaults, the Obsidian and Node.js versions, the BRAT check's versions, and
-// every link and example they give. The site's build checks that its own pages
-// exist; this checks the rest.
+// defaults, the public release's Obsidian version, the Node.js version, the
+// BRAT check's versions, and every link and example. The site's build checks
+// that its own pages exist; this checks the rest.
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import manifest from "../../manifest.json" with { type: "json" };
 import packageJson from "../../package.json" with { type: "json" };
+import versions from "../../versions.json" with { type: "json" };
 import { compareSemver } from "../../scripts/lib/version.ts";
 import { emptyDocument } from "../../src/ink/document.ts";
 import { brushSizes, DrawingSession } from "../../src/editor/session.ts";
@@ -305,14 +306,20 @@ describe("the documentation", () => {
     expect(settings).toContain(`${String(defaultSettings.symbolScale)}%`);
   });
 
-  it("names the Obsidian version the manifest needs, on desktop only", () => {
+  it("names the public release's minimum Obsidian version, on desktop only", () => {
+    // A pre-release can raise the manifest's minimum ahead of the public
+    // release. Its entry in versions.json still gives the published minimum.
+    const minimum = Object.entries(versions).find(
+      ([version]) => version === manifest.version,
+    )?.[1];
+    if (minimum === undefined) {
+      throw new Error(
+        `No Obsidian minimum for ${manifest.version} in versions.json`,
+      );
+    }
     expect(manifest.isDesktopOnly).toBe(true);
-    expect(page("install.md")).toContain(
-      `Obsidian **${manifest.minAppVersion} or later**`,
-    );
-    const named = new RegExp(
-      `Obsidian\\s+${manifest.minAppVersion.replaceAll(".", "\\.")}`,
-    );
+    expect(page("install.md")).toContain(`Obsidian **${minimum} or later**`);
+    const named = new RegExp(`Obsidian\\s+${minimum.replaceAll(".", "\\.")}`);
     expect(page("index.md")).toMatch(named);
     expect(source("README.md")).toMatch(named);
   });
@@ -380,6 +387,8 @@ describe("the documentation", () => {
     // Pages that say none of it pass.
     const updated = {
       "docs/index.md": "::: info Public release\n\nInkline 1.0.0 is out.\n",
+      "docs/install.md":
+        "::: info Unreleased\n\nThis option is available in the 1.1.0 pre-release.\n\n:::\n",
       "README.md":
         "Inkline is in Obsidian's community plugin directory. A release with an\nodd minor version is a pre-release.\n",
     };

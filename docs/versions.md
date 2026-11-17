@@ -6,20 +6,21 @@ commit used to build it; `version.json` records the same facts for tools.
 
 ## The current release
 
-The default guide describes the newest published release, including
-pre-releases. Behavior that has not been released is labelled **Unreleased**;
-the
+The guide describes the newest public release. **Unreleased** means the behavior
+is still absent from the public release. It may already be available in a
+pre-release. The
 [changelog](https://github.com/viell-dev/slop-inkline/blob/main/CHANGELOG.md)
 records those changes too.
 
 Documentation corrections go through ordinary pull requests to `main` and deploy
-from there. They do not need a separate documentation branch, a new software
-release, or a moved tag.
+from there, including during a line of pre-releases. The footer still names the
+public version.
 
-Preparing a new software version can put its guide on main before its download
-exists. The Pages workflow reads the version from `package.json`, which names
-pre-releases as well as public releases, and keeps the existing site until that
-version is published; then it is run again on `main`.
+Pages checks that `manifest.json` on the build commit names the newest public
+release on GitHub. A pre-release leaves that version in place, so the guide can
+deploy during its preparation and after its publication. A public release
+updates the manifest in its release pull request. Pages keeps the existing site
+until the new public version is published and the workflow runs again on `main`.
 
 ## Copies of the file format
 
