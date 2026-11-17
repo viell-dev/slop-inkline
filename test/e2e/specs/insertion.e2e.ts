@@ -248,21 +248,30 @@ async function writeFile(path: string, text: string): Promise<void> {
 /**
  * Holds back how the note's editors take a change on disk by `delay`
  * milliseconds, as a slow disk would. Obsidian keeps that step in the view's
- * private `loadFileInternal`, and the view goes with the test.
+ * private `loadFileInternal`, and the view goes with the test. Each held
+ * reload is counted as it starts and once it has finished, for
+ * {@link waitForHeldReloads}.
  */
 async function slowReload(path: string, delay: number): Promise<void> {
   await browser.executeObsidian(
     ({ app, obsidian }, file, wait) => {
+      const count = { started: 0, finished: 0 };
+      Reflect.set(window, "inklineHeldReloads", count);
       for (const { view } of app.workspace.getLeavesOfType("markdown")) {
         if (!(view instanceof obsidian.MarkdownView)) continue;
         if (view.file?.path !== file) continue;
         const load: unknown = Reflect.get(view, "loadFileInternal");
         if (typeof load !== "function") throw new Error("no reload to hold");
         const held = async (...args: unknown[]): Promise<unknown> => {
-          await new Promise((resolve) => {
-            window.setTimeout(resolve, wait);
-          });
-          return Reflect.apply(load, view, args) as unknown;
+          count.started++;
+          try {
+            await new Promise((resolve) => {
+              window.setTimeout(resolve, wait);
+            });
+            return (await Reflect.apply(load, view, args)) as unknown;
+          } finally {
+            count.finished++;
+          }
         };
         Reflect.set(view, "loadFileInternal", held);
       }
@@ -273,27 +282,149 @@ async function slowReload(path: string, delay: number): Promise<void> {
 }
 
 /**
+ * Waits until a reload that {@link slowReload} held has started, and every
+ * one that started has finished, with the editor showing what it loaded.
+ */
+async function waitForHeldReloads(): Promise<void> {
+  let count = "none";
+  try {
+    await browser.waitUntil(
+      async () => {
+        const { started, finished } = await browser.execute(() => {
+          const held: unknown = Reflect.get(window, "inklineHeldReloads");
+          const read = (key: string): number => {
+            const value: unknown = Reflect.get(Object(held), key);
+            return typeof value === "number" ? value : -1;
+          };
+          return { started: read("started"), finished: read("finished") };
+        });
+        count = `${String(started)} started, ${String(finished)} finished`;
+        return started > 0 && finished === started;
+      },
+      { timeout: 20_000 },
+    );
+  } catch (error) {
+    throw new Error(`held reloads did not finish: ${count}`, {
+      cause: error,
+    });
+  }
+}
+
+/**
  * Holds what reads a note through `vault.cachedRead` by `delay` milliseconds
  * after the read, with the text it read, as Obsidian's reload does while it
- * writes the file. Returns what takes that back.
+ * writes the file. Counts the reads of the note at `path` among them, for
+ * {@link heldReads} and {@link waitForHeldReads}. Returns what takes that
+ * back.
  */
-async function slowCachedRead(delay: number): Promise<() => Promise<void>> {
-  await browser.executeObsidian(({ app }, wait) => {
-    const { vault } = app;
-    const read = vault.cachedRead.bind(vault);
-    vault.cachedRead = async (file) => {
-      const text = await read(file);
-      await new Promise((resolve) => {
-        window.setTimeout(resolve, wait);
-      });
-      return text;
-    };
-  }, delay);
+async function slowCachedRead(
+  path: string,
+  delay: number,
+): Promise<() => Promise<void>> {
+  await browser.executeObsidian(
+    ({ app }, counted, wait) => {
+      const { vault } = app;
+      const read = vault.cachedRead.bind(vault);
+      const held = { started: 0, pending: 0 };
+      Reflect.set(window, "inklineHeldReads", held);
+      vault.cachedRead = async (file) => {
+        const counts = file.path === counted;
+        if (counts) {
+          held.started++;
+          held.pending++;
+        }
+        try {
+          const text = await read(file);
+          await new Promise((resolve) => {
+            window.setTimeout(resolve, wait);
+          });
+          return text;
+        } finally {
+          // Counted down once what waits for the read has had it.
+          if (counts) {
+            window.setTimeout(() => {
+              held.pending--;
+            });
+          }
+        }
+      };
+    },
+    path,
+    delay,
+  );
   return async () => {
     await browser.executeObsidian(({ app }) => {
       Reflect.deleteProperty(app.vault, "cachedRead");
+      Reflect.deleteProperty(window, "inklineHeldReads");
     });
   };
+}
+
+/**
+ * How many reads of its note {@link slowCachedRead} has held so far, and how
+ * many of those are under way.
+ */
+async function heldReads(): Promise<{ started: number; pending: number }> {
+  return browser.execute(() => {
+    const held: unknown = Reflect.get(window, "inklineHeldReads");
+    const read = (key: string): number => {
+      const value: unknown = Reflect.get(Object(held), key);
+      return typeof value === "number" ? value : -1;
+    };
+    return { started: read("started"), pending: read("pending") };
+  });
+}
+
+/**
+ * Waits until {@link slowCachedRead} has held a read of its note since
+ * `before` were counted, and none is under way, on two looks a frame apart, so
+ * that what a read gave has been taken in. The reads of the note as it opened
+ * are counted too, so only one since the step under test shows that the step's
+ * reload was held. Then waits until the note's text has stayed the same over
+ * five looks 100 ms apart, so that what a reload does with a read it had,
+ * however long after the read that comes, is in the text the test then asserts
+ * on; a read that started during those looks has it all wait again.
+ */
+async function waitForHeldReads(before: number): Promise<void> {
+  const until = Date.now() + 40_000;
+  for (;;) {
+    let count = "none";
+    try {
+      await browser.waitUntil(
+        async () => {
+          const { started, idle } = await browser.execute(async () => {
+            const read = (key: string): number => {
+              const held: unknown = Reflect.get(window, "inklineHeldReads");
+              const value: unknown = Reflect.get(Object(held), key);
+              return typeof value === "number" ? value : -1;
+            };
+            if (read("pending") !== 0) {
+              return { started: read("started"), idle: false };
+            }
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+            return { started: read("started"), idle: read("pending") === 0 };
+          });
+          count = `${String(started)} started, ${String(before)} of them before`;
+          return started > before && idle;
+        },
+        { timeout: 20_000 },
+      );
+    } catch (error) {
+      throw new Error(`held reads of the note did not finish: ${count}`, {
+        cause: error,
+      });
+    }
+    // Five looks in a row that agree; a change starts the count again.
+    let last = await noteText();
+    for (let same = 1; same < 5;) {
+      if (Date.now() > until) throw new Error("the note's text did not settle");
+      await browser.pause(100);
+      const text = await noteText();
+      same = text === last ? same + 1 : 1;
+      last = text;
+    }
+    if ((await heldReads()).pending === 0) return;
+  }
 }
 
 /** Closes every tab of the note at `path`. */
@@ -795,9 +926,14 @@ describe("Where the cursor lands after a symbol", function () {
     await saveScreenshot("cursor-after-existing-symbol");
   });
 
-  it("puts a symbol from Insert existing symbol past a link it would split", async function () {
+  it("puts a symbol from Insert existing symbol past a link, past an embed, and a space after a bare address", async function () {
     await createSymbol("gate.ink.png");
     await createNote("Link.md", "See [[Wel HEREcome]] and on.\n");
+    await createNote("Embed.md", "See ![[Wel HEREcome.png]] and on.\n");
+    await createNote(
+      "Address.md",
+      "See https://example.com/HEREpage and on.\n",
+    );
     await openAtMarker("Link.md", "HERE");
     await chooseExisting("gat");
     await waitForNote("See [[Wel come]]![[gate.ink.png]] and on.\n");
@@ -806,15 +942,6 @@ describe("Where the cursor lands after a symbol", function () {
     ]);
     await type("xy");
     await waitForNote("See [[Wel come]]![[gate.ink.png]]xy and on.\n");
-  });
-
-  it("puts one past an embed, and a space after a bare address", async function () {
-    await createSymbol("gate.ink.png");
-    await createNote("Embed.md", "See ![[Wel HEREcome.png]] and on.\n");
-    await createNote(
-      "Address.md",
-      "See https://example.com/HEREpage and on.\n",
-    );
     await openAtMarker("Embed.md", "HERE");
     await chooseExisting("gat");
     await waitForNote("See ![[Wel come.png]]![[gate.ink.png]] and on.\n");
@@ -928,36 +1055,8 @@ describe("Symbols in a table cell in Live Preview", function () {
     await waitForLastRow("| same![[001.ink.png]]xy | same |");
   });
 
-  for (const answer of ["Just once", "Do not update"]) {
-    it(`stays after the embed through a rename, with ${answer}`, async function () {
-      await intoCell("Table.md");
-      await browser.executeObsidianCommand("inkline:insert-symbol");
-      await waitForEditor();
-      await draw(zigzag);
-      await browser.keys(["Control", "s"]);
-      await waitForStatus("Saved");
-      await waitForLink("Table.md", "001.ink.png");
-      await browser
-        .$(".inkline-editor .inkline-name")
-        .setValue("the long gate");
-      await browser.keys(["Control", "Enter"]);
-      await clickTop(answer);
-      await waitClosed();
-      await waitForLastRow("| same![[the long gate.ink.png]] | same |");
-      await type("xy");
-      await waitForLastRow("| same![[the long gate.ink.png]]xy | same |");
-      // Saved like any edit, and written once.
-      await browser.waitUntil(async () =>
-        (
-          await browser.executeObsidian(async ({ app }) => {
-            const note = app.vault.getFileByPath("Table.md");
-            if (note === null) throw new Error("no note");
-            return app.vault.read(note);
-          })
-        ).includes("| same![[the long gate.ink.png]]xy"),
-      );
-    });
-  }
+  // A rename through Obsidian's question, with Just once and Do not update, is
+  // in "A rename while the note holds unsaved text" below, in a table cell.
 
   it("keeps a run in order after a symbol renamed on its way", async function () {
     await setLinkUpdates(true);
@@ -1195,6 +1294,18 @@ describe("A rename while the note holds unsaved text", function () {
         const note = await noteText();
         expect(note.startsWith(opening)).toBe(true);
         expect(note.split("![[")).toHaveLength(2);
+        // Saved like any edit, and written once.
+        let disk = "";
+        await browser.waitUntil(async () => {
+          disk = await browser.executeObsidian(async ({ app }) => {
+            const file = app.vault.getFileByPath("Table.md");
+            if (file === null) throw new Error("no note");
+            return app.vault.read(file);
+          });
+          return disk.includes(`| same${renamed}xy`);
+        });
+        expect(disk.startsWith(opening)).toBe(true);
+        expect(disk.split("![[")).toHaveLength(2);
       });
 
       it("keeps the next symbol's place, through a reload", async function () {
@@ -1265,7 +1376,21 @@ describe("A rename while the note holds unsaved text", function () {
   // embed, and writing it there too would double it. The editor's blur as a
   // modal closes saves the note, which a reload under way would then undo.
   describe("when Obsidian is slow to reload the note", function () {
-    async function askAndHold(keys: string[]): Promise<void> {
+    // The held reload goes with the note's view; its count is taken away here.
+    afterEach(async function () {
+      await browser.execute(() => {
+        Reflect.deleteProperty(window, "inklineHeldReloads");
+      });
+    });
+
+    /**
+     * Renames the symbol, and adds text during Obsidian's question, with the
+     * reload held; runs `meanwhile` just before the answer.
+     */
+    async function askAndHold(
+      keys: string[],
+      meanwhile?: () => Promise<void>,
+    ): Promise<void> {
       await insertAndWait();
       await markEditor();
       await slowReload("Editor.md", 300);
@@ -1275,6 +1400,7 @@ describe("A rename while the note holds unsaved text", function () {
         async () => (await topButton("Just once")) !== undefined,
       );
       await addBoth("Editor.md");
+      await meanwhile?.();
       await clickTop("Just once");
     }
 
@@ -1289,20 +1415,115 @@ describe("A rename while the note holds unsaved text", function () {
     });
 
     it("writes the embed itself once a save undid Obsidian's", async function () {
-      await browser.executeObsidian(({ app, obsidian }) => {
-        const saves = app.vault.on("modify", (file) => {
-          if (file.path !== "Editor.md") return;
-          app.vault.offref(saves);
-          for (const { view } of app.workspace.getLeavesOfType("markdown")) {
-            if (view instanceof obsidian.MarkdownView) void view.save();
-          }
+      const old = "![[001.ink.png]]";
+      // At Obsidian's own write after the answer, every editor saves what it
+      // holds, which still has the old embed. Every write of the note from
+      // here on is kept in order: what `vault.modify`, through which an
+      // editor saves, wrote, and what a `vault.process`, through which
+      // Inkline writes a note, read from the file and wrote. So is how many
+      // writes there were at Obsidian's, and whether the saves have ended.
+      // This shows that Inkline finds the old embed and writes the new one. On
+      // Obsidian 1.13.4 it also shows that Inkline looks again after its first
+      // look: with only the first look, the test fails there. On 1.15.1 the
+      // first look already comes after the saves, so it passes there either
+      // way, and the repeated look is shown on 1.13.4 alone.
+      const saveAtNextWrite = async (): Promise<void> => {
+        await browser.executeObsidian(({ app, obsidian }) => {
+          const { vault } = app;
+          const seen: {
+            writes: { how: string; given?: string; text: string }[];
+            fired?: number;
+            saved: boolean;
+          } = { writes: [], saved: false };
+          Reflect.set(window, "inklineSaveOnModify", seen);
+          const modify = vault.modify.bind(vault);
+          vault.modify = async (file, text, options) => {
+            if (file.path === "Editor.md") {
+              seen.writes.push({ how: "modify", text });
+            }
+            return modify(file, text, options);
+          };
+          const process = vault.process.bind(vault);
+          vault.process = async (file, change, options) =>
+            process(
+              file,
+              (given) => {
+                const text = change(given);
+                if (file.path === "Editor.md") {
+                  seen.writes.push({ how: "process", given, text });
+                }
+                return text;
+              },
+              options,
+            );
+          const saves = vault.on("modify", (file) => {
+            if (file.path !== "Editor.md") return;
+            vault.offref(saves);
+            seen.fired = seen.writes.length;
+            const saving: Promise<void>[] = [];
+            for (const { view } of app.workspace.getLeavesOfType("markdown")) {
+              if (view instanceof obsidian.MarkdownView) {
+                saving.push(view.save());
+              }
+            }
+            void Promise.all(saving).then(() => {
+              seen.saved = true;
+            });
+          });
+          Reflect.set(window, "inklineStopSaveOnModify", () => {
+            vault.offref(saves);
+            Reflect.deleteProperty(vault, "modify");
+            Reflect.deleteProperty(vault, "process");
+          });
         });
-      });
-      await askAndHold(["Control", "Enter"]);
-      await waitClosed();
-      await waitForNote(withText(renamed));
-      await waitForFile("Editor.md", withText(renamed));
-      expect(await marked("Editor.md")).toEqual([withText(`${renamed}|`)]);
+      };
+      /** What {@link saveAtNextWrite} has kept. */
+      const seen = () =>
+        browser.execute(
+          () =>
+            Reflect.get(window, "inklineSaveOnModify") as {
+              writes: { how: string; given?: string; text: string }[];
+              fired?: number;
+              saved: boolean;
+            },
+        );
+      try {
+        await askAndHold(["Control", "Enter"], saveAtNextWrite);
+        await waitClosed();
+        await waitForNote(withText(renamed));
+        await waitForFile("Editor.md", withText(renamed));
+        expect(await marked("Editor.md")).toEqual([withText(`${renamed}|`)]);
+        await browser.waitUntil(async () => (await seen()).saved, {
+          timeoutMsg: "the saves at Obsidian's write did not end",
+        });
+        const { writes, fired = 0 } = await seen();
+        // The saves came at Obsidian's write of the new embed into the file,
+        // which holds none of the unsaved text, not at the note's own save,
+        // and wrote the old embed back, with that text.
+        expect(fired).toBeGreaterThan(0);
+        expect(writes[fired - 1]?.text).toBe(
+          `The door is marked with ${renamed} which means return.\n`,
+        );
+        const after = writes.slice(fired);
+        expect(after).toContainEqual({ how: "modify", text: withText(old) });
+        const undone = after.findIndex(
+          ({ how, text }) => how === "modify" && text === withText(old),
+        );
+        // Then Inkline found the old embed in the file, and wrote the new one.
+        expect(
+          after
+            .slice(undone + 1)
+            .filter(({ how }) => how === "process")
+            .map(({ given, text }) => [given, text]),
+        ).toContainEqual([withText(old), withText(renamed)]);
+      } finally {
+        await browser.execute(() => {
+          const stop: unknown = Reflect.get(window, "inklineStopSaveOnModify");
+          Reflect.deleteProperty(window, "inklineStopSaveOnModify");
+          Reflect.deleteProperty(window, "inklineSaveOnModify");
+          if (typeof stop === "function") Reflect.apply(stop, undefined, []);
+        });
+      }
     });
 
     // A save that starts once the reload has read the file has it take that
@@ -1320,7 +1541,7 @@ describe("A rename while the note holds unsaved text", function () {
         ["the editor closes", ["Control", "Enter"], waitClosed],
       ] as const) {
         it(`keeps the text when ${how}, with the reload held ${String(hold)} ms`, async function () {
-          const restore = await slowCachedRead(hold);
+          const restore = await slowCachedRead("Editor.md", hold);
           try {
             await insertAndWait();
             await markEditor();
@@ -1330,11 +1551,18 @@ describe("A rename while the note holds unsaved text", function () {
               async () => (await topButton("Just once")) !== undefined,
             );
             await addBoth("Editor.md");
+            // The note's reads so far, as it opened, are not the rename's.
+            const { started } = await heldReads();
             await clickTop("Just once");
             await gone();
             await waitForNote(withText(renamed));
             await waitForFile("Editor.md", withText(renamed));
-            await browser.pause(2 * hold + 1000);
+            // Past every held read since the answer, whose text would revert
+            // the note's, and what the reload did with it.
+            await waitForHeldReads(started);
+            console.log(
+              `Held ${String((await heldReads()).started - started)} reads of the note after the answer, ${String(started)} before`,
+            );
             expect(await noteText()).toBe(withText(renamed));
             await waitForFile("Editor.md", withText(renamed));
           } finally {
@@ -1368,8 +1596,10 @@ describe("A rename while the note holds unsaved text", function () {
       // The editor's own save lands, and the reload after it finds nothing to
       // do. That loses the rename step, as the notice says, and never the text.
       await waitForFile("Editor.md", withText(old));
-      await browser.pause(3000);
+      // Once the held reload has landed, which can be after the save.
+      await waitForHeldReloads();
       expect(await noteText()).toBe(withText(old));
+      await waitForFile("Editor.md", withText(old));
     });
 
     it("keeps the text and the next symbol's place through Next", async function () {
@@ -1529,17 +1759,8 @@ describe("Line endings a note's file changes to", function () {
   };
 
   for (const [state, leave] of Object.entries(away)) {
-    it(`finds a place taken with \\n in a file ${state} with \\r\\n`, async function () {
-      await insertBetween("Ends.md");
-      await leave("Ends.md");
-      await writeFile("Ends.md", crlf);
-      await save();
-      await waitForFile(
-        "Ends.md",
-        "first\r\nleft ![[001.ink.png]] right\r\nlast\r\n",
-      );
-    });
-
+    // A place taken with \n, found in a file with \r\n, is the first step of
+    // this test, which then goes the other way.
     it(`finds a place taken with \\r\\n in a file ${state} with \\n`, async function () {
       await insertBetween("Ends.md");
       await leave("Ends.md");
@@ -1569,25 +1790,28 @@ describe("Line endings a note's file changes to", function () {
         "first\nleft ![[001.ink.png]] right\r\nlast\n\r\nend",
       );
     });
-
-    it(`adds a line in the file's own ending once its place is gone, ${state}`, async function () {
-      await insertBetween("Ends.md");
-      await leave("Ends.md");
-      await writeFile("Ends.md", "Line one.\r\nLine two.");
-      await next(1);
-      await waitForNotice("it was added at the end of Ends");
-      await waitForFile(
-        "Ends.md",
-        "Line one.\r\nLine two.\r\n![[001.ink.png]]\r\n",
-      );
-      await draw([[0.5, 0.5]]);
-      await save();
-      await waitForFile(
-        "Ends.md",
-        "Line one.\r\nLine two.\r\n![[001.ink.png]]![[002.ink.png]]\r\n",
-      );
-    });
   }
+
+  // A note in Reading view takes the symbol through its file as a closed one
+  // does, as Inkline counts no editor in Reading view; the line endings of
+  // that file are what the tests above keep in both.
+  it("adds a line in the file's own ending once its place is gone, closed", async function () {
+    await insertBetween("Ends.md");
+    await closeTabs("Ends.md");
+    await writeFile("Ends.md", "Line one.\r\nLine two.");
+    await next(1);
+    await waitForNotice("it was added at the end of Ends");
+    await waitForFile(
+      "Ends.md",
+      "Line one.\r\nLine two.\r\n![[001.ink.png]]\r\n",
+    );
+    await draw([[0.5, 0.5]]);
+    await save();
+    await waitForFile(
+      "Ends.md",
+      "Line one.\r\nLine two.\r\n![[001.ink.png]]![[002.ink.png]]\r\n",
+    );
+  });
 
   it("keeps a file's line endings through a rename with nothing unsaved", async function () {
     await setLinkUpdates(true);

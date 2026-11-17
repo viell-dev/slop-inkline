@@ -11,6 +11,7 @@ import {
   holdMenuLoad,
   menuItems,
 } from "../support/menus.ts";
+import { placeOf, rightClick } from "../support/pointer.ts";
 
 /** Opens `path` in the active leaf, in Live Preview, source, or Reading view. */
 async function open(
@@ -43,17 +44,15 @@ async function rightClickSymbol(
   view: "source" | "reading",
   within = "",
 ): Promise<void> {
-  const image = browser.$(
-    `.workspace-leaf.mod-active .markdown-${view}-view ${within} img.inkline-symbol`,
-  );
+  const selector = `.workspace-leaf.mod-active .markdown-${view}-view ${within} img.inkline-symbol`;
+  const image = browser.$(selector);
   await image.waitForExist();
   // Loaded, and settled where the note puts it: an embedded note draws its
   // text a moment after it opens.
   await browser.waitUntil(async () =>
     image.getProperty("complete").then((complete) => complete === true),
   );
-  await browser.pause(500);
-  await image.click({ button: "right" });
+  await rightClick(await placeOf(selector));
 }
 
 /**
@@ -94,13 +93,14 @@ async function openPopout(path: string): Promise<string> {
 
 /** Right-clicks the symbol in the popout window switched to. */
 async function rightClickInPopout(): Promise<void> {
-  const image = browser.$(".markdown-reading-view img.inkline-symbol");
+  const selector = ".markdown-reading-view img.inkline-symbol";
+  const image = browser.$(selector);
   await image.waitForExist();
   await browser.waitUntil(async () =>
     image.getProperty("complete").then((complete) => complete === true),
   );
-  await browser.pause(500);
-  await image.click({ button: "right" });
+  // Settled where the window lays it out.
+  await rightClick(await placeOf(selector));
 }
 
 /** Switches back to the main window, `main`, and closes every popout. */

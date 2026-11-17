@@ -131,12 +131,38 @@ async function paletteOffers(query: string): Promise<string[]> {
   await browser.waitUntil(async () =>
     input.getValue().then((value) => value === query),
   );
-  // The list follows the typing a moment later.
-  await browser.pause(300);
-  return browser.execute(() =>
-    Array.from(document.querySelectorAll(".prompt .suggestion-title")).map(
-      (title) => title.textContent,
-    ),
+  // The list answers the whole query once every row it keeps has every letter
+  // and digit of the query marked as matched, in order, or once it says that
+  // nothing matched: a longer query matches no command a shorter one before it
+  // did not, so a list left empty by part of the query is the whole query's.
+  // On 1.13.4 and 1.15.1 it follows in the same step as the input, so this
+  // finds it there at once.
+  return browser.waitUntil(
+    async () =>
+      browser.execute((typed) => {
+        const prompt = document.querySelector(".prompt");
+        if (prompt === null) return false;
+        const letters = (text: string): string =>
+          text.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+        const rows = Array.from(prompt.querySelectorAll(".suggestion-item"));
+        const answered =
+          prompt.querySelector(".suggestion-empty") !== null ||
+          (rows.length > 0 &&
+            rows.every(
+              (row) =>
+                letters(
+                  Array.from(row.querySelectorAll(".suggestion-highlight"))
+                    .map((marked) => marked.textContent)
+                    .join(""),
+                ) === letters(typed),
+            ));
+        return answered
+          ? Array.from(prompt.querySelectorAll(".suggestion-title")).map(
+              (title) => title.textContent,
+            )
+          : false;
+      }, query),
+    { timeoutMsg: `the palette's list did not answer ${query}` },
   );
 }
 

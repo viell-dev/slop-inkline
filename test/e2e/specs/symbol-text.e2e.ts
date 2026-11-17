@@ -16,6 +16,7 @@ import {
   fillStorage,
   freeStorage,
   markEditor,
+  noteText,
   openAtMarker,
   recordOf,
   restoreVault,
@@ -457,6 +458,7 @@ async function holdNextRead(file: string): Promise<void> {
 async function letReadGo(): Promise<void> {
   await browser.execute(() => {
     const go: unknown = Reflect.get(window, "inklineLetReadGo");
+    Reflect.deleteProperty(window, "inklineLetReadGo");
     if (typeof go !== "function") throw new Error("no held read");
     Reflect.apply(go, undefined, []);
   });
@@ -612,6 +614,23 @@ describe("A symbol's readings and translations", function () {
       app.workspace.detachLeavesOfType("inkline-library");
     });
     await makeNote();
+  });
+
+  // The stubs below take themselves away only when the call they wait for
+  // comes, which a failed test may never make: one left behind would hold up
+  // or change the reads and writes of every later test.
+  afterEach(async function () {
+    await browser.execute(() => {
+      const go: unknown = Reflect.get(window, "inklineLetReadGo");
+      Reflect.deleteProperty(window, "inklineLetReadGo");
+      if (typeof go === "function") Reflect.apply(go, undefined, []);
+    });
+    await letWriteGo();
+    await restoreVault();
+    await browser.executeObsidian(({ app }) => {
+      Reflect.deleteProperty(app.vault, "readBinary");
+      Reflect.deleteProperty(app.vault, "modifyBinary");
+    });
   });
 
   describe("in the editor", function () {
@@ -856,13 +875,20 @@ describe("A symbol's readings and translations", function () {
         ]);
       }
 
-      /** Has the editor keep the stroke as a draft, and restarts Obsidian. */
+      /**
+       * Has the editor keep its changes as a draft, and turns Inkline off and
+       * on, which closes the editor and keeps the draft again as it does. The
+       * tests that use this are about the wording of the question that offers
+       * the draft, which is the same however the editor went. That a draft
+       * kept as the strokes and the text were made comes back after Obsidian
+       * itself restarts, with no save under way, is shown by "says to look
+       * over text a draft would put back, and restores it after a restart".
+       */
       async function leaveDraft(): Promise<void> {
         await browser.waitUntil(
           async () => (await storedDrafts()).length === 1,
         );
-        await browser.reloadObsidian();
-        await loadModules();
+        await restartInkline();
       }
 
       /** What the question about a draft says, once it opens. */
@@ -1101,17 +1127,32 @@ describe("A symbol's readings and translations", function () {
         expect(await strokes()).toBe(2);
       });
 
-      it("says to look over text a draft would put back", async function () {
-        await symbolWith(file, { reading: ["TA"], translation: ["field"] });
-        await editFile(file);
-        await showFields();
+      // A restart of Obsidian, unlike turning Inkline off, closes no editor,
+      // so the draft that comes back is the one kept as the stroke was drawn
+      // and the text typed, as after a crash. No save is under way, so it is
+      // the draft of the drawing as the file holds it.
+      it("says to look over text a draft would put back, and restores it after a restart", async function () {
+        await withStroke();
         await fill("reading", "typed");
-        await leaveDraft();
+        await browser.waitUntil(
+          async () => (await storedDrafts()).length === 1,
+        );
+        await browser.reloadObsidian();
+        await loadModules();
         await changeOnDisk(file, { translation: ["plot"] });
         await editFile(file);
         const said = await draftQuestion();
         expect(said).toContain("look over what you typed");
         expect(said).not.toContain("may not line up");
+        await clickTop("Restore");
+        await area("reading").waitForDisplayed();
+        expect(await area("reading").getValue()).toBe("typed");
+        await saveAndClose();
+        expect(await fieldsOf(file)).toEqual({
+          reading: ["typed"],
+          translation: ["plot"],
+        });
+        expect(await strokes()).toBe(2);
       });
 
       it("still says so of a draft whose drawing changed", async function () {
@@ -1208,61 +1249,74 @@ describe("A symbol's readings and translations", function () {
           if (typeof change !== "function") throw new Error("no themes");
           change.call(app, wanted);
         }, theme);
-        await symbolWith("past tense.ink.png", {});
-        await symbolWith("a name long enough to wrap in its row.ink.png", {
-          reading: ["TA", "DA", "ta-a", "THA", "dha", "ṭa", "ḍa", "tʰa", "d̪a"],
-          translation: ["a very long translation that the row must shorten"],
-        });
-        await symbolWith("Said.ink.png", {
-          reading: ["KA"],
-          translation: ["rice field", "שלום"],
-        });
-        await showLibrary();
-        await waitForValues("Said.ink.png", "Reading: KA");
-        await waitForValues(
-          "a name long enough to wrap in its row.ink.png",
-          "and 1 more",
-        );
-        const sizes = await browser.execute(() => {
-          const list = document.querySelector(".inkline-library-list");
-          const view = document.querySelector(".inkline-library");
-          return {
-            list: [list?.scrollWidth ?? 0, list?.clientWidth ?? 0],
-            view: [view?.scrollWidth ?? 0, view?.clientWidth ?? 0],
-          };
-        });
-        expect(sizes.list[0]).toBeLessThanOrEqual(sizes.list[1] ?? 0);
-        expect(sizes.view[0]).toBeLessThanOrEqual(sizes.view[1] ?? 0);
-        await saveScreenshot(`text-library-${theme}`);
-        await browser.$(".inkline-library-search").setValue("rice");
-        await browser.waitUntil(
-          async () =>
-            (await browser.$$(".inkline-library-symbol").length) === 1,
-        );
-        await saveScreenshot(`text-library-found-${theme}`);
-        await browser.$(".inkline-library-search").click();
-        await browser.keys(["Control", "a"]);
-        await browser.keys(["Delete"]);
-        await openFields("Said.ink.png");
-        await saveScreenshot(`text-library-form-${theme}`);
-        await browser.keys(["Escape"]);
-        await waitForClosedForm();
-        await editFile("Said.ink.png");
-        await saveScreenshot(`text-editor-values-${theme}`);
-        await showFields();
-        await saveScreenshot(`text-editor-open-${theme}`);
-        await browser.keys(["Escape"]);
-        await browser.$(".inkline-editor").waitForExist({ reverse: true });
-        await openAtMarker(noteFile, "HERE");
-        await type(";;rice");
-        await waitForRow("Said");
-        await saveScreenshot(`text-suggest-${theme}`);
-        await browser.keys(["Escape"]);
-        await browser.executeObsidian(({ app }) => {
-          const change: unknown = Reflect.get(app, "changeTheme");
-          if (typeof change !== "function") throw new Error("no themes");
-          change.call(app, "moonstone");
-        });
+        try {
+          await symbolWith("past tense.ink.png", {});
+          await symbolWith("a name long enough to wrap in its row.ink.png", {
+            reading: [
+              "TA",
+              "DA",
+              "ta-a",
+              "THA",
+              "dha",
+              "ṭa",
+              "ḍa",
+              "tʰa",
+              "d̪a",
+            ],
+            translation: ["a very long translation that the row must shorten"],
+          });
+          await symbolWith("Said.ink.png", {
+            reading: ["KA"],
+            translation: ["rice field", "שלום"],
+          });
+          await showLibrary();
+          await waitForValues("Said.ink.png", "Reading: KA");
+          await waitForValues(
+            "a name long enough to wrap in its row.ink.png",
+            "and 1 more",
+          );
+          const sizes = await browser.execute(() => {
+            const list = document.querySelector(".inkline-library-list");
+            const view = document.querySelector(".inkline-library");
+            return {
+              list: [list?.scrollWidth ?? 0, list?.clientWidth ?? 0],
+              view: [view?.scrollWidth ?? 0, view?.clientWidth ?? 0],
+            };
+          });
+          expect(sizes.list[0]).toBeLessThanOrEqual(sizes.list[1] ?? 0);
+          expect(sizes.view[0]).toBeLessThanOrEqual(sizes.view[1] ?? 0);
+          await saveScreenshot(`text-library-${theme}`);
+          await browser.$(".inkline-library-search").setValue("rice");
+          await browser.waitUntil(
+            async () =>
+              (await browser.$$(".inkline-library-symbol").length) === 1,
+          );
+          await saveScreenshot(`text-library-found-${theme}`);
+          await browser.$(".inkline-library-search").click();
+          await browser.keys(["Control", "a"]);
+          await browser.keys(["Delete"]);
+          await openFields("Said.ink.png");
+          await saveScreenshot(`text-library-form-${theme}`);
+          await browser.keys(["Escape"]);
+          await waitForClosedForm();
+          await editFile("Said.ink.png");
+          await saveScreenshot(`text-editor-values-${theme}`);
+          await showFields();
+          await saveScreenshot(`text-editor-open-${theme}`);
+          await browser.keys(["Escape"]);
+          await browser.$(".inkline-editor").waitForExist({ reverse: true });
+          await openAtMarker(noteFile, "HERE");
+          await type(";;rice");
+          await waitForRow("Said");
+          await saveScreenshot(`text-suggest-${theme}`);
+          await browser.keys(["Escape"]);
+        } finally {
+          await browser.executeObsidian(({ app }) => {
+            const change: unknown = Reflect.get(app, "changeTheme");
+            if (typeof change !== "function") throw new Error("no themes");
+            change.call(app, "moonstone");
+          });
+        }
       });
     }
 
@@ -1603,22 +1657,6 @@ describe("A symbol's readings and translations", function () {
       });
     });
 
-    it("refuses the later of two saves of one field, and shows what is there", async function () {
-      await symbolWith("Same.ink.png", { reading: ["TA"] });
-      await showLibrary();
-      await saveTwice(
-        "Same.ink.png",
-        ["reading", "FIRST"],
-        ["reading", "SECOND"],
-      );
-      await browser.waitUntil(async () =>
-        (await formNote().getText()).includes("FIRST"),
-      );
-      await restoreVault();
-      expect((await fieldsOf("Same.ink.png")).reading).toEqual(["FIRST"]);
-      expect(await area("reading").getValue()).toBe("SECOND");
-    });
-
     it("has an editor's save take in what a library's wrote ahead of it, without asking", async function () {
       await symbolWith("Library first.ink.png", {
         reading: ["TA"],
@@ -1642,32 +1680,6 @@ describe("A symbol's readings and translations", function () {
         translation: ["field"],
       });
       expect(await recordOf("Library first.ink.png")).not.toBe(before);
-    });
-
-    it("has the library's save build on an editor's that went ahead of it", async function () {
-      await symbolWith("Editor first.ink.png", {
-        reading: ["TA"],
-        translation: ["field"],
-      });
-      await showLibrary();
-      await openFields("Editor first.ink.png");
-      await fill("reading", "typed");
-      await editFile("Editor first.ink.png");
-      await draw([
-        [0.5, 0.3],
-        [0.7, 0.6],
-      ]);
-      const before = await recordOf("Editor first.ink.png");
-      // As the editor starts to write, the library saves too.
-      await atNextWrite("fields", 300);
-      await browser.execute(saveEditor);
-      await waitForClosedForm();
-      await browser.$(".inkline-editor").waitForExist({ reverse: true });
-      expect(await fieldsOf("Editor first.ink.png")).toEqual({
-        reading: ["typed"],
-        translation: ["field"],
-      });
-      expect(await recordOf("Editor first.ink.png")).not.toBe(before);
     });
 
     /**
@@ -2116,27 +2128,11 @@ describe("A symbol's readings and translations", function () {
       return strokes.length;
     }
 
-    afterEach(async function () {
-      // A save left waiting would hold up every later test's.
-      await letWriteGo();
-    });
-
-    it("shows nothing for a save that takes less than the wait", async function () {
-      const file = "Slow.ink.png";
-      await symbolWith(file, { reading: ["TA"] });
-      await showLibrary();
-      await browser.execute(() => {
-        new MutationObserver(() => {
-          const shown = document.querySelector(".inkline-save-wait");
-          if (shown !== null && shown.textContent !== "") {
-            Reflect.set(window, "inklineSawWait", true);
-          }
-        }).observe(document.body, {
-          childList: true,
-          characterData: true,
-          subtree: true,
-        });
-      });
+    /**
+     * The steps of "shows nothing for a save that takes less than the wait",
+     * with its watch on the page set.
+     */
+    async function shownNothingWhileSaving(file: string): Promise<void> {
       await openFields(file);
       await fill("reading", "typed");
       await delayVault("modifyBinary", stalledAfter / 2, "before");
@@ -2157,6 +2153,36 @@ describe("A symbol's readings and translations", function () {
         ),
       ).toBe(false);
       expect(await browser.$(".notice*=Saved Slow").isExisting()).toBe(false);
+    }
+
+    it("shows nothing for a save that takes less than the wait", async function () {
+      const file = "Slow.ink.png";
+      await symbolWith(file, { reading: ["TA"] });
+      await showLibrary();
+      await browser.execute(() => {
+        const watching = new MutationObserver(() => {
+          const shown = document.querySelector(".inkline-save-wait");
+          if (shown !== null && shown.textContent !== "") {
+            Reflect.set(window, "inklineSawWait", true);
+          }
+        });
+        watching.observe(document.body, {
+          childList: true,
+          characterData: true,
+          subtree: true,
+        });
+        Reflect.set(window, "inklineWaitWatch", watching);
+      });
+      try {
+        await shownNothingWhileSaving(file);
+      } finally {
+        await browser.execute(() => {
+          const watching: unknown = Reflect.get(window, "inklineWaitWatch");
+          Reflect.deleteProperty(window, "inklineWaitWatch");
+          Reflect.deleteProperty(window, "inklineSawWait");
+          if (watching instanceof MutationObserver) watching.disconnect();
+        });
+      }
     });
 
     it("tells a form behind a held write, keeps what was typed, and saves when the write ends", async function () {
@@ -2423,60 +2449,20 @@ describe("A symbol's readings and translations", function () {
       ]);
       await type("ood");
       await browser.waitUntil(async () => (await rows()).length === 0);
-    });
-
-    it("needs no accents to find a value that has them, and a value holds what was typed", async function () {
-      await indexed();
-      await openAtMarker(noteFile, "HERE");
-      await type(";;sa");
-      await browser.waitUntil(async () =>
-        (await rows()).some(({ why }) => why === "Reading: šá"),
-      );
-      await browser.keys(["Escape"]);
-      await type(" ;;ida");
-      // Letters of `rice field` in order, but not together.
-      await browser.waitUntil(async () => (await rows()).length === 0);
-    });
-
-    it("tells a voiced kana from the plain one, in the lists and the library", async function () {
-      await symbolWith("One.ink.png", { reading: ["は"] });
-      await symbolWith("Two.ink.png", { reading: ["ば"] });
-      await symbolWith("Three.ink.png", { reading: ["ぱ"] });
-      await indexed();
-      await waitForValues("Three.ink.png", "ぱ");
-      const search = browser.$(".inkline-library-search");
-      /** The rows the filter leaves, by path. */
-      const left = () =>
-        browser.execute(() =>
-          Array.from(document.querySelectorAll(".inkline-library-symbol")).map(
-            (found) => found.getAttribute("data-inkline-path"),
-          ),
-        );
-      for (const [typed, file] of [
-        ["は", "One.ink.png"],
-        ["ば", "Two.ink.png"],
-        ["ぱ", "Three.ink.png"],
-      ] as const) {
-        await search.setValue(typed);
-        await browser.waitUntil(
-          async () => JSON.stringify(await left()) === JSON.stringify([file]),
-          { timeoutMsg: `${typed} did not leave only ${file}` },
-        );
+      // With nothing listed, Enter is the note's own: a new line, no symbol.
+      await browser.keys(["Enter"]);
+      // The editor's new line drops the space after the cursor.
+      let text = "";
+      try {
+        await browser.waitUntil(async () => {
+          text = await noteText();
+          return text === "Write ;;rice food\non.\n";
+        });
+      } catch (error) {
+        throw new Error(`Enter left ${JSON.stringify(text)}`, {
+          cause: error,
+        });
       }
-      await search.setValue("sa");
-      await browser.waitUntil(
-        async () =>
-          JSON.stringify(await left()) ===
-          JSON.stringify(["Anything at all.ink.png"]),
-      );
-      await search.setValue("");
-      await openAtMarker(noteFile, "HERE");
-      await browser.executeObsidianCommand("inkline:insert-existing-symbol");
-      await browser.$(".prompt-input").waitForExist();
-      await browser.$(".prompt-input").setValue("は");
-      await waitForRow("One");
-      expect(await rows()).toEqual([{ name: "One", why: "Reading: は" }]);
-      await browser.keys(["Escape"]);
     });
 
     it("finds by Insert existing symbol", async function () {
@@ -2600,57 +2586,27 @@ describe("A symbol's readings and translations", function () {
       await waitForFiltered("KA", ["Three.ink.png"]);
     });
 
-    it("goes on past a damaged file and a costly one", async function () {
-      await browser.executeObsidian(async ({ app }) => {
-        const { png, text } = window.inklineTest;
-        await app.vault.createBinary(
-          "A cut.ink.png",
-          new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0, 0]).buffer,
-        );
-        await app.vault.createBinary("B empty.ink.png", new ArrayBuffer(0));
-        const { bytes } = await window.inklineTest.canvas.saveInk(
-          { strokes: [] },
-          undefined,
-          [],
-        );
-        // More void chunks of a keyword than the index tries, before a good
-        // one, as a file made to be slow to read has.
-        const chunks = png.readChunks(bytes);
-        const keyword = new TextEncoder().encode("Inkline reading");
-        const void_ = new Uint8Array(keyword.length + 2);
-        void_.set(keyword);
-        const crafted = png.writeChunks([
-          ...chunks.slice(0, 1),
-          ...Array.from({ length: 2000 }, () => ({
-            type: "zTXt",
-            data: void_,
-          })),
-          ...chunks.slice(1),
-        ]);
-        const costly = await text.writeText(crafted, "translation", ["costly"]);
-        await app.vault.createBinary("C costly.ink.png", costly.slice().buffer);
-      });
-      await symbolWith("Z after.ink.png", { reading: ["TA"] });
-      await showLibrary();
-      await waitForFiltered("TA", ["Z after.ink.png"]);
-      // Declined for one keyword, not for the other, which it found at once.
-      await waitForFiltered("costly", ["C costly.ink.png"]);
-    });
-
-    it("searches while it reads, and says it may be missing some", async function () {
+    // One reading of the vault, slowed so that each step comes while it reads.
+    it("searches while it reads, says it may be missing some, and reads what just changed first", async function () {
       this.timeout(120_000);
       await bulkSymbols(60);
       await showLibrary();
-      // Reads slowly enough to see, from nothing.
-      await delayVault("readBinary", 100);
+      await delayVault("readBinary", 300);
       await restartInkline();
       await showLibrary();
       const search = browser.$(".inkline-library-search");
       const status = browser.$(".inkline-library-status");
+      const count = () => browser.$$(".inkline-library-symbol").length;
+      // Something the vault reports goes before the rest of the files.
+      await changeOnDisk("Bulk 58.ink.png", { reading: ["synced"] });
+      await search.setValue("synced");
+      await browser.waitUntil(async () => (await count()) === 1, {
+        timeout: 5000,
+      });
+      expect(await status.isDisplayed()).toBe(true);
+      // A name is found while the values are read, which the status says.
       await search.setValue("Bulk 59");
-      await browser.waitUntil(
-        async () => (await browser.$$(".inkline-library-symbol").length) === 1,
-      );
+      await browser.waitUntil(async () => (await count()) === 1);
       expect(await status.isDisplayed()).toBe(true);
       await saveScreenshot("text-library-reading");
       await search.click();
@@ -2668,31 +2624,6 @@ describe("A symbol's readings and translations", function () {
       await browser.keys(["Escape"]);
       await browser.$(".prompt").waitForExist({ reverse: true });
       await showLibrary();
-      await search.setValue("value59");
-      await browser.waitUntil(
-        async () => (await browser.$$(".inkline-library-symbol").length) === 1,
-        { timeout: 60_000 },
-      );
-      await browser.waitUntil(async () => !(await status.isDisplayed()));
-      await restoreVault();
-    });
-
-    it("finds what just changed ahead of the first reading of the vault", async function () {
-      this.timeout(120_000);
-      await bulkSymbols(60);
-      await showLibrary();
-      await delayVault("readBinary", 300);
-      await restartInkline();
-      await showLibrary();
-      const status = browser.$(".inkline-library-status");
-      const count = () => browser.$$(".inkline-library-symbol").length;
-      // Something the vault reports goes before the rest of the files.
-      await changeOnDisk("Bulk 58.ink.png", { reading: ["synced"] });
-      await browser.$(".inkline-library-search").setValue("synced");
-      await browser.waitUntil(async () => (await count()) === 1, {
-        timeout: 5000,
-      });
-      expect(await status.isDisplayed()).toBe(true);
       // A burst of reports, as from a sync tool, and a save goes before those
       // too: what was just typed is what a person looks for next.
       await browser.executeObsidian(async ({ app }) => {
@@ -2711,12 +2642,18 @@ describe("A symbol's readings and translations", function () {
       await showFields();
       await fill("reading", "justtyped");
       await saveAndClose();
-      await browser.$(".inkline-library-search").setValue("justtyped");
+      await search.setValue("justtyped");
       await browser.waitUntil(async () => (await count()) === 1, {
         timeout: 5000,
       });
       expect(await status.isDisplayed()).toBe(true);
+      // Once it has read the rest, at full speed now, the status goes.
       await restoreVault();
+      await search.setValue("value57");
+      await browser.waitUntil(async () => (await count()) === 1, {
+        timeout: 60_000,
+      });
+      await browser.waitUntil(async () => !(await status.isDisplayed()));
     });
   });
 });

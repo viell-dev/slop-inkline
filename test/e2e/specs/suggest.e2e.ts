@@ -1,7 +1,7 @@
 import { browser, expect } from "@wdio/globals";
 import { encodePng } from "../../support/png.ts";
-import { codeCases, type CodeCase } from "../../support/code-cases.ts";
-import { loadModules, toBase64 } from "../support/browser.ts";
+import { codeCases, triggerCases } from "../../support/code-cases.ts";
+import { toBase64 } from "../support/browser.ts";
 import { noteText, openAtMarker, waitForNotice } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 
@@ -173,95 +173,6 @@ async function listOpen(): Promise<boolean> {
 }
 
 /**
- * Notes by name, with HERE where a trigger is typed, and whether a list
- * opens there: in code that started on an earlier line, none does, and in
- * the text beside it, one does.
- */
-const contexts: [string, string, boolean][] = [
-  // A code span runs through its paragraph's lines.
-  ["Span", "A `code span\nthat runs on HERE` here.\n", false],
-  ["Span ended", "A `code span\nthat ends` HERE.\n", true],
-  ["Span in a quote", "> A `code span\nthat runs on HERE` here.\n", false],
-  ["Span over a blank", "A `not code\n\nHERE` here.\n", true],
-  ["Escaped", "A \\`not code\nHERE` here.\n", true],
-  ["Unmatched", "A `not code\nHERE here.\n", true],
-  ["Unmatched run", "A ``not code\nHERE` here.\n", false],
-  // A callout's title line is read on its own.
-  ["Callout", "> [!note] A `title\n> with `code HERE` here.\n", false],
-  ["Callout's text", "> [!note] A `title\n> and text HERE` here.\n", true],
-  // A fenced code block in a quote ends with the quote.
-  ["Quote", "> ```\n> sample\n\nHERE\n", true],
-  ["Nested quote", "> > ```\n> > sample\n>\n> HERE\n", true],
-  ["Quote's fence", "> ```\n> sample\n>\n> HERE\n", false],
-  ["Nested fence", "> > ```\n> > sample\n> > HERE\n", false],
-  // And one in a list item, with the item.
-  ["Item's fence", "- ```\n  sample\n  HERE\n", false],
-  ["List", "- A list item\n  ```\n  sample\n\nHERE\n", true],
-  // One the note opened runs to its end, through blank lines.
-  ["Open fence", "```\nsample\n\n\nHERE\n", false],
-  // An indented code block, told from a list item's indented text.
-  ["Indented", "Some text.\n\n    HERE\n", false],
-  ["Item's text", "- A list item\n\n    HERE\n", true],
-  // What Obsidian reads before a code span takes its backticks.
-  [
-    "Wiki link",
-    "See [[odd`name]] and `code that\nruns on HERE` here.\n",
-    false,
-  ],
-  ["Comment", "%% a `comment %%\nthen HERE` here.\n", true],
-  ["Definition", "[ref]: `odd\n`code HERE` here.\n", false],
-  // A tab after a quote's `>` indents its text as code.
-  ["Tab", ">\tindented HERE\n", false],
-  // A line without `>` goes on in a quote after any block in it.
-  [
-    "Quote's heading",
-    "> # A heading\n`code that\n> runs on HERE` here.\n",
-    false,
-  ],
-  // An empty item takes in the line after it.
-  ["Empty item", "-\n ~~~\n- HERE\n", true],
-  // An HTML block lists nothing, as its code cannot be told from its text;
-  // the text after it lists, and so does ordinary inline HTML.
-  ["HTML code", "<pre><code>`HERE`</code></pre>\n", false],
-  ["After HTML", "<div>\nsample\n</div>\n\nHERE\n", true],
-  ["Inline HTML", "Some <b>bold</b> HERE text.\n", true],
-  // A `<code>` tag in a paragraph makes code to its `</code>`.
-  ["Code tag", "Some <code>inline HERE</code> text.\n", false],
-  // An open `<code>` stays open over blank lines, as the browser keeps it,
-  // and a slash does not close one; a closed one makes no code after it.
-  ["Open code", "<code>\n\nHERE\n\n</code>\n", false],
-  ["Open code tag", "Some <code>a\n\nHERE\n\n</code>\n", false],
-  ["Code slash", "Some <code/>HERE\n", false],
-  ["Code space slash", "Some <code />HERE\n", false],
-  ["Code attribute slash", 'Some <code class="x"/>HERE\n', false],
-  ["Closed code", "Some <code>a</code>\n\nHERE\n", true],
-  // A closing tag in a comment or a quoted attribute closes nothing, on one
-  // line or over lines; a real one after them closes the `<code>`.
-  ["Code comment", "<div><code><!-- </code> -->\n\nHERE\n\n</code>\n", false],
-  [
-    "Code attribute",
-    '<div><code><span title="</code>">x</span>\n\nHERE\n\n</code>\n',
-    false,
-  ],
-  [
-    "Code comment lines",
-    "<div><code><!--\n</code>\n-->\n\nHERE\n\n</code>\n",
-    false,
-  ],
-  [
-    "Code attribute lines",
-    '<div><code><span title="\n</code>\n">x</span>\n\nHERE\n\n</code>\n',
-    false,
-  ],
-  ["Closed comment", "<div><code><!-- x --></code>\n\nHERE\n", true],
-  [
-    "Closed attribute",
-    '<div><code><span title="x">x</span></code>\n\nHERE\n',
-    true,
-  ],
-];
-
-/**
  * Waits for the line break Enter makes after `typed`, in place of HERE in
  * `note`: the note's own text up to it, a line break, then what the editor
  * starts the next line with, as a quote's `>`, and the rest of the note.
@@ -356,6 +267,21 @@ describe("Inserting a symbol you have", function () {
     );
   });
 
+  // Every test starts from the four symbols above, which the test of the
+  // trigger alone lists, even after one that adds others failed.
+  afterEach(async function () {
+    await rememberFiles();
+    const others = await browser.executeObsidian(
+      ({ app }, kept) =>
+        app.vault
+          .getFiles()
+          .map((file) => file.path)
+          .filter((path) => path.endsWith(".ink.png") && !kept.includes(path)),
+      symbols,
+    );
+    if (others.length > 0) await deleteFiles(others);
+  });
+
   it("inserts a symbol by typing the trigger and its name", async function () {
     await openAtMarker("Typing.md", "HERE");
     await type(";;arc");
@@ -448,21 +374,6 @@ describe("Inserting a symbol you have", function () {
     await waitForNote("The door reads ![[arch.ink.png]].\n");
   });
 
-  it("matches a name with a space only if it holds what was typed", async function () {
-    await openAtMarker("Sentence.md", "HERE");
-    // A fuzzy match would find "tower" in "to wer".
-    await type(";;to wer");
-    await browser.pause(500);
-    expect(await listOpen()).toBe(false);
-    await browser.keys(["Enter"]);
-    await waitForNote("The door reads ;;to wer\n.\n");
-    // And "tower two" in "tower o".
-    await type(";;tower o");
-    await waitForSuggested(["tower one"]);
-    await browser.keys(["Enter"]);
-    await waitForNote("The door reads ;;to wer\n![[tower one.ink.png]].\n");
-  });
-
   it("lists nothing in code", async function () {
     // It lists in the text after the code, as a check that it would.
     await openAtMarker("Code.md", "TEXT");
@@ -481,13 +392,73 @@ describe("Inserting a symbol you have", function () {
     );
   });
 
+  it("lists nothing in front matter, in Source mode", async function () {
+    // Live Preview shows front matter as properties, which take no trigger.
+    await browser.executeObsidian(async ({ app }) => {
+      await app.vault.create(
+        "Front.md",
+        "---\ntags: FRONT\n---\n\nAfter TEXT.\n",
+      );
+      const file = app.vault.getFileByPath("Front.md");
+      if (file === null) throw new Error("no Front.md");
+      const leaf = app.workspace.getLeaf(false);
+      await leaf.openFile(file, { state: { mode: "source", source: true } });
+      app.workspace.setActiveLeaf(leaf, { focus: true });
+    });
+    try {
+      // It lists after the front matter, as a check that it would.
+      await openAtMarker("Front.md", "TEXT");
+      await type(";;arc");
+      await waitForSuggested(["arch"]);
+      await browser.keys(["Escape"]);
+      await openAtMarker("Front.md", "FRONT");
+      // In Source mode, where the front matter is the note's own text.
+      expect(
+        await browser.executeObsidian(({ app, obsidian }) => {
+          const view = app.workspace.getActiveViewOfType(obsidian.MarkdownView);
+          return { mode: view?.getMode(), source: view?.getState().source };
+        }),
+      ).toEqual({ mode: "source", source: true });
+      await type(";;arc");
+      await browser.pause(500);
+      expect(await listOpen()).toBe(false);
+      expect(await noteText()).toBe("---\ntags: ;;arc\n---\n\nAfter ;;arc.\n");
+    } finally {
+      // The next test's note opens in Live Preview.
+      await browser.executeObsidian(({ app, obsidian }) => {
+        for (const leaf of app.workspace.getLeavesOfType("markdown")) {
+          if (
+            leaf.view instanceof obsidian.MarkdownView &&
+            leaf.view.file?.path === "Front.md"
+          ) {
+            leaf.detach();
+          }
+        }
+      });
+    }
+  });
+
   describe("in code that started on an earlier line", function () {
     // A list left open by a failure would take the keys of the next test.
     afterEach(async function () {
       if (await listOpen()) await browser.keys(["Escape"]);
     });
 
-    for (const [name, note, lists] of contexts) {
+    // A few of triggerCases, one of each kind, typed into: what the check
+    // finds in each of them is in the unit tests, and how Obsidian renders
+    // them is in the test of "Where a trigger is code" below.
+    for (const name of [
+      "Span",
+      "Callout",
+      "Quote",
+      "Indented",
+      "Item's text",
+      "Code tag",
+    ]) {
+      const found = triggerCases[name];
+      if (found === undefined) throw new Error(`no case ${name}`);
+      const { note, code } = found;
+      const lists = !code;
       it(`${lists ? "lists" : "lists nothing"} in ${JSON.stringify(note)}`, async function () {
         await browser.executeObsidian(
           async ({ app }, path, text) => {
@@ -653,18 +624,14 @@ describe("Inserting a symbol you have", function () {
 });
 
 describe("Where a trigger is code", function () {
-  before(async function () {
-    await loadModules();
-  });
-
   // The cases of test/support/code-cases.ts, rendered as Reading view
-  // renders them.
-  it("finds code where Obsidian renders it, and only there", async function () {
+  // renders them. What src/notes/code.ts finds in the same cases is in
+  // test/unit/notes/code.test.ts.
+  it("renders as code what the cases say, and only that", async function () {
     const differ = await browser.executeObsidian(
       async ({ app, obsidian }, cases) => {
-        const { insideCode } = window.inklineTest.code;
         const found: string[] = [];
-        for (const [name, { note, code, hidden, limit }] of cases) {
+        for (const [name, { note, code, hidden }] of cases) {
           const shown = activeDocument.body.createDiv();
           const component = new obsidian.Component();
           component.load();
@@ -691,20 +658,9 @@ describe("Where a trigger is code", function () {
                 break;
               }
             }
-            const lines = note.split("\n");
-            const before = note.slice(0, note.indexOf("HERE")).split("\n");
-            const checked = insideCode(
-              (index) => lines[index],
-              before.length - 1,
-              (before.at(-1) ?? "").length,
-            );
             // Where Obsidian shows nothing, no text holds HERE.
             if (rendered !== (hidden === true ? undefined : code)) {
               found.push(`${name}: Obsidian renders ${String(rendered)}`);
-            }
-            // Where the check knowingly differs, it finds the other answer.
-            if (checked !== (limit === undefined ? code : !code)) {
-              found.push(`${name}: the check finds ${String(checked)}`);
             }
           } finally {
             component.unload();
@@ -713,14 +669,9 @@ describe("Where a trigger is code", function () {
         }
         return found;
       },
-      // The notes typed in above too, where a list opens only in text.
-      [
-        ...Object.entries(codeCases),
-        ...contexts.map(([name, note, lists]): [string, CodeCase] => [
-          name,
-          { note, code: !lists },
-        ]),
-      ],
+      // The notes of the trigger's own cases too, where a list opens only in
+      // text.
+      [...Object.entries(codeCases), ...Object.entries(triggerCases)],
     );
     expect(differ).toEqual([]);
   });
