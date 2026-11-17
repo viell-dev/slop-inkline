@@ -924,32 +924,10 @@ describe("The editor", function () {
     expect(await outcomeOf("inklineEarlierRead")).toEqual({
       failure: "The test ended with this held.",
     });
-    // A later test's own replacement of the same method, which a bare
-    // letGo() in its finally must leave alone: the earlier gate is gone.
-    await browser.executeObsidian(({ app }) => {
-      const read = app.vault.read.bind(app.vault);
-      const own = async (file: Parameters<typeof read>[0]) => read(file);
-      app.vault.read = own;
-      Reflect.set(window, "inklineOwnRead", own);
-    });
-    try {
-      await letGo();
-      expect(
-        await browser.executeObsidian(
-          ({ app }) =>
-            Reflect.get(app.vault, "read") ===
-            Reflect.get(window, "inklineOwnRead"),
-        ),
-      ).toBe(true);
-    } finally {
-      await browser.executeObsidian(({ app }) => {
-        Reflect.deleteProperty(app.vault, "read");
-        Reflect.deleteProperty(window, "inklineOwnRead");
-      });
-    }
-    // A new gate is not reached until its own operation reaches it. Half a
-    // second can only show that it is not reached yet, but a gate left
-    // marked reached would be seen in the first look, at once.
+    // The next test's gate, straight after that cleanup, as it would come:
+    // it is not reached until its own operation reaches it. Half a second
+    // can only show that it is not reached yet, but a gate left marked
+    // reached would be seen in the first look, at once.
     await hold("read", "Editor.md");
     const reachedEarly = await waitForHeld(500).then(
       () => true,
@@ -975,6 +953,30 @@ describe("The editor", function () {
       { timeoutMsg: "the link's update stayed held" },
     );
     expect(await outcomeOf("inklineLinkUpdate")).toEqual({ text: original });
+    // A later test's own replacement of the method that gate held, which a
+    // bare letGo() in its finally must leave alone: cleanup took the gate.
+    await browser.executeObsidian(({ app }) => {
+      const process = app.vault.process.bind(app.vault);
+      const own = async (...asked: Parameters<typeof process>) =>
+        process(...asked);
+      app.vault.process = own;
+      Reflect.set(window, "inklineOwnProcess", own);
+    });
+    try {
+      await letGo();
+      expect(
+        await browser.executeObsidian(
+          ({ app }) =>
+            Reflect.get(app.vault, "process") ===
+            Reflect.get(window, "inklineOwnProcess"),
+        ),
+      ).toBe(true);
+    } finally {
+      await browser.executeObsidian(({ app }) => {
+        Reflect.deleteProperty(app.vault, "process");
+        Reflect.deleteProperty(window, "inklineOwnProcess");
+      });
+    }
     await browser.execute(() => {
       Reflect.deleteProperty(window, "inklineEarlierRead");
       Reflect.deleteProperty(window, "inklineLaterRead");

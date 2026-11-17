@@ -858,9 +858,11 @@ const replaceable = {
  * that fails midway leaves it, so that one failure does not become many.
  *
  * It ends every operation still held by {@link hold} or {@link holdDecoding},
- * or by any other gate that a test left. Each gate keeps how to end what it
- * holds as a property of the renderer's window, named `inklineAtEnd-` and a
- * name of the gate's own, which this calls once and removes.
+ * or by any other gate that registered to be ended here. Such a gate keeps
+ * how to end what it holds as a property of the renderer's window, named
+ * `inklineAtEnd-` and a name of the gate's own, which this calls once and
+ * removes. A gate that does not register ends what it holds in its own test's
+ * `finally` or its block's `afterEach`.
  *
  * What Obsidian itself does is let go, as if the test had let it go: what
  * {@link hold} holds as `move`, `save`, or `index`, on the adapter, or as
