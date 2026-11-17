@@ -340,7 +340,12 @@ describe("Renaming in the symbol library", function () {
         ?.setSelectionRange(2, 2);
     });
     await createSymbol("other.ink.png");
+    // The list draws nothing while a row is edited, so nothing shows that it
+    // heard of the new file to wait for: this waits past the 100 ms in which it
+    // gathers a burst of changes before it would draw, and the new file's row,
+    // not there yet, shows that it drew nothing.
     await browser.pause(300);
+    expect(await row("other").isExisting()).toBe(false);
     expect(await nameField().getValue()).toBe("tower");
     expect(await nameField().getProperty("selectionStart")).toBe(2);
     await browser.keys(["Enter"]);
