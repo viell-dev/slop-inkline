@@ -457,6 +457,7 @@ async function holdNextRead(file: string): Promise<void> {
 async function letReadGo(): Promise<void> {
   await browser.execute(() => {
     const go: unknown = Reflect.get(window, "inklineLetReadGo");
+    Reflect.deleteProperty(window, "inklineLetReadGo");
     if (typeof go !== "function") throw new Error("no held read");
     Reflect.apply(go, undefined, []);
   });
@@ -612,6 +613,23 @@ describe("A symbol's readings and translations", function () {
       app.workspace.detachLeavesOfType("inkline-library");
     });
     await makeNote();
+  });
+
+  // The stubs below take themselves away only when the call they wait for
+  // comes, which a failed test may never make: one left behind would hold up
+  // or change the reads and writes of every later test.
+  afterEach(async function () {
+    await browser.execute(() => {
+      const go: unknown = Reflect.get(window, "inklineLetReadGo");
+      Reflect.deleteProperty(window, "inklineLetReadGo");
+      if (typeof go === "function") Reflect.apply(go, undefined, []);
+    });
+    await letWriteGo();
+    await restoreVault();
+    await browser.executeObsidian(({ app }) => {
+      Reflect.deleteProperty(app.vault, "readBinary");
+      Reflect.deleteProperty(app.vault, "modifyBinary");
+    });
   });
 
   describe("in the editor", function () {
@@ -1208,61 +1226,74 @@ describe("A symbol's readings and translations", function () {
           if (typeof change !== "function") throw new Error("no themes");
           change.call(app, wanted);
         }, theme);
-        await symbolWith("past tense.ink.png", {});
-        await symbolWith("a name long enough to wrap in its row.ink.png", {
-          reading: ["TA", "DA", "ta-a", "THA", "dha", "ṭa", "ḍa", "tʰa", "d̪a"],
-          translation: ["a very long translation that the row must shorten"],
-        });
-        await symbolWith("Said.ink.png", {
-          reading: ["KA"],
-          translation: ["rice field", "שלום"],
-        });
-        await showLibrary();
-        await waitForValues("Said.ink.png", "Reading: KA");
-        await waitForValues(
-          "a name long enough to wrap in its row.ink.png",
-          "and 1 more",
-        );
-        const sizes = await browser.execute(() => {
-          const list = document.querySelector(".inkline-library-list");
-          const view = document.querySelector(".inkline-library");
-          return {
-            list: [list?.scrollWidth ?? 0, list?.clientWidth ?? 0],
-            view: [view?.scrollWidth ?? 0, view?.clientWidth ?? 0],
-          };
-        });
-        expect(sizes.list[0]).toBeLessThanOrEqual(sizes.list[1] ?? 0);
-        expect(sizes.view[0]).toBeLessThanOrEqual(sizes.view[1] ?? 0);
-        await saveScreenshot(`text-library-${theme}`);
-        await browser.$(".inkline-library-search").setValue("rice");
-        await browser.waitUntil(
-          async () =>
-            (await browser.$$(".inkline-library-symbol").length) === 1,
-        );
-        await saveScreenshot(`text-library-found-${theme}`);
-        await browser.$(".inkline-library-search").click();
-        await browser.keys(["Control", "a"]);
-        await browser.keys(["Delete"]);
-        await openFields("Said.ink.png");
-        await saveScreenshot(`text-library-form-${theme}`);
-        await browser.keys(["Escape"]);
-        await waitForClosedForm();
-        await editFile("Said.ink.png");
-        await saveScreenshot(`text-editor-values-${theme}`);
-        await showFields();
-        await saveScreenshot(`text-editor-open-${theme}`);
-        await browser.keys(["Escape"]);
-        await browser.$(".inkline-editor").waitForExist({ reverse: true });
-        await openAtMarker(noteFile, "HERE");
-        await type(";;rice");
-        await waitForRow("Said");
-        await saveScreenshot(`text-suggest-${theme}`);
-        await browser.keys(["Escape"]);
-        await browser.executeObsidian(({ app }) => {
-          const change: unknown = Reflect.get(app, "changeTheme");
-          if (typeof change !== "function") throw new Error("no themes");
-          change.call(app, "moonstone");
-        });
+        try {
+          await symbolWith("past tense.ink.png", {});
+          await symbolWith("a name long enough to wrap in its row.ink.png", {
+            reading: [
+              "TA",
+              "DA",
+              "ta-a",
+              "THA",
+              "dha",
+              "ṭa",
+              "ḍa",
+              "tʰa",
+              "d̪a",
+            ],
+            translation: ["a very long translation that the row must shorten"],
+          });
+          await symbolWith("Said.ink.png", {
+            reading: ["KA"],
+            translation: ["rice field", "שלום"],
+          });
+          await showLibrary();
+          await waitForValues("Said.ink.png", "Reading: KA");
+          await waitForValues(
+            "a name long enough to wrap in its row.ink.png",
+            "and 1 more",
+          );
+          const sizes = await browser.execute(() => {
+            const list = document.querySelector(".inkline-library-list");
+            const view = document.querySelector(".inkline-library");
+            return {
+              list: [list?.scrollWidth ?? 0, list?.clientWidth ?? 0],
+              view: [view?.scrollWidth ?? 0, view?.clientWidth ?? 0],
+            };
+          });
+          expect(sizes.list[0]).toBeLessThanOrEqual(sizes.list[1] ?? 0);
+          expect(sizes.view[0]).toBeLessThanOrEqual(sizes.view[1] ?? 0);
+          await saveScreenshot(`text-library-${theme}`);
+          await browser.$(".inkline-library-search").setValue("rice");
+          await browser.waitUntil(
+            async () =>
+              (await browser.$$(".inkline-library-symbol").length) === 1,
+          );
+          await saveScreenshot(`text-library-found-${theme}`);
+          await browser.$(".inkline-library-search").click();
+          await browser.keys(["Control", "a"]);
+          await browser.keys(["Delete"]);
+          await openFields("Said.ink.png");
+          await saveScreenshot(`text-library-form-${theme}`);
+          await browser.keys(["Escape"]);
+          await waitForClosedForm();
+          await editFile("Said.ink.png");
+          await saveScreenshot(`text-editor-values-${theme}`);
+          await showFields();
+          await saveScreenshot(`text-editor-open-${theme}`);
+          await browser.keys(["Escape"]);
+          await browser.$(".inkline-editor").waitForExist({ reverse: true });
+          await openAtMarker(noteFile, "HERE");
+          await type(";;rice");
+          await waitForRow("Said");
+          await saveScreenshot(`text-suggest-${theme}`);
+          await browser.keys(["Escape"]);
+        } finally {
+          await browser.executeObsidian(({ app }) => {
+            const change: unknown = Reflect.get(app, "changeTheme");
+            if (typeof change !== "function") throw new Error("no themes");
+            change.call(app, "moonstone");
+          });
+        }
       });
     }
 
@@ -2084,17 +2115,33 @@ describe("A symbol's readings and translations", function () {
       await symbolWith(file, { reading: ["TA"] });
       await showLibrary();
       await browser.execute(() => {
-        new MutationObserver(() => {
+        const watching = new MutationObserver(() => {
           const shown = document.querySelector(".inkline-save-wait");
           if (shown !== null && shown.textContent !== "") {
             Reflect.set(window, "inklineSawWait", true);
           }
-        }).observe(document.body, {
+        });
+        watching.observe(document.body, {
           childList: true,
           characterData: true,
           subtree: true,
         });
+        Reflect.set(window, "inklineWaitWatch", watching);
       });
+      try {
+        await shownNothingWhileSaving(file);
+      } finally {
+        await browser.execute(() => {
+          const watching: unknown = Reflect.get(window, "inklineWaitWatch");
+          Reflect.deleteProperty(window, "inklineWaitWatch");
+          Reflect.deleteProperty(window, "inklineSawWait");
+          if (watching instanceof MutationObserver) watching.disconnect();
+        });
+      }
+    });
+
+    /** The steps of the test above, with its watch on the page set. */
+    async function shownNothingWhileSaving(file: string): Promise<void> {
       await openFields(file);
       await fill("reading", "typed");
       await delayVault("modifyBinary", stalledAfter / 2, "before");
@@ -2115,7 +2162,7 @@ describe("A symbol's readings and translations", function () {
         ),
       ).toBe(false);
       expect(await browser.$(".notice*=Saved Slow").isExisting()).toBe(false);
-    });
+    }
 
     it("tells a form behind a held write, keeps what was typed, and saves when the write ends", async function () {
       await behindHeldWrite("typed");
