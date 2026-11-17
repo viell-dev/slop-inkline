@@ -151,10 +151,11 @@ describe("Saving a large symbol", function () {
       }
       const shortest = (each: (run: (typeof runs)[number]) => number): number =>
         Math.min(...runs.map(each));
-      // Work done all in one go would have one task as long as the whole save.
-      // Not a figure of its own: a fast machine must pass this too.
+      // Work done all in one go would have one frame as long as nearly all of
+      // the save, however fast the machine is; in slices, each frame is a
+      // small part of it.
       for (const run of runs) {
-        expect(run.totalMs).toBeGreaterThan(run.thread.longestTaskMs);
+        expect(run.totalMs).toBeGreaterThan(2 * run.thread.longestFrameMs);
       }
       // No frames would look like no long ones. A few are enough to show the
       // count works, and no more can be asked of a fast machine's short save.
