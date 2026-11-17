@@ -85,18 +85,21 @@ interface Box {
 
 /**
  * Switches Obsidian's interface to `language`, which takes a restart, as
- * choosing it in Obsidian's settings does.
+ * choosing it in Obsidian's settings does, unless it is the language already.
  */
 async function useLanguage(language: "en" | "he"): Promise<void> {
-  await browser.execute((wanted) => {
+  const changed = await browser.execute((wanted) => {
     // Obsidian keeps the interface's language for the whole app, under this
     // key of its own in the window's storage: a vault's storage, which
-    // plugins use for their own data, holds its keys apart from it.
+    // plugins use for their own data, holds its keys apart from it. Without
+    // it, the interface is in English.
     const stored = window.localStorage;
+    if ((stored.getItem("language") ?? "en") === wanted) return false;
     if (wanted === "en") stored.removeItem("language");
     else stored.setItem("language", wanted);
+    return true;
   }, language);
-  await browser.reloadObsidian();
+  if (changed) await browser.reloadObsidian();
   await loadModules();
   const rtl = await browser.execute(() =>
     document.body.classList.contains("mod-rtl"),
