@@ -101,6 +101,11 @@ async function storeLabels(buttonLabels: ButtonLabels): Promise<void> {
       throw new Error("no settings tab of Inkline's");
     }
     await tab.setControlValue("buttonLabels", value);
+    // The tab answers nothing, so a choice it refused would pass unseen and
+    // leave the tests after this one under the choice before.
+    if (tab.getControlValue("buttonLabels") !== value) {
+      throw new Error(`the settings tab did not take ${value} for the labels`);
+    }
   }, buttonLabels);
 }
 

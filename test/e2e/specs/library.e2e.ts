@@ -388,17 +388,23 @@ describe("The symbol library", function () {
       }
       throw new Error("Copy.md is not open");
     });
+    // Set at once, so finding it there once shows nothing: it has to stay,
+    // through three looks 150 ms apart, as long as the pause this replaced.
+    let held = 0;
     await browser.waitUntil(
-      async () =>
-        (await browser.executeObsidian(({ app, obsidian }) => {
+      async () => {
+        const at = await browser.executeObsidian(({ app, obsidian }) => {
           const editor = app.workspace.getActiveViewOfType(
             obsidian.MarkdownView,
           )?.editor;
           return editor === undefined
             ? -1
             : editor.posToOffset(editor.getCursor());
-        })) === inside,
-      { timeoutMsg: "the cursor was not inside the link" },
+        });
+        held = at === inside ? held + 1 : 0;
+        return held >= 3;
+      },
+      { interval: 150, timeoutMsg: "the cursor did not stay inside the link" },
     );
     await row("gate").$(".inkline-library-insert").click();
     await waitForText(

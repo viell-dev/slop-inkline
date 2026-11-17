@@ -143,18 +143,15 @@ function rowButton(
 }
 
 /**
- * The ways to leave gate's Quick edit while its save waits, as a person
- * would: Cancel, and the row's own Quick edit, by click or by Esc. Each calls
- * the row's one way of leaving, whichever step of the save waits, and that
- * step alone decides what is said, which quick-edit.test.ts checks for each
- * step; so the tests share the ways out between the two steps.
+ * Two of the ways to leave gate's Quick edit while its save waits, as a
+ * person would: Cancel, and Esc on the row's own Quick edit. The third, a
+ * click on that button, has a test of its own. Each calls the row's one way
+ * of leaving, whichever step of the save waits, and that step alone decides
+ * what is said, which quick-edit.test.ts checks for each step; so the tests
+ * share the ways out between the two steps.
  */
 const leavers = {
   cancel: ["Cancel", async () => formButton("Cancel").click()],
-  click: [
-    "the row's Quick edit",
-    async () => rowButton("gate.ink.png", "edit").click(),
-  ],
   escape: [
     "Esc on the row's Quick edit",
     async () => {
@@ -1179,32 +1176,30 @@ describe("Quick edit in the library", function () {
     expect((await fieldsOf("arch.ink.png")).reading).toEqual(["KA"]);
   });
 
-  for (const [how, leave] of [leavers.click]) {
-    it(`says the readings are saved when the rename after them is left with ${how}`, async function () {
-      await symbolWith("gate.ink.png", { reading: ["TA"] });
-      await noteUsing("Uses.md", "gate.ink.png");
-      await openNote("Uses.md");
-      await showLibrary();
-      await quickEdit("gate.ink.png");
-      await nameField().setValue("arch");
-      await area("reading").setValue("KA");
-      // The rename reads the open note to see whether it has text to save.
-      await hold("read");
-      await formButton("Save").click();
-      await waitForHeld();
-      const said = await waitForWait();
-      expect(said).toContain("Waiting for Obsidian to finish renaming a file.");
-      expect(said).toContain("The readings and translations are saved.");
-      expect(await rowButton("gate.ink.png", "edit").isEnabled()).toBe(true);
-      await leave();
-      await waitForClosed();
-      await waitForNotice("Saved gate. It was not renamed.");
-      await letGo();
-      await browser.pause(500);
-      expect(await symbolFiles()).toEqual(["gate.ink.png"]);
-      expect((await fieldsOf("gate.ink.png")).reading).toEqual(["KA"]);
-    });
-  }
+  it("says the readings are saved when the rename after them is left with the row's Quick edit", async function () {
+    await symbolWith("gate.ink.png", { reading: ["TA"] });
+    await noteUsing("Uses.md", "gate.ink.png");
+    await openNote("Uses.md");
+    await showLibrary();
+    await quickEdit("gate.ink.png");
+    await nameField().setValue("arch");
+    await area("reading").setValue("KA");
+    // The rename reads the open note to see whether it has text to save.
+    await hold("read");
+    await formButton("Save").click();
+    await waitForHeld();
+    const said = await waitForWait();
+    expect(said).toContain("Waiting for Obsidian to finish renaming a file.");
+    expect(said).toContain("The readings and translations are saved.");
+    expect(await rowButton("gate.ink.png", "edit").isEnabled()).toBe(true);
+    await rowButton("gate.ink.png", "edit").click();
+    await waitForClosed();
+    await waitForNotice("Saved gate. It was not renamed.");
+    await letGo();
+    await browser.pause(500);
+    expect(await symbolFiles()).toEqual(["gate.ink.png"]);
+    expect((await fieldsOf("gate.ink.png")).reading).toEqual(["KA"]);
+  });
 
   it("says in a notice what was saved once Inkline is turned off during the rename", async function () {
     await symbolWith("gate.ink.png", { reading: ["TA"] });

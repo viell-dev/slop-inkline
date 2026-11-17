@@ -24,7 +24,9 @@ export async function boxOf(selector: string): Promise<Box> {
 /**
  * Moves the pointer to `x`, `y` in the window, as a person's mouse would, and
  * returns the classes of what the page heard the pointer move over there, so
- * that a check of what shows there knows the pointer reached it.
+ * that a check of what shows there knows the pointer reached it. A move the
+ * page did not hear throws: a tooltip that then failed to show would give no
+ * hint of why.
  */
 export async function pointAt(x: number, y: number): Promise<string> {
   await browser.execute(() => {
@@ -45,7 +47,16 @@ export async function pointAt(x: number, y: number): Promise<string> {
     .action("pointer")
     .move({ origin: "viewport", x: Math.round(x), y: Math.round(y) })
     .perform();
-  return browser.execute(() => String(Reflect.get(window, "inklinePointer")));
+  const heard = await browser.execute((): string | null => {
+    const classes: unknown = Reflect.get(window, "inklinePointer");
+    return typeof classes === "string" ? classes : null;
+  });
+  if (heard === null) {
+    throw new Error(
+      `the page heard no pointer move to ${String(Math.round(x))}, ${String(Math.round(y))}`,
+    );
+  }
+  return heard;
 }
 
 /**

@@ -335,8 +335,7 @@ describe("What Inkline started, once it unloads", function () {
     }
   });
 
-  // With what "stops a library rename still waiting as it unloads" checked as
-  // well: the same hold, the same notice, and the symbol's name kept.
+  // It checks what the rename says and that the symbol keeps its name, too.
   it("saves no note for a library rename once it unloads", async function () {
     await open("Unload.md", "live");
     // Text that the note's file lacks, which a rename saves first. The note's
