@@ -858,7 +858,9 @@ const replaceable = {
  * that fails midway leaves it, so that one failure does not become many: it
  * fails every operation still held by {@link hold} or
  * {@link holdDecoding}, and any other gate a test registered in the
- * renderer's `inklineLetGos`; undoes {@link delayVault} and
+ * renderer's `inklineLetGos`, and takes {@link hold}'s gate away, so that a
+ * later {@link waitForHeld} or {@link letGo} cannot take it for its own;
+ * undoes {@link delayVault} and
  * {@link delayDecoding}; and removes every replacement of a method in
  * `replaceable` that Obsidian's object did not have as its own when this
  * first ran in the window, with the originals tests keep beside them under
@@ -873,6 +875,9 @@ export async function undoStubs(): Promise<void> {
         if (typeof gate === "function") Reflect.apply(gate, undefined, []);
       }
     }
+    // Its gate, settled now, which a later test's waitForHeld() or letGo()
+    // would otherwise take for its own.
+    Reflect.deleteProperty(window, "inklineHoldGate");
     Reflect.deleteProperty(window, "inklineFollowedStatus");
   });
   await restoreVault();
@@ -1116,6 +1121,12 @@ const holdable = {
  * once it has done it and before its caller hears. Failed by {@link letGo},
  * it rejects, having done its work if it was held after it. A test that ends
  * with one held leaves it to {@link undoStubs}, which fails it.
+ *
+ * Each call makes a gate of its own, the renderer's `inklineHoldGate` until
+ * the next call replaces it whole: what reaches the gate,
+ * {@link waitForHeld}, and {@link letGo} all go by that one object, so that
+ * an older operation, reaching its own gate or settling, never marks a newer
+ * gate as reached.
  */
 export async function hold(
   what: keyof typeof holdable,
@@ -1123,50 +1134,56 @@ export async function hold(
   when: "before" | "after" = "before",
 ): Promise<void> {
   await browser.executeObsidian(
-    ({ app }, { owner, method }, end, first) => {
+    ({ app }, { owner, method }, end, at) => {
       const target = owner === "adapter" ? app.vault.adapter : app.vault;
       const original: unknown = Reflect.get(target, method);
       if (typeof original !== "function") throw new Error(`no ${method}`);
       let settle: (failure?: string) => void = () => undefined;
-      const gate = new Promise<void>((resolve, reject) => {
+      const released = new Promise<void>((resolve, reject) => {
         settle = (failure) => {
           if (failure === undefined) resolve();
           else reject(new Error(failure));
         };
       });
       // Failed with nothing held, it fails no one.
-      gate.catch(() => undefined);
-      Reflect.set(window, "inklineHeldOwner", owner);
-      Reflect.set(window, "inklineHeldMethod", method);
-      Reflect.set(window, "inklineSettle", settle);
+      released.catch(() => undefined);
+      const wrapper = async (...args: unknown[]): Promise<unknown> => {
+        const [file] = args;
+        const path =
+          typeof file === "object" && file !== null
+            ? (Reflect.get(file, "path") as unknown)
+            : file;
+        const held = typeof path === "string" && path.endsWith(end);
+        if (held && at === "before") {
+          gate.reached = true;
+          await released;
+        }
+        const result: unknown = await Reflect.apply(original, target, args);
+        if (held && at === "after") {
+          gate.reached = true;
+          await released;
+        }
+        return result;
+      };
+      const gate = {
+        owner,
+        method,
+        reached: false,
+        settle,
+        wrapper,
+        original,
+        // What a let-go puts back: the object's own method, if it had one,
+        // as a stub of the test's that this holds over.
+        ownBefore: Object.hasOwn(target, method),
+      };
+      Reflect.set(window, "inklineHoldGate", gate);
       const registered: unknown = Reflect.get(window, "inklineLetGos");
       const letGos = Array.isArray(registered) ? registered : [];
       letGos.push(() => {
         settle("The test ended with this held.");
       });
       Reflect.set(window, "inklineLetGos", letGos);
-      Reflect.set(
-        target,
-        method,
-        async (...args: unknown[]): Promise<unknown> => {
-          const [file] = args;
-          const path =
-            typeof file === "object" && file !== null
-              ? (Reflect.get(file, "path") as unknown)
-              : file;
-          const held = typeof path === "string" && path.endsWith(end);
-          if (held && first === "before") {
-            Reflect.set(window, "inklineHeld", true);
-            await gate;
-          }
-          const result: unknown = await Reflect.apply(original, target, args);
-          if (held && first === "after") {
-            Reflect.set(window, "inklineHeld", true);
-            await gate;
-          }
-          return result;
-        },
-      );
+      Reflect.set(target, method, wrapper);
     },
     holdable[what],
     ending,
@@ -1174,33 +1191,45 @@ export async function hold(
   );
 }
 
-/** Waits for what {@link hold} held to be reached. */
-export async function waitForHeld(): Promise<void> {
-  await browser.waitUntil(async () =>
-    browser.execute(() => Reflect.get(window, "inklineHeld") === true),
+/**
+ * Waits for the operation that the latest {@link hold} holds to reach its
+ * gate, for up to `timeout` milliseconds, WebdriverIO's default otherwise.
+ */
+export async function waitForHeld(timeout?: number): Promise<void> {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(() => {
+        const gate: unknown = Reflect.get(window, "inklineHoldGate");
+        return (
+          typeof gate === "object" &&
+          gate !== null &&
+          Reflect.get(gate, "reached") === true
+        );
+      }),
+    {
+      ...(timeout === undefined ? {} : { timeout }),
+      timeoutMsg: "nothing reached the gate",
+    },
   );
 }
 
-/** Lets go what {@link hold} held, or fails it with `failure`. */
+/**
+ * Lets go what the latest {@link hold} holds, or fails it with `failure`,
+ * and takes its gate away, putting back what the gate replaced if the gate
+ * is still there: it removes nothing that is not its own, and does nothing
+ * once {@link undoStubs} has taken the gate away.
+ */
 export async function letGo(failure?: string): Promise<void> {
   await browser.executeObsidian(({ app }, reason) => {
-    const settle: unknown = Reflect.get(window, "inklineSettle");
-    const owner: unknown = Reflect.get(window, "inklineHeldOwner");
-    const method: unknown = Reflect.get(window, "inklineHeldMethod");
-    if (typeof method === "string") {
-      // Held, it became the object's own, over what its prototype has.
-      Reflect.deleteProperty(
-        owner === "adapter" ? app.vault.adapter : app.vault,
-        method,
-      );
-    }
-    for (const key of [
-      "inklineSettle",
-      "inklineHeldOwner",
-      "inklineHeldMethod",
-      "inklineHeld",
-    ]) {
-      Reflect.deleteProperty(window, key);
+    const gate: unknown = Reflect.get(window, "inklineHoldGate");
+    Reflect.deleteProperty(window, "inklineHoldGate");
+    if (typeof gate !== "object" || gate === null) return;
+    const { owner, method, settle, wrapper, original, ownBefore } =
+      gate as Record<string, unknown>;
+    const target = owner === "adapter" ? app.vault.adapter : app.vault;
+    if (typeof method === "string" && Reflect.get(target, method) === wrapper) {
+      if (ownBefore === true) Reflect.set(target, method, original);
+      else Reflect.deleteProperty(target, method);
     }
     if (typeof settle === "function") {
       Reflect.apply(settle, undefined, [reason ?? undefined]);

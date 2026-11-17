@@ -868,6 +868,96 @@ describe("The editor", function () {
     expect(await fileText("Editor.md")).toBe(original);
   });
 
+  it("starts each test with nothing held, after one that failed with an operation held", async function () {
+    /**
+     * Reads Editor.md through the vault, its outcome kept as `key`: not as
+     * `error`, which WebdriverIO takes for an error of its own.
+     */
+    async function startRead(key: string): Promise<void> {
+      await browser.executeObsidian(({ app }, name) => {
+        const file = app.vault.getFileByPath("Editor.md");
+        if (file === null) throw new Error("no Editor.md");
+        const outcome: { text?: string; failure?: string } = {};
+        Reflect.set(window, name, outcome);
+        app.vault.read(file).then(
+          (text) => {
+            outcome.text = text;
+          },
+          (error: unknown) => {
+            outcome.failure = error instanceof Error ? error.message : "?";
+          },
+        );
+      }, key);
+    }
+    async function outcomeOf(
+      key: string,
+    ): Promise<{ text?: string; failure?: string }> {
+      return browser.execute((name) => {
+        const outcome: unknown = Reflect.get(window, name);
+        return outcome ?? {};
+      }, key);
+    }
+    const original = await fileText("Editor.md");
+    // A read held at its gate, as a test that failed between waitForHeld()
+    // and letGo() leaves it, and the cleanup that the next test starts with.
+    await hold("read", "Editor.md");
+    await startRead("inklineEarlierRead");
+    await waitForHeld();
+    await undoStubs();
+    await browser.waitUntil(
+      async () => (await outcomeOf("inklineEarlierRead")).failure !== undefined,
+      { timeoutMsg: "the earlier read stayed held" },
+    );
+    expect(await outcomeOf("inklineEarlierRead")).toEqual({
+      failure: "The test ended with this held.",
+    });
+    // A later test's own replacement of the same method, which a bare
+    // letGo() in its finally must leave alone: the earlier gate is gone.
+    await browser.executeObsidian(({ app }) => {
+      const read = app.vault.read.bind(app.vault);
+      const own = async (file: Parameters<typeof read>[0]) => read(file);
+      app.vault.read = own;
+      Reflect.set(window, "inklineOwnRead", own);
+    });
+    try {
+      await letGo();
+      expect(
+        await browser.executeObsidian(
+          ({ app }) =>
+            Reflect.get(app.vault, "read") ===
+            Reflect.get(window, "inklineOwnRead"),
+        ),
+      ).toBe(true);
+    } finally {
+      await browser.executeObsidian(({ app }) => {
+        Reflect.deleteProperty(app.vault, "read");
+        Reflect.deleteProperty(window, "inklineOwnRead");
+      });
+    }
+    // A new gate is not reached until its own operation reaches it. Half a
+    // second can only show that it is not reached yet, but a gate left
+    // marked reached would be seen in the first look, at once.
+    await hold("read", "Editor.md");
+    const reachedEarly = await waitForHeld(500).then(
+      () => true,
+      () => false,
+    );
+    expect(reachedEarly).toBe(false);
+    await startRead("inklineLaterRead");
+    await waitForHeld();
+    expect(await outcomeOf("inklineLaterRead")).toEqual({});
+    await letGo();
+    await browser.waitUntil(
+      async () => (await outcomeOf("inklineLaterRead")).text !== undefined,
+      { timeoutMsg: "the later read stayed held" },
+    );
+    expect(await outcomeOf("inklineLaterRead")).toEqual({ text: original });
+    await browser.execute(() => {
+      Reflect.deleteProperty(window, "inklineEarlierRead");
+      Reflect.deleteProperty(window, "inklineLaterRead");
+    });
+  });
+
   it("saves a drawing as a new symbol and inserts it where the cursor was", async function () {
     await insert();
     await draw(zigzag);
