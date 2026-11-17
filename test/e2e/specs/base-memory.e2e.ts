@@ -17,6 +17,7 @@ import {
   writeNoise,
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
+import { framesDrawn } from "../support/waits.ts";
 
 /** Starts the drawing again from a copy of the symbol `name`. */
 async function copy(name: string): Promise<void> {
@@ -174,23 +175,6 @@ async function imagesKept(): Promise<boolean[]> {
 }
 
 /**
- * Waits for the editor's window to draw two more frames, and to run a task
- * after them, so that what the editor leaves for its next frame after a
- * change is done.
- */
-async function afterFrames(): Promise<void> {
-  await browser.execute(async () => {
-    for (let count = 0; count < 2; count++) {
-      await new Promise((resolve) => {
-        activeWindow.requestAnimationFrame(() => {
-          activeWindow.setTimeout(resolve, 0);
-        });
-      });
-    }
-  });
-}
-
-/**
  * That the images recorded are kept, or not, as `expected` says, in the order
  * they were decoded. A picture that should have gone was once found still kept
  * straight after a change (#266). What held it is not established: by a
@@ -228,7 +212,7 @@ async function expectKept(expected: readonly boolean[]): Promise<void> {
       `The images kept were ${JSON.stringify(first)} at first and ${JSON.stringify(expected)} after ${String(looks)} looks, ${(performance.now() - started).toFixed(0)} ms (#266)`,
     );
   }
-  await afterFrames();
+  await framesDrawn({ thenTask: true });
   expect(await imagesKept()).toEqual(expected);
 }
 

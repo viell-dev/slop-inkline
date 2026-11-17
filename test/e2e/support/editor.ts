@@ -4,6 +4,7 @@ import { browser } from "@wdio/globals";
 import { Key, type ChainablePromiseElement } from "webdriverio";
 import { obsidianPage } from "wdio-obsidian-service";
 import { loadModules } from "./browser.ts";
+import { framesDrawn } from "./waits.ts";
 
 /** Opens a note in the editor and puts the cursor where `marker` was, removing it. */
 export async function openAtMarker(
@@ -125,20 +126,7 @@ async function showNote(path: string): Promise<void> {
  */
 export async function waitForEditor(): Promise<void> {
   await surface().waitForDisplayed();
-  await browser.execute(
-    () =>
-      new Promise<void>((resolve) => {
-        const canvas = document.querySelector(
-          ".inkline-editor .inkline-surface",
-        );
-        const win = canvas?.ownerDocument.defaultView ?? window;
-        win.requestAnimationFrame(() => {
-          win.requestAnimationFrame(() => {
-            resolve();
-          });
-        });
-      }),
-  );
+  await framesDrawn();
 }
 
 /** Marks the open editor, so that {@link waitForNext} can tell it apart. */

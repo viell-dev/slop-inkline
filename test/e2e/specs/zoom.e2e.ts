@@ -13,6 +13,7 @@ import {
   waitForStatus,
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
+import { framesDrawn } from "../support/waits.ts";
 
 async function openEditor(): Promise<void> {
   await openAtMarker("Editor.md", "HERE");
@@ -66,24 +67,6 @@ async function previewWidth(): Promise<{ width: number; fontSize: number }> {
       fontSize: Number.parseFloat(getComputedStyle(line).fontSize),
     };
   });
-}
-
-/**
- * Waits for two frames, after which the editor has drawn what was done just
- * before: a stroke, a shortcut, and the wheel each change the view as they
- * happen and ask for a frame, which draws the surface and the preview.
- */
-async function framesDrawn(): Promise<void> {
-  await browser.execute(
-    () =>
-      new Promise<void>((resolve) => {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            resolve();
-          });
-        });
-      }),
-  );
 }
 
 /** How many of the preview's pixels hold ink. */

@@ -13,6 +13,7 @@ import {
   waitForEditor,
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
+import { framesDrawn } from "../support/waits.ts";
 
 /** The note the lists insert into. */
 const note = "List.md";
@@ -354,13 +355,11 @@ for (const language of ["en", "he"] as const) {
         // style answers to, so the list open in the text colour shows it too.
         for (const stored of [false, true]) {
           if (stored) {
-            await browser.execute(async () => {
+            await browser.execute(() => {
               document.documentElement.addClass("inkline-stored-color");
-              // Drawn so, for the screenshot of the picture.
-              await new Promise((resolve) => {
-                requestAnimationFrame(() => requestAnimationFrame(resolve));
-              });
             });
+            // Drawn so, for the screenshot of the picture.
+            await framesDrawn();
           }
           const row = await placed(list.rows);
           await saveScreenshot(

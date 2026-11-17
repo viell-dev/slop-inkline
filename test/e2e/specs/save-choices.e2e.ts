@@ -15,6 +15,7 @@ import {
   waitForStatus,
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
+import { framesDrawn } from "../support/waits.ts";
 
 const tower = "Signs/tower.ink.png";
 /** Notes that use the tower three times, twice in the first. */
@@ -221,16 +222,7 @@ describe("Saving a symbol used elsewhere", function () {
     await browser.keys("i");
     await waitForStatus("Making ink of the picture");
     // The preview is what the editor draws in the frame that I asks for.
-    await browser.execute(
-      () =>
-        new Promise<void>((resolve) => {
-          requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-              resolve();
-            });
-          });
-        }),
-    );
+    await framesDrawn();
     await browser.keys([Key.Ctrl, "s"]);
     await question("Change tower everywhere?");
     // Asked about the preview, before any ink was made: ink made first, as
