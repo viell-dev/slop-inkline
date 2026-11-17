@@ -156,9 +156,9 @@ export const config: WebdriverIO.Config = {
   // every worker, where the versions' windows resize each other.
   displayServerEnabled: false,
   // WebdriverIO 10's `$` throws when its selector matches more than one
-  // element. The suite asks `$` for any of several on purpose, as
-  // startOver() does to see whether a modal is open and fitCards() to wait
-  // for a drawn symbol, so this keeps version 9's first match.
+  // element. The suite asks `$` for any of several on purpose, as fitCards()
+  // does to wait for a drawn symbol and as specs do to wait for a row or a
+  // notice, so this keeps version 9's first match (#328).
   strictSelectors: false,
   cacheDir,
   outputDir: path.join(outputDir, "logs"),
