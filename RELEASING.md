@@ -451,9 +451,11 @@ On a branch from `main`:
    first checks that `package.json` names the version, that the changelog
    section exists, and that the metadata files agree: a public version is in
    `manifest.json` and `versions.json`, and a pre-release is in neither, with
-   `manifest.json` no higher than it. The unit tests hold every commit to the
-   same rules, so a pre-release's version cannot reach `main`'s manifest. The
-   second needs GitHub, and `GH_TOKEN` if the CLI is not signed in.
+   `manifest.json` no higher than it. Either way `manifest.json` names the
+   newest public release that `versions.json` lists. The unit tests hold every
+   commit to the same rules, so a pre-release's version cannot reach `main`'s
+   manifest. The second needs GitHub, and `GH_TOKEN` if the CLI is not signed
+   in.
 6. Have another agent review the release pull request, as
    [AGENTS.md](AGENTS.md#review) requires: everything since the previous
    release, not only the version change. That covers the changes, the open

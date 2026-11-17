@@ -69,12 +69,21 @@ export function metadataProblems(metadata: Metadata): string[] {
       `package.json version ${String(version)} is not a release version`,
     );
   }
+  // The public release the manifest names, once the checks above accept it.
+  let offered: string | undefined;
   if (version !== undefined && isPrerelease(version)) {
-    problems.push(...prereleaseManifestProblems(version, manifestVersion));
+    const manifestProblems = prereleaseManifestProblems(
+      version,
+      manifestVersion,
+    );
+    problems.push(...manifestProblems);
+    if (manifestProblems.length === 0) offered = manifestVersion;
   } else if (manifestVersion !== version) {
     problems.push(
       `manifest.json version ${String(manifestVersion)} differs from package.json version ${String(version)}`,
     );
+  } else if (version !== undefined && releaseVersionPattern.test(version)) {
+    offered = version;
   }
   if (
     minAppVersion === undefined ||
@@ -109,6 +118,50 @@ export function metadataProblems(metadata: Metadata): string[] {
     problems.push(
       `versions.json does not map ${version} to the manifest's minAppVersion ${String(minAppVersion)}`,
     );
+  }
+  if (offered !== undefined) {
+    problems.push(
+      ...offeredReleaseProblems(offered, version, metadata.versions),
+    );
+  }
+  return problems;
+}
+
+/**
+ * What is wrong with `offered`, the public release that manifest.json names.
+ * Obsidian offers it to new installs and updates from main, so it must be the
+ * newest public release that versions.json lists: one set back to an older
+ * release hides the newest, and one never released offers nothing. While a
+ * pre-release is prepared neither file changes, so the manifest must also name
+ * a release the map lists; for a public release, the check of the map's entry
+ * for it does that. A rollback reverts both files together, and passes. The
+ * manifest and the map set back together still pass, which only the published
+ * releases could show (#324).
+ */
+function offeredReleaseProblems(
+  offered: string,
+  version: string | undefined,
+  versions: Record<string, unknown>,
+): string[] {
+  const problems: string[] = [];
+  const released = Object.keys(versions).filter(
+    (release) => stableVersionPattern.test(release) && !isPrerelease(release),
+  );
+  if (
+    version !== undefined &&
+    isPrerelease(version) &&
+    !Object.hasOwn(versions, offered)
+  ) {
+    problems.push(
+      `manifest.json version ${offered} is not in versions.json, which lists every public release`,
+    );
+  }
+  for (const release of released) {
+    if (compareSemver(release, offered) > 0) {
+      problems.push(
+        `versions.json lists ${release}, a later public release than manifest.json version ${offered}`,
+      );
+    }
   }
   return problems;
 }

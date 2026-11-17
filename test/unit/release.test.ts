@@ -119,6 +119,82 @@ describe("metadataProblems", () => {
     ]);
   });
 
+  // #324: main's manifest is what Obsidian offers, so while a pre-release is
+  // prepared it names the newest public release that versions.json lists.
+  it("reports a manifest that names a version never released", () => {
+    expect(
+      metadataProblems({
+        packageJson: { version: "1.1.0" },
+        manifest: { version: "0.8.0", minAppVersion: "1.13.4" },
+        versions: { "1.0.0": "1.13.4" },
+      }),
+    ).toEqual([
+      "manifest.json version 0.8.0 is not in versions.json, which lists every public release",
+      "versions.json lists 1.0.0, a later public release than manifest.json version 0.8.0",
+    ]);
+  });
+
+  it("reports a manifest set back to an older public release", () => {
+    expect(
+      metadataProblems({
+        packageJson: { version: "1.3.0" },
+        manifest: { version: "1.0.0", minAppVersion: "1.13.4" },
+        versions: { "1.0.0": "1.13.4", "1.2.0": "1.13.4" },
+      }),
+    ).toEqual([
+      "versions.json lists 1.2.0, a later public release than manifest.json version 1.0.0",
+    ]);
+  });
+
+  it("reports a versions.json that has lost the manifest's release", () => {
+    expect(
+      metadataProblems({
+        packageJson: { version: "1.1.0" },
+        manifest: { version: "1.0.0", minAppVersion: "1.13.4" },
+        versions: {},
+      }),
+    ).toEqual([
+      "manifest.json version 1.0.0 is not in versions.json, which lists every public release",
+    ]);
+  });
+
+  it("reports a public release prepared below one the map lists", () => {
+    expect(
+      metadataProblems({
+        packageJson: { version: "1.2.0" },
+        manifest: { version: "1.2.0", minAppVersion: "1.13.4" },
+        versions: { "1.2.0": "1.13.4", "1.4.0": "1.13.4" },
+      }),
+    ).toEqual([
+      "versions.json lists 1.4.0, a later public release than manifest.json version 1.2.0",
+    ]);
+  });
+
+  it("accepts the manifest naming the newest public release of several", () => {
+    const versions = {
+      "1.0.0": "1.13.4",
+      "1.2.0": "1.13.4",
+      "1.10.0": "1.15.1",
+    };
+    for (const version of ["1.11.0", "1.11.4"]) {
+      expect(
+        metadataProblems({
+          packageJson: { version },
+          manifest: { version: "1.10.0", minAppVersion: "1.15.1" },
+          versions,
+        }),
+        version,
+      ).toEqual([]);
+    }
+    expect(
+      metadataProblems({
+        packageJson: { version: "1.10.0" },
+        manifest: { version: "1.10.0", minAppVersion: "1.15.1" },
+        versions,
+      }),
+    ).toEqual([]);
+  });
+
   it("reports a pre-release's version in the manifest", () => {
     for (const version of ["0.3.1", "0.3.0-rc.1"]) {
       const problems = metadataProblems({
@@ -378,7 +454,7 @@ describe("releaseProblems", () => {
     const empty: Metadata = {
       packageJson: { version: "0.1.0" },
       manifest: { version: "0.0.8", minAppVersion: "1.13.4" },
-      versions: {},
+      versions: { "0.0.8": "1.13.4" },
     };
     expect(releaseProblems(empty, changelog, "0.1.0")).toEqual([
       'CHANGELOG.md has no non-empty "## 0.1.0 - YYYY-MM-DD" section',
