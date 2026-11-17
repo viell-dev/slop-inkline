@@ -54,9 +54,11 @@ describe("A symbol's readings and translations", function () {
     await makeNote();
   });
 
-  // The stubs below take themselves away only when the call they wait for
-  // comes, which a failed test may never make: one left behind would hold up
-  // or change the reads and writes of every later test.
+  // No test of this file sets the stubs that this takes away: a held read or
+  // write, and a replaced read or write of the vault. It is kept from the
+  // suite these tests were split from, so that they run under the hooks they
+  // always ran under. Whether this file needs it is for the change that makes
+  // one clean-up of this and `undoStubs()` (#228).
   afterEach(async function () {
     await browser.execute(() => {
       const go: unknown = Reflect.get(window, "inklineLetReadGo");

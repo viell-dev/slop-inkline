@@ -213,7 +213,10 @@ export function saveEditor(): void {
   document.querySelector<HTMLElement>('[data-inkline-button="save"]')?.click();
 }
 
-/** Lets go a write that {@link holdNextWrite} held, if there is one. */
+/**
+ * Lets go a write that a spec file's own `holdNextWrite` held, if there is
+ * one.
+ */
 export async function letWriteGo(): Promise<void> {
   await browser.execute(() => {
     const go: unknown = Reflect.get(window, "inklineLetWriteGo");
