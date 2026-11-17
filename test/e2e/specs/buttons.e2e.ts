@@ -1,8 +1,5 @@
 import { browser, expect } from "@wdio/globals";
-import { obsidianPage } from "wdio-obsidian-service";
 import { buttonIcons, type ButtonLabels } from "../../../src/editor/buttons.ts";
-import { defaultSettings } from "../../../src/settings.ts";
-import { loadModules } from "../support/browser.ts";
 import {
   draw,
   openAtMarker,
@@ -29,20 +26,82 @@ interface Shown {
   readonly top: number;
 }
 
-/** Stores `buttonLabels` as the setting, as the settings tab would. */
+/**
+ * Every button's accessible name, which Obsidian also shows as its tooltip,
+ * the same whatever the buttons show: its text, any description, and its
+ * shortcut. Written out, so that a name that changes, or one that the choice
+ * of what buttons show changes, fails.
+ */
+const usual: Readonly<Record<string, string>> = {
+  pen: "Pen (P)",
+  eraser: "Eraser (E)",
+  ellipse:
+    "Ellipse: drag across a box to draw an ellipse with the pen or the eraser; hold Shift for a circle, or with the grid on to snap to it (O)",
+  polygon:
+    "Polygon: click each corner of a shape with straight sides; click the first corner again to close it, or the last to end it; hold Shift to snap a corner to the grid (Y)",
+  fill: "Toggle fill: while on, Ellipse, and Polygon closed on its first corner, draw solid shapes, with the pen or the eraser; it doesn't fill what is already drawn (B)",
+  "size-0": "Brush size S (1)",
+  "size-1": "Brush size M (2)",
+  "size-2": "Brush size L (3)",
+  "size-3": "Brush size XL (4)",
+  undo: "Undo (Mod+Z)",
+  redo: "Redo (Mod+Shift+Z)",
+  clear: "Clear (Delete)",
+  "move-up":
+    "Up: move the whole drawing up a pixel, or with Shift a grid cell's width (ArrowUp)",
+  "move-down":
+    "Down: move the whole drawing down a pixel, or with Shift a grid cell's width (ArrowDown)",
+  guides: "Guides (G)",
+  grid: "Grid: show a grid of dots as a guide; hold Shift while drawing to snap to it (Shift+G)",
+  "flat-ends":
+    "Flat ends: with the grid on, freehand ends that Shift puts on a row, coming in at 45° or steeper, stop flush with it, rather than rounding past it (T)",
+  copy: "Copy from: start from a copy of another symbol (V)",
+  fit: "Fit: centre the drawing in the view, and show all of it if it is wider; the drawing itself stays as it is (F)",
+  zoom: "Zoom: a taller view of the drawing, twice as large, with twice as many grid cells each way; the wheel or the left and right arrow keys move along it (Z)",
+  save: "Save (Mod+Enter)",
+  next: "Next: save and draw the next one (Mod+Shift+Enter)",
+  help: "Help",
+  choose: "Choose picture…: open a picture file to trace over",
+  move: "Move: drag the picture or use the arrow keys; the wheel or + and − scale it (M)",
+  ink: "Make ink: turn the picture into the symbol's ink, by a threshold (I)",
+  remove: "Remove picture",
+  light: "Light ink: the ink is lighter than the ground around it",
+  apply: "Apply",
+  cancel: "Cancel",
+};
+
+/**
+ * Chooses `buttonLabels` for the setting, as its dropdown in Inkline's
+ * settings does: Obsidian hands a person's choice there to the tab's
+ * `setControlValue`. A new editor takes it from then on.
+ */
 async function storeLabels(buttonLabels: ButtonLabels): Promise<void> {
-  await obsidianPage.disablePlugin("inkline");
-  await browser.executeObsidian(
-    async ({ app }, settings) => {
-      await app.vault.adapter.write(
-        `${app.vault.configDir}/plugins/inkline/data.json`,
-        JSON.stringify(settings),
-      );
-    },
-    { ...defaultSettings, buttonLabels },
-  );
-  await obsidianPage.enablePlugin("inkline");
-  await loadModules();
+  await browser.executeObsidian(async ({ app, obsidian }, value) => {
+    const settings: unknown = Reflect.get(app, "setting");
+    const tabs: unknown =
+      typeof settings === "object" && settings !== null
+        ? Reflect.get(settings, "pluginTabs")
+        : undefined;
+    const tab: unknown = Array.isArray(tabs)
+      ? tabs.find((candidate: unknown) => {
+          if (!(candidate instanceof obsidian.PluginSettingTab)) return false;
+          const plugin: unknown = Reflect.get(candidate, "plugin");
+          const manifest: unknown =
+            typeof plugin === "object" && plugin !== null
+              ? Reflect.get(plugin, "manifest")
+              : undefined;
+          return (
+            typeof manifest === "object" &&
+            manifest !== null &&
+            Reflect.get(manifest, "id") === "inkline"
+          );
+        })
+      : undefined;
+    if (!(tab instanceof obsidian.PluginSettingTab)) {
+      throw new Error("no settings tab of Inkline's");
+    }
+    await tab.setControlValue("buttonLabels", value);
+  }, buttonLabels);
 }
 
 async function openEditor(): Promise<void> {
@@ -181,16 +240,10 @@ async function setAccent(colour: string): Promise<void> {
 }
 
 describe("Editor buttons", function () {
-  /** The names under the default, to compare the other choices with. */
-  let usual: Record<string, string> = {};
   /** The theme classes the body had, to restore after each test. */
   let theme: string[] = [];
 
   before(async function () {
-    await startOver();
-    await storeLabels("both");
-    await openEditor();
-    usual = labels(await shownButtons());
     await startOver();
     theme = await browser.execute(() =>
       [...document.body.classList].filter(
