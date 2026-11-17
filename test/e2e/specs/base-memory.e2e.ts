@@ -181,6 +181,53 @@ async function imagesKept(): Promise<boolean[]> {
   });
 }
 
+/**
+ * Waits for the editor's window to draw two more frames, and to run a task
+ * after them: the editor lets a picture go on the frame that draws without it,
+ * as its view holds the last one it drew until then.
+ */
+async function afterFrames(): Promise<void> {
+  await browser.execute(async () => {
+    for (let count = 0; count < 2; count++) {
+      await new Promise((resolve) => {
+        activeWindow.requestAnimationFrame(() => {
+          activeWindow.setTimeout(resolve, 0);
+        });
+      });
+    }
+  });
+}
+
+/**
+ * That the images recorded are kept, or not, as `expected` says, in the order
+ * they were decoded. Right after a change, the editor can still hold a picture
+ * it is letting go until its next frame (#266), so this waits for each that
+ * should be gone to go, collecting garbage on each look, and a leak fails by
+ * the time limit. A picture still there at the first look proves nothing for
+ * one that should be kept, so the editor draws its frames first, and then
+ * they are all checked once more.
+ */
+async function expectKept(expected: readonly boolean[]): Promise<void> {
+  let kept: boolean[] | undefined;
+  await browser
+    .waitUntil(
+      async () => {
+        kept = await imagesKept();
+        return JSON.stringify(kept) === JSON.stringify(expected);
+      },
+      {
+        timeoutMsg: `the images kept were not ${JSON.stringify(expected)}`,
+      },
+    )
+    .catch((error: unknown) => {
+      // The failure says what was kept at the last look, if there was one.
+      if (kept !== undefined) expect(kept).toEqual(expected);
+      throw error;
+    });
+  await afterFrames();
+  expect(await imagesKept()).toEqual(expected);
+}
+
 /** How many images {@link watchDecoded} has recorded. */
 async function decodedCount(): Promise<number> {
   return browser.execute(() => {
@@ -200,6 +247,14 @@ async function waitForDecoded(count: number): Promise<void> {
   });
   expect(await decodedCount()).toBe(count);
 }
+
+/**
+ * The most the test of decoded pictures may take, in ms, which is more than
+ * Mocha's usual minute. In Docker on Windows 11, beside other jobs, it took 52
+ * to 97 s on both Obsidian versions, 82 to 87 s of it the taps that WebDriver
+ * sends; in CI, its whole spec took under 30 s.
+ */
+const memoryLimit = 240_000;
 
 describe("Base layers nothing needs", function () {
   before(async function () {
@@ -244,6 +299,8 @@ describe("Base layers nothing needs", function () {
   });
 
   it("lets a decoded picture go once Undo and Redo cannot reach it, and keeps it until then", async function () {
+    this.timeout(memoryLimit);
+    const started = performance.now();
     // A picture, which opens as a base layer: opaque and black, so all ink.
     await browser.executeObsidian(async ({ app }) => {
       const { canvas } = window.inklineTest;
@@ -261,7 +318,7 @@ describe("Base layers nothing needs", function () {
       await browser.keys(["Control", "z"]);
       await waitForInk(false);
       // Redo can bring it back, so it stays, and shows again at once.
-      expect(await imagesKept()).toEqual([true]);
+      await expectKept([true]);
       await browser.keys(["Control", "Shift", "z"]);
       await waitForInk(true);
       await saveScreenshot("decoded-base-redone");
@@ -271,14 +328,14 @@ describe("Base layers nothing needs", function () {
       await copy("tower");
       await waitForDecoded(2);
       await waitForInk(true);
-      expect(await imagesKept()).toEqual([false, true]);
+      await expectKept([false, true]);
       await browser.keys(["Control", "z"]);
       await waitForInk(false);
       await draw([
         [0.1, 0.2],
         [0.2, 0.3],
       ]);
-      expect(await imagesKept()).toEqual([false, false]);
+      await expectKept([false, false]);
       await copy("tower");
       await waitForDecoded(3);
       await copy("tower");
@@ -299,11 +356,14 @@ describe("Base layers nothing needs", function () {
         await tap.perform();
       };
       for (let done = 0; done < 490; done += 70) await taps(70);
-      expect(await imagesKept()).toEqual([false, false, true, true]);
+      await expectKept([false, false, true, true]);
       await taps(20);
-      expect(await imagesKept()).toEqual([false, false, false, true]);
+      await expectKept([false, false, false, true]);
       await waitForInk(true);
       await saveScreenshot("decoded-base-past-history");
+      console.log(
+        `Decoded pictures checked in ${((performance.now() - started) / 1000).toFixed(1)} s`,
+      );
     } finally {
       await stopWatching();
     }
