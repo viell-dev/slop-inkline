@@ -19,7 +19,9 @@ with their sign-in, as
 
 The text is in plain files so that it pastes without line breaks. The form takes
 a long description of up to 1,000 characters, and the listing's page shows it as
-one paragraph, without its line breaks, so each paragraph ends a sentence.
+one paragraph, without its line breaks, so the long description is written as
+one paragraph that reads the same pasted and shown
+([#314](https://github.com/viell-dev/slop-inkline/issues/314)).
 
 The owner chose one of Obsidian's own icons for the listing.
 [icon.png](icon.png), made from [icon.svg](icon.svg), is kept for a custom icon,

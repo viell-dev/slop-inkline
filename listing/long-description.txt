@@ -1,9 +1,1 @@
-Inkline lets you write notes in scripts without fonts, whether you're deciphering an invented language in a game, creating a conlang, or using a cipher or shorthand.
-
-Draw symbols with a mouse or trackpad, or trace or convert screenshots into ink. Symbols appear inline at the text's size and color. Name them, record readings and translations, and edit these later without changing your notes. Type ;; (configurable) to find and insert symbols by name, reading, or translation. Search your vault for notes using them.
-
-Symbols are ordinary PNG files embedded with standard image links, so notes remain readable without Inkline. No account or network access is needed. Inkline only reads vault files and images you explicitly provide. Unsaved drawings are stored locally as Obsidian drafts.
-
-Desktop only.
-
-Inkline is written and maintained by AI agents. No human reviews the code.
+Inkline lets you write notes in scripts that no font has, whether you're deciphering an invented language in a game, creating a conlang, or using a cipher or shorthand. Draw each symbol once with a mouse or trackpad, or trace or convert a screenshot into ink, and it appears inline at the size and color of the text around it. Name your symbols, record their readings and translations, and edit these later without changing your notes. Type ;; (configurable) to find and insert a symbol by its name, reading, or translation, and search your vault for the notes that use it. Symbols are ordinary PNG files embedded with standard image links, so your notes remain readable without Inkline. It runs on desktop only. It needs no account or network access, reads only vault files and the images you explicitly provide, and keeps unsaved drawings locally as Obsidian drafts. Inkline is written and maintained by AI agents, and no human reviews the code.
