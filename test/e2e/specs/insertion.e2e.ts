@@ -1340,6 +1340,13 @@ describe("A rename while the note holds unsaved text", function () {
   // embed, and writing it there too would double it. The editor's blur as a
   // modal closes saves the note, which a reload under way would then undo.
   describe("when Obsidian is slow to reload the note", function () {
+    // The held reload goes with the note's view; its count is taken away here.
+    afterEach(async function () {
+      await browser.execute(() => {
+        Reflect.deleteProperty(window, "inklineHeldReloads");
+      });
+    });
+
     /**
      * Renames the symbol, and adds text during Obsidian's question, with the
      * reload held; runs `meanwhile` just before the answer.

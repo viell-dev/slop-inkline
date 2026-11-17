@@ -412,6 +412,13 @@ describe("Inserting a symbol you have", function () {
       await waitForSuggested(["arch"]);
       await browser.keys(["Escape"]);
       await openAtMarker("Front.md", "FRONT");
+      // In Source mode, where the front matter is the note's own text.
+      expect(
+        await browser.executeObsidian(({ app, obsidian }) => {
+          const view = app.workspace.getActiveViewOfType(obsidian.MarkdownView);
+          return { mode: view?.getMode(), source: view?.getState().source };
+        }),
+      ).toEqual({ mode: "source", source: true });
       await type(";;arc");
       await browser.pause(500);
       expect(await listOpen()).toBe(false);

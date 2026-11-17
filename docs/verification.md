@@ -415,9 +415,9 @@ must keep released files readable and looking the same, as
   that writes after the last read is
   [a limit](./limits.md#a-file-written-at-the-moment-inkline-saves), which this
   does not cover
-  ([symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts)
+  ([file-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/file-writes.test.ts)
   and
-  [file-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/file-writes.test.ts)).
+  [symbol-text.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text.e2e.ts)).
 - A symbol deleted, and another file put at its path, through Obsidian while a
   save reads it for the last time, by its file system, as another plugin or a
   sync tool can, or by its vault: Quick edit refuses the save and the new file

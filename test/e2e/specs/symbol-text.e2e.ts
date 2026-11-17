@@ -2128,10 +2128,32 @@ describe("A symbol's readings and translations", function () {
       return strokes.length;
     }
 
-    afterEach(async function () {
-      // A save left waiting would hold up every later test's.
-      await letWriteGo();
-    });
+    /**
+     * The steps of "shows nothing for a save that takes less than the wait",
+     * with its watch on the page set.
+     */
+    async function shownNothingWhileSaving(file: string): Promise<void> {
+      await openFields(file);
+      await fill("reading", "typed");
+      await delayVault("modifyBinary", stalledAfter / 2, "before");
+      await formSave().click();
+      await waitForClosedForm();
+      await editFile(file);
+      await draw([
+        [0.5, 0.3],
+        [0.7, 0.6],
+      ]);
+      await browser.keys(["Control", "s"]);
+      await waitForStatus("Saved");
+      await restoreVault();
+      expect((await fieldsOf(file)).reading).toEqual(["typed"]);
+      expect(
+        await browser.execute(
+          () => Reflect.get(window, "inklineSawWait") === true,
+        ),
+      ).toBe(false);
+      expect(await browser.$(".notice*=Saved Slow").isExisting()).toBe(false);
+    }
 
     it("shows nothing for a save that takes less than the wait", async function () {
       const file = "Slow.ink.png";
@@ -2162,30 +2184,6 @@ describe("A symbol's readings and translations", function () {
         });
       }
     });
-
-    /** The steps of the test above, with its watch on the page set. */
-    async function shownNothingWhileSaving(file: string): Promise<void> {
-      await openFields(file);
-      await fill("reading", "typed");
-      await delayVault("modifyBinary", stalledAfter / 2, "before");
-      await formSave().click();
-      await waitForClosedForm();
-      await editFile(file);
-      await draw([
-        [0.5, 0.3],
-        [0.7, 0.6],
-      ]);
-      await browser.keys(["Control", "s"]);
-      await waitForStatus("Saved");
-      await restoreVault();
-      expect((await fieldsOf(file)).reading).toEqual(["typed"]);
-      expect(
-        await browser.execute(
-          () => Reflect.get(window, "inklineSawWait") === true,
-        ),
-      ).toBe(false);
-      expect(await browser.$(".notice*=Saved Slow").isExisting()).toBe(false);
-    }
 
     it("tells a form behind a held write, keeps what was typed, and saves when the write ends", async function () {
       await behindHeldWrite("typed");
@@ -2655,9 +2653,7 @@ describe("A symbol's readings and translations", function () {
       await browser.waitUntil(async () => (await count()) === 1, {
         timeout: 60_000,
       });
-      await browser.waitUntil(async () => !(await status.isDisplayed()), {
-        timeout: 60_000,
-      });
+      await browser.waitUntil(async () => !(await status.isDisplayed()));
     });
   });
 });
