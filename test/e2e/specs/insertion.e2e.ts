@@ -795,9 +795,14 @@ describe("Where the cursor lands after a symbol", function () {
     await saveScreenshot("cursor-after-existing-symbol");
   });
 
-  it("puts a symbol from Insert existing symbol past a link it would split", async function () {
+  it("puts a symbol from Insert existing symbol past a link, past an embed, and a space after a bare address", async function () {
     await createSymbol("gate.ink.png");
     await createNote("Link.md", "See [[Wel HEREcome]] and on.\n");
+    await createNote("Embed.md", "See ![[Wel HEREcome.png]] and on.\n");
+    await createNote(
+      "Address.md",
+      "See https://example.com/HEREpage and on.\n",
+    );
     await openAtMarker("Link.md", "HERE");
     await chooseExisting("gat");
     await waitForNote("See [[Wel come]]![[gate.ink.png]] and on.\n");
@@ -806,15 +811,6 @@ describe("Where the cursor lands after a symbol", function () {
     ]);
     await type("xy");
     await waitForNote("See [[Wel come]]![[gate.ink.png]]xy and on.\n");
-  });
-
-  it("puts one past an embed, and a space after a bare address", async function () {
-    await createSymbol("gate.ink.png");
-    await createNote("Embed.md", "See ![[Wel HEREcome.png]] and on.\n");
-    await createNote(
-      "Address.md",
-      "See https://example.com/HEREpage and on.\n",
-    );
     await openAtMarker("Embed.md", "HERE");
     await chooseExisting("gat");
     await waitForNote("See ![[Wel come.png]]![[gate.ink.png]] and on.\n");
@@ -928,36 +924,8 @@ describe("Symbols in a table cell in Live Preview", function () {
     await waitForLastRow("| same![[001.ink.png]]xy | same |");
   });
 
-  for (const answer of ["Just once", "Do not update"]) {
-    it(`stays after the embed through a rename, with ${answer}`, async function () {
-      await intoCell("Table.md");
-      await browser.executeObsidianCommand("inkline:insert-symbol");
-      await waitForEditor();
-      await draw(zigzag);
-      await browser.keys(["Control", "s"]);
-      await waitForStatus("Saved");
-      await waitForLink("Table.md", "001.ink.png");
-      await browser
-        .$(".inkline-editor .inkline-name")
-        .setValue("the long gate");
-      await browser.keys(["Control", "Enter"]);
-      await clickTop(answer);
-      await waitClosed();
-      await waitForLastRow("| same![[the long gate.ink.png]] | same |");
-      await type("xy");
-      await waitForLastRow("| same![[the long gate.ink.png]]xy | same |");
-      // Saved like any edit, and written once.
-      await browser.waitUntil(async () =>
-        (
-          await browser.executeObsidian(async ({ app }) => {
-            const note = app.vault.getFileByPath("Table.md");
-            if (note === null) throw new Error("no note");
-            return app.vault.read(note);
-          })
-        ).includes("| same![[the long gate.ink.png]]xy"),
-      );
-    });
-  }
+  // A rename through Obsidian's question, with Just once and Do not update, is
+  // in "A rename while the note holds unsaved text" below, in a table cell.
 
   it("keeps a run in order after a symbol renamed on its way", async function () {
     await setLinkUpdates(true);
@@ -1195,6 +1163,18 @@ describe("A rename while the note holds unsaved text", function () {
         const note = await noteText();
         expect(note.startsWith(opening)).toBe(true);
         expect(note.split("![[")).toHaveLength(2);
+        // Saved like any edit, and written once.
+        let disk = "";
+        await browser.waitUntil(async () => {
+          disk = await browser.executeObsidian(async ({ app }) => {
+            const file = app.vault.getFileByPath("Table.md");
+            if (file === null) throw new Error("no note");
+            return app.vault.read(file);
+          });
+          return disk.includes(`| same${renamed}xy`);
+        });
+        expect(disk.startsWith(opening)).toBe(true);
+        expect(disk.split("![[")).toHaveLength(2);
       });
 
       it("keeps the next symbol's place, through a reload", async function () {
@@ -1529,17 +1509,8 @@ describe("Line endings a note's file changes to", function () {
   };
 
   for (const [state, leave] of Object.entries(away)) {
-    it(`finds a place taken with \\n in a file ${state} with \\r\\n`, async function () {
-      await insertBetween("Ends.md");
-      await leave("Ends.md");
-      await writeFile("Ends.md", crlf);
-      await save();
-      await waitForFile(
-        "Ends.md",
-        "first\r\nleft ![[001.ink.png]] right\r\nlast\r\n",
-      );
-    });
-
+    // A place taken with \n, found in a file with \r\n, is the first step of
+    // this test, which then goes the other way.
     it(`finds a place taken with \\r\\n in a file ${state} with \\n`, async function () {
       await insertBetween("Ends.md");
       await leave("Ends.md");
@@ -1569,25 +1540,28 @@ describe("Line endings a note's file changes to", function () {
         "first\nleft ![[001.ink.png]] right\r\nlast\n\r\nend",
       );
     });
-
-    it(`adds a line in the file's own ending once its place is gone, ${state}`, async function () {
-      await insertBetween("Ends.md");
-      await leave("Ends.md");
-      await writeFile("Ends.md", "Line one.\r\nLine two.");
-      await next(1);
-      await waitForNotice("it was added at the end of Ends");
-      await waitForFile(
-        "Ends.md",
-        "Line one.\r\nLine two.\r\n![[001.ink.png]]\r\n",
-      );
-      await draw([[0.5, 0.5]]);
-      await save();
-      await waitForFile(
-        "Ends.md",
-        "Line one.\r\nLine two.\r\n![[001.ink.png]]![[002.ink.png]]\r\n",
-      );
-    });
   }
+
+  // A note in Reading view takes the symbol through its file as a closed one
+  // does, as Inkline counts no editor in Reading view; the line endings of
+  // that file are what the tests above keep in both.
+  it("adds a line in the file's own ending once its place is gone, closed", async function () {
+    await insertBetween("Ends.md");
+    await closeTabs("Ends.md");
+    await writeFile("Ends.md", "Line one.\r\nLine two.");
+    await next(1);
+    await waitForNotice("it was added at the end of Ends");
+    await waitForFile(
+      "Ends.md",
+      "Line one.\r\nLine two.\r\n![[001.ink.png]]\r\n",
+    );
+    await draw([[0.5, 0.5]]);
+    await save();
+    await waitForFile(
+      "Ends.md",
+      "Line one.\r\nLine two.\r\n![[001.ink.png]]![[002.ink.png]]\r\n",
+    );
+  });
 
   it("keeps a file's line endings through a rename with nothing unsaved", async function () {
     await setLinkUpdates(true);
