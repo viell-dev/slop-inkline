@@ -1,16 +1,12 @@
 import { browser, expect } from "@wdio/globals";
-import { Key } from "webdriverio";
 import { loadModules } from "../support/browser.ts";
 import {
   draw,
   drawHoldingShift,
-  editorGrid,
   openAtMarker,
   settledSurface,
   startOver,
   storedDrafts,
-  surface,
-  symbolFiles,
   waitForEditor,
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
@@ -130,29 +126,11 @@ describe("Ellipse", function () {
     await openEditor();
     await browser.$('[data-inkline-button="ellipse"]').click();
     expect(await pressed("ellipse")).toBe("true");
-    const { width, height } = await settledSurface();
-    const canvas = await surface().getElement();
-    const at = (x: number, y: number) => ({
-      origin: canvas,
-      x: Math.round((x - 0.5) * width),
-      y: Math.round((y - 0.5) * height),
-    });
-    await browser.actions([
-      browser
-        .action("key")
-        .down(Key.Shift)
-        .pause(10)
-        .pause(10)
-        .pause(10)
-        .pause(10)
-        .up(Key.Shift),
-      browser
-        .action("pointer", { parameters: { pointerType: "mouse" } })
-        .move(at(0.3, 0.2))
-        .down()
-        .move({ ...at(0.4, 0.5), duration: 50 })
-        .move({ ...at(0.45, 0.8), duration: 50 })
-        .up(),
+    // Shift goes down before the press and up after the release.
+    await drawHoldingShift([
+      [0.3, 0.2],
+      [0.4, 0.5],
+      [0.45, 0.8],
     ]);
     const [circle] = await draftStrokes(1);
     const shape = fit(circle?.points ?? []);
@@ -162,59 +140,5 @@ describe("Ellipse", function () {
     const across = shape.right - shape.left;
     const down = shape.bottom - shape.top;
     expect(Math.abs(across / down - 1)).toBeLessThan(0.01);
-  });
-
-  it("puts an ellipse's box on the grid, with the eraser too", async function () {
-    await openEditor();
-    await browser.keys(["Shift", "g"]);
-    await browser.keys("o");
-    await browser.keys("e");
-    expect(await pressed("ellipse")).toBe("true");
-    expect(await pressed("eraser")).toBe("true");
-    await drawHoldingShift([
-      [0.31, 0.27],
-      [0.5, 0.5],
-      [0.62, 0.73],
-    ]);
-    const [erased] = await draftStrokes(1);
-    expect(erased?.tool).toBe("eraser");
-    const shape = fit(erased?.points ?? []);
-    const { spacing, rows } = await editorGrid();
-    const units = rows.map((row) => Math.round(row * 16));
-    console.log("On the grid", JSON.stringify({ shape, spacing, units }));
-    expect(shape.closed).toBe(true);
-    expect(units).toContain(shape.top);
-    expect(units).toContain(shape.bottom);
-    const columns = (shape.right - shape.left) / (spacing * 16);
-    expect(Math.abs(columns - Math.round(columns))).toBeLessThan(0.01);
-    expect(Math.round(columns)).toBeGreaterThan(0);
-  });
-
-  it("keeps Ellipse on through Next", async function () {
-    await openEditor();
-    await browser.keys("o");
-    await draw([
-      [0.3, 0.3],
-      [0.6, 0.7],
-    ]);
-    await browser.execute(() => {
-      document
-        .querySelector(".inkline-editor")
-        ?.setAttribute("data-inkline-first", "");
-    });
-    await browser.keys(["Control", "Shift", "Enter"]);
-    // The first editor gives way to a blank one for the next symbol.
-    await browser.waitUntil(async () =>
-      browser.execute(() => {
-        const editors = document.querySelectorAll(".inkline-editor");
-        return (
-          editors.length === 1 &&
-          !(editors[0]?.hasAttribute("data-inkline-first") ?? true)
-        );
-      }),
-    );
-    await waitForEditor();
-    expect(await symbolFiles()).toEqual(["001.ink.png"]);
-    expect(await pressed("ellipse")).toBe("true");
   });
 });

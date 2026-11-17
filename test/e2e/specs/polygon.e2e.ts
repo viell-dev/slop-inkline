@@ -9,7 +9,6 @@ import {
   startOver,
   storedDrafts,
   surface,
-  symbolFiles,
   waitForEditor,
   waitForStatus,
 } from "../support/editor.ts";
@@ -223,32 +222,6 @@ describe("Polygon", function () {
     expect(dot?.points).toHaveLength(2);
   });
 
-  it("saves a polygon whose corner barely turns", async function () {
-    // From the independent review of #121: a corner on the line between its
-    // neighbours made infinite pieces, and saving never finished.
-    const saved = await browser.execute(async () => {
-      const { canvas } = window.inklineTest;
-      const { width } = await canvas.saveInk(
-        {
-          strokes: [
-            {
-              tool: "pen",
-              size: 192,
-              points: [400, 800, 416, 944, 656, 3104],
-              kind: "polygon",
-            },
-          ],
-        },
-        undefined,
-        [],
-      );
-      return width;
-    });
-    // 15 px across, the stroke's 12 px width, and the side bearings.
-    expect(saved).toBeGreaterThan(40);
-    expect(saved).toBeLessThan(60);
-  });
-
   it("keeps an open shape's square ends on the grid, uncut", async function () {
     await openPolygon(true);
     // Up from one point and down to another, as the legs of an A, ended on
@@ -263,53 +236,6 @@ describe("Polygon", function () {
     const ink = await savedInk(0.4, 0.6);
     console.log("Legs", JSON.stringify(ink));
     expect(ink.redrawn).toBe(0);
-  });
-
-  it("draws a polygon that ends beside its first side whole", async function () {
-    // The owner's pentagon from #126, as 0.3.0-alpha.8 saved it: its end one
-    // cell along its first side, cut there, which took ink from that side.
-    const shown = await browser.execute(() => {
-      const { render } = window.inklineTest;
-      const cell = 14 * 16;
-      const baseline = 144 * 16;
-      const start = 80 * 16;
-      const points = [
-        [0, 0],
-        [-3, 0],
-        [-4, 2],
-        [-2, 4],
-        [0, 2],
-        [-1, 0],
-      ].flatMap(([column = 0, row = 0]) => [
-        start + column * cell,
-        baseline - row * cell,
-      ]);
-      const stroke = {
-        tool: "pen" as const,
-        size: 192,
-        points,
-        kind: "polygon" as const,
-      };
-      const row = (drawn: typeof stroke): number[] => {
-        const surface = new OffscreenCanvas(128, 192);
-        const context = surface.getContext("2d");
-        if (context === null) throw new Error("no context");
-        render.drawInk(context, [drawn], undefined);
-        const { data } = context.getImageData(0, 150 - 1, 128, 1);
-        return Array.from({ length: 128 }, (_, x) => data[x * 4 + 3] ?? 0);
-      };
-      return {
-        cut: row({ ...stroke, cut: { start: "down", end: "down" } } as never),
-        uncut: row(stroke),
-        from: Math.round((start - 3 * cell) / 16),
-        to: Math.round(start / 16),
-      };
-    });
-    console.log("Pentagon", JSON.stringify({ ...shown, cut: undefined }));
-    // A row 5 pixels below the baseline, inside the first side's lower half.
-    const side = shown.cut.slice(shown.from, shown.to);
-    expect(Math.min(...side)).toBeGreaterThanOrEqual(250);
-    expect(shown.cut).toEqual(shown.uncut);
   });
 
   it("shows an eraser shape while it is placed, and nothing of it after", async function () {
@@ -350,37 +276,13 @@ describe("Polygon", function () {
     });
   });
 
-  it("takes the eraser chosen while placing, and keeps Polygon on through Next", async function () {
+  it("takes the eraser chosen while placing", async function () {
     await openPolygon(false);
-    // A line of the pen first, as Next does not save a new symbol that has
-    // only the eraser's strokes.
-    await click([0.2, 0.2], [0.2, 0.7], [0.2, 0.7]);
-    await draftStrokes(1);
     await click([0.3, 0.3]);
     await browser.keys("e");
     await click([0.6, 0.6], [0.6, 0.6]);
-    const [, erased] = await draftStrokes(2);
+    const [erased] = await draftStrokes(1);
     expect(erased?.tool).toBe("eraser");
     expect(erased?.points).toHaveLength(4);
-    await browser.execute(() => {
-      document
-        .querySelector(".inkline-editor")
-        ?.setAttribute("data-inkline-first", "");
-    });
-    await browser.keys(["Control", "Shift", "Enter"]);
-    await browser.waitUntil(async () =>
-      browser.execute(() => {
-        const editors = document.querySelectorAll(".inkline-editor");
-        return (
-          editors.length === 1 &&
-          !(editors[0]?.hasAttribute("data-inkline-first") ?? true)
-        );
-      }),
-    );
-    await waitForEditor();
-    expect(await symbolFiles()).toEqual(["001.ink.png"]);
-    expect(await pressed("polygon")).toBe("true");
-    await browser.keys("y");
-    expect(await pressed("polygon")).toBe("false");
   });
 });

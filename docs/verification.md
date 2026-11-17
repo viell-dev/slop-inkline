@@ -168,7 +168,8 @@ must keep released files readable and looking the same, as
 - The brush circle follows the nominal tool size and drawing-area scale. Pen and
   Eraser keep separate sizes, including through **Next**. The close button stays
   clear of the name field, and the drawing area's accessible name produces no
-  hover tooltip
+  hover tooltip, for three times as long as a button's tooltip took to show, at
+  least 1.5 s
   ([editor-feedback.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor-feedback.e2e.ts)).
 - Each font line is drawn in its own colour from the theme's CSS custom
   property, in light and dark themes, read back from the drawing area's pixels;
@@ -176,14 +177,14 @@ must keep released files readable and looking the same, as
   shows the rest
   ([guide-lines.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/guide-lines.e2e.ts)).
 - Help explains the drawing tools and guides, closes with Escape, and restores
-  focus to drawing without changing its strokes (the same file).
-- The brush replaces the native crosshair only while visible, with a centre dot
-  and fractional-coordinate checks at two editor widths in both themes. Leaving,
+  focus to drawing without changing its strokes
+  ([editor-feedback.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor-feedback.e2e.ts)).
+- The brush replaces the native crosshair only while visible. Leaving,
   cancelling, and Help restore the fallback cursor; the indicator never enters
   saved strokes (the same file). These host checks do not establish subjective
   pointer comfort.
-- The fixed bitmap retains its coverage across fractional positions and zoom
-  levels
+- The fixed bitmap has a centre dot at every brush size, and retains its
+  coverage across fractional positions at two editor widths and five zoom levels
   ([brush-cursor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/brush-cursor.e2e.ts)).
   Contrast checks cover light, dark, grey, coloured and translucent backgrounds,
   ink edges, stationary theme redraws and readback failure recovery

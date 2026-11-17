@@ -103,8 +103,12 @@ async function linesShown(): Promise<LineShown[]> {
   });
 }
 
+/** Whether a test has stored settings of its own. */
+let settingsStored = false;
+
 /** Starts Inkline again with its settings stored as `changes` say. */
 async function storeSettings(changes: Partial<Settings>): Promise<void> {
+  settingsStored = true;
   await obsidianPage.disablePlugin("inkline");
   await browser.executeObsidian(
     async ({ app }, settings) => {
@@ -139,7 +143,14 @@ describe("Guide lines", function () {
   });
   beforeEach(async function () {
     await startOver();
+  });
+  afterEach(async function () {
+    // Each test starts with the default settings, which only a test that
+    // stores others needs Inkline started again for.
+    if (!settingsStored) return;
+    await startOver();
     await storeSettings({});
+    settingsStored = false;
   });
   after(async function () {
     await startOver();
@@ -147,16 +158,16 @@ describe("Guide lines", function () {
       document.body.classList.remove("theme-light", "theme-dark");
       document.body.classList.add(...original);
     }, themes);
-    await storeSettings({});
   });
 
-  for (const theme of ["theme-light", "theme-dark"]) {
-    it(`draws each font line in its own colour from the theme, in ${theme}`, async function () {
-      await browser.execute((name) => {
+  it("draws each font line in its own colour from the theme, in light and dark themes", async function () {
+    await openEditor();
+    for (const theme of ["theme-light", "theme-dark"]) {
+      await browser.executeObsidian(({ app }, name) => {
         document.body.classList.remove("theme-light", "theme-dark");
         document.body.classList.add(name);
+        app.workspace.trigger("css-change");
       }, theme);
-      await openEditor();
       // The surface redraws in the new theme's colours.
       let lines: LineShown[] = [];
       await browser.waitUntil(async () => {
@@ -176,8 +187,8 @@ describe("Guide lines", function () {
       expect(new Set(lines.map((line) => line.expected.join(","))).size).toBe(
         lines.length,
       );
-    });
-  }
+    }
+  });
 
   it("lets a CSS snippet on body .inkline-surface change a line's colour, in a light theme too", async function () {
     await browser.execute(() => {

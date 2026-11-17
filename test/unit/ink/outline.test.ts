@@ -691,6 +691,39 @@ describe("cutBoxes", () => {
   it("takes nothing from a stroke without cuts", () => {
     expect(cutBoxes({ tool: "pen", size: 32, points: [16, 16] })).toEqual([]);
   });
+
+  it("takes nothing from a polygon or a fill, even one that names cuts", () => {
+    // The owner's pentagon from #126, as 0.3.0-alpha.8 saved it: its end one
+    // cell along its first side, cut there, which took ink from that side.
+    const cell = 14 * 16;
+    const points = [
+      [0, 0],
+      [-3, 0],
+      [-4, 2],
+      [-2, 4],
+      [0, 2],
+      [-1, 0],
+    ].flatMap(([column = 0, row = 0]) => [
+      80 * 16 + column * cell,
+      144 * 16 - row * cell,
+    ]);
+    const shapes: Stroke[] = [
+      { tool: "pen", size: 192, points, kind: "polygon" },
+      { tool: "pen", points, kind: "fill" },
+    ];
+    for (const shape of shapes) {
+      // The types forbid cuts on these, as reading a file does, so only a
+      // cast can make the record such a version wrote.
+      const named = {
+        ...shape,
+        cut: { start: "down", end: "down" },
+      } as unknown as Stroke;
+      expect([shape.kind, cutBoxes(named)]).toEqual([shape.kind, []]);
+      // So it draws as it would without them.
+      expect(strokeShape(named)).toEqual(strokeShape(shape));
+      expect(restShape(named)).toBeUndefined();
+    }
+  });
 });
 
 describe("uncutRest", () => {

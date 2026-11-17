@@ -1,23 +1,71 @@
 import { browser, expect } from "@wdio/globals";
+import type { Stroke } from "../../../src/format/record.ts";
+import { lineBox } from "../../../src/ink/geometry.ts";
 import { loadModules } from "../support/browser.ts";
 import { cursorImage, hasBrushCursor } from "../support/cursor.ts";
+import { settledDots } from "../support/grid.ts";
+import { boxOf, pointAt, warmUpPointer } from "../support/hover.ts";
 import {
   draw,
+  editorGrid,
+  markEditor,
   openAtMarker,
   recordOf,
+  settledSurface,
   startOver,
   storedDrafts,
   surface,
   symbolFiles,
   waitForEditor,
+  waitForNext,
   waitForStatus,
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
+
+/** The texts of the tooltips Obsidian shows now. */
+async function tooltips(): Promise<string[]> {
+  return browser.execute(() =>
+    [...document.querySelectorAll(".tooltip")].map(
+      (tooltip) => tooltip.textContent,
+    ),
+  );
+}
 
 async function insert(): Promise<void> {
   await openAtMarker("Editor.md", "HERE");
   await browser.executeObsidianCommand("inkline:insert-symbol");
   await waitForEditor();
+}
+
+/** Whether each of the buttons `ids` is pressed, by its id. */
+async function pressed(
+  ...ids: readonly string[]
+): Promise<Record<string, string | null>> {
+  const states: Record<string, string | null> = {};
+  for (const id of ids) {
+    states[id] = await browser
+      .$(`[data-inkline-button="${id}"]`)
+      .getAttribute("aria-pressed");
+  }
+  return states;
+}
+
+/** The kinds of the strokes that the symbol file at `path` holds. */
+async function savedKinds(path: string): Promise<(string | undefined)[]> {
+  const record = JSON.parse(await recordOf(path)) as { strokes: Stroke[] };
+  return record.strokes.map((stroke) => stroke.kind);
+}
+
+/** Saves the drawing with Next, and waits for the next symbol's editor. */
+async function goOn(): Promise<void> {
+  await browser.waitUntil(
+    async () => (await storedDrafts())[0]?.strokes.length === 1,
+    { timeoutMsg: "the drawing was never kept as a draft" },
+  );
+  await markEditor();
+  await browser.keys(["Control", "Shift", "Enter"]);
+  await waitForNext(1);
+  expect(await symbolFiles()).toEqual(["001.ink.png"]);
 }
 
 describe("Editor feedback", function () {
@@ -42,9 +90,9 @@ describe("Editor feedback", function () {
     }, originalTheme);
   });
 
-  for (const theme of ["theme-light", "theme-dark"]) {
-    it(`keeps the close control clear of the name in ${theme}`, async function () {
-      await insert();
+  it("keeps the close control clear of the name in light and dark themes", async function () {
+    await insert();
+    for (const theme of ["theme-light", "theme-dark"]) {
       const layout = await browser.execute((wanted) => {
         document.body.removeClass("theme-light", "theme-dark");
         document.body.addClass(wanted);
@@ -63,66 +111,32 @@ describe("Editor feedback", function () {
         };
       }, theme);
       await saveScreenshot(`editor-feedback-${theme}`);
-      expect(layout.overlap).toBe(0);
+      expect([theme, layout.overlap]).toEqual([theme, 0]);
       expect(layout.nameWidth).toBeGreaterThan(300);
-    });
-
-    it(`keeps a fixed brush bitmap at fractional positions in ${theme}`, async function () {
-      await insert();
-      for (const width of [721.5, 480.25]) {
-        await browser.execute(
-          (wanted, pixels) => {
-            document.body.removeClass("theme-light", "theme-dark");
-            document.body.addClass(wanted);
-            const modal = document.querySelector(".inkline-editor");
-            if (modal instanceof HTMLElement)
-              modal.style.width = `${String(pixels)}px`;
-          },
-          theme,
-          width,
-        );
-        await surface().moveTo();
-        const measurements = await browser.execute(() => {
-          const canvas = document.querySelector(".inkline-surface");
-          if (!(canvas instanceof HTMLCanvasElement))
-            throw new Error("no drawing controls");
-          const rect = canvas.getBoundingClientRect();
-          const offsets = [0.125, 0.375, 0.625, 0.875];
-          const cursors = offsets.map((fraction) => {
-            const clientX = rect.left + 80 + fraction;
-            const clientY = rect.top + 80 + fraction;
-            canvas.dispatchEvent(
-              new PointerEvent("pointermove", {
-                pointerType: "mouse",
-                pointerId: 51,
-                clientX,
-                clientY,
-                bubbles: true,
-              }),
-            );
-            return getComputedStyle(canvas).cursor;
-          });
-          return cursors;
-        });
-        expect(new Set(measurements).size).toBe(1);
-        const image = await cursorImage();
-        expect(image.width).toBe(image.height);
-        expect(image.hotspot).toEqual([image.width / 2, image.height / 2]);
-        expect(image.diameter).toBeGreaterThan(0);
-      }
-      await saveScreenshot(`editor-centred-cursor-${theme}`);
-    });
-  }
+    }
+  });
 
   it("names the drawing area without showing a hover tooltip", async function () {
     await insert();
     expect(await surface().getComputedLabel()).toBe("Drawing area");
-    await browser.$('[data-inkline-button="pen"]').moveTo();
-    await browser.pause(500);
-    await surface().moveTo();
-    // Obsidian creates aria-label tooltips after the hover delay.
-    await browser.pause(1200);
-    expect(await browser.$(".tooltip=Drawing area").isExisting()).toBe(false);
+    // A button's tooltip shows, after Obsidian's delay in this run, which
+    // says how long to wait for one that should not.
+    await warmUpPointer();
+    const pen = await boxOf('[data-inkline-button="pen"]');
+    const start = Date.now();
+    await pointAt((pen.left + pen.right) / 2, (pen.top + pen.bottom) / 2);
+    await browser.waitUntil(
+      async () => (await tooltips()).includes("Pen (P)"),
+      { timeoutMsg: "the Pen button showed no tooltip" },
+    );
+    const patience = Math.max(1500, 3 * (Date.now() - start));
+    const area = await boxOf(".inkline-editor .inkline-surface");
+    expect(
+      await pointAt((area.left + area.right) / 2, (area.top + area.bottom) / 2),
+    ).toContain("inkline-surface");
+    await browser.pause(patience);
+    // The Pen button's own can still be going as the pointer leaves.
+    expect((await tooltips()).filter((text) => text !== "Pen (P)")).toEqual([]);
   });
 
   it("shows the brush footprint without adding it to the drawing", async function () {
@@ -207,44 +221,6 @@ describe("Editor feedback", function () {
     await browser.$(".inkline-help").waitForExist({ reverse: true });
     await surface().moveTo({ xOffset: -20 });
     await browser.waitUntil(hasBrushCursor);
-  });
-
-  it("keeps pen and eraser sizes separately through tool switches and Next", async function () {
-    await insert();
-    await browser.keys("1");
-    await browser.keys("e");
-    await browser.keys("4");
-    await browser.keys("p");
-    expect(
-      await browser
-        .$('[data-inkline-button="size-0"]')
-        .getAttribute("aria-pressed"),
-    ).toBe("true");
-    await draw([
-      [0.4, 0.3],
-      [0.5, 0.7],
-    ]);
-    await browser.execute(() => {
-      document
-        .querySelector(".inkline-editor")
-        ?.setAttribute("data-first-editor", "true");
-    });
-    await browser.keys(["Control", "Shift", "Enter"]);
-    await browser
-      .$('[data-first-editor="true"]')
-      .waitForExist({ reverse: true });
-    await waitForEditor();
-    expect(
-      await browser
-        .$('[data-inkline-button="size-0"]')
-        .getAttribute("aria-pressed"),
-    ).toBe("true");
-    await browser.keys("e");
-    expect(
-      await browser
-        .$('[data-inkline-button="size-3"]')
-        .getAttribute("aria-pressed"),
-    ).toBe("true");
   });
 
   it("scales the brush circle with the surface and keeps it after a stroke", async function () {
@@ -349,5 +325,134 @@ describe("Editor feedback", function () {
     expect(outline.style).toBe("dashed");
     expect(outline.outside).toBeLessThanOrEqual(0);
     await saveScreenshot("editor-drop-outline");
+  });
+
+  // Next hands the tools on to the next symbol's editor. Ellipse and Polygon
+  // are never on together, so the hand-off takes two tests, one for each.
+  it("starts the next symbol with an ellipse's tools: Fill, both sizes, the grid, the guides and Zoom", async function () {
+    await insert();
+    // The pen's S and the eraser's XL, and the pen again.
+    await browser.keys("1");
+    await browser.keys("e");
+    await browser.keys("4");
+    await browser.keys("p");
+    expect(await pressed("size-0")).toEqual({ "size-0": "true" });
+    // The grid shown and the guides hidden, so that only the grid's dots are
+    // on the edges that settledDots reads.
+    await browser.keys(["Shift", "g"]);
+    await browser.keys("g");
+    await browser.keys("o");
+    await browser.keys("b");
+    const usual = await settledSurface();
+    await browser.keys("z");
+    await waitForStatus("Zoomed in");
+    // Taller than it was, as zoom.e2e.ts asks, so that the next editor being
+    // as tall as this one shows the zoom, and not two editors at their usual
+    // size.
+    await browser.waitUntil(
+      async () => (await settledSurface()).height > usual.height * 1.3,
+      { timeoutMsg: "the drawing area never grew with Zoom" },
+    );
+    const zoomed = await settledSurface();
+    const { spacing } = await editorGrid();
+    await draw([
+      [0.3, 0.3],
+      [0.6, 0.7],
+    ]);
+    await goOn();
+    expect(await savedKinds("001.ink.png")).toEqual(["fill"]);
+    expect(
+      await pressed(
+        "pen",
+        "eraser",
+        "size-0",
+        "ellipse",
+        "polygon",
+        "fill",
+        "grid",
+        "guides",
+        "zoom",
+      ),
+    ).toEqual({
+      pen: "true",
+      eraser: "false",
+      "size-0": "true",
+      ellipse: "true",
+      polygon: "false",
+      fill: "true",
+      grid: "true",
+      guides: "false",
+      zoom: "true",
+    });
+    expect(
+      Math.abs((await settledSurface()).height - zoomed.height),
+    ).toBeLessThan(2);
+    // Zoom's finer grid, with twice the cells each way.
+    const dots = await settledDots();
+    await saveScreenshot("editor-next-ellipse");
+    const xHeight = dots.lines["x-height"];
+    if (xHeight === undefined) throw new Error("no x-height");
+    const between = dots.rows.filter(
+      (row) => row > xHeight + 1 && row < lineBox.baseline - 1,
+    );
+    expect(between).toHaveLength(9);
+    // Enough columns for their steps to be compared.
+    expect(dots.columns.length).toBeGreaterThan(2);
+    for (const [index, x] of dots.columns.slice(1).entries()) {
+      const step = x - (dots.columns[index] ?? 0);
+      expect(Math.abs(step - spacing / 2)).toBeLessThanOrEqual(1 / dots.factor);
+    }
+    await browser.keys("e");
+    expect(await pressed("size-3")).toEqual({ "size-3": "true" });
+    await browser.keys("p");
+    // It draws a filled ellipse, and saves a second symbol.
+    await draw([
+      [0.4, 0.6],
+      [0.6, 0.4],
+    ]);
+    await browser.keys(["Control", "Enter"]);
+    await browser.waitUntil(async () => (await symbolFiles()).length === 2);
+    const [second = ""] = (await symbolFiles()).filter(
+      (path) => path !== "001.ink.png",
+    );
+    expect(await savedKinds(second)).toEqual(["fill"]);
+  });
+
+  it("starts the next symbol with a polygon's tools: the eraser, the grid and Flat ends", async function () {
+    await insert();
+    await browser.keys(["Shift", "g"]);
+    await browser.keys("t");
+    expect(await pressed("flat-ends")).toEqual({ "flat-ends": "true" });
+    await browser.keys("y");
+    // A line of the pen, as Next saves no new symbol that has only the
+    // eraser's strokes, ended on its last corner; then the eraser.
+    for (const point of [
+      [0.2, 0.2],
+      [0.2, 0.7],
+      [0.2, 0.7],
+    ] as const) {
+      await draw([point]);
+    }
+    await browser.keys("e");
+    await goOn();
+    expect(
+      await pressed("pen", "eraser", "ellipse", "polygon", "grid", "flat-ends"),
+    ).toEqual({
+      pen: "false",
+      eraser: "true",
+      ellipse: "false",
+      polygon: "true",
+      grid: "true",
+      "flat-ends": "false",
+    });
+    const flatEnds = browser.$('[data-inkline-button="flat-ends"]');
+    expect(await flatEnds.isEnabled()).toBe(false);
+    // Freehand again, Flat ends is on, as it was.
+    await browser.keys("y");
+    expect(await pressed("polygon", "flat-ends")).toEqual({
+      polygon: "false",
+      "flat-ends": "true",
+    });
+    expect(await flatEnds.isEnabled()).toBe(true);
   });
 });

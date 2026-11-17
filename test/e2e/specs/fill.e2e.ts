@@ -10,7 +10,6 @@ import {
   startOver,
   storedDrafts,
   surface,
-  symbolFiles,
   waitForEditor,
   waitForStatus,
 } from "../support/editor.ts";
@@ -265,7 +264,7 @@ describe("Fill", function () {
     expect(shown[2]).toBe(0);
   });
 
-  it("is off while drawing freehand, and Next keeps it", async function () {
+  it("is off while drawing freehand, and on for Ellipse", async function () {
     await openEditor();
     const fill = browser.$('[data-inkline-button="fill"]');
     expect(await fill.isEnabled()).toBe(false);
@@ -276,31 +275,5 @@ describe("Fill", function () {
     expect(await fill.isEnabled()).toBe(true);
     await fill.click();
     expect(await pressed("fill")).toBe("true");
-    await draw([
-      [0.3, 0.3],
-      [0.6, 0.7],
-    ]);
-    await draftStrokes(1);
-    await browser.execute(() => {
-      document
-        .querySelector(".inkline-editor")
-        ?.setAttribute("data-inkline-first", "");
-    });
-    await browser.keys(["Control", "Shift", "Enter"]);
-    await browser.waitUntil(async () =>
-      browser.execute(() => {
-        const editors = document.querySelectorAll(".inkline-editor");
-        return (
-          editors.length === 1 &&
-          !(editors[0]?.hasAttribute("data-inkline-first") ?? true)
-        );
-      }),
-    );
-    await waitForEditor();
-    expect(await symbolFiles()).toEqual(["001.ink.png"]);
-    expect(await pressed("ellipse")).toBe("true");
-    expect(await pressed("fill")).toBe("true");
-    const [ellipse] = await savedStrokes();
-    expect(ellipse?.kind).toBe("fill");
   });
 });

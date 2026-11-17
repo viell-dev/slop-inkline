@@ -9,7 +9,6 @@ import {
   startOver,
   storedDrafts,
   surface,
-  symbolFiles,
   waitForEditor,
   waitForStatus,
 } from "../support/editor.ts";
@@ -67,6 +66,24 @@ async function previewWidth(): Promise<{ width: number; fontSize: number }> {
       fontSize: Number.parseFloat(getComputedStyle(line).fontSize),
     };
   });
+}
+
+/**
+ * Waits for two frames, after which the editor has drawn what was done just
+ * before: a stroke, a shortcut, and the wheel each change the view as they
+ * happen and ask for a frame, which draws the surface and the preview.
+ */
+async function framesDrawn(): Promise<void> {
+  await browser.execute(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            resolve();
+          });
+        });
+      }),
+  );
 }
 
 /** How many of the preview's pixels hold ink. */
@@ -167,7 +184,6 @@ describe("Zoom", function () {
       .action("wheel")
       .scroll({ origin: await surface().getElement(), deltaY: 100 })
       .perform();
-    await browser.pause(100);
     const wheeled = await tap(0.5, 0.5);
     expect(
       Math.abs(wheeled.x - arrowed.x - (100 / width) * across),
@@ -192,7 +208,6 @@ describe("Zoom", function () {
     await waitForStatus("Zoomed in");
     for (let step = 0; step < 6; step++) await browser.keys("ArrowRight");
     await browser.keys("f");
-    await browser.pause(200);
     expect(await zoomPressed()).toBe("true");
     const middle = await tap(0.5, 0.5);
     // Fit centres the drawing's ink with its side bearings, to a few pixels.
@@ -208,17 +223,17 @@ describe("Zoom", function () {
       [0.92, 0.5],
     ]);
     await browser.waitUntil(async () => (await storedDrafts()).length === 1);
-    await browser.pause(200);
+    await framesDrawn();
     const usual = await previewWidth();
     const inked = await previewInk();
     await browser.keys("z");
     await waitForStatus("Zoomed in");
-    await browser.pause(200);
+    await framesDrawn();
     expect(Math.abs((await previewWidth()).width - usual.width)).toBeLessThan(
       1,
     );
     for (let step = 0; step < 8; step++) await browser.keys("ArrowRight");
-    await browser.pause(200);
+    await framesDrawn();
     const moved = await previewWidth();
     expect(Math.abs(moved.width - usual.width)).toBeLessThan(1);
     // Still the whole symbol, not the part in view.
@@ -368,44 +383,5 @@ describe("Zoom", function () {
     // as in a save.
     expect(result.erased.size).toEqual(result.left.size);
     expect(result.erased.alpha).toBe(result.left.alpha);
-  });
-
-  it("keeps the zoom for the next symbol", async function () {
-    await openEditor();
-    await browser.keys("z");
-    await waitForStatus("Zoomed in");
-    const zoomed = await surfaceSize();
-    await draw([
-      [0.4, 0.4],
-      [0.6, 0.6],
-    ]);
-    await browser.execute(() => {
-      document
-        .querySelector(".inkline-editor")
-        ?.setAttribute("data-inkline-first", "");
-    });
-    await browser.keys(["Control", "Shift", "Enter"]);
-    // The first editor gives way to a blank one for the next symbol.
-    await browser.waitUntil(async () =>
-      browser.execute(() => {
-        const editors = document.querySelectorAll(".inkline-editor");
-        return (
-          editors.length === 1 &&
-          !(editors[0]?.hasAttribute("data-inkline-first") ?? true)
-        );
-      }),
-    );
-    expect(await symbolFiles()).toEqual(["001.ink.png"]);
-    expect(await zoomPressed()).toBe("true");
-    expect(Math.abs((await surfaceSize()).height - zoomed.height)).toBeLessThan(
-      2,
-    );
-    // And it saves a second symbol.
-    await draw([
-      [0.4, 0.6],
-      [0.6, 0.4],
-    ]);
-    await browser.keys(["Control", "Enter"]);
-    await browser.waitUntil(async () => (await symbolFiles()).length === 2);
   });
 });

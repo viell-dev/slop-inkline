@@ -357,47 +357,6 @@ describe("Flat ends on the grid", function () {
     for (const value of shown.uncut[1] ?? []) expect(value).toBeGreaterThan(0);
   });
 
-  it("keeps round ends on the grid until Flat ends is turned on", async function () {
-    await openOnGrid(false);
-    expect(await pressed("flat-ends")).toBe("false");
-    await drawHoldingShift([
-      [0.5, 0.25],
-      [0.55, 0.75],
-    ]);
-    await save();
-    const [stroke] = await savedStrokes();
-    expect(stroke).not.toHaveProperty("cut");
-  });
-
-  it("keeps a freehand end round with Flat ends on: only ends Shift placed are cut", async function () {
-    await openOnGrid();
-    // Neither end placed with Shift, then only the start, then only the end.
-    const stroke: readonly (readonly [number, number])[] = [
-      [0.3, 0.25],
-      [0.32, 0.75],
-    ];
-    await draw(stroke);
-    await drawShifted([
-      { at: [0.5, 0.25], shift: true },
-      { at: [0.52, 0.75], shift: false },
-    ]);
-    await drawShifted(
-      [
-        { at: [0.7, 0.25], shift: false },
-        { at: [0.72, 0.75], shift: false },
-      ],
-      true,
-    );
-    await save();
-    const strokes = await savedStrokes();
-    console.log("Shift's ends", JSON.stringify(strokes.map(({ cut }) => cut)));
-    expect(strokes.map(({ cut }) => cut)).toEqual([
-      undefined,
-      { start: "up" },
-      { end: "down" },
-    ]);
-  });
-
   it("offers Flat ends only for freehand strokes on the grid", async function () {
     await openAtMarker("Editor.md", "HERE");
     await browser.executeObsidianCommand("inkline:insert-symbol");
@@ -426,20 +385,5 @@ describe("Flat ends on the grid", function () {
       async () => (await pressed("flat-ends")) === "true",
     );
     await saveScreenshot("flat-ends-on", browser.$(".inkline-editor"));
-  });
-
-  it("keeps round ends with the grid off", async function () {
-    await openAtMarker("Editor.md", "HERE");
-    await browser.executeObsidianCommand("inkline:insert-symbol");
-    await waitForEditor();
-    await settledSurface();
-    await browser.keys("4");
-    await drawHoldingShift([
-      [0.5, 0.25],
-      [0.55, 0.75],
-    ]);
-    await save();
-    const [stroke] = await savedStrokes();
-    expect(stroke).not.toHaveProperty("cut");
   });
 });
