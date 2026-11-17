@@ -313,32 +313,45 @@ async function waitForHeldReloads(): Promise<void> {
 /**
  * Holds what reads a note through `vault.cachedRead` by `delay` milliseconds
  * after the read, with the text it read, as Obsidian's reload does while it
- * writes the file. Counts the reads it holds, for {@link waitForHeldReads}.
- * Returns what takes that back.
+ * writes the file. Counts the reads of the note at `path` among them, for
+ * {@link heldReads} and {@link waitForHeldReads}. Returns what takes that
+ * back.
  */
-async function slowCachedRead(delay: number): Promise<() => Promise<void>> {
-  await browser.executeObsidian(({ app }, wait) => {
-    const { vault } = app;
-    const read = vault.cachedRead.bind(vault);
-    const held = { started: 0, pending: 0 };
-    Reflect.set(window, "inklineHeldReads", held);
-    vault.cachedRead = async (file) => {
-      held.started++;
-      held.pending++;
-      try {
-        const text = await read(file);
-        await new Promise((resolve) => {
-          window.setTimeout(resolve, wait);
-        });
-        return text;
-      } finally {
-        // Counted down once what waits for the read has had it.
-        window.setTimeout(() => {
-          held.pending--;
-        });
-      }
-    };
-  }, delay);
+async function slowCachedRead(
+  path: string,
+  delay: number,
+): Promise<() => Promise<void>> {
+  await browser.executeObsidian(
+    ({ app }, counted, wait) => {
+      const { vault } = app;
+      const read = vault.cachedRead.bind(vault);
+      const held = { started: 0, pending: 0 };
+      Reflect.set(window, "inklineHeldReads", held);
+      vault.cachedRead = async (file) => {
+        const counts = file.path === counted;
+        if (counts) {
+          held.started++;
+          held.pending++;
+        }
+        try {
+          const text = await read(file);
+          await new Promise((resolve) => {
+            window.setTimeout(resolve, wait);
+          });
+          return text;
+        } finally {
+          // Counted down once what waits for the read has had it.
+          if (counts) {
+            window.setTimeout(() => {
+              held.pending--;
+            });
+          }
+        }
+      };
+    },
+    path,
+    delay,
+  );
   return async () => {
     await browser.executeObsidian(({ app }) => {
       Reflect.deleteProperty(app.vault, "cachedRead");
@@ -348,46 +361,69 @@ async function slowCachedRead(delay: number): Promise<() => Promise<void>> {
 }
 
 /**
- * Waits until a read {@link slowCachedRead} held has started, and none is
- * under way, on two looks a frame apart, so that what a read gave has been
- * taken in. Then waits until the note's text has stayed the same over five
- * looks 100 ms apart, so that what a reload does with a read it had, however
- * long after the read that comes, is in the text the test then asserts on.
+ * How many reads of its note {@link slowCachedRead} has held so far, and how
+ * many of those are under way.
  */
-async function waitForHeldReads(): Promise<void> {
-  let count = "none";
-  try {
-    await browser.waitUntil(
-      async () => {
-        const { started, idle } = await browser.execute(async () => {
-          const read = (key: string): number => {
-            const held: unknown = Reflect.get(window, "inklineHeldReads");
-            const value: unknown = Reflect.get(Object(held), key);
-            return typeof value === "number" ? value : -1;
-          };
-          if (read("pending") !== 0) {
-            return { started: read("started"), idle: false };
-          }
-          await new Promise((resolve) => requestAnimationFrame(resolve));
-          return { started: read("started"), idle: read("pending") === 0 };
-        });
-        count = `${String(started)} started`;
-        return started > 0 && idle;
-      },
-      { timeout: 20_000 },
-    );
-  } catch (error) {
-    throw new Error(`held reads did not finish: ${count}`, { cause: error });
-  }
-  // Five looks in a row that agree; a change starts the count again.
-  const until = Date.now() + 20_000;
-  let last = await noteText();
-  for (let same = 1; same < 5;) {
-    if (Date.now() > until) throw new Error("the note's text did not settle");
-    await browser.pause(100);
-    const text = await noteText();
-    same = text === last ? same + 1 : 1;
-    last = text;
+async function heldReads(): Promise<{ started: number; pending: number }> {
+  return browser.execute(() => {
+    const held: unknown = Reflect.get(window, "inklineHeldReads");
+    const read = (key: string): number => {
+      const value: unknown = Reflect.get(Object(held), key);
+      return typeof value === "number" ? value : -1;
+    };
+    return { started: read("started"), pending: read("pending") };
+  });
+}
+
+/**
+ * Waits until {@link slowCachedRead} has held a read of its note since
+ * `before` were counted, and none is under way, on two looks a frame apart, so
+ * that what a read gave has been taken in. The reads of the note as it opened
+ * are counted too, so only one since the step under test shows that the step's
+ * reload was held. Then waits until the note's text has stayed the same over
+ * five looks 100 ms apart, so that what a reload does with a read it had,
+ * however long after the read that comes, is in the text the test then asserts
+ * on; a read that started during those looks has it all wait again.
+ */
+async function waitForHeldReads(before: number): Promise<void> {
+  const until = Date.now() + 40_000;
+  for (;;) {
+    let count = "none";
+    try {
+      await browser.waitUntil(
+        async () => {
+          const { started, idle } = await browser.execute(async () => {
+            const read = (key: string): number => {
+              const held: unknown = Reflect.get(window, "inklineHeldReads");
+              const value: unknown = Reflect.get(Object(held), key);
+              return typeof value === "number" ? value : -1;
+            };
+            if (read("pending") !== 0) {
+              return { started: read("started"), idle: false };
+            }
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+            return { started: read("started"), idle: read("pending") === 0 };
+          });
+          count = `${String(started)} started, ${String(before)} of them before`;
+          return started > before && idle;
+        },
+        { timeout: 20_000 },
+      );
+    } catch (error) {
+      throw new Error(`held reads of the note did not finish: ${count}`, {
+        cause: error,
+      });
+    }
+    // Five looks in a row that agree; a change starts the count again.
+    let last = await noteText();
+    for (let same = 1; same < 5;) {
+      if (Date.now() > until) throw new Error("the note's text did not settle");
+      await browser.pause(100);
+      const text = await noteText();
+      same = text === last ? same + 1 : 1;
+      last = text;
+    }
+    if ((await heldReads()).pending === 0) return;
   }
 }
 
@@ -1386,6 +1422,11 @@ describe("A rename while the note holds unsaved text", function () {
       // editor saves, wrote, and what a `vault.process`, through which
       // Inkline writes a note, read from the file and wrote. So is how many
       // writes there were at Obsidian's, and whether the saves have ended.
+      // This shows that Inkline finds the old embed and writes the new one. On
+      // Obsidian 1.13.4 it also shows that Inkline looks again after its first
+      // look: with only the first look, the test fails there. On 1.15.1 the
+      // first look already comes after the saves, so it passes there either
+      // way, and the repeated look is shown on 1.13.4 alone.
       const saveAtNextWrite = async (): Promise<void> => {
         await browser.executeObsidian(({ app, obsidian }) => {
           const { vault } = app;
@@ -1500,7 +1541,7 @@ describe("A rename while the note holds unsaved text", function () {
         ["the editor closes", ["Control", "Enter"], waitClosed],
       ] as const) {
         it(`keeps the text when ${how}, with the reload held ${String(hold)} ms`, async function () {
-          const restore = await slowCachedRead(hold);
+          const restore = await slowCachedRead("Editor.md", hold);
           try {
             await insertAndWait();
             await markEditor();
@@ -1510,13 +1551,18 @@ describe("A rename while the note holds unsaved text", function () {
               async () => (await topButton("Just once")) !== undefined,
             );
             await addBoth("Editor.md");
+            // The note's reads so far, as it opened, are not the rename's.
+            const { started } = await heldReads();
             await clickTop("Just once");
             await gone();
             await waitForNote(withText(renamed));
             await waitForFile("Editor.md", withText(renamed));
-            // Past every held read, whose text would revert the note's, and
-            // what the reload did with it.
-            await waitForHeldReads();
+            // Past every held read since the answer, whose text would revert
+            // the note's, and what the reload did with it.
+            await waitForHeldReads(started);
+            console.log(
+              `Held ${String((await heldReads()).started - started)} reads of the note after the answer, ${String(started)} before`,
+            );
             expect(await noteText()).toBe(withText(renamed));
             await waitForFile("Editor.md", withText(renamed));
           } finally {
