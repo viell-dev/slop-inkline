@@ -6248,7 +6248,11 @@ describe("The editor", function () {
       ]);
       await browser.keys(["Control", "s"]);
       await waitForStatus("Saved");
-      await waitForPicture((box) => near(box, placed, 1));
+      // The save says so at once, and the surface shows its result on the
+      // next frame: until then it still shows the picture where it was. So
+      // after two frames, the picture is read once, as the save left it.
+      await waitForEditor();
+      expect(near(await pictureShown(), placed, 1)).toBe(true);
       await markEditor();
       await browser.keys(["Control", "Shift", "Enter"]);
       await waitForNext(1);
