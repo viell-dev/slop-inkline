@@ -320,9 +320,10 @@ async function slowCachedRead(delay: number): Promise<() => Promise<void>> {
   await browser.executeObsidian(({ app }, wait) => {
     const { vault } = app;
     const read = vault.cachedRead.bind(vault);
-    const held = { pending: 0 };
+    const held = { started: 0, pending: 0 };
     Reflect.set(window, "inklineHeldReads", held);
     vault.cachedRead = async (file) => {
+      held.started++;
       held.pending++;
       try {
         const text = await read(file);
@@ -347,23 +348,47 @@ async function slowCachedRead(delay: number): Promise<() => Promise<void>> {
 }
 
 /**
- * Waits until no read {@link slowCachedRead} holds is under way, on two
- * looks a frame apart, so that what a read gave has been taken in.
+ * Waits until a read {@link slowCachedRead} held has started, and none is
+ * under way, on two looks a frame apart, so that what a read gave has been
+ * taken in. Then waits until the note's text has stayed the same over five
+ * looks 100 ms apart, so that what a reload does with a read it had, however
+ * long after the read that comes, is in the text the test then asserts on.
  */
 async function waitForHeldReads(): Promise<void> {
-  await browser.waitUntil(
-    async () =>
-      browser.execute(async () => {
-        const idle = (): boolean => {
-          const held: unknown = Reflect.get(window, "inklineHeldReads");
-          return Reflect.get(Object(held), "pending") === 0;
-        };
-        if (!idle()) return false;
-        await new Promise((resolve) => requestAnimationFrame(resolve));
-        return idle();
-      }),
-    { timeout: 20_000, timeoutMsg: "held reads did not finish" },
-  );
+  let count = "none";
+  try {
+    await browser.waitUntil(
+      async () => {
+        const { started, idle } = await browser.execute(async () => {
+          const read = (key: string): number => {
+            const held: unknown = Reflect.get(window, "inklineHeldReads");
+            const value: unknown = Reflect.get(Object(held), key);
+            return typeof value === "number" ? value : -1;
+          };
+          if (read("pending") !== 0) {
+            return { started: read("started"), idle: false };
+          }
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+          return { started: read("started"), idle: read("pending") === 0 };
+        });
+        count = `${String(started)} started`;
+        return started > 0 && idle;
+      },
+      { timeout: 20_000 },
+    );
+  } catch (error) {
+    throw new Error(`held reads did not finish: ${count}`, { cause: error });
+  }
+  // Five looks in a row that agree; a change starts the count again.
+  const until = Date.now() + 20_000;
+  let last = await noteText();
+  for (let same = 1; same < 5;) {
+    if (Date.now() > until) throw new Error("the note's text did not settle");
+    await browser.pause(100);
+    const text = await noteText();
+    same = text === last ? same + 1 : 1;
+    last = text;
+  }
 }
 
 /** Closes every tab of the note at `path`. */
@@ -1482,7 +1507,8 @@ describe("A rename while the note holds unsaved text", function () {
             await gone();
             await waitForNote(withText(renamed));
             await waitForFile("Editor.md", withText(renamed));
-            // Past every held read, whose text would revert the note's.
+            // Past every held read, whose text would revert the note's, and
+            // what the reload did with it.
             await waitForHeldReads();
             expect(await noteText()).toBe(withText(renamed));
             await waitForFile("Editor.md", withText(renamed));
