@@ -5766,8 +5766,11 @@ describe("The editor", function () {
       await browser.keys(["Control", "Shift", "Enter"]);
       await letGo();
       await waitForNext(1);
-      // Next asked again goes no further than that save, which opens the next
-      // editor in the turn it ends: any other would be open by now.
+      // Today, Next asked again goes no further than that save, which opens
+      // the next editor in the turn it ends; but a Next that started a save
+      // of its own would open another later, writing the same file, so only
+      // a while with no other editor shows that none opens.
+      await browser.pause(2000);
       expect(await browser.$$(".inkline-editor").length).toBe(1);
     });
 
