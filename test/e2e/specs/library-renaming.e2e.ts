@@ -10,7 +10,6 @@ import {
   hold,
   holdIndex,
   letGo,
-  renamePastHold,
   restoreVault,
   startOver,
   symbolFiles,
@@ -450,22 +449,9 @@ describe("Renaming in the symbol library", function () {
       await letGo();
     });
 
-    it("refuses a symbol deleted and replaced meanwhile, and keeps the name", async function () {
-      await renameHeld("lintel");
-      await browser.executeObsidian(async ({ app }) => {
-        const file = app.vault.getFileByPath("gate.ink.png");
-        if (file === null) throw new Error("no gate");
-        await app.fileManager.trashFile(file);
-      });
-      await createSymbol("gate.ink.png", [1200, 1800]);
-      const replacement = await bytesOf("gate.ink.png");
-      await letGo();
-      await waitForError("the file was deleted or replaced meanwhile");
-      expect(await nameField().getValue()).toBe("lintel");
-      expect(await symbolFiles()).toEqual(["gate.ink.png"]);
-      expect(await bytesOf("gate.ink.png")).toBe(replacement);
-    });
-
+    // A symbol deleted and replaced meanwhile is editor.e2e.ts's "saves a
+    // symbol deleted and replaced while open notes are saved": the same hold, in
+    // the same check of the rename, which the library says as the two below.
     it("refuses a symbol renamed elsewhere meanwhile, and renames it from there when asked again", async function () {
       await renameHeld("lintel");
       // Renamed as sync would, without Inkline.
@@ -518,22 +504,9 @@ describe("Renaming in the symbol library", function () {
       await letGo();
     });
 
-    it("refuses a symbol deleted and replaced while Obsidian indexes the vault", async function () {
-      await renameWhileIndexing("lintel");
-      await browser.executeObsidian(async ({ app }) => {
-        const file = app.vault.getFileByPath("gate.ink.png");
-        if (file === null) throw new Error("no gate");
-        await app.fileManager.trashFile(file);
-      });
-      await createSymbol("gate.ink.png", [1200, 1800]);
-      const replacement = await bytesOf("gate.ink.png");
-      await letGo();
-      await waitForError("the file was deleted or replaced meanwhile");
-      expect(await nameField().getValue()).toBe("lintel");
-      expect(await symbolFiles()).toEqual(["gate.ink.png"]);
-      expect(await bytesOf("gate.ink.png")).toBe(replacement);
-    });
-
+    // A symbol deleted and replaced is editor.e2e.ts's "saves a symbol deleted
+    // and replaced while Obsidian indexes the vault": the same wait, in the same
+    // check of the rename, which the library says as the test below.
     it("refuses a symbol renamed elsewhere while Obsidian indexes the vault, and keeps that name", async function () {
       await renameWhileIndexing("lintel");
       // Renamed as sync would, without Inkline.
@@ -548,72 +521,13 @@ describe("Renaming in the symbol library", function () {
       expect(await symbolFiles()).toEqual(["arch.ink.png"]);
     });
 
-    it("says what happened when the symbol is replaced as Obsidian moves it", async function () {
-      await usedSymbol();
-      await showLibrary();
-      await beginRename("gate", "lintel");
-      // Past every check, as a change already on its way to the disk, or one
-      // made outside Obsidian, would be.
-      await hold("move");
-      await browser.keys(["Enter"]);
-      await waitForHeld();
-      await browser.executeObsidian(async ({ app }) => {
-        const file = app.vault.getFileByPath("gate.ink.png");
-        if (file === null) throw new Error("no gate");
-        await app.fileManager.trashFile(file);
-      });
-      await createSymbol("gate.ink.png", [1200, 1800]);
-      const replacement = await bytesOf("gate.ink.png");
-      await letGo();
-      await waitForError(
-        "the file was deleted while Obsidian was renaming it, and Obsidian renamed another file to lintel.ink.png",
-      );
-      expect(await nameField().getValue()).toBe("lintel");
-      expect(await symbolFiles()).toEqual(["lintel.ink.png"]);
-      expect(await bytesOf("lintel.ink.png")).toBe(replacement);
-    });
-
-    it("says the symbol stays where it was when a file comes by the new name as Obsidian moves it", async function () {
-      await usedSymbol();
-      await showLibrary();
-      await beginRename("gate", "lintel");
-      await hold("move");
-      await browser.keys(["Enter"]);
-      await waitForHeld();
-      // As sync would bring in a file of that name.
-      await createSymbol("lintel.ink.png", [1200, 1800]);
-      const arrived = await bytesOf("lintel.ink.png");
-      await letGo();
-      // Obsidian moves nothing onto a file that is there.
-      await waitForError(
-        "lintel.ink.png was created while Obsidian was renaming it, and the file is still gate.ink.png",
-      );
-      expect(await nameField().getValue()).toBe("lintel");
-      expect(await symbolFiles()).toEqual(["gate.ink.png", "lintel.ink.png"]);
-      expect(await bytesOf("lintel.ink.png")).toBe(arrived);
-      expect(await noteText("Uses 0.md")).toContain("![[gate.ink.png]]");
-    });
-
-    it("says the symbol has the new name when it is renamed to it elsewhere as Obsidian moves it", async function () {
-      await usedSymbol();
-      await showLibrary();
-      await beginRename("gate", "lintel");
-      await hold("move");
-      await browser.keys(["Enter"]);
-      await waitForHeld();
-      // The very rename, as sync would make it, which leaves the links.
-      await renamePastHold("gate.ink.png", "lintel.ink.png");
-      await letGo();
-      await waitForError(
-        "Obsidian did not finish the rename, though the file is lintel.ink.png now, so links to it may still have the old name",
-      );
-      expect(await symbolFiles()).toEqual(["lintel.ink.png"]);
-      expect(await noteText("Uses 0.md")).toContain("![[gate.ink.png]]");
-      // Nothing is left to rename.
-      await browser.keys(["Enter"]);
-      await waitForName("lintel");
-      expect(await symbolFiles()).toEqual(["lintel.ink.png"]);
-    });
+    // What comes between once Obsidian moves the file, a replacement, a file
+    // at the new name, or the very rename made elsewhere, is editor.e2e.ts's
+    // three tests "as Obsidian moves it": the same hold, heard by the same
+    // watch of the move, and said in the same words. The library shows what it
+    // is told as above, and library-quick-edit.e2e.ts's "says only that the
+    // readings are saved when the rename is disturbed after them" has the row
+    // that then has nothing left to save.
   });
 
   describe("when Obsidian does not finish a rename", function () {
