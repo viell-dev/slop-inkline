@@ -84,8 +84,9 @@ A vault with a different configuration directory has its plugins there instead.
 
 ## Build and install a development build
 
-You need [Git](https://git-scm.com/) and [Node.js](https://nodejs.org/) 24 or
-later with the npm it ships. A development build can include unreleased changes.
+You need [Git](https://git-scm.com/) and [Node.js](https://nodejs.org/) 24.22.1
+or a later 24 release, or 26.12.1 or later, with the npm it ships. A development
+build can include unreleased changes.
 
 ```sh
 git clone https://github.com/viell-dev/slop-inkline.git
