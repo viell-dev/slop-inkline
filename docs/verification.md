@@ -349,8 +349,9 @@ must keep released files readable and looking the same, as
   layout callback that comes late, or turning Inkline off while it reads its
   settings, leaves no tagged symbols, display settings, menus, or commands
   behind, and the next load has them all
-  ([plugin.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/plugin.e2e.ts)
-  and
+  ([plugin.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/plugin.e2e.ts),
+  [library-quick-edit.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-quick-edit.e2e.ts)
+  for the change of readings, and
   [editor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor.e2e.ts)).
 - Names and renames: what a file name cannot hold, names a folder already has,
   renames that fail, names given elsewhere during saving or hashing, and the
