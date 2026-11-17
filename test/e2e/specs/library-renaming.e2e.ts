@@ -22,7 +22,11 @@ import {
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 import { showLibrary } from "../support/symbol-text-library.ts";
-import { bytesOf, noteOnDisk } from "../support/vault-files.ts";
+import {
+  bytesOf,
+  noteOnDisk,
+  waitForLinkWithoutSaving,
+} from "../support/vault-files.ts";
 import { setLinkUpdates } from "../support/insertion.ts";
 
 const quickEditNameField = () => browser.$(".inkline-library-edit-form input");
@@ -70,24 +74,6 @@ async function waitForError(text: string): Promise<void> {
     (await errorField().getText()).includes(text),
   );
   expect(await quickEditNameField().getProperty("readOnly")).toBe(false);
-}
-
-/**
- * Waits for a note to link to `symbol`, in Obsidian's index, without saving
- * the note first as `waitForLink` does.
- */
-async function waitForLinkWithoutSaving(
-  note: string,
-  symbol: string,
-): Promise<void> {
-  await browser.waitUntil(async () =>
-    browser.executeObsidian(
-      ({ app }, from, to) =>
-        (app.metadataCache.resolvedLinks[from]?.[to] ?? 0) > 0,
-      note,
-      symbol,
-    ),
-  );
 }
 
 /** Makes a symbol that `count` notes embed. */

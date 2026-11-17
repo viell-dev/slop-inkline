@@ -10,6 +10,7 @@ import {
 } from "../support/editor.ts";
 import { menuItems } from "../support/menus.ts";
 import { showLibrary } from "../support/symbol-text-library.ts";
+import { waitForLinkWithoutSaving } from "../support/vault-files.ts";
 
 /** What a row of the library shows. */
 interface Row {
@@ -72,24 +73,6 @@ async function editorText(path: string): Promise<string> {
     }
     throw new Error(`${file} is not open`);
   }, path);
-}
-
-/**
- * Waits for Obsidian's metadata cache to know that `note` links to `file`,
- * without saving the note first as `waitForLink` does.
- */
-async function waitForLinkWithoutSaving(
-  note: string,
-  file: string,
-): Promise<void> {
-  await browser.waitUntil(async () =>
-    browser.executeObsidian(
-      ({ app }, from, to) =>
-        (app.metadataCache.resolvedLinks[from]?.[to] ?? 0) > 0,
-      note,
-      file,
-    ),
-  );
 }
 
 /** Types `text` into the library's name filter, in place of what it holds. */
