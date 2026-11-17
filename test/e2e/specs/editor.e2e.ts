@@ -54,6 +54,7 @@ import {
   waitForStatus,
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
+import { waitOrSay } from "../support/waits.ts";
 
 const zigzag = [
   [0.4, 0.3],
@@ -548,12 +549,12 @@ async function waitForPicture(
   editor = 0,
 ): Promise<(Box & { alpha: number }) | undefined> {
   let shown = await pictureShown(colour, editor);
-  await browser.waitUntil(
+  await waitOrSay(
     async () => {
       shown = await pictureShown(colour, editor);
       return test(shown);
     },
-    { timeoutMsg: `the picture stayed at ${JSON.stringify(shown)}` },
+    () => `the picture was last at ${JSON.stringify(shown)}`,
   );
   return shown;
 }
