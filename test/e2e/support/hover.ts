@@ -2,24 +2,7 @@
 // tooltips Obsidian shows, in end-to-end tests.
 
 import { browser, expect } from "@wdio/globals";
-
-/** An element's edges, in pixels. */
-export interface Box {
-  left: number;
-  right: number;
-  top: number;
-  bottom: number;
-}
-
-/** The box of the first element `selector` finds. */
-export async function boxOf(selector: string): Promise<Box> {
-  return browser.execute((wanted) => {
-    const found = document.querySelector(wanted);
-    if (found === null) throw new Error(`no ${wanted}`);
-    const { left, right, top, bottom } = found.getBoundingClientRect();
-    return { left, right, top, bottom };
-  }, selector);
-}
+import { boxOf } from "./pointer.ts";
 
 /**
  * Moves the pointer to `x`, `y` in the window, as a person's mouse would, and

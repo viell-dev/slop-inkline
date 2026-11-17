@@ -1,5 +1,6 @@
 import { browser, expect } from "@wdio/globals";
 import { loadModules } from "../support/browser.ts";
+import { pressed } from "../support/editing.ts";
 import {
   draw,
   openAtMarker,
@@ -21,13 +22,6 @@ async function openEditor(): Promise<void> {
   await browser.executeObsidianCommand("inkline:insert-symbol");
   await waitForEditor();
   await settledSurface();
-}
-
-/** A button's pressed state. */
-async function pressed(id: string): Promise<string | null> {
-  return browser
-    .$(`[data-inkline-button="${id}"]`)
-    .getAttribute("aria-pressed");
 }
 
 /** Presses `key`, and waits for the button `id` to show `state`. */

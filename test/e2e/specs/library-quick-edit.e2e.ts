@@ -18,14 +18,13 @@ import {
   waitForHeld,
   waitForNotice,
 } from "../support/editor.ts";
-import { boxOf, pointAt, warmUpPointer } from "../support/hover.ts";
+import { pointAt, warmUpPointer } from "../support/hover.ts";
+import { menuItems } from "../support/menus.ts";
+import { boxOf } from "../support/pointer.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
-
-/** Fields to give a symbol. */
-interface Fields {
-  readonly reading?: readonly string[];
-  readonly translation?: readonly string[];
-}
+import { showLibrary } from "../support/symbol-text-library.ts";
+import { type Fields, fieldsOf } from "../support/symbol-text.ts";
+import { bytesOf } from "../support/vault-files.ts";
 
 /** A symbol at `file` that says `fields` about itself. */
 async function symbolWith(file: string, fields: Fields): Promise<void> {
@@ -47,31 +46,6 @@ async function symbolWith(file: string, fields: Fields): Promise<void> {
     file,
     fields,
   );
-}
-
-/** What a file's fields say, from the file itself. */
-async function fieldsOf(file: string): Promise<{
-  reading: readonly string[];
-  translation: readonly string[];
-}> {
-  return browser.executeObsidian(async ({ app }, wanted) => {
-    const found = app.vault.getFileByPath(wanted);
-    if (found === null) throw new Error(`no ${wanted}`);
-    const { png, text } = window.inklineTest;
-    const bytes = new Uint8Array(await app.vault.readBinary(found));
-    return text.readText(png.readChunks(bytes));
-  }, file);
-}
-
-/** A file's bytes, to compare. */
-async function bytesOf(file: string): Promise<string> {
-  return browser.executeObsidian(async ({ app }, wanted) => {
-    const found = app.vault.getFileByPath(wanted);
-    if (found === null) throw new Error(`no ${wanted}`);
-    return Array.from(new Uint8Array(await app.vault.readBinary(found))).join(
-      ",",
-    );
-  }, file);
 }
 
 /** A note's text and when it was last written, from its file. */
@@ -112,11 +86,6 @@ async function updateLinks(): Promise<void> {
     if (typeof setConfig !== "function") throw new Error("no vault settings");
     Reflect.apply(setConfig, app.vault, ["alwaysUpdateLinks", true]);
   });
-}
-
-async function showLibrary(): Promise<void> {
-  await browser.executeObsidianCommand("inkline:show-library");
-  await browser.$(".inkline-library-list").waitForExist();
 }
 
 /** The selector of the library's row for `file`. */
@@ -262,15 +231,6 @@ async function formCount(): Promise<number> {
   return browser.$$(".inkline-library-edit-form").length;
 }
 
-/** The titles of the items in the menus open now. */
-async function menuItems(): Promise<string[]> {
-  return browser.execute(() =>
-    Array.from(document.querySelectorAll(".menu .menu-item-title")).map(
-      (item) => item.textContent,
-    ),
-  );
-}
-
 /** Opens Quick edit on `file`'s row, once its fields have read the file. */
 async function quickEdit(file: string): Promise<void> {
   await browser.$(rowOf(file)).$(".inkline-library-edit").click();
@@ -405,8 +365,8 @@ async function inkline(on: boolean): Promise<void> {
 }
 
 /**
- * Holds the next read of the symbol at `path` until {@link letReadGo}, as a
- * save reads its file in its turn before it writes.
+ * Holds the next read of the symbol at `path` until {@link letSymbolReadGo},
+ * as a save reads its file in its turn before it writes.
  */
 async function holdSymbolRead(path: string): Promise<void> {
   await browser.executeObsidian(({ app }, wanted) => {
@@ -435,7 +395,7 @@ async function waitForHeldRead(): Promise<void> {
 }
 
 /** Lets go the read {@link holdSymbolRead} holds, if there is one. */
-async function letReadGo(): Promise<void> {
+async function letSymbolReadGo(): Promise<void> {
   await browser.execute(() => {
     const go: unknown = Reflect.get(window, "inklineLetReadGo");
     Reflect.deleteProperty(window, "inklineLetReadGo");
@@ -630,7 +590,7 @@ describe("Quick edit in the library", function () {
       Reflect.deleteProperty(app.vault, "readBinary");
     });
     await letGo();
-    await letReadGo();
+    await letSymbolReadGo();
   });
 
   it("opens on the name, with the readings and translations, and takes the keys", async function () {
@@ -1237,12 +1197,12 @@ describe("Quick edit in the library", function () {
     await waitForHeldRead();
     try {
       await inkline(false);
-      await letReadGo();
+      await letSymbolReadGo();
       await waitForNotice(
         "The readings and translations of gate were not saved, and it was not renamed to arch: Inkline was disabled",
       );
     } finally {
-      await letReadGo();
+      await letSymbolReadGo();
       await inkline(true);
     }
     expect(await symbolFiles()).toEqual(["gate.ink.png"]);
@@ -1378,7 +1338,7 @@ describe("Quick edit in the library", function () {
       if (file === null) throw new Error("no gate");
       await app.fileManager.trashFile(file);
     });
-    await letReadGo();
+    await letSymbolReadGo();
     await browser.waitUntil(async () => (await errorLines()).length > 0);
     // What the save found stays, and Save is off for a file that has gone.
     await browser.waitUntil(

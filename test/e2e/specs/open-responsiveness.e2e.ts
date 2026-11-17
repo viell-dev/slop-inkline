@@ -6,12 +6,12 @@
 import { browser, expect } from "@wdio/globals";
 import { obsidianPage } from "wdio-obsidian-service";
 import { loadModules } from "../support/browser.ts";
+import { editFile, zigzag } from "../support/editing.ts";
 import {
   clickTop,
   createSymbol,
   delayVault,
   draw,
-  editFile,
   noteText,
   openAtMarker,
   restoreVault,
@@ -63,13 +63,6 @@ const opens = 3;
 
 /** How long, in ms, a read is held up, to act while it goes on. */
 const held = 1000;
-
-const zigzag = [
-  [0.4, 0.3],
-  [0.45, 0.7],
-  [0.5, 0.3],
-  [0.55, 0.7],
-] as const;
 
 /** Makes a symbol of a picture of noise, as a person's first save does. */
 async function largeSymbol(

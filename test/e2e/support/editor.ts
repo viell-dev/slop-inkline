@@ -4,6 +4,7 @@ import { browser } from "@wdio/globals";
 import { Key, type ChainablePromiseElement } from "webdriverio";
 import { obsidianPage } from "wdio-obsidian-service";
 import { loadModules } from "./browser.ts";
+import { framesDrawn } from "./waits.ts";
 
 /** Opens a note in the editor and puts the cursor where `marker` was, removing it. */
 export async function openAtMarker(
@@ -125,20 +126,7 @@ async function showNote(path: string): Promise<void> {
  */
 export async function waitForEditor(): Promise<void> {
   await surface().waitForDisplayed();
-  await browser.execute(
-    () =>
-      new Promise<void>((resolve) => {
-        const canvas = document.querySelector(
-          ".inkline-editor .inkline-surface",
-        );
-        const win = canvas?.ownerDocument.defaultView ?? window;
-        win.requestAnimationFrame(() => {
-          win.requestAnimationFrame(() => {
-            resolve();
-          });
-        });
-      }),
-  );
+  await framesDrawn();
 }
 
 /** Marks the open editor, so that {@link waitForNext} can tell it apart. */
@@ -705,16 +693,6 @@ export async function writeNoise(
   );
 }
 
-/** Opens the editor on a symbol file. */
-export async function editFile(file: string): Promise<void> {
-  await browser.executeObsidian(({ app, plugins }, wanted) => {
-    const found = app.vault.getFileByPath(wanted);
-    if (found === null) throw new Error(`no ${wanted}`);
-    void plugins.inkline.editSymbol(found);
-  }, file);
-  await waitForEditor();
-}
-
 /**
  * Opens the editor on a symbol file, and reports what that took: until it was
  * there, and until it had painted, and what the main thread went through
@@ -871,7 +849,9 @@ const replaceable = {
  * vault calls that {@link hold} holds are failed, with "The test ended with
  * this held.", so that what they would do next does not happen. What
  * {@link holdDecoding} holds is let go, and so must be what a gate of a spec
- * file holds on the adapter or `fileManager`.
+ * file holds on the adapter or `fileManager`. So is what `holdNextRead` and
+ * `holdNextWrite` in support/symbol-text.ts hold, as their tests' own
+ * clean-up let it go before these gates registered here.
  *
  * It then takes {@link hold}'s gate away, so that a later {@link waitForHeld}
  * or {@link letGo} cannot take it for its own; undoes {@link delayVault} and

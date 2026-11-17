@@ -3,23 +3,23 @@ import type { Stroke } from "../../../src/format/record.ts";
 import { lineBox } from "../../../src/ink/geometry.ts";
 import { loadModules } from "../support/browser.ts";
 import { cursorImage, hasBrushCursor } from "../support/cursor.ts";
+import { insert } from "../support/editing.ts";
 import { settledDots } from "../support/grid.ts";
-import { boxOf, pointAt, warmUpPointer } from "../support/hover.ts";
+import { pointAt, warmUpPointer } from "../support/hover.ts";
 import {
   draw,
   editorGrid,
   markEditor,
-  openAtMarker,
   recordOf,
   settledSurface,
   startOver,
   storedDrafts,
   surface,
   symbolFiles,
-  waitForEditor,
   waitForNext,
   waitForStatus,
 } from "../support/editor.ts";
+import { boxOf } from "../support/pointer.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 
 /** The texts of the tooltips Obsidian shows now. */
@@ -31,14 +31,8 @@ async function tooltips(): Promise<string[]> {
   );
 }
 
-async function insert(): Promise<void> {
-  await openAtMarker("Editor.md", "HERE");
-  await browser.executeObsidianCommand("inkline:insert-symbol");
-  await waitForEditor();
-}
-
 /** Whether each of the buttons `ids` is pressed, by its id. */
-async function pressed(
+async function pressedStates(
   ...ids: readonly string[]
 ): Promise<Record<string, string | null>> {
   const states: Record<string, string | null> = {};
@@ -336,7 +330,7 @@ describe("Editor feedback", function () {
     await browser.keys("e");
     await browser.keys("4");
     await browser.keys("p");
-    expect(await pressed("size-0")).toEqual({ "size-0": "true" });
+    expect(await pressedStates("size-0")).toEqual({ "size-0": "true" });
     // The grid shown and the guides hidden, so that only the grid's dots are
     // on the edges that settledDots reads.
     await browser.keys(["Shift", "g"]);
@@ -362,7 +356,7 @@ describe("Editor feedback", function () {
     await goOn();
     expect(await savedKinds("001.ink.png")).toEqual(["fill"]);
     expect(
-      await pressed(
+      await pressedStates(
         "pen",
         "eraser",
         "size-0",
@@ -403,7 +397,7 @@ describe("Editor feedback", function () {
       expect(Math.abs(step - spacing / 2)).toBeLessThanOrEqual(1 / dots.factor);
     }
     await browser.keys("e");
-    expect(await pressed("size-3")).toEqual({ "size-3": "true" });
+    expect(await pressedStates("size-3")).toEqual({ "size-3": "true" });
     await browser.keys("p");
     // It draws a filled ellipse, and saves a second symbol.
     await draw([
@@ -422,7 +416,7 @@ describe("Editor feedback", function () {
     await insert();
     await browser.keys(["Shift", "g"]);
     await browser.keys("t");
-    expect(await pressed("flat-ends")).toEqual({ "flat-ends": "true" });
+    expect(await pressedStates("flat-ends")).toEqual({ "flat-ends": "true" });
     await browser.keys("y");
     // A line of the pen, as Next saves no new symbol that has only the
     // eraser's strokes, ended on its last corner; then the eraser.
@@ -436,7 +430,14 @@ describe("Editor feedback", function () {
     await browser.keys("e");
     await goOn();
     expect(
-      await pressed("pen", "eraser", "ellipse", "polygon", "grid", "flat-ends"),
+      await pressedStates(
+        "pen",
+        "eraser",
+        "ellipse",
+        "polygon",
+        "grid",
+        "flat-ends",
+      ),
     ).toEqual({
       pen: "false",
       eraser: "true",
@@ -449,7 +450,7 @@ describe("Editor feedback", function () {
     expect(await flatEnds.isEnabled()).toBe(false);
     // Freehand again, Flat ends is on, as it was.
     await browser.keys("y");
-    expect(await pressed("polygon", "flat-ends")).toEqual({
+    expect(await pressedStates("polygon", "flat-ends")).toEqual({
       polygon: "false",
       "flat-ends": "true",
     });

@@ -7,13 +7,14 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { browser, expect } from "@wdio/globals";
 import { loadModules, toBase64 } from "../support/browser.ts";
+import { editFile } from "../support/editing.ts";
 import {
   createSymbol,
   openAtMarker,
-  restoreVault,
   startOver,
   symbolFiles,
 } from "../support/editor.ts";
+import { type } from "../support/insertion.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 import {
   formError,
@@ -28,20 +29,17 @@ import {
 } from "../support/symbol-text-library.ts";
 import {
   area,
-  bytesOf,
   changeOnDisk,
-  editFile,
   fieldsOf,
   fill,
   fixtures,
-  letWriteGo,
   makeNote,
   noteFile,
   paste,
   showFields,
   symbolWith,
-  type,
 } from "../support/symbol-text.ts";
+import { bytesOf } from "../support/vault-files.ts";
 import { waitOrSay } from "../support/waits.ts";
 
 /**
@@ -80,23 +78,6 @@ describe("A symbol's readings and translations", function () {
       app.workspace.detachLeavesOfType("inkline-library");
     });
     await makeNote();
-  });
-
-  // The stubs below take themselves away only when the call they wait for
-  // comes, which a failed test may never make: one left behind would hold up
-  // or change the reads and writes of every later test.
-  afterEach(async function () {
-    await browser.execute(() => {
-      const go: unknown = Reflect.get(window, "inklineLetReadGo");
-      Reflect.deleteProperty(window, "inklineLetReadGo");
-      if (typeof go === "function") Reflect.apply(go, undefined, []);
-    });
-    await letWriteGo();
-    await restoreVault();
-    await browser.executeObsidian(({ app }) => {
-      Reflect.deleteProperty(app.vault, "readBinary");
-      Reflect.deleteProperty(app.vault, "modifyBinary");
-    });
   });
 
   describe("in the library", function () {

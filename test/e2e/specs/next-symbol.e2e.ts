@@ -32,7 +32,7 @@ import {
   showWelcomeInstead,
   unlockNotes,
 } from "../support/failed-insertion.ts";
-import { fileText } from "../support/vault-files.ts";
+import { noteOnDisk } from "../support/vault-files.ts";
 
 describe("The editor", function () {
   before(async function () {
@@ -142,7 +142,7 @@ describe("The editor", function () {
       await draw([[0.5, 0.5]]);
       await browser.keys(["Control", "Enter"]);
       await waitClosed();
-      expect(await fileText("Editor.md")).toBe(
+      expect(await noteOnDisk("Editor.md")).toBe(
         "The door is marked with ![[001.ink.png]]![[002.ink.png]] which means return.\n",
       );
     });

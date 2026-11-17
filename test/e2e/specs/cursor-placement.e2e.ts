@@ -1,5 +1,6 @@
 import { browser, expect } from "@wdio/globals";
 import { loadModules } from "../support/browser.ts";
+import { insert, save, waitClosed, zigzag } from "../support/editing.ts";
 import {
   clickTop,
   createSymbol,
@@ -14,24 +15,20 @@ import {
 import {
   chooseExisting,
   createNote,
-  insert,
   marked,
   next,
   openBeside,
   rewrite,
-  save,
   searchExisting,
   setLinkUpdates,
   showAs,
   type,
   undoGroup,
-  waitClosed,
   waitForFile,
-  waitForLink,
   waitForNote,
-  zigzag,
 } from "../support/insertion.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
+import { waitForLink } from "../support/vault-files.ts";
 
 /** Shows `other` in the first tab that shows `path`, which moves on from it. */
 async function moveOn(path: string, other: string): Promise<void> {
@@ -79,7 +76,7 @@ describe("Where the cursor lands after a symbol", function () {
   });
 
   it("lands after a new symbol that Save inserts, and typing goes on there", async function () {
-    await insert();
+    await insert({ settle: 0 });
     await draw(zigzag);
     await save();
     expect(await marked("Editor.md")).toEqual([
@@ -92,7 +89,7 @@ describe("Where the cursor lands after a symbol", function () {
   });
 
   it("lands there when Mod+S inserts it, and stays through a later save", async function () {
-    await insert();
+    await insert({ settle: 0 });
     await draw(zigzag);
     await browser.keys(["Control", "s"]);
     await waitForStatus("Saved");
@@ -111,7 +108,7 @@ describe("Where the cursor lands after a symbol", function () {
   });
 
   it("follows a run from Next, in the order it was drawn", async function () {
-    await insert();
+    await insert({ settle: 0 });
     await draw(zigzag);
     await next(1);
     expect(await marked("Editor.md")).toEqual([
@@ -134,7 +131,7 @@ describe("Where the cursor lands after a symbol", function () {
   });
 
   it("stays after the last of a run when the last editor is discarded", async function () {
-    await insert();
+    await insert({ settle: 0 });
     await draw(zigzag);
     await next(1);
     await browser.keys(["Escape"]);
@@ -146,7 +143,7 @@ describe("Where the cursor lands after a symbol", function () {
   });
 
   it("returns to the last of a run when the note changed before the discard", async function () {
-    await insert();
+    await insert({ settle: 0 });
     await draw(zigzag);
     await next(1);
     // Obsidian takes the cursor to the start of the note here.
@@ -163,7 +160,7 @@ describe("Where the cursor lands after a symbol", function () {
   });
 
   it("returns there when strokes are discarded too, and inserts nothing", async function () {
-    await insert();
+    await insert({ settle: 0 });
     await draw(zigzag);
     await next(1);
     await draw([[0.5, 0.5]]);
@@ -178,7 +175,7 @@ describe("Where the cursor lands after a symbol", function () {
   });
 
   it("leaves the cursor alone at a run's end once the place is gone", async function () {
-    await insert();
+    await insert({ settle: 0 });
     await draw(zigzag);
     await next(1);
     await rewrite("Editor.md", () => "Line one.\nLine two.\n");
@@ -231,7 +228,7 @@ describe("Where the cursor lands after a symbol", function () {
   });
 
   it("lands where the note's changes moved the symbol, through a run", async function () {
-    await insert();
+    await insert({ settle: 0 });
     await draw(zigzag);
     // Obsidian takes the cursor to the start of the note here, away from
     // where the symbol goes.
@@ -253,7 +250,7 @@ describe("Where the cursor lands after a symbol", function () {
   });
 
   it("lands after a symbol added at the end, once its place is gone", async function () {
-    await insert();
+    await insert({ settle: 0 });
     await draw(zigzag);
     await rewrite("Editor.md", () => "Line one.\nLine two.\n");
     await next(1);
@@ -273,7 +270,7 @@ describe("Where the cursor lands after a symbol", function () {
   });
 
   it("lands on a line of its own at the end of a note with no last line break", async function () {
-    await insert();
+    await insert({ settle: 0 });
     await draw(zigzag);
     await rewrite("Editor.md", () => "Line one.\nLine two.");
     await save();
@@ -286,7 +283,7 @@ describe("Where the cursor lands after a symbol", function () {
   });
 
   it("moves only the cursor of the pane the symbol started in", async function () {
-    await insert();
+    await insert({ settle: 0 });
     await draw(zigzag);
     await openBeside("Editor.md");
     await save();
@@ -305,7 +302,7 @@ describe("Where the cursor lands after a symbol", function () {
   });
 
   it("lands in the pane that takes the symbol once its own tab moved on", async function () {
-    await insert();
+    await insert({ settle: 0 });
     await draw(zigzag);
     await next(1);
     await openBeside("Editor.md");
@@ -323,7 +320,7 @@ describe("Where the cursor lands after a symbol", function () {
   });
 
   it("reaches the note from a pane in Reading view, through a run", async function () {
-    await insert();
+    await insert({ settle: 0 });
     await draw(zigzag);
     // The first through its editor, the others through its file.
     await next(1);
@@ -341,7 +338,7 @@ describe("Where the cursor lands after a symbol", function () {
 
   it("stays after the embed when a later save renames the symbol", async function () {
     await setLinkUpdates(true);
-    await insert();
+    await insert({ settle: 0 });
     await draw(zigzag);
     await browser.keys(["Control", "s"]);
     await waitForStatus("Saved");
@@ -366,7 +363,7 @@ describe("Where the cursor lands after a symbol", function () {
   // rewrites the embed itself or leaves it for Inkline.
   for (const answer of ["Just once", "Do not update"]) {
     it(`stays after the embed through Obsidian's question, with ${answer}`, async function () {
-      await insert();
+      await insert({ settle: 0 });
       await draw(zigzag);
       await browser.keys(["Control", "s"]);
       await waitForStatus("Saved");
@@ -392,7 +389,7 @@ describe("Where the cursor lands after a symbol", function () {
 
   it("keeps the following symbol after one renamed on its way", async function () {
     await setLinkUpdates(true);
-    await insert();
+    await insert({ settle: 0 });
     await draw(zigzag);
     await browser.keys(["Control", "s"]);
     await waitForStatus("Saved");
@@ -409,7 +406,7 @@ describe("Where the cursor lands after a symbol", function () {
   });
 
   it("takes a saved symbol back in one undo, with the note as it was", async function () {
-    await insert(undoGroup);
+    await insert({ settle: undoGroup });
     await draw(zigzag);
     await save();
     await browser.keys(["Control", "z"]);

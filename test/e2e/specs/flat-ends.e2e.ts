@@ -1,6 +1,7 @@
 import { browser, expect } from "@wdio/globals";
 import type { Stroke } from "../../../src/format/record.ts";
 import { loadModules } from "../support/browser.ts";
+import { pressed, save } from "../support/editing.ts";
 import {
   draw,
   drawHoldingShift,
@@ -28,13 +29,6 @@ interface Spill {
   readonly redrawn: number;
 }
 
-/** A button's pressed state. */
-async function pressed(id: string): Promise<string | null> {
-  return browser
-    .$(`[data-inkline-button="${id}"]`)
-    .getAttribute("aria-pressed");
-}
-
 /**
  * Opens the editor for a new symbol with the XL brush and the grid on, and
  * Flat ends too, unless `flat` is false.
@@ -50,11 +44,6 @@ async function openOnGrid(flat = true): Promise<void> {
   if (!flat) return;
   await browser.keys("t");
   await browser.waitUntil(async () => (await pressed("flat-ends")) === "true");
-}
-
-async function save(): Promise<void> {
-  await browser.keys(["Control", "Enter"]);
-  await browser.$(".inkline-editor").waitForExist({ reverse: true });
 }
 
 async function savedStrokes(): Promise<Stroke[]> {

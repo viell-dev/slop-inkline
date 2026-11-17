@@ -17,10 +17,10 @@ import { obsidianPage } from "wdio-obsidian-service";
 import packageJson from "../../../package.json" with { type: "json" };
 import { keepsStrokesFrom, noStrokes } from "../../support/updates.ts";
 import { loadModules } from "../support/browser.ts";
+import { editFile } from "../support/editing.ts";
 import {
   clickTop,
   draw,
-  editFile,
   noteText,
   openAtMarker,
   recordOf,

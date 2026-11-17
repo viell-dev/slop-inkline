@@ -11,16 +11,17 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { browser } from "@wdio/globals";
 import { loadModules } from "../support/browser.ts";
+import { editFile } from "../support/editing.ts";
 import {
   createSymbol,
   draw,
-  editFile,
   startOver,
   timedEditorSave,
   waitForStatus,
   writeNoise,
 } from "../support/editor.ts";
 import { outputDirectory } from "../support/harness.ts";
+import { showLibrary } from "../support/symbol-text-library.ts";
 
 const root = path.resolve(import.meta.dirname, "../../..");
 const outputDir = outputDirectory(process.env.E2E_OUTPUT_DIR, root);
@@ -75,12 +76,6 @@ async function timedEncoding(file: string) {
     const totalMs = performance.now() - start;
     return { totalMs, thread: thread() };
   }, file);
-}
-
-/** Opens the library in the right sidebar. */
-async function showLibrary(): Promise<void> {
-  await browser.executeObsidianCommand("inkline:show-library");
-  await browser.$(".inkline-library-list").waitForExist();
 }
 
 /** Opens a second library, whose filter stays free while the first's form is open. */

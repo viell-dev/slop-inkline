@@ -4,9 +4,9 @@
 
 import { browser, expect } from "@wdio/globals";
 import { loadModules } from "../support/browser.ts";
+import { editFile } from "../support/editing.ts";
 import {
   draw,
-  editFile,
   startOver,
   timedEditorSave,
   writeNoise,

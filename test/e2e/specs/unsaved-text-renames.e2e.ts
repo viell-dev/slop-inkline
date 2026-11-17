@@ -1,5 +1,6 @@
 import { browser, expect } from "@wdio/globals";
 import { loadModules } from "../support/browser.ts";
+import { insert, save, waitClosed, zigzag } from "../support/editing.ts";
 import {
   addUnsaved,
   clickTop,
@@ -20,22 +21,18 @@ import {
 } from "../support/editor.ts";
 import {
   closeTabs,
-  insert,
   marked,
   openBeside,
   rewrite,
-  save,
   setLinkUpdates,
   showAs,
   type,
   undoGroup,
-  waitClosed,
   waitForFile,
-  waitForLink,
   waitForNote,
-  zigzag,
 } from "../support/insertion.ts";
 import { intoCell, waitForLastRow } from "../support/table-cell.ts";
+import { waitForLink } from "../support/vault-files.ts";
 
 /**
  * Holds back how the note's editors take a change on disk by `delay`
@@ -240,7 +237,7 @@ describe("A rename while the note holds unsaved text", function () {
 
   /** Inserts a symbol with Mod+S, and waits for Obsidian's cache to know it. */
   async function insertAndIndex(settle = 0): Promise<void> {
-    await insert(settle);
+    await insert({ settle });
     await draw(zigzag);
     await browser.keys(["Control", "s"]);
     await waitForStatus("Saved");

@@ -1,4 +1,5 @@
 import { browser } from "@wdio/globals";
+import { framesDrawn } from "./waits.ts";
 
 /** Read the cursor's actual bitmap through the host canvas, not a screenshot. */
 export async function cursorImage() {
@@ -62,16 +63,5 @@ export async function setPageZoom(factor: number): Promise<void> {
     if (typeof set !== "function") throw new Error("no host zoom");
     Reflect.apply(set, frame, [zoom]);
   }, factor);
-  await browser.execute(async () => {
-    await new Promise<void>((resolve) =>
-      window.requestAnimationFrame(() => {
-        resolve();
-      }),
-    );
-    await new Promise<void>((resolve) =>
-      window.requestAnimationFrame(() => {
-        resolve();
-      }),
-    );
-  });
+  await framesDrawn();
 }

@@ -13,12 +13,7 @@ import { Key } from "webdriverio";
 import { loadModules } from "../support/browser.ts";
 import { createSymbol, openAtMarker, startOver } from "../support/editor.ts";
 import { saveClip, saveScreenshot } from "../support/screenshots.ts";
-
-/** Fields to give a symbol. */
-interface Fields {
-  readonly reading?: readonly string[];
-  readonly translation?: readonly string[];
-}
+import { type Fields } from "../support/symbol-text.ts";
 
 /** A box's top and bottom, in pixels. */
 interface Edges {
@@ -159,7 +154,7 @@ function area(field: "reading" | "translation"): ReturnType<typeof browser.$> {
 }
 
 /** Opens the library, with its rows' values read and both lists of uses open. */
-async function showLibrary(): Promise<void> {
+async function showLibraryWithUses(): Promise<void> {
   await browser.executeObsidianCommand("inkline:show-library");
   await browser.$(".inkline-library-list").waitForExist();
   await browser.waitUntil(async () =>
@@ -534,7 +529,7 @@ describe("The library's look", function () {
   ] as const) {
     it(`lays out what a row says as one list 4 px from it and 12 px from the next, in the ${name} theme`, async function () {
       await useTheme(theme);
-      await showLibrary();
+      await showLibraryWithUses();
       const rows = await layout();
       expect(rows.map(({ path }) => path)).toEqual(
         symbols.map(({ file }) => file),
@@ -697,7 +692,7 @@ describe("The library's look", function () {
 
   it("disables the other rows' Uses and Quick edit during Quick edit, and gives them back", async function () {
     await openAtMarker("Notebook.md", "HERE");
-    await showLibrary();
+    await showLibraryWithUses();
     const before = await buttons();
     await quickEdit("sun.ink.png");
     const note = "Save or cancel Quick edit to use this.";
@@ -850,7 +845,7 @@ describe("The library's look", function () {
     console.log(
       `Obsidian ${browser.getObsidianVersion()}, installer ${browser.getObsidianInstallerVersion()}: field-sizing ${native ? "supported" : "missing, sized by script"}`,
     );
-    await showLibrary();
+    await showLibraryWithUses();
     // Opened on four readings, it shows all four.
     await quickEdit("sun.ink.png");
     let reading = await fieldBox("reading");
@@ -899,7 +894,7 @@ describe("The library's look", function () {
   });
 
   it("keeps a field at the height it is dragged to", async function () {
-    await showLibrary();
+    await showLibraryWithUses();
     await quickEdit("gate.ink.png");
     const start = await fieldBox("reading");
     expect(start.height).toBeCloseTo(linesHigh(start, 2), 0);
@@ -941,7 +936,7 @@ describe("The library's look", function () {
   });
 
   it("opens a note it lists, and with Ctrl a new tab for it", async function () {
-    await showLibrary();
+    await showLibraryWithUses();
     const tabs = async () =>
       browser.executeObsidian(
         ({ app }) => app.workspace.getLeavesOfType("markdown").length,

@@ -1,4 +1,5 @@
-// Waits whose failures say what they last saw, in end-to-end tests.
+// Waits in end-to-end tests: for a condition, with a failure that says what
+// it last saw, and for the frames the editor draws.
 
 import { browser } from "@wdio/globals";
 
@@ -24,4 +25,29 @@ export async function waitOrSay(
       );
     throw new Error(message, { cause: error });
   }
+}
+
+/**
+ * Waits for the window to draw two frames. What was done before that asked
+ * for a frame, as a change to the editor's view does, has then been drawn:
+ * it draws in the first, and the second comes once the first is done. A
+ * check that something was not drawn waits for this first, so that it does
+ * not look too early.
+ *
+ * `thenTask` also waits for a task after each frame, for work that a frame
+ * leaves to run once it ends.
+ */
+export async function framesDrawn({
+  thenTask = false,
+}: { thenTask?: boolean } = {}): Promise<void> {
+  await browser.execute(async (task) => {
+    for (let count = 0; count < 2; count++) {
+      await new Promise<void>((resolve) => {
+        window.requestAnimationFrame(() => {
+          if (task) window.setTimeout(resolve, 0);
+          else resolve();
+        });
+      });
+    }
+  }, thenTask);
 }

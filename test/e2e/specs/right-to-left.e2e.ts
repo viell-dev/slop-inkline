@@ -12,7 +12,9 @@ import {
   startOver,
   waitForEditor,
 } from "../support/editor.ts";
+import { type Box, boxOf } from "../support/pointer.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
+import { framesDrawn } from "../support/waits.ts";
 
 /** The note the lists insert into. */
 const note = "List.md";
@@ -73,14 +75,6 @@ interface Placed {
   /** Where the ink shows across the picture, from 0 at its left to 1. */
   inkLeft: number;
   inkRight: number;
-}
-
-/** A box on the screen, in the window's pixels. */
-interface Box {
-  left: number;
-  right: number;
-  top: number;
-  bottom: number;
 }
 
 /**
@@ -268,21 +262,6 @@ async function lineBoxes(scope: string): Promise<Box[]> {
   }, scope);
 }
 
-/** The box of the first element `selector` finds in the window. */
-async function boxOf(selector: string): Promise<Box> {
-  return browser.execute((wanted) => {
-    const found = document.querySelector(wanted);
-    if (found === null) throw new Error(`no ${wanted}`);
-    const box = found.getBoundingClientRect();
-    return {
-      left: box.left,
-      right: box.right,
-      top: box.top,
-      bottom: box.bottom,
-    };
-  }, selector);
-}
-
 /** Opens Inkline's settings, in their own window or in the main one. */
 async function openSettings(): Promise<string> {
   const main = await browser.getWindowHandle();
@@ -354,13 +333,11 @@ for (const language of ["en", "he"] as const) {
         // style answers to, so the list open in the text colour shows it too.
         for (const stored of [false, true]) {
           if (stored) {
-            await browser.execute(async () => {
+            await browser.execute(() => {
               document.documentElement.addClass("inkline-stored-color");
-              // Drawn so, for the screenshot of the picture.
-              await new Promise((resolve) => {
-                requestAnimationFrame(() => requestAnimationFrame(resolve));
-              });
             });
+            // Drawn so, for the screenshot of the picture.
+            await framesDrawn();
           }
           const row = await placed(list.rows);
           await saveScreenshot(

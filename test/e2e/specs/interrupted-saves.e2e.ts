@@ -32,7 +32,7 @@ import {
   interruptInsertion,
   showWelcomeInstead,
 } from "../support/failed-insertion.ts";
-import { createSquare, fileText } from "../support/vault-files.ts";
+import { createSquare, noteOnDisk } from "../support/vault-files.ts";
 
 describe("The editor", function () {
   before(async function () {
@@ -106,7 +106,7 @@ describe("The editor", function () {
       await browser.keys(["Control", "s"]);
       await waitForHeld();
       await browser.waitUntil(async () =>
-        (await fileText("Editor.md")).includes("001.ink.png"),
+        (await noteOnDisk("Editor.md")).includes("001.ink.png"),
       );
       await obsidianPage.disablePlugin("inkline");
       // Kept while the insertion is under way.
@@ -150,7 +150,9 @@ describe("The editor", function () {
     await browser.keys(["Escape"]);
     await waitClosed();
     expect(await symbolFiles()).toEqual(["001.ink.png"]);
-    expect((await fileText("Editor.md")).split("001.ink.png")).toHaveLength(2);
+    expect((await noteOnDisk("Editor.md")).split("001.ink.png")).toHaveLength(
+      2,
+    );
   });
 
   it("does not insert again an embed that an interrupted save inserted", async function () {
@@ -169,7 +171,7 @@ describe("The editor", function () {
       await browser.keys(["Control", "s"]);
       await waitForHeld();
       await browser.waitUntil(async () =>
-        (await fileText("Editor.md")).includes("001.ink.png"),
+        (await noteOnDisk("Editor.md")).includes("001.ink.png"),
       );
       await followSave();
       await obsidianPage.disablePlugin("inkline");

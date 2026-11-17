@@ -4,47 +4,13 @@
 // tests.
 
 import { browser } from "@wdio/globals";
-import {
-  markEditor,
-  noteText,
-  openAtMarker,
-  waitForEditor,
-  waitForNext,
-} from "./editor.ts";
-
-export const zigzag = [
-  [0.4, 0.3],
-  [0.45, 0.7],
-  [0.5, 0.3],
-  [0.55, 0.7],
-] as const;
-
-/**
- * Opens the note at its marker, which edits it, and then the editor. `settle`
- * leaves that edit out of the next one's undo step.
- */
-export async function insert(settle = 0): Promise<void> {
-  await openAtMarker("Editor.md", "HERE");
-  await browser.pause(settle);
-  await browser.executeObsidianCommand("inkline:insert-symbol");
-  await waitForEditor();
-}
-
-export async function waitClosed(): Promise<void> {
-  await browser.$(".inkline-editor").waitForExist({ reverse: true });
-}
+import { markEditor, noteText, waitForNext } from "./editor.ts";
 
 /** Presses Next, and waits for the editor of the symbol after `count`. */
 export async function next(count: number): Promise<void> {
   await markEditor();
   await browser.keys(["Control", "Shift", "Enter"]);
   await waitForNext(count);
-}
-
-/** Saves and closes the open editor. */
-export async function save(): Promise<void> {
-  await browser.keys(["Control", "Enter"]);
-  await waitClosed();
 }
 
 /**
@@ -117,28 +83,6 @@ export async function waitForNote(text: string): Promise<void> {
       { cause: error },
     );
   }
-}
-
-/**
- * Saves the note at `path`, and waits for Obsidian's metadata cache to know
- * that it links to `file`, as it does some time after an edit.
- */
-export async function waitForLink(path: string, file: string): Promise<void> {
-  await browser.executeObsidian(async ({ app, obsidian }, note) => {
-    for (const { view } of app.workspace.getLeavesOfType("markdown")) {
-      if (view instanceof obsidian.MarkdownView && view.file?.path === note) {
-        await view.save();
-      }
-    }
-  }, path);
-  await browser.waitUntil(async () =>
-    browser.executeObsidian(
-      ({ app }, from, to) =>
-        (app.metadataCache.resolvedLinks[from]?.[to] ?? 0) > 0,
-      path,
-      file,
-    ),
-  );
 }
 
 /** Writes the note at `path` through the vault, as sync would. */

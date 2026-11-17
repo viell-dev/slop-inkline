@@ -1,6 +1,7 @@
 import { browser, expect } from "@wdio/globals";
 import { brushSizes } from "../../../src/editor/session.ts";
 import { loadModules } from "../support/browser.ts";
+import { save } from "../support/editing.ts";
 import {
   draw,
   editorGrid,
@@ -207,12 +208,6 @@ async function openEditor(): Promise<void> {
   await openAtMarker("Editor.md", "HERE");
   await browser.executeObsidianCommand("inkline:insert-symbol");
   await waitForEditor();
-}
-
-/** Saves the symbol being drawn and waits for the editor to close. */
-async function save(): Promise<void> {
-  await browser.keys(["Control", "Enter"]);
-  await browser.$(".inkline-editor").waitForExist({ reverse: true });
 }
 
 describe("Brush sizes beside text", function () {

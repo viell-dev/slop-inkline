@@ -5,6 +5,7 @@
 import { browser } from "@wdio/globals";
 import { draw, openAtMarker, recordOf, waitForEditor } from "./editor.ts";
 
+/** A stroke of four points across the middle of the surface, for {@link draw}. */
 export const zigzag = [
   [0.4, 0.3],
   [0.45, 0.7],
@@ -12,12 +13,22 @@ export const zigzag = [
   [0.55, 0.7],
 ] as const;
 
-export async function insert(): Promise<void> {
+/**
+ * Opens Editor.md at its marker, which edits it, and then the editor of a new
+ * symbol. With `settle`, it pauses that many milliseconds between the two,
+ * which leaves the marker's edit out of the next one's undo step; without
+ * it, it does not pause at all.
+ */
+export async function insert({
+  settle,
+}: { settle?: number } = {}): Promise<void> {
   await openAtMarker("Editor.md", "HERE");
+  if (settle !== undefined) await browser.pause(settle);
   await browser.executeObsidianCommand("inkline:insert-symbol");
   await waitForEditor();
 }
 
+/** Opens the editor on a symbol file. */
 export async function editFile(path: string): Promise<void> {
   await browser.executeObsidian(({ app, plugins }, filePath) => {
     const file = app.vault.getFileByPath(filePath);
@@ -60,8 +71,15 @@ export async function nameField(): Promise<{
   });
 }
 
+/** Waits for every symbol editor to close. */
 export async function waitClosed(): Promise<void> {
   await browser.$(".inkline-editor").waitForExist({ reverse: true });
+}
+
+/** Saves and closes the open editor. */
+export async function save(): Promise<void> {
+  await browser.keys(["Control", "Enter"]);
+  await waitClosed();
 }
 
 /** Whether Inkline is enabled, which needs no Inkline to tell. */
