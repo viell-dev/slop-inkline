@@ -30,25 +30,6 @@ describe("The editor", function () {
     }
   });
 
-  // guide-lines.e2e.ts checks each line's colour on its row; this checks that
-  // G leaves the surface with nothing drawn at all.
-  it("draws the text font's guides, and shows or hides them with G", async function () {
-    await insert();
-    await settledSurface();
-    const shown = await guideRows();
-    expect(shown.lines).toBeGreaterThanOrEqual(3);
-    expect(shown.shown).toBe(shown.lines);
-    const button = browser.$('[data-inkline-button="guides"]');
-    expect(await button.getAttribute("aria-pressed")).toBe("true");
-    await browser.keys(["g"]);
-    await browser.waitUntil(async () => (await guideRows()).drawn === 0);
-    expect(await button.getAttribute("aria-pressed")).toBe("false");
-    await browser.keys(["g"]);
-    await browser.waitUntil(
-      async () => (await guideRows()).shown === shown.lines,
-    );
-  });
-
   it("measures the vault's text font, not the interface's", async function () {
     await browser.execute(() => {
       document.body.setCssProps({

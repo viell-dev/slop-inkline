@@ -5,6 +5,14 @@ import { lineBox } from "../../../src/ink/geometry.ts";
 import { defaultSettings, type Settings } from "../../../src/settings.ts";
 import { loadModules } from "../support/browser.ts";
 import {
+  editFile,
+  inklineOn,
+  insert,
+  waitClosed,
+  zigzag,
+} from "../support/editing.ts";
+import {
+  clickTop,
   draw,
   drawHoldingShift,
   editorGrid,
@@ -14,6 +22,7 @@ import {
   shiftClick,
   startOver,
   storedDrafts,
+  undoStubs,
   waitForEditor,
   waitForStatus,
 } from "../support/editor.ts";
@@ -108,13 +117,118 @@ function fractions(
   return [(x - left) / shown.across, y / lineBox.height];
 }
 
-describe("Grid", function () {
-  before(async function () {
+before(async function () {
+  await loadModules();
+});
+beforeEach(async function () {
+  await startOver();
+});
+
+describe("The editor", function () {
+  // A draft-restore test can fail with Inkline still off.
+  afterEach(async function () {
+    await undoStubs();
+    if (!(await inklineOn())) {
+      await obsidianPage.enablePlugin("inkline");
+      await loadModules();
+    }
+  });
+
+  it("keeps a tap on the grid a dot, and the grid in place through a save", async function () {
+    await insert();
+    await settledSurface();
+    await browser.keys(["Shift", "g"]);
+    await shiftClick([0.31, 0.27]);
+    await browser.waitUntil(async () => (await storedDrafts()).length === 1);
+    // One point: no spur out to where the pointer was and back.
+    expect((await storedDrafts())[0]?.strokes[0]?.points).toHaveLength(2);
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    // The same place on screen, after the save moved the drawing.
+    await shiftClick([0.31, 0.27]);
+    await browser.waitUntil(
+      async () => (await storedDrafts())[0]?.strokes.length === 2,
+    );
+    const [first, second] = (await storedDrafts())[0]?.strokes ?? [];
+    expect(second?.points).toEqual(first?.points);
+  });
+
+  it("lines the grid up with a reopened symbol's strokes", async function () {
+    await insert();
+    // Drawn before the grid is shown, so off it.
+    await draw(zigzag);
+    await settledSurface();
+    await browser.keys(["Shift", "g"]);
+    await shiftClick([0.62, 0.27]);
+    await shiftClick([0.7, 0.6]);
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    await editFile("001.ink.png");
+    await settledSurface();
+    await browser.keys(["Shift", "g"]);
+    await shiftClick([0.33, 0.45]);
+    await saveScreenshot("editor-grid");
+    const spacing = Math.round((await editorGrid()).spacing * unitsPerPixel);
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    const { strokes } = JSON.parse(await recordOf("001.ink.png")) as {
+      strokes: { points: number[] }[];
+    };
+    // Where each stroke drawn on the grid lies within a spacing, in units.
+    const columns = strokes
+      .slice(1)
+      .map(
+        (stroke) => (((stroke.points[0] ?? 0) % spacing) + spacing) % spacing,
+      );
+    expect(columns).toHaveLength(3);
+    expect(new Set(columns).size).toBe(1);
+  });
+
+  it("restores a draft with the grid it was drawn on, and undoes that too", async function () {
+    await insert();
+    // Freehand, and saved: the file alone suggests another grid.
+    await draw(zigzag);
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    await browser.keys(["Shift", "g"]);
+    // One tap, which the zigzag's two ends outvote.
+    await shiftClick([0.62, 0.27]);
+    await browser.waitUntil(
+      async () => (await storedDrafts())[0]?.strokes.length === 2,
+    );
+    await obsidianPage.disablePlugin("inkline");
+    await obsidianPage.enablePlugin("inkline");
     await loadModules();
+    await editFile("001.ink.png");
+    await clickTop("Restore");
+    await settledSurface();
+    await browser.keys(["Shift", "g"]);
+    await shiftClick([0.33, 0.45]);
+    await browser.waitUntil(
+      async () => (await storedDrafts())[0]?.strokes.length === 3,
+    );
+    // Where a stroke starts within a spacing, in units.
+    const spacing = Math.round((await editorGrid()).spacing * unitsPerPixel);
+    const column = (stroke: { points: readonly number[] } | undefined) =>
+      (((stroke?.points[0] ?? 0) % spacing) + spacing) % spacing;
+    const restored = (await storedDrafts())[0]?.strokes ?? [];
+    expect(column(restored[2])).toBe(column(restored[1]));
+    // Undoing the tap and the restore leaves the file, and the grid its
+    // strokes suggest: through the zigzag's start.
+    await browser.keys(["Control", "z"]);
+    await browser.keys(["Control", "z"]);
+    await browser.waitUntil(async () => (await storedDrafts()).length === 0);
+    await shiftClick([0.33, 0.45]);
+    await browser.waitUntil(
+      async () => (await storedDrafts())[0]?.strokes.length === 2,
+    );
+    const [start, tap] = (await storedDrafts())[0]?.strokes ?? [];
+    expect(column(tap)).toBe(column(start));
+    expect(column(tap)).not.toBe(column(restored[1]));
   });
-  beforeEach(async function () {
-    await startOver();
-  });
+});
+
+describe("Grid", function () {
   afterEach(async function () {
     // Each test starts with the default settings, which only a test that
     // stores others needs Inkline started again for.
