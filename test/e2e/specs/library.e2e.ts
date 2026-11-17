@@ -20,7 +20,7 @@ interface Row {
 }
 
 /** The library's rows, top first. */
-async function rows(): Promise<Row[]> {
+async function libraryRows(): Promise<Row[]> {
   return browser.execute(() =>
     Array.from(document.querySelectorAll(".inkline-library-symbol")).map(
       (row) => ({
@@ -42,7 +42,7 @@ async function waitForNames(names: readonly string[]): Promise<void> {
   let shown: string[] = [];
   try {
     await browser.waitUntil(async () => {
-      shown = (await rows()).map((row) => row.name);
+      shown = (await libraryRows()).map((row) => row.name);
       return JSON.stringify(shown) === JSON.stringify(names);
     });
   } catch (error) {
@@ -53,7 +53,7 @@ async function waitForNames(names: readonly string[]): Promise<void> {
 }
 
 /** The row of the symbol named `name`. */
-function row(name: string): ChainableRow {
+function libraryRowNamed(name: string): ChainableRow {
   return browser.$(
     `//div[contains(@class, "inkline-library-symbol")][.//div[contains(@class, "inkline-library-name")][text()="${name}"]]`,
   );
@@ -213,29 +213,33 @@ describe("The symbol library", function () {
       await browser.$(".mod-right-split .inkline-library").isExisting(),
     ).toBe(true);
     await waitForNames(["001", "gate", "tower"]);
-    expect(await rows()).toEqual([
+    expect(await libraryRows()).toEqual([
       { name: "001", folder: "", uses: "Uses (2)", painted: true },
       { name: "gate", folder: "Runes", uses: "Uses (0)", painted: true },
       { name: "tower", folder: "Runes", uses: "Uses (1)", painted: true },
     ]);
     // A symbol no note uses has nothing to list.
     expect(
-      await row("gate").$(".inkline-library-uses").getProperty("disabled"),
+      await libraryRowNamed("gate")
+        .$(".inkline-library-uses")
+        .getProperty("disabled"),
     ).toBe(true);
     // The notes that use one, listed and opened from there.
-    await row("001").$(".inkline-library-uses").click();
-    const notes = row("001").$$(".inkline-library-note");
+    await libraryRowNamed("001").$(".inkline-library-uses").click();
+    const notes = libraryRowNamed("001").$$(".inkline-library-note");
     await browser.waitUntil(async () => (await notes.length) === 2);
     expect(
-      await row("001")
+      await libraryRowNamed("001")
         .$$(".inkline-library-note")
         .map((note) => note.getText()),
     ).toEqual(["More", "Uses"]);
     expect(
-      await row("001").$(".inkline-library-uses").getAttribute("aria-expanded"),
+      await libraryRowNamed("001")
+        .$(".inkline-library-uses")
+        .getAttribute("aria-expanded"),
     ).toBe("true");
     await saveScreenshot("symbol-library");
-    await row("001").$("a=Uses").click();
+    await libraryRowNamed("001").$("a=Uses").click();
     await browser.waitUntil(async () =>
       browser.executeObsidian(
         ({ app }) => app.workspace.getActiveFile()?.path === "Uses.md",
@@ -275,8 +279,8 @@ describe("The symbol library", function () {
     await waitForLinkWithoutSaving("Read#this.md", "gate.ink.png");
     await showLibrary();
     await waitForNames(["gate"]);
-    await row("gate").$(".inkline-library-uses").click();
-    await row("gate").$("a=Read#this").click();
+    await libraryRowNamed("gate").$(".inkline-library-uses").click();
+    await libraryRowNamed("gate").$("a=Read#this").click();
     await browser.waitUntil(
       async () =>
         browser.executeObsidian(
@@ -299,7 +303,7 @@ describe("The symbol library", function () {
     await waitForLinkWithoutSaving("Uses.md", "gate.ink.png");
     await showLibrary();
     await waitForNames(["gate"]);
-    await row("gate").$(".inkline-library-uses").click();
+    await libraryRowNamed("gate").$(".inkline-library-uses").click();
     await browser.execute(() => {
       document
         .querySelector<HTMLAnchorElement>(".inkline-library-note")
@@ -308,7 +312,9 @@ describe("The symbol library", function () {
     await browser.executeObsidian(async ({ app }) => {
       await app.vault.create("More.md", "See ![[gate.ink.png]].\n");
     });
-    await browser.waitUntil(async () => (await rows())[0]?.uses === "Uses (2)");
+    await browser.waitUntil(
+      async () => (await libraryRows())[0]?.uses === "Uses (2)",
+    );
     expect(
       await browser.execute(() => ({
         note: document.activeElement?.classList.contains(
@@ -327,13 +333,15 @@ describe("The symbol library", function () {
     await waitForLinkWithoutSaving("Uses.md", "gate.ink.png");
     await showLibrary();
     await waitForNames(["gate"]);
-    await row("gate").$(".inkline-library-uses").click();
+    await libraryRowNamed("gate").$(".inkline-library-uses").click();
     await browser.executeObsidian(async ({ app }) => {
       const file = app.vault.getFileByPath("Uses.md");
       if (file === null) throw new Error("no Uses.md");
       await app.fileManager.trashFile(file);
     });
-    await browser.waitUntil(async () => (await rows())[0]?.uses === "Uses (0)");
+    await browser.waitUntil(
+      async () => (await libraryRows())[0]?.uses === "Uses (0)",
+    );
     expect(
       await browser.execute(() =>
         document.activeElement?.classList.contains("inkline-library-insert"),
@@ -350,8 +358,8 @@ describe("The symbol library", function () {
     await openAtMarker("Copy.md", "HERE");
     await showLibrary();
     await waitForNames(["gate", "tower"]);
-    await row("gate").$(".inkline-library-insert").click();
-    await row("tower").$(".inkline-library-insert").click();
+    await libraryRowNamed("gate").$(".inkline-library-insert").click();
+    await libraryRowNamed("tower").$(".inkline-library-insert").click();
     await waitForText(
       "Copy.md",
       "Read ![[gate.ink.png]]![[tower.ink.png]], then [[Welcome]].\n",
@@ -399,7 +407,7 @@ describe("The symbol library", function () {
       },
       { interval: 150, timeoutMsg: "the cursor did not stay inside the link" },
     );
-    await row("gate").$(".inkline-library-insert").click();
+    await libraryRowNamed("gate").$(".inkline-library-insert").click();
     await waitForText(
       "Copy.md",
       "Read ![[gate.ink.png]]![[tower.ink.png]], then [[Welcome]]![[gate.ink.png]].\n",
@@ -437,7 +445,9 @@ describe("The symbol library", function () {
     await browser.keys(["Enter"]);
     await waitForText("Selection.md", "Keep both![[gate.ink.png]] words.\n");
     // The metadata-cache refresh replaces the row after the note saves.
-    await browser.waitUntil(async () => (await rows())[0]?.uses === "Uses (1)");
+    await browser.waitUntil(
+      async () => (await libraryRows())[0]?.uses === "Uses (1)",
+    );
     expect(
       await browser.execute(() => document.activeElement?.className),
     ).toContain("inkline-library-insert");
@@ -459,7 +469,7 @@ describe("The symbol library", function () {
     });
     await showLibrary();
     await waitForNames(["gate"]);
-    await row("gate").$(".inkline-library-insert").click();
+    await libraryRowNamed("gate").$(".inkline-library-insert").click();
     await waitForNotice(
       "Open a note in editing view to insert a symbol there.",
     );
@@ -476,7 +486,9 @@ describe("The symbol library", function () {
     await createSymbol("gate.ink.png");
     await showLibrary();
     await waitForNames(["gate"]);
-    await row("gate").$(".inkline-library-insert").click({ button: "right" });
+    await libraryRowNamed("gate")
+      .$(".inkline-library-insert")
+      .click({ button: "right" });
     await browser.waitUntil(async () =>
       (await menuItems()).includes("Edit symbol"),
     );
@@ -532,7 +544,7 @@ describe("The symbol library", function () {
     });
     await browser.waitUntil(
       async () =>
-        (await rows()).find((found) => found.name === "tower")?.uses ===
+        (await libraryRows()).find((found) => found.name === "tower")?.uses ===
         "Uses (1)",
     );
     await browser.executeObsidian(async ({ app }) => {
@@ -564,7 +576,7 @@ describe("The symbol library", function () {
   // replaces every row, so a redraw waits for the release.
   describe("with a press under way", function () {
     const names = async (): Promise<string[]> =>
-      (await rows()).map((shown) => shown.name);
+      (await libraryRows()).map((shown) => shown.name);
     const form = () => browser.$(".inkline-library-edit-form");
 
     /** A note to insert into, open with the cursor where it was `HERE`. */
@@ -675,7 +687,7 @@ describe("The symbol library", function () {
       await openNote();
       await showLibrary();
       await waitForNames(["gate", "tower"]);
-      await row("gate").$(".inkline-library-edit").click();
+      await libraryRowNamed("gate").$(".inkline-library-edit").click();
       await form().waitForExist();
       await pressOn(inRow("tower.ink.png", "insert"));
       await browser.execute(() => {

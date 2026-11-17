@@ -27,7 +27,7 @@ async function openEditor(): Promise<void> {
  * Clicks the surface at each point, as fractions of its width and height
  * from its top left corner.
  */
-async function click(
+async function clickSurfacePoints(
   ...points: readonly (readonly [number, number])[]
 ): Promise<void> {
   const canvas = surface();
@@ -165,7 +165,7 @@ describe("Fill", function () {
     await openEditor();
     await browser.keys("y");
     await browser.keys("b");
-    await click(
+    await clickSurfacePoints(
       [0.3, 0.25],
       [0.7, 0.25],
       [0.7, 0.75],

@@ -229,7 +229,7 @@ async function decodedCount(): Promise<number> {
 }
 
 /** Waits for {@link watchDecoded} to have recorded `count` images. */
-async function waitForDecoded(count: number): Promise<void> {
+async function waitForDecodedCount(count: number): Promise<void> {
   await browser.waitUntil(async () => (await decodedCount()) >= count, {
     timeoutMsg: `not ${String(count)} images decoded`,
   });
@@ -301,7 +301,7 @@ describe("Base layers nothing needs", function () {
     await watchDecoded();
     try {
       await copy("tower");
-      await waitForDecoded(1);
+      await waitForDecodedCount(1);
       await waitForInk(true);
       await browser.keys(["Control", "z"]);
       await waitForInk(false);
@@ -314,7 +314,7 @@ describe("Base layers nothing needs", function () {
       await waitForInk(false);
       // A new change past the Undo leaves nothing to redo.
       await copy("tower");
-      await waitForDecoded(2);
+      await waitForDecodedCount(2);
       await waitForInk(true);
       await expectKept([false, true]);
       await browser.keys(["Control", "z"]);
@@ -325,9 +325,9 @@ describe("Base layers nothing needs", function () {
       ]);
       await expectKept([false, false]);
       await copy("tower");
-      await waitForDecoded(3);
+      await waitForDecodedCount(3);
       await copy("tower");
-      await waitForDecoded(4);
+      await waitForDecodedCount(4);
       await waitForInk(true);
       // The third is one Undo away until 500 later changes push it out of
       // the history, after the two states before it.

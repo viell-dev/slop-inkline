@@ -96,7 +96,7 @@ const places: readonly Place[] = [
   },
 ];
 
-interface Box {
+interface SizedBox {
   left: number;
   top: number;
   right: number;
@@ -108,8 +108,8 @@ interface Box {
 /** How a symbol shows, in CSS pixels of the window. */
 interface Shown {
   /** The image's box, and the content box of the block it is in. */
-  box: Box;
-  space: Box;
+  box: SizedBox;
+  space: SizedBox;
   /** Where the text's baseline lies beside it. */
   baseline: number;
   fontSize: number;

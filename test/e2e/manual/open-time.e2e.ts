@@ -145,11 +145,11 @@ async function timedRead(file: string) {
 /** Opens the editor as a person does, until it has painted, and closes it. */
 async function openAndClose(file: string) {
   const opened = await timedEditorOpen(file);
-  await closeEditor();
+  await escapeEditorAndWaitForRemoval();
   return opened;
 }
 
-async function closeEditor(): Promise<void> {
+async function escapeEditorAndWaitForRemoval(): Promise<void> {
   await browser.keys(["Escape"]);
   await browser.waitUntil(async () =>
     browser.execute(() => document.querySelector(".inkline-editor") === null),
@@ -231,7 +231,7 @@ async function timedSweep(file = "") {
     Reflect.deleteProperty(vault, "readBinary");
     return { symbols: symbols.length, sweptMs, shownMs, thread: thread() };
   }, file);
-  if (file !== "") await closeEditor();
+  if (file !== "") await escapeEditorAndWaitForRemoval();
   return swept;
 }
 

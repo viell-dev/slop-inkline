@@ -25,7 +25,7 @@ const narrow: readonly Sample[] = [
 ];
 
 /** As wide as a stroke across the editor's whole surface. */
-const surface: Sample = ["whole surface.ink.png", [400, 4000, 8600]];
+const surfaceSample: Sample = ["whole surface.ink.png", [400, 4000, 8600]];
 
 /** Wider than the surface, as saving and widening a symbol can make one. */
 const wider: Sample = ["wider still.ink.png", [400, 8000, 16000]];
@@ -36,7 +36,7 @@ const inFolders: readonly Sample[] = [
   ["Glyphs/Deep/nested wide.ink.png", [400, 4000, 8600]],
 ];
 
-const symbols = [...narrow, surface, wider, ...inFolders];
+const symbols = [...narrow, surfaceSample, wider, ...inFolders];
 
 /** A name that shares the line with a row's buttons in the default sidebar. */
 const midLength = "past tense";
@@ -539,7 +539,7 @@ describe("Lists of symbols", function () {
         expectLinedUp(await rowsOf(list.rows), symbols.length + 2);
         const { client, scroll } = await widthsOf(list.holder);
         expect(scroll).toBeLessThanOrEqual(client);
-        await expectWhole(list.rows, surface);
+        await expectWhole(list.rows, surfaceSample);
         await expectWhole(list.rows, wider);
         await saveScreenshot(`symbol-list-${list.name}-${theme}`);
       });
@@ -567,7 +567,7 @@ describe("Lists of symbols", function () {
       await list.open();
       await waitForRows(list.rows, symbols.length);
       expectLinedUp(await rowsOf(list.rows), symbols.length);
-      await expectWhole(list.rows, surface);
+      await expectWhole(list.rows, surfaceSample);
       // Each picture starts at the column's left, as one in the text colour.
       const dot = await inkOf(list.rows, "dot");
       expect(dot.left).toBeLessThan(0.3 * dot.width);
@@ -635,7 +635,7 @@ describe("Lists of symbols", function () {
         expectInsideSidebar(shown);
         expectLinedUp(await rowsOf(library.rows), count);
         for (const row of shown.rows) expectOneLine(row);
-        await expectWhole(library.rows, surface);
+        await expectWhole(library.rows, surfaceSample);
         await expectWhole(library.rows, wider);
         await saveScreenshot(`symbol-library-rows-${theme}`);
       });
