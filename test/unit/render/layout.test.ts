@@ -6,7 +6,6 @@ import {
   explicitHeight,
   explicitWidth,
   fileAddress,
-  historyLimit,
   isSymbolUrl,
   RefreshedAddresses,
   symbolName,
@@ -140,153 +139,198 @@ describe("fileAddress", () => {
 describe("RefreshedAddresses", () => {
   const file = "app://a1b2/v/Glyphs/a.ink.png";
   const other = "app://a1b2/v/Glyphs/b.ink.png";
+  /** An image element, which the record knows only as itself. */
+  const image = (): object => ({});
 
-  it("keeps every address until its file is refreshed", () => {
+  it("keeps an image's address until its file is refreshed", () => {
     const addresses = new RefreshedAddresses();
-    expect(addresses.shown(`${file}?100`)).toBeUndefined();
-    expect(addresses.shown(`${file}?100`)).toBeUndefined();
-    expect(addresses.shown(`${file}?200`)).toBeUndefined();
+    const one = image();
+    expect(addresses.shown(one, `${file}?100`)).toBeUndefined();
+    expect(addresses.shown(one, `${file}?100`)).toBeUndefined();
+    expect(addresses.shown(one, `${file}?200`)).toBeUndefined();
   });
 
-  it("gives an address seen before a refresh the refresh's", () => {
+  it("gives an image that missed a refresh the refresh's address", () => {
     const addresses = new RefreshedAddresses();
-    addresses.shown(`${file}?100`);
-    // Rewritten with the same modification time, as the address shows.
+    const one = image();
+    addresses.shown(one, `${file}?100`);
+    // Rewritten with the same modification time, as the address shows,
+    // while the image was out of every document.
     const next = addresses.refreshed(`${file}?100`);
     expect(fileAddress(next)).toBe(file);
     expect(next).toMatch(
       /^app:\/\/a1b2\/v\/Glyphs\/a\.ink\.png\?100=&inkline=/,
     );
-    expect(addresses.shown(`${file}?100`)).toBe(next);
-    // The refresh's own address stays.
-    expect(addresses.shown(next)).toBeUndefined();
+    expect(addresses.shown(one, `${file}?100`)).toBe(next);
+    // Once it has it, it keeps it.
+    expect(addresses.shown(one, next)).toBeUndefined();
   });
 
-  it("makes a new address for each refresh, and for each load", () => {
+  it("leaves an image that the refresh reached as it is", () => {
+    const addresses = new RefreshedAddresses();
+    const one = image();
+    addresses.shown(one, `${file}?100`);
+    const next = addresses.refreshed(`${file}?100`);
+    // As the refresh gives it the address, and tags it again.
+    expect(addresses.shown(one, next)).toBeUndefined();
+    expect(addresses.shown(one, next)).toBeUndefined();
+  });
+
+  it("brings an image behind by several refreshes to the latest", () => {
+    const addresses = new RefreshedAddresses();
+    const out = image();
+    const reached = image();
+    addresses.shown(out, `${file}?100`);
+    addresses.shown(reached, `${file}?100`);
+    const first = addresses.refreshed(`${file}?100`);
+    addresses.shown(reached, first);
+    addresses.refreshed(`${file}?200`);
+    const latest = addresses.refreshed(`${file}?300`);
+    expect(addresses.shown(out, `${file}?100`)).toBe(latest);
+    expect(addresses.shown(reached, first)).toBe(latest);
+  });
+
+  it("makes a new address for each refresh", () => {
     const addresses = new RefreshedAddresses();
     const first = addresses.refreshed(`${file}?100`);
     const second = addresses.refreshed(`${file}?100`);
-    const reloaded = new RefreshedAddresses().refreshed(`${file}?100`);
-    expect(new Set([first, second, reloaded]).size).toBe(3);
+    const elsewhere = new RefreshedAddresses().refreshed(`${file}?100`);
+    expect(new Set([first, second, elsewhere]).size).toBe(3);
   });
 
-  it("gives an earlier refresh's address the latest one", () => {
+  it("keeps an address that an image was given while it was out", () => {
     const addresses = new RefreshedAddresses();
-    addresses.shown(`${file}?100`);
-    const first = addresses.refreshed(`${file}?200`);
-    const latest = addresses.refreshed(`${file}?300`);
-    expect(addresses.shown(`${file}?100`)).toBe(latest);
-    expect(addresses.shown(first)).toBe(latest);
-    expect(addresses.shown(latest)).toBeUndefined();
-  });
-
-  it("keeps an address first seen after the latest refresh", () => {
-    const addresses = new RefreshedAddresses();
-    addresses.shown(`${file}?100`);
+    const one = image();
+    addresses.shown(one, `${file}?100`);
     addresses.refreshed(`${file}?100`);
     // As Obsidian gives once the file changes again, before Inkline's next
-    // refresh; or an address that was never on an image before the refresh.
-    expect(addresses.shown(`${file}?400`)).toBeUndefined();
-    expect(addresses.shown(`${file}?400`)).toBeUndefined();
-    // Until a later refresh supersedes it too.
+    // refresh.
+    expect(addresses.shown(one, `${file}?400`)).toBeUndefined();
+    expect(addresses.shown(one, `${file}?400`)).toBeUndefined();
+    // Until a later refresh passes it by too.
     const latest = addresses.refreshed(`${file}?400`);
-    expect(addresses.shown(`${file}?400`)).toBe(latest);
+    expect(addresses.shown(one, `${file}?400`)).toBe(latest);
   });
 
-  it("keeps an address an earlier load of Inkline made until a refresh", () => {
-    const earlier = new RefreshedAddresses().refreshed(`${file}?100`);
+  it("leaves an image made anew as it comes, even with an old address", () => {
     const addresses = new RefreshedAddresses();
-    expect(addresses.shown(earlier)).toBeUndefined();
-    const latest = addresses.refreshed(`${file}?100`);
-    expect(addresses.shown(earlier)).toBe(latest);
+    addresses.shown(image(), `${file}?100`);
+    addresses.refreshed(`${file}?100`);
+    expect(addresses.shown(image(), `${file}?100`)).toBeUndefined();
   });
 
-  it("keeps each file's addresses apart", () => {
+  it("keeps each file's images apart", () => {
     const addresses = new RefreshedAddresses();
-    addresses.shown(`${file}?100`);
-    addresses.shown(`${other}?100`);
+    const a = image();
+    const b = image();
+    addresses.shown(a, `${file}?100`);
+    addresses.shown(b, `${other}?100`);
     const latest = addresses.refreshed(`${file}?100`);
-    expect(addresses.shown(`${other}?100`)).toBeUndefined();
-    expect(addresses.shown(`${file}?100`)).toBe(latest);
+    expect(addresses.shown(b, `${other}?100`)).toBeUndefined();
+    expect(addresses.shown(a, `${file}?100`)).toBe(latest);
+    // An image that comes to show another file is that file's from then on.
+    expect(addresses.shown(a, `${other}?100`)).toBeUndefined();
+    addresses.refreshed(`${file}?100`);
+    expect(addresses.shown(a, `${other}?100`)).toBeUndefined();
   });
 
   it("starts afresh for a file forgotten, as one deleted and made again", () => {
     const addresses = new RefreshedAddresses();
-    addresses.shown(`${file}?100`);
-    const old = addresses.refreshed(`${file}?100`);
+    const one = image();
+    addresses.shown(one, `${file}?100`);
+    // Refreshed while the image was out, then deleted and made again, and
+    // the new file refreshed twice, so that its refreshes differ from the
+    // old one's, before the image comes back.
+    addresses.refreshed(`${file}?100`);
     addresses.forget(`${file}?100`);
-    // The new file, here with the old one's modification time.
-    expect(addresses.shown(`${file}?100`)).toBeUndefined();
-    expect(addresses.shown(old)).toBeUndefined();
-    expect(addresses.shown(`${file}?100`)).toBeUndefined();
+    addresses.refreshed(`${file}?100`);
+    addresses.refreshed(`${file}?100`);
+    expect(addresses.shown(one, `${file}?100`)).toBeUndefined();
+    // From then on it is an image of the new file.
+    const latest = addresses.refreshed(`${file}?100`);
+    expect(addresses.shown(one, `${file}?100`)).toBe(latest);
   });
 
-  it("gives a new file at a forgotten path no address of the old one, once it is refreshed itself", () => {
-    // The review's sequence on #370: file A at ?500, refreshed and
-    // deleted; file B made at its path, at ?100, and refreshed; then
-    // Obsidian gives B ?500, which A had had but B never has.
+  it("gives an image of a new file no address of the one before it", () => {
+    // A at `file`, shown at ?500 and refreshed, is deleted; B made at its
+    // path is shown at ?100, refreshed twice, and given ?500 by Obsidian.
     const addresses = new RefreshedAddresses();
-    addresses.shown(`${file}?500`);
+    const ofA = image();
+    const ofB = image();
+    addresses.shown(ofA, `${file}?500`);
     const old = addresses.refreshed(`${file}?500`);
+    addresses.shown(ofA, old);
     addresses.forget(`${file}?500`);
-    addresses.shown(`${file}?100`);
+    addresses.shown(ofB, `${file}?100`);
+    addresses.refreshed(`${file}?200`);
     const latest = addresses.refreshed(`${file}?200`);
-    expect(addresses.shown(`${file}?500`)).toBeUndefined();
-    // As is one that neither had, and B's own address before its refresh is
-    // superseded by it.
-    expect(addresses.shown(`${file}?501`)).toBeUndefined();
-    expect(addresses.shown(`${file}?100`)).toBe(latest);
-    // An image of A that comes back now was seen after B's refresh.
-    expect(addresses.shown(old)).toBeUndefined();
+    expect(addresses.shown(image(), `${file}?500`)).toBeUndefined();
+    expect(addresses.shown(ofB, `${file}?100`)).toBe(latest);
+    // A's image comes back with A's own address, and keeps it.
+    expect(addresses.shown(ofA, old)).toBeUndefined();
   });
 
   it("gives a file renamed onto a used path no address of the file before it", () => {
-    // A at `file`, seen at ?500 and refreshed, is renamed away to `moved`;
-    // B, seen at `other` and refreshed, is renamed onto `file`. A rename
-    // forgets both its paths.
+    // A at `file`, shown at ?500 and refreshed while its image is out, is
+    // renamed away to `moved`; B, at `other`, is renamed onto `file` and
+    // refreshed twice. A rename forgets both its paths.
     const moved = "app://a1b2/v/Glyphs/c.ink.png";
     const addresses = new RefreshedAddresses();
-    addresses.shown(`${file}?500`);
+    const ofA = image();
+    addresses.shown(ofA, `${file}?500`);
     addresses.refreshed(`${file}?500`);
     addresses.forget(`${file}?500`);
     addresses.forget(`${moved}?500`);
-    addresses.shown(`${other}?100`);
-    addresses.refreshed(`${other}?100`);
+    const ofB = image();
+    addresses.shown(ofB, `${other}?100`);
     addresses.forget(`${other}?100`);
     addresses.forget(`${file}?100`);
-    addresses.shown(`${file}?100`);
-    const latest = addresses.refreshed(`${file}?200`);
-    expect(addresses.shown(`${file}?500`)).toBeUndefined();
-    expect(addresses.shown(`${file}?100`)).toBe(latest);
+    addresses.shown(ofB, `${file}?100`);
+    addresses.refreshed(`${file}?100`);
+    const latest = addresses.refreshed(`${file}?100`);
+    expect(addresses.shown(ofA, `${file}?500`)).toBeUndefined();
+    expect(addresses.shown(ofB, `${file}?100`)).toBe(latest);
   });
 
-  it("keeps no history of a file forgotten, however often it was", () => {
+  it("keeps one record for each file, however often it is refreshed or forgotten", () => {
     const addresses = new RefreshedAddresses();
     for (let cycle = 0; cycle < 100_000; cycle++) {
-      addresses.shown(`${file}?${String(cycle)}`);
+      addresses.shown(image(), `${file}?${String(cycle)}`);
       addresses.refreshed(`${file}?${String(cycle)}`);
       addresses.forget(`${file}?${String(cycle)}`);
     }
     expect(addresses.size).toBe(0);
-    addresses.shown(`${file}?1`);
-    expect(addresses.size).toBe(2);
+    // A file shown all along, refreshed 10,000 times, with an image that
+    // each refresh reaches and one that misses them all.
+    const reached = image();
+    const out = image();
+    addresses.shown(reached, `${file}?0`);
+    addresses.shown(out, `${file}?0`);
+    let latest = "";
+    for (let version = 1; version <= 10_000; version++) {
+      latest = addresses.refreshed(`${file}?${String(version)}`);
+      addresses.shown(reached, latest);
+    }
+    expect(addresses.size).toBe(1);
+    expect(addresses.shown(out, `${file}?0`)).toBe(latest);
+    expect(addresses.shown(reached, latest)).toBeUndefined();
   });
 
-  it("keeps a bounded history of a file refreshed often while it is shown", () => {
+  it("reads nothing from an address past its file, as a name holding a mark", () => {
+    // Obsidian leaves a name's `&` as it is, so the name's `&inkline=` comes
+    // before the refresh's in the address.
+    const odd = "app://a1b2/v/Glyphs/A&inkline=x.ink.png";
     const addresses = new RefreshedAddresses();
-    let latest = "";
-    for (let version = 0; version < 10_000; version++) {
-      // Obsidian's address for each version, and the refresh's, each on an
-      // image, as an open note shows the symbol all along.
-      addresses.shown(`${file}?${String(version)}`);
-      latest = addresses.refreshed(`${file}?${String(version)}`);
-      expect(addresses.shown(latest)).toBeUndefined();
+    const one = image();
+    addresses.shown(one, `${odd}?100`);
+    const first = addresses.refreshed(`${odd}?100`);
+    expect(fileAddress(first)).toBe(odd);
+    addresses.shown(one, first);
+    let latest = first;
+    for (let refresh = 0; refresh < 33; refresh++) {
+      latest = addresses.refreshed(`${odd}?100`);
     }
-    expect(addresses.size).toBeLessThanOrEqual(1 + historyLimit);
-    // The latest versions' addresses are still known to be older.
-    expect(addresses.shown(`${file}?9999`)).toBe(latest);
-    expect(addresses.shown(`${file}?9970`)).toBe(latest);
-    // One older than the history keeps its address, as before any was kept.
-    expect(addresses.shown(`${file}?0`)).toBeUndefined();
+    expect(addresses.shown(one, first)).toBe(latest);
+    expect(addresses.size).toBe(1);
   });
 });

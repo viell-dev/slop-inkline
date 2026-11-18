@@ -866,14 +866,35 @@ describe("Saved symbol refresh", function () {
     await openReading("Again.md");
     await browser.waitUntil(async () => (await shownOf(again)).length === 1);
     const original = (await shownOf(again))[0]?.width;
-    // Rewritten with the same modification time, which Inkline refreshes:
-    // the image takes the refresh's address, and a wider picture. The first
-    // version's bytes are kept for the file made again below.
+    // An image of it in text of its own, which Inkline tags, then takes out
+    // of the document: it comes back below, after the file has been deleted
+    // and made again, as the same element.
+    // Then the symbol is rewritten with the same modification time, which
+    // Inkline refreshes while that image is out: the Reading view's image
+    // takes the refresh's address, and a wider picture. The first version's
+    // bytes are kept for the file made again below.
     const first = await browser.executeObsidian(async ({ app }, path) => {
       const file = app.vault.getFileByPath(path);
       if (file === null) throw new Error("no symbol");
+      const holder = createDiv({ cls: "markdown-rendered" });
+      const image = holder.createEl("img", {
+        attr: { src: app.vault.getResourcePath(file), alt: "" },
+      });
+      activeDocument.body.append(holder);
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+      const tagged = image.classList.contains("inkline-symbol");
+      holder.remove();
+      Reflect.set(window, "inklineTestHolder", holder);
       Reflect.set(window, "inklineTestFirst", await app.vault.readBinary(file));
       const mtime = file.stat.mtime;
+      // Inkline's own listener runs before this one, which was added after.
+      const changed = new Promise<void>((resolve) => {
+        const listener = app.vault.on("modify", (modified) => {
+          if (modified.path !== path) return;
+          app.vault.offref(listener);
+          resolve();
+        });
+      });
       const { bytes } = await window.inklineTest.canvas.saveInk(
         {
           strokes: [{ tool: "pen", size: 256, points: [0, 1000, 4000, 1000] }],
@@ -882,8 +903,10 @@ describe("Saved symbol refresh", function () {
         [],
       );
       await app.vault.modifyBinary(file, bytes.slice().buffer, { mtime });
-      return { mtime, src: app.vault.getResourcePath(file) };
+      await changed;
+      return { mtime, src: app.vault.getResourcePath(file), tagged };
     }, again);
+    expect(first.tagged).toBe(true);
     let rewritten: number | undefined;
     await browser.waitUntil(async () => {
       const shown = await shownOf(again);
@@ -896,27 +919,65 @@ describe("Saved symbol refresh", function () {
     });
     // Then deleted, and made again at its path with that same modification
     // time, so that Obsidian gives the new file the address the old one had
-    // before its refresh. The new file holds the first version's drawing:
-    // whether the page loads that address again or keeps the picture it had
-    // for it, the new file's picture is the narrower one, and the deleted
-    // file's last picture, which an old refresh's address would bring back,
-    // the wider.
+    // before its refresh, and the image that was out comes back. It missed
+    // the old file's refresh, but it is an image of the new file now, and
+    // keeps the address it has. The new file holds the first version's
+    // drawing: whether the page loads that address again or keeps the
+    // picture it had for it, the new file's picture is the narrower one, and
+    // the deleted file's last picture, which an old refresh's address would
+    // bring back, the wider.
     const remade = await browser.executeObsidian(
       async ({ app }, path, mtime) => {
         const file = app.vault.getFileByPath(path);
         const bytes: unknown = Reflect.get(window, "inklineTestFirst");
+        const holder: unknown = Reflect.get(window, "inklineTestHolder");
         Reflect.deleteProperty(window, "inklineTestFirst");
-        if (file === null || !(bytes instanceof ArrayBuffer)) {
-          throw new Error("no symbol, or no first version of it");
+        if (
+          file === null ||
+          !(bytes instanceof ArrayBuffer) ||
+          !(holder instanceof HTMLElement)
+        ) {
+          throw new Error("no symbol, first version of it, or image");
         }
         await app.fileManager.trashFile(file);
         const made = await app.vault.createBinary(path, bytes, { mtime });
+        activeDocument.body.append(holder);
         return app.vault.getResourcePath(made);
       },
       again,
       first.mtime,
     );
     expect(remade).toBe(first.src);
+    const back = async () =>
+      browser.execute(() => {
+        const holder: unknown = Reflect.get(window, "inklineTestHolder");
+        const image =
+          holder instanceof HTMLElement ? holder.querySelector("img") : null;
+        if (image === null) return null;
+        return {
+          src: image.src,
+          tagged: image.classList.contains("inkline-symbol"),
+          width: image.complete ? image.naturalWidth : 0,
+        };
+      });
+    let cameBack: Awaited<ReturnType<typeof back>> = null;
+    await waitOrSay(
+      async () => {
+        cameBack = await back();
+        return (
+          cameBack?.tagged === true &&
+          cameBack.src === remade &&
+          cameBack.width === original
+        );
+      },
+      () =>
+        `the image that was out came back as ${JSON.stringify(cameBack)}, not ${remade} at ${String(original)} pixels wide, where the deleted file's last picture was ${String(rewritten)}`,
+    );
+    await browser.execute(() => {
+      const holder: unknown = Reflect.get(window, "inklineTestHolder");
+      if (holder instanceof HTMLElement) holder.remove();
+      Reflect.deleteProperty(window, "inklineTestHolder");
+    });
     // Shown again from the new file, in a Reading view made for it.
     await openReading("Refresh.md");
     await openReading("Again.md");

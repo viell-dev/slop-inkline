@@ -41,101 +41,95 @@ export function fileAddress(src: string): string {
   return src.split(/[?#]/, 1)[0] ?? "";
 }
 
-/**
- * How many of the addresses that Obsidian gives one file are remembered: one
- * for each version of it seen. An image that comes back with an address
- * older than that many versions keeps it, as it did before Inkline kept any.
- */
-export const historyLimit = 32;
-
 /** What {@link RefreshedAddresses} knows of a file since it was forgotten. */
-interface FileAddresses {
+interface FileRefreshes {
   /**
-   * Which of the files that have been at this path it is, so that the
-   * addresses its refreshes make are its own.
+   * Which of the files that have been at this path it is, so that an image
+   * seen before the path's file was deleted, made, or moved is not taken for
+   * an image of this one.
    */
   readonly generation: number;
   /** How many times it has been refreshed. */
   refreshes: number;
   /** The address its latest refresh gave its images. */
   latest: string | undefined;
-  /**
-   * Each other address its images have been seen with, as Obsidian gives,
-   * and how many refreshes there had been when it was first seen: at most
-   * {@link historyLimit}, the earliest seen going first.
-   */
-  readonly seen: Map<string, number>;
 }
 
-/** The mark on an address that a refresh made, before any `&` or `#`. */
-const refreshMark = /[?&]inkline=([^&#]*)/;
+/** What {@link RefreshedAddresses} last saw of one image. */
+interface ImageRefreshes {
+  /** The file it showed, its address without the query. */
+  readonly file: string;
+  /** That file's generation then. */
+  readonly generation: number;
+  /** How many times the file had been refreshed then. */
+  readonly refreshes: number;
+  /** The address the image had then, or was given. */
+  readonly src: string;
+}
 
 /**
  * Which address each symbol's images should have once the symbol changed. A
  * refresh gives the images it finds a new address, which loads the file
- * again; an image out of the document then, as Obsidian takes images out and
- * puts the same ones back, misses it and comes back with the address it had,
- * whose picture the page has kept. That address was seen before the refresh,
- * so the refresh superseded it, and the image takes the refresh's address.
+ * again. An image out of every watched document then, as when Obsidian takes
+ * images out and puts the same ones back, misses it, and comes back with the
+ * address it had, whose picture the page has kept.
  *
- * An address first seen after the latest refresh is kept, as Obsidian gives
- * once the file changes again, as are addresses never seen: only an address
- * known to be older is replaced. What is known of a file, its refreshes and
- * the addresses seen, is kept apart from every other file's, and forgotten
- * when it is deleted, made, or moved, so that a new file at its path starts
- * afresh and an image of it never gets an address of the old one, even where
- * Obsidian gives the new file an address the old one had.
+ * So each image, the element itself, is remembered with how many times its
+ * file had been refreshed when it was last seen, and the address it had. One
+ * that comes back with that address, behind its file's refreshes, takes the
+ * latest refresh's address. One whose address changed meanwhile, as Obsidian
+ * gives once the file changes again, keeps it. An image made anew is new to
+ * this and keeps the address it comes with, even an old one: only an image
+ * seen before is brought up to date.
  *
- * The addresses a refresh makes are not stored: each carries a mark of this
- * load of Inkline, of the file's record, and of the refresh, so that one
- * earlier than the latest is known by its mark. What is stored is bounded:
- * for each file shown and not forgotten, its latest address and at most
- * {@link historyLimit} of Obsidian's.
+ * Each file is remembered with only its generation, its refreshes, and its
+ * latest refresh's address, until it is deleted, made, or moved, when it is
+ * forgotten: a new file at its path is another generation, so that an image
+ * of the old one keeps its own address rather than take the new file's, and
+ * an image of the new one never gets an address of the old. Nothing here
+ * reads an address beyond the part before its query, and an image is
+ * remembered only as long as the page keeps it.
  */
 export class RefreshedAddresses {
-  /** Marks this load's addresses apart from those of an earlier one. */
-  readonly #load = crypto.randomUUID();
   /** How many records of files there have been, which numbers each. */
   #generations = 0;
-  readonly #files = new Map<string, FileAddresses>();
+  readonly #files = new Map<string, FileRefreshes>();
+  readonly #images = new WeakMap<object, ImageRefreshes>();
 
   /**
-   * Records that an image shows `src`, and gives the address it should show
-   * instead, if the latest refresh of its file superseded `src`.
+   * Records that `image` shows `src`, and gives the address it should show
+   * instead: its file's latest refresh's, if it has had `src` since before
+   * that refresh.
    */
-  shown(src: string): string | undefined {
-    const known = this.#known(src);
-    const refresh = this.#refreshOf(src, known);
-    if (refresh !== undefined) {
-      return refresh < known.refreshes ? known.latest : undefined;
-    }
-    const first = known.seen.get(src);
-    if (first !== undefined) {
-      return first < known.refreshes ? known.latest : undefined;
-    }
-    known.seen.set(src, known.refreshes);
-    if (known.seen.size > historyLimit) {
-      for (const earliest of known.seen.keys()) {
-        known.seen.delete(earliest);
-        break;
-      }
-    }
-    return undefined;
+  shown(image: object, src: string): string | undefined {
+    const file = fileAddress(src);
+    const known = this.#known(file);
+    const last = this.#images.get(image);
+    const behind =
+      last?.file === file &&
+      last.generation === known.generation &&
+      last.src === src &&
+      last.refreshes < known.refreshes;
+    const now = behind ? (known.latest ?? src) : src;
+    this.#images.set(image, {
+      file,
+      generation: known.generation,
+      refreshes: known.refreshes,
+      src: now,
+    });
+    return now === src ? undefined : now;
   }
 
   /**
    * Records a refresh of the file at `src`, the address Obsidian gives it
    * now, and gives the address its images take: a distinct request even if
-   * two writes share a modification time, and in each load of Inkline.
+   * two writes share a modification time.
    */
   refreshed(src: string): string {
-    const known = this.#known(src);
+    const known = this.#known(fileAddress(src));
     known.refreshes += 1;
     const next = new URL(src);
-    next.searchParams.set(
-      "inkline",
-      `${this.#load}.${String(known.generation)}.${String(known.refreshes)}`,
-    );
+    next.searchParams.set("inkline", crypto.randomUUID());
     known.latest = next.href;
     return next.href;
   }
@@ -146,44 +140,22 @@ export class RefreshedAddresses {
   }
 
   /**
-   * How many addresses it keeps, of every file: each file's latest, whether
-   * or not it has one, and those of Obsidian's it has seen. This is what its
-   * memory grows with.
+   * How many files it remembers: one for each symbol file seen or refreshed
+   * and not forgotten since, however often each was refreshed.
    */
   get size(): number {
-    let size = 0;
-    for (const known of this.#files.values()) size += 1 + known.seen.size;
-    return size;
+    return this.#files.size;
   }
 
-  /**
-   * Which refresh of `known` made `src`, if one did: not one of an earlier
-   * record at its path, nor of an earlier load of Inkline.
-   */
-  #refreshOf(src: string, known: FileAddresses): number | undefined {
-    const mark = refreshMark.exec(src)?.[1];
-    if (mark === undefined) return undefined;
-    const own = `${this.#load}.${String(known.generation)}.`;
-    if (!mark.startsWith(own)) return undefined;
-    const refresh = Number(mark.slice(own.length));
-    return Number.isInteger(refresh) &&
-      refresh >= 1 &&
-      refresh <= known.refreshes
-      ? refresh
-      : undefined;
-  }
-
-  /** What is known of the file `src` shows, from now on if nothing yet. */
-  #known(src: string): FileAddresses {
-    const file = fileAddress(src);
+  /** What is known of `file`, from now on if nothing yet. */
+  #known(file: string): FileRefreshes {
     const known = this.#files.get(file);
     if (known !== undefined) return known;
     this.#generations += 1;
-    const fresh: FileAddresses = {
+    const fresh: FileRefreshes = {
       generation: this.#generations,
       refreshes: 0,
       latest: undefined,
-      seen: new Map(),
     };
     this.#files.set(file, fresh);
     return fresh;

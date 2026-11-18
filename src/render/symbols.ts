@@ -133,9 +133,8 @@ function sized(image: HTMLImageElement): boolean {
 /**
  * Tags `image` as a symbol if its URL is a symbol file's, or untags it if it
  * is not one any more, keeping its mask and drop current. With `addresses`,
- * an image whose address a refresh of its symbol superseded takes the
- * refresh's address, as when it comes back into a document after missing
- * the refresh.
+ * an image that missed a refresh of its symbol, as one out of every watched
+ * document then, takes that refresh's address as it is tagged again.
  */
 export function tagImage(
   image: HTMLImageElement,
@@ -148,7 +147,7 @@ export function tagImage(
     untagImage(image);
     return;
   }
-  const latest = addresses?.shown(src);
+  const latest = addresses?.shown(image, src);
   if (latest !== undefined) {
     image.src = latest;
     src = latest;
@@ -288,7 +287,7 @@ export class SymbolRenderer {
   readonly #framed: (doc: Document) => void;
   #scale = 1;
   #textColor = true;
-  /** The address each refreshed symbol's images should have. */
+  /** Which refresh each symbol's images, and each symbol, last had. */
   readonly #addresses = new RefreshedAddresses();
 
   /**
@@ -305,7 +304,7 @@ export class SymbolRenderer {
 
   /**
    * Reloads instances of one changed file in every watched document, and
-   * keeps the new address for those out of every document meanwhile.
+   * remembers the refresh for its images out of them meanwhile.
    */
   refresh(src: string): void {
     if (!isSymbolUrl(src, this.#vault)) return;
