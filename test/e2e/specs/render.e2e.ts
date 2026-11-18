@@ -891,6 +891,53 @@ describe("Symbols in notes", function () {
     expect(Math.min(...result.runs)).toBeLessThan(50);
   });
 
+  it("leave a frame that Obsidian has not prepared alone, and tag what follows it", async function () {
+    const seen = await browser.executeObsidian(async ({ obsidian }) => {
+      const vault = obsidian.Platform.resourcePathPrefix;
+      const errors: string[] = [];
+      const heard = (event: ErrorEvent): void => {
+        errors.push(event.message);
+      };
+      window.addEventListener("error", heard);
+      // A frame of the same origin, as a note's HTML can hold, which has
+      // none of Obsidian's additions to the DOM, and whose document has a
+      // form named `instanceOf`, which a document shows as a property.
+      const holder = createDiv({ cls: "markdown-rendered" });
+      const frame = holder.createEl("iframe");
+      activeDocument.body.append(holder);
+      const inner = frame.contentDocument;
+      if (inner === null) throw new Error("no frame document");
+      const form = inner.createElement("form");
+      form.setAttribute("name", "instanceOf");
+      inner.body.append(form);
+      // And after it, added in the same task, so that the observer sees it
+      // after the frame, a symbol.
+      const after = createDiv({ cls: "markdown-rendered" });
+      const image = after.createEl("img", {
+        attr: { src: `${vault}Glyphs/after.ink.png`, alt: "" },
+      });
+      activeDocument.body.append(after);
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+      window.removeEventListener("error", heard);
+      const result = {
+        named: "instanceOf" in inner,
+        watched:
+          inner.documentElement.style.getPropertyValue("--inkline-scale"),
+        tagged: image.classList.contains("inkline-symbol"),
+        errors,
+      };
+      holder.remove();
+      after.remove();
+      return result;
+    });
+    expect(seen).toEqual({
+      named: true,
+      watched: "",
+      tagged: true,
+      errors: [],
+    });
+  });
+
   it("give a size with a height its drop before the image loads", async function () {
     const given = await browser.executeObsidian(({ obsidian }) => {
       const vault = obsidian.Platform.resourcePathPrefix;

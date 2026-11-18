@@ -253,13 +253,28 @@ export function tagWithin(
 }
 
 /**
- * Whether Obsidian has given `doc`'s window its additions to the DOM, such as
- * `instanceOf` and `addClass`, which Inkline uses on every node it handles.
- * Its own windows have them from the start, and a canvas card's editor frame
- * once it has loaded; a frame that a note embeds has none.
+ * Whether Obsidian has given `doc`'s window its additions to the DOM that
+ * Inkline uses there, on nodes, elements, and events. Its own windows have
+ * them from the start, and a canvas card's editor frame once it has loaded;
+ * a frame that a note embeds has none. They are looked for on the window's
+ * prototypes, which a document's contents cannot name, and the methods must
+ * be functions: a document gives its named elements as properties, so a form
+ * named `instanceOf` would pass a look at the document itself.
  */
 function prepared(doc: Document): boolean {
-  return "instanceOf" in doc;
+  const view = doc.defaultView;
+  if (view === null) return false;
+  const element = view.Element.prototype;
+  const callable = (owner: object, name: string): boolean =>
+    typeof Reflect.get(owner, name) === "function";
+  return (
+    callable(view.Node.prototype, "instanceOf") &&
+    ["addClass", "removeClass", "hasClass", "toggleClass"].every((name) =>
+      callable(element, name),
+    ) &&
+    "targetNode" in view.UIEvent.prototype &&
+    "doc" in view.Node.prototype
+  );
 }
 
 /**
@@ -295,14 +310,11 @@ export class SymbolRenderer {
   refresh(src: string): void {
     if (!isSymbolUrl(src, this.#vault)) return;
     const address = fileAddress(src);
-    const refreshed = new URL(src);
-    // A distinct request even if two writes share a filesystem timestamp.
-    refreshed.searchParams.set("inkline", crypto.randomUUID());
-    this.#addresses.refreshed(refreshed.href);
+    const next = this.#addresses.refreshed(src);
     for (const doc of this.#watching.keys()) {
       for (const image of Array.from(doc.getElementsByTagName("img"))) {
         if (image.hasClass(symbolClass) && fileAddress(image.src) === address) {
-          image.src = refreshed.href;
+          image.src = next;
           tagImage(image, this.#vault, this.#addresses);
         }
       }

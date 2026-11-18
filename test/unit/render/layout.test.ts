@@ -6,6 +6,7 @@ import {
   explicitHeight,
   explicitWidth,
   fileAddress,
+  historyLimit,
   isSymbolUrl,
   RefreshedAddresses,
   symbolName,
@@ -151,53 +152,141 @@ describe("RefreshedAddresses", () => {
     const addresses = new RefreshedAddresses();
     addresses.shown(`${file}?100`);
     // Rewritten with the same modification time, as the address shows.
-    addresses.refreshed(`${file}?100=&inkline=one`);
-    expect(addresses.shown(`${file}?100`)).toBe(`${file}?100=&inkline=one`);
+    const next = addresses.refreshed(`${file}?100`);
+    expect(fileAddress(next)).toBe(file);
+    expect(next).toMatch(
+      /^app:\/\/a1b2\/v\/Glyphs\/a\.ink\.png\?100=&inkline=/,
+    );
+    expect(addresses.shown(`${file}?100`)).toBe(next);
     // The refresh's own address stays.
-    expect(addresses.shown(`${file}?100=&inkline=one`)).toBeUndefined();
+    expect(addresses.shown(next)).toBeUndefined();
+  });
+
+  it("makes a new address for each refresh, and for each load", () => {
+    const addresses = new RefreshedAddresses();
+    const first = addresses.refreshed(`${file}?100`);
+    const second = addresses.refreshed(`${file}?100`);
+    const reloaded = new RefreshedAddresses().refreshed(`${file}?100`);
+    expect(new Set([first, second, reloaded]).size).toBe(3);
   });
 
   it("gives an earlier refresh's address the latest one", () => {
     const addresses = new RefreshedAddresses();
     addresses.shown(`${file}?100`);
-    addresses.refreshed(`${file}?200=&inkline=one`);
-    addresses.refreshed(`${file}?300=&inkline=two`);
-    expect(addresses.shown(`${file}?100`)).toBe(`${file}?300=&inkline=two`);
-    expect(addresses.shown(`${file}?200=&inkline=one`)).toBe(
-      `${file}?300=&inkline=two`,
-    );
+    const first = addresses.refreshed(`${file}?200`);
+    const latest = addresses.refreshed(`${file}?300`);
+    expect(addresses.shown(`${file}?100`)).toBe(latest);
+    expect(addresses.shown(first)).toBe(latest);
+    expect(addresses.shown(latest)).toBeUndefined();
   });
 
   it("keeps an address first seen after the latest refresh", () => {
     const addresses = new RefreshedAddresses();
     addresses.shown(`${file}?100`);
-    addresses.refreshed(`${file}?100=&inkline=one`);
+    addresses.refreshed(`${file}?100`);
     // As Obsidian gives once the file changes again, before Inkline's next
     // refresh; or an address that was never on an image before the refresh.
     expect(addresses.shown(`${file}?400`)).toBeUndefined();
     expect(addresses.shown(`${file}?400`)).toBeUndefined();
     // Until a later refresh supersedes it too.
-    addresses.refreshed(`${file}?400=&inkline=two`);
-    expect(addresses.shown(`${file}?400`)).toBe(`${file}?400=&inkline=two`);
+    const latest = addresses.refreshed(`${file}?400`);
+    expect(addresses.shown(`${file}?400`)).toBe(latest);
+  });
+
+  it("keeps an address an earlier load of Inkline made until a refresh", () => {
+    const earlier = new RefreshedAddresses().refreshed(`${file}?100`);
+    const addresses = new RefreshedAddresses();
+    expect(addresses.shown(earlier)).toBeUndefined();
+    const latest = addresses.refreshed(`${file}?100`);
+    expect(addresses.shown(earlier)).toBe(latest);
   });
 
   it("keeps each file's addresses apart", () => {
     const addresses = new RefreshedAddresses();
     addresses.shown(`${file}?100`);
     addresses.shown(`${other}?100`);
-    addresses.refreshed(`${file}?100=&inkline=one`);
+    const latest = addresses.refreshed(`${file}?100`);
     expect(addresses.shown(`${other}?100`)).toBeUndefined();
-    expect(addresses.shown(`${file}?100`)).toBe(`${file}?100=&inkline=one`);
+    expect(addresses.shown(`${file}?100`)).toBe(latest);
   });
 
   it("starts afresh for a file forgotten, as one deleted and made again", () => {
     const addresses = new RefreshedAddresses();
     addresses.shown(`${file}?100`);
-    addresses.refreshed(`${file}?100=&inkline=one`);
+    const old = addresses.refreshed(`${file}?100`);
     addresses.forget(`${file}?100`);
     // The new file, here with the old one's modification time.
     expect(addresses.shown(`${file}?100`)).toBeUndefined();
-    expect(addresses.shown(`${file}?100=&inkline=one`)).toBeUndefined();
+    expect(addresses.shown(old)).toBeUndefined();
     expect(addresses.shown(`${file}?100`)).toBeUndefined();
+  });
+
+  it("gives a new file at a forgotten path no address of the old one, once it is refreshed itself", () => {
+    // The review's sequence on #370: file A at ?500, refreshed and
+    // deleted; file B made at its path, at ?100, and refreshed; then
+    // Obsidian gives B ?500, which A had had but B never has.
+    const addresses = new RefreshedAddresses();
+    addresses.shown(`${file}?500`);
+    const old = addresses.refreshed(`${file}?500`);
+    addresses.forget(`${file}?500`);
+    addresses.shown(`${file}?100`);
+    const latest = addresses.refreshed(`${file}?200`);
+    expect(addresses.shown(`${file}?500`)).toBeUndefined();
+    // As is one that neither had, and B's own address before its refresh is
+    // superseded by it.
+    expect(addresses.shown(`${file}?501`)).toBeUndefined();
+    expect(addresses.shown(`${file}?100`)).toBe(latest);
+    // An image of A that comes back now was seen after B's refresh.
+    expect(addresses.shown(old)).toBeUndefined();
+  });
+
+  it("gives a file renamed onto a used path no address of the file before it", () => {
+    // A at `file`, seen at ?500 and refreshed, is renamed away to `moved`;
+    // B, seen at `other` and refreshed, is renamed onto `file`. A rename
+    // forgets both its paths.
+    const moved = "app://a1b2/v/Glyphs/c.ink.png";
+    const addresses = new RefreshedAddresses();
+    addresses.shown(`${file}?500`);
+    addresses.refreshed(`${file}?500`);
+    addresses.forget(`${file}?500`);
+    addresses.forget(`${moved}?500`);
+    addresses.shown(`${other}?100`);
+    addresses.refreshed(`${other}?100`);
+    addresses.forget(`${other}?100`);
+    addresses.forget(`${file}?100`);
+    addresses.shown(`${file}?100`);
+    const latest = addresses.refreshed(`${file}?200`);
+    expect(addresses.shown(`${file}?500`)).toBeUndefined();
+    expect(addresses.shown(`${file}?100`)).toBe(latest);
+  });
+
+  it("keeps no history of a file forgotten, however often it was", () => {
+    const addresses = new RefreshedAddresses();
+    for (let cycle = 0; cycle < 100_000; cycle++) {
+      addresses.shown(`${file}?${String(cycle)}`);
+      addresses.refreshed(`${file}?${String(cycle)}`);
+      addresses.forget(`${file}?${String(cycle)}`);
+    }
+    expect(addresses.size).toBe(0);
+    addresses.shown(`${file}?1`);
+    expect(addresses.size).toBe(2);
+  });
+
+  it("keeps a bounded history of a file refreshed often while it is shown", () => {
+    const addresses = new RefreshedAddresses();
+    let latest = "";
+    for (let version = 0; version < 10_000; version++) {
+      // Obsidian's address for each version, and the refresh's, each on an
+      // image, as an open note shows the symbol all along.
+      addresses.shown(`${file}?${String(version)}`);
+      latest = addresses.refreshed(`${file}?${String(version)}`);
+      expect(addresses.shown(latest)).toBeUndefined();
+    }
+    expect(addresses.size).toBeLessThanOrEqual(1 + historyLimit);
+    // The latest versions' addresses are still known to be older.
+    expect(addresses.shown(`${file}?9999`)).toBe(latest);
+    expect(addresses.shown(`${file}?9970`)).toBe(latest);
+    // One older than the history keeps its address, as before any was kept.
+    expect(addresses.shown(`${file}?0`)).toBeUndefined();
   });
 });

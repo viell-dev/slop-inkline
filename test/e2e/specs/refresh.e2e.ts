@@ -857,7 +857,7 @@ describe("Saved symbol refresh", function () {
     await saveScreenshot("refresh-came-back");
   });
 
-  it("gives a symbol deleted and made again the new file's address", async function () {
+  it("gives a symbol deleted and made again the new file's address and picture", async function () {
     const again = "Glyphs/again.ink.png";
     await createSymbol(again, [0]);
     await browser.executeObsidian(async ({ app }, path) => {
@@ -865,11 +865,14 @@ describe("Saved symbol refresh", function () {
     }, again);
     await openReading("Again.md");
     await browser.waitUntil(async () => (await shownOf(again)).length === 1);
+    const original = (await shownOf(again))[0]?.width;
     // Rewritten with the same modification time, which Inkline refreshes:
-    // the image takes the refresh's address.
+    // the image takes the refresh's address, and a wider picture. The first
+    // version's bytes are kept for the file made again below.
     const first = await browser.executeObsidian(async ({ app }, path) => {
       const file = app.vault.getFileByPath(path);
       if (file === null) throw new Error("no symbol");
+      Reflect.set(window, "inklineTestFirst", await app.vault.readBinary(file));
       const mtime = file.stat.mtime;
       const { bytes } = await window.inklineTest.canvas.saveInk(
         {
@@ -881,29 +884,33 @@ describe("Saved symbol refresh", function () {
       await app.vault.modifyBinary(file, bytes.slice().buffer, { mtime });
       return { mtime, src: app.vault.getResourcePath(file) };
     }, again);
-    await browser.waitUntil(async () =>
-      (await shownOf(again)).every((image) => image.src.includes("inkline=")),
-    );
+    let rewritten: number | undefined;
+    await browser.waitUntil(async () => {
+      const shown = await shownOf(again);
+      rewritten = shown[0]?.width;
+      return (
+        shown.length === 1 &&
+        shown[0]?.src.includes("inkline=") === true &&
+        rewritten !== original
+      );
+    });
     // Then deleted, and made again at its path with that same modification
     // time, so that Obsidian gives the new file the address the old one had
-    // before its refresh.
+    // before its refresh. The new file holds the first version's drawing:
+    // whether the page loads that address again or keeps the picture it had
+    // for it, the new file's picture is the narrower one, and the deleted
+    // file's last picture, which an old refresh's address would bring back,
+    // the wider.
     const remade = await browser.executeObsidian(
       async ({ app }, path, mtime) => {
         const file = app.vault.getFileByPath(path);
-        if (file === null) throw new Error("no symbol");
+        const bytes: unknown = Reflect.get(window, "inklineTestFirst");
+        Reflect.deleteProperty(window, "inklineTestFirst");
+        if (file === null || !(bytes instanceof ArrayBuffer)) {
+          throw new Error("no symbol, or no first version of it");
+        }
         await app.fileManager.trashFile(file);
-        const { bytes } = await window.inklineTest.canvas.saveInk(
-          {
-            strokes: [
-              { tool: "pen", size: 256, points: [0, 1000, 2000, 1000] },
-            ],
-          },
-          undefined,
-          [],
-        );
-        const made = await app.vault.createBinary(path, bytes.slice().buffer, {
-          mtime,
-        });
+        const made = await app.vault.createBinary(path, bytes, { mtime });
         return app.vault.getResourcePath(made);
       },
       again,
@@ -913,16 +920,21 @@ describe("Saved symbol refresh", function () {
     // Shown again from the new file, in a Reading view made for it.
     await openReading("Refresh.md");
     await openReading("Again.md");
-    let shown: { src: string }[] = [];
+    let shown: { src: string; width: number }[] = [];
     await waitOrSay(
       async () => {
         shown = await shownOf(again);
-        return shown.length === 1 && shown[0]?.src === remade;
+        return (
+          shown.length === 1 &&
+          shown[0]?.src === remade &&
+          shown[0].width === original
+        );
       },
       // Inkline tags an image and gives it a refresh's address at once, so
       // a tagged image with the new file's address has kept it.
       () =>
-        `the new file's symbol shows ${JSON.stringify(shown)}, not ${remade}`,
+        `the new file's symbol shows ${JSON.stringify(shown)}, not ${remade} at ${String(original)} pixels wide, where the deleted file's last picture was ${String(rewritten)}`,
     );
+    expect(rewritten).not.toBe(original);
   });
 });
