@@ -232,15 +232,39 @@ describe("sweptStroke", () => {
   });
 
   it("never goes out and back along itself, which a renderer can leave a hairline of", () => {
-    for (const [name, points] of Object.entries(ways)) {
-      const corners = cornersOf(sweptStroke("eraser", 192, points));
+    const strokes: [string, Stroke][] = [
+      ...Object.entries(ways).map(([name, points]): [string, Stroke] => [
+        name,
+        sweptStroke("eraser", 192, points),
+      ]),
+      // The review's case on #381: down to a row at its end, cut along it,
+      // which clipping had made go back along part of the cut edge.
+      [
+        "a cut end",
+        sweptStroke("eraser", 384, [0, 0, 0, 960], { end: "down" }),
+      ],
+      [
+        "both ends cut",
+        sweptStroke("eraser", 384, [0, 0, 0, 960], {
+          start: "up",
+          end: "down",
+        }),
+      ],
+    ];
+    for (const [name, stroke] of strokes) {
+      expect(stroke.kind, name).toBe("fill");
+      const corners = cornersOf(stroke);
       corners.forEach((corner, index) => {
         const next = corners[(index + 1) % corners.length] ?? corner;
         const after = corners[(index + 2) % corners.length] ?? corner;
-        const same = (a: Point, b: Point): boolean =>
-          a[0] === b[0] && a[1] === b[1];
-        // No edge followed straight back along itself.
-        expect(same(after, corner) && !same(next, corner), name).toBe(false);
+        const ax = next[0] - corner[0];
+        const ay = next[1] - corner[1];
+        const bx = after[0] - next[0];
+        const by = after[1] - next[1];
+        // No edge followed by one straight back along its line.
+        expect(ax * by - ay * bx === 0 && ax * bx + ay * by < 0, name).toBe(
+          false,
+        );
       });
     }
   });

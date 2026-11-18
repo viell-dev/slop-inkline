@@ -1399,6 +1399,56 @@ describe("DrawingSession's cuts", () => {
     }
   });
 
+  it("falls back to exactly the smooth stroke 1.0.1 saved, when a cut area is more than one outline", () => {
+    // The review's drag on #381: M, the grid and Flat ends on, pressed with
+    // Shift on the grid, then freehand back across the row it started on.
+    const drag = (tool: "pen" | "eraser") => {
+      const session = new DrawingSession(emptyDocument);
+      session.tool = tool;
+      session.sizeIndex = 1;
+      session.snap = true;
+      session.flatEnds = true;
+      session.begin({ x: 80, y: 80 }, true);
+      session.extend([{ x: 80, y: 160 }]);
+      session.extend([{ x: 160, y: 160 }]);
+      const before = session.activeStrokes;
+      session.extend([{ x: 160, y: 60 }]);
+      const shown = session.activeStrokes;
+      session.end({ x: 160, y: 60 });
+      return { before, shown, saved: session.document.strokes };
+    };
+    const eraser = drag("eraser");
+    // A sweep until the way comes back past its start's row...
+    expect(eraser.before[0]?.kind).toBe("fill");
+    // ...and then the stroke a pen draws, and 1.0.1's eraser drew, through
+    // the same points, with the gaps between them filled: shown and saved.
+    const pen = drag("pen");
+    const asEraser = pen.saved.map((stroke) => ({ ...stroke, tool: "eraser" }));
+    expect(pen.saved[0]?.cut).toEqual({ start: "up" });
+    expect(pen.saved[0]?.points.length).toBeGreaterThan(100);
+    expect(eraser.saved).toEqual(asEraser);
+    expect(eraser.shown).toEqual(
+      pen.shown.map((stroke) => ({ ...stroke, tool: "eraser" })),
+    );
+  });
+
+  it("guesses the grid from an eraser's area by its end, once", () => {
+    // The review's case on #381: a pen dot Shift put on the grid, and an
+    // eraser drawn freehand that happens to end on a row, 5 pixels into a
+    // column. The dot was first, and the end counts no more than it does.
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.begin({ x: 16, y: 16 }, true);
+    session.end({ x: 16, y: 16 }, true);
+    session.tool = "eraser";
+    session.begin({ x: 20, y: 20 });
+    session.extend([{ x: 21, y: 32 }]);
+    session.end({ x: 21, y: 32 });
+    const [, eraser] = session.document.strokes;
+    expect(eraser?.kind).toBe("fill");
+    expect(gridOriginOf(session.document)).toBe(0);
+  });
+
   it("moves an eraser's area with the drawing", () => {
     const session = new DrawingSession(emptyDocument);
     session.tool = "eraser";

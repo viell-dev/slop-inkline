@@ -46,8 +46,9 @@ export const brushSizes: readonly BrushSize[] = [
  * fast stroke reports few points, and perfect-freehand's streamline, which
  * pulls each point towards the one before, would then cut its corners, so
  * longer gaps are filled with points along the straight line between. An
- * eraser's sweep, which follows straight lines between its points exactly,
- * needs none.
+ * eraser's sweep follows only the points the pointer reported, as it draws the
+ * straight lines between them exactly, but keeps the others for a stroke that
+ * falls back to a smooth one.
  */
 export const maxGap = 2;
 
@@ -231,7 +232,8 @@ function filledInside(stroke: Stroke, next: Stroke | undefined): boolean {
  * `fallback` for a document with no strokes. Each stroke's start and end,
  * erasers' too, mark the place within a spacing where they lie, a one-point
  * stroke's once, and a filled shape's on its sides alone, so that it counts
- * as the same shape unfilled does. The place marked most often wins; of
+ * as the same shape unfilled does. An eraser's area that starts and ends at
+ * one point, as an eraser drawn freehand does at its way's end, marks it once. The place marked most often wins; of
  * places marked equally often, the one that reached that count first in
  * stroke order does, so with no place marked twice, it is where the first
  * stroke starts.
@@ -259,7 +261,14 @@ export function gridOriginOf(
     if (filledInside(stroke, strokes[index + 1])) continue;
     const { points } = stroke;
     const last = points.length - 2;
-    for (const at of last > 0 ? [0, last] : [0]) {
+    // An eraser's sweep starts and ends at its way's end: one place.
+    const once =
+      last <= 0 ||
+      (stroke.kind === "fill" &&
+        stroke.tool === "eraser" &&
+        points[0] === points[last] &&
+        points[1] === points[last + 1]);
+    for (const at of once ? [0] : [0, last]) {
       const x = points[at];
       const y = points[at + 1];
       if (x !== undefined && y !== undefined) ends.push({ x, y });
@@ -311,6 +320,11 @@ interface ActiveStroke {
    * away exactly what its brush sweeps, and is saved as that area.
    */
   readonly sweep: boolean;
+  /**
+   * Its points but those that fill a gap between two the pointer reported,
+   * or that Shift put: the way an eraser's sweep follows.
+   */
+  readonly reported: number[];
 }
 
 /** The point `along` the way from `from` to `to`. */
@@ -403,7 +417,7 @@ export class DrawingSession {
    * Where a straight segment of the stroke being drawn starts, and how many
    * values of its points lead up to there, the start included.
    */
-  #anchor: { point: InputPoint; length: number } | undefined;
+  #anchor: { point: InputPoint; length: number; reported: number } | undefined;
   /** Where an ellipse being drawn started: one corner of its box. */
   #corner: InputPoint | undefined;
   /** Whether the ellipse being drawn is a circle, as Shift makes it. */
@@ -621,14 +635,22 @@ export class DrawingSession {
     // to its next corner; or closed, on its first corner; or ended, on its
     // last.
     if (this.#closes(active, next)) {
-      const closed = { ...active, points: [...active.points] };
+      const closed = {
+        ...active,
+        points: [...active.points],
+        reported: [...active.reported],
+      };
       closed.points.push(active.points[0] ?? 0, active.points[1] ?? 0);
       return this.#strokes(closed, uncut, this.fill);
     }
     if (this.#near(active, next, active.points.length - 2)) {
       return [this.#stroke(active, uncut)];
     }
-    const shown = { ...active, points: [...active.points] };
+    const shown = {
+      ...active,
+      points: [...active.points],
+      reported: [...active.reported],
+    };
     this.#record(shown, this.#placed(next));
     return [this.#stroke(shown, uncut)];
   }
@@ -694,7 +716,9 @@ export class DrawingSession {
       ...(paths.start === undefined ? {} : { start: paths.start }),
       ...(paths.end === undefined ? {} : { end: paths.end }),
     });
-    if (active.sweep) return sweptStroke(tool, size, points, cut);
+    if (active.sweep) {
+      return sweptStroke(tool, size, active.reported, cut, points);
+    }
     return cut === undefined ? stroke : { ...stroke, cut };
   }
 
@@ -725,6 +749,7 @@ export class DrawingSession {
       onGrid: onGrid && flat,
       polygon,
       sweep: this.tool === "eraser" && this.shape === "free",
+      reported: [],
     };
     this.#last = undefined;
     this.#anchor = undefined;
@@ -765,6 +790,7 @@ export class DrawingSession {
       if (latest === undefined) return;
       this.#circle = shift && !this.snap;
       active.points.length = 0;
+      active.reported.length = 0;
       for (const point of ellipsePoints(
         corner,
         this.#placed(latest),
@@ -790,39 +816,42 @@ export class DrawingSession {
       const anchor = (this.#anchor ??= {
         point: this.#last ?? point,
         length: active.points.length,
+        reported: active.reported.length,
       });
       // The segment is drawn again from its start for each new point.
       active.points.length = anchor.length;
+      active.reported.length = anchor.reported;
       this.#last = anchor.point;
       this.#append(active, this.#snapped(point));
     }
   }
 
-  /**
-   * Records a point, and points along the gap since the last one, but for an
-   * eraser's sweep, which a straight line between them draws exactly.
-   */
+  /** Records a point, and points along the gap since the last one. */
   #append(active: ActiveStroke, point: InputPoint): void {
     const previous = this.#last;
-    if (previous !== undefined && !active.sweep) {
+    if (previous !== undefined) {
       const gap = Math.hypot(point.x - previous.x, point.y - previous.y);
       const steps = Math.ceil(gap / maxGap);
       for (let step = 1; step < steps; step++) {
-        this.#record(active, between(previous, point, step / steps));
+        this.#record(active, between(previous, point, step / steps), false);
       }
     }
     this.#record(active, point);
     this.#last = point;
   }
 
-  #record(active: ActiveStroke, point: InputPoint): void {
+  /**
+   * Records a point, but not where the last is, among `active`'s points, and
+   * unless it only fills a gap, as `reported` says, among those it reported.
+   */
+  #record(active: ActiveStroke, point: InputPoint, reported = true): void {
     const x = toUnits(point.x);
     const y = toUnits(point.y);
-    const { points } = active;
-    if (points.length >= 2 && points.at(-2) === x && points.at(-1) === y) {
-      return;
+    const lists = reported ? [active.points, active.reported] : [active.points];
+    for (const list of lists) {
+      if (list.length >= 2 && list.at(-2) === x && list.at(-1) === y) continue;
+      list.push(x, y);
     }
-    points.push(x, y);
   }
   /**
    * Commits the stroke being drawn, or a filled shape's two, as one undoable
@@ -1085,8 +1114,10 @@ export class DrawingSession {
     const active = this.#active;
     if (active !== undefined) {
       const dx = toUnits(dxPixels);
-      for (let index = 0; index < active.points.length; index += 2) {
-        active.points[index] = (active.points[index] ?? 0) + dx;
+      for (const list of [active.points, active.reported]) {
+        for (let index = 0; index < list.length; index += 2) {
+          list[index] = (list[index] ?? 0) + dx;
+        }
       }
     }
     for (let index = 0; index < this.#pointer.length; index += 2) {
