@@ -18,6 +18,7 @@ import {
   holdNextWrite,
   letReadGo,
   letWriteGo,
+  waitForHeldRead,
   waitForHeldWrite,
 } from "../support/symbol-text.ts";
 import { noteOnDisk } from "../support/vault-files.ts";
@@ -275,17 +276,52 @@ describe("The editor", function () {
     // enough that a reset that did not wait for it would come first.
     await delayVault("modifyBinary", 3000, "before");
     await holdNextWrite();
-    await browser.executeObsidian(({ app }) => {
-      const file = app.vault.getFileByPath("Editor.md");
-      if (file === null) throw new Error("no Editor.md");
-      const bytes = new TextEncoder().encode("Text from the test before\n");
-      void app.vault.modifyBinary(file, bytes.buffer).catch(() => undefined);
-    });
+    await startWrite("Editor.md", "Text from the test before\n");
     await waitForHeldWrite();
     await startOver();
     // Had the reset not waited for it, the write would land after it.
     await waitForDelayed("modifyBinary");
+    expect(await writeOutcome()).toEqual({ written: true });
     expect(await noteOnDisk("Editor.md")).toBe(original);
+  });
+
+  it("resets nothing while a symbol's write it let go is still under way, however often it is asked", async function () {
+    // A file the fixture does not have, which only a reset takes away.
+    await browser.executeObsidian(async ({ app }) => {
+      await app.vault.create("Extra.md", "Not in the fixture.\n");
+    });
+    // A write that, let go, goes on until the test ends it: what the clean-up
+    // waits for cannot end by itself, however fast the disk.
+    await browser.executeObsidian(({ app }) => {
+      app.vault.modifyBinary = () =>
+        new Promise<void>((resolve) => {
+          Reflect.set(window, "inklineEndWrite", resolve);
+        });
+    });
+    await holdNextWrite();
+    await startWrite("Editor.md", "Text from the test before\n");
+    await waitForHeldWrite();
+    const failure = async (cleaning: Promise<void>): Promise<string> =>
+      cleaning.then(
+        () => "",
+        (error: unknown) => (error instanceof Error ? error.message : "?"),
+      );
+    const named =
+      "undoStubs() let go what the next-write gate held, and it did not finish within 300 ms";
+    expect(await failure(startOver({ letGoBound: 300 }))).toContain(named);
+    expect(await extraOnDisk()).toBe(true);
+    // A second clean-up, with nothing left to let go, still waits for it.
+    expect(await failure(startOver({ letGoBound: 300 }))).toContain(named);
+    expect(await extraOnDisk()).toBe(true);
+    // Once it ends, the clean-up goes on, and the reset takes the file away.
+    await browser.execute(() => {
+      const end: unknown = Reflect.get(window, "inklineEndWrite");
+      Reflect.deleteProperty(window, "inklineEndWrite");
+      if (typeof end === "function") Reflect.apply(end, undefined, []);
+    });
+    await startOver({ letGoBound: 300 });
+    expect(await writeOutcome()).toEqual({ written: true });
+    expect(await extraOnDisk()).toBe(false);
   });
 
   it("refuses to hold a symbol's read or write while one is held", async function () {
@@ -312,4 +348,127 @@ describe("The editor", function () {
     await letWriteGo();
     await letReadGo();
   });
+
+  it("holds nothing with a symbol's gate let go before its read or write came", async function () {
+    await createSymbol("A.ink.png");
+    await createSymbol("B.ink.png");
+    /** Whether a gate's read or write is marked as having reached it. */
+    async function marked(): Promise<{ read: boolean; write: boolean }> {
+      return browser.execute(() => ({
+        read: Reflect.get(window, "inklineReadHeld") === true,
+        write: Reflect.get(window, "inklineWriteHeld") === true,
+      }));
+    }
+    /** The vault's methods that a gate replaced and left in place. */
+    async function replaced(): Promise<string[]> {
+      return browser.executeObsidian(({ app }) =>
+        ["readBinary", "modifyBinary"].filter((name) =>
+          Object.hasOwn(app.vault, name),
+        ),
+      );
+    }
+    // A's gate let go before any read came, and then B's set up.
+    await holdNextRead("A.ink.png");
+    await letReadGo();
+    expect(await replaced()).toEqual([]);
+    await holdNextRead("B.ink.png");
+    // A read of A goes straight on, and is not taken for B's.
+    const readOfA = await browser.executeObsidian(async ({ app }) => {
+      const found = app.vault.getFileByPath("A.ink.png");
+      if (found === null) throw new Error("no A.ink.png");
+      return (await app.vault.readBinary(found)).byteLength;
+    });
+    expect(readOfA).toBeGreaterThan(0);
+    expect(await marked()).toEqual({ read: false, write: false });
+    // B's read is held at B's gate.
+    await browser.executeObsidian(({ app }) => {
+      const found = app.vault.getFileByPath("B.ink.png");
+      if (found === null) throw new Error("no B.ink.png");
+      const outcome: { read?: number; failure?: string } = {};
+      Reflect.set(window, "inklineReadOfB", outcome);
+      app.vault.readBinary(found).then(
+        (bytes) => {
+          outcome.read = bytes.byteLength;
+        },
+        (error: unknown) => {
+          outcome.failure = error instanceof Error ? error.message : "?";
+        },
+      );
+    });
+    await waitForHeldRead();
+    const readOfB = async (): Promise<{ read?: number; failure?: string }> =>
+      browser.execute(
+        () =>
+          Reflect.get(window, "inklineReadOfB") as {
+            read?: number;
+            failure?: string;
+          },
+      );
+    expect(await readOfB()).toEqual({});
+    await letReadGo();
+    await browser.waitUntil(async () => (await readOfB()).read !== undefined, {
+      timeoutMsg: "B's read stayed held",
+    });
+    // A write's gate let go before any write came: the next write goes
+    // straight on, and nothing marks it as held.
+    await holdNextWrite();
+    await letWriteGo();
+    expect(await replaced()).toEqual([]);
+    await browser.executeObsidian(async ({ app }) => {
+      const found = app.vault.getFileByPath("A.ink.png");
+      if (found === null) throw new Error("no A.ink.png");
+      await app.vault.modifyBinary(found, await app.vault.readBinary(found));
+    });
+    expect(await marked()).toEqual({ read: false, write: false });
+    expect(await replaced()).toEqual([]);
+    await browser.execute(() => {
+      Reflect.deleteProperty(window, "inklineReadOfB");
+    });
+  });
 });
+
+/**
+ * Starts a write of `text` to `file` through the vault, without waiting for
+ * it, and keeps its outcome for {@link writeOutcome}.
+ */
+async function startWrite(file: string, text: string): Promise<void> {
+  await browser.executeObsidian(
+    ({ app }, path, body) => {
+      const found = app.vault.getFileByPath(path);
+      if (found === null) throw new Error(`no ${path}`);
+      const outcome: { written?: boolean; failure?: string } = {};
+      Reflect.set(window, "inklineWriteOutcome", outcome);
+      app.vault.modifyBinary(found, new TextEncoder().encode(body).buffer).then(
+        () => {
+          outcome.written = true;
+        },
+        (error: unknown) => {
+          outcome.failure = error instanceof Error ? error.message : "?";
+        },
+      );
+    },
+    file,
+    text,
+  );
+}
+
+/** How the write {@link startWrite} started ended, if it has. */
+async function writeOutcome(): Promise<{
+  written?: boolean;
+  failure?: string;
+}> {
+  return browser.execute(
+    () =>
+      Reflect.get(window, "inklineWriteOutcome") as {
+        written?: boolean;
+        failure?: string;
+      },
+  );
+}
+
+/** Whether the vault's folder holds Extra.md, which the fixture does not. */
+async function extraOnDisk(): Promise<boolean> {
+  return browser.executeObsidian(async ({ app }) =>
+    app.vault.adapter.exists("Extra.md"),
+  );
+}
