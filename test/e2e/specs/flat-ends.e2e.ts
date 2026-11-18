@@ -383,17 +383,16 @@ describe("Flat ends on the grid", function () {
 
   it("keeps a level stroke and a dot round, and stops an eraser on the row it ends on", async function () {
     await openOnGrid();
-    await drawHoldingShift([
-      [0.3, 0.5],
-      [0.5, 0.52],
-      [0.7, 0.5],
-    ]);
+    // The pen's line and the eraser's end are on one row of the grid, at
+    // grid points worked out from it.
+    const left = await gridPoint([0.3, 0.5]);
+    const right = await gridPoint([0.7, 0.5]);
+    await drawHoldingShift([fractions(left), [0.5, 0.52], fractions(right)]);
     // A dot, then the XL eraser, which keeps a size of its own, down into
     // the stroke, ending on its row.
     await shiftClick([0.5, 0.25]);
     await browser.keys("e");
     await browser.keys("4");
-    // Its ends are on the grid, where Shift puts them.
     const from = await gridPoint([0.6, 0.3]);
     const to = await gridPoint([0.6, 0.5]);
     await drawHoldingShift([fractions(from), fractions(to)]);
