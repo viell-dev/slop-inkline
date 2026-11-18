@@ -16,7 +16,7 @@ says how to run them.
 | `e2e in Docker`           | The same suite in the image `npm run test:e2e:docker` builds                                                                                                                                                                                                                                                                                                         | Weekly and on request                                                                         |
 | Weekly CI                 | Every check above, so that a new Obsidian release is tested within a week                                                                                                                                                                                                                                                                                            | Mondays                                                                                       |
 | Settings                  | The live labels and rulesets against their files, and every issue's labels                                                                                                                                                                                                                                                                                           | Weekly and on request                                                                         |
-| Pages                     | This site, deployed and read back page by page                                                                                                                                                                                                                                                                                                                       | After changes to `main` describing the newest published release; on request after publication |
+| Pages                     | This site, deployed and read back page by page                                                                                                                                                                                                                                                                                                                       | After changes to `main` describing the newest public release, or on request after publication |
 | Release                   | The commit's required CI, the release checks, and the release's own files installed in Obsidian, as a dry run on request and on pull requests that change the release steps                                                                                                                                                                                          | On request, and on those pull requests                                                        |
 
 The end-to-end tests assert on state, positions, and pixels read back from
@@ -595,7 +595,9 @@ must keep released files readable and looking the same, as
 
 - Each control is labelled, its tooltip shows its key, toggles say whether they
   are on, and keys give way to a text field
-  ([drawing.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/drawing.e2e.ts)).
+  ([buttons.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/buttons.e2e.ts)
+  and
+  [drawing.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/drawing.e2e.ts)).
 - This site lists every command and every button's key as the code has them
   ([docs.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/docs.test.ts)).
 
@@ -683,8 +685,9 @@ drawing while **Copy from** or **Reload** reads.
 
 - A public release's package and manifest versions agree and it has a matching
   compatibility entry in `versions.json`, a pre-release's version reaches
-  neither file, though a build's manifest names it, and each release has its
-  changelog section
+  neither file, though a build's manifest names it, the manifest names the
+  newest public release, `versions.json` lists exactly the public releases the
+  changelog records, and each release has its changelog section
   ([release.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/release.test.ts)).
 - A new version is higher than every published one in SemVer's order and in
   Obsidian's

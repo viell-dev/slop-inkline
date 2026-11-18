@@ -30,6 +30,7 @@ import {
 import {
   area,
   changeOnDisk,
+  fieldError,
   fieldsOf,
   fill,
   fixtures,
@@ -99,7 +100,9 @@ describe("A symbol's readings and translations", function () {
       expect(await shownValues("past tense.ink.png")).toBe("");
       // A row with none is as tall as one was before this feature.
       expect(await rowHeight("past tense.ink.png")).toBeLessThan(40);
-      expect(await row("Said.ink.png").$("bdi").getText()).toBe("TA");
+      expect(
+        await row("Said.ink.png").$("bdi", { strict: false }).getText(),
+      ).toBe("TA");
     });
 
     for (const theme of ["moonstone", "obsidian"]) {
@@ -470,7 +473,7 @@ describe("A symbol's readings and translations", function () {
       await paste("reading", "x".repeat(4097));
       await formSave().click();
       await browser.waitUntil(async () =>
-        (await browser.$(".inkline-text-error").getText()).includes("4096"),
+        (await fieldError("reading").getText()).includes("4096"),
       );
       expect(await bytesOf("Long.ink.png")).toBe(before);
       await paste("reading", "x".repeat(4096));

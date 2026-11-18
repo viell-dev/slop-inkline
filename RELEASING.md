@@ -284,14 +284,14 @@ loose files, whatever GitHub's prerelease flag says. So `manifest.json` on
 commit builds. Every pre-release takes the same path, so the steps a listing
 depends on are in use before it:
 
-| What                 | Preparing a pre-release            | Preparing a public release        |
-| -------------------- | ---------------------------------- | --------------------------------- |
-| `package.json`       | The new version                    | The new version                   |
-| `manifest.json`      | Unchanged: the last public release | The new version                   |
-| `versions.json`      | Unchanged                          | Maps it to `minAppVersion`        |
-| `CHANGELOG.md`       | `## <version> - <date>`            | `## <version> - <date>`           |
-| The guide's footer   | That version, once published       | That version, once published      |
-| `dist/manifest.json` | That version, from `package.json`  | The same bytes as `manifest.json` |
+| What                                  | Preparing a pre-release            | Preparing a public release        |
+| ------------------------------------- | ---------------------------------- | --------------------------------- |
+| `package.json`                        | The new version                    | The new version                   |
+| `manifest.json`                       | Unchanged: the last public release | The new version                   |
+| `versions.json`                       | Unchanged                          | Maps it to `minAppVersion`        |
+| `CHANGELOG.md`                        | `## <version> - <date>`            | `## <version> - <date>`           |
+| The guide's footer and `version.json` | The last public release            | The new version, once published   |
+| `dist/manifest.json`                  | That version, from `package.json`  | The same bytes as `manifest.json` |
 
 `npm run build` writes `dist/manifest.json` from the repository's manifest with
 the version in `package.json`, and the release's `manifest.json` and ZIP are
@@ -444,16 +444,22 @@ On a branch from `main`:
    after it lists Inkline, as the release is published before the owner submits
    it there: lead with installing from Obsidian's community plugins, with the
    ZIP from the latest release as the way in while Inkline does not show there,
-   so that the listing needs no change to them. Remove **Unreleased** labels
-   only from behavior included in this release; retain labels for later work.
+   so that the listing needs no change to them. For a pre-release, keep the
+   public release's installation requirements and all **Unreleased** labels, and
+   label **Unreleased** a raised minimum Obsidian version and the versions it is
+   tested on, where the guide names them. For a public release, remove the
+   labels only from behavior it ships.
 5. Run `node scripts/release.ts check <version>` and
    `node scripts/publish.ts order <version>`, which the workflow runs too. The
    first checks that `package.json` names the version, that the changelog
    section exists, and that the metadata files agree: a public version is in
    `manifest.json` and `versions.json`, and a pre-release is in neither, with
-   `manifest.json` no higher than it. The unit tests hold every commit to the
-   same rules, so a pre-release's version cannot reach `main`'s manifest. The
-   second needs GitHub, and `GH_TOKEN` if the CLI is not signed in.
+   `manifest.json` no higher than it. Either way `manifest.json` names the
+   newest public release that `versions.json` lists. The unit tests hold every
+   commit to the same rules, so a pre-release's version cannot reach `main`'s
+   manifest, and also check that `versions.json` lists exactly the public
+   releases from `1.0.0` that have a section in `CHANGELOG.md`. The second needs
+   GitHub, and `GH_TOKEN` if the CLI is not signed in.
 6. Have another agent review the release pull request, as
    [AGENTS.md](AGENTS.md#review) requires: everything since the previous
    release, not only the version change. That covers the changes, the open
@@ -592,11 +598,12 @@ merges, and nothing in it would notice.
 
 Revert the whole release pull request, not only its manifest. `package.json`
 names the release a commit builds, and the unit tests refuse a public version
-there that `manifest.json` and `versions.json` do not carry, so a partial revert
-could not merge. Reverting the merge brings back the files that passed CI before
-it: `package.json` and the lockfile with the version they had, `manifest.json`,
-`versions.json`, the changelog, and the guide. On a new branch, where
-`<merge-commit>` is the release pull request's merge:
+there that `manifest.json` and `versions.json` do not carry, and a public
+release's changelog section without its entry in `versions.json`, so a partial
+revert could not merge. Reverting the merge brings back the files that passed CI
+before it: `package.json` and the lockfile with the version they had,
+`manifest.json`, `versions.json`, the changelog, and the guide. On a new branch,
+where `<merge-commit>` is the release pull request's merge:
 
 ```sh
 git switch --create revert-<version> origin/main
@@ -695,19 +702,20 @@ resulting screenshots as well as the assertions.
 
 ## Documentation
 
-The guide and its corrections live on protected `main`. Once a release is
+The guide and its corrections live on protected `main`. Once a public release is
 published and verified, deploy the same main commit with:
 
 ```sh
 gh workflow run pages.yml --ref main
 ```
 
-A documentation correction is an ordinary PR to main and deploys after merge.
-The workflow builds its own commit and reads every deployed page back. It
-refuses any other ref and waits while main's prepared version has not been
-published, so users keep the existing installable guide. Unreleased behavior
-must be identified explicitly. No documentation branch or tag move is needed;
-[docs/versions.md](docs/versions.md) describes the policy.
+The workflow builds its own main commit and reads every deployed page back. It
+waits when that commit's manifest names a public release that is still being
+prepared. A pre-release keeps the last public version in the manifest, so its
+preparation and any documentation corrections can deploy on merge. A manual run
+after publishing a pre-release is optional. Keep behavior absent from the public
+release labelled **Unreleased**, as [docs/versions.md](docs/versions.md)
+describes.
 
 ## Archive copies
 

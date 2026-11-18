@@ -1,11 +1,15 @@
 import { browser, expect } from "@wdio/globals";
 import { buttonIcons, type ButtonLabels } from "../../../src/editor/buttons.ts";
+import { loadModules } from "../support/browser.ts";
+import { insert } from "../support/editing.ts";
 import {
   draw,
   openAtMarker,
   startOver,
+  surface,
   waitForEditor,
 } from "../support/editor.ts";
+import { warmUpPointer } from "../support/hover.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 
 /** One of the editor's buttons, as it is shown and named. */
@@ -243,6 +247,94 @@ async function setAccent(colour: string): Promise<void> {
     appearance.updateAccentColor();
   }, colour);
 }
+
+describe("The editor", function () {
+  before(async function () {
+    await loadModules();
+  });
+
+  beforeEach(async function () {
+    await startOver();
+    await warmUpPointer();
+  });
+
+  it("names each button with its text and shortcut, shows that on hover, and marks the current tool", async function () {
+    await insert();
+    const state = await browser.execute(() => {
+      const button = (id: string): HTMLElement | null =>
+        document.querySelector(`[data-inkline-button="${id}"]`);
+      return {
+        pen: button("pen")?.getAttribute("aria-pressed"),
+        eraser: button("eraser")?.getAttribute("aria-pressed"),
+        undo: button("undo")?.hasAttribute("disabled"),
+        focused: document.activeElement?.classList.contains("inkline-surface"),
+      };
+    });
+    expect(state).toEqual({
+      pen: "true",
+      eraser: "false",
+      undo: true,
+      focused: true,
+    });
+    const buttons = await browser.execute(() =>
+      [...document.querySelectorAll("[data-inkline-button]")].map((button) => ({
+        id: button.getAttribute("data-inkline-button") ?? "",
+        text: button.textContent,
+        name: button.getAttribute("aria-label") ?? "",
+      })),
+    );
+    expect(buttons.length).toBeGreaterThan(10);
+    for (const { text, name } of buttons) {
+      expect(name.toLowerCase()).toContain(text.toLowerCase());
+    }
+    // A button's name is its tooltip, which Obsidian shows from it: with a
+    // description, a label of its own, or neither, and the shortcut after.
+    const names = Object.fromEntries(buttons.map(({ id, name }) => [id, name]));
+    expect(names).toMatchObject({
+      copy: "Copy from: start from a copy of another symbol (V)",
+      "size-0": "Brush size S (1)",
+      pen: "Pen (P)",
+      next: "Next: save and draw the next one (Mod+Shift+Enter)",
+      grid: "Grid: show a grid of dots as a guide; hold Shift while drawing to snap to it (Shift+G)",
+      fit: "Fit: centre the drawing in the view, and show all of it if it is wider; the drawing itself stays as it is (F)",
+    });
+    const tooltip = async (id: string, text: string): Promise<void> => {
+      const button = await browser
+        .$(`[data-inkline-button="${id}"]`)
+        .getElement();
+      let step = 0;
+      await browser.waitUntil(
+        async () => {
+          // Obsidian shows a mouse no tooltip until it has seen it move twice
+          // (#270), so each look moves it again, within the button.
+          step++;
+          await browser
+            .action("pointer", { parameters: { pointerType: "mouse" } })
+            .move({ origin: button, x: step % 2 === 0 ? -2 : 2, y: 0 })
+            .perform();
+          return (
+            (await browser.execute(
+              () => document.querySelector(".tooltip")?.textContent ?? "",
+            )) === text
+          );
+        },
+        { timeoutMsg: `no tooltip "${text}"` },
+      );
+      await surface().moveTo();
+    };
+    await tooltip("copy", "Copy from: start from a copy of another symbol (V)");
+    await tooltip("size-0", "Brush size S (1)");
+    // Both save, so both look it.
+    for (const id of ["save", "next"]) {
+      expect(
+        await browser.$(`[data-inkline-button="${id}"]`).getAttribute("class"),
+      ).toContain("mod-cta");
+    }
+    await browser.keys(["e"]);
+    const eraser = browser.$('[data-inkline-button="eraser"]');
+    expect(await eraser.getAttribute("aria-pressed")).toBe("true");
+  });
+});
 
 describe("Editor buttons", function () {
   /** The theme classes the body had, to restore after each test. */

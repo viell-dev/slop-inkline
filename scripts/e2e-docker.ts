@@ -9,7 +9,10 @@
 //
 // OBSIDIAN_VERSIONS picks the Obsidian versions, as in test/e2e/wdio.conf.mts.
 // Downloaded versions stay in the named volume `inkline-obsidian-cache`, or
-// INKLINE_OBSIDIAN_CACHE_VOLUME; screenshots and logs go to test-results/e2e.
+// INKLINE_OBSIDIAN_CACHE_VOLUME. Screenshots and logs go to test-results/e2e,
+// or the directory E2E_OUTPUT_DIR names, as for a run outside Docker: it is
+// mounted as the container's /out, where the harness claims it or refuses it
+// as it would outside.
 
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -22,14 +25,15 @@ import {
   rmSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
+import { outputDirectory } from "../test/e2e/support/harness.ts";
 
 const image = "inkline-e2e";
 // This run's own tag, which no other run moves.
 const runTag = `${image}:run-${randomBytes(6).toString("hex")}`;
 const cacheVolume =
   process.env.INKLINE_OBSIDIAN_CACHE_VOLUME ?? "inkline-obsidian-cache";
-const output = resolve("test-results/e2e");
+const output = outputDirectory(process.env.E2E_OUTPUT_DIR, process.cwd());
 
 mkdirSync(output, { recursive: true });
 // The container's user can differ from the host's on Linux and macOS.

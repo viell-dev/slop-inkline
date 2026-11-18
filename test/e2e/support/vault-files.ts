@@ -16,6 +16,14 @@ export async function waitForLink(note: string, file: string): Promise<void> {
       }
     }
   }, note);
+  await waitForLinkWithoutSaving(note, file);
+}
+
+/** Waits for Obsidian to index the link from the note without flushing it. */
+export async function waitForLinkWithoutSaving(
+  note: string,
+  file: string,
+): Promise<void> {
   await browser.waitUntil(async () =>
     browser.executeObsidian(
       ({ app }, from, to) =>
