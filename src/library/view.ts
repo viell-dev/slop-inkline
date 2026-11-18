@@ -61,6 +61,7 @@ import {
   type Told,
   type Work,
 } from "./quick-edit.ts";
+import { markNotice } from "../notices.ts";
 
 /** The library's view type, as Obsidian registers and restores it. */
 export const libraryViewType = "inkline-library";
@@ -580,7 +581,7 @@ export class SymbolLibraryView extends ItemView {
           this.#editing === undefined
             ? "Refreshing the library."
             : "Finish editing to refresh the library.";
-        new Notice(`${entry.name} changed or was deleted. ${next}`);
+        markNotice(new Notice(`${entry.name} changed or was deleted. ${next}`));
         this.#refresh();
         return;
       }
@@ -649,14 +650,14 @@ export class SymbolLibraryView extends ItemView {
         event.preventDefault();
         const file = this.app.vault.getFileByPath(note);
         if (file === null) {
-          new Notice("That note is no longer in the vault.");
+          markNotice(new Notice("That note is no longer in the vault."));
           return;
         }
         void this.app.workspace
           .getLeaf(Keymap.isModEvent(event))
           .openFile(file)
           .catch(() => {
-            new Notice("The note could not be opened.");
+            markNotice(new Notice("The note could not be opened."));
           });
       });
     }
@@ -909,7 +910,7 @@ export class SymbolLibraryView extends ItemView {
         const left = running.save.leave();
         if (left === undefined) return;
         const notice = leftNotice(left, running.names());
-        if (notice !== undefined) new Notice(notice);
+        if (notice !== undefined) markNotice(new Notice(notice));
       }
       finish();
     };
@@ -1067,7 +1068,7 @@ export class SymbolLibraryView extends ItemView {
       void quick.run().then((outcome) => {
         running = undefined;
         const report = reportSave(outcome, names(), open());
-        if (report.notice !== undefined) new Notice(report.notice);
+        if (report.notice !== undefined) markNotice(new Notice(report.notice));
         if (report.closes) {
           finish();
           return;
@@ -1103,7 +1104,7 @@ export class SymbolLibraryView extends ItemView {
   #insert(file: TFile): void {
     const name = symbolStem(file.name) ?? file.basename;
     if (this.app.vault.getFileByPath(file.path) !== file) {
-      new Notice(`${name} was deleted, so it was not inserted.`);
+      markNotice(new Notice(`${name} was deleted, so it was not inserted.`));
       return;
     }
     const view = this.app.workspace.getMostRecentLeaf()?.view;
@@ -1112,7 +1113,9 @@ export class SymbolLibraryView extends ItemView {
       view.file === null ||
       view.getMode() !== "source"
     ) {
-      new Notice("Open a note in editing view to insert a symbol there.");
+      markNotice(
+        new Notice("Open a note in editing view to insert a symbol there."),
+      );
       return;
     }
     const { editor } = view;

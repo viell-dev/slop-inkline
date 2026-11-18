@@ -21,6 +21,13 @@ even one a public release; earlier pre-releases carry a suffix such as
   tell the age of 30 days after they were kept, as it does its own. Every
   release from 0.9.2 on keeps drafts the same way, so none has lost one like
   this yet ([#300](https://github.com/viell-dev/slop-inkline/issues/300)).
+- In a right-to-left interface, as Obsidian's in Hebrew, Inkline's notices keep
+  the full stop at the end of their English, where they used to put it at the
+  start, as in ".There are no symbols to insert yet". Other plugins' notices,
+  and Obsidian's, are laid out as before. Tooltips needed no change: measured on
+  the screen, Inkline's keep their closing brackets in place, as in "Pen (P)",
+  and the guide's known limits no longer say otherwise
+  ([#267](https://github.com/viell-dev/slop-inkline/issues/267)).
 - The editor's status line no longer keeps a message that has stopped applying,
   such as "Zoomed out" after **Fit**, or "Polygon dropped" once the threshold
   moves in **Make ink**
@@ -28,6 +35,12 @@ even one a public release; earlier pre-releases carry a suffix such as
   do replaces it, with what that did, or with nothing when there is nothing to
   say, which a screen reader does not announce. "Saving…" and "Draft not kept"
   stay until the save ends or a draft is kept again.
+- Ink shows under the pointer that draws it at the bottom of the drawing area
+  too, where it showed up to 2 CSS pixels above it, in the usual view and in
+  **Zoom** alike, as the area's border took its height from the drawing
+  ([#359](https://github.com/viell-dev/slop-inkline/issues/359)). Strokes were
+  always saved where the pointer was, and the grid, the guides, and the ink
+  lined up with one another; the drawing area is now 2 pixels taller.
 - A filled polygon or ellipse keeps the brush's width around it. Closing a
   filled polygon left only the area through its corners, half the brush's width
   smaller on every side than its sides had shown while it was placed, and a
@@ -43,6 +56,11 @@ even one a public release; earlier pre-releases carry a suffix such as
   Fit shows all of a drawing wider than the view. That is so out of **Zoom**; in
   Zoom, Fit centres the drawing and stays zoomed, as the guide and **Help** say
   ([#363](https://github.com/viell-dev/slop-inkline/issues/363)).
+- [Known limits](https://viell-dev.github.io/slop-inkline/limits#in-general) now
+  says that the edge the eraser leaves can shift behind a large brush moving
+  along a curve, and that a little ink can come back beside the way it went,
+  with what to do instead
+  ([#341](https://github.com/viell-dev/slop-inkline/issues/341)).
 
 ## 1.0.0 - 2026-11-16
 

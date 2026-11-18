@@ -30,6 +30,7 @@ import {
 } from "./search.ts";
 import { showValues } from "./text-fields.ts";
 import type { SymbolTextIndex } from "./text-index.ts";
+import { markNotice } from "../notices.ts";
 
 /** The most symbols a list shows at once. */
 const shownAtMost = 50;
@@ -170,7 +171,9 @@ export function renderSymbol(
  */
 function stillThere(app: App, file: TFile): boolean {
   if (app.vault.getFileByPath(file.path) === file) return true;
-  new Notice(`${nameOf(file)} was deleted, so it was not inserted.`);
+  markNotice(
+    new Notice(`${nameOf(file)} was deleted, so it was not inserted.`),
+  );
   return false;
 }
 
