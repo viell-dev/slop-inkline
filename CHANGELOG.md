@@ -44,12 +44,12 @@ even one a public release; earlier pre-releases carry a suffix such as
   ([#342](https://github.com/viell-dev/slop-inkline/issues/342)).
 - A symbol that changes, as through sync, while some of its images are out of
   the page now shows its new picture in them when Obsidian puts the same images
-  back, as it does with parts of Reading view as it lays a note out again, and
-  with a canvas card's own editor, which it moves into a frame of its own as it
-  opens. Those images kept the old picture until the note or the editor was
-  shown again. An image that Obsidian makes anew, rather than puts back, is not
-  covered: one made with an address from before the change can still show the
-  old picture until the note is shown again
+  back with the addresses they had, as it does with parts of Reading view as it
+  lays a note out again, and with a canvas card's own editor, which it moves
+  into a frame of its own as it opens. Those images kept the old picture until
+  the note or the editor was shown again. An image that Obsidian makes anew,
+  rather than puts back, is not covered: one made with an address from before
+  the change can still show the old picture until the note is shown again
   ([#281](https://github.com/viell-dev/slop-inkline/issues/281)).
 - Inkline follows a canvas card's own editor from the moment it appears, rather
   than once it takes the focus, tens of milliseconds later. A symbol that

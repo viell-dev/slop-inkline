@@ -293,21 +293,27 @@ describe("RefreshedAddresses", () => {
   });
 
   it("keeps one record for each file, however often it is refreshed or forgotten", () => {
+    // The bound is in the structure: one record for each file, dropped as it
+    // is forgotten, and each image's record held only as long as the image.
+    // So a short sequence shows it, past the 32 addresses an earlier design
+    // of this record kept for each file, without the time a long one takes.
     const addresses = new RefreshedAddresses();
-    for (let cycle = 0; cycle < 100_000; cycle++) {
+    for (let cycle = 0; cycle < 40; cycle++) {
       addresses.shown(image(), `${file}?${String(cycle)}`);
       addresses.refreshed(`${file}?${String(cycle)}`);
       addresses.forget(`${file}?${String(cycle)}`);
     }
     expect(addresses.size).toBe(0);
-    // A file shown all along, refreshed 10,000 times, with an image that
-    // each refresh reaches and one that misses them all.
+    // A file shown all along through 40 versions, each at an address of
+    // Obsidian's on an image of its own, with an image that each refresh
+    // reaches, and one out of the page with the first version's address.
     const reached = image();
     const out = image();
     addresses.shown(reached, `${file}?0`);
     addresses.shown(out, `${file}?0`);
     let latest = "";
-    for (let version = 1; version <= 10_000; version++) {
+    for (let version = 1; version <= 40; version++) {
+      addresses.shown(image(), `${file}?${String(version)}`);
       latest = addresses.refreshed(`${file}?${String(version)}`);
       addresses.shown(reached, latest);
     }
