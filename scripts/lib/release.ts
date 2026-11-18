@@ -154,7 +154,7 @@ export function metadataProblems(metadata: Metadata): string[] {
   }
   if (
     version !== undefined &&
-    !isPrerelease(version) &&
+    !preparingPrerelease &&
     metadata.versions[version] !== minAppVersion
   ) {
     problems.push(
