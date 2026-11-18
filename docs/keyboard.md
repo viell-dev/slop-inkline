@@ -122,8 +122,9 @@ and returns focus to the drawing area.
 - In a right-to-left interface, as Obsidian's in Hebrew, Inkline's screens are
   mirrored with Obsidian's, and its English, which it does not translate, keeps
   its full stops and ellipses where English puts them, in the editor and its
-  Help, the library, and the settings. Notices and tooltips still move them, as
-  [Known limits](./limits.md#in-general) says.
+  Help, the library, the settings, and its tooltips. Notices still move them, as
+  [Known limits](./limits.md#in-general) says. **Unreleased:** Inkline's notices
+  keep them in place too.
 - The editor's status line, such as "Saving…", "Saved", or "Not saved" and why,
   is announced as it changes. **Unreleased:** it speaks only for the last thing
   you did: a key or button with nothing to say, such as **Fit**, empties it

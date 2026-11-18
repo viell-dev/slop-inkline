@@ -524,6 +524,11 @@ must keep released files readable and looking the same, as
   between its words, and in Hebrew the editor's layout is still mirrored and its
   text on the right
   ([right-to-left.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/right-to-left.e2e.ts)).
+  A toolbar button's tooltip, a symbol's name as its tooltip, and another
+  plugin's tooltip keep their closing bracket at the end in Hebrew too.
+  **Unreleased:** in Hebrew, Inkline's notice keeps its full stop at the end,
+  while another plugin's English notice still puts it at the start, and in
+  English both keep it at the end (the same file).
 - In the library, in both themes, the list never scrolls sideways, in a sidebar
   from the narrowest Obsidian allows to a wide one, with 90-character names with
   and without spaces, a deep folder, and wide symbols. In the default sidebar

@@ -539,6 +539,18 @@ img.inkline-symbol[width]:not([height]):not(.image-wrapper > img),
   text-align: right;
 }
 
+/*
+ * A notice is Obsidian's, in an element that every plugin's notices share,
+ * and a right-to-left interface lays it out from the right too (#267). The
+ * message of each of Inkline's runs left to right, as it is an English
+ * sentence even where a symbol's name in another script starts it, and stays
+ * on the right, as the others do.
+ */
+.mod-rtl .notice-message.inkline-notice {
+  direction: ltr;
+  text-align: right;
+}
+
 .inkline-suggestion img.inkline-suggestion-picture {
   width: calc(3em * var(--inkline-scale, 1));
   height: calc(1.5em * var(--inkline-scale, 1));
