@@ -308,7 +308,8 @@ describe("the documentation", () => {
 
   it("names the public release's minimum Obsidian version, on desktop only", () => {
     // A pre-release can raise the manifest's minimum ahead of the public
-    // release. Its entry in versions.json still gives the published minimum.
+    // release. The public release's entry in versions.json still gives the
+    // published minimum.
     const minimum = Object.entries(versions).find(
       ([version]) => version === manifest.version,
     )?.[1];

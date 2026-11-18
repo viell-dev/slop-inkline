@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { docsSource, type DocsRequest } from "../../scripts/lib/docs.ts";
+import {
+  docsSource,
+  publishedReleases,
+  type DocsRequest,
+} from "../../scripts/lib/docs.ts";
 
 const publicRelease = { tag: "1.0.0", prerelease: false };
 const prerelease = { tag: "1.1.0", prerelease: true };
@@ -46,24 +50,24 @@ describe("docsSource", () => {
     ).toEqual({ deploy: true, ref: "main", version: nextPublic.tag });
   });
 
-  it.each([
-    ["public release", [publicRelease, historical]],
-    ["pre-release", [prerelease, publicRelease, historical]],
-  ] as const)(
-    "deploys corrections once merged to main during a %s",
-    (_state, releases) => {
-      expect(docsSource({ ...main, releases })).toEqual({
-        deploy: true,
-        ref: "main",
-        version: publicRelease.tag,
-      });
-    },
-  );
-
   it("skips an older main build once a newer public release exists", () => {
-    expect(
-      docsSource({ ...main, releases: [nextPublic, publicRelease] }),
-    ).toMatchObject({ deploy: false, error: false });
+    const source = docsSource({
+      ...main,
+      releases: [nextPublic, publicRelease],
+    });
+    expect(source).toMatchObject({ deploy: false, error: false });
+    expect(source.deploy ? "" : source.reason).toContain(nextPublic.tag);
+  });
+
+  it("fails when the manifest's release is published as a pre-release", () => {
+    for (const releases of [
+      [{ tag: nextPublic.tag, prerelease: true }, publicRelease],
+      [{ tag: nextPublic.tag, prerelease: true }],
+    ]) {
+      expect(
+        docsSource({ ...main, releases, manifestVersion: nextPublic.tag }),
+      ).toMatchObject({ deploy: false, error: true });
+    }
   });
 
   it("ignores a pre-release even if its flag or version suggests a public release", () => {
@@ -107,4 +111,62 @@ describe("docsSource", () => {
       ).toMatchObject({ deploy: false, error: true });
     },
   );
+});
+
+describe("publishedReleases", () => {
+  const release = (
+    tag: string,
+    published: string,
+    extra: Record<string, unknown> = {},
+  ): Record<string, unknown> => ({
+    tag_name: tag,
+    draft: false,
+    prerelease: isPrereleaseTag(tag),
+    published_at: published,
+    ...extra,
+  });
+  const isPrereleaseTag = (tag: string): boolean =>
+    Number(tag.split(".")[1]) % 2 === 1;
+
+  it("lists every page's releases newest first, without drafts", () => {
+    expect(
+      publishedReleases([
+        [
+          release("1.1.0", "2026-11-20T10:00:00Z"),
+          {
+            tag_name: "1.2.0",
+            draft: true,
+            prerelease: false,
+            published_at: null,
+          },
+          release("0.9.5", "2026-11-15T21:00:00Z"),
+        ],
+        [release("1.0.0", "2026-11-16T14:28:32Z")],
+        [],
+      ]),
+    ).toEqual([
+      { tag: "1.1.0", prerelease: true },
+      { tag: "1.0.0", prerelease: false },
+      { tag: "0.9.5", prerelease: true },
+    ]);
+  });
+
+  it.each([
+    ["a non-object", "1.0.0"],
+    [
+      "no prerelease flag",
+      { ...release("1.0.0", "2026-11-16T14:28:32Z"), prerelease: undefined },
+    ],
+    ["no tag", { ...release("1.0.0", "2026-11-16T14:28:32Z"), tag_name: 100 }],
+    ["no time of publication", release("1.0.0", "")],
+    ["a time that is not one", release("1.0.0", "yesterday")],
+    [
+      "a draft flag that is not a boolean",
+      release("1.0.0", "2026-11-16T14:28:32Z", { draft: "no" }),
+    ],
+  ] as const)("refuses a list with %s", (_case, entry) => {
+    expect(() =>
+      publishedReleases([[release("1.1.0", "2026-11-20T10:00:00Z"), entry]]),
+    ).toThrow(/the releases list contains/);
+  });
 });

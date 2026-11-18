@@ -445,8 +445,10 @@ On a branch from `main`:
    it there: lead with installing from Obsidian's community plugins, with the
    ZIP from the latest release as the way in while Inkline does not show there,
    so that the listing needs no change to them. For a pre-release, keep the
-   public release's installation requirements and all **Unreleased** labels. For
-   a public release, remove the labels only from behavior it ships.
+   public release's installation requirements and all **Unreleased** labels, and
+   label **Unreleased** a raised minimum Obsidian version and the versions it is
+   tested on, where the guide names them. For a public release, remove the
+   labels only from behavior it ships.
 5. Run `node scripts/release.ts check <version>` and
    `node scripts/publish.ts order <version>`, which the workflow runs too. The
    first checks that `package.json` names the version, that the changelog

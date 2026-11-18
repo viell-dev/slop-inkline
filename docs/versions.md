@@ -13,8 +13,9 @@ pre-release. The
 records those changes too.
 
 Documentation corrections go through ordinary pull requests to `main` and deploy
-from there, including during a line of pre-releases. The footer still names the
-public version.
+from there, including during a line of pre-releases. They do not need a separate
+documentation branch, a new software release, or a moved tag. The footer still
+names the public version.
 
 Pages checks that `manifest.json` on the build commit names the newest public
 release on GitHub. A pre-release leaves that version in place, so the guide can

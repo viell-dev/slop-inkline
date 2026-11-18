@@ -13,8 +13,13 @@
 
 import { appendFile, readFile } from "node:fs/promises";
 import { setTimeout as sleep } from "node:timers/promises";
-import { docsSource, isRecord, type DocsRelease } from "./lib/docs.ts";
-import { releaseVersionPattern } from "./lib/version.ts";
+import {
+  docsSource,
+  isRecord,
+  publishedReleases,
+  type DocsRelease,
+} from "./lib/docs.ts";
+import { stableVersionPattern } from "./lib/version.ts";
 
 const repository = process.env.GITHUB_REPOSITORY ?? "viell-dev/slop-inkline";
 const token = process.env.GH_TOKEN;
@@ -36,9 +41,9 @@ async function api(path: string): Promise<unknown> {
   return response.json();
 }
 
-/** Published releases, in descending order of publication. */
+/** Published releases, newest first, from every page of GitHub's list. */
 async function releases(): Promise<DocsRelease[]> {
-  const published: (DocsRelease & { at: number })[] = [];
+  const pages: unknown[][] = [];
   const pageSize = 100;
   for (let page = 1; ; page++) {
     const response = await api(
@@ -46,27 +51,14 @@ async function releases(): Promise<DocsRelease[]> {
     );
     if (!Array.isArray(response)) fail("the releases are not a list");
     const listed: unknown[] = response;
-    for (const release of listed) {
-      if (!isRecord(release)) fail("the releases list contains a non-object");
-      if (release.draft === true) continue;
-      if (
-        release.draft !== false ||
-        typeof release.prerelease !== "boolean" ||
-        typeof release.tag_name !== "string" ||
-        typeof release.published_at !== "string" ||
-        !Number.isFinite(Date.parse(release.published_at))
-      ) {
-        fail("the releases list contains an invalid published release");
-      }
-      published.push({
-        tag: release.tag_name,
-        prerelease: release.prerelease,
-        at: Date.parse(release.published_at),
-      });
-    }
+    pages.push(listed);
     if (listed.length < pageSize) break;
   }
-  return published.sort((a, b) => b.at - a.at);
+  try {
+    return publishedReleases(pages);
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+  }
 }
 
 /**
@@ -80,7 +72,7 @@ async function manifestVersionOnDisk(): Promise<string> {
   if (
     !isRecord(json) ||
     typeof json.version !== "string" ||
-    !releaseVersionPattern.test(json.version)
+    !stableVersionPattern.test(json.version)
   ) {
     fail("manifest.json has no valid version");
   }
