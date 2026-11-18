@@ -707,4 +707,74 @@ describe("The editor", function () {
       "planted",
     ]);
   });
+
+  it("keeps a newer version's draft and its base layer, and says so, through its symbol's editor and a rename", async function () {
+    await saveOne();
+    // As a later version might keep a draft, in a layout of its own that
+    // names its base layer in a field this version does not know.
+    const planted = await browser.executeObsidian(({ app }) => {
+      const { drafts } = window.inklineTest;
+      const key = crypto.randomUUID();
+      const text = JSON.stringify({
+        version: drafts.draftVersion + 1,
+        target: { kind: "file", path: "001.ink.png" },
+        savedAt: Date.now(),
+        pictures: [{ id: key, x: 0, y: 0 }],
+        pages: [{ strokes: [[1600, 1600]] }],
+      });
+      const ids: unknown = app.loadLocalStorage("inkline-drafts");
+      app.saveLocalStorage("inkline-draft:later", text);
+      app.saveLocalStorage("inkline-drafts", [
+        ...(Array.isArray(ids) ? ids.map(String) : []),
+        "later",
+      ]);
+      app.saveLocalStorage(`inkline-draft-base:${key}`, "iVBORw0KGgo=");
+      app.saveLocalStorage("inkline-draft-bases", [key]);
+      return { key, text };
+    });
+    const storage = async (): Promise<unknown[]> =>
+      browser.executeObsidian(
+        ({ app }, key): unknown[] => [
+          app.loadLocalStorage("inkline-draft:later"),
+          app.loadLocalStorage(`inkline-draft-base:${key}`),
+          app.loadLocalStorage("inkline-draft-bases"),
+        ],
+        planted.key,
+      );
+    const kept = [planted.text, "iVBORw0KGgo=", [planted.key]];
+    await editFile("001.ink.png");
+    await waitForNotice("unsaved changes from a newer version of Inkline");
+    await browser.pause(500);
+    expect(await topButton("Restore")).toBeUndefined();
+    // This editor's own draft goes beside it, and goes as the symbol saves.
+    await draw([
+      [0.6, 0.3],
+      [0.6, 0.7],
+    ]);
+    await browser.waitUntil(async () => (await draftCount()) === 2);
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    expect(await strokeCount("001.ink.png")).toBe(2);
+    expect(await draftCount()).toBe(1);
+    expect(await storage()).toEqual(kept);
+    // A rename moves this version's drafts, and leaves that one where it was.
+    await browser.executeObsidian(async ({ app }) => {
+      const { drafts } = window.inklineTest;
+      const put = new drafts.DraftStore(app).put({
+        id: "planted",
+        target: { kind: "file", path: "001.ink.png" },
+        strokes: [{ tool: "pen", size: 256, points: [1600, 1600] }],
+        base: { kind: "file" },
+        savedAt: Date.now(),
+      });
+      if (!put) throw new Error("the draft was not kept");
+      const file = app.vault.getFileByPath("001.ink.png");
+      if (file === null) throw new Error("no 001.ink.png");
+      await app.vault.rename(file, "moved.ink.png");
+    });
+    expect(
+      (await storedDrafts()).map(({ id, target }) => [id, target]),
+    ).toEqual([["planted", { kind: "file", path: "moved.ink.png" }]]);
+    expect(await storage()).toEqual(kept);
+  });
 });

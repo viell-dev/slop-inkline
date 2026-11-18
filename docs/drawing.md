@@ -15,10 +15,11 @@ symbol**, or for one you have, from **Edit symbol** or a
 - the **drawing area**, one line of text tall, with its guides;
 - a **line of text** that shows the symbol at its real size as you draw;
 - a **status line**, which says what the editor did last, such as "Saved".
-  **Unreleased:** whatever you do next replaces it, so it is empty after
-  something with nothing to say, such as **Fit** or a tool's button, rather than
-  keep an earlier message; "Saving…" stays until the save ends, and "Draft not
-  kept" until a draft is kept again.
+  Whatever you do next replaces it, so it is empty after something with nothing
+  to say, such as **Fit** or a tool's button, rather than keep an earlier
+  message. Through actions with nothing of their own to say, "Saving…" stays
+  until the save ends, and "Draft not kept" until a draft is kept again; one
+  that says something replaces them.
 
 In the shortcuts below, Mod is Ctrl, or Cmd on macOS. Single-key shortcuts and
 undo give way to a text field that has the focus, such as the name field, so
@@ -78,7 +79,7 @@ box is on the grid only if Shift is held as you place it: the first as you
 press, the second as you let go. Shift does this instead of making a circle, and
 no circle is drawn. The second corner follows the pointer, and goes back to it
 if you let go of Shift while dragging. An ellipse with both corners on the grid
-touches its lines at its top, bottom, and sides.
+has the middle of its line on the grid's lines at its top, bottom, and sides.
 
 For a half circle, draw the circle, then erase the half you don't want with
 eraser strokes that end on the row across its middle: with the grid and **Flat
@@ -120,27 +121,23 @@ put it on the grid.
 **Toggle fill** (B) is a switch for the shapes drawn next, not a tool to click a
 shape with: it never fills what is already drawn. While it is on, Ellipse and
 Polygon draw solid shapes such as ● ▲ ■ ◆: an ellipse, and a polygon closed on
-its first corner. A filled shape's edges run through its corners, or round the
-box dragged, without the brush's width around them, so a filled triangle drawn
-on the grid sits on the line its base lies on, and the brush size makes no
-difference. An open polygon and a freehand stroke are not filled. With the
-eraser, a filled shape takes away its whole area, for a hole of its shape. The
-button is off while drawing freehand. Turning it on or off while placing a
-polygon decides for that shape, as it closes. **Next** keeps it; an editor
-opened afresh does not fill.
+its first corner. A filled shape is the shape as **Toggle fill** off draws it,
+its line at the brush size, with everything inside the line filled too, so a
+filled and an unfilled shape drawn across the same corners, or the same box,
+have the same outer edge. A filled triangle drawn on the grid reaches half the
+brush's width past the line its base lies on, as an unfilled one does, and
+**Up** and **Down** can sit it on the line. While you drag an ellipse, or point
+at a polygon's first corner, the editor shows the shape exactly as letting go,
+or the click, leaves it, and one Undo takes back the whole shape. An open
+polygon and a freehand stroke are not filled. With the eraser, a filled shape
+takes away its whole area, as far as the eraser's line would reach, for a hole
+of its shape. The button is off while drawing freehand. Turning it on or off
+while placing a polygon decides for that shape, as it closes. **Next** keeps it;
+an editor opened afresh does not fill.
 
-**Unreleased:** a filled shape keeps the brush's width around it, rather than
-having its edges run through its corners, and the brush size makes the
-difference it makes to the same shape unfilled. A filled shape is the shape as
-**Toggle fill** off draws it, its line at the brush size, with everything inside
-the line filled too, so a filled and an unfilled shape drawn across the same
-corners, or the same box, have the same outer edge. A filled triangle drawn on
-the grid then reaches half the brush's width past the line its base lies on, as
-an unfilled one does, and **Up** and **Down** can sit it on the line. With the
-eraser, the hole reaches as far as the eraser's line would. While you drag an
-ellipse, or point at a polygon's first corner, the editor shows the shape
-exactly as letting go, or the click, leaves it, and one Undo takes back the
-whole shape. Symbols already saved keep their look.
+Before 1.0.1, a filled shape's edges ran through its corners, or round the box
+dragged, without the brush's width around them. Symbols saved then keep their
+look.
 
 ## Straight lines and the grid
 

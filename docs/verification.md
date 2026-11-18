@@ -176,12 +176,12 @@ must keep released files readable and looking the same, as
   turning a line off in the settings removes only that line, and G hides and
   shows the rest
   ([guide-lines.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/guide-lines.e2e.ts)).
-- **Unreleased:** the status line empties for each key, button, stroke, or typed
-  name with nothing to say, as for **Fit** after "Zoomed out", and for a
-  threshold moved after "Polygon dropped" while **Make ink** is open; what one
-  says replaces what was there; a key that does nothing leaves it; and "Saving…"
-  and "Draft not kept" stay through strokes and keys until the save ends or a
-  draft is kept
+- The status line empties for each key, button, stroke, or typed name with
+  nothing to say, as for **Fit** after "Zoomed out", and for a threshold moved
+  after "Polygon dropped" while **Make ink** is open; what one says replaces
+  what was there; a key that does nothing leaves it; and "Saving…" and "Draft
+  not kept" stay through strokes and keys with nothing to say until the save
+  ends or a draft is kept
   ([status-line.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/status-line.e2e.ts),
   with its rules in
   [status.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/status.test.ts)).
@@ -202,11 +202,11 @@ must keep released files readable and looking the same, as
   below 5 ms per update while preserving the bitmap's coverage. This bounds the
   sampling cost in the Linux host harness; it does not measure physical-input
   latency or establish performance on every device.
-- **Unreleased:** ink shows under the pointer that drew it, within 0.8 CSS
-  pixels, at the top, bottom, left, and right of the drawing area, measured in a
-  screenshot's pixels, in the usual view and after **Fit** in **Zoom**, at 100%
-  and 125% page zoom, and the drawing area's content box, which its pixels fill,
-  is as tall as the line box it shows
+- Ink shows under the pointer that drew it, within 0.8 CSS pixels, at the top,
+  bottom, left, and right of the drawing area, measured in a screenshot's
+  pixels, in the usual view and after **Fit** in **Zoom**, at 100% and 125% page
+  zoom, and the drawing area's content box, which its pixels fill, is as tall as
+  the line box it shows
   ([pointer-alignment.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/pointer-alignment.e2e.ts),
   [#359](https://github.com/viell-dev/slop-inkline/issues/359)).
 - **Make ink** of a synthetic H, enlarged from about 1.2 to 11.5 times, leaves
@@ -235,12 +235,12 @@ must keep released files readable and looking the same, as
   symbol's M strokes show within 20% of the text's stems on the screen. Five M
   strokes a grid spacing apart stay separate
   ([pen-weights.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/pen-weights.e2e.ts)).
-- **Unreleased:** a filled polygon, and a filled ellipse, read back from the
-  drawing area's pixels, have exactly the outer edge of the same shape unfilled
-  across the same corners, and everything within it is fully inked; with the
-  eraser, an ellipse's hole reaches exactly as far as the eraser's line does.
-  The pen's polygon on its first corner and ellipse being dragged show exactly
-  what the click or the release leaves, and one Undo takes all of it back
+- A filled polygon, and a filled ellipse, read back from the drawing area's
+  pixels, have exactly the outer edge of the same shape unfilled across the same
+  corners, and everything within it is fully inked; with the eraser, an
+  ellipse's hole reaches exactly as far as the eraser's line does. The pen's
+  polygon on its first corner and ellipse being dragged show exactly what the
+  click or the release leaves, and one Undo takes all of it back
   ([fill.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/fill.e2e.ts)).
   Unit tests pin that a filled shape records its fill and the line of the shape
   unfilled as one step, and that a reopened drawing's grid goes by the shape as
@@ -269,7 +269,7 @@ must keep released files readable and looking the same, as
   The ink in the middle of the loop stays
   ([eraser-sweep.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/eraser-sweep.e2e.ts),
   [#341](https://github.com/viell-dev/slop-inkline/issues/341)). The same check
-  fails on every case with the eraser as 1.0.0 saves it. Unit tests compare the
+  fails on every case with the eraser as 1.0.1 saves it. Unit tests compare the
   area with the brush's exact sweep along straight lines, sharp turns, turns
   straight back, zigzags, a mouse's whole-pixel steps, a figure eight, random
   walks, and a loop round an island, check that it never takes back what it
@@ -331,6 +331,15 @@ must keep released files readable and looking the same, as
   a save. With room for two pictures in Obsidian's own local storage, a draft is
   kept through copy after copy
   ([base-memory.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/base-memory.e2e.ts)
+  and
+  [drafts.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/drafts.test.ts)).
+- A draft that a newer version kept, in a layout this version cannot read, kept
+  as it is, with every base layer it names, through opening its symbol, which
+  says that it is kept and offers nothing, this version's own draft for the
+  symbol and its save, a rename, and storage refusing this version's drafts, and
+  dropped only once its lifetime ends; and a draft as 0.9.2 to 1.0.0 stored it
+  offered back
+  ([drafts.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/drafts.e2e.ts)
   and
   [drafts.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/drafts.test.ts)).
 - A decoded base layer kept while Undo or Redo can reach it, and shown again by
@@ -551,10 +560,10 @@ must keep released files readable and looking the same, as
   text on the right
   ([right-to-left.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/right-to-left.e2e.ts)).
   A toolbar button's tooltip, a symbol's name as its tooltip, and another
-  plugin's tooltip keep their closing bracket at the end in Hebrew too.
-  **Unreleased:** in Hebrew, Inkline's notice keeps its full stop at the end,
-  while another plugin's English notice still puts it at the start, and in
-  English both keep it at the end (the same file).
+  plugin's tooltip keep their closing bracket at the end in Hebrew too. In
+  Hebrew, Inkline's notice keeps its full stop at the end, while another
+  plugin's English notice still puts it at the start, and in English both keep
+  it at the end (the same file).
 - In the library, in both themes, the list never scrolls sideways, in a sidebar
   from the narrowest Obsidian allows to a wide one, with 90-character names with
   and without spaces, a deep folder, and wide symbols. In the default sidebar

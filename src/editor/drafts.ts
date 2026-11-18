@@ -97,8 +97,28 @@ export interface Draft {
 /** How long a draft is kept before it is dropped unrestored: 30 days. */
 export const draftLifetime = 30 * 24 * 60 * 60 * 1000;
 
-/** The version of the stored draft's layout. */
-const draftVersion = 2;
+/**
+ * The version of the stored draft's layout. A draft outlives the version of
+ * Inkline that kept it, through an update and through going back to an
+ * earlier version, as with BRAT or an older ZIP. So a change to the layout
+ * raises this, and reads or converts drafts of the previous layout, with a
+ * test that keeps a stored draft of that layout and offers it back. A draft of
+ * a higher version, kept by a later Inkline, is never offered, rewritten, or
+ * dropped before its lifetime ends, as {@link readLater} says.
+ *
+ * That holds while the store is the only writer between reading an index and
+ * writing it back. Obsidian opens a vault in one window, whose popouts share
+ * its scripts, so one version of the plugin writes these keys at a time, and
+ * every step of {@link DraftStore} that reads an index and writes it runs
+ * without pausing, so nothing else runs between. A later version keeps both.
+ * It also never writes a draft of its layout under an id that holds one of an
+ * earlier layout: an editor knows the draft it offers or restored by its id
+ * alone until it removes or replaces it, and so would remove or replace what
+ * took its place. A base layer that a later draft keeps in the shared index is
+ * kept with it only under a key of {@link baseKeyForm}, the form every version
+ * makes; one under any other key is not.
+ */
+export const draftVersion = 2;
 const indexKey = "inkline-drafts";
 const draftPrefix = "inkline-draft:";
 const baseIndexKey = "inkline-draft-bases";
@@ -208,6 +228,164 @@ function storedBaseKey(stored: unknown): string | undefined {
     typeof value.layer.key === "string"
     ? value.layer.key
     : undefined;
+}
+
+/**
+ * A stored draft of a later layout than this version reads: every string it
+ * holds, and when it was kept and the symbol it belongs to, where those read
+ * as this layout's. Its strings name the base layers it keeps somewhere, as
+ * each key is a random UUID that nothing else holds by chance.
+ */
+interface LaterDraft {
+  readonly strings: readonly string[];
+  readonly savedAt?: number;
+  readonly target?: DraftTarget;
+}
+
+/**
+ * Every string in a value read from JSON, its property names included, at
+ * any depth: as decoded, so that an escape such as `\u002d` reads as the
+ * character it stands for.
+ */
+function stringsOf(value: unknown): string[] {
+  const strings: string[] = [];
+  const seen = new WeakSet<object>();
+  const pending: unknown[] = [value];
+  while (pending.length > 0) {
+    const next = pending.pop();
+    if (typeof next === "string") {
+      strings.push(next);
+    } else if (typeof next === "object" && next !== null && !seen.has(next)) {
+      seen.add(next);
+      if (Array.isArray(next)) {
+        const items: readonly unknown[] = next;
+        for (const item of items) pending.push(item);
+      } else {
+        for (const [name, item] of Object.entries(next)) {
+          strings.push(name);
+          pending.push(item);
+        }
+      }
+    }
+  }
+  return strings;
+}
+
+/**
+ * The base of {@link laterNamed}'s rolling hash, which works in 32-bit
+ * integers, wrapping as they overflow.
+ */
+const hashBase = 131;
+
+/** The rolling hash of `length` characters of `text` from `at`. */
+function hashOf(text: string, at: number, length: number): number {
+  let hash = 0;
+  for (let index = at; index < at + length; index++) {
+    hash = (Math.imul(hash, hashBase) + text.charCodeAt(index)) | 0;
+  }
+  return hash;
+}
+
+/**
+ * The form of every kept base layer's key that versions from 0.9.2 on have
+ * made, with `crypto.randomUUID()`: 36 characters, lowercase hexadecimal
+ * digits in groups of 8, 4, 4, 4 and 12, joined by hyphens.
+ */
+const baseKeyForm =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const baseKeyLength = 36;
+
+/**
+ * The keys of kept base layers among `keys` that a draft of a later layout
+ * names, whole or inside a longer string. Only a key of {@link baseKeyForm} is
+ * looked for, as the layout's rule in AGENTS.md says: a base layer stored
+ * under any other key is not kept for a later draft, and costs nothing here.
+ * Each string is read once for all of them: a rolling hash of every run of a
+ * key's length finds the keys it may be, and a comparison tells. A search for
+ * each key in turn takes seconds for a draft of many strings beside many base
+ * layers, and cutting out every run to look it up a fifth of a second for a
+ * string of a million characters.
+ */
+function laterNamed(draft: LaterDraft, keys: ReadonlySet<string>): Set<string> {
+  const named = new Set<string>();
+  // The keys looked for, by their hash.
+  const hashes = new Map<number, string[]>();
+  let count = 0;
+  for (const key of keys) {
+    if (!baseKeyForm.test(key)) continue;
+    count++;
+    const hash = hashOf(key, 0, baseKeyLength);
+    hashes.set(hash, [...(hashes.get(hash) ?? []), key]);
+  }
+  if (count === 0) return named;
+  // What the first of a run's characters adds to its hash.
+  let first = 1;
+  for (let index = 1; index < baseKeyLength; index++) {
+    first = Math.imul(first, hashBase);
+  }
+  for (const text of draft.strings) {
+    if (text.length < baseKeyLength) continue;
+    let hash = hashOf(text, 0, baseKeyLength);
+    for (let at = 0; ; at++) {
+      const candidates = hashes.get(hash);
+      if (candidates !== undefined) {
+        for (const key of candidates) {
+          if (text.startsWith(key, at)) named.add(key);
+        }
+      }
+      if (at + baseKeyLength >= text.length) break;
+      const rest = (hash - Math.imul(text.charCodeAt(at), first)) | 0;
+      hash =
+        (Math.imul(rest, hashBase) + text.charCodeAt(at + baseKeyLength)) | 0;
+    }
+    if (named.size === count) return named;
+  }
+  return named;
+}
+
+/**
+ * Reads a stored draft whose `version` is higher than {@link draftVersion},
+ * as a later version of Inkline keeps one, so that this version keeps it for
+ * that version after someone goes back from it: never offered, as its layout
+ * cannot be read, and never rewritten, as that could damage it. It is dropped
+ * once its lifetime ends, if when it was kept can be read, with the base
+ * layers that no other draft names. Undefined for a draft of this layout or an
+ * earlier one, and for anything else.
+ */
+function readLater(stored: unknown): LaterDraft | undefined {
+  let value: unknown = stored;
+  if (typeof stored === "string") {
+    try {
+      value = JSON.parse(stored);
+    } catch {
+      return undefined;
+    }
+  }
+  if (!isRecord(value)) return undefined;
+  const { version, savedAt } = value;
+  // So that a version that is not a number, NaN included, is none.
+  if (!(typeof version === "number" && version > draftVersion)) {
+    return undefined;
+  }
+  const target = parseTarget(value.target);
+  return {
+    strings: stringsOf(value),
+    ...(typeof savedAt === "number" && Number.isFinite(savedAt)
+      ? { savedAt }
+      : {}),
+    ...(target === undefined ? {} : { target }),
+  };
+}
+
+/**
+ * Whether the stored draft `stored` may name the kept base layer `key`: as
+ * {@link storedBaseKey} reads it, or, for a draft of a later layout, which
+ * may name it elsewhere, as {@link laterNamed} reads it.
+ */
+function mayName(stored: unknown, key: string): boolean {
+  if (storedBaseKey(stored) === key) return true;
+  const later = readLater(stored);
+  return later !== undefined && laterNamed(later, new Set([key])).size > 0;
 }
 
 interface Decoded {
@@ -583,17 +761,23 @@ export class DraftStore {
   /**
    * Removes the stored base layer `key` if no stored draft names it. Every
    * draft is read from storage rather than from what this store knows, as an
-   * editor before a reload may have written it. Only a put or a removal asks,
-   * for the layer its draft stopped naming, so a layer stored ahead of the
-   * draft that will keep it is never dropped here, and drafts are read only
-   * when a base layer changes, not for every stroke.
+   * editor before a reload may have written it, or a later version of
+   * Inkline. Only a put or a removal asks, for the layer its draft stopped
+   * naming, so a layer stored ahead of the draft that will keep it is never
+   * dropped here, and drafts are read only when a base layer changes, not for
+   * every stroke.
    */
   #dropUnused(key: string): void {
     for (const id of this.#list(indexKey)) {
       const stored = this.#storage.loadLocalStorage(draftPrefix + id);
-      if (storedBaseKey(stored) === key) return;
+      if (mayName(stored, key)) return;
     }
     this.#dropPng(key);
+  }
+
+  /** Whether a draft kept at `savedAt` is past its lifetime. */
+  #expired(savedAt: number): boolean {
+    return this.#now() - savedAt > draftLifetime;
   }
 
   /**
@@ -635,32 +819,52 @@ export class DraftStore {
 
   /**
    * Every readable draft, newest first, dropping expired and broken ones and
-   * the base layers that no draft uses any more.
+   * the base layers that no draft uses any more. A draft of a later layout is
+   * not listed, and stays, as {@link readLater} says, with every base layer
+   * its text names.
    */
   list(): Draft[] {
+    return this.#read().drafts;
+  }
+
+  /** What {@link list} reads: the drafts it lists, and those of later layouts. */
+  #read(): { drafts: Draft[]; later: LaterDraft[] } {
     const ids = this.#list(indexKey);
+    const listed: string[] = [];
     const drafts: Draft[] = [];
     const used = new Set<string>();
+    const later: LaterDraft[] = [];
     for (const id of ids) {
-      const decoded = decode(
-        this.#storage.loadLocalStorage(draftPrefix + id),
-        (key) => this.#png(key),
-      );
+      const stored = this.#storage.loadLocalStorage(draftPrefix + id);
+      const decoded = decode(stored, (key) => this.#png(key));
       const draft = decoded?.draft;
-      if (draft?.id !== id || this.#now() - draft.savedAt > draftLifetime) {
-        this.#storage.saveLocalStorage(draftPrefix + id, null);
+      if (draft?.id === id && !this.#expired(draft.savedAt)) {
+        if (decoded?.baseKey !== undefined) used.add(decoded.baseKey);
+        drafts.push(draft);
+        listed.push(id);
         continue;
       }
-      if (decoded?.baseKey !== undefined) used.add(decoded.baseKey);
-      drafts.push(draft);
+      const newer = decoded === undefined ? readLater(stored) : undefined;
+      if (
+        newer !== undefined &&
+        (newer.savedAt === undefined || !this.#expired(newer.savedAt))
+      ) {
+        later.push(newer);
+        listed.push(id);
+        continue;
+      }
+      this.#storage.saveLocalStorage(draftPrefix + id, null);
     }
-    if (drafts.length !== ids.length) {
-      this.#setList(
-        indexKey,
-        drafts.map(({ id }) => id),
-      );
-    }
+    if (listed.length !== ids.length) this.#setList(indexKey, listed);
     const keys = this.#list(baseIndexKey);
+    const unnamed = new Set(keys.filter((key) => !used.has(key)));
+    for (const draft of later) {
+      if (unnamed.size === 0) break;
+      for (const key of laterNamed(draft, unnamed)) {
+        used.add(key);
+        unnamed.delete(key);
+      }
+    }
     const kept = keys.filter((key) => used.has(key));
     if (kept.length !== keys.length) {
       for (const key of keys) {
@@ -670,14 +874,33 @@ export class DraftStore {
       }
       this.#setList(baseIndexKey, kept);
     }
-    return drafts.sort((a, b) => b.savedAt - a.savedAt);
+    return { drafts: drafts.sort((a, b) => b.savedAt - a.savedAt), later };
   }
 
   /** The drafts for a symbol, newest first, other than open editors'. */
   forTarget(target: DraftTarget): Draft[] {
-    return this.list().filter(
-      (draft) => !this.#held.has(draft.id) && sameTarget(draft.target, target),
-    );
+    return this.offers(target).drafts;
+  }
+
+  /**
+   * The drafts for a symbol, as {@link forTarget} gives them, and whether a
+   * draft of a later layout is kept for it, as after going back from a later
+   * version, which can offer it. One whose symbol cannot be read as this
+   * layout's is not counted. Both come from one list, as reading every draft
+   * again would cost as much again, which for a large one is a pause.
+   */
+  offers(target: DraftTarget): { drafts: Draft[]; newer: boolean } {
+    const { drafts, later } = this.#read();
+    return {
+      drafts: drafts.filter(
+        (draft) =>
+          !this.#held.has(draft.id) && sameTarget(draft.target, target),
+      ),
+      newer: later.some(
+        (draft) =>
+          draft.target !== undefined && sameTarget(draft.target, target),
+      ),
+    };
   }
 
   /**
@@ -727,7 +950,8 @@ export class DraftStore {
 
   /**
    * Follows a rename: drafts for the file, new ones in the note, and new ones
-   * whose first save made the file move with it.
+   * whose first save made the file move with it. A draft of a later layout
+   * stays as it is, as this version cannot rewrite what it cannot read.
    */
   rename(from: string, to: string): void {
     for (const draft of this.list()) {

@@ -2808,13 +2808,14 @@ export class InkEditorModal extends Modal {
    * once Inkline was off. The editor follows the file from its opening, so a
    * change to it after that is taken in or asked about as any other is. A new
    * symbol's draft is always offered, as restoring it can finish its first
-   * save.
+   * save. `offered` are the drafts the store offers for it.
    */
   #draftToOffer(
     drafts: NonNullable<EditorOptions["drafts"]>,
+    offered: readonly Draft[],
   ): Draft | undefined {
     const target = drafts.target();
-    for (const draft of drafts.store.forTarget(target)) {
+    for (const draft of offered) {
       if (
         target.kind !== "file" ||
         !restoresNothing(draft, this.#opened, this.#savedName)
@@ -2836,7 +2837,17 @@ export class InkEditorModal extends Modal {
   async #offerDraft(): Promise<void> {
     const drafts = this.#options.drafts;
     if (drafts === undefined) return;
-    const found = this.#draftToOffer(drafts);
+    const offers = drafts.store.offers(drafts.target());
+    const found = this.#draftToOffer(drafts, offers.drafts);
+    // A later version's draft cannot be read here, so it stays for that
+    // version to offer, and this says so, as the changes would seem lost.
+    if (offers.newer) {
+      markNotice(
+        new Notice(
+          "This symbol has unsaved changes from a newer version of Inkline, which this version cannot restore. Update Inkline to get them back.",
+        ),
+      );
+    }
     if (found === undefined) return;
     drafts.store.hold(found.id);
     this.#offered = found.id;
