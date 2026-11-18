@@ -15,6 +15,10 @@ symbol**, or for one you have, from **Edit symbol** or a
 - the **drawing area**, one line of text tall, with its guides;
 - a **line of text** that shows the symbol at its real size as you draw;
 - a **status line**, which says what the editor did last, such as "Saved".
+  **Unreleased:** whatever you do next replaces it, so it is empty after
+  something with nothing to say, such as **Fit** or a tool's button, rather than
+  keep an earlier message; "Saving…" stays until the save ends, and "Draft not
+  kept" until a draft is kept again.
 
 In the shortcuts below, Mod is Ctrl, or Cmd on macOS. Single-key shortcuts and
 undo give way to a text field that has the focus, such as the name field, so

@@ -125,7 +125,10 @@ and returns focus to the drawing area.
   Help, the library, and the settings. Notices and tooltips still move them, as
   [Known limits](./limits.md#in-general) says.
 - The editor's status line, such as "Saving…", "Saved", or "Not saved" and why,
-  is announced as it changes.
+  is announced as it changes. **Unreleased:** it speaks only for the last thing
+  you did: a key or button with nothing to say, such as **Fit**, empties it
+  without a word, rather than leave an earlier message to read as its result,
+  and the buttons that turn something on or off say so themselves.
 - The editor puts the focus on the drawing area when it opens, and drawing puts
   it back there, so that its keys work again after typing elsewhere.
 - Hovering a symbol in a note shows its name, which screen readers read as the

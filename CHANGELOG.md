@@ -9,6 +9,16 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Fixed
+
+- The editor's status line no longer keeps a message that has stopped applying,
+  such as "Zoomed out" after **Fit**, or "Polygon dropped" once the threshold
+  moves in **Make ink**
+  ([#302](https://github.com/viell-dev/slop-inkline/issues/302)). Whatever you
+  do replaces it, with what that did, or with nothing when there is nothing to
+  say, which a screen reader does not announce. "Saving…" and "Draft not kept"
+  stay until the save ends or a draft is kept again.
+
 ## 1.0.0 - 2026-11-16
 
 This is Inkline's first stable release. It is 0.9.5, the last release candidate,
