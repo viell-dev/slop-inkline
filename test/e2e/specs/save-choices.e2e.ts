@@ -226,10 +226,10 @@ describe("Saving a symbol used elsewhere", function () {
     await browser.keys([Key.Ctrl, "s"]);
     await question("Change tower everywhere?");
     // Asked about the preview, before any ink was made: ink made first, as
-    // a save makes it, would also have been a change to ask about.
-    expect(await browser.$(".inkline-status").getText()).toContain(
-      "Making ink of the picture",
-    );
+    // a save makes it, would also have been a change to ask about. Making
+    // the ink would close Make ink, and say so; Mod+S says nothing yet.
+    expect(await browser.$(".inkline-convert").isDisplayed()).toBe(true);
+    expect(await browser.$(".inkline-status").getText()).toBe("");
     const asked = JSON.parse(await recordOf(tower)) as { base?: unknown };
     expect(asked.base).toBeUndefined();
     await clickTop("Replace");

@@ -11,6 +11,13 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ### Fixed
 
+- The editor's status line no longer keeps a message that has stopped applying,
+  such as "Zoomed out" after **Fit**, or "Polygon dropped" once the threshold
+  moves in **Make ink**
+  ([#302](https://github.com/viell-dev/slop-inkline/issues/302)). Whatever you
+  do replaces it, with what that did, or with nothing when there is nothing to
+  say, which a screen reader does not announce. "Saving…" and "Draft not kept"
+  stay until the save ends or a draft is kept again.
 - A filled polygon or ellipse keeps the brush's width around it. Closing a
   filled polygon left only the area through its corners, half the brush's width
   smaller on every side than its sides had shown while it was placed, and a
