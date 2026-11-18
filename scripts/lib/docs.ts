@@ -60,6 +60,7 @@ export function publishedReleases(
         release.draft !== false ||
         typeof release.prerelease !== "boolean" ||
         typeof release.tag_name !== "string" ||
+        release.tag_name === "" ||
         !Number.isFinite(at)
       ) {
         throw new Error(

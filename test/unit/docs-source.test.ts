@@ -151,6 +151,16 @@ describe("publishedReleases", () => {
     ]);
   });
 
+  it("keeps GitHub's flag, even where the version says otherwise", () => {
+    // docsSource refuses a public version flagged by hand as a pre-release, so
+    // the flag must come through as GitHub gives it.
+    expect(
+      publishedReleases([
+        [release("1.2.0", "2026-11-30T10:00:00Z", { prerelease: true })],
+      ]),
+    ).toEqual([{ tag: "1.2.0", prerelease: true }]);
+  });
+
   it.each([
     ["a non-object", "1.0.0"],
     [
@@ -158,6 +168,10 @@ describe("publishedReleases", () => {
       { ...release("1.0.0", "2026-11-16T14:28:32Z"), prerelease: undefined },
     ],
     ["no tag", { ...release("1.0.0", "2026-11-16T14:28:32Z"), tag_name: 100 }],
+    [
+      "an empty tag",
+      { ...release("1.0.0", "2026-11-16T14:28:32Z"), tag_name: "" },
+    ],
     ["no time of publication", release("1.0.0", "")],
     ["a time that is not one", release("1.0.0", "yesterday")],
     [
