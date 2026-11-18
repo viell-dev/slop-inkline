@@ -36,7 +36,7 @@ async function openPolygon(grid: boolean): Promise<void> {
  * from its top left corner: a press and a release, with the pointer moved
  * there between them as a mouse is.
  */
-async function click(
+async function clickSurfacePoints(
   ...points: readonly (readonly [number, number])[]
 ): Promise<void> {
   const canvas = surface();
@@ -180,14 +180,14 @@ describe("Polygon", function () {
     await openPolygon(false);
     const undo = browser.$('[data-inkline-button="undo"]');
     expect(await undo.isEnabled()).toBe(false);
-    await click([0.3, 0.4]);
+    await clickSurfacePoints([0.3, 0.4]);
     // Undo takes back the corner, and with it the shape.
     expect(await undo.isEnabled()).toBe(true);
     await undo.click();
     expect(await undo.isEnabled()).toBe(false);
-    await click([0.3, 0.4], [0.5, 0.4], [0.5, 0.7]);
+    await clickSurfacePoints([0.3, 0.4], [0.5, 0.4], [0.5, 0.7]);
     await browser.keys(["Control", "z"]);
-    await click([0.4, 0.7]);
+    await clickSurfacePoints([0.4, 0.7]);
     await browser.keys("Enter");
     const [open] = await draftStrokes(1);
     expect(open?.kind).toBe("polygon");
@@ -198,16 +198,16 @@ describe("Polygon", function () {
     expect(dx).toBeGreaterThan(ax);
     expect(dx).toBeLessThan(bx);
     expect(dy).toBeGreaterThan(ay);
-    await click([0.6, 0.3], [0.7, 0.5]);
+    await clickSurfacePoints([0.6, 0.3], [0.7, 0.5]);
     await browser.keys("Escape");
     await waitForStatus("Polygon dropped");
     expect(await browser.$(".inkline-editor").isExisting()).toBe(true);
     expect(await draftStrokes(1)).toHaveLength(1);
     // Clear, from its key, drops a shape being placed with the drawing.
-    await click([0.6, 0.3], [0.7, 0.5]);
+    await clickSurfacePoints([0.6, 0.3], [0.7, 0.5]);
     await browser.keys("Delete");
     await draftStrokes(0);
-    await click([0.2, 0.2], [0.2, 0.2]);
+    await clickSurfacePoints([0.2, 0.2], [0.2, 0.2]);
     const [dot] = await draftStrokes(1);
     expect(dot?.points).toHaveLength(2);
   });
@@ -249,7 +249,7 @@ describe("Polygon", function () {
         return count;
       });
     const before = await tinted();
-    await click([0.3, 0.4], [0.6, 0.4]);
+    await clickSurfacePoints([0.3, 0.4], [0.6, 0.4]);
     // The XL brush's side, 24 document pixels wide, in red over no ink.
     await browser.waitUntil(async () => (await tinted()) > before + 500, {
       timeoutMsg: "no sign of the shape being placed",
@@ -258,7 +258,7 @@ describe("Polygon", function () {
       "polygon-eraser-placing",
       browser.$(".inkline-editor"),
     );
-    await click([0.6, 0.4]);
+    await clickSurfacePoints([0.6, 0.4]);
     const [erased] = await draftStrokes(1);
     expect(erased?.tool).toBe("eraser");
     await browser.waitUntil(async () => (await tinted()) === before, {
@@ -268,9 +268,9 @@ describe("Polygon", function () {
 
   it("takes the eraser chosen while placing", async function () {
     await openPolygon(false);
-    await click([0.3, 0.3]);
+    await clickSurfacePoints([0.3, 0.3]);
     await browser.keys("e");
-    await click([0.6, 0.6], [0.6, 0.6]);
+    await clickSurfacePoints([0.6, 0.6], [0.6, 0.6]);
     const [erased] = await draftStrokes(1);
     expect(erased?.tool).toBe("eraser");
     expect(erased?.points).toHaveLength(4);

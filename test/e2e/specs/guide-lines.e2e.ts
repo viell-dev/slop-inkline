@@ -2,7 +2,9 @@ import { browser, expect } from "@wdio/globals";
 import { obsidianPage } from "wdio-obsidian-service";
 import { defaultSettings, type Settings } from "../../../src/settings.ts";
 import { loadModules } from "../support/browser.ts";
+import { insert } from "../support/editing.ts";
 import {
+  guideRows,
   openAtMarker,
   settledSurface,
   startOver,
@@ -130,19 +132,41 @@ async function openEditor(): Promise<void> {
   await settledSurface();
 }
 
+before(async function () {
+  await loadModules();
+});
+beforeEach(async function () {
+  await startOver();
+});
+
+describe("The editor", function () {
+  it("draws the text font's guides, and shows or hides them with G", async function () {
+    await insert();
+    await settledSurface();
+    const shown = await guideRows();
+    expect(shown.lines).toBeGreaterThanOrEqual(3);
+    expect(shown.shown).toBe(shown.lines);
+    const button = browser.$('[data-inkline-button="guides"]');
+    expect(await button.getAttribute("aria-pressed")).toBe("true");
+    await browser.keys(["g"]);
+    await browser.waitUntil(async () => (await guideRows()).drawn === 0);
+    expect(await button.getAttribute("aria-pressed")).toBe("false");
+    await browser.keys(["g"]);
+    await browser.waitUntil(
+      async () => (await guideRows()).shown === shown.lines,
+    );
+  });
+});
+
 describe("Guide lines", function () {
   let themes: string[] = [];
 
   before(async function () {
-    await loadModules();
     themes = await browser.execute(() =>
       [...document.body.classList].filter(
         (name) => name === "theme-light" || name === "theme-dark",
       ),
     );
-  });
-  beforeEach(async function () {
-    await startOver();
   });
   afterEach(async function () {
     // Each test starts with the default settings, which only a test that

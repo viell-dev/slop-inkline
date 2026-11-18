@@ -92,7 +92,7 @@ async function secondLibrary(): Promise<void> {
 }
 
 /** Opens the fields of `file` in the first library that shows it. */
-async function openFields(file: string): Promise<void> {
+async function openFieldsForTiming(file: string): Promise<void> {
   const button = `.inkline-library-symbol[data-inkline-path="${file}"] [data-inkline-role="edit"]`;
   await browser.waitUntil(async () =>
     browser.execute((selector) => {
@@ -299,12 +299,12 @@ describe("What saving a large symbol costs", function () {
     for (const { file } of symbols) {
       const library = [];
       for (let run = 0; run < runs; run++) {
-        await openFields(file);
+        await openFieldsForTiming(file);
         library.push(await timedLibrarySave(`TA${String(run)}`, false));
       }
       const filtering = [];
       for (let run = 0; run < runs; run++) {
-        await openFields(file);
+        await openFieldsForTiming(file);
         filtering.push(await timedLibrarySave(`DA${String(run)}`, true));
       }
       Object.assign(results[file] as object, { library, filtering });
@@ -316,7 +316,7 @@ describe("What saving a large symbol costs", function () {
     const small = symbols[0].file;
     const behind = [];
     for (let run = 0; run < runs; run++) {
-      await openFields(large);
+      await openFieldsForTiming(large);
       await browser.execute((wanted) => {
         // The second library's row, as the first's is a form now.
         const rows = document.querySelectorAll<HTMLElement>(

@@ -35,11 +35,11 @@ async function openSettings(): Promise<void> {
   const tab = browser.$(".vertical-tab-nav-item=Inkline");
   await tab.waitForDisplayed();
   await tab.click();
-  await setting("Insert trigger").waitForDisplayed();
+  await settingItem("Insert trigger").waitForDisplayed();
 }
 
 /** The row of a setting, by its visible label. */
-function setting(name: string): ReturnType<typeof browser.$> {
+function settingItem(name: string): ReturnType<typeof browser.$> {
   return browser.$(
     `//div[contains(concat(' ', normalize-space(@class), ' '), ' setting-item ')][.//div[contains(@class, 'setting-item-name')][normalize-space(.)="${name}"]]`,
   );
@@ -62,8 +62,8 @@ async function closeSettings(): Promise<void> {
   await browser.$(".vertical-tab-content").waitForExist({ reverse: true });
 }
 
-async function toggle(name: string): Promise<void> {
-  await setting(name).$(".checkbox-container").click();
+async function clickSettingToggle(name: string): Promise<void> {
+  await settingItem(name).$(".checkbox-container").click();
 }
 
 /** Waits for the preferences written to disk, not just the displayed control. */
@@ -123,14 +123,18 @@ describe("Inkline settings", function () {
 
   it("shows every control with its default", async function () {
     await openSettings();
-    expect(await setting("Insert trigger").$("input").getValue()).toBe(";;");
-    expect(await setting("Symbol folder").$("input").getValue()).toBe("");
-    expect(await setting("Brush size").$("select").getValue()).toBe("1");
-    expect(await setting("Symbol size").$("input").getValue()).toBe("100");
-    expect(await setting("Grid size").$("input").getValue()).toBe("5");
-    expect(await setting("Editor buttons").$("select").getValue()).toBe("both");
+    expect(await settingItem("Insert trigger").$("input").getValue()).toBe(
+      ";;",
+    );
+    expect(await settingItem("Symbol folder").$("input").getValue()).toBe("");
+    expect(await settingItem("Brush size").$("select").getValue()).toBe("1");
+    expect(await settingItem("Symbol size").$("input").getValue()).toBe("100");
+    expect(await settingItem("Grid size").$("input").getValue()).toBe("5");
+    expect(await settingItem("Editor buttons").$("select").getValue()).toBe(
+      "both",
+    );
     // Pen pressure was removed with pen-device support (#101).
-    expect(await setting("Pen pressure").isExisting()).toBe(false);
+    expect(await settingItem("Pen pressure").isExisting()).toBe(false);
     for (const name of [
       "Text colour",
       "Show in a new editor",
@@ -141,7 +145,7 @@ describe("Inkline settings", function () {
       "Descender line",
     ]) {
       expect(
-        await setting(name).$(".checkbox-container").getAttribute("class"),
+        await settingItem(name).$(".checkbox-container").getAttribute("class"),
       ).toContain("is-enabled");
     }
     await saveScreenshot("settings");
@@ -150,7 +154,7 @@ describe("Inkline settings", function () {
 
   it("stores Grid size from its slider, from 2 to 10 cells", async function () {
     await openSettings();
-    const slider = setting("Grid size").$("input");
+    const slider = settingItem("Grid size").$("input");
     await slider.click();
     await browser.keys(["Home"]);
     await waitForStored({ gridCells: 2 });
@@ -166,10 +170,10 @@ describe("Inkline settings", function () {
   it("uses a changed trigger immediately and refuses an ordinary word", async function () {
     await createSymbol("gate.ink.png");
     await openSettings();
-    await setting("Insert trigger").$("input").setValue("::");
+    await settingItem("Insert trigger").$("input").setValue("::");
     await waitForStored({ trigger: "::" });
-    await setting("Insert trigger").$("input").setValue("word");
-    await setting("Brush size").$("select").click();
+    await settingItem("Insert trigger").$("input").setValue("word");
+    await settingItem("Brush size").$("select").click();
     await closeSettings();
     await waitForStored({ trigger: "::" });
     await openAtMarker("Editor.md", "HERE");
@@ -194,18 +198,18 @@ describe("Inkline settings", function () {
 
   it("stores a symbol folder, refusing one that leaves the vault", async function () {
     await openSettings();
-    await setting("Symbol folder").$("input").setValue("/Signs/Script/");
+    await settingItem("Symbol folder").$("input").setValue("/Signs/Script/");
     await waitForStored({ symbolFolder: "Signs/Script" });
-    await setting("Symbol folder").$("input").setValue("../Signs");
+    await settingItem("Symbol folder").$("input").setValue("../Signs");
     // A change stored after it shows that the refused folder stored nothing.
-    await setting("Brush size").$("select").selectByAttribute("value", "2");
+    await settingItem("Brush size").$("select").selectByAttribute("value", "2");
     await waitForStored({ brushSize: 2, symbolFolder: "Signs/Script" });
     await closeSettings();
   });
 
   it("stores Editor buttons from its dropdown and applies it to a new editor", async function () {
     await openSettings();
-    const select = setting("Editor buttons").$("select");
+    const select = settingItem("Editor buttons").$("select");
     expect(await select.getValue()).toBe("both");
     const choices = await select
       .$$("option")
@@ -225,8 +229,8 @@ describe("Inkline settings", function () {
 
   it("keeps drawing defaults across reload and applies them to a new editor", async function () {
     await openSettings();
-    await setting("Brush size").$("select").selectByAttribute("value", "3");
-    await toggle("Show in a new editor");
+    await settingItem("Brush size").$("select").selectByAttribute("value", "3");
+    await clickSettingToggle("Show in a new editor");
     await waitForStored({ brushSize: 3, guides: false });
     await closeSettings();
     await obsidianPage.disablePlugin("inkline");
@@ -298,11 +302,11 @@ describe("Inkline settings", function () {
     const before = await sizes();
     expect(before).toHaveLength(2);
     await openSettings();
-    await setting("Symbol size").$("input").click();
+    await settingItem("Symbol size").$("input").click();
     await browser.keys(["Home"]);
     // Native slider keys: 50%, then ten 5% steps to 100%, then ten to 150%.
     for (let step = 0; step < 20; step++) await browser.keys(["ArrowRight"]);
-    await toggle("Text colour");
+    await clickSettingToggle("Text colour");
     await waitForStored({ symbolScale: 150, textColor: false });
     await closeSettings();
     const after = await sizes();
@@ -360,9 +364,9 @@ describe("Inkline settings", function () {
   it("applies display settings to new and existing popout windows", async function () {
     await createSymbol("gate.ink.png");
     await openSettings();
-    await setting("Symbol size").$("input").click();
+    await settingItem("Symbol size").$("input").click();
     await browser.keys(["End"]);
-    await toggle("Text colour");
+    await clickSettingToggle("Text colour");
     await waitForStored({ symbolScale: 200, textColor: false });
     await closeSettings();
     await browser.executeObsidian(async ({ app }) => {
@@ -397,9 +401,9 @@ describe("Inkline settings", function () {
       mask: "none",
     });
     await openSettings();
-    await setting("Symbol size").$("input").click();
+    await settingItem("Symbol size").$("input").click();
     await browser.keys(["Home"]);
-    await toggle("Text colour");
+    await clickSettingToggle("Text colour");
     await waitForStored({ symbolScale: 50, textColor: true });
     await closeSettings();
     const changed = await popoutState();
@@ -450,8 +454,8 @@ describe("Inkline settings", function () {
       };
     });
     try {
-      await toggle("Show in a new editor");
-      await toggle("Text colour");
+      await clickSettingToggle("Show in a new editor");
+      await clickSettingToggle("Text colour");
       await browser.executeObsidian(({ plugins }) => {
         const release: unknown = Reflect.get(
           plugins.inkline,
@@ -500,7 +504,7 @@ describe("Inkline settings", function () {
       plugin.saveData = () => Promise.reject(new Error("disk is full"));
     });
     try {
-      await toggle("Show in a new editor");
+      await clickSettingToggle("Show in a new editor");
       await waitForNotice("Inkline settings could not be saved");
     } finally {
       await browser.executeObsidian(({ plugins }) => {
@@ -515,7 +519,7 @@ describe("Inkline settings", function () {
         Reflect.deleteProperty(plugin, "inklineOriginalSaveData");
       });
     }
-    await toggle("Text colour");
+    await clickSettingToggle("Text colour");
     await waitForStored({ guides: false, textColor: false });
     await closeSettings();
   });
@@ -530,9 +534,11 @@ describe("Inkline settings", function () {
     });
     await obsidianPage.enablePlugin("inkline");
     await openSettings();
-    expect(await setting("Insert trigger").$("input").getValue()).toBe(";;");
-    expect(await setting("Symbol folder").$("input").getValue()).toBe("");
-    expect(await setting("Symbol size").$("input").getValue()).toBe("100");
+    expect(await settingItem("Insert trigger").$("input").getValue()).toBe(
+      ";;",
+    );
+    expect(await settingItem("Symbol folder").$("input").getValue()).toBe("");
+    expect(await settingItem("Symbol size").$("input").getValue()).toBe("100");
     await closeSettings();
   });
 });

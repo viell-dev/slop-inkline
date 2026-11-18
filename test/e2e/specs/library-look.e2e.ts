@@ -11,9 +11,9 @@
 import { browser, expect } from "@wdio/globals";
 import { Key } from "webdriverio";
 import { loadModules } from "../support/browser.ts";
-import { createSymbol, openAtMarker, startOver } from "../support/editor.ts";
+import { openAtMarker, startOver } from "../support/editor.ts";
 import { saveClip, saveScreenshot } from "../support/screenshots.ts";
-import { type Fields } from "../support/symbol-text.ts";
+import { symbolWith, type Fields } from "../support/symbol-text.ts";
 
 /** A box's top and bottom, in pixels. */
 interface Edges {
@@ -66,36 +66,10 @@ const notes = {
     "The recurring sign: ![[gate.ink.png]] by ![[water.ink.png]]\n\nHERE\n",
 } as const;
 
-/** A symbol at `file`, drawn as `strokes`, that says `fields` about itself. */
-async function symbolWith(
-  file: string,
-  strokes: readonly number[],
-  fields: Fields,
-): Promise<void> {
-  await createSymbol(file, strokes);
-  await browser.executeObsidian(
-    async ({ app }, wanted, { reading, translation }) => {
-      const found = app.vault.getFileByPath(wanted);
-      if (found === null) throw new Error(`no ${wanted}`);
-      const { text } = window.inklineTest;
-      let bytes: Uint8Array = new Uint8Array(await app.vault.readBinary(found));
-      if (reading !== undefined) {
-        bytes = await text.writeText(bytes, "reading", reading);
-      }
-      if (translation !== undefined) {
-        bytes = await text.writeText(bytes, "translation", translation);
-      }
-      await app.vault.modifyBinary(found, bytes.slice().buffer);
-    },
-    file,
-    fields,
-  );
-}
-
 /** Makes the symbols and notes, and waits for Obsidian to index the links. */
 async function makeVault(): Promise<void> {
   for (const { file, strokes, ...fields } of symbols) {
-    await symbolWith(file, strokes, fields);
+    await symbolWith(file, fields, strokes);
   }
   await browser.executeObsidian(async ({ app }, wanted) => {
     for (const [path, text] of Object.entries(wanted)) {
@@ -145,11 +119,13 @@ function rowOf(file: string): string {
 }
 
 const form = () => browser.$(".inkline-library-edit-form");
-const nameField = () => form().$("input");
+const quickEditNameField = () => form().$("input");
 const formButton = (text: "Save" | "Cancel") => form().$(`button=${text}`);
 
 /** A text area of Quick edit. */
-function area(field: "reading" | "translation"): ReturnType<typeof browser.$> {
+function quickEditArea(
+  field: "reading" | "translation",
+): ReturnType<typeof browser.$> {
   return form().$(`textarea[data-inkline-field="${field}"]`);
 }
 
@@ -452,7 +428,7 @@ async function typeLines(
   field: "reading" | "translation",
   lines: readonly string[],
 ): Promise<void> {
-  await area(field).click();
+  await quickEditArea(field).click();
   await browser.keys([Key.Ctrl, "a"]);
   await browser.keys(["Backspace"]);
   for (const [index, line] of lines.entries()) {
@@ -724,13 +700,13 @@ describe("The library's look", function () {
     );
     // Clicks on them do nothing, and leave the focus in the form, as does one
     // on the edited row's own Uses.
-    await nameField().click();
+    await quickEditNameField().click();
     await gateUses.click();
     await towerEdit.click();
     await browser.$(rowOf("sun.ink.png")).$(".inkline-library-uses").click();
     await browser.pause(200);
     expect(await browser.$$(".inkline-library-edit-form").length).toBe(1);
-    expect(await nameField().getValue()).toBe("sun");
+    expect(await quickEditNameField().getValue()).toBe("sun");
     expect(await focused()).toMatchObject({
       tag: "INPUT",
       inForm: true,

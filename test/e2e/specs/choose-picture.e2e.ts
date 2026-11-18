@@ -29,7 +29,9 @@ interface Chooser {
  * the system's file dialog does once one is chosen: a synthetic picture all in
  * one colour, or text that is no picture.
  */
-async function choose(kind: "red" | "blue" | "text"): Promise<Chooser> {
+async function chooseFromFileInput(
+  kind: "red" | "blue" | "text",
+): Promise<Chooser> {
   return browser.execute(async (what) => {
     const doc = activeDocument;
     const view = doc.defaultView;
@@ -59,7 +61,7 @@ async function choose(kind: "red" | "blue" | "text"): Promise<Chooser> {
 }
 
 /** Which of a red and a blue picture the drawing area shows. */
-async function pictureShown(): Promise<{ red: boolean; blue: boolean }> {
+async function pictureColoursShown(): Promise<{ red: boolean; blue: boolean }> {
   return browser.execute(() => {
     const canvas = activeDocument.querySelector(
       ".inkline-editor .inkline-surface",
@@ -157,22 +159,22 @@ describe("Choose picture", function () {
   it("traces a chosen picture as a pasted one, and says when it cannot", async function () {
     await openEditor();
     expect(await canMove()).toBe(false);
-    const chosen = await choose("red");
+    const chosen = await chooseFromFileInput("red");
     // Emptied after each choice, so that choosing the same file again is a
     // change too; the system's own dialog is outside what this can show.
     expect(chosen).toEqual({ here: true, value: "", files: 0 });
     await waitForStatus("Tracing over the picture");
     await browser.waitUntil(canMove);
-    await browser.waitUntil(async () => (await pictureShown()).red);
+    await browser.waitUntil(async () => (await pictureColoursShown()).red);
     await saveScreenshot("choose-picture");
     // A file that is no picture leaves the one traced.
-    await choose("text");
+    await chooseFromFileInput("text");
     await waitForStatus("Not traced: Inkline cannot read this picture");
-    expect(await pictureShown()).toEqual({ red: true, blue: false });
+    expect(await pictureColoursShown()).toEqual({ red: true, blue: false });
     // Another choice replaces it.
-    await choose("blue");
+    await chooseFromFileInput("blue");
     await browser.waitUntil(async () => {
-      const shown = await pictureShown();
+      const shown = await pictureColoursShown();
       return shown.blue && !shown.red;
     });
   });
@@ -210,7 +212,7 @@ describe("Choose picture", function () {
         .$('.inkline-editor .inkline-picture input[type="file"]')
         .addValue(file);
       await waitForStatus("Tracing over the picture");
-      await browser.waitUntil(async () => (await pictureShown()).red);
+      await browser.waitUntil(async () => (await pictureColoursShown()).red);
       await saveScreenshot("choose-picture-outside");
       expect(await files()).toEqual(before);
     } finally {
@@ -226,9 +228,9 @@ describe("Choose picture", function () {
     ]);
     await browser.waitUntil(async () => (await storedDrafts()).length === 1);
     await focusChooseButton();
-    await choose("red");
+    await chooseFromFileInput("red");
     await browser.waitUntil(surfaceFocused);
-    await browser.waitUntil(async () => (await pictureShown()).red);
+    await browser.waitUntil(async () => (await pictureColoursShown()).red);
     // Cancelling the dialog keeps the picture and the drawing.
     await focusChooseButton();
     expect(await surfaceFocused()).toBe(false);
@@ -241,7 +243,7 @@ describe("Choose picture", function () {
       input.dispatchEvent(new view.Event("cancel"));
     });
     await browser.waitUntil(surfaceFocused);
-    expect((await pictureShown()).red).toBe(true);
+    expect((await pictureColoursShown()).red).toBe(true);
     expect((await storedDrafts())[0]?.strokes).toHaveLength(1);
   });
   it("chooses in the window the editor is in", async function () {
@@ -279,7 +281,7 @@ describe("Choose picture", function () {
               null,
         ),
       );
-      expect((await choose("red")).here).toBe(true);
+      expect((await chooseFromFileInput("red")).here).toBe(true);
       await browser.waitUntil(canMove);
     } finally {
       // Disabling Inkline closes the popout's editor; then the popout goes.

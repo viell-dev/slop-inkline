@@ -184,7 +184,7 @@ async function editors(): Promise<number> {
 }
 
 /** Closes the editor on top, which has nothing to ask. */
-async function closeEditor(): Promise<void> {
+async function escapeEditor(): Promise<void> {
   await browser.keys(["Escape"]);
   await browser.$(".inkline-editor").waitForExist({ reverse: true });
 }
@@ -218,7 +218,7 @@ async function copyFrom(name: string): Promise<void> {
 }
 
 /** Opens the editor on a new symbol in the note. */
-async function newSymbol(): Promise<void> {
+async function insertInEditorNote(): Promise<void> {
   await openAtMarker("Editor.md", "HERE");
   await browser.executeObsidianCommand("inkline:insert-symbol");
   await waitForEditor();
@@ -282,7 +282,7 @@ describe("Opening a large symbol", function () {
         const open = await timedEditorOpen(file);
         runs.push(open);
         console.log(`Open ${String(run + 1)} of ${file}`, JSON.stringify(open));
-        await closeEditor();
+        await escapeEditor();
       }
       const shortest = (each: (run: (typeof runs)[number]) => number): number =>
         Math.min(...runs.map(each));
@@ -326,7 +326,7 @@ describe("Opening a large symbol", function () {
         () => Reflect.get(window, "inklineKeyBeforeEditor") as boolean,
       ),
     ).toBe(true);
-    await closeEditor();
+    await escapeEditor();
     expect(await noteText()).toBe(
       "The door is marked with q which means return.\n",
     );
@@ -563,7 +563,7 @@ describe("While a symbol opens", function () {
   });
 
   it("copies nothing over a drawing the editor is asking about", async function () {
-    await newSymbol();
+    await insertInEditorNote();
     await draw(zigzag);
     await delayVault("readBinary", held);
     await copyFrom("One");
@@ -595,7 +595,7 @@ describe("While a symbol opens", function () {
   });
 
   it("keeps a stroke drawn while a copy is read, for Undo to bring back", async function () {
-    await newSymbol();
+    await insertInEditorNote();
     await draw(zigzag);
     await delayVault("readBinary", held);
     await copyFrom("One");
@@ -612,10 +612,10 @@ describe("While a symbol opens", function () {
   });
 
   it("copies nothing once the editor has closed", async function () {
-    await newSymbol();
+    await insertInEditorNote();
     await delayVault("readBinary", held);
     await copyFrom("One");
-    await closeEditor();
+    await escapeEditor();
     await readsOver();
     expect(await editors()).toBe(0);
     expect(await notices()).toEqual([]);

@@ -72,7 +72,7 @@ async function plantKeptDraft(): Promise<void> {
  * Writes a picture of `width × height` pixels whose alpha is noise from a
  * fixed seed, which PNG cannot compress, and returns its size in bytes.
  */
-async function writeNoise(
+async function writeNoiseAndMeasureBytes(
   path: string,
   width: number,
   height: number,
@@ -506,7 +506,7 @@ describe("The editor", function () {
   });
 
   it("refuses a picture whose ink is too large for a base layer", async function () {
-    await writeNoise("large.ink.png", 4096, 2048);
+    await writeNoiseAndMeasureBytes("large.ink.png", 4096, 2048);
     await browser.executeObsidian(({ app, plugins }) => {
       const file = app.vault.getFileByPath("large.ink.png");
       if (file === null) throw new Error("no large.ink.png");
@@ -519,7 +519,7 @@ describe("The editor", function () {
   });
 
   it("keeps drafts with a large kept base layer quickly, storing its pixels once", async function () {
-    await writeNoise("noise.png", 1024, 1024);
+    await writeNoiseAndMeasureBytes("noise.png", 1024, 1024);
     const timings = await browser.executeObsidian(async ({ app }) => {
       const { drafts } = window.inklineTest;
       const file = app.vault.getFileByPath("noise.png");
