@@ -193,6 +193,13 @@ must keep released files readable and looking the same, as
   below 5 ms per update while preserving the bitmap's coverage. This bounds the
   sampling cost in the Linux host harness; it does not measure physical-input
   latency or establish performance on every device.
+- **Unreleased:** ink shows under the pointer that drew it, within 0.8 CSS
+  pixels, at the top, bottom, left, and right of the drawing area, measured in a
+  screenshot's pixels, in the usual view and after **Fit** in **Zoom**, at 100%
+  and 125% page zoom, and the drawing area's content box, which its pixels fill,
+  is as tall as the line box it shows
+  ([pointer-alignment.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/pointer-alignment.e2e.ts),
+  [#359](https://github.com/viell-dev/slop-inkline/issues/359)).
 - **Make ink** of a synthetic H, enlarged from about 1.2 to 11.5 times, leaves
   at most two partly covered document pixels at each edge of the saved symbol,
   and the reopened symbol draws the same pixels. The editor's own redraw, which

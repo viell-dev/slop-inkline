@@ -9,6 +9,15 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Fixed
+
+- Ink shows under the pointer that draws it at the bottom of the drawing area
+  too, where it showed up to 2 CSS pixels above it, in the usual view and in
+  **Zoom** alike, as the area's border took its height from the drawing
+  ([#359](https://github.com/viell-dev/slop-inkline/issues/359)). Strokes were
+  always saved where the pointer was, and the grid, the guides, and the ink
+  lined up with one another; the drawing area is now 2 pixels taller.
+
 ## 1.0.0 - 2026-11-16
 
 This is Inkline's first stable release. It is 0.9.5, the last release candidate,

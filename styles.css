@@ -236,7 +236,11 @@
   --inkline-erasing: var(--color-red);
   display: block;
   width: 100%;
-  height: var(--inkline-surface-height, 288px);
+  /* The line box's height, as the content box's, and the border and padding
+     that the border box adds to it; view.ts sets both. */
+  height: calc(
+    var(--inkline-surface-height, 288px) + var(--inkline-surface-frame, 0px)
+  );
   color: var(--text-normal);
   background-color: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
