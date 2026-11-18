@@ -13,8 +13,7 @@ import {
 } from "../../fixtures/format/text-cases.ts";
 import { encodePng, blank, header } from "../../support/png.ts";
 import { loadModules, toBase64 } from "../support/browser.ts";
-
-const fixtures = path.resolve(import.meta.dirname, "../../fixtures/format");
+import { fixtures } from "../support/symbol-text.ts";
 
 /**
  * How far a redraw may differ from a golden file's stored alpha, from one

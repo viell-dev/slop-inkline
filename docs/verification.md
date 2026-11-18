@@ -595,7 +595,9 @@ must keep released files readable and looking the same, as
 
 - Each control is labelled, its tooltip shows its key, toggles say whether they
   are on, and keys give way to a text field
-  ([drawing.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/drawing.e2e.ts)).
+  ([buttons.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/buttons.e2e.ts)
+  and
+  [drawing.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/drawing.e2e.ts)).
 - This site lists every command and every button's key as the code has them
   ([docs.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/docs.test.ts)).
 
