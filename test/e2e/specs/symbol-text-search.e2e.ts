@@ -21,6 +21,7 @@ import {
   rows,
   showLibrary,
   waitForRow,
+  waitForRows,
   waitForValues,
 } from "../support/symbol-text-library.ts";
 import {
@@ -112,8 +113,7 @@ describe("A symbol's readings and translations", function () {
       await indexed();
       await openAtMarker(noteFile, "HERE");
       await type(";;rice f");
-      const shown = await waitForRow("Anything at all");
-      expect(shown).toEqual([
+      await waitForRows([
         { name: "Anything at all", why: "Translation: rice field" },
       ]);
       await type("ood");
@@ -140,7 +140,7 @@ describe("A symbol's readings and translations", function () {
       await browser.executeObsidianCommand("inkline:insert-existing-symbol");
       await browser.$(".prompt-input").waitForExist();
       await browser.$(".prompt-input").setValue("rice");
-      expect(await waitForRow("Anything at all")).toEqual([
+      await waitForRows([
         { name: "Anything at all", why: "Translation: rice field" },
       ]);
       await saveScreenshot("text-insert-existing");
@@ -156,7 +156,7 @@ describe("A symbol's readings and translations", function () {
       await browser.$('[data-inkline-button="copy"]').click();
       await browser.$(".prompt-input").waitForExist();
       await browser.$(".prompt-input").setValue("rice");
-      expect(await waitForRow("Anything at all")).toEqual([
+      await waitForRows([
         { name: "Anything at all", why: "Translation: rice field" },
       ]);
       await saveScreenshot("text-copy-from");
