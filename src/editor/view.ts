@@ -4,7 +4,6 @@
 
 import type { Stroke } from "../format/record.ts";
 import {
-  addedStroke,
   documentSpan,
   emptyDocument,
   type InkDocument,
@@ -117,12 +116,37 @@ interface Drawn {
 }
 
 /**
- * The stroke that makes `now` of `drawn`, if that is all that changed, so
- * that it can be drawn over what is there rather than everything again.
+ * The strokes `next` adds to `previous`, when that is all that changed: the
+ * same base layer and the very same strokes in order, with one or more after
+ * them, as a stroke or a filled shape adds. Anything else gives undefined,
+ * however it came about, as an undo, a move, which makes new strokes, or a
+ * replaced document all do. Strokes draw in order, so these drawn over what
+ * `previous` left are what `next` leaves.
  */
-function strokeOver(drawn: Drawn | undefined, now: Drawn): Stroke | undefined {
+export function addedStrokes(
+  previous: InkDocument,
+  next: InkDocument,
+): readonly Stroke[] | undefined {
+  const before = previous.strokes;
+  const { strokes } = next;
+  if (next.base !== previous.base || strokes.length <= before.length) {
+    return undefined;
+  }
+  return before.every((stroke, index) => stroke === strokes[index])
+    ? strokes.slice(before.length)
+    : undefined;
+}
+
+/**
+ * The strokes that make `now` of `drawn`, if that is all that changed, so
+ * that they can be drawn over what is there rather than everything again.
+ */
+function strokesOver(
+  drawn: Drawn | undefined,
+  now: Drawn,
+): readonly Stroke[] | undefined {
   return drawn !== undefined && drawn.base === now.base
-    ? addedStroke(drawn.document, now.document)
+    ? addedStrokes(drawn.document, now.document)
     : undefined;
 }
 
@@ -153,8 +177,8 @@ export class InkView {
   #shown: Drawn | undefined;
   #committed = new OffscreenCanvas(1, 1);
   #work = new OffscreenCanvas(1, 1);
-  /** The stroke being drawn, and the text colour, as last rendered. */
-  #active: Stroke | undefined;
+  /** The strokes being drawn, and the text colour, as last rendered. */
+  #active: readonly Stroke[] = [];
   #colour = "black";
   #previewWork = new OffscreenCanvas(1, 1);
   /** The document and base layer whose ink `#inked` measures. */
@@ -314,7 +338,8 @@ export class InkView {
 
   /**
    * Where the saved image would start and end, in document pixels: the ink
-   * the surface shows, plus a pen stroke being drawn, with side bearings.
+   * the surface shows, plus the pen's strokes being drawn, with side
+   * bearings.
    */
   get image(): Span {
     return this.#image;
@@ -322,19 +347,20 @@ export class InkView {
 
   /**
    * Draws any picture to trace over, the line box, and the document, with
-   * `active`, the stroke being drawn, on top: erasing it cuts the ink below
-   * as it will when committed, never the picture. With `erasing`, for a
-   * shape drawn with the eraser, which shows nothing where there is no ink
+   * `active`, the strokes being drawn, on top: erasing them cuts the ink
+   * below as it will when committed, never the picture. With `erasing`, for
+   * a shape drawn with the eraser, which shows nothing where there is no ink
    * to cut, `active` is also tinted over it all, as only a preview.
    * The image's ends come from the committed ink's pixels inside the line
    * box, as a save crops to them, read back each time the ink changes,
-   * however much of it the surface shows, and from a pen stroke being drawn.
-   * A stroke added to what is shown is drawn over it, as it is last anyway.
+   * however much of it the surface shows, and from the pen's strokes being
+   * drawn. Strokes added to what is shown are drawn over it, as they are last
+   * anyway.
    */
   render(
     document: InkDocument,
     base: DrawableBase | undefined,
-    active: Stroke | undefined,
+    active: readonly Stroke[] = [],
     erasing = false,
   ): void {
     const { width, height } = this.canvas;
@@ -345,7 +371,7 @@ export class InkView {
     }
     if (this.#shown?.document !== document || this.#shown.base !== base) {
       const committed = offscreen2d(this.#committed);
-      const added = strokeOver(this.#shown, now);
+      const added = strokesOver(this.#shown, now);
       committed.resetTransform();
       if (added === undefined) {
         committed.clearRect(0, 0, width, height);
@@ -357,7 +383,7 @@ export class InkView {
         );
       } else {
         this.#transform(committed);
-        drawInk(committed, [added], undefined);
+        drawInk(committed, added, undefined);
       }
       committed.resetTransform();
       this.#shown = now;
@@ -365,9 +391,7 @@ export class InkView {
     this.#image = cropSpan(
       joinSpans(
         this.#inked?.ink,
-        active?.tool === "pen"
-          ? documentSpan({ strokes: [active] })
-          : undefined,
+        documentSpan({ strokes: active.filter(({ tool }) => tool === "pen") }),
       ),
     );
     const work = offscreen2d(this.#work);
@@ -375,9 +399,9 @@ export class InkView {
     work.globalCompositeOperation = "copy";
     work.drawImage(this.#committed, 0, 0);
     work.globalCompositeOperation = "source-over";
-    if (active !== undefined) {
+    if (active.length > 0) {
       this.#transform(work);
-      drawInk(work, [active], undefined);
+      drawInk(work, active, undefined);
       work.resetTransform();
     }
     const style = getComputedStyle(this.canvas);
@@ -409,11 +433,15 @@ export class InkView {
     }
     this.#drawLineBox(visible, style);
     visible.drawImage(this.#work, 0, 0);
-    if (erasing && active !== undefined) {
+    if (erasing && active.length > 0) {
       work.globalCompositeOperation = "source-over";
       work.clearRect(0, 0, width, height);
       this.#transform(work);
-      drawInk(work, [{ ...active, tool: "pen" }], undefined);
+      drawInk(
+        work,
+        active.map((stroke): Stroke => ({ ...stroke, tool: "pen" })),
+        undefined,
+      );
       work.resetTransform();
       work.globalCompositeOperation = "source-in";
       work.fillStyle =
@@ -523,7 +551,7 @@ export class InkView {
     drawn.drawImage(ink.canvas, ink.left - left, 0);
     drawn.globalCompositeOperation = "source-over";
     const active = this.#active;
-    if (active !== undefined) drawInk(drawn, [active], undefined, -left);
+    if (active.length > 0) drawInk(drawn, active, undefined, -left);
     const context = element2d(target);
     context.clearRect(0, 0, target.width, target.height);
     context.imageSmoothingEnabled = true;
@@ -551,11 +579,11 @@ export class InkView {
     const last = this.#previewInk;
     const fits = last?.left === from && last.canvas.width === across;
     if (fits && last.document === document && last.base === base) return last;
-    const added = strokeOver(last, now);
+    const added = strokesOver(last, now);
     let canvas: OffscreenCanvas;
     if (fits && added !== undefined) {
       canvas = last.canvas;
-      drawInk(offscreen2d(canvas), [added], undefined, -from);
+      drawInk(offscreen2d(canvas), added, undefined, -from);
     } else {
       canvas = new OffscreenCanvas(across, lineBox.height);
       drawInk(
@@ -573,19 +601,23 @@ export class InkView {
   /**
    * Finds how far the drawing's ink reaches inside the line box, as a save
    * crops to it, whatever the surface shows: in tiles, so that geometry far
-   * away or erased costs time but never a huge canvas. A pen stroke added to
-   * what was measured is measured alone, where a full measurement would draw
-   * it, if it can be. Anything else can take ink away, so all of it is
-   * measured again.
+   * away or erased costs time but never a huge canvas. Pen strokes added to
+   * what was measured are measured each alone, where a full measurement would
+   * draw them, if they can be. Anything else can take ink away, so all of it
+   * is measured again.
    */
   #measure(now: Drawn): void {
     const { document, base } = now;
-    const added = strokeOver(this.#measured, now);
-    const inked = this.#inked;
+    const added = strokesOver(this.#measured, now);
+    let inked = added?.every(({ tool }) => tool === "pen")
+      ? this.#inked
+      : undefined;
+    for (const stroke of added ?? []) {
+      if (inked === undefined) break;
+      inked = measureAdded(inked, stroke);
+    }
     this.#inked =
-      (added?.tool === "pen" && inked !== undefined
-        ? measureAdded(inked, added)
-        : undefined) ??
+      inked ??
       measureInk(document, document.base === undefined ? undefined : base);
   }
 }

@@ -219,6 +219,17 @@ must keep released files readable and looking the same, as
   symbol's M strokes show within 20% of the text's stems on the screen. Five M
   strokes a grid spacing apart stay separate
   ([pen-weights.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/pen-weights.e2e.ts)).
+- **Unreleased:** a filled polygon, and a filled ellipse, read back from the
+  drawing area's pixels, have exactly the outer edge of the same shape unfilled
+  across the same corners, and everything within it is fully inked; with the
+  eraser, an ellipse's hole reaches exactly as far as the eraser's line does.
+  The pen's polygon on its first corner and ellipse being dragged show exactly
+  what the click or the release leaves, and one Undo takes all of it back
+  ([fill.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/fill.e2e.ts)).
+  Unit tests pin that a filled shape records its fill and the line of the shape
+  unfilled as one step, and that a reopened drawing's grid goes by the shape as
+  if unfilled
+  ([session.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/session.test.ts)).
 - A view that adds each stroke to what it has drawn and measured shows what a
   new view does, pixel for pixel on the surface and in the preview, at full size
   and at 16 px, and the image's ends are exactly those of a full measurement,

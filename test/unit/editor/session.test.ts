@@ -11,7 +11,18 @@ import {
   type InputPoint,
 } from "../../../src/editor/session.ts";
 import { finerGrid, type Grid } from "../../../src/editor/guides.ts";
+import type { Stroke } from "../../../src/format/record.ts";
 import { emptyDocument } from "../../../src/ink/document.ts";
+
+/**
+ * The stroke a session is drawing, which is the only one: only a filled
+ * shape draws two.
+ */
+function drawn(session: DrawingSession): Stroke | undefined {
+  const strokes = session.activeStrokes;
+  expect(strokes.length).toBeLessThanOrEqual(1);
+  return strokes[0];
+}
 
 describe("brushSizes", () => {
   it("run from 0.75 to 3 px at a 16 px font, in whole document pixels", () => {
@@ -32,12 +43,12 @@ describe("DrawingSession", () => {
     session.tool = "pen";
     expect(session.sizeIndex).toBe(0);
     session.begin({ x: 0, y: 0 });
-    expect(session.activeStroke).toMatchObject({ tool: "pen", size: 96 });
+    expect(drawn(session)).toMatchObject({ tool: "pen", size: 96 });
     session.end();
     session.tool = "eraser";
     expect(session.sizeIndex).toBe(3);
     session.begin({ x: 0, y: 0 });
-    expect(session.activeStroke).toMatchObject({ tool: "eraser", size: 384 });
+    expect(drawn(session)).toMatchObject({ tool: "eraser", size: 384 });
     session.end();
   });
 
@@ -86,10 +97,10 @@ describe("DrawingSession", () => {
   it("shows the stroke being drawn and drops a cancelled one", () => {
     const session = new DrawingSession(emptyDocument);
     session.begin({ x: 0, y: 0 });
-    expect(session.activeStroke?.points).toEqual([0, 0]);
+    expect(drawn(session)?.points).toEqual([0, 0]);
     expect(session.drawing).toBe(true);
     session.cancel();
-    expect(session.activeStroke).toBeUndefined();
+    expect(drawn(session)).toBeUndefined();
     expect(session.document.strokes).toEqual([]);
   });
 
@@ -223,7 +234,7 @@ describe("DrawingSession", () => {
       ],
       true,
     );
-    const points = session.activeStroke?.points ?? [];
+    const points = drawn(session)?.points ?? [];
     const xs = points.filter((_, index) => index % 2 === 0);
     const ys = points.filter((_, index) => index % 2 === 1);
     // Freehand to (4, 0), then straight down to (4, 8) only.
@@ -262,7 +273,7 @@ describe("DrawingSession", () => {
     // A straight segment's end follows the grid as it is drawn.
     session.begin({ x: 0, y: 0 }, true);
     session.extend([{ x: 25, y: 2 }], true);
-    expect(session.activeStroke?.points.slice(-2)).toEqual([512, 0]);
+    expect(drawn(session)?.points.slice(-2)).toEqual([512, 0]);
   });
 
   it("records a tap on the grid as one point, with the pen or the eraser", () => {
@@ -303,10 +314,10 @@ describe("DrawingSession", () => {
     session.snap = true;
     session.begin({ x: 0, y: 0 });
     session.extend([{ x: 20, y: 2 }], true);
-    expect(session.activeStroke?.points.slice(-2)).toEqual([256, 0]);
+    expect(drawn(session)?.points.slice(-2)).toEqual([256, 0]);
     session.rebase(-5);
     session.extend([{ x: 15, y: 2 }], true);
-    expect(session.activeStroke?.points.slice(-2)).toEqual([176, 0]);
+    expect(drawn(session)?.points.slice(-2)).toEqual([176, 0]);
   });
 
   it("lines the grid up with where an opened drawing's strokes end", () => {
@@ -362,7 +373,7 @@ describe("DrawingSession", () => {
     session.snap = true;
     session.begin({ x: 16, y: 64 }, true);
     session.extend([{ x: 47, y: 66 }], true);
-    const shown = session.activeStroke?.points.slice(-2);
+    const shown = drawn(session)?.points.slice(-2);
     // Let go 9 px further on, past the middle of a cell, with no move between.
     session.end({ x: 41, y: 73 }, false);
     expect(session.document.strokes[0]?.points.slice(-2)).toEqual(shown);
@@ -377,7 +388,7 @@ describe("DrawingSession", () => {
     polygon.begin({ x: 47, y: 66 }, true);
     // Let go past the middle of a cell, Shift up, with no move between.
     polygon.end({ x: 41, y: 73 }, false);
-    expect(polygon.activeStroke?.points.slice(-2)).toEqual([48 * 16, 64 * 16]);
+    expect(drawn(polygon)?.points.slice(-2)).toEqual([48 * 16, 64 * 16]);
   });
 
   it("picks the most shared place for the grid, the first of a tie", () => {
@@ -637,7 +648,7 @@ describe("DrawingSession", () => {
       session.begin({ x: 31, y: 8 }, true);
       session.end({ x: 31, y: 8 }, true);
       const corners = [9 * 16, 0, 37 * 16, 14 * 16];
-      expect(session.activeStroke?.points).toEqual(corners);
+      expect(drawn(session)?.points).toEqual(corners);
       // A click on that last corner ends it, on the same grid.
       session.begin({ x: 31, y: 8 }, true);
       session.end({ x: 31, y: 8 }, true);
@@ -648,7 +659,7 @@ describe("DrawingSession", () => {
       // And one started zoomed keeps its finer grid when zoomed out.
       session.begin({ x: 31, y: 8 }, true);
       session.end({ x: 31, y: 8 }, true);
-      expect(session.activeStroke?.points).toEqual([30 * 16, 7 * 16]);
+      expect(drawn(session)?.points).toEqual([30 * 16, 7 * 16]);
       session.grid = usual;
       expect(session.grid).toBe(fine);
       session.undoCorner();
@@ -799,7 +810,7 @@ describe("DrawingSession with the grid on", () => {
     session.begin({ x: 7, y: 9 });
     session.extend([{ x: 20, y: 25 }], true);
     // It stays where it was pressed, as Shift came after.
-    expect(session.activeStroke?.points.slice(0, 2)).toEqual([7 * 16, 9 * 16]);
+    expect(drawn(session)?.points.slice(0, 2)).toEqual([7 * 16, 9 * 16]);
     session.end({ x: 20, y: 25 }, true);
     expect(ends(session)).toEqual([7, 9, 16, 32]);
   });
@@ -809,7 +820,7 @@ describe("DrawingSession with the grid on", () => {
     session.begin({ x: 7, y: 9 });
     session.extend([{ x: 21, y: 9 }]);
     session.extend([{ x: 41, y: 71 }], true);
-    const points = session.activeStroke?.points ?? [];
+    const points = drawn(session)?.points ?? [];
     // Freehand to where Shift came, then straight from there to a grid point.
     expect(points.slice(0, 2)).toEqual([7 * 16, 9 * 16]);
     expect(points).toContain(21 * 16);
@@ -823,7 +834,7 @@ describe("DrawingSession with the grid on", () => {
     session.begin({ x: 7, y: 9 }, true);
     session.extend([{ x: 41, y: 9 }], true);
     session.extend([{ x: 45, y: 13 }]);
-    const points = session.activeStroke?.points ?? [];
+    const points = drawn(session)?.points ?? [];
     // Along the row to the grid point, then on to the pointer.
     expect(points.slice(0, 2)).toEqual([0, 16 * 16]);
     expect(points).toContain(48 * 16);
@@ -1002,7 +1013,7 @@ describe("DrawingSession's cuts", () => {
     session.snap = true;
     session.begin({ x: 0, y: 16 }, true);
     session.extend([{ x: 1, y: 80 }]);
-    expect(session.activeStroke).not.toHaveProperty("cut");
+    expect(drawn(session)).not.toHaveProperty("cut");
     session.end({ x: 0, y: 144 }, true);
     expect(session.document.strokes[0]).not.toHaveProperty("cut");
   });
@@ -1062,7 +1073,7 @@ describe("DrawingSession's cuts", () => {
     session.begin({ x: 0, y: 16 }, true);
     session.extend([{ x: 1, y: 80 }]);
     // While it is drawn, only its start is on the grid.
-    expect(session.activeStroke?.cut).toEqual({ start: "up" });
+    expect(drawn(session)?.cut).toEqual({ start: "up" });
     session.end({ x: 0, y: 144 }, true);
     expect(session.document.strokes[0]?.cut).toEqual({
       start: "up",
@@ -1082,7 +1093,7 @@ describe("DrawingSession's cuts", () => {
     // On a grid point both, as it happens, but not put there by Shift.
     session.begin({ x: 0, y: 16 });
     session.extend([{ x: 1, y: 80 }]);
-    expect(session.activeStroke).not.toHaveProperty("cut");
+    expect(drawn(session)).not.toHaveProperty("cut");
     session.end({ x: 0, y: 144 });
     expect(session.document.strokes[0]).not.toHaveProperty("cut");
     // Shift at the press alone cuts the start, and at the release the end.
@@ -1159,7 +1170,7 @@ describe("DrawingSession's cuts", () => {
     }));
     session.extend(steps);
     // While drawn, as when saved.
-    expect(session.activeStroke?.cut?.start).toBe("down");
+    expect(drawn(session)?.cut?.start).toBe("down");
     session.end(steps.at(-1), true);
     expect(session.document.strokes[0]?.cut?.start).toBe("down");
   });
@@ -1180,7 +1191,7 @@ describe("DrawingSession's cuts", () => {
       Array.from({ length: 20 }, (_, step) => along(step * 2 + 2)),
     );
     session.extend([along(50), along(60)], true);
-    expect(session.activeStroke?.cut?.start).toBe("down");
+    expect(drawn(session)?.cut?.start).toBe("down");
     session.end(along(60), true);
     expect(session.document.strokes[0]?.cut?.start).toBe("down");
   });
@@ -1231,7 +1242,7 @@ describe("DrawingSession's cuts", () => {
     session.flatEnds = true;
     session.begin({ x: 41.9, y: 72.1 }, true);
     session.extend([{ x: 87.9, y: 39.9 }], true);
-    expect(session.activeStroke?.cut?.start).toBe("down");
+    expect(drawn(session)?.cut?.start).toBe("down");
     session.end({ x: 87.9, y: 39.9 }, true);
     expect(session.document.strokes[0]?.cut).toEqual({
       start: "down",
@@ -1245,7 +1256,7 @@ describe("DrawingSession's cuts", () => {
     session.flatEnds = true;
     session.begin({ x: 71, y: 71 }, true);
     session.extend([{ x: 128, y: 144 }], true);
-    expect(session.activeStroke?.cut?.start).toBe("up");
+    expect(drawn(session)?.cut?.start).toBe("up");
     session.end({ x: 128, y: 144 }, true);
     expect(session.document.strokes[0]?.cut).toEqual({
       start: "up",
@@ -1426,7 +1437,7 @@ describe("DrawingSession's ellipses", () => {
     const session = new DrawingSession(emptyDocument);
     session.shape = "ellipse";
     const circle = (): { across: number; down: number } => {
-      const points = session.activeStroke?.points ?? [];
+      const points = drawn(session)?.points ?? [];
       const xs = points.filter((_, at) => at % 2 === 0);
       const ys = points.filter((_, at) => at % 2 === 1);
       return {
@@ -1489,71 +1500,220 @@ describe("DrawingSession's ellipses", () => {
 });
 
 describe("DrawingSession's fill", () => {
+  /** Clicks at each corner of a polygon: a press and a release there. */
+  const clicks = (
+    session: DrawingSession,
+    ...corners: readonly (readonly [number, number])[]
+  ): void => {
+    for (const [x, y] of corners) {
+      session.begin({ x, y });
+      session.end({ x, y });
+    }
+  };
+
+  /** A triangle's corners, and its first again, which closes it. */
+  const triangle = [
+    [10, 20],
+    [40, 20],
+    [25, 50],
+    [10, 20],
+  ] as const;
+
   it("fills an ellipse, and a polygon closed on its first corner, but no other stroke", () => {
     const session = new DrawingSession(emptyDocument);
     session.fill = true;
     session.begin({ x: 0, y: 0 });
     session.end({ x: 20, y: 20 });
-    expect(session.document.strokes[0]?.kind).toBeUndefined();
+    expect(session.document.strokes.map(({ kind }) => kind)).toEqual([
+      undefined,
+    ]);
     session.shape = "ellipse";
     session.begin({ x: 10, y: 20 });
     session.extend([{ x: 70, y: 40 }]);
-    expect(session.activeStroke?.kind).toBe("fill");
+    expect(session.activeStrokes.map(({ kind }) => kind)).toEqual([
+      "fill",
+      undefined,
+    ]);
     session.end({ x: 70, y: 40 });
-    expect(session.document.strokes[1]?.kind).toBe("fill");
+    expect(session.document.strokes.map(({ kind }) => kind)).toEqual([
+      undefined,
+      "fill",
+      undefined,
+    ]);
     // A tap draws a dot, with nothing inside to fill.
     session.begin({ x: 5, y: 5 });
     session.end({ x: 5, y: 5 });
-    expect(session.document.strokes[2]?.kind).toBeUndefined();
+    expect(session.document.strokes).toHaveLength(4);
+    expect(session.document.strokes[3]?.kind).toBeUndefined();
     session.shape = "polygon";
-    for (const [x, y] of [
-      [10, 20],
-      [40, 20],
-      [25, 50],
-    ] as const) {
-      session.begin({ x, y });
-      session.end({ x, y });
-    }
+    clicks(session, ...triangle.slice(0, 3));
     session.end();
-    expect(session.document.strokes[3]).not.toHaveProperty("fill");
+    expect(session.document.strokes).toHaveLength(5);
+    expect(session.document.strokes[4]?.kind).toBe("polygon");
     // Nor when it is ended on its last corner.
-    for (const [x, y] of [
-      [10, 20],
-      [40, 20],
-      [25, 50],
-      [25, 50],
-    ] as const) {
-      session.begin({ x, y });
-      session.end({ x, y });
-    }
-    expect(session.document.strokes[4]?.points).toHaveLength(6);
-    expect(session.document.strokes[4]).not.toHaveProperty("fill");
+    clicks(session, ...triangle.slice(0, 3), [25, 50]);
+    expect(session.document.strokes).toHaveLength(6);
+    expect(session.document.strokes[5]?.points).toHaveLength(6);
+    expect(session.document.strokes[5]?.kind).toBe("polygon");
   });
 
   it("fills a closed polygon as Fill is when it closes, and shows it so", () => {
     const session = new DrawingSession(emptyDocument);
     session.shape = "polygon";
-    for (const [x, y] of [
-      [10, 20],
-      [40, 20],
-      [25, 50],
-    ] as const) {
-      session.begin({ x, y });
-      session.end({ x, y });
-    }
+    clicks(session, ...triangle.slice(0, 3));
     session.extend([{ x: 10, y: 20 }]);
-    expect(session.activeStroke?.kind).toBe("polygon");
+    expect(drawn(session)?.kind).toBe("polygon");
     session.fill = true;
-    expect(session.activeStroke?.kind).toBe("fill");
+    expect(session.activeStrokes.map(({ kind }) => kind)).toEqual([
+      "fill",
+      "polygon",
+    ]);
     // A side to a new corner is not closed, and shows no fill.
     session.extend([{ x: 60, y: 60 }]);
-    expect(session.activeStroke?.kind).toBe("polygon");
+    expect(drawn(session)?.kind).toBe("polygon");
+    clicks(session, [10, 20]);
+    const points = [160, 320, 640, 320, 400, 800, 160, 320];
+    expect(session.document.strokes).toEqual([
+      { tool: "pen", points, kind: "fill" },
+      { tool: "pen", size: 192, points, kind: "polygon" },
+    ]);
+  });
+
+  it("keeps the brush's width round a filled polygon: the polygon unfilled, with its inside, as one step", () => {
+    const unfilled = new DrawingSession(emptyDocument);
+    unfilled.shape = "polygon";
+    clicks(unfilled, ...triangle);
+    const [sides] = unfilled.document.strokes;
+    expect(sides).toMatchObject({ size: 192, kind: "polygon" });
+    if (sides === undefined) throw new Error("no polygon");
+
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "polygon";
+    session.fill = true;
+    // Hovering the first corner shows what the click there leaves.
+    clicks(session, ...triangle.slice(0, 3));
+    session.extend([{ x: 11, y: 21 }]);
+    const shown = session.activeStrokes;
+    clicks(session, [11, 21]);
+    expect(session.document.strokes).toEqual([
+      { tool: "pen", points: sides.points, kind: "fill" },
+      sides,
+    ]);
+    expect(shown).toEqual(session.document.strokes);
+    // One step of Undo, and of Redo.
+    expect(session.undo()).toBe(true);
+    expect(session.document.strokes).toEqual([]);
+    expect(session.canUndo).toBe(false);
+    expect(session.redo()).toBe(true);
+    expect(session.document.strokes).toHaveLength(2);
+  });
+
+  it("keeps the brush's width round a filled ellipse: the ring of the ellipse unfilled, with its inside, as one step", () => {
+    const unfilled = new DrawingSession(emptyDocument);
+    unfilled.shape = "ellipse";
+    unfilled.begin({ x: 10, y: 20 });
+    unfilled.extend([{ x: 70, y: 40 }]);
+    unfilled.end({ x: 70, y: 40 });
+    const [ring] = unfilled.document.strokes;
+    expect(ring).toMatchObject({ size: 192 });
+    if (ring === undefined) throw new Error("no ellipse");
+
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "ellipse";
+    session.fill = true;
     session.begin({ x: 10, y: 20 });
-    session.end({ x: 10, y: 20 });
-    expect(session.document.strokes[0]).toMatchObject({
-      kind: "fill",
-      points: [160, 320, 640, 320, 400, 800, 160, 320],
-    });
+    session.extend([
+      { x: 40, y: 60 },
+      { x: 70, y: 40 },
+    ]);
+    // While dragging, it shows what letting go leaves.
+    const shown = session.activeStrokes;
+    session.end({ x: 70, y: 40 });
+    expect(session.document.strokes).toEqual([
+      { tool: "pen", points: ring.points, kind: "fill" },
+      ring,
+    ]);
+    expect(shown).toEqual(session.document.strokes);
+    expect(session.undo()).toBe(true);
+    expect(session.document.strokes).toEqual([]);
+    expect(session.canUndo).toBe(false);
+    // Ended without a release, as a save ends it, it is filled the same.
+    session.begin({ x: 10, y: 20 });
+    session.extend([{ x: 70, y: 40 }]);
+    session.end();
+    expect(session.document.strokes).toEqual([
+      { tool: "pen", points: ring.points, kind: "fill" },
+      ring,
+    ]);
+  });
+
+  it("erases a filled shape's line at the eraser's width, as well as its inside", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.tool = "eraser";
+    session.sizeIndex = 3;
+    session.fill = true;
+    session.shape = "ellipse";
+    session.begin({ x: 10, y: 20 });
+    session.end({ x: 70, y: 40 });
+    session.shape = "polygon";
+    clicks(session, ...triangle);
+    expect(
+      session.document.strokes.map(({ tool, size, kind }) => ({
+        tool,
+        size,
+        kind,
+      })),
+    ).toEqual([
+      { tool: "eraser", size: undefined, kind: "fill" },
+      { tool: "eraser", size: 384, kind: undefined },
+      { tool: "eraser", size: undefined, kind: "fill" },
+      { tool: "eraser", size: 384, kind: "polygon" },
+    ]);
+  });
+
+  it("gives a polygon the tool and size chosen while it is placed, its fill too", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "polygon";
+    session.fill = true;
+    clicks(session, ...triangle.slice(0, 3));
+    session.tool = "eraser";
+    session.sizeIndex = 0;
+    session.rebrush();
+    clicks(session, [10, 20]);
+    expect(session.document.strokes).toMatchObject([
+      { tool: "eraser", kind: "fill" },
+      { tool: "eraser", size: 96, kind: "polygon" },
+    ]);
+  });
+
+  it("puts the grid of a reopened drawing where the same drawing unfilled would", () => {
+    // A line on a row, 3 px into a cell at both ends; then a triangle closed
+    // on a corner 5 px into one, filled or not. Each shape's ends mark their
+    // place twice, so the line, first, wins the tie.
+    const y = (plainGrid.rows[2] ?? 0) * 16;
+    const line: Stroke = {
+      tool: "pen",
+      size: 192,
+      points: [48, y, 48 + 1024, y],
+    };
+    const points = [80, y, 592, y, 336, y + 256, 80, y];
+    const sides: Stroke = { tool: "pen", size: 192, points, kind: "polygon" };
+    const fill: Stroke = { tool: "pen", points, kind: "fill" };
+    expect(gridOriginOf({ strokes: [line, sides] })).toBe(3);
+    expect(gridOriginOf({ strokes: [line, fill, sides] })).toBe(3);
+    // A fill with no sides after it, as Inkline 1.0.0 drew a filled shape,
+    // marks its place itself, as does one before a stroke elsewhere, 2 px on,
+    // or of the other tool.
+    expect(gridOriginOf({ strokes: [fill, line] })).toBe(5);
+    const elsewhere: Stroke = {
+      ...sides,
+      points: points.map((value, index) =>
+        index % 2 === 0 ? value + 32 : value,
+      ),
+    };
+    expect(gridOriginOf({ strokes: [fill, elsewhere, line] })).toBe(5);
+    const erased: Stroke = { ...sides, tool: "eraser" };
+    expect(gridOriginOf({ strokes: [line, fill, erased] })).toBe(5);
   });
 });
 
@@ -1578,7 +1738,7 @@ describe("DrawingSession's polygons", () => {
     expect(session.canUndo).toBe(false);
     // Between clicks, the next side follows the pointer.
     session.extend([{ x: 40, y: 22 }]);
-    expect(session.activeStroke).toEqual({
+    expect(drawn(session)).toEqual({
       tool: "pen",
       size: 192,
       points: [160, 320, 640, 352],
@@ -1588,7 +1748,7 @@ describe("DrawingSession's polygons", () => {
     click(session, 25, 50);
     // Near the first corner, the shape shows closed.
     session.extend([{ x: 12, y: 21 }]);
-    expect(session.activeStroke?.points).toEqual([
+    expect(drawn(session)?.points).toEqual([
       160, 320, 640, 320, 400, 800, 160, 320,
     ]);
     expect(session.document.strokes).toEqual([]);
@@ -1640,7 +1800,7 @@ describe("DrawingSession's polygons", () => {
     session.extend([{ x: 30, y: 20 }]);
     session.end({ x: 40, y: 20 });
     expect(session.placing).toBe(true);
-    expect(session.activeStroke?.points).toEqual([160, 320, 640, 320]);
+    expect(drawn(session)?.points).toEqual([160, 320, 640, 320]);
   });
 
   it("ends with the corners it has when ended without a release, as on saving", () => {
@@ -1680,7 +1840,7 @@ describe("DrawingSession's polygons", () => {
     // In the last corner's cell, it snaps to that corner and ends there.
     // Hovering where a click ends it shows it as the click would leave it.
     session.extend([{ x: 30, y: 140 }], true);
-    const preview = session.activeStroke;
+    const preview = drawn(session);
     click(session, 30, 140, true);
     expect(preview).toEqual(session.document.strokes[0]);
     expect(session.document.strokes[0]).toEqual({
@@ -1718,7 +1878,7 @@ describe("DrawingSession's polygons", () => {
     click(session, 40, 20);
     session.snap = true;
     session.extend([{ x: 40, y: 20 }], true);
-    expect(session.activeStroke?.points).toEqual([160, 320, 640, 320]);
+    expect(drawn(session)?.points).toEqual([160, 320, 640, 320]);
     click(session, 40, 20, true);
     expect(session.document.strokes[2]?.points).toEqual([160, 320, 640, 320]);
     session.snap = false;
@@ -1761,12 +1921,12 @@ describe("DrawingSession's polygons", () => {
     session.snap = true;
     click(session, 7, 9);
     session.extend([{ x: 41, y: 71 }]);
-    expect(session.activeStroke?.points.slice(-2)).toEqual([41 * 16, 71 * 16]);
+    expect(drawn(session)?.points.slice(-2)).toEqual([41 * 16, 71 * 16]);
     session.extend([{ x: 41, y: 71 }], true);
-    expect(session.activeStroke?.points.slice(-2)).toEqual([48 * 16, 64 * 16]);
+    expect(drawn(session)?.points.slice(-2)).toEqual([48 * 16, 64 * 16]);
     // A press says Shift for itself, ahead of its release.
     session.begin({ x: 41, y: 71 });
-    expect(session.activeStroke?.points.slice(-2)).toEqual([41 * 16, 71 * 16]);
+    expect(drawn(session)?.points.slice(-2)).toEqual([41 * 16, 71 * 16]);
     session.end({ x: 41, y: 71 });
   });
 
@@ -1809,7 +1969,7 @@ describe("DrawingSession's polygons", () => {
     click(session, 64, 64, true);
     click(session, 23, 16);
     expect(session.placing).toBe(true);
-    expect(session.activeStroke?.points).toHaveLength(8);
+    expect(drawn(session)?.points).toHaveLength(8);
     // With Shift, the same click snaps to it and closes.
     session.undoCorner();
     click(session, 23, 16, true);
@@ -1831,10 +1991,10 @@ describe("DrawingSession's polygons", () => {
     click(session, 64, 16, true);
     click(session, 64, 64, true);
     session.extend([{ x: 23, y: 16 }]);
-    expect(session.activeStroke?.points).toHaveLength(8);
-    expect(session.activeStroke?.points.slice(-2)).toEqual([23 * 16, 256]);
+    expect(drawn(session)?.points).toHaveLength(8);
+    expect(drawn(session)?.points.slice(-2)).toEqual([23 * 16, 256]);
     session.extend([{ x: 23, y: 16 }], true);
-    expect(session.activeStroke?.points.slice(-2)).toEqual([256, 256]);
+    expect(drawn(session)?.points.slice(-2)).toEqual([256, 256]);
   });
 
   it("reaches a corner placed without Shift by the brush's radius, Shift held or not", () => {
@@ -1888,12 +2048,12 @@ describe("DrawingSession's polygons", () => {
     click(session, 40, 20);
     expect(session.undoCorner()).toBe(true);
     // The next side still follows the pointer, from the corner before.
-    expect(session.activeStroke?.points).toEqual([160, 320, 640, 320]);
+    expect(drawn(session)?.points).toEqual([160, 320, 640, 320]);
     click(session, 25, 50);
     expect(session.undoCorner()).toBe(true);
     expect(session.undoCorner()).toBe(true);
     expect(session.placing).toBe(false);
-    expect(session.activeStroke).toBeUndefined();
+    expect(drawn(session)).toBeUndefined();
     expect(session.document.strokes).toEqual([]);
     click(session, 10, 20);
     click(session, 40, 20);
@@ -1913,7 +2073,7 @@ describe("DrawingSession's polygons", () => {
     session.tool = "eraser";
     session.sizeIndex = 3;
     // Until it is given the brush, it keeps the one it started with.
-    expect(session.activeStroke).toMatchObject({ tool: "pen", size: 192 });
+    expect(drawn(session)).toMatchObject({ tool: "pen", size: 192 });
     session.rebrush();
     expect(session.activeSize).toBe(384);
     click(session, 40, 20);
@@ -1939,7 +2099,7 @@ describe("DrawingSession's polygons", () => {
     click(session, 10, 20);
     session.extend([{ x: 40, y: 20 }]);
     session.rebase(-5);
-    expect(session.activeStroke?.points).toEqual([80, 320, 560, 320]);
+    expect(drawn(session)?.points).toEqual([80, 320, 560, 320]);
     click(session, 35, 20);
     click(session, 35, 20);
     expect(session.document.strokes[0]?.points).toEqual([80, 320, 560, 320]);

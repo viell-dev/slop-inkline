@@ -50,10 +50,13 @@ async function savedKinds(path: string): Promise<(string | undefined)[]> {
   return record.strokes.map((stroke) => stroke.kind);
 }
 
-/** Saves the drawing with Next, and waits for the next symbol's editor. */
-async function goOn(): Promise<void> {
+/**
+ * Saves the drawing of `strokes` strokes with Next, and waits for the next
+ * symbol's editor.
+ */
+async function goOn(strokes = 1): Promise<void> {
   await browser.waitUntil(
-    async () => (await storedDrafts())[0]?.strokes.length === 1,
+    async () => (await storedDrafts())[0]?.strokes.length === strokes,
     { timeoutMsg: "the drawing was never kept as a draft" },
   );
   await markEditor();
@@ -353,8 +356,9 @@ describe("Editor feedback", function () {
       [0.3, 0.3],
       [0.6, 0.7],
     ]);
-    await goOn();
-    expect(await savedKinds("001.ink.png")).toEqual(["fill"]);
+    // A filled ellipse: its inside, and its line round it.
+    await goOn(2);
+    expect(await savedKinds("001.ink.png")).toEqual(["fill", undefined]);
     expect(
       await pressedStates(
         "pen",
@@ -409,7 +413,7 @@ describe("Editor feedback", function () {
     const [second = ""] = (await symbolFiles()).filter(
       (path) => path !== "001.ink.png",
     );
-    expect(await savedKinds(second)).toEqual(["fill"]);
+    expect(await savedKinds(second)).toEqual(["fill", undefined]);
   });
 
   it("starts the next symbol with a polygon's tools: the eraser, the grid and Flat ends", async function () {

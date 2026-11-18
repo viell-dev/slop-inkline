@@ -9,6 +9,19 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Fixed
+
+- A filled ellipse or polygon keeps the brush's width around it, as the editor
+  showed while it was drawn. Closing a filled polygon, or letting go of a filled
+  ellipse, left only the area through its corners, half the brush's width
+  smaller on every side than its lines had shown. It now leaves the same shape
+  as with **Toggle fill** off, with its inside filled too, so a filled and an
+  unfilled shape drawn across the same corners have the same outer edge, with
+  the pen or the eraser. One Undo takes back the whole shape. Files stay as they
+  were: a filled shape is saved as two kinds of stroke the format already has,
+  so a symbol drawn with this release opens in 1.0.0, and symbols already saved
+  look as before ([#342](https://github.com/viell-dev/slop-inkline/issues/342)).
+
 ## 1.0.0 - 2026-11-16
 
 This is Inkline's first stable release. It is 0.9.5, the last release candidate,
