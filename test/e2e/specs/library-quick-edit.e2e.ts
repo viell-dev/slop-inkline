@@ -22,31 +22,20 @@ import { pointAt, warmUpPointer } from "../support/hover.ts";
 import { menuItems } from "../support/menus.ts";
 import { boxOf } from "../support/pointer.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
-import { showLibrary } from "../support/symbol-text-library.ts";
-import { type Fields, fieldsOf } from "../support/symbol-text.ts";
+import {
+  formError,
+  showLibrary,
+  waitForValues,
+} from "../support/symbol-text-library.ts";
+import {
+  area,
+  fieldsOf,
+  holdNextRead,
+  letReadGo,
+  symbolWith,
+  waitForHeldRead,
+} from "../support/symbol-text.ts";
 import { bytesOf } from "../support/vault-files.ts";
-
-/** A symbol at `file` that says `fields` about itself. */
-async function symbolWith(file: string, fields: Fields): Promise<void> {
-  await createSymbol(file);
-  await browser.executeObsidian(
-    async ({ app }, wanted, { reading, translation }) => {
-      const found = app.vault.getFileByPath(wanted);
-      if (found === null) throw new Error(`no ${wanted}`);
-      const { text } = window.inklineTest;
-      let bytes: Uint8Array = new Uint8Array(await app.vault.readBinary(found));
-      if (reading !== undefined) {
-        bytes = await text.writeText(bytes, "reading", reading);
-      }
-      if (translation !== undefined) {
-        bytes = await text.writeText(bytes, "translation", translation);
-      }
-      await app.vault.modifyBinary(found, bytes.slice().buffer);
-    },
-    file,
-    fields,
-  );
-}
 
 /** A note's text and when it was last written, from its file. */
 async function noteOf(
@@ -94,14 +83,12 @@ function rowOf(file: string): string {
 }
 
 const form = () => browser.$(".inkline-library-edit-form");
-const nameField = () => form().$("input");
+/**
+ * Quick edit's name field, where `nameField` in support/editing.ts reads the
+ * symbol editor's.
+ */
+const formNameField = () => form().$("input");
 const formButton = (text: "Save" | "Cancel") => form().$(`button=${text}`);
-const formError = () => form().$(".inkline-library-edit-error");
-
-/** A text area of Quick edit. */
-function area(field: "reading" | "translation"): ReturnType<typeof browser.$> {
-  return form().$(`textarea[data-inkline-field="${field}"]`);
-}
 
 /** The button of `role` in `file`'s row, above Quick edit's form when open. */
 function rowButton(
@@ -264,14 +251,6 @@ async function focused(): Promise<{
   });
 }
 
-/** Waits for the row of `file` to show `text` among its values. */
-async function waitForValues(file: string, text: string): Promise<void> {
-  await browser.waitUntil(async () => {
-    const line = browser.$(rowOf(file)).$(".inkline-library-values");
-    return (await line.isExisting()) && (await line.getText()).includes(text);
-  });
-}
-
 /**
  * Has the vault's next writes of symbol files fail with `reason`, as a full or
  * read-only disk would, until {@link writeAgain}.
@@ -362,45 +341,6 @@ async function inkline(on: boolean): Promise<void> {
     if (typeof method !== "function") throw new Error("no plugin controls");
     await (Reflect.apply(method, plugins, ["inkline"]) as Promise<void>);
   }, on);
-}
-
-/**
- * Holds the next read of the symbol at `path` until {@link letSymbolReadGo},
- * as a save reads its file in its turn before it writes.
- */
-async function holdSymbolRead(path: string): Promise<void> {
-  await browser.executeObsidian(({ app }, wanted) => {
-    const read = app.vault.readBinary.bind(app.vault);
-    let go = (): void => undefined;
-    const gate = new Promise<void>((resolve) => {
-      go = resolve;
-    });
-    Reflect.set(window, "inklineLetReadGo", go);
-    Reflect.set(window, "inklineReadHeld", false);
-    app.vault.readBinary = async (file) => {
-      if (file.path !== wanted) return read(file);
-      Reflect.deleteProperty(app.vault, "readBinary");
-      Reflect.set(window, "inklineReadHeld", true);
-      await gate;
-      return read(file);
-    };
-  }, path);
-}
-
-/** Waits for the read {@link holdSymbolRead} holds to be reached. */
-async function waitForHeldRead(): Promise<void> {
-  await browser.waitUntil(async () =>
-    browser.execute(() => Reflect.get(window, "inklineReadHeld") === true),
-  );
-}
-
-/** Lets go the read {@link holdSymbolRead} holds, if there is one. */
-async function letSymbolReadGo(): Promise<void> {
-  await browser.execute(() => {
-    const go: unknown = Reflect.get(window, "inklineLetReadGo");
-    Reflect.deleteProperty(window, "inklineLetReadGo");
-    if (typeof go === "function") Reflect.apply(go, undefined, []);
-  });
 }
 
 /** The lines the row says, each as shown. */
@@ -590,7 +530,6 @@ describe("Quick edit in the library", function () {
       Reflect.deleteProperty(app.vault, "readBinary");
     });
     await letGo();
-    await letSymbolReadGo();
   });
 
   it("opens on the name, with the readings and translations, and takes the keys", async function () {
@@ -608,7 +547,7 @@ describe("Quick edit in the library", function () {
     ).toBe("Quick edit");
     await quickEdit("gate.ink.png");
     await saveScreenshot("library-quick-edit");
-    expect(await nameField().getValue()).toBe("gate");
+    expect(await formNameField().getValue()).toBe("gate");
     expect(await area("reading").getValue()).toBe("TA");
     expect(await area("translation").getValue()).toBe("door");
     // The name has the focus, all of it selected, as for a rename.
@@ -664,7 +603,7 @@ describe("Quick edit in the library", function () {
       await area("translation").setValue("a translation long enough to wrap");
       const widths = await listWidths();
       expect(widths.scroll).toBeLessThanOrEqual(widths.client);
-      expect(await nameField().getValue()).toBe(name);
+      expect(await formNameField().getValue()).toBe(name);
       await saveScreenshot("library-quick-edit-narrow");
     } finally {
       await setSidebar(300);
@@ -682,7 +621,7 @@ describe("Quick edit in the library", function () {
     await noteUsing("Uses.md", "gate.ink.png");
     await showLibrary();
     await quickEdit("gate.ink.png");
-    await nameField().setValue("arch");
+    await formNameField().setValue("arch");
     await area("reading").setValue("KA");
     await area("translation").click();
     await browser.keys(["Control", "a"]);
@@ -715,7 +654,7 @@ describe("Quick edit in the library", function () {
     await waitForClosed();
     // The same name with spaces around it is the same name.
     await quickEdit("gate.ink.png");
-    await nameField().setValue("  gate ");
+    await formNameField().setValue("  gate ");
     await browser.keys(["Enter"]);
     await waitForClosed();
     expect(await symbolFiles()).toEqual(["gate.ink.png"]);
@@ -732,7 +671,7 @@ describe("Quick edit in the library", function () {
       async () => browser.keys(["Escape"]),
     ]) {
       await quickEdit("gate.ink.png");
-      await nameField().setValue("arch");
+      await formNameField().setValue("arch");
       await area("reading").setValue("KA");
       await leave();
       await waitForClosed();
@@ -796,7 +735,7 @@ describe("Quick edit in the library", function () {
       path: "gate.ink.png",
     });
     // A click on it drops what was typed, as Cancel does, and keeps the focus.
-    await nameField().setValue("arch");
+    await formNameField().setValue("arch");
     await area("reading").setValue("KA");
     await own().click();
     await waitForClosed();
@@ -980,7 +919,7 @@ describe("Quick edit in the library", function () {
     await showLibrary();
     await quickEdit("gate.ink.png");
     // In a field, the menu is the one for its text, not the file's.
-    await nameField().click({ button: "right" });
+    await formNameField().click({ button: "right" });
     await browser.pause(300);
     expect(await menuItems()).not.toContain("Edit symbol");
     // On the symbol above, the file's menu, as on any other row.
@@ -998,17 +937,17 @@ describe("Quick edit in the library", function () {
     const before = await bytesOf("gate.ink.png");
     await showLibrary();
     await quickEdit("gate.ink.png");
-    await nameField().setValue("TOWER");
+    await formNameField().setValue("TOWER");
     await area("reading").setValue("KA");
     await formButton("Save").click();
     await browser.waitUntil(async () =>
       (await formError().getText()).includes("already has a symbol named"),
     );
     expect(await bytesOf("gate.ink.png")).toBe(before);
-    expect(await nameField().getValue()).toBe("TOWER");
+    expect(await formNameField().getValue()).toBe("TOWER");
     expect(await area("reading").getValue()).toBe("KA");
     expect((await focused()).tag).toBe("INPUT");
-    await nameField().setValue("arch");
+    await formNameField().setValue("arch");
     await browser.keys(["Enter"]);
     await waitForClosed();
     expect(await symbolFiles()).toEqual(["arch.ink.png", "tower.ink.png"]);
@@ -1019,7 +958,7 @@ describe("Quick edit in the library", function () {
     await symbolWith("gate.ink.png", { reading: ["TA"] });
     await showLibrary();
     await quickEdit("gate.ink.png");
-    await nameField().setValue("arch");
+    await formNameField().setValue("arch");
     await area("reading").setValue("KA ");
     await failRenames("the disk is read-only");
     await formButton("Save").click();
@@ -1033,8 +972,8 @@ describe("Quick edit in the library", function () {
     expect(await symbolFiles()).toEqual(["gate.ink.png"]);
     expect((await fieldsOf("gate.ink.png")).reading).toEqual(["KA"]);
     // What was typed stays, the readings as saved, and the name to try again.
-    expect(await nameField().getValue()).toBe("arch");
-    expect(await nameField().getProperty("readOnly")).toBe(false);
+    expect(await formNameField().getValue()).toBe("arch");
+    expect(await formNameField().getProperty("readOnly")).toBe(false);
     expect(await area("reading").getValue()).toBe("KA");
     expect(await area("reading").getProperty("readOnly")).toBe(false);
     expect((await focused()).tag).toBe("INPUT");
@@ -1053,7 +992,7 @@ describe("Quick edit in the library", function () {
     const before = await bytesOf("gate.ink.png");
     await showLibrary();
     await quickEdit("gate.ink.png");
-    await nameField().setValue("arch");
+    await formNameField().setValue("arch");
     await area("reading").setValue("KA");
     await failWrites("the disk is full");
     await formButton("Save").click();
@@ -1063,7 +1002,7 @@ describe("Quick edit in the library", function () {
     expect(await formError().getText()).toContain("Nothing was renamed.");
     expect(await symbolFiles()).toEqual(["gate.ink.png"]);
     expect(await bytesOf("gate.ink.png")).toBe(before);
-    expect(await nameField().getValue()).toBe("arch");
+    expect(await formNameField().getValue()).toBe("arch");
     expect(await area("reading").getValue()).toBe("KA");
     expect(await area("reading").getProperty("readOnly")).toBe(false);
     await writeAgain();
@@ -1078,7 +1017,7 @@ describe("Quick edit in the library", function () {
       await symbolWith("gate.ink.png", { reading: ["TA"] });
       await showLibrary();
       await quickEdit("gate.ink.png");
-      await nameField().setValue("arch");
+      await formNameField().setValue("arch");
       await area("reading").setValue("KA");
       await hold("write");
       await formButton("Save").click();
@@ -1111,7 +1050,7 @@ describe("Quick edit in the library", function () {
     await symbolWith("gate.ink.png", { reading: ["TA"] });
     await showLibrary();
     await quickEdit("gate.ink.png");
-    await nameField().setValue("arch");
+    await formNameField().setValue("arch");
     await area("reading").setValue("KA");
     await hold("write");
     await formButton("Save").click();
@@ -1128,7 +1067,7 @@ describe("Quick edit in the library", function () {
     ]);
     expect(await symbolFiles()).toEqual(["synced.ink.png"]);
     expect((await fieldsOf("synced.ink.png")).reading).toEqual(["KA"]);
-    expect(await nameField().getValue()).toBe("arch");
+    expect(await formNameField().getValue()).toBe("arch");
     // Save again renames it from the name it has now.
     await browser.keys(["Enter"]);
     await waitForClosed();
@@ -1142,7 +1081,7 @@ describe("Quick edit in the library", function () {
     await openNote("Uses.md");
     await showLibrary();
     await quickEdit("gate.ink.png");
-    await nameField().setValue("arch");
+    await formNameField().setValue("arch");
     await area("reading").setValue("KA");
     // The rename reads the open note to see whether it has text to save.
     await hold("read");
@@ -1167,7 +1106,7 @@ describe("Quick edit in the library", function () {
     await openNote("Uses.md");
     await showLibrary();
     await quickEdit("gate.ink.png");
-    await nameField().setValue("arch");
+    await formNameField().setValue("arch");
     await area("reading").setValue("KA");
     await hold("read");
     await formButton("Save").click();
@@ -1190,19 +1129,19 @@ describe("Quick edit in the library", function () {
     await symbolWith("gate.ink.png", { reading: ["TA"] });
     await showLibrary();
     await quickEdit("gate.ink.png");
-    await nameField().setValue("arch");
+    await formNameField().setValue("arch");
     await area("reading").setValue("KA");
-    await holdSymbolRead("gate.ink.png");
+    await holdNextRead("gate.ink.png");
     await formButton("Save").click();
     await waitForHeldRead();
     try {
       await inkline(false);
-      await letSymbolReadGo();
+      await letReadGo();
       await waitForNotice(
         "The readings and translations of gate were not saved, and it was not renamed to arch: Inkline was disabled",
       );
     } finally {
-      await letSymbolReadGo();
+      await letReadGo();
       await inkline(true);
     }
     expect(await symbolFiles()).toEqual(["gate.ink.png"]);
@@ -1214,7 +1153,7 @@ describe("Quick edit in the library", function () {
     const before = await bytesOf("gate.ink.png");
     await showLibrary();
     await quickEdit("gate.ink.png");
-    await nameField().setValue("arch");
+    await formNameField().setValue("arch");
     await area("reading").setValue("KA");
     // The change reaches the write's read with the vault telling nobody.
     await browser.executeObsidian(async ({ app }) => {
@@ -1242,7 +1181,7 @@ describe("Quick edit in the library", function () {
     ]);
     expect(await symbolFiles()).toEqual(["gate.ink.png"]);
     expect(await bytesOf("gate.ink.png")).toBe(before);
-    expect(await nameField().getValue()).toBe("arch");
+    expect(await formNameField().getValue()).toBe("arch");
     expect(await area("reading").getValue()).toBe("KA");
   });
 
@@ -1251,7 +1190,7 @@ describe("Quick edit in the library", function () {
     await noteUsing("Uses.md", "gate.ink.png");
     await showLibrary();
     await quickEdit("gate.ink.png");
-    await nameField().setValue("lintel");
+    await formNameField().setValue("lintel");
     await area("reading").setValue("KA");
     // Past every check, as a change already on its way to the disk would be.
     await hold("move");
@@ -1283,11 +1222,11 @@ describe("Quick edit in the library", function () {
     await quickEdit("gate.ink.png");
     await renameElsewhere("gate.ink.png", "arch.ink.png");
     await browser.waitUntil(
-      async () => (await nameField().getValue()) === "arch",
+      async () => (await formNameField().getValue()) === "arch",
     );
     await renameElsewhere("arch.ink.png", "portal.ink.png");
     await browser.waitUntil(
-      async () => (await nameField().getValue()) === "portal",
+      async () => (await formNameField().getValue()) === "portal",
     );
     await area("reading").setValue("KA");
     await formButton("Save").click();
@@ -1301,7 +1240,7 @@ describe("Quick edit in the library", function () {
     await createSymbol("tower.ink.png");
     await showLibrary();
     await quickEdit("gate.ink.png");
-    await nameField().setValue("TOWER");
+    await formNameField().setValue("TOWER");
     await browser.keys(["Enter"]);
     await browser.waitUntil(async () =>
       (await formError().getText()).includes("already has a symbol named"),
@@ -1329,7 +1268,7 @@ describe("Quick edit in the library", function () {
     await showLibrary();
     await quickEdit("gate.ink.png");
     await area("reading").setValue("KA");
-    await holdSymbolRead("gate.ink.png");
+    await holdNextRead("gate.ink.png");
     await formButton("Save").click();
     await waitForHeldRead();
     // Deleted while the save reads it, which the row does not look at then.
@@ -1338,7 +1277,7 @@ describe("Quick edit in the library", function () {
       if (file === null) throw new Error("no gate");
       await app.fileManager.trashFile(file);
     });
-    await letSymbolReadGo();
+    await letReadGo();
     await browser.waitUntil(async () => (await errorLines()).length > 0);
     // What the save found stays, and Save is off for a file that has gone.
     await browser.waitUntil(
@@ -1353,7 +1292,7 @@ describe("Quick edit in the library", function () {
     await symbolWith("gate.ink.png", { reading: ["TA"] });
     await showLibrary();
     await quickEdit("gate.ink.png");
-    await nameField().setValue("lintel");
+    await formNameField().setValue("lintel");
     // As sync would, into another folder.
     await browser.executeObsidian(async ({ app }) => {
       const file = app.vault.getFileByPath("gate.ink.png");
@@ -1365,7 +1304,7 @@ describe("Quick edit in the library", function () {
     await browser.waitUntil(
       async () => (await form().getComputedLabel()) === "Quick edit arch",
     );
-    expect(await nameField().getValue()).toBe("lintel");
+    expect(await formNameField().getValue()).toBe("lintel");
     // The row's buttons above it name the symbol as it is now.
     const row = browser.$(rowOf("Signs/arch.ink.png"));
     expect(await row.$(".inkline-library-edit-form").isExisting()).toBe(true);
