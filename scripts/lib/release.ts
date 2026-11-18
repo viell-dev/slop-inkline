@@ -110,9 +110,10 @@ export function metadataProblems(metadata: Metadata): string[] {
       `package.json version ${String(version)} is not a release version`,
     );
   }
+  const preparingPrerelease = version !== undefined && isPrerelease(version);
   // The public release the manifest names, once the checks below accept it.
   let offered: string | undefined;
-  if (version !== undefined && isPrerelease(version)) {
+  if (preparingPrerelease) {
     const manifestProblems = prereleaseManifestProblems(
       version,
       manifestVersion,
@@ -164,7 +165,7 @@ export function metadataProblems(metadata: Metadata): string[] {
     problems.push(
       ...offeredReleaseProblems(
         offered,
-        version !== undefined && isPrerelease(version),
+        preparingPrerelease,
         metadata.versions,
       ),
     );
@@ -176,14 +177,41 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/** A heading of the changelog, with where it starts and ends in `source`. */
+interface ChangelogHeading {
+  readonly text: string;
+  readonly start: number;
+  readonly end: number;
+}
+
+/**
+ * The changelog's text with a leading byte order mark dropped and its line
+ * endings made `\n`, and its headings of level 1 or 2 at the top level, in
+ * order. The parser drops the mark before counting offsets, so the text the
+ * offsets point into must not have one either. Only those headings start or
+ * end a section, so that a heading in a code example, a list, or a quote
+ * cannot cut a section short or hide a release.
+ */
+function changelogHeadings(changelog: string): {
+  readonly source: string;
+  readonly headings: readonly ChangelogHeading[];
+} {
+  const source = changelog.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
+  const headings = fromMarkdown(source).children.flatMap((node) => {
+    if (node.type !== "heading" || node.depth > 2) return [];
+    const start = node.position?.start.offset ?? 0;
+    const end = node.position?.end.offset ?? 0;
+    return [{ text: source.slice(start, end).trim(), start, end }];
+  });
+  return { source, headings };
+}
+
 /**
  * Returns the body of a changelog section, or undefined when the section is
  * missing or empty. A release's heading is `## x.y.z - YYYY-MM-DD`; the
  * section for unreleased changes is `## Unreleased`.
  *
- * The changelog is parsed as CommonMark, and only headings of level 1 or 2 at
- * the top level start or end a section, so that a heading in a code example,
- * a list, or a quote cannot cut the notes short or hide a release.
+ * The changelog is parsed as CommonMark, as {@link changelogHeadings} says.
  */
 export function releaseNotes(
   changelog: string,
@@ -193,21 +221,11 @@ export function releaseNotes(
     section === "Unreleased"
       ? /^## Unreleased$/
       : new RegExp(`^## ${escapeRegExp(section)} - \\d{4}-\\d{2}-\\d{2}$`);
-  // The parser drops a leading byte order mark before counting offsets, so the
-  // sliced text must not have one either.
-  const source = changelog.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
-  const bounds = fromMarkdown(source)
-    .children.filter((node) => node.type === "heading" && node.depth <= 2)
-    .map((node) => ({
-      start: node.position?.start.offset ?? 0,
-      end: node.position?.end.offset ?? 0,
-    }));
-  const index = bounds.findIndex(({ start, end }) =>
-    heading.test(source.slice(start, end).trim()),
-  );
-  const current = bounds[index];
+  const { source, headings } = changelogHeadings(changelog);
+  const index = headings.findIndex(({ text }) => heading.test(text));
+  const current = headings[index];
   if (current === undefined) return undefined;
-  const body = source.slice(current.end, bounds[index + 1]?.start).trim();
+  const body = source.slice(current.end, headings[index + 1]?.start).trim();
   return body === "" ? undefined : body;
 }
 
@@ -220,21 +238,18 @@ export const firstPublicRelease = "1.0.0";
  * have a `## x.y.z - YYYY-MM-DD` section: preparing a public release adds both,
  * and a rollback reverts both. So an entry dropped from the map, or one for a
  * version never released, shows here, even with the manifest set back to
- * match (#324). As {@link releaseNotes} does, it reads only top-level
- * headings.
+ * match (#324). It compares two files of the repository, so a release's
+ * section and entry taken out together still pass, and so do both added for
+ * a version never published: only the published releases could show those.
+ * It reads headings as {@link changelogHeadings} does.
  */
 export function releasedVersionsProblems(
   changelog: string,
   versions: Record<string, unknown>,
 ): string[] {
-  const source = changelog.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
   const released = new Set(
-    fromMarkdown(source).children.flatMap((node) => {
-      if (node.type !== "heading" || node.depth !== 2) return [];
-      const heading = source
-        .slice(node.position?.start.offset, node.position?.end.offset)
-        .trim();
-      const version = /^## (\S+) - \d{4}-\d{2}-\d{2}$/.exec(heading)?.[1];
+    changelogHeadings(changelog).headings.flatMap(({ text }) => {
+      const version = /^## (\S+) - \d{4}-\d{2}-\d{2}$/.exec(text)?.[1];
       return version !== undefined &&
         stableVersionPattern.test(version) &&
         !isPrerelease(version) &&

@@ -10,7 +10,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  isRecord,
   metadataProblems,
+  releasedVersionsProblems,
   releaseProblems,
   syncMetadata,
   type Metadata,
@@ -79,6 +81,13 @@ function metadata(): Metadata {
 
 const changelog = (): string =>
   readFileSync(join(directory, "CHANGELOG.md"), "utf8");
+
+/** What the repository's test of versions.json against the changelog finds. */
+function changelogProblems(): string[] {
+  const versions = read("versions.json");
+  if (!isRecord(versions)) throw new Error("versions.json is not an object");
+  return releasedVersionsProblems(changelog(), versions);
+}
 
 function writeJson(name: string, value: unknown): void {
   writeFileSync(join(directory, name), `${JSON.stringify(value, null, 2)}\n`);
@@ -155,9 +164,14 @@ describe.each([
       minAppVersion: "1.13.4",
     });
     writeJson("versions.json", versions);
+    // The release built, and every earlier public release the map lists.
+    const earlier = Object.keys(versions)
+      .filter((version) => version !== built)
+      .map((version) => `## ${version} - 2026-10-01\n\n- Published.\n\n`)
+      .join("");
     writeFileSync(
       join(directory, "CHANGELOG.md"),
-      `# Changelog\n\n## Unreleased\n\n## ${built} - 2026-11-01\n\n- Published.\n`,
+      `# Changelog\n\n## Unreleased\n\n## ${built} - 2026-11-01\n\n- Published.\n\n${earlier}`,
     );
     git("add", "--all");
     git("commit", "--message", "The state before the release");
@@ -172,10 +186,12 @@ describe.each([
     const before = metadata();
     const notes = changelog();
     expect(metadataProblems(before)).toEqual([]);
+    expect(changelogProblems()).toEqual([]);
 
     // The release merges, and main offers a version with no release.
     const merge = mergePreparation(release);
     expect(releaseProblems(metadata(), changelog(), release)).toEqual([]);
+    expect(changelogProblems()).toEqual([]);
     expect(metadata().manifest).toMatchObject({ version: release });
 
     // Reverting the manifest and the map alone fails CI, as the guide says.
@@ -189,6 +205,7 @@ describe.each([
     }
     const revert = git("rev-parse", "HEAD");
     expect(metadataProblems(metadata())).toEqual([]);
+    expect(changelogProblems()).toEqual([]);
     expect(metadata()).toEqual(before);
     expect(read("package-lock.json")).toMatchObject({ version: built });
     expect(changelog()).toBe(notes);
@@ -204,6 +221,7 @@ describe.each([
       `prepare-${release}-again`,
     );
     expect(releaseProblems(metadata(), changelog(), release)).toEqual([]);
+    expect(changelogProblems()).toEqual([]);
     expect(read("package-lock.json")).toMatchObject({ version: release });
     expect(versionOrderProblems(release, [offered, built])).toEqual([]);
 

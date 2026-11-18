@@ -111,9 +111,8 @@ describe("releasedVersionsProblems", () => {
     // 1.1.0 is a pre-release, 0.2.0 came before the first public release,
     // and a heading in a code block is no release.
     expect(releasedVersionsProblems(history, mapped)).toEqual([]);
-    expect(
-      releasedVersionsProblems(history.replaceAll("\n", "\r\n"), mapped),
-    ).toEqual([]);
+    // A byte order mark would shift every offset of the headings by one.
+    expect(releasedVersionsProblems(`\uFEFF${history}`, mapped)).toEqual([]);
   });
 
   it("reports an older release dropped from the map", () => {
@@ -271,7 +270,9 @@ describe("metadataProblems", () => {
   });
 
   it("leaves a key that is not a public release to its own message", () => {
-    for (const key of ["1.1.0", "1.2.0-rc.1"]) {
+    // 01.5.0 is neither a public release nor a pre-release, so only the
+    // filter's own pattern keeps it from being compared with the manifest.
+    for (const key of ["1.1.0", "1.2.0-rc.1", "01.5.0"]) {
       expect(
         metadataProblems({
           packageJson: { version: "1.1.0" },
@@ -280,9 +281,9 @@ describe("metadataProblems", () => {
         }),
         key,
       ).toEqual([
-        key.includes("-")
-          ? `versions.json key ${key} is not x.y.z`
-          : `versions.json key ${key} is a pre-release`,
+        key === "1.1.0"
+          ? `versions.json key ${key} is a pre-release`
+          : `versions.json key ${key} is not x.y.z`,
       ]);
     }
   });
