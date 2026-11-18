@@ -114,7 +114,9 @@ export const draftLifetime = 30 * 24 * 60 * 60 * 1000;
  * It also never writes a draft of its layout under an id that holds one of an
  * earlier layout: an editor knows the draft it offers or restored by its id
  * alone until it removes or replaces it, and so would remove or replace what
- * took its place.
+ * took its place. A base layer that a later draft keeps in the shared index is
+ * kept with it only under a key of {@link baseKeyForm}, the form every version
+ * makes; one under any other key is not.
  */
 export const draftVersion = 2;
 const indexKey = "inkline-drafts";
@@ -285,48 +287,58 @@ function hashOf(text: string, at: number, length: number): number {
 }
 
 /**
+ * The form of every kept base layer's key that versions from 0.9.2 on have
+ * made, with `crypto.randomUUID()`: 36 characters, lowercase hexadecimal
+ * digits in groups of 8, 4, 4, 4 and 12, joined by hyphens.
+ */
+const baseKeyForm =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const baseKeyLength = 36;
+
+/**
  * The keys of kept base layers among `keys` that a draft of a later layout
- * names, whole or inside a longer string. Each string is read once for all of
- * them, for each length a key has: a rolling hash of every run of that many
- * characters finds the keys it may be, and a comparison tells. A search for
+ * names, whole or inside a longer string. Only a key of {@link baseKeyForm} is
+ * looked for, as the layout's rule in AGENTS.md says: a base layer stored
+ * under any other key is not kept for a later draft, and costs nothing here.
+ * Each string is read once for all of them: a rolling hash of every run of a
+ * key's length finds the keys it may be, and a comparison tells. A search for
  * each key in turn takes seconds for a draft of many strings beside many base
  * layers, and cutting out every run to look it up a fifth of a second for a
- * string of a million characters. The keys this version makes all have one
- * length, a UUID's. A key of no characters names nothing.
+ * string of a million characters.
  */
 function laterNamed(draft: LaterDraft, keys: ReadonlySet<string>): Set<string> {
   const named = new Set<string>();
-  // The keys of each length, by their hash.
-  const byLength = new Map<number, Map<number, string[]>>();
+  // The keys looked for, by their hash.
+  const hashes = new Map<number, string[]>();
+  let count = 0;
   for (const key of keys) {
-    if (key.length === 0) continue;
-    const hashes = byLength.get(key.length) ?? new Map<number, string[]>();
-    byLength.set(key.length, hashes);
-    const hash = hashOf(key, 0, key.length);
+    if (!baseKeyForm.test(key)) continue;
+    count++;
+    const hash = hashOf(key, 0, baseKeyLength);
     hashes.set(hash, [...(hashes.get(hash) ?? []), key]);
   }
-  for (const [length, hashes] of byLength) {
-    // What the first of a run's characters adds to its hash.
-    let first = 1;
-    for (let index = 1; index < length; index++) {
-      first = Math.imul(first, hashBase);
-    }
-    for (const text of draft.strings) {
-      if (text.length < length) continue;
-      let hash = hashOf(text, 0, length);
-      for (let at = 0; ; at++) {
-        const candidates = hashes.get(hash);
-        if (candidates !== undefined) {
-          for (const key of candidates) {
-            if (text.startsWith(key, at)) named.add(key);
-          }
+  if (count === 0) return named;
+  // What the first of a run's characters adds to its hash.
+  let first = 1;
+  for (let index = 1; index < baseKeyLength; index++) {
+    first = Math.imul(first, hashBase);
+  }
+  for (const text of draft.strings) {
+    if (text.length < baseKeyLength) continue;
+    let hash = hashOf(text, 0, baseKeyLength);
+    for (let at = 0; ; at++) {
+      const candidates = hashes.get(hash);
+      if (candidates !== undefined) {
+        for (const key of candidates) {
+          if (text.startsWith(key, at)) named.add(key);
         }
-        if (at + length >= text.length) break;
-        const rest = (hash - Math.imul(text.charCodeAt(at), first)) | 0;
-        hash = (Math.imul(rest, hashBase) + text.charCodeAt(at + length)) | 0;
       }
-      if (named.size === keys.size) return named;
+      if (at + baseKeyLength >= text.length) break;
+      const rest = (hash - Math.imul(text.charCodeAt(at), first)) | 0;
+      hash =
+        (Math.imul(rest, hashBase) + text.charCodeAt(at + baseKeyLength)) | 0;
     }
+    if (named.size === count) return named;
   }
   return named;
 }

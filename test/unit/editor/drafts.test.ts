@@ -1079,49 +1079,58 @@ describe("DraftStore with a draft of a later layout", () => {
   });
 
   it("reads a wide later draft beside many base layers at once, keeping only the one it names", () => {
-    const storage = new MemoryStorage();
-    const store = new DraftStore(storage, () => 5000);
-    const named = plantBase(storage);
-    for (let count = 0; count < 256; count++) plantBase(storage);
-    // A draft of 100,000 short strings, about 800,000 characters, with the
-    // one key it names escaped among them.
-    const parts = Array.from({ length: 100_000 }, (_, at) =>
-      String(at).padStart(5, "0"),
-    );
-    plant(
-      storage,
-      "wide",
-      escaping(laterDraft({ parts, pictures: [{ id: named }] }), named),
-    );
-    // Reading the draft's text twice, as storage and the store each do, is
-    // the measure: it slows as list() does when the machine is busy.
-    const stored = storage.values.get(draftKey("wide")) ?? "";
+    /** A store of 257 base layers and the wide draft, naming one of them. */
+    const wide = (): {
+      storage: MemoryStorage;
+      store: DraftStore;
+      named: string;
+    } => {
+      const storage = new MemoryStorage();
+      const named = plantBase(storage);
+      for (let count = 0; count < 256; count++) plantBase(storage);
+      // 100,000 short strings, about 800,000 characters, with the one key it
+      // names escaped among them.
+      const parts = Array.from({ length: 100_000 }, (_, at) =>
+        String(at).padStart(5, "0"),
+      );
+      plant(
+        storage,
+        "wide",
+        escaping(laterDraft({ parts, pictures: [{ id: named }] }), named),
+      );
+      return { storage, store: new DraftStore(storage, () => 5000), named };
+    };
+    // Each run lists a store of its own, as listing drops the base layers no
+    // draft names; the fastest of three, against the fastest reading of the
+    // draft's text twice, as storage and the store each do, which slows as
+    // list() does when the machine is busy.
+    const lists: number[] = [];
     const reads: number[] = [];
     for (let run = 0; run < 3; run++) {
+      const { storage, store, named } = wide();
+      const stored = storage.values.get(draftKey("wide")) ?? "";
       const begun = performance.now();
       JSON.parse(String(JSON.parse(stored)));
       reads.push(performance.now() - begun);
+      const start = performance.now();
+      expect(store.list()).toEqual([]);
+      lists.push(performance.now() - start);
+      expect(listedBases(storage)).toEqual([named]);
+      expect(baseKeys(storage)).toEqual([`inkline-draft-base:${named}`]);
     }
-    const reading = Math.min(...reads);
-    const start = performance.now();
-    expect(store.list()).toEqual([]);
-    const elapsed = performance.now() - start;
-    expect(listedBases(storage)).toEqual([named]);
-    expect(baseKeys(storage)).toEqual([`inkline-draft-base:${named}`]);
     // On Windows 11 and Node.js 24.22.2, in Vitest, with other work loading
     // the machine, list() took 3.8 to 5.7 times as long as that reading,
     // 162 to 233 ms. Searching each string for each key in turn, as the store
     // did at f961af9, took 23 to 25 times as long, 1.0 to 1.3 seconds.
-    expect(elapsed).toBeLessThan(12 * reading);
+    expect(Math.min(...lists)).toBeLessThan(12 * Math.min(...reads));
   });
 
-  it("finds a key at any place in a longer string, whatever its length", () => {
+  it("finds a key at any place in a longer string", () => {
     const storage = new MemoryStorage();
     const store = new DraftStore(storage, () => 5000);
     const first = plantBase(storage);
     const middle = plantBase(storage);
     const last = plantBase(storage);
-    const short = plantBase(storage, "k7");
     const partial = plantBase(storage);
     // Text full of what a key may begin with, around and between them.
     const filler = "0123456789abcdef-".repeat(200);
@@ -1133,15 +1142,112 @@ describe("DraftStore with a draft of a later layout", () => {
           `${first}${filler}`,
           `${filler}${middle}${filler}`,
           `${filler}${last}`,
-          `x${short}x`,
           // Only part of it, which names nothing.
           `${filler}${partial.slice(0, -1)}`,
         ],
       }),
     );
     store.list();
-    expect(listedBases(storage)).toEqual([first, middle, last, short]);
+    expect(listedBases(storage)).toEqual([first, middle, last]);
     expect(storage.values.has(`inkline-draft-base:${partial}`)).toBe(false);
+  });
+
+  /** Keys that are not of the form every version makes, a UUID's. */
+  function otherKeys(uuid: string): string[] {
+    return [
+      "",
+      "k7",
+      uuid.toUpperCase(),
+      `{${uuid}}`,
+      uuid.replaceAll("-", ""),
+    ];
+  }
+
+  it("keeps for a later draft only base layers under a UUID's key, through a list", () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 5000);
+    const kept = plantBase(storage);
+    const others = otherKeys(crypto.randomUUID()).map((key) =>
+      plantBase(storage, key),
+    );
+    // Each named whole, as a string and as a property name.
+    plant(
+      storage,
+      "later",
+      laterDraft({
+        pictures: [kept, ...others],
+        byKey: Object.fromEntries(others.map((key) => [key, 1])),
+      }),
+    );
+    expect(store.list()).toEqual([]);
+    expect(listedBases(storage)).toEqual([kept]);
+    expect(baseKeys(storage)).toEqual([`inkline-draft-base:${kept}`]);
+  });
+
+  it("keeps for a later draft only base layers under a UUID's key, when this version's draft stops naming them", () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 5000);
+    const uuid = crypto.randomUUID();
+    const keys = [uuid, ...otherKeys(crypto.randomUUID())];
+    // Drafts of layout 2, as a later version could have left them, each
+    // keeping one of the base layers, which the later draft names too.
+    keys.forEach((key, index) => {
+      plantBase(storage, key);
+      plant(
+        storage,
+        `two-${String(index)}`,
+        JSON.stringify({
+          version: draftVersion,
+          id: `two-${String(index)}`,
+          target: { kind: "file", path: "001.ink.png" },
+          base: "kept",
+          layer: { key, x: 0, y: 0, width: 32, height: 32 },
+          savedAt: 1000,
+          ink: { strokes: [{ tool: "pen", size: 256, points: [16, 32] }] },
+        }),
+      );
+    });
+    plant(storage, "later", laterDraft({ pictures: keys }));
+    keys.forEach((_, index) => {
+      store.remove(`two-${String(index)}`);
+    });
+    expect(listedBases(storage)).toEqual([uuid]);
+    expect(baseKeys(storage)).toEqual([`inkline-draft-base:${uuid}`]);
+  });
+
+  it("does not look for keys of other forms, however many lengths they have", () => {
+    /**
+     * The fastest of three lists of a store holding a string of 500,000
+     * characters, with a UUID at its end, beside its base layer, and `others`
+     * base layers more.
+     */
+    const fastest = (others: readonly string[]): number => {
+      const times: number[] = [];
+      for (let run = 0; run < 3; run++) {
+        const storage = new MemoryStorage();
+        const named = plantBase(storage);
+        for (const key of others) plantBase(storage, key);
+        plant(
+          storage,
+          "long",
+          laterDraft({ pictures: [`${"x".repeat(500_000)}${named}`] }),
+        );
+        const store = new DraftStore(storage, () => 5000);
+        const start = performance.now();
+        store.list();
+        times.push(performance.now() - start);
+        expect(baseKeys(storage)).toEqual([`inkline-draft-base:${named}`]);
+      }
+      return Math.min(...times);
+    };
+    // Keys of 128 lengths, of a letter no part of the draft holds.
+    const lengths = Array.from({ length: 128 }, (_, at) => "q".repeat(at + 1));
+    const alone = fastest([]);
+    // On Windows 11 and Node.js 24.22.2, under load, the list took 14 to 28 ms
+    // with them or without. Looking for each length, as the store did at
+    // 117045a, took 1.0 to 1.2 seconds with them, 37 to 59 times as long as
+    // without; the third review measured 6.1 seconds.
+    expect(fastest(lengths)).toBeLessThan(3 * alone + 25);
   });
 
   it("counts no version that is not a number above its own, NaN included", () => {
