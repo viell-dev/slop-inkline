@@ -778,7 +778,6 @@ describe("DrawingSession with the grid on", () => {
     session.begin({ x: 8, y: 8 });
     session.end({ x: 8, y: 8 });
     expect(session.document.strokes[0]?.points).toEqual([128, 128]);
-    session.tool = "eraser";
     session.begin({ x: 7, y: 9 });
     session.extend([{ x: 20, y: 25 }]);
     session.end({ x: 41, y: 71 });
@@ -788,6 +787,16 @@ describe("DrawingSession with the grid on", () => {
     session.extend([{ x: 41, y: 71 }]);
     session.end();
     expect(ends(session)).toEqual([7, 9, 41, 71]);
+    // An eraser's area ends at its last point, and reaches the brush's radius,
+    // 6 pixels, past where it was pressed, not past a grid point.
+    session.tool = "eraser";
+    session.begin({ x: 7, y: 9 });
+    session.extend([{ x: 20, y: 25 }]);
+    session.end({ x: 41, y: 71 });
+    const points = session.document.strokes.at(-1)?.points ?? [];
+    expect(ends(session).slice(2)).toEqual([41, 71]);
+    const xs = points.filter((_, at) => at % 2 === 0);
+    expect(Math.min(...xs) / 16).toBeCloseTo(1, 1);
   });
 
   it("puts the press on the grid by Shift at the press alone", () => {
@@ -1256,12 +1265,108 @@ describe("DrawingSession's cuts", () => {
   it("cuts only the end of a stroke the grid came on for", () => {
     const session = new DrawingSession(emptyDocument);
     session.flatEnds = true;
-    session.tool = "eraser";
     session.begin({ x: 3, y: 16 }, true);
     session.extend([{ x: 4, y: 60 }]);
     session.snap = true;
     session.end({ x: 3, y: 64 }, true);
     expect(session.document.strokes[0]?.cut).toEqual({ end: "down" });
+  });
+
+  it("cuts an eraser's area flat at the end the grid came on for", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.flatEnds = true;
+    session.tool = "eraser";
+    session.sizeIndex = 3;
+    session.begin({ x: 3, y: 16 }, true);
+    session.extend([{ x: 4, y: 60 }]);
+    session.snap = true;
+    session.end({ x: 3, y: 64 }, true);
+    const [stroke] = session.document.strokes;
+    expect(stroke?.kind).toBe("fill");
+    const ys = (stroke?.points ?? []).filter((_, at) => at % 2 === 1);
+    // It ends on the grid point on the row at 64 pixels, and takes nothing
+    // below it there, where an uncut end would reach 12 pixels further.
+    expect(stroke?.points.slice(-2)).toEqual([0, 1024]);
+    expect(Math.max(...ys)).toBe(1024);
+    // Its start, which the grid did not come on for, is round.
+    expect(Math.min(...ys)).toBeLessThan(16 * 16 - 12 * 16 + 4);
+  });
+
+  it("saves an eraser's stroke as the area its brush swept, as it was shown", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.tool = "eraser";
+    session.sizeIndex = 3;
+    session.begin({ x: 10, y: 50 });
+    // A tap so far is a round dot, as a smooth stroke draws it.
+    expect(session.activeStroke).toEqual({
+      tool: "eraser",
+      size: 384,
+      points: [160, 800],
+    });
+    session.extend([
+      { x: 20, y: 52 },
+      { x: 30, y: 60 },
+      { x: 35, y: 80 },
+    ]);
+    const shown = session.activeStroke;
+    expect(shown?.kind).toBe("fill");
+    // To the stroke's last point, for the grid's guess.
+    expect(shown?.points.slice(-2)).toEqual([560, 1280]);
+    session.end({ x: 35, y: 80 });
+    expect(session.document.strokes).toEqual([shown]);
+    // One step to undo, as any stroke.
+    session.undo();
+    expect(session.document.strokes).toEqual([]);
+    session.redo();
+    expect(session.document.strokes).toEqual([shown]);
+  });
+
+  it("keeps a pen's stroke, and an eraser's shapes, as they were", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.begin({ x: 10, y: 50 });
+    session.extend([{ x: 30, y: 60 }]);
+    session.end();
+    expect(session.document.strokes[0]).not.toHaveProperty("kind");
+    session.tool = "eraser";
+    session.shape = "ellipse";
+    session.begin({ x: 10, y: 50 });
+    session.extend([{ x: 40, y: 90 }]);
+    session.end();
+    expect(session.document.strokes[1]).toMatchObject({
+      tool: "eraser",
+      size: 192,
+    });
+    expect(session.document.strokes[1]).not.toHaveProperty("kind");
+  });
+
+  it("draws an eraser's straight line with Shift as the area along it", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.tool = "eraser";
+    session.begin({ x: 10, y: 50 });
+    session.extend([{ x: 60, y: 51 }], true);
+    session.extend([{ x: 80, y: 50 }], true);
+    session.end({ x: 80, y: 50 }, true);
+    const [stroke] = session.document.strokes;
+    expect(stroke?.kind).toBe("fill");
+    expect(stroke?.points.slice(-2)).toEqual([1280, 800]);
+    const ys = (stroke?.points ?? []).filter((_, at) => at % 2 === 1);
+    // A straight line 12 pixels wide, along y = 50, and nothing more.
+    expect(Math.min(...ys)).toBe(800 - 96);
+    expect(Math.max(...ys)).toBe(800 + 96);
+  });
+
+  it("moves an eraser's area with the drawing", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.tool = "eraser";
+    session.begin({ x: 10, y: 50 });
+    session.extend([{ x: 30, y: 60 }]);
+    session.end();
+    const [before] = session.document.strokes;
+    session.moveDrawing(32);
+    const [after] = session.document.strokes;
+    expect(after?.points).toEqual(
+      before?.points.map((value, at) => (at % 2 === 1 ? value + 32 : value)),
+    );
   });
 
   it("keeps a stroke's cuts through undo and redo", () => {

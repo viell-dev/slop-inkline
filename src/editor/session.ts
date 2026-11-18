@@ -18,6 +18,7 @@ import {
 import { lineBox } from "../ink/geometry.ts";
 import { History } from "../ink/history.ts";
 import { finerGrid, type Grid } from "./guides.ts";
+import { sweptStroke } from "./sweep.ts";
 
 export interface BrushSize {
   /** The button label. */
@@ -44,7 +45,9 @@ export const brushSizes: readonly BrushSize[] = [
  * The longest gap left between two recorded points, in document pixels. A
  * fast stroke reports few points, and perfect-freehand's streamline, which
  * pulls each point towards the one before, would then cut its corners, so
- * longer gaps are filled with points along the straight line between.
+ * longer gaps are filled with points along the straight line between. An
+ * eraser's sweep, which follows straight lines between its points exactly,
+ * needs none.
  */
 export const maxGap = 2;
 
@@ -281,6 +284,11 @@ interface ActiveStroke {
   readonly onGrid: boolean;
   /** Whether it is a polygon, whose points are the corners placed so far. */
   readonly polygon: boolean;
+  /**
+   * Whether it is an eraser's stroke drawn as the pointer goes, which takes
+   * away exactly what its brush sweeps, and is saved as that area.
+   */
+  readonly sweep: boolean;
 }
 
 /** The point `along` the way from `from` to `to`. */
@@ -622,6 +630,8 @@ export class DrawingSession {
    * twice the brush's width, so that the small turns near an end that a hand
    * makes, and the jump to a grid point at its start, don't decide it;
    * `paths` are the ways each end is measured along, as for {@link gridCuts}.
+   * An eraser's stroke drawn as the pointer goes is the area its brush swept,
+   * cut the same way, as {@link sweptStroke} makes it.
    */
   #stroke(
     active: ActiveStroke,
@@ -642,6 +652,7 @@ export class DrawingSession {
       ...(paths.start === undefined ? {} : { start: paths.start }),
       ...(paths.end === undefined ? {} : { end: paths.end }),
     });
+    if (active.sweep) return sweptStroke(tool, size, points, cut);
     return cut === undefined ? stroke : { ...stroke, cut };
   }
 
@@ -671,6 +682,7 @@ export class DrawingSession {
       flat,
       onGrid: onGrid && flat,
       polygon,
+      sweep: this.tool === "eraser" && this.shape === "free",
     };
     this.#last = undefined;
     this.#anchor = undefined;
@@ -744,10 +756,13 @@ export class DrawingSession {
     }
   }
 
-  /** Records a point, and points along the gap since the last one. */
+  /**
+   * Records a point, and points along the gap since the last one, but for an
+   * eraser's sweep, which a straight line between them draws exactly.
+   */
   #append(active: ActiveStroke, point: InputPoint): void {
     const previous = this.#last;
-    if (previous !== undefined) {
+    if (previous !== undefined && !active.sweep) {
       const gap = Math.hypot(point.x - previous.x, point.y - previous.y);
       const steps = Math.ceil(gap / maxGap);
       for (let step = 1; step < steps; step++) {

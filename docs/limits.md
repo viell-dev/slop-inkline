@@ -206,7 +206,9 @@ the mark before renaming what it links to.
 - A symbol holds at most 250,000 points across its strokes, erased ones
   included. That is minutes of unbroken drawing with the fastest mice. Saving
   past it fails with a message, and the draft stops at the last stroke within
-  it, so undo what took the drawing over.
+  it, so undo what took the drawing over. **Unreleased:** an eraser stroke drawn
+  freehand keeps the outline of the area it took away, about three times the
+  points of a pen stroke as long, and up to about six for a slow curve.
 - Saving a symbol with a large base layer from the editor takes two or three
   seconds near the limit, and Obsidian keeps answering all through it. A symbol
   drawn by hand takes milliseconds. What remains is a pause of up to about a

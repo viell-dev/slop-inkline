@@ -717,6 +717,25 @@ crosses the row through it at 45° or steeper, so that it stops flush with the
 row: a stroke that comes down to the baseline has the end `"down"`. Every other
 end stays round, so a line along the baseline stays whole.
 
+Inkline saves an eraser stroke drawn as the pointer goes as a stroke of kind
+`"fill"`: its points go round the area that a round brush of the eraser's size
+sweeps along the straight lines between the points the pointer reported, so that
+it takes away exactly what the brush passed over. The editor shows that same
+stroke while it is drawn, and what it has taken stays taken as the way goes on.
+Points in a row on one straight line count as that line. The outline follows the
+brush's circles in chords no more than a sixteenth of a pixel inside them, with
+their corners at the same angles about each centre, so that those of one circle
+are where they were when the way goes on from it. It goes round one side of the
+way and back along the other, through the corner on the inside of each turn and
+round it on the outside, and the nonzero rule fills what any part of it covers,
+so ink that a loop goes round stays. It starts at the way's first point and ends
+at its last, with a straight bridge between them that adds no area, so that its
+ends mark the grid as a smooth stroke's would. An end that Flat ends cuts is cut
+as [Cut ends](#cut-ends) cuts a smooth stroke's, with the area of the rest of
+the way in its box. Pen strokes, and an eraser's ellipses and polygons, are
+saved as before. Inkline 1.0.1 and earlier saved an eraser stroke as a smooth
+stroke, and such strokes draw as they did.
+
 A file says nothing of Inkline's grid, which belongs to the note's font and the
 Grid size setting rather than to the symbol. A stroke's points are stored
 exactly, so a stroke Shift placed stays where it was. On opening a symbol again,

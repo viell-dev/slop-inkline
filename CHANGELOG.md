@@ -9,6 +9,19 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Fixed
+
+- The eraser takes away exactly what its circle passes over, and what it has
+  taken stays taken as you go on. Behind a large brush moving along a curve, the
+  edge it left in the ink used to shift while erasing, and a little ink came
+  back beside its way, some of it for good. An eraser stroke drawn freehand is
+  now saved as the area its brush swept, as a filled shape the file format
+  already has, so symbols stay in the same format and open in earlier versions
+  of Inkline as before. Such a stroke holds about three times the points of a
+  pen stroke as long, and up to about six for a slow curve. Pen strokes, the
+  eraser's shapes, and eraser strokes saved before are as they were
+  ([#341](https://github.com/viell-dev/slop-inkline/issues/341)).
+
 ## 1.0.0 - 2026-11-16
 
 This is Inkline's first stable release. It is 0.9.5, the last release candidate,
