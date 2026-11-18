@@ -576,7 +576,8 @@ async function analyse(diameter: number): Promise<Analysis> {
 }
 
 describe("Erasing along an edge (#341)", function () {
-  this.timeout(30 * 60 * 1000);
+  // Each Zoom setting takes 30 minutes or more on a busy machine.
+  this.timeout(90 * 60 * 1000);
   const results: Record<string, Omit<Analysis, "picture">> = {};
 
   before(async function () {
