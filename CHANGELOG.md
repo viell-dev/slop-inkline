@@ -29,6 +29,10 @@ even one a public release; earlier pre-releases carry a suffix such as
   the format already has, so a symbol drawn with this release opens in 1.0.0,
   and symbols already saved look as before
   ([#342](https://github.com/viell-dev/slop-inkline/issues/342)).
+- The **Fit** button's tooltip, and the table of keys in the guide, said that
+  Fit shows all of a drawing wider than the view. That is so out of **Zoom**; in
+  Zoom, Fit centres the drawing and stays zoomed, as the guide and **Help** say
+  ([#363](https://github.com/viell-dev/slop-inkline/issues/363)).
 
 ## 1.0.0 - 2026-11-16
 
