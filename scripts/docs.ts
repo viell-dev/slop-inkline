@@ -13,7 +13,13 @@
 
 import { appendFile, readFile } from "node:fs/promises";
 import { setTimeout as sleep } from "node:timers/promises";
-import { docsSource, isRecord, type DocsRequest } from "./lib/docs.ts";
+import {
+  docsSource,
+  isRecord,
+  publishedReleases,
+  type DocsRelease,
+} from "./lib/docs.ts";
+import { stableVersionPattern } from "./lib/version.ts";
 
 const repository = process.env.GITHUB_REPOSITORY ?? "viell-dev/slop-inkline";
 const token = process.env.GH_TOKEN;
@@ -35,21 +41,42 @@ async function api(path: string): Promise<unknown> {
   return response.json();
 }
 
-/** The published releases' tags, newest first. */
-async function releases(): Promise<string[]> {
-  const listed = await api(`repos/${repository}/releases?per_page=100`);
-  if (!Array.isArray(listed)) fail("the releases are not a list");
-  return listed
-    .flatMap((release) =>
-      isRecord(release) &&
-      release.draft === false &&
-      typeof release.tag_name === "string" &&
-      typeof release.published_at === "string"
-        ? [{ tag: release.tag_name, at: Date.parse(release.published_at) }]
-        : [],
-    )
-    .sort((a, b) => b.at - a.at)
-    .map((release) => release.tag);
+/** Published releases, newest first, from every page of GitHub's list. */
+async function releases(): Promise<DocsRelease[]> {
+  const pages: unknown[][] = [];
+  const pageSize = 100;
+  for (let page = 1; ; page++) {
+    const response = await api(
+      `repos/${repository}/releases?per_page=${String(pageSize)}&page=${String(page)}`,
+    );
+    if (!Array.isArray(response)) fail("the releases are not a list");
+    const listed: unknown[] = response;
+    pages.push(listed);
+    if (listed.length < pageSize) break;
+  }
+  try {
+    return publishedReleases(pages);
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+  }
+}
+
+/**
+ * The version manifest.json names on this commit: the newest public release,
+ * or one being prepared, as RELEASING.md's "Where a version is recorded" says.
+ */
+async function manifestVersionOnDisk(): Promise<string> {
+  const json: unknown = JSON.parse(
+    await readFile(new URL("../manifest.json", import.meta.url), "utf8"),
+  );
+  if (
+    !isRecord(json) ||
+    typeof json.version !== "string" ||
+    !stableVersionPattern.test(json.version)
+  ) {
+    fail("manifest.json has no valid version");
+  }
+  return json.version;
 }
 
 async function resolve(): Promise<void> {
@@ -57,29 +84,23 @@ async function resolve(): Promise<void> {
   if (event !== "push" && event !== "dispatch") {
     fail(`EVENT is ${String(event)}, not push or dispatch`);
   }
-  const tags = await releases();
   // The ref this run is on, and builds.
   const ref = process.env.REF ?? "main";
   const refType = process.env.REF_TYPE;
   if (refType !== "branch" && refType !== "tag") {
     fail(`REF_TYPE is ${String(refType)}, not branch or tag`);
   }
-  // package.json, as manifest.json keeps the last public release through a
-  // line of pre-releases, and the guide describes the newest of them.
-  const packageJson: unknown = JSON.parse(
-    await readFile(new URL("../package.json", import.meta.url), "utf8"),
-  );
-  if (!isRecord(packageJson) || typeof packageJson.version !== "string") {
-    fail("package.json has no version");
-  }
-  const request: DocsRequest = {
+  const [published, manifestVersion] = await Promise.all([
+    releases(),
+    manifestVersionOnDisk(),
+  ]);
+  const source = docsSource({
     event,
     ref,
     refType,
-    releases: tags,
-    version: packageJson.version,
-  };
-  const source = docsSource(request);
+    releases: published,
+    manifestVersion,
+  });
   if (!source.deploy) {
     console.log(source.reason);
     await output({ deploy: "false" });
