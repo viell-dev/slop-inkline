@@ -15,11 +15,12 @@ even one a public release; earlier pre-releases carry a suffix such as
   in BRAT or installing an older ZIP, keeps the unsaved drawings that the later
   version kept as drafts, if it keeps them in a way this version cannot read.
   Inkline used to drop such drafts, with their pictures, as soon as an editor
-  opened or a file was renamed. This version cannot restore them: opening their
-  symbol says so, and the later version offers them again once you update,
-  within 30 days. Every release from 0.9.2 on keeps drafts the same way, so none
-  has lost one like this yet
-  ([#300](https://github.com/viell-dev/slop-inkline/issues/300)).
+  opened or a file was renamed. This version cannot restore them, and the later
+  version offers them again once you update. Opening their symbol says so, when
+  this version can tell which symbol they are for, and it drops those it can
+  tell the age of 30 days after they were kept, as it does its own. Every
+  release from 0.9.2 on keeps drafts the same way, so none has lost one like
+  this yet ([#300](https://github.com/viell-dev/slop-inkline/issues/300)).
 
 ## 1.0.0 - 2026-11-16
 

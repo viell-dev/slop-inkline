@@ -183,8 +183,9 @@ symbol opens or a file is renamed.
   them, though it still leaves them as they are. The earlier version cannot
   restore them. The editor opens the symbol as it is saved, and what you draw
   there is kept in a draft of its own, beside them.
-- To get them back, update Inkline to the newer version, within 30 days of when
-  they were kept: the earlier version drops them after that, as it does its own.
+- To get them back, update Inkline to the newer version within 30 days of when
+  they were kept. After that, the earlier version drops those it can see and
+  tell the age of, as it does its own.
 - They stay with the name and folder their symbol had. A rename in the earlier
   version does not move them, so rename the symbol back before you open it in
   the newer version, as for

@@ -802,8 +802,10 @@ describe("DraftStore with a draft of a later layout", () => {
   }
 
   /** Stores a base layer as this version does, for a later one's draft. */
-  function plantBase(storage: MemoryStorage): string {
-    const key = crypto.randomUUID();
+  function plantBase(
+    storage: MemoryStorage,
+    key: string = crypto.randomUUID(),
+  ): string {
     storage.saveLocalStorage(`inkline-draft-base:${key}`, toBase64(png));
     listing(storage, "inkline-draft-bases", key);
     return key;
@@ -1074,6 +1076,72 @@ describe("DraftStore with a draft of a later layout", () => {
     store.remove("own");
     expect(listedBases(storage)).toEqual([shared]);
     expect(baseKeys(storage)).toEqual([`inkline-draft-base:${shared}`]);
+  });
+
+  it("reads a wide later draft beside many base layers at once, keeping only the one it names", () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 5000);
+    const named = plantBase(storage);
+    for (let count = 0; count < 256; count++) plantBase(storage);
+    // A draft of 100,000 short strings, about 800,000 characters, with the
+    // one key it names escaped among them.
+    const parts = Array.from({ length: 100_000 }, (_, at) =>
+      String(at).padStart(5, "0"),
+    );
+    plant(
+      storage,
+      "wide",
+      escaping(laterDraft({ parts, pictures: [{ id: named }] }), named),
+    );
+    // Reading the draft's text twice, as storage and the store each do, is
+    // the measure: it slows as list() does when the machine is busy.
+    const stored = storage.values.get(draftKey("wide")) ?? "";
+    const reads: number[] = [];
+    for (let run = 0; run < 3; run++) {
+      const begun = performance.now();
+      JSON.parse(String(JSON.parse(stored)));
+      reads.push(performance.now() - begun);
+    }
+    const reading = Math.min(...reads);
+    const start = performance.now();
+    expect(store.list()).toEqual([]);
+    const elapsed = performance.now() - start;
+    expect(listedBases(storage)).toEqual([named]);
+    expect(baseKeys(storage)).toEqual([`inkline-draft-base:${named}`]);
+    // On Windows 11 and Node.js 24.22.2, in Vitest, with other work loading
+    // the machine, list() took 3.8 to 5.7 times as long as that reading,
+    // 162 to 233 ms. Searching each string for each key in turn, as the store
+    // did at f961af9, took 23 to 25 times as long, 1.0 to 1.3 seconds.
+    expect(elapsed).toBeLessThan(12 * reading);
+  });
+
+  it("finds a key at any place in a longer string, whatever its length", () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 5000);
+    const first = plantBase(storage);
+    const middle = plantBase(storage);
+    const last = plantBase(storage);
+    const short = plantBase(storage, "k7");
+    const partial = plantBase(storage);
+    // Text full of what a key may begin with, around and between them.
+    const filler = "0123456789abcdef-".repeat(200);
+    plant(
+      storage,
+      "later",
+      laterDraft({
+        pictures: [
+          `${first}${filler}`,
+          `${filler}${middle}${filler}`,
+          `${filler}${last}`,
+          `x${short}x`,
+          // Only part of it, which names nothing.
+          `${filler}${partial.slice(0, -1)}`,
+        ],
+      }),
+    );
+    store.list();
+    expect(listedBases(storage)).toEqual([first, middle, last, short]);
+    expect(storage.values.has(`inkline-draft-base:${partial}`)).toBe(false);
   });
 
   it("counts no version that is not a number above its own, NaN included", () => {

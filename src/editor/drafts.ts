@@ -242,7 +242,7 @@ interface LaterDraft {
 
 /**
  * Every string in a value read from JSON, its property names included, at
- * any depth: as decoded, so that an escape such as `-` reads as the
+ * any depth: as decoded, so that an escape such as `\u002d` reads as the
  * character it stands for.
  */
 function stringsOf(value: unknown): string[] {
@@ -255,18 +255,80 @@ function stringsOf(value: unknown): string[] {
       strings.push(next);
     } else if (typeof next === "object" && next !== null && !seen.has(next)) {
       seen.add(next);
-      for (const [name, item] of Object.entries(next)) {
-        if (!Array.isArray(next)) strings.push(name);
-        pending.push(item);
+      if (Array.isArray(next)) {
+        const items: readonly unknown[] = next;
+        for (const item of items) pending.push(item);
+      } else {
+        for (const [name, item] of Object.entries(next)) {
+          strings.push(name);
+          pending.push(item);
+        }
       }
     }
   }
   return strings;
 }
 
-/** Whether a draft of a later layout names the kept base layer `key`. */
-function laterNames(draft: LaterDraft, key: string): boolean {
-  return draft.strings.some((text) => text.includes(key));
+/**
+ * The base of {@link laterNamed}'s rolling hash, which works in 32-bit
+ * integers, wrapping as they overflow.
+ */
+const hashBase = 131;
+
+/** The rolling hash of `length` characters of `text` from `at`. */
+function hashOf(text: string, at: number, length: number): number {
+  let hash = 0;
+  for (let index = at; index < at + length; index++) {
+    hash = (Math.imul(hash, hashBase) + text.charCodeAt(index)) | 0;
+  }
+  return hash;
+}
+
+/**
+ * The keys of kept base layers among `keys` that a draft of a later layout
+ * names, whole or inside a longer string. Each string is read once for all of
+ * them, for each length a key has: a rolling hash of every run of that many
+ * characters finds the keys it may be, and a comparison tells. A search for
+ * each key in turn takes seconds for a draft of many strings beside many base
+ * layers, and cutting out every run to look it up a fifth of a second for a
+ * string of a million characters. The keys this version makes all have one
+ * length, a UUID's. A key of no characters names nothing.
+ */
+function laterNamed(draft: LaterDraft, keys: ReadonlySet<string>): Set<string> {
+  const named = new Set<string>();
+  // The keys of each length, by their hash.
+  const byLength = new Map<number, Map<number, string[]>>();
+  for (const key of keys) {
+    if (key.length === 0) continue;
+    const hashes = byLength.get(key.length) ?? new Map<number, string[]>();
+    byLength.set(key.length, hashes);
+    const hash = hashOf(key, 0, key.length);
+    hashes.set(hash, [...(hashes.get(hash) ?? []), key]);
+  }
+  for (const [length, hashes] of byLength) {
+    // What the first of a run's characters adds to its hash.
+    let first = 1;
+    for (let index = 1; index < length; index++) {
+      first = Math.imul(first, hashBase);
+    }
+    for (const text of draft.strings) {
+      if (text.length < length) continue;
+      let hash = hashOf(text, 0, length);
+      for (let at = 0; ; at++) {
+        const candidates = hashes.get(hash);
+        if (candidates !== undefined) {
+          for (const key of candidates) {
+            if (text.startsWith(key, at)) named.add(key);
+          }
+        }
+        if (at + length >= text.length) break;
+        const rest = (hash - Math.imul(text.charCodeAt(at), first)) | 0;
+        hash = (Math.imul(rest, hashBase) + text.charCodeAt(at + length)) | 0;
+      }
+      if (named.size === keys.size) return named;
+    }
+  }
+  return named;
 }
 
 /**
@@ -306,12 +368,12 @@ function readLater(stored: unknown): LaterDraft | undefined {
 /**
  * Whether the stored draft `stored` may name the kept base layer `key`: as
  * {@link storedBaseKey} reads it, or, for a draft of a later layout, which
- * may name it elsewhere, as {@link laterNames} reads it.
+ * may name it elsewhere, as {@link laterNamed} reads it.
  */
 function mayName(stored: unknown, key: string): boolean {
   if (storedBaseKey(stored) === key) return true;
   const later = readLater(stored);
-  return later !== undefined && laterNames(later, key);
+  return later !== undefined && laterNamed(later, new Set([key])).size > 0;
 }
 
 interface Decoded {
@@ -783,8 +845,13 @@ export class DraftStore {
     }
     if (listed.length !== ids.length) this.#setList(indexKey, listed);
     const keys = this.#list(baseIndexKey);
-    for (const key of keys) {
-      if (later.some((draft) => laterNames(draft, key))) used.add(key);
+    const unnamed = new Set(keys.filter((key) => !used.has(key)));
+    for (const draft of later) {
+      if (unnamed.size === 0) break;
+      for (const key of laterNamed(draft, unnamed)) {
+        used.add(key);
+        unnamed.delete(key);
+      }
     }
     const kept = keys.filter((key) => used.has(key));
     if (kept.length !== keys.length) {
