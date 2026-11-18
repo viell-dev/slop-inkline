@@ -786,7 +786,7 @@ export class InkEditorModal extends Modal {
         this.#render();
       },
       "Fit",
-      "centre the drawing in the view, and show all of it if it is wider; the drawing itself stays as it is",
+      "centre the drawing in the view, and out of Zoom show all of it if it is wider; the drawing itself stays as it is",
     );
     this.#addButton(
       toolbar,

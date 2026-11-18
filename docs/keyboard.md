@@ -71,7 +71,7 @@ immediately. Select the name field to type a name; Enter returns to drawing.
 | T                         | Flat ends   | End strokes that Shift put on the grid flat, or round.   |
 | Shift, held while drawing |             | Draw a straight line, and snap to the grid if it is on.  |
 | V                         | Copy from   | Start a new symbol from a copy of another.               |
-| F                         | Fit         | Centre the drawing, showing all of it if it is wider.    |
+| F                         | Fit         | Centre the drawing; out of Zoom, show a wide one whole.  |
 | ArrowUp                   | Up          | Move the drawing up a pixel; Shift, a grid cell's width. |
 | ArrowDown                 | Down        | Move it down the same way.                               |
 | Z                         | Zoom        | Show the drawing twice as large, or as usual again.      |
