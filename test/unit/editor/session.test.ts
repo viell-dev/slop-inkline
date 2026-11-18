@@ -1449,6 +1449,100 @@ describe("DrawingSession's cuts", () => {
     expect(gridOriginOf(session.document)).toBe(0);
   });
 
+  it("shows an eraser's stroke as letting go or Next saves it, whatever kind that is", () => {
+    // The review's drag on #381: XL, the grid and Flat ends on; pressed
+    // without Shift, freehand down and across, then with Shift up to a grid
+    // point near the start, whose cut end makes the stroke a smooth one.
+    const drag = () => {
+      const session = new DrawingSession(emptyDocument);
+      session.tool = "eraser";
+      session.sizeIndex = 3;
+      session.snap = true;
+      session.flatEnds = true;
+      session.begin({ x: 32, y: 32 });
+      session.extend([{ x: 32, y: 144 }]);
+      session.extend([{ x: 144, y: 144 }]);
+      session.extend([{ x: 144, y: 64 }], true);
+      return { session, shown: session.activeStrokes };
+    };
+    const ends = {
+      release: (session: DrawingSession) => {
+        session.end({ x: 144, y: 64 }, true);
+      },
+      "release with Shift just let go": (session: DrawingSession) => {
+        session.end({ x: 144, y: 64 });
+      },
+      next: (session: DrawingSession) => {
+        session.end();
+      },
+    };
+    for (const [name, end] of Object.entries(ends)) {
+      const { session, shown } = drag();
+      expect(shown, name).toHaveLength(1);
+      expect(shown[0]?.kind, name).toBeUndefined();
+      expect(shown[0]?.cut, name).toEqual({ end: "up" });
+      end(session);
+      expect(session.document.strokes, name).toEqual(shown);
+    }
+  });
+
+  it("saves the eraser's stroke it showed last, across seeded drags", () => {
+    // Freehand and with Shift by turns, on the grid and off, with Flat ends
+    // and without, often coming back near where they started, and ended by
+    // a release where the pointer was last, with Shift as it was or just let
+    // go, or by Next.
+    let state = 341;
+    const random = (): number => {
+      state = (state * 16807) % 2147483647;
+      return state / 2147483647;
+    };
+    const between = (from: number, to: number): number =>
+      from + (to - from) * random();
+    const seen = { fill: 0, smooth: 0, cutEnd: 0, changed: 0 };
+    for (let trial = 0; trial < 600; trial++) {
+      const session = new DrawingSession(emptyDocument);
+      session.tool = "eraser";
+      session.sizeIndex = Math.floor(between(0, 4));
+      session.flatEnds = random() < 0.7;
+      session.snap = random() < 0.7;
+      let shift = random() < 0.4;
+      const start = { x: between(0, 200), y: between(0, 120) };
+      let at = start;
+      session.begin(at, shift);
+      let kinds = new Set<string | undefined>();
+      const moves = Math.floor(between(0, 30));
+      for (let move = 0; move < moves; move++) {
+        if (random() < 0.15) shift = !shift;
+        at =
+          random() < 0.1
+            ? { x: start.x + between(-8, 8), y: start.y + between(-8, 8) }
+            : { x: at.x + between(-24, 24), y: at.y + between(-24, 24) };
+        session.extend([at], shift);
+        kinds.add(session.activeStrokes[0]?.kind ?? "smooth");
+      }
+      const shown = session.activeStrokes;
+      const how = random();
+      if (how < 0.4) session.end(at, shift);
+      else if (how < 0.6) session.end(at);
+      else session.end();
+      expect(session.document.strokes, `trial ${String(trial)}`).toEqual(shown);
+      const [stroke] = shown;
+      if (stroke?.kind === "fill") seen.fill++;
+      else seen.smooth++;
+      if (stroke?.kind === undefined && stroke?.cut?.end !== undefined) {
+        seen.cutEnd++;
+      }
+      if (kinds.size > 1) seen.changed++;
+      kinds = new Set();
+    }
+    // The drags cover both kinds, smooth strokes with a cut end, and
+    // strokes that changed kind as they went.
+    expect(seen.fill).toBeGreaterThan(100);
+    expect(seen.smooth).toBeGreaterThan(20);
+    expect(seen.cutEnd).toBeGreaterThan(5);
+    expect(seen.changed).toBeGreaterThan(5);
+  });
+
   it("moves an eraser's area with the drawing", () => {
     const session = new DrawingSession(emptyDocument);
     session.tool = "eraser";

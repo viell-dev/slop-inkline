@@ -385,32 +385,30 @@ function cutOutline(
  */
 function flattened(points: readonly Point[]): number[] {
   const flat: number[] = [];
+  // Read by index rather than with `at`, which in V8 made the eraser's
+  // preview about a tenth slower, as measured on #381.
+  let length = 0;
   for (const [x, y] of points) {
     const rx = Math.round(x);
     const ry = Math.round(y);
-    if (flat.at(-2) === rx && flat.at(-1) === ry) continue;
     // In whole units, these products are exact.
-    for (;;) {
-      const ax = flat.at(-4);
-      const ay = flat.at(-3);
-      const bx = flat.at(-2);
-      const by = flat.at(-1);
-      if (
-        ax === undefined ||
-        ay === undefined ||
-        bx === undefined ||
-        by === undefined
-      ) {
-        break;
-      }
+    while (length >= 4) {
+      const ax = flat[length - 4] ?? 0;
+      const ay = flat[length - 3] ?? 0;
+      const bx = flat[length - 2] ?? 0;
+      const by = flat[length - 1] ?? 0;
       const cross = (bx - ax) * (ry - by) - (by - ay) * (rx - bx);
       const dot = (bx - ax) * (rx - bx) + (by - ay) * (ry - by);
       if (cross !== 0 || dot >= 0) break;
-      flat.length -= 2;
+      length -= 2;
     }
-    if (flat.at(-2) === rx && flat.at(-1) === ry) continue;
-    flat.push(rx, ry);
+    if (length >= 2 && flat[length - 2] === rx && flat[length - 1] === ry) {
+      continue;
+    }
+    flat[length++] = rx;
+    flat[length++] = ry;
   }
+  flat.length = length;
   return flat;
 }
 
@@ -459,15 +457,12 @@ export function sweptStroke(
   cut?: StrokeCuts,
   points: readonly number[] = way,
 ): Stroke {
-  const smooth = {
-    tool,
-    size,
-    points: [...points],
-    ...(cut === undefined ? {} : { cut }),
-  };
+  const smooth = { tool, size, points, ...(cut === undefined ? {} : { cut }) };
+  // Its points are copied only for a smooth stroke returned.
+  const fallback = (): Stroke => ({ ...smooth, points: [...points] });
   const path = sweepPath(way);
   const last = path.at(-1);
-  if (path.length < 2 || last === undefined) return smooth;
+  if (path.length < 2 || last === undefined) return fallback();
   const radius = size / 2;
   if (cut === undefined) {
     return {
@@ -494,12 +489,12 @@ export function sweptStroke(
   );
   const marked =
     clipped === undefined || !endCut ? clipped : throughEnd(clipped, last);
-  if (marked === undefined) return smooth;
+  if (marked === undefined) return fallback();
   // The outline starts and ends at the way's last point, unless the cut took
   // it, when it could mark the grid where it is not.
   const flat = flattened(marked);
   const marks = [flat[0], flat[1], flat.at(-2), flat.at(-1)];
   return flat.length >= 6 && marks.every((value, at) => value === last[at % 2])
     ? { tool, kind: "fill", points: flat }
-    : smooth;
+    : fallback();
 }
