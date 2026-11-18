@@ -189,6 +189,8 @@ interface Pressed {
   readonly id: string;
   readonly text: readonly number[];
   readonly background: readonly number[];
+  /** Obsidian's accent, which the background is mixed from. */
+  readonly accent: readonly number[];
 }
 
 /** The pressed buttons' colours, resolved by drawing each on a canvas. */
@@ -218,6 +220,7 @@ async function pressedColours(): Promise<Pressed[]> {
         id: button.getAttribute("data-inkline-button") ?? "",
         text: rgb(style.color),
         background: rgb(style.backgroundColor),
+        accent: rgb(style.getPropertyValue("--interactive-accent").trim()),
       };
     });
   });
@@ -359,6 +362,53 @@ describe("Editor buttons", function () {
     await storeLabels("both");
   });
 
+  it("spaces the toolbar's rows as a row that wraps is spaced", async function () {
+    await openEditor();
+    const spacing = await browser.execute(() => {
+      const rows = [
+        ...activeDocument.querySelectorAll<HTMLElement>(
+          ".inkline-editor .inkline-toolbar",
+        ),
+      ];
+      const first = rows[0];
+      if (first === undefined) throw new Error("no toolbar");
+      const wrap = parseFloat(getComputedStyle(first).rowGap);
+      const gaps = rows
+        .slice(1)
+        .map(
+          (row, index) =>
+            row.getBoundingClientRect().top -
+            (rows[index]?.getBoundingClientRect().bottom ?? Number.NaN),
+        );
+      const last = rows.at(-1);
+      // What follows it on the screen: the picture's bar is there, hidden.
+      let after = last?.nextElementSibling;
+      while (
+        after instanceof HTMLElement &&
+        after.getClientRects().length === 0
+      ) {
+        after = after.nextElementSibling;
+      }
+      return {
+        wrap,
+        gaps,
+        after:
+          last === undefined || !(after instanceof HTMLElement)
+            ? undefined
+            : after.getBoundingClientRect().top -
+              last.getBoundingClientRect().bottom,
+        bottom: last === undefined ? "" : getComputedStyle(last).marginBottom,
+      };
+    });
+    // Three rows: tools, history, and the view and its buttons.
+    expect(spacing.gaps).toHaveLength(2);
+    expect(spacing.wrap).toBeGreaterThan(0);
+    for (const gap of spacing.gaps) expect(gap).toBeCloseTo(spacing.wrap, 1);
+    // The last row keeps its own, larger space to what follows it.
+    expect(spacing.bottom).not.toBe(`${String(spacing.wrap)}px`);
+    expect(spacing.after).toBeGreaterThan(spacing.wrap);
+  });
+
   it("shows each button's icon beside its text by default", async function () {
     await storeLabels("both");
     await openEditor();
@@ -485,6 +535,9 @@ describe("Editor buttons", function () {
             "guides",
           ]);
           for (const button of pressed) {
+            // The mix, not the plain accent that is only a fallback for a
+            // browser that cannot read it: every supported one can.
+            expect(button.background).not.toEqual(button.accent);
             const ratio = contrast(button.text, button.background);
             measured.push(
               `${accent || "default"} ${name} ${button.id} ${ratio.toFixed(2)}`,

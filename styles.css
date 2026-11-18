@@ -132,9 +132,13 @@
   margin-bottom: var(--size-4-3);
 }
 
-/* The toolbar's rows sit as close together as a row that wraps does. */
-.inkline-toolbar:has(+ .inkline-toolbar) {
-  margin-bottom: var(--size-4-2);
+/*
+ * The toolbar's rows sit as close together as a row that wraps does: the
+ * next row's margin takes the difference off, whether the two margins
+ * collapse, as between these blocks, or add up.
+ */
+.inkline-toolbar + .inkline-toolbar {
+  margin-top: calc(var(--size-4-2) - var(--size-4-3));
 }
 
 /*
@@ -173,13 +177,31 @@
 .inkline-toolbar button[aria-pressed="true"],
 .inkline-picture button[aria-pressed="true"],
 .inkline-convert button[aria-pressed="true"] {
-  background-color: var(--interactive-accent);
   background-color: color-mix(
     in srgb,
     var(--interactive-accent) 65%,
     color(from var(--text-on-accent) srgb calc(1 - r) calc(1 - g) calc(1 - b))
   );
   color: var(--text-on-accent);
+}
+
+/*
+ * The test is the colour above with plain colours for its variables, as a
+ * declaration with var() always passes: so the fallback applies exactly
+ * where a browser would drop that declaration.
+ */
+@supports not (
+  background-color: color-mix(
+      in srgb,
+      red 65%,
+      color(from white srgb calc(1 - r) calc(1 - g) calc(1 - b))
+    )
+) {
+  .inkline-toolbar button[aria-pressed="true"],
+  .inkline-picture button[aria-pressed="true"],
+  .inkline-convert button[aria-pressed="true"] {
+    background-color: var(--interactive-accent);
+  }
 }
 
 /*
@@ -356,6 +378,15 @@ img.inkline-symbol:not([width], [height]) {
  * gives an image that max-width already; it is declared here too, as the
  * margin is right only with it. In Live Preview the embed, which takes the
  * drop, takes the margin too; see below.
+ *
+ * Here and in the Live Preview rules below, :has() reads a structure that
+ * Obsidian builds and changes after Inkline marks the embed: whether the
+ * editor wraps the image, and whether the link gives a width alone.
+ * Obsidian's review advises against :has() for the cost of restyling, which
+ * no profile of a note has shown here. Marking these cases from the plugin
+ * instead would have to follow every such change, and place symbols on the
+ * baseline by a script's timing. Revisit if a profile of a long note shows
+ * these rules' restyling (#311).
  */
 img.inkline-symbol[width]:not([height]) {
   max-width: 100%;
@@ -693,12 +724,12 @@ img.inkline-symbol[width]:not([height]):not(.image-wrapper > img),
   font-size: var(--font-ui-small);
 }
 
-.inkline-library-values:has(+ .inkline-library-notes) {
-  margin-block-end: 0;
-}
-
+/*
+ * Uses follow a symbol's values with no space between: the row is a flex
+ * box, whose margins add up, so the second takes the first's off.
+ */
 .inkline-library-values + .inkline-library-notes {
-  margin-block-start: 0;
+  margin-block-start: calc(-1 * var(--size-4-1));
 }
 
 .inkline-library-values .inkline-values {
