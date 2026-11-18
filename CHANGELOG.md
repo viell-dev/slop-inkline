@@ -9,6 +9,24 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Fixed
+
+- A symbol that changes, as through sync, while some of its images are out of
+  the page now shows its new picture in them when Obsidian puts the same images
+  back with the addresses they had, as it does with parts of Reading view as it
+  lays a note out again, and with a canvas card's own editor, which it moves
+  into a frame of its own as it opens. Those images kept the old picture until
+  the note or the editor was shown again. An image that Obsidian makes anew,
+  rather than puts back, is not covered: one made with an address from before
+  the change can still show the old picture until the note is shown again
+  ([#281](https://github.com/viell-dev/slop-inkline/issues/281)).
+- Inkline follows a canvas card's own editor from the moment it appears, rather
+  than once it takes the focus, tens of milliseconds later. A symbol that
+  changed in between kept its old picture there, and an editor that never took
+  the focus would never have been followed, its symbols keeping their old
+  pictures without Inkline's menu or double-click
+  ([#336](https://github.com/viell-dev/slop-inkline/issues/336)).
+
 ## 1.0.1 - 2026-11-18
 
 A fix release for 1.0.0. The file format is unchanged: symbols open and look as

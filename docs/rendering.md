@@ -29,6 +29,29 @@ document. The image source and mask use a fresh resource URL, including a cache
 key so that consecutive saves with the same file timestamp still reload. Note
 text and explicit image sizes stay unchanged.
 
+**Unreleased:** Inkline watches the document in a frame as soon as the frame is
+in a watched document, and each new document the frame loads, rather than once
+the frame takes the focus, and stops as the frame goes. So a canvas text card's
+own editor is watched as Obsidian moves it into its frame, before it takes the
+focus, and one already open as Inkline starts is watched at once. It watches
+only frames whose window Obsidian has prepared, as it does for a card's editor:
+a frame that a note embeds, and frames from another origin, stay out of its
+reach.
+
+**Unreleased:** Inkline also remembers, for each image element it has tagged,
+how many times its symbol file had been refreshed when it last saw the image. An
+element that was out of every watched document as a refresh ran, as when
+Obsidian takes part of Reading view out and puts the same images back, or moves
+a card's editor into its frame, takes the latest refresh's address as it comes
+back, if it still has the address it had then. One whose address changed
+meanwhile, as Obsidian gives once the file changes again, keeps it. An image
+element that Obsidian makes anew is new to Inkline, and keeps the address it
+comes with: if that is an address from before the refresh, as when Obsidian
+draws an embed again from an address it kept, it shows what the page holds for
+that address until the note is shown again. A symbol file deleted, made, or
+moved starts afresh, so that an element of the file before keeps its own address
+and an element of the new one never gets the old one's.
+
 ## What a tagged image gets
 
 - The class `inkline-symbol`.

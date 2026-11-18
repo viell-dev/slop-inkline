@@ -855,13 +855,16 @@ describe("Symbols in notes", function () {
       // The observer's own work, apart from the page drawing the images:
       // the fastest of five runs, each on images of its own. Slow tagging
       // shows in every run, while other work beside the test, such as the
-      // other Obsidian version's tests, slows only some.
+      // other Obsidian version's tests, slows only some. Each run records
+      // the addresses of symbols it has not seen, as the observer does.
       const runs: number[] = [];
       const tagged: number[] = [];
       for (let run = 0; run < 5; run++) {
         const apart = symbols();
+        const addresses =
+          new window.inklineTest.renderLayout.RefreshedAddresses();
         const started = performance.now();
-        window.inklineTest.renderSymbols.tagWithin(apart, vault);
+        window.inklineTest.renderSymbols.tagWithin(apart, vault, addresses);
         runs.push(performance.now() - started);
         tagged.push(apart.querySelectorAll("img.inkline-symbol").length);
       }
@@ -886,6 +889,53 @@ describe("Symbols in notes", function () {
     // number of images, which took 300 ms and more, not against a constant
     // slowdown of two or three times.
     expect(Math.min(...result.runs)).toBeLessThan(50);
+  });
+
+  it("leave a frame that Obsidian has not prepared alone, and tag what follows it", async function () {
+    const seen = await browser.executeObsidian(async ({ obsidian }) => {
+      const vault = obsidian.Platform.resourcePathPrefix;
+      const errors: string[] = [];
+      const heard = (event: ErrorEvent): void => {
+        errors.push(event.message);
+      };
+      window.addEventListener("error", heard);
+      // A frame of the same origin, as a note's HTML can hold, which has
+      // none of Obsidian's additions to the DOM, and whose document has a
+      // form named `instanceOf`, which a document shows as a property.
+      const holder = createDiv({ cls: "markdown-rendered" });
+      const frame = holder.createEl("iframe");
+      activeDocument.body.append(holder);
+      const inner = frame.contentDocument;
+      if (inner === null) throw new Error("no frame document");
+      const form = inner.createElement("form");
+      form.setAttribute("name", "instanceOf");
+      inner.body.append(form);
+      // And after it, added in the same task, so that the observer sees it
+      // after the frame, a symbol.
+      const after = createDiv({ cls: "markdown-rendered" });
+      const image = after.createEl("img", {
+        attr: { src: `${vault}Glyphs/after.ink.png`, alt: "" },
+      });
+      activeDocument.body.append(after);
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+      window.removeEventListener("error", heard);
+      const result = {
+        named: "instanceOf" in inner,
+        watched:
+          inner.documentElement.style.getPropertyValue("--inkline-scale"),
+        tagged: image.classList.contains("inkline-symbol"),
+        errors,
+      };
+      holder.remove();
+      after.remove();
+      return result;
+    });
+    expect(seen).toEqual({
+      named: true,
+      watched: "",
+      tagged: true,
+      errors: [],
+    });
   });
 
   it("give a size with a height its drop before the image loads", async function () {

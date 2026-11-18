@@ -43,8 +43,16 @@ import { markNotice } from "./notices.ts";
 /** Inkline: symbols drawn once and written in notes like characters. */
 export default class InklinePlugin extends Plugin {
   readonly #editors = new Set<InkEditorModal>();
-  /** Shows symbols in notes as characters, in every window. */
-  readonly #renderer = new SymbolRenderer(Platform.resourcePathPrefix);
+  /**
+   * Shows symbols in notes as characters, in every window, and in the frames
+   * of canvas cards' editors, which Inkline also answers in.
+   */
+  readonly #renderer = new SymbolRenderer(
+    Platform.resourcePathPrefix,
+    (doc) => {
+      this.#offerEditing(doc);
+    },
+  );
   /**
    * What stops Inkline answering right-clicks and double-clicks, in each
    * document it does.
@@ -133,6 +141,27 @@ export default class InklinePlugin extends Plugin {
         if (file instanceof TFile && isInkPath(file.path)) {
           this.#renderer.refresh(this.app.vault.getResourcePath(file));
         }
+      }),
+    );
+    // A file made, deleted, or moved is not the one refreshed before at its
+    // path, nor at the one it left.
+    const forget = (path: string): void => {
+      this.#renderer.forget(this.app.vault.adapter.getResourcePath(path));
+    };
+    this.registerEvent(
+      this.app.vault.on("create", (file) => {
+        forget(file.path);
+      }),
+    );
+    this.registerEvent(
+      this.app.vault.on("delete", (file) => {
+        forget(file.path);
+      }),
+    );
+    this.registerEvent(
+      this.app.vault.on("rename", (file, oldPath) => {
+        forget(oldPath);
+        forget(file.path);
       }),
     );
     // Markdown also renders in temporary documents, such as the hidden
@@ -407,16 +436,14 @@ export default class InklinePlugin extends Plugin {
       { capture: true, signal },
     );
     // A canvas card's own editor is a document in a frame, which no workspace
-    // event names, and which takes the focus as it opens.
+    // event names. The renderer watches it as the frame appears, and calls
+    // this for it; the frame also takes the focus as it opens.
     doc.addEventListener(
       "focusin",
       (event) => {
         const frame = event.targetNode;
         if (frame?.instanceOf(HTMLIFrameElement) !== true) return;
-        const inner = frame.contentDocument;
-        if (inner === null) return;
-        this.#renderer.watch(inner);
-        this.#offerEditing(inner);
+        this.#renderer.watchFrame(frame);
       },
       { signal },
     );
