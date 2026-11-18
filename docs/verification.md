@@ -314,6 +314,15 @@ must keep released files readable and looking the same, as
   ([base-memory.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/base-memory.e2e.ts)
   and
   [drafts.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/drafts.test.ts)).
+- **Unreleased:** a draft that a newer version kept, in a layout this version
+  cannot read, kept as it is, with every base layer it names, through opening
+  its symbol, which says that it is kept and offers nothing, this version's own
+  draft for the symbol and its save, a rename, and storage refusing this
+  version's drafts, and dropped only once its lifetime ends; and a draft as
+  0.9.2 to 1.0.0 stored it offered back
+  ([drafts.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/drafts.e2e.ts)
+  and
+  [drafts.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/drafts.test.ts)).
 - A decoded base layer kept while Undo or Redo can reach it, and shown again by
   them, and let go after a new change past an Undo, by a copy or a stroke, and
   once it is further back than Undo goes
