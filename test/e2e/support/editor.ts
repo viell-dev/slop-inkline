@@ -836,6 +836,12 @@ const replaceable = {
 } as const;
 
 /**
+ * The longest {@link undoStubs} waits for what it let go to finish, as long as
+ * {@link startOver} waits for a note's save.
+ */
+const letGoBound = 15_000;
+
+/**
  * Takes away whatever a test held or replaced and did not put back, as a test
  * that fails midway leaves it, so that one failure does not become many.
  *
@@ -857,6 +863,18 @@ const replaceable = {
  * `holdNextWrite` in support/symbol-text.ts hold, as their tests' own
  * clean-up let it go before these gates registered here.
  *
+ * A gate that lets a call go, here or in its own test, can keep the call in
+ * the renderer's `inklineLetGo`, a set of `{ gate, call }` with the gate's
+ * name and the call's promise, until the call ends, as `holdNextRead` and
+ * `holdNextWrite` do. This waits for every call in it to end, whether it
+ * resolves or rejects, before anything else, so that what was let go is done
+ * before {@link startOver} resets the vault: a write let go could otherwise
+ * land after the reset. It waits at most `letGoBound` ms, {@link letGoBound}
+ * unless a test says otherwise, and then fails, naming each gate whose call
+ * had not ended, once the rest of this is done, so that one test that cannot
+ * finish does not leave its stubs to the tests after it. A call that had not
+ * ended stays in the set, so that the next clean-up waits for it too.
+ *
  * It then takes {@link hold}'s gate away, so that a later {@link waitForHeld}
  * or {@link letGo} cannot take it for its own; undoes {@link delayVault} and
  * {@link holdDecoding}; and removes every replacement of a method in
@@ -864,8 +882,10 @@ const replaceable = {
  * first ran in the window, with the originals tests keep beside them under
  * names that start with `inkline`. {@link startOver} does this first.
  */
-export async function undoStubs(): Promise<void> {
-  await browser.execute(() => {
+export async function undoStubs({
+  letGoBound: bound = letGoBound,
+}: { letGoBound?: number } = {}): Promise<void> {
+  const unfinished = await browser.execute(async (longest) => {
     for (const key of Object.keys(window)) {
       if (!key.startsWith("inklineAtEnd-")) continue;
       const end: unknown = Reflect.get(window, key);
@@ -876,7 +896,35 @@ export async function undoStubs(): Promise<void> {
     // would otherwise take for its own.
     Reflect.deleteProperty(window, "inklineHoldGate");
     Reflect.deleteProperty(window, "inklineFollowedStatus");
-  });
+    // Every call let go that has not ended, from this clean-up or before.
+    const known: unknown = Reflect.get(window, "inklineLetGo");
+    const letGo: { gate: string; call: Promise<unknown> }[] = [];
+    if (known instanceof Set) {
+      for (const entry of known) {
+        const gate: unknown = Reflect.get(entry as object, "gate");
+        const call: unknown = Reflect.get(entry as object, "call");
+        if (typeof gate === "string" && call instanceof Promise) {
+          letGo.push({ gate, call });
+        }
+      }
+    }
+    const ended = new Set<Promise<unknown>>();
+    const ignore = (): void => undefined;
+    let timer = 0;
+    await Promise.race([
+      Promise.all(
+        letGo.map(async ({ call }) => {
+          await call.then(ignore, ignore);
+          ended.add(call);
+        }),
+      ),
+      new Promise((resolve) => {
+        timer = window.setTimeout(resolve, longest);
+      }),
+    ]);
+    window.clearTimeout(timer);
+    return letGo.filter(({ call }) => !ended.has(call)).map(({ gate }) => gate);
+  }, bound);
   await restoreVault();
   await restoreDecoding();
   await browser.executeObsidian(({ app }, methods) => {
@@ -910,16 +958,24 @@ export async function undoStubs(): Promise<void> {
       }
     }
   }, replaceable);
+  if (unfinished.length > 0) {
+    throw new Error(
+      `undoStubs() let go what ${unfinished.map((name) => `the ${name} gate`).join(" and ")} held, and it did not finish within ${String(bound)} ms`,
+    );
+  }
 }
 
 /**
  * Closes every modal, discarding unsaved drawings, and every note, then
  * restores the vault and clears drafts, so that each test starts from the
  * same state. It first takes away what a test held or replaced, with
- * {@link undoStubs}.
+ * {@link undoStubs}, which it gives `options`, and resets nothing if that
+ * fails.
  */
-export async function startOver(): Promise<void> {
-  await undoStubs();
+export async function startOver(
+  options: Parameters<typeof undoStubs>[0] = {},
+): Promise<void> {
+  await undoStubs(options);
   let modals: ModalState | undefined;
   await browser.waitUntil(
     async () => {

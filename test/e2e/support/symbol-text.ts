@@ -200,43 +200,93 @@ export function saveEditor(): void {
 }
 
 /**
- * Has the next read of `file` through the vault wait for {@link letReadGo}.
+ * Has the next read of `file` through the vault wait for {@link letReadGo}, as
+ * a save reads its file in its turn before it writes. It returns once the gate
+ * is in place: {@link waitForHeldRead} waits until the read has reached it.
+ *
  * Its gate registers with `undoStubs()` in support/editor.ts, which lets the
- * read go if a test ends with it held.
+ * read go if a test ends with it held. Let go either way, a read that has
+ * reached the gate is kept in the renderer's `inklineLetGo` until it ends, so
+ * that `undoStubs()` waits for it before the vault is reset. A read that has
+ * not reached it is no longer held, and the gate takes itself off the vault
+ * if nothing has been put over it. The gate's keys have fixed names, so it
+ * refuses to be set up while an earlier one has not been let go.
  */
 export async function holdNextRead(file: string): Promise<void> {
   await browser.executeObsidian(({ app }, wanted) => {
+    if (Reflect.has(window, "inklineAtEnd-next-read")) {
+      throw new Error("a read is already held: let it go first");
+    }
     const held = app.vault.getFileByPath(wanted);
     if (held === null) throw new Error(`no ${wanted}`);
+    // What the vault had as its own, if anything, to put back.
+    const ownBefore = Object.hasOwn(app.vault, "readBinary");
+    const previous: unknown = Reflect.get(app.vault, "readBinary");
     const read = app.vault.readBinary.bind(app.vault);
     let go = (): void => undefined;
     const gate = new Promise<void>((resolve) => {
       go = resolve;
     });
-    Reflect.set(window, "inklineLetReadGo", () => {
-      go();
-    });
-    Reflect.set(window, "inklineAtEnd-next-read", () => {
-      Reflect.deleteProperty(window, "inklineLetReadGo");
-      go();
-    });
-    app.vault.readBinary = async (asked) => {
-      if (asked !== held) return read(asked);
-      app.vault.readBinary = read;
-      await gate;
-      return read(asked);
+    let released = false;
+    /** The held read, once it has come. */
+    let call: Promise<ArrayBuffer> | undefined;
+    const wrapper: typeof app.vault.readBinary = (asked) => {
+      // One read only: a later one, as through a wrapper put over this one
+      // that keeps it on the vault, goes straight on.
+      if (released || call !== undefined || asked !== held) return read(asked);
+      putBack();
+      Reflect.set(window, "inklineReadHeld", true);
+      call = (async () => {
+        await gate;
+        return read(asked);
+      })();
+      return call;
     };
+    /** Takes the wrapper off the vault, if it is still there. */
+    const putBack = (): void => {
+      if (Reflect.get(app.vault, "readBinary") !== wrapper) return;
+      if (ownBefore) Reflect.set(app.vault, "readBinary", previous);
+      else Reflect.deleteProperty(app.vault, "readBinary");
+    };
+    const release = (): void => {
+      released = true;
+      putBack();
+      Reflect.deleteProperty(window, "inklineLetReadGo");
+      Reflect.deleteProperty(window, "inklineReadHeld");
+      Reflect.deleteProperty(window, "inklineAtEnd-next-read");
+      go();
+      if (call === undefined) return;
+      // Kept until it ends, for undoStubs() to wait for.
+      const known: unknown = Reflect.get(window, "inklineLetGo");
+      const letGo = known instanceof Set ? known : new Set<unknown>();
+      Reflect.set(window, "inklineLetGo", letGo);
+      const entry = { gate: "next-read", call };
+      letGo.add(entry);
+      const forget = (): void => {
+        letGo.delete(entry);
+      };
+      call.then(forget, forget);
+    };
+    Reflect.set(window, "inklineLetReadGo", release);
+    Reflect.set(window, "inklineAtEnd-next-read", release);
+    app.vault.readBinary = wrapper;
   }, file);
 }
 
-/** Lets go a read that {@link holdNextRead} held. */
+/** Waits for the read that {@link holdNextRead} set up to reach its gate. */
+export async function waitForHeldRead(): Promise<void> {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(() => Reflect.get(window, "inklineReadHeld") === true),
+    { timeoutMsg: "no read reached the gate" },
+  );
+}
+
+/** Lets go a read that {@link holdNextRead} held, if there is one. */
 export async function letReadGo(): Promise<void> {
   await browser.execute(() => {
-    const go: unknown = Reflect.get(window, "inklineLetReadGo");
-    Reflect.deleteProperty(window, "inklineLetReadGo");
-    Reflect.deleteProperty(window, "inklineAtEnd-next-read");
-    if (typeof go !== "function") throw new Error("no held read");
-    Reflect.apply(go, undefined, []);
+    const release: unknown = Reflect.get(window, "inklineLetReadGo");
+    if (typeof release === "function") Reflect.apply(release, undefined, []);
   });
 }
 
@@ -244,48 +294,89 @@ export async function letReadGo(): Promise<void> {
  * Has the next write to the vault wait for {@link letWriteGo}, as one on a drive
  * that has stopped answering does. It returns once the gate is in place, which
  * is before any write has come: {@link waitForHeldWrite} waits until one has
- * reached it. Its gate registers with `undoStubs()` in support/editor.ts,
- * which lets the write go if a test ends with it held.
+ * reached it.
+ *
+ * Its gate registers with `undoStubs()` in support/editor.ts, which lets the
+ * write go if a test ends with it held. Let go either way, a write that has
+ * reached the gate is kept in the renderer's `inklineLetGo` until it ends, so
+ * that `undoStubs()` waits for it before the vault is reset. A write that has
+ * not reached it is no longer held, and the gate takes itself off the vault
+ * if nothing has been put over it. The gate's keys have fixed names, so it
+ * refuses to be set up while an earlier one has not been let go.
  */
 export async function holdNextWrite(): Promise<void> {
   await browser.executeObsidian(({ app }) => {
+    if (Reflect.has(window, "inklineAtEnd-next-write")) {
+      throw new Error("a write is already held: let it go first");
+    }
+    // What the vault had as its own, if anything, to put back.
+    const ownBefore = Object.hasOwn(app.vault, "modifyBinary");
+    const previous: unknown = Reflect.get(app.vault, "modifyBinary");
     const write = app.vault.modifyBinary.bind(app.vault);
     let go = (): void => undefined;
     const gate = new Promise<void>((resolve) => {
       go = resolve;
     });
-    Reflect.set(window, "inklineLetWriteGo", () => {
-      go();
-    });
-    Reflect.set(window, "inklineAtEnd-next-write", () => {
+    let released = false;
+    /** The held write, once it has come. */
+    let call: Promise<void> | undefined;
+    const wrapper: typeof app.vault.modifyBinary = (...args) => {
+      // One write only: a later one, as through a wrapper put over this one
+      // that keeps it on the vault, goes straight on.
+      if (released || call !== undefined) return write(...args);
+      putBack();
+      Reflect.set(window, "inklineWriteHeld", true);
+      call = (async () => {
+        await gate;
+        await write(...args);
+      })();
+      return call;
+    };
+    /** Takes the wrapper off the vault, if it is still there. */
+    const putBack = (): void => {
+      if (Reflect.get(app.vault, "modifyBinary") !== wrapper) return;
+      if (ownBefore) Reflect.set(app.vault, "modifyBinary", previous);
+      else Reflect.deleteProperty(app.vault, "modifyBinary");
+    };
+    const release = (): void => {
+      released = true;
+      putBack();
       Reflect.deleteProperty(window, "inklineLetWriteGo");
       Reflect.deleteProperty(window, "inklineWriteHeld");
+      Reflect.deleteProperty(window, "inklineAtEnd-next-write");
       go();
-    });
-    app.vault.modifyBinary = async (...args) => {
-      app.vault.modifyBinary = write;
-      Reflect.set(window, "inklineWriteHeld", true);
-      await gate;
-      return write(...args);
+      if (call === undefined) return;
+      // Kept until it ends, for undoStubs() to wait for.
+      const known: unknown = Reflect.get(window, "inklineLetGo");
+      const letGo = known instanceof Set ? known : new Set<unknown>();
+      Reflect.set(window, "inklineLetGo", letGo);
+      const entry = { gate: "next-write", call };
+      letGo.add(entry);
+      const forget = (): void => {
+        letGo.delete(entry);
+      };
+      call.then(forget, forget);
     };
+    Reflect.set(window, "inklineLetWriteGo", release);
+    Reflect.set(window, "inklineAtEnd-next-write", release);
+    app.vault.modifyBinary = wrapper;
   });
 }
 
 /** Waits for a write that {@link holdNextWrite} set up to reach the vault. */
 export async function waitForHeldWrite(): Promise<void> {
-  await browser.waitUntil(async () =>
-    browser.execute(() => Reflect.get(window, "inklineWriteHeld") === true),
+  await browser.waitUntil(
+    async () =>
+      browser.execute(() => Reflect.get(window, "inklineWriteHeld") === true),
+    { timeoutMsg: "no write reached the gate" },
   );
 }
 
 /** Lets go a write that {@link holdNextWrite} held, if there is one. */
 export async function letWriteGo(): Promise<void> {
   await browser.execute(() => {
-    const go: unknown = Reflect.get(window, "inklineLetWriteGo");
-    Reflect.deleteProperty(window, "inklineLetWriteGo");
-    Reflect.deleteProperty(window, "inklineWriteHeld");
-    Reflect.deleteProperty(window, "inklineAtEnd-next-write");
-    if (typeof go === "function") Reflect.apply(go, undefined, []);
+    const release: unknown = Reflect.get(window, "inklineLetWriteGo");
+    if (typeof release === "function") Reflect.apply(release, undefined, []);
   });
 }
 
