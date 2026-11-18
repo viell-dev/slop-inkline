@@ -35,6 +35,12 @@ version of the file format than this Inkline reads. Update Inkline, as
 [Install](./install.md#update) describes; this version will not edit the symbol,
 so that it never loses what the newer one stored.
 
+**"This symbol has unsaved changes from a newer version of Inkline …"** A newer
+version of Inkline kept a draft of the symbol, which this version cannot read,
+as after you went back to this version from that one. The draft stays as it was:
+update Inkline to get it back, as
+[Drafts from a newer version](./recovery.md#drafts-from-a-newer-version) says.
+
 **"… Unsaved changes to it are kept as a draft. To get them back, see Saving and
 recovery in Inkline's guide."** The symbol did not open, as its file is not a
 valid PNG or its strokes cannot be read, and the editor had kept a draft of it,
