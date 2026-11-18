@@ -25,6 +25,12 @@ even one a public release; earlier pre-releases carry a suffix such as
   do replaces it, with what that did, or with nothing when there is nothing to
   say, which a screen reader does not announce. "Saving…" and "Draft not kept"
   stay until the save ends or a draft is kept again.
+- Ink shows under the pointer that draws it at the bottom of the drawing area
+  too, where it showed up to 2 CSS pixels above it, in the usual view and in
+  **Zoom** alike, as the area's border took its height from the drawing
+  ([#359](https://github.com/viell-dev/slop-inkline/issues/359)). Strokes were
+  always saved where the pointer was, and the grid, the guides, and the ink
+  lined up with one another; the drawing area is now 2 pixels taller.
 - A filled polygon or ellipse keeps the brush's width around it. Closing a
   filled polygon left only the area through its corners, half the brush's width
   smaller on every side than its sides had shown while it was placed, and a
