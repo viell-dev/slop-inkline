@@ -104,6 +104,7 @@ import {
   type Placement,
 } from "./reference.ts";
 import { InkView, measureFont, surfaceWidth } from "./view.ts";
+import { markNotice } from "../notices.ts";
 
 /** How the vault's notes use a symbol: how many links, in how many notes. */
 export interface SymbolUses {
@@ -1107,8 +1108,10 @@ export class InkEditorModal extends Modal {
 
   /** Says that the latest changes are in no draft, once the editor is gone. */
   #sayNotKept(): void {
-    new Notice(
-      `Inkline could not keep a draft of the latest changes to ${this.#displayName}.`,
+    markNotice(
+      new Notice(
+        `Inkline could not keep a draft of the latest changes to ${this.#displayName}.`,
+      ),
     );
   }
 
@@ -2648,10 +2651,12 @@ export class InkEditorModal extends Modal {
     const kept = drafts.store.put(this.#draft(drafts.target(), pending));
     if (!kept && this.#draftKept) {
       this.#announce("Draft not kept");
-      new Notice(
-        parseRecord(serializeRecord(document)).ok
-          ? "Inkline could not keep a draft of the latest changes, because the vault's local storage refused it. Save the symbol to keep them."
-          : "Inkline could not keep a draft of the latest changes, because they take the drawing past what a symbol can hold. Undo them to save it.",
+      markNotice(
+        new Notice(
+          parseRecord(serializeRecord(document)).ok
+            ? "Inkline could not keep a draft of the latest changes, because the vault's local storage refused it. Save the symbol to keep them."
+            : "Inkline could not keep a draft of the latest changes, because they take the drawing past what a symbol can hold. Undo them to save it.",
+        ),
       );
     } else if (
       kept &&
@@ -3039,8 +3044,10 @@ export class InkEditorModal extends Modal {
     if (reading.kind !== "file") return;
     if (action === "unreadable") {
       this.#announce(`Not reloaded: ${unreadable}`);
-      new Notice(
-        `${this.#displayName} changed on disk, and this version of Inkline cannot read it, so the editor will not save over it.`,
+      markNotice(
+        new Notice(
+          `${this.#displayName} changed on disk, and this version of Inkline cannot read it, so the editor will not save over it.`,
+        ),
       );
     } else if (action === "reload" && opened !== undefined) {
       this.#reload(reading, opened);
@@ -3484,7 +3491,7 @@ export class InkEditorModal extends Modal {
         const reason = error instanceof Error ? error.message : String(error);
         this.#announce(`Not saved: ${reason}`);
         if (!(error instanceof Unsaved)) {
-          new Notice(`Could not save the symbol: ${reason}`);
+          markNotice(new Notice(`Could not save the symbol: ${reason}`));
         }
         return false;
       } finally {

@@ -40,6 +40,22 @@ export default defineConfig(
     files: ["**/*.{js,mjs}"],
     extends: [tseslint.configs.disableTypeChecked],
   },
+  // Each notice the plugin shows is marked as Inkline's, so that styles.css
+  // keeps its English in order in a right-to-left interface (#267).
+  {
+    files: ["src/**/*.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "NewExpression[callee.name='Notice']:not(CallExpression[callee.name='markNotice'] > NewExpression)",
+          message:
+            "Show a notice as markNotice(new Notice(…)), from src/notices.ts, so that its English keeps its order in a right-to-left interface.",
+        },
+      ],
+    },
+  },
   // Development tools run in Node.js, not in Obsidian.
   {
     files: ["scripts/**", "test/**", "docs/.vitepress/**", "*.{js,mjs}"],

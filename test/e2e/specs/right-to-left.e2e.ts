@@ -12,6 +12,8 @@ import {
   startOver,
   waitForEditor,
 } from "../support/editor.ts";
+import { warmUpPointer } from "../support/hover.ts";
+import { closeEditor } from "../support/menus.ts";
 import { type Box, boxOf } from "../support/pointer.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 import { framesDrawn } from "../support/waits.ts";
@@ -245,6 +247,90 @@ async function expectInOrder(scope: string, text: string): Promise<void> {
   expect(Math.abs(second.left - first.right)).toBeLessThan(1.5);
 }
 
+/**
+ * Whether `text` in `scope` is laid out in order, as {@link expectInOrder}
+ * checks: its last character just after the one before it, on its line, and
+ * its first before its second. With the boxes, for a failure's message.
+ */
+async function inOrder(
+  scope: string,
+  text: string,
+): Promise<{ ordered: boolean; boxes: string }> {
+  const [first, second, before, last] = await charBoxes(
+    scope,
+    text,
+    [0, 1, -2, -1],
+  );
+  if (
+    first === undefined ||
+    second === undefined ||
+    before === undefined ||
+    last === undefined
+  ) {
+    throw new Error(`no boxes for "${text}"`);
+  }
+  const ordered =
+    Math.abs(last.top - before.top) < 1 &&
+    Math.abs(last.left - before.right) < 1.5 &&
+    Math.abs(second.left - first.right) < 1.5;
+  const at = (box: Box) =>
+    `${box.left.toFixed(1)}-${box.right.toFixed(1)}@${box.top.toFixed(1)}`;
+  return {
+    ordered,
+    boxes: `first ${at(first)}, second ${at(second)}, before last ${at(before)}, last ${at(last)}`,
+  };
+}
+
+/** Waits for a notice that says `text`. */
+async function waitForNoticeOf(text: string): Promise<void> {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        (wanted) =>
+          Array.from(document.querySelectorAll(".notice")).some(
+            (notice) => notice.textContent === wanted,
+          ),
+        text,
+      ),
+    { timeoutMsg: `no notice "${text}"` },
+  );
+}
+
+/** Closes every notice. */
+async function closeNotices(): Promise<void> {
+  await browser.execute(() => {
+    for (const notice of document.querySelectorAll(".notice")) notice.remove();
+  });
+}
+
+/**
+ * Rests the mouse on `selector` until Obsidian shows the tooltip `text`,
+ * moving it a little each time, as Obsidian shows a mouse no tooltip until it
+ * has seen it move twice (#270).
+ */
+async function showTooltip(selector: string, text: string): Promise<void> {
+  const element = await browser.$(selector).getElement();
+  let step = 0;
+  let shown = "";
+  try {
+    await browser.waitUntil(async () => {
+      step++;
+      await browser
+        .action("pointer", { parameters: { pointerType: "mouse" } })
+        .move({ origin: element, x: step % 2 === 0 ? -2 : 2, y: 0 })
+        .perform();
+      shown = await browser.execute(
+        () => document.querySelector(".tooltip")?.textContent ?? "",
+      );
+      return shown === text;
+    });
+  } catch (error) {
+    throw new Error(`wanted the tooltip "${text}", but saw "${shown}"`, {
+      cause: error,
+    });
+  }
+}
+
 /** The box of each line of the first text in `scope`, top first. */
 async function lineBoxes(scope: string): Promise<Box[]> {
   return browser.execute((selector) => {
@@ -425,6 +511,90 @@ for (const language of ["en", "he"] as const) {
       await browser.$(`div=${empty}`).waitForDisplayed();
       await saveScreenshot(`${language}-library-empty`);
       await expectInOrder(".inkline-library", empty);
+    });
+
+    // Notices and tooltips are Obsidian's, shared by every plugin, and its
+    // stylesheet lays both out from the right in a right-to-left interface
+    // (#267). Each is measured, Inkline's and one that is not Inkline's,
+    // before any is checked, so that a failure reports them all.
+    it("keeps the English of Inkline's notices and tooltips in order, and changes no one else's", async function () {
+      const measured: Record<string, { ordered: boolean; boxes: string }> = {};
+      // A notice of Inkline's, from Insert existing symbol with no symbols.
+      await browser.executeObsidian(async ({ app }) => {
+        for (const file of app.vault.getFiles()) {
+          if (file.path.endsWith(".ink.png")) await app.vault.delete(file);
+        }
+      });
+      await openAtMarker(note, "HERE");
+      const empty = "There are no symbols to insert yet.";
+      await browser.executeObsidianCommand("inkline:insert-existing-symbol");
+      // Measured at once, as it goes after a few seconds. Its words are
+      // exactly Inkline's, with nothing added to keep their order.
+      await waitForNoticeOf(empty);
+      measured["Inkline's notice"] = await inOrder(".notice", empty);
+      // And an English one that another plugin could show, which stays.
+      const other = "Another plugin's notice, as it was.";
+      await browser.executeObsidian(({ obsidian }, text) => {
+        new obsidian.Notice(text, 0);
+      }, other);
+      await waitForNoticeOf(other);
+      measured["another notice"] = await inOrder(".notice", other);
+      await saveScreenshot(`${language}-notices`);
+      await closeNotices();
+      // A tooltip of Inkline's, on the editor's pen button. Obsidian's
+      // stylesheet says to lay tooltips out from the right too, but they
+      // keep their order there, Inkline's and others' alike, so Inkline
+      // leaves them as they are: these check that they stay so.
+      await browser.executeObsidianCommand("inkline:insert-symbol");
+      await waitForEditor();
+      await warmUpPointer();
+      await showTooltip('[data-inkline-button="pen"]', "Pen (P)");
+      await saveScreenshot(`${language}-tooltip`);
+      measured["Inkline's tooltip"] = await inOrder(".tooltip", "Pen (P)");
+      const directions = await browser.execute(() => {
+        const tooltip = document.querySelector(".tooltip");
+        return tooltip === null ? "" : getComputedStyle(tooltip).direction;
+      });
+      await closeEditor();
+      // A symbol's name, in a note.
+      await createSymbol("tower (old).ink.png", [400]);
+      await browser.executeObsidian(async ({ app }) => {
+        const file = await app.vault.create(
+          "Named.md",
+          "A tower ![[tower (old).ink.png]] here.\n",
+        );
+        await app.workspace
+          .getLeaf(false)
+          .openFile(file, { state: { mode: "preview" } });
+      });
+      const image = ".markdown-reading-view img.inkline-symbol";
+      await browser.$(image).waitForDisplayed();
+      await showTooltip(image, "tower (old)");
+      measured["a symbol's name"] = await inOrder(".tooltip", "tower (old)");
+      // An English tooltip that another plugin could show.
+      await browser.executeObsidian(({ obsidian }) => {
+        const target = document.querySelector(".workspace-ribbon");
+        if (!(target instanceof HTMLElement)) throw new Error("no ribbon");
+        obsidian.displayTooltip(target, "Another plugin (P)");
+      });
+      await browser.$(".tooltip").waitForDisplayed();
+      measured["another tooltip"] = await inOrder(
+        ".tooltip",
+        "Another plugin (P)",
+      );
+      console.log(
+        `${language}: ${JSON.stringify(measured)}, a tooltip's direction ${directions}`,
+      );
+      // In a right-to-left interface, another plugin's notice still puts its
+      // full stop at the start, as it did, which also shows that this would
+      // see the fault in Inkline's.
+      for (const [what, { ordered, boxes }] of Object.entries(measured)) {
+        expect({ what, ordered, boxes }).toEqual({
+          what,
+          ordered: !(rtl && what === "another notice"),
+          boxes,
+        });
+      }
     });
 
     // Obsidian lays the settings out, and keeps their order itself.

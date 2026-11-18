@@ -9,6 +9,16 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Fixed
+
+- In a right-to-left interface, as Obsidian's in Hebrew, Inkline's notices keep
+  the full stop at the end of their English, where they used to put it at the
+  start, as in ".There are no symbols to insert yet". Other plugins' notices,
+  and Obsidian's, are laid out as before. Tooltips needed no change: measured on
+  the screen, Inkline's keep their closing brackets in place, as in "Pen (P)",
+  and the guide's known limits no longer say otherwise
+  ([#267](https://github.com/viell-dev/slop-inkline/issues/267)).
+
 ## 1.0.0 - 2026-11-16
 
 This is Inkline's first stable release. It is 0.9.5, the last release candidate,
