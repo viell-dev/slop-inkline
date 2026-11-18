@@ -29,11 +29,6 @@ What Inkline does not do, or does not do everywhere, and what to do instead. The
   shows the callout as text
   ([#264](https://github.com/viell-dev/slop-inkline/issues/264)). Right-click
   the symbol there for **Edit symbol**.
-- **Notices in a right-to-left interface** still put the full stop of Inkline's
-  English at the start, as Obsidian draws them for every plugin
-  ([#267](https://github.com/viell-dev/slop-inkline/issues/267)). Inkline's own
-  screens and its tooltips keep it in place. **Unreleased:** Inkline's notices
-  keep it in place too.
 - **A line whose first letter is in a symbol's name** runs in that name's
   direction in Live Preview. `8 ![[مرحبا.ink.png]]` runs right to left there,
   and left to right in Reading view. Live Preview takes a line's direction from
