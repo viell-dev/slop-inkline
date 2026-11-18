@@ -683,8 +683,9 @@ drawing while **Copy from** or **Reload** reads.
 
 - A public release's package and manifest versions agree and it has a matching
   compatibility entry in `versions.json`, a pre-release's version reaches
-  neither file, though a build's manifest names it, and each release has its
-  changelog section
+  neither file, though a build's manifest names it, the manifest names the
+  newest public release, `versions.json` lists exactly the public releases the
+  changelog records, and each release has its changelog section
   ([release.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/release.test.ts)).
 - A new version is higher than every published one in SemVer's order and in
   Obsidian's

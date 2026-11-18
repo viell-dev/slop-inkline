@@ -9,6 +9,7 @@ import versions from "../../versions.json" with { type: "json" };
 import {
   builtManifest,
   metadataProblems,
+  releasedVersionsProblems,
   releaseNotes,
   releaseProblems,
   syncMetadata,
@@ -73,6 +74,68 @@ describe("the repository's release metadata", () => {
         .split("\n")
         .filter((line) => /^(###|-) /.test(line));
       expect(items).toEqual([...new Set(items)]);
+    }
+  });
+
+  it("maps exactly the public releases that the changelog records", () => {
+    expect(
+      releasedVersionsProblems(readFileSync("CHANGELOG.md", "utf8"), versions),
+    ).toEqual([]);
+  });
+});
+
+describe("releasedVersionsProblems", () => {
+  const history = [
+    "# Changelog",
+    "",
+    "## Unreleased",
+    "",
+    "```md",
+    "## 1.6.0 - 2026-12-01",
+    "```",
+    "",
+    "## 1.2.0 - 2026-11-30",
+    "",
+    "## 1.1.0 - 2026-11-20",
+    "",
+    "## 1.0.0 - 2026-11-16",
+    "",
+    "## 0.9.5 - 2026-11-15",
+    "",
+    "## 0.2.0 - 2026-11-02",
+    "",
+  ].join("\n");
+  const mapped = { "1.0.0": "1.13.4", "1.2.0": "1.13.4" };
+
+  it("accepts a map of the public releases from 1.0.0", () => {
+    // 1.1.0 is a pre-release, 0.2.0 came before the first public release,
+    // and a heading in a code block is no release.
+    expect(releasedVersionsProblems(history, mapped)).toEqual([]);
+    expect(
+      releasedVersionsProblems(history.replaceAll("\n", "\r\n"), mapped),
+    ).toEqual([]);
+  });
+
+  it("reports an older release dropped from the map", () => {
+    expect(releasedVersionsProblems(history, { "1.2.0": "1.13.4" })).toEqual([
+      "versions.json has no entry for 1.0.0, a public release in CHANGELOG.md",
+    ]);
+  });
+
+  it("reports the newest release dropped with the manifest set back to match", () => {
+    expect(releasedVersionsProblems(history, { "1.0.0": "1.13.4" })).toEqual([
+      "versions.json has no entry for 1.2.0, a public release in CHANGELOG.md",
+    ]);
+  });
+
+  it("reports an entry for a version the changelog does not record as released", () => {
+    for (const key of ["0.8.0", "1.4.0", "1.6.0"]) {
+      expect(
+        releasedVersionsProblems(history, { ...mapped, [key]: "1.13.4" }),
+        key,
+      ).toEqual([
+        `versions.json lists ${key}, which CHANGELOG.md does not record as a public release`,
+      ]);
     }
   });
 });
@@ -193,6 +256,48 @@ describe("metadataProblems", () => {
         versions,
       }),
     ).toEqual([]);
+  });
+
+  it("names only the newest of several later public releases", () => {
+    expect(
+      metadataProblems({
+        packageJson: { version: "1.5.0" },
+        manifest: { version: "1.0.0", minAppVersion: "1.13.4" },
+        versions: { "1.0.0": "1.13.4", "1.4.0": "1.13.4", "1.2.0": "1.13.4" },
+      }),
+    ).toEqual([
+      "versions.json lists 1.4.0, a later public release than manifest.json version 1.0.0",
+    ]);
+  });
+
+  it("leaves a key that is not a public release to its own message", () => {
+    for (const key of ["1.1.0", "1.2.0-rc.1"]) {
+      expect(
+        metadataProblems({
+          packageJson: { version: "1.1.0" },
+          manifest: { version: "1.0.0", minAppVersion: "1.13.4" },
+          versions: { "1.0.0": "1.13.4", [key]: "1.13.4" },
+        }),
+        key,
+      ).toEqual([
+        key.includes("-")
+          ? `versions.json key ${key} is not x.y.z`
+          : `versions.json key ${key} is a pre-release`,
+      ]);
+    }
+  });
+
+  it("compares no invalid version with the map", () => {
+    expect(
+      metadataProblems({
+        packageJson: { version: "01.2.3" },
+        manifest: { version: "01.2.3", minAppVersion: "1.13.4" },
+        versions: { "01.2.3": "1.13.4", "2.0.0": "1.13.4" },
+      }),
+    ).toEqual([
+      "package.json version 01.2.3 is not a release version",
+      "versions.json key 01.2.3 is not x.y.z",
+    ]);
   });
 
   it("reports a pre-release's version in the manifest", () => {

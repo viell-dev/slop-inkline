@@ -57,6 +57,47 @@ function prereleaseManifestProblems(
   return [];
 }
 
+/**
+ * What is wrong with `offered`, the public release that manifest.json names.
+ * Obsidian offers it to new installs and updates from main, so it is the newest
+ * public release that versions.json lists: one set back to an older release
+ * hides the newest. While a pre-release is prepared neither file changes, so
+ * the map also lists the manifest's release; for a public release, the check
+ * of the map's entry for it does that. A rollback reverts both files together,
+ * and passes. Both set back together, or an older entry dropped from the map,
+ * pass here; {@link releasedVersionsProblems} compares the map with the
+ * changelog for those (#324).
+ */
+function offeredReleaseProblems(
+  offered: string,
+  preparingPrerelease: boolean,
+  versions: Record<string, unknown>,
+): string[] {
+  const problems: string[] = [];
+  if (preparingPrerelease && !Object.hasOwn(versions, offered)) {
+    problems.push(
+      `manifest.json version ${offered} is not in versions.json, which lists every public release`,
+    );
+  }
+  const newest = Object.keys(versions)
+    .filter(
+      (release) => stableVersionPattern.test(release) && !isPrerelease(release),
+    )
+    .reduce<string | undefined>(
+      (found, release) =>
+        found === undefined || compareSemver(release, found) > 0
+          ? release
+          : found,
+      undefined,
+    );
+  if (newest !== undefined && compareSemver(newest, offered) > 0) {
+    problems.push(
+      `versions.json lists ${newest}, a later public release than manifest.json version ${offered}`,
+    );
+  }
+  return problems;
+}
+
 /** Lists every way the package, manifest, and versions files disagree. */
 export function metadataProblems(metadata: Metadata): string[] {
   const problems: string[] = [];
@@ -69,7 +110,7 @@ export function metadataProblems(metadata: Metadata): string[] {
       `package.json version ${String(version)} is not a release version`,
     );
   }
-  // The public release the manifest names, once the checks above accept it.
+  // The public release the manifest names, once the checks below accept it.
   let offered: string | undefined;
   if (version !== undefined && isPrerelease(version)) {
     const manifestProblems = prereleaseManifestProblems(
@@ -82,7 +123,7 @@ export function metadataProblems(metadata: Metadata): string[] {
     problems.push(
       `manifest.json version ${String(manifestVersion)} differs from package.json version ${String(version)}`,
     );
-  } else if (version !== undefined && releaseVersionPattern.test(version)) {
+  } else if (version !== undefined && stableVersionPattern.test(version)) {
     offered = version;
   }
   if (
@@ -121,47 +162,12 @@ export function metadataProblems(metadata: Metadata): string[] {
   }
   if (offered !== undefined) {
     problems.push(
-      ...offeredReleaseProblems(offered, version, metadata.versions),
+      ...offeredReleaseProblems(
+        offered,
+        version !== undefined && isPrerelease(version),
+        metadata.versions,
+      ),
     );
-  }
-  return problems;
-}
-
-/**
- * What is wrong with `offered`, the public release that manifest.json names.
- * Obsidian offers it to new installs and updates from main, so it must be the
- * newest public release that versions.json lists: one set back to an older
- * release hides the newest, and one never released offers nothing. While a
- * pre-release is prepared neither file changes, so the manifest must also name
- * a release the map lists; for a public release, the check of the map's entry
- * for it does that. A rollback reverts both files together, and passes. The
- * manifest and the map set back together still pass, which only the published
- * releases could show (#324).
- */
-function offeredReleaseProblems(
-  offered: string,
-  version: string | undefined,
-  versions: Record<string, unknown>,
-): string[] {
-  const problems: string[] = [];
-  const released = Object.keys(versions).filter(
-    (release) => stableVersionPattern.test(release) && !isPrerelease(release),
-  );
-  if (
-    version !== undefined &&
-    isPrerelease(version) &&
-    !Object.hasOwn(versions, offered)
-  ) {
-    problems.push(
-      `manifest.json version ${offered} is not in versions.json, which lists every public release`,
-    );
-  }
-  for (const release of released) {
-    if (compareSemver(release, offered) > 0) {
-      problems.push(
-        `versions.json lists ${release}, a later public release than manifest.json version ${offered}`,
-      );
-    }
   }
   return problems;
 }
@@ -203,6 +209,56 @@ export function releaseNotes(
   if (current === undefined) return undefined;
   const body = source.slice(current.end, bounds[index + 1]?.start).trim();
   return body === "" ? undefined : body;
+}
+
+/** The first public release, from which versions.json lists every one. */
+export const firstPublicRelease = "1.0.0";
+
+/**
+ * What is wrong with versions.json against the changelog. From
+ * {@link firstPublicRelease}, the map lists exactly the public releases that
+ * have a `## x.y.z - YYYY-MM-DD` section: preparing a public release adds both,
+ * and a rollback reverts both. So an entry dropped from the map, or one for a
+ * version never released, shows here, even with the manifest set back to
+ * match (#324). As {@link releaseNotes} does, it reads only top-level
+ * headings.
+ */
+export function releasedVersionsProblems(
+  changelog: string,
+  versions: Record<string, unknown>,
+): string[] {
+  const source = changelog.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
+  const released = new Set(
+    fromMarkdown(source).children.flatMap((node) => {
+      if (node.type !== "heading" || node.depth !== 2) return [];
+      const heading = source
+        .slice(node.position?.start.offset, node.position?.end.offset)
+        .trim();
+      const version = /^## (\S+) - \d{4}-\d{2}-\d{2}$/.exec(heading)?.[1];
+      return version !== undefined &&
+        stableVersionPattern.test(version) &&
+        !isPrerelease(version) &&
+        compareSemver(version, firstPublicRelease) >= 0
+        ? [version]
+        : [];
+    }),
+  );
+  const problems: string[] = [];
+  for (const version of released) {
+    if (!Object.hasOwn(versions, version)) {
+      problems.push(
+        `versions.json has no entry for ${version}, a public release in CHANGELOG.md`,
+      );
+    }
+  }
+  for (const version of Object.keys(versions)) {
+    if (!released.has(version)) {
+      problems.push(
+        `versions.json lists ${version}, which CHANGELOG.md does not record as a public release`,
+      );
+    }
+  }
+  return problems;
 }
 
 /** Lists every reason the repository cannot release `version` as it is. */

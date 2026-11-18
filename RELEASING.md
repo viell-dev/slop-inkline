@@ -454,8 +454,9 @@ On a branch from `main`:
    `manifest.json` no higher than it. Either way `manifest.json` names the
    newest public release that `versions.json` lists. The unit tests hold every
    commit to the same rules, so a pre-release's version cannot reach `main`'s
-   manifest. The second needs GitHub, and `GH_TOKEN` if the CLI is not signed
-   in.
+   manifest, and also check that `versions.json` lists exactly the public
+   releases from `1.0.0` that have a section in `CHANGELOG.md`. The second needs
+   GitHub, and `GH_TOKEN` if the CLI is not signed in.
 6. Have another agent review the release pull request, as
    [AGENTS.md](AGENTS.md#review) requires: everything since the previous
    release, not only the version change. That covers the changes, the open
