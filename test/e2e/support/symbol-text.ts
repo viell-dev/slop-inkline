@@ -231,7 +231,9 @@ export async function holdNextRead(file: string): Promise<void> {
     /** The held read, once it has come. */
     let call: Promise<ArrayBuffer> | undefined;
     const wrapper: typeof app.vault.readBinary = (asked) => {
-      if (released || asked !== held) return read(asked);
+      // One read only: a later one, as through a wrapper put over this one
+      // that keeps it on the vault, goes straight on.
+      if (released || call !== undefined || asked !== held) return read(asked);
       putBack();
       Reflect.set(window, "inklineReadHeld", true);
       call = (async () => {
@@ -319,7 +321,9 @@ export async function holdNextWrite(): Promise<void> {
     /** The held write, once it has come. */
     let call: Promise<void> | undefined;
     const wrapper: typeof app.vault.modifyBinary = (...args) => {
-      if (released) return write(...args);
+      // One write only: a later one, as through a wrapper put over this one
+      // that keeps it on the vault, goes straight on.
+      if (released || call !== undefined) return write(...args);
       putBack();
       Reflect.set(window, "inklineWriteHeld", true);
       call = (async () => {
