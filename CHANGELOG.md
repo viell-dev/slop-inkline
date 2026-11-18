@@ -9,6 +9,18 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Fixed
+
+- Going back from a later version of Inkline, as by choosing an earlier version
+  in BRAT or installing an older ZIP, keeps the unsaved drawings that the later
+  version kept as drafts, if it keeps them in a way this version cannot read.
+  Inkline used to drop such drafts, with their pictures, as soon as an editor
+  opened or a file was renamed. This version cannot restore them: opening their
+  symbol says so, and the later version offers them again once you update,
+  within 30 days. Every release from 0.9.2 on keeps drafts the same way, so none
+  has lost one like this yet
+  ([#300](https://github.com/viell-dev/slop-inkline/issues/300)).
+
 ## 1.0.0 - 2026-11-16
 
 This is Inkline's first stable release. It is 0.9.5, the last release candidate,

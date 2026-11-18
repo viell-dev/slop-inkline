@@ -283,6 +283,28 @@ screenshots use synthetic vaults and drawings only.
   - `src/ink/freehand.ts` is part of the format, adapted from perfect-freehand
     so that no package update can change it. Keep it and the steps in the
     format's document saying the same thing.
+- `src/editor/drafts.ts` keeps unsaved drawings as drafts in the vault's local
+  storage, in a layout that `draftVersion` names. A draft outlives the version
+  that kept it, through an update and through going back to an earlier version,
+  as with BRAT or an older ZIP, so no version deletes or rewrites one it cannot
+  read. From `1.0.1`, a version keeps a draft whose `version` is higher than its
+  own as it is, never offers it, says so when its symbol opens, and keeps every
+  base layer whose key is in its text, until 30 days after its `savedAt`, or for
+  good if that cannot be read; `1.0.0` and earlier delete such drafts.
+  - A change to the layout raises `draftVersion`, and reads or converts drafts
+    of the previous layout, with a unit test that keeps a stored draft of that
+    layout and offers it back, as `drafts.test.ts` does for layout 2, which
+    every version from `0.9.2` on stores. The stored text in such a test never
+    changes.
+  - Versions from `1.0.1` find what they keep of a later layout where layout 2
+    has it: the lists of keys `inkline-drafts` and `inkline-draft-bases`, each
+    draft as JSON under `inkline-draft:<id>` with a numeric `version`, its
+    `savedAt` and its `target` as layout 2 has them, and the key of each base
+    layer it keeps somewhere in its text, as a string. A later layout keeps
+    these, or keeps its drafts under keys of its own, which earlier versions
+    never read.
+  - A change to the layout is reviewed as a change to drafts, as
+    [Review](#review) says.
 
 ## Tests
 

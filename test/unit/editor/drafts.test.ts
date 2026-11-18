@@ -4,12 +4,14 @@ import {
   decodeDraft,
   draftBase,
   draftLifetime,
+  draftVersion,
   drawingOf,
   fingerprintOf,
   restoreDraft,
   restoresNothing,
   sameTarget,
   type Draft,
+  type DraftTarget,
   type VaultStorage,
 } from "../../../src/editor/drafts.ts";
 import { readChunks } from "../../../src/format/png.ts";
@@ -729,6 +731,286 @@ describe("DraftStore.keepBase", () => {
     expect(store.put(keeping(prepared, { id: "b" }))).toBe(true);
     expect(baseKeys(storage)).toEqual([key]);
     expect(storage.writes.get(key ?? "")).toBe(1);
+  });
+});
+
+describe("DraftStore with the drafts of earlier versions", () => {
+  it("offers back a draft as 0.9.2 to 1.0.0 stored it", () => {
+    // Written out as those versions store one, so that a change to the layout
+    // that stops reading it fails here: it must read or convert it.
+    const id = "0b6f1c1e-5f8e-4a43-9d55-3c1d2a8e7f10";
+    const key = "9f171ffa-89f1-46d7-a3bb-c823c1348b6a";
+    const storage = new MemoryStorage();
+    storage.saveLocalStorage("inkline-drafts", [id]);
+    storage.saveLocalStorage(
+      `inkline-draft:${id}`,
+      `{"version":2,"id":"${id}","target":{"kind":"file","path":"Water.ink.png"},"base":"kept","layer":{"key":"${key}","x":-32,"y":0,"width":64,"height":32},"fingerprint":"ab","drawing":"cd","savedAt":1000,"gridOrigin":1.5,"name":"gate","text":{"reading":"TA","translation":"water"},"ink":{"strokes":[{"tool":"pen","size":256,"points":[16,32,48,64]},{"tool":"eraser","size":512,"points":[20,30]}]}}`,
+    );
+    storage.saveLocalStorage("inkline-draft-bases", [key]);
+    storage.saveLocalStorage(
+      `inkline-draft-base:${key}`,
+      "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAC0lEQVR42mNgQAcAABIAAeRVjecAAAAASUVORK5CYII=",
+    );
+    const store = new DraftStore(storage, () => 5000);
+    expect(store.forTarget({ kind: "file", path: "Water.ink.png" })).toEqual([
+      {
+        id,
+        target: { kind: "file", path: "Water.ink.png" },
+        strokes: [
+          { tool: "pen", size: 256, points: [16, 32, 48, 64] },
+          { tool: "eraser", size: 512, points: [20, 30] },
+        ],
+        base: {
+          kind: "kept",
+          layer: { x: -32, y: 0, width: 64, height: 32, png },
+        },
+        fingerprint: "ab",
+        drawing: "cd",
+        savedAt: 1000,
+        gridOrigin: 1.5,
+        name: "gate",
+        text: { reading: "TA", translation: "water" },
+      },
+    ]);
+  });
+});
+
+describe("DraftStore with a draft of a later layout", () => {
+  const later = draftVersion + 1;
+
+  /** The key a draft is stored under. */
+  function draftKey(id: string): string {
+    return `inkline-draft:${id}`;
+  }
+
+  /** Adds `key` to the list of keys stored under `list`. */
+  function listing(storage: MemoryStorage, list: string, key: string): void {
+    const keys: unknown = storage.loadLocalStorage(list);
+    storage.saveLocalStorage(list, [
+      ...(Array.isArray(keys) ? keys.map(String) : []),
+      key,
+    ]);
+  }
+
+  /**
+   * Stores `value` as the draft `id`, listed after the drafts the index
+   * lists, as a later version of Inkline would.
+   */
+  function plant(storage: MemoryStorage, id: string, value: unknown): void {
+    storage.saveLocalStorage(draftKey(id), value);
+    listing(storage, "inkline-drafts", id);
+  }
+
+  /** Stores a base layer as this version does, for a later one's draft. */
+  function plantBase(storage: MemoryStorage): string {
+    const key = crypto.randomUUID();
+    storage.saveLocalStorage(`inkline-draft-base:${key}`, toBase64(png));
+    listing(storage, "inkline-draft-bases", key);
+    return key;
+  }
+
+  /**
+   * A draft of a later layout, as text: what this version reads of one, a
+   * field of its own, and `fields`, such as one naming base layers by key.
+   */
+  function laterDraft(fields: Record<string, unknown> = {}): string {
+    return JSON.stringify({
+      version: later,
+      target: { kind: "file", path: "001.ink.png" },
+      savedAt: 1000,
+      pages: [{ strokes: [[16, 32]] }],
+      ...fields,
+    });
+  }
+
+  /** What storage holds for the drafts and base layers named. */
+  function stored(storage: MemoryStorage, keys: readonly string[]): unknown[] {
+    return keys.map((key) => storage.values.get(key));
+  }
+
+  it("keeps it as it is, unlisted, with every base layer it names", () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 5000);
+    expect(store.put(draft())).toBe(true);
+    const asNow = plantBase(storage);
+    const elsewhere = plantBase(storage);
+    const unused = plantBase(storage);
+    // One naming its base layer as this layout does, one in a field of its
+    // own, and one stored as a value rather than as text.
+    plant(
+      storage,
+      "same",
+      laterDraft({ base: "kept", layer: { key: asNow, x: 0, y: 0 } }),
+    );
+    plant(storage, "own", laterDraft({ pictures: [{ id: elsewhere }] }));
+    plant(storage, "value", { version: later, savedAt: 1000 });
+    const kept = [
+      draftKey("same"),
+      draftKey("own"),
+      draftKey("value"),
+      `inkline-draft-base:${asNow}`,
+      `inkline-draft-base:${elsewhere}`,
+    ];
+    const before = stored(storage, kept);
+    expect(store.list()).toEqual([draft()]);
+    expect(new DraftStore(storage, () => 5000).list()).toEqual([draft()]);
+    expect(stored(storage, kept)).toEqual(before);
+    expect(storage.loadLocalStorage("inkline-drafts")).toEqual([
+      "a",
+      "same",
+      "own",
+      "value",
+    ]);
+    expect(storage.loadLocalStorage("inkline-draft-bases")).toEqual([
+      asNow,
+      elsewhere,
+    ]);
+    expect(storage.values.has(`inkline-draft-base:${unused}`)).toBe(false);
+  });
+
+  it("drops it once its lifetime ends, if it says when it was kept, and its base layers then", () => {
+    const storage = new MemoryStorage();
+    let now = 1000;
+    const store = new DraftStore(storage, () => now);
+    const dated = plantBase(storage);
+    const undated = plantBase(storage);
+    plant(storage, "dated", laterDraft({ pictures: [dated] }));
+    plant(
+      storage,
+      "undated",
+      laterDraft({ savedAt: "yesterday", pictures: [undated] }),
+    );
+    now = 1000 + draftLifetime;
+    store.list();
+    expect(storage.loadLocalStorage("inkline-drafts")).toEqual([
+      "dated",
+      "undated",
+    ]);
+    expect(baseKeys(storage)).toHaveLength(2);
+    now += 1;
+    store.list();
+    // One whose time cannot be read is kept, as nothing says it expired.
+    expect(storage.loadLocalStorage("inkline-drafts")).toEqual(["undated"]);
+    expect(storage.keys("inkline-draft:")).toEqual([draftKey("undated")]);
+    expect(baseKeys(storage)).toEqual([`inkline-draft-base:${undated}`]);
+  });
+
+  it("still drops broken drafts, and those of earlier layouts, beside it", () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 5000);
+    plant(storage, "earlier", laterDraft({ version: 1 }));
+    plant(storage, "broken", JSON.stringify({ version: draftVersion }));
+    plant(storage, "text", "{");
+    // A version is a number.
+    plant(storage, "named", laterDraft({ version: String(later) }));
+    plant(storage, "later", laterDraft());
+    expect(store.list()).toEqual([]);
+    expect(storage.loadLocalStorage("inkline-drafts")).toEqual(["later"]);
+    expect(storage.keys("inkline-draft:")).toEqual([draftKey("later")]);
+  });
+
+  it("never offers it, and says when one is kept for a symbol", () => {
+    const storage = new MemoryStorage();
+    let now = 5000;
+    const store = new DraftStore(storage, () => now);
+    plant(storage, "file", laterDraft());
+    plant(
+      storage,
+      "new",
+      laterDraft({ target: { kind: "new", note: "a.md", page: 2 } }),
+    );
+    plant(storage, "unread", laterDraft({ target: { symbol: "002.ink.png" } }));
+    plant(
+      storage,
+      "old",
+      laterDraft({
+        target: { kind: "file", path: "003.ink.png" },
+        savedAt: 5000 - draftLifetime,
+      }),
+    );
+    const file = { kind: "file", path: "001.ink.png" } as const;
+    const newer = (target: DraftTarget): boolean => store.offers(target).newer;
+    expect(store.offers(file)).toEqual({ drafts: [], newer: true });
+    expect(store.forTarget(file)).toEqual([]);
+    expect(newer({ kind: "new", note: "a.md" })).toBe(true);
+    expect(newer({ kind: "new", note: "b.md" })).toBe(false);
+    // One whose symbol cannot be read is kept, and not counted.
+    expect(newer({ kind: "file", path: "002.ink.png" })).toBe(false);
+    expect(newer({ kind: "file", path: "003.ink.png" })).toBe(true);
+    expect(store.keptAt("file")).toBeUndefined();
+    expect(storage.keys("inkline-draft:")).toHaveLength(4);
+    // Once expired, it is dropped as it is read.
+    now += 1;
+    expect(newer({ kind: "file", path: "003.ink.png" })).toBe(false);
+    expect(storage.keys("inkline-draft:")).toHaveLength(3);
+    // This version's own draft for the symbol is offered beside it, unless an
+    // open editor holds it.
+    const mine = draft({ id: "mine" });
+    store.put(mine);
+    expect(store.offers(file)).toEqual({ drafts: [mine], newer: true });
+    expect(store.forTarget(file)).toEqual([mine]);
+    store.hold("mine");
+    expect(store.offers(file)).toEqual({ drafts: [], newer: true });
+  });
+
+  it("keeps it, and the base layer it names, through this version's own drafts for its symbol", () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 5000);
+    // A draft this version kept, and that a later one restored as its own,
+    // naming the same base layer, which this version then discards.
+    expect(store.put(keeping(png, { id: "restored" }))).toBe(true);
+    const [shared] = baseKeys(storage);
+    if (shared === undefined) throw new Error("no base layer stored");
+    const key = shared.slice("inkline-draft-base:".length);
+    plant(storage, "later", laterDraft({ pictures: [{ id: key }] }));
+    const text = storage.values.get(draftKey("later"));
+    store.remove("restored");
+    expect(baseKeys(storage)).toEqual([shared]);
+    // A draft of this version's own for the symbol, under its own id, keeping
+    // the same picture, then none, and then removed, as by a save.
+    expect(store.put(keeping(png, { id: "mine" }))).toBe(true);
+    expect(store.put(draft({ id: "mine" }))).toBe(true);
+    expect(baseKeys(storage)).toEqual([shared]);
+    store.remove("mine");
+    expect(storage.values.get(draftKey("later"))).toBe(text);
+    expect(storage.loadLocalStorage("inkline-drafts")).toEqual(["later"]);
+    expect(baseKeys(storage)).toEqual([shared]);
+    expect(indexedBases(storage)).toEqual([shared]);
+    expect(store.list()).toEqual([]);
+    expect(baseKeys(storage)).toEqual([shared]);
+  });
+
+  it("leaves it where it was through a rename", () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 5000);
+    store.put(draft());
+    plant(storage, "later", laterDraft());
+    const text = storage.values.get(draftKey("later"));
+    store.rename("001.ink.png", "Water.ink.png");
+    expect(store.list().map(({ target }) => target)).toEqual([
+      { kind: "file", path: "Water.ink.png" },
+    ]);
+    expect(storage.values.get(draftKey("later"))).toBe(text);
+    expect(storage.loadLocalStorage("inkline-drafts")).toEqual(["a", "later"]);
+    expect(store.offers({ kind: "file", path: "001.ink.png" }).newer).toBe(
+      true,
+    );
+  });
+
+  it("keeps it when storage refuses this version's drafts", () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 5000);
+    plant(storage, "later", laterDraft());
+    const text = storage.values.get(draftKey("later"));
+    storage.quota = storage.used;
+    expect(store.put(draft())).toBe(false);
+    storage.quota = Number.POSITIVE_INFINITY;
+    // A draft that the index cannot list is removed again, and only it.
+    storage.refused.add("inkline-drafts");
+    expect(store.put(draft())).toBe(false);
+    expect(storage.values.get(draftKey("later"))).toBe(text);
+    expect(storage.keys("inkline-draft:")).toEqual([draftKey("later")]);
+    expect(storage.loadLocalStorage("inkline-drafts")).toEqual(["later"]);
   });
 });
 

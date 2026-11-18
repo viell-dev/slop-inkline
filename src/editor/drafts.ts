@@ -97,8 +97,16 @@ export interface Draft {
 /** How long a draft is kept before it is dropped unrestored: 30 days. */
 export const draftLifetime = 30 * 24 * 60 * 60 * 1000;
 
-/** The version of the stored draft's layout. */
-const draftVersion = 2;
+/**
+ * The version of the stored draft's layout. A draft outlives the version of
+ * Inkline that kept it, through an update and through going back to an
+ * earlier version, as with BRAT or an older ZIP. So a change to the layout
+ * raises this, and reads or converts drafts of the previous layout, with a
+ * test that keeps a stored draft of that layout and offers it back. A draft of
+ * a higher version, kept by a later Inkline, is never offered, rewritten, or
+ * dropped before its lifetime ends, as {@link readLater} says.
+ */
+export const draftVersion = 2;
 const indexKey = "inkline-drafts";
 const draftPrefix = "inkline-draft:";
 const baseIndexKey = "inkline-draft-bases";
@@ -208,6 +216,61 @@ function storedBaseKey(stored: unknown): string | undefined {
     typeof value.layer.key === "string"
     ? value.layer.key
     : undefined;
+}
+
+/**
+ * A stored draft of a later layout than this version reads: its text, and
+ * when it was kept and the symbol it belongs to, where those read as this
+ * layout's. Its text names the base layers it keeps somewhere, as each key is
+ * a random UUID that nothing else holds by chance.
+ */
+interface LaterDraft {
+  readonly text: string;
+  readonly savedAt?: number;
+  readonly target?: DraftTarget;
+}
+
+/**
+ * Reads a stored draft whose `version` is higher than {@link draftVersion},
+ * as a later version of Inkline keeps one, so that this version keeps it for
+ * that version after someone goes back from it: never offered, as its layout
+ * cannot be read, and never rewritten, as that could damage it. It is dropped
+ * once its lifetime ends, if when it was kept can be read, with the base
+ * layers that no other draft names. Undefined for a draft of this layout or an
+ * earlier one, and for anything else.
+ */
+function readLater(stored: unknown): LaterDraft | undefined {
+  let value: unknown = stored;
+  if (typeof stored === "string") {
+    try {
+      value = JSON.parse(stored);
+    } catch {
+      return undefined;
+    }
+  }
+  if (!isRecord(value)) return undefined;
+  const { version, savedAt } = value;
+  if (typeof version !== "number" || version <= draftVersion) return undefined;
+  const target = parseTarget(value.target);
+  return {
+    text: typeof stored === "string" ? stored : JSON.stringify(value),
+    ...(typeof savedAt === "number" && Number.isFinite(savedAt)
+      ? { savedAt }
+      : {}),
+    ...(target === undefined ? {} : { target }),
+  };
+}
+
+/**
+ * Whether the stored draft `stored` may name the kept base layer `key`: as
+ * {@link storedBaseKey} reads it, or, for a draft of a later layout, which
+ * may name it elsewhere, anywhere in its text.
+ */
+function mayName(stored: unknown, key: string): boolean {
+  return (
+    storedBaseKey(stored) === key ||
+    readLater(stored)?.text.includes(key) === true
+  );
 }
 
 interface Decoded {
@@ -583,17 +646,23 @@ export class DraftStore {
   /**
    * Removes the stored base layer `key` if no stored draft names it. Every
    * draft is read from storage rather than from what this store knows, as an
-   * editor before a reload may have written it. Only a put or a removal asks,
-   * for the layer its draft stopped naming, so a layer stored ahead of the
-   * draft that will keep it is never dropped here, and drafts are read only
-   * when a base layer changes, not for every stroke.
+   * editor before a reload may have written it, or a later version of
+   * Inkline. Only a put or a removal asks, for the layer its draft stopped
+   * naming, so a layer stored ahead of the draft that will keep it is never
+   * dropped here, and drafts are read only when a base layer changes, not for
+   * every stroke.
    */
   #dropUnused(key: string): void {
     for (const id of this.#list(indexKey)) {
       const stored = this.#storage.loadLocalStorage(draftPrefix + id);
-      if (storedBaseKey(stored) === key) return;
+      if (mayName(stored, key)) return;
     }
     this.#dropPng(key);
+  }
+
+  /** Whether a draft kept at `savedAt` is past its lifetime. */
+  #expired(savedAt: number): boolean {
+    return this.#now() - savedAt > draftLifetime;
   }
 
   /**
@@ -635,32 +704,47 @@ export class DraftStore {
 
   /**
    * Every readable draft, newest first, dropping expired and broken ones and
-   * the base layers that no draft uses any more.
+   * the base layers that no draft uses any more. A draft of a later layout is
+   * not listed, and stays, as {@link readLater} says, with every base layer
+   * its text names.
    */
   list(): Draft[] {
+    return this.#read().drafts;
+  }
+
+  /** What {@link list} reads: the drafts it lists, and those of later layouts. */
+  #read(): { drafts: Draft[]; later: LaterDraft[] } {
     const ids = this.#list(indexKey);
+    const listed: string[] = [];
     const drafts: Draft[] = [];
     const used = new Set<string>();
+    const later: LaterDraft[] = [];
     for (const id of ids) {
-      const decoded = decode(
-        this.#storage.loadLocalStorage(draftPrefix + id),
-        (key) => this.#png(key),
-      );
+      const stored = this.#storage.loadLocalStorage(draftPrefix + id);
+      const decoded = decode(stored, (key) => this.#png(key));
       const draft = decoded?.draft;
-      if (draft?.id !== id || this.#now() - draft.savedAt > draftLifetime) {
-        this.#storage.saveLocalStorage(draftPrefix + id, null);
+      if (draft?.id === id && !this.#expired(draft.savedAt)) {
+        if (decoded?.baseKey !== undefined) used.add(decoded.baseKey);
+        drafts.push(draft);
+        listed.push(id);
         continue;
       }
-      if (decoded?.baseKey !== undefined) used.add(decoded.baseKey);
-      drafts.push(draft);
+      const newer = decoded === undefined ? readLater(stored) : undefined;
+      if (
+        newer !== undefined &&
+        (newer.savedAt === undefined || !this.#expired(newer.savedAt))
+      ) {
+        later.push(newer);
+        listed.push(id);
+        continue;
+      }
+      this.#storage.saveLocalStorage(draftPrefix + id, null);
     }
-    if (drafts.length !== ids.length) {
-      this.#setList(
-        indexKey,
-        drafts.map(({ id }) => id),
-      );
-    }
+    if (listed.length !== ids.length) this.#setList(indexKey, listed);
     const keys = this.#list(baseIndexKey);
+    for (const key of keys) {
+      if (later.some(({ text }) => text.includes(key))) used.add(key);
+    }
     const kept = keys.filter((key) => used.has(key));
     if (kept.length !== keys.length) {
       for (const key of keys) {
@@ -670,14 +754,33 @@ export class DraftStore {
       }
       this.#setList(baseIndexKey, kept);
     }
-    return drafts.sort((a, b) => b.savedAt - a.savedAt);
+    return { drafts: drafts.sort((a, b) => b.savedAt - a.savedAt), later };
   }
 
   /** The drafts for a symbol, newest first, other than open editors'. */
   forTarget(target: DraftTarget): Draft[] {
-    return this.list().filter(
-      (draft) => !this.#held.has(draft.id) && sameTarget(draft.target, target),
-    );
+    return this.offers(target).drafts;
+  }
+
+  /**
+   * The drafts for a symbol, as {@link forTarget} gives them, and whether a
+   * draft of a later layout is kept for it, as after going back from a later
+   * version, which can offer it. One whose symbol cannot be read as this
+   * layout's is not counted. Both come from one list, as reading every draft
+   * again would cost as much again, which for a large one is a pause.
+   */
+  offers(target: DraftTarget): { drafts: Draft[]; newer: boolean } {
+    const { drafts, later } = this.#read();
+    return {
+      drafts: drafts.filter(
+        (draft) =>
+          !this.#held.has(draft.id) && sameTarget(draft.target, target),
+      ),
+      newer: later.some(
+        (draft) =>
+          draft.target !== undefined && sameTarget(draft.target, target),
+      ),
+    };
   }
 
   /**
@@ -727,7 +830,8 @@ export class DraftStore {
 
   /**
    * Follows a rename: drafts for the file, new ones in the note, and new ones
-   * whose first save made the file move with it.
+   * whose first save made the file move with it. A draft of a later layout
+   * stays as it is, as this version cannot rewrite what it cannot read.
    */
   rename(from: string, to: string): void {
     for (const draft of this.list()) {
