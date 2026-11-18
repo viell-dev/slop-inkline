@@ -1,11 +1,13 @@
 import { browser, expect } from "@wdio/globals";
-import type { Stroke } from "../../../src/format/record.ts";
+import { type Stroke, unitsPerPixel } from "../../../src/format/record.ts";
+import { lineBox } from "../../../src/ink/geometry.ts";
 import { loadModules } from "../support/browser.ts";
 import { pressed, save } from "../support/editing.ts";
 import {
   draw,
   drawHoldingShift,
   drawShifted,
+  editorGrid,
   openAtMarker,
   recordOf,
   settledSurface,
@@ -134,6 +136,34 @@ async function spill(): Promise<Spill> {
   });
 }
 
+/** How far a new symbol's surface reaches across, in document pixels. */
+const across = 576;
+
+/** A place on the drawing area, in document pixels. */
+interface Place {
+  readonly x: number;
+  readonly y: number;
+}
+
+/** A place as fractions of a new symbol's surface. */
+function fractions({ x, y }: Place): readonly [number, number] {
+  return [x / across, y / lineBox.height];
+}
+
+/**
+ * The grid point nearest a place given as fractions of a new symbol's
+ * surface, in document pixels, as Shift puts a point there.
+ */
+async function gridPoint([fx, fy]: readonly [number, number]): Promise<Place> {
+  const { spacing, rows } = await editorGrid();
+  const y = fy * lineBox.height;
+  const row = rows.reduce(
+    (best, at) => (Math.abs(at - y) < Math.abs(best - y) ? at : best),
+    Number.POSITIVE_INFINITY,
+  );
+  return { x: Math.round((fx * across) / spacing) * spacing, y: row };
+}
+
 /**
  * For the saved symbol's last stroke, an eraser's area along a straight line
  * from one row down to another, `size` units wide, cut flat at both: the
@@ -141,94 +171,103 @@ async function spill(): Promise<Spill> {
  * those just before it, within the line's width, in the saved image, in a
  * redraw of the pen strokes alone, and in a redraw with a round-ended eraser
  * along the same line instead; and the pixels whose alpha differs between the
- * saved image and a redraw. The line's ends are where the drag put them: the
- * end is the area's last point, and the start lies on the row its top is cut
- * along, straight above.
+ * saved image and a redraw. The line runs straight down from the row
+ * `rows.start` to the row `rows.end`, in document pixels, where Shift put the
+ * drag's ends, below the area's last point; `marker` is that point's row.
  */
-async function eraserEnd(size: number): Promise<{
+async function eraserEnd(
+  size: number,
+  rows: { readonly start: number; readonly end: number },
+): Promise<{
   past: { saved: number; pens: number; rounded: number };
   before: { saved: number; pens: number };
+  marker: number;
   redrawn: number;
 }> {
-  return browser.executeObsidian(async ({ app }, units) => {
-    const file = app.vault.getFileByPath("001.ink.png");
-    if (file === null) throw new Error("no saved ink");
-    const bytes = new Uint8Array(await app.vault.readBinary(file));
-    const { canvas, render } = window.inklineTest;
-    const opened = await canvas.openInk(bytes);
-    if (opened.kind !== "editable") throw new Error("not editable");
-    const bitmap = await canvas.decodePng(bytes);
-    const saved = canvas.readPixels(bitmap);
-    bitmap.close();
-    const { width, height } = saved;
-    const redraw = (strokes: readonly Stroke[]): Uint8ClampedArray => {
-      const surface = new OffscreenCanvas(width, height);
-      const context = surface.getContext("2d");
-      if (context === null) throw new Error("no context");
-      render.drawInk(context, strokes, undefined);
-      return context.getImageData(0, 0, width, height).data;
-    };
-    const strokes = opened.document.strokes;
-    const eraser = strokes.at(-1);
-    if (eraser === undefined) throw new Error("no eraser");
-    const pens = strokes.filter((stroke) => stroke.tool === "pen");
-    const ex = eraser.points.at(-2) ?? 0;
-    const ey = eraser.points.at(-1) ?? 0;
-    const top = Math.min(
-      ...eraser.points.filter((_, index) => index % 2 === 1),
-    );
-    const x = ex / 16;
-    const y = ey / 16;
-    const reach = units / 16;
-    const rounded = redraw([
-      ...pens,
-      { tool: "eraser", size: units, points: [ex, top, ex, ey] },
-    ]);
-    const again = redraw(strokes);
-    let redrawn = 0;
-    for (let at = 3; at < again.length; at += 4) {
-      if (Math.abs((again[at] ?? 0) - (saved.data[at] ?? 0)) > 1) redrawn++;
-    }
-    const count = (
-      data: Uint8ClampedArray,
-      rows: readonly [number, number],
-      across: number,
-    ): number => {
-      let inked = 0;
-      for (let row = rows[0]; row < rows[1]; row++) {
-        for (let column = 0; column < width; column++) {
-          const near = Math.abs(column + 0.5 - x) <= across;
-          if (near && (data[(row * width + column) * 4 + 3] ?? 0) > 0) inked++;
-        }
+  return browser.executeObsidian(
+    async ({ app }, units, [start, end]) => {
+      const file = app.vault.getFileByPath("001.ink.png");
+      if (file === null) throw new Error("no saved ink");
+      const bytes = new Uint8Array(await app.vault.readBinary(file));
+      const { canvas, render } = window.inklineTest;
+      const opened = await canvas.openInk(bytes);
+      if (opened.kind !== "editable") throw new Error("not editable");
+      const bitmap = await canvas.decodePng(bytes);
+      const saved = canvas.readPixels(bitmap);
+      bitmap.close();
+      const { width, height } = saved;
+      const redraw = (strokes: readonly Stroke[]): Uint8ClampedArray => {
+        const surface = new OffscreenCanvas(width, height);
+        const context = surface.getContext("2d");
+        if (context === null) throw new Error("no context");
+        render.drawInk(context, strokes, undefined);
+        return context.getImageData(0, 0, width, height).data;
+      };
+      const strokes = opened.document.strokes;
+      const eraser = strokes.at(-1);
+      if (eraser === undefined) throw new Error("no eraser");
+      const pens = strokes.filter((stroke) => stroke.tool === "pen");
+      // A save moves the drawing across to crop it, but not up or down.
+      const ex = eraser.points.at(-2) ?? 0;
+      const marker = (eraser.points.at(-1) ?? 0) / 16;
+      const x = ex / 16;
+      const y = Math.round(end * 16) / 16;
+      const reach = units / 16;
+      const rounded = redraw([
+        ...pens,
+        {
+          tool: "eraser",
+          size: units,
+          points: [ex, Math.round(start * 16), ex, Math.round(end * 16)],
+        },
+      ]);
+      const again = redraw(strokes);
+      let redrawn = 0;
+      for (let at = 3; at < again.length; at += 4) {
+        if (Math.abs((again[at] ?? 0) - (saved.data[at] ?? 0)) > 1) redrawn++;
       }
-      return inked;
-    };
-    // Beyond the row, as far as the brush reaches; before it, the brush's
-    // half width less a pixel and a half for the soft edges, from the row up
-    // by that much.
-    const beyond: [number, number] = [
-      Math.ceil(y),
-      Math.min(height, Math.ceil(y + reach)),
-    ];
-    const inside = reach / 2 - 1.5;
-    const before: [number, number] = [
-      Math.floor(y - inside),
-      Math.floor(y) - 1,
-    ];
-    const pensOnly = redraw(pens);
-    return {
-      past: {
-        saved: count(saved.data, beyond, reach),
-        pens: count(pensOnly, beyond, reach),
-        rounded: count(rounded, beyond, reach),
-      },
-      before: {
-        saved: count(saved.data, before, inside),
-        pens: count(pensOnly, before, inside),
-      },
-      redrawn,
-    };
-  }, size);
+      const count = (
+        data: Uint8ClampedArray,
+        band: readonly [number, number],
+        within: number,
+      ): number => {
+        let inked = 0;
+        for (let row = band[0]; row < band[1]; row++) {
+          for (let column = 0; column < width; column++) {
+            const near = Math.abs(column + 0.5 - x) <= within;
+            if (near && (data[(row * width + column) * 4 + 3] ?? 0) > 0)
+              inked++;
+          }
+        }
+        return inked;
+      };
+      // Beyond the row, as far as the brush reaches; before it, the brush's
+      // half width less a pixel and a half for the soft edges, from the row up
+      // by that much, to the last pixel row wholly before it.
+      const beyond: [number, number] = [
+        Math.ceil(y),
+        Math.min(height, Math.ceil(y + reach)),
+      ];
+      const inside = reach / 2 - 1.5;
+      const before: [number, number] = [Math.floor(y - inside), Math.floor(y)];
+      const pensOnly = redraw(pens);
+      return {
+        past: {
+          saved: count(saved.data, beyond, reach),
+          pens: count(pensOnly, beyond, reach),
+          rounded: count(rounded, beyond, reach),
+        },
+        before: {
+          saved: count(saved.data, before, inside),
+          pens: count(pensOnly, before, inside),
+        },
+        marker,
+        redrawn,
+      };
+    },
+    size,
+    [rows.start, rows.end] as const,
+  );
 }
 
 /**
@@ -354,10 +393,10 @@ describe("Flat ends on the grid", function () {
     await shiftClick([0.5, 0.25]);
     await browser.keys("e");
     await browser.keys("4");
-    await drawHoldingShift([
-      [0.6, 0.3],
-      [0.6, 0.5],
-    ]);
+    // Its ends are on the grid, where Shift puts them.
+    const from = await gridPoint([0.6, 0.3]);
+    const to = await gridPoint([0.6, 0.5]);
+    await drawHoldingShift([fractions(from), fractions(to)]);
     await save();
     const strokes = await savedStrokes();
     // The pen's strokes keep their round ends. The eraser's is the area its
@@ -368,8 +407,12 @@ describe("Flat ends on the grid", function () {
       undefined,
     ]);
     expect(strokes[2]).toMatchObject({ tool: "eraser", kind: "fill" });
-    const shown = await eraserEnd(384);
-    console.log("Flat", JSON.stringify(shown));
+    const shown = await eraserEnd(384, { start: from.y, end: to.y });
+    console.log("Flat", JSON.stringify({ from, to, shown }));
+    // The area ends on the row the drag ended on.
+    expect(
+      Math.abs(shown.marker - Math.round(to.y * unitsPerPixel) / unitsPerPixel),
+    ).toBeLessThanOrEqual(1 / unitsPerPixel);
     // Past the row the eraser ends on, the pen's ink is all still there; a
     // round end would have taken some of it.
     expect(shown.past.pens).toBeGreaterThan(20);
