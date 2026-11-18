@@ -855,13 +855,16 @@ describe("Symbols in notes", function () {
       // The observer's own work, apart from the page drawing the images:
       // the fastest of five runs, each on images of its own. Slow tagging
       // shows in every run, while other work beside the test, such as the
-      // other Obsidian version's tests, slows only some.
+      // other Obsidian version's tests, slows only some. Each run records
+      // the addresses of symbols it has not seen, as the observer does.
       const runs: number[] = [];
       const tagged: number[] = [];
       for (let run = 0; run < 5; run++) {
         const apart = symbols();
+        const addresses =
+          new window.inklineTest.renderLayout.RefreshedAddresses();
         const started = performance.now();
-        window.inklineTest.renderSymbols.tagWithin(apart, vault);
+        window.inklineTest.renderSymbols.tagWithin(apart, vault, addresses);
         runs.push(performance.now() - started);
         tagged.push(apart.querySelectorAll("img.inkline-symbol").length);
       }

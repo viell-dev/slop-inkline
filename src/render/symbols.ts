@@ -2,7 +2,8 @@
 // surface that shows one, is tagged, so that styles.css sizes it to the line
 // box, puts its baseline on the text's, and paints its ink in the text colour
 // through a mask of its own pixels. One observer per window finds them as
-// Obsidian adds them.
+// Obsidian adds them, and the frames Obsidian shows a canvas card's editor in,
+// whose documents it then watches too.
 
 import {
   aspectRatio,
@@ -10,7 +11,9 @@ import {
   dropFor,
   explicitHeight,
   explicitWidth,
+  fileAddress,
   isSymbolUrl,
+  RefreshedAddresses,
   symbolName,
 } from "./layout.ts";
 
@@ -129,14 +132,26 @@ function sized(image: HTMLImageElement): boolean {
 
 /**
  * Tags `image` as a symbol if its URL is a symbol file's, or untags it if it
- * is not one any more, keeping its mask and drop current.
+ * is not one any more, keeping its mask and drop current. With `addresses`,
+ * an image whose address a refresh of its symbol superseded takes the
+ * refresh's address, as when it comes back into a document after missing
+ * the refresh.
  */
-export function tagImage(image: HTMLImageElement, vault: string): void {
+export function tagImage(
+  image: HTMLImageElement,
+  vault: string,
+  addresses?: RefreshedAddresses,
+): void {
   // The attribute's address, which currentSrc follows only once it loads.
-  const src = image.src || image.currentSrc;
+  let src = image.src || image.currentSrc;
   if (!isSymbolUrl(src, vault) || image.closest(textSelector) === null) {
     untagImage(image);
     return;
+  }
+  const latest = addresses?.shown(src);
+  if (latest !== undefined) {
+    image.src = latest;
+    src = latest;
   }
   image.addClass(symbolClass);
   image.style.setProperty(maskProperty, cssUrl(src));
@@ -221,16 +236,30 @@ export function untagImage(image: HTMLImageElement): void {
   }
 }
 
-/** Tags every image in or at `node`. */
-export function tagWithin(node: Node, vault: string): void {
+/** Tags every image in or at `node`, as {@link tagImage} does. */
+export function tagWithin(
+  node: Node,
+  vault: string,
+  addresses?: RefreshedAddresses,
+): void {
   if (node.instanceOf(HTMLImageElement)) {
-    tagImage(node, vault);
+    tagImage(node, vault, addresses);
     return;
   }
   if (!node.instanceOf(Element)) return;
   for (const image of Array.from(node.getElementsByTagName("img"))) {
-    tagImage(image, vault);
+    tagImage(image, vault, addresses);
   }
+}
+
+/**
+ * Whether Obsidian has given `doc`'s window its additions to the DOM, such as
+ * `instanceOf` and `addClass`, which Inkline uses on every node it handles.
+ * Its own windows have them from the start, and a canvas card's editor frame
+ * once it has loaded; a frame that a note embeds has none.
+ */
+function prepared(doc: Document): boolean {
+  return "instanceOf" in doc;
 }
 
 /**
@@ -240,34 +269,52 @@ export function tagWithin(node: Node, vault: string): void {
 export class SymbolRenderer {
   /** The address the vault's files start with: `Platform.resourcePathPrefix`. */
   readonly #vault: string;
+  /** What else a frame's document needs once it is watched. */
+  readonly #framed: (doc: Document) => void;
   #scale = 1;
   #textColor = true;
+  /** The address each refreshed symbol's images should have. */
+  readonly #addresses = new RefreshedAddresses();
 
-  constructor(vault: string) {
+  /**
+   * `framed` is called with the document of each frame that this finds in a
+   * watched document and watches, as a canvas card's editor's.
+   */
+  constructor(vault: string, framed: (doc: Document) => void) {
     this.#vault = vault;
+    this.#framed = framed;
   }
 
   /** How each watched document stops its observer and close listener. */
   readonly #watching = new Map<Document, () => void>();
 
-  /** Reloads instances of one changed file in every watched document. */
+  /**
+   * Reloads instances of one changed file in every watched document, and
+   * keeps the new address for those out of every document meanwhile.
+   */
   refresh(src: string): void {
     if (!isSymbolUrl(src, this.#vault)) return;
-    const address = src.split(/[?#]/, 1)[0];
+    const address = fileAddress(src);
     const refreshed = new URL(src);
     // A distinct request even if two writes share a filesystem timestamp.
     refreshed.searchParams.set("inkline", crypto.randomUUID());
+    this.#addresses.refreshed(refreshed.href);
     for (const doc of this.#watching.keys()) {
       for (const image of Array.from(doc.getElementsByTagName("img"))) {
-        if (
-          image.hasClass(symbolClass) &&
-          image.src.split(/[?#]/, 1)[0] === address
-        ) {
+        if (image.hasClass(symbolClass) && fileAddress(image.src) === address) {
           image.src = refreshed.href;
-          tagImage(image, this.#vault);
+          tagImage(image, this.#vault, this.#addresses);
         }
       }
     }
+  }
+
+  /**
+   * Forgets the refreshes of the file `src` shows, as when it is deleted,
+   * made, or moved, so that a new file at its path starts afresh.
+   */
+  forget(src: string): void {
+    this.#addresses.forget(src);
   }
 
   /** Applies display settings to existing windows and those opened later. */
@@ -285,9 +332,12 @@ export class SymbolRenderer {
     doc.documentElement.toggleClass("inkline-stored-color", !this.#textColor);
   }
 
-  /** Starts tagging symbols in `doc`, a window's document. */
+  /**
+   * Starts tagging symbols in `doc`, a window's or a frame's document, once
+   * Obsidian has prepared its window.
+   */
   watch(doc: Document): void {
-    if (this.#watching.has(doc)) return;
+    if (this.#watching.has(doc) || !prepared(doc)) return;
     const view = doc.defaultView;
     if (view === null || view.closed) return;
     this.#configureDocument(doc);
@@ -295,12 +345,13 @@ export class SymbolRenderer {
       for (const record of records) {
         if (record.type === "attributes") {
           if (record.target.instanceOf(HTMLImageElement)) {
-            tagImage(record.target, this.#vault);
+            tagImage(record.target, this.#vault, this.#addresses);
           }
           continue;
         }
         for (const node of Array.from(record.addedNodes)) {
-          tagWithin(node, this.#vault);
+          tagWithin(node, this.#vault, this.#addresses);
+          this.#watchFramesIn(node);
         }
       }
     });
@@ -313,11 +364,24 @@ export class SymbolRenderer {
       attributeFilter: ["src", "width", "height", "alt"],
     });
     // An image's load does not bubble, but the document sees it on the way
-    // down, before the image does.
+    // down, before the image does. So does a frame's, which comes with each
+    // new document in it.
     const loaded = (event: Event): void => {
       const { target } = event;
-      if (isNode(target) && target.instanceOf(HTMLImageElement)) {
+      if (!isNode(target)) return;
+      if (target.instanceOf(HTMLImageElement)) {
         measureImage(target);
+      } else if (target.instanceOf(HTMLIFrameElement)) {
+        // Obsidian prepares the new document in the frame's own load
+        // handler, which this runs before: a listener added to the frame now
+        // runs after that handler, in this same dispatch, and then goes.
+        target.addEventListener(
+          "load",
+          () => {
+            this.watchFrame(target);
+          },
+          { once: true },
+        );
       }
     };
     doc.addEventListener("load", loaded, true);
@@ -330,7 +394,39 @@ export class SymbolRenderer {
       doc.removeEventListener("load", loaded, true);
       view.removeEventListener("unload", closed);
     });
-    tagWithin(doc.body, this.#vault);
+    tagWithin(doc.body, this.#vault, this.#addresses);
+    this.#watchFramesIn(doc.body);
+  }
+
+  /**
+   * Watches the document in `frame`, a frame in a watched document, as it
+   * does a window's, once Obsidian has prepared it, as for a canvas card's
+   * editor. Obsidian moves the editor, symbols and all, into its frame before
+   * the frame takes the focus, and a frame need never take it. The document
+   * stops being watched as its window unloads, when the frame goes or loads
+   * another.
+   */
+  watchFrame(frame: HTMLIFrameElement): void {
+    if (!this.#watching.has(frame.ownerDocument)) return;
+    const inner = frame.contentDocument;
+    if (inner === null || !prepared(inner)) return;
+    this.watch(inner);
+    this.#framed(inner);
+  }
+
+  /**
+   * Watches the frames in or at `node`: one more search of an added element,
+   * like the one for its images, and most added nodes are a few elements.
+   */
+  #watchFramesIn(node: Node): void {
+    if (node.instanceOf(HTMLIFrameElement)) {
+      this.watchFrame(node);
+      return;
+    }
+    if (!node.instanceOf(Element)) return;
+    for (const frame of Array.from(node.getElementsByTagName("iframe"))) {
+      this.watchFrame(frame);
+    }
   }
 
   /** Stops tagging symbols in `doc`, and untags those it has. */

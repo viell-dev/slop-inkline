@@ -1,6 +1,7 @@
-// Where a symbol sits in a line of text, and how its address is told apart,
-// as plain functions that need neither Obsidian nor a page, so that unit
-// tests can check them. symbols.ts applies them to the page.
+// Where a symbol sits in a line of text, how its address is told apart, and
+// which address a refreshed symbol's images should have, as plain code that
+// needs neither Obsidian nor a page, so that unit tests can check it.
+// symbols.ts applies it to the page.
 
 import { isInkPath } from "../format/ink-file.ts";
 import { lineBox } from "../ink/geometry.ts";
@@ -22,7 +23,7 @@ export const baselineFraction =
  */
 export function isSymbolUrl(src: string, vault: string): boolean {
   if (vault === "" || !src.startsWith(vault)) return false;
-  const path = src.split(/[?#]/, 1)[0] ?? "";
+  const path = fileAddress(src);
   let decoded = path;
   try {
     decoded = decodeURIComponent(path);
@@ -33,12 +34,83 @@ export function isSymbolUrl(src: string, vault: string): boolean {
 }
 
 /**
+ * The file an image's URL shows: the URL before any query or fragment, which
+ * is the same for every version of the file.
+ */
+export function fileAddress(src: string): string {
+  return src.split(/[?#]/, 1)[0] ?? "";
+}
+
+/** What {@link RefreshedAddresses} knows of a refreshed file. */
+interface Refreshed {
+  /** The address its latest refresh gave its images. */
+  latest: string;
+  /** How many refreshes, of any file, there had been by then. */
+  at: number;
+}
+
+/**
+ * Which address each symbol's images should have once the symbol changed. A
+ * refresh gives the images it finds a new address, which loads the file
+ * again; an image out of the document then, as Obsidian takes images out and
+ * puts the same ones back, misses it and comes back with the address it had,
+ * whose picture the page has kept. That address was seen before the refresh,
+ * so the refresh superseded it, and the image takes the refresh's address.
+ *
+ * An address first seen after the latest refresh is kept, as Obsidian gives
+ * once the file changes again, as are addresses never seen: only an address
+ * known to be older is replaced. A file deleted, made, or moved is forgotten,
+ * so that a new file at its path starts afresh, and an image of it never
+ * gets an address of the old one back, even where the new file's own address
+ * is one the old one had, as with the same modification time.
+ */
+export class RefreshedAddresses {
+  /** How many refreshes there have been, of any file. */
+  #refreshes = 0;
+  /** Each address seen, and how many refreshes there had been by then. */
+  readonly #seen = new Map<string, number>();
+  /** Each file refreshed since it was last forgotten. */
+  readonly #files = new Map<string, Refreshed>();
+
+  /**
+   * Records that an image shows `src`, and gives the address it should show
+   * instead, if the latest refresh of its file superseded `src`. Until any
+   * file is refreshed, this is one lookup in a map.
+   */
+  shown(src: string): string | undefined {
+    const first = this.#seen.get(src);
+    if (first === undefined) {
+      this.#seen.set(src, this.#refreshes);
+      return undefined;
+    }
+    if (this.#files.size === 0) return undefined;
+    const file = this.#files.get(fileAddress(src));
+    return file !== undefined && first < file.at ? file.latest : undefined;
+  }
+
+  /** Records a refresh that gives the images of its file `next`. */
+  refreshed(next: string): void {
+    this.#refreshes += 1;
+    this.#files.set(fileAddress(next), {
+      latest: next,
+      at: this.#refreshes,
+    });
+    this.#seen.set(next, this.#refreshes);
+  }
+
+  /** Forgets the file `src` shows, as when it is deleted, made, or moved. */
+  forget(src: string): void {
+    this.#files.delete(fileAddress(src));
+  }
+}
+
+/**
  * A symbol's name from its image's URL: its file's name, decoded, without
  * the `.ink.png` ending in any letter case, and without the folder or the
  * query Obsidian adds.
  */
 export function symbolName(src: string): string {
-  const path = src.split(/[?#]/, 1)[0] ?? "";
+  const path = fileAddress(src);
   let file = path.slice(path.lastIndexOf("/") + 1);
   try {
     file = decodeURIComponent(file);

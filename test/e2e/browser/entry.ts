@@ -22,4 +22,5 @@ export * as inkBlock from "../../support/ink-block.ts";
 export * as longDrawing from "./long-drawing.ts";
 export * as mainThread from "./main-thread.ts";
 export * as renderSymbols from "../../../src/render/symbols.ts";
+export * as renderLayout from "../../../src/render/layout.ts";
 export * as code from "../../../src/notes/code.ts";
