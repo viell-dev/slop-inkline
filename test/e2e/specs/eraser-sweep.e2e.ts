@@ -24,7 +24,7 @@ import {
   type PathName,
 } from "../support/erasing.ts";
 import { save } from "../support/editing.ts";
-import { saveScreenshot } from "../support/screenshots.ts";
+import { saveScreenshot, saveScreenshotData } from "../support/screenshots.ts";
 import { framesDrawn } from "../support/waits.ts";
 
 /** The middle of the loop path, which its brush never reaches. */
@@ -41,13 +41,19 @@ async function erase(
 ) {
   const size = sizes.find((each) => each.label === label);
   if (size === undefined) throw new Error(`no size ${label}`);
-  const at = await eraseFilledEllipse(zoom);
+  const { view, strokes } = await eraseFilledEllipse(zoom);
   await browser.keys([size.key]);
   await framesDrawn();
   await record();
-  await drag(pointerPath(paths[way], at, speeds.slow), 8);
-  await draftHolds(2);
+  await drag(pointerPath(paths[way], view, speeds.slow), 8);
+  await draftHolds(strokes + 1);
   const { picture, ...numbers } = await analyse(size.diameter, keep);
+  if (typeof picture === "string") {
+    await saveScreenshotData(
+      `eraser-sweep-${way}-${label}-zoom-${zoom ? "on" : "off"}-frame`,
+      picture,
+    );
+  }
   await saveScreenshot(
     `eraser-sweep-${way}-${label}-zoom-${zoom ? "on" : "off"}`,
     browser.$(".inkline-editor .inkline-surface"),
@@ -57,7 +63,8 @@ async function erase(
 
 /** What every case must show, with its numbers in the failure. */
 function expectSteady(numbers: Awaited<ReturnType<typeof erase>>["numbers"]) {
-  console.log(JSON.stringify(numbers));
+  const { way, ...shown } = numbers;
+  console.log(JSON.stringify(shown), `from ${String(way.length / 2)} points`);
   expect(numbers).toMatchObject({
     kind: "fill",
     // No ink came back where the brush had taken it.
@@ -73,16 +80,19 @@ function expectSteady(numbers: Awaited<ReturnType<typeof erase>>["numbers"]) {
     missing: 0,
     extra: 0,
   });
-  // An edge pixel may change as much as antialiasing lets two drawings of
-  // one shape differ, from rounding to whole units, but never by half its ink.
-  expect(numbers.largestRise).toBeLessThan(128);
+  // Behind the brush, an edge pixel may change as much as antialiasing lets
+  // two drawings of one shape differ, from rounding to whole units, but never
+  // by half its ink. At the brush's own circle, which moves, it can more.
+  expect(numbers.riseBehind).toBeLessThan(128);
   expect(numbers.frames).toBeGreaterThan(20);
 }
 
 describe("The eraser", function () {
+  // Each case reads back hundreds of frames of the drawing area.
+  this.timeout(5 * 60 * 1000);
+
   before(async function () {
     await loadModules();
-    // Reading back hundreds of frames of a magnified surface takes a while.
     await browser.setTimeout({ script: 5 * 60 * 1000 });
   });
 
@@ -94,15 +104,19 @@ describe("The eraser", function () {
     expectSteady((await erase("edge-arc", "XL", false)).numbers);
   });
 
-  it("keeps the edge it leaves rounding a corner where it is, zoomed in too", async function () {
+  it("keeps the edge it leaves rounding a corner where it is", async function () {
     expectSteady((await erase("inner-arc", "L", false)).numbers);
-    await startOver();
+  });
+
+  it("keeps the edge it leaves where it is, zoomed in", async function () {
     expectSteady((await erase("inner-arc", "XL", true)).numbers);
   });
 
-  it("takes away exactly its brush's width across an edge and where it turns back", async function () {
+  it("takes away exactly its brush's width across an edge", async function () {
     expectSteady((await erase("across", "M", false)).numbers);
-    await startOver();
+  });
+
+  it("takes away exactly its brush's width where it turns back", async function () {
     expectSteady((await erase("turning back", "L", false)).numbers);
   });
 

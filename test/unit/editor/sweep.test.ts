@@ -205,6 +205,17 @@ describe("sweptStroke", () => {
     expect(disagreements(stroke, 192, points).wrong).toBe(0);
   });
 
+  it("goes inside a turn straight through where the edges meet, between long lines", () => {
+    const corners = cornersOf(
+      sweptStroke("eraser", 96, [0, 0, 480, 0, 480, 480]),
+    );
+    expect(corners).toContainEqual([432, 48]);
+    // Not in to the corner and out again, as between short lines.
+    expect(corners).not.toContainEqual([480, 0]);
+    const short = cornersOf(sweptStroke("eraser", 96, [0, 0, 24, 0, 24, 24]));
+    expect(short).toContainEqual([24, 0]);
+  });
+
   it("ends at the way's last point, for the grid a drawing's ends suggest", () => {
     const points = [100, 200, 300, 260, 500, 120];
     const stroke = sweptStroke("eraser", 192, points);

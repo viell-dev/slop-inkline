@@ -164,12 +164,32 @@ export async function draftHolds(count: number): Promise<void> {
   );
 }
 
+/** How many strokes the newest draft holds once it holds any, and keeps. */
+async function draftStrokes(): Promise<number> {
+  let last = -1;
+  let count = 0;
+  await browser.waitUntil(async () => {
+    const now = await browser.executeObsidian(({ app }) => {
+      const [draft] = new window.inklineTest.drafts.DraftStore(app).list();
+      return draft?.strokes.length ?? 0;
+    });
+    const settled = now > 0 && now === last;
+    last = now;
+    count = now;
+    return settled;
+  });
+  return count;
+}
+
 /**
  * Opens the editor of a new symbol with no guides, so that the surface's
  * pixels are the ink alone, draws a filled ellipse with the pen, and chooses
- * the eraser, drawing freehand, with Zoom on if `zoom` says so.
+ * the eraser, drawing freehand, with Zoom on if `zoom` says so. Gives the
+ * surface's view, and how many strokes the ellipse is.
  */
-export async function eraseFilledEllipse(zoom: boolean): Promise<View> {
+export async function eraseFilledEllipse(
+  zoom: boolean,
+): Promise<{ view: View; strokes: number }> {
   await insert();
   await settledSurface();
   await browser.keys(["g"]);
@@ -187,7 +207,7 @@ export async function eraseFilledEllipse(zoom: boolean): Promise<View> {
     ],
     10,
   );
-  await draftHolds(1);
+  const strokes = await draftStrokes();
   await browser.keys(["o"]);
   await browser.keys(["e"]);
   if (zoom) {
@@ -195,7 +215,7 @@ export async function eraseFilledEllipse(zoom: boolean): Promise<View> {
     await settledSurface();
   }
   await framesDrawn();
-  return view();
+  return { view: await view(), strokes };
 }
 
 /** Starts reading the surface's pixels after every frame the editor draws. */
@@ -272,8 +292,9 @@ export interface Analysis {
   points: number;
   reported: number;
   /**
-   * For a smooth stroke, the frames that differ from a redraw of its points
-   * so far, and their pixels; -1 for a stroke of another kind.
+   * The frames that differ from a redraw of the eraser's points so far, and
+   * their pixels: for a smooth stroke, as its saved points go; for an area,
+   * the area of the points the pointer reported so far.
    */
   unmatched: number;
   mismatchedPixels: number;
@@ -293,6 +314,24 @@ export interface Analysis {
   returnedDeepest: number;
   /** The most ink any pixel got back from one frame to the next, of 255. */
   largestRise: number;
+  /** ...of those more than 1 px outside the brush's circle: behind it. */
+  riseBehind: number;
+  /**
+   * Where that was: its frame, and how far its pixel is from the brush's
+   * circle and from the edge of all it had swept, in document pixels, less
+   * inside.
+   */
+  rise: {
+    frame: number;
+    fromBrush: number;
+    fromEdge: number;
+    /** The pixel's centre, in document pixels. */
+    at: [number, number];
+    /** How many points the pointer had reported, then and the frame before. */
+    reported: [number, number];
+  };
+  /** The points the pointer reported, in units, as the editor records them. */
+  way: number[];
   /** Pixels erased more than 1 px outside where the brush went. */
   erasedOutside: number;
   erasedFarthest: number;
@@ -321,15 +360,18 @@ export interface Analysis {
 
 /**
  * Works out what moved, from the frames {@link record} read, for an eraser
- * `diameter` document pixels wide, and the alpha at each of `keep`.
+ * `diameter` document pixels wide, and the alpha at each of `keep`. With
+ * `redraws` false, it does not compare each frame with a redraw of the points
+ * so far, which takes most of its time; `unmatched` is then -1.
  */
 export async function analyse(
   diameter: number,
   keep: readonly Doc[] = [],
+  redraws = true,
 ): Promise<Analysis> {
   await framesDrawn();
   return browser.executeObsidian(
-    async ({ app }, wantedDiameter, wantedPoints) => {
+    async ({ app }, wantedDiameter, wantedPoints, compare) => {
       const probe = Reflect.get(window, "eraserProbe") as {
         frames: { alpha: Uint8Array; reported: number }[];
         pointer: { x: number; y: number }[];
@@ -429,8 +471,8 @@ export async function analyse(
         kind: eraser.kind ?? "smooth",
         points: eraser.points.length / 2,
         reported: way.length,
-        unmatched: smooth ? 0 : -1,
-        mismatchedPixels: smooth ? 0 : -1,
+        unmatched: compare ? 0 : -1,
+        mismatchedPixels: compare ? 0 : -1,
         returned: 0,
         returnedOutside: 0,
         framesReturnedOutside: 0,
@@ -438,6 +480,15 @@ export async function analyse(
         returnedInside: 0,
         returnedDeepest: 0,
         largestRise: 0,
+        riseBehind: 0,
+        rise: {
+          frame: -1,
+          fromBrush: 0,
+          fromEdge: 0,
+          at: [0, 0] as [number, number],
+          reported: [0, 0] as [number, number],
+        },
+        way: way.flatMap(([x, y]) => [Math.round(x * 16), Math.round(y * 16)]),
         erasedOutside: 0,
         erasedFarthest: 0,
         underBrush: 0,
@@ -461,7 +512,7 @@ export async function analyse(
         if (reported === 0) continue;
         const pointer = way[reported - 1] ?? [0, 0];
         // A smooth stroke's points so far end where the pointer was.
-        if (smooth) {
+        if (compare && smooth) {
           const ux = Math.round(pointer[0] * 16);
           const uy = Math.round(pointer[1] * 16);
           for (let index = at; index < eraser.points.length / 2; index++) {
@@ -482,6 +533,24 @@ export async function analyse(
           );
           if (mismatched > 0) result.unmatched += 1;
           result.mismatchedPixels += mismatched;
+        } else if (compare) {
+          // The editor records the points the pointer reported, in units.
+          const units = way
+            .slice(0, reported)
+            .flatMap(([x, y]) => [Math.round(x * 16), Math.round(y * 16)]);
+          const mismatched = differing(
+            redraw([
+              ...strokes.slice(0, -1),
+              window.inklineTest.sweep.sweptStroke(
+                "eraser",
+                wantedDiameter * 16,
+                units,
+              ),
+            ]),
+            frame.alpha,
+          );
+          if (mismatched > 0) result.unmatched += 1;
+          result.mismatchedPixels += mismatched;
         }
         // Where the brush went since the frame before.
         const from = Math.max(0, (previous.reported || 1) - 1);
@@ -497,7 +566,18 @@ export async function analyse(
             under += 1;
           }
           const change = now - then;
-          result.largestRise = Math.max(result.largestRise, change);
+          if (inside > 1)
+            result.riseBehind = Math.max(result.riseBehind, change);
+          if (change > result.largestRise) {
+            result.largestRise = change;
+            result.rise = {
+              frame: f,
+              fromBrush: inside,
+              fromEdge: nearest(x, y, 0, reported - 1) - r,
+              at: [x, y],
+              reported: [reported, previous.reported],
+            };
+          }
           if (Math.abs(change) < 64) continue;
           const beyond = nearest(x, y, from, reported - 1) - r;
           if (change >= 64) {
@@ -592,8 +672,10 @@ export async function analyse(
       // A picture of the frame where most ink came back outside the brush:
       // before, after, and what changed, red where ink came back and blue
       // where it went, with the brush's circle in green.
-      const shown = frames[result.worstFrame];
-      const shownBefore = frames[result.worstFrame - 1];
+      const pictured =
+        result.worstFrame >= 0 ? result.worstFrame : result.rise.frame;
+      const shown = frames[pictured];
+      const shownBefore = frames[pictured - 1];
       const shownPointer =
         shown === undefined ? undefined : way[shown.reported - 1];
       if (
@@ -662,5 +744,6 @@ export async function analyse(
     },
     diameter,
     keep,
+    redraws,
   );
 }

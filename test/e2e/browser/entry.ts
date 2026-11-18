@@ -14,6 +14,7 @@ export * as render from "../../../src/ink/render.ts";
 export * as drafts from "../../../src/editor/drafts.ts";
 export * as guides from "../../../src/editor/guides.ts";
 export * as view from "../../../src/editor/view.ts";
+export * as sweep from "../../../src/editor/sweep.ts";
 export * as settings from "../../../src/settings.ts";
 export * as cursor from "../../../src/editor/cursor.ts";
 export * as reference from "../../../src/editor/reference.ts";

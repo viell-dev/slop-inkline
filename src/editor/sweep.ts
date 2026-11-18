@@ -89,18 +89,20 @@ export function sweepPath(points: readonly number[]): Point[] {
  *
  * It goes round one side of the way from its end, round its start, and back
  * along the other side, with a half circle at each end. Where the way turns,
- * the side outside the turn goes round a circle about the corner, and the
- * side inside it goes through the corner itself. Taken together, that is the
- * sum of pieces all wound one way: a rectangle along each straight line of
- * the way, the slice of a circle outside each turn, and a half circle at each
- * end. So the nonzero rule fills every point that any of them covers, however
- * the way crosses itself or turns back, and only those: ink the way goes round
- * without covering, as inside a loop, stays. The end's half circle goes round
- * twice, the second time back across it through the way's last point, which
- * covers it twice and adds nothing more. No part of the outline goes out and
- * back along itself: where a renderer adds up the coverage of each edge, such
- * a part can leave a hairline that one edge covered and the other did not take
- * back.
+ * the side outside the turn goes round a circle about the corner. The side
+ * inside it goes straight through where the two lines' edges meet, when both
+ * lines are long enough for that, and otherwise in to the corner itself and
+ * out again. Taken together, that is the sum of pieces all wound one way: a
+ * rectangle along each straight line of the way, the slice of a circle outside
+ * each turn, and a half circle at each end, with some of what two rectangles
+ * both cover taken out once. So the nonzero rule fills every point that any of
+ * them covers, however the way crosses itself or turns back, and only those:
+ * ink the way goes round without covering, as inside a loop, stays. The end's
+ * half circle goes round twice, the second time back across it through the
+ * way's last point, which covers it twice and adds nothing more. No part of
+ * the outline goes out and straight back along itself: that encloses nothing,
+ * but where a renderer adds up the coverage of each edge, it can leave a
+ * hairline that one edge covered and the other did not take back.
  */
 export function sweepOutline(path: readonly Point[], radius: number): Point[] {
   const moves = path
@@ -163,26 +165,56 @@ export function sweepOutline(path: readonly Point[], radius: number): Point[] {
   // At each corner: how far the way turns there, and whether the normal's
   // side is outside the turn, from the moves in whole units, so that a way
   // that goes straight on turns by exactly nothing. A way that turns straight
-  // back has its turn outside the normal's side.
+  // back has its turn outside the normal's side. Inside the turn, where both
+  // lines are long enough that the part of their rectangles between the
+  // corner and where their edges meet lies in both, the outline goes straight
+  // through that meeting point; otherwise through the corner itself, which
+  // the pieces always add up to.
   const corners = moves.slice(1).map((move, index) => {
     const before = moves[index] ?? move;
     const cross = before[0] * move[1] - before[1] * move[0];
     const dot = before[0] * move[0] + before[1] * move[1];
-    return {
-      angle: Math.atan2(Math.abs(cross), dot),
-      normalOutside: cross < 0 || (cross === 0 && dot < 0),
-    };
+    const angle = Math.atan2(Math.abs(cross), dot);
+    const normalOutside = cross < 0 || (cross === 0 && dot < 0);
+    const shortest = Math.min(
+      Math.hypot(before[0], before[1]),
+      Math.hypot(move[0], move[1]),
+    );
+    const reach =
+      radius * Math.max(Math.sin(angle), Math.tan(Math.min(angle, 3) / 2));
+    let meet: Point | undefined;
+    if (angle > 0 && angle < 3 && shortest >= reach) {
+      // The inside edges, `radius` from each line, meet on the bisector.
+      const sign = normalOutside ? -1 : 1;
+      const a = side(steps[index] ?? firstStep);
+      const b = side(steps[index + 1] ?? lastStep);
+      const scale = sign / (1 + Math.cos(angle));
+      const corner = path[index + 1] ?? last;
+      meet = [
+        corner[0] + (a[0] + b[0]) * scale,
+        corner[1] + (a[1] + b[1]) * scale,
+      ];
+    }
+    return { angle, normalOutside, meet };
   });
   const lastSide = side(lastStep);
   push(along(last, lastSide, 1));
   arc(last, lastSide, Math.PI);
-  // Back along the side away from the normal.
+  // Back along the side away from the normal, inside the turns the normal's
+  // side is outside of.
   for (let index = steps.length - 1; index >= 0; index--) {
     const offset = side(steps[index] ?? lastStep);
     const corner = path[index] ?? first;
-    push(along(path[index + 1] ?? last, offset, -1));
-    push(along(corner, offset, -1));
+    const entered = corners[index];
+    if (entered?.normalOutside !== true || entered.meet === undefined) {
+      push(along(path[index + 1] ?? last, offset, -1));
+    }
     const turn = corners[index - 1];
+    if (turn?.normalOutside === true && turn.meet !== undefined) {
+      push(turn.meet);
+      continue;
+    }
+    push(along(corner, offset, -1));
     // Where a long line goes straight on, there is no corner to go round.
     if (turn === undefined || turn.angle === 0) continue;
     if (turn.normalOutside) push(corner);
@@ -194,9 +226,16 @@ export function sweepOutline(path: readonly Point[], radius: number): Point[] {
   steps.forEach((step, index) => {
     const offset = side(step);
     const corner = path[index + 1] ?? last;
-    push(along(path[index] ?? first, offset, 1));
-    push(along(corner, offset, 1));
+    const entered = corners[index - 1];
+    if (entered?.normalOutside !== false || entered.meet === undefined) {
+      push(along(path[index] ?? first, offset, 1));
+    }
     const turn = corners[index];
+    if (turn?.normalOutside === false && turn.meet !== undefined) {
+      push(turn.meet);
+      return;
+    }
+    push(along(corner, offset, 1));
     if (turn === undefined || turn.angle === 0) return;
     if (turn.normalOutside) arc(corner, offset, turn.angle);
     else push(corner);

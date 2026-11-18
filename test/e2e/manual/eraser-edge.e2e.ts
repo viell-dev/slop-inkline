@@ -42,7 +42,7 @@ const outputDir = outputDirectory(process.env.E2E_OUTPUT_DIR, root);
 describe("Erasing along an edge (#341)", function () {
   // Each Zoom setting takes 30 minutes or more on a busy machine.
   this.timeout(90 * 60 * 1000);
-  const results: Record<string, Omit<Analysis, "picture">> = {};
+  const results: Record<string, Omit<Analysis, "picture" | "way">> = {};
 
   before(async function () {
     await loadModules();
@@ -64,7 +64,7 @@ describe("Erasing along an edge (#341)", function () {
 
   for (const zoom of [false, true]) {
     it(`erases along a filled ellipse's edge with Zoom ${zoom ? "on" : "off"}`, async function () {
-      const at = await eraseFilledEllipse(zoom);
+      const { view: at, strokes } = await eraseFilledEllipse(zoom);
       for (const [pathName, way] of Object.entries(paths)) {
         for (const [speedName, step] of Object.entries(speeds)) {
           for (const size of sizes) {
@@ -72,8 +72,12 @@ describe("Erasing along an edge (#341)", function () {
             await framesDrawn();
             await record();
             await drag(pointerPath(way, at, step), 8);
-            await draftHolds(2);
-            const { picture, ...numbers } = await analyse(size.diameter);
+            await draftHolds(strokes + 1);
+            const {
+              picture,
+              way: _way,
+              ...numbers
+            } = await analyse(size.diameter, [], false);
             const name = `${pathName}-${speedName}-${size.label}-zoom-${zoom ? "on" : "off"}`;
             results[name] = numbers;
             console.log(name, JSON.stringify(numbers));
@@ -82,7 +86,7 @@ describe("Erasing along an edge (#341)", function () {
             }
             // Back to the whole ellipse.
             await browser.keys(["Control", "z"]);
-            await draftHolds(1);
+            await draftHolds(strokes);
             await framesDrawn();
           }
         }

@@ -728,13 +728,17 @@ their corners at the same angles about each centre, so that those of one circle
 are where they were when the way goes on from it. It goes round one side of the
 way and back along the other, through the corner on the inside of each turn and
 round it on the outside, and the nonzero rule fills what any part of it covers,
-so ink that a loop goes round stays. It starts at the way's first point and ends
-at its last, with a straight bridge between them that adds no area, so that its
-ends mark the grid as a smooth stroke's would. An end that Flat ends cuts is cut
-as [Cut ends](#cut-ends) cuts a smooth stroke's, with the area of the rest of
-the way in its box. Pen strokes, and an eraser's ellipses and polygons, are
-saved as before. Inkline 1.0.1 and earlier saved an eraser stroke as a smooth
-stroke, and such strokes draw as they did.
+so ink that a loop goes round stays. It goes round the way's last half circle
+twice, the second time back across it through the way's last point, which is the
+outline's last point, so that the stroke's end marks the grid as a smooth
+stroke's would; its first point is beside that end. An end that Flat ends cuts
+is cut off along the row through it, as [Cut ends](#cut-ends) cuts a smooth
+stroke's, when all of the stroke past that row lies in the end's box and the
+rest of the way does not reach into the box; otherwise, as when the way comes
+back near its end, the stroke is saved as a smooth stroke with its cut, as
+before. Pen strokes, and an eraser's ellipses and polygons, are saved as before.
+Inkline 1.0.1 and earlier saved every eraser stroke as a smooth stroke, and such
+strokes draw as they did.
 
 A file says nothing of Inkline's grid, which belongs to the note's font and the
 Grid size setting rather than to the symbol. A stroke's points are stored
