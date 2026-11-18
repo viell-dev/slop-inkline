@@ -119,6 +119,19 @@ button is off while drawing freehand. Turning it on or off while placing a
 polygon decides for that shape, as it closes. **Next** keeps it; an editor
 opened afresh does not fill.
 
+**Unreleased:** a filled shape keeps the brush's width around it, rather than
+having its edges run through its corners, and the brush size makes the
+difference it makes to the same shape unfilled. A filled shape is the shape as
+**Toggle fill** off draws it, its line at the brush size, with everything inside
+the line filled too, so a filled and an unfilled shape drawn across the same
+corners, or the same box, have the same outer edge. A filled triangle drawn on
+the grid then reaches half the brush's width past the line its base lies on, as
+an unfilled one does, and **Up** and **Down** can sit it on the line. With the
+eraser, the hole reaches as far as the eraser's line would. While you drag an
+ellipse, or point at a polygon's first corner, the editor shows the shape
+exactly as letting go, or the click, leaves it, and one Undo takes back the
+whole shape. Symbols already saved keep their look.
+
 ## Straight lines and the grid
 
 Hold Shift while drawing to make the stroke straight, from where it was when

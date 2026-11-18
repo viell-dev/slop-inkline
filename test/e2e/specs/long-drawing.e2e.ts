@@ -98,6 +98,7 @@ describe("A long drawing", function () {
     let frames = 0;
     let addedPen = 0;
     let addedEraser = 0;
+    let addedSeveral = 0;
     let saves = 0;
     let savesAPixelOff = 0;
     let refused = 0;
@@ -108,15 +109,17 @@ describe("A long drawing", function () {
       frames += report.frames;
       addedPen += report.addedPen;
       addedEraser += report.addedEraser;
+      addedSeveral += report.addedSeveral;
       saves += report.saves;
       savesAPixelOff += report.savesAPixelOff;
       refused += report.refused;
     }
     console.log(
-      `${String(frames)} frames compared, ${String(addedPen)} adding a pen stroke and ${String(addedEraser)} an eraser's, ${String(saves)} saves, ${String(savesAPixelOff)} a pixel off, ${String(refused)} refused as too wide: ${JSON.stringify(Object.fromEntries(totals))}`,
+      `${String(frames)} frames compared, ${String(addedPen)} adding the pen's strokes, ${String(addedEraser)} the eraser's, ${String(addedSeveral)} more than one, ${String(saves)} saves, ${String(savesAPixelOff)} a pixel off, ${String(refused)} refused as too wide: ${JSON.stringify(Object.fromEntries(totals))}`,
     );
     // The runs do what they are for: every operation, and both kinds of
-    // stroke added to the frame before, which is what the view shortens.
+    // stroke added to the frame before, which is what the view shortens, and
+    // several at once, as a filled shape adds them.
     expect([...totals.keys()].sort()).toEqual([
       "across",
       "add a base layer",
@@ -138,6 +141,7 @@ describe("A long drawing", function () {
     ]);
     expect(addedPen).toBeGreaterThan(50);
     expect(addedEraser).toBeGreaterThan(20);
+    expect(addedSeveral).toBeGreaterThan(10);
     // A save a pixel from a full measurement is the rare exception (#159).
     expect(savesAPixelOff).toBeLessThan(saves / 20);
   });
