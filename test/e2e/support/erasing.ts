@@ -337,9 +337,15 @@ export interface Analysis {
   erasedFarthest: number;
   /** Most pixels of ink left more than 1 px inside the brush's circle. */
   underBrush: number;
-  /** Pixels that differ between the last frame and the committed drawing. */
+  /**
+   * Pixels that differ, by more than 2 of 255, between the last frame and the
+   * committed drawing.
+   */
   releaseChanged: number;
-  /** Pixels where the committed drawing differs from a redraw of its record. */
+  /**
+   * Pixels where the committed drawing differs, by more than 2 of 255, from a
+   * redraw of its record.
+   */
   redrawChanged: number;
   /** Pixels shown erased in some frame and inked after the release. */
   restored: number;
@@ -652,8 +658,7 @@ export async function analyse(
       }
       for (let index = 0; index < finalAlpha.length; index++) {
         const now = finalAlpha[index] ?? 0;
-        if (Math.abs(now - (last[index] ?? 0)) >= 64)
-          result.releaseChanged += 1;
+        if (Math.abs(now - (last[index] ?? 0)) > 2) result.releaseChanged += 1;
         const inked = (before[index] ?? 0) >= 192;
         if (!inked) continue;
         if ((least[index] ?? 255) <= 64 && now >= 192) result.restored += 1;

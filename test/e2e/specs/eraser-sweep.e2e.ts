@@ -67,9 +67,14 @@ function expectSteady(numbers: Awaited<ReturnType<typeof erase>>["numbers"]) {
   console.log(JSON.stringify(shown), `from ${String(way.length / 2)} points`);
   expect(numbers).toMatchObject({
     kind: "fill",
+    // Every frame drew the area of the points reported so far, to within 2
+    // of 255 in each pixel.
+    unmatched: 0,
+    mismatchedPixels: 0,
     // No ink came back where the brush had taken it.
     returnedInside: 0,
-    // The release, and the record, draw what the last frame showed.
+    // The release, and the record, draw what the last frame showed, to
+    // within 2 of 255.
     releaseChanged: 0,
     redrawChanged: 0,
     // Nothing shown erased came back by the end.

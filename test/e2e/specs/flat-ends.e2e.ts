@@ -135,19 +135,22 @@ async function spill(): Promise<Spill> {
 }
 
 /**
- * For the saved symbol's last stroke, an eraser's area that ends on a row
- * going down, the inked pixels below that row within the brush's reach of its
- * end: in the saved image, in a redraw of the pen strokes alone, and in a
- * redraw with a round-ended eraser along the same line instead; and the
- * pixels whose alpha differs between the saved image and a redraw.
+ * For the saved symbol's last stroke, an eraser's area along a straight line
+ * from one row down to another, `size` units wide, cut flat at both: the
+ * inked pixels beyond the end's row, within the brush's reach of the end, and
+ * those just before it, within the line's width, in the saved image, in a
+ * redraw of the pen strokes alone, and in a redraw with a round-ended eraser
+ * along the same line instead; and the pixels whose alpha differs between the
+ * saved image and a redraw. The line's ends are where the drag put them: the
+ * end is the area's last point, and the start lies on the row its top is cut
+ * along, straight above.
  */
-async function eraserEnd(): Promise<{
-  erased: number;
-  inked: number;
-  rounded: number;
+async function eraserEnd(size: number): Promise<{
+  past: { saved: number; pens: number; rounded: number };
+  before: { saved: number; pens: number };
   redrawn: number;
 }> {
-  return browser.executeObsidian(async ({ app }) => {
+  return browser.executeObsidian(async ({ app }, units) => {
     const file = app.vault.getFileByPath("001.ink.png");
     if (file === null) throw new Error("no saved ink");
     const bytes = new Uint8Array(await app.vault.readBinary(file));
@@ -169,39 +172,63 @@ async function eraserEnd(): Promise<{
     const eraser = strokes.at(-1);
     if (eraser === undefined) throw new Error("no eraser");
     const pens = strokes.filter((stroke) => stroke.tool === "pen");
-    const [x0 = 0, y0 = 0] = eraser.points;
-    const x = (eraser.points.at(-2) ?? 0) / 16;
-    const y = (eraser.points.at(-1) ?? 0) / 16;
-    // The XL brush, 24 pixels wide, as openOnGrid chooses.
-    const reach = 24;
+    const ex = eraser.points.at(-2) ?? 0;
+    const ey = eraser.points.at(-1) ?? 0;
+    const top = Math.min(
+      ...eraser.points.filter((_, index) => index % 2 === 1),
+    );
+    const x = ex / 16;
+    const y = ey / 16;
+    const reach = units / 16;
     const rounded = redraw([
       ...pens,
-      { tool: "eraser", size: reach * 16, points: [x0, y0, x * 16, y * 16] },
+      { tool: "eraser", size: units, points: [ex, top, ex, ey] },
     ]);
     const again = redraw(strokes);
     let redrawn = 0;
     for (let at = 3; at < again.length; at += 4) {
       if (Math.abs((again[at] ?? 0) - (saved.data[at] ?? 0)) > 1) redrawn++;
     }
-    const below = (data: Uint8ClampedArray): number => {
-      let count = 0;
-      for (let row = Math.ceil(y); row < height; row++) {
+    const count = (
+      data: Uint8ClampedArray,
+      rows: readonly [number, number],
+      across: number,
+    ): number => {
+      let inked = 0;
+      for (let row = rows[0]; row < rows[1]; row++) {
         for (let column = 0; column < width; column++) {
-          const near =
-            Math.abs(column + 0.5 - x) <= reach &&
-            Math.abs(row + 0.5 - y) <= reach;
-          if (near && (data[(row * width + column) * 4 + 3] ?? 0) > 0) count++;
+          const near = Math.abs(column + 0.5 - x) <= across;
+          if (near && (data[(row * width + column) * 4 + 3] ?? 0) > 0) inked++;
         }
       }
-      return count;
+      return inked;
     };
+    // Beyond the row, as far as the brush reaches; before it, the brush's
+    // half width less a pixel and a half for the soft edges, from the row up
+    // by that much.
+    const beyond: [number, number] = [
+      Math.ceil(y),
+      Math.min(height, Math.ceil(y + reach)),
+    ];
+    const inside = reach / 2 - 1.5;
+    const before: [number, number] = [
+      Math.floor(y - inside),
+      Math.floor(y) - 1,
+    ];
+    const pensOnly = redraw(pens);
     return {
-      erased: below(saved.data),
-      inked: below(redraw(pens)),
-      rounded: below(rounded),
+      past: {
+        saved: count(saved.data, beyond, reach),
+        pens: count(pensOnly, beyond, reach),
+        rounded: count(rounded, beyond, reach),
+      },
+      before: {
+        saved: count(saved.data, before, inside),
+        pens: count(pensOnly, before, inside),
+      },
       redrawn,
     };
-  });
+  }, size);
 }
 
 /**
@@ -322,9 +349,11 @@ describe("Flat ends on the grid", function () {
       [0.5, 0.52],
       [0.7, 0.5],
     ]);
-    // A dot, then the eraser down into the stroke, ending on its row.
+    // A dot, then the XL eraser, which keeps a size of its own, down into
+    // the stroke, ending on its row.
     await shiftClick([0.5, 0.25]);
     await browser.keys("e");
+    await browser.keys("4");
     await drawHoldingShift([
       [0.6, 0.3],
       [0.6, 0.5],
@@ -332,20 +361,23 @@ describe("Flat ends on the grid", function () {
     await save();
     const strokes = await savedStrokes();
     // The pen's strokes keep their round ends. The eraser's is the area its
-    // brush swept, with its cut ends in it (#341), from one end to the other.
+    // brush swept, with its cut ends in it (#341).
     expect(strokes.map((stroke) => stroke.cut)).toEqual([
       undefined,
       undefined,
       undefined,
     ]);
     expect(strokes[2]).toMatchObject({ tool: "eraser", kind: "fill" });
-    const shown = await eraserEnd();
+    const shown = await eraserEnd(384);
     console.log("Flat", JSON.stringify(shown));
-    // Past the row the eraser ends on, the pen's ink is all still there;
-    // a round end would have taken some of it.
-    expect(shown.inked).toBeGreaterThan(20);
-    expect(shown.erased).toBe(shown.inked);
-    expect(shown.rounded).toBeLessThan(shown.inked - 20);
+    // Past the row the eraser ends on, the pen's ink is all still there; a
+    // round end would have taken some of it.
+    expect(shown.past.pens).toBeGreaterThan(20);
+    expect(shown.past.saved).toBe(shown.past.pens);
+    expect(shown.past.rounded).toBeLessThan(shown.past.pens - 20);
+    // Just before it, the eraser took all the pen's ink, as far as the row.
+    expect(shown.before.pens).toBeGreaterThan(20);
+    expect(shown.before.saved).toBe(0);
     expect(shown.redrawn).toBe(0);
   });
 
