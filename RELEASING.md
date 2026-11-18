@@ -451,9 +451,12 @@ On a branch from `main`:
    first checks that `package.json` names the version, that the changelog
    section exists, and that the metadata files agree: a public version is in
    `manifest.json` and `versions.json`, and a pre-release is in neither, with
-   `manifest.json` no higher than it. The unit tests hold every commit to the
-   same rules, so a pre-release's version cannot reach `main`'s manifest. The
-   second needs GitHub, and `GH_TOKEN` if the CLI is not signed in.
+   `manifest.json` no higher than it. Either way `manifest.json` names the
+   newest public release that `versions.json` lists. The unit tests hold every
+   commit to the same rules, so a pre-release's version cannot reach `main`'s
+   manifest, and also check that `versions.json` lists exactly the public
+   releases from `1.0.0` that have a section in `CHANGELOG.md`. The second needs
+   GitHub, and `GH_TOKEN` if the CLI is not signed in.
 6. Have another agent review the release pull request, as
    [AGENTS.md](AGENTS.md#review) requires: everything since the previous
    release, not only the version change. That covers the changes, the open
@@ -592,11 +595,12 @@ merges, and nothing in it would notice.
 
 Revert the whole release pull request, not only its manifest. `package.json`
 names the release a commit builds, and the unit tests refuse a public version
-there that `manifest.json` and `versions.json` do not carry, so a partial revert
-could not merge. Reverting the merge brings back the files that passed CI before
-it: `package.json` and the lockfile with the version they had, `manifest.json`,
-`versions.json`, the changelog, and the guide. On a new branch, where
-`<merge-commit>` is the release pull request's merge:
+there that `manifest.json` and `versions.json` do not carry, and a public
+release's changelog section without its entry in `versions.json`, so a partial
+revert could not merge. Reverting the merge brings back the files that passed CI
+before it: `package.json` and the lockfile with the version they had,
+`manifest.json`, `versions.json`, the changelog, and the guide. On a new branch,
+where `<merge-commit>` is the release pull request's merge:
 
 ```sh
 git switch --create revert-<version> origin/main
