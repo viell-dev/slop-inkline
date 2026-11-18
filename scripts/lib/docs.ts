@@ -1,3 +1,7 @@
+// The guide lives on protected main and describes the newest public release,
+// the one manifest.json names there. Preparing a public release changes the
+// manifest, so that guide waits until the release is published; a
+// pre-release leaves the manifest alone, so its guide deploys at once.
 import { isPrerelease, stableVersionPattern } from "./version.ts";
 
 export interface DocsRelease {
@@ -11,7 +15,7 @@ export interface DocsRequest {
   readonly refType: "branch" | "tag";
   /** Published releases, newest first. */
   readonly releases: readonly DocsRelease[];
-  readonly packageVersion: string;
+  /** The version manifest.json names on the commit being built. */
   readonly manifestVersion: string;
 }
 
@@ -39,17 +43,11 @@ export function docsSource(request: DocsRequest): DocsSource {
     ({ tag, prerelease }) =>
       !prerelease && stableVersionPattern.test(tag) && !isPrerelease(tag),
   );
-  // Before the first public release, the manifest still named a pre-release.
-  const beforeFirstPublic =
-    latestPublic === undefined && isPrerelease(request.manifestVersion);
-  const version = beforeFirstPublic
-    ? request.packageVersion
-    : request.manifestVersion;
-  const published = beforeFirstPublic ? request.releases[0] : latestPublic;
-  if (version !== published?.tag) {
+  const version = request.manifestVersion;
+  if (version !== latestPublic?.tag) {
     return {
       deploy: false,
-      reason: `The guide for ${version} waits until that version is the newest published ${beforeFirstPublic ? "release" : "public release"}.`,
+      reason: `The guide for ${version} waits until that version is the newest published public release.`,
       error: false,
     };
   }

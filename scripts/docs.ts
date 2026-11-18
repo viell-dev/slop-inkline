@@ -69,18 +69,20 @@ async function releases(): Promise<DocsRelease[]> {
   return published.sort((a, b) => b.at - a.at);
 }
 
-async function readVersion(
-  file: "package.json" | "manifest.json",
-): Promise<string> {
+/**
+ * The version manifest.json names on this commit: the newest public release,
+ * or one being prepared, as RELEASING.md's "Where a version is recorded" says.
+ */
+async function manifestVersionOnDisk(): Promise<string> {
   const json: unknown = JSON.parse(
-    await readFile(new URL(`../${file}`, import.meta.url), "utf8"),
+    await readFile(new URL("../manifest.json", import.meta.url), "utf8"),
   );
   if (
     !isRecord(json) ||
     typeof json.version !== "string" ||
     !releaseVersionPattern.test(json.version)
   ) {
-    fail(`${file} has no valid version`);
+    fail("manifest.json has no valid version");
   }
   return json.version;
 }
@@ -96,17 +98,15 @@ async function resolve(): Promise<void> {
   if (refType !== "branch" && refType !== "tag") {
     fail(`REF_TYPE is ${String(refType)}, not branch or tag`);
   }
-  const [published, packageVersion, manifestVersion] = await Promise.all([
+  const [published, manifestVersion] = await Promise.all([
     releases(),
-    readVersion("package.json"),
-    readVersion("manifest.json"),
+    manifestVersionOnDisk(),
   ]);
   const source = docsSource({
     event,
     ref,
     refType,
     releases: published,
-    packageVersion,
     manifestVersion,
   });
   if (!source.deploy) {

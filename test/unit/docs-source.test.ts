@@ -10,7 +10,6 @@ const main = {
   ref: "main",
   refType: "branch",
   manifestVersion: publicRelease.tag,
-  packageVersion: publicRelease.tag,
   releases: [publicRelease, historical],
 } satisfies DocsRequest;
 
@@ -19,9 +18,11 @@ describe("docsSource", () => {
     ["preparing a pre-release", [publicRelease, historical]],
     ["after publishing a pre-release", [prerelease, publicRelease, historical]],
   ] as const)("deploys the public guide %s", (_state, releases) => {
-    expect(
-      docsSource({ ...main, releases, packageVersion: prerelease.tag }),
-    ).toEqual({ deploy: true, ref: "main", version: publicRelease.tag });
+    expect(docsSource({ ...main, releases })).toEqual({
+      deploy: true,
+      ref: "main",
+      version: publicRelease.tag,
+    });
   });
 
   it("waits for a prepared public release to be published", () => {
@@ -30,7 +31,6 @@ describe("docsSource", () => {
         ...main,
         releases: [prerelease, publicRelease, historical],
         manifestVersion: nextPublic.tag,
-        packageVersion: nextPublic.tag,
       }),
     ).toMatchObject({ deploy: false, error: false });
   });
@@ -42,18 +42,17 @@ describe("docsSource", () => {
         event: "dispatch",
         releases: [nextPublic, prerelease, publicRelease, historical],
         manifestVersion: nextPublic.tag,
-        packageVersion: nextPublic.tag,
       }),
     ).toEqual({ deploy: true, ref: "main", version: nextPublic.tag });
   });
 
   it.each([
-    ["public release", "1.0.0", [publicRelease, historical]],
-    ["pre-release", "1.1.0", [prerelease, publicRelease, historical]],
+    ["public release", [publicRelease, historical]],
+    ["pre-release", [prerelease, publicRelease, historical]],
   ] as const)(
     "deploys corrections once merged to main during a %s",
-    (_state, packageVersion, releases) => {
-      expect(docsSource({ ...main, packageVersion, releases })).toEqual({
+    (_state, releases) => {
+      expect(docsSource({ ...main, releases })).toEqual({
         deploy: true,
         ref: "main",
         version: publicRelease.tag,
@@ -81,29 +80,12 @@ describe("docsSource", () => {
     ).toEqual({ deploy: true, ref: "main", version: publicRelease.tag });
   });
 
-  it("uses the published package version before the first public release", () => {
-    expect(
-      docsSource({
-        ...main,
-        releases: [historical],
-        manifestVersion: "0.9.0",
-        packageVersion: historical.tag,
-      }),
-    ).toEqual({ deploy: true, ref: "main", version: historical.tag });
+  it("waits while no public release is published", () => {
+    expect(docsSource({ ...main, releases: [historical] })).toMatchObject({
+      deploy: false,
+      error: false,
+    });
   });
-
-  it.each([
-    ["0.9.0", "0.9.6", [historical]],
-    ["0.9.0", "0.9.5", []],
-    ["1.0.0", "1.0.0", [historical]],
-  ] as const)(
-    "waits before the first public release when manifest names %s, package names %s, and published releases are %j",
-    (manifestVersion, packageVersion, releases) => {
-      expect(
-        docsSource({ ...main, manifestVersion, packageVersion, releases }),
-      ).toMatchObject({ deploy: false, error: false });
-    },
-  );
 
   it.each([
     ["main", "tag"],
