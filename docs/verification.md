@@ -261,17 +261,20 @@ must keep released files readable and looking the same, as
 - **Unreleased:** the eraser, drawn freehand along, across, and through a filled
   ellipse's edge, back on itself, and round a loop, with Zoom off and on, takes
   away exactly what its brush sweeps. In every frame read back from the drawing
-  area while the pointer moves, no ink comes back more than a pixel outside
-  where the brush went; the release changes no pixel, and the saved record draws
-  what the last frame showed; and no ink is left within the brush's sweep, or
-  taken beyond it, more than a pixel from its edge. The ink in the middle of the
-  loop stays
+  area while the pointer moves, the area shown is a redraw of the points
+  reported so far, no ink comes back where the brush had taken it, and behind
+  the brush no edge pixel gets back half its ink; the release changes no pixel,
+  and the saved record draws what the last frame showed; and no ink is left
+  within the brush's sweep, or taken beyond it, more than a pixel from its edge.
+  The ink in the middle of the loop stays
   ([eraser-sweep.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/eraser-sweep.e2e.ts),
-  [#341](https://github.com/viell-dev/slop-inkline/issues/341)). Unit tests
-  compare the area with the brush's exact sweep along straight lines, sharp
-  turns, turns straight back, zigzags, a mouse's whole-pixel steps, a figure
-  eight, random walks, and a loop round an island, check that it never takes
-  back what it swept as points come, and cut its ends as a smooth stroke's
+  [#341](https://github.com/viell-dev/slop-inkline/issues/341)). The same check
+  fails on every case with the eraser as 1.0.0 saves it. Unit tests compare the
+  area with the brush's exact sweep along straight lines, sharp turns, turns
+  straight back, zigzags, a mouse's whole-pixel steps, a figure eight, random
+  walks, and a loop round an island, check that it never takes back what it
+  swept as points come, never goes out and back along itself, holds whole units
+  however a seeded run draws it, and cuts its ends as a smooth stroke's
   ([sweep.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/sweep.test.ts)).
 
 ### Drawing is never lost
