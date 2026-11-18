@@ -757,19 +757,24 @@ describe("The editor", function () {
     expect(await strokeCount("001.ink.png")).toBe(2);
     expect(await draftCount()).toBe(1);
     expect(await storage()).toEqual(kept);
-    // A rename reads every draft, and leaves this one where it was.
+    // A rename moves this version's drafts, and leaves that one where it was.
     await browser.executeObsidian(async ({ app }) => {
+      const { drafts } = window.inklineTest;
+      const put = new drafts.DraftStore(app).put({
+        id: "planted",
+        target: { kind: "file", path: "001.ink.png" },
+        strokes: [{ tool: "pen", size: 256, points: [1600, 1600] }],
+        base: { kind: "file" },
+        savedAt: Date.now(),
+      });
+      if (!put) throw new Error("the draft was not kept");
       const file = app.vault.getFileByPath("001.ink.png");
       if (file === null) throw new Error("no 001.ink.png");
-      await app.fileManager.renameFile(file, "moved.ink.png");
+      await app.vault.rename(file, "moved.ink.png");
     });
-    await browser.waitUntil(async () =>
-      browser.executeObsidian(
-        ({ app }) => app.vault.getFileByPath("moved.ink.png") !== null,
-      ),
-    );
-    expect(await storage()).toEqual(kept);
-    expect(await storedDrafts()).toEqual([]);
+    expect(
+      (await storedDrafts()).map(({ id, target }) => [id, target]),
+    ).toEqual([["planted", { kind: "file", path: "moved.ink.png" }]]);
     expect(await storage()).toEqual(kept);
   });
 });
