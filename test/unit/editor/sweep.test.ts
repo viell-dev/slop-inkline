@@ -411,6 +411,16 @@ describe("sweepPath", () => {
     expect(path.length).toBe(Math.ceil(999 / sweepRun) + 1);
   });
 
+  it("keeps a corner where the way comes straight back to it", () => {
+    expect(sweepPath([0, 0, 160, 0, 0, 0])).toEqual([
+      [0, 0],
+      [160, 0],
+      [0, 0],
+    ]);
+    const stroke = sweptStroke("eraser", 96, [0, 0, 160, 0, 0, 0]);
+    expect(stroke.points.every(Number.isInteger)).toBe(true);
+  });
+
   it("drops a point repeated in a row", () => {
     expect(sweepPath([0, 0, 0, 0, 16, 0, 16, 0])).toEqual([
       [0, 0],

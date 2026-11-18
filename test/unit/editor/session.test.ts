@@ -1365,6 +1365,40 @@ describe("DrawingSession's cuts", () => {
     expect(Math.max(...ys)).toBe(800 + 96);
   });
 
+  it("saves an eraser's area in whole units, however it is drawn", () => {
+    // Seeded strokes of every brush, on the grid and off, freehand and
+    // straight, cut and not, as the long drawing's end-to-end run draws them.
+    let state = 115;
+    const random = (): number => {
+      state = (state * 16807) % 2147483647;
+      return state / 2147483647;
+    };
+    const between = (from: number, to: number): number =>
+      from + (to - from) * random();
+    for (let trial = 0; trial < 400; trial++) {
+      const session = new DrawingSession(emptyDocument);
+      session.tool = "eraser";
+      session.sizeIndex = Math.floor(between(0, 4));
+      session.flatEnds = random() < 0.5;
+      session.snap = random() < 0.5;
+      const straight = random() < 0.2;
+      let at = { x: between(0, 500), y: between(-30, 222) };
+      session.begin(at, session.snap);
+      const moves = Math.floor(between(0, 25));
+      for (let move = 0; move < moves; move++) {
+        at = { x: at.x + between(-16, 24), y: at.y + between(-12, 12) };
+        session.extend([at], straight);
+        for (const stroke of session.activeStrokes) {
+          expect(stroke.points.every(Number.isInteger)).toBe(true);
+        }
+      }
+      session.end(at, session.snap);
+      for (const stroke of session.document.strokes) {
+        expect(stroke.points.every(Number.isInteger)).toBe(true);
+      }
+    }
+  });
+
   it("moves an eraser's area with the drawing", () => {
     const session = new DrawingSession(emptyDocument);
     session.tool = "eraser";

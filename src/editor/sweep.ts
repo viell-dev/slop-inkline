@@ -43,7 +43,10 @@ function onSegment(point: Point, from: Point, to: Point): boolean {
   const px = point[0] - from[0];
   const py = point[1] - from[1];
   const along = px * dx + py * dy;
-  return dx * py - dy * px === 0 && along >= 0 && along <= dx * dx + dy * dy;
+  const length = dx * dx + dy * dy;
+  // A line back to where it started stands for no other point.
+  if (length === 0) return false;
+  return dx * py - dy * px === 0 && along >= 0 && along <= length;
 }
 
 /**
