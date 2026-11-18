@@ -16,9 +16,11 @@ What Inkline does not do, or does not do everywhere, and what to do instead. The
   ([#341](https://github.com/viell-dev/slop-inkline/issues/341)). Where the
   pointer is, the eraser takes away all the circle shows, and a straight stroke
   barely shifts. A smaller brush shifts the edge less, and Shift draws a
-  straight stroke. For an exact cut, use the eraser with **Ellipse** or
-  **Polygon** and **Toggle fill**: it takes away exactly the shape you drag or
-  place.
+  straight stroke. For a cut that does not shift, use the eraser with
+  **Ellipse** or **Polygon** and **Toggle fill**: it takes away exactly the
+  shape its preview shows, out to the preview's outer edge, which lies half the
+  brush's width beyond the box you drag or the corners you place, so a smaller
+  brush brings that edge closer to them.
 - **Large libraries** show 100 symbols at a time, with **Show more** for the
   next 100. Filter them, or choose a folder, to narrow the list.
 - **Library insertion needs a sidebar.** If the library's tab is dragged into
@@ -29,11 +31,6 @@ What Inkline does not do, or does not do everywhere, and what to do instead. The
   shows the callout as text
   ([#264](https://github.com/viell-dev/slop-inkline/issues/264)). Right-click
   the symbol there for **Edit symbol**.
-- **Notices in a right-to-left interface** still put the full stop of Inkline's
-  English at the start, as Obsidian draws them for every plugin
-  ([#267](https://github.com/viell-dev/slop-inkline/issues/267)). Inkline's own
-  screens and its tooltips keep it in place. **Unreleased:** Inkline's notices
-  keep it in place too.
 - **A line whose first letter is in a symbol's name** runs in that name's
   direction in Live Preview. `8 ![[مرحبا.ink.png]]` runs right to left there,
   and left to right in Reading view. Live Preview takes a line's direction from

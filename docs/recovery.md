@@ -169,12 +169,12 @@ the draft used the file's, which the new symbol does not have.
 
 ## Drafts from a newer version
 
-**Unreleased:** a later version of Inkline may keep its drafts in a way that
-earlier ones cannot read. If you go back to an earlier version, as by choosing
-one in BRAT or installing an older ZIP, the earlier one keeps those drafts as
-they are, with any picture they keep, so that the newer version can offer them
-again once you update. Inkline 1.0.0 and earlier drop them instead, as soon as a
-symbol opens or a file is renamed.
+A later version of Inkline may keep its drafts in a way that earlier ones cannot
+read. If you go back to an earlier version, as by choosing one in BRAT or
+installing an older ZIP, the earlier one keeps those drafts as they are, with
+any picture they keep, so that the newer version can offer them again once you
+update. Inkline 1.0.0 and earlier drop them instead, as soon as a symbol opens
+or a file is renamed.
 
 - Opening their symbol, or a new symbol in the same note, says **This symbol has
   unsaved changes from a newer version of Inkline**, if the earlier version can
