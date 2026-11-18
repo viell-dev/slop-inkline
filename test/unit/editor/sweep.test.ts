@@ -235,17 +235,12 @@ describe("sweptStroke", () => {
     for (const [name, points] of Object.entries(ways)) {
       const corners = cornersOf(sweptStroke("eraser", 192, points));
       corners.forEach((corner, index) => {
-        const next = corners[(index + 1) % corners.length];
-        const after = corners[(index + 2) % corners.length];
+        const next = corners[(index + 1) % corners.length] ?? corner;
+        const after = corners[(index + 2) % corners.length] ?? corner;
+        const same = (a: Point, b: Point): boolean =>
+          a[0] === b[0] && a[1] === b[1];
         // No edge followed straight back along itself.
-        expect(
-          next !== undefined &&
-            after !== undefined &&
-            after[0] === corner[0] &&
-            after[1] === corner[1] &&
-            (next[0] !== corner[0] || next[1] !== corner[1]),
-          name,
-        ).toBe(false);
+        expect(same(after, corner) && !same(next, corner), name).toBe(false);
       });
     }
   });
