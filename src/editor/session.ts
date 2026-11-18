@@ -209,13 +209,32 @@ function withinSpacing(x: number, spacing: number): number {
 }
 
 /**
+ * Whether `stroke` is the fill of a filled shape whose sides `next` draws:
+ * a stroke of the same tool through the very same points, as a filled
+ * ellipse or closed polygon is recorded.
+ */
+function filledInside(stroke: Stroke, next: Stroke | undefined): boolean {
+  if (stroke.kind !== "fill" || next === undefined || next.kind === "fill") {
+    return false;
+  }
+  const { points } = stroke;
+  return (
+    next.tool === stroke.tool &&
+    next.points.length === points.length &&
+    points.every((value, index) => value === next.points[index])
+  );
+}
+
+/**
  * A best guess at where a document's grid columns pass, `columns` pixels
  * apart, in pixels within one spacing, from where its strokes start and end;
  * `fallback` for a document with no strokes. Each stroke's start and end,
  * erasers' too, mark the place within a spacing where they lie, a one-point
- * stroke's once. The place marked most often wins; of places marked equally
- * often, the one that reached that count first in stroke order does, so with
- * no place marked twice, it is where the first stroke starts.
+ * stroke's once, and a filled shape's on its sides alone, so that it counts
+ * as the same shape unfilled does. The place marked most often wins; of
+ * places marked equally often, the one that reached that count first in
+ * stroke order does, so with no place marked twice, it is where the first
+ * stroke starts.
  *
  * Ends that Shift put on the grid lie on its columns, and a save moves the
  * drawing by whole pixels, so a drawing made on the grid lines up with it
@@ -235,7 +254,10 @@ export function gridOriginOf(
   const { rows } = grid.period === undefined ? finerGrid(grid) : grid;
   const onRows = new Set(rows.map(toUnits));
   const ends: { readonly x: number; readonly y: number }[] = [];
-  for (const { points } of document.strokes) {
+  const { strokes } = document;
+  for (const [index, stroke] of strokes.entries()) {
+    if (filledInside(stroke, strokes[index + 1])) continue;
+    const { points } = stroke;
     const last = points.length - 2;
     for (const at of last > 0 ? [0, last] : [0]) {
       const x = points[at];
@@ -409,7 +431,8 @@ export class DrawingSession {
   shape: Shape = "free";
   /**
    * Whether an ellipse, or a polygon closed on its first corner, is drawn
-   * filled, with its edges through its points, as it is drawn and placed.
+   * filled, as it is drawn and placed: its line at the brush's width, as
+   * without fill, and everything inside it.
    */
   fill = false;
   /** Each tool keeps its own selected size for the life of the session. */
@@ -577,16 +600,17 @@ export class DrawingSession {
   }
 
   /**
-   * The stroke being drawn, as it would be committed now, before its end
-   * comes to the grid: cut at its start if that is on the grid. A polygon
-   * being placed is shown as a click where the pointer is would leave it.
+   * The strokes being drawn, as they would be committed now, before their
+   * end comes to the grid: one, cut at its start if that is on the grid, or a
+   * filled shape's two. None while nothing is being drawn. A polygon being
+   * placed is shown as a click where the pointer is would leave it.
    */
-  get activeStroke(): Stroke | undefined {
+  get activeStrokes(): readonly Stroke[] {
     const active = this.#active;
-    if (active === undefined) return undefined;
+    if (active === undefined) return [];
     const next = this.#next;
     if (!active.polygon || next === undefined) {
-      return this.#stroke(
+      return this.#strokes(
         active,
         { start: active.onGrid, end: false },
         this.#corner !== undefined && this.fill,
@@ -599,14 +623,14 @@ export class DrawingSession {
     if (this.#closes(active, next)) {
       const closed = { ...active, points: [...active.points] };
       closed.points.push(active.points[0] ?? 0, active.points[1] ?? 0);
-      return this.#stroke(closed, uncut, this.fill);
+      return this.#strokes(closed, uncut, this.fill);
     }
     if (this.#near(active, next, active.points.length - 2)) {
-      return this.#stroke(active, uncut);
+      return [this.#stroke(active, uncut)];
     }
     const shown = { ...active, points: [...active.points] };
     this.#record(shown, this.#placed(next));
-    return this.#stroke(shown, uncut);
+    return [this.#stroke(shown, uncut)];
   }
 
   /**
@@ -624,8 +648,28 @@ export class DrawingSession {
   }
 
   /**
-   * `active` as a stroke, cut flat at the ends named, which are on the grid,
-   * and with `fill`, filled inside, if it has three points to enclose any.
+   * What `active` leaves, as {@link #stroke} makes it, with `fill`, if it has
+   * three points to enclose any, filled inside: the fill and then the line
+   * round it, which keeps the brush's width, so that a filled shape has the
+   * outer edge of the same shape unfilled. They are a single step of Undo.
+   */
+  #strokes(
+    active: ActiveStroke,
+    ends: { readonly start: boolean; readonly end: boolean },
+    fill: boolean,
+    paths?: {
+      readonly start?: readonly number[] | undefined;
+      readonly end?: readonly number[] | undefined;
+    },
+  ): Stroke[] {
+    const line = this.#stroke(active, ends, paths);
+    if (!fill || active.points.length < 6) return [line];
+    const { tool } = active;
+    return [{ tool, points: [...active.points], kind: "fill" }, line];
+  }
+
+  /**
+   * `active` as a stroke, cut flat at the ends named, which are on the grid.
    * The way a cut end runs is measured over at least a cell of the grid and
    * twice the brush's width, so that the small turns near an end that a hand
    * makes, and the jump to a grid point at its start, don't decide it;
@@ -636,7 +680,6 @@ export class DrawingSession {
   #stroke(
     active: ActiveStroke,
     ends: { readonly start: boolean; readonly end: boolean },
-    fill = false,
     paths: {
       readonly start?: readonly number[] | undefined;
       readonly end?: readonly number[] | undefined;
@@ -644,7 +687,6 @@ export class DrawingSession {
   ): Stroke {
     const { tool, size } = active;
     const points = [...active.points];
-    if (fill && points.length >= 6) return { tool, points, kind: "fill" };
     if (active.polygon) return { tool, size, points, kind: "polygon" };
     const stroke = { tool, size, points };
     const reach = Math.max(2 * active.size, toUnits(this.grid.spacing));
@@ -783,11 +825,11 @@ export class DrawingSession {
     points.push(x, y);
   }
   /**
-   * Commits the stroke being drawn as one undoable step, ending it at
-   * `release`, where the pointer was let go, when that is known. A polygon
-   * being placed takes a release as a corner, and commits only when that
-   * closes or ends it; without a release, it commits with the corners it
-   * has, as when saving.
+   * Commits the stroke being drawn, or a filled shape's two, as one undoable
+   * step, ending it at `release`, where the pointer was let go, when that is
+   * known. A polygon being placed takes a release as a corner, and commits
+   * only when that closes or ends it; without a release, it commits with the
+   * corners it has, as when saving.
    *
    * Shift counts as held for the release if `shift` says it is down, or if it
    * was at the last press or move: with no move since, what is drawn is what
@@ -824,10 +866,10 @@ export class DrawingSession {
       this.extend([this.#placed(end)], straight);
     }
     const active = this.#active;
-    const stroke =
-      active === undefined
-        ? undefined
-        : this.#stroke(
+    const strokes =
+      active === undefined || active.points.length === 0
+        ? []
+        : this.#strokes(
             active,
             { start: active.onGrid, end: onGrid && active.flat },
             ellipse && this.fill,
@@ -838,11 +880,11 @@ export class DrawingSession {
     this.#corner = undefined;
     this.#next = undefined;
     this.#starting = false;
-    if (stroke !== undefined && stroke.points.length > 0) {
+    if (strokes.length > 0) {
       // On the grid it was drawn on, which a waiting one then replaces.
       this.#push({
         ...this.document,
-        strokes: [...this.document.strokes, stroke],
+        strokes: [...this.document.strokes, ...strokes],
       });
     }
     this.#takeNextGrid();
@@ -906,14 +948,14 @@ export class DrawingSession {
 
   /** Commits a polygon as one undoable step, with `fill`, filled inside. */
   #commit(active: ActiveStroke, fill = false): void {
-    const stroke = this.#stroke(active, uncut, fill);
+    const strokes = this.#strokes(active, uncut, fill);
     this.#active = undefined;
     this.#next = undefined;
     this.#starting = false;
     this.#snaps = [];
     this.#push({
       ...this.document,
-      strokes: [...this.document.strokes, stroke],
+      strokes: [...this.document.strokes, ...strokes],
     });
     this.#takeNextGrid();
   }
