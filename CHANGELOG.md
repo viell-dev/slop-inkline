@@ -11,6 +11,13 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ### Fixed
 
+- The editor's status line no longer keeps a message that has stopped applying,
+  such as "Zoomed out" after **Fit**, or "Polygon dropped" once the threshold
+  moves in **Make ink**
+  ([#302](https://github.com/viell-dev/slop-inkline/issues/302)). Whatever you
+  do replaces it, with what that did, or with nothing when there is nothing to
+  say, which a screen reader does not announce. "Saving…" and "Draft not kept"
+  stay until the save ends or a draft is kept again.
 - Ink shows under the pointer that draws it at the bottom of the drawing area
   too, where it showed up to 2 CSS pixels above it, in the usual view and in
   **Zoom** alike, as the area's border took its height from the drawing
@@ -28,6 +35,10 @@ even one a public release; earlier pre-releases carry a suffix such as
   the format already has, so a symbol drawn with this release opens in 1.0.0,
   and symbols already saved look as before
   ([#342](https://github.com/viell-dev/slop-inkline/issues/342)).
+- The **Fit** button's tooltip, and the table of keys in the guide, said that
+  Fit shows all of a drawing wider than the view. That is so out of **Zoom**; in
+  Zoom, Fit centres the drawing and stays zoomed, as the guide and **Help** say
+  ([#363](https://github.com/viell-dev/slop-inkline/issues/363)).
 
 ## 1.0.0 - 2026-11-16
 
