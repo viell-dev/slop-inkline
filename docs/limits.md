@@ -16,9 +16,11 @@ What Inkline does not do, or does not do everywhere, and what to do instead. The
   ([#341](https://github.com/viell-dev/slop-inkline/issues/341)). Where the
   pointer is, the eraser takes away all the circle shows, and a straight stroke
   barely shifts. A smaller brush shifts the edge less, and Shift draws a
-  straight stroke. For an exact cut, use the eraser with **Ellipse** or
-  **Polygon** and **Toggle fill**: it takes away exactly the shape you drag or
-  place.
+  straight stroke. For a cut that does not shift, use the eraser with
+  **Ellipse** or **Polygon** and **Toggle fill**: it takes away exactly the
+  shape its preview shows, out to the preview's outer edge, which lies half the
+  brush's width beyond the box you drag or the corners you place, so a smaller
+  brush brings that edge closer to them.
 - **Large libraries** show 100 symbols at a time, with **Show more** for the
   next 100. Filter them, or choose a folder, to narrow the list.
 - **Library insertion needs a sidebar.** If the library's tab is dragged into

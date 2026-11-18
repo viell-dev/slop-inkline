@@ -17,8 +17,9 @@ symbol**, or for one you have, from **Edit symbol** or a
 - a **status line**, which says what the editor did last, such as "Saved".
   Whatever you do next replaces it, so it is empty after something with nothing
   to say, such as **Fit** or a tool's button, rather than keep an earlier
-  message; "Saving…" stays until the save ends, and "Draft not kept" until a
-  draft is kept again.
+  message. Through actions with nothing of their own to say, "Saving…" stays
+  until the save ends, and "Draft not kept" until a draft is kept again; one
+  that says something replaces them.
 
 In the shortcuts below, Mod is Ctrl, or Cmd on macOS. Single-key shortcuts and
 undo give way to a text field that has the focus, such as the name field, so
@@ -72,7 +73,7 @@ box is on the grid only if Shift is held as you place it: the first as you
 press, the second as you let go. Shift does this instead of making a circle, and
 no circle is drawn. The second corner follows the pointer, and goes back to it
 if you let go of Shift while dragging. An ellipse with both corners on the grid
-touches its lines at its top, bottom, and sides.
+has the middle of its line on the grid's lines at its top, bottom, and sides.
 
 For a half circle, draw the circle, then erase the half you don't want with
 eraser strokes that end on the row across its middle: with the grid and **Flat

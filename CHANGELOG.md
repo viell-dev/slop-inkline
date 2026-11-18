@@ -45,8 +45,9 @@ says.
   moves in **Make ink**
   ([#302](https://github.com/viell-dev/slop-inkline/issues/302)). Whatever you
   do replaces it, with what that did, or with nothing when there is nothing to
-  say, which a screen reader does not announce. "Saving…" and "Draft not kept"
-  stay until the save ends or a draft is kept again.
+  say, which a screen reader does not announce. Through actions with nothing of
+  their own to say, "Saving…" and "Draft not kept" stay until the save ends or a
+  draft is kept again.
 - Going back from a later version of Inkline, as by choosing an earlier version
   in BRAT or installing an older ZIP, keeps the unsaved drawings that the later
   version kept as drafts, if it keeps them in a way this version cannot read.

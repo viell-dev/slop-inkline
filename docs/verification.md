@@ -180,7 +180,8 @@ must keep released files readable and looking the same, as
   nothing to say, as for **Fit** after "Zoomed out", and for a threshold moved
   after "Polygon dropped" while **Make ink** is open; what one says replaces
   what was there; a key that does nothing leaves it; and "Saving…" and "Draft
-  not kept" stay through strokes and keys until the save ends or a draft is kept
+  not kept" stay through strokes and keys with nothing to say until the save
+  ends or a draft is kept
   ([status-line.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/status-line.e2e.ts),
   with its rules in
   [status.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/status.test.ts)).
