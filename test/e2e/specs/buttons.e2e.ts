@@ -60,7 +60,7 @@ const usual: Readonly<Record<string, string>> = {
   "flat-ends":
     "Flat ends: with the grid on, freehand ends that Shift puts on a row, coming in at 45° or steeper, stop flush with it, rather than rounding past it (T)",
   copy: "Copy from: start from a copy of another symbol (V)",
-  fit: "Fit: centre the drawing in the view, and show all of it if it is wider; the drawing itself stays as it is (F)",
+  fit: "Fit: centre the drawing in the view, and out of Zoom show all of it if it is wider; the drawing itself stays as it is (F)",
   zoom: "Zoom: a taller view of the drawing, twice as large, with twice as many grid cells each way; the wheel or the left and right arrow keys move along it (Z)",
   save: "Save (Mod+Enter)",
   next: "Next: save and draw the next one (Mod+Shift+Enter)",
@@ -299,7 +299,7 @@ describe("The editor", function () {
       pen: "Pen (P)",
       next: "Next: save and draw the next one (Mod+Shift+Enter)",
       grid: "Grid: show a grid of dots as a guide; hold Shift while drawing to snap to it (Shift+G)",
-      fit: "Fit: centre the drawing in the view, and show all of it if it is wider; the drawing itself stays as it is (F)",
+      fit: "Fit: centre the drawing in the view, and out of Zoom show all of it if it is wider; the drawing itself stays as it is (F)",
     });
     const tooltip = async (id: string, text: string): Promise<void> => {
       const button = await browser

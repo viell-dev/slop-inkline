@@ -11,11 +11,13 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ### Fixed
 
-- [Known limits](https://viell-dev.github.io/slop-inkline/limits#in-general) now
-  says that the edge the eraser leaves can shift behind a large brush moving
-  along a curve, and that a little ink can come back beside the way it went,
-  with what to do instead
-  ([#341](https://github.com/viell-dev/slop-inkline/issues/341)).
+- The editor's status line no longer keeps a message that has stopped applying,
+  such as "Zoomed out" after **Fit**, or "Polygon dropped" once the threshold
+  moves in **Make ink**
+  ([#302](https://github.com/viell-dev/slop-inkline/issues/302)). Whatever you
+  do replaces it, with what that did, or with nothing when there is nothing to
+  say, which a screen reader does not announce. "Saving…" and "Draft not kept"
+  stay until the save ends or a draft is kept again.
 - A filled polygon or ellipse keeps the brush's width around it. Closing a
   filled polygon left only the area through its corners, half the brush's width
   smaller on every side than its sides had shown while it was placed, and a
@@ -27,6 +29,15 @@ even one a public release; earlier pre-releases carry a suffix such as
   the format already has, so a symbol drawn with this release opens in 1.0.0,
   and symbols already saved look as before
   ([#342](https://github.com/viell-dev/slop-inkline/issues/342)).
+- The **Fit** button's tooltip, and the table of keys in the guide, said that
+  Fit shows all of a drawing wider than the view. That is so out of **Zoom**; in
+  Zoom, Fit centres the drawing and stays zoomed, as the guide and **Help** say
+  ([#363](https://github.com/viell-dev/slop-inkline/issues/363)).
+- [Known limits](https://viell-dev.github.io/slop-inkline/limits#in-general) now
+  says that the edge the eraser leaves can shift behind a large brush moving
+  along a curve, and that a little ink can come back beside the way it went,
+  with what to do instead
+  ([#341](https://github.com/viell-dev/slop-inkline/issues/341)).
 
 ## 1.0.0 - 2026-11-16
 
