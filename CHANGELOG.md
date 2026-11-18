@@ -11,6 +11,21 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ### Fixed
 
+- A symbol that changes, as through sync, while some of its images are out of
+  the page now shows its new picture in them when Obsidian puts the same images
+  back with the addresses they had, as it does with parts of Reading view as it
+  lays a note out again, and with a canvas card's own editor, which it moves
+  into a frame of its own as it opens. Those images kept the old picture until
+  the note or the editor was shown again. An image that Obsidian makes anew,
+  rather than puts back, is not covered: one made with an address from before
+  the change can still show the old picture until the note is shown again
+  ([#281](https://github.com/viell-dev/slop-inkline/issues/281)).
+- Inkline follows a canvas card's own editor from the moment it appears, rather
+  than once it takes the focus, tens of milliseconds later. A symbol that
+  changed in between kept its old picture there, and an editor that never took
+  the focus would never have been followed, its symbols keeping their old
+  pictures without Inkline's menu or double-click
+  ([#336](https://github.com/viell-dev/slop-inkline/issues/336)).
 - The eraser takes away exactly what its circle passes over, and what it has
   taken stays taken as you go on. Behind a large brush moving along a curve, the
   edge it left in the ink used to shift while erasing, and a little ink came
@@ -25,8 +40,8 @@ even one a public release; earlier pre-releases carry a suffix such as
   before are as they were.
   [Known limits](https://viell-dev.github.io/slop-inkline/limits#in-general)
   says that the eraser's edge no longer shifts, but for an eraser stroke that
-  Flat ends stops flush with a row and that comes back near that end, which is
-  drawn as before
+  Flat ends stops flush with a row and that comes back near that end, or past
+  that row elsewhere, which is drawn as before
   ([#341](https://github.com/viell-dev/slop-inkline/issues/341)).
 
 ## 1.0.1 - 2026-11-18

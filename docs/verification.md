@@ -162,6 +162,16 @@ must keep released files readable and looking the same, as
   In a popout and in a canvas card's own editor, a reshaped symbol's width over
   its height, and an explicit size's drop, follow its new shape, and a note
   first shown in a popout has its symbols measured (the same file).
+  **Unreleased:** so they do in a card's editor whose frame never reaches
+  Inkline with the focus, where a double-click on a symbol opens it, and whose
+  document stops being watched as the editor closes. A symbol's images taken out
+  of Reading view while it is rewritten with the same modification time come
+  back, as the same elements, with its new picture, while one given a newer
+  address meanwhile keeps it. An image taken out while its symbol is rewritten,
+  then deleted and made again with its old modification time, comes back with
+  the new file's address and picture, not the deleted file's last one (the same
+  file). Images that Obsidian makes anew keep the address they come with, as
+  [the rendering contract](./rendering.md) says, and are not tested.
 
 ### The editor shows what its tools do
 
