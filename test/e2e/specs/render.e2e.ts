@@ -179,7 +179,9 @@ async function waitForLoaded(selector: string, total: number): Promise<void> {
 async function colours(
   selector: string,
 ): Promise<{ text: number; grey: number }> {
-  const element = await browser.$(`${selector}.inkline-symbol`).getElement();
+  const element = await browser
+    .$(`${selector}.inkline-symbol`, { strict: false })
+    .getElement();
   const shot = await browser.takeElementScreenshot(element.elementId);
   return browser.execute(
     async (png, wanted) => {

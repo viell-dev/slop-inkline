@@ -112,6 +112,15 @@ export function area(
   return browser.$(`textarea[data-inkline-field="${field}"]`);
 }
 
+/** What a text area of the form or editor open now says is wrong. */
+export function fieldError(
+  field: "reading" | "translation",
+): ReturnType<typeof browser.$> {
+  return browser.$(
+    `.inkline-text-field:has(textarea[data-inkline-field="${field}"]) .inkline-text-error`,
+  );
+}
+
 /** Sets a text area's value as typing would. */
 export async function fill(
   field: "reading" | "translation",
@@ -156,7 +165,10 @@ export async function showFields(): Promise<void> {
   if ((await toggle().getAttribute("aria-expanded")) !== "true") {
     await toggle().click();
   }
-  await area("reading").waitForDisplayed();
+  // The editor's, as a library's form can be open beside it.
+  await browser
+    .$('.inkline-text-strip textarea[data-inkline-field="reading"]')
+    .waitForDisplayed();
 }
 
 /** Saves and closes the editor. */

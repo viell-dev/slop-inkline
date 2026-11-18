@@ -24,6 +24,7 @@ import { saveScreenshot } from "../support/screenshots.ts";
 import {
   area,
   changeOnDisk,
+  fieldError,
   fieldsOf,
   fill,
   fixtures,
@@ -193,9 +194,7 @@ describe("A symbol's readings and translations", function () {
       await paste("reading", "é".repeat(2048) + "x");
       await browser.$('[data-inkline-button="save"]').click();
       await waitForStatus("Not saved");
-      expect(await browser.$(".inkline-text-error").getText()).toContain(
-        "4096",
-      );
+      expect(await fieldError("reading").getText()).toContain("4096");
       expect(await bytesOf("Limit.ink.png")).toBe(before);
       await paste("reading", "é".repeat(2048));
       await saveAndClose();
@@ -208,7 +207,7 @@ describe("A symbol's readings and translations", function () {
       const hebrew = "שלום";
       await symbolWith("Right.ink.png", { reading: [hebrew, "TA"] });
       await editFile("Right.ink.png");
-      expect(await toggle().$("bdi").getText()).toBe(hebrew);
+      expect(await toggle().$("bdi", { strict: false }).getText()).toBe(hebrew);
       await showFields();
       const style = await browser.execute(() => {
         const field = document.querySelector("textarea");

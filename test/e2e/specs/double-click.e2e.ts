@@ -520,7 +520,9 @@ describe("Double-clicking a symbol", function () {
         .move({ x: link.x - 200, y: link.y })
         .move(link)
         .perform();
-      await browser.$(".hover-popover img.inkline-symbol").waitForExist();
+      await browser
+        .$(".hover-popover img.inkline-symbol", { strict: false })
+        .waitForExist();
       try {
         await leftAlone(".hover-popover p img.inkline-symbol");
       } finally {

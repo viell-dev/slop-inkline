@@ -125,7 +125,11 @@ async function showNote(path: string): Promise<void> {
  * would read the size of an empty canvas. Keyboard focus is ready at once.
  */
 export async function waitForEditor(): Promise<void> {
-  await surface().waitForDisplayed();
+  // Any editor's: a second can open over the first, as the command palette
+  // can open it, and the frames below are drawn for both.
+  await browser
+    .$(".inkline-editor .inkline-surface", { strict: false })
+    .waitForDisplayed();
   await framesDrawn();
 }
 

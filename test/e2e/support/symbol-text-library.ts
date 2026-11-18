@@ -9,9 +9,14 @@ export async function showLibrary(): Promise<void> {
   await browser.$(".inkline-library-list").waitForExist();
 }
 
-/** The library's row for the symbol at `file`. */
+/**
+ * The library's row for the symbol at `file`: the first library's, when a
+ * test has opened a second.
+ */
 export function row(file: string): ReturnType<typeof browser.$> {
-  return browser.$(`.inkline-library-symbol[data-inkline-path="${file}"]`);
+  return browser.$(`.inkline-library-symbol[data-inkline-path="${file}"]`, {
+    strict: false,
+  });
 }
 
 /** What the row for `file` shows of its values. */
@@ -44,13 +49,16 @@ export async function openFields(file: string): Promise<void> {
   });
 }
 
-export const formSave = () => browser.$(".inkline-library-edit-buttons button");
+export const formSave = () =>
+  browser.$(".inkline-library-edit-buttons button[type=submit]");
 
 export const formError = () => browser.$(".inkline-library-edit-error");
 
 /** The form's fields are gone, as after a save or a cancel. */
 export async function waitForClosedForm(): Promise<void> {
-  await browser.$(".inkline-library-edit-form").waitForExist({ reverse: true });
+  await browser
+    .$(".inkline-library-edit-form", { strict: false })
+    .waitForExist({ reverse: true });
 }
 
 /** What the open list shows: each row's name, and why it is there. */
