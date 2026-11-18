@@ -9,12 +9,22 @@ What Inkline does not do, or does not do everywhere, and what to do instead. The
   run on Linux; Windows and macOS should work but are not tested.
 - **Mouse or trackpad.** A drawing tablet's pen or a touchscreen draws as a
   mouse does: pen pressure and a pen's eraser end are not supported.
-- **Unreleased:** **an eraser stroke that Flat ends stops flush with a row, and
-  that also comes back near that end, or past that row elsewhere,** is drawn as
-  1.0.1 draws every eraser stroke, so the edge it leaves can shift behind a
-  large brush moving along a curve
-  ([#341](https://github.com/viell-dev/slop-inkline/issues/341)). Erase the rest
-  in a stroke of its own.
+- **In 1.0.1, the eraser's edge can shift along a curve.** Behind a large brush
+  moving along a curve, most of all slowly, the edge the eraser leaves in the
+  ink shifts while you erase, and a little ink can come back beside the way it
+  went, a few pixels outside the brush's circle. Some of it stays when you let
+  go ([#341](https://github.com/viell-dev/slop-inkline/issues/341)). Where the
+  pointer is, the eraser takes away all the circle shows, and a straight stroke
+  barely shifts. A smaller brush shifts the edge less, and Shift draws a
+  straight stroke. For a cut that does not shift, use the eraser with
+  **Ellipse** or **Polygon** and **Toggle fill**: it takes away exactly the
+  shape its preview shows, out to the preview's outer edge, which lies half the
+  brush's width beyond the box you drag or the corners you place, so a smaller
+  brush brings that edge closer to them. **Unreleased:** fixed: the eraser takes
+  away exactly what its circle passes over, and what it has taken stays taken as
+  you go on, but for an eraser stroke that Flat ends stops flush with a row, and
+  that also comes back near that end, or past that row elsewhere, which is drawn
+  as before. Erase the rest in a stroke of its own.
 - **Large libraries** show 100 symbols at a time, with **Show more** for the
   next 100. Filter them, or choose a folder, to narrow the list.
 - **Library insertion needs a sidebar.** If the library's tab is dragged into

@@ -46,8 +46,9 @@ separately opened editor starts both tools at the configured default size.
 **Unreleased:** the eraser takes away exactly what its circle passes over, and
 what it has taken stays taken as you go on, so the edge it leaves along a curve
 no longer shifts behind it
-([#341](https://github.com/viell-dev/slop-inkline/issues/341)). The pen draws as
-before.
+([#341](https://github.com/viell-dev/slop-inkline/issues/341)), but for one
+stroke with **Flat ends** that [Known limits](./limits.md#in-general) describes.
+The pen draws as before.
 
 The brush circle and centre dot change between black and white to contrast with
 the drawing underneath, including tracing pictures. The thin outline keeps its

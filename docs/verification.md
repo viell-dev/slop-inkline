@@ -262,20 +262,27 @@ must keep released files readable and looking the same, as
   ellipse's edge, back on itself, and round a loop, with Zoom off and on, takes
   away exactly what its brush sweeps. In every frame read back from the drawing
   area while the pointer moves, the area shown is a redraw of the points
-  reported so far, no ink comes back where the brush had taken it, and behind
-  the brush no edge pixel gets back half its ink; the release changes no pixel,
-  and the saved record draws what the last frame showed; and no ink is left
-  within the brush's sweep, or taken beyond it, more than a pixel from its edge.
-  The ink in the middle of the loop stays
+  reported so far, to within 2 of 255 in every pixel; no pixel more than a pixel
+  inside where the brush had been gets back 64 of 255 or more of its ink; and
+  more than a pixel outside the brush's circle no pixel gets back 128 or more.
+  The release, and a redraw of the strokes the editor keeps, change no pixel by
+  more than 2 of 255; and of the ink there was, none (128 of 255 or more) is
+  left more than a pixel inside the brush's sweep, and none taken (below 128)
+  more than a pixel outside it. The ink in the middle of the loop stays
   ([eraser-sweep.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/eraser-sweep.e2e.ts),
   [#341](https://github.com/viell-dev/slop-inkline/issues/341)). The same check
   fails on every case with the eraser as 1.0.1 saves it. Unit tests compare the
   area with the brush's exact sweep along straight lines, sharp turns, turns
   straight back, zigzags, a mouse's whole-pixel steps, a figure eight, random
   walks, and a loop round an island, check that it never takes back what it
-  swept as points come, never goes out and back along itself, holds whole units
-  however a seeded run draws it, and cuts its ends as a smooth stroke's
+  swept as points come, never goes out and back along itself, even where a cut
+  clips it, and cuts its ends as a smooth stroke's
   ([sweep.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/sweep.test.ts)).
+  Others check that a seeded run of strokes keeps whole units, that a stroke
+  with Flat ends that one outline cannot hold is exactly the smooth stroke 1.0.1
+  saved, gaps filled, and that a reopened drawing's grid counts an eraser's end
+  once
+  ([session.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/session.test.ts)).
 
 ### Drawing is never lost
 

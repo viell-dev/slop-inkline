@@ -23,8 +23,8 @@ even one a public release; earlier pre-releases carry a suffix such as
   reopened symbol places its grid by where such a stroke ends, and no longer by
   where it starts. Pen strokes, the eraser's shapes, and eraser strokes saved
   before are as they were.
-  [Known limits](https://viell-dev.github.io/slop-inkline/limits#in-general) no
-  longer says that the eraser's edge can shift, but for an eraser stroke that
+  [Known limits](https://viell-dev.github.io/slop-inkline/limits#in-general)
+  says that the eraser's edge no longer shifts, but for an eraser stroke that
   Flat ends stops flush with a row and that comes back near that end, which is
   drawn as before
   ([#341](https://github.com/viell-dev/slop-inkline/issues/341)).
