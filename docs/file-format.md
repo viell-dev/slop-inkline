@@ -737,15 +737,15 @@ last points are the way's last point: it goes out from there to the tip of the
 end, round, and back in, going round the half of the end's circle after its tip
 twice, so that the stroke's end marks the grid as a smooth stroke's would, and
 no other point of it does. An end that Flat ends cuts is cut off along the row
-through it, as [Cut ends](#cut-ends) cuts a smooth stroke's, and the outline
-then starts and ends at that end on the row, when all of the stroke past that
-row lies in the end's box and the rest of the way does not reach into the box.
-Otherwise, as when the way comes back near its end or past its row elsewhere,
-the stroke is saved as a smooth stroke with its cut, through the points the
-pointer reported and those that fill the gaps between them, as before. Pen
-strokes, and an eraser's ellipses and polygons, are saved as before. Inkline
-1.0.1 and earlier saved every eraser stroke drawn freehand as a smooth stroke,
-and such strokes draw as they did.
+through it, as [Cut ends](#cut-ends) cuts a smooth stroke's, when all of the
+stroke past that row lies in the end's box and the rest of the way does not
+reach into the box; when the drag's last end is cut, the outline then starts and
+ends at that end on the row. Otherwise, as when the way comes back near its end
+or past its row elsewhere, the stroke is saved as a smooth stroke with its cut,
+through the points the pointer reported and those that fill the gaps between
+them, as before. Pen strokes, and an eraser's ellipses and polygons, are saved
+as before. Inkline 1.0.1 and earlier saved every eraser stroke drawn freehand as
+a smooth stroke, and such strokes draw as they did.
 
 A file says nothing of Inkline's grid, which belongs to the note's font and the
 Grid size setting rather than to the symbol. A stroke's points are stored
