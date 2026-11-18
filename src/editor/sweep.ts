@@ -84,8 +84,9 @@ export function sweepPath(points: readonly number[]): Point[] {
 /**
  * The outline of what a round brush of `radius` units sweeps along `path`, a
  * way in units with no point repeated in a row, to be filled with the nonzero
- * rule: a circle for a way of one point. Its last point is the way's last, as
- * a stroke's ends mark where a reopened drawing's grid lies.
+ * rule: a circle for a way of one point. Its first and last points are the
+ * way's last point, as a stroke's ends mark where a reopened drawing's grid
+ * lies, and no other point of the outline could mark it rightly.
  *
  * It goes round one side of the way from its end, round its start, and back
  * along the other side, with a half circle at each end. Where the way turns,
@@ -97,12 +98,14 @@ export function sweepPath(points: readonly number[]): Point[] {
  * each turn, and a half circle at each end, with some of what two rectangles
  * both cover taken out once. So the nonzero rule fills every point that any of
  * them covers, however the way crosses itself or turns back, and only those:
- * ink the way goes round without covering, as inside a loop, stays. The end's
- * half circle goes round twice, the second time back across it through the
- * way's last point, which covers it twice and adds nothing more. No part of
- * the outline goes out and straight back along itself: that encloses nothing,
- * but where a renderer adds up the coverage of each edge, it can leave a
- * hairline that one edge covered and the other did not take back.
+ * ink the way goes round without covering, as inside a loop, stays. From the
+ * way's last point, it goes out to the tip of the end and starts round from
+ * there; it comes back round to the tip, round the half after it once more,
+ * and in to that point, which covers that half twice and adds nothing more.
+ * No part of the outline goes out and straight back along itself: that
+ * encloses nothing, but where a renderer adds up the coverage of each edge,
+ * it can leave a hairline that one edge covered and the other did not take
+ * back.
  */
 export function sweepOutline(path: readonly Point[], radius: number): Point[] {
   const moves = path
@@ -198,8 +201,11 @@ export function sweepOutline(path: readonly Point[], radius: number): Point[] {
     return { angle, normalOutside, meet };
   });
   const lastSide = side(lastStep);
-  push(along(last, lastSide, 1));
-  arc(last, lastSide, Math.PI);
+  // From the way's last point out to the tip of its end, and round.
+  const ahead: Point = [lastStep[0] * radius, lastStep[1] * radius];
+  push(last);
+  push(along(last, ahead, 1));
+  arc(last, ahead, Math.PI / 2);
   // Back along the side away from the normal, inside the turns the normal's
   // side is outside of.
   for (let index = steps.length - 1; index >= 0; index--) {
@@ -240,8 +246,11 @@ export function sweepOutline(path: readonly Point[], radius: number): Point[] {
     if (turn.normalOutside) arc(corner, offset, turn.angle);
     else push(corner);
   });
-  // Round the end once more, and back across it through its point.
-  arc(last, lastSide, Math.PI);
+  // Round the end to its tip, round the half after the tip once more, and
+  // back in to the way's last point.
+  arc(last, lastSide, Math.PI / 2);
+  push(along(last, ahead, 1));
+  arc(last, ahead, Math.PI / 2);
   push(along(last, lastSide, -1));
   push(last);
   return outline;
@@ -377,8 +386,8 @@ function flattened(points: readonly Point[]): number[] {
 /**
  * The stroke an eraser's brush of `size` units leaves along its `x, y`
  * points in units, with its ends cut as `cut` says: a stroke of kind "fill"
- * whose points go round the area the brush swept, ending at the way's last
- * point. A way that never left its first point is the round dot a smooth
+ * whose points go round the area the brush swept, starting and ending at the
+ * way's last point. A way that never left its first point is the round dot a smooth
  * stroke draws exactly; so is a cut stroke whose area would take more than one
  * outline, as when the rest of the way comes back into a cut end's box, which
  * Flat ends rarely meets, and the format's own cut then draws.
@@ -418,11 +427,12 @@ export function sweptStroke(
     ends,
   );
   if (clipped === undefined) return smooth;
-  // From just after the way's last point, if the cut left it, so that the
-  // outline still ends there.
-  const at = clipped.findIndex(([x, y]) => x === last[0] && y === last[1]);
-  const ordered =
-    at < 0 ? clipped : [...clipped.slice(at + 1), ...clipped.slice(0, at + 1)];
-  const flat = flattened(ordered);
-  return flat.length >= 6 ? { tool, kind: "fill", points: flat } : smooth;
+  // A cut end lies on its row, and is kept with what lies there, so the cut
+  // outline still starts and ends at the way's last point; one that does not
+  // could mark the grid where it is not.
+  const flat = flattened(clipped);
+  const marks = [flat[0], flat[1], flat.at(-2), flat.at(-1)];
+  return flat.length >= 6 && marks.every((value, at) => value === last[at % 2])
+    ? { tool, kind: "fill", points: flat }
+    : smooth;
 }

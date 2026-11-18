@@ -18,7 +18,8 @@ What Inkline does not do, or does not do everywhere, and what to do instead. The
   barely shifts. A smaller brush shifts the edge less, and Shift draws a
   straight stroke. For an exact cut, use the eraser with **Ellipse** or
   **Polygon** and **Toggle fill**: it takes away exactly the shape you drag or
-  place.
+  place. **Unreleased:** fixed: the eraser takes away exactly what its circle
+  passes over, and what it has taken stays taken as you go on.
 - **Large libraries** show 100 symbols at a time, with **Show more** for the
   next 100. Filter them, or choose a folder, to narrow the list.
 - **Library insertion needs a sidebar.** If the library's tab is dragged into
@@ -218,7 +219,8 @@ the mark before renaming what it links to.
   past it fails with a message, and the draft stops at the last stroke within
   it, so undo what took the drawing over. **Unreleased:** an eraser stroke drawn
   freehand keeps the outline of the area it took away, about three times the
-  points of a pen stroke as long, and up to about six for a slow curve.
+  points of a pen stroke as long, and up to about seven for a slow curve with
+  XL.
 - Saving a symbol with a large base layer from the editor takes two or three
   seconds near the limit, and Obsidian keeps answering all through it. A symbol
   drawn by hand takes milliseconds. What remains is a pause of up to about a

@@ -18,9 +18,9 @@ even one a public release; earlier pre-releases carry a suffix such as
   now saved as the area its brush swept, as a filled shape the file format
   already has, so symbols stay in the same format and open in earlier versions
   of Inkline as before. Such a stroke holds about three times the points of a
-  pen stroke as long, and up to about six for a slow curve. Pen strokes, the
-  eraser's shapes, and eraser strokes saved before are as they were
-  ([#341](https://github.com/viell-dev/slop-inkline/issues/341)).
+  pen stroke as long, and up to about seven for a slow curve with the largest
+  brush. Pen strokes, the eraser's shapes, and eraser strokes saved before are
+  as they were ([#341](https://github.com/viell-dev/slop-inkline/issues/341)).
 - In a right-to-left interface, as Obsidian's in Hebrew, Inkline's notices keep
   the full stop at the end of their English, where they used to put it at the
   start, as in ".There are no symbols to insert yet". Other plugins' notices,

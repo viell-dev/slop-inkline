@@ -9,6 +9,7 @@ import {
   sweptStroke,
   type Point,
 } from "../../../src/editor/sweep.ts";
+import { gridOriginOf } from "../../../src/editor/session.ts";
 import { cutBoxes } from "../../../src/ink/outline.ts";
 
 /** The nonzero winding number of a closed polygon about `point`. */
@@ -216,10 +217,18 @@ describe("sweptStroke", () => {
     expect(short).toContainEqual([24, 0]);
   });
 
-  it("ends at the way's last point, for the grid a drawing's ends suggest", () => {
+  it("starts and ends at the way's last point, for the grid a drawing's ends suggest", () => {
     const points = [100, 200, 300, 260, 500, 120];
     const stroke = sweptStroke("eraser", 192, points);
+    expect(stroke.points.slice(0, 2)).toEqual([500, 120]);
     expect(stroke.points.slice(-2)).toEqual([500, 120]);
+    // Coming down to a row, so that its sides there lie on the row too, the
+    // grid is guessed from its end alone, where it is.
+    const down = sweptStroke("eraser", 384, [376, 256, 376, 2304], {
+      end: "down",
+    });
+    expect(down.kind).toBe("fill");
+    expect(gridOriginOf({ strokes: [down] })).toBe(376 / 16 - 16);
   });
 
   it("never goes out and back along itself, which a renderer can leave a hairline of", () => {
