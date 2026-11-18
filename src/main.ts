@@ -38,6 +38,7 @@ import {
   type SettingKey,
   type Settings,
 } from "./settings.ts";
+import { markNotice } from "./notices.ts";
 
 /** Inkline: symbols drawn once and written in notes like characters. */
 export default class InklinePlugin extends Plugin {
@@ -108,8 +109,10 @@ export default class InklinePlugin extends Plugin {
     try {
       this.#settings = readSettings(await this.loadData(), brushSizes.length);
     } catch {
-      new Notice(
-        "Inkline settings could not be read. Using defaults for this session.",
+      markNotice(
+        new Notice(
+          "Inkline settings could not be read. Using defaults for this session.",
+        ),
       );
     }
     // Obsidian can unload the plugin while its settings are read, and would
@@ -247,7 +250,7 @@ export default class InklinePlugin extends Plugin {
         if (!view?.file || view.getMode() !== "source") return false;
         if (!checking) {
           if (!this.app.vault.getFiles().some((file) => isInkPath(file.path))) {
-            new Notice("There are no symbols to insert yet.");
+            markNotice(new Notice("There are no symbols to insert yet."));
             return true;
           }
           insertExistingSymbol(
@@ -467,8 +470,10 @@ export default class InklinePlugin extends Plugin {
       await save;
       return true;
     } catch {
-      new Notice(
-        "Inkline settings could not be saved. Changes apply for this session.",
+      markNotice(
+        new Notice(
+          "Inkline settings could not be saved. Changes apply for this session.",
+        ),
       );
       return false;
     }

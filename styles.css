@@ -258,7 +258,11 @@
   --inkline-erasing: var(--color-red);
   display: block;
   width: 100%;
-  height: var(--inkline-surface-height, 288px);
+  /* The line box's height, as the content box's, and the border and padding
+     that the border box adds to it; view.ts sets both. */
+  height: calc(
+    var(--inkline-surface-height, 288px) + var(--inkline-surface-frame, 0px)
+  );
   color: var(--text-normal);
   background-color: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
@@ -536,6 +540,18 @@ img.inkline-symbol[width]:not([height]):not(.image-wrapper > img),
   :is(.inkline-editor, .inkline-help, .inkline-library)
   :is(p, li, h2, div, span, label) {
   unicode-bidi: plaintext;
+  text-align: right;
+}
+
+/*
+ * A notice is Obsidian's, in an element that every plugin's notices share,
+ * and a right-to-left interface lays it out from the right too (#267). The
+ * message of each of Inkline's runs left to right, as it is an English
+ * sentence even where a symbol's name in another script starts it, and stays
+ * on the right, as the others do.
+ */
+.mod-rtl .notice-message.inkline-notice {
+  direction: ltr;
   text-align: right;
 }
 

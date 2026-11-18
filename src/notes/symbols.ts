@@ -73,6 +73,7 @@ import {
   type SymbolTexts,
 } from "./suggest.ts";
 import { isBlank, type TextChanges } from "./text-fields.ts";
+import { markNotice } from "../notices.ts";
 
 /**
  * How long, in milliseconds, to go on looking at an editor that a rename left
@@ -356,8 +357,10 @@ function liveView(
 }
 
 function appendedNotice(file: TFile): void {
-  new Notice(
-    `The note changed where the symbol was going, so it was added at the end of ${file.basename}.`,
+  markNotice(
+    new Notice(
+      `The note changed where the symbol was going, so it was added at the end of ${file.basename}.`,
+    ),
   );
 }
 
@@ -980,8 +983,10 @@ async function followRename(
     if (found === undefined) return undefined;
     if (!found.old) return capturePoint(text, found.start + now.length);
     if (Date.now() >= until) {
-      new Notice(
-        `Check the symbol's embed in ${file.basename}: it may still have the old name.`,
+      markNotice(
+        new Notice(
+          `Check the symbol's embed in ${file.basename}: it may still have the old name.`,
+        ),
       );
       return moved;
     }
@@ -1204,11 +1209,13 @@ async function rename(
   } catch (error) {
     const { fileName } = renaming;
     if (error instanceof RenameDisturbed) {
-      new Notice(`${fileName} is saved, but ${error.message}`);
+      markNotice(new Notice(`${fileName} is saved, but ${error.message}`));
       return error.renamed;
     }
-    new Notice(
-      `${fileName} is saved, but could not be renamed: ${message(error)}`,
+    markNotice(
+      new Notice(
+        `${fileName} is saved, but could not be renamed: ${message(error)}`,
+      ),
     );
     return false;
   }
@@ -1380,7 +1387,9 @@ export function insertExistingSymbol(
         if (!unloaded.aborted) returnFocus(app, target);
       })
       .catch((error: unknown) => {
-        new Notice(`The symbol could not be inserted: ${message(error)}`);
+        markNotice(
+          new Notice(`The symbol could not be inserted: ${message(error)}`),
+        );
       });
   }).open();
 }
@@ -1474,8 +1483,10 @@ function newSymbol(
         // No editor takes the picture over.
         chosen.picture?.image.close();
         if (gone) {
-          new Notice(
-            `No next symbol was started, as the note it was for, ${note.basename}, was deleted.`,
+          markNotice(
+            new Notice(
+              `No next symbol was started, as the note it was for, ${note.basename}, was deleted.`,
+            ),
           );
         }
         return;
@@ -1638,8 +1649,10 @@ function newSymbol(
        */
       const noteGone = (): boolean => {
         if (present(app, note)) return false;
-        new Notice(
-          `${saved.name} is saved, but was not inserted, as the note it was for, ${note.basename}, was deleted.`,
+        markNotice(
+          new Notice(
+            `${saved.name} is saved, but was not inserted, as the note it was for, ${note.basename}, was deleted.`,
+          ),
         );
         // Nothing is left to insert: later saves only write the file, which
         // the draft is for from now on, and Next opens no editor after it.
@@ -1689,7 +1702,7 @@ function message(error: unknown): string {
 function sayOpening(name: string): () => void {
   let notice: Notice | undefined;
   const timer = window.setTimeout(() => {
-    notice = new Notice(`Opening ${name}…`, 0);
+    notice = markNotice(new Notice(`Opening ${name}…`, 0));
   }, openingNoticeAfter);
   return () => {
     window.clearTimeout(timer);
@@ -1786,7 +1799,7 @@ async function copySymbol(
     .filter((file) => isInkPath(file.path))
     .sort((a, b) => a.path.localeCompare(b.path));
   if (symbols.length === 0) {
-    new Notice("There are no symbols to start from yet.");
+    markNotice(new Notice("There are no symbols to start from yet."));
     return undefined;
   }
   // Read as a call: the signal can abort while this waits.
@@ -1814,15 +1827,17 @@ async function copySymbol(
     opened = ink.kind === "damaged" ? await openPicture(bytes) : ink;
     text = await readFileText(bytes);
   } catch (error) {
-    new Notice(`Could not open ${file.name}: ${message(error)}`);
+    markNotice(new Notice(`Could not open ${file.name}: ${message(error)}`));
     return undefined;
   } finally {
     stopSaying();
   }
   if (ended()) return undefined;
   if (opened.kind === "newer-version") {
-    new Notice(
-      `${file.name} was saved by a newer version of Inkline. Update Inkline to start from it.`,
+    markNotice(
+      new Notice(
+        `${file.name} was saved by a newer version of Inkline. Update Inkline to start from it.`,
+      ),
     );
     return undefined;
   }
@@ -1900,11 +1915,13 @@ async function openEditor(
     drawing = await drawingOf(bytes);
     text = await readFileText(bytes);
   } catch (error) {
-    new Notice(
-      withKeptDraft(
-        host,
-        file,
-        `Could not open ${file.name}: ${message(error)}`,
+    markNotice(
+      new Notice(
+        withKeptDraft(
+          host,
+          file,
+          `Could not open ${file.name}: ${message(error)}`,
+        ),
       ),
     );
     return;
@@ -1914,24 +1931,30 @@ async function openEditor(
   // Inkline may have been disabled while the file was read.
   if (host.unloaded.aborted || !wanted()) return;
   if (opened.kind === "newer-version") {
-    new Notice(
-      `${file.name} was saved by a newer version of Inkline. Update Inkline to edit it.`,
+    markNotice(
+      new Notice(
+        `${file.name} was saved by a newer version of Inkline. Update Inkline to edit it.`,
+      ),
     );
     return;
   }
   if (opened.kind === "damaged") {
-    new Notice(
-      withKeptDraft(
-        host,
-        file,
-        `The strokes in ${file.name} cannot be read, so it was not opened, which keeps them as they are. To go on from what it shows, use Copy from in a new symbol.`,
+    markNotice(
+      new Notice(
+        withKeptDraft(
+          host,
+          file,
+          `The strokes in ${file.name} cannot be read, so it was not opened, which keeps them as they are. To go on from what it shows, use Copy from in a new symbol.`,
+        ),
       ),
     );
     return;
   }
   if (modalCount() > modals) {
-    new Notice(
-      `${file.name} did not open, as another window opened while it was being read. Open it again when you are ready.`,
+    markNotice(
+      new Notice(
+        `${file.name} did not open, as another window opened while it was being read. Open it again when you are ready.`,
+      ),
     );
     return;
   }

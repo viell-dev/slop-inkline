@@ -185,8 +185,9 @@ export class InkView {
   /** Whether the surface shows the drawing magnified, taller and narrower. */
   #magnified = false;
   /**
-   * The tallest the surface may grow when magnified, in CSS pixels, as the
-   * window has room for; it then shows more width rather than grow.
+   * The tallest the surface may grow when magnified, in CSS pixels, its
+   * border included, as the window has room for; it then shows more width
+   * rather than grow.
    */
   heightLimit = Number.POSITIVE_INFINITY;
   /** CSS pixels per document pixel. */
@@ -313,6 +314,9 @@ export class InkView {
   /** Fits the surface to `cssWidth` CSS pixels across. */
   resize(cssWidth: number, devicePixelRatio: number): void {
     const width = Math.max(1, cssWidth);
+    // The line box fills the content box, which the bitmap is drawn into and
+    // the pointer is mapped from, so the element is taller by its frame.
+    const frame = this.#frame();
     if (this.#magnified) {
       // As tall as magnifying makes it, or the window allows, and never
       // smaller than the usual view; the middle stays where it was.
@@ -321,7 +325,7 @@ export class InkView {
         usual,
         Math.min(
           (width * magnification) / visibleWidth,
-          this.heightLimit / lineBox.height,
+          (this.heightLimit - frame) / lineBox.height,
         ),
       );
       this.#across = width / scale;
@@ -334,6 +338,10 @@ export class InkView {
       "--inkline-surface-height",
       `${String(cssHeight)}px`,
     );
+    this.canvas.style.setProperty(
+      "--inkline-surface-frame",
+      `${String(frame)}px`,
+    );
     const pixelWidth = Math.max(1, Math.round(width * devicePixelRatio));
     const pixelHeight = Math.max(1, Math.round(cssHeight * devicePixelRatio));
     for (const surface of [this.canvas, this.#committed, this.#work]) {
@@ -341,6 +349,31 @@ export class InkView {
       surface.height = pixelHeight;
     }
     this.#shown = undefined;
+  }
+
+  /**
+   * How much of the surface's CSS height its border and padding take, in CSS
+   * pixels: as much as they are, under Obsidian's styles, which size every
+   * element by its border box, and none for a box sized by its content. A
+   * border is as wide as the computed style says, a whole number of device
+   * pixels, so the content box keeps the line box's height at any zoom; left
+   * out, the border took it from the bitmap, which then drew the ink up to two
+   * CSS pixels above the pointer at the bottom of the surface (#359).
+   */
+  #frame(): number {
+    const style = getComputedStyle(this.canvas);
+    if (style.boxSizing !== "border-box") return 0;
+    let frame = 0;
+    for (const value of [
+      style.borderTopWidth,
+      style.borderBottomWidth,
+      style.paddingTop,
+      style.paddingBottom,
+    ]) {
+      const pixels = Number.parseFloat(value);
+      if (Number.isFinite(pixels)) frame += pixels;
+    }
+    return frame;
   }
 
   /**
