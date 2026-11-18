@@ -16,6 +16,8 @@ import {
 import {
   holdNextRead,
   holdNextWrite,
+  letReadGo,
+  letWriteGo,
   waitForHeldWrite,
 } from "../support/symbol-text.ts";
 import { noteOnDisk } from "../support/vault-files.ts";
@@ -251,6 +253,7 @@ describe("The editor", function () {
             [
               "inklineLetReadGo",
               "inklineLetWriteGo",
+              "inklineReadHeld",
               "inklineWriteHeld",
             ].includes(key) || key.startsWith("inklineAtEnd-"),
         ),
@@ -263,5 +266,50 @@ describe("The editor", function () {
       Reflect.deleteProperty(window, "inklineHeldWrite");
       Reflect.deleteProperty(window, "inklineHeldRead");
     });
+  });
+
+  it("starts each test from the vault as it was, after one that failed with a symbol's write held", async function () {
+    const original = await noteOnDisk("Editor.md");
+    // A write held at its gate, as a test that failed before it let the write
+    // go leaves it, and slow once let go, as a busy disk would make it: long
+    // enough that a reset that did not wait for it would come first.
+    await delayVault("modifyBinary", 3000, "before");
+    await holdNextWrite();
+    await browser.executeObsidian(({ app }) => {
+      const file = app.vault.getFileByPath("Editor.md");
+      if (file === null) throw new Error("no Editor.md");
+      const bytes = new TextEncoder().encode("Text from the test before\n");
+      void app.vault.modifyBinary(file, bytes.buffer).catch(() => undefined);
+    });
+    await waitForHeldWrite();
+    await startOver();
+    // Had the reset not waited for it, the write would land after it.
+    await waitForDelayed("modifyBinary");
+    expect(await noteOnDisk("Editor.md")).toBe(original);
+  });
+
+  it("refuses to hold a symbol's read or write while one is held", async function () {
+    const file = "Held.ink.png";
+    await createSymbol(file);
+    const refusal = async (holding: Promise<void>): Promise<string> =>
+      holding.then(
+        () => "",
+        (error: unknown) => (error instanceof Error ? error.message : "?"),
+      );
+    await holdNextWrite();
+    expect(await refusal(holdNextWrite())).toContain(
+      "a write is already held: let it go first",
+    );
+    await holdNextRead(file);
+    expect(await refusal(holdNextRead(file))).toContain(
+      "a read is already held: let it go first",
+    );
+    // Once let go, the next can be held.
+    await letWriteGo();
+    await letReadGo();
+    await holdNextWrite();
+    await holdNextRead(file);
+    await letWriteGo();
+    await letReadGo();
   });
 });

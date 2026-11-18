@@ -832,6 +832,12 @@ const replaceable = {
 } as const;
 
 /**
+ * The longest {@link undoStubs} waits for what it let go to finish, as long as
+ * {@link startOver} waits for a note's save.
+ */
+const letGoBound = 15_000;
+
+/**
  * Takes away whatever a test held or replaced and did not put back, as a test
  * that fails midway leaves it, so that one failure does not become many.
  *
@@ -853,6 +859,15 @@ const replaceable = {
  * `holdNextWrite` in support/symbol-text.ts hold, as their tests' own
  * clean-up let it go before these gates registered here.
  *
+ * A gate's way to end what it holds may return a promise: of the call it let
+ * go, and of what follows that call where the gate can name it. This waits for
+ * every such promise to settle, whether it resolves or rejects, before
+ * anything else, so that what was let go is done before {@link startOver}
+ * resets the vault: a write let go could otherwise land after the reset. It
+ * waits at most {@link letGoBound} ms, and then fails, naming each gate whose
+ * promise had not settled, once the rest of this is done, so that one test
+ * that cannot finish does not leave its stubs to the tests after it.
+ *
  * It then takes {@link hold}'s gate away, so that a later {@link waitForHeld}
  * or {@link letGo} cannot take it for its own; undoes {@link delayVault} and
  * {@link holdDecoding}; and removes every replacement of a method in
@@ -861,18 +876,40 @@ const replaceable = {
  * names that start with `inkline`. {@link startOver} does this first.
  */
 export async function undoStubs(): Promise<void> {
-  await browser.execute(() => {
+  const unfinished = await browser.execute(async (bound) => {
+    /** What each gate let go, by the gate's name after `inklineAtEnd-`. */
+    const ending = new Map<string, Promise<unknown>>();
     for (const key of Object.keys(window)) {
       if (!key.startsWith("inklineAtEnd-")) continue;
       const end: unknown = Reflect.get(window, key);
       Reflect.deleteProperty(window, key);
-      if (typeof end === "function") Reflect.apply(end, undefined, []);
+      if (typeof end !== "function") continue;
+      const after: unknown = Reflect.apply(end, undefined, []);
+      if (after instanceof Promise) {
+        ending.set(key.slice("inklineAtEnd-".length), after);
+      }
     }
     // Its gate, settled now, which a later test's waitForHeld() or letGo()
     // would otherwise take for its own.
     Reflect.deleteProperty(window, "inklineHoldGate");
     Reflect.deleteProperty(window, "inklineFollowedStatus");
-  });
+    const settled = new Set<string>();
+    const ignore = (): void => undefined;
+    let timer = 0;
+    await Promise.race([
+      Promise.all(
+        Array.from(ending, async ([name, after]) => {
+          await after.then(ignore, ignore);
+          settled.add(name);
+        }),
+      ),
+      new Promise((resolve) => {
+        timer = window.setTimeout(resolve, bound);
+      }),
+    ]);
+    window.clearTimeout(timer);
+    return Array.from(ending.keys()).filter((name) => !settled.has(name));
+  }, letGoBound);
   await restoreVault();
   await restoreDecoding();
   await browser.executeObsidian(({ app }, methods) => {
@@ -906,6 +943,11 @@ export async function undoStubs(): Promise<void> {
       }
     }
   }, replaceable);
+  if (unfinished.length > 0) {
+    throw new Error(
+      `undoStubs() let go what ${unfinished.map((name) => `the ${name} gate`).join(" and ")} held, and it did not finish within ${String(letGoBound)} ms`,
+    );
+  }
 }
 
 /**
