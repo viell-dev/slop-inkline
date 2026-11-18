@@ -193,9 +193,9 @@ A freehand end is not on a grid line, and stays round. So does a dot, and a
 stroke that ends on the grid point it started on, as a closed loop has no ends
 to cut. The eraser's ends are cut the same way, so erasing up to a row leaves a
 straight edge there. **Unreleased:** while Shift holds the eraser's end on the
-grid, the eraser shows that end cut before you let go, as letting go saves it.
-Shapes are never cut: an ellipse has no ends, and a polygon keeps its square
-ones.
+grid, the eraser shows that end cut before you let go, as letting go saves it,
+also when you press Shift or turn the grid on without moving. Shapes are never
+cut: an ellipse has no ends, and a polygon keeps its square ones.
 
 The grid keeps its place through saves. A symbol keeps its strokes exactly but
 not its grid, so what you placed with Shift never moves; what can change is

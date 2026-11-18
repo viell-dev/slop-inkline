@@ -293,6 +293,13 @@ must keep released files readable and looking the same, as
   saved, gaps filled, and that a reopened drawing's grid counts an eraser's end
   once
   ([session.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/session.test.ts)).
+  The eraser's stroke shown is the one that letting go, or **Next**, saves: in
+  seeded drags whose Shift and grid change between moves, in a test for each of
+  Shift, the grid, a grid laid out anew, and Flat ends changing with the pointer
+  still (the same file), and in Obsidian for Shift pressed and the grid turned
+  on with the pointer still, where the release changes no pixel by more than 2
+  of 255
+  ([flat-ends.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/flat-ends.e2e.ts)).
 
 ### Drawing is never lost
 
