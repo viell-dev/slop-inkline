@@ -46,6 +46,11 @@ even one a public release; earlier pre-releases carry a suffix such as
   Fit shows all of a drawing wider than the view. That is so out of **Zoom**; in
   Zoom, Fit centres the drawing and stays zoomed, as the guide and **Help** say
   ([#363](https://github.com/viell-dev/slop-inkline/issues/363)).
+- [Known limits](https://viell-dev.github.io/slop-inkline/limits#in-general) now
+  says that the edge the eraser leaves can shift behind a large brush moving
+  along a curve, and that a little ink can come back beside the way it went,
+  with what to do instead
+  ([#341](https://github.com/viell-dev/slop-inkline/issues/341)).
 
 ## 1.0.0 - 2026-11-16
 
