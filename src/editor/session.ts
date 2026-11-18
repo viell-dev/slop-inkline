@@ -430,6 +430,16 @@ export class DrawingSession {
    */
   #shift = false;
   /**
+   * Whether Shift is down now, as the last pointer event or {@link holdShift}
+   * said, which decides with {@link #shift} how the stroke being drawn ends.
+   */
+  #shiftNow = false;
+  /**
+   * Where the pointer last was for the stroke being drawn, before it went to
+   * the grid: where it was pressed, last moved to, or let go.
+   */
+  #at: InputPoint | undefined;
+  /**
    * Where the pointer is for the polygon being placed, before snapping: its
    * next corner goes there, or with Shift to the grid point nearest it.
    */
@@ -619,22 +629,22 @@ export class DrawingSession {
    * filled shape's two. None while nothing is being drawn. A stroke is cut at
    * its start if that is on the grid, and its end comes to the grid only as
    * it is let go; but an eraser's stroke drawn as the pointer goes is just
-   * what letting go, or {@link end} without a release, would save now, with
-   * the pointer where it is and Shift as its last event reported, as its
-   * end's cut can make it another kind of stroke. A polygon being placed is
-   * shown as a click where the pointer is would leave it.
+   * what {@link end} would commit now, released where the pointer is or not,
+   * as {@link #ending} makes it, since its end's cut can make it another kind
+   * of stroke. A polygon being placed is shown as a click where the pointer
+   * is would leave it.
    */
   get activeStrokes(): readonly Stroke[] {
     const active = this.#active;
     if (active === undefined) return [];
     const next = this.#next;
     if (!active.polygon || next === undefined) {
-      const { ends, paths } = this.#ending(active, this.#shift);
+      if (active.sweep) return this.#ending(active);
       return this.#strokes(
         active,
-        active.sweep ? ends : { ...ends, end: false },
+        { start: active.onGrid, end: false },
         this.#corner !== undefined && this.fill,
-        paths,
+        { start: this.#straightStart ? undefined : this.#path() },
       );
     }
     // A polygon shows what a click where the pointer is would make: a side
@@ -662,46 +672,85 @@ export class DrawingSession {
   #path(release?: InputPoint): readonly number[] | undefined {
     if (this.#pointer.length <= 2) return undefined;
     // A copy, as the stroke's end goes on to change the pointer's own.
-    return release === undefined
-      ? [...this.#pointer]
-      : [...this.#pointer, toUnits(release.x), toUnits(release.y)];
+    const way = [...this.#pointer];
+    if (release === undefined) return way;
+    const x = toUnits(release.x);
+    const y = toUnits(release.y);
+    // A release where the pointer last was adds nothing to measure.
+    if (way.at(-2) !== x || way.at(-1) !== y) way.push(x, y);
+    return way;
   }
 
   /**
-   * How `active` ends if it ends now, let go at `release` if that is known,
-   * with Shift counted as down as `held` says: whether its segment runs
-   * straight, which of its ends are cut, and the ways the pointer went that
-   * measure them, as {@link gridCuts} takes them. Its end is cut on the grid
-   * with Flat ends, as it comes to the grid there.
+   * The strokes that ending `active` now would commit, made afresh without
+   * changing anything, for {@link end} to push and an eraser's preview to
+   * show. They follow from these alone:
+   *
+   * - the points drawn so far, the straight segment Shift is drawing, and
+   *   the way the pointer went, which measures a cut end;
+   * - where the pointer last was: pressed, moved to, or let go;
+   * - Shift, held if it was down at the pointer's last event or is down now,
+   *   as the last pointer event or {@link holdShift} said;
+   * - the grid: whether it is on, and the grid point it puts the end on, from
+   *   a grid that one laid out while drawing replaces only at the end;
+   * - Flat ends, and whether the start is on the grid, as the stroke began;
+   * - for an ellipse, its first corner, whether Shift made it a circle, and
+   *   Fill.
+   *
+   * With Shift held on the grid, the end goes to the grid point nearest where
+   * the pointer is, or where it was last shown if Shift was let go since, as
+   * a hand letting go of the key an instant before the button should not
+   * knock it off the grid; a straight segment runs to it, and the end is cut
+   * with Flat ends. Otherwise it goes where the pointer is.
    */
-  #ending(
-    active: ActiveStroke,
-    held: boolean,
-    release?: InputPoint,
-  ): {
-    straight: boolean;
-    ends: { readonly start: boolean; readonly end: boolean };
-    paths: {
-      readonly start?: readonly number[] | undefined;
-      readonly end?: readonly number[] | undefined;
+  #ending(active: ActiveStroke): Stroke[] {
+    const at = this.#at;
+    if (at === undefined || active.points.length === 0) return [];
+    const held = this.#shift || this.#shiftNow;
+    const onGrid = held && this.snap;
+    const corner = this.#corner;
+    const anchor = this.#anchor;
+    const straight = corner === undefined ? anchor !== undefined : this.#circle;
+    const end = onGrid && !this.#shiftNow ? (this.#last ?? at) : at;
+    const placed = onGrid ? this.#snapped(end) : end;
+    const ended = {
+      ...active,
+      points: [...active.points],
+      reported: [...active.reported],
     };
-  } {
-    const straight =
-      this.#corner === undefined ? this.#anchor !== undefined : this.#circle;
+    if (corner !== undefined) {
+      ended.points.length = 0;
+      ended.reported.length = 0;
+      for (const point of ellipsePoints(
+        corner,
+        placed,
+        straight && !this.snap,
+      )) {
+        this.#record(ended, point);
+      }
+    } else if (anchor === undefined) {
+      this.#append(ended, this.#last, placed);
+    } else {
+      // The straight segment runs again from its start to the end.
+      ended.points.length = anchor.length;
+      ended.reported.length = anchor.reported;
+      this.#append(ended, anchor.point, this.#snapped(placed));
+    }
     // The start goes by the way the pointer went, and so does the end, but
     // for a straight segment, which runs as it does right to its end.
     const pointer =
       this.#straightStart && straight
         ? undefined
-        : this.#path(straight ? undefined : release);
-    return {
-      straight,
-      ends: { start: active.onGrid, end: held && this.snap && active.flat },
-      paths: {
+        : this.#path(straight ? undefined : at);
+    return this.#strokes(
+      ended,
+      { start: active.onGrid, end: onGrid && active.flat },
+      corner !== undefined && this.fill,
+      {
         start: this.#straightStart ? undefined : pointer,
         end: straight ? undefined : pointer,
       },
-    };
+    );
   }
 
   /**
@@ -766,6 +815,7 @@ export class DrawingSession {
    * go, which its release places.
    */
   begin(point: InputPoint, shift = false): void {
+    this.#shiftNow = shift;
     if (this.#active?.polygon === true) {
       this.#next = point;
       this.#shift = shift;
@@ -795,8 +845,10 @@ export class DrawingSession {
     this.#snaps = polygon ? [onGrid] : [];
     this.extend([start]);
     this.#shift = shift;
+    this.#shiftNow = shift;
     // After the grid point the stroke starts on, which the pointer never was.
     this.#pointer = [toUnits(point.x), toUnits(point.y)];
+    this.#at = point;
     this.#pointerStraight = false;
     this.#straightStart = false;
     if (polygon) this.#record(this.#active, start);
@@ -813,6 +865,7 @@ export class DrawingSession {
     const active = this.#active;
     if (active === undefined) return;
     this.#shift = shift;
+    this.#shiftNow = shift;
     if (active.polygon) {
       const latest = points.at(-1);
       if (latest !== undefined) this.#next = latest;
@@ -835,14 +888,17 @@ export class DrawingSession {
         this.#record(active, point);
       }
       this.#last = latest;
+      this.#at = latest;
       return;
     }
     for (const point of points) {
+      this.#at = point;
       if (!shift) {
         this.#anchor = undefined;
         this.#pointer.push(toUnits(point.x), toUnits(point.y));
         this.#pointerStraight = false;
-        this.#append(active, point);
+        this.#append(active, this.#last, point);
+        this.#last = point;
         continue;
       }
       if (this.#pointer.length <= 2) this.#straightStart = true;
@@ -857,14 +913,21 @@ export class DrawingSession {
       // The segment is drawn again from its start for each new point.
       active.points.length = anchor.length;
       active.reported.length = anchor.reported;
-      this.#last = anchor.point;
-      this.#append(active, this.#snapped(point));
+      const end = this.#snapped(point);
+      this.#append(active, anchor.point, end);
+      this.#last = end;
     }
   }
 
-  /** Records a point, and points along the gap since the last one. */
-  #append(active: ActiveStroke, point: InputPoint): void {
-    const previous = this.#last;
+  /**
+   * Records a point among `active`'s, and points along the gap to it from
+   * `previous`, the last point recorded before rounding, if there is one.
+   */
+  #append(
+    active: ActiveStroke,
+    previous: InputPoint | undefined,
+    point: InputPoint,
+  ): void {
     if (previous !== undefined) {
       const gap = Math.hypot(point.x - previous.x, point.y - previous.y);
       const steps = Math.ceil(gap / maxGap);
@@ -873,7 +936,6 @@ export class DrawingSession {
       }
     }
     this.#record(active, point);
-    this.#last = point;
   }
 
   /**
@@ -905,41 +967,32 @@ export class DrawingSession {
    * Shift drew, and a hand letting go of the key an instant before the button
    * should not knock it off the grid, so on the grid it ends where it was last
    * shown, a polygon's corner too. A move without Shift ends that, so a stroke
-   * carried on past a Shift let go ends where the pointer does.
+   * carried on past a Shift let go ends where the pointer does. A release
+   * says whether Shift is down at it, by default not; without one, Shift is
+   * as the last pointer event or {@link holdShift} said.
+   *
+   * A stroke dragged commits just what {@link #ending} makes, so an eraser's
+   * preview, which shows that, is what it saves.
    */
-  end(release?: InputPoint, shift = false): void {
-    this.#shift ||= shift;
-    const held = this.#shift;
-    const remembered = held && !shift && this.snap;
+  end(release?: InputPoint, shift?: boolean): void {
     const placed = this.#active;
     if (placed?.polygon === true) {
+      const now = shift ?? false;
+      this.#shift ||= now;
+      const remembered = this.#shift && !now && this.snap;
       if (release === undefined) this.#commit(placed);
       else this.#place(placed, remembered ? (this.#next ?? release) : release);
       return;
     }
-    const ellipse = this.#corner !== undefined;
-    const ending =
-      placed === undefined ? undefined : this.#ending(placed, held, release);
-    // On the grid, the stroke ends at the grid point nearest the release, or
-    // else the last point, recorded in the release's place. With the pointer
-    // where it was last shown, that point is already the stroke's last.
-    const onGrid = held && this.snap;
-    const shown = remembered ? this.#last : undefined;
-    const end = shown ?? (onGrid ? (release ?? this.#last) : release);
-    if (end !== undefined && ending !== undefined) {
-      this.extend([this.#placed(end)], ending.straight);
+    if (release !== undefined) {
+      this.#at = release;
+      this.#shiftNow = shift ?? false;
+    } else if (shift !== undefined) {
+      this.#shiftNow = shift;
     }
-    const active = this.#active;
-    const strokes =
-      active === undefined || ending === undefined || active.points.length === 0
-        ? []
-        : this.#strokes(
-            active,
-            ending.ends,
-            ellipse && this.fill,
-            ending.paths,
-          );
+    const strokes = placed === undefined ? [] : this.#ending(placed);
     this.#active = undefined;
+    this.#at = undefined;
     this.#anchor = undefined;
     this.#corner = undefined;
     this.#next = undefined;
@@ -1050,12 +1103,24 @@ export class DrawingSession {
   /** Drops the stroke being drawn, as when the pointer is cancelled. */
   cancel(): void {
     this.#active = undefined;
+    this.#at = undefined;
     this.#anchor = undefined;
     this.#corner = undefined;
     this.#next = undefined;
     this.#starting = false;
     this.#snaps = [];
     this.#takeNextGrid();
+  }
+
+  /**
+   * Takes Shift as pressed or let go, with the pointer still, as a key event
+   * says, for how the stroke being drawn would end. Returns whether that can
+   * change what a stroke being drawn shows.
+   */
+  holdShift(down: boolean): boolean {
+    const changed = down !== this.#shiftNow;
+    this.#shiftNow = down;
+    return changed && this.#active !== undefined;
   }
 
   undo(): boolean {
@@ -1160,6 +1225,9 @@ export class DrawingSession {
     }
     if (this.#last !== undefined) {
       this.#last = { ...this.#last, x: this.#last.x + dxPixels };
+    }
+    if (this.#at !== undefined) {
+      this.#at = { ...this.#at, x: this.#at.x + dxPixels };
     }
     if (this.#anchor !== undefined) {
       const { point } = this.#anchor;
