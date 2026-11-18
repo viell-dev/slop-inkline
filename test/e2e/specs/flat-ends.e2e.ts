@@ -1,4 +1,5 @@
 import { browser, expect } from "@wdio/globals";
+import { Key } from "webdriverio";
 import { type Stroke, unitsPerPixel } from "../../../src/format/record.ts";
 import { lineBox } from "../../../src/ink/geometry.ts";
 import { loadModules } from "../support/browser.ts";
@@ -13,9 +14,11 @@ import {
   settledSurface,
   shiftClick,
   startOver,
+  surface,
   waitForEditor,
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
+import { framesDrawn } from "../support/waits.ts";
 
 /** What the saved symbol's pixels show past the lines its strokes end on. */
 interface Spill {
@@ -162,6 +165,142 @@ async function gridPoint([fx, fy]: readonly [number, number]): Promise<Place> {
     Number.POSITIVE_INFINITY,
   );
   return { x: Math.round((fx * across) / spacing) * spacing, y: row };
+}
+
+/**
+ * Starts reading the surface's alpha in every animation frame, and marks
+ * the frame at each Shift or G key pressed, and at the release.
+ */
+async function watchFrames(): Promise<void> {
+  await browser.execute(() => {
+    const canvas = document.querySelector(".inkline-editor .inkline-surface");
+    if (!(canvas instanceof HTMLCanvasElement)) throw new Error("no surface");
+    const context = canvas.getContext("2d");
+    if (context === null) throw new Error("no context");
+    const probe = {
+      frames: [] as Uint8Array[],
+      marks: [] as { what: string; frame: number }[],
+      running: true,
+    };
+    const read = (): void => {
+      if (!probe.running) return;
+      const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+      const alpha = new Uint8Array(canvas.width * canvas.height);
+      for (let index = 0; index < alpha.length; index++) {
+        alpha[index] = data[index * 4 + 3] ?? 0;
+      }
+      probe.frames.push(alpha);
+      window.requestAnimationFrame(read);
+    };
+    window.requestAnimationFrame(read);
+    const mark = (what: string) => () => {
+      probe.marks.push({ what, frame: probe.frames.length });
+    };
+    // Before the editor's shortcuts, which can stop a key's event.
+    window.addEventListener(
+      "keydown",
+      (event) => {
+        if (event.key === "Shift" || event.key.toLowerCase() === "g") {
+          mark(`key ${event.key.toLowerCase()}`)();
+        }
+      },
+      true,
+    );
+    canvas.addEventListener("pointerup", mark("up"));
+    Reflect.set(window, "stillProbe", probe);
+  });
+}
+
+/**
+ * From the frames {@link watchFrames} read: how many pixels the key named
+ * `key` changed, between the last frame before it and the last frame before
+ * the release, and how many the release changed, between that frame and the
+ * last one read, each by more than 2 of 255.
+ */
+async function stillChanges(
+  key: string,
+): Promise<{ byKey: number; byRelease: number; frames: number }> {
+  return browser.execute((wanted) => {
+    const probe = Reflect.get(window, "stillProbe") as {
+      frames: Uint8Array[];
+      marks: { what: string; frame: number }[];
+      running: boolean;
+    };
+    probe.running = false;
+    const at = (what: string): number =>
+      probe.marks.find((mark) => mark.what === what)?.frame ?? -1;
+    const pressed = at(`key ${wanted}`);
+    const up = at("up");
+    if (pressed < 2 || up <= pressed + 2) {
+      throw new Error(`frames out of order: ${JSON.stringify(probe.marks)}`);
+    }
+    const differ = (a: Uint8Array, b: Uint8Array): number => {
+      let count = 0;
+      for (let index = 0; index < a.length; index++) {
+        if (Math.abs((a[index] ?? 0) - (b[index] ?? 0)) > 2) count++;
+      }
+      return count;
+    };
+    // A frame before an event can be read before the editor draws it.
+    const before = probe.frames[pressed - 2];
+    const held = probe.frames[up - 2];
+    const after = probe.frames.at(-1);
+    if (before === undefined || held === undefined || after === undefined) {
+      throw new Error("no frames");
+    }
+    return {
+      byKey: differ(before, held),
+      byRelease: differ(held, after),
+      frames: probe.frames.length,
+    };
+  }, key);
+}
+
+/**
+ * Draws a filled ellipse of the pen's XL ink under where the eraser goes,
+ * and chooses the XL eraser, drawing freehand, with the grid and Flat ends
+ * on. Gives grid points for its drag: down, across, and back up to a row
+ * below where it started, which the end's cut cannot take apart from the
+ * start, so that a cut end makes the stroke the smooth one it falls back to.
+ * The way up is longer than the two brush widths a cut end's way is judged
+ * over, so that it is steep enough to be cut.
+ */
+async function eraserOverInk(): Promise<[Place, Place, Place, Place]> {
+  await openOnGrid();
+  await browser.keys("o");
+  await browser.keys("b");
+  await draw([
+    [0.08, 0.1],
+    [0.62, 0.97],
+  ]);
+  await browser.keys("b");
+  await browser.keys("o");
+  await browser.keys("e");
+  await browser.keys("4");
+  expect(await pressed("flat-ends")).toBe("true");
+  return [
+    await gridPoint([0.2, 0.3]),
+    await gridPoint([0.2, 0.9]),
+    await gridPoint([0.5, 0.9]),
+    await gridPoint([0.5, 0.5]),
+  ];
+}
+
+/** How to reach a place on a new symbol's surface in an action. */
+async function offsets(): Promise<
+  (place: Place) => { origin: WebdriverIO.Element; x: number; y: number }
+> {
+  const { width, height } = await settledSurface();
+  const canvas = await surface().getElement();
+  return (place) => {
+    const [fx, fy] = fractions(place);
+    // Offsets are from the element's centre.
+    return {
+      origin: canvas,
+      x: Math.round((fx - 0.5) * width),
+      y: Math.round((fy - 0.5) * height),
+    };
+  };
 }
 
 /**
@@ -487,6 +626,78 @@ describe("Flat ends on the grid", function () {
     expect(below).toEqual([0, 0]);
     // Without the cut, the start's round end would be there.
     for (const value of shown.uncut[1] ?? []) expect(value).toBeGreaterThan(0);
+  });
+
+  it("shows the eraser's stroke as letting go saves it, when Shift is pressed with the pointer still", async function () {
+    // The third review of #381: the end is on a grid point, and Shift
+    // pressed there cuts it, which makes the area the smooth stroke it
+    // falls back to. The editor shows that before the release.
+    const [a, b, c, d] = await eraserOverInk();
+    await watchFrames();
+    const to = await offsets();
+    const keys = browser.action("key");
+    const pointer = browser.action("pointer", {
+      parameters: { pointerType: "mouse" },
+    });
+    pointer.move(to(a)).down();
+    for (const at of [b, c, d]) pointer.move({ ...to(at), duration: 100 });
+    pointer.pause(300);
+    for (let tick = 0; tick < 6; tick++) keys.pause(10);
+    keys.down(Key.Shift).pause(400).pause(10).up(Key.Shift);
+    pointer.pause(10).pause(400).up().pause(300);
+    await browser.actions([keys, pointer]);
+    await framesDrawn();
+    const shown = await stillChanges("shift");
+    console.log("Shift with the pointer still", JSON.stringify(shown));
+    // The key changed what is shown, and the release nothing more: without
+    // the editor drawing again for the key, the release would change it.
+    expect(shown.byKey).toBeGreaterThan(0);
+    expect(shown.byRelease).toBe(0);
+    await save();
+    const eraser = (await savedStrokes()).at(-1);
+    expect(eraser?.tool).toBe("eraser");
+    expect(eraser?.kind).toBeUndefined();
+    expect(eraser?.cut?.end).toBe("up");
+  });
+
+  it("shows the eraser's stroke as letting go saves it, when the grid is turned on with the pointer still", async function () {
+    // The third review of #381: Shift draws the last move with the grid
+    // off, and Shift+G then turns it on, which puts the end on the grid and
+    // cuts it there. The editor shows that before the release.
+    const [a, b, c, d] = await eraserOverInk();
+    await browser.keys(["Shift", "g"]);
+    await browser.waitUntil(async () => (await pressed("grid")) === "false");
+    const off = { x: d.x + 3.3, y: d.y + 2.6 };
+    await watchFrames();
+    const to = await offsets();
+    const keys = browser.action("key");
+    const pointer = browser.action("pointer", {
+      parameters: { pointerType: "mouse" },
+    });
+    pointer.move(to(a)).down();
+    for (const at of [b, c]) pointer.move({ ...to(at), duration: 100 });
+    pointer
+      .pause(10)
+      .move({ ...to(off), duration: 100 })
+      .pause(300);
+    for (let tick = 0; tick < 4; tick++) keys.pause(10);
+    keys.down(Key.Shift).pause(10).pause(300).down("g").up("g").pause(400);
+    pointer.pause(10).pause(10).pause(400).up().pause(300);
+    keys.pause(10).up(Key.Shift);
+    await browser.actions([keys, pointer]);
+    await framesDrawn();
+    expect(await pressed("grid")).toBe("true");
+    const shown = await stillChanges("g");
+    console.log("Grid on with the pointer still", JSON.stringify(shown));
+    // The key changed what is shown, and the release nothing more: without
+    // the editor drawing again for the key, the release would change it.
+    expect(shown.byKey).toBeGreaterThan(0);
+    expect(shown.byRelease).toBe(0);
+    await save();
+    const eraser = (await savedStrokes()).at(-1);
+    expect(eraser?.tool).toBe("eraser");
+    expect(eraser?.kind).toBeUndefined();
+    expect(eraser?.cut?.end).toBe("up");
   });
 
   it("offers Flat ends only for freehand strokes on the grid", async function () {
