@@ -105,6 +105,16 @@ export const draftLifetime = 30 * 24 * 60 * 60 * 1000;
  * test that keeps a stored draft of that layout and offers it back. A draft of
  * a higher version, kept by a later Inkline, is never offered, rewritten, or
  * dropped before its lifetime ends, as {@link readLater} says.
+ *
+ * That holds while the store is the only writer between reading an index and
+ * writing it back. Obsidian opens a vault in one window, whose popouts share
+ * its scripts, so one version of the plugin writes these keys at a time, and
+ * every step of {@link DraftStore} that reads an index and writes it runs
+ * without pausing, so nothing else runs between. A later version keeps both.
+ * It also never writes a draft of its layout under an id that holds one of an
+ * earlier layout: an editor knows the draft it offers or restored by its id
+ * alone until it removes or replaces it, and so would remove or replace what
+ * took its place.
  */
 export const draftVersion = 2;
 const indexKey = "inkline-drafts";
@@ -219,15 +229,44 @@ function storedBaseKey(stored: unknown): string | undefined {
 }
 
 /**
- * A stored draft of a later layout than this version reads: its text, and
- * when it was kept and the symbol it belongs to, where those read as this
- * layout's. Its text names the base layers it keeps somewhere, as each key is
- * a random UUID that nothing else holds by chance.
+ * A stored draft of a later layout than this version reads: every string it
+ * holds, and when it was kept and the symbol it belongs to, where those read
+ * as this layout's. Its strings name the base layers it keeps somewhere, as
+ * each key is a random UUID that nothing else holds by chance.
  */
 interface LaterDraft {
-  readonly text: string;
+  readonly strings: readonly string[];
   readonly savedAt?: number;
   readonly target?: DraftTarget;
+}
+
+/**
+ * Every string in a value read from JSON, its property names included, at
+ * any depth: as decoded, so that an escape such as `-` reads as the
+ * character it stands for.
+ */
+function stringsOf(value: unknown): string[] {
+  const strings: string[] = [];
+  const seen = new WeakSet<object>();
+  const pending: unknown[] = [value];
+  while (pending.length > 0) {
+    const next = pending.pop();
+    if (typeof next === "string") {
+      strings.push(next);
+    } else if (typeof next === "object" && next !== null && !seen.has(next)) {
+      seen.add(next);
+      for (const [name, item] of Object.entries(next)) {
+        if (!Array.isArray(next)) strings.push(name);
+        pending.push(item);
+      }
+    }
+  }
+  return strings;
+}
+
+/** Whether a draft of a later layout names the kept base layer `key`. */
+function laterNames(draft: LaterDraft, key: string): boolean {
+  return draft.strings.some((text) => text.includes(key));
 }
 
 /**
@@ -250,10 +289,13 @@ function readLater(stored: unknown): LaterDraft | undefined {
   }
   if (!isRecord(value)) return undefined;
   const { version, savedAt } = value;
-  if (typeof version !== "number" || version <= draftVersion) return undefined;
+  // So that a version that is not a number, NaN included, is none.
+  if (!(typeof version === "number" && version > draftVersion)) {
+    return undefined;
+  }
   const target = parseTarget(value.target);
   return {
-    text: typeof stored === "string" ? stored : JSON.stringify(value),
+    strings: stringsOf(value),
     ...(typeof savedAt === "number" && Number.isFinite(savedAt)
       ? { savedAt }
       : {}),
@@ -264,13 +306,12 @@ function readLater(stored: unknown): LaterDraft | undefined {
 /**
  * Whether the stored draft `stored` may name the kept base layer `key`: as
  * {@link storedBaseKey} reads it, or, for a draft of a later layout, which
- * may name it elsewhere, anywhere in its text.
+ * may name it elsewhere, as {@link laterNames} reads it.
  */
 function mayName(stored: unknown, key: string): boolean {
-  return (
-    storedBaseKey(stored) === key ||
-    readLater(stored)?.text.includes(key) === true
-  );
+  if (storedBaseKey(stored) === key) return true;
+  const later = readLater(stored);
+  return later !== undefined && laterNames(later, key);
 }
 
 interface Decoded {
@@ -743,7 +784,7 @@ export class DraftStore {
     if (listed.length !== ids.length) this.#setList(indexKey, listed);
     const keys = this.#list(baseIndexKey);
     for (const key of keys) {
-      if (later.some(({ text }) => text.includes(key))) used.add(key);
+      if (later.some((draft) => laterNames(draft, key))) used.add(key);
     }
     const kept = keys.filter((key) => used.has(key));
     if (kept.length !== keys.length) {

@@ -177,7 +177,10 @@ again once you update. Inkline 1.0.0 and earlier drop them instead, as soon as a
 symbol opens or a file is renamed.
 
 - Opening their symbol, or a new symbol in the same note, says **This symbol has
-  unsaved changes from a newer version of Inkline**. The earlier version cannot
+  unsaved changes from a newer version of Inkline**, if the earlier version can
+  tell which symbol they are for. A newer version may keep its drafts where the
+  earlier one cannot see them at all, and then the earlier one says nothing of
+  them, though it still leaves them as they are. The earlier version cannot
   restore them. The editor opens the symbol as it is saved, and what you draw
   there is kept in a draft of its own, beside them.
 - To get them back, update Inkline to the newer version, within 30 days of when

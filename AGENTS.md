@@ -289,20 +289,31 @@ screenshots use synthetic vaults and drawings only.
   as with BRAT or an older ZIP, so no version deletes or rewrites one it cannot
   read. From `1.0.1`, a version keeps a draft whose `version` is higher than its
   own as it is, never offers it, says so when its symbol opens, and keeps every
-  base layer whose key is in its text, until 30 days after its `savedAt`, or for
-  good if that cannot be read; `1.0.0` and earlier delete such drafts.
+  base layer whose key is in one of its strings or property names, until 30 days
+  after its `savedAt`, or for good if that cannot be read; `1.0.0` and earlier
+  delete such drafts.
   - A change to the layout raises `draftVersion`, and reads or converts drafts
     of the previous layout, with a unit test that keeps a stored draft of that
     layout and offers it back, as `drafts.test.ts` does for layout 2, which
     every version from `0.9.2` on stores. The stored text in such a test never
     changes.
-  - Versions from `1.0.1` find what they keep of a later layout where layout 2
-    has it: the lists of keys `inkline-drafts` and `inkline-draft-bases`, each
-    draft as JSON under `inkline-draft:<id>` with a numeric `version`, its
-    `savedAt` and its `target` as layout 2 has them, and the key of each base
-    layer it keeps somewhere in its text, as a string. A later layout keeps
-    these, or keeps its drafts under keys of its own, which earlier versions
-    never read.
+  - A later layout stores its drafts in one of two ways. Either each draft is a
+    compatible entry: JSON under `inkline-draft:<id>`, its id listed in
+    `inkline-drafts`, with a numeric `version`, its `target` and `savedAt` as
+    layout 2 has them, and the key of every base layer it uses from
+    `inkline-draft-bases` in one of its strings or property names. Or it keeps
+    its drafts, its base layers, and both their indexes under keys of its own,
+    which earlier versions never read: they then keep all of it, but cannot say
+    when a symbol opens that a draft of it is kept. A layout that mixes the two,
+    as with drafts under new keys and base layers in `inkline-draft-bases`,
+    loses those base layers in `1.0.1`.
+  - The guarantee needs one writer at a time between reading an index and
+    writing it back. Obsidian opens a vault in one window, whose popouts share
+    its scripts, so only one version of the plugin is loaded, and every step of
+    `DraftStore` that reads an index and writes it runs without pausing. A later
+    version keeps both. It never writes a draft of its layout under an id that
+    holds one of an earlier layout either: an editor knows the draft it offers
+    or restored by its id alone until it removes or replaces it.
   - A change to the layout is reviewed as a change to drafts, as
     [Review](#review) says.
 

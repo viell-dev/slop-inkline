@@ -1012,6 +1012,97 @@ describe("DraftStore with a draft of a later layout", () => {
     expect(storage.keys("inkline-draft:")).toEqual([draftKey("later")]);
     expect(storage.loadLocalStorage("inkline-drafts")).toEqual(["later"]);
   });
+
+  /** `text` with the first hyphen of `key` in it written as JSON's escape. */
+  function escaping(text: string, key: string): string {
+    const escaped = text.replace(key, key.replace("-", "\\u002d"));
+    expect(escaped).not.toContain(key);
+    return escaped;
+  }
+
+  /** The keys the base index lists. */
+  function listedBases(storage: MemoryStorage): unknown {
+    return storage.loadLocalStorage("inkline-draft-bases");
+  }
+
+  it("keeps the base layers its strings name as they read, escaped or as property names, through a list", () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 5000);
+    const escaped = plantBase(storage);
+    const named = plantBase(storage);
+    const valued = plantBase(storage);
+    const unused = plantBase(storage);
+    plant(
+      storage,
+      "escaped",
+      escaping(laterDraft({ pictures: [{ id: escaped }] }), escaped),
+    );
+    plant(storage, "named", laterDraft({ pictures: { [named]: { x: 0 } } }));
+    // Stored as a value rather than as text, with the key deep in it.
+    plant(storage, "value", {
+      version: later,
+      savedAt: 1000,
+      pages: [{ pictures: [[{ id: valued }]] }],
+    });
+    expect(store.list()).toEqual([]);
+    expect(listedBases(storage)).toEqual([escaped, named, valued]);
+    expect(baseKeys(storage)).toHaveLength(3);
+    expect(storage.values.has(`inkline-draft-base:${unused}`)).toBe(false);
+  });
+
+  it("keeps a base layer it names with an escaped key when this version's draft stops naming it", () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 5000);
+    expect(store.put(keeping(png, { id: "shared" }))).toBe(true);
+    expect(store.put(keeping(noisePng(4), { id: "own", savedAt: 900 }))).toBe(
+      true,
+    );
+    const [shared, own] = baseKeys(storage).map((key) =>
+      key.slice("inkline-draft-base:".length),
+    );
+    if (shared === undefined || own === undefined) {
+      throw new Error("no base layers stored");
+    }
+    plant(
+      storage,
+      "later",
+      escaping(laterDraft({ pictures: [{ id: shared }] }), shared),
+    );
+    // Each removal drops the base layer its draft named, unless a draft
+    // still names it.
+    store.remove("shared");
+    store.remove("own");
+    expect(listedBases(storage)).toEqual([shared]);
+    expect(baseKeys(storage)).toEqual([`inkline-draft-base:${shared}`]);
+  });
+
+  it("counts no version that is not a number above its own, NaN included", () => {
+    // A value that JSON cannot hold, as storage other than Obsidian's could
+    // give back.
+    const values = new Map<string, unknown>([
+      ["inkline-drafts", ["nan"]],
+      [
+        draftKey("nan"),
+        {
+          version: Number.NaN,
+          target: { kind: "file", path: "001.ink.png" },
+        },
+      ],
+    ]);
+    const storage: VaultStorage = {
+      loadLocalStorage: (key) => values.get(key) ?? null,
+      saveLocalStorage: (key, data) => {
+        if (data === null) values.delete(key);
+        else values.set(key, data);
+      },
+    };
+    const store = new DraftStore(storage, () => 5000);
+    expect(store.offers({ kind: "file", path: "001.ink.png" })).toEqual({
+      drafts: [],
+      newer: false,
+    });
+    expect(values.has(draftKey("nan"))).toBe(false);
+  });
 });
 
 describe("decodeDraft", () => {
