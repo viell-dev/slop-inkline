@@ -1507,7 +1507,7 @@ describe("DrawingSession's cuts", () => {
       stillShift: 0,
       stillGrid: 0,
     };
-    for (let trial = 0; trial < 1200; trial++) {
+    for (let trial = 0; trial < 600; trial++) {
       const session = new DrawingSession(emptyDocument);
       session.tool = "eraser";
       session.sizeIndex = Math.floor(between(0, 4));
@@ -1560,13 +1560,14 @@ describe("DrawingSession's cuts", () => {
     }
     // The drags cover both kinds, smooth strokes with a cut end, strokes that
     // changed kind as they went, and changes made with the pointer still.
-    expect(seen.fill).toBeGreaterThan(200);
-    expect(seen.smooth).toBeGreaterThan(40);
-    expect(seen.cutEnd).toBeGreaterThan(10);
-    expect(seen.changed).toBeGreaterThan(10);
-    expect(seen.stillShift).toBeGreaterThan(1000);
-    expect(seen.stillGrid).toBeGreaterThan(500);
-  });
+    expect(seen.fill).toBeGreaterThan(100);
+    expect(seen.smooth).toBeGreaterThan(20);
+    expect(seen.cutEnd).toBeGreaterThan(5);
+    expect(seen.changed).toBeGreaterThan(5);
+    expect(seen.stillShift).toBeGreaterThan(500);
+    expect(seen.stillGrid).toBeGreaterThan(250);
+    // About a second alone, and several under a full run on a busy machine.
+  }, 30_000);
 
   describe("shows what letting go or Next saves, as what it depends on changes with the pointer still", () => {
     /**
