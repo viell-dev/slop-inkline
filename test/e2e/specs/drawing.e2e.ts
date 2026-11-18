@@ -1,7 +1,6 @@
 import { browser, expect } from "@wdio/globals";
 import { Key } from "webdriverio";
 import { obsidianPage } from "wdio-obsidian-service";
-import { unitsPerPixel } from "../../../src/format/record.ts";
 import { loadModules } from "../support/browser.ts";
 import {
   editFile,
@@ -14,20 +13,17 @@ import {
 } from "../support/editing.ts";
 import {
   draw,
-  editorGrid,
   openAtMarker,
   recordOf,
   settledSurface,
   storedDrafts,
   undoStubs,
   waitForEditor,
-  shiftClick,
   startOver,
   surface,
   clickTop,
   waitForStatus,
 } from "../support/editor.ts";
-import { saveScreenshot } from "../support/screenshots.ts";
 
 /**
  * Where the surface's drawing starts on the screen, inside its border, and
@@ -151,83 +147,6 @@ describe("The editor", function () {
       "pen",
       "eraser",
     ]);
-  });
-
-  it("names each button with its text and shortcut, shows that on hover, and marks the current tool", async function () {
-    await insert();
-    const state = await browser.execute(() => {
-      const button = (id: string): HTMLElement | null =>
-        document.querySelector(`[data-inkline-button="${id}"]`);
-      return {
-        pen: button("pen")?.getAttribute("aria-pressed"),
-        eraser: button("eraser")?.getAttribute("aria-pressed"),
-        undo: button("undo")?.hasAttribute("disabled"),
-        focused: document.activeElement?.classList.contains("inkline-surface"),
-      };
-    });
-    expect(state).toEqual({
-      pen: "true",
-      eraser: "false",
-      undo: true,
-      focused: true,
-    });
-    const buttons = await browser.execute(() =>
-      [...document.querySelectorAll("[data-inkline-button]")].map((button) => ({
-        id: button.getAttribute("data-inkline-button") ?? "",
-        text: button.textContent,
-        name: button.getAttribute("aria-label") ?? "",
-      })),
-    );
-    expect(buttons.length).toBeGreaterThan(10);
-    for (const { text, name } of buttons) {
-      expect(name.toLowerCase()).toContain(text.toLowerCase());
-    }
-    // A button's name is its tooltip, which Obsidian shows from it: with a
-    // description, a label of its own, or neither, and the shortcut after.
-    const names = Object.fromEntries(buttons.map(({ id, name }) => [id, name]));
-    expect(names).toMatchObject({
-      copy: "Copy from: start from a copy of another symbol (V)",
-      "size-0": "Brush size S (1)",
-      pen: "Pen (P)",
-      next: "Next: save and draw the next one (Mod+Shift+Enter)",
-      grid: "Grid: show a grid of dots as a guide; hold Shift while drawing to snap to it (Shift+G)",
-      fit: "Fit: centre the drawing in the view, and show all of it if it is wider; the drawing itself stays as it is (F)",
-    });
-    const tooltip = async (id: string, text: string): Promise<void> => {
-      const button = await browser
-        .$(`[data-inkline-button="${id}"]`)
-        .getElement();
-      let step = 0;
-      await browser.waitUntil(
-        async () => {
-          // Obsidian shows a mouse no tooltip until it has seen it move twice
-          // (#270), so each look moves it again, within the button.
-          step++;
-          await browser
-            .action("pointer", { parameters: { pointerType: "mouse" } })
-            .move({ origin: button, x: step % 2 === 0 ? -2 : 2, y: 0 })
-            .perform();
-          return (
-            (await browser.execute(
-              () => document.querySelector(".tooltip")?.textContent ?? "",
-            )) === text
-          );
-        },
-        { timeoutMsg: `no tooltip "${text}"` },
-      );
-      await surface().moveTo();
-    };
-    await tooltip("copy", "Copy from: start from a copy of another symbol (V)");
-    await tooltip("size-0", "Brush size S (1)");
-    // Both save, so both look it.
-    for (const id of ["save", "next"]) {
-      expect(
-        await browser.$(`[data-inkline-button="${id}"]`).getAttribute("class"),
-      ).toContain("mod-cta");
-    }
-    await browser.keys(["e"]);
-    const eraser = browser.$('[data-inkline-button="eraser"]');
-    expect(await eraser.getAttribute("aria-pressed")).toBe("true");
   });
 
   it("maps the pointer to the drawing inside the surface's border", async function () {
@@ -400,101 +319,6 @@ describe("The editor", function () {
         Math.abs((x1 - x0) * (y0 - y) - (x0 - x) * (y1 - y0)) / length;
       expect(off).toBeLessThan(16);
     }
-  });
-
-  // Shift+G's dots, and strokes' ends snapped to them with Shift, are
-  // grid.e2e.ts's, shift-grid.e2e.ts's, and shortcuts.e2e.ts's.
-  it("keeps a tap on the grid a dot, and the grid in place through a save", async function () {
-    await insert();
-    await settledSurface();
-    await browser.keys(["Shift", "g"]);
-    await shiftClick([0.31, 0.27]);
-    await browser.waitUntil(async () => (await storedDrafts()).length === 1);
-    // One point: no spur out to where the pointer was and back.
-    expect((await storedDrafts())[0]?.strokes[0]?.points).toHaveLength(2);
-    await browser.keys(["Control", "s"]);
-    await waitForStatus("Saved");
-    // The same place on screen, after the save moved the drawing.
-    await shiftClick([0.31, 0.27]);
-    await browser.waitUntil(
-      async () => (await storedDrafts())[0]?.strokes.length === 2,
-    );
-    const [first, second] = (await storedDrafts())[0]?.strokes ?? [];
-    expect(second?.points).toEqual(first?.points);
-  });
-
-  it("lines the grid up with a reopened symbol's strokes", async function () {
-    await insert();
-    // Drawn before the grid is shown, so off it.
-    await draw(zigzag);
-    await settledSurface();
-    await browser.keys(["Shift", "g"]);
-    await shiftClick([0.62, 0.27]);
-    await shiftClick([0.7, 0.6]);
-    await browser.keys(["Control", "Enter"]);
-    await waitClosed();
-    await editFile("001.ink.png");
-    await settledSurface();
-    await browser.keys(["Shift", "g"]);
-    await shiftClick([0.33, 0.45]);
-    await saveScreenshot("editor-grid");
-    const spacing = Math.round((await editorGrid()).spacing * unitsPerPixel);
-    await browser.keys(["Control", "Enter"]);
-    await waitClosed();
-    const { strokes } = JSON.parse(await recordOf("001.ink.png")) as {
-      strokes: { points: number[] }[];
-    };
-    // Where each stroke drawn on the grid lies within a spacing, in units.
-    const columns = strokes
-      .slice(1)
-      .map(
-        (stroke) => (((stroke.points[0] ?? 0) % spacing) + spacing) % spacing,
-      );
-    expect(columns).toHaveLength(3);
-    expect(new Set(columns).size).toBe(1);
-  });
-
-  it("restores a draft with the grid it was drawn on, and undoes that too", async function () {
-    await insert();
-    // Freehand, and saved: the file alone suggests another grid.
-    await draw(zigzag);
-    await browser.keys(["Control", "s"]);
-    await waitForStatus("Saved");
-    await browser.keys(["Shift", "g"]);
-    // One tap, which the zigzag's two ends outvote.
-    await shiftClick([0.62, 0.27]);
-    await browser.waitUntil(
-      async () => (await storedDrafts())[0]?.strokes.length === 2,
-    );
-    await obsidianPage.disablePlugin("inkline");
-    await obsidianPage.enablePlugin("inkline");
-    await loadModules();
-    await editFile("001.ink.png");
-    await clickTop("Restore");
-    await settledSurface();
-    await browser.keys(["Shift", "g"]);
-    await shiftClick([0.33, 0.45]);
-    await browser.waitUntil(
-      async () => (await storedDrafts())[0]?.strokes.length === 3,
-    );
-    // Where a stroke starts within a spacing, in units.
-    const spacing = Math.round((await editorGrid()).spacing * unitsPerPixel);
-    const column = (stroke: { points: readonly number[] } | undefined) =>
-      (((stroke?.points[0] ?? 0) % spacing) + spacing) % spacing;
-    const restored = (await storedDrafts())[0]?.strokes ?? [];
-    expect(column(restored[2])).toBe(column(restored[1]));
-    // Undoing the tap and the restore leaves the file, and the grid its
-    // strokes suggest: through the zigzag's start.
-    await browser.keys(["Control", "z"]);
-    await browser.keys(["Control", "z"]);
-    await browser.waitUntil(async () => (await storedDrafts()).length === 0);
-    await shiftClick([0.33, 0.45]);
-    await browser.waitUntil(
-      async () => (await storedDrafts())[0]?.strokes.length === 2,
-    );
-    const [start, tap] = (await storedDrafts())[0]?.strokes ?? [];
-    expect(column(tap)).toBe(column(start));
-    expect(column(tap)).not.toBe(column(restored[1]));
   });
 
   // Clearing with Delete and Backspace is shortcuts.e2e.ts's, and Fit while

@@ -22,12 +22,17 @@ import {
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 import { showLibrary } from "../support/symbol-text-library.ts";
-import { bytesOf, noteOnDisk } from "../support/vault-files.ts";
+import {
+  bytesOf,
+  noteOnDisk,
+  waitForLinkWithoutSaving,
+} from "../support/vault-files.ts";
+import { setLinkUpdates } from "../support/insertion.ts";
 
-const nameField = () => browser.$(".inkline-library-edit-form input");
+const quickEditNameField = () => browser.$(".inkline-library-edit-form input");
 const errorField = () => browser.$(".inkline-library-edit-error");
 
-function row(name: string): ReturnType<typeof browser.$> {
+function libraryRowNamed(name: string): ReturnType<typeof browser.$> {
   return browser.$(
     `//div[contains(@class, "inkline-library-symbol")][.//div[contains(@class, "inkline-library-name")][text()="${name}"]]`,
   );
@@ -41,14 +46,14 @@ async function beginRename(name: string, typed: string): Promise<void> {
       notice.remove();
     }
   });
-  await row(name).$(".inkline-library-edit").click();
-  await nameField().waitForDisplayed();
+  await libraryRowNamed(name).$(".inkline-library-edit").click();
+  await quickEditNameField().waitForDisplayed();
   // Save waits for the fields to read the file's readings and translations.
   await browser
     .$(".inkline-library-edit-form")
     .$("button=Save")
     .waitForEnabled();
-  await nameField().setValue(typed);
+  await quickEditNameField().setValue(typed);
 }
 
 /**
@@ -61,44 +66,14 @@ async function waitForName(name: string): Promise<void> {
       `//div[contains(@class, "inkline-library-symbol")][not(.//form)][.//div[contains(@class, "inkline-library-name")][text()="${name}"]]`,
     )
     .waitForExist();
-  expect(await nameField().isExisting()).toBe(false);
+  expect(await quickEditNameField().isExisting()).toBe(false);
 }
 
 async function waitForError(text: string): Promise<void> {
   await browser.waitUntil(async () =>
     (await errorField().getText()).includes(text),
   );
-  expect(await nameField().getProperty("readOnly")).toBe(false);
-}
-
-/** Has Obsidian update links without asking, or ask. */
-async function setLinkUpdates(always: boolean): Promise<void> {
-  await browser.executeObsidian(({ app }, value) => {
-    const configurable = (
-      candidate: object,
-    ): candidate is { setConfig(key: string, value: unknown): void } =>
-      "setConfig" in candidate && typeof candidate.setConfig === "function";
-    if (!configurable(app.vault)) throw new Error("no vault settings");
-    app.vault.setConfig("alwaysUpdateLinks", value);
-  }, always);
-}
-
-/**
- * Waits for a note to link to `symbol`, in Obsidian's index, without saving
- * the note first as `waitForLink` does.
- */
-async function waitForLinkWithoutSaving(
-  note: string,
-  symbol: string,
-): Promise<void> {
-  await browser.waitUntil(async () =>
-    browser.executeObsidian(
-      ({ app }, from, to) =>
-        (app.metadataCache.resolvedLinks[from]?.[to] ?? 0) > 0,
-      note,
-      symbol,
-    ),
-  );
+  expect(await quickEditNameField().getProperty("readOnly")).toBe(false);
 }
 
 /** Makes a symbol that `count` notes embed. */
@@ -205,8 +180,9 @@ describe("Renaming in the symbol library", function () {
     );
     await browser.waitUntil(
       async () =>
-        (await row("tower").$(".inkline-library-uses").getText()) ===
-        "Uses (2)",
+        (await libraryRowNamed("tower")
+          .$(".inkline-library-uses")
+          .getText()) === "Uses (2)",
     );
   });
 
@@ -234,11 +210,11 @@ describe("Renaming in the symbol library", function () {
     await beginRename("gate", "TOWER");
     await browser.keys(["Enter"]);
     await waitForError("already has");
-    expect(await nameField().getValue()).toBe("TOWER");
-    await nameField().setValue("CON");
+    expect(await quickEditNameField().getValue()).toBe("TOWER");
+    await quickEditNameField().setValue("CON");
     await browser.keys(["Enter"]);
     await waitForError("Windows keeps");
-    await nameField().setValue("arch");
+    await quickEditNameField().setValue("arch");
     await browser.executeObsidian(({ app }) => {
       Reflect.set(
         app.fileManager,
@@ -251,7 +227,7 @@ describe("Renaming in the symbol library", function () {
     try {
       await browser.keys(["Enter"]);
       await waitForError("read-only");
-      expect(await nameField().getValue()).toBe("arch");
+      expect(await quickEditNameField().getValue()).toBe("arch");
       await saveScreenshot("library-rename-error");
     } finally {
       await browser.executeObsidian(({ app }) => {
@@ -283,7 +259,7 @@ describe("Renaming in the symbol library", function () {
     const replacement = await bytesOf("gate.ink.png");
     await browser.keys(["Enter"]);
     await waitForError("no longer in the vault");
-    expect(await nameField().getValue()).toBe("arch");
+    expect(await quickEditNameField().getValue()).toBe("arch");
     expect(await bytesOf("gate.ink.png")).toBe(replacement);
     expect(
       await browser.executeObsidian(
@@ -305,12 +281,14 @@ describe("Renaming in the symbol library", function () {
       await app.fileManager.trashFile(file);
     });
     await createSymbol("tower.ink.png", [1200]);
-    await row("tower").$(".inkline-library-insert").click({ button: "right" });
+    await libraryRowNamed("tower")
+      .$(".inkline-library-insert")
+      .click({ button: "right" });
     await waitForNotice(
       "tower changed or was deleted. Finish editing to refresh the library.",
     );
     expect(await browser.$(".menu").isExisting()).toBe(false);
-    expect(await nameField().getValue()).toBe("arch");
+    expect(await quickEditNameField().getValue()).toBe("arch");
   });
 
   it("keeps the entered name and caret through vault changes", async function () {
@@ -328,12 +306,12 @@ describe("Renaming in the symbol library", function () {
     // gathers a burst of changes before it would draw, and the new file's row,
     // not there yet, shows that it drew nothing.
     await browser.pause(300);
-    expect(await row("other").isExisting()).toBe(false);
-    expect(await nameField().getValue()).toBe("tower");
-    expect(await nameField().getProperty("selectionStart")).toBe(2);
+    expect(await libraryRowNamed("other").isExisting()).toBe(false);
+    expect(await quickEditNameField().getValue()).toBe("tower");
+    expect(await quickEditNameField().getProperty("selectionStart")).toBe(2);
     await browser.keys(["Enter"]);
     await waitForName("tower");
-    expect(await row("other").isExisting()).toBe(true);
+    expect(await libraryRowNamed("other").isExisting()).toBe(true);
   });
 
   it("starts a pending rename only once", async function () {
@@ -370,9 +348,9 @@ describe("Renaming in the symbol library", function () {
           ({ app }) => Reflect.get(app.fileManager, "inklineRenameCalls") === 1,
         ),
       );
-      expect(await nameField().getProperty("readOnly")).toBe(true);
+      expect(await quickEditNameField().getProperty("readOnly")).toBe(true);
       await browser.keys(["Enter", "Escape"]);
-      expect(await nameField().isExisting()).toBe(true);
+      expect(await quickEditNameField().isExisting()).toBe(true);
       await browser.executeObsidian(({ app }) => {
         const release: unknown = Reflect.get(
           app.fileManager,
@@ -451,7 +429,7 @@ describe("Renaming in the symbol library", function () {
       });
       await letGo();
       await waitForError("the file was renamed to arch.ink.png meanwhile");
-      expect(await nameField().getValue()).toBe("lintel");
+      expect(await quickEditNameField().getValue()).toBe("lintel");
       expect(await symbolFiles()).toEqual(["arch.ink.png"]);
       await browser.keys(["Enter"]);
       await waitForName("lintel");
@@ -463,7 +441,7 @@ describe("Renaming in the symbol library", function () {
       await createSymbol("LINTEL.ink.png", [1200]);
       await letGo();
       await waitForError("already has a symbol named lintel");
-      expect(await nameField().getValue()).toBe("lintel");
+      expect(await quickEditNameField().getValue()).toBe("lintel");
       expect(await symbolFiles()).toEqual(["LINTEL.ink.png", "gate.ink.png"]);
     });
   });
@@ -506,7 +484,7 @@ describe("Renaming in the symbol library", function () {
       });
       await letGo();
       await waitForError("the file was renamed to arch.ink.png meanwhile");
-      expect(await nameField().getValue()).toBe("lintel");
+      expect(await quickEditNameField().getValue()).toBe("lintel");
       expect(await symbolFiles()).toEqual(["arch.ink.png"]);
     });
 
@@ -573,7 +551,7 @@ describe("Renaming in the symbol library", function () {
       await watchForWait();
       await delayVault("process", (stalledAfter * 2) / notes, "before");
       await browser.keys(["Enter"]);
-      await nameField().waitForExist({
+      await quickEditNameField().waitForExist({
         reverse: true,
         timeout: stalledAfter * 3 + 15_000,
       });
@@ -696,7 +674,7 @@ describe("Renaming in the symbol library", function () {
       await browser.keys(["Enter"]);
       // Obsidian would say this one was done, with nothing renamed.
       await waitForError("Obsidian is still renaming this symbol");
-      expect(await nameField().getValue()).toBe("arch");
+      expect(await quickEditNameField().getValue()).toBe("arch");
       await formButton("Cancel").click();
       await letGo();
       await waitForName("lintel");
@@ -716,7 +694,7 @@ describe("Renaming in the symbol library", function () {
       await letGo("the drive went away");
       await waitForError("the drive went away");
       expect(await waitLine().getText()).toBe("");
-      expect(await nameField().getValue()).toBe("lintel");
+      expect(await quickEditNameField().getValue()).toBe("lintel");
       expect(await formButton("Save").isEnabled()).toBe(true);
       expect(await formButton("Cancel").isEnabled()).toBe(true);
     });
@@ -964,7 +942,7 @@ describe("Renaming in the symbol library", function () {
       } finally {
         await restore();
       }
-      expect(await nameField().getValue()).toBe("lintel");
+      expect(await quickEditNameField().getValue()).toBe("lintel");
       expect(await symbolFiles()).toEqual(["gate.ink.png"]);
       await waitForPanes("Uses.md", `${opening}${saved}`);
       await browser.keys(["Enter"]);

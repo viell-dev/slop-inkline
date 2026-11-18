@@ -141,20 +141,21 @@ classes and properties Inkline gives symbols, for theme and snippet authors.
 Search the
 [open and closed issues](https://github.com/viell-dev/slop-inkline/issues?q=is%3Aissue)
 first, then open a
-[bug report](https://github.com/viell-dev/slop-inkline/issues/new?template=bug.yml)
-with:
+[bug report](https://github.com/viell-dev/slop-inkline/issues/new?template=bug.yml).
+Only what happened is required. Anything else you can give helps find the cause
+sooner:
 
+- the steps that led to it, from a new vault or note if you can, with any theme
+  or other plugin the problem needs, and what you expected instead;
 - the Inkline version, or for a development build the commit it was built from,
   which `git rev-parse --short HEAD` prints in its folder;
 - the Obsidian version and installer version, both under **Settings → General**,
   and your operating system;
 - what you draw with: a mouse, a trackpad, or another pointer;
-- numbered steps from a new vault or note, with any theme or other plugin the
-  problem needs;
-- what happened, with any message, and what you expected instead.
+- any message, a screenshot, or a `.ink.png` file that shows the problem.
 
-A screenshot, or a `.ink.png` file that shows the problem, helps. Use synthetic
-examples only, and leave private notes and drawings out of every report.
+Use synthetic examples only, and leave private notes and drawings out of every
+report.
 
 Ask a question with the
 [question form](https://github.com/viell-dev/slop-inkline/issues/new?template=question.yml),

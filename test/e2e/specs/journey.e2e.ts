@@ -25,7 +25,7 @@ const marks: readonly Mark[] = [
   { x: 896, y: 44, width: 48, height: 12, colour: "blue" },
 ];
 
-function row(name: string): ReturnType<typeof browser.$> {
+function libraryRowNamed(name: string): ReturnType<typeof browser.$> {
   return browser.$(
     `//div[contains(@class, "inkline-library-symbol")][.//div[contains(@class, "inkline-library-name")][text()="${name}"]]`,
   );
@@ -81,7 +81,7 @@ async function makeAndName(name: string): Promise<void> {
   await browser.keys(["Enter"]);
 }
 
-async function next(count: number): Promise<void> {
+async function saveAndWaitForNewEditor(count: number): Promise<void> {
   await browser.keys(["Control", "Shift", "Enter"]);
   await browser.waitUntil(
     async () =>
@@ -162,13 +162,13 @@ describe("A deciphering session", function () {
     );
     await saveScreenshot("journey-tracing", browser.$(".inkline-editor"));
     await makeAndName("water");
-    await next(1);
+    await saveAndWaitForNewEditor(1);
     await pan(-delta);
     await browser.waitUntil(async () => (await picture("red")) !== null);
     red = await picture("red");
     if (red === null) throw new Error("the carried reference was lost");
     await makeAndName("gate");
-    await next(2);
+    await saveAndWaitForNewEditor(2);
     await pan(-((red.right - red.left) / 48) * 420);
     await browser.waitUntil(
       async () =>
@@ -214,23 +214,26 @@ describe("A deciphering session", function () {
     ).toBe(3);
     await openAtMarker("Notebook.md", "REUSE");
     await browser.executeObsidianCommand("inkline:show-library");
-    await row("gate").$(".inkline-library-insert").waitForDisplayed();
-    await row("gate").$(".inkline-library-insert").click();
+    await libraryRowNamed("gate")
+      .$(".inkline-library-insert")
+      .waitForDisplayed();
+    await libraryRowNamed("gate").$(".inkline-library-insert").click();
     await browser.waitUntil(async () =>
       (await textOf("Notebook.md")).includes("![[gate.ink.png]]"),
     );
     await browser.waitUntil(
       async () =>
-        (await row("gate").$(".inkline-library-uses").getText()) === "Uses (2)",
+        (await libraryRowNamed("gate").$(".inkline-library-uses").getText()) ===
+        "Uses (2)",
     );
-    await row("gate").$(".inkline-library-edit").click();
+    await libraryRowNamed("gate").$(".inkline-library-edit").click();
     await browser
       .$(".inkline-library-edit-form")
       .$("button=Save")
       .waitForEnabled();
     await browser.$(".inkline-library-edit-form input").setValue("return");
     await browser.keys(["Enter"]);
-    await row("return").waitForExist();
+    await libraryRowNamed("return").waitForExist();
     expect(await bytesOf("return.ink.png")).toBe(original);
     await browser.waitUntil(
       async () =>
@@ -241,17 +244,21 @@ describe("A deciphering session", function () {
     // Wait for the renamed row's enabled control before sending pointer input.
     await browser.waitUntil(
       async () =>
-        (await row("return").$(".inkline-library-uses").getText()) ===
-        "Uses (2)",
+        (await libraryRowNamed("return")
+          .$(".inkline-library-uses")
+          .getText()) === "Uses (2)",
     );
-    await row("return").$(".inkline-library-uses").waitForClickable();
-    await row("return").$(".inkline-library-uses").click();
+    await libraryRowNamed("return")
+      .$(".inkline-library-uses")
+      .waitForClickable();
+    await libraryRowNamed("return").$(".inkline-library-uses").click();
     await browser.waitUntil(
       async () =>
-        (await row("return").$$(".inkline-library-note").length) === 2,
+        (await libraryRowNamed("return").$$(".inkline-library-note").length) ===
+        2,
     );
     expect(
-      await row("return")
+      await libraryRowNamed("return")
         .$$(".inkline-library-note")
         .map((note) => note.getText()),
     ).toEqual(["Inscription", "Notebook"]);
@@ -275,7 +282,9 @@ describe("A deciphering session", function () {
           leaf.detach();
       }
     });
-    await row("return").$(".inkline-library-note=Inscription").click();
+    await libraryRowNamed("return")
+      .$(".inkline-library-note=Inscription")
+      .click();
     await browser.executeObsidian(async ({ app, obsidian }) => {
       const view = app.workspace.getActiveViewOfType(obsidian.MarkdownView);
       if (view?.file === null || view === null)

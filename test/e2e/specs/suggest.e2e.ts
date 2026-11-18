@@ -56,7 +56,7 @@ async function waitForSuggested(names: string[]): Promise<void> {
 }
 
 /** Waits for the note to read `text`, failing with what it last read. */
-async function waitForNote(text: string): Promise<void> {
+async function waitForNoteWithPath(text: string): Promise<void> {
   let read = "";
   let path: string | undefined;
   try {
@@ -297,7 +297,7 @@ describe("Inserting a symbol you have", function () {
     ).toEqual([true, "true", null]);
     await saveScreenshot("suggest-typing");
     await browser.keys(["Enter"]);
-    await waitForNote("The door reads ![[arch.ink.png]].\n");
+    await waitForNoteWithPath("The door reads ![[arch.ink.png]].\n");
     expect(await browser.$(".suggestion-container").isExisting()).toBe(false);
   });
 
@@ -324,7 +324,7 @@ describe("Inserting a symbol you have", function () {
     await type(";;001");
     await waitForSuggested(["001"]);
     await browser.keys(["Enter"]);
-    await waitForNote("The door reads ![[001.ink.png]].\n");
+    await waitForNoteWithPath("The door reads ![[001.ink.png]].\n");
   });
 
   it("inserts the symbol chosen from the command's list", async function () {
@@ -335,7 +335,7 @@ describe("Inserting a symbol you have", function () {
     await waitForSuggested(["tower one"]);
     await browser.keys(["Enter"]);
     // The shortest link that names it, as Obsidian makes them by default.
-    await waitForNote("The door reads ![[tower one.ink.png]].\n");
+    await waitForNoteWithPath("The door reads ![[tower one.ink.png]].\n");
   });
 
   it("keeps a dismissed list closed as its name is typed on", async function () {
@@ -349,12 +349,12 @@ describe("Inserting a symbol you have", function () {
     await browser.pause(500);
     expect(await listOpen()).toBe(false);
     await browser.keys(["Enter"]);
-    await waitForNote("The door reads ;;tower\n.\n");
+    await waitForNoteWithPath("The door reads ;;tower\n.\n");
     // A new trigger lists again.
     await type(";;arc");
     await waitForSuggested(["arch"]);
     await browser.keys(["Enter"]);
-    await waitForNote("The door reads ;;tower\n![[arch.ink.png]].\n");
+    await waitForNoteWithPath("The door reads ;;tower\n![[arch.ink.png]].\n");
   });
 
   it("lists again once a key that ended the name is taken back", async function () {
@@ -367,7 +367,7 @@ describe("Inserting a symbol you have", function () {
     await browser.keys(["Backspace"]);
     await waitForSuggested(["arch"]);
     await browser.keys(["Enter"]);
-    await waitForNote("The door reads ![[arch.ink.png]].\n");
+    await waitForNoteWithPath("The door reads ![[arch.ink.png]].\n");
   });
 
   it("lists nothing in code", async function () {
@@ -468,7 +468,7 @@ describe("Inserting a symbol you have", function () {
         if (lists) {
           await waitForSuggested(["arch"]);
           await browser.keys(["Enter"]);
-          await waitForNote(note.replace("HERE", "![[arch.ink.png]]"));
+          await waitForNoteWithPath(note.replace("HERE", "![[arch.ink.png]]"));
           return;
         }
         await browser.pause(500);
@@ -542,7 +542,7 @@ describe("Inserting a symbol you have", function () {
       // Obsidian's own link, where it leads back; one with a % that starts
       // no escape mended; and by their vault paths, one whose % starts one,
       // and one whose ) would end the link.
-      await waitForNote(
+      await waitForNoteWithPath(
         "The door reads ![](tower%20one.ink.png) ![](sun%2050%25.ink.png) ![](Glyphs/jix%2541&y.ink.png) ![](Glyphs/half%29moon.ink.png).\n",
       );
       await browser.executeObsidian(async ({ app, obsidian }) => {
@@ -581,7 +581,9 @@ describe("Inserting a symbol you have", function () {
       await type(";;tower o");
       await waitForSuggested(["tower one"]);
       await browser.keys(["Enter"]);
-      await waitForNote("The door reads ![](../Glyphs/tower%20one.ink.png).\n");
+      await waitForNoteWithPath(
+        "The door reads ![](../Glyphs/tower%20one.ink.png).\n",
+      );
       await browser.executeObsidian(async ({ app, obsidian }) => {
         await app.workspace.getActiveViewOfType(obsidian.MarkdownView)?.save();
       });
