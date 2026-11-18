@@ -91,6 +91,37 @@ export async function waitForRow(
   return shown;
 }
 
+/**
+ * Waits for the open list to show exactly `expected`, in order. A list follows
+ * what is typed a little later, so a row can be there before the list has
+ * caught up with the last keys, beside rows that an earlier query found: on
+ * the way to `;;rice f`, `tower` once showed beside the translation's row.
+ * {@link waitForRow} returns as soon as its row shows, so it suits only a
+ * check that the row is there.
+ */
+export async function waitForRows(
+  expected: readonly { name: string; why: string }[],
+): Promise<void> {
+  let shown: { name: string; why: string }[] = [];
+  const same = (): boolean =>
+    shown.length === expected.length &&
+    shown.every(
+      (each, at) =>
+        each.name === expected[at]?.name && each.why === expected[at].why,
+    );
+  try {
+    await browser.waitUntil(async () => {
+      shown = await rows();
+      return same();
+    });
+  } catch (error) {
+    throw new Error(
+      `the list showed ${JSON.stringify(shown)}, not ${JSON.stringify(expected)}`,
+      { cause: error },
+    );
+  }
+}
+
 /** Saves the library's fields, under an editor or not. */
 export function saveFields(): void {
   document
