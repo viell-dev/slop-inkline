@@ -78,6 +78,7 @@ import {
   type BrushCursor,
 } from "./cursor.ts";
 import { PointerGate } from "./pointer.ts";
+import { StatusLine } from "./status.ts";
 import {
   brushSizes,
   DrawingSession,
@@ -104,6 +105,7 @@ import {
   type Placement,
 } from "./reference.ts";
 import { InkView, measureFont, surfaceWidth } from "./view.ts";
+import { markNotice } from "../notices.ts";
 
 /** How the vault's notes use a symbol: how many links, in how many notes. */
 export interface SymbolUses {
@@ -512,6 +514,13 @@ export class InkEditorModal extends Modal {
   #frame: number | undefined;
   #resize: ResizeObserver | undefined;
   #status: HTMLElement | undefined;
+  /**
+   * What the status line says, which whatever the person does replaces, and
+   * empties when it has nothing to say, as status.ts explains.
+   */
+  readonly #line = new StatusLine((text) => {
+    this.#status?.setText(text);
+  });
   /** Says that a save is waiting for Obsidian, which outlasts the status. */
   #saveWait: HTMLElement | undefined;
   /**
@@ -786,7 +795,7 @@ export class InkEditorModal extends Modal {
         this.#render();
       },
       "Fit",
-      "centre the drawing in the view, and show all of it if it is wider; the drawing itself stays as it is",
+      "centre the drawing in the view, and out of Zoom show all of it if it is wider; the drawing itself stays as it is",
     );
     this.#addButton(
       toolbar,
@@ -892,7 +901,9 @@ export class InkEditorModal extends Modal {
         },
       });
     threshold.addEventListener("input", () => {
-      this.#setThreshold(Number(threshold.value));
+      this.#line.act(() => {
+        this.#setThreshold(Number(threshold.value));
+      });
     });
     this.#thresholdInput = threshold;
     this.#addButton(
@@ -1040,6 +1051,13 @@ export class InkEditorModal extends Modal {
       super.close();
       return;
     }
+    this.#line.act(() => {
+      this.#closeAsked();
+    });
+  }
+
+  /** What {@link close} does while the editor is open: Esc, for one. */
+  #closeAsked(): void {
     // A polygon being placed is dropped first, and the editor stays open.
     if (this.#session.placing) {
       this.#session.cancel();
@@ -1049,7 +1067,7 @@ export class InkEditorModal extends Modal {
       return;
     }
     if (this.#saving !== undefined) {
-      this.#announce("Saving…");
+      this.#announceSaving();
       return;
     }
     // Ink being previewed is unsaved too: Save makes it, as saving does.
@@ -1107,8 +1125,10 @@ export class InkEditorModal extends Modal {
 
   /** Says that the latest changes are in no draft, once the editor is gone. */
   #sayNotKept(): void {
-    new Notice(
-      `Inkline could not keep a draft of the latest changes to ${this.#displayName}.`,
+    markNotice(
+      new Notice(
+        `Inkline could not keep a draft of the latest changes to ${this.#displayName}.`,
+      ),
     );
   }
 
@@ -1142,7 +1162,7 @@ export class InkEditorModal extends Modal {
       question.addButton((button) => {
         button.setButtonText(answer.text).onClick(() => {
           answered = true;
-          if (!this.#retired && !this.#closing) answer.act();
+          if (!this.#retired && !this.#closing) this.#line.act(answer.act);
         });
         if (answer.primary === true) button.setCta().setInitialFocus();
         if (answer.destructive === true) button.setDestructive();
@@ -1210,7 +1230,9 @@ export class InkEditorModal extends Modal {
       },
     });
     field.addEventListener("input", () => {
-      this.#keepDraft();
+      this.#line.act(() => {
+        this.#keepDraft();
+      });
     });
     field.addEventListener("keydown", (event) => {
       if (event.key !== "Enter" || event.isComposing) return;
@@ -1242,15 +1264,19 @@ export class InkEditorModal extends Modal {
       strip,
       this.#options.text ?? noText,
       () => {
-        this.#showTextSummary();
-        this.#keepDraft();
+        this.#line.act(() => {
+          this.#showTextSummary();
+          this.#keepDraft();
+        });
       },
     );
     toggle.addEventListener("click", () => {
-      const open = !strip.isShown();
-      this.#showText(open);
-      if (open) this.#textFields?.focus();
-      else this.#view?.canvas.focus({ preventScroll: true });
+      this.#line.act(() => {
+        const open = !strip.isShown();
+        this.#showText(open);
+        if (open) this.#textFields?.focus();
+        else this.#view?.canvas.focus({ preventScroll: true });
+      });
     });
     this.#showTextSummary();
     if (this.#options.tools?.textShown === true) this.#showText(true);
@@ -1340,7 +1366,11 @@ export class InkEditorModal extends Modal {
     const name = description === undefined ? label : `${label}: ${description}`;
     const button = new ButtonComponent(parent)
       .setTooltip(shortcut === undefined ? name : `${name} (${shortcut})`)
-      .onClick(action);
+      .onClick((event) => {
+        this.#line.act(() => {
+          action(event);
+        });
+      });
     const face = buttonFace(id, this.#options.buttonLabels ?? "both");
     if (face.icon === undefined) {
       button.setButtonText(text);
@@ -1373,7 +1403,7 @@ export class InkEditorModal extends Modal {
     ): void => {
       this.scope.register(modifiers, name, () => {
         if (yields && typing(activeDocument.activeElement)) return true;
-        action();
+        this.#line.act(action);
         return false;
       });
     };
@@ -1413,7 +1443,9 @@ export class InkEditorModal extends Modal {
       if (!this.#session.placing || activeDocument.activeElement !== canvas) {
         return true;
       }
-      this.#endPolygon();
+      this.#line.act(() => {
+        this.#endPolygon();
+      });
       return false;
     });
     key([], "g", () => {
@@ -1455,14 +1487,18 @@ export class InkEditorModal extends Modal {
         // Otherwise a magnified view moves along the drawing, as Obsidian's
         // scope runs only the first handler for a key.
         if (!this.#moving || picture === undefined) {
-          return !this.#arrowKey(name, modifiers.length > 0);
+          return !this.#line.actIf(() =>
+            this.#arrowKey(name, modifiers.length > 0),
+          );
         }
         const focused = activeDocument.activeElement;
         // A text field, or the threshold's slider, keeps its own keys.
         if (typing(focused) || focused?.instanceOf(HTMLInputElement) === true) {
           return true;
         }
-        this.#placePicture(action(picture));
+        this.#line.act(() => {
+          this.#placePicture(action(picture));
+        });
         return false;
       });
     };
@@ -1552,14 +1588,16 @@ export class InkEditorModal extends Modal {
       // that the shortcuts are the editor's again after typing elsewhere.
       canvas.focus({ preventScroll: true });
       canvas.setPointerCapture(event.pointerId);
-      if (this.#moving) {
-        this.#dragged = { clientX: event.clientX, clientY: event.clientY };
-        canvas.addClass("is-dragging");
-        return;
-      }
-      this.#session.begin(point(event), event.shiftKey);
-      hover(event);
-      this.#render();
+      this.#line.act(() => {
+        if (this.#moving) {
+          this.#dragged = { clientX: event.clientX, clientY: event.clientY };
+          canvas.addClass("is-dragging");
+          return;
+        }
+        this.#session.begin(point(event), event.shiftKey);
+        hover(event);
+        this.#render();
+      });
     });
     canvas.addEventListener("pointermove", (event) => {
       hover(event);
@@ -1613,23 +1651,27 @@ export class InkEditorModal extends Modal {
           const delta = event.deltaX === 0 ? event.deltaY : event.deltaX;
           const lines = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : 1;
           const { left, right } = view.visible;
-          view.pan(
-            ((delta * lines) / view.canvas.clientWidth) * (right - left),
-          );
-          this.#render();
+          this.#line.act(() => {
+            view.pan(
+              ((delta * lines) / view.canvas.clientWidth) * (right - left),
+            );
+            this.#render();
+          });
           return;
         }
         if (!this.#moving || picture === undefined) return;
         event.preventDefault();
         const { x, y } = view.toDocument(event.clientX, event.clientY);
-        this.#placePicture(
-          scalePicture(
-            picture.placement,
-            wheelFactor(event.deltaY, event.deltaMode),
-            x,
-            y,
-          ),
-        );
+        this.#line.act(() => {
+          this.#placePicture(
+            scalePicture(
+              picture.placement,
+              wheelFactor(event.deltaY, event.deltaMode),
+              x,
+              y,
+            ),
+          );
+        });
       },
       { passive: false },
     );
@@ -1649,26 +1691,31 @@ export class InkEditorModal extends Modal {
       // Neither the browser nor Obsidian does anything else with it.
       event.preventDefault();
       event.stopPropagation();
-      const picture = pictureIn(event.dataTransfer);
-      if (picture !== undefined) {
-        void this.#trace(picture);
-        return;
-      }
-      // A picture in the vault, dragged from Obsidian's file explorer.
-      const { vault } = this.app;
-      const path = openLinkPath(
-        event.dataTransfer?.getData("text/uri-list") ?? "",
-        vault.getName(),
-      );
-      const file = path === undefined ? null : vault.getFileByPath(path);
-      if (file === null || !isPicturePath(file.path)) {
-        this.#announce("Not traced: only a picture can be traced over");
-        return;
-      }
-      void this.#trace(
-        vault.readBinary(file).then((bytes) => new Blob([bytes])),
-      );
+      this.#line.act(() => {
+        this.#dropped(event.dataTransfer);
+      });
     });
+  }
+
+  /** Traces over a picture dropped on the surface, or says why not. */
+  #dropped(data: DataTransfer | null): void {
+    const picture = pictureIn(data);
+    if (picture !== undefined) {
+      void this.#trace(picture);
+      return;
+    }
+    // A picture in the vault, dragged from Obsidian's file explorer.
+    const { vault } = this.app;
+    const path = openLinkPath(
+      data?.getData("text/uri-list") ?? "",
+      vault.getName(),
+    );
+    const file = path === undefined ? null : vault.getFileByPath(path);
+    if (file === null || !isPicturePath(file.path)) {
+      this.#announce("Not traced: only a picture can be traced over");
+      return;
+    }
+    void this.#trace(vault.readBinary(file).then((bytes) => new Blob([bytes])));
   }
 
   /**
@@ -1692,11 +1739,13 @@ export class InkEditorModal extends Modal {
     if (typing(doc.activeElement)) return;
     const picture = pictureIn(event.clipboardData);
     event.preventDefault();
-    if (picture === undefined) {
-      this.#announce("The clipboard holds no picture to trace over");
-      return;
-    }
-    void this.#trace(picture);
+    this.#line.act(() => {
+      if (picture === undefined) {
+        this.#announce("The clipboard holds no picture to trace over");
+        return;
+      }
+      void this.#trace(picture);
+    });
   };
 
   /**
@@ -2020,7 +2069,7 @@ export class InkEditorModal extends Modal {
         return;
       }
       let made: Awaited<ReturnType<typeof baseFromInk>>;
-      this.#announce("Making ink…");
+      this.#announce("Making ink…", () => this.#applying !== undefined);
       try {
         made = await baseFromInk(ink, place.scale);
       } catch (error) {
@@ -2602,8 +2651,17 @@ export class InkEditorModal extends Modal {
     help.open();
   }
 
-  #announce(text: string): void {
-    this.#status?.setText(text);
+  /**
+   * Says `text` in the status line. With `holds`, it stays through what the
+   * person does meanwhile, for as long as `holds` returns true.
+   */
+  #announce(text: string, holds?: () => boolean): void {
+    this.#line.say(text, holds);
+  }
+
+  /** Says that a save is running, which stays said until it ends. */
+  #announceSaving(): void {
+    this.#announce("Saving…", () => this.#saving !== undefined);
   }
 
   /**
@@ -2647,16 +2705,19 @@ export class InkEditorModal extends Modal {
     const { document } = this.#session;
     const kept = drafts.store.put(this.#draft(drafts.target(), pending));
     if (!kept && this.#draftKept) {
-      this.#announce("Draft not kept");
-      new Notice(
-        parseRecord(serializeRecord(document)).ok
-          ? "Inkline could not keep a draft of the latest changes, because the vault's local storage refused it. Save the symbol to keep them."
-          : "Inkline could not keep a draft of the latest changes, because they take the drawing past what a symbol can hold. Undo them to save it.",
+      // The latest changes stay unkept until a draft is kept again.
+      this.#announce("Draft not kept", () => !this.#draftKept);
+      markNotice(
+        new Notice(
+          parseRecord(serializeRecord(document)).ok
+            ? "Inkline could not keep a draft of the latest changes, because the vault's local storage refused it. Save the symbol to keep them."
+            : "Inkline could not keep a draft of the latest changes, because they take the drawing past what a symbol can hold. Undo them to save it.",
+        ),
       );
     } else if (
       kept &&
       !this.#draftKept &&
-      this.#status?.getText() === "Draft not kept"
+      this.#line.text === "Draft not kept"
     ) {
       this.#announce("Draft kept");
     }
@@ -3039,8 +3100,10 @@ export class InkEditorModal extends Modal {
     if (reading.kind !== "file") return;
     if (action === "unreadable") {
       this.#announce(`Not reloaded: ${unreadable}`);
-      new Notice(
-        `${this.#displayName} changed on disk, and this version of Inkline cannot read it, so the editor will not save over it.`,
+      markNotice(
+        new Notice(
+          `${this.#displayName} changed on disk, and this version of Inkline cannot read it, so the editor will not save over it.`,
+        ),
       );
     } else if (action === "reload" && opened !== undefined) {
       this.#reload(reading, opened);
@@ -3407,7 +3470,7 @@ export class InkEditorModal extends Modal {
     const base = this.#base;
     const changes = this.#textFields?.changes() ?? {};
     const typedText = this.#textFields?.typed() ?? {};
-    this.#announce("Saving…");
+    this.#announceSaving();
     /** Starts this save again once it has ended, if it is to. */
     let again: (() => void) | undefined;
     this.#saving = (async () => {
@@ -3484,7 +3547,7 @@ export class InkEditorModal extends Modal {
         const reason = error instanceof Error ? error.message : String(error);
         this.#announce(`Not saved: ${reason}`);
         if (!(error instanceof Unsaved)) {
-          new Notice(`Could not save the symbol: ${reason}`);
+          markNotice(new Notice(`Could not save the symbol: ${reason}`));
         }
         return false;
       } finally {
