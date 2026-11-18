@@ -1608,6 +1608,33 @@ describe("DrawingSession's fill", () => {
     expect(session.document.strokes).toHaveLength(2);
   });
 
+  it("closes a filled polygon on the grid where Shift snaps to its first corner, and shows it so", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.shape = "polygon";
+    session.fill = true;
+    for (const [x, y] of [
+      [17, 15],
+      [47, 17],
+      [33, 63],
+    ] as const) {
+      session.begin({ x, y }, true);
+      session.end({ x, y }, true);
+    }
+    // Two pixels from the first corner, which Shift snaps to.
+    session.extend([{ x: 18, y: 18 }], true);
+    const shown = session.activeStrokes;
+    session.begin({ x: 18, y: 18 }, true);
+    session.end({ x: 18, y: 18 }, true);
+    expect(session.placing).toBe(false);
+    const points = [256, 256, 768, 256, 512, 1024, 256, 256];
+    expect(session.document.strokes).toEqual([
+      { tool: "pen", points, kind: "fill" },
+      { tool: "pen", size: 192, points, kind: "polygon" },
+    ]);
+    expect(shown).toEqual(session.document.strokes);
+  });
+
   it("keeps the brush's width round a filled ellipse: the ring of the ellipse unfilled, with its inside, as one step", () => {
     const unfilled = new DrawingSession(emptyDocument);
     unfilled.shape = "ellipse";

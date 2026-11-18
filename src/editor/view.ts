@@ -138,6 +138,32 @@ export function addedStrokes(
 }
 
 /**
+ * The most added strokes that are measured each alone, rather than the whole
+ * drawing again: two, a filled shape's fill and line, the most that one
+ * drawing action adds. Each takes a canvas and a read of its pixels of its
+ * own, where a full measurement takes one of each for every 4096 pixels
+ * across, so many strokes at once, as when a draft is restored over a symbol
+ * with no strokes, cost less measured together.
+ */
+export const measuredAlone = 2;
+
+/**
+ * Of the strokes added to what was measured, those to measure each alone and
+ * add to it: all of them, if there are no more than {@link measuredAlone}
+ * and all are the pen's, as only the pen adds ink. Undefined when the whole
+ * drawing is measured again instead.
+ */
+export function toMeasureAlone(
+  added: readonly Stroke[] | undefined,
+): readonly Stroke[] | undefined {
+  return added !== undefined &&
+    added.length <= measuredAlone &&
+    added.every(({ tool }) => tool === "pen")
+    ? added
+    : undefined;
+}
+
+/**
  * The strokes that make `now` of `drawn`, if that is all that changed, so
  * that they can be drawn over what is there rather than everything again.
  */
@@ -601,17 +627,16 @@ export class InkView {
   /**
    * Finds how far the drawing's ink reaches inside the line box, as a save
    * crops to it, whatever the surface shows: in tiles, so that geometry far
-   * away or erased costs time but never a huge canvas. Pen strokes added to
-   * what was measured are measured each alone, where a full measurement would
-   * draw them, if they can be. Anything else can take ink away, so all of it
-   * is measured again.
+   * away or erased costs time but never a huge canvas. Up to
+   * {@link measuredAlone} pen strokes added to what was measured are measured
+   * each alone, where a full measurement would draw them, if they can be.
+   * Anything else can take ink away, or costs more that way, so all of it is
+   * measured again.
    */
   #measure(now: Drawn): void {
     const { document, base } = now;
-    const added = strokesOver(this.#measured, now);
-    let inked = added?.every(({ tool }) => tool === "pen")
-      ? this.#inked
-      : undefined;
+    const added = toMeasureAlone(strokesOver(this.#measured, now));
+    let inked = added === undefined ? undefined : this.#inked;
     for (const stroke of added ?? []) {
       if (inked === undefined) break;
       inked = measureAdded(inked, stroke);
