@@ -350,10 +350,13 @@ describe("The editor", function () {
         "Text from the test before\n",
         "inklineOtherWrite",
       );
-      // The second write is not taken for the held one: it goes on.
+      // The second write is not taken for the held one: it goes on, and ends
+      // one way or the other, which the check below then reports.
       await browser.waitUntil(
-        async () =>
-          (await writeOutcome("inklineOtherWrite")).written !== undefined,
+        async () => {
+          const outcome = await writeOutcome("inklineOtherWrite");
+          return outcome.written !== undefined || outcome.failure !== undefined;
+        },
         { timeoutMsg: "the second write was held too" },
       );
       expect(await writeOutcome("inklineOtherWrite")).toEqual({
@@ -367,7 +370,9 @@ describe("The editor", function () {
     } finally {
       await endWrite("inklineEndWrite");
     }
-    await startOver({ letGoBound: 300 });
+    // Once ended, the write goes to the disk, so the clean-up gets its
+    // ordinary time for it here.
+    await startOver();
     expect(await writeOutcome()).toEqual({ written: true });
     await browser.execute(() => {
       Reflect.deleteProperty(window, "inklineOtherWrite");
