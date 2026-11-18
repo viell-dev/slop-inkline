@@ -9,6 +9,16 @@ What Inkline does not do, or does not do everywhere, and what to do instead. The
   run on Linux; Windows and macOS should work but are not tested.
 - **Mouse or trackpad.** A drawing tablet's pen or a touchscreen draws as a
   mouse does: pen pressure and a pen's eraser end are not supported.
+- **The eraser's edge can shift along a curve.** Behind a large brush moving
+  along a curve, most of all slowly, the edge the eraser leaves in the ink
+  shifts while you erase, and a little ink can come back beside the way it went,
+  a few pixels outside the brush's circle. Some of it stays when you let go
+  ([#341](https://github.com/viell-dev/slop-inkline/issues/341)). Where the
+  pointer is, the eraser takes away all the circle shows, and a straight stroke
+  barely shifts. A smaller brush shifts the edge less, and Shift draws a
+  straight stroke. For an exact cut, use the eraser with **Ellipse** or
+  **Polygon** and **Toggle fill**: it takes away exactly the shape you drag or
+  place.
 - **Large libraries** show 100 symbols at a time, with **Show more** for the
   next 100. Filter them, or choose a folder, to narrow the list.
 - **Library insertion needs a sidebar.** If the library's tab is dragged into
