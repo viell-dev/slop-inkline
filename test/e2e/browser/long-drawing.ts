@@ -11,7 +11,7 @@ import {
 } from "../../../src/format/record.ts";
 import { cropSpan, joinSpans, type Span } from "../../../src/editor/guides.ts";
 import { DrawingSession, type Shape } from "../../../src/editor/session.ts";
-import { InkView } from "../../../src/editor/view.ts";
+import { InkView, addedStrokes } from "../../../src/editor/view.ts";
 import {
   baseFromPicture,
   findInk,
@@ -20,7 +20,6 @@ import {
   saveInk,
 } from "../../../src/ink/canvas.ts";
 import {
-  addedStroke,
   documentSpan,
   toUnits,
   type InkDocument,
@@ -43,10 +42,15 @@ const textSize = 16;
 export interface SequenceReport {
   /** How many times each operation ran. */
   readonly operations: Readonly<Record<string, number>>;
-  /** Frames compared, and those adding one pen or eraser stroke to the last. */
+  /**
+   * Frames compared, and those adding strokes to the last: only the pen's,
+   * which are measured alone, or any of the eraser's; and those adding more
+   * than one, as a filled shape does.
+   */
   readonly frames: number;
   readonly addedPen: number;
   readonly addedEraser: number;
+  readonly addedSeveral: number;
   /** Saves made, and those cropped a pixel from a full measurement. */
   readonly saves: number;
   readonly savesAPixelOff: number;
@@ -95,11 +99,11 @@ function nearSpan(a: Span, b: Span): boolean {
   return Math.abs(a.left - b.left) <= 1 && Math.abs(a.right - b.right) <= 1;
 }
 
-/** The image's ends a full measurement gives, with any stroke being drawn. */
+/** The image's ends a full measurement gives, with any strokes being drawn. */
 function fullSpan(
   document: InkDocument,
   base: DrawableBase | undefined,
-  active: Stroke | undefined,
+  active: readonly Stroke[],
 ): Span {
   const found = findInk(document, base);
   return cropSpan(
@@ -107,7 +111,7 @@ function fullSpan(
       found === undefined
         ? undefined
         : { left: found.left, right: found.right },
-      active?.tool === "pen" ? documentSpan({ strokes: [active] }) : undefined,
+      documentSpan({ strokes: active.filter(({ tool }) => tool === "pen") }),
     ),
   );
 }
@@ -200,6 +204,7 @@ export async function runSequence(
   let frames = 0;
   let addedPen = 0;
   let addedEraser = 0;
+  let addedSeveral = 0;
   let saves = 0;
   let savesAPixelOff = 0;
   let refused = 0;
@@ -231,11 +236,12 @@ export async function runSequence(
     if (mismatch !== undefined) return;
     const { document } = session;
     const base = placed(document);
-    const active = session.activeStroke;
+    const active = session.activeStrokes;
     const erasing = session.tool === "eraser" && session.shape !== "free";
-    const added = last === undefined ? undefined : addedStroke(last, document);
-    if (added?.tool === "pen") addedPen++;
-    if (added?.tool === "eraser") addedEraser++;
+    const added = last === undefined ? undefined : addedStrokes(last, document);
+    if (added?.every(({ tool }) => tool === "pen") === true) addedPen++;
+    if (added?.some(({ tool }) => tool === "eraser") === true) addedEraser++;
+    if (added !== undefined && added.length > 1) addedSeveral++;
     last = document;
     frames++;
 
@@ -278,14 +284,14 @@ export async function runSequence(
       mismatch = `${at}: the preview in text differs ${text}`;
       return;
     }
-    if (active === undefined) {
+    if (active.length === 0) {
       // A dot above the line box, within the ink, so that it shows nothing.
       const dot: Stroke = {
         tool: "pen",
         size: toUnits(1),
         points: [toUnits((image.left + image.right) / 2), toUnits(-100)],
       };
-      kept.render(document, base, dot);
+      kept.render(document, base, [dot]);
       if (sameSpan(kept.image, image)) {
         kept.drawPreview(keptText, textSize);
         const started = difference(inText, pixelsOf(keptText));
@@ -294,10 +300,10 @@ export async function runSequence(
           return;
         }
       }
-      kept.render(document, base, undefined);
+      kept.render(document, base);
     }
     // A save takes longer than all of that, so it is every few frames.
-    if (active !== undefined || frames % 5 !== 0) return;
+    if (active.length > 0 || frames % 5 !== 0) return;
     const saved = await save(document, base);
     if (saved === undefined) return;
     const crop = {
@@ -565,6 +571,7 @@ export async function runSequence(
     frames,
     addedPen,
     addedEraser,
+    addedSeveral,
     saves,
     savesAPixelOff,
     refused,
@@ -646,7 +653,7 @@ export function timeChanges(count: number, span: number): ChangeTimes {
   view.resize(surfaceWidth, 1);
   const show = (document: InkDocument, active?: Stroke): number => {
     const started = performance.now();
-    view.render(document, undefined, active);
+    view.render(document, undefined, active === undefined ? [] : [active]);
     view.drawPreview(preview, 16);
     context2d(surface).getImageData(0, 0, 1, 1);
     context2d(preview).getImageData(0, 0, 1, 1);
@@ -678,7 +685,7 @@ export function timeChanges(count: number, span: number): ChangeTimes {
       frames,
       ends: {
         shown: view.image,
-        full: fullSpan(document, undefined, undefined),
+        full: fullSpan(document, undefined, []),
       },
       strokes: document.strokes.length,
     };
