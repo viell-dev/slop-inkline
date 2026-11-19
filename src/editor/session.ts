@@ -231,11 +231,11 @@ function filledInside(stroke: Stroke, next: Stroke | undefined): boolean {
  * `fallback` for a document with no strokes. Each stroke's start and end,
  * erasers' too, mark the place within a spacing where they lie, a one-point
  * stroke's once, and a filled shape's on its sides alone, so that it counts
- * as the same shape unfilled does. An eraser's area that starts and ends at
- * one point, as an eraser drawn freehand does at its way's end, marks it
- * once. The place marked most often wins; of places marked equally often, the
- * one that reached that count first in stroke order does, so with no place
- * marked twice, it is where the first stroke starts.
+ * as the same shape unfilled does. An eraser's area drawn freehand starts and
+ * ends at its way's end, and marks that place twice, as a stroke that started
+ * and ended there would. The place marked most often wins; of places marked
+ * equally often, the one that reached that count first in stroke order does,
+ * so with no place marked twice, it is where the first stroke starts.
  *
  * Ends that Shift put on the grid lie on its columns, and a save moves the
  * drawing by whole pixels, so a drawing made on the grid lines up with it
@@ -260,14 +260,7 @@ export function gridOriginOf(
     if (filledInside(stroke, strokes[index + 1])) continue;
     const { points } = stroke;
     const last = points.length - 2;
-    // An eraser's sweep starts and ends at its way's end: one place.
-    const once =
-      last <= 0 ||
-      (stroke.kind === "fill" &&
-        stroke.tool === "eraser" &&
-        points[0] === points[last] &&
-        points[1] === points[last + 1]);
-    for (const at of once ? [0] : [0, last]) {
+    for (const at of last > 0 ? [0, last] : [0]) {
       const x = points[at];
       const y = points[at + 1];
       if (x !== undefined && y !== undefined) ends.push({ x, y });
@@ -315,8 +308,10 @@ interface ActiveStroke {
   /** Whether it is a polygon, whose points are the corners placed so far. */
   readonly polygon: boolean;
   /**
-   * Whether it is an eraser's stroke drawn as the pointer goes, which takes
-   * away exactly what its brush sweeps, and is saved as that area.
+   * Whether it is an eraser's stroke drawn as the pointer goes, started
+   * without Flat ends and the grid both on, which takes away exactly what its
+   * brush sweeps, and is saved as that area, never cut. One started with both
+   * on is a smooth stroke, as in 1.0.1, which they can cut.
    */
   readonly sweep: boolean;
 }
@@ -621,10 +616,10 @@ export class DrawingSession {
    * The strokes being drawn, as they would be committed now: one, or a
    * filled shape's two. None while nothing is being drawn. A stroke is cut at
    * its start if that is on the grid, and its end comes to the grid only as
-   * it is let go; but an eraser's stroke drawn as the pointer goes shows its
-   * end as letting go where the pointer is would leave it, or {@link end}
-   * without a release, as far as the editor knows of Shift. A polygon being
-   * placed is shown as a click where the pointer is would leave it.
+   * it is let go; but an eraser's sweep is just what {@link end} commits,
+   * with the pointer where it is and Shift as the editor last knew it. A
+   * polygon being placed is shown as a click where the pointer is would leave
+   * it.
    */
   get activeStrokes(): readonly Stroke[] {
     const active = this.#active;
@@ -735,9 +730,10 @@ export class DrawingSession {
       }
     }
     // The start goes by the way the pointer went, and so does the end, but
-    // for a straight segment, which runs as it does right to its end.
+    // for a straight segment, which runs as it does right to its end. A
+    // sweep's ends are not cut.
     const pointer =
-      this.#straightStart && straight
+      active.sweep || (this.#straightStart && straight)
         ? undefined
         : this.#path(straight ? undefined : release);
     return this.#strokes(
@@ -793,12 +789,12 @@ export class DrawingSession {
     if (active.polygon) {
       return { tool, size, points: [...active.points], kind: "polygon" };
     }
+    if (active.sweep) return sweptStroke(tool, size, active.points);
     const reach = Math.max(2 * active.size, toUnits(this.grid.spacing));
     const cut = gridCuts(active.points, reach, ends, {
       ...(paths.start === undefined ? {} : { start: paths.start }),
       ...(paths.end === undefined ? {} : { end: paths.end }),
     });
-    if (active.sweep) return sweptStroke(tool, size, active.points, cut);
     const stroke = { tool, size, points: [...active.points] };
     return cut === undefined ? stroke : { ...stroke, cut };
   }
@@ -830,7 +826,10 @@ export class DrawingSession {
       flat,
       onGrid: onGrid && flat,
       polygon,
-      sweep: this.tool === "eraser" && this.shape === "free",
+      sweep:
+        this.tool === "eraser" &&
+        this.shape === "free" &&
+        !(this.flatEnds && this.snap),
     };
     this.#last = undefined;
     this.#anchor = undefined;
@@ -956,12 +955,11 @@ export class DrawingSession {
    * shown, a polygon's corner too. A move without Shift ends that, so a stroke
    * carried on past a Shift let go ends where the pointer does.
    *
-   * A stroke dragged commits just what {@link #ending} makes. An eraser's
-   * stroke drawn as the pointer goes ends without a release as its preview
-   * shows it, where the pointer last was and with Shift as last known, as a
-   * Shift pressed for **Next** shows before it; with one, as the release
-   * says. A sweep is always the area its brush swept, so a release that
-   * disagrees with what the editor knew changes only its end.
+   * A stroke dragged commits just what {@link #ending} makes, as 1.0.1's
+   * did. An eraser's sweep commits just what it shows: a release where the
+   * pointer moved counts as its last move, and Shift is as the editor last
+   * knew it, from the pointer and the keys, whatever the release says, so
+   * that a key it missed can change nothing it showed.
    */
   end(release?: InputPoint, shift?: boolean): void {
     const placed = this.#active;
@@ -973,11 +971,19 @@ export class DrawingSession {
       else this.#place(placed, remembered ? (this.#next ?? release) : release);
       return;
     }
+    if (placed?.sweep === true && release !== undefined) {
+      const at = this.#at;
+      const moved =
+        at === undefined ||
+        toUnits(at.x) !== toUnits(release.x) ||
+        toUnits(at.y) !== toUnits(release.y);
+      if (moved) this.extend([release], this.#shiftNow);
+    }
     const strokes =
       placed === undefined
         ? []
-        : placed.sweep && release === undefined
-          ? this.#ending(placed, this.#at, shift ?? this.#shiftNow)
+        : placed.sweep
+          ? this.#ending(placed, this.#at, this.#shiftNow)
           : this.#ending(placed, release, shift ?? false);
     this.#active = undefined;
     this.#at = undefined;

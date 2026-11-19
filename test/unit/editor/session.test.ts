@@ -24,31 +24,6 @@ function drawn(session: DrawingSession): Stroke | undefined {
   return strokes[0];
 }
 
-/** How far `point` is from the straight line from `from` to `to`. */
-function distanceToMove(
-  point: InputPoint,
-  from: InputPoint,
-  to: InputPoint,
-): number {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const length = dx * dx + dy * dy;
-  const along =
-    length === 0
-      ? 0
-      : Math.max(
-          0,
-          Math.min(
-            1,
-            ((point.x - from.x) * dx + (point.y - from.y) * dy) / length,
-          ),
-        );
-  return Math.hypot(
-    from.x + along * dx - point.x,
-    from.y + along * dy - point.y,
-  );
-}
-
 /** Whether a fill's `x, y` points, in units, cover the point (x, y). */
 function covers(points: readonly number[], x: number, y: number): boolean {
   let turns = 0;
@@ -1332,24 +1307,96 @@ describe("DrawingSession's cuts", () => {
     expect(session.document.strokes[0]?.cut).toEqual({ end: "down" });
   });
 
-  it("cuts an eraser's area flat at the end the grid came on for", () => {
+  it("keeps an eraser stroke started with Flat ends and the grid on 1.0.1's smooth stroke, as the pen's", () => {
+    // Its kind is the one its press chose: shown and saved as the pen's
+    // stroke through the same drag, which 1.0.1's eraser's was, cuts and a
+    // tap's dot included, whatever the grid does later. The first review's
+    // drag on #381 among them: pressed with Shift on the grid, then freehand
+    // back across the row it started on.
+    const drags: {
+      begin: InputPoint;
+      shift: boolean;
+      way: readonly InputPoint[];
+      off?: boolean;
+      release?: InputPoint;
+    }[] = [
+      {
+        begin: { x: 80, y: 80 },
+        shift: true,
+        way: [
+          { x: 80, y: 160 },
+          { x: 160, y: 160 },
+          { x: 160, y: 60 },
+        ],
+        release: { x: 160, y: 60 },
+      },
+      {
+        begin: { x: 0, y: 16 },
+        shift: true,
+        way: [],
+        release: { x: 0, y: 144 },
+      },
+      { begin: { x: 7, y: 9 }, shift: true, way: [] },
+      {
+        begin: { x: 3, y: 16 },
+        shift: true,
+        way: [{ x: 4, y: 60 }],
+        off: true,
+        release: { x: 3, y: 64 },
+      },
+    ];
+    for (const [index, drag] of drags.entries()) {
+      const run = (tool: "pen" | "eraser") => {
+        const session = new DrawingSession(emptyDocument);
+        session.tool = tool;
+        session.sizeIndex = 1;
+        session.snap = true;
+        session.flatEnds = true;
+        session.begin(drag.begin, drag.shift);
+        const shown = [session.activeStrokes];
+        for (const point of drag.way) {
+          session.extend([point]);
+          shown.push(session.activeStrokes);
+        }
+        if (drag.off === true) session.snap = false;
+        session.end(drag.release, drag.shift);
+        return { shown, saved: session.document.strokes };
+      };
+      const asEraser = (strokes: readonly Stroke[]) =>
+        strokes.map((stroke) => ({ ...stroke, tool: "eraser" }));
+      const pen = run("pen");
+      const eraser = run("eraser");
+      const name = `drag ${String(index)}`;
+      expect(eraser.saved, name).toEqual(asEraser(pen.saved));
+      expect(eraser.shown, name).toEqual(pen.shown.map(asEraser));
+      expect(
+        eraser.saved.every((stroke) => stroke.kind === undefined),
+        name,
+      ).toBe(true);
+    }
+  });
+
+  it("keeps an eraser stroke started otherwise a fill, never cut, whatever the grid and Flat ends do later", () => {
+    // Flat ends on and the grid off at the press, then Shift to near the row
+    // at 64 pixels, and the grid on, which puts the end on its grid point:
+    // still the area swept, its end round.
     const session = new DrawingSession(emptyDocument);
     session.flatEnds = true;
     session.tool = "eraser";
     session.sizeIndex = 3;
-    session.begin({ x: 3, y: 16 }, true);
-    session.extend([{ x: 4, y: 60 }]);
+    session.begin({ x: 3, y: 16 });
+    session.extend([{ x: 4, y: 40 }]);
+    session.extend([{ x: 3, y: 64 }], true);
     session.snap = true;
+    const shown = session.activeStrokes;
     session.end({ x: 3, y: 64 }, true);
     const [stroke] = session.document.strokes;
     expect(stroke?.kind).toBe("fill");
-    const ys = (stroke?.points ?? []).filter((_, at) => at % 2 === 1);
-    // It ends on the grid point on the row at 64 pixels, and takes nothing
-    // below it there, where an uncut end would reach 12 pixels further.
+    expect(session.document.strokes).toEqual(shown);
+    // It ends on the grid point on the row at 64 pixels, and reaches 12
+    // pixels below it there.
     expect(stroke?.points.slice(-2)).toEqual([0, 1024]);
-    expect(Math.max(...ys)).toBe(1024);
-    // Its start, which the grid did not come on for, is round.
-    expect(Math.min(...ys)).toBeLessThan(16 * 16 - 12 * 16 + 4);
+    expect(covers(stroke?.points ?? [], 0, 1024 + 180)).toBe(true);
   });
 
   it("saves an eraser's stroke as the area its brush swept, as it was shown", () => {
@@ -1450,10 +1497,48 @@ describe("DrawingSession's cuts", () => {
     }
   });
 
-  it("guesses the grid from an eraser's area by its end, once", () => {
-    // The review's case on #381: a pen dot Shift put on the grid, and an
-    // eraser drawn freehand that happens to end on a row, 5 pixels into a
-    // column. The dot was first, and the end counts no more than it does.
+  it("guesses the grid of a drawing 1.0.0 saved as 1.0.1 does", () => {
+    // The fifth review of #381: a pen tap Shift put on the grid at (16, 16),
+    // and an eraser ellipse filled from (21, 16) to (53, 48), which 1.0.0
+    // saved as its fill alone, a closed area. 1.0.1 guesses 5 pixels from
+    // the two ends of that area, which start and end on a row.
+    const document = {
+      strokes: [
+        { tool: "pen" as const, size: 192, points: [256, 256] },
+        {
+          tool: "eraser" as const,
+          kind: "fill" as const,
+          points: [
+            336, 512, 336, 497, 338, 481, 340, 466, 343, 451, 348, 436, 353,
+            421, 359, 407, 365, 393, 373, 380, 381, 367, 390, 354, 400, 342,
+            411, 331, 422, 320, 434, 310, 447, 301, 460, 293, 473, 285, 487,
+            279, 501, 273, 516, 268, 531, 263, 546, 260, 561, 258, 577, 256,
+            592, 256, 607, 256, 623, 258, 638, 260, 653, 263, 668, 268, 683,
+            273, 697, 279, 711, 285, 724, 293, 737, 301, 750, 310, 762, 320,
+            773, 331, 784, 342, 794, 354, 803, 367, 811, 380, 819, 393, 825,
+            407, 831, 421, 836, 436, 841, 451, 844, 466, 846, 481, 848, 497,
+            848, 512, 848, 527, 846, 543, 844, 558, 841, 573, 836, 588, 831,
+            603, 825, 617, 819, 631, 811, 644, 803, 657, 794, 670, 784, 682,
+            773, 693, 762, 704, 750, 714, 737, 723, 724, 731, 711, 739, 697,
+            745, 683, 751, 668, 756, 653, 761, 638, 764, 623, 766, 607, 768,
+            592, 768, 577, 768, 561, 766, 546, 764, 531, 761, 516, 756, 501,
+            751, 487, 745, 473, 739, 460, 731, 447, 723, 434, 714, 422, 704,
+            411, 693, 400, 682, 390, 670, 381, 657, 373, 644, 365, 631, 359,
+            617, 353, 603, 348, 588, 343, 573, 340, 558, 338, 543, 336, 527,
+            336, 512,
+          ],
+        },
+      ],
+    };
+    expect(gridOriginOf(document)).toBe(5);
+  });
+
+  it("guesses the grid from an eraser's area by its end, twice", () => {
+    // The first review's case on #381: a pen dot Shift put on the grid, and
+    // an eraser drawn freehand that happens to end on a row, 5 pixels into a
+    // column. Its area starts and ends there, as a stroke started and ended
+    // there would, and marks it twice, so the end wins where 1.0.1's smooth
+    // stroke, whose start was off the rows, tied with the dot at 0.
     const session = new DrawingSession(emptyDocument);
     session.snap = true;
     session.begin({ x: 16, y: 16 }, true);
@@ -1464,7 +1549,7 @@ describe("DrawingSession's cuts", () => {
     session.end({ x: 21, y: 32 });
     const [, eraser] = session.document.strokes;
     expect(eraser?.kind).toBe("fill");
-    expect(gridOriginOf(session.document)).toBe(0);
+    expect(gridOriginOf(session.document)).toBe(5);
   });
 
   it("ends the pen's strokes and ellipses by Next as 1.0.1 did, whatever Shift does with the pointer still", () => {
@@ -1489,178 +1574,88 @@ describe("DrawingSession's cuts", () => {
     }
   });
 
-  it("keeps an eraser's area a fill, leaving round an end it cannot cut alone", () => {
-    // The first review's drag on #381: M, the grid and Flat ends on, pressed
-    // with Shift on the grid, then freehand back across the row it started
-    // on, whose box the format's cut would have to share with that way.
-    const session = new DrawingSession(emptyDocument);
-    session.tool = "eraser";
-    session.sizeIndex = 1;
-    session.snap = true;
-    session.flatEnds = true;
-    session.begin({ x: 80, y: 80 }, true);
-    session.extend([{ x: 80, y: 160 }]);
-    session.extend([{ x: 160, y: 160 }]);
-    const before = session.activeStrokes[0];
-    session.extend([{ x: 160, y: 60 }]);
-    const shown = session.activeStrokes;
-    session.end({ x: 160, y: 60 });
-    expect(session.document.strokes).toEqual(shown);
-    // Cut flat on its row while nothing else went past it, and then round,
-    // a fill throughout.
-    const above = [80 * 16, 77 * 16] as const;
-    expect(before?.kind).toBe("fill");
-    expect(covers(before?.points ?? [], ...above)).toBe(false);
-    expect(shown[0]?.kind).toBe("fill");
-    expect(covers(shown[0]?.points ?? [], ...above)).toBe(true);
-  });
-
-  it("shows an eraser's stroke as letting go or Next saves it", () => {
-    // The second review's drag on #381: XL, the grid and Flat ends on;
-    // pressed without Shift, freehand down and across, then with Shift up to
-    // a grid point below the start, whose end cannot be cut alone, and
-    // stays round.
-    const drag = () => {
+  it("saves just the area it shows, however its drag ends, and whatever the release says of Shift", () => {
+    // XL with the grid on and Flat ends off: freehand down and across, then
+    // with Shift to near the grid point (144, 64), which it goes to. The
+    // release where the pointer is with Shift as it is, let go, or saying
+    // the opposite of what the editor knew, as of a key it missed, Next, and
+    // a lost capture all save what was shown.
+    const drag = (known: boolean) => {
       const session = new DrawingSession(emptyDocument);
       session.tool = "eraser";
       session.sizeIndex = 3;
       session.snap = true;
-      session.flatEnds = true;
       session.begin({ x: 32, y: 32 });
       session.extend([{ x: 32, y: 144 }]);
       session.extend([{ x: 144, y: 144 }]);
-      session.extend([{ x: 144, y: 64 }], true);
+      session.extend([{ x: 149, y: 69 }], true);
+      session.holdShift(known);
       return { session, shown: session.activeStrokes };
     };
+    const last = { x: 149, y: 69 };
     const ends = {
-      release: (session: DrawingSession) => {
-        session.end({ x: 144, y: 64 }, true);
+      "release with Shift": (session: DrawingSession) => {
+        session.end(last, true);
       },
-      "release with Shift just let go": (session: DrawingSession) => {
-        session.end({ x: 144, y: 64 });
+      "release with Shift let go": (session: DrawingSession) => {
+        session.end(last, false);
       },
-      next: (session: DrawingSession) => {
+      "Next, or a lost capture": (session: DrawingSession) => {
         session.end();
       },
     };
-    for (const [name, end] of Object.entries(ends)) {
-      const { session, shown } = drag();
-      expect(shown, name).toHaveLength(1);
-      expect(shown[0]?.kind, name).toBe("fill");
-      expect(covers(shown[0]?.points ?? [], 144 * 16, 60 * 16), name).toBe(
-        true,
-      );
-      end(session);
-      expect(session.document.strokes, name).toEqual(shown);
+    for (const known of [true, false]) {
+      for (const [name, end] of Object.entries(ends)) {
+        const label = `${name}, Shift known ${known ? "down" : "up"}`;
+        const { session, shown } = drag(known);
+        expect(
+          shown.map((stroke) => stroke.kind),
+          label,
+        ).toEqual(["fill"]);
+        expect(shown[0]?.points.slice(-2), label).toEqual([144 * 16, 64 * 16]);
+        end(session);
+        expect(session.document.strokes, label).toEqual(shown);
+      }
     }
+    // A Shift the editor never heard of, pressed at the release after a
+    // freehand move to a point off the grid, puts nothing on the grid.
+    const session = new DrawingSession(emptyDocument);
+    session.tool = "eraser";
+    session.snap = true;
+    session.begin({ x: 32, y: 32 });
+    session.extend([{ x: 69, y: 75 }]);
+    const shown = session.activeStrokes;
+    session.end({ x: 69, y: 75 }, true);
+    expect(session.document.strokes).toEqual(shown);
+    expect(shown[0]?.points.slice(-2)).toEqual([69 * 16, 75 * 16]);
   });
 
-  describe("changes only the end of an eraser's stroke for a release whose Shift disagrees with what was known", () => {
-    /**
-     * An XL eraser with the grid and Flat ends on, pressed at `start` and
-     * moved freehand through `way`, then told Shift is down as `known` says,
-     * with the pointer still: what it shows, and what a release there saves
-     * when it says Shift is down as `released` says.
-     */
-    const ending = (
-      start: InputPoint,
-      way: readonly InputPoint[],
-      known: boolean,
-      released: boolean,
-    ) => {
-      const session = new DrawingSession(emptyDocument);
+  it("takes a release where the pointer moved as its last move", () => {
+    const at = (session: DrawingSession) => {
       session.tool = "eraser";
-      session.sizeIndex = 3;
       session.snap = true;
-      session.flatEnds = true;
-      session.begin(start);
-      session.extend(way);
-      session.holdShift(known);
-      const shown = session.activeStrokes;
-      session.end(way.at(-1), released);
-      return { shown, saved: session.document.strokes };
+      session.begin({ x: 32, y: 32 });
+      session.extend([{ x: 60, y: 40 }]);
     };
-    /**
-     * Expects `shown` and `saved` to be one fill each, which cover the same
-     * samples a pixel apart but within `reach` document pixels of `end`;
-     * returns how many differ.
-     */
-    const onlyTheEnd = (
-      shown: readonly Stroke[],
-      saved: readonly Stroke[],
-      end: InputPoint,
-      reach: number,
-    ): number => {
-      expect(shown.map((stroke) => stroke.kind)).toEqual(["fill"]);
-      expect(saved.map((stroke) => stroke.kind)).toEqual(["fill"]);
-      const a = shown[0]?.points ?? [];
-      const b = saved[0]?.points ?? [];
-      const all = [...a, ...b];
-      const xs = all.filter((_, index) => index % 2 === 0);
-      const ys = all.filter((_, index) => index % 2 === 1);
-      let differ = 0;
-      for (let y = Math.min(...ys) - 8; y <= Math.max(...ys) + 8; y += 16) {
-        for (let x = Math.min(...xs) - 8; x <= Math.max(...xs) + 8; x += 16) {
-          if (covers(a, x, y) === covers(b, x, y)) continue;
-          differ++;
-          const away = Math.hypot(x / 16 - end.x, y / 16 - end.y);
-          expect(away).toBeLessThanOrEqual(reach);
-        }
-      }
-      return differ;
-    };
-
-    it("for the review's drag, whose end is round either way", () => {
-      // The fourth review of #381: the end is on a grid point, and Shift
-      // there cannot cut it, as the way's start lies past its row.
-      const way = [
-        { x: 32, y: 144 },
-        { x: 144, y: 144 },
-        { x: 144, y: 64 },
-      ];
-      for (const [known, released] of [
-        [true, false],
-        [false, true],
-      ] as const) {
-        const { shown, saved } = ending({ x: 32, y: 32 }, way, known, released);
-        expect(onlyTheEnd(shown, saved, { x: 144, y: 64 }, 0)).toBe(0);
-      }
-    });
-
-    it("for a drag whose end Shift puts on the grid and cuts", () => {
-      // From below, to near the grid point (144, 64): with Shift, the end
-      // goes there and is cut flat; without, it stays round where it is.
-      const way = [
-        { x: 144, y: 176 },
-        { x: 149, y: 69 },
-      ];
-      // The brush's radius, and the end's move to the grid point.
-      const reach = 12 + Math.hypot(5, 5) + 1;
-      for (const [known, released] of [
-        [true, false],
-        [false, true],
-      ] as const) {
-        const { shown, saved } = ending(
-          { x: 32, y: 176 },
-          way,
-          known,
-          released,
-        );
-        expect(
-          onlyTheEnd(shown, saved, { x: 149, y: 69 }, reach),
-        ).toBeGreaterThan(10);
-      }
-    });
+    const moved = new DrawingSession(emptyDocument);
+    at(moved);
+    moved.extend([{ x: 75, y: 50 }]);
+    const shown = moved.activeStrokes;
+    const released = new DrawingSession(emptyDocument);
+    at(released);
+    released.end({ x: 75, y: 50 }, true);
+    expect(released.document.strokes).toEqual(shown);
   });
 
   it("saves the eraser's stroke it showed last, across seeded drags", () => {
     // Freehand and with Shift by turns, on the grid and off, with Flat ends
     // and without, often coming back near where they started, with Shift
     // pressed or let go and the grid turned on or off while the pointer is
-    // still, and ended by a release where the pointer was last, with Shift as
-    // it is, just let go, or the other way to what the editor knew, or by
-    // Next. Always a fill, the stroke saved is the one shown, but for a
-    // release that disagrees, whose stroke differs only by its end.
+    // still, ended by a release where the pointer was last with Shift as it
+    // is, let go, or the other way to what the editor knew, or by Next. A
+    // fill, started without Flat ends and the grid both on, always saves the
+    // stroke it showed last; one started with both on is the pen's stroke
+    // through the same drag, shown and saved, as 1.0.1's eraser's was.
     let state = 341;
     const random = (): number => {
       state = (state * 16807) % 2147483647;
@@ -1668,26 +1663,36 @@ describe("DrawingSession's cuts", () => {
     };
     const between = (from: number, to: number): number =>
       from + (to - from) * random();
-    const seen = { disagreeing: 0, moved: 0, stillShift: 0, stillGrid: 0 };
+    const seen = {
+      fills: 0,
+      smooth: 0,
+      disagreeing: 0,
+      stillShift: 0,
+      stillGrid: 0,
+    };
+    type Step =
+      | { kind: "move"; at: InputPoint; shift: boolean }
+      | { kind: "key"; down: boolean }
+      | { kind: "grid" }
+      | { kind: "end"; at?: InputPoint; shift?: boolean };
     for (let trial = 0; trial < 600; trial++) {
-      const session = new DrawingSession(emptyDocument);
-      session.tool = "eraser";
-      session.sizeIndex = Math.floor(between(0, 4));
-      session.flatEnds = random() < 0.7;
-      session.snap = random() < 0.7;
+      const size = Math.floor(between(0, 4));
+      const flat = random() < 0.6;
+      const snap = random() < 0.6;
       let shift = random() < 0.4;
+      const pressShift = shift;
       const start = { x: between(0, 200), y: between(0, 120) };
       let at = start;
-      session.begin(at, shift);
+      const steps: Step[] = [];
       /** Shift pressed or let go, or the grid switched, with the pointer still. */
       const still = (): void => {
         if (random() < 0.2) {
           shift = !shift;
-          session.holdShift(shift);
+          steps.push({ kind: "key", down: shift });
           seen.stillShift++;
         }
         if (random() < 0.1) {
-          session.snap = !session.snap;
+          steps.push({ kind: "grid" });
           seen.stillGrid++;
         }
       };
@@ -1699,75 +1704,61 @@ describe("DrawingSession's cuts", () => {
           random() < 0.1
             ? { x: start.x + between(-8, 8), y: start.y + between(-8, 8) }
             : { x: at.x + between(-24, 24), y: at.y + between(-24, 24) };
-        session.extend([at], shift);
-        expect(session.activeStrokes.map((stroke) => stroke.kind)).toEqual([
-          "fill",
-        ]);
+        steps.push({ kind: "move", at, shift });
       }
       still();
       const how = random();
-      // Shift let go just before the button, as the key comes up first.
-      if (how >= 0.3 && how < 0.45) session.holdShift(false);
-      const shown = session.activeStrokes;
-      const label = `trial ${String(trial)}`;
-      if (how < 0.3) session.end(at, shift);
-      else if (how < 0.45) session.end(at, false);
-      else if (how < 0.7) {
+      if (how < 0.3) steps.push({ kind: "end", at, shift });
+      else if (how < 0.45) {
+        // Shift let go just before the button, as the key comes up first.
+        steps.push({ kind: "key", down: false });
+        steps.push({ kind: "end", at, shift: false });
+      } else if (how < 0.7) {
         // A Shift the editor missed, or one only the release reports.
-        session.end(at, !shift);
+        steps.push({ kind: "end", at, shift: !shift });
         seen.disagreeing++;
-        const saved = session.document.strokes;
+      } else steps.push({ kind: "end" });
+      const run = (tool: "pen" | "eraser") => {
+        const session = new DrawingSession(emptyDocument);
+        session.tool = tool;
+        session.sizeIndex = size;
+        session.flatEnds = flat;
+        session.snap = snap;
+        session.begin(start, pressShift);
+        let shown = session.activeStrokes;
+        for (const step of steps) {
+          if (step.kind === "move") session.extend([step.at], step.shift);
+          else if (step.kind === "key") session.holdShift(step.down);
+          else if (step.kind === "grid") session.snap = !session.snap;
+          else if (step.at === undefined) session.end();
+          else session.end(step.at, step.shift);
+          if (step.kind !== "end") shown = session.activeStrokes;
+        }
+        return { shown, saved: session.document.strokes };
+      };
+      const label = `trial ${String(trial)}`;
+      const eraser = run("eraser");
+      if (flat && snap) {
+        seen.smooth++;
+        const pen = run("pen");
+        const asEraser = (strokes: readonly Stroke[]) =>
+          strokes.map((stroke) => ({ ...stroke, tool: "eraser" }));
+        expect(eraser.saved, label).toEqual(asEraser(pen.saved));
+        expect(eraser.shown, label).toEqual(asEraser(pen.shown));
+      } else {
+        seen.fills++;
         expect(
-          saved.map((stroke) => stroke.kind),
+          eraser.saved.map((stroke) => stroke.kind),
           label,
         ).toEqual(["fill"]);
-        // Every corner of either outline more than the brush's radius and a
-        // pixel from the end's move, from the pointer to the grid point it
-        // can go to, and outside the box a cut end there takes, is a corner
-        // of the other too: they part only at the end.
-        const radius = ((brushSizes[session.sizeIndex]?.em ?? 0) * 128) / 2;
-        const to = snapToGrid(at, session.grid, session.gridOrigin);
-        const far = (points: readonly number[]): string[] => {
-          const corners: string[] = [];
-          for (let index = 0; index + 1 < points.length; index += 2) {
-            const x = (points[index] ?? 0) / 16;
-            const y = (points[index + 1] ?? 0) / 16;
-            // The box reaches the brush's width and a pixel from the end.
-            const boxed =
-              Math.abs(x - to.x) <= 2 * radius + 1 &&
-              Math.abs(y - to.y) <= 2 * radius + 1;
-            if (!boxed && distanceToMove({ x, y }, at, to) > radius + 1) {
-              corners.push(`${String(x)},${String(y)}`);
-            }
-          }
-          return corners;
-        };
-        const a = shown[0]?.points ?? [];
-        const b = saved[0]?.points ?? [];
-        const inA = new Set(a.length === 0 ? [] : far(a));
-        const inB = new Set(b.length === 0 ? [] : far(b));
-        const corners = (points: readonly number[]): Set<string> => {
-          const all = new Set<string>();
-          for (let index = 0; index + 1 < points.length; index += 2) {
-            all.add(
-              `${String((points[index] ?? 0) / 16)},${String((points[index + 1] ?? 0) / 16)}`,
-            );
-          }
-          return all;
-        };
-        const allA = corners(a);
-        const allB = corners(b);
-        for (const corner of inA) expect(allB.has(corner), label).toBe(true);
-        for (const corner of inB) expect(allA.has(corner), label).toBe(true);
-        if (JSON.stringify(a) !== JSON.stringify(b)) seen.moved++;
-        continue;
-      } else session.end();
-      expect(session.document.strokes, label).toEqual(shown);
+        expect(eraser.saved, label).toEqual(eraser.shown);
+      }
     }
-    // The drags cover releases that disagree and change the end, and changes
-    // made with the pointer still.
+    // The drags cover both kinds, releases that disagree with what the editor
+    // knew, and changes made with the pointer still.
+    expect(seen.fills).toBeGreaterThan(300);
+    expect(seen.smooth).toBeGreaterThan(150);
     expect(seen.disagreeing).toBeGreaterThan(100);
-    expect(seen.moved).toBeGreaterThan(20);
     expect(seen.stillShift).toBeGreaterThan(500);
     expect(seen.stillGrid).toBeGreaterThan(250);
     // About a second alone, and several under a full run on a busy machine.
@@ -1775,9 +1766,10 @@ describe("DrawingSession's cuts", () => {
 
   describe("shows what letting go or Next saves, as what it depends on changes with the pointer still", () => {
     /**
-     * An XL eraser, with the grid and Flat ends on unless `grid` says not,
-     * drawn freehand from (32, 176) across to (144, 176), then with Shift, or
-     * without as `shift` says, up to `last`, near the grid point (144, 64).
+     * An XL eraser, with the grid on unless `grid` says not, and Flat ends
+     * off, drawn freehand from (32, 176) across to (144, 176), then with
+     * Shift, or without as `shift` says, up to `last`, near the grid point
+     * (144, 64).
      */
     const drawn = (
       last: InputPoint,
@@ -1787,8 +1779,6 @@ describe("DrawingSession's cuts", () => {
       const session = new DrawingSession(emptyDocument);
       session.tool = "eraser";
       session.sizeIndex = 3;
-      session.snap = true;
-      session.flatEnds = true;
       session.snap = grid;
       session.begin({ x: 32, y: 176 });
       session.extend([{ x: 144, y: 176 }]);
@@ -1825,17 +1815,17 @@ describe("DrawingSession's cuts", () => {
       expect(shown.map((stroke) => stroke.kind)).toEqual(["fill"]);
       return shown;
     };
-    /** Whether the stroke's area reaches above the row at y = 64. */
-    const round = (shown: readonly Stroke[]): boolean =>
-      covers(shown[0]?.points ?? [], 144 * 16, 60 * 16);
     /** The stroke's last point, in document pixels. */
     const endOf = (shown: readonly Stroke[]): number[] =>
       (shown[0]?.points.slice(-2) ?? []).map((value) => value / 16);
+    /** Whether the stroke's area reaches above the row at y = 64. */
+    const round = (shown: readonly Stroke[]): boolean =>
+      covers(shown[0]?.points ?? [], 144 * 16, 60 * 16);
 
     it("Shift pressed", () => {
-      // The end is on the grid already, and Shift held there cuts it.
-      const last = { x: 144, y: 64 };
-      expect(round(drawn(last, false).activeStrokes)).toBe(true);
+      // The end goes to the grid point, round.
+      const last = { x: 149, y: 69 };
+      expect(endOf(drawn(last, false).activeStrokes)).toEqual([149, 69]);
       const shown = shownAfter(
         () => drawn(last, false),
         (session) => {
@@ -1844,7 +1834,8 @@ describe("DrawingSession's cuts", () => {
         last,
         true,
       );
-      expect(round(shown)).toBe(false);
+      expect(endOf(shown)).toEqual([144, 64]);
+      expect(round(shown)).toBe(true);
     });
 
     it("Shift let go", () => {
@@ -1860,12 +1851,12 @@ describe("DrawingSession's cuts", () => {
         false,
       );
       expect(shown).toEqual(before);
-      expect(round(shown)).toBe(false);
+      expect(endOf(shown)).toEqual([144, 64]);
     });
 
     it("the grid turned on", () => {
       // Shift drew the last move with the grid off, and the end goes to the
-      // grid once it is on, and is cut there.
+      // grid once it is on.
       const last = { x: 149, y: 69 };
       expect(endOf(drawn(last, true, false).activeStrokes)).toEqual([149, 69]);
       const shown = shownAfter(
@@ -1877,7 +1868,6 @@ describe("DrawingSession's cuts", () => {
         true,
       );
       expect(endOf(shown)).toEqual([144, 64]);
-      expect(round(shown)).toBe(false);
     });
 
     it("the grid turned off", () => {
@@ -1914,20 +1904,20 @@ describe("DrawingSession's cuts", () => {
       expect(shown).toEqual(before);
     });
 
-    it("Flat ends switched off", () => {
-      // A stroke keeps the Flat ends it began with.
+    it("Flat ends switched on", () => {
+      // A stroke keeps the kind it began as, and its end stays round.
       const last = { x: 144, y: 64 };
       const before = drawn(last, true).activeStrokes;
       const shown = shownAfter(
         () => drawn(last, true),
         (session) => {
-          session.flatEnds = false;
+          session.flatEnds = true;
         },
         last,
         true,
       );
       expect(shown).toEqual(before);
-      expect(round(shown)).toBe(false);
+      expect(round(shown)).toBe(true);
     });
   });
 

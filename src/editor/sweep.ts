@@ -4,19 +4,13 @@
 // out again from all its points as each one comes, and behind the brush it
 // changes shape, so ink an eraser had taken came back beside its way. This
 // area only grows as the way goes on, and what is shown while erasing is the
-// stroke that is saved, always of this kind, so that how it ends can change
-// only its end. Plain geometry in units, with no canvas, so that unit tests
-// can check it. Files stay as they were: a "fill" is format version 1's, and
-// nothing here changes how any stroke draws.
+// stroke that is saved. Its ends are never cut: an eraser stroke that Flat
+// ends could cut is a smooth stroke, as before. Plain geometry in units, with
+// no canvas, so that unit tests can check it. Files stay as they were: a
+// "fill" is format version 1's, and nothing here changes how any stroke
+// draws.
 
-import {
-  unitsPerPixel,
-  type Stroke,
-  type StrokeCuts,
-  type Tool,
-} from "../format/record.ts";
-import type { Bounds } from "../ink/geometry.ts";
-import { cutBoxes, uncutRest } from "../ink/outline.ts";
+import type { Stroke, Tool } from "../format/record.ts";
 
 /** A point, in units. */
 export type Point = readonly [number, number];
@@ -90,8 +84,7 @@ export function sweepPath(points: readonly number[]): Point[] {
  * way in units with no point repeated in a row, to be filled with the nonzero
  * rule: a circle for a way of one point. Its first and last points are the
  * way's last point, as a stroke's ends mark where a reopened drawing's grid
- * lies, and no other point of the outline could mark it rightly; unless
- * `marked` is false, for an end to be cut, when it starts and ends beside it.
+ * lies, and no other point of the outline could mark it rightly.
  *
  * It goes round one side of the way from its end, round its start, and back
  * along the other side, with a half circle at each end. Where the way turns,
@@ -112,11 +105,7 @@ export function sweepPath(points: readonly number[]): Point[] {
  * it can leave a hairline that one edge covered and the other did not take
  * back.
  */
-export function sweepOutline(
-  path: readonly Point[],
-  radius: number,
-  marked = true,
-): Point[] {
+export function sweepOutline(path: readonly Point[], radius: number): Point[] {
   const moves = path
     .slice(1)
     .map((to, index): Point => [
@@ -167,10 +156,9 @@ export function sweepOutline(
     // Out from the centre, round the whole circle and a quarter more, and
     // back in square to the way out, as a way's end is marked.
     const right: Point = [radius, 0];
-    if (marked) push(first);
+    push(first);
     push([first[0] + radius, first[1]]);
     arc(first, right, 2 * Math.PI);
-    if (!marked) return outline;
     push([first[0] + radius, first[1]]);
     arc(first, right, Math.PI / 2);
     push([first[0], first[1] - radius]);
@@ -221,14 +209,9 @@ export function sweepOutline(
   const lastSide = side(lastStep);
   // From the way's last point out to the tip of its end, and round.
   const ahead: Point = [lastStep[0] * radius, lastStep[1] * radius];
-  if (marked) {
-    push(last);
-    push(along(last, ahead, 1));
-    arc(last, ahead, Math.PI / 2);
-  } else {
-    push(along(last, lastSide, 1));
-    arc(last, lastSide, Math.PI);
-  }
+  push(last);
+  push(along(last, ahead, 1));
+  arc(last, ahead, Math.PI / 2);
   // Back along the side away from the normal, inside the turns the normal's
   // side is outside of.
   for (let index = steps.length - 1; index >= 0; index--) {
@@ -269,7 +252,6 @@ export function sweepOutline(
     if (turn.normalOutside) arc(corner, offset, turn.angle);
     else push(corner);
   });
-  if (!marked) return outline;
   // Round the end to its tip, round the half after the tip once more, and
   // back in to the way's last point.
   arc(last, lastSide, Math.PI / 2);
@@ -280,118 +262,11 @@ export function sweepOutline(
   return outline;
 }
 
-/** `polygon` cut down to what lies in `box`, its sides on the box's edges. */
-export function clipToBox(polygon: readonly Point[], box: Bounds): Point[] {
-  const edges: [axis: 0 | 1, limit: number, keepBelow: boolean][] = [
-    [0, box.left, false],
-    [0, box.right, true],
-    [1, box.top, false],
-    [1, box.bottom, true],
-  ];
-  let clipped: Point[] = [...polygon];
-  for (const [axis, limit, keepBelow] of edges) {
-    if (!Number.isFinite(limit) || clipped.length === 0) continue;
-    const inside = (point: Point): boolean =>
-      keepBelow ? point[axis] <= limit : point[axis] >= limit;
-    const crossing = (from: Point, to: Point): Point => {
-      const along = (limit - from[axis]) / (to[axis] - from[axis]);
-      const other = axis === 0 ? 1 : 0;
-      const value = from[other] + along * (to[other] - from[other]);
-      return axis === 0 ? [limit, value] : [value, limit];
-    };
-    const input = clipped;
-    clipped = [];
-    input.forEach((point, index) => {
-      const previous = input[(index + input.length - 1) % input.length];
-      if (previous === undefined) return;
-      if (inside(point)) {
-        if (!inside(previous)) clipped.push(crossing(previous, point));
-        clipped.push(point);
-      } else if (inside(previous)) {
-        clipped.push(crossing(previous, point));
-      }
-    });
-  }
-  return clipped;
-}
-
-/** A box in units, from one in pixels. */
-function inUnits(box: Bounds): Bounds {
-  return {
-    left: box.left * unitsPerPixel,
-    top: box.top * unitsPerPixel,
-    right: box.right * unitsPerPixel,
-    bottom: box.bottom * unitsPerPixel,
-  };
-}
-
-/**
- * The area `polygon` encloses, twice over, counting each part as often as it
- * winds round it: when all its pieces wind one way, it is more than nothing
- * where any of them covers anything.
- */
-function windingArea(polygon: readonly Point[]): number {
-  let area = 0;
-  polygon.forEach(([x0, y0], index) => {
-    const [x1, y1] = polygon[(index + 1) % polygon.length] ?? [x0, y0];
-    area += x0 * y1 - x1 * y0;
-  });
-  return Math.abs(area);
-}
-
-/**
- * The area of a sweep with cut ends, as one outline, as the format cuts a
- * smooth stroke's: everything outside its cut boxes, and inside them only the
- * sweep of the rest of the way without its cut ends, `rest`. When none of the
- * sweep lies past a cut end's row but in its box, and none of the rest's in a
- * box, as for a stroke that comes to a row and stops, that is the sweep with
- * all past the rows cut off. Undefined otherwise, as the area then takes
- * pieces that one outline could join only by going out and back.
- */
-function cutOutline(
-  outline: readonly Point[],
-  rest: readonly Point[] | undefined,
-  ends: readonly { readonly box: Bounds; readonly down: boolean }[],
-): Point[] | undefined {
-  // Clipping keeps the winding of every point it keeps, so the area left in
-  // a part of the plane is what the outline covers there.
-  const covers = (polygon: readonly Point[], part: Bounds): boolean =>
-    windingArea(clipToBox(polygon, part)) > 1;
-  let kept: Bounds = {
-    left: -Infinity,
-    right: Infinity,
-    top: -Infinity,
-    bottom: Infinity,
-  };
-  for (const { box, down } of ends) {
-    // Past the row through the end, beside its box or beyond it.
-    const row = down ? box.top : box.bottom;
-    const past = down
-      ? { top: row, bottom: Infinity }
-      : { top: -Infinity, bottom: row };
-    const beyond = down
-      ? { top: box.bottom, bottom: Infinity }
-      : { top: -Infinity, bottom: box.top };
-    const strays: Bounds[] = [
-      { ...past, left: -Infinity, right: box.left },
-      { ...past, left: box.right, right: Infinity },
-      { ...beyond, left: -Infinity, right: Infinity },
-    ];
-    if (strays.some((part) => covers(outline, part))) return undefined;
-    if (rest !== undefined && covers(rest, box)) return undefined;
-    kept = down
-      ? { ...kept, bottom: Math.min(kept.bottom, row) }
-      : { ...kept, top: Math.max(kept.top, row) };
-  }
-  return clipToBox(outline, kept);
-}
-
 /**
  * Points in units as a stroke's, whole, with no point repeated in a row, and
  * no corner where the outline turns straight back along the line it came by,
- * as rounding can make the corner inside a turn by a hair, and as clipping
- * along a row can: the step back encloses nothing, and a renderer can leave a
- * hairline of it.
+ * as rounding can make the corner inside a turn by a hair: the step back
+ * encloses nothing, and a renderer can leave a hairline of it.
  */
 function flattened(points: readonly Point[]): number[] {
   const flat: number[] = [];
@@ -423,111 +298,19 @@ function flattened(points: readonly Point[]): number[] {
 }
 
 /**
- * `polygon`, clipped along the row through a cut end at `end`, put to start
- * and end there: on the row's edge that the end lies on, or undefined when it
- * lies on none.
- */
-function throughEnd(
-  polygon: readonly Point[],
-  end: Point,
-): Point[] | undefined {
-  for (let index = 0; index < polygon.length; index++) {
-    const from = polygon[index];
-    const to = polygon[(index + 1) % polygon.length];
-    if (from === undefined || to === undefined) continue;
-    const onRow = from[1] === end[1] && to[1] === end[1];
-    const within =
-      Math.min(from[0], to[0]) <= end[0] && end[0] <= Math.max(from[0], to[0]);
-    if (!onRow || !within) continue;
-    return [
-      end,
-      ...polygon.slice(index + 1),
-      ...polygon.slice(0, index + 1),
-      end,
-    ];
-  }
-  return undefined;
-}
-
-/**
- * The outline of `path`, the way `way` merged, swept by a brush of `size`
- * units, with its ends cut as `cut` says, as whole units; or undefined if that
- * is not exactly what the format's cut of a smooth stroke would take, when
- * some of the area past a cut end's row lies outside its cut box, or the rest
- * of the way comes back into the box. It starts and ends at the way's last
- * point, on the row when that end is cut.
- */
-function cutArea(
-  tool: Tool,
-  size: number,
-  way: readonly number[],
-  path: readonly Point[],
-  cut: StrokeCuts,
-): number[] | undefined {
-  const last = path.at(-1);
-  if (last === undefined) return undefined;
-  const radius = size / 2;
-  // As the format would cut a smooth stroke along the same way.
-  const smooth = { tool, size, points: way, cut };
-  // A cut end's row is the outline's edge there, which the end lies on.
-  const endCut = cut.end !== undefined;
-  const rest = uncutRest(smooth);
-  const restPath = rest === undefined ? [] : sweepPath(rest.points);
-  const directions = [cut.start, cut.end].filter(
-    (direction) => direction !== undefined,
-  );
-  const ends = cutBoxes(smooth).map((box, index) => ({
-    box: inUnits(box),
-    down: directions[index] === "down",
-  }));
-  const clipped = cutOutline(
-    sweepOutline(path, radius, !endCut),
-    restPath.length > 0 ? sweepOutline(restPath, radius) : undefined,
-    ends,
-  );
-  const marked =
-    clipped === undefined || !endCut ? clipped : throughEnd(clipped, last);
-  if (marked === undefined) return undefined;
-  // The outline starts and ends at the way's last point, unless the cut took
-  // it, when it could mark the grid where it is not.
-  const flat = flattened(marked);
-  const marks = [flat[0], flat[1], flat.at(-2), flat.at(-1)];
-  return flat.length >= 6 && marks.every((value, at) => value === last[at % 2])
-    ? flat
-    : undefined;
-}
-
-/**
  * The stroke an eraser's brush of `size` units leaves along `way`, its `x, y`
- * points in units, with its ends cut as `cut` says: always a stroke of kind
- * "fill", whose points go round the area the brush swept, starting and ending
- * at the way's last point. A way that never left its first point is the
- * brush's circle. Each cut end is cut off along its row where that takes just
- * what the format's cut would; where it cannot, as when the rest of the way
- * comes back near that end, that end stays round, and the other is still cut
- * if it can be.
+ * points in units: a stroke of kind "fill", whose points go round the area
+ * the brush swept, starting and ending at the way's last point. A way that
+ * never left its first point is the brush's circle.
  */
 export function sweptStroke(
   tool: Tool,
   size: number,
   way: readonly number[],
-  cut?: StrokeCuts,
 ): Stroke {
-  const path = sweepPath(way);
-  if (cut !== undefined && path.length >= 2) {
-    const { start, end } = cut;
-    const tries: StrokeCuts[] =
-      start !== undefined && end !== undefined
-        ? [cut, { start }, { end }]
-        : [cut];
-    for (const each of tries) {
-      const points = cutArea(tool, size, way, path, each);
-      if (points !== undefined) return { tool, kind: "fill", points };
-    }
-  }
   return {
     tool,
     kind: "fill",
-    points: flattened(sweepOutline(path, size / 2)),
+    points: flattened(sweepOutline(sweepPath(way), size / 2)),
   };
 }

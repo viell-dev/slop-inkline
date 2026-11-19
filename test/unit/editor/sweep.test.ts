@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { Stroke } from "../../../src/format/record.ts";
 import {
   arcTolerance,
-  clipToBox,
   sweepOutline,
   sweepPath,
   sweepRun,
@@ -10,7 +9,6 @@ import {
   type Point,
 } from "../../../src/editor/sweep.ts";
 import { gridOriginOf } from "../../../src/editor/session.ts";
-import { cutBoxes } from "../../../src/ink/outline.ts";
 
 /** The nonzero winding number of a closed polygon about `point`. */
 function winding(polygon: readonly Point[], point: Point): number {
@@ -224,9 +222,7 @@ describe("sweptStroke", () => {
     expect(stroke.points.slice(-2)).toEqual([500, 120]);
     // Coming down to a row, so that its sides there lie on the row too, the
     // grid is guessed from its end alone, where it is.
-    const down = sweptStroke("eraser", 384, [376, 256, 376, 2304], {
-      end: "down",
-    });
+    const down = sweptStroke("eraser", 384, [376, 256, 376, 2304]);
     expect(down.kind).toBe("fill");
     expect(gridOriginOf({ strokes: [down] })).toBe(376 / 16 - 16);
   });
@@ -237,19 +233,7 @@ describe("sweptStroke", () => {
         name,
         sweptStroke("eraser", 192, points),
       ]),
-      // The review's case on #381: down to a row at its end, cut along it,
-      // which clipping had made go back along part of the cut edge.
-      [
-        "a cut end",
-        sweptStroke("eraser", 384, [0, 0, 0, 960], { end: "down" }),
-      ],
-      [
-        "both ends cut",
-        sweptStroke("eraser", 384, [0, 0, 0, 960], {
-          start: "up",
-          end: "down",
-        }),
-      ],
+      ["a tap", sweptStroke("eraser", 384, [0, 0])],
     ];
     for (const [name, stroke] of strokes) {
       expect(stroke.kind, name).toBe("fill");
@@ -283,8 +267,6 @@ describe("sweptStroke", () => {
       expect(winding(polygon, at(46))).not.toBe(0);
       expect(winding(polygon, at(49))).toBe(0);
     }
-    // A cut has no row to cut along at a dot.
-    expect(sweptStroke("eraser", 96, [40, 50], { end: "down" })).toEqual(dot);
   });
 
   it("never takes back what it swept as the way goes on", () => {
@@ -328,82 +310,6 @@ describe("sweptStroke", () => {
       }
       expect(checked).toBeGreaterThan(10_000);
     }
-  });
-
-  it("cuts an end flat on its row, as a smooth stroke's cut does", () => {
-    // Down to the row at y = 1600 with a brush 192 wide: the box below the
-    // end is 13 pixels each way across, and 13 down.
-    const points = [800, 800, 800, 1200, 800, 1600];
-    const stroke = sweptStroke("eraser", 192, points, { end: "down" });
-    expect(stroke.kind).toBe("fill");
-    const polygon = cornersOf(stroke);
-    const [box] = cutBoxes({
-      tool: "eraser",
-      size: 192,
-      points,
-      cut: { end: "down" },
-    });
-    expect(box).toEqual({ left: 37, right: 63, top: 100, bottom: 113 });
-    // Above the row, the brush's width is taken; below it, nothing.
-    expect(winding(polygon, [800, 1590])).not.toBe(0);
-    expect(winding(polygon, [880, 1590])).not.toBe(0);
-    expect(winding(polygon, [800, 1610])).toBe(0);
-    expect(winding(polygon, [880, 1640])).toBe(0);
-    // Its start keeps its round end.
-    expect(winding(polygon, [800, 720])).not.toBe(0);
-    expect(winding(polygon, [800, 690])).toBe(0);
-    expect(stroke.points.slice(-2)).toEqual([800, 1600]);
-  });
-
-  it("cuts both ends of a line from one row to another", () => {
-    const points = [800, 800, 800, 1600];
-    const stroke = sweptStroke("eraser", 384, points, {
-      start: "up",
-      end: "down",
-    });
-    expect(stroke.kind).toBe("fill");
-    const polygon = cornersOf(stroke);
-    const ys = polygon.map(([, y]) => y);
-    expect([Math.min(...ys), Math.max(...ys)]).toEqual([800, 1600]);
-    expect(winding(polygon, [800 + 180, 1200])).not.toBe(0);
-    expect(winding(polygon, [800 + 200, 1200])).toBe(0);
-    expect(stroke.points.slice(-2)).toEqual([800, 1600]);
-  });
-
-  it("leaves round an end it cannot cut as the format's cut would, and is still the area swept", () => {
-    // Up to the row at y = 800 at its end, whose box reaches 13 pixels each
-    // way across and 13 up: x from 1092 to 1508 units. The way's start runs
-    // through that box, which a cut would have to keep.
-    const through = [1100, 700, 1100, 1400, 1300, 1400, 1300, 800];
-    expect(sweptStroke("eraser", 192, through, { end: "up" })).toEqual(
-      sweptStroke("eraser", 192, through),
-    );
-    // Past the row, but out of the box: down below it first, far to one side.
-    const below = [400, 1800, 400, 1200, 1000, 1200, 1000, 1600];
-    expect(sweptStroke("eraser", 192, below, { end: "down" })).toEqual(
-      sweptStroke("eraser", 192, below),
-    );
-    for (const way of [through, below]) {
-      expect(sweptStroke("eraser", 192, way).kind).toBe("fill");
-    }
-  });
-
-  it("still cuts the one end it can, when it cannot cut the other", () => {
-    // From the row at y = 800 down, across, and back up to the row at
-    // y = 1000, far from the start: the start is cut along its row, and the
-    // end, past whose row the way's start lies, stays round.
-    const way = [400, 800, 400, 1400, 1600, 1400, 1600, 1000];
-    const stroke = sweptStroke("eraser", 192, way, {
-      start: "up",
-      end: "up",
-    });
-    expect(stroke.kind).toBe("fill");
-    const polygon = cornersOf(stroke);
-    // Above the start's row, the round end would cover; the cut leaves it.
-    expect(winding(polygon, [400, 780])).toBe(0);
-    // The end is round, past its row.
-    expect(winding(polygon, [1600, 960])).not.toBe(0);
-    expect(stroke).toEqual(sweptStroke("eraser", 192, way, { start: "up" }));
   });
 });
 
@@ -479,33 +385,5 @@ describe("sweepOutline", () => {
     expect(winding(outline, [100, 100])).not.toBe(0);
     expect(winding(outline, [100, 100 + 46])).not.toBe(0);
     expect(winding(outline, [100, 100 + 50])).toBe(0);
-  });
-});
-
-describe("clipToBox", () => {
-  it("keeps the part of a polygon in a box, crossing it back along its edges", () => {
-    const square: Point[] = [
-      [0, 0],
-      [10, 0],
-      [10, 10],
-      [0, 10],
-    ];
-    const clipped = clipToBox(square, {
-      left: 5,
-      right: Infinity,
-      top: -Infinity,
-      bottom: 8,
-    });
-    // The same corners in the same order, from wherever it starts.
-    const start = clipped.findIndex(([x, y]) => x === 5 && y === 0);
-    expect([...clipped.slice(start), ...clipped.slice(0, start)]).toEqual([
-      [5, 0],
-      [10, 0],
-      [10, 8],
-      [5, 8],
-    ]);
-    expect(
-      clipToBox(square, { left: 20, right: 30, top: 0, bottom: 10 }),
-    ).toEqual([]);
   });
 });
