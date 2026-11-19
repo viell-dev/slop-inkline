@@ -161,17 +161,18 @@ must keep released files readable and looking the same, as
   ([refresh.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/refresh.e2e.ts)).
   In a popout and in a canvas card's own editor, a reshaped symbol's width over
   its height, and an explicit size's drop, follow its new shape, and a note
-  first shown in a popout has its symbols measured (the same file).
-  **Unreleased:** so they do in a card's editor whose frame never reaches
-  Inkline with the focus, where a double-click on a symbol opens it, and whose
-  document stops being watched as the editor closes. A symbol's images taken out
-  of Reading view while it is rewritten with the same modification time come
-  back, as the same elements, with its new picture, while one given a newer
-  address meanwhile keeps it. An image taken out while its symbol is rewritten,
-  then deleted and made again with its old modification time, comes back with
-  the new file's address and picture, not the deleted file's last one (the same
-  file). Images that Obsidian makes anew keep the address they come with, as
-  [the rendering contract](./rendering.md) says, and are not tested.
+  first shown in a popout has its symbols measured (the same file). So they do
+  in a card's editor whose frame never reaches Inkline with the focus, where a
+  double-click on a symbol opens it, and whose document stops being watched as
+  the editor closes. A symbol's images taken out of Reading view while it is
+  rewritten with the same modification time come back, as the same elements,
+  with its new picture, while one given a newer address meanwhile keeps it. An
+  image taken out while its symbol is rewritten, then deleted and made again
+  with its old modification time, comes back with the new file's address, not
+  the address of the deleted file's last refresh, so that it does not show the
+  deleted file's last picture (the same file). An embed that Obsidian makes anew
+  with an address from before a change keeps that address, as
+  [the rendering contract](./rendering.md) says, and that case is not tested.
 
 ### The editor shows what its tools do
 
@@ -268,17 +269,17 @@ must keep released files readable and looking the same, as
   starts
   ([long-drawing.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/long-drawing.e2e.ts)).
 
-- **Unreleased:** the eraser, drawn freehand along, across, and through a filled
-  ellipse's edge, back on itself, and round a loop, with Zoom off and on, takes
-  away exactly what its brush sweeps. In every frame read back from the drawing
-  area while the pointer moves, the area shown is a redraw of the points
-  reported so far, to within 2 of 255 in every pixel; no pixel more than a pixel
-  inside where the brush had been gets back 64 of 255 or more of its ink; and
-  more than a pixel outside the brush's circle no pixel gets back 128 or more.
-  The release, and a redraw of the strokes the editor keeps, change no pixel by
-  more than 2 of 255; and of the ink there was, none (128 of 255 or more) is
-  left more than a pixel inside the brush's sweep, and none taken (below 128)
-  more than a pixel outside it. The ink in the middle of the loop stays
+- The eraser, drawn freehand along, across, and through a filled ellipse's edge,
+  back on itself, and round a loop, with Zoom off and on, takes away exactly
+  what its brush sweeps. In every frame read back from the drawing area while
+  the pointer moves, the area shown is a redraw of the points reported so far,
+  to within 2 of 255 in every pixel; no pixel more than a pixel inside where the
+  brush had been gets back 64 of 255 or more of its ink; and more than a pixel
+  outside the brush's circle no pixel gets back 128 or more. The release, and a
+  redraw of the strokes the editor keeps, change no pixel by more than 2 of 255;
+  and of the ink there was, none (128 of 255 or more) is left more than a pixel
+  inside the brush's sweep, and none taken (below 128) more than a pixel outside
+  it. The ink in the middle of the loop stays
   ([eraser-sweep.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/eraser-sweep.e2e.ts),
   [#341](https://github.com/viell-dev/slop-inkline/issues/341)). The same check
   fails on every case with the eraser as 1.0.1 saves it. Unit tests compare the

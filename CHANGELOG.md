@@ -9,32 +9,34 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+## 1.0.2 - 2026-11-19
+
+A fix release for 1.0.1. The file format is unchanged: symbols open and look as
+they did, and a symbol saved with 1.0.2 opens in 1.0.0 and 1.0.1 too.
+
+**To update,** let Obsidian update Inkline under **Settings → Community
+plugins**, or install `inkline-1.0.2.zip` from this release's assets: extract it
+into your vault's `.obsidian/plugins/` directory, replacing the three files of
+the version before, as
+[the install guide](https://viell-dev.github.io/slop-inkline/install#update)
+says.
+
 ### Fixed
 
-- A symbol that changes, as through sync, while some of its images are out of
-  the page now shows its new picture in them when Obsidian puts the same images
-  back with the addresses they had, as it does with parts of Reading view as it
-  lays a note out again, and with a canvas card's own editor, which it moves
-  into a frame of its own as it opens. Those images kept the old picture until
-  the note or the editor was shown again. An image that Obsidian makes anew,
-  rather than puts back, is not covered: one made with an address from before
-  the change can still show the old picture until the note is shown again
-  ([#281](https://github.com/viell-dev/slop-inkline/issues/281)).
-- Inkline follows a canvas card's own editor from the moment it appears, rather
-  than once it takes the focus, tens of milliseconds later. A symbol that
-  changed in between kept its old picture there, and an editor that never took
-  the focus would never have been followed, its symbols keeping their old
-  pictures without Inkline's menu or double-click
-  ([#336](https://github.com/viell-dev/slop-inkline/issues/336)).
 - The eraser takes away exactly what its circle passes over, and what it has
-  taken stays taken as you go on. Behind a large brush moving along a curve, the
-  edge it left in the ink used to shift while erasing, and a little ink came
-  back beside its way, some of it for good. An eraser stroke drawn freehand is
-  now saved as the area its brush swept, as a filled shape the file format
-  already has, so symbols stay in the same format and open in earlier versions
-  of Inkline as before, and what the editor shows while you erase is what it
-  saves. Such a stroke holds about three times the points of a pen stroke as
-  long, and up to about seven for a slow curve with the largest brush. A
+  taken stays taken as you go on, but for a straight part that Shift draws,
+  which follows the pointer until you let go of Shift, as with the pen. Behind a
+  large brush moving along a curve, the edge it left in the ink used to shift
+  while erasing, and a little ink came back beside its way, some of it for good.
+  An eraser stroke drawn freehand is now saved as the area its brush swept, as a
+  filled shape the file format already has, so symbols stay in the same format
+  and open in earlier versions of Inkline as before, and what the editor shows
+  while you erase is what it saves, unless **Zoom** is pressed during the
+  stroke, which can move where any stroke ends
+  ([#382](https://github.com/viell-dev/slop-inkline/issues/382)). In the strokes
+  measured, such a stroke held about three times the points of a pen stroke as
+  long, and up to nearly seven times for a slow curve with the largest brush. A
+  tap with that brush holds a few dozen points, where the pen's holds one. A
   reopened symbol places its grid by where such a stroke ends, and no longer by
   where it starts. A tap with the eraser is the brush's circle saved the same
   way. An eraser stroke that starts with Flat ends and the grid both on is drawn
@@ -45,6 +47,21 @@ even one a public release; earlier pre-releases carry a suffix such as
   shapes, and eraser strokes saved before are as they were, and so is the grid
   that a symbol saved before places when it opens again
   ([#341](https://github.com/viell-dev/slop-inkline/issues/341)).
+- Inkline follows a canvas card's own editor from the moment it appears, rather
+  than once it takes the focus, tens of milliseconds later. A symbol that
+  changed in between kept its old picture there, and an editor that never took
+  the focus would never have been followed, its symbols keeping their old
+  pictures without Inkline's menu or double-click
+  ([#336](https://github.com/viell-dev/slop-inkline/issues/336)).
+- A symbol that changes, as through sync, while some of its images are out of
+  the page now shows its new picture in them when Obsidian puts the same images
+  back with the addresses they had, as it does with parts of Reading view as it
+  lays a note out again, and with a canvas card's own editor, which it moves
+  into a frame of its own as it opens. Those images kept the old picture until
+  the note or the editor was shown again. An image that Obsidian makes anew,
+  rather than puts back, is not covered: one made with an address from before
+  the change can still show the old picture until the note is shown again
+  ([#281](https://github.com/viell-dev/slop-inkline/issues/281)).
 
 ## 1.0.1 - 2026-11-18
 
