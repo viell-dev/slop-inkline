@@ -896,6 +896,12 @@ describe("Symbols in notes", function () {
       const vault = obsidian.Platform.resourcePathPrefix;
       const errors: string[] = [];
       const heard = (event: ErrorEvent): void => {
+        // Chromium reports a ResizeObserver whose callback changed layout as
+        // an error event, whichever observer it was, and adding the frame
+        // to the page once made one do so (#381's CI, Obsidian 1.15.1). It
+        // says nothing of this test's subject: a helper Obsidian did not
+        // add fails as a TypeError.
+        if (event.message.startsWith("ResizeObserver loop")) return;
         errors.push(event.message);
       };
       window.addEventListener("error", heard);
