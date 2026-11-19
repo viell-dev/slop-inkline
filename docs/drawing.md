@@ -153,7 +153,9 @@ pressed and let go. With the grid on, holding Shift puts what you place at that
 moment on the nearest dot:
 
 - Held as you press, it puts the stroke's start on the grid. A tap stays a dot
-  there.
+  there. **Unreleased:** an eraser's tap that takes away the area its circle
+  covers stays that circle where you pressed, whatever Shift or the grid do
+  before the pointer moves.
 - Pressed part way, it makes the stroke straight from where it has got to, and
   the end of that straight part follows the dots. What you drew before stays
   where it is, including the stroke's start.

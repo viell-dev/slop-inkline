@@ -223,9 +223,10 @@ the mark before renaming what it links to.
   included. That is minutes of unbroken drawing with the fastest mice. Saving
   past it fails with a message, and the draft stops at the last stroke within
   it, so undo what took the drawing over. **Unreleased:** an eraser stroke drawn
-  freehand keeps the outline of the area it took away, about three times the
-  points of a pen stroke as long, and up to about seven for a slow curve with
-  XL.
+  freehand without Flat ends and the grid both on keeps the outline of the area
+  it took away, about three times the points of a pen stroke as long, and up to
+  about seven for a slow curve with XL. One drawn with both on holds as many as
+  a pen stroke, as before.
 - Saving a symbol with a large base layer from the editor takes two or three
   seconds near the limit, and Obsidian keeps answering all through it. A symbol
   drawn by hand takes milliseconds. What remains is a pause of up to about a
