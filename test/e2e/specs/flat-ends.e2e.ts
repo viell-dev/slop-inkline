@@ -167,9 +167,22 @@ async function gridPoint([fx, fy]: readonly [number, number]): Promise<Place> {
   return { x: Math.round((fx * across) / spacing) * spacing, y: row };
 }
 
+/** What {@link watchFrames} keeps on the window while it watches. */
+interface StillProbe {
+  /** The last two frames read, the older first. */
+  recent: Uint8Array[];
+  /** The frame before each key named, from when it was first pressed. */
+  before: Record<string, Uint8Array>;
+  /** The frame before the release. */
+  held: Uint8Array | undefined;
+  /** Stops reading and takes the probe and its listeners away. */
+  stop: () => void;
+}
+
 /**
- * Starts reading the surface's alpha in every animation frame, and marks
- * the frame at each Shift or G key pressed, and at the release.
+ * Starts reading the surface's alpha in every animation frame, keeping the
+ * last two, and the one before each Shift or G key pressed and before the
+ * release; {@link stopWatching} ends it.
  */
 async function watchFrames(): Promise<void> {
   await browser.execute(() => {
@@ -177,62 +190,78 @@ async function watchFrames(): Promise<void> {
     if (!(canvas instanceof HTMLCanvasElement)) throw new Error("no surface");
     const context = canvas.getContext("2d");
     if (context === null) throw new Error("no context");
-    const probe = {
-      frames: [] as Uint8Array[],
-      marks: [] as { what: string; frame: number }[],
-      running: true,
+    let running = true;
+    const probe: StillProbe = {
+      recent: [],
+      before: {},
+      held: undefined,
+      stop: () => undefined,
     };
     const read = (): void => {
-      if (!probe.running) return;
+      if (!running) return;
       const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
       const alpha = new Uint8Array(canvas.width * canvas.height);
       for (let index = 0; index < alpha.length; index++) {
         alpha[index] = data[index * 4 + 3] ?? 0;
       }
-      probe.frames.push(alpha);
+      probe.recent.push(alpha);
+      if (probe.recent.length > 2) probe.recent.shift();
       window.requestAnimationFrame(read);
     };
     window.requestAnimationFrame(read);
-    const mark = (what: string) => () => {
-      probe.marks.push({ what, frame: probe.frames.length });
+    // A frame just before an event can be read before the editor has drawn
+    // what came before it, so the older of the last two is taken.
+    const key = (event: KeyboardEvent): void => {
+      const name = event.key.toLowerCase();
+      if (name !== "shift" && name !== "g") return;
+      const [older] = probe.recent;
+      if (older !== undefined && !(name in probe.before)) {
+        probe.before[name] = older;
+      }
+    };
+    const up = (): void => {
+      probe.held = probe.recent[0];
     };
     // Before the editor's shortcuts, which can stop a key's event.
-    window.addEventListener(
-      "keydown",
-      (event) => {
-        if (event.key === "Shift" || event.key.toLowerCase() === "g") {
-          mark(`key ${event.key.toLowerCase()}`)();
-        }
-      },
-      true,
-    );
-    canvas.addEventListener("pointerup", mark("up"));
+    window.addEventListener("keydown", key, true);
+    canvas.addEventListener("pointerup", up);
+    probe.stop = () => {
+      running = false;
+      window.removeEventListener("keydown", key, true);
+      canvas.removeEventListener("pointerup", up);
+      Reflect.deleteProperty(window, "stillProbe");
+    };
     Reflect.set(window, "stillProbe", probe);
   });
 }
 
+/** Ends {@link watchFrames}, if it is watching. */
+async function stopWatching(): Promise<void> {
+  await browser.execute(() => {
+    (Reflect.get(window, "stillProbe") as StillProbe | undefined)?.stop();
+  });
+}
+
 /**
- * From the frames {@link watchFrames} read: how many pixels the key named
- * `key` changed, between the last frame before it and the last frame before
- * the release, and how many the release changed, between that frame and the
- * last one read, each by more than 2 of 255.
+ * From the frames {@link watchFrames} kept: how many pixels the key named
+ * `key` changed, between the frame before it and the frame before the
+ * release, and how many the release changed, between that frame and the last
+ * one read, each by more than 2 of 255. It stops watching.
  */
 async function stillChanges(
   key: string,
-): Promise<{ byKey: number; byRelease: number; frames: number }> {
+): Promise<{ byKey: number; byRelease: number }> {
   return browser.execute((wanted) => {
-    const probe = Reflect.get(window, "stillProbe") as {
-      frames: Uint8Array[];
-      marks: { what: string; frame: number }[];
-      running: boolean;
-    };
-    probe.running = false;
-    const at = (what: string): number =>
-      probe.marks.find((mark) => mark.what === what)?.frame ?? -1;
-    const pressed = at(`key ${wanted}`);
-    const up = at("up");
-    if (pressed < 2 || up <= pressed + 2) {
-      throw new Error(`frames out of order: ${JSON.stringify(probe.marks)}`);
+    const probe = Reflect.get(window, "stillProbe") as StillProbe | undefined;
+    if (probe === undefined) throw new Error("not watching");
+    probe.stop();
+    const before = probe.before[wanted];
+    const { held } = probe;
+    const after = probe.recent.at(-1);
+    if (before === undefined || held === undefined || after === undefined) {
+      throw new Error(
+        `no frame before the ${wanted} key, or the release, or after`,
+      );
     }
     const differ = (a: Uint8Array, b: Uint8Array): number => {
       let count = 0;
@@ -241,29 +270,17 @@ async function stillChanges(
       }
       return count;
     };
-    // A frame before an event can be read before the editor draws it.
-    const before = probe.frames[pressed - 2];
-    const held = probe.frames[up - 2];
-    const after = probe.frames.at(-1);
-    if (before === undefined || held === undefined || after === undefined) {
-      throw new Error("no frames");
-    }
-    return {
-      byKey: differ(before, held),
-      byRelease: differ(held, after),
-      frames: probe.frames.length,
-    };
+    return { byKey: differ(before, held), byRelease: differ(held, after) };
   }, key);
 }
 
 /**
  * Draws a filled ellipse of the pen's XL ink under where the eraser goes,
  * and chooses the XL eraser, drawing freehand, with the grid and Flat ends
- * on. Gives grid points for its drag: down, across, and back up to a row
- * below where it started, which the end's cut cannot take apart from the
- * start, so that a cut end makes the stroke the smooth one it falls back to.
- * The way up is longer than the two brush widths a cut end's way is judged
- * over, so that it is steep enough to be cut.
+ * on. Gives grid points for its drag: down, across, and up to a row above
+ * where it started, so that nothing but its end goes past that row, which a
+ * cut there can take flat. The way up is longer than the two brush widths a
+ * cut end's way is judged over, so that it is steep enough to be cut.
  */
 async function eraserOverInk(): Promise<[Place, Place, Place, Place]> {
   await openOnGrid();
@@ -279,11 +296,28 @@ async function eraserOverInk(): Promise<[Place, Place, Place, Place]> {
   await browser.keys("4");
   expect(await pressed("flat-ends")).toBe("true");
   return [
-    await gridPoint([0.2, 0.3]),
+    await gridPoint([0.2, 0.6]),
     await gridPoint([0.2, 0.9]),
     await gridPoint([0.5, 0.9]),
-    await gridPoint([0.5, 0.5]),
+    await gridPoint([0.5, 0.4]),
   ];
+}
+
+/**
+ * Whether a saved eraser area's end, its last point, is cut flat along its
+ * row, coming up to it: no corner within the brush's radius across from it
+ * lies above the row, as a round end's would.
+ */
+function cutUp(stroke: Stroke | undefined, size: number): boolean {
+  const points = stroke?.points ?? [];
+  const ex = points.at(-2) ?? 0;
+  const ey = points.at(-1) ?? 0;
+  for (let index = 0; index + 1 < points.length; index += 2) {
+    const x = points[index] ?? 0;
+    const y = points[index + 1] ?? 0;
+    if (Math.abs(x - ex) <= size / 2 && y < ey) return false;
+  }
+  return points.length > 0;
 }
 
 /** How to reach a place on a new symbol's surface in an action. */
@@ -467,6 +501,9 @@ describe("Flat ends on the grid", function () {
   beforeEach(async function () {
     await startOver();
   });
+  afterEach(async function () {
+    await stopWatching();
+  });
   it("leaves a line along the baseline whole, with round ends", async function () {
     await openOnGrid();
     // The owner's simplest case in #150: left to right along the baseline.
@@ -628,10 +665,9 @@ describe("Flat ends on the grid", function () {
     for (const value of shown.uncut[1] ?? []) expect(value).toBeGreaterThan(0);
   });
 
-  it("shows the eraser's stroke as letting go saves it, when Shift is pressed with the pointer still", async function () {
+  it("shows the eraser's end as letting go saves it, when Shift is pressed with the pointer still", async function () {
     // The third review of #381: the end is on a grid point, and Shift
-    // pressed there cuts it, which makes the area the smooth stroke it
-    // falls back to. The editor shows that before the release.
+    // pressed there cuts it flat. The editor shows that before the release.
     const [a, b, c, d] = await eraserOverInk();
     await watchFrames();
     const to = await offsets();
@@ -654,16 +690,17 @@ describe("Flat ends on the grid", function () {
     expect(shown.byKey).toBeGreaterThan(0);
     expect(shown.byRelease).toBe(0);
     await save();
+    // Always the area the brush swept, its end cut flat.
     const eraser = (await savedStrokes()).at(-1);
     expect(eraser?.tool).toBe("eraser");
-    expect(eraser?.kind).toBeUndefined();
-    expect(eraser?.cut?.end).toBe("up");
+    expect(eraser?.kind).toBe("fill");
+    expect(cutUp(eraser, 384)).toBe(true);
   });
 
-  it("shows the eraser's stroke as letting go saves it, when the grid is turned on with the pointer still", async function () {
+  it("shows the eraser's end as letting go saves it, when the grid is turned on with the pointer still", async function () {
     // The third review of #381: Shift draws the last move with the grid
     // off, and Shift+G then turns it on, which puts the end on the grid and
-    // cuts it there. The editor shows that before the release.
+    // cuts it flat there. The editor shows that before the release.
     const [a, b, c, d] = await eraserOverInk();
     await browser.keys(["Shift", "g"]);
     await browser.waitUntil(async () => (await pressed("grid")) === "false");
@@ -694,10 +731,11 @@ describe("Flat ends on the grid", function () {
     expect(shown.byKey).toBeGreaterThan(0);
     expect(shown.byRelease).toBe(0);
     await save();
+    // Always the area the brush swept, its end cut flat.
     const eraser = (await savedStrokes()).at(-1);
     expect(eraser?.tool).toBe("eraser");
-    expect(eraser?.kind).toBeUndefined();
-    expect(eraser?.cut?.end).toBe("up");
+    expect(eraser?.kind).toBe("fill");
+    expect(cutUp(eraser, 384)).toBe(true);
   });
 
   it("offers Flat ends only for freehand strokes on the grid", async function () {
