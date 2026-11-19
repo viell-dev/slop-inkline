@@ -170,9 +170,9 @@ must keep released files readable and looking the same, as
   image taken out while its symbol is rewritten, then deleted and made again
   with its old modification time, comes back with the new file's address, not
   the address of the deleted file's last refresh, so that it does not show the
-  deleted file's last picture (the same file). Images that Obsidian makes anew
-  keep the address they come with, as [the rendering contract](./rendering.md)
-  says, and are not tested.
+  deleted file's last picture (the same file). An embed that Obsidian makes anew
+  with an address from before a change keeps that address, as
+  [the rendering contract](./rendering.md) says, and that case is not tested.
 
 ### The editor shows what its tools do
 
