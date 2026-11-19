@@ -846,6 +846,9 @@ export class DrawingSession {
     this.#circle = false;
     this.#starting = polygon;
     this.#snaps = polygon ? [onGrid] : [];
+    // No place yet, so that the stroke's first point is never taken for a
+    // report at the place the pointer already was.
+    this.#at = undefined;
     this.extend([start]);
     this.#shift = shift;
     this.#shiftNow = shift;
@@ -899,6 +902,16 @@ export class DrawingSession {
     // The way the pointer went measures cut ends, which a sweep has none of.
     const measured = !active.sweep;
     for (const point of points) {
+      // Until the pointer first moves, a sweep is its tap's circle: a report
+      // at the very place it was, as a browser can send, is not a move.
+      if (
+        active.sweep &&
+        !this.#left &&
+        point.x === this.#at?.x &&
+        point.y === this.#at.y
+      ) {
+        continue;
+      }
       this.#at = point;
       this.#left = true;
       if (!shift) {

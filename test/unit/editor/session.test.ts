@@ -1685,13 +1685,14 @@ describe("DrawingSession's cuts", () => {
       change: (session: DrawingSession) => void,
       release: boolean,
       way: readonly InputPoint[] = [],
+      wayShift = false,
     ) => {
       const session = new DrawingSession(emptyDocument);
       session.tool = "eraser";
       session.sizeIndex = 0;
       session.snap = true;
       session.begin({ x: 39, y: 39 }, press);
-      for (const at of way) session.extend([at]);
+      for (const at of way) session.extend([at], wayShift);
       change(session);
       const shown = session.activeStrokes;
       session.end({ x: 39, y: 39 }, release);
@@ -1710,6 +1711,24 @@ describe("DrawingSession's cuts", () => {
         (session) => {
           session.snap = false;
         },
+        true,
+      ),
+    ).toEqual(circle(32, 32));
+    // The final check of #381: a report at the press's own place, as a
+    // browser can send with no move, is still no move, with Shift up or held.
+    expect(
+      tap(false, (session) => session.holdShift(true), true, [
+        { x: 39, y: 39 },
+      ]),
+    ).toEqual(circle(39, 39));
+    expect(
+      tap(
+        true,
+        (session) => {
+          session.snap = false;
+        },
+        true,
+        [{ x: 39, y: 39 }],
         true,
       ),
     ).toEqual(circle(32, 32));
