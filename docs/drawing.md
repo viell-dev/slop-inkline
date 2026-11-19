@@ -43,12 +43,10 @@ A circle shows the brush's diameter, scaled with the drawing area. Pen and
 Eraser keep separate sizes while the editor is open and through **Next**. A
 separately opened editor starts both tools at the configured default size.
 
-**Unreleased:** the eraser takes away exactly what its circle passes over, and
-what it has taken stays taken as you go on, so the edge it leaves along a curve
-no longer shifts behind it
-([#341](https://github.com/viell-dev/slop-inkline/issues/341)), but for a stroke
-that starts with **Flat ends** and the grid both on, as
-[Known limits](./limits.md#in-general) says. The pen draws as before.
+The eraser takes away exactly what its circle passes over, and what it has taken
+stays taken as you go on, so the edge it leaves along a curve stays where it is,
+except in a stroke that starts with **Flat ends** and the grid both on, as
+[Known limits](./limits.md#in-general) says.
 
 The brush circle and centre dot change between black and white to contrast with
 the drawing underneath, including tracing pictures. The thin outline keeps its
@@ -153,9 +151,9 @@ pressed and let go. With the grid on, holding Shift puts what you place at that
 moment on the nearest dot:
 
 - Held as you press, it puts the stroke's start on the grid. A tap stays a dot
-  there. **Unreleased:** an eraser's tap that takes away the area its circle
-  covers stays that circle where you pressed, whatever Shift or the grid do
-  before the pointer moves.
+  there. An eraser's tap that takes away the area its circle covers stays that
+  circle where you pressed, whatever Shift or the grid do before the pointer
+  moves.
 - Pressed part way, it makes the stroke straight from where it has got to, and
   the end of that straight part follows the dots. What you drew before stays
   where it is, including the stroke's start.
@@ -193,12 +191,11 @@ not cut, so a line drawn along the baseline stays whole with round ends.
 
 A freehand end is not on a grid line, and stays round. So does a dot, and a
 stroke that ends on the grid point it started on, as a closed loop has no ends
-to cut. The eraser's ends are cut the same way, so erasing up to a row leaves a
-straight edge there. **Unreleased:** that is so for an eraser stroke that starts
-with Flat ends and the grid both on, which is drawn as before. One that starts
-otherwise takes away exactly what its circle passes over, and its ends stay
-round, whatever you turn on during the stroke. Shapes are never cut: an ellipse
-has no ends, and a polygon keeps its square ones.
+to cut. The eraser's ends are cut the same way in a stroke that starts with Flat
+ends and the grid both on, so erasing up to a row leaves a straight edge there.
+One that starts otherwise takes away exactly what its circle passes over, and
+its ends stay round, whatever you turn on during the stroke. Shapes are never
+cut: an ellipse has no ends, and a polygon keeps its square ones.
 
 The grid keeps its place through saves. A symbol keeps its strokes exactly but
 not its grid, so what you placed with Shift never moves; what can change is

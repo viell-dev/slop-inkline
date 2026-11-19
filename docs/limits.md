@@ -9,27 +9,18 @@ What Inkline does not do, or does not do everywhere, and what to do instead. The
   run on Linux; Windows and macOS should work but are not tested.
 - **Mouse or trackpad.** A drawing tablet's pen or a touchscreen draws as a
   mouse does: pen pressure and a pen's eraser end are not supported.
-- **In 1.0.1, the eraser's edge can shift along a curve.** Behind a large brush
-  moving along a curve, most of all slowly, the edge the eraser leaves in the
-  ink shifts while you erase, and a little ink can come back beside the way it
-  went, a few pixels outside the brush's circle. Some of it stays when you let
-  go ([#341](https://github.com/viell-dev/slop-inkline/issues/341)). Where the
-  pointer is, the eraser takes away all the circle shows, and a straight stroke
-  barely shifts. A smaller brush shifts the edge less, and Shift draws a
-  straight stroke. For a cut that does not shift, use the eraser with
-  **Ellipse** or **Polygon** and **Toggle fill**: it takes away exactly the
-  shape its preview shows, out to the preview's outer edge, which lies half the
-  brush's width beyond the box you drag or the corners you place, so a smaller
-  brush brings that edge closer to them. **Unreleased:** fixed: the eraser takes
-  away exactly what its circle passes over, and what it has taken stays taken as
-  you go on, but with Flat ends and the grid both on, as the next entry says.
-- **Unreleased: with Flat ends and the grid both on, the eraser's edge can shift
-  as in 1.0.1.** An eraser stroke drawn freehand that starts while both are on
-  is drawn as in 1.0.1, so that Flat ends can stop its ends flush with a row,
-  and its edge can shift along a curve as the entry above says
+- **With Flat ends and the grid both on, the eraser's edge can shift along a
+  curve.** An eraser stroke drawn freehand that starts while both are on is
+  drawn as in 1.0.1, so that Flat ends can stop its ends flush with a row.
+  Behind a large brush moving along a curve, most of all slowly, the edge it
+  leaves in the ink then shifts while you erase, and a little ink can come back
+  beside the way it went, a few pixels outside the brush's circle. Some of it
+  stays when you let go
   ([#341](https://github.com/viell-dev/slop-inkline/issues/341)). Turn Flat ends
   off to erase along a curve: the eraser then takes away exactly what its circle
   passes over, and its ends stay round, whatever you turn on during the stroke.
+  With both on, a smaller brush shifts the edge less, and Shift draws a straight
+  stroke, which barely shifts.
 - **Large libraries** show 100 symbols at a time, with **Show more** for the
   next 100. Filter them, or choose a folder, to narrow the list.
 - **Library insertion needs a sidebar.** If the library's tab is dragged into
@@ -222,11 +213,11 @@ the mark before renaming what it links to.
 - A symbol holds at most 250,000 points across its strokes, erased ones
   included. That is minutes of unbroken drawing with the fastest mice. Saving
   past it fails with a message, and the draft stops at the last stroke within
-  it, so undo what took the drawing over. **Unreleased:** an eraser stroke drawn
-  freehand without Flat ends and the grid both on keeps the outline of the area
-  it took away, about three times the points of a pen stroke as long, and up to
-  about seven for a slow curve with XL. One drawn with both on holds as many as
-  a pen stroke, as before.
+  it, so undo what took the drawing over. An eraser stroke drawn freehand
+  without Flat ends and the grid both on keeps the outline of the area it took
+  away, about three times the points of a pen stroke as long, and up to about
+  seven for a slow curve with XL. One drawn with both on holds as many as a pen
+  stroke, as before.
 - Saving a symbol with a large base layer from the editor takes two or three
   seconds near the limit, and Obsidian keeps answering all through it. A symbol
   drawn by hand takes milliseconds. What remains is a pause of up to about a
