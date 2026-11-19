@@ -276,11 +276,9 @@ async function stillChanges(
 
 /**
  * Draws a filled ellipse of the pen's XL ink under where the eraser goes,
- * and chooses the XL eraser, drawing freehand, with the grid and Flat ends
- * on. Gives grid points for its drag: down, across, and up to a row above
- * where it started, so that nothing but its end goes past that row, which a
- * cut there can take flat. The way up is longer than the two brush widths a
- * cut end's way is judged over, so that it is steep enough to be cut.
+ * and chooses the XL eraser, drawing freehand, with the grid on and Flat
+ * ends off, so that it erases the area its brush sweeps. Gives grid points
+ * for its drag: down, across, and up to a row above where it started.
  */
 async function eraserOverInk(): Promise<[Place, Place, Place, Place]> {
   await openOnGrid();
@@ -294,7 +292,8 @@ async function eraserOverInk(): Promise<[Place, Place, Place, Place]> {
   await browser.keys("o");
   await browser.keys("e");
   await browser.keys("4");
-  expect(await pressed("flat-ends")).toBe("true");
+  await browser.keys("t");
+  await browser.waitUntil(async () => (await pressed("flat-ends")) === "false");
   return [
     await gridPoint([0.2, 0.6]),
     await gridPoint([0.2, 0.9]),
@@ -304,20 +303,20 @@ async function eraserOverInk(): Promise<[Place, Place, Place, Place]> {
 }
 
 /**
- * Whether a saved eraser area's end, its last point, is cut flat along its
- * row, coming up to it: no corner within the brush's radius across from it
- * lies above the row, as a round end's would.
+ * Whether a saved eraser area's end, its last point, is round where it came
+ * up to it: some corner within the brush's radius across from it lies above
+ * its row, as a cut end's would not.
  */
-function cutUp(stroke: Stroke | undefined, size: number): boolean {
+function roundUp(stroke: Stroke | undefined, size: number): boolean {
   const points = stroke?.points ?? [];
   const ex = points.at(-2) ?? 0;
   const ey = points.at(-1) ?? 0;
   for (let index = 0; index + 1 < points.length; index += 2) {
     const x = points[index] ?? 0;
     const y = points[index + 1] ?? 0;
-    if (Math.abs(x - ex) <= size / 2 && y < ey) return false;
+    if (Math.abs(x - ex) <= size / 2 && y < ey - size / 4) return true;
   }
-  return points.length > 0;
+  return false;
 }
 
 /** How to reach a place on a new symbol's surface in an action. */
@@ -574,14 +573,16 @@ describe("Flat ends on the grid", function () {
     await drawHoldingShift([fractions(from), fractions(to)]);
     await save();
     const strokes = await savedStrokes();
-    // The pen's strokes keep their round ends. The eraser's is the area its
-    // brush swept, with its cut ends in it (#341).
+    // The pen's strokes keep their round ends. The eraser, started with
+    // Flat ends and the grid on, is a smooth stroke cut at both, as in 1.0.1
+    // (#341).
     expect(strokes.map((stroke) => stroke.cut)).toEqual([
       undefined,
       undefined,
-      undefined,
+      { start: "up", end: "down" },
     ]);
-    expect(strokes[2]).toMatchObject({ tool: "eraser", kind: "fill" });
+    expect(strokes[2]?.tool).toBe("eraser");
+    expect(strokes[2]?.kind).toBeUndefined();
     const shown = await eraserEnd(384, { start: from.y, end: to.y });
     console.log("Flat", JSON.stringify({ from, to, shown }));
     // The area ends on the row the drag ended on.
@@ -666,9 +667,11 @@ describe("Flat ends on the grid", function () {
   });
 
   it("shows the eraser's end as letting go saves it, when Shift is pressed with the pointer still", async function () {
-    // The third review of #381: the end is on a grid point, and Shift
-    // pressed there cuts it flat. The editor shows that before the release.
+    // The third review of #381: the pointer stops beside a grid point, and
+    // Shift pressed there puts the end on it. The editor shows that before
+    // the release.
     const [a, b, c, d] = await eraserOverInk();
+    const off = { x: d.x + 3.3, y: d.y + 2.6 };
     await watchFrames();
     const to = await offsets();
     const keys = browser.action("key");
@@ -676,7 +679,7 @@ describe("Flat ends on the grid", function () {
       parameters: { pointerType: "mouse" },
     });
     pointer.move(to(a)).down();
-    for (const at of [b, c, d]) pointer.move({ ...to(at), duration: 100 });
+    for (const at of [b, c, off]) pointer.move({ ...to(at), duration: 100 });
     pointer.pause(300);
     for (let tick = 0; tick < 6; tick++) keys.pause(10);
     keys.down(Key.Shift).pause(400).pause(10).up(Key.Shift);
@@ -690,17 +693,19 @@ describe("Flat ends on the grid", function () {
     expect(shown.byKey).toBeGreaterThan(0);
     expect(shown.byRelease).toBe(0);
     await save();
-    // Always the area the brush swept, its end cut flat.
+    // The area the brush swept, ending on the grid point's row, its end
+    // round.
     const eraser = (await savedStrokes()).at(-1);
     expect(eraser?.tool).toBe("eraser");
     expect(eraser?.kind).toBe("fill");
-    expect(cutUp(eraser, 384)).toBe(true);
+    expect(eraser?.points.at(-1)).toBe(Math.round(d.y * unitsPerPixel));
+    expect(roundUp(eraser, 384)).toBe(true);
   });
 
   it("shows the eraser's end as letting go saves it, when the grid is turned on with the pointer still", async function () {
     // The third review of #381: Shift draws the last move with the grid
-    // off, and Shift+G then turns it on, which puts the end on the grid and
-    // cuts it flat there. The editor shows that before the release.
+    // off, and Shift+G then turns it on, which puts the end on the grid. The
+    // editor shows that before the release.
     const [a, b, c, d] = await eraserOverInk();
     await browser.keys(["Shift", "g"]);
     await browser.waitUntil(async () => (await pressed("grid")) === "false");
@@ -731,11 +736,13 @@ describe("Flat ends on the grid", function () {
     expect(shown.byKey).toBeGreaterThan(0);
     expect(shown.byRelease).toBe(0);
     await save();
-    // Always the area the brush swept, its end cut flat.
+    // The area the brush swept, ending on the grid point's row, its end
+    // round.
     const eraser = (await savedStrokes()).at(-1);
     expect(eraser?.tool).toBe("eraser");
     expect(eraser?.kind).toBe("fill");
-    expect(cutUp(eraser, 384)).toBe(true);
+    expect(eraser?.points.at(-1)).toBe(Math.round(d.y * unitsPerPixel));
+    expect(roundUp(eraser, 384)).toBe(true);
   });
 
   it("offers Flat ends only for freehand strokes on the grid", async function () {
