@@ -390,7 +390,8 @@ export class DrawingSession {
   /**
    * The way the pointer went for the stroke being drawn, in units: where it
    * was pressed and each point it reported, before any went to the grid, with
-   * a straight segment as where the pointer is at its end now.
+   * a straight segment as where the pointer is at its end now. Empty for an
+   * eraser's sweep, whose ends are not cut.
    */
   #pointer: number[] = [];
   /** Whether the last of {@link #pointer} is a straight segment's end. */
@@ -411,6 +412,12 @@ export class DrawingSession {
   #corner: InputPoint | undefined;
   /** Whether the ellipse being drawn is a circle, as Shift makes it. */
   #circle = false;
+  /**
+   * Whether the pointer has moved since the press: an eraser's sweep that has
+   * not is the brush's circle at the point the press placed, however Shift
+   * and the grid change before it does.
+   */
+  #left = false;
   /**
    * Whether Shift was down at the last press or move, which decides whether
    * the point that reported goes on the grid while the grid is on. Each
@@ -710,7 +717,9 @@ export class DrawingSession {
     const shown = remembered ? this.#last : undefined;
     const end = shown ?? (onGrid ? (release ?? this.#last) : release);
     const ended = { ...active, points: [...active.points] };
-    if (end !== undefined) {
+    // A sweep is the circle where the press put it until the pointer moves.
+    const still = active.sweep && !this.#left;
+    if (end !== undefined && !still) {
       const placed = onGrid ? this.#snapped(end) : end;
       if (corner !== undefined) {
         ended.points.length = 0;
@@ -774,8 +783,8 @@ export class DrawingSession {
    * twice the brush's width, so that the small turns near an end that a hand
    * makes, and the jump to a grid point at its start, don't decide it;
    * `paths` are the ways each end is measured along, as for {@link gridCuts}.
-   * An eraser's stroke drawn as the pointer goes is the area its brush swept,
-   * cut the same way, as {@link sweptStroke} makes it.
+   * An eraser's sweep is the area its brush swept, as {@link sweptStroke}
+   * makes it, and never cut.
    */
   #stroke(
     active: ActiveStroke,
@@ -840,8 +849,11 @@ export class DrawingSession {
     this.extend([start]);
     this.#shift = shift;
     this.#shiftNow = shift;
+    this.#left = false;
     // After the grid point the stroke starts on, which the pointer never was.
-    this.#pointer = [toUnits(point.x), toUnits(point.y)];
+    this.#pointer = this.#active.sweep
+      ? []
+      : [toUnits(point.x), toUnits(point.y)];
     this.#at = point;
     this.#pointerStraight = false;
     this.#straightStart = false;
@@ -884,19 +896,24 @@ export class DrawingSession {
       this.#at = latest;
       return;
     }
+    // The way the pointer went measures cut ends, which a sweep has none of.
+    const measured = !active.sweep;
     for (const point of points) {
       this.#at = point;
+      this.#left = true;
       if (!shift) {
         this.#anchor = undefined;
-        this.#pointer.push(toUnits(point.x), toUnits(point.y));
+        if (measured) this.#pointer.push(toUnits(point.x), toUnits(point.y));
         this.#pointerStraight = false;
         this.#append(active, this.#last, point);
         this.#last = point;
         continue;
       }
-      if (this.#pointer.length <= 2) this.#straightStart = true;
-      if (this.#pointerStraight) this.#pointer.length -= 2;
-      this.#pointer.push(toUnits(point.x), toUnits(point.y));
+      if (measured) {
+        if (this.#pointer.length <= 2) this.#straightStart = true;
+        if (this.#pointerStraight) this.#pointer.length -= 2;
+        this.#pointer.push(toUnits(point.x), toUnits(point.y));
+      }
       this.#pointerStraight = true;
       const anchor = (this.#anchor ??= {
         point: this.#last ?? point,
@@ -972,11 +989,9 @@ export class DrawingSession {
       return;
     }
     if (placed?.sweep === true && release !== undefined) {
+      // As the point itself, which the grid places, not as it is saved.
       const at = this.#at;
-      const moved =
-        at === undefined ||
-        toUnits(at.x) !== toUnits(release.x) ||
-        toUnits(at.y) !== toUnits(release.y);
+      const moved = at?.x !== release.x || at.y !== release.y;
       if (moved) this.extend([release], this.#shiftNow);
     }
     const strokes =
