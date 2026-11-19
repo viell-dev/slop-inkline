@@ -19,23 +19,18 @@ images as Obsidian adds them or changes their address or size. Closing a window
 stops its observer and removes its display settings. Disabling Inkline removes
 every tag, and symbols show as the plain images they are.
 
-Inkline also watches a document in a frame from when the frame takes the focus,
-as a canvas text card's own editor does as it opens. So a card's editor already
-open as Inkline starts shows plain images until it takes the focus again. Frames
-from another origin stay out of its reach.
+Inkline also watches the document in a frame as soon as the frame is in a
+watched document, and each new document the frame loads, and stops as the frame
+goes. So a canvas text card's own editor is watched as Obsidian moves it into
+its frame, before it takes the focus, and one already open as Inkline starts is
+watched at once. It watches only frames whose window Obsidian has prepared, as
+it does for a card's editor: a frame that a note embeds, and frames from another
+origin, stay out of its reach.
 
 When a symbol file changes, Inkline refreshes its tagged images in every watched
 document. The image source and mask use a fresh resource URL, including a cache
 key so that consecutive saves with the same file timestamp still reload. Note
 text and explicit image sizes stay unchanged.
-
-Inkline watches the document in a frame as soon as the frame is in a watched
-document, and each new document the frame loads, rather than once the frame
-takes the focus, and stops as the frame goes. So a canvas text card's own editor
-is watched as Obsidian moves it into its frame, before it takes the focus, and
-one already open as Inkline starts is watched at once. It watches only frames
-whose window Obsidian has prepared, as it does for a card's editor: a frame that
-a note embeds, and frames from another origin, stay out of its reach.
 
 Inkline also remembers, for each image element it has tagged, how many times its
 symbol file had been refreshed when it last saw the image. An element that was

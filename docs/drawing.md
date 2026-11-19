@@ -46,7 +46,8 @@ separately opened editor starts both tools at the configured default size.
 The eraser takes away exactly what its circle passes over, and what it has taken
 stays taken as you go on, so the edge it leaves along a curve stays where it is,
 except in a stroke that starts with **Flat ends** and the grid both on, as
-[Known limits](./limits.md#in-general) says.
+[Known limits](./limits.md#in-general) says. A straight part that Shift draws
+follows the pointer until you let go of Shift, as with the pen.
 
 The brush circle and centre dot change between black and white to contrast with
 the drawing underneath, including tracing pictures. The thin outline keeps its

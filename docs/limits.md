@@ -21,6 +21,11 @@ What Inkline does not do, or does not do everywhere, and what to do instead. The
   passes over, and its ends stay round, whatever you turn on during the stroke.
   With both on, a smaller brush shifts the edge less, and Shift draws a straight
   stroke, which barely shifts.
+- **Zoom during a stroke moves its end.** Pressing **Zoom** (Z) while drawing a
+  stroke, with the pen or the eraser, changes where the pointer falls in the
+  drawing, so letting go ends the stroke somewhere other than its preview showed
+  ([#382](https://github.com/viell-dev/slop-inkline/issues/382)). Change Zoom
+  between strokes; Undo takes back a stroke that went wrong.
 - **Large libraries** show 100 symbols at a time, with **Show more** for the
   next 100. Filter them, or choose a folder, to narrow the list.
 - **Library insertion needs a sidebar.** If the library's tab is dragged into
@@ -215,9 +220,10 @@ the mark before renaming what it links to.
   past it fails with a message, and the draft stops at the last stroke within
   it, so undo what took the drawing over. An eraser stroke drawn freehand
   without Flat ends and the grid both on keeps the outline of the area it took
-  away, about three times the points of a pen stroke as long, and up to about
-  seven for a slow curve with XL. One drawn with both on holds as many as a pen
-  stroke, as before.
+  away. In the strokes measured, that was about three times the points of a pen
+  stroke as long, and up to nearly seven times for a slow curve with XL; a tap
+  or a very short stroke holds a few dozen points, where the pen's holds one or
+  two. One drawn with both on holds as many as a pen stroke, as before.
 - Saving a symbol with a large base layer from the editor takes two or three
   seconds near the limit, and Obsidian keeps answering all through it. A symbol
   drawn by hand takes milliseconds. What remains is a pause of up to about a

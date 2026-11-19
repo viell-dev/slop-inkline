@@ -24,19 +24,24 @@ says.
 ### Fixed
 
 - The eraser takes away exactly what its circle passes over, and what it has
-  taken stays taken as you go on. Behind a large brush moving along a curve, the
-  edge it left in the ink used to shift while erasing, and a little ink came
-  back beside its way, some of it for good. An eraser stroke drawn freehand is
-  now saved as the area its brush swept, as a filled shape the file format
-  already has, so symbols stay in the same format and open in earlier versions
-  of Inkline as before, and what the editor shows while you erase is what it
-  saves. Such a stroke holds about three times the points of a pen stroke as
-  long, and up to about seven for a slow curve with the largest brush. A
-  reopened symbol places its grid by where such a stroke ends, and no longer by
-  where it starts. A tap with the eraser is the brush's circle saved the same
-  way. An eraser stroke that starts with Flat ends and the grid both on is drawn
-  as before, so that its ends can stop flush with a row, and its edge can still
-  shift along a curve, as
+  taken stays taken as you go on, but for a straight part that Shift draws,
+  which follows the pointer until you let go of Shift, as with the pen. Behind a
+  large brush moving along a curve, the edge it left in the ink used to shift
+  while erasing, and a little ink came back beside its way, some of it for good.
+  An eraser stroke drawn freehand is now saved as the area its brush swept, as a
+  filled shape the file format already has, so symbols stay in the same format
+  and open in earlier versions of Inkline as before, and what the editor shows
+  while you erase is what it saves, unless **Zoom** is pressed during the
+  stroke, which moves where any stroke ends
+  ([#382](https://github.com/viell-dev/slop-inkline/issues/382)). In the strokes
+  measured, such a stroke held about three times the points of a pen stroke as
+  long, and up to nearly seven times for a slow curve with the largest brush; a
+  tap or a very short stroke holds a few dozen points, where the pen's holds one
+  or two. A reopened symbol places its grid by where such a stroke ends, and no
+  longer by where it starts. A tap with the eraser is the brush's circle saved
+  the same way. An eraser stroke that starts with Flat ends and the grid both on
+  is drawn as before, so that its ends can stop flush with a row, and its edge
+  can still shift along a curve, as
   [Known limits](https://viell-dev.github.io/slop-inkline/limits#in-general)
   says; turn Flat ends off to erase along a curve. Pen strokes, the eraser's
   shapes, and eraser strokes saved before are as they were, and so is the grid

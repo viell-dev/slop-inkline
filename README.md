@@ -96,8 +96,8 @@ Paste a picture to trace, then turn each sign into ink with **Make ink** and
 
 The [user guide](https://viell-dev.github.io/slop-inkline/) covers installing
 the release ZIP, drawing and inserting symbols, saving and recovery, the
-keyboard, known limits, and reporting a problem. It describes the latest
-release, prereleases included.
+keyboard, known limits, and reporting a problem. It describes the newest public
+release, and marks what is not in it yet **Unreleased**.
 
 ## Contributing
 
