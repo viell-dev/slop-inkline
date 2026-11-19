@@ -241,6 +241,15 @@ OBSIDIAN_VERSIONS=latest/latest npm run test:e2e:docker -- \
   --spec test/e2e/specs/journey.e2e.ts --spec test/e2e/specs/library-look.e2e.ts
 ```
 
+`test/e2e/manual/eraser-edge.e2e.ts` stays outside it too: it erases a filled
+ellipse along, across, and through its edge with every brush size, slowly and
+quickly, with Zoom off and on, and reads the drawing area back in every frame,
+which is how the eraser's moving edge in
+[#341](https://github.com/viell-dev/slop-inkline/issues/341) was measured. It
+writes `eraser-edge-<version>.json` to the output directory, and a picture of
+each case's worst frame with the screenshots.
+`test/e2e/specs/eraser-sweep.e2e.ts` asserts on a few of its cases in the suite.
+
 `test/e2e/manual/save-time.e2e.ts` stays outside it too: it measures how long a
 save of a large symbol takes and what that does to the rest of the plugin, which
 is how the wait before a stalled save's message was chosen. It writes

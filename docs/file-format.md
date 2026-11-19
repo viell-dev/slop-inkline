@@ -717,6 +717,32 @@ crosses the row through it at 45° or steeper, so that it stops flush with the
 row: a stroke that comes down to the baseline has the end `"down"`. Every other
 end stays round, so a line along the baseline stays whole.
 
+**Unreleased:** Inkline saves an eraser stroke drawn freehand, unless it starts
+with Flat ends and the grid both on, as a stroke of kind `"fill"`: its points go
+round the area that a round brush of the eraser's size sweeps along the straight
+lines between the points the pointer reported, so that it takes away exactly
+what the brush passed over. A tap, which never leaves its first point, is the
+brush's circle where the press put it, from its centre round and back. The
+editor shows that same stroke while it is drawn, and what it has taken stays
+taken as the way goes on. Points in a row on one straight line count as that
+line. The outline follows the brush's circles in chords no more than a sixteenth
+of a pixel inside them, with their corners at the same angles about each centre,
+so that those of one circle are where they were when the way goes on from it. It
+goes round one side of the way and back along the other: round each turn on the
+outside, and on the inside through where the two lines' edges meet, or in to the
+corner itself between short lines. The nonzero rule fills what any part of it
+covers, so ink that a loop goes round stays. No part of it goes out and straight
+back along itself, which a renderer can leave a hairline of: such a step back is
+left out, as it encloses nothing. Its first and last points are the way's last
+point: it goes out from there to the tip of the end, round, and back in, going
+round the half of the end's circle after its tip twice, so that the stroke's end
+marks the grid, twice, and no other point of it does. Its ends are never cut. An
+eraser stroke drawn freehand that starts with Flat ends and the grid both on is
+saved as a smooth stroke, cut as [Cut ends](#cut-ends) says, as Inkline 1.0.1
+and earlier saved every eraser stroke drawn freehand. Pen strokes, and an
+eraser's ellipses and polygons, are saved as before, and all such strokes draw
+as they did.
+
 A file says nothing of Inkline's grid, which belongs to the note's font and the
 Grid size setting rather than to the symbol. A stroke's points are stored
 exactly, so a stroke Shift placed stays where it was. On opening a symbol again,

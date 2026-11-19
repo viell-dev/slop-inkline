@@ -501,6 +501,14 @@ export class InkEditorModal extends Modal {
   readonly #resizeCursor = (): void => {
     this.#updateCursor();
   };
+  /**
+   * Shift pressed or let go, as any key's event says, with the pointer
+   * still: a stroke being drawn can end otherwise for it, as the eraser's
+   * preview shows.
+   */
+  readonly #shiftKey = (event: KeyboardEvent): void => {
+    if (this.#session.holdShift(event.shiftKey)) this.#render();
+  };
   #hover: { pointerId: number; clientX: number; clientY: number } | undefined;
   #saving: Promise<boolean> | undefined;
   #closing = false;
@@ -952,6 +960,9 @@ export class InkEditorModal extends Modal {
     this.#cursorSize = undefined;
     this.#cursor.hide();
     canvas.win.addEventListener("resize", this.#resizeCursor);
+    // Before the editor's shortcuts, which can stop a key's event.
+    canvas.win.addEventListener("keydown", this.#shiftKey, true);
+    canvas.win.addEventListener("keyup", this.#shiftKey, true);
     // A line in the vault's text font and size, with the symbol at its size
     // there. Its font gives the guides.
     const line = this.contentEl.createDiv({
@@ -1019,6 +1030,8 @@ export class InkEditorModal extends Modal {
     this.#resize?.disconnect();
     this.#view?.canvas.win.removeEventListener("resize", this.#windowResized);
     this.#view?.canvas.win.removeEventListener("resize", this.#resizeCursor);
+    this.#view?.canvas.win.removeEventListener("keydown", this.#shiftKey, true);
+    this.#view?.canvas.win.removeEventListener("keyup", this.#shiftKey, true);
     this.#fonts?.removeEventListener("loadingdone", this.#remeasure);
     if (this.#cssChange !== undefined) {
       this.app.workspace.offref(this.#cssChange);

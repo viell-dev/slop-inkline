@@ -268,6 +268,40 @@ must keep released files readable and looking the same, as
   starts
   ([long-drawing.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/long-drawing.e2e.ts)).
 
+- **Unreleased:** the eraser, drawn freehand along, across, and through a filled
+  ellipse's edge, back on itself, and round a loop, with Zoom off and on, takes
+  away exactly what its brush sweeps. In every frame read back from the drawing
+  area while the pointer moves, the area shown is a redraw of the points
+  reported so far, to within 2 of 255 in every pixel; no pixel more than a pixel
+  inside where the brush had been gets back 64 of 255 or more of its ink; and
+  more than a pixel outside the brush's circle no pixel gets back 128 or more.
+  The release, and a redraw of the strokes the editor keeps, change no pixel by
+  more than 2 of 255; and of the ink there was, none (128 of 255 or more) is
+  left more than a pixel inside the brush's sweep, and none taken (below 128)
+  more than a pixel outside it. The ink in the middle of the loop stays
+  ([eraser-sweep.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/eraser-sweep.e2e.ts),
+  [#341](https://github.com/viell-dev/slop-inkline/issues/341)). The same check
+  fails on every case with the eraser as 1.0.1 saves it. Unit tests compare the
+  area with the brush's exact sweep along straight lines, sharp turns, turns
+  straight back, zigzags, a mouse's whole-pixel steps, a figure eight, random
+  walks, and a loop round an island, check that it never takes back what it
+  swept as points come, and never goes out and back along itself
+  ([sweep.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/sweep.test.ts)).
+  Others check that a seeded run of strokes keeps whole units; that an eraser
+  stroke drawn freehand is a fill from its first point on, never cut, unless it
+  starts with Flat ends and the grid both on, when it is shown and saved as the
+  pen's stroke through the same drag, as 1.0.1's eraser's was; and that a
+  drawing saved by 1.0.0 opens on the grid 1.0.1 guesses for it
+  ([session.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/session.test.ts)).
+  The eraser's area shown is the one that letting go, or **Next**, or a lost
+  capture saves, whatever the release says of Shift, as of a key the editor
+  missed: in seeded drags whose Shift and grid change between moves, in a test
+  for each of Shift, the grid, a grid laid out anew, and Flat ends changing with
+  the pointer still (the same file), and in Obsidian for Shift pressed and the
+  grid turned on with the pointer still, where the release changes no pixel by
+  more than 2 of 255
+  ([flat-ends.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/flat-ends.e2e.ts)).
+
 ### Drawing is never lost
 
 - The close question, saving from it, a failed save that keeps the editor open,
