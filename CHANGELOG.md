@@ -36,12 +36,14 @@ even one a public release; earlier pre-releases carry a suffix such as
   saves. Such a stroke holds about three times the points of a pen stroke as
   long, and up to about seven for a slow curve with the largest brush. A
   reopened symbol places its grid by where such a stroke ends, and no longer by
-  where it starts. Pen strokes, the eraser's shapes, and eraser strokes saved
-  before are as they were.
+  where it starts. A tap with the eraser is the brush's circle saved the same
+  way. Pen strokes, the eraser's shapes, and eraser strokes saved before are as
+  they were. An eraser stroke's end that Flat ends would stop flush with a row
+  stays round when the stroke also comes back near that end, or goes past that
+  row elsewhere, as
   [Known limits](https://viell-dev.github.io/slop-inkline/limits#in-general)
-  says that the eraser's edge no longer shifts, but for an eraser stroke that
-  Flat ends stops flush with a row and that comes back near that end, or past
-  that row elsewhere, which is drawn as before
+  says, with what to do instead; Known limits also says that the eraser's edge
+  no longer shifts
   ([#341](https://github.com/viell-dev/slop-inkline/issues/341)).
 
 ## 1.0.1 - 2026-11-18

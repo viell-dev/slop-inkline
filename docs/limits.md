@@ -22,9 +22,14 @@ What Inkline does not do, or does not do everywhere, and what to do instead. The
   brush's width beyond the box you drag or the corners you place, so a smaller
   brush brings that edge closer to them. **Unreleased:** fixed: the eraser takes
   away exactly what its circle passes over, and what it has taken stays taken as
-  you go on, but for an eraser stroke that Flat ends stops flush with a row, and
-  that also comes back near that end, or past that row elsewhere, which is drawn
-  as before. Erase the rest in a stroke of its own.
+  you go on.
+- **Unreleased: an eraser end that Flat ends cannot stop flush stays round.**
+  When an eraser stroke drawn freehand also comes back near an end that Flat
+  ends would stop flush with a row, or goes past that row elsewhere, that end
+  stays round, and takes the ink its circle reaches past the row
+  ([#341](https://github.com/viell-dev/slop-inkline/issues/341)). The stroke's
+  other end is still cut if it can be. End the stroke away from where it passed,
+  or erase up to the row in a second stroke.
 - **Large libraries** show 100 symbols at a time, with **Show more** for the
   next 100. Filter them, or choose a folder, to narrow the list.
 - **Library insertion needs a sidebar.** If the library's tab is dragged into

@@ -46,9 +46,8 @@ separately opened editor starts both tools at the configured default size.
 **Unreleased:** the eraser takes away exactly what its circle passes over, and
 what it has taken stays taken as you go on, so the edge it leaves along a curve
 no longer shifts behind it
-([#341](https://github.com/viell-dev/slop-inkline/issues/341)), but for one
-stroke with **Flat ends** that [Known limits](./limits.md#in-general) describes.
-The pen draws as before.
+([#341](https://github.com/viell-dev/slop-inkline/issues/341)). The pen draws as
+before.
 
 The brush circle and centre dot change between black and white to contrast with
 the drawing underneath, including tracing pictures. The thin outline keeps its
@@ -194,7 +193,9 @@ stroke that ends on the grid point it started on, as a closed loop has no ends
 to cut. The eraser's ends are cut the same way, so erasing up to a row leaves a
 straight edge there. **Unreleased:** while Shift holds the eraser's end on the
 grid, the eraser shows that end cut before you let go, as letting go saves it,
-also when you press Shift or turn the grid on without moving. Shapes are never
+also when you press Shift or turn the grid on without moving. An eraser stroke
+that also comes back near such an end, or goes past its row elsewhere, leaves
+that end round, as [Known limits](./limits.md#in-general) says. Shapes are never
 cut: an ellipse has no ends, and a polygon keeps its square ones.
 
 The grid keeps its place through saves. A symbol keeps its strokes exactly but

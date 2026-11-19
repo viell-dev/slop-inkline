@@ -286,12 +286,12 @@ must keep released files readable and looking the same, as
   straight back, zigzags, a mouse's whole-pixel steps, a figure eight, random
   walks, and a loop round an island, check that it never takes back what it
   swept as points come, never goes out and back along itself, even where a cut
-  clips it, and cuts its ends as a smooth stroke's
+  clips it, cuts its ends as a smooth stroke's, and leaves round an end it
+  cannot cut so, still cutting the other
   ([sweep.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/sweep.test.ts)).
-  Others check that a seeded run of strokes keeps whole units, that a stroke
-  with Flat ends that one outline cannot hold is exactly the smooth stroke 1.0.1
-  saved, gaps filled, and that a reopened drawing's grid counts an eraser's end
-  once
+  Others check that a seeded run of strokes keeps whole units, that an eraser
+  stroke drawn freehand is a fill from its first point on, and that a reopened
+  drawing's grid counts an eraser's end once
   ([session.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/session.test.ts)).
   The eraser's stroke shown is the one that letting go, or **Next**, saves: in
   seeded drags whose Shift and grid change between moves, in a test for each of
@@ -300,6 +300,10 @@ must keep released files readable and looking the same, as
   on with the pointer still, where the release changes no pixel by more than 2
   of 255
   ([flat-ends.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/flat-ends.e2e.ts)).
+  A release whose Shift disagrees with what the editor knew, in seeded drags and
+  in both directions on the review's drags, still saves a fill, which parts from
+  the one shown only at its end
+  ([session.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/session.test.ts)).
 
 ### Drawing is never lost
 
