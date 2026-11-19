@@ -37,13 +37,13 @@ even one a public release; earlier pre-releases carry a suffix such as
   long, and up to about seven for a slow curve with the largest brush. A
   reopened symbol places its grid by where such a stroke ends, and no longer by
   where it starts. A tap with the eraser is the brush's circle saved the same
-  way. Pen strokes, the eraser's shapes, and eraser strokes saved before are as
-  they were. An eraser stroke's end that Flat ends would stop flush with a row
-  stays round when the stroke also comes back near that end, or goes past that
-  row elsewhere, as
+  way. An eraser stroke that starts with Flat ends and the grid both on is drawn
+  as before, so that its ends can stop flush with a row, and its edge can still
+  shift along a curve, as
   [Known limits](https://viell-dev.github.io/slop-inkline/limits#in-general)
-  says, with what to do instead; Known limits also says that the eraser's edge
-  no longer shifts
+  says; turn Flat ends off to erase along a curve. Pen strokes, the eraser's
+  shapes, and eraser strokes saved before are as they were, and so is the grid
+  that a symbol saved before places when it opens again
   ([#341](https://github.com/viell-dev/slop-inkline/issues/341)).
 
 ## 1.0.1 - 2026-11-18

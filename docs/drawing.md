@@ -46,8 +46,9 @@ separately opened editor starts both tools at the configured default size.
 **Unreleased:** the eraser takes away exactly what its circle passes over, and
 what it has taken stays taken as you go on, so the edge it leaves along a curve
 no longer shifts behind it
-([#341](https://github.com/viell-dev/slop-inkline/issues/341)). The pen draws as
-before.
+([#341](https://github.com/viell-dev/slop-inkline/issues/341)), but for a stroke
+that starts with **Flat ends** and the grid both on, as
+[Known limits](./limits.md#in-general) says. The pen draws as before.
 
 The brush circle and centre dot change between black and white to contrast with
 the drawing underneath, including tracing pictures. The thin outline keeps its
@@ -191,12 +192,11 @@ not cut, so a line drawn along the baseline stays whole with round ends.
 A freehand end is not on a grid line, and stays round. So does a dot, and a
 stroke that ends on the grid point it started on, as a closed loop has no ends
 to cut. The eraser's ends are cut the same way, so erasing up to a row leaves a
-straight edge there. **Unreleased:** while Shift holds the eraser's end on the
-grid, the eraser shows that end cut before you let go, as letting go saves it,
-also when you press Shift or turn the grid on without moving. An eraser stroke
-that also comes back near such an end, or goes past its row elsewhere, leaves
-that end round, as [Known limits](./limits.md#in-general) says. Shapes are never
-cut: an ellipse has no ends, and a polygon keeps its square ones.
+straight edge there. **Unreleased:** that is so for an eraser stroke that starts
+with Flat ends and the grid both on, which is drawn as before. One that starts
+otherwise takes away exactly what its circle passes over, and its ends stay
+round, whatever you turn on during the stroke. Shapes are never cut: an ellipse
+has no ends, and a polygon keeps its square ones.
 
 The grid keeps its place through saves. A symbol keeps its strokes exactly but
 not its grid, so what you placed with Shift never moves; what can change is
