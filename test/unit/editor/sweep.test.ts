@@ -269,12 +269,22 @@ describe("sweptStroke", () => {
     }
   });
 
-  it("is a round dot, as a smooth stroke draws it, for a way that never left its first point", () => {
-    expect(sweptStroke("eraser", 96, [40, 50, 40, 50])).toEqual({
-      tool: "eraser",
-      size: 96,
-      points: [40, 50, 40, 50],
-    });
+  it("is the brush's circle, from and back to its centre, for a way that never left its first point", () => {
+    const dot = sweptStroke("eraser", 96, [40, 50, 40, 50]);
+    expect(dot.kind).toBe("fill");
+    expect(dot.points.slice(0, 2)).toEqual([40, 50]);
+    expect(dot.points.slice(-2)).toEqual([40, 50]);
+    const polygon = cornersOf(dot);
+    for (let angle = 0; angle < 2 * Math.PI; angle += 0.1) {
+      const at = (distance: number): Point => [
+        40 + distance * Math.cos(angle),
+        50 + distance * Math.sin(angle),
+      ];
+      expect(winding(polygon, at(46))).not.toBe(0);
+      expect(winding(polygon, at(49))).toBe(0);
+    }
+    // A cut has no row to cut along at a dot.
+    expect(sweptStroke("eraser", 96, [40, 50], { end: "down" })).toEqual(dot);
   });
 
   it("never takes back what it swept as the way goes on", () => {
@@ -360,25 +370,40 @@ describe("sweptStroke", () => {
     expect(stroke.points.slice(-2)).toEqual([800, 1600]);
   });
 
-  it("leaves to the format's own cut a stroke whose area one outline cannot hold", () => {
+  it("leaves round an end it cannot cut as the format's cut would, and is still the area swept", () => {
     // Up to the row at y = 800 at its end, whose box reaches 13 pixels each
     // way across and 13 up: x from 1092 to 1508 units. The way's start runs
-    // through that box, which the cut must keep.
+    // through that box, which a cut would have to keep.
     const through = [1100, 700, 1100, 1400, 1300, 1400, 1300, 800];
-    expect(sweptStroke("eraser", 192, through, { end: "up" })).toEqual({
-      tool: "eraser",
-      size: 192,
-      points: through,
-      cut: { end: "up" },
-    });
+    expect(sweptStroke("eraser", 192, through, { end: "up" })).toEqual(
+      sweptStroke("eraser", 192, through),
+    );
     // Past the row, but out of the box: down below it first, far to one side.
     const below = [400, 1800, 400, 1200, 1000, 1200, 1000, 1600];
-    expect(sweptStroke("eraser", 192, below, { end: "down" })).toEqual({
-      tool: "eraser",
-      size: 192,
-      points: below,
-      cut: { end: "down" },
+    expect(sweptStroke("eraser", 192, below, { end: "down" })).toEqual(
+      sweptStroke("eraser", 192, below),
+    );
+    for (const way of [through, below]) {
+      expect(sweptStroke("eraser", 192, way).kind).toBe("fill");
+    }
+  });
+
+  it("still cuts the one end it can, when it cannot cut the other", () => {
+    // From the row at y = 800 down, across, and back up to the row at
+    // y = 1000, far from the start: the start is cut along its row, and the
+    // end, past whose row the way's start lies, stays round.
+    const way = [400, 800, 400, 1400, 1600, 1400, 1600, 1000];
+    const stroke = sweptStroke("eraser", 192, way, {
+      start: "up",
+      end: "up",
     });
+    expect(stroke.kind).toBe("fill");
+    const polygon = cornersOf(stroke);
+    // Above the start's row, the round end would cover; the cut leaves it.
+    expect(winding(polygon, [400, 780])).toBe(0);
+    // The end is round, past its row.
+    expect(winding(polygon, [1600, 960])).not.toBe(0);
+    expect(stroke).toEqual(sweptStroke("eraser", 192, way, { start: "up" }));
   });
 });
 

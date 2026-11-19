@@ -4,9 +4,10 @@
 // out again from all its points as each one comes, and behind the brush it
 // changes shape, so ink an eraser had taken came back beside its way. This
 // area only grows as the way goes on, and what is shown while erasing is the
-// stroke that is saved. Plain geometry in units, with no canvas, so that unit
-// tests can check it. Files stay as they were: a "fill" is format version 1's,
-// and nothing here changes how any stroke draws.
+// stroke that is saved, always of this kind, so that how it ends can change
+// only its end. Plain geometry in units, with no canvas, so that unit tests
+// can check it. Files stay as they were: a "fill" is format version 1's, and
+// nothing here changes how any stroke draws.
 
 import {
   unitsPerPixel,
@@ -163,8 +164,17 @@ export function sweepOutline(
   const firstStep = steps[0];
   const lastStep = steps.at(-1);
   if (firstStep === undefined || lastStep === undefined) {
+    // Out from the centre, round the whole circle and a quarter more, and
+    // back in square to the way out, as a way's end is marked.
+    const right: Point = [radius, 0];
+    if (marked) push(first);
     push([first[0] + radius, first[1]]);
-    arc(first, [radius, 0], 2 * Math.PI);
+    arc(first, right, 2 * Math.PI);
+    if (!marked) return outline;
+    push([first[0] + radius, first[1]]);
+    arc(first, right, Math.PI / 2);
+    push([first[0], first[1] - radius]);
+    push(first);
     return outline;
   }
   /** The side of the way that a step's normal points to, `radius` out. */
@@ -440,37 +450,25 @@ function throughEnd(
 }
 
 /**
- * The stroke an eraser's brush of `size` units leaves along `way`, its `x, y`
- * points in units, with its ends cut as `cut` says: a stroke of kind "fill"
- * whose points go round the area the brush swept, starting and ending at the
- * way's last point. A way that never left its first point is the round dot a
- * smooth stroke draws exactly; so is a cut stroke whose area would take more
- * than one outline, as when the rest of the way comes back into a cut end's
- * box, which Flat ends rarely meets, and the format's own cut then draws. Such
- * a smooth stroke goes through `points`, the way with the points that fill
- * its gaps, as a smooth stroke needs them.
+ * The outline of `path`, the way `way` merged, swept by a brush of `size`
+ * units, with its ends cut as `cut` says, as whole units; or undefined if that
+ * is not exactly what the format's cut of a smooth stroke would take, when
+ * some of the area past a cut end's row lies outside its cut box, or the rest
+ * of the way comes back into the box. It starts and ends at the way's last
+ * point, on the row when that end is cut.
  */
-export function sweptStroke(
+function cutArea(
   tool: Tool,
   size: number,
   way: readonly number[],
-  cut?: StrokeCuts,
-  points: readonly number[] = way,
-): Stroke {
-  const smooth = { tool, size, points, ...(cut === undefined ? {} : { cut }) };
-  // Its points are copied only for a smooth stroke returned.
-  const fallback = (): Stroke => ({ ...smooth, points: [...points] });
-  const path = sweepPath(way);
+  path: readonly Point[],
+  cut: StrokeCuts,
+): number[] | undefined {
   const last = path.at(-1);
-  if (path.length < 2 || last === undefined) return fallback();
+  if (last === undefined) return undefined;
   const radius = size / 2;
-  if (cut === undefined) {
-    return {
-      tool,
-      kind: "fill",
-      points: flattened(sweepOutline(path, radius)),
-    };
-  }
+  // As the format would cut a smooth stroke along the same way.
+  const smooth = { tool, size, points: way, cut };
   // A cut end's row is the outline's edge there, which the end lies on.
   const endCut = cut.end !== undefined;
   const rest = uncutRest(smooth);
@@ -489,12 +487,47 @@ export function sweptStroke(
   );
   const marked =
     clipped === undefined || !endCut ? clipped : throughEnd(clipped, last);
-  if (marked === undefined) return fallback();
+  if (marked === undefined) return undefined;
   // The outline starts and ends at the way's last point, unless the cut took
   // it, when it could mark the grid where it is not.
   const flat = flattened(marked);
   const marks = [flat[0], flat[1], flat.at(-2), flat.at(-1)];
   return flat.length >= 6 && marks.every((value, at) => value === last[at % 2])
-    ? { tool, kind: "fill", points: flat }
-    : fallback();
+    ? flat
+    : undefined;
+}
+
+/**
+ * The stroke an eraser's brush of `size` units leaves along `way`, its `x, y`
+ * points in units, with its ends cut as `cut` says: always a stroke of kind
+ * "fill", whose points go round the area the brush swept, starting and ending
+ * at the way's last point. A way that never left its first point is the
+ * brush's circle. Each cut end is cut off along its row where that takes just
+ * what the format's cut would; where it cannot, as when the rest of the way
+ * comes back near that end, that end stays round, and the other is still cut
+ * if it can be.
+ */
+export function sweptStroke(
+  tool: Tool,
+  size: number,
+  way: readonly number[],
+  cut?: StrokeCuts,
+): Stroke {
+  const path = sweepPath(way);
+  if (cut !== undefined && path.length >= 2) {
+    const { start, end } = cut;
+    const tries: StrokeCuts[] =
+      start !== undefined && end !== undefined
+        ? [cut, { start }, { end }]
+        : [cut];
+    for (const each of tries) {
+      const points = cutArea(tool, size, way, path, each);
+      if (points !== undefined) return { tool, kind: "fill", points };
+    }
+  }
+  return {
+    tool,
+    kind: "fill",
+    points: flattened(sweepOutline(path, size / 2)),
+  };
 }

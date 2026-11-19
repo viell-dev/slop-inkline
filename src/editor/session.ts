@@ -46,9 +46,8 @@ export const brushSizes: readonly BrushSize[] = [
  * fast stroke reports few points, and perfect-freehand's streamline, which
  * pulls each point towards the one before, would then cut its corners, so
  * longer gaps are filled with points along the straight line between. An
- * eraser's sweep follows only the points the pointer reported, as it draws the
- * straight lines between them exactly, but keeps the others for a stroke that
- * falls back to a smooth one.
+ * eraser's sweep, which follows straight lines between its points exactly,
+ * needs none.
  */
 export const maxGap = 2;
 
@@ -320,12 +319,6 @@ interface ActiveStroke {
    * away exactly what its brush sweeps, and is saved as that area.
    */
   readonly sweep: boolean;
-  /**
-   * For a sweep, its points but those that fill a gap between two the
-   * pointer reported, or that Shift put: the way the sweep follows. Empty for
-   * any other stroke.
-   */
-  readonly reported: number[];
 }
 
 /** The point `along` the way from `from` to `to`. */
@@ -418,7 +411,7 @@ export class DrawingSession {
    * Where a straight segment of the stroke being drawn starts, and how many
    * values of its points lead up to there, the start included.
    */
-  #anchor: { point: InputPoint; length: number; reported: number } | undefined;
+  #anchor: { point: InputPoint; length: number } | undefined;
   /** Where an ellipse being drawn started: one corner of its box. */
   #corner: InputPoint | undefined;
   /** Whether the ellipse being drawn is a circle, as Shift makes it. */
@@ -628,18 +621,19 @@ export class DrawingSession {
    * The strokes being drawn, as they would be committed now: one, or a
    * filled shape's two. None while nothing is being drawn. A stroke is cut at
    * its start if that is on the grid, and its end comes to the grid only as
-   * it is let go; but an eraser's stroke drawn as the pointer goes is just
-   * what {@link end} would commit now, released where the pointer is or not,
-   * as {@link #ending} makes it, since its end's cut can make it another kind
-   * of stroke. A polygon being placed is shown as a click where the pointer
-   * is would leave it.
+   * it is let go; but an eraser's stroke drawn as the pointer goes shows its
+   * end as letting go where the pointer is would leave it, or {@link end}
+   * without a release, as far as the editor knows of Shift. A polygon being
+   * placed is shown as a click where the pointer is would leave it.
    */
   get activeStrokes(): readonly Stroke[] {
     const active = this.#active;
     if (active === undefined) return [];
     const next = this.#next;
     if (!active.polygon || next === undefined) {
-      if (active.sweep) return this.#ending(active);
+      if (active.sweep) {
+        return this.#ending(active, this.#at, this.#shiftNow);
+      }
       return this.#strokes(
         active,
         { start: active.onGrid, end: false },
@@ -682,66 +676,70 @@ export class DrawingSession {
   }
 
   /**
-   * The strokes that ending `active` now would commit, made afresh without
+   * The strokes that ending `active` now would commit, let go at `release`
+   * if that is known, with Shift down now as `now` says: made afresh without
    * changing anything, for {@link end} to push and an eraser's preview to
    * show. They follow from these alone:
    *
    * - the points drawn so far, the straight segment Shift is drawing, and
    *   the way the pointer went, which measures a cut end;
-   * - where the pointer last was: pressed, moved to, or let go;
-   * - Shift, held if it was down at the pointer's last event or is down now,
-   *   as the last pointer event or {@link holdShift} said;
+   * - `release`, and the last point the pointer moved to;
+   * - Shift, held if it was down at the pointer's last event or `now` says it
+   *   is down;
    * - the grid: whether it is on, and the grid point it puts the end on, from
    *   a grid that one laid out while drawing replaces only at the end;
    * - Flat ends, and whether the start is on the grid, as the stroke began;
    * - for an ellipse, its first corner, whether Shift made it a circle, and
    *   Fill.
    *
-   * With Shift held on the grid, the end goes to the grid point nearest where
-   * the pointer is, or where it was last shown if Shift was let go since, as
-   * a hand letting go of the key an instant before the button should not
-   * knock it off the grid; a straight segment runs to it, and the end is cut
-   * with Flat ends. Otherwise it goes where the pointer is.
+   * With Shift held on the grid, the end goes to the grid point nearest the
+   * release, or where it was last shown if Shift is up now, as a hand
+   * letting go of the key an instant before the button should not knock it
+   * off the grid, or without a release to the grid point nearest the last
+   * point; a straight segment runs to it, and the end is cut with Flat ends.
+   * Otherwise it goes to the release. As in 1.0.1, which made them by
+   * drawing the end on.
    */
-  #ending(active: ActiveStroke): Stroke[] {
-    const at = this.#at;
-    if (at === undefined || active.points.length === 0) return [];
-    const held = this.#shift || this.#shiftNow;
+  #ending(
+    active: ActiveStroke,
+    release: InputPoint | undefined,
+    now: boolean,
+  ): Stroke[] {
+    if (active.points.length === 0) return [];
+    const held = this.#shift || now;
+    const remembered = held && !now && this.snap;
     const onGrid = held && this.snap;
     const corner = this.#corner;
     const anchor = this.#anchor;
     const straight = corner === undefined ? anchor !== undefined : this.#circle;
-    const end = onGrid && !this.#shiftNow ? (this.#last ?? at) : at;
-    const placed = onGrid ? this.#snapped(end) : end;
-    const ended = {
-      ...active,
-      points: [...active.points],
-      reported: [...active.reported],
-    };
-    if (corner !== undefined) {
-      ended.points.length = 0;
-      ended.reported.length = 0;
-      for (const point of ellipsePoints(
-        corner,
-        placed,
-        straight && !this.snap,
-      )) {
-        this.#record(ended, point);
+    const shown = remembered ? this.#last : undefined;
+    const end = shown ?? (onGrid ? (release ?? this.#last) : release);
+    const ended = { ...active, points: [...active.points] };
+    if (end !== undefined) {
+      const placed = onGrid ? this.#snapped(end) : end;
+      if (corner !== undefined) {
+        ended.points.length = 0;
+        for (const point of ellipsePoints(
+          corner,
+          placed,
+          straight && !this.snap,
+        )) {
+          this.#record(ended, point);
+        }
+      } else if (anchor === undefined) {
+        this.#append(ended, this.#last, placed);
+      } else {
+        // The straight segment runs again from its start to the end.
+        ended.points.length = anchor.length;
+        this.#append(ended, anchor.point, this.#snapped(placed));
       }
-    } else if (anchor === undefined) {
-      this.#append(ended, this.#last, placed);
-    } else {
-      // The straight segment runs again from its start to the end.
-      ended.points.length = anchor.length;
-      ended.reported.length = anchor.reported;
-      this.#append(ended, anchor.point, this.#snapped(placed));
     }
     // The start goes by the way the pointer went, and so does the end, but
     // for a straight segment, which runs as it does right to its end.
     const pointer =
       this.#straightStart && straight
         ? undefined
-        : this.#path(straight ? undefined : at);
+        : this.#path(straight ? undefined : release);
     return this.#strokes(
       ended,
       { start: active.onGrid, end: onGrid && active.flat },
@@ -800,9 +798,7 @@ export class DrawingSession {
       ...(paths.start === undefined ? {} : { start: paths.start }),
       ...(paths.end === undefined ? {} : { end: paths.end }),
     });
-    if (active.sweep) {
-      return sweptStroke(tool, size, active.reported, cut, active.points);
-    }
+    if (active.sweep) return sweptStroke(tool, size, active.points, cut);
     const stroke = { tool, size, points: [...active.points] };
     return cut === undefined ? stroke : { ...stroke, cut };
   }
@@ -835,7 +831,6 @@ export class DrawingSession {
       onGrid: onGrid && flat,
       polygon,
       sweep: this.tool === "eraser" && this.shape === "free",
-      reported: [],
     };
     this.#last = undefined;
     this.#anchor = undefined;
@@ -879,7 +874,6 @@ export class DrawingSession {
       if (latest === undefined) return;
       this.#circle = shift && !this.snap;
       active.points.length = 0;
-      active.reported.length = 0;
       for (const point of ellipsePoints(
         corner,
         this.#placed(latest),
@@ -908,11 +902,9 @@ export class DrawingSession {
       const anchor = (this.#anchor ??= {
         point: this.#last ?? point,
         length: active.points.length,
-        reported: active.reported.length,
       });
       // The segment is drawn again from its start for each new point.
       active.points.length = anchor.length;
-      active.reported.length = anchor.reported;
       const end = this.#snapped(point);
       this.#append(active, anchor.point, end);
       this.#last = end;
@@ -921,39 +913,34 @@ export class DrawingSession {
 
   /**
    * Records a point among `active`'s, and points along the gap to it from
-   * `previous`, the last point recorded before rounding, if there is one.
+   * `previous`, the last point recorded before rounding, if there is one,
+   * but for an eraser's sweep, which a straight line between them draws
+   * exactly.
    */
   #append(
     active: ActiveStroke,
     previous: InputPoint | undefined,
     point: InputPoint,
   ): void {
-    if (previous !== undefined) {
+    if (previous !== undefined && !active.sweep) {
       const gap = Math.hypot(point.x - previous.x, point.y - previous.y);
       const steps = Math.ceil(gap / maxGap);
       for (let step = 1; step < steps; step++) {
-        this.#record(active, between(previous, point, step / steps), false);
+        this.#record(active, between(previous, point, step / steps));
       }
     }
     this.#record(active, point);
   }
 
-  /**
-   * Records a point, but not where the last is, among `active`'s points, and
-   * for a sweep, unless it only fills a gap, as `reported` says, among those
-   * it reported.
-   */
-  #record(active: ActiveStroke, point: InputPoint, reported = true): void {
+  /** Records a point among `active`'s, but not where the last one is. */
+  #record(active: ActiveStroke, point: InputPoint): void {
     const x = toUnits(point.x);
     const y = toUnits(point.y);
-    const lists =
-      reported && active.sweep
-        ? [active.points, active.reported]
-        : [active.points];
-    for (const list of lists) {
-      if (list.length >= 2 && list.at(-2) === x && list.at(-1) === y) continue;
-      list.push(x, y);
+    const { points } = active;
+    if (points.length >= 2 && points.at(-2) === x && points.at(-1) === y) {
+      return;
     }
+    points.push(x, y);
   }
   /**
    * Commits the stroke being drawn, or a filled shape's two, as one undoable
@@ -967,12 +954,14 @@ export class DrawingSession {
    * Shift drew, and a hand letting go of the key an instant before the button
    * should not knock it off the grid, so on the grid it ends where it was last
    * shown, a polygon's corner too. A move without Shift ends that, so a stroke
-   * carried on past a Shift let go ends where the pointer does. A release
-   * says whether Shift is down at it, by default not; without one, Shift is
-   * as the last pointer event or {@link holdShift} said.
+   * carried on past a Shift let go ends where the pointer does.
    *
-   * A stroke dragged commits just what {@link #ending} makes, so an eraser's
-   * preview, which shows that, is what it saves.
+   * A stroke dragged commits just what {@link #ending} makes. An eraser's
+   * stroke drawn as the pointer goes ends without a release as its preview
+   * shows it, where the pointer last was and with Shift as last known, as a
+   * Shift pressed for **Next** shows before it; with one, as the release
+   * says. A sweep is always the area its brush swept, so a release that
+   * disagrees with what the editor knew changes only its end.
    */
   end(release?: InputPoint, shift?: boolean): void {
     const placed = this.#active;
@@ -984,13 +973,12 @@ export class DrawingSession {
       else this.#place(placed, remembered ? (this.#next ?? release) : release);
       return;
     }
-    if (release !== undefined) {
-      this.#at = release;
-      this.#shiftNow = shift ?? false;
-    } else if (shift !== undefined) {
-      this.#shiftNow = shift;
-    }
-    const strokes = placed === undefined ? [] : this.#ending(placed);
+    const strokes =
+      placed === undefined
+        ? []
+        : placed.sweep && release === undefined
+          ? this.#ending(placed, this.#at, shift ?? this.#shiftNow)
+          : this.#ending(placed, release, shift ?? false);
     this.#active = undefined;
     this.#at = undefined;
     this.#anchor = undefined;
@@ -1114,13 +1102,13 @@ export class DrawingSession {
 
   /**
    * Takes Shift as pressed or let go, with the pointer still, as a key event
-   * says, for how the stroke being drawn would end. Returns whether that can
-   * change what a stroke being drawn shows.
+   * says, for how an eraser's stroke being drawn would end. Returns whether
+   * that can change what it shows.
    */
   holdShift(down: boolean): boolean {
     const changed = down !== this.#shiftNow;
     this.#shiftNow = down;
-    return changed && this.#active !== undefined;
+    return changed && this.#active?.sweep === true;
   }
 
   undo(): boolean {
@@ -1214,10 +1202,8 @@ export class DrawingSession {
     const active = this.#active;
     if (active !== undefined) {
       const dx = toUnits(dxPixels);
-      for (const list of [active.points, active.reported]) {
-        for (let index = 0; index < list.length; index += 2) {
-          list[index] = (list[index] ?? 0) + dx;
-        }
+      for (let index = 0; index < active.points.length; index += 2) {
+        active.points[index] = (active.points[index] ?? 0) + dx;
       }
     }
     for (let index = 0; index < this.#pointer.length; index += 2) {
