@@ -17,6 +17,7 @@ import {
   draw,
   startOver,
   symbolFiles,
+  waitForNotice,
   waitForStatus,
 } from "../support/editor.ts";
 
@@ -176,6 +177,60 @@ async function makeAsCreated(
   );
 }
 
+/**
+ * Has the next write of `path` by Obsidian's file system stop after its first
+ * 64 bytes and fail as on a full disk, leaving those bytes in the file. Taken
+ * off by its first such write, or by `undoStubs()`.
+ */
+async function fillDiskAt(path: string): Promise<void> {
+  await browser.executeObsidian(({ app }, wanted) => {
+    const promises: unknown = Reflect.get(app.vault.adapter, "fsPromises");
+    if (typeof promises !== "object" || promises === null) {
+      throw new Error("no file system to fill");
+    }
+    const write: unknown = Reflect.get(promises, "writeFile");
+    if (typeof write !== "function") throw new Error("no writeFile");
+    const restore = (): void => {
+      Reflect.set(promises, "writeFile", write);
+      Reflect.deleteProperty(window, "inklineAtEnd-full-disk");
+    };
+    Reflect.set(window, "inklineAtEnd-full-disk", restore);
+    Reflect.set(
+      promises,
+      "writeFile",
+      async (
+        full: unknown,
+        data: unknown,
+        ...rest: unknown[]
+      ): Promise<unknown> => {
+        if (
+          typeof full !== "string" ||
+          !full.endsWith(wanted) ||
+          !ArrayBuffer.isView(data)
+        ) {
+          const written: unknown = Reflect.apply(write, promises, [
+            full,
+            data,
+            ...rest,
+          ]);
+          return written;
+        }
+        restore();
+        const part = new Uint8Array(
+          data.buffer,
+          data.byteOffset,
+          Math.min(64, data.byteLength),
+        );
+        await Reflect.apply(write, promises, [full, part, ...rest]);
+        throw Object.assign(
+          new Error("ENOSPC: no space left on device, write"),
+          { code: "ENOSPC" },
+        );
+      },
+    );
+  }, path);
+}
+
 /** Waits for {@link replaceDuringRead}'s new file, and says how it went. */
 async function waitForReplaced(): Promise<unknown> {
   let replaced: unknown = false;
@@ -316,6 +371,30 @@ describe("A symbol replaced at its path as it is saved", function () {
     await waitForStatus("Saved");
     expect(await symbolFiles()).toEqual(["Signs/gate.ink.png"]);
     expect(await strokeCount("Signs/gate.ink.png")).toBe(2);
+  });
+
+  it("says why it could not make a deleted symbol again, when its write stops part-way", async function () {
+    // The vault has the part that was written before the create fails: the
+    // save's own, which it is not to ask about as a file that came meanwhile.
+    await createSymbol("gate.ink.png");
+    await editFile("gate.ink.png");
+    await draw([
+      [0.5, 0.3],
+      [0.7, 0.6],
+    ]);
+    await browser.executeObsidian(async ({ app }) => {
+      await app.vault.adapter.remove("gate.ink.png");
+    });
+    await waitForStatus("The file was deleted; saving makes it again");
+    await fillDiskAt("gate.ink.png");
+    await browser.keys(["Control", "s"]);
+    // The status line goes on to say what the editor then finds of the part
+    // left, which it cannot read; the notice keeps the save's reason.
+    await waitForNotice(
+      "Could not save the symbol: ENOSPC: no space left on device, write",
+    );
+    expect(await symbolFiles()).toEqual(["gate.ink.png"]);
+    expect(await browser.$(".inkline-editor").isExisting()).toBe(true);
   });
 
   it("refuses a write that lands once the file was replaced, and keeps what was typed", async function () {

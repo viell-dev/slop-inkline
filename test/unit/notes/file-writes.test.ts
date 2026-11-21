@@ -65,6 +65,12 @@ const access: FileAccess<Fake> = {
   },
 };
 
+/**
+ * What a save gives {@link saveFile} to tell its own cut-short write from
+ * another file, for a save whose create never fails with a file there.
+ */
+const nothingMet = { bytes: pinned, read: access.read };
+
 const said = (file: Fake): Promise<SymbolText> =>
   readText(readChunks(file.bytes));
 
@@ -162,6 +168,8 @@ function editorSave(
     },
     write: (now) => access.write(now, written.slice().buffer),
     create: () => vault.make(file.path ?? "", written),
+    bytes: written,
+    read: access.read,
   });
 }
 
@@ -508,6 +516,7 @@ describe("saveFile", () => {
         check: () => Promise.reject(new Error("refused")),
         write: (now) => access.write(now, pinned.slice().buffer),
         create: () => Promise.reject(new Error("not to make")),
+        ...nothingMet,
       }),
     ).rejects.toThrow("refused");
     expect(file.writes).toBe(0);
@@ -533,6 +542,7 @@ describe("saveFile", () => {
         },
         write: () => Promise.reject(new Error("not to write")),
         create: () => Promise.reject(new Error("not to make")),
+        ...nothingMet,
       }),
     ).rejects.toThrow("asks first");
     expect(looks).toBe(2);
@@ -623,9 +633,70 @@ describe("saveFile", () => {
           makes++;
           return Promise.reject(new Error("the disk is full"));
         },
+        ...nothingMet,
       }),
     ).rejects.toThrow("the disk is full");
     expect(makes).toBe(1);
+  });
+
+  // The vault keeps what a write that stops part-way left at the path, as on a
+  // full disk, and has the file before the create rejects.
+  for (const [left, part] of [
+    ["the start of", (drawn: Uint8Array) => drawn.slice(0, 64)],
+    ["all of", (drawn: Uint8Array) => drawn.slice()],
+    ["none of", () => new Uint8Array()],
+  ] as const) {
+    it(`fails as the vault does when its write left ${left} the file`, async () => {
+      const vault = new FakeVault();
+      const drawn = await writeText(pinned, "translation", ["DRAWN"]);
+      let looks = 0;
+      await expect(
+        saveFile({
+          current: () => vault.at(path),
+          check: () => {
+            looks++;
+            return Promise.resolve(undefined);
+          },
+          write: () => Promise.reject(new Error("not to write")),
+          create: () => {
+            vault.put(path, part(drawn));
+            return Promise.reject(
+              new Error("ENOSPC: no space left on device, write"),
+            );
+          },
+          bytes: drawn,
+          read: access.read,
+        }),
+      ).rejects.toThrow("ENOSPC");
+      expect(looks).toBe(1);
+    });
+  }
+
+  it("goes round at most three times for a file that comes as it makes one and goes", async () => {
+    const theirs = await writeText(pinned, "reading", ["THEIRS"]);
+    let there: Fake | null = null;
+    let makes = 0;
+    await expect(
+      saveFile({
+        current: () => there,
+        check: () => Promise.resolve(undefined),
+        write: () => Promise.reject(new Error("not to write")),
+        create: () => {
+          // Without a bound, it would go on for good, inside the line every
+          // other save waits in.
+          if (++makes > 10) throw new Error("it went round for good");
+          there = fake(theirs);
+          return Promise.reject(new Error("File already exists."));
+        },
+        bytes: pinned,
+        // Gone again as soon as it is read.
+        read: (found) => {
+          there = null;
+          return access.read(found);
+        },
+      }),
+    ).rejects.toThrow("keeps changing");
+    expect(makes).toBe(3);
   });
 
   it("leaves a file that goes on being replaced, and says so", async () => {
@@ -640,6 +711,7 @@ describe("saveFile", () => {
         },
         write: () => Promise.reject(new Error("not to write")),
         create: () => Promise.reject(new Error("not to make")),
+        ...nothingMet,
       }),
     ).rejects.toThrow("keeps changing");
   });
@@ -1173,6 +1245,7 @@ describe("a save and the disk's line", () => {
         },
         write: (now) => access.write(now, pinned.slice().buffer),
         create: () => Promise.reject(new Error("not to make")),
+        ...nothingMet,
         line,
       }),
     ).rejects.toThrow("asks first");
@@ -1200,6 +1273,7 @@ describe("a save and the disk's line", () => {
       },
       write: (now) => access.write(now, drawn.slice().buffer),
       create: () => Promise.reject(new Error("not to make")),
+      ...nothingMet,
       line,
     });
     expect(written).toBe(file);
@@ -1222,6 +1296,7 @@ describe("a save and the disk's line", () => {
       },
       write: (now) => access.write(now, drawn.slice().buffer),
       create: () => Promise.reject(new Error("not to make")),
+      ...nothingMet,
       line,
     });
     expect(written).toBe(file);

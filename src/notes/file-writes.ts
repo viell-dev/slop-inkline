@@ -270,15 +270,21 @@ export function stoppable<File>(
 }
 
 /**
- * Whether `a` and `b` hold the same bytes. A plain loop, as this runs between a
- * save's last read and its write: `every` took 400 ms over 8 MiB.
+ * Whether `whole` starts with the bytes of `part`, all of them. A plain loop, as
+ * this runs between a save's last read and its write: `every` took 400 ms over
+ * 8 MiB.
  */
-function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) return false;
-  for (let at = 0; at < a.length; at++) {
-    if (a[at] !== b[at]) return false;
+function startsWith(whole: Uint8Array, part: Uint8Array): boolean {
+  if (part.length > whole.length) return false;
+  for (let at = 0; at < part.length; at++) {
+    if (whole[at] !== part[at]) return false;
   }
   return true;
+}
+
+/** Whether `a` and `b` hold the same bytes. */
+function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+  return a.length === b.length && startsWith(a, b);
 }
 
 /**
@@ -340,9 +346,14 @@ export interface WholeFile<File> {
   readonly write: (file: File) => Promise<void>;
   /**
    * Makes the file, as there is none to save over. Rejects, as the vault does,
-   * if a file is at its path by the time the vault looks.
+   * if a file is at its path by the time the vault looks, or if it could not
+   * write the whole of it, which can leave a part of it there.
    */
   readonly create: () => Promise<File>;
+  /** What `write` and `create` put in the file. */
+  readonly bytes: Uint8Array;
+  /** Reads a file found at the path once `create` has failed. */
+  readonly read: (file: File) => Promise<Uint8Array>;
   /** The disk's line, where it can be seen. */
   readonly line?: DiskLine | undefined;
 }
@@ -360,7 +371,11 @@ export interface WholeFile<File> {
  * vault looks as it makes one, as the new file of a replacement does once the
  * old one's deletion has run: the vault then refuses to make it. A file found at
  * the path after that is looked at in its turn, as one found there before would
- * be; with none there, the vault's refusal stands.
+ * be. The vault's failure stands with no file there, and with one that holds the
+ * start of `bytes`, or all of them: the save's own write, which the vault leaves
+ * where it stopped, as on a full disk, and whose reason is the one to give. That
+ * takes in an empty file, which nothing tells apart from a write that stopped
+ * before its first byte.
  */
 export async function saveFile<File>(save: WholeFile<File>): Promise<File> {
   let waits = 0;
@@ -376,7 +391,11 @@ export async function saveFile<File>(save: WholeFile<File>): Promise<File> {
       try {
         return await save.create();
       } catch (error) {
-        if (save.current() === null) throw error;
+        const there = save.current();
+        if (there === null) throw error;
+        // One that cannot be read, as gone again, is for the next round's look.
+        const held = await save.read(there).catch(() => undefined);
+        if (held !== undefined && startsWith(save.bytes, held)) throw error;
         attempt++;
         continue;
       }

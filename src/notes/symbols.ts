@@ -1263,6 +1263,9 @@ async function writeSymbol(
           await app.vault.modifyBinary(now, buffer);
           if (!present(app, now)) throw new Error(replacedAsWritten);
         },
+        bytes,
+        read: async (found) =>
+          new Uint8Array(await app.vault.readBinary(found)),
         line: diskLine(app),
         create: async () => {
           const folder = parentPath(file.path);
