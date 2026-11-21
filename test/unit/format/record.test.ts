@@ -609,6 +609,8 @@ describe("a base layer's base64", () => {
     }
   });
 
+  // This checks what is refused, not how fast: its strings took 1.3 seconds
+  // alone and up to 4.1 under load, near Vitest's default of five (#362).
   it("refuses what the plain rule refuses, for the same reason", () => {
     // Every string of four of these, which take in each kind of character, in
     // each place, and whatever padding can do.
@@ -646,7 +648,7 @@ describe("a base layer's base64", () => {
       }
     }
     expect(wrong).toEqual([]);
-  });
+  }, 30_000);
 
   it("refuses a bad character in any group, in the middle of a long text", () => {
     const text = toBase64(noise(3 * 70_000));
@@ -956,6 +958,8 @@ describe("recordProblem", () => {
     );
   });
 
+  // This checks where it pauses, not how fast: it took 0.2 seconds alone and
+  // up to 5.4 under load, past Vitest's default of five (#362).
   it("passes a large PNG, pausing all through it", async () => {
     const data = noise(400 * 400 * 4);
     const large = encodePng({ width: 400, height: 400, data });
@@ -965,7 +969,7 @@ describe("recordProblem", () => {
     );
     expect(result).toBeUndefined();
     expect(pauses).toBeGreaterThanOrEqual(large.length / 1024);
-  });
+  }, 30_000);
 });
 
 describe("parseRecord checks the base image", () => {
@@ -1041,8 +1045,9 @@ describe("parseRecord bounds the text", () => {
   // Its time is the work itself: eight texts of 16 MiB, each read through, and
   // four of them encoded to check their size. It took 2.3 to 4.9 seconds alone
   // on Windows, and 5.1 to 5.5 while other tests loaded the machine, past
-  // Vitest's five (#269). It promises nothing about speed, which
-  // test/e2e/manual/open-time.e2e.ts measures in Obsidian.
+  // Vitest's five (#269), and up to 18.6 under more load (#362). It promises
+  // nothing about speed, which test/e2e/manual/open-time.e2e.ts measures in
+  // Obsidian.
   it("counts a character of each width, across the places it can pause", () => {
     // Each has a character across the end of a slice of 65,536 code units, or
     // would if the count went wrong, as the opening of these records is 19 long.
@@ -1062,8 +1067,10 @@ describe("parseRecord bounds the text", () => {
         detail: "record text is too long",
       });
     }
-  }, 30_000);
+  }, 60_000);
 
+  // This checks what is counted, not how fast: two texts of 16 MiB took 1.6
+  // seconds alone and up to 6.1 under load, past Vitest's five (#362).
   it("counts half of a surrogate pair as what encoding would write", () => {
     // Which the check of its text then refuses, once the length passes it.
     const lone = "\ud83d";
@@ -1079,7 +1086,7 @@ describe("parseRecord bounds the text", () => {
       ok: false,
       detail: "record text is too long",
     });
-  });
+  }, 30_000);
 
   it("refuses text longer than the limit before parsing it", () => {
     expect(invalid(parseRecord(" ".repeat(limits.text + 1)))).toBe(

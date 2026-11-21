@@ -47,6 +47,8 @@ save it, as [Your first symbol](./start.md) shows. The first save creates the
 file in the [symbol folder](./settings.md), or where Obsidian puts the note's
 new attachments, under the name you typed or the next free number in that
 folder, and inserts the embed, written as your vault writes links.
+**Unreleased:** a number that a note still links to, as to a symbol you deleted,
+is not free, so that the note does not show the new symbol in its place.
 
 The embed goes where the cursor was when you ran the command:
 

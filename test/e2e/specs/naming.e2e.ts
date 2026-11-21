@@ -1,5 +1,6 @@
 import { browser, expect } from "@wdio/globals";
 import { obsidianPage } from "wdio-obsidian-service";
+import { linkFinds } from "../../../src/notes/names.ts";
 import { loadModules } from "../support/browser.ts";
 import {
   editFile,
@@ -13,6 +14,7 @@ import {
   zigzag,
 } from "../support/editing.ts";
 import {
+  createSymbol,
   draw,
   editorOpen,
   openAtMarker,
@@ -236,5 +238,117 @@ describe("The editor", function () {
     await browser.keys(["Control", "Enter"]);
     await waitClosed();
     expect(await symbolFiles()).toEqual(["002.ink.png"]);
+  });
+
+  it("skips the number of a deleted symbol while a note still embeds it", async function () {
+    /** How many times Old.md links to 002.ink.png, which is not there. */
+    const unresolved = () =>
+      browser.executeObsidian(
+        ({ app }) =>
+          app.metadataCache.unresolvedLinks["Old.md"]?.["002.ink.png"] ?? 0,
+      );
+    await createSymbol("001.ink.png");
+    await createSymbol("002.ink.png");
+    await browser.executeObsidian(async ({ app }) => {
+      await app.vault.create("Old.md", "The old door: ![[002.ink.png]]\n");
+    });
+    await browser.waitUntil(
+      () =>
+        browser.executeObsidian(
+          ({ app }) =>
+            (app.metadataCache.resolvedLinks["Old.md"]?.["002.ink.png"] ?? 0) >
+            0,
+        ),
+      { timeoutMsg: "Old.md never linked to 002" },
+    );
+    await browser.executeObsidian(async ({ app }) => {
+      const file = app.vault.getFileByPath("002.ink.png");
+      if (file === null) throw new Error("no 002");
+      await app.fileManager.trashFile(file);
+    });
+    await browser.waitUntil(async () => (await unresolved()) > 0, {
+      timeoutMsg: "the embed of 002 never became unresolved",
+    });
+    await saveOne();
+    expect(await symbolFiles()).toEqual(["001.ink.png", "003.ink.png"]);
+    await browser.waitUntil(async () =>
+      (await noteOnDisk("Editor.md")).includes("![[003.ink.png]]"),
+    );
+
+    // Once no note links to it, a new symbol shows nowhere it was not put.
+    await browser.executeObsidian(async ({ app }) => {
+      const note = app.vault.getFileByPath("Old.md");
+      if (note === null) throw new Error("no Old.md");
+      await app.vault.process(note, () => "The old door is gone.\n");
+    });
+    await browser.waitUntil(async () => (await unresolved()) === 0, {
+      timeoutMsg: "the embed of 002 stayed in the link index",
+    });
+    await openAtMarker("Welcome.md", "vault");
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await waitForEditor();
+    await draw(zigzag);
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    expect(await symbolFiles()).toEqual([
+      "001.ink.png",
+      "002.ink.png",
+      "003.ink.png",
+    ]);
+  });
+
+  it("reads a link to a new symbol's file as Obsidian resolves it", async function () {
+    // Each case's file has a name of its own, so that it is the one file the
+    // link could name, as a new symbol's is for a link nothing resolves.
+    const cases = [
+      ["k01.ink.png", "Notes/a.md", "Runes/k01.ink.png", true],
+      ["K02.INK.PNG", "a.md", "Runes/k02.ink.png", true],
+      ["Runes/k03.ink.png", "Notes/a.md", "Runes/k03.ink.png", true],
+      ["nes/k04.ink.png", "a.md", "Runes/k04.ink.png", true],
+      ["Old/k05.ink.png", "a.md", "Runes/k05.ink.png", false],
+      ["/Runes/k06.ink.png", "Notes/a.md", "Runes/k06.ink.png", true],
+      ["/Runes/k07.ink.png", "a.md", "Old/Runes/k07.ink.png", false],
+      ["/k08.ink.png", "a.md", "Runes/k08.ink.png", false],
+      ["./k09.ink.png", "Runes/a.md", "Runes/k09.ink.png", true],
+      ["./k10.ink.png", "Notes/a.md", "Runes/k10.ink.png", false],
+      ["./k11.ink.png", "Notes/a.md", "X/Notes/k11.ink.png", true],
+      ["../Runes/k12.ink.png", "Notes/a.md", "Runes/k12.ink.png", true],
+      ["./../Runes/k13.ink.png", "Notes/a.md", "Runes/k13.ink.png", true],
+      ["../Runes/k14.ink.png", "Notes/Deep/a.md", "Runes/k14.ink.png", false],
+      ["../../k15.ink.png", "a.md", "Runes/k15.ink.png", true],
+      ["k16.ink", "a.md", "Runes/k16.ink.png", false],
+      ["Old/Runes/k17.ink.png", "a.md", "Runes/k17.ink.png", false],
+      ["Runes/k18.ink.png", "a.md", "Old/Runes/k18.ink.png", true],
+      ["./k19.ink.png", "a.md", "Runes/k19.ink.png", true],
+    ] as const;
+    for (const [, , path] of cases) await createSymbol(path);
+    const paths = cases.map(([, , path]) => path);
+    await browser.waitUntil(
+      () =>
+        browser.executeObsidian(
+          ({ app }, files) =>
+            files.every(
+              (file) =>
+                app.metadataCache.getFirstLinkpathDest(file, "")?.path === file,
+            ),
+          paths,
+        ),
+      { timeoutMsg: "the files never reached the link index" },
+    );
+    const resolved = await browser.executeObsidian(
+      ({ app }, links) =>
+        links.map(
+          ([link, source]) =>
+            app.metadataCache.getFirstLinkpathDest(link, source)?.path ?? null,
+        ),
+      cases.map(([link, source]) => [link, source] as const),
+    );
+    const expected = cases.map(([, , , finds]) => finds);
+    expect(resolved.map((path, index) => path === paths[index])).toEqual(
+      expected,
+    );
+    expect(
+      cases.map(([link, source, path]) => linkFinds(link, source, path)),
+    ).toEqual(expected);
   });
 });

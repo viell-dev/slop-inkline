@@ -163,6 +163,77 @@ export function chooseRename(typed: string, current: string): NameChoice {
   return chooseName(typed);
 }
 
+/** What follows the last `/` of a path, or all of it. */
+function lastPart(path: string): string {
+  return path.slice(path.lastIndexOf("/") + 1);
+}
+
+/** What comes before the last `/` of a path, or `""`. */
+function folderOf(path: string): string {
+  const slash = path.lastIndexOf("/");
+  return slash === -1 ? "" : path.slice(0, slash);
+}
+
+/**
+ * Whether Obsidian would resolve `link`, the path a link in the note at
+ * `source` gives, without its `#` part, to the file at `path`, were that the
+ * only file with the name the link ends in: as `getLinkpathDest` in Obsidian
+ * 1.13.4 and 1.15.1 resolves a link to a file whose name has an extension, as a
+ * symbol's does. Letter case aside, the link must end in the file's name. Then,
+ * once a leading `./` or `../` is read from the note's folder, the link must be
+ * the file's whole path from the vault's top or, unless it starts with `/`, any
+ * end of that path, even one that starts inside a folder's name.
+ */
+export function linkFinds(link: string, source: string, path: string): boolean {
+  // An address of a file outside the vault, which Obsidian 1.15.1 leaves.
+  if (link === "" || link.startsWith("file:")) return false;
+  const file = path.toLowerCase();
+  let wanted = link.toLowerCase();
+  if (lastPart(wanted) !== lastPart(file)) return false;
+  if (wanted.startsWith("./") || wanted.startsWith("../")) {
+    let folder = folderOf(source).toLowerCase();
+    if (wanted.startsWith("./../")) wanted = wanted.slice(2);
+    if (wanted.startsWith("./")) {
+      wanted = wanted.slice(2);
+    } else {
+      while (wanted.startsWith("../")) {
+        wanted = wanted.slice(3);
+        folder = folderOf(folder);
+      }
+    }
+    // What is left is matched below as a path from the vault's top, and as
+    // an end of one, as Obsidian goes on to match it.
+    if (folder !== "") wanted = `${folder}/${wanted}`;
+  }
+  if (wanted.startsWith("/")) wanted = wanted.slice(1);
+  if (file === wanted) return true;
+  return !link.startsWith("/") && file.endsWith(wanted);
+}
+
+/**
+ * The names of the symbols in `folder` that links Obsidian cannot resolve
+ * still name, so that a new symbol given one would show in their notes, as
+ * where a symbol was deleted. `unresolved` lists those links as Obsidian's
+ * metadata cache does: by the path of the note that holds them, the path each
+ * gives, without its `#` part, and how many times.
+ */
+export function linkedNames(
+  unresolved: Readonly<Record<string, Readonly<Record<string, number>>>>,
+  folder: string,
+): string[] {
+  const names: string[] = [];
+  for (const [note, links] of Object.entries(unresolved)) {
+    for (const link of Object.keys(links)) {
+      const name = lastPart(link);
+      const stem = symbolStem(name);
+      if (stem === undefined) continue;
+      const path = folder === "" ? name : `${folder}/${name}`;
+      if (linkFinds(link, note, path)) names.push(stem);
+    }
+  }
+  return names;
+}
+
 /**
  * The lowest number name not taken among the symbol names in a folder:
  * `001`, then `002`, and so on, filling gaps.
