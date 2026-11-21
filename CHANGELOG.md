@@ -9,6 +9,16 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Fixed
+
+- Typing straight after saving a new symbol keeps its letters in order. As the
+  editor closes, Inkline puts the cursor back after the symbol a moment later,
+  in case the note changed while you drew, and on a busy computer that moment
+  could come after your first key, so the second went in front of it: `xy`
+  became `yx`. Once you type, click, or drop something in the note, the cursor
+  is now left where you put it
+  ([#387](https://github.com/viell-dev/slop-inkline/issues/387)).
+
 ## 1.0.2 - 2026-11-19
 
 A fix release for 1.0.1. The file format is unchanged: symbols open and look as

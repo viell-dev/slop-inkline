@@ -68,12 +68,14 @@ The embed goes where the cursor was when you ran the command:
   work, and **Next** says that it started no other symbol.
 
 The cursor then lands just after the symbol, as after a typed character, so you
-can type on at once, in a table cell in Live Preview too. Text you had selected
-stays as it was. With **Next**, each symbol goes after the one before, in the
-order you drew them, and the cursor ends after the last, also when you discard
-the drawing you were on. A note that has gone to Reading view meanwhile takes
-the symbol too, through its file, which keeps its line endings, Windows ones
-included.
+can type on at once, in a table cell in Live Preview too. **Unreleased:** what
+you type or click as the editor closes keeps its place; on a busy computer, the
+first letters typed straight after saving could come out in the wrong order.
+Text you had selected stays as it was. With **Next**, each symbol goes after the
+one before, in the order you drew them, and the cursor ends after the last, also
+when you discard the drawing you were on. A note that has gone to Reading view
+meanwhile takes the symbol too, through its file, which keeps its line endings,
+Windows ones included.
 
 ## Insert a symbol you have
 

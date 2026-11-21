@@ -15,6 +15,8 @@ import {
 import {
   chooseExisting,
   createNote,
+  holdClosingTimers,
+  letClosingTimersGo,
   marked,
   next,
   openBeside,
@@ -29,6 +31,8 @@ import {
 } from "../support/insertion.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 import { waitForLink } from "../support/vault-files.ts";
+
+const live = ".workspace-leaf.mod-active .markdown-source-view";
 
 /** Shows `other` in the first tab that shows `path`, which moves on from it. */
 async function moveOn(path: string, other: string): Promise<void> {
@@ -104,6 +108,37 @@ describe("Where the cursor lands after a symbol", function () {
     await type("xy");
     await waitForNote(
       "The door is marked with ![[001.ink.png]]xy which means return.\n",
+    );
+  });
+
+  // The editor puts the cursor back after the symbol a moment after it closes,
+  // which a busy machine can delay past a person's first keys (#387).
+  it("leaves the cursor where typing took it before the editor finished closing", async function () {
+    await insert({ settle: 0 });
+    await draw(zigzag);
+    await holdClosingTimers();
+    await save();
+    await type("x");
+    expect(await letClosingTimersGo()).toBeGreaterThan(0);
+    await type("y");
+    await waitForNote(
+      "The door is marked with ![[001.ink.png]]xy which means return.\n",
+    );
+  });
+
+  it("leaves the cursor where a click took it before the editor finished closing", async function () {
+    await insert({ settle: 0 });
+    await draw(zigzag);
+    await holdClosingTimers();
+    await save();
+    // Past the end of the first line, which puts the cursor there.
+    const line = browser.$(`${live} .cm-line`, { strict: false });
+    const { width } = await line.getSize();
+    await line.click({ x: Math.floor(width / 2) - 2 });
+    expect(await letClosingTimersGo()).toBeGreaterThan(0);
+    await type("y");
+    await waitForNote(
+      "The door is marked with ![[001.ink.png]] which means return.y\n",
     );
   });
 

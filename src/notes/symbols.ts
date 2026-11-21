@@ -1404,15 +1404,21 @@ export function insertExistingSymbol(
  * on disk or in another pane meanwhile, which takes it away from the last
  * symbol. That waits for the modal too: Obsidian refocuses the note after a
  * modal's close. A cursor already there stays as it is, as a table cell's
- * editor may have it.
+ * editor may have it. So does the cursor once the person has typed, clicked,
+ * or dropped something in the note since the modal closed, which on a busy
+ * machine they can do before the wait ends: it is theirs then, and moving it
+ * would put what they type next out of order (#387).
  */
 function returnFocus(app: App, target: Target, point?: InsertionPoint): void {
   const view = liveView(app, target.file, target.view);
   if (view === undefined) return;
   const { containerEl, editor } = view;
+  const untouched = point === undefined ? undefined : watchPerson(containerEl);
   containerEl.win.setTimeout(() => {
     const at =
-      point === undefined ? undefined : findPoint(editor.getValue(), point);
+      point !== undefined && untouched?.() === true
+        ? findPoint(editor.getValue(), point)
+        : undefined;
     if (at !== undefined && at !== editor.posToOffset(editor.getCursor())) {
       editor.setCursor(editor.offsetToPos(at));
     }
@@ -1420,6 +1426,27 @@ function returnFocus(app: App, target: Target, point?: InsertionPoint): void {
     editor.focus();
     editor.setCursor(editor.getCursor());
   });
+}
+
+/** What a person does in a note to move its cursor or change its text. */
+const personEvents = ["keydown", "pointerdown", "beforeinput", "drop"];
+
+/**
+ * Listens in `el`, from now on, for a person moving a cursor or changing text
+ * there. The function returned stops listening and says whether none came.
+ * Any key counts, even one that moves nothing: a cursor left alone stays where
+ * Obsidian put it, while one moved after a key can put the next out of order.
+ */
+function watchPerson(el: HTMLElement): () => boolean {
+  let touched = false;
+  const touch = (): void => {
+    touched = true;
+  };
+  for (const type of personEvents) el.addEventListener(type, touch, true);
+  return () => {
+    for (const type of personEvents) el.removeEventListener(type, touch, true);
+    return !touched;
+  };
 }
 
 /**
