@@ -15,6 +15,7 @@ import {
   MenuChoice,
   showSymbolMenu,
   symbolAt,
+  symbolAtAddress,
   symbolDoubleClicked,
   symbolInBlock,
   symbolInRenderedNote,
@@ -28,7 +29,6 @@ import {
   type EditorHost,
 } from "./notes/symbols.ts";
 import { SymbolTextIndex } from "./notes/text-index.ts";
-import { fileAddress } from "./render/layout.ts";
 import { SymbolRenderer } from "./render/symbols.ts";
 import { brushSizes } from "./editor/session.ts";
 import { InklineSettingTab } from "./settings-tab.ts";
@@ -328,17 +328,11 @@ export default class InklinePlugin extends Plugin {
    * another origin than the export window's.
    */
   #readSymbol(src: string): Promise<Uint8Array> | undefined {
-    const { vault } = this.app;
-    const address = fileAddress(src);
-    const file = vault
-      .getFiles()
-      .find(
-        (candidate) =>
-          isInkPath(candidate.path) &&
-          fileAddress(vault.getResourcePath(candidate)) === address,
-      );
+    const file = symbolAtAddress(this.app, src);
     if (file === undefined) return undefined;
-    return vault.readBinary(file).then((bytes) => new Uint8Array(bytes));
+    return this.app.vault
+      .readBinary(file)
+      .then((bytes) => new Uint8Array(bytes));
   }
 
   /** Has open libraries show what the index has since read. */

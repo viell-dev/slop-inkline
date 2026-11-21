@@ -1,10 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { imageHeader, inflate, readChunks } from "../../../src/format/png.ts";
 import {
+  imageHeader,
+  inflate,
+  readChunks,
+  writeChunks,
+} from "../../../src/format/png.ts";
+import {
+  oriented,
   printMediaText,
   storedPng,
   tinted,
 } from "../../../src/render/print.ts";
+import { encodePng } from "../../support/png.ts";
 
 describe("tinted", () => {
   it("gives every pixel the colour, and its own alpha", () => {
@@ -104,5 +111,25 @@ describe("storedPng", () => {
     const [, idat] = readChunks(bytes);
     if (idat === undefined) throw new Error("no IDAT");
     expect(Array.from(await inflate(idat.data))).toEqual([0, 1, 2, 3, 4]);
+  });
+});
+
+describe("oriented", () => {
+  const png = encodePng({
+    width: 1,
+    height: 1,
+    data: Uint8Array.of(0, 0, 0, 255),
+  });
+
+  it("knows a PNG that says which way up it shows", () => {
+    const [header, ...rest] = readChunks(png);
+    if (header === undefined) throw new Error("no IHDR");
+    const exif = { type: "eXIf", data: Uint8Array.of(0x4d, 0x4d, 0, 0x2a) };
+    expect(oriented(png)).toBe(false);
+    expect(oriented(writeChunks([header, exif, ...rest]))).toBe(true);
+  });
+
+  it("counts a file that is not a PNG as one, so that it makes no copy", () => {
+    expect(oriented(new TextEncoder().encode("not a picture"))).toBe(true);
   });
 });

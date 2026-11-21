@@ -14,7 +14,7 @@
 // 1.15.1 alike, for the note's own text and for the notes it embeds. Inkline's
 // post-processor returns the promise of {@link PrintCopies.copy}.
 
-import { writeChunks } from "../format/png.ts";
+import { readChunks, writeChunks } from "../format/png.ts";
 import { decodePng, nextTask, readPixels } from "../ink/canvas.ts";
 import type { RgbaPixels } from "../ink/pixels.ts";
 
@@ -65,7 +65,7 @@ export function tinted(pixels: RgbaPixels, colour: Rgba): RgbaPixels {
  * size: compressing one 4,000 pixels wide in slices, as a save does, took
  * seconds while the export kept the main window busy.
  */
-export function storedPng(pixels: RgbaPixels): Uint8Array {
+export function storedPng(pixels: RgbaPixels): Uint8Array<ArrayBuffer> {
   const { width, height, data } = pixels;
   const stride = width * 4;
   // Each row after a byte for its filter: 0, none.
@@ -133,6 +133,23 @@ export function printMediaText(text: string): string {
   return text.replace(/\b(?:print|screen)\b/gi, (type) =>
     type.toLowerCase() === "print" ? "all" : "inkline-screen",
   );
+}
+
+/**
+ * Whether a PNG file says which way up it shows, in an `eXIf` chunk, or
+ * cannot be read as one. Inkline never writes one, and its decoder ignores
+ * it, as the file format says, but Chromium 150 turns such a file's image and
+ * mask to match it, where 120 does not: a picture whose ink is at its left
+ * printed at its right through the mask in Obsidian 1.15.1, and at its left
+ * from a copy, as measured. So such a file makes no copy, and prints from its
+ * mask, as the screen shows it.
+ */
+export function oriented(bytes: Uint8Array): boolean {
+  try {
+    return readChunks(bytes, () => false).some(({ type }) => type === "eXIf");
+  } catch {
+    return true;
+  }
 }
 
 /** A reader of a symbol's file, by the address an image shows it at. */
@@ -248,6 +265,46 @@ function mediaLists(doc: Document): MediaList[] {
   return lists;
 }
 
+/** Whether `element` has an inline style, as HTML and SVG elements do. */
+function styled(element: Element): element is Element & ElementCSSInlineStyle {
+  return "style" in element;
+}
+
+/**
+ * Holds off CSS transitions on each of `images` and on every element it
+ * inherits its colour from, until the function this returns is called,
+ * which gives each back the inline `transition-property` it had. An inline
+ * `!important` declaration outranks any stylesheet's. A transition on
+ * `color`, as a theme or snippet can give anything, would otherwise make a
+ * colour read after a change of media its start, the screen's colour, and
+ * the print does not run it. Finishing such transitions once started is not
+ * enough: in Chromium 120, a colour read afterwards started another from the
+ * screen's colour, as measured.
+ */
+function holdTransitions(images: readonly HTMLImageElement[]): () => void {
+  const held = new Map<ElementCSSInlineStyle, readonly [string, string]>();
+  for (const image of images) {
+    for (
+      let element: Element | null = image;
+      element !== null && styled(element) && !held.has(element);
+      element = element.parentElement
+    ) {
+      const { style } = element;
+      held.set(element, [
+        style.getPropertyValue("transition-property"),
+        style.getPropertyPriority("transition-property"),
+      ]);
+      style.setProperty("transition-property", "none", "important");
+    }
+  }
+  return () => {
+    for (const [{ style }, [value, priority]] of held) {
+      if (value === "") style.removeProperty("transition-property");
+      else style.setProperty("transition-property", value, priority);
+    }
+  };
+}
+
 /**
  * The text colour each of `images` prints in. The page is not printing when
  * this runs, so it reads their computed colours with the rules for print in
@@ -256,7 +313,8 @@ function mediaLists(doc: Document): MediaList[] {
  * {@link printMediaText} gives it, and back again before this returns, with
  * nothing drawn in between. Obsidian's own print styles give the note's text
  * `color: initial`, which prints black where the screen shows its theme's
- * text colour.
+ * text colour. Transitions are held off meanwhile, as
+ * {@link holdTransitions} says.
  */
 export function printColours(
   doc: Document,
@@ -266,6 +324,7 @@ export function printColours(
   const colours = new Map<HTMLImageElement, string>();
   if (view === null) return colours;
   const changed: [MediaList, string][] = [];
+  const release = holdTransitions(images);
   try {
     for (const list of mediaLists(doc)) {
       const text = list.mediaText;
@@ -279,6 +338,12 @@ export function printColours(
     }
   } finally {
     for (const [list, text] of changed.reverse()) list.mediaText = text;
+    // The page's styles brought up to date while transitions are still held,
+    // so that putting the media back starts none either.
+    for (const image of images) {
+      view.getComputedStyle(image).getPropertyValue("color");
+    }
+    release();
   }
   return colours;
 }
@@ -420,22 +485,25 @@ export class PrintCopies {
   #colourOf(image: HTMLImageElement): Promise<string | undefined> {
     return new Promise((read) => {
       if (this.#waiting.push({ image, read }) > 1) return;
-      void nextTask().then(() => {
-        const waiting = this.#waiting;
-        this.#waiting = [];
-        let colours = new Map<HTMLImageElement, string>();
-        try {
-          if (!this.#ended) {
-            colours = printColours(
-              this.#doc,
-              waiting.map((one) => one.image),
-            );
+      void nextTask()
+        .then(() => {
+          const waiting = this.#waiting;
+          this.#waiting = [];
+          let colours = new Map<HTMLImageElement, string>();
+          try {
+            if (!this.#ended) {
+              colours = printColours(
+                this.#doc,
+                waiting.map((one) => one.image),
+              );
+            }
+          } finally {
+            this.#advanced();
+            for (const one of waiting) one.read(colours.get(one.image));
           }
-        } finally {
-          this.#advanced();
-          for (const one of waiting) one.read(colours.get(one.image));
-        }
-      });
+        })
+        // The waiting have their answers, so a failure has nothing to stop.
+        .catch(() => undefined);
     });
   }
 
@@ -471,7 +539,7 @@ export class PrintCopies {
       if (this.#ended) return undefined;
       const png = storedPng(tinted(pixels, rgba));
       const address = URL.createObjectURL(
-        new Blob([png.slice()], { type: "image/png" }),
+        new Blob([png], { type: "image/png" }),
       );
       this.#addresses.add(address);
       return address;
@@ -487,7 +555,7 @@ export class PrintCopies {
       pixels = (async () => {
         const bytes = await this.#read(source);
         this.#advanced();
-        if (bytes === undefined) return undefined;
+        if (bytes === undefined || oriented(bytes)) return undefined;
         const bitmap = await decodePng(bytes);
         this.#advanced();
         try {

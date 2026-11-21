@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { browser, expect } from "@wdio/globals";
 import { obsidianPage } from "wdio-obsidian-service";
+import { readChunks, writeChunks } from "../../../src/format/png.ts";
 import { printWait } from "../../../src/render/print.ts";
 import { encodePng } from "../../support/png.ts";
 import { loadModules, toBase64 } from "../support/browser.ts";
@@ -93,6 +94,26 @@ function dot(): Uint8Array {
     }
   }
   return encodePng({ width: 192, height: 192, data });
+}
+
+/**
+ * `png` with an `eXIf` chunk saying to turn it a quarter clockwise, which
+ * Inkline never writes and Chromium 150 applies to an image and a mask.
+ */
+function turned(png: Uint8Array): Uint8Array {
+  const chunks = readChunks(png);
+  // TIFF, big-endian, one entry: the orientation, a SHORT, 6.
+  const exif = Uint8Array.of(
+    ...[0x4d, 0x4d, 0x00, 0x2a, 0x00, 0x00, 0x00, 0x08, 0x00, 0x01],
+    ...[0x01, 0x12, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x06, 0x00, 0x00],
+    ...[0x00, 0x00, 0x00, 0x00],
+  );
+  const data = chunks.findIndex((chunk) => chunk.type === "IDAT");
+  return writeChunks([
+    ...chunks.slice(0, data),
+    { type: "eXIf", data: exif },
+    ...chunks.slice(data),
+  ]);
 }
 
 /**
@@ -454,7 +475,13 @@ async function startWith(mode: Mode): Promise<void> {
  * words with their boxes, and its page rasterized at `dpi`, 96 unless given,
  * all of which stay there beside it.
  */
-async function exportPdf(name: string, dpi = 96) {
+async function exportPdf(
+  name: string,
+  dpi = 96,
+  // Inkline's print copies can hold the print back by up to printWait after
+  // the last of them got further.
+  timeout = printWait + 20_000,
+) {
   const output = outputDirectory(
     process.env.E2E_OUTPUT_DIR,
     path.resolve(import.meta.dirname, "../../.."),
@@ -488,8 +515,7 @@ async function exportPdf(name: string, dpi = 96) {
           return false;
         }
       },
-      // Inkline's print copies can hold the print back by up to printWait.
-      { timeout: printWait + 20_000, timeoutMsg: "native PDF was not written" },
+      { timeout, timeoutMsg: "native PDF was not written" },
     );
     await browser.waitUntil(
       async () =>
@@ -1173,151 +1199,189 @@ describe("Native PDF export", function () {
   // colour its text prints in, as an image with its own alpha. The second
   // export fails Inkline's reads of the symbols, which keeps every mask: it
   // shows that the measure finds the lines the mask leaves, and gives the
-  // print colours and places that the copies must match.
-  it("prints text-colour symbols with no line along their boxes, in their text's print colours", async function () {
-    await startWith({
-      name: "lines",
-      scale: 100,
-      textColor: true,
-      theme: "obsidian",
-    });
-    const lines = [
-      ["# HeadBefore", ["![[dot.ink.png]]"], "HeadAfter"],
-      [
-        "PlainBefore",
-        [
-          "![[dot.ink.png]]",
-          "![[dot.ink.png|20]]",
-          "![[dot.ink.png|27]]",
-          "![[dot.ink.png|33]]",
-        ],
-        "PlainAfter",
-      ],
-      [
-        "SizedBefore",
-        ["![[dot.ink.png|40]]", "![[dot.ink.png|47]]", "![[dot.ink.png|53]]"],
-        "SizedAfter",
-      ],
-      [
-        "LinkBefore",
-        [
-          "[![[dot.ink.png]]](https://example.com)",
-          "[![[dot.ink.png|30]]](https://example.com)",
-        ],
-        "LinkAfter",
-      ],
-      [
-        "> [!warning] CallBefore",
-        ["![[dot.ink.png]]", "![[dot.ink.png|30]]"],
-        "CallAfter",
-      ],
-      [
-        "## SmallBefore",
-        ["![[dot.ink.png]]", "![[dot.ink.png|23]]"],
-        "SmallAfter",
-      ],
-    ] as const;
-    await browser.executeObsidian(
-      async ({ app }, encoded, text) => {
-        const bytes = Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0));
-        await app.vault.createBinary("dot.ink.png", bytes.buffer);
-        await app.vault.create("Lines.md", text);
-      },
-      toBase64(dot()),
-      lines
-        .map(([before, symbols, after]) =>
-          [before, ...symbols, after].join(" "),
-        )
-        .join("\n\n"),
-    );
-    await obsidianPage.openFile("Lines.md");
-    const dpi = 110;
-    const measure = async ({ xml, raster }: { xml: string; raster: string }) =>
-      printedDots(
-        raster,
-        lines.map(([before, , after]) => {
-          const scaled = (word: string): Box => {
-            const { left, top, right, bottom } = wordBox(
-              xml,
-              word.replace(/^.* /, ""),
-            );
-            const by = dpi / 96;
-            return {
-              left: left * by,
-              top: top * by,
-              right: right * by,
-              bottom: bottom * by,
-            };
-          };
-          return { before: scaled(before), after: scaled(after) };
-        }),
-        dpi,
-      );
-    const copied = await exportPdf("lines-copies", dpi);
-    await holdReads({ "*": "fail" });
-    let masked;
-    try {
-      masked = await exportPdf("lines-masks", dpi);
-    } finally {
-      await releaseReads();
-    }
-    const copies = await measure(copied);
-    const masks = await measure(masked);
-    console.log(`lines: ${JSON.stringify({ copies, masks })}`);
-    const counts = lines.map(([, symbols]) => symbols.length);
-    expect(copies.map((line) => line.length)).toEqual(counts);
-    expect(masks.map((line) => line.length)).toEqual(counts);
-    const total = counts.reduce((sum, count) => sum + count, 0);
-    expectPrintedFrom(copied.snapshot, true, total, [192, 192]);
-    for (const image of masked.snapshot.atPrint) {
-      expect(image.copy).toBe(false);
-      expect(image.blob).toBe(false);
-      expect(image.masked).toBe(true);
-    }
-    // Chromium drew each mask twice, and each copy as an image of its own.
-    expect(await softMasks(masked.pdf)).toBe(2 * total);
-    expect(await softMasks(copied.pdf)).toBe(0);
-    // A line is a pixel a side of 252 or darker on white, as #255 counted.
-    const lined = (dots: PrintedDot[][]) =>
-      dots.flat().flatMap((one) => one.edges.filter((edge) => edge >= 3));
-    expect(lined(masks).length).toBeGreaterThan(0);
-    expect(lined(copies)).toEqual([]);
-    // Where the mask put each symbol's ink, as large, and in its colour.
-    const [flatCopies, flatMasks] = [copies.flat(), masks.flat()];
-    flatCopies.forEach((one, index) => {
-      const mask = flatMasks[index];
-      if (mask === undefined) throw new Error("a symbol the mask lacks");
-      for (const key of ["left", "top", "width", "height"] as const) {
-        expect(Math.abs(one[key] - mask[key])).toBeLessThanOrEqual(0.5);
-      }
-      one.colour.forEach((channel, at) => {
-        expect(Math.abs(channel - (mask.colour[at] ?? -1))).toBeLessThanOrEqual(
-          3,
-        );
+  // print colours and places that the copies must match. One line is in a
+  // note the exported one embeds, for which Obsidian runs the post-processors
+  // again and waits for their promises too. A transition on `color`, which a
+  // theme or snippet can give anything, would make the colour read for a copy
+  // the screen's: the second case has one on everything, and its copies must
+  // still match the masks, which print without it.
+  for (const transition of [false, true]) {
+    it(`prints text-colour symbols with no line along their boxes, in their text's print colours${transition ? ", under a transition on colour" : ""}`, async function () {
+      const name = transition ? "lines-transition" : "lines";
+      await startWith({
+        name,
+        scale: 100,
+        textColor: true,
+        theme: "obsidian",
       });
-    });
-    // Obsidian prints a note's text in its initial colour, black, where the
-    // screen shows the theme's, and links and callout titles in their own.
-    const [head, plain, sized, link, callout, small] = copies;
-    for (const one of [head, plain, sized, small].flat()) {
-      for (const channel of one?.colour ?? []) {
-        expect(channel).toBeLessThan(16);
+      // Obsidian copies the main window's styles into its export window.
+      if (transition) {
+        await browser.execute(() => {
+          const style = document.head.createEl("style", {
+            text: "* { transition: color 5s linear !important; }",
+          });
+          style.id = "inkline-test-transition";
+        });
       }
-    }
-    for (const one of [link, callout].flat()) {
-      const colour = one?.colour ?? [];
-      expect(Math.max(...colour) - Math.min(...colour)).toBeGreaterThan(64);
-    }
-    const [linked] = link ?? [];
-    const [titled] = callout ?? [];
-    expect(
-      Math.max(
-        ...(linked?.colour ?? []).map((channel, at) =>
-          Math.abs(channel - (titled?.colour[at] ?? 0)),
+      const embedded = [
+        "EmbedBefore",
+        ["![[dot.ink.png]]", "![[dot.ink.png|30]]"],
+        "EmbedAfter",
+      ] as const;
+      const lines = [
+        ["# HeadBefore", ["![[dot.ink.png]]"], "HeadAfter"],
+        [
+          "PlainBefore",
+          [
+            "![[dot.ink.png]]",
+            "![[dot.ink.png|20]]",
+            "![[dot.ink.png|27]]",
+            "![[dot.ink.png|33]]",
+          ],
+          "PlainAfter",
+        ],
+        [
+          "SizedBefore",
+          ["![[dot.ink.png|40]]", "![[dot.ink.png|47]]", "![[dot.ink.png|53]]"],
+          "SizedAfter",
+        ],
+        [
+          "LinkBefore",
+          [
+            "[![[dot.ink.png]]](https://example.com)",
+            "[![[dot.ink.png|30]]](https://example.com)",
+          ],
+          "LinkAfter",
+        ],
+        [
+          "> [!warning] CallBefore",
+          ["![[dot.ink.png]]", "![[dot.ink.png|30]]"],
+          "CallAfter",
+        ],
+        [
+          "## SmallBefore",
+          ["![[dot.ink.png]]", "![[dot.ink.png|23]]"],
+          "SmallAfter",
+        ],
+        embedded,
+      ] as const;
+      const text = ([before, symbols, after]: (typeof lines)[number]) =>
+        [before, ...symbols, after].join(" ");
+      await browser.executeObsidian(
+        async ({ app }, encoded, note, inner) => {
+          const bytes = Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0));
+          await app.vault.createBinary("dot.ink.png", bytes.buffer);
+          await app.vault.create("Embedded.md", inner);
+          await app.vault.create("Lines.md", note);
+        },
+        toBase64(dot()),
+        lines
+          .map((line) => (line === embedded ? "![[Embedded]]" : text(line)))
+          .join("\n\n"),
+        text(embedded),
+      );
+      await obsidianPage.openFile("Lines.md");
+      const dpi = 110;
+      const measure = async ({
+        xml,
+        raster,
+      }: {
+        xml: string;
+        raster: string;
+      }) =>
+        printedDots(
+          raster,
+          lines.map(([before, , after]) => {
+            const scaled = (word: string): Box => {
+              const { left, top, right, bottom } = wordBox(
+                xml,
+                word.replace(/^.* /, ""),
+              );
+              const by = dpi / 96;
+              return {
+                left: left * by,
+                top: top * by,
+                right: right * by,
+                bottom: bottom * by,
+              };
+            };
+            return { before: scaled(before), after: scaled(after) };
+          }),
+          dpi,
+        );
+      let copied;
+      let masked;
+      try {
+        copied = await exportPdf(`${name}-copies`, dpi);
+        await holdReads({ "*": "fail" });
+        try {
+          masked = await exportPdf(`${name}-masks`, dpi);
+        } finally {
+          await releaseReads();
+        }
+      } finally {
+        await browser.execute(() => {
+          document.getElementById("inkline-test-transition")?.remove();
+        });
+      }
+      const copies = await measure(copied);
+      const masks = await measure(masked);
+      console.log(`${name}: ${JSON.stringify({ copies, masks })}`);
+      const counts = lines.map(([, symbols]) => symbols.length);
+      expect(copies.map((line) => line.length)).toEqual(counts);
+      expect(masks.map((line) => line.length)).toEqual(counts);
+      const total = counts.reduce((sum, count) => sum + count, 0);
+      expectPrintedFrom(copied.snapshot, true, total, [192, 192]);
+      for (const image of masked.snapshot.atPrint) {
+        expect(image.copy).toBe(false);
+        expect(image.blob).toBe(false);
+        expect(image.masked).toBe(true);
+      }
+      // Chromium drew each mask twice, and each copy as an image of its own.
+      expect(await softMasks(masked.pdf)).toBe(2 * total);
+      expect(await softMasks(copied.pdf)).toBe(0);
+      // A line is a pixel a side of 252 or darker on white, as #255 counted.
+      const lined = (dots: PrintedDot[][]) =>
+        dots.flat().flatMap((one) => one.edges.filter((edge) => edge >= 3));
+      expect(lined(masks).length).toBeGreaterThan(0);
+      expect(lined(copies)).toEqual([]);
+      // Where the mask put each symbol's ink, as large, and in its colour.
+      const [flatCopies, flatMasks] = [copies.flat(), masks.flat()];
+      flatCopies.forEach((one, index) => {
+        const mask = flatMasks[index];
+        if (mask === undefined) throw new Error("a symbol the mask lacks");
+        for (const key of ["left", "top", "width", "height"] as const) {
+          expect(Math.abs(one[key] - mask[key])).toBeLessThanOrEqual(0.5);
+        }
+        one.colour.forEach((channel, at) => {
+          expect(
+            Math.abs(channel - (mask.colour[at] ?? -1)),
+          ).toBeLessThanOrEqual(3);
+        });
+      });
+      // Obsidian prints a note's text in its initial colour, black, where the
+      // screen shows the theme's, and links and callout titles in their own.
+      const [head, plain, sized, link, callout, small, inEmbed] = copies;
+      for (const one of [head, plain, sized, small, inEmbed].flat()) {
+        for (const channel of one?.colour ?? []) {
+          expect(channel).toBeLessThan(16);
+        }
+      }
+      for (const one of [link, callout].flat()) {
+        const colour = one?.colour ?? [];
+        expect(Math.max(...colour) - Math.min(...colour)).toBeGreaterThan(64);
+      }
+      const [linked] = link ?? [];
+      const [titled] = callout ?? [];
+      expect(
+        Math.max(
+          ...(linked?.colour ?? []).map((channel, at) =>
+            Math.abs(channel - (titled?.colour[at] ?? 0)),
+          ),
         ),
-      ),
-    ).toBeGreaterThan(64);
-  });
+      ).toBeGreaterThan(64);
+    });
+  }
 
   // Obsidian prints once the promises its post-processors return have
   // resolved, and 200 ms more. Inkline's resolves once every symbol shows its
@@ -1325,6 +1389,10 @@ describe("Native PDF export", function () {
   // symbol whose copy is that late, or cannot be made, prints from its mask,
   // as before, never blank.
   it("waits for many symbols' copies before Obsidian prints, and prints the rest from their masks", async function () {
+    // Its export took up to 19.5 s, on Obsidian 1.13.4 beside eight busy
+    // processes, of the 30 s an export is otherwise given: three times that.
+    const exportLimit = 60_000;
+    this.timeout(exportLimit + 60_000);
     await startWith({
       name: "waits",
       scale: 100,
@@ -1340,12 +1408,13 @@ describe("Native PDF export", function () {
       "==![[block.ink.png]]==",
     ].join(" ");
     await browser.executeObsidian(
-      async ({ app }, dotPng, blockPng, widePicture, text) => {
+      async ({ app }, dotPng, blockPng, widePicture, turnedPng, text) => {
         const bytes = (encoded: string) =>
           Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0)).buffer;
         await app.vault.createBinary("dot.ink.png", bytes(dotPng));
         await app.vault.createBinary("block.ink.png", bytes(blockPng));
         await app.vault.createBinary("wide.ink.png", bytes(widePicture));
+        await app.vault.createBinary("turned.ink.png", bytes(turnedPng));
         for (const name of ["slow", "late", "unread"]) {
           await app.vault.createBinary(`${name}.ink.png`, bytes(dotPng));
         }
@@ -1359,11 +1428,13 @@ describe("Native PDF export", function () {
       toBase64(dot()),
       toBase64(block()),
       toBase64(widePng()),
+      toBase64(turned(dot())),
       [
         "SlowBefore ![[slow.ink.png]] SlowAfter.",
         "LateBefore ![[late.ink.png]] LateAfter.",
         "UnreadBefore ![[unread.ink.png]] UnreadAfter.",
         "BrokenBefore ![[broken.ink.png]] BrokenAfter.",
+        "TurnedBefore ![[turned.ink.png]] TurnedAfter.",
         "![[wide.ink.png]]",
         "## ![[dot.ink.png]] ![[block.ink.png]]",
         ...Array.from({ length: 20 }, () => row),
@@ -1380,7 +1451,7 @@ describe("Native PDF export", function () {
     });
     let exported;
     try {
-      exported = await exportPdf("waits");
+      exported = await exportPdf("waits", 96, exportLimit);
     } finally {
       await releaseReads();
     }
@@ -1389,7 +1460,7 @@ describe("Native PDF export", function () {
       `waits: ${String(snapshot.atPrint.length)} images, print asked for ${String(Math.round(snapshot.waited))} ms after the window opened`,
     );
     const symbols = snapshot.atPrint.filter((image) => image.tagged);
-    expect(symbols.length).toBeGreaterThanOrEqual(120);
+    expect(symbols.length).toBe(128);
     const sizes: Partial<Record<string, readonly [number, number]>> = {
       dot: [192, 192],
       slow: [192, 192],
@@ -1404,7 +1475,8 @@ describe("Native PDF export", function () {
         expect([image.width, image.height]).toEqual(size);
         expect(image.masked).toBe(false);
       } else {
-        expect(["late", "unread", "broken"]).toContain(image.name);
+        // Turned's file says to turn it, which a copy would not.
+        expect(["late", "unread", "broken", "turned"]).toContain(image.name);
         expect(image.copy).toBe(false);
         expect(image.blob).toBe(false);
         expect(image.masked).toBe(true);
