@@ -4,14 +4,18 @@ import { lineBox } from "../../../src/ink/geometry.ts";
 import { loadModules } from "../support/browser.ts";
 import {
   draw,
+  markEditor,
   openAtMarker,
+  recordOf,
   settledSurface,
   startOver,
   storedDrafts,
   surface,
   waitForEditor,
+  waitForNext,
   waitForStatus,
 } from "../support/editor.ts";
+import { boxOf, type Point } from "../support/pointer.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 import { framesDrawn } from "../support/waits.ts";
 
@@ -66,6 +70,72 @@ async function previewWidth(): Promise<{ width: number; fontSize: number }> {
       width: Number.parseFloat(ink.style.width),
       fontSize: Number.parseFloat(getComputedStyle(line).fontSize),
     };
+  });
+}
+
+/** A place in the window, at fractions of the drawing area's box now. */
+async function inWindow(x: number, y: number): Promise<Point> {
+  const { left, right, top, bottom } = await boxOf(
+    ".inkline-editor .inkline-surface",
+  );
+  return {
+    x: Math.round(left + x * (right - left)),
+    y: Math.round(top + y * (bottom - top)),
+  };
+}
+
+/** The mouse, moving to `at` in the window in one report. */
+function mouseTo(at: Point) {
+  return browser
+    .action("pointer", { parameters: { pointerType: "mouse" } })
+    .move({ origin: "viewport", ...at, duration: 0 });
+}
+
+/** Presses the mouse at `from`, and holds it at `to`, for each of `to`. */
+async function pressThrough(from: Point, ...to: Point[]): Promise<void> {
+  const action = mouseTo(from).down();
+  for (const at of to) action.move({ origin: "viewport", ...at, duration: 0 });
+  await action.perform(true);
+}
+
+/** Lets go of the mouse at `at`, where {@link pressThrough} holds it. */
+async function letGoAt(at: Point): Promise<void> {
+  await mouseTo(at).up().perform();
+}
+
+/** Clicks at `at` in the window, without moving between press and release. */
+async function clickAt(at: Point): Promise<void> {
+  await mouseTo(at).down().up().perform();
+}
+
+/** The strokes the editor keeps, from its draft. */
+async function keptStrokes(): Promise<{ tool: string; points: number[] }[]> {
+  return ((await storedDrafts())[0]?.strokes ?? []).map(({ tool, points }) => ({
+    tool,
+    points: [...points],
+  }));
+}
+
+/** Waits for the draft to hold `count` strokes, and gives the last. */
+async function strokeAt(count: number) {
+  await browser.waitUntil(async () => (await keptStrokes()).length === count, {
+    timeoutMsg: `the draft never held ${String(count)} strokes`,
+  });
+  return (await keptStrokes()).at(-1);
+}
+
+/** Presses Zoom by its key, or by its button as a touch or a key would. */
+async function pressZoom(by: "key" | "button"): Promise<void> {
+  if (by === "key") {
+    await browser.keys("z");
+    return;
+  }
+  await browser.execute(() => {
+    const button = document.querySelector(
+      '.inkline-editor [data-inkline-button="zoom"]',
+    );
+    if (button?.instanceOf(HTMLElement) !== true) throw new Error("no Zoom");
+    button.click();
   });
 }
 
@@ -195,6 +265,123 @@ describe("Zoom", function () {
     const middle = await tap(0.5, 0.5);
     // Fit centres the drawing's ink with its side bearings, to a few pixels.
     expect(Math.abs(middle.x - centre)).toBeLessThanOrEqual(12);
+  });
+
+  // Zooming moves what the pointer is over, so a release where the pointer
+  // was would land elsewhere in the drawing (#382). Each drag ends with no
+  // move, at the place in the window where it was before Zoom, as a hand
+  // that stays still does, and saves just what the same drag without Zoom
+  // saves, through the editor's own mapping of the pointer.
+  for (const { what, keys, by } of [
+    { what: "a pen stroke", keys: [], by: "key" },
+    { what: "a pen stroke", keys: [], by: "button" },
+    { what: "an eraser stroke", keys: ["e"], by: "key" },
+    { what: "an ellipse", keys: ["o"], by: "button" },
+    { what: "an eraser's ellipse", keys: ["e", "o"], by: "key" },
+  ] as const) {
+    it(`waits until ${what} is let go, pressed by its ${by}`, async function () {
+      await openEditor();
+      for (const key of keys) await browser.keys(key);
+      const usual = await surfaceSize();
+      const from = await inWindow(0.3, 0.65);
+      const to = await inWindow(0.6, 0.35);
+      await pressThrough(from, to);
+      await letGoAt(to);
+      const alone = await strokeAt(1);
+      await pressThrough(from, to);
+      await pressZoom(by);
+      await waitForStatus("Zooming in once you let go");
+      expect(await zoomPressed()).toBe("true");
+      await framesDrawn();
+      expect(await surfaceSize()).toEqual(usual);
+      await letGoAt(to);
+      await waitForStatus("Zoomed in");
+      expect(await strokeAt(2)).toEqual(alone);
+      expect((await surfaceSize()).height).toBeGreaterThan(usual.height * 1.3);
+      expect(await zoomPressed()).toBe("true");
+      await saveScreenshot(`zoom-after-${what.replaceAll(/\W+/g, "-")}`);
+    });
+  }
+
+  it("waits until a polygon's corner is let go", async function () {
+    await openEditor();
+    await browser.keys("y");
+    const usual = await surfaceSize();
+    const first = await inWindow(0.3, 0.65);
+    const second = await inWindow(0.6, 0.35);
+    await clickAt(first);
+    await clickAt(second);
+    await browser.keys("Enter");
+    const alone = await strokeAt(1);
+    await clickAt(first);
+    await pressThrough(second);
+    await pressZoom("key");
+    await waitForStatus("Zooming in once you let go");
+    await framesDrawn();
+    expect(await surfaceSize()).toEqual(usual);
+    await letGoAt(second);
+    await waitForStatus("Zoomed in");
+    await browser.keys("Enter");
+    expect(await strokeAt(2)).toEqual(alone);
+  });
+
+  it("stays as it was when pressed twice while drawing", async function () {
+    await openEditor();
+    const usual = await surfaceSize();
+    const from = await inWindow(0.3, 0.65);
+    const to = await inWindow(0.6, 0.35);
+    await pressThrough(from, to);
+    await letGoAt(to);
+    const alone = await strokeAt(1);
+    await pressThrough(from, to);
+    await pressZoom("key");
+    await waitForStatus("Zooming in once you let go");
+    await pressZoom("key");
+    expect(await zoomPressed()).toBe("false");
+    await letGoAt(to);
+    expect(await strokeAt(2)).toEqual(alone);
+    await framesDrawn();
+    expect(await surfaceSize()).toEqual(usual);
+    expect(await zoomPressed()).toBe("false");
+    // Zoomed in, it waits to zoom out in the same way.
+    await browser.keys("z");
+    await waitForStatus("Zoomed in");
+    const zoomed = await surfaceSize();
+    const zoomedTo = await inWindow(0.6, 0.35);
+    await pressThrough(await inWindow(0.3, 0.65), zoomedTo);
+    await pressZoom("button");
+    await waitForStatus("Zooming out once you let go");
+    expect(await zoomPressed()).toBe("false");
+    await framesDrawn();
+    expect(await surfaceSize()).toEqual(zoomed);
+    await letGoAt(zoomedTo);
+    await waitForStatus("Zoomed out");
+    await strokeAt(3);
+    await browser.waitUntil(
+      async () => Math.abs((await surfaceSize()).height - usual.height) < 1,
+    );
+  });
+
+  it("takes a zoom asked for while drawing to the next symbol, with Next", async function () {
+    await openEditor();
+    const usual = await surfaceSize();
+    const from = await inWindow(0.3, 0.65);
+    const to = await inWindow(0.6, 0.35);
+    await pressThrough(from, to);
+    await pressZoom("key");
+    await waitForStatus("Zooming in once you let go");
+    await markEditor();
+    await browser.keys(["Control", "Shift", "Enter"]);
+    await waitForNext(1);
+    await letGoAt(to);
+    expect(await zoomPressed()).toBe("true");
+    await browser.waitUntil(
+      async () => (await surfaceSize()).height > usual.height * 1.3,
+    );
+    const record = JSON.parse(await recordOf("001.ink.png")) as {
+      strokes: unknown[];
+    };
+    expect(record.strokes).toHaveLength(1);
   });
 
   it("keeps the preview and the image's edges whole when zoomed and moved along", async function () {

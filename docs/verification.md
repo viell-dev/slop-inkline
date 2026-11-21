@@ -220,6 +220,14 @@ must keep released files readable and looking the same, as
   the line box it shows
   ([pointer-alignment.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/pointer-alignment.e2e.ts),
   [#359](https://github.com/viell-dev/slop-inkline/issues/359)).
+- **Unreleased:** **Zoom** pressed while a pen or eraser stroke, an ellipse of
+  either, or a polygon's corner is drawn, by its key or its button, leaves the
+  drawing area as it is until the pointer is let go, and then zooms. Let go
+  where it was pressed in the window, the drag saves exactly the points the same
+  drag without Zoom saves. Pressed twice meanwhile, it does not zoom, and
+  **Next** meanwhile takes the zoom to the next symbol
+  ([zoom.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/zoom.e2e.ts),
+  [#382](https://github.com/viell-dev/slop-inkline/issues/382)).
 - **Make ink** of a synthetic H, enlarged from about 1.2 to 11.5 times, leaves
   at most two partly covered document pixels at each edge of the saved symbol,
   and the reopened symbol draws the same pixels. The editor's own redraw, which
