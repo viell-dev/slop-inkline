@@ -232,7 +232,9 @@ leaves the editor's controls in view, and shows more width instead. The wheel,
 or the left and right arrow keys, move along the drawing, and **Fit** centres it
 while staying zoomed. **Next** keeps the zoom for the following symbol. Zooming
 changes only the view: the symbol is the same size in notes, and the brushes
-stay the same size against it.
+stay the same size against it. **Unreleased:** pressed while you draw a stroke,
+a shape, or a polygon's corner, Zoom waits until you let go, so that what you
+draw ends where it shows; pressed twice meanwhile, it leaves the view as it is.
 
 The grid, though, has twice as many cells each way while zoomed, so the default
 5 cells across the x-height become 10, for placing fine detail. Every point of

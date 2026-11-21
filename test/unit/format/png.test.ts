@@ -19,7 +19,7 @@ import {
   writeChunksSliced,
   type Chunk,
 } from "../../../src/format/png.ts";
-import { inflateSync } from "node:zlib";
+import { deflateSync, inflateSync } from "node:zlib";
 import { blank, encodePng, header, pixelChunks } from "../../support/png.ts";
 import { noise, paused } from "../../support/slices.ts";
 
@@ -207,12 +207,14 @@ describe("deflate and inflate", () => {
   it("refuses a highly compressed input that passes the limit", async () => {
     // 16 MiB of zeros compresses to about 16 KiB. How much input Node reads
     // ahead varies, so how early inflation stops is checked in Obsidian's
-    // renderer, by test/e2e/specs/format.e2e.ts.
-    const compressed = await deflate(new Uint8Array(16 * 1024 * 1024));
+    // renderer, by test/e2e/specs/format.e2e.ts. Node's zlib makes the same
+    // bytes as deflate() here, in a thirtieth of the time (#362), and this
+    // test is about inflating them.
+    const compressed = deflateSync(new Uint8Array(16 * 1024 * 1024));
     await expect(inflate(compressed, { limit: 1024 * 1024 })).rejects.toThrow(
       "data expands beyond 1048576 bytes",
     );
-  }, 30_000);
+  });
 
   it("reads all of the input otherwise", async () => {
     const compressed = await deflate(new Uint8Array(200_000).fill(7));
@@ -872,6 +874,8 @@ describe("encodeRgba", () => {
     expect(imageData(chunks).length).toBe((width * 4 + 1) * height);
   });
 
+  // This checks where it pauses, by a clock of its own, not how fast: it took
+  // 0.5 seconds alone and up to 2.8 under load (#362).
   it("offers a pause after every batch of rows and every chunk", async () => {
     const width = 512;
     const height = 512;
@@ -906,7 +910,7 @@ describe("encodeRgba", () => {
     } finally {
       clock.mockRestore();
     }
-  });
+  }, 30_000);
 
   it("refuses pixels that do not match the size", async () => {
     await expect(encodeRgba(2, 2, new Uint8Array(15))).rejects.toThrow(
