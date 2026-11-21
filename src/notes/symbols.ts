@@ -1264,7 +1264,13 @@ async function writeSymbol(
             folder !== "" &&
             app.vault.getAbstractFileByPath(folder) === null
           ) {
-            await app.vault.createFolder(folder);
+            try {
+              await app.vault.createFolder(folder);
+            } catch (error) {
+              // Obsidian makes a folder only where the disk has nothing once
+              // it looks, and something else can have made this one meanwhile.
+              if (app.vault.getFolderByPath(folder) === null) throw error;
+            }
           }
           return app.vault.createBinary(file.path, buffer);
         },

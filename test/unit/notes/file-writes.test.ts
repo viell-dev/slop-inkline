@@ -94,11 +94,28 @@ async function editorWrite(
  */
 class FakeVault {
   readonly #files = new Map<string, Fake>();
+  /**
+   * What lands as {@link FakeVault.make} starts, before it looks: in Obsidian,
+   * whatever was asked of the disk before the vault's look at it.
+   */
+  beforeMake?: () => void;
 
   put(path: string, bytes: Uint8Array = pinned): Fake {
     const file = { ...fake(bytes), path };
     this.#files.set(path, file);
     return file;
+  }
+
+  /**
+   * Makes a file at `path`, as the vault's `createBinary` does, which refuses
+   * if one is there by the time it looks.
+   */
+  make(path: string, bytes: Uint8Array): Promise<Fake> {
+    this.beforeMake?.();
+    if (this.at(path) !== null) {
+      return Promise.reject(new Error("File already exists."));
+    }
+    return Promise.resolve(this.put(path, bytes));
   }
 
   at(path: string): Fake | null {
@@ -144,7 +161,7 @@ function editorSave(
       if (bytes !== known) throw new Error("the editor asks first");
     },
     write: (now) => access.write(now, written.slice().buffer),
-    create: () => Promise.resolve(vault.put(file.path ?? "", written)),
+    create: () => vault.make(file.path ?? "", written),
   });
 }
 
@@ -552,6 +569,63 @@ describe("saveFile", () => {
     expect(vault.at(path)).toBe(made);
     expect(old.writes).toBe(0);
     expect(made.bytes).toBe(drawn);
+  });
+
+  /**
+   * A replacement of the file at `path` that an editor's save falls between,
+   * as in #379: the deletion runs during the save's look, and the new file,
+   * holding `theirs`, lands before the vault looks as the save makes the file
+   * again. Returns the editor's save, and the new file once it has landed.
+   */
+  function replacedAsMade(theirs: Uint8Array): {
+    saving: Promise<Fake>;
+    replacement: () => Fake | undefined;
+  } {
+    const vault = new FakeVault();
+    const old = vault.put(path);
+    const drawn = new Uint8Array([1, 2, 3]);
+    let replacement: Fake | undefined;
+    vault.beforeMake = () => {
+      replacement ??= vault.put(path, theirs);
+    };
+    let looks = 0;
+    const saving = editorSave(vault, old, pinned, drawn, () => {
+      if (++looks === 1) vault.delete(old);
+      return Promise.resolve();
+    });
+    return { saving, replacement: () => replacement };
+  }
+
+  it("looks at a file made at its path as it made one, and asks about it", async () => {
+    const theirs = await writeText(pinned, "reading", ["THEIRS"]);
+    const { saving, replacement } = replacedAsMade(theirs);
+    // Not the vault's "File already exists.": the editor's own question.
+    await expect(saving).rejects.toThrow("asks first");
+    expect(replacement()?.writes).toBe(0);
+    expect(replacement()?.bytes).toBe(theirs);
+  });
+
+  it("writes to a file made at its path as it made one, if it holds what was known", async () => {
+    const { saving, replacement } = replacedAsMade(pinned);
+    const saved = await saving;
+    expect(saved).toBe(replacement());
+    expect(saved.writes).toBe(1);
+  });
+
+  it("fails as the vault does when nothing came to its path", async () => {
+    let makes = 0;
+    await expect(
+      saveFile({
+        current: () => null,
+        check: () => Promise.resolve(undefined),
+        write: () => Promise.reject(new Error("not to write")),
+        create: () => {
+          makes++;
+          return Promise.reject(new Error("the disk is full"));
+        },
+      }),
+    ).rejects.toThrow("the disk is full");
+    expect(makes).toBe(1);
   });
 
   it("leaves a file that goes on being replaced, and says so", async () => {

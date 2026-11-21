@@ -4,16 +4,19 @@
 // a write joins it. So something another plugin or a sync tool asks of the disk
 // while a save reads the file for the last time runs after that read and before
 // the save's write, and a deletion and a new file there are what the write then
-// lands on. Nothing here holds a step: the line keeps its own order. Every
-// symbol is synthetic.
+// lands on. So too between a save's finding no file and the vault's own look as
+// it makes one again. Nothing here holds a step: the line keeps its own order.
+// Every symbol is synthetic.
 
 import { browser, expect } from "@wdio/globals";
 import { loadModules } from "../support/browser.ts";
-import { editFile } from "../support/editing.ts";
+import { editFile, strokeCount } from "../support/editing.ts";
 import {
+  clickTop,
   createSymbol,
   draw,
   startOver,
+  symbolFiles,
   waitForStatus,
 } from "../support/editor.ts";
 
@@ -113,6 +116,66 @@ async function replaceDuringRead(
   );
 }
 
+/**
+ * Has the vault's next `createBinary` or `createFolder` of `path`, as a save
+ * makes a deleted symbol or its folder again, find one already asked of
+ * Obsidian's file system, as a plugin or a sync tool working through it can:
+ * the vault looks at the disk only once what was asked before has run. A file
+ * holds a symbol whose reading is "theirs". {@link waitForReplaced} waits for
+ * it.
+ */
+async function makeAsCreated(
+  path: string,
+  kind: "file" | "folder",
+): Promise<void> {
+  await browser.executeObsidian(
+    async ({ app }, wanted, what) => {
+      const made = (): void => {
+        Reflect.set(window, "inklineReplaced", true);
+      };
+      Reflect.set(window, "inklineReplaced", false);
+      if (what === "folder") {
+        const create = app.vault.createFolder.bind(app.vault);
+        app.vault.createFolder = (folder) => {
+          if (folder === wanted) {
+            Reflect.deleteProperty(app.vault, "createFolder");
+            void app.vault.adapter.mkdir(wanted).then(made);
+          }
+          return create(folder);
+        };
+        return;
+      }
+      const { canvas, text } = window.inklineTest;
+      const { bytes } = await canvas.saveInk(
+        {
+          strokes: [
+            {
+              tool: "pen" as const,
+              size: 256,
+              points: [2000, 800, 6000, 2000],
+            },
+          ],
+        },
+        undefined,
+        [],
+      );
+      const theirs = (
+        await text.writeText(bytes, "reading", ["theirs"])
+      ).slice().buffer;
+      const create = app.vault.createBinary.bind(app.vault);
+      app.vault.createBinary = (file, data, options) => {
+        if (file === wanted) {
+          Reflect.deleteProperty(app.vault, "createBinary");
+          void app.vault.adapter.writeBinary(wanted, theirs).then(made);
+        }
+        return create(file, data, options);
+      };
+    },
+    path,
+    kind,
+  );
+}
+
 /** Waits for {@link replaceDuringRead}'s new file, and says how it went. */
 async function waitForReplaced(): Promise<unknown> {
   let replaced: unknown = false;
@@ -141,6 +204,8 @@ describe("A symbol replaced at its path as it is saved", function () {
     await browser.executeObsidian(({ app }) => {
       Reflect.deleteProperty(app.vault, "readBinary");
       Reflect.deleteProperty(app.vault, "modifyBinary");
+      Reflect.deleteProperty(app.vault, "createBinary");
+      Reflect.deleteProperty(app.vault, "createFolder");
     });
   });
 
@@ -206,6 +271,51 @@ describe("A symbol replaced at its path as it is saved", function () {
     expect(await readingOf("gate.ink.png")).toEqual(["theirs"]);
     // The editor is still open, with what was drawn not saved over it.
     expect(await browser.$(".inkline-editor").isExisting()).toBe(true);
+  });
+
+  it("asks about a new file that lands as the editor makes a deleted one again", async function () {
+    // #379: the same replacement, with the save between its two halves.
+    await createSymbol("gate.ink.png");
+    await editFile("gate.ink.png");
+    await draw([
+      [0.5, 0.3],
+      [0.7, 0.6],
+    ]);
+    await browser.executeObsidian(async ({ app }) => {
+      await app.vault.adapter.remove("gate.ink.png");
+    });
+    await waitForStatus("The file was deleted; saving makes it again");
+    await makeAsCreated("gate.ink.png", "file");
+    await browser.keys(["Control", "s"]);
+    expect(await waitForReplaced()).toBe(true);
+    // Not Obsidian's "File already exists.": the question a change asks.
+    await waitForStatus("Not saved: the file changed on disk");
+    expect(await readingOf("gate.ink.png")).toEqual(["theirs"]);
+    expect(await strokeCount("gate.ink.png")).toBe(1);
+    // Keeping the drawing saves it over the new file, as for any change.
+    await clickTop("Keep mine");
+    await waitForStatus("Saved");
+    expect(await strokeCount("gate.ink.png")).toBe(2);
+  });
+
+  it("makes a deleted symbol again in a folder that lands as it makes that", async function () {
+    await createSymbol("Signs/gate.ink.png");
+    await editFile("Signs/gate.ink.png");
+    await draw([
+      [0.5, 0.3],
+      [0.7, 0.6],
+    ]);
+    await browser.executeObsidian(async ({ app }) => {
+      await app.vault.adapter.rmdir("Signs", true);
+    });
+    await waitForStatus("The file was deleted; saving makes it again");
+    await makeAsCreated("Signs", "folder");
+    await browser.keys(["Control", "s"]);
+    expect(await waitForReplaced()).toBe(true);
+    // Not Obsidian's "Folder already exists.": the folder does.
+    await waitForStatus("Saved");
+    expect(await symbolFiles()).toEqual(["Signs/gate.ink.png"]);
+    expect(await strokeCount("Signs/gate.ink.png")).toBe(2);
   });
 
   it("refuses a write that lands once the file was replaced, and keeps what was typed", async function () {

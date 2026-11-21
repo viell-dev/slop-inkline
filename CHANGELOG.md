@@ -9,6 +9,17 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Fixed
+
+- A symbol's file replaced while the editor saved it, deleted and another put at
+  its path as by sync, could have the save find no file, go to make it again,
+  and stop with Obsidian's "File already exists." Now the save looks at the new
+  file, says "Not saved: the file changed on disk", and asks about it, as it
+  does when it finds the new file first. Nothing was written over the new file
+  either way. A save that makes a deleted symbol's folder again no longer stops
+  with "Folder already exists." when the folder comes back meanwhile: it saves
+  into it ([#379](https://github.com/viell-dev/slop-inkline/issues/379)).
+
 ## 1.0.2 - 2026-11-19
 
 A fix release for 1.0.1. The file format is unchanged: symbols open and look as

@@ -338,7 +338,10 @@ export interface WholeFile<File> {
    */
   readonly check: () => Promise<Look | undefined>;
   readonly write: (file: File) => Promise<void>;
-  /** Makes the file, as there is none to save over. */
+  /**
+   * Makes the file, as there is none to save over. Rejects, as the vault does,
+   * if a file is at its path by the time the vault looks.
+   */
   readonly create: () => Promise<File>;
   /** The disk's line, where it can be seen. */
   readonly line?: DiskLine | undefined;
@@ -352,6 +355,12 @@ export interface WholeFile<File> {
  * another, and a file that is not the one looked at is looked at in its turn.
  * Anything asked of the disk's {@link DiskLine} after `check` looked would come
  * before the write, so the save waits for it, and looks again.
+ *
+ * A file can also come to the path after the save found none and before the
+ * vault looks as it makes one, as the new file of a replacement does once the
+ * old one's deletion has run: the vault then refuses to make it. A file found at
+ * the path after that is looked at in its turn, as one found there before would
+ * be; with none there, the vault's refusal stands.
  */
 export async function saveFile<File>(save: WholeFile<File>): Promise<File> {
   let waits = 0;
@@ -363,7 +372,15 @@ export async function saveFile<File>(save: WholeFile<File>): Promise<File> {
       attempt++;
       continue;
     }
-    if (file === null) return save.create();
+    if (file === null) {
+      try {
+        return await save.create();
+      } catch (error) {
+        if (save.current() === null) throw error;
+        attempt++;
+        continue;
+      }
+    }
     if (askedSince(save.line, look?.asked) && waits < lineWaits) {
       waits++;
       await save.line?.settle();
