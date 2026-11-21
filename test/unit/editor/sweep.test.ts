@@ -173,6 +173,8 @@ describe("sweptStroke", () => {
     }
   }
 
+  // These check what is swept, not how fast: each took up to a second alone
+  // and up to 4.9 under load, near Vitest's default of five (#362).
   for (const seed of [7, 11, 13, 17]) {
     it(`fills exactly what a brush sweeps along a random walk, seed ${String(seed)}`, () => {
       const points = walk(seed, 120, 90);
@@ -184,9 +186,11 @@ describe("sweptStroke", () => {
       );
       expect(samples).toBeGreaterThan(500);
       expect(wrong).toBe(0);
-    });
+    }, 30_000);
   }
 
+  // This checks what is swept, not how fast: it took 0.5 seconds alone and
+  // up to 3.6 under load (#362).
   it("leaves the ink a loop goes round, as an island", () => {
     // A circle of radius 480 units with a brush 192 wide: the ink within
     // 384 units of its middle is not swept.
@@ -202,7 +206,7 @@ describe("sweptStroke", () => {
     expect(winding(polygon, [1600, 1600 - 560])).not.toBe(0);
     expect(winding(polygon, [1600, 1600 - 600])).toBe(0);
     expect(disagreements(stroke, 192, points).wrong).toBe(0);
-  });
+  }, 30_000);
 
   it("goes inside a turn straight through where the edges meet, between long lines", () => {
     const corners = cornersOf(
@@ -269,6 +273,8 @@ describe("sweptStroke", () => {
     }
   });
 
+  // This checks what is swept, not how fast: it took 0.6 seconds alone and
+  // up to 3.5 under load (#362).
   it("never takes back what it swept as the way goes on", () => {
     // A sample a shape covers stays covered as each later point is added,
     // but by its edge, where rounding to whole units can move it a little.
@@ -310,7 +316,7 @@ describe("sweptStroke", () => {
       }
       expect(checked).toBeGreaterThan(10_000);
     }
-  });
+  }, 30_000);
 });
 
 describe("sweepPath", () => {

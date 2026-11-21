@@ -1464,6 +1464,8 @@ describe("DrawingSession's cuts", () => {
     expect(Math.max(...ys)).toBe(800 + 96);
   });
 
+  // This checks the areas, not how fast: its strokes took 0.4 seconds alone
+  // and past 6.2 under load, Vitest's default being five (#362).
   it("saves an eraser's area in whole units, however it is drawn", () => {
     // Seeded strokes of every brush, on the grid and off, freehand and
     // straight, cut and not, as the long drawing's end-to-end run draws them.
@@ -1496,7 +1498,7 @@ describe("DrawingSession's cuts", () => {
         expect(stroke.points.every(Number.isInteger)).toBe(true);
       }
     }
-  });
+  }, 30_000);
 
   it("guesses the grid of a drawing 1.0.0 saved as 1.0.1 does", () => {
     // The fifth review of #381: a pen tap Shift put on the grid at (16, 16),

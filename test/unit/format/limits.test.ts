@@ -332,7 +332,8 @@ describe("a record's text", () => {
     expect(await damagedBecause(file(16_777_217))).toContain(
       "data expands beyond 16777216 bytes",
     );
-  }, 30_000);
+    // Two texts of 16 MiB: 1.5 seconds alone, up to 24.0 under load (#362).
+  }, 60_000);
 });
 
 describe("a record's text, when written", () => {
@@ -380,7 +381,9 @@ describe("a record's text, when written", () => {
     await expect(writeInkFile(image, past)).rejects.toThrow(
       new RecordError("record text is too long"),
     );
-  }, 60_000);
+    // A whole save of 16 MiB: 4.4 seconds alone, and up to 122.9 under load
+    // (#362). The limit is at least twice that.
+  }, 480_000);
 });
 
 describe("a symbol's image", () => {
@@ -451,7 +454,8 @@ describe("a PNG's chunks", () => {
       ]);
     expect(readChunks(file(65_536))).toHaveLength(65_536);
     expect(() => readChunks(file(65_537))).toThrow("more than 65536 chunks");
-  });
+    // Two files of 65,536 chunks: 1.1 seconds alone, 3.4 under load (#362).
+  }, 30_000);
 });
 
 describe("text about a symbol", () => {
