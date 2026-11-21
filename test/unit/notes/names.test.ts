@@ -6,6 +6,8 @@ import {
   chooseRename,
   embedFromLink,
   encodePath,
+  linkedNames,
+  linkFinds,
   nextNumberName,
   symbolStem,
 } from "../../../src/notes/names.ts";
@@ -29,6 +31,83 @@ describe("nextNumberName", () => {
   it("grows past three digits", () => {
     const taken = Array.from({ length: 999 }, (_, index) => String(index + 1));
     expect(nextNumberName(taken)).toBe("1000");
+  });
+});
+
+describe("linkFinds", () => {
+  const file = "Runes/002.ink.png";
+
+  it("finds a file by its name from any note, in any letter case", () => {
+    expect(linkFinds("002.ink.png", "Notes/a.md", file)).toBe(true);
+    expect(linkFinds("002.INK.PNG", "a.md", file)).toBe(true);
+    expect(linkFinds("002.ink.png", "a.md", "002.ink.png")).toBe(true);
+    expect(linkFinds("003.ink.png", "a.md", file)).toBe(false);
+    expect(linkFinds("02.ink.png", "a.md", file)).toBe(false);
+    // Obsidian looks for 002.ink.md there.
+    expect(linkFinds("002.ink", "a.md", file)).toBe(false);
+    expect(linkFinds("", "Runes/002.ink.png", file)).toBe(false);
+  });
+
+  it("finds a file by any end of its path, even within a folder's name", () => {
+    expect(linkFinds("Runes/002.ink.png", "Notes/a.md", file)).toBe(true);
+    expect(linkFinds("runes/002.ink.png", "a.md", file)).toBe(true);
+    expect(linkFinds("nes/002.ink.png", "a.md", file)).toBe(true);
+    expect(linkFinds("Runes/002.ink.png", "a.md", `Old/${file}`)).toBe(true);
+    expect(linkFinds("Old/002.ink.png", "a.md", file)).toBe(false);
+    expect(linkFinds("Old/Runes/002.ink.png", "a.md", file)).toBe(false);
+  });
+
+  it("reads a leading slash as the vault's top", () => {
+    expect(linkFinds("/Runes/002.ink.png", "Notes/a.md", file)).toBe(true);
+    expect(linkFinds("/Runes/002.ink.png", "a.md", `Old/${file}`)).toBe(false);
+    expect(linkFinds("/002.ink.png", "a.md", file)).toBe(false);
+    expect(linkFinds("/002.ink.png", "a.md", "002.ink.png")).toBe(true);
+  });
+
+  it("follows ./ and ../ from the note's folder", () => {
+    expect(linkFinds("./002.ink.png", "Runes/a.md", file)).toBe(true);
+    expect(linkFinds("./002.ink.png", "a.md", file)).toBe(true);
+    expect(linkFinds("./002.ink.png", "Notes/a.md", file)).toBe(false);
+    expect(linkFinds("./002.ink.png", "Notes/a.md", `Notes/${file}`)).toBe(
+      false,
+    );
+    // What is left is still an end of a path.
+    expect(
+      linkFinds("./002.ink.png", "Notes/a.md", "X/Notes/002.ink.png"),
+    ).toBe(true);
+    expect(linkFinds("../Runes/002.ink.png", "Notes/a.md", file)).toBe(true);
+    expect(linkFinds("./../Runes/002.ink.png", "Notes/a.md", file)).toBe(true);
+    expect(linkFinds("../Runes/002.ink.png", "Notes/Deep/a.md", file)).toBe(
+      false,
+    );
+    expect(linkFinds("../../Runes/002.ink.png", "Notes/Deep/a.md", file)).toBe(
+      true,
+    );
+    // Past the vault's top stays at the top.
+    expect(linkFinds("../../002.ink.png", "a.md", file)).toBe(true);
+  });
+
+  it("leaves an address of a file outside the vault", () => {
+    expect(linkFinds("file:///Runes/002.ink.png", "a.md", file)).toBe(false);
+  });
+});
+
+describe("linkedNames", () => {
+  it("lists the symbols a folder would have that unresolved links name", () => {
+    const unresolved = {
+      "Notes/a.md": { "002.ink.png": 1, "Missing.md": 2, "photo.png": 1 },
+      "Notes/b.md": { "Other/005.ink.png": 1, "../Runes/007.INK.PNG": 1 },
+      "c.md": { "Runes/tower.ink.png": 1 },
+    };
+    expect(linkedNames(unresolved, "Runes")).toEqual(["002", "007", "tower"]);
+    expect(linkedNames(unresolved, "Other")).toEqual(["002", "005"]);
+    expect(linkedNames(unresolved, "")).toEqual(["002"]);
+    expect(linkedNames({}, "Runes")).toEqual([]);
+  });
+
+  it("makes the next number pass over them", () => {
+    const taken = ["001", ...linkedNames({ "a.md": { "002.ink.png": 1 } }, "")];
+    expect(nextNumberName(taken)).toBe("003");
   });
 });
 
