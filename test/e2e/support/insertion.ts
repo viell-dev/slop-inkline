@@ -115,11 +115,14 @@ export async function rewrite(
  *
  * Obsidian saves its settings to `app.json` a second after a change. Half a
  * second after it hears of a write to that file, its own included, it reads
- * the file back, unless the file is older than its last finished save. So a
- * save that takes longer than that to finish, as on a loaded machine, is read
- * back, which takes back a change made since the save began. This waits until
- * the setting holds both in Obsidian and in the file, setting it again if it
- * was taken back, so that a test starts with the setting it asked for (#386).
+ * the file back, unless the file is older than the time it noted as its last
+ * save finished. A save that finishes more than that half second after the
+ * write, as on a loaded machine, is read back, and so is one whose file time,
+ * which Obsidian rounds to the millisecond, comes out later than the time it
+ * noted. Either takes back a change made since the save began. This waits
+ * until the setting holds both in Obsidian and in the file, setting it again
+ * if it was taken back, so that a test starts with the setting it asked for
+ * (#386).
  */
 export async function setLinkUpdates(always: boolean): Promise<void> {
   await browser.waitUntil(
