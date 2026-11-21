@@ -9,6 +9,19 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Fixed
+
+- In a PDF exported with Obsidian's **Export to PDF**, symbols in text colour no
+  longer show a faint one-pixel line along an edge of their box in some PDF
+  viewers, Obsidian's own PDF view among them, at some zoom levels. Each prints
+  from a copy of its own pixels in the colour its text prints in, the way a
+  symbol in stored colour prints, rather than through a mask, which the browser
+  Obsidian is built on writes into a PDF in a way those viewers draw with the
+  line. Symbols keep their size, baseline, and colour. Exporting waits for the
+  copies while they are being made; a symbol whose copy has got no further for
+  ten seconds, or cannot be made, prints as before
+  ([#255](https://github.com/viell-dev/slop-inkline/issues/255)).
+
 ## 1.0.2 - 2026-11-19
 
 A fix release for 1.0.1. The file format is unchanged: symbols open and look as

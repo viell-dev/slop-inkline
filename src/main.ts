@@ -28,6 +28,7 @@ import {
   type EditorHost,
 } from "./notes/symbols.ts";
 import { SymbolTextIndex } from "./notes/text-index.ts";
+import { fileAddress } from "./render/layout.ts";
 import { SymbolRenderer } from "./render/symbols.ts";
 import { brushSizes } from "./editor/session.ts";
 import { InklineSettingTab } from "./settings-tab.ts";
@@ -52,6 +53,7 @@ export default class InklinePlugin extends Plugin {
     (doc) => {
       this.#offerEditing(doc);
     },
+    (src) => this.#readSymbol(src),
   );
   /**
    * What stops Inkline answering right-clicks and double-clicks, in each
@@ -165,9 +167,14 @@ export default class InklinePlugin extends Plugin {
       }),
     );
     // Markdown also renders in temporary documents, such as the hidden
-    // PDF export window, which is not a workspace popout.
+    // PDF export window, which is not a workspace popout. Obsidian prints an
+    // export once what its post-processors return there has resolved: the
+    // promise of the symbols' print copies.
     this.registerMarkdownPostProcessor((element) => {
-      if (this.#loaded) this.#renderer.watch(element.doc);
+      if (!this.#loaded) return;
+      this.#renderer.watch(element.doc);
+      if (element.doc === mainDoc) return;
+      return this.#renderer.prepareForPrint(element);
     });
     this.#offerEditing(mainDoc);
     this.registerEvent(
@@ -312,6 +319,26 @@ export default class InklinePlugin extends Plugin {
       }),
     );
     this.#texts.start();
+  }
+
+  /**
+   * Reads the symbol file at `src`, the address an image shows it at, for its
+   * print copies. The image itself cannot give its pixels: a canvas it is
+   * drawn on is tainted in Obsidian 1.15.1, as the vault's addresses are of
+   * another origin than the export window's.
+   */
+  #readSymbol(src: string): Promise<Uint8Array> | undefined {
+    const { vault } = this.app;
+    const address = fileAddress(src);
+    const file = vault
+      .getFiles()
+      .find(
+        (candidate) =>
+          isInkPath(candidate.path) &&
+          fileAddress(vault.getResourcePath(candidate)) === address,
+      );
+    if (file === undefined) return undefined;
+    return vault.readBinary(file).then((bytes) => new Uint8Array(bytes));
   }
 
   /** Has open libraries show what the index has since read. */

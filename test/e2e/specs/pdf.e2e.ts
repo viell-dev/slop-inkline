@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { browser, expect } from "@wdio/globals";
 import { obsidianPage } from "wdio-obsidian-service";
+import { printWait } from "../../../src/render/print.ts";
 import { encodePng } from "../../support/png.ts";
 import { loadModules, toBase64 } from "../support/browser.ts";
 import { startOver } from "../support/editor.ts";
@@ -28,6 +29,22 @@ interface PrintImage {
   ownWindow: boolean;
 }
 
+/** A symbol's image in the print document as Obsidian asks for the PDF. */
+interface ImageAtPrint {
+  /** Its symbol's name, which the renderer gives it. */
+  name: string;
+  tagged: boolean;
+  /** Whether it shows its print copy, an image of its own address. */
+  copy: boolean;
+  blob: boolean;
+  complete: boolean;
+  /** The size of the picture it shows. */
+  width: number;
+  height: number;
+  /** Whether its mask paints it. */
+  masked: boolean;
+}
+
 interface PrintProbe {
   images: PrintImage[];
   scale: string;
@@ -35,7 +52,12 @@ interface PrintProbe {
   closed: boolean;
   cleanupChecked: boolean;
   cleaned: boolean;
+  /** Whether every image shows its own file again once the window closed. */
+  restored: boolean;
   viewerRequests: { filePath: string; requested: boolean }[];
+  atPrint: ImageAtPrint[];
+  /** Milliseconds from the export window's opening to the print request. */
+  waited: number;
   error?: string;
   restore(): void;
 }
@@ -43,6 +65,7 @@ interface PrintProbe {
 declare global {
   interface Window {
     inklinePrintProbe?: PrintProbe;
+    inklineReadsRestore?: () => void;
   }
 }
 
@@ -55,6 +78,55 @@ function block(): Uint8Array {
     }
   }
   return encodePng({ width: 64, height: 192, data });
+}
+
+/**
+ * A 192 × 192 symbol whose ink, an opaque grey square, is the middle third of
+ * it both ways: well inside its box, so that what shows along the box's edges
+ * is not its ink, and so that the box can be told from the ink alone.
+ */
+function dot(): Uint8Array {
+  const data = new Uint8Array(192 * 192 * 4);
+  for (let y = 64; y < 128; y++) {
+    for (let x = 64; x < 128; x++) {
+      data.set([126, 126, 126, 255], (y * 192 + x) * 4);
+    }
+  }
+  return encodePng({ width: 192, height: 192, data });
+}
+
+/**
+ * Holds back or fails Obsidian's reads of files, which are how Inkline reads
+ * a symbol to make its print copy, as `plan` says for a file's name, or for
+ * every symbol's with `*`: "fail" fails the read, and a number of
+ * milliseconds holds it back that long. {@link releaseReads} undoes it.
+ */
+async function holdReads(plan: Record<string, number | "fail">): Promise<void> {
+  await browser.executeObsidian(({ app }, chosen) => {
+    const { vault } = app;
+    const read = vault.readBinary.bind(vault);
+    window.inklineReadsRestore = () => {
+      vault.readBinary = read;
+    };
+    vault.readBinary = async (file) => {
+      const how =
+        chosen[file.name] ??
+        (file.name.endsWith(".ink.png") ? chosen["*"] : undefined);
+      if (how === "fail") throw new Error("a synthetic failure to read");
+      if (how !== undefined) {
+        await new Promise((resolve) => window.setTimeout(resolve, how));
+      }
+      return read(file);
+    };
+  }, plan);
+}
+
+/** Lets Obsidian read files as it did before {@link holdReads}. */
+async function releaseReads(): Promise<void> {
+  await browser.execute(() => {
+    window.inklineReadsRestore?.();
+    delete window.inklineReadsRestore;
+  });
 }
 
 /**
@@ -95,7 +167,10 @@ async function prepareExport(destination: string): Promise<void> {
       closed: false,
       cleanupChecked: false,
       cleaned: false,
+      restored: false,
       viewerRequests: [],
+      atPrint: [],
+      waited: -1,
       restore: () => {
         window.open = open;
         Object.defineProperty(dialog, "showSaveDialog", descriptor);
@@ -105,9 +180,30 @@ async function prepareExport(destination: string): Promise<void> {
     };
     window.inklinePrintProbe = probe;
     window.open = (...args) => {
+      const opened = performance.now();
       const child = open(...args);
       if (child === null) return child;
       const doc = child.document;
+      let printed: HTMLImageElement[] = [];
+      // What each image shows as Obsidian asks for the PDF, which it prints
+      // from the page as it is then.
+      const atPrint = () => {
+        probe.waited = performance.now() - opened;
+        printed = Array.from(doc.querySelectorAll(".print img")).filter(
+          (image): image is HTMLImageElement =>
+            image.instanceOf(HTMLImageElement),
+        );
+        probe.atPrint = printed.map((image) => ({
+          name: image.getAttribute("aria-label") ?? "",
+          tagged: image.classList.contains("inkline-symbol"),
+          copy: image.classList.contains("inkline-print-copy"),
+          blob: image.src.startsWith("blob:"),
+          complete: image.complete,
+          width: image.naturalWidth,
+          height: image.naturalHeight,
+          masked: child.getComputedStyle(image).maskImage !== "none",
+        }));
+      };
       // The core exporter installs this window's Electron bridge before its
       // first asynchronous rendering step. Intercept only the subsequent
       // print request's viewer flag; the main process writes the actual PDF.
@@ -143,6 +239,7 @@ async function prepareExport(destination: string): Promise<void> {
                   filePath,
                   requested: options.open,
                 });
+                atPrint();
                 args[0] = { ...options, open: false };
               }
               Reflect.apply(send, ipc, [channel, ...args]);
@@ -206,6 +303,11 @@ async function prepareExport(destination: string): Promise<void> {
               doc.documentElement.style.getPropertyValue("--inkline-scale") ===
                 "" &&
               !doc.documentElement.classList.contains("inkline-stored-color");
+            probe.restored = printed.every(
+              (image) =>
+                !image.classList.contains("inkline-print-copy") &&
+                !image.src.startsWith("blob:"),
+            );
             probe.cleanupChecked = true;
           }, 0);
         },
@@ -386,7 +488,8 @@ async function exportPdf(name: string, dpi = 96) {
           return false;
         }
       },
-      { timeoutMsg: "native PDF was not written" },
+      // Inkline's print copies can hold the print back by up to printWait.
+      { timeout: printWait + 20_000, timeoutMsg: "native PDF was not written" },
     );
     await browser.waitUntil(
       async () =>
@@ -415,7 +518,10 @@ async function exportPdf(name: string, dpi = 96) {
         scale: probe.scale,
         stored: probe.stored,
         cleaned: probe.cleaned,
+        restored: probe.restored,
         viewerRequests: probe.viewerRequests,
+        atPrint: probe.atPrint,
+        waited: probe.waited,
       };
     });
     await writeFile(`${prefix}.json`, JSON.stringify(snapshot, null, 2));
@@ -536,6 +642,277 @@ async function printedListLine(
   );
 }
 
+/** One `dot()` symbol as a rasterized PDF shows it. */
+interface PrintedDot {
+  /**
+   * Its ink's square, in the page's pixels, from the right of the line's
+   * first word and from the line's baseline, as two exports of a note can
+   * place a line differently: Obsidian 1.13.4 put a callout's title two
+   * pixels further right in one of them.
+   */
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  /** The colour at the ink's middle. */
+  colour: number[];
+  /**
+   * For each edge of its box, top, right, bottom, and left, the darkest line
+   * of pixels along it, within a pixel of it, away from the box's rounded
+   * corners: how far its pixels lie from the page's colour, on average along
+   * the line, in the channel furthest from it, 0 to 255. 0 is no line.
+   */
+  edges: number[];
+}
+
+/**
+ * The `dot()` symbols in a rasterized page, from left to right, on each line
+ * between two fixture words with no descending letters. Each one's box is its
+ * ink's square, which is the middle third of it, grown by its own size on
+ * every side. Rasterizers have drawn the faint lines of #255 along such boxes'
+ * edges, a pixel wide, as an artefact of how Chromium writes a CSS mask into
+ * a PDF.
+ */
+async function printedDots(
+  png: string,
+  lines: readonly { before: Box; after: Box }[],
+  dpi: number,
+): Promise<PrintedDot[][]> {
+  return browser.execute(
+    async (encoded, wanted, resolution) => {
+      const bytes = Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0));
+      const bitmap = await createImageBitmap(new Blob([bytes]));
+      const pixels = window.inklineTest.canvas.readPixels(bitmap);
+      bitmap.close();
+      const { inkBlock } = window.inklineTest;
+      const { width, height, data } = pixels;
+      const scale = resolution / 96;
+      /** How far a pixel lies from `ground`, in its furthest channel. */
+      const away = (
+        x: number,
+        y: number,
+        ground: readonly number[],
+      ): number => {
+        const at = (y * width + x) * 4;
+        return Math.max(
+          ...[0, 1, 2].map((channel) =>
+            Math.abs((data[at + channel] ?? 0) - (ground[channel] ?? 0)),
+          ),
+        );
+      };
+      /** The darkest line along an edge at `at`, from `from` to `to`. */
+      const darkest = (
+        across: boolean,
+        at: number,
+        from: number,
+        to: number,
+        ground: readonly number[],
+      ): number => {
+        let worst = 0;
+        for (
+          let line = Math.floor(at) - 1;
+          line <= Math.floor(at) + 1;
+          line++
+        ) {
+          let sum = 0;
+          let count = 0;
+          for (let along = Math.ceil(from); along < Math.floor(to); along++) {
+            const [x, y] = across ? [along, line] : [line, along];
+            if (x < 0 || y < 0 || x >= width || y >= height) continue;
+            sum += away(x, y, ground);
+            count++;
+          }
+          if (count > 0) worst = Math.max(worst, sum / count);
+        }
+        return worst;
+      };
+      return wanted.map(({ before, after }) => {
+        const between = {
+          left: Math.ceil(before.right) + 2,
+          right: Math.floor(after.left) - 2,
+        };
+        const ground = inkBlock.commonColour(pixels, {
+          ...between,
+          top: before.top,
+          bottom: before.bottom,
+        });
+        // The line's baseline, where the first word's letters end.
+        let baseline = -1;
+        for (
+          let y = Math.floor(before.top);
+          y < Math.ceil(before.bottom);
+          y++
+        ) {
+          for (
+            let x = Math.floor(before.left);
+            x < Math.ceil(before.right);
+            x++
+          ) {
+            if (away(x, y, ground) > 96) baseline = y + 1;
+          }
+        }
+        // A symbol's ink lies from 5/12 to 1/12 of its height above the
+        // baseline, and none here is over 53 CSS pixels tall.
+        const region = {
+          ...between,
+          top: Math.max(0, baseline - Math.ceil(28 * scale)),
+          bottom: Math.min(height, baseline + Math.ceil(2 * scale)),
+        };
+        const regionWidth = region.right - region.left;
+        const seen = new Uint8Array(
+          Math.max(0, regionWidth) * Math.max(0, region.bottom - region.top),
+        );
+        const dots: PrintedDot[] = [];
+        for (let y = region.top; y < region.bottom; y++) {
+          for (let x = region.left; x < region.right; x++) {
+            const index = (y - region.top) * regionWidth + (x - region.left);
+            if (seen[index] === 1 || away(x, y, ground) <= 64) continue;
+            // The pixels of ink connected to this one.
+            let [left, top, right, bottom, count] = [x, y, x, y, 0];
+            const stack = [[x, y]];
+            seen[index] = 1;
+            while (stack.length > 0) {
+              const [px = 0, py = 0] = stack.pop() ?? [];
+              count++;
+              left = Math.min(left, px);
+              right = Math.max(right, px);
+              top = Math.min(top, py);
+              bottom = Math.max(bottom, py);
+              for (const [nx, ny] of [
+                [px + 1, py],
+                [px - 1, py],
+                [px, py + 1],
+                [px, py - 1],
+              ] as const) {
+                if (
+                  nx < region.left ||
+                  nx >= region.right ||
+                  ny < region.top ||
+                  ny >= region.bottom
+                )
+                  continue;
+                const next =
+                  (ny - region.top) * regionWidth + (nx - region.left);
+                if (seen[next] === 1 || away(nx, ny, ground) <= 64) continue;
+                seen[next] = 1;
+                stack.push([nx, ny]);
+              }
+            }
+            const [w, h] = [right - left + 1, bottom - top + 1];
+            // A solid square, not a letter or a stop.
+            if (w < 5 * scale || h < 5 * scale || w / h > 1.25 || h / w > 1.25)
+              continue;
+            if (count / (w * h) < 0.7) continue;
+            const around = {
+              left: left - 2,
+              top: top - 2,
+              right: right + 3,
+              bottom: bottom + 3,
+            };
+            const ink = inkBlock.measureBlock(
+              pixels,
+              around,
+              ground,
+              inkBlock.furthestColour(pixels, around, ground),
+            );
+            if (ink === undefined) continue;
+            const box = {
+              left: ink.left - ink.width,
+              right: ink.right + ink.width,
+              top: ink.top - ink.height,
+              bottom: ink.bottom + ink.height,
+            };
+            // Clear of the rounded corners, 4 CSS pixels across.
+            const corner = 4 * scale + 1;
+            dots.push({
+              left: ink.left - before.right,
+              top: ink.top - baseline,
+              width: ink.width,
+              height: ink.height,
+              colour: [...ink.colour],
+              edges: [
+                darkest(
+                  true,
+                  box.top,
+                  box.left + corner,
+                  box.right - corner,
+                  ground,
+                ),
+                darkest(
+                  false,
+                  box.right,
+                  box.top + corner,
+                  box.bottom - corner,
+                  ground,
+                ),
+                darkest(
+                  true,
+                  box.bottom,
+                  box.left + corner,
+                  box.right - corner,
+                  ground,
+                ),
+                darkest(
+                  false,
+                  box.left,
+                  box.top + corner,
+                  box.bottom - corner,
+                  ground,
+                ),
+              ],
+            });
+          }
+        }
+        return dots.sort((a, b) => a.left - b.left);
+      });
+    },
+    png,
+    lines,
+    dpi,
+  );
+}
+
+/**
+ * How many soft masks a PDF's graphics states hold, by their dictionaries,
+ * which Chromium writes uncompressed: two for each symbol it draws through a
+ * CSS mask, the empty one of #255 and the symbol's own, and none for an image
+ * with its own alpha, which is drawn with its alpha in the image itself.
+ */
+async function softMasks(pdf: string): Promise<number> {
+  const text = (await readFile(pdf)).toString("latin1");
+  return text.match(/\/S \/(?:Luminosity|Alpha)\b/g)?.length ?? 0;
+}
+
+/** What an export's snapshot says of the images as the PDF was asked for. */
+interface Snapshot {
+  atPrint: ImageAtPrint[];
+  restored: boolean;
+}
+
+/**
+ * Checks that each of `count` symbols printed from its print copy, which
+ * had loaded, in the text colour, or from its own pixels in its stored colour,
+ * neither through its mask, each showing a picture `size` pixels in size, the
+ * file's own; and that each showed its own file again once the window closed.
+ */
+function expectPrintedFrom(
+  snapshot: Snapshot,
+  textColor: boolean,
+  count: number,
+  size: readonly [number, number],
+): void {
+  const symbols = snapshot.atPrint.filter((image) => image.tagged);
+  expect(symbols).toHaveLength(count);
+  for (const image of symbols) {
+    expect(image.copy).toBe(textColor);
+    expect(image.blob).toBe(textColor);
+    expect(image.complete).toBe(true);
+    expect([image.width, image.height]).toEqual(size);
+    expect(image.masked).toBe(false);
+  }
+  expect(snapshot.restored).toBe(true);
+}
+
 describe("Native PDF export", function () {
   for (const mode of [
     { name: "text-colour", scale: 100, textColor: true, theme: "obsidian" },
@@ -616,6 +993,10 @@ describe("Native PDF export", function () {
       expect(
         snapshot.viewerRequests.map((request) => request.filePath),
       ).toEqual([pdf]);
+      // In the text colour each symbol printed from its copy, loaded by the
+      // time Obsidian asked for the PDF, and in its stored colour from its
+      // own pixels, as before; neither through its mask.
+      expectPrintedFrom(snapshot, mode.textColor, 2, [64, 192]);
     });
   }
 
@@ -673,6 +1054,7 @@ describe("Native PDF export", function () {
       const [image] = snapshot.images;
       if (image === undefined) throw new Error("missing print image");
       expect(image.tagged).toBe(true);
+      expectPrintedFrom(snapshot, mode.textColor, 1, [wide.width, wide.height]);
       // Narrowed by a tenth or more, and the heading's line height still.
       const scale = mode.scale / 100;
       expect(image.width).toBeLessThan(0.9 * fullWidth(image.fontSize, scale));
@@ -756,6 +1138,7 @@ describe("Native PDF export", function () {
       const [image] = snapshot.images;
       if (image === undefined) throw new Error("missing print image");
       expect(image.tagged).toBe(true);
+      expectPrintedFrom(snapshot, mode.textColor, 1, [wide.width, wide.height]);
       expect(Number.parseFloat(image.ratio)).toBeCloseTo(
         wide.width / wide.height,
         9,
@@ -783,4 +1166,264 @@ describe("Native PDF export", function () {
       );
     });
   }
+  // #255. Chromium writes a CSS mask into a PDF as a fill drawn twice, the
+  // first time through a soft mask that adds nothing, and Poppler, like other
+  // renderers, can leave a faint line where the two meet a box's edge. So in
+  // the text colour each symbol prints from a copy of its pixels, in the
+  // colour its text prints in, as an image with its own alpha. The second
+  // export fails Inkline's reads of the symbols, which keeps every mask: it
+  // shows that the measure finds the lines the mask leaves, and gives the
+  // print colours and places that the copies must match.
+  it("prints text-colour symbols with no line along their boxes, in their text's print colours", async function () {
+    await startWith({
+      name: "lines",
+      scale: 100,
+      textColor: true,
+      theme: "obsidian",
+    });
+    const lines = [
+      ["# HeadBefore", ["![[dot.ink.png]]"], "HeadAfter"],
+      [
+        "PlainBefore",
+        [
+          "![[dot.ink.png]]",
+          "![[dot.ink.png|20]]",
+          "![[dot.ink.png|27]]",
+          "![[dot.ink.png|33]]",
+        ],
+        "PlainAfter",
+      ],
+      [
+        "SizedBefore",
+        ["![[dot.ink.png|40]]", "![[dot.ink.png|47]]", "![[dot.ink.png|53]]"],
+        "SizedAfter",
+      ],
+      [
+        "LinkBefore",
+        [
+          "[![[dot.ink.png]]](https://example.com)",
+          "[![[dot.ink.png|30]]](https://example.com)",
+        ],
+        "LinkAfter",
+      ],
+      [
+        "> [!warning] CallBefore",
+        ["![[dot.ink.png]]", "![[dot.ink.png|30]]"],
+        "CallAfter",
+      ],
+      [
+        "## SmallBefore",
+        ["![[dot.ink.png]]", "![[dot.ink.png|23]]"],
+        "SmallAfter",
+      ],
+    ] as const;
+    await browser.executeObsidian(
+      async ({ app }, encoded, text) => {
+        const bytes = Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0));
+        await app.vault.createBinary("dot.ink.png", bytes.buffer);
+        await app.vault.create("Lines.md", text);
+      },
+      toBase64(dot()),
+      lines
+        .map(([before, symbols, after]) =>
+          [before, ...symbols, after].join(" "),
+        )
+        .join("\n\n"),
+    );
+    await obsidianPage.openFile("Lines.md");
+    const dpi = 110;
+    const measure = async ({ xml, raster }: { xml: string; raster: string }) =>
+      printedDots(
+        raster,
+        lines.map(([before, , after]) => {
+          const scaled = (word: string): Box => {
+            const { left, top, right, bottom } = wordBox(
+              xml,
+              word.replace(/^.* /, ""),
+            );
+            const by = dpi / 96;
+            return {
+              left: left * by,
+              top: top * by,
+              right: right * by,
+              bottom: bottom * by,
+            };
+          };
+          return { before: scaled(before), after: scaled(after) };
+        }),
+        dpi,
+      );
+    const copied = await exportPdf("lines-copies", dpi);
+    await holdReads({ "*": "fail" });
+    let masked;
+    try {
+      masked = await exportPdf("lines-masks", dpi);
+    } finally {
+      await releaseReads();
+    }
+    const copies = await measure(copied);
+    const masks = await measure(masked);
+    console.log(`lines: ${JSON.stringify({ copies, masks })}`);
+    const counts = lines.map(([, symbols]) => symbols.length);
+    expect(copies.map((line) => line.length)).toEqual(counts);
+    expect(masks.map((line) => line.length)).toEqual(counts);
+    const total = counts.reduce((sum, count) => sum + count, 0);
+    expectPrintedFrom(copied.snapshot, true, total, [192, 192]);
+    for (const image of masked.snapshot.atPrint) {
+      expect(image.copy).toBe(false);
+      expect(image.blob).toBe(false);
+      expect(image.masked).toBe(true);
+    }
+    // Chromium drew each mask twice, and each copy as an image of its own.
+    expect(await softMasks(masked.pdf)).toBe(2 * total);
+    expect(await softMasks(copied.pdf)).toBe(0);
+    // A line is a pixel a side of 252 or darker on white, as #255 counted.
+    const lined = (dots: PrintedDot[][]) =>
+      dots.flat().flatMap((one) => one.edges.filter((edge) => edge >= 3));
+    expect(lined(masks).length).toBeGreaterThan(0);
+    expect(lined(copies)).toEqual([]);
+    // Where the mask put each symbol's ink, as large, and in its colour.
+    const [flatCopies, flatMasks] = [copies.flat(), masks.flat()];
+    flatCopies.forEach((one, index) => {
+      const mask = flatMasks[index];
+      if (mask === undefined) throw new Error("a symbol the mask lacks");
+      for (const key of ["left", "top", "width", "height"] as const) {
+        expect(Math.abs(one[key] - mask[key])).toBeLessThanOrEqual(0.5);
+      }
+      one.colour.forEach((channel, at) => {
+        expect(Math.abs(channel - (mask.colour[at] ?? -1))).toBeLessThanOrEqual(
+          3,
+        );
+      });
+    });
+    // Obsidian prints a note's text in its initial colour, black, where the
+    // screen shows the theme's, and links and callout titles in their own.
+    const [head, plain, sized, link, callout, small] = copies;
+    for (const one of [head, plain, sized, small].flat()) {
+      for (const channel of one?.colour ?? []) {
+        expect(channel).toBeLessThan(16);
+      }
+    }
+    for (const one of [link, callout].flat()) {
+      const colour = one?.colour ?? [];
+      expect(Math.max(...colour) - Math.min(...colour)).toBeGreaterThan(64);
+    }
+    const [linked] = link ?? [];
+    const [titled] = callout ?? [];
+    expect(
+      Math.max(
+        ...(linked?.colour ?? []).map((channel, at) =>
+          Math.abs(channel - (titled?.colour[at] ?? 0)),
+        ),
+      ),
+    ).toBeGreaterThan(64);
+  });
+
+  // Obsidian prints once the promises its post-processors return have
+  // resolved, and 200 ms more. Inkline's resolves once every symbol shows its
+  // copy or keeps its mask, or once no copy has got further for printWait: a
+  // symbol whose copy is that late, or cannot be made, prints from its mask,
+  // as before, never blank.
+  it("waits for many symbols' copies before Obsidian prints, and prints the rest from their masks", async function () {
+    await startWith({
+      name: "waits",
+      scale: 100,
+      textColor: true,
+      theme: "obsidian",
+    });
+    const row = [
+      "![[dot.ink.png]]",
+      "![[block.ink.png]]",
+      "[![[dot.ink.png|30]]](https://example.com)",
+      "**![[block.ink.png|20]]**",
+      "![[dot.ink.png|17]]",
+      "==![[block.ink.png]]==",
+    ].join(" ");
+    await browser.executeObsidian(
+      async ({ app }, dotPng, blockPng, widePicture, text) => {
+        const bytes = (encoded: string) =>
+          Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0)).buffer;
+        await app.vault.createBinary("dot.ink.png", bytes(dotPng));
+        await app.vault.createBinary("block.ink.png", bytes(blockPng));
+        await app.vault.createBinary("wide.ink.png", bytes(widePicture));
+        for (const name of ["slow", "late", "unread"]) {
+          await app.vault.createBinary(`${name}.ink.png`, bytes(dotPng));
+        }
+        // Not a PNG, as a file damaged elsewhere would be.
+        await app.vault.createBinary(
+          "broken.ink.png",
+          new TextEncoder().encode("not a picture").buffer,
+        );
+        await app.vault.create("Waits.md", text);
+      },
+      toBase64(dot()),
+      toBase64(block()),
+      toBase64(widePng()),
+      [
+        "SlowBefore ![[slow.ink.png]] SlowAfter.",
+        "LateBefore ![[late.ink.png]] LateAfter.",
+        "UnreadBefore ![[unread.ink.png]] UnreadAfter.",
+        "BrokenBefore ![[broken.ink.png]] BrokenAfter.",
+        "![[wide.ink.png]]",
+        "## ![[dot.ink.png]] ![[block.ink.png]]",
+        ...Array.from({ length: 20 }, () => row),
+      ].join("\n\n"),
+    );
+    await obsidianPage.openFile("Waits.md");
+    // Slow's read ends well after Obsidian's 200 ms, and late's long after
+    // every other copy is done; unread's fails.
+    const late = 6 * printWait;
+    await holdReads({
+      "slow.ink.png": 1500,
+      "late.ink.png": late,
+      "unread.ink.png": "fail",
+    });
+    let exported;
+    try {
+      exported = await exportPdf("waits");
+    } finally {
+      await releaseReads();
+    }
+    const { snapshot, xml, raster } = exported;
+    console.log(
+      `waits: ${String(snapshot.atPrint.length)} images, print asked for ${String(Math.round(snapshot.waited))} ms after the window opened`,
+    );
+    const symbols = snapshot.atPrint.filter((image) => image.tagged);
+    expect(symbols.length).toBeGreaterThanOrEqual(120);
+    const sizes: Partial<Record<string, readonly [number, number]>> = {
+      dot: [192, 192],
+      slow: [192, 192],
+      block: [64, 192],
+      wide: [wide.width, wide.height],
+    };
+    for (const image of symbols) {
+      const size = sizes[image.name];
+      if (size !== undefined) {
+        expect(image.copy).toBe(true);
+        expect(image.complete).toBe(true);
+        expect([image.width, image.height]).toEqual(size);
+        expect(image.masked).toBe(false);
+      } else {
+        expect(["late", "unread", "broken"]).toContain(image.name);
+        expect(image.copy).toBe(false);
+        expect(image.blob).toBe(false);
+        expect(image.masked).toBe(true);
+      }
+    }
+    // Obsidian waited for slow's copy, and not for late's.
+    expect(snapshot.waited).toBeGreaterThan(1500);
+    expect(snapshot.waited).toBeLessThan(late);
+    expect(snapshot.restored).toBe(true);
+    // Late and unread print from their masks, slow from its copy, all inked.
+    for (const name of ["Slow", "Late", "Unread"]) {
+      const { ink } = await printedBlock(
+        raster,
+        wordBox(xml, `${name}Before`),
+        wordBox(xml, `${name}After.`),
+        24,
+      );
+      expect(ink.count).toBeGreaterThan(10);
+      expect(ink.dark / ink.count).toBeGreaterThan(0.6);
+    }
+  });
 });

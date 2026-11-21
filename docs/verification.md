@@ -142,6 +142,24 @@ must keep released files readable and looking the same, as
   settings are cleared on close. The test redirects the save dialog and
   suppresses the post-export viewer launch; the native PDF writer still runs
   ([pdf.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/pdf.e2e.ts)).
+- **Unreleased:** symbols in the text colour print with no line along their
+  boxes ([#255](https://github.com/viell-dev/slop-inkline/issues/255)). Fourteen
+  symbols of a note, unsized and at eight sizes, in two headings, plain text,
+  links, and a callout's title, are measured in Poppler's raster of the PDF at
+  110 dots per inch, where the mask leaves lines: along every edge of every box,
+  no line of pixels lies 3 or more of 255 from the page's colour, and an export
+  that keeps the masks finds such lines. That export's PDF holds two soft masks
+  for each symbol, the copies' none. Each symbol's ink prints where the mask
+  printed it, within half a pixel, as large, and within 3 of 255 of its colour:
+  black for the note's text, as Obsidian prints it, where the screen shows the
+  theme's text colour, and the colours of links and of the callout's title. As
+  Obsidian asks for the PDF, every symbol shows its copy, loaded, at its file's
+  own size; once the window closes, each shows its own file again. With 127
+  symbols of seven files, a copy whose file takes 1.5 seconds to read still
+  prints, as Obsidian waits for it; one whose read takes a minute, which
+  Obsidian does not wait for, as Inkline stops waiting once no copy has got
+  further for ten seconds, one whose file cannot be read, and one that is not a
+  PNG print from their masks, the first two inked as before (the same file).
 - A symbol 4,000 pixels wide at the largest Symbol size, wider than its space,
   keeps the proportions it was drawn in, within 5%, its baseline on the text's,
   and its colour, in Reading view, Live Preview, table cells in both, an
@@ -811,7 +829,11 @@ the individual pull requests hold the inputs, results, and review discussion.
 - Physical printer output is not checked. Native PDF export is covered on Linux
   with default and explicitly sized embeds of one symbol, and one wider than the
   page; long notes containing many different symbols are not covered by that
-  fixture.
+  fixture. **Unreleased:** a note of 127 symbols of seven files is covered for
+  when Obsidian prints and what each symbol prints from, and three of them in
+  the printed page. Lines along symbols' boxes are measured in Poppler's raster
+  at 110 dots per inch only, in Obsidian's default theme; other viewers, and
+  themes with print styles of their own, are not checked.
 - CI's runners have the DejaVu fonts, and the Docker image DejaVu and Noto; a
   theme's own font is checked through the guides' measurement, not by eye.
 - The release workflow checks the install ZIP's exact layout and bytes, extracts
