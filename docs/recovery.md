@@ -171,6 +171,11 @@ back only if the draft kept its own, and the question says when it does not.
 Readings and translations saved in the old file, and not typed again, stay in
 it.
 
+Until you save the new symbol, its draft stays the old symbol's, as the one
+found was: if the editor ends without Save or Discard, as when Obsidian closes,
+the draft can be opened again the same way, or restored on the old symbol's
+file, with its base layer, should that file open again.
+
 The new symbol's first save makes a new file in the folder the old file was in,
 and inserts it into no note: a note that embeds the old file still does, and
 shows the new symbol if you save it with the old file's name where that file is
@@ -189,10 +194,12 @@ had typed, and its first save inserts it into no note either:
   beside it.
 - Otherwise it is saved where new symbols go: in the symbol folder that
   Inkline's [settings](./settings.md) name, or else where Obsidian puts a new
-  attachment for a note at the old note's path. With **Same folder as current
-  file** or **In subfolder under current folder** in **Settings → Files and
-  links**, Obsidian takes that from the note itself, so for a note that is gone
-  it uses the vault's top folder instead of the note's.
+  attachment for a note at the old note's path. Obsidian takes the place of an
+  attachment from the note itself, and for a note that is gone it answers as if
+  no note were open. With **Same folder as current file** in **Settings → Files
+  and links**, that is the vault's top folder instead of the note's folder, and
+  with **In subfolder under current folder**, it is that subfolder at the
+  vault's top, which Obsidian makes if it is not there.
 
 A draft not restored within 30 days is dropped. In Inkline 1.0.2, which offers
 none of this, get one back before then by hand:

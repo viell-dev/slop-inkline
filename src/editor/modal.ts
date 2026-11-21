@@ -313,6 +313,11 @@ export interface EditorOptions {
   readonly carried?: readonly CarriedChunk[];
   /** Whether its file held no strokes, so that its pixels opened instead. */
   readonly picture?: boolean;
+  /**
+   * What leaving a new symbol's name empty does, as its field's placeholder
+   * says after "leave it": "for the next number" unless given.
+   */
+  readonly unnamed?: string;
   /** What its file says about the symbol; a new one says nothing. */
   readonly text?: SymbolText;
   /** The document x to centre the surface on, in pixels. */
@@ -570,6 +575,12 @@ export class InkEditorModal extends Modal {
   #replacing: string | undefined;
   /** The draft this editor is offering back, held while it asks. */
   #offered: string | undefined;
+  /**
+   * The draft this editor opened as a new symbol, as `drafts.recover` gives
+   * it, once restored: its own draft stands in for it until a first save
+   * makes a file of its own, as {@link #draft} says.
+   */
+  #recovered: Draft | undefined;
   /** The picture to trace over, which this editor closes when done with it. */
   #picture: TracedPicture | undefined;
   /** Counts pictures asked for, so that only the latest is taken. */
@@ -1249,7 +1260,7 @@ export class InkEditorModal extends Modal {
         "aria-label": "Symbol name",
         placeholder:
           this.#savedName === ""
-            ? `${this.#options.title}: name it, or leave it for the next number`
+            ? `${this.#options.title}: name it, or leave it ${this.#options.unnamed ?? "for the next number"}`
             : this.#savedName,
         spellcheck: "false",
         autocomplete: "off",
@@ -2800,17 +2811,30 @@ export class InkEditorModal extends Modal {
    */
   #draft(target: DraftTarget, pending: boolean): Draft {
     const { document, saved } = this.#session;
+    // A draft opened as a new symbol is still for its old symbol until the
+    // first save makes a file of its own: this one takes its place there, and
+    // keeps naming a base layer it took from that symbol's file, with that
+    // file's fingerprints, so that restoring it on the file, should it open
+    // again, brings the base layer back, as the draft found would have.
+    const standIn =
+      this.#recovered !== undefined &&
+      !pending &&
+      this.#watch.fingerprint === undefined &&
+      sameTarget(target, this.#recovered.target)
+        ? this.#recovered
+        : undefined;
+    const fingerprint = this.#watch.fingerprint ?? standIn?.fingerprint;
+    const drawing = this.#watch.drawing ?? standIn?.drawing;
     return {
       id: this.#draftId,
       target,
       strokes: document.strokes,
-      base: draftBase(document, pending ? undefined : saved),
-      ...(this.#watch.fingerprint === undefined
-        ? {}
-        : { fingerprint: this.#watch.fingerprint }),
-      ...(this.#watch.drawing === undefined
-        ? {}
-        : { drawing: this.#watch.drawing }),
+      base:
+        standIn?.base.kind === "file" && document.base === undefined
+          ? standIn.base
+          : draftBase(document, pending ? undefined : saved),
+      ...(fingerprint === undefined ? {} : { fingerprint }),
+      ...(drawing === undefined ? {} : { drawing }),
       savedAt: Date.now(),
       gridOrigin: this.#session.gridOrigin,
       ...(this.#nameChanged ? { name: this.#typedName } : {}),
@@ -2935,7 +2959,8 @@ export class InkEditorModal extends Modal {
       }
       // Meanwhile the editor may have closed, saved a new symbol into its
       // own file, started a save, or asked before closing: then the draft
-      // waits for another time.
+      // waits for another time, which a draft opened as a new symbol says,
+      // as nothing else would show that it was not.
       if (
         this.#retired ||
         this.#closing ||
@@ -2944,6 +2969,13 @@ export class InkEditorModal extends Modal {
         !sameTarget(drafts.target(), found.target)
       ) {
         letGo();
+        if (recover !== undefined && !this.#retired) {
+          markNotice(
+            new Notice(
+              "The unsaved drawing was not opened, as the editor was in use while it was read. It is still kept: run Inkline: Recover drafts to open it.",
+            ),
+          );
+        }
         return;
       }
     }
@@ -2951,6 +2983,7 @@ export class InkEditorModal extends Modal {
       ? found
       : { ...found, base: { kind: "none" } };
     if (recover !== undefined) {
+      this.#recovered = found;
       this.#restore(drafts, draft);
       if (readable) {
         this.#announce("Opened the unsaved drawing as a new symbol");

@@ -57,6 +57,12 @@ opens offers its own drafts when you open it, one renamed while Inkline was off
 offers its draft once you rename it back, and a new symbol started in a note
 that is still there offers its draft when you start a new symbol in that note.
 
+**"The unsaved drawing was not opened, as the editor was in use while it was
+read. …"** **Unreleased:** a draft opened as a new symbol keeps a picture to
+draw over, which takes a moment to read, and the editor was saved, closed, or
+asked something meanwhile. The draft is still kept, as it was: run **Inkline:
+Recover drafts** to open it again.
+
 **"The unsaved drawing's base layer cannot be read, so only its strokes came
 back."** **Unreleased:** a draft opened as a new symbol kept a picture to draw
 over, which the vault's local storage no longer holds whole. The strokes are in

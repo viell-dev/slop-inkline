@@ -15,12 +15,13 @@ even one a public release; earlier pre-releases carry a suffix such as
   short by a crash while it was saved, or deleted or moved while Inkline was
   off, can be opened as a new symbol, which used to take a long way round
   through the guide. Opening such a symbol asks **Open the unsaved drawing as a
-  new symbol?**, and **Inkline: Recover drafts** lists every such draft, with a
-  picture of it, where it was kept for, and when. The new symbol starts with the
-  draft's strokes, name, readings and translations, and any picture to draw over
-  that the draft kept itself; its first save makes a new file in the old one's
-  folder, inserted into no note, and leaves a file that does not open as it is.
-  Drafts that a newer version of Inkline kept are left as they are
+  new symbol?**, and **Inkline: Recover drafts** lists such drafts, other than
+  one that a symbol's editor has open, with a picture of each, where it was kept
+  for, and when. The new symbol starts with the draft's strokes, name, readings
+  and translations, and any picture to draw over that the draft kept itself; its
+  first save makes a new file in the old one's folder, inserted into no note,
+  and leaves a file that does not open as it is. Drafts that a newer version of
+  Inkline kept are left as they are
   ([#298](https://github.com/viell-dev/slop-inkline/issues/298)).
 - **Inkline: Recover drafts** also lists a new symbol's draft whose note is
   gone, which only a new symbol started in that note offered. It opens as a new

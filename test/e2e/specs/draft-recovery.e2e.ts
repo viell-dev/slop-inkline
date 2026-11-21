@@ -2,9 +2,11 @@ import { browser, expect } from "@wdio/globals";
 import { obsidianPage } from "wdio-obsidian-service";
 import { loadModules } from "../support/browser.ts";
 import {
+  chooseSymbol,
   draftCount,
   editFile,
   inklineOn,
+  insert,
   nameField,
   strokeCount,
   waitClosed,
@@ -13,6 +15,7 @@ import {
 import {
   clickTop,
   createSymbol,
+  delayVault,
   draw,
   editorOpen,
   openAtMarker,
@@ -28,7 +31,11 @@ import {
 } from "../support/editor.ts";
 import { failInsertion, unlockNotes } from "../support/failed-insertion.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
-import { bytesOfFile, noteOnDisk } from "../support/vault-files.ts";
+import {
+  bytesOfFile,
+  createSquare,
+  noteOnDisk,
+} from "../support/vault-files.ts";
 
 /**
  * Drafts kept for a symbol whose file is gone or does not open, and for a new
@@ -420,5 +427,228 @@ describe("Draft recovery", function () {
     expect(await bytesOfFile("001.ink.png")).toEqual(changed);
     expect(await strokeCount("002.ink.png")).toBe(2);
     expect(await draftCount()).toBe(0);
+  });
+
+  /** Writes `bytes` over the file at `path`, as sync or a backup would. */
+  async function putBack(
+    path: string,
+    bytes: readonly number[],
+  ): Promise<void> {
+    await browser.executeObsidian(
+      async ({ app }, file, data) => {
+        const found = app.vault.getFileByPath(file);
+        if (found === null) throw new Error(`no ${file}`);
+        await app.vault.modifyBinary(found, Uint8Array.from(data).buffer);
+      },
+      path,
+      [...bytes],
+    );
+  }
+
+  it("keeps a draft it opens as a new symbol for its file, base layer and all, until the first save", async function () {
+    // A picture drawn over, whose draft relies on the file for its base
+    // layer, and the file cut short as by a crash.
+    await browser.executeObsidian(async ({ app }) => {
+      const { canvas } = window.inklineTest;
+      const data = new Uint8ClampedArray(24 * 24 * 4);
+      for (let index = 0; index < 24 * 24; index++) data[index * 4 + 3] = 255;
+      const bytes = await canvas.encodePixels({ width: 24, height: 24, data });
+      await app.vault.createFolder("Signs");
+      await app.vault.createBinary(
+        "Signs/square.ink.png",
+        bytes.slice().buffer,
+      );
+    });
+    const whole = await bytesOfFile("Signs/square.ink.png");
+    await draftThenStop("Signs/square.ink.png");
+    await putBack(
+      "Signs/square.ink.png",
+      whole.slice(0, Math.floor(whole.length / 2)),
+    );
+    await restart();
+    await tryToEdit("Signs/square.ink.png");
+    await clickTop("Open as new symbol");
+    await waitForEditor();
+    // The editor's own draft takes the old one's place, as that draft was.
+    await browser.waitUntil(async () => {
+      const drafts = await storedDrafts();
+      return drafts.length === 1 && drafts[0]?.base === "file";
+    });
+    expect((await storedDrafts())[0]?.target).toEqual({
+      kind: "file",
+      path: "Signs/square.ink.png",
+    });
+    // Ended without Save or Discard, as when Inkline is turned off, and the
+    // file whole again, as from a backup: the draft restores on it as the
+    // one found would have, base layer and all.
+    await obsidianPage.disablePlugin("inkline");
+    await putBack("Signs/square.ink.png", whole);
+    await restart();
+    await editFile("Signs/square.ink.png");
+    await browser.waitUntil(
+      async () => (await topButton("Restore")) !== undefined,
+      { timeoutMsg: "the draft was not offered" },
+    );
+    expect(await questionText()).not.toContain("saved again since then");
+    await clickTop("Restore");
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    const record = JSON.parse(await recordOf("Signs/square.ink.png")) as {
+      strokes: unknown[];
+      base?: unknown;
+    };
+    expect(record.strokes).toHaveLength(1);
+    expect(record.base).toBeDefined();
+    expect(await draftCount()).toBe(0);
+  });
+
+  /**
+   * Leaves a new symbol's draft that keeps its own base layer, a copy of
+   * square.ink.png's picture, and a stroke, with its note, Editor.md,
+   * deleted, and Inkline off. Copy from is a new symbol's.
+   */
+  async function keptBaseThenDelete(): Promise<void> {
+    await createSquare();
+    await insert();
+    await browser.keys(["v"]);
+    await chooseSymbol("square");
+    await waitForStatus("Started from a copy of square");
+    await draw(zigzag);
+    await browser.waitUntil(
+      async () => {
+        const [draft] = await storedDrafts();
+        return draft?.base === "kept" && draft.strokes.length === 1;
+      },
+      { timeoutMsg: "the draft never kept its base layer" },
+    );
+    await obsidianPage.disablePlugin("inkline");
+    await trash("Editor.md");
+  }
+
+  it("brings back a base layer the draft kept itself", async function () {
+    await keptBaseThenDelete();
+    await restart();
+    await browser.executeObsidianCommand("inkline:recover-drafts");
+    const rows = await listedRows();
+    expect(rows[0]?.picture).toBeGreaterThan(0);
+    const question = await openListed();
+    expect(question).not.toContain("base layer");
+    await waitForStatus("Opened the unsaved drawing as a new symbol");
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    expect(await symbolFiles()).toEqual(["001.ink.png", "square.ink.png"]);
+    const record = JSON.parse(await recordOf("001.ink.png")) as {
+      strokes: unknown[];
+      base?: unknown;
+    };
+    expect(record.strokes).toHaveLength(1);
+    expect(record.base).toBeDefined();
+    expect(await draftCount()).toBe(0);
+  });
+
+  it("says when a base layer the draft kept cannot be read, and brings back its strokes", async function () {
+    await keptBaseThenDelete();
+    // Its PNG in storage keeps its chunks, and so passes every check of
+    // their form, but holds image data that cannot be inflated.
+    await browser.executeObsidian(({ app }) => {
+      const { png, record } = window.inklineTest;
+      const keys: unknown = app.loadLocalStorage("inkline-draft-bases");
+      if (!Array.isArray(keys) || keys.length !== 1) throw new Error("bases");
+      const key = `inkline-draft-base:${String(keys[0])}`;
+      const stored: unknown = app.loadLocalStorage(key);
+      if (typeof stored !== "string") throw new Error("no base layer");
+      const bytes = Uint8Array.from(atob(stored), (char) => char.charCodeAt(0));
+      const chunks = png.readChunks(bytes).map((chunk) =>
+        chunk.type === "IDAT"
+          ? {
+              type: chunk.type,
+              data: new Uint8Array(chunk.data.length).fill(255),
+            }
+          : { type: chunk.type, data: chunk.data },
+      );
+      app.saveLocalStorage(key, record.toBase64(png.writeChunks(chunks)));
+    });
+    await restart();
+    await browser.executeObsidianCommand("inkline:recover-drafts");
+    const rows = await listedRows();
+    // Nothing to draw it with, so no picture.
+    expect(rows[0]?.picture).toBe(0);
+    await openListed();
+    await waitForNotice(
+      "The unsaved drawing's base layer cannot be read, so only its strokes came back.",
+    );
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    const record = JSON.parse(await recordOf("001.ink.png")) as {
+      strokes: unknown[];
+      base?: unknown;
+    };
+    expect(record.strokes).toHaveLength(1);
+    expect(record.base).toBeUndefined();
+  });
+
+  it("closes the list and the question as it unloads, and does nothing from them after", async function () {
+    await createSymbol("gate.ink.png");
+    await draftThenStop("gate.ink.png");
+    await trash("gate.ink.png");
+    await restart();
+    await browser.executeObsidianCommand("inkline:recover-drafts");
+    await listedRows();
+    await obsidianPage.disablePlugin("inkline");
+    await browser.$(".prompt").waitForExist({ reverse: true });
+    await restart();
+    await browser.executeObsidianCommand("inkline:recover-drafts");
+    await listedRows();
+    await browser.keys(["Enter"]);
+    await browser.waitUntil(
+      async () => (await topButton("Open as new symbol")) !== undefined,
+    );
+    // The button, kept to be clicked once the question has gone.
+    await browser.execute(() => {
+      const button = [...document.querySelectorAll("button")].find(
+        (each) => each.textContent === "Open as new symbol",
+      );
+      Reflect.set(window, "inklineAnswer", button);
+    });
+    await obsidianPage.disablePlugin("inkline");
+    await browser.waitUntil(
+      async () => (await topButton("Open as new symbol")) === undefined,
+      { timeoutMsg: "the question stayed open" },
+    );
+    await browser.execute(() => {
+      const button: unknown = Reflect.get(window, "inklineAnswer");
+      if (!(button instanceof HTMLButtonElement)) throw new Error("no button");
+      button.click();
+    });
+    await browser.pause(300);
+    expect(await editorOpen()).toBe(false);
+    expect(await draftCount()).toBe(1);
+    // Kept, and no longer held: listed again once Inkline is back.
+    await restart();
+    await browser.executeObsidianCommand("inkline:recover-drafts");
+    expect(await listedRows()).toHaveLength(1);
+    await browser.keys(["Escape"]);
+  });
+
+  it("says in a notice, rather than asking, when another window opened while the symbol was read", async function () {
+    await createSymbol("gate.ink.png");
+    await draftThenStop("gate.ink.png");
+    await putBack("gate.ink.png", new Array<number>(8).fill(0));
+    await restart();
+    await delayVault("readBinary", 1000);
+    await browser.executeObsidian(({ app, plugins }) => {
+      const file = app.vault.getFileByPath("gate.ink.png");
+      if (file === null) throw new Error("no gate.ink.png");
+      void plugins.inkline.editSymbol(file);
+    });
+    await browser.executeObsidianCommand("command-palette:open");
+    await browser.$(".prompt-input").waitForDisplayed();
+    await waitForNotice(
+      "Unsaved changes to it are kept as a draft. To get them back, run Inkline: Recover drafts from the command palette.",
+    );
+    expect(await topButton("Open as new symbol")).toBeUndefined();
+    await browser.keys(["Escape"]);
+    expect(await editorOpen()).toBe(false);
+    expect(await draftCount()).toBe(1);
   });
 });

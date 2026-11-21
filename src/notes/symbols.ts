@@ -21,6 +21,7 @@ import { readChunks } from "../format/png.ts";
 import { toBase64 } from "../format/record.ts";
 import { readFileText, readText, type SymbolText } from "../format/text.ts";
 import {
+  decodePng,
   drawableBase,
   openInk,
   openPicture,
@@ -2164,9 +2165,13 @@ function askRecovery(host: EditorHost, orphan: Orphan): void {
   question.open();
 }
 
-/** A claim as a draft's target names it, without the vault's file. */
+/**
+ * A claim as a draft's target names it: at the path of its file, once found,
+ * which follows renames, and without that file.
+ */
 function claimed(claim: Claim): CreatedFile {
-  const { path, fingerprint, previous } = claim;
+  const { fingerprint, previous } = claim;
+  const path = claim.file?.path ?? claim.path;
   return previous === undefined
     ? { path, fingerprint }
     : { path, fingerprint, previous };
@@ -2192,18 +2197,25 @@ function claimed(claim: Claim): CreatedFile {
  *   would go, as {@link newSymbolPath} finds it for the note's old path.
  *
  * Until then the editor's draft is for the symbol the old draft was kept for,
- * so that a crash leaves it where it was found. The first save's draft names
- * the file it is making before it writes, as a new symbol's does, so that a
- * save cut short leaves a draft for that file, which offers it when it opens,
- * or lists it when it does not; a retry writes over that file if it holds
- * what this wrote, rather than make another.
+ * so that a crash leaves it where it was found, and the editor keeps it in
+ * that draft's place. The first save's draft names the file it is making
+ * before it writes, as a new symbol's does, so that a save cut short leaves a
+ * draft for that file, which offers it when it opens, or lists it when it does
+ * not; a retry writes over that file if it holds what this wrote, rather than
+ * make another.
+ *
+ * The first save's file of a new symbol's draft is claimed only once the
+ * draft is restored, as a new symbol's `restored` does, so that an editor
+ * left without it, as when it was saved while the draft's base layer was
+ * read, writes over nothing.
  */
 function recoverDraft(host: EditorHost, orphan: Orphan): void {
   const { app } = host;
   const { draft, path } = orphan;
   const { target } = draft;
-  /** A file the first save of a new symbol's draft made, or began to. */
-  let claim: Claim | undefined = createdFile(orphan);
+  const created = createdFile(orphan);
+  /** The file the first save of a new symbol's draft made, once restored. */
+  let claim: Claim | undefined;
   /**
    * The folder a first save that makes a file uses, or undefined for a new
    * symbol's draft never saved, which goes where a new symbol of its note
@@ -2212,17 +2224,23 @@ function recoverDraft(host: EditorHost, orphan: Orphan): void {
   const folder =
     target.kind === "file"
       ? folderOf(path)
-      : claim === undefined
+      : created === undefined
         ? undefined
-        : folderOf(claim.path);
+        : folderOf(created.path);
   const name = recoveredName(
     orphan,
     (stem) => folder !== undefined && nameTaken(app, folder, stem),
   );
   /** The new symbol's file once made, or taken over. */
   let made: TFile | undefined;
+  const keeps =
+    created === undefined
+      ? undefined
+      : symbolStem(created.path.slice(created.path.lastIndexOf("/") + 1));
   new InkEditorModal(app, {
     title: "New symbol",
+    // A field left empty keeps the name of the file it writes over.
+    ...(keeps === undefined ? {} : { unnamed: `to keep the name ${keeps}` }),
     document: emptyDocument,
     center: visibleWidth / 2,
     tools: startingTools(host.settings()),
@@ -2242,6 +2260,12 @@ function recoverDraft(host: EditorHost, orphan: Orphan): void {
           : { kind: "new", note: target.note, file: claimed(claim) };
       },
       recover: name === undefined ? draft : { ...draft, name },
+      // As a new symbol's: the file found by its path follows renames.
+      restored: () => {
+        if (created === undefined) return;
+        const found = app.vault.getFileByPath(created.path);
+        claim = found === null ? created : { ...created, file: found };
+      },
     },
     lifecycle: host.lifecycle,
     file: () => made && symbolFile(app, made.path),
@@ -2304,9 +2328,17 @@ async function unopenedAt(
 }
 
 /**
- * A picture of what opening `draft` as a new symbol brings back, drawn as its
- * first save would draw it, as a data URL; undefined for a draft with nothing
- * to draw, or one that cannot be drawn.
+ * The most pixels a picture in the list of drafts has across and down: a few
+ * times the 3em by 1.5em its row shows it in, at any screen's density, so that
+ * each one stays a few kilobytes, however large the drawing or its base layer.
+ */
+const previewSize = { width: 256, height: 64 };
+
+/**
+ * A small picture of what opening `draft` as a new symbol brings back, drawn
+ * as its first save would draw it, then shrunk to {@link previewSize}, as a
+ * data URL; undefined for a draft with nothing to draw, or one that cannot be
+ * drawn.
  */
 async function previewOf(draft: Draft): Promise<string | undefined> {
   const layer = draft.base.kind === "kept" ? draft.base.layer : undefined;
@@ -2318,7 +2350,26 @@ async function previewOf(draft: Draft): Promise<string | undefined> {
         : { strokes: draft.strokes, base: layer },
       layer === undefined ? undefined : await drawableBase(layer),
     );
-    return `data:image/png;base64,${toBase64(bytes)}`;
+    const image = await decodePng(bytes);
+    try {
+      const scale = Math.min(
+        1,
+        previewSize.width / image.width,
+        previewSize.height / image.height,
+      );
+      const canvas = new OffscreenCanvas(
+        Math.max(1, Math.round(image.width * scale)),
+        Math.max(1, Math.round(image.height * scale)),
+      );
+      const context = canvas.getContext("2d");
+      if (context === null) return undefined;
+      context.imageSmoothingQuality = "high";
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      const picture = await canvas.convertToBlob({ type: "image/png" });
+      return `data:image/png;base64,${toBase64(new Uint8Array(await picture.arrayBuffer()))}`;
+    } finally {
+      image.close();
+    }
   } catch {
     return undefined;
   }
@@ -2414,9 +2465,10 @@ class DraftList extends SuggestModal<DraftRow> {
  * Lists the drafts that no editor can offer, newest first: a symbol's draft
  * whose file is gone or does not open, and a new symbol's draft whose note is
  * gone. Asks about the one chosen, as {@link askRecovery} does; a notice says
- * when there is none. Reading the
- * drafts drops expired ones, as any list of them does, and leaves the drafts
- * of later layouts as they are.
+ * when there is none. Reading the drafts drops expired ones, as any list of
+ * them does, and leaves the drafts of later layouts as they are. Each file a
+ * draft is for is read in full, as opening it would, to tell whether it
+ * opens, and each picture drawn, before the list shows.
  */
 export async function recoverDrafts(host: EditorHost): Promise<void> {
   const { app, drafts, unloaded } = host;
