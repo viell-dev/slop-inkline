@@ -101,8 +101,8 @@ jobs:
           E2E_SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
       # Only after the tests passed: that this execution wrote its own record,
       # for exactly this shard's spec files, each passed on every version. A
-      # re-run that tested nothing then fails here, rather than leaving an
-      # earlier attempt's artifact as the newest of its name for e2e to read.
+      # re-run that tested nothing then fails here, rather than leaving e2e an
+      # earlier attempt's record as this shard's latest.
       - name: Check that this shard ran and passed its spec files
         env:
           E2E_SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
@@ -110,8 +110,12 @@ jobs:
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          # Artifact names must be unique within a run.
-          name: e2e-results-${{ matrix.shard }}
+          # A re-run of a shard uploads beside its earlier attempts' artifacts,
+          # which stay in the run, and the download below would put artifacts
+          # of one name in one directory, where either attempt's record could
+          # win. With the attempt in the name, each lands in a directory of its
+          # own, and the check reads each shard's latest.
+          name: e2e-results-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
           path: test-results/e2e
           # A shard that failed before its output existed fails here too; the
           # job has failed either way.
@@ -149,7 +153,11 @@ jobs:
         with:
           pattern: e2e-results-*
           path: e2e-shards
-      # Node.js's own modules only, so no npm ci.
+          # Each artifact in a directory named after it, as the check reads
+          # the attempt from that name.
+          merge-multiple: false
+      # Node.js's own modules only, so no npm ci. Of a shard that ran more
+      # than once, it reads only the latest attempt's record.
       - name: Check that the shards ran every spec file
         run: node test/e2e/shards.ts check e2e-shards
 
