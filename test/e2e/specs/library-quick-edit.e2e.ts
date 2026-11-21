@@ -9,9 +9,11 @@ import { browser, expect } from "@wdio/globals";
 import { stalledAfter } from "../../../src/notes/file-writes.ts";
 import { loadModules } from "../support/browser.ts";
 import {
+  countNoteReads,
   createSymbol,
   hold,
   letGo,
+  noteReads,
   renamePastHold,
   startOver,
   symbolFiles,
@@ -319,6 +321,19 @@ async function renameElsewhere(from: string, to: string): Promise<void> {
     from,
     to,
   );
+}
+
+/** Why the row cannot read a file cut short. */
+const notWhole = "This file is not a whole PNG, so it cannot hold text.";
+
+/** Cuts `file` short, as a failed copy would, so that it is no whole PNG. */
+async function cutShort(file: string): Promise<void> {
+  await browser.executeObsidian(async ({ app }, wanted) => {
+    const found = app.vault.getFileByPath(wanted);
+    if (found === null) throw new Error(`no ${wanted}`);
+    const bytes = new Uint8Array(await app.vault.readBinary(found));
+    await app.vault.modifyBinary(found, bytes.slice(0, -20).buffer);
+  }, file);
 }
 
 /** Opens `note` in a tab, which a rename saves and so reads first. */
@@ -1075,6 +1090,28 @@ describe("Quick edit in the library", function () {
     expect((await fieldsOf("arch.ink.png")).reading).toEqual(["KA"]);
   });
 
+  it("refuses that rename before it reads the open notes", async function () {
+    // #279: the refusal waited for the notes to be read and saved first.
+    await symbolWith("gate.ink.png", { reading: ["TA"] });
+    await noteUsing("Uses.md", "gate.ink.png");
+    await openNote("Uses.md");
+    await showLibrary();
+    await quickEdit("gate.ink.png");
+    await formNameField().setValue("arch");
+    await area("reading").setValue("KA");
+    await hold("write");
+    await formButton("Save").click();
+    await waitForHeld();
+    await renameElsewhere("gate.ink.png", "synced.ink.png");
+    await countNoteReads("Uses.md");
+    await letGo();
+    await browser.waitUntil(async () =>
+      (await formError().getText()).includes("renamed to synced.ink.png"),
+    );
+    expect(await noteReads()).toBe(0);
+    expect(await symbolFiles()).toEqual(["synced.ink.png"]);
+  });
+
   it("says the readings are saved when the rename after them is left with the row's Quick edit", async function () {
     await symbolWith("gate.ink.png", { reading: ["TA"] });
     await noteUsing("Uses.md", "gate.ink.png");
@@ -1263,6 +1300,45 @@ describe("Quick edit in the library", function () {
     expect(await formError().getText()).toContain("already has a symbol named");
   });
 
+  // #279: the two shared one line, so that one hid the other.
+  it("says why the fields closed under a refused name's reason", async function () {
+    await symbolWith("gate.ink.png", { reading: ["TA"] });
+    await createSymbol("tower.ink.png");
+    await showLibrary();
+    await quickEdit("gate.ink.png");
+    await formNameField().setValue("TOWER");
+    await browser.keys(["Enter"]);
+    await browser.waitUntil(async () =>
+      (await formError().getText()).includes("already has a symbol named"),
+    );
+    await cutShort("gate.ink.png");
+    await browser.waitUntil(
+      async () => (await area("reading").getProperty("readOnly")) === true,
+    );
+    const lines = await errorLines();
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toBe(notWhole);
+    expect(lines[1]).toContain("already has a symbol named TOWER");
+  });
+
+  it("keeps saying a file is not a whole PNG once a name is refused", async function () {
+    await createSymbol("gate.ink.png");
+    await createSymbol("tower.ink.png");
+    await cutShort("gate.ink.png");
+    await showLibrary();
+    await quickEdit("gate.ink.png");
+    expect(await errorLines()).toEqual([notWhole]);
+    await formNameField().setValue("TOWER");
+    await browser.keys(["Enter"]);
+    await browser.waitUntil(async () =>
+      (await formError().getText()).includes("already has a symbol named"),
+    );
+    const lines = await errorLines();
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toBe(notWhole);
+    expect(lines[1]).toContain("already has a symbol named TOWER");
+  });
+
   it("takes in a file deleted during the save once the row is given back", async function () {
     await symbolWith("gate.ink.png", { reading: ["TA"] });
     await showLibrary();
@@ -1286,6 +1362,80 @@ describe("Quick edit in the library", function () {
     expect(await errorLines()).not.toEqual([]);
     expect(await area("reading").getValue()).toBe("KA");
     expect(await symbolFiles()).toEqual([]);
+  });
+
+  it("sets aside a read begun before a save that a change on disk refused", async function () {
+    // #279: the read came back after the save, with what the file said before
+    // the change the save found.
+    await symbolWith("gate.ink.png", { reading: ["TA"] });
+    await showLibrary();
+    await quickEdit("gate.ink.png");
+    await area("reading").setValue("KA");
+    await browser.executeObsidian(async ({ app }) => {
+      const file = app.vault.getFileByPath("gate.ink.png");
+      if (file === null) throw new Error("no gate");
+      const { text } = window.inklineTest;
+      const bytes = new Uint8Array(await app.vault.readBinary(file));
+      const door = await text.writeText(bytes, "translation", ["door"]);
+      const theirs = await text.writeText(door, "reading", ["THEIRS"]);
+      // Each read of the file from now on reads it when asked, and gives its
+      // answer only once let go, as a disk slow to hand back what it read.
+      const read = app.vault.readBinary.bind(app.vault);
+      let go = (): void => undefined;
+      const gate = new Promise<void>((resolve) => {
+        go = resolve;
+      });
+      let holding = true;
+      const held: Promise<ArrayBuffer>[] = [];
+      app.vault.readBinary = (asked) => {
+        const reading = read(asked);
+        if (!holding || asked !== file) return reading;
+        const answer = (async () => {
+          const answered = await reading;
+          await gate;
+          return answered;
+        })();
+        held.push(answer);
+        return answer;
+      };
+      Reflect.set(window, "inklineAtEnd-slow-reads", go);
+      // A change to another field, which the row reads the file for.
+      await app.vault.modifyBinary(file, door.slice().buffer);
+      if (held.length === 0) throw new Error("the row did not read the file");
+      holding = false;
+      Reflect.set(window, "inklineLetReadsGo", async () => {
+        Reflect.deleteProperty(window, "inklineLetReadsGo");
+        Reflect.deleteProperty(app.vault, "readBinary");
+        go();
+        await Promise.allSettled(held);
+      });
+      // Then one that reaches the disk as Save is pressed: the save finds it,
+      // and the row, saving, reads nothing for it.
+      void app.vault.modifyBinary(file, theirs.slice().buffer);
+      activeDocument
+        .querySelector<HTMLFormElement>(".inkline-library-edit-form")
+        ?.requestSubmit();
+    });
+    const note = form().$(".inkline-text-note");
+    await browser.waitUntil(async () =>
+      (await note.getText()).includes("THEIRS"),
+    );
+    await browser.execute(async () => {
+      const letGo: unknown = Reflect.get(window, "inklineLetReadsGo");
+      if (typeof letGo === "function")
+        await Reflect.apply(letGo, undefined, []);
+    });
+    // Long enough for the late read to be taken, if it was going to be.
+    await browser.pause(500);
+    expect(await note.getText()).toContain("THEIRS");
+    expect(await note.getText()).not.toMatch(/TA/);
+    // So the next Save replaces what the file says, as the note said it would.
+    await formButton("Save").click();
+    await waitForClosed();
+    expect(await fieldsOf("gate.ink.png")).toEqual({
+      reading: ["KA"],
+      translation: ["door"],
+    });
   });
 
   it("keeps a name typed through a rename made elsewhere, and renames from there", async function () {

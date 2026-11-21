@@ -9,6 +9,25 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Fixed
+
+- A rename of a symbol that was renamed elsewhere, deleted and replaced, or
+  whose new name another symbol took, while Quick edit wrote its readings and
+  translations or the editor its drawing, is refused at once. It used to read,
+  and save, every open note first, and so waited on a slow disk for a refusal
+  that was coming anyway
+  ([#279](https://github.com/viell-dev/slop-inkline/issues/279)).
+- Quick edit says why the readings and translations cannot be typed in, as for a
+  file that is not a whole PNG, together with a refused name's reason. One used
+  to hide the other: the fields closed with no reason given, or the file's
+  reason went for good
+  ([#279](https://github.com/viell-dev/slop-inkline/issues/279)).
+- Quick edit no longer goes back to what the file said earlier after a save that
+  found the file changed, when a read of the file from before the save came back
+  late. The fields said that saving would replace the earlier text, and the next
+  **Save** was refused again
+  ([#279](https://github.com/viell-dev/slop-inkline/issues/279)).
+
 ## 1.0.2 - 2026-11-19
 
 A fix release for 1.0.1. The file format is unchanged: symbols open and look as

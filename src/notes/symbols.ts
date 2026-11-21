@@ -828,7 +828,9 @@ function watchMove(app: App, renaming: Renaming): Move {
  * Obsidian's move. The file moved is then the one checked, from the path it was
  * checked at, to a name no other file has, with every open note saved. A note
  * typed in meanwhile is saved again, up to {@link notePasses} times. Any other
- * change throws, having renamed nothing, with the reason.
+ * change throws, having renamed nothing, with the reason. One that came before
+ * this was called, as while the caller wrote the symbol, throws before any of
+ * the waiting, which would end in the same refusal.
  *
  * What can still come between, a change Obsidian had begun to write before the
  * move, one made outside Obsidian at that moment, or, where Obsidian's waits
@@ -869,6 +871,7 @@ async function renameSaved(
   ];
   const work = async (): Promise<void> => {
     notBeingRenamed(file);
+    confirmRenaming(app, renaming);
     const waits = moveWaits(app);
     let saved = false;
     for (let pass = 0; pass < notePasses && !saved; pass++) {

@@ -391,6 +391,8 @@ elsewhere stays until then, with the links that rename left. A change at the
 very moment Obsidian moves the file, such as one by another app, is reported in
 a notice that says what happened and where the symbol is, as
 [the limits](./limits.md#a-file-changed-as-obsidian-renames-it) describe.
+**Unreleased:** a symbol that has changed in one of those ways by the time its
+drawing is saved is refused then, before any note is saved.
 
 ## Readings and translations
 
