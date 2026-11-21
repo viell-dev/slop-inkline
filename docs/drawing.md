@@ -235,6 +235,11 @@ changes only the view: the symbol is the same size in notes, and the brushes
 stay the same size against it. **Unreleased:** pressed while you draw a stroke,
 a shape, or a polygon's corner, Zoom waits until you let go, so that what you
 draw ends where it shows; pressed twice meanwhile, it leaves the view as it is.
+Fit pressed while you draw waits the same way. Moving along with the wheel or
+the arrow keys while you draw takes what you draw with it, on to where the
+pointer is in the drawing as the view moves, so a long stroke can go on past the
+edge of the view. If the window or the editor changes size while you draw, the
+stroke ends where it showed, and the rest of the drag draws nothing.
 
 The grid, though, has twice as many cells each way while zoomed, so the default
 5 cells across the x-height become 10, for placing fine detail. Every point of

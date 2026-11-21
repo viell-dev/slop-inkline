@@ -941,6 +941,15 @@ export class DrawingSession {
   }
 
   /**
+   * Takes the pointer as having moved to `point`, with Shift as last known,
+   * as when the drawing moves under a pointer that stays still: as
+   * {@link extend} does for a move there.
+   */
+  follow(point: InputPoint): void {
+    this.extend([point], this.#shiftNow);
+  }
+
+  /**
    * Records a point among `active`'s, and points along the gap to it from
    * `previous`, the last point recorded before rounding, if there is one,
    * but for an eraser's sweep, which a straight line between them draws

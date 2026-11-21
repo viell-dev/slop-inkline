@@ -103,26 +103,30 @@ type Chord = readonly string[];
 /**
  * Presses the mouse at `from`, moves it to `to` in one report, and lets go
  * there without moving again, as a hand that stays still does. `keys` are
- * pressed in turn while it is held there, `before` and `after` milliseconds
- * from the move and the release. All of it is one WebDriver command: in
- * Obsidian, any other command between a press and its release ends the press
- * as a lost capture rather than a release, which says nothing of where the
- * pointer is.
+ * pressed in turn while it is held there, and the wheel turned by `wheel`
+ * pixels down where it is, `before` and `after` milliseconds from the move
+ * and the release. All of it is one WebDriver command: in Obsidian, any
+ * other command between a press and its release ends the press as a lost
+ * capture rather than a release, which says nothing of where the pointer is
+ * (#391).
  */
 async function drag(
   from: Point,
   to: Point,
   {
     keys = [],
+    wheel,
     before = 400,
     after = 400,
   }: {
     keys?: readonly Chord[];
+    wheel?: number;
     before?: number;
     after?: number;
   } = {},
 ): Promise<void> {
   const keyboard = browser.action("key");
+  const scroll = browser.action("wheel");
   const pointer = browser.action("pointer", {
     parameters: { pointerType: "mouse" },
   });
@@ -131,20 +135,31 @@ async function drag(
     .down()
     .move({ origin: "viewport", ...to, duration: 0 })
     .pause(before);
-  keyboard.pause(0).pause(0).pause(0).pause(before);
+  for (const source of [keyboard, scroll]) {
+    source.pause(0).pause(0).pause(0).pause(before);
+  }
   for (const chord of keys) {
     for (const key of chord) {
       keyboard.down(key);
+      scroll.pause(10);
       pointer.pause(10);
     }
     for (const key of [...chord].reverse()) {
       keyboard.up(key);
+      scroll.pause(10);
       pointer.pause(10);
     }
   }
+  if (wheel !== undefined) {
+    // At the pointer, from the window's corner, so that it does not move.
+    scroll.scroll({ ...to, deltaX: 0, deltaY: wheel });
+    keyboard.pause(10);
+    pointer.pause(10);
+  }
   keyboard.pause(after);
+  scroll.pause(after);
   pointer.pause(after).up();
-  await browser.actions([keyboard, pointer]);
+  await browser.actions([keyboard, scroll, pointer]);
 }
 
 /** What {@link watchPress} saw. */
@@ -160,19 +175,35 @@ interface Watched {
     readonly pressed: string | null;
     /** Whether the drawing area pressed was still in the window. */
     readonly connected: boolean;
+    /** Whether the drawing area showed ink under the pointer. */
+    readonly inked: boolean;
   };
 }
 
 /**
- * Watches the next press on the drawing area, in the page, for
- * {@link watched}. With `clickZoom`, it also clicks Zoom that many
- * milliseconds after the press, as a key on the button could while the
- * mouse is held, since the test itself cannot send a command then.
+ * What the page does while the mouse is held, as {@link watchPress} says:
+ * clicks Zoom or Fit, as a key on the button could; makes the editor 120
+ * pixels narrower, which changes the drawing area's size; or moves the
+ * editor 60 pixels right and tells the window it was resized, as when a
+ * window's size changes and the editor stays in its middle.
  */
-async function watchPress(clickZoom?: number): Promise<void> {
-  await browser.execute((delay) => {
+type During = "zoom" | "fit" | "narrower" | "moved";
+
+/**
+ * Watches the next press on the drawing area, in the page, for
+ * {@link watched}, doing `during` 150 milliseconds after the press: the test
+ * itself cannot send a command then.
+ */
+async function watchPress(during?: During): Promise<void> {
+  await browser.execute((action) => {
     const surface = document.querySelector(".inkline-editor .inkline-surface");
-    if (!(surface instanceof HTMLCanvasElement)) throw new Error("no surface");
+    const editor = document.querySelector(".inkline-editor");
+    if (
+      !(surface instanceof HTMLCanvasElement) ||
+      !(editor instanceof HTMLElement)
+    ) {
+      throw new Error("no surface");
+    }
     const previous: unknown = Reflect.get(window, "inklineTestWatch");
     if (previous instanceof AbortController) previous.abort();
     const watch = new AbortController();
@@ -183,24 +214,55 @@ async function watchPress(clickZoom?: number): Promise<void> {
         status: string;
         pressed: string | null;
         connected: boolean;
+        inked: boolean;
       };
     } = { events: [] };
     Reflect.set(window, "inklineTestWatch", watch);
     Reflect.set(window, "inklineTestWatched", seen);
+    const act = (): void => {
+      if (action === "zoom" || action === "fit") {
+        const button = editor.querySelector(
+          `[data-inkline-button="${action}"]`,
+        );
+        if (button?.instanceOf(HTMLElement) === true) button.click();
+      } else if (action === "narrower") {
+        editor.style.width = `${String(editor.offsetWidth - 120)}px`;
+      } else if (action === "moved") {
+        editor.style.position = "relative";
+        editor.style.left = "60px";
+        window.dispatchEvent(new Event("resize"));
+      }
+    };
+    /**
+     * Whether the drawing area shows ink, or anything, under `event`; not
+     * once it has closed.
+     */
+    const inked = (event: PointerEvent): boolean => {
+      if (!surface.isConnected || surface.clientWidth === 0) return false;
+      const box = surface.getBoundingClientRect();
+      const scale = surface.width / surface.clientWidth;
+      const x = Math.floor(
+        (event.clientX - box.left - surface.clientLeft) * scale,
+      );
+      const y = Math.floor(
+        (event.clientY - box.top - surface.clientTop) * scale,
+      );
+      const data = surface
+        .getContext("2d")
+        ?.getImageData(x - 1, y - 1, 3, 3).data;
+      return Array.from(data ?? []).some(
+        (value, index) => index % 4 === 3 && value > 128,
+      );
+    };
     const { signal } = watch;
     for (const type of ["pointerdown", "pointerup", "lostpointercapture"]) {
       // Before the editor's own listeners, which are on the drawing area.
       window.addEventListener(
         type,
-        () => {
+        (event) => {
           seen.events.push(type);
-          if (type === "pointerdown" && delay !== null) {
-            window.setTimeout(() => {
-              const zoom = document.querySelector(
-                '.inkline-editor [data-inkline-button="zoom"]',
-              );
-              if (zoom?.instanceOf(HTMLElement) === true) zoom.click();
-            }, delay);
+          if (type === "pointerdown" && action !== null) {
+            window.setTimeout(act, 150);
           }
           if (type !== "pointerup" || seen.released !== undefined) return;
           seen.released = {
@@ -213,12 +275,13 @@ async function watchPress(clickZoom?: number): Promise<void> {
                 .querySelector('.inkline-editor [data-inkline-button="zoom"]')
                 ?.getAttribute("aria-pressed") ?? null,
             connected: surface.isConnected,
+            inked: event instanceof PointerEvent && inked(event),
           };
         },
         { capture: true, signal },
       );
     }
-  }, clickZoom ?? null);
+  }, during ?? null);
 }
 
 /** What {@link watchPress} saw, which stops it watching. */
@@ -229,6 +292,25 @@ async function watched(): Promise<Watched> {
     const seen: unknown = Reflect.get(window, "inklineTestWatched");
     return seen as Watched;
   });
+}
+
+/**
+ * Drags from `from` to `to` as {@link drag} does, with `during` done in the
+ * page while it is held, and returns what the editor showed as it was let
+ * go, which it was, rather than lost.
+ */
+async function dragWatched(
+  from: Point,
+  to: Point,
+  options: Parameters<typeof drag>[2] = {},
+  during?: During,
+): Promise<NonNullable<Watched["released"]>> {
+  await watchPress(during);
+  await drag(from, to, options);
+  const { events, released } = await watched();
+  expect(events.slice(0, 2)).toEqual(["pointerdown", "pointerup"]);
+  if (released === undefined) throw new Error("not let go");
+  return released;
 }
 
 /** The strokes the editor keeps, from its draft. */
@@ -255,13 +337,10 @@ async function dragZooming(
   from: Point,
   to: Point,
   by: "key" | "button",
-): Promise<Watched["released"]> {
-  await watchPress(by === "button" ? 150 : undefined);
-  await drag(from, to, by === "key" ? { keys: [["z"]] } : {});
-  const { events, released } = await watched();
-  // Let go as such, not lost.
-  expect(events.slice(0, 2)).toEqual(["pointerdown", "pointerup"]);
-  return released;
+): Promise<NonNullable<Watched["released"]>> {
+  return by === "key"
+    ? dragWatched(from, to, { keys: [["z"]] })
+    : dragWatched(from, to, {}, "zoom");
 }
 
 /** How many of the preview's pixels hold ink. */
@@ -413,12 +492,15 @@ describe("Zoom", function () {
       await drag(from, to);
       const alone = await strokeAt(1);
       const released = await dragZooming(from, to, by);
-      expect(released).toEqual({
+      expect(released).toMatchObject({
         height: usual.height,
         status: "Zooming in once you let go",
         pressed: "true",
         connected: true,
       });
+      // The pen's stroke ends under the pointer, where an ellipse, which
+      // keeps inside the box dragged, and the eraser over nothing show none.
+      if (what === "a pen stroke") expect(released.inked).toBe(true);
       await waitForStatus("Zoomed in");
       expect(await strokeAt(2)).toEqual(alone);
       expect((await surfaceSize()).height).toBeGreaterThan(usual.height * 1.3);
@@ -445,6 +527,7 @@ describe("Zoom", function () {
       status: "Zooming in once you let go",
       pressed: "true",
       connected: true,
+      inked: true,
     });
     await waitForStatus("Zoomed in");
     await browser.keys("Enter");
@@ -466,6 +549,7 @@ describe("Zoom", function () {
       status: "",
       pressed: "false",
       connected: true,
+      inked: true,
     });
     expect(await strokeAt(2)).toEqual(alone);
     await framesDrawn();
@@ -485,6 +569,7 @@ describe("Zoom", function () {
       status: "Zooming out once you let go",
       pressed: "false",
       connected: true,
+      inked: true,
     });
     await waitForStatus("Zoomed out");
     await strokeAt(3);
@@ -515,6 +600,98 @@ describe("Zoom", function () {
     };
     expect(record.strokes).toHaveLength(1);
   });
+
+  // Fit moves the view as Zoom does, and pressed while drawing waits for the
+  // release in the same way (#393).
+  for (const by of ["key", "button"] as const) {
+    it(`waits until a stroke is let go to fit, pressed by its ${by}`, async function () {
+      await openEditor();
+      await browser.keys("z");
+      await waitForStatus("Zoomed in");
+      const usual = await surfaceSize();
+      // Something off the middle, for Fit to bring there.
+      await drag(await inWindow(0.05, 0.5), await inWindow(0.15, 0.5));
+      await strokeAt(1);
+      const from = await inWindow(0.3, 0.65);
+      const to = await inWindow(0.6, 0.35);
+      await drag(from, to);
+      const alone = await strokeAt(2);
+      const released =
+        by === "key"
+          ? await dragWatched(from, to, { keys: [["f"]] })
+          : await dragWatched(from, to, {}, "fit");
+      expect(released).toMatchObject({
+        height: usual.height,
+        status: "Fitting once you let go",
+        inked: true,
+      });
+      expect(await strokeAt(3)).toEqual(alone);
+      // Then it fits, which says nothing.
+      await browser.waitUntil(
+        async () =>
+          (await browser.$(".inkline-editor .inkline-status").getText()) === "",
+      );
+      await drag(from, to);
+      expect((await strokeAt(4))?.points).not.toEqual(alone?.points);
+    });
+  }
+
+  // The wheel and the arrow keys move a zoomed view along the drawing while
+  // a stroke is drawn, which can be meant, to take it past the edge: what is
+  // drawn goes on to where the pointer then is in the drawing, and shows
+  // there before it is let go (#393).
+  for (const { by, options } of [
+    { by: "the wheel", options: { wheel: 150 } },
+    { by: "an arrow key", options: { keys: [[Key.ArrowRight]] } },
+  ] as const) {
+    it(`carries a stroke along as ${by} moves the view under it`, async function () {
+      await openEditor();
+      // No guides, so that only ink shows under the pointer.
+      await browser.keys("g");
+      await browser.keys("z");
+      await waitForStatus("Zoomed in");
+      const from = await inWindow(0.3, 0.65);
+      const to = await inWindow(0.6, 0.35);
+      await drag(from, to);
+      const alone = await strokeAt(1);
+      const released = await dragWatched(from, to, options);
+      expect(released.inked).toBe(true);
+      const carried = await strokeAt(2);
+      // The same drag in the view as it now is, for where the pointer is in
+      // the drawing after the move.
+      await drag(from, to);
+      const after = await strokeAt(3);
+      expect(carried?.points.slice(0, 2)).toEqual(alone?.points.slice(0, 2));
+      expect(carried?.points.slice(-2)).toEqual(after?.points.slice(-2));
+      expect(after?.points.slice(-2)).not.toEqual(alone?.points.slice(-2));
+      await saveScreenshot(`carried-by-${by.replaceAll(/\W+/g, "-")}`);
+    });
+  }
+
+  // A change to the window's or the drawing area's size moves the drawing
+  // under the pointer, which may have moved with the window, so what is
+  // drawn ends where it was shown, as when the editor loses the pointer
+  // (#393).
+  for (const { what, during } of [
+    { what: "the drawing area changes size", during: "narrower" },
+    { what: "the window's size changes", during: "moved" },
+  ] as const) {
+    it(`ends a stroke where it was shown when ${what}`, async function () {
+      await openEditor();
+      const from = await inWindow(0.3, 0.65);
+      const to = await inWindow(0.6, 0.35);
+      await drag(from, to);
+      const alone = await strokeAt(1);
+      const released = await dragWatched(from, to, {}, during);
+      expect(released.status).toBe(
+        "Ended the stroke where it showed: the drawing area moved",
+      );
+      expect(await strokeAt(2)).toEqual(alone);
+      // Letting go added nothing.
+      await framesDrawn();
+      expect(await keptStrokes()).toHaveLength(2);
+    });
+  }
 
   it("keeps the preview and the image's edges whole when zoomed and moved along", async function () {
     await openEditor();

@@ -227,7 +227,18 @@ must keep released files readable and looking the same, as
   drag without Zoom saves. Pressed twice meanwhile, it does not zoom, and
   **Next** meanwhile takes the zoom to the next symbol
   ([zoom.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/zoom.e2e.ts),
-  [#382](https://github.com/viell-dev/slop-inkline/issues/382)).
+  [#382](https://github.com/viell-dev/slop-inkline/issues/382)). **Fit**, by its
+  key or its button, waits the same way, and then fits. With the view moved
+  along by the wheel or an arrow key while a pen stroke is held, the drawing
+  area shows ink under the pointer before it is let go, and the stroke starts
+  where the same drag alone does and ends where the same drag does in the moved
+  view. With the editor made narrower, or moved and the window told it was
+  resized, while a stroke is held, the stroke ends where it showed, as the same
+  drag alone saves it, and letting go adds nothing (the same file,
+  [#393](https://github.com/viell-dev/slop-inkline/issues/393)). A unit test
+  checks that the drawing moving under a still pointer takes what is drawn on as
+  a move there would, with Shift as last known
+  ([session.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/session.test.ts)).
 - **Make ink** of a synthetic H, enlarged from about 1.2 to 11.5 times, leaves
   at most two partly covered document pixels at each edge of the saved symbol,
   and the reopened symbol draws the same pixels. The editor's own redraw, which

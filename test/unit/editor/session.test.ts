@@ -106,6 +106,65 @@ describe("DrawingSession", () => {
     ]);
   });
 
+  it("follows a pointer the drawing moved under as a move there, with Shift as last known", () => {
+    /**
+     * A drag with `tool` from (0, 0) through (4, 2), taken on to (10, 2) by
+     * `last`, with Shift down throughout as `shift` says, and let go there.
+     */
+    const drag = (
+      tool: "pen" | "eraser",
+      last: (session: DrawingSession, point: InputPoint) => void,
+      shift: boolean,
+    ): readonly Stroke[] => {
+      const session = new DrawingSession(emptyDocument);
+      session.tool = tool;
+      session.begin({ x: 0, y: 0 });
+      // With Shift, a straight segment from the press, which goes on to
+      // the place followed from there.
+      session.extend([{ x: 4, y: 2 }], shift);
+      last(session, { x: 10, y: 2 });
+      // Shown before the release as it is saved.
+      const shown = session.activeStrokes;
+      session.end({ x: 10, y: 2 }, shift);
+      expect(session.document.strokes).toEqual(shown);
+      return session.document.strokes;
+    };
+    for (const tool of ["pen", "eraser"] as const) {
+      for (const shift of [false, true]) {
+        const followed = drag(
+          tool,
+          (session, at) => {
+            session.follow(at);
+          },
+          shift,
+        );
+        const moved = drag(
+          tool,
+          (session, at) => {
+            session.extend([at], shift);
+          },
+          shift,
+        );
+        expect([tool, shift, followed]).toEqual([tool, shift, moved]);
+        // It went on to the place followed, where an area ends too.
+        expect(followed[0]?.points.slice(-2)).toEqual([160, 32]);
+      }
+    }
+    // An eraser's tap that the drawing moves under is carried along, as a
+    // move takes it, rather than staying the brush's circle.
+    const tap = new DrawingSession(emptyDocument);
+    tap.tool = "eraser";
+    tap.begin({ x: 10, y: 10 });
+    tap.follow({ x: 30, y: 10 });
+    tap.end();
+    const swept = new DrawingSession(emptyDocument);
+    swept.tool = "eraser";
+    swept.begin({ x: 10, y: 10 });
+    swept.extend([{ x: 30, y: 10 }]);
+    swept.end();
+    expect(tap.document.strokes).toEqual(swept.document.strokes);
+  });
+
   it("does not fill a gap between strokes", () => {
     const session = new DrawingSession(emptyDocument);
     session.begin({ x: 0, y: 0 });
