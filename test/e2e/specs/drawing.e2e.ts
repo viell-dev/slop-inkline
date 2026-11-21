@@ -232,6 +232,52 @@ describe("The editor", function () {
     expect(draft?.strokes[0]?.points[1]).toBeGreaterThan(96 * 16);
   });
 
+  it("ends a stroke where it was when the drawing area loses the pointer, button still down", async function () {
+    // The capture can go with the button still down, as when another window
+    // takes the pointer: the stroke ends as it was then, and the rest of that
+    // press draws nothing. A press held from one WebDriver command into the
+    // next loses it so too (#391); here the page lets it go on purpose,
+    // partway, in one command.
+    await insert();
+    const across = (y: number): [number, number][] =>
+      [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8].map((x) => [x, y]);
+    /** How far the draft's strokes reach across, in the record's units. */
+    const widths = async (count: number): Promise<number[]> => {
+      await browser.waitUntil(
+        async () => (await storedDrafts())[0]?.strokes.length === count,
+        { timeoutMsg: `the draft did not hold ${String(count)} strokes` },
+      );
+      const [draft] = await storedDrafts();
+      return (draft?.strokes ?? []).map(({ points }) => {
+        const xs = points.filter((_, index) => index % 2 === 0);
+        return Math.max(...xs) - Math.min(...xs);
+      });
+    };
+    await draw(across(0.3));
+    const [whole = 0] = await widths(1);
+    await browser.execute(() => {
+      const canvas = document.querySelector(".inkline-editor .inkline-surface");
+      if (!(canvas instanceof HTMLElement)) throw new Error("no surface");
+      const box = canvas.getBoundingClientRect();
+      // Before the editor's own listener: this move goes on to it, and then
+      // the capture is lost.
+      const move = (event: PointerEvent): void => {
+        if (event.clientX < box.left + 0.45 * box.width) return;
+        window.removeEventListener("pointermove", move, true);
+        canvas.releasePointerCapture(event.pointerId);
+      };
+      window.addEventListener("pointermove", move, true);
+    });
+    await draw(across(0.7));
+    const [, cut = 0] = await widths(2);
+    // Lost on the move to the middle, it reaches about half as far.
+    expect(cut).toBeGreaterThan(0.2 * whole);
+    expect(cut).toBeLessThan(0.75 * whole);
+    // The editor goes on drawing.
+    await draw(across(0.5));
+    expect(await widths(3)).toHaveLength(3);
+  });
+
   it("shows a restored drawing whole, even one wider than its file", async function () {
     await browser.executeObsidian(async ({ app }) => {
       const { canvas } = window.inklineTest;

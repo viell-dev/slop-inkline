@@ -172,6 +172,16 @@ test measures is the one it saves, with `saveScreenshotData()` from
 `test/e2e/support/screenshots.ts`. Test vaults in `test/e2e/vaults/` and every
 drawing a test uses are synthetic.
 
+A press on the drawing area is let go in the WebDriver command that makes it, as
+`draw()`, `drawShifted()`, and `drawAndHold()` in `test/e2e/support/editor.ts`
+do. The area captures the pointer, and a press held into the next command loses
+that capture with the button still down before its release arrives: the editor
+ends the stroke as for a lost capture, and what the release does goes untested
+([#391](https://github.com/viell-dev/slop-inkline/issues/391)). Keys pressed
+while the button is down go in the same command, and what the page shows
+meanwhile is read in the page, by a listener for the release, as `fill.e2e.ts`
+does.
+
 Each spec file runs in a WebdriverIO session of its own, which
 wdio-obsidian-service starts with a new copy of the test vault and a new
 Electron user data directory, which holds local storage. So a spec file starts

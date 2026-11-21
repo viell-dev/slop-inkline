@@ -3,6 +3,8 @@ import type { Stroke } from "../../../src/format/record.ts";
 import { loadModules } from "../support/browser.ts";
 import { pressed, save } from "../support/editing.ts";
 import {
+  draw,
+  drawAndHold,
   hoverShifted,
   openAtMarker,
   recordOf,
@@ -51,43 +53,29 @@ async function clickSurfacePoints(
 /** A point on the surface, as fractions of its width and height. */
 type At = readonly [number, number];
 
-/** Where `at` is from the surface's centre, for a pointer action. */
-async function offset([x, y]: At) {
-  const { width, height } = await settledSurface();
-  return {
-    origin: await surface().getElement(),
-    x: Math.round((x - 0.5) * width),
-    y: Math.round((y - 0.5) * height),
-  };
-}
-
-/** Presses the mouse at `from` and drags it to `to`, holding it there. */
-async function dragTo(from: At, to: At): Promise<void> {
-  await browser
-    .action("pointer", { parameters: { pointerType: "mouse" } })
-    .move(await offset(from))
-    .down()
-    .move({ ...(await offset(to)), duration: 20 })
-    .perform(true);
+/** Drags from `from` to `to` and lets go there, as an ellipse is drawn. */
+async function drag(from: At, to: At): Promise<void> {
+  await draw([from, to]);
 }
 
 /**
- * Lets go of the mouse at `at`, where {@link dragTo} holds it. A new action
- * starts at the window's corner, so it moves there first, which changes
- * nothing drawn.
+ * Drags from `from` to `to` and lets go there, in one command, keeping what
+ * the drawing area shows just before the release as `name`, as {@link keep}
+ * does. It is read in the page as the release arrives, before the editor
+ * takes it, as a read in a command of its own would come after the press had
+ * already ended as a lost capture (#391).
  */
-async function letGo(at: At): Promise<void> {
-  await browser
-    .action("pointer", { parameters: { pointerType: "mouse" } })
-    .move(await offset(at))
-    .up()
-    .perform();
-}
-
-/** Drags from `from` to `to` and lets go there, as an ellipse is drawn. */
-async function drag(from: At, to: At): Promise<void> {
-  await dragTo(from, to);
-  await letGo(to);
+async function dragKeeping(from: At, to: At, name: string): Promise<void> {
+  await browser.execute((kept) => {
+    window.addEventListener(
+      "pointerup",
+      () => {
+        window.inklineTest.shapeEdges.keepSurface(kept);
+      },
+      { capture: true, once: true },
+    );
+  }, name);
+  await drawAndHold([from, to]);
 }
 
 /**
@@ -331,13 +319,8 @@ describe("Fill", function () {
 
     await browser.keys("b");
     expect(await pressed("fill")).toBe("true");
-    await dragTo(from, to);
-    try {
-      // Before the release, it shows what letting go there leaves.
-      await keep("ellipse dragged");
-    } finally {
-      await letGo(to);
-    }
+    // Before the release, it shows what letting go there leaves.
+    await dragKeeping(from, to, "ellipse dragged");
     expect(await draftStrokes(2)).toEqual([
       { tool: "pen", points: unfilled?.points, kind: "fill" },
       unfilled,

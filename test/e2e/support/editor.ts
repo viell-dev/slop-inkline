@@ -250,6 +250,49 @@ export async function drawShifted(
   await browser.actions([keys, pointer]);
 }
 
+/**
+ * Draws through points as {@link draw} does, holds the pointer still at the
+ * last for `hold` ms, presses the keys of `chord` together there if any, such
+ * as Control and Enter, and lets go after another `hold`: all in one WebDriver
+ * command. The drawing area captures the pointer, and a press held from one
+ * command to the next loses that capture with the button still down when the
+ * next command starts, before its release arrives, so the editor ends the
+ * stroke there as a lost capture, and what a release does goes untested
+ * (#391). What the page shows while the button is down is read in the page,
+ * by a listener for the release, which comes after the hold, when the editor
+ * has drawn its frames.
+ */
+export async function drawAndHold(
+  points: readonly (readonly [number, number])[],
+  { hold = 300, chord = [] }: { hold?: number; chord?: readonly string[] } = {},
+): Promise<void> {
+  const [first, ...rest] = points;
+  if (first === undefined) return;
+  const at = await surfaceOffsets();
+  const keys = browser.action("key");
+  const pointer = browser.action("pointer", {
+    parameters: { pointerType: "mouse" },
+  });
+  pointer.move(at(first)).down();
+  keys.pause(10).pause(10);
+  for (const point of rest) {
+    pointer.move({ ...at(point), duration: 20 });
+    keys.pause(10);
+  }
+  pointer.pause(hold);
+  keys.pause(10);
+  for (const key of chord) {
+    keys.down(key);
+    pointer.pause(10);
+  }
+  for (const key of [...chord].reverse()) {
+    keys.up(key);
+    pointer.pause(10);
+  }
+  pointer.pause(hold).up();
+  await browser.actions([keys, pointer]);
+}
+
 /** Clicks at each point, as fractions of the surface, with Shift held. */
 export async function shiftClick(
   ...points: readonly (readonly [number, number])[]
