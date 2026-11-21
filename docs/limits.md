@@ -21,12 +21,14 @@ What Inkline does not do, or does not do everywhere, and what to do instead. The
   passes over, and its ends stay round, whatever you turn on during the stroke.
   With both on, a smaller brush shifts the edge less, and Shift draws a straight
   stroke, which barely shifts.
-- **Zoom during a stroke can move its end.** Pressing **Zoom** (Z) while drawing
-  a stroke, with the pen or the eraser, changes where the pointer falls in the
-  drawing, so letting go without moving the pointer again ends the stroke
-  somewhere other than its preview showed
+- **In 1.0.2, Zoom during a stroke can move its end.** Pressing **Zoom** (Z)
+  while drawing a stroke, with the pen or the eraser, changes where the pointer
+  falls in the drawing, so letting go without moving the pointer again ends the
+  stroke somewhere other than its preview showed
   ([#382](https://github.com/viell-dev/slop-inkline/issues/382)). Change Zoom
-  between strokes; Undo takes back a stroke that went wrong.
+  between strokes; Undo takes back a stroke that went wrong. **Unreleased:**
+  fixed: Zoom pressed while you draw a stroke or a shape waits until you let go,
+  so what you draw ends where it shows.
 - **Large libraries** show 100 symbols at a time, with **Show more** for the
   next 100. Filter them, or choose a folder, to narrow the list.
 - **Library insertion needs a sidebar.** If the library's tab is dragged into
@@ -210,7 +212,11 @@ the mark before renaming what it links to.
   the deleted one then shows the new one
   ([#299](https://github.com/viell-dev/slop-inkline/issues/299)). Name symbols
   as you make them, or let sync finish before you make new ones on a second
-  device.
+  device. **Unreleased:** a new symbol passes over a number that a note still
+  links to, as Obsidian would resolve the link, so a deleted symbol's number
+  comes back only once no note links to it. Obsidian reads a vault's links in
+  the moments after it opens the vault, and a symbol saved before it has read a
+  note's links can still take a number that note links to.
 - **A symbol saved before 0.9.2 keeps its look but not its strokes.** The file
   format became final in that release, and no later version reads the strokes of
   earlier files. The symbol stays in your notes and opens as a

@@ -12,6 +12,7 @@ import {
   createSymbol,
   delayVault,
   draw,
+  largeOpenLimit,
   noteText,
   openAtMarker,
   restoreVault,
@@ -71,7 +72,7 @@ async function largeSymbol(
   spacing: number,
 ): Promise<void> {
   await writeNoise(file, side, spacing);
-  await editFile(file);
+  await editFile(file, { timeout: largeOpenLimit });
   await draw([
     [0.3, 0.3],
     [0.7, 0.35],
@@ -320,7 +321,7 @@ describe("Opening a large symbol", function () {
     });
     await ask("Bytes.ink.png");
     await browser.keys(["q"]);
-    await waitForEditor();
+    await waitForEditor({ timeout: largeOpenLimit });
     expect(
       await browser.execute(
         () => Reflect.get(window, "inklineKeyBeforeEditor") as boolean,
