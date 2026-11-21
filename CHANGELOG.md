@@ -17,6 +17,15 @@ even one a public release; earlier pre-releases carry a suffix such as
   Obsidian has read the note's links after opening the vault
   ([#299](https://github.com/viell-dev/slop-inkline/issues/299)).
 
+### Fixed
+
+- **Zoom** pressed while you draw a stroke or a shape, with the pen or the
+  eraser, or while you press a polygon's corner, now waits until you let go, by
+  its key and by its button. It used to zoom at once, which moved where the
+  pointer fell in the drawing, so letting go without moving ended the stroke
+  somewhere other than it showed
+  ([#382](https://github.com/viell-dev/slop-inkline/issues/382)).
+
 ## 1.0.2 - 2026-11-19
 
 A fix release for 1.0.1. The file format is unchanged: symbols open and look as
