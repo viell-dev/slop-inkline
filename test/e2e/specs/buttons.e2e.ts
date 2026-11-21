@@ -43,7 +43,7 @@ const usual: Readonly<Record<string, string>> = {
     "Ellipse: drag across a box to draw an ellipse with the pen or the eraser; hold Shift for a circle, or with the grid on to snap to it (O)",
   polygon:
     "Polygon: click each corner of a shape with straight sides; click the first corner again to close it, or the last to end it; hold Shift to snap a corner to the grid (Y)",
-  path: "Path: place a curve by its points: click for a corner, or drag for a smooth point and its handles; drag a point or a handle's end to move it; click the first point to close the path, or the last to end it; hold Shift to snap to the grid (Shift+P)",
+  path: "Path: place a curve by its points: click for a corner, or drag for a smooth point and its handles; drag a point or a handle's end to move it; click the first point to close the path, or the last to end it; hold Shift to snap to the grid (A)",
   fill: "Toggle fill: while on, Ellipse, and Polygon or Path closed on its first point, draw solid shapes, with the pen or the eraser; it doesn't fill what is already drawn (B)",
   "size-0": "Brush size S (1)",
   "size-1": "Brush size M (2)",

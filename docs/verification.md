@@ -269,19 +269,26 @@ must keep released files readable and looking the same, as
   and smooth points dragged out, on the grid with Shift and off it, is saved as
   one stroke without a kind through points along its curve no more than a pixel
   apart, from its first point to its last exactly, and its saved pixels show ink
-  along the curve and none on the straight line between its ends, at every brush
-  size, matching a redraw of its record. While it is placed, Undo takes back a
-  point and a drag, Esc drops it, a point and a handle's end dragged move the
-  curve, Enter and a click on the last point end it, and a click on its first
-  point closes it, filled with **Toggle fill**; afterwards one Undo takes back
-  all of it. The eraser's path takes away the ink along its curve, Flat ends
-  cuts an end Shift put on a row, and the symbol reopened holds the same
-  strokes, with nothing left to place
+  along the curve and none on the straight line between its ends, matching a
+  redraw of its record. While it is placed, the next curve follows the pointer
+  after a drag as after a click, and pointing at the first point shows the
+  filled shape a click there makes; Undo takes back a point and a drag, Esc and
+  the close button drop it, a point and a handle's end dragged move the curve,
+  Enter, a click on the last point, and **Next** end it, **Next** keeping Path
+  on, and a click on its first point closes it, filled with **Toggle fill**;
+  afterwards one Undo takes back all of it. The eraser's path takes away the ink
+  along its curve, Flat ends cuts an end Shift put on a row, and the symbol
+  reopened holds the same strokes, with nothing left to place
   ([path.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/path.e2e.ts)).
-  Unit tests pin the curve's points, their spacing, how near the saved stroke's
-  outline keeps to a quarter circle at every brush size, and each step of
-  placing, from a press and a drag to a click on a point, Shift on the grid,
-  Undo, and a save moving the drawing
+  **Zoom** pressed while a path's handle is dragged waits for its release, and
+  the path saves the points it would without Zoom
+  ([zoom.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/zoom.e2e.ts)).
+  Unit tests pin the curve's points, their spacing, how near the corners of the
+  saved stroke's outline keep to a quarter circle at every brush size, and each
+  step of placing, from a press and a drag to a click on a point, what the
+  pointer shows after a drag, which point a press takes where points lie on one
+  another, how near a press must be, Shift on the grid, Undo, and a save moving
+  the drawing
   ([path.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/path.test.ts),
   [session.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/session.test.ts)).
 - A view that adds each stroke to what it has drawn and measured shows what a

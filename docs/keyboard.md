@@ -60,7 +60,7 @@ immediately. Select the name field to type a name; Enter returns to drawing.
 | E                         | Eraser      | Take ink away.                                           |
 | O                         | Ellipse     | Draw ellipses by dragging, or freehand again.            |
 | Y                         | Polygon     | Draw shapes by clicking their corners, or freehand.      |
-| Shift+P                   | Path        | **Unreleased:** curves by their points, or freehand.     |
+| A                         | Path        | **Unreleased:** curves by their points, or freehand.     |
 | Enter                     |             | End a shape being placed, leaving it open.               |
 | B                         | Toggle fill | Fill ellipses, closed polygons and **Unreleased** paths. |
 | 1, 2, 3, 4                | S, M, L, XL | Choose the brush size.                                   |

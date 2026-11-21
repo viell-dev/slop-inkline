@@ -2993,8 +2993,9 @@ describe("DrawingSession's paths", () => {
       const half = (brush.em * 128) / 2;
       // Every corner of the outline away from the round ends lies the brush's
       // half width inside or outside the circle, to within a quarter of a
-      // pixel: as near as a freehand stroke's outline keeps to its points,
-      // which it smooths, at 0.21 pixels for the largest brush.
+      // pixel, at 0.21 pixels for the largest brush. These are the outline's
+      // corners: the edge drawn through the midpoints of its sides lies
+      // further in on a bend, as any smooth stroke's does, an ellipse's too.
       let sides = 0;
       for (const [x, y] of shape.outline) {
         const fromEnds = Math.min(
@@ -3060,6 +3061,28 @@ describe("DrawingSession's paths", () => {
       expect(covers(strokes[0]?.points ?? [], 50 * 16, 50 * 16)).toBe(true);
       session.undo();
       expect(session.document.strokes).toEqual([]);
+    }
+  });
+
+  it("shows the close a click on the first point makes after a smooth point, filled", () => {
+    for (const fill of [false, true]) {
+      const session = new DrawingSession(emptyDocument);
+      session.shape = "path";
+      session.fill = fill;
+      click(session, 10, 50);
+      drag(session, { x: 60, y: 50 }, { x: 60, y: 80 });
+      // The next curve follows the pointer after the drag.
+      session.extend([{ x: 40, y: 20 }]);
+      expect(pixels(session.activeStrokes.at(-1)).at(-1)).toEqual({
+        x: 40,
+        y: 20,
+      });
+      session.extend([{ x: 11, y: 51 }]);
+      const shown = session.activeStrokes;
+      expect(shown).toHaveLength(fill ? 2 : 1);
+      click(session, 11, 51);
+      expect(session.placing).toBe(false);
+      expect(session.document.strokes).toEqual(shown);
     }
   });
 

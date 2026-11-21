@@ -111,6 +111,22 @@ const referenceAlpha = 0.35;
 /** How opaque the shape an eraser is drawing is shown, over everything. */
 const erasingAlpha = 0.5;
 
+/**
+ * The marks of a path being placed, in CSS pixels, so that they keep their
+ * size on the screen whatever the zoom: the side of a point's square, and the
+ * radius of a handle's end, larger for the one a press would take hold of.
+ */
+const pointMark = 8;
+const handleMark = 3;
+const heldHandleMark = 4.5;
+
+/**
+ * How near a press must be to a mark to take hold of it, in CSS pixels: a
+ * little beyond a point's square, whose corners are 5.7 pixels from its
+ * middle.
+ */
+export const markReach = 6;
+
 /** A document and its decoded base layer, as last drawn or measured. */
 interface Drawn {
   readonly document: InkDocument;
@@ -278,6 +294,14 @@ export class InkView {
   /** The document x in the middle of the surface, in pixels. */
   get center(): number {
     return this.#center;
+  }
+
+  /**
+   * {@link markReach} in document pixels, at the scale the surface shows the
+   * drawing now.
+   */
+  get markReach(): number {
+    return markReach / this.#scale;
   }
 
   /** The document's x from the surface's left edge to its right, in pixels. */
@@ -536,7 +560,7 @@ export class InkView {
         context.arc(
           across(end.x),
           end.y * factor,
-          (held ? 4.5 : 3) * ratio,
+          (held ? heldHandleMark : handleMark) * ratio,
           0,
           2 * Math.PI,
         );
@@ -545,7 +569,7 @@ export class InkView {
     }
     // Each square on whole device pixels, its outline on their middles, so
     // that its edges are sharp.
-    const side = 2 * Math.round(4 * ratio);
+    const side = 2 * Math.round((pointMark / 2) * ratio);
     const middle = context.lineWidth % 2 === 1 ? 0.5 : 0;
     for (const [index, node] of nodes.entries()) {
       const x = Math.round(across(node.x)) - side / 2;

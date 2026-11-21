@@ -8,6 +8,7 @@ import {
   segmentPoints,
   type PathNode,
   type PathPointer,
+  type PathReach,
   type Point,
 } from "../../../src/editor/path.ts";
 
@@ -21,7 +22,8 @@ function snapped(x: number, y: number, gx: number, gy: number): PathPointer {
   return { at: { x, y }, placed: { x: gx, y: gy }, onGrid: true };
 }
 
-const reach = 6;
+/** As near to every point and handle's end, unless a test says. */
+const reach: PathReach = { ends: 6, marks: 6 };
 
 /** A path with a click at each point, after the first press's release. */
 function clicked(...points: readonly (readonly [number, number])[]) {
@@ -313,6 +315,59 @@ describe("PathPlacer", () => {
     expect(placer.marks.target).toBeUndefined();
   });
 
+  it("reaches the first and last points as near as the brush, and the others and the handles as near as their marks", () => {
+    const placer = new PathPlacer(at(10, 10), { ends: 12, marks: 4 });
+    placer.release(at(10, 10));
+    drag(placer, [50, 10], [70, 10]);
+    placer.press(at(90, 10), reach);
+    placer.release(at(90, 10));
+    // From here on, the reach of a brush 24 pixels wide, and of marks 4
+    // pixels from their middle.
+    placer.move(at(90, 10), { ends: 12, marks: 4 });
+    const target = (x: number) => {
+      placer.move(at(x, 10));
+      return placer.marks.target;
+    };
+    expect(target(20)).toEqual({ kind: "point", index: 0 });
+    expect(target(80)).toEqual({ kind: "point", index: 2 });
+    // The handle's end the curve comes in by, at 30: beyond its mark's reach,
+    // as the second point at 50 is.
+    expect(target(36)).toBeUndefined();
+    expect(target(33)).toEqual({ kind: "handle", index: 1, side: -1 });
+    expect(target(53)).toEqual({ kind: "point", index: 1 });
+    expect(target(45)).toBeUndefined();
+  });
+
+  it("ends on a click on the last point where an earlier point lies too", () => {
+    // Back to a grid point it has been to, and clicked there again.
+    const grid = new PathPlacer(snapped(17, 143, 16, 144), reach);
+    grid.release(snapped(17, 143, 16, 144));
+    for (const [x, y] of [
+      [48, 144],
+      [48, 96],
+      [48, 144],
+    ] as const) {
+      grid.press(snapped(x + 1, y - 1, x, y), reach);
+      expect(grid.release(snapped(x + 1, y - 1, x, y))).toBe("placing");
+    }
+    grid.press(snapped(47, 145, 48, 144), reach);
+    expect(grid.release(snapped(47, 145, 48, 144))).toBe("ended");
+    expect(grid.nodes).toHaveLength(4);
+    // Off the grid, at the very same place twice.
+    const free = clicked([10, 10], [50, 10], [50, 50], [50, 10]);
+    free.press(at(50, 10), reach);
+    expect(free.release(at(50, 10))).toBe("ended");
+    expect(free.nodes).toHaveLength(4);
+    // A path that comes back to its first point closes there, last or not.
+    const back = clicked([10, 10], [50, 10]);
+    back.press(at(50, 10), reach);
+    back.move(at(30, 10));
+    back.move(at(10, 10));
+    back.release(at(10, 10));
+    back.press(at(10, 10), reach);
+    expect(back.release(at(10, 10))).toBe("closed");
+  });
+
   it("reaches a point that Shift put on the grid where Shift snaps to it", () => {
     const placer = new PathPlacer(snapped(9, 11, 8, 8), reach);
     placer.release(snapped(9, 11, 8, 8));
@@ -370,6 +425,35 @@ describe("PathPlacer", () => {
       nodes: [corner(10, 30), corner(50, 10)],
       closed: false,
     });
+  });
+
+  it("shows the next curve to the pointer once a drag is let go, and once a drag is taken back", () => {
+    const placer = clicked([10, 10]);
+    drag(placer, [50, 10], [60, 10]);
+    placer.move(at(80, 40));
+    expect(placer.shown).toEqual({
+      nodes: [
+        corner(10, 10),
+        { x: 50, y: 10, handle: { x: 10, y: 0 }, onGrid: false },
+        corner(80, 40),
+      ],
+      closed: false,
+    });
+    // And on the first point, the close a click there makes.
+    placer.move(at(11, 10));
+    expect(placer.shown.closed).toBe(true);
+    expect(placer.shown.nodes).toHaveLength(2);
+    // A point moved, and the same after it.
+    drag(placer, [10, 10], [10, 30]);
+    placer.move(at(30, 60));
+    expect(placer.shown.nodes.at(-1)).toEqual(corner(30, 60));
+    // A handle dragged out, taken back before its release.
+    placer.press(at(90, 10), reach);
+    placer.move(at(100, 30));
+    expect(placer.undo()).toBe(true);
+    placer.move(at(70, 70));
+    expect(placer.shown.nodes.at(-1)).toEqual(corner(70, 70));
+    expect(placer.shown.nodes).toHaveLength(3);
   });
 
   it("takes back each step with undo, a press being held too, and says when none is left", () => {

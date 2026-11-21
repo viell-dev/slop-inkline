@@ -191,6 +191,20 @@ export interface PathPointer {
   readonly onGrid: boolean;
 }
 
+/**
+ * How near a press must be to a point or a handle's end of a path being
+ * placed to take hold of it, in document pixels.
+ */
+export interface PathReach {
+  /**
+   * To the first and last points, which a click closes or ends the path on:
+   * as near as to a polygon's first and last corners.
+   */
+  readonly ends: number;
+  /** To any other point, and to a handle's end: as near as their marks. */
+  readonly marks: number;
+}
+
 /** What a press on a path being placed takes hold of. */
 export type PathTarget =
   | { readonly kind: "point"; readonly index: number }
@@ -250,7 +264,8 @@ export interface PathMarks {
  * Each point placed and each drag is a step that {@link undo} takes back.
  * Shift, with the grid on, puts what the pointer places on the grid, as
  * {@link PathPointer} says, and a press with Shift held takes hold of a point
- * that Shift put on the grid only where it snaps to it.
+ * that Shift put on the grid only where it snaps to it. How near a press must
+ * be is as {@link PathReach} says.
  */
 export class PathPlacer {
   #nodes: readonly PathNode[];
@@ -261,14 +276,14 @@ export class PathPlacer {
   #before: readonly PathNode[] = [];
   /** Where the press that holds {@link #grip} was. */
   #pressed: Point | undefined;
-  /** Whether that press has gone far enough to drag. */
+  /** Whether that press has gone far enough to drag, while it is held. */
   #dragging = false;
   /** Where the pointer last was, and how near counts as on a point. */
   #pointer: PathPointer | undefined;
-  #reach = 0;
+  #reach: PathReach = { ends: 0, marks: 0 };
 
   /** Starts a path with its first point, at a press. */
-  constructor(pointer: PathPointer, reach: number) {
+  constructor(pointer: PathPointer, reach: PathReach) {
     this.#nodes = [];
     this.press(pointer, reach);
   }
@@ -278,16 +293,11 @@ export class PathPlacer {
     return this.#nodes;
   }
 
-  /** Where the pointer last was. */
-  get pointer(): PathPointer | undefined {
-    return this.#pointer;
-  }
-
   /**
-   * A press: on a point or a handle's end within `reach` document pixels,
-   * taking hold of it; anywhere else, placing a point there.
+   * A press: on a point or a handle's end within `reach`, taking hold of it;
+   * anywhere else, placing a point there.
    */
-  press(pointer: PathPointer, reach: number): void {
+  press(pointer: PathPointer, reach: PathReach): void {
     this.#pointer = pointer;
     this.#reach = reach;
     this.#pressed = pointer.at;
@@ -313,7 +323,7 @@ export class PathPlacer {
   }
 
   /** The pointer moved, pressed or not. */
-  move(pointer: PathPointer, reach = this.#reach): void {
+  move(pointer: PathPointer, reach: PathReach = this.#reach): void {
     this.#pointer = pointer;
     this.#reach = reach;
     const grip = this.#grip;
@@ -357,14 +367,14 @@ export class PathPlacer {
    * The press let go here: placing, moving, or, for a click on the first or
    * last point, closing or ending the path.
    */
-  release(pointer: PathPointer, reach = this.#reach): PathRelease {
+  release(pointer: PathPointer, reach: PathReach = this.#reach): PathRelease {
     this.move(pointer, reach);
     const grip = this.#grip;
     const before = this.#before;
-    this.#grip = undefined;
-    this.#pressed = undefined;
+    const dragged = this.#dragging;
+    this.#letGo();
     if (grip === undefined) return "placing";
-    if (grip.kind === "new" || this.#dragging) {
+    if (grip.kind === "new" || dragged) {
       this.#steps.push(before);
       return "placing";
     }
@@ -384,14 +394,23 @@ export class PathPlacer {
   undo(): boolean {
     if (this.#grip !== undefined) {
       this.#nodes = this.#before;
-      this.#grip = undefined;
-      this.#pressed = undefined;
+      this.#letGo();
       return this.#nodes.length > 0;
     }
     const before = this.#steps.pop();
     if (before === undefined) return false;
     this.#nodes = before;
     return before.length > 0;
+  }
+
+  /**
+   * Ends the press, and with it the drag, so that the pointer shows again
+   * what a click would place until the next press.
+   */
+  #letGo(): void {
+    this.#grip = undefined;
+    this.#pressed = undefined;
+    this.#dragging = false;
   }
 
   /** Moves everything across by `dx` document pixels. */
@@ -458,26 +477,50 @@ export class PathPlacer {
 
   /**
    * The point or handle's end that a press at `pointer` takes hold of: the
-   * nearest within reach, a point before a handle as near. A point that Shift
-   * put on the grid, with Shift held and the grid on, is reached where the
-   * pointer snaps to it, as a polygon's corner is.
+   * nearest within reach, as {@link PathReach} says. Of those as near, the
+   * first point comes first, then the last, then the others, then the
+   * handles' ends, so that a click on the first or last point closes or ends
+   * the path wherever another point lies, as when a path comes back to a
+   * grid point. A point that Shift put on the grid, with Shift held and the
+   * grid on, is reached where the pointer snaps to it, as a polygon's corner
+   * is.
    */
   #target(pointer: PathPointer): PathTarget | undefined {
     let best: { target: PathTarget; distance: number } | undefined;
-    const consider = (target: PathTarget, away: number | undefined): void => {
-      if (away === undefined || away > this.#reach) return;
+    const consider = (
+      target: PathTarget,
+      away: number | undefined,
+      reach: number,
+    ): void => {
+      if (away === undefined || away > reach) return;
       if (best === undefined || away < best.distance) {
         best = { target, distance: away };
       }
     };
-    for (const [index, node] of this.#nodes.entries()) {
-      consider({ kind: "point", index }, this.#pointAway(node, pointer));
+    const nodes = this.#nodes;
+    const last = nodes.length - 1;
+    const { ends, marks } = this.#reach;
+    const order = last > 0 ? [0, last] : [0];
+    for (let index = 1; index < last; index++) order.push(index);
+    for (const index of order) {
+      const node = nodes[index];
+      if (node === undefined) continue;
+      const end = index === 0 || index === last;
+      consider(
+        { kind: "point", index },
+        this.#pointAway(node, pointer),
+        end ? Math.max(ends, marks) : marks,
+      );
     }
-    for (const [index, node] of this.#nodes.entries()) {
+    for (const [index, node] of nodes.entries()) {
       for (const side of [1, -1] as const) {
         const end = handleEnd(node, side);
         if (end !== undefined) {
-          consider({ kind: "handle", index, side }, distance(pointer.at, end));
+          consider(
+            { kind: "handle", index, side },
+            distance(pointer.at, end),
+            marks,
+          );
         }
       }
     }

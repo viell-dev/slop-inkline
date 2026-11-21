@@ -11,8 +11,8 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ### Added
 
-- **Path** (Shift+P) in the editor places a curve by its points, for curves that
-  are hard to draw steadily with a mouse, such as a quarter circle or an S
+- **Path** (A) in the editor places a curve by its points, for curves that are
+  hard to draw steadily with a mouse, such as a quarter circle or an S
   ([#340](https://github.com/viell-dev/slop-inkline/issues/340)). Click for a
   corner, or press and drag for a smooth point, whose handle sets the curve's
   direction there. While the path is placed, a point or a handle's end can be

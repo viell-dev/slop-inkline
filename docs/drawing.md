@@ -120,9 +120,9 @@ put it on the grid.
 
 **Unreleased:** Path is not in Inkline 1.0.2.
 
-**Path** (Shift+P) places a curve by its points, for curves that are hard to
-draw steadily with a mouse, such as a quarter circle, an arc, or an S. The path
-is drawn as the pen or the eraser would draw along the curve, at its brush size,
+**Path** (A) places a curve by its points, for curves that are hard to draw
+steadily with a mouse, such as a quarter circle, an arc, or an S. The path is
+drawn as the pen or the eraser would draw along the curve, at its brush size,
 with round ends.
 
 - Click where a point goes for a corner, where the curve can turn sharply.
@@ -138,10 +138,12 @@ with round ends.
   handle's end to turn and lengthen the handle with its mirror. A handle dragged
   back onto its point leaves a corner. The points show as squares and the
   handles' ends as dots, in the theme's accent colour, and the one a press would
-  take hold of is filled, or larger. A press within the brush's circle of one,
-  or within 4 of the drawing's pixels for a smaller brush, takes hold of it, as
-  for a polygon's corners; a click there without a drag places a point, except
-  on the first point or the last.
+  take hold of is filled, or larger. A press on a square or a dot takes hold of
+  it; on the first or the last point, so does one within the brush's circle, or
+  within 4 of the drawing's pixels for a smaller brush, as for a polygon's first
+  and last corners. Where points lie on one another, the first point comes
+  first, then the last. A click on a point or a handle's end without a drag
+  places a point there, except on the first point or the last.
 - Click the first point to close the path, once it has two, or the last point,
   as a double-click does, or press Enter, to leave it open.
 - Undo (Mod+Z) takes back the last point placed or the last drag, and the path

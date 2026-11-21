@@ -709,7 +709,7 @@ export class InkEditorModal extends Modal {
       tools,
       "path",
       "Path",
-      "Shift+P",
+      "A",
       () => {
         this.#togglePath();
       },
@@ -1465,7 +1465,7 @@ export class InkEditorModal extends Modal {
     key([], "y", () => {
       this.#togglePolygon();
     });
-    key(["Shift"], "p", () => {
+    key([], "a", () => {
       this.#togglePath();
     });
     key([], "b", () => {
@@ -2359,6 +2359,8 @@ export class InkEditorModal extends Modal {
         : undefined;
       view.reference = this.#picture;
       view.path = this.#session.pathMarks;
+      // A press takes hold of a path's marks as near as they show.
+      this.#session.markReach = view.markReach;
       const { document, base } = this.#shown(view);
       const { activeStrokes, shape, tool } = this.#session;
       view.render(
@@ -2707,7 +2709,7 @@ export class InkEditorModal extends Modal {
       "Pen (P) adds ink; Eraser (E) removes it. Sizes S–XL (1–4) are remembered separately until you close the editor, including through Next. The circle shows the brush's diameter.",
       "Ellipse (O) draws an ellipse with the pen or the eraser: drag across the box it fills, and hold Shift for a circle, or with the grid on to put the box's corners on the grid. Press it again to draw freehand. A shape drawn with the eraser is tinted until it is done.",
       "Polygon (Y) draws a shape with straight sides and sharp corners: click each corner, then click the first corner again to close it, or the last corner, or press Enter, to leave it open. With the grid on, hold Shift as you click to put that corner on the grid. Undo takes back a corner, and Esc drops the shape.",
-      "Path (Shift+P) places a curve by its points, as the pen or the eraser would draw along it: click for a corner, or press and drag for a smooth point, whose handle follows the pointer and sets the curve's direction there. While you place it, drag any point or handle's end to move it; a handle dragged back onto its point leaves a corner. Click the first point to close the path, or the last point, or press Enter, to leave it open. With the grid on, hold Shift to put a point, or a handle's end, on the grid. Undo takes back the last point or move, and Esc drops the path. Once it ends, it is ink like any other stroke.",
+      "Path (A) places a curve by its points, as the pen or the eraser would draw along it: click for a corner, or press and drag for a smooth point, whose handle follows the pointer and sets the curve's direction there. While you place it, drag any point or handle's end to move it; a handle dragged back onto its point leaves a corner. Click the first point to close the path, or the last point, or press Enter, to leave it open. With the grid on, hold Shift to put a point, or a handle's end, on the grid. Undo takes back the last point or move, and Esc drops the path. Once it ends, it is ink like any other stroke.",
       "Toggle fill (B) is a switch, not a tool to click a shape with: while it is on, Ellipse and a closed Polygon or Path draw solid shapes, with their line at the brush size as without fill and everything inside it filled. The pen makes a solid shape, and the eraser a hole of its shape.",
       "Hold Shift while drawing for a straight segment. Grid (Shift+G) shows dots as a guide, and nothing goes to them unless you hold Shift: then each stroke end or corner you place goes to the nearest dot. Its rows pass through each guide line the settings choose, and divide the space between lines evenly; the settings also set how many cells span the x-height.",
       "Flat ends (T), with the grid on, stops an end of a freehand stroke or a path that Shift put on a row flush with that row, rather than rounding past it, if it comes in at 45° or steeper; one running along the row stays round. It is off until you turn it on, and ellipses and polygons are never cut.",

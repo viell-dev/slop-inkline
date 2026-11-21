@@ -24,6 +24,7 @@ import {
   type PathMarks,
   type PathNode,
   type PathPointer,
+  type PathReach,
   type PathRelease,
 } from "./path.ts";
 import { sweptStroke } from "./sweep.ts";
@@ -487,6 +488,14 @@ export class DrawingSession {
     this.sizes[this.tool] = index;
   }
   /**
+   * How near a press must be to the mark of a path's point, other than its
+   * first or last, or of a handle's end, to take hold of it, in document
+   * pixels: about as near as the mark is drawn, which the editor sets as the
+   * drawing area's scale changes, since the marks keep their size on the
+   * screen.
+   */
+  markReach = cornerReachMin;
+  /**
    * Whether the grid is on: a guide, which points go to only with Shift down.
    * With it, Shift puts a point on the grid rather than making a circle.
    */
@@ -850,11 +859,23 @@ export class DrawingSession {
   }
 
   /**
-   * How near a press must be to a point or handle of the path being placed
-   * to take hold of it, in document pixels: as near as to a polygon's corner.
+   * How near a release must be to a polygon's first or last corner to close
+   * or end it there, in document pixels: within the brush's circle, or
+   * {@link cornerReachMin} for a smaller brush. A press on a path's first or
+   * last point is as near.
    */
-  #reach(active: ActiveStroke): number {
+  #cornerReach(active: ActiveStroke): number {
     return Math.max(active.size / unitsPerPixel / 2, cornerReachMin);
+  }
+
+  /**
+   * How near a press must be to a point or handle of the path being placed
+   * to take hold of it, as {@link PathReach} says: to the first and last
+   * points, as to a polygon's; to the others, and to the handles' ends, as
+   * {@link markReach} says.
+   */
+  #reach(active: ActiveStroke): PathReach {
+    return { ends: this.#cornerReach(active), marks: this.markReach };
   }
 
   /**
@@ -1233,7 +1254,7 @@ export class DrawingSession {
       Math.hypot(
         pointer.x - x / unitsPerPixel,
         pointer.y - y / unitsPerPixel,
-      ) <= this.#reach(active)
+      ) <= this.#cornerReach(active)
     );
   }
 

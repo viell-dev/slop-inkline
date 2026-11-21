@@ -773,11 +773,11 @@ describe("Flat ends on the grid", function () {
       async () => (await pressed("flat-ends")) === "true",
     );
     // A path keeps it, as it cuts a path's ends as it cuts a freehand one's.
-    await browser.keys(["Shift", "p"]);
+    await browser.keys("a");
     await browser.waitUntil(async () => (await pressed("path")) === "true");
     expect(await button.isEnabled()).toBe(true);
     expect(await pressed("flat-ends")).toBe("true");
-    await browser.keys(["Shift", "p"]);
+    await browser.keys("a");
     await browser.waitUntil(async () => (await pressed("path")) === "false");
     await saveScreenshot("flat-ends-on", browser.$(".inkline-editor"));
   });
