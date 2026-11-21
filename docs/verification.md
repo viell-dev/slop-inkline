@@ -465,8 +465,9 @@ must keep released files readable and looking the same, as
   and
   [renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/renaming.e2e.ts)).
 - Names and renames: what a file name cannot hold, names a folder already has,
-  renames that fail, names given elsewhere during saving or hashing, and the
-  reported outcome when an external rename follows a successful native rename
+  numbers a note still links to, read as Obsidian resolves links, renames that
+  fail, names given elsewhere during saving or hashing, and the reported outcome
+  when an external rename follows a successful native rename
   ([names.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/names.test.ts),
   [naming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/naming.e2e.ts),
   [renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/renaming.e2e.ts),

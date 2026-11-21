@@ -9,6 +9,14 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Changed
+
+- A symbol saved without a name passes over a number that a note still links to,
+  so a note that embeds a deleted symbol no longer shows the next new symbol in
+  its folder in its place. A link counts as Obsidian would resolve it, once
+  Obsidian has read the note's links after opening the vault
+  ([#299](https://github.com/viell-dev/slop-inkline/issues/299)).
+
 ### Fixed
 
 - **Zoom** pressed while you draw a stroke or a shape, with the pen or the
