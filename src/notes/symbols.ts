@@ -82,6 +82,7 @@ import { insertionAt } from "./links.ts";
 import { shownGuides, type Settings } from "../settings.ts";
 import {
   chooseRename,
+  linkedNames,
   nextNumberName,
   symbolStem,
   type NameChoice,
@@ -345,16 +346,21 @@ export async function newSymbolPath(
 /**
  * The path of a new symbol in `folder`, `""` for the vault's top, under the
  * name `name` chose, or else the lowest number name that no file or folder
- * there already has. Throws if the folder has a symbol of that name already.
+ * there already has, and that no link Obsidian cannot resolve names there, so
+ * that a note still embedding a deleted symbol does not show the new one in its
+ * place. Throws if the folder has a symbol of that name already.
  */
 function symbolPathIn(app: App, folder: string, name: NameChoice): string {
   if (name.kind === "name") {
     claimName(app, folder, name.name);
     return pathIn(folder, `${name.name}${inkExtension}`);
   }
-  const taken = namesIn(app, folder)
-    .map((child) => symbolStem(child))
-    .filter((stem): stem is string => stem !== undefined);
+  const taken = [
+    ...namesIn(app, folder)
+      .map((child) => symbolStem(child))
+      .filter((stem): stem is string => stem !== undefined),
+    ...linkedNames(app.metadataCache.unresolvedLinks, folder),
+  ];
   for (;;) {
     const stem = nextNumberName(taken);
     const name = `${stem}${inkExtension}`;

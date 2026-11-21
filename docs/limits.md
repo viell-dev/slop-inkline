@@ -208,7 +208,11 @@ the mark before renaming what it links to.
   the deleted one then shows the new one
   ([#299](https://github.com/viell-dev/slop-inkline/issues/299)). Name symbols
   as you make them, or let sync finish before you make new ones on a second
-  device.
+  device. **Unreleased:** a new symbol passes over a number that a note still
+  links to, as Obsidian would resolve the link, so a deleted symbol's number
+  comes back only once no note links to it. Obsidian reads a vault's links in
+  the moments after it opens the vault, and a symbol saved before it has read a
+  note's links can still take a number that note links to.
 - **A symbol saved before 0.9.2 keeps its look but not its strokes.** The file
   format became final in that release, and no later version reads the strokes of
   earlier files. The symbol stays in your notes and opens as a
