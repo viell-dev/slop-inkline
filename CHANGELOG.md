@@ -19,6 +19,13 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ### Fixed
 
+- Ink shows under the pointer that draws it when a theme or a CSS snippet gives
+  the drawing area padding, which Inkline's own styles do not. The ink landed
+  away from the pointer by the padding, and the brush's circle was the wrong
+  size and showed over the padding too. Now the drawing fills the area inside
+  the padding, the pointer is mapped from there, and the brush's circle shows
+  only there, at the size the brush draws
+  ([#378](https://github.com/viell-dev/slop-inkline/issues/378)).
 - **Zoom** pressed while you draw a stroke or a shape, with the pen or the
   eraser, or while you press a polygon's corner, now waits until you let go, by
   its key and by its button. It used to zoom at once, which moved where the
