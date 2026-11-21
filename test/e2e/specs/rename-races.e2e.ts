@@ -232,6 +232,12 @@ describe("The editor", function () {
         expect(await strokeCount("elsewhere.ink.png")).toBe(2);
         // Said once the save, and anything it does to the note, is over.
         await waitForStatus("Saved, but not renamed");
+        // A rename refused before it saves the notes leaves the embed to reach
+        // the file by Obsidian's own save, two seconds after it went in.
+        await browser.waitUntil(
+          async () => (await noteOnDisk("Editor.md")) === (await noteText()),
+          { timeoutMsg: "the note's file never held what its editor did" },
+        );
         // As every other link to the file is, by whichever way it went.
         expect(await noteOnDisk("Editor.md")).toContain("![[001.ink.png]]");
         expect(await noteText()).toContain("![[001.ink.png]]");
