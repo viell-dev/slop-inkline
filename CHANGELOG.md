@@ -24,6 +24,23 @@ even one a public release; earlier pre-releases carry a suffix such as
   stroke along the curve of a kind the file format already has, so a symbol with
   paths opens and looks the same in earlier versions of Inkline.
 
+### Changed
+
+- A symbol saved without a name passes over a number that a note still links to,
+  so a note that embeds a deleted symbol no longer shows the next new symbol in
+  its folder in its place. A link counts as Obsidian would resolve it, once
+  Obsidian has read the note's links after opening the vault
+  ([#299](https://github.com/viell-dev/slop-inkline/issues/299)).
+
+### Fixed
+
+- **Zoom** pressed while you draw a stroke or a shape, with the pen or the
+  eraser, or while you press a polygon's corner or a path's point or handle, now
+  waits until you let go, by its key and by its button. It used to zoom at once,
+  which moved where the pointer fell in the drawing, so letting go without
+  moving ended the stroke somewhere other than it showed
+  ([#382](https://github.com/viell-dev/slop-inkline/issues/382)).
+
 ## 1.0.2 - 2026-11-19
 
 A fix release for 1.0.1. The file format is unchanged: symbols open and look as

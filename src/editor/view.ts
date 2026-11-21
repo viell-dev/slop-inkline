@@ -4,6 +4,7 @@
 
 import type { Stroke } from "../format/record.ts";
 import {
+  addedStrokes,
   documentSpan,
   emptyDocument,
   type InkDocument,
@@ -114,28 +115,6 @@ const erasingAlpha = 0.5;
 interface Drawn {
   readonly document: InkDocument;
   readonly base: DrawableBase | undefined;
-}
-
-/**
- * The strokes `next` adds to `previous`, when that is all that changed: the
- * same base layer and the very same strokes in order, with one or more after
- * them, as a stroke or a filled shape adds. Anything else gives undefined,
- * however it came about, as an undo, a move, which makes new strokes, or a
- * replaced document all do. Strokes draw in order, so these drawn over what
- * `previous` left are what `next` leaves.
- */
-export function addedStrokes(
-  previous: InkDocument,
-  next: InkDocument,
-): readonly Stroke[] | undefined {
-  const before = previous.strokes;
-  const { strokes } = next;
-  if (next.base !== previous.base || strokes.length <= before.length) {
-    return undefined;
-  }
-  return before.every((stroke, index) => stroke === strokes[index])
-    ? strokes.slice(before.length)
-    : undefined;
 }
 
 /**
