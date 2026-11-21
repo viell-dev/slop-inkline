@@ -89,26 +89,24 @@ export function documentSpan(
 }
 
 /**
- * The stroke `next` adds to `previous`, when that is all that changed: the
- * same base layer and the very same strokes in order, with one more after
- * them. Anything else gives undefined, however it came about, as an undo, a
- * move, which makes new strokes, or a replaced document all do. Strokes draw
- * in order, so this stroke drawn over what `previous` left is what `next`
- * leaves.
+ * The strokes `next` adds to `previous`, when that is all that changed: the
+ * same base layer and the very same strokes in order, with one or more after
+ * them, as a stroke or a filled shape adds. Anything else gives undefined,
+ * however it came about, as an undo, a move, which makes new strokes, or a
+ * replaced document all do. Strokes draw in order, so these drawn over what
+ * `previous` left are what `next` leaves.
  */
-export function addedStroke(
+export function addedStrokes(
   previous: InkDocument,
   next: InkDocument,
-): Stroke | undefined {
+): readonly Stroke[] | undefined {
+  const before = previous.strokes;
   const { strokes } = next;
-  if (
-    next.base !== previous.base ||
-    strokes.length !== previous.strokes.length + 1
-  ) {
+  if (next.base !== previous.base || strokes.length <= before.length) {
     return undefined;
   }
-  return previous.strokes.every((stroke, index) => stroke === strokes[index])
-    ? strokes.at(-1)
+  return before.every((stroke, index) => stroke === strokes[index])
+    ? strokes.slice(before.length)
     : undefined;
 }
 
