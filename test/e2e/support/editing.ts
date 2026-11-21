@@ -28,14 +28,20 @@ export async function insert({
   await waitForEditor();
 }
 
-/** Opens the editor on a symbol file. */
-export async function editFile(path: string): Promise<void> {
+/**
+ * Opens the editor on a symbol file, and waits for it with
+ * {@link waitForEditor}, which `wait` goes to.
+ */
+export async function editFile(
+  path: string,
+  wait: Parameters<typeof waitForEditor>[0] = {},
+): Promise<void> {
   await browser.executeObsidian(({ app, plugins }, filePath) => {
     const file = app.vault.getFileByPath(filePath);
     if (file === null) throw new Error(`no ${filePath}`);
     void plugins.inkline.editSymbol(file);
   }, path);
-  await waitForEditor();
+  await waitForEditor(wait);
 }
 
 export async function draftCount(): Promise<number> {

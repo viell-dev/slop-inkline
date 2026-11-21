@@ -123,13 +123,18 @@ async function showNote(path: string): Promise<void> {
  * Waits for the editor to be open and to have drawn its first frame. In that
  * frame it sizes its preview line, so that a preview measured before it
  * would read the size of an empty canvas. Keyboard focus is ready at once.
+ * With `timeout`, it waits that many ms for the editor to open, in place of
+ * the suite's usual limit, as one of the largest symbols needs
+ * ({@link largeOpenLimit}).
  */
-export async function waitForEditor(): Promise<void> {
+export async function waitForEditor(
+  wait: { timeout?: number } = {},
+): Promise<void> {
   // Any editor's: a second can open over the first, as the command palette
   // can open it, and the frames below are drawn for both.
   await browser
     .$(".inkline-editor .inkline-surface", { strict: false })
-    .waitForDisplayed();
+    .waitForDisplayed(wait);
   await framesDrawn();
 }
 
@@ -696,6 +701,16 @@ export async function writeNoise(
     spacing,
   );
 }
+
+/**
+ * The most, in ms, that the editor may take to open on one of the largest
+ * symbols, as {@link writeNoise} makes them, in place of the suite's usual
+ * 20 s. In Docker on Windows 11, Obsidian 1.13.4 opened a new 2470-pixel
+ * picture of noise in 10 to 17 s, and at times in over 20 s, beside other
+ * jobs (#353); with both default versions in one run, 1.13.4 and 1.15.1 each
+ * took over 20 s for a 2300-pixel one (#350).
+ */
+export const largeOpenLimit = 120_000;
 
 /**
  * Opens the editor on a symbol file, and reports what that took: until it was
