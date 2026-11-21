@@ -2647,10 +2647,16 @@ export class InkEditorModal extends Modal {
     cursor.toggle(visible);
     canvas.toggleClass("has-brush-cursor", visible);
     if (!visible) return;
-    // From the surface's border box, where the cursor's own box starts.
-    const rect = canvas.getBoundingClientRect();
-    const left = cursorX - rect.left;
-    const top = cursorY - rect.top;
+    // From the corner of the box it is placed in, inside the border of the
+    // element it is positioned by, rather than from the surface, which a
+    // margin round it moves away from that corner (#394). The border is as
+    // wide as the computed style says, as for the surface's.
+    const holder = cursor.offsetParent ?? canvas.parentElement ?? canvas;
+    const rect = holder.getBoundingClientRect();
+    const { borderLeftWidth, borderTopWidth } = getComputedStyle(holder);
+    const left =
+      cursorX - rect.left - (Number.parseFloat(borderLeftWidth) || 0);
+    const top = cursorY - rect.top - (Number.parseFloat(borderTopWidth) || 0);
     cursor.style.transform = `translate(${String(left)}px, ${String(top)}px) scale(${String(1 / ratio)})`;
   }
 

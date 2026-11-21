@@ -26,6 +26,10 @@ even one a public release; earlier pre-releases carry a suffix such as
   the padding, the pointer is mapped from there, and the brush's circle shows
   only there, at the size the brush draws
   ([#378](https://github.com/viell-dev/slop-inkline/issues/378)).
+- The brush's circle stays on the pointer when a theme or a CSS snippet gives
+  the drawing area a margin, which Inkline's own styles do not. It showed away
+  from the pointer by the margin, though the ink went where the pointer was
+  ([#394](https://github.com/viell-dev/slop-inkline/issues/394)).
 - **Zoom** pressed while you draw a stroke or a shape, with the pen or the
   eraser, or while you press a polygon's corner, now waits until you let go, by
   its key and by its button. It used to zoom at once, which moved where the

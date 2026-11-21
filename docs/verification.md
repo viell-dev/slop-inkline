@@ -206,8 +206,12 @@ must keep released files readable and looking the same, as
 - The fixed bitmap has a centre dot at every brush size, and retains its
   coverage across fractional positions at two editor widths and five zoom levels
   ([brush-cursor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/brush-cursor.e2e.ts)).
-  Contrast checks cover light, dark, grey, coloured and translucent backgrounds,
-  ink edges, stationary theme redraws and readback failure recovery
+  **Unreleased:** with a margin of a different width on each side of the drawing
+  area, as a CSS snippet can give it, its centre stays within half a device
+  pixel of the pointer at 100% and 125% page zoom (the same file,
+  [#394](https://github.com/viell-dev/slop-inkline/issues/394)). Contrast checks
+  cover light, dark, grey, coloured and translucent backgrounds, ink edges,
+  stationary theme redraws and readback failure recovery
   ([cursor-contrast.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/cursor-contrast.e2e.ts)).
   Three fixed rounds of 300 pointer updates at 200% zoom must have a median
   below 5 ms per update while preserving the bitmap's coverage. This bounds the

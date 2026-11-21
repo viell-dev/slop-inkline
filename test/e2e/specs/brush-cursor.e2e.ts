@@ -103,6 +103,57 @@ describe("Fixed brush bitmap", function () {
     }
     await saveScreenshot("fixed-brush-cursor");
   });
+  it("keeps the circle on the pointer with a margin round the drawing area", async function () {
+    for (const zoom of [1, 1.25]) {
+      await setPageZoom(zoom);
+      // As a CSS snippet could, different on each side, as Inkline's own
+      // styles give the drawing area none (#394).
+      await browser.execute(() => {
+        const surface = document.querySelector(".inkline-surface");
+        if (!(surface instanceof HTMLElement)) throw new Error("no surface");
+        surface.style.margin = "14px 30px 10px 24px";
+        surface.style.width = "calc(100% - 54px)";
+      });
+      await surface().moveTo();
+      const states = await browser.execute(() => {
+        const surface = document.querySelector(".inkline-surface");
+        const cursor = document.querySelector(".inkline-brush-cursor");
+        if (
+          !(surface instanceof HTMLCanvasElement) ||
+          !(cursor instanceof HTMLCanvasElement)
+        )
+          throw new Error("no brush bitmap");
+        const bounds = surface.getBoundingClientRect();
+        const ratio = devicePixelRatio;
+        return [0.125, 0.625].map((fraction) => {
+          const x = bounds.left + 80 + fraction;
+          const y = bounds.top + 60 + fraction;
+          surface.dispatchEvent(
+            new PointerEvent("pointermove", {
+              pointerType: "mouse",
+              pointerId: 51,
+              clientX: x,
+              clientY: y,
+              bubbles: true,
+            }),
+          );
+          const rect = cursor.getBoundingClientRect();
+          return {
+            centreError: Math.max(
+              Math.abs((rect.left + rect.width / 2 - x) * ratio),
+              Math.abs((rect.top + rect.height / 2 - y) * ratio),
+            ),
+            visible: getComputedStyle(cursor).display !== "none",
+          };
+        });
+      });
+      for (const state of states) {
+        expect(state.visible).toBe(true);
+        expect(state.centreError).toBeLessThanOrEqual(0.51);
+      }
+    }
+    await saveScreenshot("brush-cursor-margin");
+  });
   it("draws a circular footprint with a centred dot at every preset", async function () {
     await surface().moveTo();
     const width = await browser.execute(() => {
