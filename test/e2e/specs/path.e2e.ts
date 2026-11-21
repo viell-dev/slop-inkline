@@ -4,6 +4,7 @@ import { loadModules } from "../support/browser.ts";
 import { editFile, pressed, save } from "../support/editing.ts";
 import {
   draw,
+  markEditor,
   openAtMarker,
   recordOf,
   settledSurface,
@@ -11,6 +12,7 @@ import {
   startOver,
   surface,
   waitForEditor,
+  waitForNext,
   waitForStatus,
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
@@ -38,7 +40,7 @@ async function openPath(grid = false): Promise<void> {
     await browser.keys(["Shift", "g"]);
     await browser.waitUntil(async () => (await pressed("grid")) === "true");
   }
-  await browser.keys(["Shift", "p"]);
+  await browser.keys("a");
   await browser.waitUntil(async () => (await pressed("path")) === "true");
   expect(await pressed("pen")).toBe("true");
 }
@@ -60,6 +62,73 @@ async function click(...points: readonly At[]): Promise<void> {
       .up()
       .perform();
   }
+}
+
+/** Moves the mouse to a point on the surface, with no button down. */
+async function hover([x, y]: At): Promise<void> {
+  const { width, height } = await settledSurface();
+  await browser
+    .action("pointer", { parameters: { pointerType: "mouse" } })
+    .move({
+      origin: surface(),
+      x: Math.round((x - 0.5) * width),
+      y: Math.round((y - 0.5) * height),
+      duration: 20,
+    })
+    .perform();
+}
+
+/**
+ * How many of the surface's pixels within 4 CSS pixels of each place, as
+ * fractions of the surface, show ink: the text's colour, which the drawing
+ * area draws its ink in, nearly opaque.
+ */
+async function inkShown(...near: readonly At[]): Promise<number[]> {
+  return browser.execute((near) => {
+    const canvas = document.querySelector(".inkline-editor .inkline-surface");
+    if (!(canvas instanceof HTMLCanvasElement)) throw new Error("no surface");
+    const { width, height } = canvas;
+    const data = canvas.getContext("2d")?.getImageData(0, 0, width, height);
+    if (data === undefined) throw new Error("no pixels");
+    const [r = 0, g = 0, b = 0] = (
+      getComputedStyle(canvas).color.match(/[\d.]+/g) ?? []
+    ).map(Number);
+    const box = canvas.getBoundingClientRect();
+    const across = width / canvas.clientWidth;
+    const reach = Math.round(4 * across);
+    return near.map(([fx, fy]) => {
+      const cx = Math.round((fx * box.width - canvas.clientLeft) * across);
+      const cy = Math.round((fy * box.height - canvas.clientTop) * across);
+      let count = 0;
+      for (let y = cy - reach; y <= cy + reach; y++) {
+        for (let x = cx - reach; x <= cx + reach; x++) {
+          if (x < 0 || y < 0 || x >= width || y >= height) continue;
+          const at = (y * width + x) * 4;
+          const [red = 0, green = 0, blue = 0, alpha = 0] = data.data.slice(
+            at,
+            at + 4,
+          );
+          if (
+            alpha > 200 &&
+            Math.abs(red - r) < 24 &&
+            Math.abs(green - g) < 24 &&
+            Math.abs(blue - b) < 24
+          ) {
+            count++;
+          }
+        }
+      }
+      return count;
+    });
+  }, near);
+}
+
+/** Waits for ink to show near each place, as {@link inkShown} counts it. */
+async function waitForInk(problem: string, ...near: readonly At[]) {
+  await browser.waitUntil(
+    async () => (await inkShown(...near)).every((count) => count > 10),
+    { timeoutMsg: problem },
+  );
 }
 
 /** Presses at `from`, drags to `to` by way of the middle, and lets go. */
@@ -274,6 +343,14 @@ describe("Path", function () {
     );
     console.log("Marks while placing", JSON.stringify(placing));
     await saveScreenshot("path-placing", browser.$(".inkline-editor"));
+    // After the smooth point's drag, the next curve follows the pointer from
+    // it, to where a click would place the next point.
+    expect((await inkShown([0.45, 0.85]))[0]).toBe(0);
+    await hover([0.45, 0.85]);
+    await waitForInk(
+      "the next curve did not follow the pointer after a drag",
+      [0.45, 0.85],
+    );
     // A click on the last point ends it.
     await click([0.65, 0.3]);
     const [arc] = await draftStrokes(1);
@@ -340,7 +417,7 @@ describe("Path", function () {
     expect(ended).toMatchObject({ tool: "eraser", size: 192 });
     expect(ended).not.toHaveProperty("kind");
     // Esc drops a path being placed, and the editor stays open.
-    await browser.keys(["Shift", "p"]);
+    await browser.keys("a");
     await click([0.3, 0.8], [0.6, 0.8]);
     await browser.keys("Escape");
     await waitForStatus("Path dropped");
@@ -362,6 +439,12 @@ describe("Path", function () {
     // in to it from below, and leaves it upwards, round to the first point.
     await click([0.3, 0.6]);
     await drag([0.6, 0.6], [0.6, 0.3]);
+    // Pointed at the first point after the drag, it shows the filled shape
+    // the click makes, whose middle no line passes through.
+    expect((await inkShown([0.45, 0.6]))[0]).toBe(0);
+    await hover([0.3, 0.6]);
+    await waitForInk("the close was not shown before the click", [0.45, 0.6]);
+    await saveScreenshot("path-closing", browser.$(".inkline-editor"));
     await click([0.3, 0.6]);
     const [inside, line] = await draftStrokes(2);
     expect(inside?.kind).toBe("fill");
@@ -383,6 +466,30 @@ describe("Path", function () {
     });
   });
 
+  it("ends with its points on Next, which keeps Path on, and the close button drops one", async function () {
+    await openPath();
+    await click([0.3, 0.5]);
+    await drag([0.6, 0.5], [0.7, 0.3]);
+    await markEditor();
+    await browser.keys(["Control", "Shift", "Enter"]);
+    await waitForNext(1);
+    expect(await pressed("path")).toBe("true");
+    const [saved] = await savedStrokes();
+    expect(saved).not.toHaveProperty("kind");
+    expect(pixels(saved).length).toBeGreaterThan(150);
+    // In the next symbol's editor, the close button drops a path being
+    // placed first, and the editor stays open.
+    await click([0.3, 0.5], [0.6, 0.5]);
+    await waitForMarks([0.3, 0.5], [0.6, 0.5]);
+    await browser.$(".inkline-editor .modal-header-button").click();
+    await waitForStatus("Path dropped");
+    expect(await browser.$(".inkline-editor").isExisting()).toBe(true);
+    await browser.waitUntil(async () => (await marksShown()).all === 0, {
+      timeoutMsg: "the dropped path's controls stayed",
+    });
+    expect(await draftNow()).toBe(0);
+  });
+
   it("erases along its curve with the eraser, and is plain ink in the symbol opened again", async function () {
     await openPath();
     // A filled ellipse of the pen to erase from.
@@ -396,7 +503,7 @@ describe("Path", function () {
     ]);
     await draftStrokes(2);
     await browser.keys("e");
-    await browser.keys(["Shift", "p"]);
+    await browser.keys("a");
     await browser.waitUntil(async () => (await pressed("path")) === "true");
     /** The surface's pixels in the eraser's red, which shows what it takes. */
     const tinted = async (): Promise<number> =>
@@ -444,7 +551,7 @@ describe("Path", function () {
     await settledSurface();
     expect(await pressed("path")).toBe("false");
     expect((await marksShown()).all).toBe(0);
-    await browser.keys(["Shift", "p"]);
+    await browser.keys("a");
     await click([0.35, 0.65]);
     await waitForMarks([0.35, 0.65]);
     await browser.keys("Enter");
