@@ -865,15 +865,31 @@ const letGoBound = 15_000;
  *
  * A gate that lets a call go, here or in its own test, can keep the call in
  * the renderer's `inklineLetGo`, a set of `{ gate, call }` with the gate's
- * name and the call's promise, until the call ends, as `holdNextRead` and
- * `holdNextWrite` do. This waits for every call in it to end, whether it
- * resolves or rejects, before anything else, so that what was let go is done
- * before {@link startOver} resets the vault: a write let go could otherwise
- * land after the reset. It waits at most `letGoBound` ms, {@link letGoBound}
- * unless a test says otherwise, and then fails, naming each gate whose call
- * had not ended, once the rest of this is done, so that one test that cannot
- * finish does not leave its stubs to the tests after it. A call that had not
- * ended stays in the set, so that the next clean-up waits for it too.
+ * name and the call's promise, until the call ends, as {@link hold},
+ * {@link holdDecoding}, `holdNextRead`, and `holdNextWrite` do. This waits
+ * for every call in it to end, whether it resolves or rejects, before
+ * anything else, so that what was let go is done before {@link startOver}
+ * resets the vault: a write let go could otherwise land after the reset. It
+ * waits at most `letGoBound` ms, {@link letGoBound} unless a test says
+ * otherwise, and then fails, naming each gate whose call had not ended, once
+ * the rest of this is done, so that one test that cannot finish does not
+ * leave its stubs to the tests after it. A call that had not ended stays in
+ * the set, so that the next clean-up waits for it too.
+ *
+ * It does not wait for what Inkline does once such a call ends, which is
+ * Inkline's own work, out of a test's reach: the write that follows a held
+ * read, the rename that can follow a held write, or a save queued behind a
+ * held one, as in symbol-text-unfinished-writes.e2e.ts and
+ * symbol-text-concurrent-saves.e2e.ts. So a test that fails with such a call
+ * held can leave that work to touch the vault after the reset. An editor's
+ * save is waited for all the same, as an editor does not close while it
+ * saves and {@link startOver} closes every modal; a save from the library's
+ * Quick edit is not. Waiting for the rest would need a view of Inkline's
+ * queue of writes from a test, which changes the plugin, a wait for the vault
+ * to stay quiet, which is a guess, or a wait made for each test that knows
+ * its next step, and removed when the test ends well; none is worth it for
+ * what has never been seen to fail a test, and only can after another test
+ * has failed (#358).
  *
  * It then takes {@link hold}'s gate away, so that a later {@link waitForHeld}
  * or {@link letGo} cannot take it for its own; undoes {@link delayVault} and
@@ -1217,7 +1233,9 @@ const holdable = {
  * once it has done it and before its caller hears. Failed by {@link letGo},
  * it rejects, having done its work if it was held after it. A test that ends
  * with one held leaves it to {@link undoStubs}, which lets it go if Obsidian
- * owns it and fails it otherwise.
+ * owns it and fails it otherwise. Let go or failed either way, each call that
+ * reached the gate is kept in the renderer's `inklineLetGo` until it ends, so
+ * that {@link undoStubs} waits for it before the vault is reset.
  *
  * Each call makes a gate of its own, the renderer's `inklineHoldGate` until
  * the next call replaces it whole: what reaches the gate,
@@ -1231,13 +1249,27 @@ export async function hold(
   when: "before" | "after" = "before",
 ): Promise<void> {
   await browser.executeObsidian(
-    ({ app }, { owner, method, obsidians }, end, when) => {
+    ({ app }, { owner, method, obsidians }, name, end, when) => {
       const target = owner === "adapter" ? app.vault.adapter : app.vault;
       const original: unknown = Reflect.get(target, method);
       if (typeof original !== "function") throw new Error(`no ${method}`);
+      /** The calls that have reached the gate and not ended. */
+      const reached = new Set<Promise<unknown>>();
       let settle: (failure?: string) => void = () => undefined;
       const released = new Promise<void>((resolve, reject) => {
         settle = (failure) => {
+          // Kept until they end, for undoStubs() to wait for.
+          const known: unknown = Reflect.get(window, "inklineLetGo");
+          const letGo = known instanceof Set ? known : new Set<unknown>();
+          Reflect.set(window, "inklineLetGo", letGo);
+          for (const call of reached) {
+            const entry = { gate: `hold-${name}`, call };
+            letGo.add(entry);
+            const forget = (): void => {
+              letGo.delete(entry);
+            };
+            call.then(forget, forget);
+          }
           if (failure === undefined) resolve();
           else reject(new Error(failure));
         };
@@ -1251,16 +1283,26 @@ export async function hold(
             ? (Reflect.get(file, "path") as unknown)
             : file;
         const held = typeof path === "string" && path.endsWith(end);
-        if (held && when === "before") {
-          gate.reached = true;
-          await released;
+        const call = (async () => {
+          if (held && when === "before") {
+            gate.reached = true;
+            await released;
+          }
+          const result: unknown = await Reflect.apply(original, target, args);
+          if (held && when === "after") {
+            gate.reached = true;
+            await released;
+          }
+          return result;
+        })();
+        if (held) {
+          reached.add(call);
+          const ended = (): void => {
+            reached.delete(call);
+          };
+          call.then(ended, ended);
         }
-        const result: unknown = await Reflect.apply(original, target, args);
-        if (held && when === "after") {
-          gate.reached = true;
-          await released;
-        }
-        return result;
+        return call;
       };
       const gate = {
         owner,
@@ -1282,6 +1324,7 @@ export async function hold(
       Reflect.set(target, method, wrapper);
     },
     holdable[what],
+    what,
     ending,
     when,
   );
@@ -1407,7 +1450,9 @@ export async function waitForIndexWait(): Promise<void> {
  * Has the next call of `createImageBitmap`, as when a draft's base layer is
  * decoded to offer the draft, wait until {@link letDecodingGo}, until
  * {@link restoreDecoding}; the calls after it go on. It notes when the
- * picture that call decodes is closed, for {@link waitForDecoded}.
+ * picture that call decodes is closed, for {@link waitForDecoded}. Let go,
+ * here or by {@link undoStubs}, the call is kept in the renderer's
+ * `inklineLetGo` until it ends, so that {@link undoStubs} waits for it.
  */
 export async function holdDecoding(): Promise<void> {
   await browser.execute(() => {
@@ -1417,10 +1462,29 @@ export async function holdDecoding(): Promise<void> {
     const gate = new Promise<void>((resolve) => {
       go = resolve;
     });
+    /** The held call, once it has come. */
+    let call: Promise<unknown> | undefined;
+    let released = false;
+    const release = (): void => {
+      if (released) return;
+      released = true;
+      go();
+      if (call === undefined) return;
+      // Kept until it ends, for undoStubs() to wait for.
+      const known: unknown = Reflect.get(window, "inklineLetGo");
+      const letGo = known instanceof Set ? known : new Set<unknown>();
+      Reflect.set(window, "inklineLetGo", letGo);
+      const entry = { gate: "decoding", call };
+      letGo.add(entry);
+      const forget = (): void => {
+        letGo.delete(entry);
+      };
+      call.then(forget, forget);
+    };
     const state = { held: false, closed: false };
     Reflect.set(window, "inklineHeldDecoding", state);
-    Reflect.set(window, "inklineLetDecodingGo", go);
-    Reflect.set(window, "inklineAtEnd-decoding", go);
+    Reflect.set(window, "inklineLetDecodingGo", release);
+    Reflect.set(window, "inklineAtEnd-decoding", release);
     Reflect.set(window, "inklineCreateImageBitmap", original);
     let first = true;
     Reflect.set(
@@ -1430,19 +1494,22 @@ export async function holdDecoding(): Promise<void> {
         if (!first) return Reflect.apply(original, window, args) as unknown;
         first = false;
         state.held = true;
-        await gate;
-        const result: unknown = await Reflect.apply(original, window, args);
-        const close: unknown =
-          typeof result === "object" && result !== null
-            ? Reflect.get(result, "close")
-            : undefined;
-        if (typeof close === "function") {
-          Reflect.set(result as object, "close", () => {
-            state.closed = true;
-            Reflect.apply(close, result, []);
-          });
-        }
-        return result;
+        call = (async () => {
+          await gate;
+          const result: unknown = await Reflect.apply(original, window, args);
+          const close: unknown =
+            typeof result === "object" && result !== null
+              ? Reflect.get(result, "close")
+              : undefined;
+          if (typeof close === "function") {
+            Reflect.set(result as object, "close", () => {
+              state.closed = true;
+              Reflect.apply(close, result, []);
+            });
+          }
+          return result;
+        })();
+        return call;
       },
     );
   });

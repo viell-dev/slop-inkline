@@ -6,12 +6,14 @@ import {
   createSymbol,
   delayVault,
   hold,
+  holdDecoding,
   letGo,
   openAtMarker,
   startOver,
   undoStubs,
   waitForDelayed,
   waitForHeld,
+  waitForHeldDecoding,
 } from "../support/editor.ts";
 import {
   holdNextRead,
@@ -285,6 +287,114 @@ describe("The editor", function () {
     expect(await noteOnDisk("Editor.md")).toBe(original);
   });
 
+  it("starts each test from the vault as it was, after one that failed with a note's save held", async function () {
+    const original = await noteOnDisk("Editor.md");
+    // A save of the note held at hold()'s gate, as a test that failed before
+    // it let the save go leaves it, and slow once let go, as a busy disk would
+    // make it: long enough that a reset that did not wait for it would come
+    // first. The slow write is the adapter's own, under the gate, and the
+    // clean-up takes it away with the gate.
+    await browser.executeObsidian(({ app }) => {
+      const { adapter } = app.vault;
+      const write = adapter.write.bind(adapter);
+      adapter.write = async (path, data, options) => {
+        if (path === "Editor.md") {
+          await new Promise((resolve) => window.setTimeout(resolve, 3000));
+        }
+        await write(path, data, options);
+      };
+    });
+    await hold("save", "Editor.md");
+    await browser.executeObsidian(({ app }) => {
+      const outcome: { written?: boolean; failure?: string } = {};
+      Reflect.set(window, "inklineHeldSave", outcome);
+      app.vault.adapter.write("Editor.md", "Text from the test before\n").then(
+        () => {
+          outcome.written = true;
+        },
+        (error: unknown) => {
+          outcome.failure = error instanceof Error ? error.message : "?";
+        },
+      );
+    });
+    await waitForHeld();
+    await startOver();
+    // Had the reset not waited for it, the save would land after it.
+    await browser.waitUntil(
+      async () => Object.keys(await writeOutcome("inklineHeldSave")).length > 0,
+      { timeoutMsg: "the held save never ended" },
+    );
+    expect(await writeOutcome("inklineHeldSave")).toEqual({ written: true });
+    expect(await noteOnDisk("Editor.md")).toBe(original);
+    await browser.execute(() => {
+      Reflect.deleteProperty(window, "inklineHeldSave");
+    });
+  });
+
+  it("resets nothing while a decoding it let go is still under way", async function () {
+    // A decoding that, let go, goes on until the test ends it, under the
+    // gate. Its end is made here, so that the test ends it whatever fails.
+    await browser.execute(() => {
+      const decode: unknown = Reflect.get(window, "createImageBitmap");
+      let end = (): void => undefined;
+      const ended = new Promise<void>((resolve) => {
+        end = resolve;
+      });
+      Reflect.set(window, "inklineEndDecoding", end);
+      Reflect.set(window, "inklineOwnCreateImageBitmap", decode);
+      Reflect.set(window, "createImageBitmap", async (...args: unknown[]) => {
+        await ended;
+        if (typeof decode !== "function") throw new Error("no decoding");
+        return Reflect.apply(decode, window, args) as unknown;
+      });
+    });
+    try {
+      // A file the fixture does not have, which only a reset takes away.
+      await browser.executeObsidian(async ({ app }) => {
+        await app.vault.create("Extra.md", "Not in the fixture.\n");
+      });
+      await holdDecoding();
+      await browser.execute(() => {
+        const outcome: { width?: number; failure?: string } = {};
+        Reflect.set(window, "inklineDecoded", outcome);
+        createImageBitmap(new ImageData(1, 1)).then(
+          (bitmap) => {
+            outcome.width = bitmap.width;
+            bitmap.close();
+          },
+          (error: unknown) => {
+            outcome.failure = error instanceof Error ? error.message : "?";
+          },
+        );
+      });
+      await waitForHeldDecoding();
+      expect(await failure(startOver({ letGoBound: 300 }))).toContain(
+        "undoStubs() let go what the decoding gate held, and it did not finish within 300 ms",
+      );
+      expect(await extraOnDisk()).toBe(true);
+    } finally {
+      await endCall("inklineEndDecoding");
+      await browser.execute(() => {
+        const own: unknown = Reflect.get(window, "inklineOwnCreateImageBitmap");
+        Reflect.deleteProperty(window, "inklineOwnCreateImageBitmap");
+        if (typeof own === "function") {
+          Reflect.set(window, "createImageBitmap", own);
+        }
+      });
+    }
+    // Once it ends, the clean-up goes on, and the reset takes the file away.
+    await startOver({ letGoBound: 300 });
+    expect(
+      await browser.execute((): unknown =>
+        Reflect.get(window, "inklineDecoded"),
+      ),
+    ).toEqual({ width: 1 });
+    expect(await extraOnDisk()).toBe(false);
+    await browser.execute(() => {
+      Reflect.deleteProperty(window, "inklineDecoded");
+    });
+  });
+
   it("resets nothing while a symbol's write it let go is still under way, however often it is asked", async function () {
     // A write that, let go, goes on until the test ends it: what the clean-up
     // waits for cannot end by itself, however fast the disk. Its end is made
@@ -313,7 +423,7 @@ describe("The editor", function () {
       expect(await failure(startOver({ letGoBound: 300 }))).toContain(named);
       expect(await extraOnDisk()).toBe(true);
     } finally {
-      await endWrite("inklineEndWrite");
+      await endCall("inklineEndWrite");
     }
     // Once it ends, the clean-up goes on, and the reset takes the file away.
     await startOver({ letGoBound: 300 });
@@ -368,7 +478,7 @@ describe("The editor", function () {
         "undoStubs() let go what the next-write gate held, and it did not finish within 300 ms",
       );
     } finally {
-      await endWrite("inklineEndWrite");
+      await endCall("inklineEndWrite");
     }
     // Once ended, the write goes to the disk, so the clean-up gets its
     // ordinary time for it here.
@@ -534,8 +644,8 @@ async function failure(cleaning: Promise<void>): Promise<string> {
   );
 }
 
-/** Ends the write a test keeps going under `key`, if it has not ended. */
-async function endWrite(key: string): Promise<void> {
+/** Ends the call a test keeps going under `key`, if it has not ended. */
+async function endCall(key: string): Promise<void> {
   await browser.execute((name) => {
     const end: unknown = Reflect.get(window, name);
     Reflect.deleteProperty(window, name);
