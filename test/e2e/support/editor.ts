@@ -1,6 +1,7 @@
 // Steps for driving the editor in end-to-end tests.
 
 import { browser } from "@wdio/globals";
+import type { TFile } from "obsidian";
 import { Key, type ChainablePromiseElement } from "webdriverio";
 import { obsidianPage } from "wdio-obsidian-service";
 import { loadModules } from "./browser.ts";
@@ -543,10 +544,166 @@ export async function topButton(
 
 /** Clicks a button in the topmost modal, waiting for it to appear. */
 export async function clickTop(text: string): Promise<void> {
-  await browser.waitUntil(async () => (await topButton(text)) !== undefined, {
-    timeoutMsg: `no "${text}" button`,
-  });
+  await waitForTop(text);
   await (await topButton(text))?.click();
+}
+
+/** The answers to Obsidian's question about updating links after a rename. */
+const linkAnswers: readonly string[] = [
+  "Always update",
+  "Just once",
+  "Do not update",
+];
+
+/**
+ * Waits for a button to appear in the topmost modal. If it is one of the
+ * answers to Obsidian's question about links and does not come, the error
+ * also says what Obsidian knew at each rename since the test began, as
+ * {@link recordRenames} kept it, so that a rename that ends without the
+ * question says why (#386).
+ */
+export async function waitForTop(text: string): Promise<void> {
+  try {
+    await browser.waitUntil(async () => (await topButton(text)) !== undefined, {
+      timeoutMsg: `no "${text}" button`,
+    });
+  } catch (error) {
+    if (!linkAnswers.includes(text)) throw error;
+    const renames = await browser.execute(() =>
+      JSON.stringify(Reflect.get(window, "inklineRenameRecord") ?? null),
+    );
+    throw new Error(`no "${text}" button; the renames: ${renames}`, {
+      cause: error,
+    });
+  }
+}
+
+/**
+ * Keeps a record in the renderer, until the next {@link undoStubs}, of what
+ * Obsidian knew at each rename, for {@link waitForTop} to report. Obsidian
+ * asks about links only if its index, once clean, knows of some to the file,
+ * and only while its setting says to ask. So as each rename starts, the record
+ * holds whether the index is clean, how many files it is still reading, the
+ * notes that its resolved links say link to the file, and, for each open note,
+ * whether its cache knows the link; and, once Obsidian has collected the links
+ * to update, how many lead to the file, from which notes, whether the setting
+ * says to ask, and how long the update took, question and all. The index and
+ * the link update are Obsidian's own, so what is not of the type expected is
+ * left out. Each call goes straight on to Obsidian's, with nothing awaited.
+ */
+async function recordRenames(): Promise<void> {
+  await browser.executeObsidian(({ app, obsidian }) => {
+    const { fileManager: manager, metadataCache: cache, vault } = app;
+    const record: Record<string, unknown>[] = [];
+    const started = performance.now();
+    const now = (): number => Math.round(performance.now() - started);
+    /** The file the latest rename moves, which its link update is about. */
+    let renaming: unknown;
+    const index = (): Record<string, unknown> => {
+      const clean: unknown = Reflect.get(cache, "isCacheClean");
+      const reading: unknown = Reflect.get(cache, "inProgressTaskCount");
+      return {
+        clean:
+          typeof clean === "function"
+            ? (Reflect.apply(clean, cache, []) as unknown)
+            : undefined,
+        reading: typeof reading === "number" ? reading : undefined,
+      };
+    };
+    const asks = (): unknown => {
+      const config: unknown = Reflect.get(vault, "getConfig");
+      return typeof config === "function"
+        ? Reflect.apply(config, vault, ["alwaysUpdateLinks"]) !== true
+        : undefined;
+    };
+    const linkedFrom = (file: TFile): Record<string, string> => {
+      const notes: Record<string, string> = {};
+      for (const { view } of app.workspace.getLeavesOfType("markdown")) {
+        if (!(view instanceof obsidian.MarkdownView) || view.file === null) {
+          continue;
+        }
+        const from = view.file.path;
+        const known = cache.getFileCache(view.file);
+        const links = [...(known?.links ?? []), ...(known?.embeds ?? [])];
+        notes[from] =
+          known === null
+            ? "no cache"
+            : links.some(
+                  ({ link }) =>
+                    cache.getFirstLinkpathDest(
+                      obsidian.getLinkpath(link),
+                      from,
+                    ) === file,
+                )
+              ? "links"
+              : "no link";
+      }
+      return notes;
+    };
+    const wrap = (
+      name: "renameFile" | "updateAllLinks",
+      note: (args: unknown[]) => Record<string, unknown>,
+    ): (() => void) => {
+      const original: unknown = Reflect.get(manager, name);
+      if (typeof original !== "function") return () => undefined;
+      const ownBefore = Object.hasOwn(manager, name);
+      const recording = function (this: unknown, ...args: unknown[]): unknown {
+        const entry = { at: now(), step: name, ...note(args) };
+        record.push(entry);
+        const result: unknown = Reflect.apply(original, this, args);
+        if (result instanceof Promise) {
+          const ended = (): void => {
+            Reflect.set(entry, "took", now() - entry.at);
+          };
+          void result.then(ended, ended);
+        }
+        return result;
+      };
+      Reflect.set(manager, name, recording);
+      return () => {
+        if (Reflect.get(manager, name) !== recording) return;
+        if (ownBefore) Reflect.set(manager, name, original);
+        else Reflect.deleteProperty(manager, name);
+      };
+    };
+    const undo = [
+      wrap("renameFile", ([file, to]) => {
+        renaming = file;
+        if (!(file instanceof obsidian.TFile)) return { to };
+        return {
+          from: file.path,
+          to,
+          ...index(),
+          resolved: Object.entries(cache.resolvedLinks)
+            .filter(([, targets]) => (targets[file.path] ?? 0) > 0)
+            .map(([from]) => from),
+          open: linkedFrom(file),
+        };
+      }),
+      wrap("updateAllLinks", ([links]) => {
+        const found = Array.isArray(links) ? (links as unknown[]) : [];
+        const sources = found.flatMap((link) => {
+          if (typeof link !== "object" || link === null) return [];
+          const source: unknown = Reflect.get(link, "sourceFile");
+          return Reflect.get(link, "resolvedFile") === renaming &&
+            source instanceof obsidian.TFile
+            ? [source.path]
+            : [];
+        });
+        return {
+          links: found.length,
+          toFile: sources,
+          asks: asks(),
+          ...index(),
+        };
+      }),
+    ];
+    Reflect.set(window, "inklineRenameRecord", record);
+    Reflect.set(window, "inklineAtEnd-rename-record", () => {
+      for (const step of undo) step();
+      Reflect.deleteProperty(window, "inklineRenameRecord");
+    });
+  });
 }
 
 /**
@@ -970,7 +1127,8 @@ export async function undoStubs({
  * restores the vault and clears drafts, so that each test starts from the
  * same state. It first takes away what a test held or replaced, with
  * {@link undoStubs}, which it gives `options`, and resets nothing if that
- * fails.
+ * fails. Last, it starts the test's record of renames, which
+ * {@link waitForTop} reports from.
  */
 export async function startOver(
   options: Parameters<typeof undoStubs>[0] = {},
@@ -1046,6 +1204,7 @@ export async function startOver(
       notice.remove();
     }
   });
+  await recordRenames();
 }
 
 const delayable = [
