@@ -1414,16 +1414,32 @@ describe("Native PDF export", function () {
     expect(snapshot.waited).toBeGreaterThan(1500);
     expect(snapshot.waited).toBeLessThan(late);
     expect(snapshot.restored).toBe(true);
-    // Late and unread print from their masks, slow from its copy, all inked.
-    for (const name of ["Slow", "Late", "Unread"]) {
-      const { ink } = await printedBlock(
-        raster,
-        wordBox(xml, `${name}Before`),
-        wordBox(xml, `${name}After.`),
-        24,
-      );
-      expect(ink.count).toBeGreaterThan(10);
-      expect(ink.dark / ink.count).toBeGreaterThan(0.6);
+    // Late and unread print from their masks, slow from its copy, each its
+    // ink's whole square in the text's black: 8 pixels a side, the middle
+    // third of the line's 24, within a pixel, as anti-aliased edges make a
+    // measured square up to 0.4 pixels larger. Counting the pixels darker
+    // than a threshold would not do: a mask can leave #255's line along its
+    // box's edge, which then counts as ink, as it did in CI, and an 8-pixel
+    // square half a pixel off the grid has only 49 of its 81 such pixels
+    // dark.
+    const printed = await printedDots(
+      raster,
+      ["Slow", "Late", "Unread"].map((name) => ({
+        before: wordBox(xml, `${name}Before`),
+        after: wordBox(xml, `${name}After.`),
+      })),
+      96,
+    );
+    console.log(`waits: ${JSON.stringify(printed)}`);
+    expect(printed).toHaveLength(3);
+    for (const dots of printed) {
+      expect(dots).toHaveLength(1);
+      const [one] = dots;
+      expect(Math.abs((one?.width ?? 0) - 8)).toBeLessThanOrEqual(1);
+      expect(Math.abs((one?.height ?? 0) - 8)).toBeLessThanOrEqual(1);
+      for (const channel of one?.colour ?? [255]) {
+        expect(channel).toBeLessThan(16);
+      }
     }
   });
 });
