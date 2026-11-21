@@ -11,7 +11,7 @@ import {
 } from "../../../src/format/record.ts";
 import { cropSpan, joinSpans, type Span } from "../../../src/editor/guides.ts";
 import { DrawingSession, type Shape } from "../../../src/editor/session.ts";
-import { InkView, addedStrokes } from "../../../src/editor/view.ts";
+import { InkView } from "../../../src/editor/view.ts";
 import {
   baseFromPicture,
   findInk,
@@ -20,6 +20,7 @@ import {
   saveInk,
 } from "../../../src/ink/canvas.ts";
 import {
+  addedStrokes,
   documentSpan,
   toUnits,
   type InkDocument,

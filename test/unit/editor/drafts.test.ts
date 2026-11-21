@@ -1189,8 +1189,13 @@ describe("DraftStore with a draft of a later layout", () => {
     expect(storage.values.has(`inkline-draft-base:${partial}`)).toBe(false);
   });
 
-  /** Keys that are not of the form every version makes, a UUID's. */
-  function otherKeys(uuid: string): string[] {
+  /**
+   * Keys that are not of the form every version makes, a UUID's. They come
+   * from a fixed UUID holding letters, so its capitals differ from it: a
+   * random one could be all decimal digits, and its capitals a valid key.
+   */
+  function otherKeys(): string[] {
+    const uuid = "0b9d7c4e-5f3a-4e21-a8c6-d2f1e0b7a935";
     return [
       "",
       "k7",
@@ -1204,9 +1209,7 @@ describe("DraftStore with a draft of a later layout", () => {
     const storage = new MemoryStorage();
     const store = new DraftStore(storage, () => 5000);
     const kept = plantBase(storage);
-    const others = otherKeys(crypto.randomUUID()).map((key) =>
-      plantBase(storage, key),
-    );
+    const others = otherKeys().map((key) => plantBase(storage, key));
     // Each named whole, as a string and as a property name.
     plant(
       storage,
@@ -1225,7 +1228,7 @@ describe("DraftStore with a draft of a later layout", () => {
     const storage = new MemoryStorage();
     const store = new DraftStore(storage, () => 5000);
     const uuid = crypto.randomUUID();
-    const keys = [uuid, ...otherKeys(crypto.randomUUID())];
+    const keys = [uuid, ...otherKeys()];
     // Drafts of layout 2, as a later version could have left them, each
     // keeping one of the base layers, which the later draft names too.
     keys.forEach((key, index) => {

@@ -148,6 +148,8 @@ describe("smoothShape", () => {
     }
   });
 
+  // This checks the corners, not how fast: it took 0.3 seconds alone and up
+  // to 3.0 under load, near Vitest's default of five (#362).
   it("has at most 28 corners for a point, however it doubles back", () => {
     // The worst a record can ask for, which is what limits.points bounds: every
     // point a sharp corner, with a half circle on each side, and the two ends.
@@ -160,7 +162,7 @@ describe("smoothShape", () => {
       expect(outline.length).toBeGreaterThan(26 * count);
       expect(outline.length).toBeLessThanOrEqual(28 * count + 42);
     }
-  });
+  }, 30_000);
 });
 
 /** A polygon stroke through `corners`, in pixels, `width` pixels wide. */
@@ -808,6 +810,8 @@ describe("a stroke moved by whole units", () => {
     return strokes.map((stroke) => movedTo(stroke, 0, 0));
   }
 
+  // This checks the outlines, not how fast: its 800 strokes in each place took
+  // 1.3 seconds alone and up to 11.9 under load, past Vitest's five (#362).
   it("moves a smooth stroke's outline exactly, whatever rounding it meets", () => {
     /** Whether `moved` is `shape`, each number moved by (`ox`, `oy`) exactly. */
     const isMoved = (
@@ -843,7 +847,7 @@ describe("a stroke moved by whole units", () => {
       }
     }
     expect(reshaped).toEqual([]);
-  });
+  }, 30_000);
 
   it("has the same corners wherever a tie falls", () => {
     const stroke: SmoothStroke = {
