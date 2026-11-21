@@ -1666,7 +1666,7 @@ export class InkEditorModal extends Modal {
           const { left, right } = view.visible;
           this.#line.act(() => {
             view.pan(
-              ((delta * lines) / view.canvas.clientWidth) * (right - left),
+              ((delta * lines) / view.contentBox().width) * (right - left),
             );
             this.#render();
           });
@@ -2192,7 +2192,7 @@ export class InkEditorModal extends Modal {
     const view = this.#view;
     if (view === undefined) return;
     const { canvas } = view;
-    const width = canvas.clientWidth;
+    const { width } = view.contentBox();
     const ratio = canvas.win.devicePixelRatio;
     view.heightLimit = canvas.win.innerHeight * 0.55;
     view.resize(width, ratio);
@@ -2552,14 +2552,11 @@ export class InkEditorModal extends Modal {
       canvas.removeClass("has-brush-cursor");
       return;
     }
-    const rect = canvas.getBoundingClientRect();
-    const x = hover.clientX - rect.left;
-    const y = hover.clientY - rect.top;
-    const inside =
-      x >= canvas.clientLeft &&
-      y >= canvas.clientTop &&
-      x < canvas.clientLeft + canvas.clientWidth &&
-      y < canvas.clientTop + canvas.clientHeight;
+    // Shown over the drawing alone, not over a border or padding round it.
+    const box = view.contentBox();
+    const x = hover.clientX - box.left;
+    const y = hover.clientY - box.top;
+    const inside = x >= 0 && y >= 0 && x < box.width && y < box.height;
     if (!inside) {
       cursor.hide();
       canvas.removeClass("has-brush-cursor");
@@ -2567,7 +2564,7 @@ export class InkEditorModal extends Modal {
     }
     const size = this.#session.activeSize ?? this.#session.size;
     const diameter =
-      ((size / unitsPerPixel) * canvas.clientWidth) /
+      ((size / unitsPerPixel) * box.width) /
       (view.visible.right - view.visible.left);
     const ratio = canvas.win.devicePixelRatio;
     if (
@@ -2591,20 +2588,23 @@ export class InkEditorModal extends Modal {
     // Scale the integer intrinsic dimensions to avoid CSS size rounding.
     // Each bitmap pixel maps to one display pixel even at fractional zoom;
     // the centre stays within half a device pixel of the pointer.
-    const left =
-      (Math.round(hover.clientX * ratio) - hotspot) / ratio - rect.left;
-    const top =
-      (Math.round(hover.clientY * ratio) - hotspot) / ratio - rect.top;
+    const cursorX = (Math.round(hover.clientX * ratio) - hotspot) / ratio;
+    const cursorY = (Math.round(hover.clientY * ratio) - hotspot) / ratio;
     const visible = contrastBrushCursor(
       brush,
       canvas,
-      left - canvas.clientLeft,
-      top - canvas.clientTop,
+      box,
+      cursorX - box.left,
+      cursorY - box.top,
       ratio,
     );
     cursor.toggle(visible);
     canvas.toggleClass("has-brush-cursor", visible);
     if (!visible) return;
+    // From the surface's border box, where the cursor's own box starts.
+    const rect = canvas.getBoundingClientRect();
+    const left = cursorX - rect.left;
+    const top = cursorY - rect.top;
     cursor.style.transform = `translate(${String(left)}px, ${String(top)}px) scale(${String(1 / ratio)})`;
   }
 

@@ -219,7 +219,13 @@ must keep released files readable and looking the same, as
   zoom, and the drawing area's content box, which its pixels fill, is as tall as
   the line box it shows
   ([pointer-alignment.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/pointer-alignment.e2e.ts),
-  [#359](https://github.com/viell-dev/slop-inkline/issues/359)).
+  [#359](https://github.com/viell-dev/slop-inkline/issues/359)). **Unreleased:**
+  so it does with padding of a different width on each side of the drawing area,
+  as a CSS snippet can give it, at 100% and, zoomed and fitted, at 125%; there
+  the brush's circle shows over the drawing, centred on the pointer to half a
+  device pixel and within 0.3 CSS pixels of the brush's width, and not over the
+  padding (the same file,
+  [#378](https://github.com/viell-dev/slop-inkline/issues/378)).
 - **Make ink** of a synthetic H, enlarged from about 1.2 to 11.5 times, leaves
   at most two partly covered document pixels at each edge of the saved symbol,
   and the reopened symbol draws the same pixels. The editor's own redraw, which

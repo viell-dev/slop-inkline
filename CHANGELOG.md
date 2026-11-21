@@ -9,6 +9,16 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Fixed
+
+- Ink shows under the pointer that draws it when a theme or a CSS snippet gives
+  the drawing area padding, which Inkline's own styles do not. The ink landed
+  away from the pointer by the padding, and the brush's circle was the wrong
+  size and showed over the padding too. Now the drawing fills the area inside
+  the padding, the pointer is mapped from there, and the brush's circle shows
+  only there, at the size the brush draws
+  ([#378](https://github.com/viell-dev/slop-inkline/issues/378)).
+
 ## 1.0.2 - 2026-11-19
 
 A fix release for 1.0.1. The file format is unchanged: symbols open and look as
