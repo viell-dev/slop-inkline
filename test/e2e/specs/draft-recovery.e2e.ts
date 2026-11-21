@@ -279,7 +279,7 @@ describe("Draft recovery", function () {
     await browser.executeObsidianCommand("inkline:recover-drafts");
     await waitForNotice("No draft is waiting for a symbol");
     expect(
-      await browser.executeObsidian(({ app }) => [
+      await browser.executeObsidian(({ app }): unknown[] => [
         app.loadLocalStorage("inkline-draft:later"),
         app.loadLocalStorage("inkline-drafts"),
       ]),

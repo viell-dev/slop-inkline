@@ -2369,7 +2369,9 @@ class DraftList extends SuggestModal<DraftRow> {
  */
 export async function recoverDrafts(host: EditorHost): Promise<void> {
   const { app, drafts, unloaded } = host;
-  if (unloaded.aborted) return;
+  // Read as a call: Inkline can unload while this waits.
+  const ended = (): boolean => unloaded.aborted;
+  if (ended()) return;
   const rows: DraftRow[] = [];
   const stopSaying = sayWhileSlow("Looking for drafts…");
   try {
@@ -2382,7 +2384,7 @@ export async function recoverDrafts(host: EditorHost): Promise<void> {
   } finally {
     stopSaying();
   }
-  if (unloaded.aborted) return;
+  if (ended()) return;
   if (rows.length === 0) {
     markNotice(
       new Notice(
