@@ -509,6 +509,12 @@ export class InkEditorModal extends Modal {
   readonly #shiftKey = (event: KeyboardEvent): void => {
     if (this.#session.holdShift(event.shiftKey)) this.#render();
   };
+  /**
+   * Whether Zoom was asked for while the pointer was pressed to draw, for
+   * when it is let go: as a switch, so that asking twice leaves the view as
+   * it is.
+   */
+  #zoomWaits = false;
   #hover: { pointerId: number; clientX: number; clientY: number } | undefined;
   #saving: Promise<boolean> | undefined;
   #closing = false;
@@ -1593,6 +1599,12 @@ export class InkEditorModal extends Modal {
       else if (event.type === "lostpointercapture") this.#session.end();
       else this.#session.end(point(event), event.shiftKey);
       this.#changed();
+      // Once what was drawn has ended where the view put it; Next takes a
+      // zoom asked for meanwhile to the following symbol.
+      if (this.#zoomWaits) {
+        this.#zoomWaits = false;
+        if (!this.#ended()) this.#zoom();
+      }
     };
     canvas.addEventListener("pointerdown", (event) => {
       if (!this.#gate.down(event)) return;
@@ -2266,8 +2278,42 @@ export class InkEditorModal extends Modal {
     if (this.#session.moveDrawing(direction * toUnits(step))) this.#changed();
   }
 
-  /** Magnifies the drawing, or shows it as usual again. */
+  /** Whether the pointer is pressed on the surface to draw, not to drag. */
+  get #pressed(): boolean {
+    return this.#gate.active !== undefined && this.#dragged === undefined;
+  }
+
+  /** Whether the view is magnified, or will be once the pointer is let go. */
+  get #zoomed(): boolean {
+    return (this.#view?.magnified === true) !== this.#zoomWaits;
+  }
+
+  /**
+   * Magnifies the drawing, or shows it as usual again. While the pointer is
+   * pressed to draw, that waits until it is let go: zooming moves what the
+   * pointer is over, so a stroke, a shape, or a polygon's corner being drawn
+   * would end somewhere other than it shows, as the release then lands
+   * elsewhere in the drawing (#382). So it keeps the view it started in, as
+   * it keeps its grid ({@link DrawingSession.grid}), its tool, and its size.
+   */
   #toggleZoom(): void {
+    if (!this.#pressed) {
+      this.#zoom();
+      return;
+    }
+    this.#zoomWaits = !this.#zoomWaits;
+    this.#updateButtons();
+    if (this.#zoomWaits) {
+      this.#announce(
+        this.#zoomed
+          ? "Zooming in once you let go"
+          : "Zooming out once you let go",
+      );
+    }
+  }
+
+  /** Magnifies the drawing, or shows it as usual again, now. */
+  #zoom(): void {
     const view = this.#view;
     if (view === undefined) return;
     view.magnified = !view.magnified;
@@ -2518,7 +2564,7 @@ export class InkEditorModal extends Modal {
     pressed("grid", this.#session.snap);
     pressed("flat-ends", this.#canEndFlat && this.#session.flatEnds);
     this.#buttons.get("flat-ends")?.setDisabled(!this.#canEndFlat);
-    pressed("zoom", this.#view?.magnified === true);
+    pressed("zoom", this.#zoomed);
     brushSizes.forEach((_, index) => {
       pressed(`size-${String(index)}`, this.#session.sizeIndex === index);
     });
@@ -2629,7 +2675,7 @@ export class InkEditorModal extends Modal {
       "Flat ends (T), with the grid on, stops a freehand end that Shift put on a row flush with that row, rather than rounding past it, if it comes in at 45° or steeper; one running along the row stays round. It is off until you turn it on, and shapes are never cut.",
       "Undo (Mod+Z) and Redo (Mod+Shift+Z) step through changes. Clear removes the drawing and can be undone.",
       "Up and Down, or the up and down arrow keys, move the whole drawing a pixel at a time, or a grid cell's width with Shift, as to sit a shape on a line. One Undo takes back moves made in a row.",
-      "Zoom (Z) shows the drawing up to twice as large in a taller view, for fine detail; the wheel or the left and right arrow keys move along it, and Fit (F) centres it. While zoomed, the grid has twice as many cells each way, and keeps every point of the usual grid. Saved symbols stay the same size in notes.",
+      "Zoom (Z) shows the drawing up to twice as large in a taller view, for fine detail; the wheel or the left and right arrow keys move along it, and Fit (F) centres it. Pressed while you draw, it waits until you let go, so that what you draw ends where it shows. While zoomed, the grid has twice as many cells each way, and keeps every point of the usual grid. Saved symbols stay the same size in notes.",
       "Paste, drop, or choose (Choose picture…) a picture to trace. Move positions it; the wheel scales it. Make ink converts the visible picture into editable ink. The tracing picture itself is not saved.",
       "Name the symbol, then Save (Mod+Enter). For a new symbol, Next (Mod+Shift+Enter) saves it and starts another. Mod is Ctrl on Windows/Linux, Cmd on macOS.",
       "Readings and translations, beside the name, say how the symbol is read and what it means, apart from its name: one per line, the main one first. Saving keeps them with the symbol, and the lists find a symbol by them. The library changes them without opening the editor.",
@@ -3393,7 +3439,7 @@ export class InkEditorModal extends Modal {
         grid: snap,
         flatEnds: this.#session.flatEnds,
         guides: this.#guidesShown,
-        magnified: this.#view?.magnified === true,
+        magnified: this.#zoomed,
         shape: this.#session.shape,
         fill: this.#session.fill,
         textShown,

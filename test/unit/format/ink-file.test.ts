@@ -115,6 +115,8 @@ describe("the record chunk's type", () => {
 
 describe("version 1 golden files", () => {
   for (const name of Object.keys(goldenFiles)) {
+    // This checks what is read, not how fast: it took at most 0.05 seconds
+    // alone, and up to 3.5 under load, near Vitest's five (#362).
     it(`reads ${name}`, async () => {
       const bytes = await readFile(path.join(fixtures, `${name}.ink.png`));
       const expected = await readFile(
@@ -124,7 +126,7 @@ describe("version 1 golden files", () => {
       const source = await readInkFile(new Uint8Array(bytes));
       if (source.kind !== "record") throw new Error(JSON.stringify(source));
       expect(`${serializeRecord(source.record)}\n`).toBe(expected);
-    });
+    }, 30_000);
 
     it(`holds ${name}'s ink in one grey, in every pixel`, async () => {
       const bytes = await readFile(path.join(fixtures, `${name}.ink.png`));
@@ -379,7 +381,10 @@ describe("writeInkFile", () => {
     );
   });
 
-  describe("against the reader's chunk limit", () => {
+  // These check what is written, not how fast: each writes or reads 65,536
+  // chunks, which took up to 1.7 seconds alone and 11.7 under load, past
+  // Vitest's default of five (#362). The limit is at least twice that.
+  describe("against the reader's chunk limit", { timeout: 30_000 }, () => {
     const text: Chunk = {
       type: "tEXt",
       data: new TextEncoder().encode("Comment\0"),
@@ -653,12 +658,14 @@ describe("readInkFile reports a record that cannot be used", () => {
     await damagedBecause(withChunks([recordChunk(1, whole.subarray(0, 4))]));
   });
 
+  // This checks what is read, not how fast: it inflates 16 MiB, which took
+  // 0.4 seconds alone and up to 13.5 under load (#362).
   it("that inflates past the limit, without inflating the rest", async () => {
     const huge = deflateSync(new Uint8Array(limits.text + 1024));
     expect(await damagedBecause(withChunks([recordChunk(1, huge)]))).toContain(
       "expands beyond",
     );
-  });
+  }, 30_000);
 
   it("that is not UTF-8", async () => {
     await damagedBecause(
@@ -716,7 +723,10 @@ function findChunk(file: Uint8Array, type: string): number {
   throw new Error(`no ${type} chunk`);
 }
 
-describe("writeInkFile in slices", () => {
+// These check what is written and where it pauses, not how fast: each walks a
+// large symbol through every place writing can pause, which took 0.2 seconds
+// alone and past five under load, Vitest's default (#362).
+describe("writeInkFile in slices", { timeout: 30_000 }, () => {
   const base = {
     x: 16,
     y: -32,
@@ -773,7 +783,10 @@ describe("writeInkFile in slices", () => {
   });
 });
 
-describe("readInk in slices", () => {
+// These check what is read and where it pauses, not how fast: each walks a
+// large symbol through every place reading can pause, which took 0.1 to 1.2
+// seconds alone and up to 8.2 under load, past Vitest's default (#362).
+describe("readInk in slices", { timeout: 30_000 }, () => {
   const base = {
     x: 16,
     y: -32,

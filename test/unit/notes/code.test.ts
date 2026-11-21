@@ -365,12 +365,12 @@ describe("insideCode beside CommonMark", () => {
     return b.quotes < a.quotes && b.text;
   };
 
-  // This checks what is read, not how fast: the parser takes over a second
-  // for its notes, and several beside the other test files, more than
-  // Vitest's default.
+  // This checks what is read, not how fast: the parser took 8 seconds for its
+  // notes alone, and up to 35.4 under load, past 30 (#362). The limit is at
+  // least twice that.
   it(
     "agrees on every note of up to four such lines",
-    { timeout: 30_000 },
+    { timeout: 120_000 },
     () => {
       const notes: string[][] = [[]];
       for (let length = 1; length <= 3; length++) {

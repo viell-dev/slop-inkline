@@ -226,6 +226,14 @@ must keep released files readable and looking the same, as
   device pixel and within 0.3 CSS pixels of the brush's width, and not over the
   padding (the same file,
   [#378](https://github.com/viell-dev/slop-inkline/issues/378)).
+- **Unreleased:** **Zoom** pressed while a pen or eraser stroke, an ellipse of
+  either, or a polygon's corner is drawn, by its key or its button, leaves the
+  drawing area as it is until the pointer is let go, and then zooms. Let go
+  where it was pressed in the window, the drag saves exactly the points the same
+  drag without Zoom saves. Pressed twice meanwhile, it does not zoom, and
+  **Next** meanwhile takes the zoom to the next symbol
+  ([zoom.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/zoom.e2e.ts),
+  [#382](https://github.com/viell-dev/slop-inkline/issues/382)).
 - **Make ink** of a synthetic H, enlarged from about 1.2 to 11.5 times, leaves
   at most two partly covered document pixels at each edge of the saved symbol,
   and the reopened symbol draws the same pixels. The editor's own redraw, which
@@ -463,8 +471,9 @@ must keep released files readable and looking the same, as
   and
   [renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/renaming.e2e.ts)).
 - Names and renames: what a file name cannot hold, names a folder already has,
-  renames that fail, names given elsewhere during saving or hashing, and the
-  reported outcome when an external rename follows a successful native rename
+  numbers a note still links to, read as Obsidian resolves links, renames that
+  fail, names given elsewhere during saving or hashing, and the reported outcome
+  when an external rename follows a successful native rename
   ([names.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/names.test.ts),
   [naming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/naming.e2e.ts),
   [renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/renaming.e2e.ts),
