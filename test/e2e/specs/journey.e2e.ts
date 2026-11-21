@@ -43,6 +43,35 @@ async function textOf(path: string): Promise<string> {
   }, path);
 }
 
+/**
+ * Waits until the active Markdown view's mode and the number of symbols its
+ * Reading view shows pass `done`, and says both when they never do.
+ */
+async function waitForReading(
+  done: (mode: string, images: number) => boolean,
+  wanted: string,
+): Promise<void> {
+  let seen = { mode: "", images: 0 };
+  try {
+    await browser.waitUntil(async () => {
+      seen = await browser.executeObsidian(({ app, obsidian }) => ({
+        mode:
+          app.workspace.getActiveViewOfType(obsidian.MarkdownView)?.getMode() ??
+          "no Markdown view",
+        images: document.querySelectorAll(
+          ".workspace-leaf.mod-active .markdown-reading-view img.inkline-symbol",
+        ).length,
+      }));
+      return done(seen.mode, seen.images);
+    });
+  } catch (error) {
+    throw new Error(
+      `waited for ${wanted}, but the active view was in ${seen.mode} mode, with ${String(seen.images)} symbols in its Reading view`,
+      { cause: error },
+    );
+  }
+}
+
 /** Visible reference-ink bounds in CSS pixels, read from the actual surface. */
 async function picture(colour: "red" | "blue") {
   return browser.execute((wanted) => {
@@ -285,12 +314,25 @@ describe("A deciphering session", function () {
     await libraryRowNamed("return")
       .$(".inkline-library-note=Inscription")
       .click();
+    // The click opens the note in a leaf without waiting, and asking for
+    // Reading view before that ends can leave the note in Live Preview
+    // (#373). So wait for the note before asking, and then for the mode.
+    await browser.waitUntil(
+      async () =>
+        browser.executeObsidian(
+          ({ app, obsidian }) =>
+            app.workspace.getActiveViewOfType(obsidian.MarkdownView)?.file
+              ?.path === "Inscription.md",
+        ),
+      { timeoutMsg: "the active view is not the note clicked, Inscription" },
+    );
     await browser.executeObsidian(async ({ app, obsidian }) => {
       const view = app.workspace.getActiveViewOfType(obsidian.MarkdownView);
       if (view?.file === null || view === null)
         throw new Error("no inscription view");
       await view.leaf.openFile(view.file, { state: { mode: "preview" } });
     });
+    await waitForReading((mode) => mode === "preview", "Reading view");
     for (const [theme, name] of [
       ["moonstone", "light"],
       ["obsidian", "dark"],
@@ -300,13 +342,9 @@ describe("A deciphering session", function () {
         if (typeof change !== "function") throw new Error("no themes");
         Reflect.apply(change, app, [chosen]);
       }, theme);
-      await browser.waitUntil(async () =>
-        browser.execute(
-          () =>
-            document.querySelectorAll(
-              ".workspace-leaf.mod-active .markdown-reading-view img.inkline-symbol",
-            ).length === 3,
-        ),
+      await waitForReading(
+        (mode, images) => mode === "preview" && images === 3,
+        `three symbols in Reading view, in the ${name} theme`,
       );
       const shown = await browser.execute(() =>
         Array.from(
