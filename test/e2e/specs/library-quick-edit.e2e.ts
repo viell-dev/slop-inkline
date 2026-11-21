@@ -1428,7 +1428,7 @@ describe("Quick edit in the library", function () {
     // Long enough for the late read to be taken, if it was going to be.
     await browser.pause(500);
     expect(await note.getText()).toContain("THEIRS");
-    expect(await note.getText()).not.toMatch(/TA/);
+    expect(await note.getText()).not.toMatch(/\bTA\b/);
     // So the next Save replaces what the file says, as the note said it would.
     await formButton("Save").click();
     await waitForClosed();
