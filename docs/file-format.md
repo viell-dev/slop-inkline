@@ -742,8 +742,13 @@ after its tip twice, so that the stroke's end marks the grid, twice, and no
 other point of it does. Its ends are never cut. An eraser stroke drawn freehand
 that starts with Flat ends and the grid both on is saved as a smooth stroke, cut
 as [Cut ends](#cut-ends) says, as Inkline 1.0.1 and earlier saved every eraser
-stroke drawn freehand. Pen strokes, and an eraser's ellipses and polygons, are
-saved as before, and all such strokes draw as they did.
+stroke drawn freehand. **Unreleased:** a path, which Inkline's Path tool places
+as cubic Bézier curves between points a person places, is saved as a stroke
+without a kind, as an ellipse is: through each of those points exactly, and
+points along the curves between them no more than a pixel apart. Flat ends cuts
+its ends as it cuts a freehand stroke's, and nothing of its curves is kept but
+those points. Pen strokes, and an eraser's ellipses and polygons, are saved as
+before, and all such strokes draw as they did.
 
 A file says nothing of Inkline's grid, which belongs to the note's font and the
 Grid size setting rather than to the symbol. A stroke's points are stored

@@ -60,10 +60,11 @@ immediately. Select the name field to type a name; Enter returns to drawing.
 | E                         | Eraser      | Take ink away.                                           |
 | O                         | Ellipse     | Draw ellipses by dragging, or freehand again.            |
 | Y                         | Polygon     | Draw shapes by clicking their corners, or freehand.      |
-| Enter                     |             | End a polygon being drawn, leaving it open.              |
-| B                         | Toggle fill | Fill ellipses and closed polygons, or not.               |
+| Shift+P                   | Path        | **Unreleased:** curves by their points, or freehand.     |
+| Enter                     |             | End a shape being placed, leaving it open.               |
+| B                         | Toggle fill | Fill ellipses, closed polygons and **Unreleased** paths. |
 | 1, 2, 3, 4                | S, M, L, XL | Choose the brush size.                                   |
-| Mod+Z                     | Undo        | Undo the last change, or a polygon's last corner.        |
+| Mod+Z                     | Undo        | Undo the last change, or the last point placed.          |
 | Mod+Shift+Z, or Mod+Y     | Redo        | Redo it.                                                 |
 | Delete, or Backspace      | Clear       | Clear the drawing; Undo brings it back.                  |
 | G                         | Guides      | Show or hide the guides.                                 |
@@ -80,10 +81,11 @@ immediately. Select the name field to type a name; Enter returns to drawing.
 | Mod+Enter                 | Save        | Save and close.                                          |
 | Mod+S                     |             | Save and keep drawing.                                   |
 | Mod+Shift+Enter           | Next        | Save, insert, and start the symbol that follows.         |
-| Esc                       |             | Drop a polygon being drawn, or else close the editor.    |
+| Esc                       |             | Drop a shape being placed, or else close the editor.     |
 
 Shift held while drawing snaps to the grid at a press, a release, and each
-polygon corner you click. With the grid on, Shift with Ellipse snaps the box's
+polygon corner you click; **Unreleased**, and each point or handle's end of a
+path you place or move. With the grid on, Shift with Ellipse snaps the box's
 corners; with the grid off, it makes a circle.
 [Drawing](./drawing.md#straight-lines-and-the-grid) says what Shift does at each
 moment.
@@ -111,8 +113,9 @@ and returns focus to the drawing area.
 
 - Every control has a label which screen readers read, whether its button shows
   an icon, a name, or both. Toolbar tooltips also include their shortcuts. The
-  pen, the eraser, Ellipse, Polygon, Toggle fill, the brush sizes, the guides,
-  the grid, Zoom, Move, Make ink, and Light ink say whether they are on.
+  pen, the eraser, Ellipse, Polygon, **Unreleased** Path, Toggle fill, the brush
+  sizes, the guides, the grid, Zoom, Move, Make ink, and Light ink say whether
+  they are on.
 - The drawing area keeps its accessible name without a hover tooltip.
 - The library's list of symbols and its Quick edit area keep their names for
   screen readers without showing a tooltip where the pointer rests.

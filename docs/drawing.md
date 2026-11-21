@@ -116,6 +116,54 @@ corner, or within 4 of the drawing's pixels for a smaller brush, with the grid
 on or off. So does a click with Shift held that snaps to such a corner, if Shift
 put it on the grid.
 
+## Paths
+
+**Unreleased:** Path is not in Inkline 1.0.2.
+
+**Path** (Shift+P) places a curve by its points, for curves that are hard to
+draw steadily with a mouse, such as a quarter circle, an arc, or an S. The path
+is drawn as the pen or the eraser would draw along the curve, at its brush size,
+with round ends.
+
+- Click where a point goes for a corner, where the curve can turn sharply.
+  Between two corners the path is straight.
+- Press and drag for a smooth point, which the curve passes through without a
+  turn. A handle follows the pointer from the point, and the curve leaves the
+  point towards it; its mirror image on the other side is the way the curve
+  comes in. The longer the handle, the further the curve keeps to its direction,
+  so drag the way the curve should go on.
+- The next curve follows the pointer from the last point, as a click there would
+  place it.
+- While you place the path, drag a point to move it with its handles, or a
+  handle's end to turn and lengthen the handle with its mirror. A handle dragged
+  back onto its point leaves a corner. The points show as squares and the
+  handles' ends as dots, in the theme's accent colour, and the one a press would
+  take hold of is filled, or larger. A press within the brush's circle of one,
+  or within 4 of the drawing's pixels for a smaller brush, takes hold of it, as
+  for a polygon's corners; a click there without a drag places a point, except
+  on the first point or the last.
+- Click the first point to close the path, once it has two, or the last point,
+  as a double-click does, or press Enter, to leave it open.
+- Undo (Mod+Z) takes back the last point placed or the last drag, and the path
+  with its first point. Esc drops the path; so does the close button, before it
+  closes the editor, and Clear, with the rest of the drawing. Choosing the pen,
+  the eraser, or a brush size while placing it changes the whole path; choosing
+  another shape, Save, or **Next** ends it with the points it has.
+
+Once it ends, a path is ink like any other stroke: one Undo takes all of it
+back, the eraser takes away from it, and its points and handles can't be moved
+again. It is saved as an ordinary stroke along the curve, so a symbol with paths
+opens and looks the same in earlier versions of Inkline. Press **Path** again to
+draw freehand; **Next** keeps it on.
+
+With the grid on, a point or a handle's end goes on the grid only if Shift is
+held as you place it: a point as you press, a handle's end, or a point you move,
+as you let go. Letting go of Shift just before the button counts as holding it,
+unless the pointer has moved since. With **Flat ends** on, the path's ends that
+Shift put on a row stop flush with it, as a freehand stroke's do, and a closed
+path has no ends to cut. With **Toggle fill** on, a path closed on its first
+point is filled, as a closed polygon is.
+
 ## Filled shapes
 
 **Toggle fill** (B) is a switch for the shapes drawn next, not a tool to click a
@@ -124,7 +172,8 @@ Polygon draw solid shapes such as ● ▲ ■ ◆: an ellipse, and a polygon clo
 its first corner. A filled shape is the shape as **Toggle fill** off draws it,
 its line at the brush size, with everything inside the line filled too, so a
 filled and an unfilled shape drawn across the same corners, or the same box,
-have the same outer edge. A filled triangle drawn on the grid reaches half the
+have the same outer edge. **Unreleased:** Path, closed on its first point, is
+filled the same way. A filled triangle drawn on the grid reaches half the
 brush's width past the line its base lies on, as an unfilled one does, and
 **Up** and **Down** can sit it on the line. While you drag an ellipse, or point
 at a polygon's first corner, the editor shows the shape exactly as letting go,
@@ -181,7 +230,8 @@ default grid size, the cap height then lies 7 cells above the baseline.
 **Flat ends** (T) stops a stroke's ends flush with a row of the grid, instead of
 rounding past it, but only the ends that Shift put on the grid, and only along a
 row. It is a switch, off in a new editor, and **Next** keeps it. The button is
-available with the grid on, while drawing freehand.
+available with the grid on, while drawing freehand, and, **Unreleased**, with
+Path, whose ends it cuts the same way.
 
 An end that comes in at 45° or steeper stops flush with the row through it, as
 the legs of an A come down to the baseline, judged over the last grid cell or
@@ -238,13 +288,13 @@ The grid, though, has twice as many cells each way while zoomed, so the default
 5 cells across the x-height become 10, for placing fine detail. Every point of
 the usual grid stays a point of the finer one, so a drawing started in either
 view lines up in the other, and zooming out puts the usual grid back where it
-was, however much you drew while zoomed. A polygon being placed keeps the grid
-it started on until it ends, and Shift with an arrow key moves a picture by a
-column of the grid shown. **Grid size** keeps its range of 2 to 10, and saved
-symbols are not affected. On a symbol you open again, the usual grid follows the
-ends you placed with Shift, so after placing them mostly on points of the finer
-grid alone it can lie half a cell from where it was; the finer grid passes
-through them either way.
+was, however much you drew while zoomed. A polygon being placed, and,
+**Unreleased**, a path, keeps the grid it started on until it ends, and Shift
+with an arrow key moves a picture by a column of the grid shown. **Grid size**
+keeps its range of 2 to 10, and saved symbols are not affected. On a symbol you
+open again, the usual grid follows the ends you placed with Shift, so after
+placing them mostly on points of the finer grid alone it can lie half a cell
+from where it was; the finer grid passes through them either way.
 
 **Help** opens a built-in quick start with an explanation of each guide, the
 grid, drawing, tracing, and saving. Close Help or press Esc to return to the

@@ -68,8 +68,12 @@ describe("The editor's shortcuts", function () {
     await press("o", "ellipse", true);
     await press("o", "ellipse", false);
     await press("y", "polygon", true);
-    await press("o", "ellipse", true);
+    await press(["Shift", "p"], "path", true);
     expect(await pressed("polygon")).toBe("false");
+    await press(["Shift", "p"], "path", false);
+    await press(["Shift", "p"], "path", true);
+    await press("o", "ellipse", true);
+    expect(await pressed("path")).toBe("false");
     await press("b", "fill", true);
     await press("b", "fill", false);
     await press("o", "ellipse", false);

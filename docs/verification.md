@@ -257,16 +257,35 @@ must keep released files readable and looking the same, as
   unfilled as one step, and that a reopened drawing's grid goes by the shape as
   if unfilled
   ([session.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/session.test.ts)).
+- **Unreleased:** A path placed with the mouse and the keys, of corners clicked
+  and smooth points dragged out, on the grid with Shift and off it, is saved as
+  one stroke without a kind through points along its curve no more than a pixel
+  apart, from its first point to its last exactly, and its saved pixels show ink
+  along the curve and none on the straight line between its ends, at every brush
+  size, matching a redraw of its record. While it is placed, Undo takes back a
+  point and a drag, Esc drops it, a point and a handle's end dragged move the
+  curve, Enter and a click on the last point end it, and a click on its first
+  point closes it, filled with **Toggle fill**; afterwards one Undo takes back
+  all of it. The eraser's path takes away the ink along its curve, Flat ends
+  cuts an end Shift put on a row, and the symbol reopened holds the same
+  strokes, with nothing left to place
+  ([path.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/path.e2e.ts)).
+  Unit tests pin the curve's points, their spacing, how near the saved stroke's
+  outline keeps to a quarter circle at every brush size, and each step of
+  placing, from a press and a drag to a click on a point, Shift on the grid,
+  Undo, and a save moving the drawing
+  ([path.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/path.test.ts),
+  [session.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/session.test.ts)).
 - A view that adds each stroke to what it has drawn and measured shows what a
   new view does, pixel for pixel on the surface and in the preview, at full size
   and at 16 px, and the image's ends are exactly those of a full measurement,
   and within a pixel of what a save crops to
   ([#159](https://github.com/viell-dev/slop-inkline/issues/159)). A seeded run
   checks this after every frame, through strokes of each shape and tool, flat
-  ends, undo, redo, clearing, moving the drawing, saving, restoring, base
-  layers, panning and zooming, on drawings wider than a tile and with strokes
-  across a tile's edge. The preview in text also stays as it is as a stroke
-  starts
+  ends, paths (**Unreleased**), undo, redo, clearing, moving the drawing,
+  saving, restoring, base layers, panning and zooming, on drawings wider than a
+  tile and with strokes across a tile's edge. The preview in text also stays as
+  it is as a stroke starts
   ([long-drawing.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/long-drawing.e2e.ts)).
 
 - The eraser, drawn freehand along, across, and through a filled ellipse's edge,

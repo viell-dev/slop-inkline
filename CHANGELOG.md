@@ -9,6 +9,21 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Added
+
+- **Path** (Shift+P) in the editor places a curve by its points, for curves that
+  are hard to draw steadily with a mouse, such as a quarter circle or an S
+  ([#340](https://github.com/viell-dev/slop-inkline/issues/340)). Click for a
+  corner, or press and drag for a smooth point, whose handle sets the curve's
+  direction there. While the path is placed, a point or a handle's end can be
+  dragged to move it, and Undo takes back the last point or drag. A click on the
+  first point closes the path, a click on the last or Enter ends it, and Esc
+  drops it. Shift puts points and handles' ends on the grid, **Toggle fill**
+  fills a closed path, and **Flat ends** cuts its ends on the grid as it cuts a
+  freehand stroke's. Once it ends, a path is ordinary ink: it is saved as a
+  stroke along the curve of a kind the file format already has, so a symbol with
+  paths opens and looks the same in earlier versions of Inkline.
+
 ## 1.0.2 - 2026-11-19
 
 A fix release for 1.0.1. The file format is unchanged: symbols open and look as

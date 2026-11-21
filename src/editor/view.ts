@@ -20,6 +20,7 @@ import {
   type Guide,
   type Span,
 } from "./guides.ts";
+import { handleEnd, type PathMarks } from "./path.ts";
 import type { Placement } from "./reference.ts";
 
 /** A font as CSS describes it, for {@link measureFont}. */
@@ -237,6 +238,12 @@ export class InkView {
         readonly height: number;
       }
     | undefined;
+  /**
+   * The points and handles of a path being placed, drawn over everything as
+   * controls to take hold of, or undefined for none. They are never part of
+   * the drawing, the preview, or the saved symbol.
+   */
+  path: PathMarks | undefined;
   /** How far the committed ink reaches, from its pixels, in document pixels. */
   #inked: InkMeasure | undefined;
   /** Where the saved image would start and end, as of the last render. */
@@ -509,6 +516,66 @@ export class InkView {
       visible.globalAlpha = erasingAlpha;
       visible.drawImage(this.#work, 0, 0);
       visible.globalAlpha = 1;
+    }
+    if (this.path !== undefined) this.#drawPath(visible, style, this.path);
+  }
+
+  /**
+   * Draws a path's controls: a line through each smooth point between its
+   * handles' ends, a dot at each end, and a square at each point, filled for
+   * the one a press would take hold of, and the dot made larger for a
+   * handle's end. Their sizes are in CSS pixels, so that they stay as easy to
+   * see and to reach whatever the zoom.
+   */
+  #drawPath(
+    context: CanvasRenderingContext2D,
+    style: CSSStyleDeclaration,
+    { nodes, target }: PathMarks,
+  ): void {
+    const factor = this.#scale * this.#ratio;
+    const ratio = this.#ratio;
+    const across = (x: number): number => (x - this.#originX) * factor;
+    const colour = style.getPropertyValue("--inkline-path").trim() || "gray";
+    context.strokeStyle = colour;
+    context.fillStyle = colour;
+    context.lineWidth = Math.max(1, Math.round(ratio));
+    for (const [index, node] of nodes.entries()) {
+      const out = handleEnd(node, 1);
+      const back = handleEnd(node, -1);
+      if (out === undefined || back === undefined) continue;
+      context.beginPath();
+      context.moveTo(across(back.x), back.y * factor);
+      context.lineTo(across(out.x), out.y * factor);
+      context.stroke();
+      for (const side of [1, -1] as const) {
+        const end = side === 1 ? out : back;
+        const held =
+          target?.kind === "handle" &&
+          target.index === index &&
+          target.side === side;
+        context.beginPath();
+        context.arc(
+          across(end.x),
+          end.y * factor,
+          (held ? 4.5 : 3) * ratio,
+          0,
+          2 * Math.PI,
+        );
+        context.fill();
+      }
+    }
+    // Each square on whole device pixels, its outline on their middles, so
+    // that its edges are sharp.
+    const side = 2 * Math.round(4 * ratio);
+    const middle = context.lineWidth % 2 === 1 ? 0.5 : 0;
+    for (const [index, node] of nodes.entries()) {
+      const x = Math.round(across(node.x)) - side / 2;
+      const y = Math.round(node.y * factor) - side / 2;
+      if (target?.kind === "point" && target.index === index) {
+        context.fillRect(x, y, side, side);
+      } else {
+        context.strokeRect(x + middle, y + middle, side, side);
+      }
     }
   }
 

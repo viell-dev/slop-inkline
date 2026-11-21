@@ -43,7 +43,8 @@ const usual: Readonly<Record<string, string>> = {
     "Ellipse: drag across a box to draw an ellipse with the pen or the eraser; hold Shift for a circle, or with the grid on to snap to it (O)",
   polygon:
     "Polygon: click each corner of a shape with straight sides; click the first corner again to close it, or the last to end it; hold Shift to snap a corner to the grid (Y)",
-  fill: "Toggle fill: while on, Ellipse, and Polygon closed on its first corner, draw solid shapes, with the pen or the eraser; it doesn't fill what is already drawn (B)",
+  path: "Path: place a curve by its points: click for a corner, or drag for a smooth point and its handles; drag a point or a handle's end to move it; click the first point to close the path, or the last to end it; hold Shift to snap to the grid (Shift+P)",
+  fill: "Toggle fill: while on, Ellipse, and Polygon or Path closed on its first point, draw solid shapes, with the pen or the eraser; it doesn't fill what is already drawn (B)",
   "size-0": "Brush size S (1)",
   "size-1": "Brush size M (2)",
   "size-2": "Brush size L (3)",
@@ -58,7 +59,7 @@ const usual: Readonly<Record<string, string>> = {
   guides: "Guides (G)",
   grid: "Grid: show a grid of dots as a guide; hold Shift while drawing to snap to it (Shift+G)",
   "flat-ends":
-    "Flat ends: with the grid on, freehand ends that Shift puts on a row, coming in at 45° or steeper, stop flush with it, rather than rounding past it (T)",
+    "Flat ends: with the grid on, ends of freehand strokes and paths that Shift puts on a row, coming in at 45° or steeper, stop flush with it, rather than rounding past it (T)",
   copy: "Copy from: start from a copy of another symbol (V)",
   fit: "Fit: centre the drawing in the view, and out of Zoom show all of it if it is wider; the drawing itself stays as it is (F)",
   zoom: "Zoom: a taller view of the drawing, twice as large, with twice as many grid cells each way; the wheel or the left and right arrow keys move along it (Z)",
