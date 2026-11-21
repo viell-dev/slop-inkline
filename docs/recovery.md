@@ -156,13 +156,12 @@ a draft of it is kept.
   says to run **Inkline: Recover drafts**.
 - **Inkline: Recover drafts** lists every draft whose symbol's file is gone or
   does not open, newest first: a picture of its drawing, the symbol's name and
-  folder, when the draft was kept, and why it is listed. Type part of its path
-  to filter the list, and choose one to be asked the same question. A draft a
-  symbol's editor has open is not listed, nor one a newer version of Inkline
-  kept, which stays as it is. Nor is a new symbol's draft, which a new symbol
-  started in its note offers: if that note was deleted, create a note at its
-  path and start a new symbol there
-  ([#390](https://github.com/viell-dev/slop-inkline/issues/390)).
+  folder, when the draft was kept, and why it is listed. It lists a new symbol's
+  draft too when the note it was started in is gone, as deleted, or moved while
+  Inkline was off, since only a new symbol started in that note offers it
+  otherwise. Type part of its path to filter the list, and choose one to be
+  asked the same question. A draft a symbol's editor has open is not listed, nor
+  one a newer version of Inkline kept, which stays as it is.
 
 The new symbol starts with the draft's strokes, and any name, readings, and
 translations you had typed. Its name field holds the old file's name, unless a
@@ -179,6 +178,21 @@ gone. A file that does not open stays as it is, for you to move out of the vault
 or delete. For a symbol renamed while Inkline was off, rename it back and choose
 **Restore** instead, which puts the draft on that symbol rather than in a new
 one.
+
+A new symbol's draft whose note is gone opens the same way, with the name you
+had typed, and its first save inserts it into no note either:
+
+- If its first save had made a file, but could not insert it, saving writes over
+  that file while it still holds what that save wrote, as restoring the draft in
+  its note would finish the save, and keeps its name unless you type another. If
+  anything changed that file since, saving leaves it as it is and makes another
+  beside it.
+- Otherwise it is saved where new symbols go: in the symbol folder that
+  Inkline's [settings](./settings.md) name, or else where Obsidian puts a new
+  attachment for a note at the old note's path. With **Same folder as current
+  file** or **In subfolder under current folder** in **Settings → Files and
+  links**, Obsidian takes that from the note itself, so for a note that is gone
+  it uses the vault's top folder instead of the note's.
 
 A draft not restored within 30 days is dropped. In Inkline 1.0.2, which offers
 none of this, get one back before then by hand:

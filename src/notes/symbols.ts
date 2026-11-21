@@ -37,11 +37,14 @@ import {
   type DraftStore,
 } from "../editor/drafts.ts";
 import {
+  createdFile,
   findOrphans,
   folderOf,
+  orphanName,
+  orphanPlace,
   recoveredName,
   recoveryQuestion,
-  unopenedText,
+  whyListed,
   type Orphan,
   type Unopened,
 } from "../editor/recovery.ts";
@@ -2161,17 +2164,34 @@ function askRecovery(host: EditorHost, orphan: Orphan): void {
   question.open();
 }
 
+/** A claim as a draft's target names it, without the vault's file. */
+function claimed(claim: Claim): CreatedFile {
+  const { path, fingerprint, previous } = claim;
+  return previous === undefined
+    ? { path, fingerprint }
+    : { path, fingerprint, previous };
+}
+
 /**
  * Opens the editor on `orphan`'s draft, which the caller holds, as a new
  * symbol: the draft's strokes, the name and text it kept, and a base layer it
  * kept itself. One it took from its file is lost with the file, as the
- * question that offers it says. The first save makes a new file in the
- * folder the draft's file was in, under the name the field holds, which
- * starts as {@link recoveredName} says, or else the next number there, and
- * inserts it nowhere: the notes that embed the old file still do, and show a
- * new symbol saved at its path. The file that does not open stays as it is.
+ * question that offers it says. Its first save inserts it nowhere, and goes:
  *
- * Until then the editor's draft is for the path the old draft was kept for,
+ * - for a symbol's draft, to a new file in the folder the draft's file was
+ *   in, under the name the field holds, which starts as {@link recoveredName}
+ *   says, or else the next number there. The notes that embed the old file
+ *   still do, and show a new symbol saved at its path. A file that does not
+ *   open stays as it is.
+ * - for a new symbol's draft whose first save made a file, over that file, if
+ *   it still holds what that save wrote, as restoring the draft in its note
+ *   would finish the save: it then holds only this symbol's own earlier
+ *   drawing, which the draft goes on from, and keeps its name unless another
+ *   is typed. Otherwise to a new file beside it, which stays as it is.
+ * - for a new symbol's draft never saved, where a new symbol of its note
+ *   would go, as {@link newSymbolPath} finds it for the note's old path.
+ *
+ * Until then the editor's draft is for the symbol the old draft was kept for,
  * so that a crash leaves it where it was found. The first save's draft names
  * the file it is making before it writes, as a new symbol's does, so that a
  * save cut short leaves a draft for that file, which offers it when it opens,
@@ -2181,13 +2201,26 @@ function askRecovery(host: EditorHost, orphan: Orphan): void {
 function recoverDraft(host: EditorHost, orphan: Orphan): void {
   const { app } = host;
   const { draft, path } = orphan;
-  const folder = folderOf(path);
-  const name = recoveredName(draft, path, (stem) =>
-    nameTaken(app, folder, stem),
+  const { target } = draft;
+  /** A file the first save of a new symbol's draft made, or began to. */
+  let claim: Claim | undefined = createdFile(orphan);
+  /**
+   * The folder a first save that makes a file uses, or undefined for a new
+   * symbol's draft never saved, which goes where a new symbol of its note
+   * would.
+   */
+  const folder =
+    target.kind === "file"
+      ? folderOf(path)
+      : claim === undefined
+        ? undefined
+        : folderOf(claim.path);
+  const name = recoveredName(
+    orphan,
+    (stem) => folder !== undefined && nameTaken(app, folder, stem),
   );
-  /** The new symbol's file once made, and the one being made. */
+  /** The new symbol's file once made, or taken over. */
   let made: TFile | undefined;
-  let claim: Claim | undefined;
   new InkEditorModal(app, {
     title: "New symbol",
     document: emptyDocument,
@@ -2199,10 +2232,15 @@ function recoverDraft(host: EditorHost, orphan: Orphan): void {
     drafts: {
       store: host.drafts,
       // Once made, the symbol is its file, which follows renames.
-      target: () => ({
-        kind: "file",
-        path: made?.path ?? claim?.path ?? path,
-      }),
+      target: () => {
+        if (made !== undefined) return { kind: "file", path: made.path };
+        if (target.kind === "file") {
+          return { kind: "file", path: claim?.path ?? path };
+        }
+        return claim === undefined
+          ? { kind: "new", note: target.note }
+          : { kind: "new", note: target.note, file: claimed(claim) };
+      },
       recover: name === undefined ? draft : { ...draft, name },
     },
     lifecycle: host.lifecycle,
@@ -2210,10 +2248,10 @@ function recoverDraft(host: EditorHost, orphan: Orphan): void {
     write: async (bytes, _record, keepDraft, holds, typed, check, wait) => {
       stillAlive(host.unloaded);
       if (made === undefined && claim !== undefined) {
-        const claimed = await claimedFile(app, claim);
-        if (claimed !== undefined) {
-          made = claimed.file;
-          holds(claimed.fingerprint);
+        const found = await claimedFile(app, claim);
+        if (found !== undefined) {
+          made = found.file;
+          holds(found.fingerprint);
         }
       }
       stillAlive(host.unloaded);
@@ -2227,11 +2265,14 @@ function recoverDraft(host: EditorHost, orphan: Orphan): void {
       // the vault as it was.
       const choice = chosen(typed);
       const fingerprint = await fingerprintOf(bytes);
-      const at = symbolPathIn(
-        app,
-        folder === "" ? "" : await makeFolder(app, folder),
-        choice,
-      );
+      const at =
+        folder === undefined
+          ? await newSymbolPath(app, path, choice, host.settings().symbolFolder)
+          : symbolPathIn(
+              app,
+              folder === "" ? "" : await makeFolder(app, folder),
+              choice,
+            );
       stillAlive(host.unloaded);
       claim = { path: at, fingerprint };
       keepDraft();
@@ -2290,8 +2331,9 @@ interface DraftRow {
 }
 
 /**
- * The drafts whose symbol's file is gone or does not open, to choose one by
- * the path it was kept for. It closes as `unloaded` aborts, when Inkline
+ * The drafts that no editor offers, as {@link findOrphans} finds them, to
+ * choose one by the path it was kept for, or for a new symbol's draft, its
+ * note's or its first save's. It closes as `unloaded` aborts, when Inkline
  * unloads, as {@link SymbolSearch} does, and a choice that still reaches it
  * then does nothing.
  */
@@ -2329,14 +2371,17 @@ class DraftList extends SuggestModal<DraftRow> {
 
   override getSuggestions(query: string): DraftRow[] {
     const search = prepareSimpleSearch(query);
-    return this.#rows.filter((row) => search(row.orphan.path) !== null);
+    return this.#rows.filter(({ orphan }) =>
+      [orphan.path, createdFile(orphan)?.path].some(
+        (path) => path !== undefined && search(path) !== null,
+      ),
+    );
   }
 
   override renderSuggestion(
     { orphan, preview }: DraftRow,
     el: HTMLElement,
   ): void {
-    const { draft, path, unopened } = orphan;
     el.addClass("inkline-suggestion");
     if (preview !== undefined) {
       // Beside its path, the picture says nothing more to a screen reader.
@@ -2346,18 +2391,17 @@ class DraftList extends SuggestModal<DraftRow> {
       });
     }
     const text = el.createDiv({ cls: "inkline-suggestion-text" });
-    const file = path.slice(path.lastIndexOf("/") + 1);
     text.createDiv({
       cls: "inkline-suggestion-name",
-      text: symbolStem(file) ?? file,
+      text: orphanName(orphan),
     });
-    const folder = folderOf(path);
-    if (folder !== "") {
-      text.createDiv({ cls: "inkline-suggestion-folder", text: folder });
+    const place = orphanPlace(orphan);
+    if (place !== "") {
+      text.createDiv({ cls: "inkline-suggestion-folder", text: place });
     }
     text.createDiv({
       cls: "inkline-suggestion-folder",
-      text: `Kept ${new Date(draft.savedAt).toLocaleString()}. ${unopenedText(unopened)}`,
+      text: `Kept ${new Date(orphan.draft.savedAt).toLocaleString()}. ${whyListed(orphan)}`,
     });
   }
 
@@ -2367,9 +2411,10 @@ class DraftList extends SuggestModal<DraftRow> {
 }
 
 /**
- * Lists the drafts whose symbol's file is gone or does not open, newest
- * first, which no editor can offer, and asks about the one chosen, as
- * {@link askRecovery} does; a notice says when there is none. Reading the
+ * Lists the drafts that no editor can offer, newest first: a symbol's draft
+ * whose file is gone or does not open, and a new symbol's draft whose note is
+ * gone. Asks about the one chosen, as {@link askRecovery} does; a notice says
+ * when there is none. Reading the
  * drafts drops expired ones, as any list of them does, and leaves the drafts
  * of later layouts as they are.
  */
@@ -2381,8 +2426,10 @@ export async function recoverDrafts(host: EditorHost): Promise<void> {
   const rows: DraftRow[] = [];
   const stopSaying = sayWhileSlow("Looking for drafts…");
   try {
-    const orphans = await findOrphans(drafts.unheld(), (path) =>
-      unopenedAt(app, path),
+    const orphans = await findOrphans(
+      drafts.unheld(),
+      (path) => unopenedAt(app, path),
+      (path) => app.vault.getFileByPath(path) === null,
     );
     for (const orphan of orphans) {
       rows.push({ orphan, preview: await previewOf(orphan.draft) });
@@ -2394,7 +2441,7 @@ export async function recoverDrafts(host: EditorHost): Promise<void> {
   if (rows.length === 0) {
     markNotice(
       new Notice(
-        "No draft is waiting for a symbol that is gone or does not open. A symbol that opens offers its own drafts.",
+        "No draft is waiting for a symbol that is gone or does not open, or for a new symbol whose note is gone. A symbol that opens offers its own drafts.",
       ),
     );
     return;

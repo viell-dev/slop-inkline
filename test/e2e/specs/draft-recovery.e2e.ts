@@ -15,6 +15,7 @@ import {
   createSymbol,
   draw,
   editorOpen,
+  openAtMarker,
   recordOf,
   startOver,
   storedDrafts,
@@ -25,10 +26,14 @@ import {
   waitForNotice,
   waitForStatus,
 } from "../support/editor.ts";
+import { failInsertion, unlockNotes } from "../support/failed-insertion.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 import { bytesOfFile, noteOnDisk } from "../support/vault-files.ts";
 
-/** Drafts kept for a symbol whose file is gone or does not open. */
+/**
+ * Drafts kept for a symbol whose file is gone or does not open, and for a new
+ * symbol whose note is gone.
+ */
 describe("Draft recovery", function () {
   before(async function () {
     await loadModules();
@@ -284,5 +289,136 @@ describe("Draft recovery", function () {
         app.loadLocalStorage("inkline-drafts"),
       ]),
     ).toEqual([later, ["later"]]);
+  });
+
+  /** Moves the note at `path` to the vault's trash. */
+  async function trash(path: string): Promise<void> {
+    await browser.executeObsidian(async ({ app }, file) => {
+      const note = app.vault.getFileByPath(file);
+      if (note === null) throw new Error(`no ${file}`);
+      await app.fileManager.trashFile(note);
+    }, path);
+  }
+
+  /** Chooses the only draft listed, and opens it as a new symbol. */
+  async function openListed(): Promise<string> {
+    await browser.keys(["Enter"]);
+    await browser.waitUntil(
+      async () => (await topButton("Open as new symbol")) !== undefined,
+      { timeoutMsg: "no question about the draft" },
+    );
+    const question = await questionText();
+    await clickTop("Open as new symbol");
+    await waitForEditor();
+    return question;
+  }
+
+  it("lists a new symbol's draft whose note was deleted, and saves it where new symbols go, inserted nowhere", async function () {
+    await browser.executeObsidian(async ({ app }) => {
+      await app.vault.create("Doomed.md", "The gate HERE opens.\n");
+    });
+    await openAtMarker("Doomed.md", "HERE");
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await waitForEditor();
+    await draw(zigzag);
+    await browser.waitUntil(async () => (await storedDrafts()).length === 1, {
+      timeoutMsg: "the drawing was never kept as a draft",
+    });
+    await obsidianPage.disablePlugin("inkline");
+    await trash("Doomed.md");
+    await restart();
+    await browser.executeObsidianCommand("inkline:recover-drafts");
+    const rows = await listedRows();
+    await saveScreenshot("draft-recovery-list-new");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.text).toMatch(
+      /^New symbolStarted in Doomed\.mdKept .+\. Its note was deleted or moved$/,
+    );
+    expect(rows[0]?.picture).toBeGreaterThan(0);
+    const question = await openListed();
+    expect(question).toContain(
+      "Doomed, the note a new symbol was started in, is no longer in the vault, but Inkline kept the symbol's unsaved drawing from",
+    );
+    expect(question).toContain(
+      "They can open in a new symbol, saved where new symbols go, and inserted in no note.",
+    );
+    expect((await nameField()).value).toBe("");
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    // The test vault puts new attachments at its top.
+    expect(await symbolFiles()).toEqual(["001.ink.png"]);
+    expect(await strokeCount("001.ink.png")).toBe(1);
+    expect(await draftCount()).toBe(0);
+    expect(await noteOnDisk("Editor.md")).not.toContain("001.ink.png");
+    expect(await noteOnDisk("Welcome.md")).not.toContain("001.ink.png");
+  });
+
+  /**
+   * Leaves a new symbol's draft whose first save made 001.ink.png but could
+   * not insert it, with one stroke more than that file, and whose note is
+   * gone, with Inkline on again.
+   */
+  async function newDraftWithItsFile(): Promise<void> {
+    try {
+      await failInsertion();
+      await draw([
+        [0.6, 0.3],
+        [0.6, 0.7],
+      ]);
+      await browser.waitUntil(
+        async () =>
+          (await storedDrafts()).some((draft) => draft.strokes.length === 2),
+        { timeoutMsg: "the second stroke was never kept as a draft" },
+      );
+      await obsidianPage.disablePlugin("inkline");
+    } finally {
+      await unlockNotes();
+    }
+    await trash("Editor.md");
+  }
+
+  it("writes over the file a new symbol's first save made, as restoring it in its note would", async function () {
+    await newDraftWithItsFile();
+    await restart();
+    expect(await strokeCount("001.ink.png")).toBe(1);
+    await browser.executeObsidianCommand("inkline:recover-drafts");
+    const rows = await listedRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.text).toMatch(
+      /^001Started in Editor\.mdKept .+\. Its note was deleted or moved$/,
+    );
+    const question = await openListed();
+    expect(question).toContain(
+      "They can open in a new symbol, saved in the vault's top folder and inserted in no note. Its first save made 001.ink.png: saving writes over that file if nothing changed it since, and otherwise makes another beside it.",
+    );
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    expect(await symbolFiles()).toEqual(["001.ink.png"]);
+    expect(await strokeCount("001.ink.png")).toBe(2);
+    expect(await draftCount()).toBe(0);
+  });
+
+  it("leaves the file a new symbol's first save made once it changed, and saves another beside it", async function () {
+    await newDraftWithItsFile();
+    // Changed since, as by its own editor or sync: three strokes of its own.
+    await createSymbol("Other/001.ink.png", [200, 800, 1400]);
+    await browser.executeObsidian(async ({ app }) => {
+      const source = app.vault.getFileByPath("Other/001.ink.png");
+      const file = app.vault.getFileByPath("001.ink.png");
+      if (source === null || file === null) throw new Error("no file");
+      await app.vault.modifyBinary(file, await app.vault.readBinary(source));
+      await app.vault.delete(source);
+    });
+    const changed = await bytesOfFile("001.ink.png");
+    await restart();
+    await browser.executeObsidianCommand("inkline:recover-drafts");
+    await listedRows();
+    await openListed();
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    expect(await symbolFiles()).toEqual(["001.ink.png", "002.ink.png"]);
+    expect(await bytesOfFile("001.ink.png")).toEqual(changed);
+    expect(await strokeCount("002.ink.png")).toBe(2);
+    expect(await draftCount()).toBe(0);
   });
 });

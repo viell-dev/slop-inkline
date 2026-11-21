@@ -53,8 +53,9 @@ lists the draft.
 
 **"No draft is waiting for a symbol that is gone or does not open …"**
 **Unreleased:** **Inkline: Recover drafts** found nothing to list. A symbol that
-opens offers its own drafts when you open it, and one renamed while Inkline was
-off offers its draft once you rename it back.
+opens offers its own drafts when you open it, one renamed while Inkline was off
+offers its draft once you rename it back, and a new symbol started in a note
+that is still there offers its draft when you start a new symbol in that note.
 
 **"The unsaved drawing's base layer cannot be read, so only its strokes came
 back."** **Unreleased:** a draft opened as a new symbol kept a picture to draw

@@ -22,6 +22,12 @@ even one a public release; earlier pre-releases carry a suffix such as
   folder, inserted into no note, and leaves a file that does not open as it is.
   Drafts that a newer version of Inkline kept are left as they are
   ([#298](https://github.com/viell-dev/slop-inkline/issues/298)).
+- **Inkline: Recover drafts** also lists a new symbol's draft whose note is
+  gone, which only a new symbol started in that note offered. It opens as a new
+  symbol, inserted into no note, where new symbols go; if its first save had
+  made a file, saving writes over that file while it holds what that save wrote,
+  and otherwise leaves it as it is and makes another
+  ([#390](https://github.com/viell-dev/slop-inkline/issues/390)).
 
 ### Changed
 

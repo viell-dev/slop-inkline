@@ -356,9 +356,12 @@ must keep released files readable and looking the same, as
   was deleted listed by **Inkline: Recover drafts**, with a picture of it, and
   saved at that file's path, which the notes embedding it show again; Not now
   keeping a draft, and Discard dropping it; the draft of an open editor, and a
-  draft of a later layout, not listed, and the later one left as it is; and
-  which drafts are listed, the name a new symbol starts with, and what the
-  question says
+  draft of a later layout, not listed, and the later one left as it is; a new
+  symbol's draft whose note was deleted listed and saved where new symbols go,
+  inserted nowhere; one whose first save made a file written over that file
+  while it holds what that save wrote, and saved beside it, leaving it as it is,
+  once it changed; and which drafts are listed, the name a new symbol starts
+  with, and what the list and the question say
   ([draft-recovery.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/draft-recovery.e2e.ts),
   [recovery.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/recovery.test.ts),
   and
