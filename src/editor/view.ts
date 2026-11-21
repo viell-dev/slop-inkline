@@ -98,6 +98,30 @@ function offscreen2d(
   return context;
 }
 
+/**
+ * How far an element's content box lies inside its border box on each side,
+ * in CSS pixels: its border and padding there, as `style`, its computed
+ * style, gives them.
+ */
+function insets(style: CSSStyleDeclaration): {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+} {
+  const pixels = (...values: string[]): number =>
+    values.reduce((sum, value) => {
+      const parsed = Number.parseFloat(value);
+      return Number.isFinite(parsed) ? sum + parsed : sum;
+    }, 0);
+  return {
+    left: pixels(style.borderLeftWidth, style.paddingLeft),
+    top: pixels(style.borderTopWidth, style.paddingTop),
+    right: pixels(style.borderRightWidth, style.paddingRight),
+    bottom: pixels(style.borderBottomWidth, style.paddingBottom),
+  };
+}
+
 function element2d(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
   const context = canvas.getContext("2d");
   if (context === null) throw new Error("no 2D canvas context");
@@ -290,7 +314,10 @@ export class InkView {
     this.#place();
   }
 
-  /** Fits the surface to `cssWidth` CSS pixels across. */
+  /**
+   * Fits the surface to `cssWidth` CSS pixels across, the width of its
+   * content box ({@link contentBox}).
+   */
   resize(cssWidth: number, devicePixelRatio: number): void {
     const width = Math.max(1, cssWidth);
     // The line box fills the content box, which the bitmap is drawn into and
@@ -342,30 +369,39 @@ export class InkView {
   #frame(): number {
     const style = getComputedStyle(this.canvas);
     if (style.boxSizing !== "border-box") return 0;
-    let frame = 0;
-    for (const value of [
-      style.borderTopWidth,
-      style.borderBottomWidth,
-      style.paddingTop,
-      style.paddingBottom,
-    ]) {
-      const pixels = Number.parseFloat(value);
-      if (Number.isFinite(pixels)) frame += pixels;
-    }
-    return frame;
+    const { top, bottom } = insets(style);
+    return top + bottom;
+  }
+
+  /**
+   * The surface's content box, the box the browser draws the bitmap into,
+   * inside its border and any padding a theme or a CSS snippet gives it: its
+   * top left corner in the window, and its size, in CSS pixels. The drawing
+   * is sized to it and the pointer mapped from it, as the border and padding
+   * would otherwise move the ink away from the pointer (#378). Its sides are
+   * as wide as the computed style says, as for {@link #frame}.
+   */
+  contentBox(): { left: number; top: number; width: number; height: number } {
+    const { canvas } = this;
+    const { left, top, right, bottom } = insets(getComputedStyle(canvas));
+    const rect = canvas.getBoundingClientRect();
+    return {
+      left: rect.left + left,
+      top: rect.top + top,
+      width: canvas.offsetWidth - left - right,
+      height: canvas.offsetHeight - top - bottom,
+    };
   }
 
   /**
    * The document position under a point on the screen, in pixels. The
-   * drawing starts inside the surface's border, as its size does.
+   * drawing starts at the surface's content box, as its size does.
    */
   toDocument(clientX: number, clientY: number): { x: number; y: number } {
-    const { canvas } = this;
-    const rect = canvas.getBoundingClientRect();
+    const { left, top } = this.contentBox();
     return {
-      x:
-        (clientX - rect.left - canvas.clientLeft) / this.#scale + this.#originX,
-      y: (clientY - rect.top - canvas.clientTop) / this.#scale,
+      x: (clientX - left) / this.#scale + this.#originX,
+      y: (clientY - top) / this.#scale,
     };
   }
 

@@ -1,12 +1,15 @@
 // Ink shows under the pointer that draws it, at the top and the bottom of the
 // drawing area as at its sides, in the usual view and after Fit in Zoom, at
-// whole and fractional page zoom (#359). Where the ink shows on the screen is
-// the subject, and the canvas's own pixels cannot give it, as the browser
+// whole and fractional page zoom (#359), and with padding round the drawing
+// area from a theme or a CSS snippet (#378). Where the ink shows on the screen
+// is the subject, and the canvas's own pixels cannot give it, as the browser
 // stretches them into the element's box: so this measures a screenshot.
 
 import { browser, expect } from "@wdio/globals";
+import { brushSizes } from "../../../src/editor/session.ts";
+import { lineBox } from "../../../src/ink/geometry.ts";
 import { loadModules } from "../support/browser.ts";
-import { setPageZoom } from "../support/cursor.ts";
+import { cursorImage, hasBrushCursor, setPageZoom } from "../support/cursor.ts";
 import { insert } from "../support/editing.ts";
 import {
   draw,
@@ -34,20 +37,33 @@ interface Pressed {
 }
 
 /**
- * Shows the ink in pure blue on white and the guides hidden, so that only
- * the ink is blue, and records where each pointer goes down and comes up.
+ * Padding a CSS snippet could give the drawing area, different on each side
+ * and wider across than down, as Inkline's own styles give it none.
  */
-async function prepare(): Promise<void> {
-  await browser.execute(() => {
-    if (document.getElementById("inkline-test-pointer") === null) {
-      const style = document.createElement("style");
-      style.id = "inkline-test-pointer";
-      style.textContent = `body .inkline-editor .inkline-surface {
-        color: rgb(0, 0, 255) !important;
-        background-color: rgb(255, 255, 255) !important;
-      }`;
-      document.head.append(style);
-    }
+const padding = { top: 10, right: 40, bottom: 14, left: 24 } as const;
+
+/**
+ * Shows the ink in pure blue on white and the guides hidden, so that only
+ * the ink is blue, and records where each pointer goes down and comes up,
+ * and the last move.
+ * With `padded`, the drawing area also has {@link padding}.
+ */
+async function prepare(padded: boolean): Promise<void> {
+  const sides = padded
+    ? [padding.top, padding.right, padding.bottom, padding.left]
+        .map((side) => `${String(side)}px`)
+        .join(" ")
+    : undefined;
+  await browser.execute((sides) => {
+    document.getElementById("inkline-test-pointer")?.remove();
+    const style = document.createElement("style");
+    style.id = "inkline-test-pointer";
+    style.textContent = `body .inkline-editor .inkline-surface {
+      color: rgb(0, 0, 255) !important;
+      background-color: rgb(255, 255, 255) !important;
+      ${sides === null ? "" : `padding: ${sides} !important;`}
+    }`;
+    document.head.append(style);
     const presses: { x: number; y: number }[] = [];
     Reflect.set(window, "inklineTestPresses", presses);
     const surface = document.querySelector(".inkline-editor .inkline-surface");
@@ -58,7 +74,10 @@ async function prepare(): Promise<void> {
         }
       });
     }
-  });
+    surface?.addEventListener("pointermove", (event) => {
+      Reflect.set(window, "inklineTestMoved", event);
+    });
+  }, sides ?? null);
   await browser.keys("g");
 }
 
@@ -173,6 +192,63 @@ async function boxes(): Promise<{ content: number; lineBox: number }> {
   });
 }
 
+/** Moves the mouse to `at` in the window, with no button down. */
+async function hoverAt(at: { x: number; y: number }): Promise<void> {
+  await browser
+    .action("pointer", { parameters: { pointerType: "mouse" } })
+    .move({ origin: "viewport", ...at, duration: 0 })
+    .perform();
+  await framesDrawn();
+}
+
+/**
+ * On a drawing area with {@link padding}: the brush's circle shows over the
+ * drawing, centred on the pointer to half a device pixel and as wide as the
+ * brush draws there, and not over the padding, where the drawing does not
+ * reach.
+ */
+async function checkBrushOnPadding(): Promise<void> {
+  const { inside, over, height } = await browser.execute((sides) => {
+    const canvas = document.querySelector(".inkline-editor .inkline-surface");
+    if (!(canvas instanceof HTMLCanvasElement)) throw new Error("no surface");
+    const rect = canvas.getBoundingClientRect();
+    const middle = Math.round(rect.top + rect.height / 2);
+    return {
+      inside: { x: Math.round(rect.left + sides.left + 40), y: middle },
+      over: { x: Math.round(rect.left + 1 + sides.left / 2), y: middle },
+      height: Number.parseFloat(
+        canvas.style.getPropertyValue("--inkline-surface-height"),
+      ),
+    };
+  }, padding);
+  await hoverAt(over);
+  expect(await hasBrushCursor()).toBe(false);
+  await hoverAt(inside);
+  expect(await hasBrushCursor()).toBe(true);
+  // From where the last move said the pointer was, which page zoom can put
+  // between CSS pixels.
+  const off = await browser.execute(() => {
+    const cursor = document.querySelector(".inkline-brush-cursor");
+    const moved: unknown = Reflect.get(window, "inklineTestMoved");
+    if (cursor === null || !(moved instanceof PointerEvent)) {
+      throw new Error("no brush bitmap or no move");
+    }
+    const rect = cursor.getBoundingClientRect();
+    return (
+      Math.max(
+        Math.abs(rect.left + rect.width / 2 - moved.clientX),
+        Math.abs(rect.top + rect.height / 2 - moved.clientY),
+      ) * devicePixelRatio
+    );
+  });
+  expect(off).toBeLessThanOrEqual(0.51);
+  // A new editor's pen is M, drawn at the scale of the line box's height.
+  const { diameter } = await cursorImage();
+  const drawn =
+    (brushSizes[1]?.em ?? 0) * lineBox.pxPerEm * (height / lineBox.height);
+  expect(Math.abs(diameter - drawn)).toBeLessThan(0.3);
+}
+
 describe("Drawing under the pointer", function () {
   before(async function () {
     await loadModules();
@@ -184,69 +260,77 @@ describe("Drawing under the pointer", function () {
     await setPageZoom(1);
   });
 
-  for (const zoom of [1, 1.25]) {
-    for (const zoomed of [false, true]) {
-      const name = `${String(zoom * 100)}%${zoomed ? ", zoomed and fitted" : ""}`;
-      it(`shows ink under the pointer at every edge, at ${name}`, async function () {
-        await setPageZoom(zoom);
-        await insert();
-        await prepare();
-        if (zoomed) {
-          // Off the middle, moved along, then fitted, as #359 was found.
-          await stroke([0.2, 0.5], [0.3, 0.5]);
-          await browser.keys("z");
-          await waitForStatus("Zoomed in");
-          for (let step = 0; step < 3; step++) await browser.keys("ArrowRight");
-          await browser
-            .action("wheel")
-            .scroll({ origin: await surface().getElement(), deltaY: 150 })
-            .perform();
-          await browser.keys("f");
-        }
-        await settledSurface();
-        const strokes = {
-          top: { pressed: await stroke([0.3, 0.1], [0.7, 0.1]), across: true },
-          bottom: {
-            pressed: await stroke([0.3, 0.9], [0.7, 0.9]),
-            across: true,
-          },
-          left: {
-            pressed: await stroke([0.1, 0.3], [0.1, 0.7]),
-            across: false,
-          },
-          right: {
-            pressed: await stroke([0.9, 0.3], [0.9, 0.7]),
-            across: false,
-          },
-        };
-        // The brush circle shows over the surface where the pointer is.
+  for (const { zoom, zoomed, padded } of [
+    { zoom: 1, zoomed: false, padded: false },
+    { zoom: 1, zoomed: true, padded: false },
+    { zoom: 1.25, zoomed: false, padded: false },
+    { zoom: 1.25, zoomed: true, padded: false },
+    { zoom: 1, zoomed: false, padded: true },
+    { zoom: 1.25, zoomed: true, padded: true },
+  ]) {
+    const name = `${String(zoom * 100)}%${zoomed ? ", zoomed and fitted" : ""}${padded ? ", with padding" : ""}`;
+    it(`shows ink under the pointer at every edge, at ${name}`, async function () {
+      await setPageZoom(zoom);
+      await insert();
+      await prepare(padded);
+      if (zoomed) {
+        // Off the middle, moved along, then fitted, as #359 was found.
+        await stroke([0.2, 0.5], [0.3, 0.5]);
+        await browser.keys("z");
+        await waitForStatus("Zoomed in");
+        for (let step = 0; step < 3; step++) await browser.keys("ArrowRight");
         await browser
-          .action("pointer", { parameters: { pointerType: "mouse" } })
-          .move({ x: 5, y: 5 })
+          .action("wheel")
+          .scroll({ origin: await surface().getElement(), deltaY: 150 })
           .perform();
-        await framesDrawn();
-        const png = await browser.takeScreenshot();
-        await saveScreenshotData(
-          `pointer-alignment-${String(zoom * 100)}${zoomed ? "-zoomed" : ""}`,
-          png,
-        );
-        const errors: Record<string, number> = {};
-        for (const [edge, { pressed, across }] of Object.entries(strokes)) {
-          const pointer = across ? pressed.down.y : pressed.down.x;
-          errors[edge] = (await inkMiddle(png, pressed, across)) - pointer;
-        }
-        // Each edge with its error, so that a failure says which and by how
-        // much.
-        for (const [edge, error] of Object.entries(errors)) {
-          expect({ edge, error, within: Math.abs(error) <= tolerance }).toEqual(
-            { edge, error, within: true },
-          );
-        }
-        // The bitmap and the pointer go by the line box: the content box,
-        // which the browser draws the bitmap into, is as tall.
-        const { content, lineBox: shown } = await boxes();
-        expect(Math.abs(content - shown)).toBeLessThan(0.05);
-      });
-    }
+        await browser.keys("f");
+      }
+      await settledSurface();
+      const strokes = {
+        top: { pressed: await stroke([0.3, 0.1], [0.7, 0.1]), across: true },
+        bottom: {
+          pressed: await stroke([0.3, 0.9], [0.7, 0.9]),
+          across: true,
+        },
+        left: {
+          pressed: await stroke([0.1, 0.3], [0.1, 0.7]),
+          across: false,
+        },
+        right: {
+          pressed: await stroke([0.9, 0.3], [0.9, 0.7]),
+          across: false,
+        },
+      };
+      // The brush circle shows over the surface where the pointer is.
+      await browser
+        .action("pointer", { parameters: { pointerType: "mouse" } })
+        .move({ x: 5, y: 5 })
+        .perform();
+      await framesDrawn();
+      const png = await browser.takeScreenshot();
+      await saveScreenshotData(
+        `pointer-alignment-${String(zoom * 100)}${zoomed ? "-zoomed" : ""}${padded ? "-padded" : ""}`,
+        png,
+      );
+      const errors: Record<string, number> = {};
+      for (const [edge, { pressed, across }] of Object.entries(strokes)) {
+        const pointer = across ? pressed.down.y : pressed.down.x;
+        errors[edge] = (await inkMiddle(png, pressed, across)) - pointer;
+      }
+      // Each edge with its error, so that a failure says which and by how
+      // much.
+      for (const [edge, error] of Object.entries(errors)) {
+        expect({ edge, error, within: Math.abs(error) <= tolerance }).toEqual({
+          edge,
+          error,
+          within: true,
+        });
+      }
+      // The bitmap and the pointer go by the line box: the content box,
+      // which the browser draws the bitmap into, is as tall.
+      const { content, lineBox: shown } = await boxes();
+      expect(Math.abs(content - shown)).toBeLessThan(0.05);
+      if (padded) await checkBrushOnPadding();
+    });
   }
 });
