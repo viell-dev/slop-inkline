@@ -376,6 +376,13 @@ export interface EditorOptions {
      * first save made.
      */
     readonly restored?: (draft: Draft) => void;
+    /**
+     * A draft to open with, restored as Restore would restore it, without
+     * asking, as the person chose it already: one whose symbol's file is gone
+     * or does not open, which this editor makes a new symbol of. No other
+     * draft is offered then.
+     */
+    readonly recover?: Draft;
   };
   /**
    * Opens the editor for the next symbol, whose embed follows this one's,
@@ -2850,8 +2857,12 @@ export class InkEditorModal extends Modal {
   async #offerDraft(): Promise<void> {
     const drafts = this.#options.drafts;
     if (drafts === undefined) return;
-    const offers = drafts.store.offers(drafts.target());
-    const found = this.#draftToOffer(drafts, offers.drafts);
+    const { recover } = drafts;
+    const offers =
+      recover === undefined
+        ? drafts.store.offers(drafts.target())
+        : { drafts: [], newer: false };
+    const found = recover ?? this.#draftToOffer(drafts, offers.drafts);
     // A later version's draft cannot be read here, so it stays for that
     // version to offer, and this says so, as the changes would seem lost.
     if (offers.newer) {
@@ -2893,6 +2904,19 @@ export class InkEditorModal extends Modal {
     const draft: Draft = readable
       ? found
       : { ...found, base: { kind: "none" } };
+    if (recover !== undefined) {
+      this.#restore(drafts, draft);
+      if (readable) {
+        this.#announce("Opened the unsaved drawing as a new symbol");
+      } else {
+        markNotice(
+          new Notice(
+            "The unsaved drawing's base layer cannot be read, so only its strokes came back.",
+          ),
+        );
+      }
+      return;
+    }
     const unreadable = readable
       ? ""
       : " Its base layer cannot be read, so only its strokes would come back.";
@@ -2923,30 +2947,7 @@ export class InkEditorModal extends Modal {
           text: "Restore",
           primary: true,
           act: () => {
-            // A stroke begun while the draft was read is committed first, so
-            // that undoing the restore brings it back.
-            this.#session.end();
-            this.#session.replace(
-              restoreDraft(this.#opened, draft),
-              draft.gridOrigin,
-            );
-            if (draft.name !== undefined && this.#nameField !== undefined) {
-              this.#nameField.value = draft.name;
-            }
-            if (draft.text !== undefined) {
-              this.#textFields?.restore(draft.text);
-              this.#showTextSummary();
-              this.#showText(true);
-            }
-            drafts.restored?.(draft);
-            // Still held: offered to no other editor until this one's own
-            // replaces it.
-            this.#offered = undefined;
-            this.#replacing = draft.id;
-            this.#fitView();
-            this.#updateButtons();
-            this.#render();
-            this.#keepDraft();
+            this.#restore(drafts, draft);
           },
         },
         {
@@ -2961,6 +2962,33 @@ export class InkEditorModal extends Modal {
       "Not now",
       letGo,
     );
+  }
+
+  /**
+   * Restores `draft`, which this editor holds, in place of the drawing, with
+   * any name and text it kept, and keeps this editor's own draft in its place.
+   */
+  #restore(drafts: NonNullable<EditorOptions["drafts"]>, draft: Draft): void {
+    // A stroke begun while the draft was read is committed first, so that
+    // undoing the restore brings it back.
+    this.#session.end();
+    this.#session.replace(restoreDraft(this.#opened, draft), draft.gridOrigin);
+    if (draft.name !== undefined && this.#nameField !== undefined) {
+      this.#nameField.value = draft.name;
+    }
+    if (draft.text !== undefined) {
+      this.#textFields?.restore(draft.text);
+      this.#showTextSummary();
+      this.#showText(true);
+    }
+    drafts.restored?.(draft);
+    // Still held: offered to no other editor until this one's own replaces it.
+    this.#offered = undefined;
+    this.#replacing = draft.id;
+    this.#fitView();
+    this.#updateButtons();
+    this.#render();
+    this.#keepDraft();
   }
 
   /**

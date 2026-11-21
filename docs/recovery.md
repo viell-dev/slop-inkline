@@ -146,7 +146,42 @@ Inkline does not see, as while it is off. When a symbol does not open because
 its file is not a valid PNG or its strokes cannot be read, the notice says so if
 a draft of it is kept.
 
-A draft not restored within 30 days is dropped. To get one back before then:
+**Unreleased:** Inkline offers such a draft itself, as a new symbol:
+
+- Opening a symbol that does not open, when a draft of it is kept, asks **Open
+  the unsaved drawing as a new symbol?** in place of the notice, saying why the
+  file did not open and when the draft was kept. **Open as new symbol** opens
+  the editor on the draft, **Discard** drops it, and **Not now** keeps it. If
+  another window opened while the symbol was read, the notice comes instead, and
+  says to run **Inkline: Recover drafts**.
+- **Inkline: Recover drafts** lists every draft whose symbol's file is gone or
+  does not open, newest first: a picture of its drawing, the symbol's name and
+  folder, when the draft was kept, and why it is listed. Type part of its path
+  to filter the list, and choose one to be asked the same question. A draft a
+  symbol's editor has open is not listed, nor one a newer version of Inkline
+  kept, which stays as it is. Nor is a new symbol's draft, which a new symbol
+  started in its note offers: if that note was deleted, create a note at its
+  path and start a new symbol there
+  ([#390](https://github.com/viell-dev/slop-inkline/issues/390)).
+
+The new symbol starts with the draft's strokes, and any name, readings, and
+translations you had typed. Its name field holds the old file's name, unless a
+file of that name is still in its folder, as one that does not open is: then it
+starts empty, for the next number. A base layer, the picture to draw over, comes
+back only if the draft kept its own, and the question says when it does not.
+Readings and translations saved in the old file, and not typed again, stay in
+it.
+
+The new symbol's first save makes a new file in the folder the old file was in,
+and inserts it into no note: a note that embeds the old file still does, and
+shows the new symbol if you save it with the old file's name where that file is
+gone. A file that does not open stays as it is, for you to move out of the vault
+or delete. For a symbol renamed while Inkline was off, rename it back and choose
+**Restore** instead, which puts the draft on that symbol rather than in a new
+one.
+
+A draft not restored within 30 days is dropped. In Inkline 1.0.2, which offers
+none of this, get one back before then by hand:
 
 - **A symbol renamed or moved while Inkline was off:** rename it back to the
   name and folder it had, then open it, and choose **Restore**.

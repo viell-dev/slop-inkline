@@ -127,6 +127,30 @@ describe("DraftStore", () => {
     ]);
   });
 
+  it("lists every symbol's drafts, other than those open editors hold", () => {
+    const store = new DraftStore(new MemoryStorage(), () => 5000);
+    store.put(draft({ id: "mine", savedAt: 3000 }));
+    store.put(
+      draft({ id: "gone", target: { kind: "file", path: "002.ink.png" } }),
+    );
+    store.put(
+      draft({
+        id: "new",
+        savedAt: 2000,
+        target: { kind: "new", note: "a.md" },
+      }),
+    );
+    store.hold("mine");
+    expect(store.unheld().map((item) => item.id)).toEqual(["new", "gone"]);
+    store.release("mine");
+    expect(store.unheld().map((item) => item.id)).toEqual([
+      "mine",
+      "new",
+      "gone",
+    ]);
+    expect(store.unheld()).toEqual(store.list());
+  });
+
   it("finds a symbol's drafts, other than those open editors hold", () => {
     const store = new DraftStore(new MemoryStorage(), () => 5000);
     store.put(draft({ id: "mine" }));
@@ -829,6 +853,19 @@ describe("DraftStore with a draft of a later layout", () => {
   function stored(storage: MemoryStorage, keys: readonly string[]): unknown[] {
     return keys.map((key) => storage.values.get(key));
   }
+
+  it("leaves it as it is, with its base layer, when the unheld drafts are listed", () => {
+    const storage = new MemoryStorage();
+    const store = new DraftStore(storage, () => 5000);
+    expect(store.put(draft())).toBe(true);
+    const key = plantBase(storage);
+    plant(storage, "later", laterDraft({ pictures: [{ id: key }] }));
+    const kept = [draftKey("later"), `inkline-draft-base:${key}`];
+    const before = stored(storage, kept);
+    expect(store.unheld()).toEqual([draft()]);
+    expect(stored(storage, kept)).toEqual(before);
+    expect(storage.loadLocalStorage("inkline-drafts")).toEqual(["a", "later"]);
+  });
 
   it("keeps it as it is, unlisted, with every base layer it names", () => {
     const storage = new MemoryStorage();

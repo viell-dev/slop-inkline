@@ -5,12 +5,13 @@
 Inkline's commands are in Obsidian's command palette. None has a hotkey of its
 own; give one any of them under **Settings → Hotkeys**.
 
-| Command                             | What it does                                                            |
-| ----------------------------------- | ----------------------------------------------------------------------- |
-| **Inkline: Insert symbol**          | Opens the editor for a new symbol, inserted at the cursor once saved.   |
-| **Inkline: Insert existing symbol** | Lists your symbols to search, and inserts the one chosen at the cursor. |
-| **Inkline: Edit symbol**            | Opens the symbol whose embed the cursor is on in the editor.            |
-| **Inkline: Show symbol library**    | Opens the Symbols view in the right sidebar.                            |
+| Command                             | What it does                                                               |
+| ----------------------------------- | -------------------------------------------------------------------------- |
+| **Inkline: Insert symbol**          | Opens the editor for a new symbol, inserted at the cursor once saved.      |
+| **Inkline: Insert existing symbol** | Lists your symbols to search, and inserts the one chosen at the cursor.    |
+| **Inkline: Edit symbol**            | Opens the symbol whose embed the cursor is on in the editor.               |
+| **Inkline: Show symbol library**    | Opens the Symbols view in the right sidebar.                               |
+| **Inkline: Recover drafts**         | **Unreleased:** Lists drafts whose symbol's file is gone or does not open. |
 
 The insert commands are offered in a note in editing view, and **Edit symbol**
 only with the cursor on a symbol's embed. In a note, the insert trigger, `;;` by

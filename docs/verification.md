@@ -350,6 +350,19 @@ must keep released files readable and looking the same, as
   ([opening-symbols.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/opening-symbols.e2e.ts)
   and
   [drafts.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/drafts.e2e.ts)).
+- **Unreleased:** a draft whose symbol's file does not open offered, as the
+  symbol is opened, as a new symbol, whose first save makes a new file beside
+  that one, inserted nowhere, and leaves that file as it is; a draft whose file
+  was deleted listed by **Inkline: Recover drafts**, with a picture of it, and
+  saved at that file's path, which the notes embedding it show again; Not now
+  keeping a draft, and Discard dropping it; the draft of an open editor, and a
+  draft of a later layout, not listed, and the later one left as it is; and
+  which drafts are listed, the name a new symbol starts with, and what the
+  question says
+  ([draft-recovery.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/draft-recovery.e2e.ts),
+  [recovery.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/recovery.test.ts),
+  and
+  [drafts.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/drafts.test.ts)).
 - A draft's base layer dropped from storage as soon as the draft that replaces
   it is kept, and never before: kept when storage refuses the replacement, and
   while another draft names it, a held one, a restored one, or another editor's;
