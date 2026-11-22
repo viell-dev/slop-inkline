@@ -19,6 +19,14 @@ even one a public release; earlier pre-releases carry a suffix such as
   stroke, when Make ink closes for another reason, as when a picture pasted then
   replaces the one it was open for
   ([#444](https://github.com/viell-dev/slop-inkline/issues/444)).
+- A picture dragged with **Move** now comes back under the pointer as you go on
+  or let go when the drawing moves under the pointer during the drag, as when
+  Obsidian's page zoom or the window's size changes. It used to move with the
+  drawing and stay that far from the pointer, and a page zoom could also make it
+  jump. **Readings and translations** opened or closed while you draw a stroke
+  now ends the stroke where it showed, as a change to the window's size does,
+  rather than moving the drawing under the rest of it
+  ([#445](https://github.com/viell-dev/slop-inkline/issues/445)).
 
 ## 1.1.0 - 2026-11-22
 

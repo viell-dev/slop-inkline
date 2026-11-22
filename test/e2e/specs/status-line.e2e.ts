@@ -24,10 +24,13 @@ import {
   waitForTop,
 } from "../support/editor.ts";
 import { dragInWindow, inWindow, tops, watchTops } from "../support/pointer.ts";
-import { pastePicture, pictureHint } from "../support/tracing.ts";
+import {
+  inkShown,
+  making,
+  pastePicture,
+  pictureHint,
+} from "../support/tracing.ts";
 import { framesDrawn } from "../support/waits.ts";
-
-const making = "Making ink of the picture: set the threshold, then Apply.";
 
 /** What the status line says now. */
 async function status(): Promise<string> {
@@ -80,11 +83,6 @@ async function savedInk(): Promise<boolean> {
     base?: unknown;
   };
   return record.base !== undefined;
-}
-
-/** Whether the controls that make ink are showing. */
-async function inkShown(): Promise<boolean> {
-  return browser.$(".inkline-editor .inkline-convert").isDisplayed();
 }
 
 /** The strokes the editor keeps, from its draft. */

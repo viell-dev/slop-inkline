@@ -235,7 +235,12 @@ must keep released files readable and looking the same, as
   leave the drawing area where it was until the release; then Make ink opens
   where the drag left the picture, Zoom zooms, and Make ink's row goes
   ([tracing.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/tracing.e2e.ts),
-  [#444](https://github.com/viell-dev/slop-inkline/issues/444)).
+  [#444](https://github.com/viell-dev/slop-inkline/issues/444)). With Obsidian's
+  page zoom set to 125%, the editor moved and the window told it was resized, or
+  **Readings and translations** opened, while the picture is dragged, the
+  drawing area moves, and the picture ends under the pointer by the point it was
+  grabbed at (the same file,
+  [#445](https://github.com/viell-dev/slop-inkline/issues/445)).
 - Help explains the drawing tools and guides, closes with Escape, and restores
   focus to drawing without changing its strokes
   ([editor-feedback.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor-feedback.e2e.ts)).
@@ -285,7 +290,9 @@ must keep released files readable and looking the same, as
   view. With the editor made narrower, or moved and the window told it was
   resized, while a stroke is held, the stroke ends where it showed, as the same
   drag alone saves it, and letting go adds nothing (the same file,
-  [#393](https://github.com/viell-dev/slop-inkline/issues/393)). A unit test
+  [#393](https://github.com/viell-dev/slop-inkline/issues/393)); **Unreleased:**
+  so it does with **Readings and translations** opened while the stroke is held
+  ([#445](https://github.com/viell-dev/slop-inkline/issues/445)). A unit test
   checks that the drawing moving under a still pointer takes what is drawn on as
   a move there would, with Shift as last known
   ([session.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/session.test.ts)).
