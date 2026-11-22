@@ -12,6 +12,7 @@ import packageJson from "../../package.json" with { type: "json" };
 import versions from "../../versions.json" with { type: "json" };
 import { compareSemver } from "../../scripts/lib/version.ts";
 import { emptyDocument } from "../../src/ink/document.ts";
+import { controls, keyText } from "../../src/editor/buttons.ts";
 import { brushSizes, DrawingSession } from "../../src/editor/session.ts";
 import { textLinks } from "../../src/notes/links.ts";
 import { defaultSettings } from "../../src/settings.ts";
@@ -246,24 +247,27 @@ describe("the documentation", () => {
     for (const name of named) expect(names, name).toContain(name);
   });
 
-  it("gives each of the editor's buttons the key its tooltip shows", () => {
-    const modal = source("src/editor/modal.ts");
-    const buttons = [
-      ...modal.matchAll(
-        /#addButton\(\s*\w+,\s*"([\w-]+)",\s*"([^"]+)",\s*"([^"]+)",/g,
-      ),
-    ].map((match) => ({ text: match[2] ?? "", key: match[3] ?? "" }));
+  it("gives each of the editor's buttons the keys its tooltip shows", () => {
+    // The brush sizes, which the guide names together, are checked below.
+    const size = ({ id }: { id: string }): boolean => id.startsWith("size-");
+    const buttons = controls
+      .filter((control) => control.keys.length > 0 && !size(control))
+      .map(({ text, keys }) => ({ text, keys: keys.map(keyText) }));
     expect(buttons.length).toBeGreaterThan(10);
     const rows = tableRows(page("keyboard.md"));
-    for (const { text, key } of buttons) {
+    for (const { text, keys } of buttons) {
       const row = rows.find((cells) => cells[1] === text);
       expect(row, text).toBeDefined();
-      expect(row?.[0]?.split(", or ")[0], text).toBe(key);
+      expect(row?.[0], text).toBe(keys.join(", or "));
     }
-    // The brush sizes' buttons, made in a loop, take the keys 1 to 4.
-    const sizes = rows.find((cells) => cells[1]?.startsWith("S, "));
-    expect(sizes?.[1]).toBe(brushSizes.map((size) => size.label).join(", "));
-    expect(sizes?.[0]).toBe(brushSizes.map((_, index) => index + 1).join(", "));
+    // The brush sizes' buttons take the keys 1 to 4.
+    const sizes = controls.filter(size);
+    expect(sizes).toHaveLength(brushSizes.length);
+    const sizeRow = rows.find((cells) => cells[1]?.startsWith("S, "));
+    expect(sizeRow?.[1]).toBe(sizes.map(({ text }) => text).join(", "));
+    expect(sizeRow?.[0]).toBe(
+      sizes.flatMap(({ keys }) => keys.map(keyText)).join(", "),
+    );
     // The guide to the editor names the same keys in its text, as
     // **Pen** (P).
     const named = [
@@ -272,26 +276,23 @@ describe("the documentation", () => {
       const button = buttons.find(({ text }) => text === match[1]);
       return button === undefined
         ? []
-        : [{ text: button.text, key: button.key, named: match[2] ?? "" }];
+        : [{ text: button.text, key: button.keys[0], named: match[2] ?? "" }];
     });
     for (const { text, key, named: keys } of named) {
       expect(keys.split(", or ")[0], text).toBe(key);
     }
     // Every button with a key is named there, apart from the brush sizes,
     // which it names together.
-    const sizeLabels = brushSizes.map((size) => size.label);
     expect([...new Set(named.map(({ text }) => text))].sort()).toEqual(
-      buttons
-        .map(({ text }) => text)
-        .filter((text) => !sizeLabels.includes(text))
-        .sort(),
+      buttons.map(({ text }) => text).sort(),
     );
     // Keys with no button of their own.
     for (const key of ["Mod+S", "Esc"]) {
       expect(rows.some((cells) => cells[0] === key)).toBe(true);
     }
-    expect(modal).toContain(`key(["Mod"], "s",`);
-    expect(modal).toContain(`key(["Mod"], "y",`);
+    expect(source("src/editor/controls.ts")).toMatch(
+      /key\(\s*\["Mod"\],\s*"s",/,
+    );
   });
 
   it("gives the defaults the code has", () => {

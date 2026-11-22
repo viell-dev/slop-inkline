@@ -346,7 +346,10 @@ describe("The editor", function () {
   // say instead.
   it("shows each switch's state on its button as it changes, and says why one is off", async function () {
     await insert();
-    /** Each button's `aria-pressed`, or "-", and whether it is on or off. */
+    /**
+     * Each button's `aria-pressed`, or "-", and whether it is on or off, or
+     * "missing" for a button the editor does not have.
+     */
     const shown = (ids: readonly string[]): Promise<Record<string, string>> =>
       browser.execute(
         (ids: readonly string[]) =>
@@ -355,8 +358,9 @@ describe("The editor", function () {
               const button = document.querySelector(
                 `[data-inkline-button="${id}"]`,
               );
-              const pressed = button?.getAttribute("aria-pressed") ?? "-";
-              const off = button?.hasAttribute("disabled") === true;
+              if (button === null) return [id, "missing"];
+              const pressed = button.getAttribute("aria-pressed") ?? "-";
+              const off = button.hasAttribute("disabled");
               return [id, `${pressed} ${off ? "off" : "on"}`];
             }),
           ),
