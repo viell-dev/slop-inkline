@@ -1364,6 +1364,90 @@ describe("Quick edit in the library", function () {
     expect(await symbolFiles()).toEqual([]);
   });
 
+  it("opens the fields once a save finds a file cut short whole again", async function () {
+    // #398's review: the save sets aside the row's read of the whole file,
+    // and is refused for the change, having read it whole itself.
+    await symbolWith("gate.ink.png", { reading: ["TA"] });
+    await showLibrary();
+    await quickEdit("gate.ink.png");
+    await area("reading").setValue("KA");
+    // The file as it will be once whole again, with another reading.
+    await browser.executeObsidian(async ({ app }) => {
+      const file = app.vault.getFileByPath("gate.ink.png");
+      if (file === null) throw new Error("no gate");
+      const { text } = window.inklineTest;
+      const bytes = new Uint8Array(await app.vault.readBinary(file));
+      const theirs = await text.writeText(bytes, "reading", ["THEIRS"]);
+      Reflect.set(window, "inklineTheirs", theirs);
+    });
+    await cutShort("gate.ink.png");
+    await browser.waitUntil(
+      async () => (await area("reading").getProperty("readOnly")) === true,
+    );
+    expect(await errorLines()).toEqual([notWhole]);
+    await browser.executeObsidian(async ({ app }) => {
+      const file = app.vault.getFileByPath("gate.ink.png");
+      if (file === null) throw new Error("no gate");
+      const theirs: unknown = Reflect.get(window, "inklineTheirs");
+      Reflect.deleteProperty(window, "inklineTheirs");
+      if (!(theirs instanceof Uint8Array)) throw new Error("no bytes");
+      // Each read of the file from now on reads it when asked, and gives its
+      // answer only once let go, as a disk slow to hand back what it read.
+      const read = app.vault.readBinary.bind(app.vault);
+      let go = (): void => undefined;
+      const gate = new Promise<void>((resolve) => {
+        go = resolve;
+      });
+      let holding = true;
+      const held: Promise<ArrayBuffer>[] = [];
+      app.vault.readBinary = (asked) => {
+        const reading = read(asked);
+        if (!holding || asked !== file) return reading;
+        const answer = (async () => {
+          const answered = await reading;
+          await gate;
+          return answered;
+        })();
+        held.push(answer);
+        return answer;
+      };
+      Reflect.set(window, "inklineAtEnd-slow-reads", go);
+      // The file is whole again, which the row reads it for: held.
+      await app.vault.modifyBinary(file, theirs.slice().buffer);
+      if (held.length === 0) throw new Error("the row did not read the file");
+      holding = false;
+      Reflect.set(window, "inklineLetReadsGo", async () => {
+        Reflect.deleteProperty(window, "inklineLetReadsGo");
+        Reflect.deleteProperty(app.vault, "readBinary");
+        go();
+        await Promise.allSettled(held);
+      });
+      // Save, before that read comes back: the save reads the file itself.
+      activeDocument
+        .querySelector<HTMLFormElement>(".inkline-library-edit-form")
+        ?.requestSubmit();
+    });
+    const note = form().$(".inkline-text-note");
+    await browser.waitUntil(async () =>
+      (await note.getText()).includes("THEIRS"),
+    );
+    await browser.execute(async () => {
+      const letGo: unknown = Reflect.get(window, "inklineLetReadsGo");
+      if (typeof letGo === "function") {
+        await Reflect.apply(letGo, undefined, []);
+      }
+    });
+    // Long enough for the late read to be taken, if it was going to be.
+    await browser.pause(1500);
+    expect(await errorLines()).toEqual([]);
+    expect(await area("reading").getProperty("readOnly")).toBe(false);
+    expect(await area("reading").getValue()).toBe("KA");
+    // And the next Save replaces what the file says, as the note says.
+    await formButton("Save").click();
+    await waitForClosed();
+    expect((await fieldsOf("gate.ink.png")).reading).toEqual(["KA"]);
+  });
+
   it("sets aside a read begun before a save that a change on disk refused", async function () {
     // #279: the read came back after the save, with what the file said before
     // the change the save found.

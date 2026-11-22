@@ -3,16 +3,20 @@ import {
   followName,
   leftNotice,
   QuickSave,
+  reasonOf,
   reportSave,
+  rowLines,
   waitLine,
   type Names,
   type Outcome,
   type Step,
   type Work,
 } from "../../../src/library/quick-edit.ts";
+import { PngError } from "../../../src/format/png.ts";
 import {
   RenameDisturbed,
   TextMoved,
+  unreadableText,
   type SaveWait,
 } from "../../../src/notes/file-writes.ts";
 
@@ -509,6 +513,38 @@ describe("reportSave", () => {
     ).toBe(
       "Saved gate. gate could not be renamed to arch: the drive went away",
     );
+  });
+});
+
+describe("rowLines", () => {
+  const notWhole = "This file is not a whole PNG, so it cannot hold text.";
+  const refused = "the vault's top folder already has a symbol named TOWER";
+
+  it("says what a save said when the file was read", () => {
+    expect(rowLines(undefined, [])).toEqual([]);
+    expect(rowLines(undefined, [refused])).toEqual([refused]);
+  });
+
+  it("says why the file could not be read first, above what a save said", () => {
+    expect(rowLines(notWhole, [])).toEqual([notWhole]);
+    expect(rowLines(notWhole, [refused])).toEqual([notWhole, refused]);
+  });
+
+  it("says a reason once when the save gave it too", () => {
+    expect(rowLines(notWhole, [notWhole, "Nothing was renamed."])).toEqual([
+      notWhole,
+      "Nothing was renamed.",
+    ]);
+  });
+
+  it("says once what a save and a read say of a file cut short, from one source", () => {
+    // Both the write and the row's read give this, so it is the same line.
+    const reason = reasonOf(unreadableText(new PngError("cut short")), "");
+    expect(reason).toBe(notWhole);
+    expect(rowLines(reason, [reason, "Nothing was renamed."])).toEqual([
+      reason,
+      "Nothing was renamed.",
+    ]);
   });
 });
 

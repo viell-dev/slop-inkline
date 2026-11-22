@@ -55,6 +55,7 @@ import {
   QuickSave,
   reasonOf,
   reportSave,
+  rowLines,
   waitLine,
   type Names,
   type Steps,
@@ -850,9 +851,11 @@ export class SymbolLibraryView extends ItemView {
     /** The save under way, which can be left once a step of it waits. */
     let running: { save: QuickSave; names: () => Names } | undefined;
     /** Why the last read of the file failed, until one does not. */
-    let unread: string | undefined;
+    let readFailure: string | undefined;
     /** What the last save, or a name refused before it, said. */
     let saveLines: readonly string[] = [];
+    /** The lines the row shows now. */
+    let shown: readonly string[] = [];
     /** Counts reads, so that only the latest is taken. */
     let reads = 0;
     const fields = new TextFields(
@@ -869,22 +872,28 @@ export class SymbolLibraryView extends ItemView {
       attr: { role: "alert" },
     });
     /**
-     * Shows in the row, a line each, why the file could not be read, which
-     * says why the fields are closed, and then what a save said. One that says
-     * the same is said once.
+     * Shows the row's lines, as {@link rowLines} has them. The lines are an
+     * alert, which a screen reader reads each time they are drawn, so a read of
+     * the file draws them only if they change; what the person asked for, a
+     * save or a name refused, draws them `always`.
      */
-    const showLines = (): void => {
+    const showLines = (always = false): void => {
+      const lines = rowLines(readFailure, saveLines);
+      const same =
+        lines.length === shown.length &&
+        lines.every((line, at) => line === shown[at]);
+      if (same && !always) return;
+      shown = lines;
       error.empty();
-      const lines =
-        unread === undefined || saveLines.includes(unread)
-          ? saveLines
-          : [unread, ...saveLines];
       for (const line of lines) error.createDiv({ text: line });
     };
-    /** Says `lines` of a save, or of a name refused before one. */
+    /**
+     * Says `lines` of a save, or of a name refused before one, again if they
+     * are what the row said already, as the person asked; no lines clears them.
+     */
     const say = (lines: readonly string[]): void => {
       saveLines = lines;
-      showLines();
+      showLines(lines.length > 0);
     };
     const wait = form.createDiv({
       cls: "inkline-save-wait",
@@ -938,7 +947,7 @@ export class SymbolLibraryView extends ItemView {
           fields.enabled = true;
           save.disabled = false;
           // That settles what reading the file found, and nothing a save said.
-          unread = undefined;
+          readFailure = undefined;
           showLines();
         },
         (failure: unknown) => {
@@ -948,7 +957,7 @@ export class SymbolLibraryView extends ItemView {
           readable = false;
           fields.enabled = false;
           save.disabled = this.app.vault.getFileByPath(file.path) !== file;
-          unread = reasonOf(failure, "The symbol could not be read.");
+          readFailure = reasonOf(failure, "The symbol could not be read.");
           showLines();
         },
       );
@@ -1095,6 +1104,12 @@ export class SymbolLibraryView extends ItemView {
         save.disabled = false;
         cancellable(true);
         input.readOnly = false;
+        // A write refused for a change on disk read the file whole, and newer
+        // than any read the save set aside, which settles that it can be read.
+        if (report.moved !== undefined) {
+          readable = true;
+          readFailure = undefined;
+        }
         fields.enabled = readable;
         if (outcome.written) fields.saved(changes, sent);
         if (report.moved !== undefined) fields.take(report.moved);

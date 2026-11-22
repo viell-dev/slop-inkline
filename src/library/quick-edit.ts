@@ -245,6 +245,22 @@ function renameNotice(
 }
 
 /**
+ * The lines the row shows, a line each: why the file could not be read, if the
+ * last read failed, which says why the fields are closed, and then what the
+ * last save, or a name refused before one, said. A reason that the save's lines
+ * give already, as when a save fails on a file the read after it cannot read
+ * either, is said once.
+ */
+export function rowLines(
+  readFailure: string | undefined,
+  saveLines: readonly string[],
+): readonly string[] {
+  return readFailure === undefined || saveLines.includes(readFailure)
+    ? saveLines
+    : [readFailure, ...saveLines];
+}
+
+/**
  * What the row and a notice say once a save ends, with the row still `open`
  * or gone, as when the library closes or Inkline unloads. Nothing typed is
  * lost without a word: an open row keeps it, and a notice names what was not
