@@ -82,12 +82,16 @@ even one a public release; earlier pre-releases carry a suffix such as
   is the file format: a symbol saved before keeps the line in its image until it
   is saved again ([#368](https://github.com/viell-dev/slop-inkline/issues/368)).
 - Typing straight after saving a new symbol keeps its letters in order. As the
-  editor closes, Inkline puts the cursor back after the symbol a moment later,
-  in case the note changed while you drew, and on a busy computer that moment
-  could come after your first key, so the second went in front of it: `xy`
-  became `yx`. Once you type, use a shortcut, click, paste, cut, or drop
-  something in the note, the cursor is now left where you put it
-  ([#387](https://github.com/viell-dev/slop-inkline/issues/387)).
+  editor closes, Inkline puts the cursor back after the symbol, in case the note
+  changed while you drew, and gives the note the focus if nothing has it, as
+  when a change on disk took a table cell's editor away. It did both a moment
+  later, and on a busy computer that moment could come after your first key: the
+  second key then went in front of the first, so `xy` became `yx`, and a click,
+  a shortcut, or a paste had its cursor moved after it. In a table cell whose
+  editor a change on disk took away, the first key went nowhere. Now both happen
+  as the editor closes, before any key
+  ([#387](https://github.com/viell-dev/slop-inkline/issues/387),
+  [#429](https://github.com/viell-dev/slop-inkline/issues/429)).
 - A symbol's file replaced while the editor saved it, deleted and another put at
   its path through Obsidian, as by another plugin or a sync tool working through
   it, could have the save find no file, go to make it again, and stop with
@@ -114,6 +118,11 @@ even one a public release; earlier pre-releases carry a suffix such as
   which moved where the pointer fell in the drawing, so letting go without
   moving ended the stroke somewhere other than it showed
   ([#382](https://github.com/viell-dev/slop-inkline/issues/382)).
+- **Inkline: Insert existing symbol** in a table cell in Live Preview keeps the
+  symbol when you type straight after choosing it. On a busy computer, a key
+  that came before the cell had taken the symbol made it leave the symbol out,
+  keeping only the letter
+  ([#415](https://github.com/viell-dev/slop-inkline/issues/415)).
 - **Fit** pressed while you draw now waits until you let go, as **Zoom** does.
   Moving along a zoomed drawing with the wheel or the left and right arrow keys
   while you draw now takes what you draw with it, on to where the pointer is in

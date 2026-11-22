@@ -60,6 +60,7 @@ import {
 import { visibleWidth } from "../editor/view.ts";
 import {
   capturePoint,
+  closeCell,
   findPoint,
   lineAtEnd,
   replacedBefore,
@@ -404,6 +405,29 @@ function liveView(
   return views.find((view) => view === preferred) ?? views[0];
 }
 
+/**
+ * Whether Live Preview is editing a table cell in `view`. Obsidian's API does
+ * not say, so this looks for the cell's own editor, an editor in one of the
+ * wrappers Obsidian gives a table's cells, which goes once the cell closes.
+ */
+function editingCell(view: MarkdownView): boolean {
+  return (
+    view.contentEl.querySelector(".table-cell-wrapper .cm-content") !== null
+  );
+}
+
+/**
+ * Gives `view`'s editor the focus at its cursor if nothing has it, as when the
+ * table cell it was in has closed. Setting the cursor where it is opens that
+ * cell again, around it.
+ */
+function takeFocus(view: MarkdownView): void {
+  const { containerEl, editor } = view;
+  if (containerEl.doc.activeElement !== containerEl.doc.body) return;
+  editor.focus();
+  editor.setCursor(editor.getCursor());
+}
+
 function appendedNotice(file: TFile): void {
   markNotice(
     new Notice(
@@ -476,11 +500,24 @@ async function processNote(
  * after a typed character, the cursor of the editor that took the embed lands
  * just after it; the text of a selection stays, as the embed goes beside it.
  * Returns the point just after the embed, where the next symbol's embed goes.
+ *
+ * `uncovered` says that no modal is over the note as this writes, so that
+ * the person can type in it at once. A table cell being edited then must not
+ * take the embed as Obsidian passes it on, a moment later and computed
+ * against the cell's text as it was: a key in that moment changes the cell,
+ * and the embed is lost (#415). So the cell closes first, with
+ * {@link closeCell}, the embed goes into the note's own text as an ordinary
+ * edit, saved and passed to the note's other panes as any is, and the note
+ * gets the focus at the new cursor in the same step, which opens the cell
+ * again around it. The next key then goes after the embed. The cell closed is
+ * the one the cursor was in when the command began, which the place found
+ * comes from.
  */
 async function insertEmbed(
   app: App,
   target: Target,
   embed: string,
+  uncovered = false,
 ): Promise<InsertionPoint> {
   const { file, point } = target;
   if (!present(app, file)) throw new NoteGone(file);
@@ -493,11 +530,15 @@ async function insertEmbed(
     const place = found === undefined ? undefined : insertionAt(text, found);
     if (place !== undefined) {
       const inserted = place.before + embed;
+      if (uncovered && editingCell(view)) closeCell(editor, place.at);
       writeAt(editor, place.at, inserted);
+      if (uncovered) takeFocus(view);
       return pointAfterChange(view, text, place.at + inserted.length);
     }
+    // The end of the note is in no cell, so the change goes straight in.
     const { before, after } = lineAtEnd(text);
     writeAt(editor, text.length, before + embed, after);
+    if (uncovered) takeFocus(view);
     appendedNotice(file);
     return pointAfterChange(
       view,
@@ -1447,7 +1488,8 @@ export function insertExistingSymbol(
   const target = targetOf(view);
   if (target === undefined) return;
   new SymbolSearch(app, texts, target.file.path, unloaded, (embed) => {
-    insertEmbed(app, target, embed)
+    // The list has closed by now, and has given the note the focus back.
+    insertEmbed(app, target, embed, true)
       .then(() => {
         if (!unloaded.aborted) returnFocus(app, target);
       })
@@ -1467,73 +1509,34 @@ export function insertExistingSymbol(
  *
  * With `point`, the cursor goes back there first, as the note can have changed
  * on disk or in another pane meanwhile, which takes it away from the last
- * symbol. That waits for the modal too: Obsidian refocuses the note after a
- * modal's close. A cursor already there stays as it is, as a table cell's
- * editor may have it. So does the cursor once the person has typed, used a
- * shortcut, clicked, pasted, cut, or dropped something in the note since the
- * modal closed, which on a busy machine they can do before the wait ends: it
- * is theirs then, and moving it would put what they type next out of order
- * (#387).
+ * symbol. A cursor already there stays as it is, as a table cell's editor may
+ * have it.
+ *
+ * Both wait for the rest of the modal's close, if it is still closing, and no
+ * longer. On a desktop, where Inkline runs, Obsidian closes a modal in one
+ * step: its `onClose`, then the focus given back to what had it before the
+ * modal opened. A microtask queued in `onClose` runs after that step and
+ * before anything a person does, a key, a shortcut, a click, a paste, or a
+ * drop, which each wait for a task of their own. A timer, which is such a
+ * task, let a busy machine take their first keys first, and then moved the
+ * cursor from where they had put it, which put what they typed next out of
+ * order (#387). After a change on disk took a table cell's editor away,
+ * nothing had the focus until the timer, so a key went nowhere, and a
+ * shortcut, which Obsidian still ran on this note, had its cursor moved after
+ * it (#429).
  */
 function returnFocus(app: App, target: Target, point?: InsertionPoint): void {
   const view = liveView(app, target.file, target.view);
   if (view === undefined) return;
   const { containerEl, editor } = view;
-  const back =
-    point === undefined
-      ? undefined
-      : { point, untouched: watchPerson(containerEl) };
-  containerEl.win.setTimeout(() => {
+  containerEl.win.queueMicrotask(() => {
     const at =
-      back?.untouched() === true
-        ? findPoint(editor.getValue(), back.point)
-        : undefined;
+      point === undefined ? undefined : findPoint(editor.getValue(), point);
     if (at !== undefined && at !== editor.posToOffset(editor.getCursor())) {
       editor.setCursor(editor.offsetToPos(at));
     }
-    if (containerEl.doc.activeElement !== containerEl.doc.body) return;
-    editor.focus();
-    editor.setCursor(editor.getCursor());
+    takeFocus(view);
   });
-}
-
-/**
- * What a person does in a note to move its cursor or change its text: a key,
- * a pointer pressed, text put in, a paste or a cut, which the editor takes
- * itself with no input event after it, and a drop.
- */
-const personEvents = [
-  "keydown",
-  "pointerdown",
-  "beforeinput",
-  "paste",
-  "cut",
-  "drop",
-] as const;
-
-/**
- * Listens, from now on, for a person moving a cursor or changing text in
- * `el`. The function returned stops listening and says whether none came.
- * It listens on the window, before anything below it hears: Obsidian takes
- * the key of a hotkey it handles before it reaches the note. An event counts
- * when it passes through `el`, so one in another pane does not. Nor does a key
- * while nothing has the focus, as after a change on disk took a table cell's
- * editor away, though Obsidian still runs a hotkey's command on this note then,
- * whose cursor is then moved; a plain key then goes nowhere (#429). Any key
- * counts, even one that moves nothing: a cursor left alone stays where
- * Obsidian put it, while one moved after a key can put the next out of order.
- */
-function watchPerson(el: HTMLElement): () => boolean {
-  const { win } = el;
-  let touched = false;
-  const touch = (event: Event): void => {
-    if (event.composedPath().includes(el)) touched = true;
-  };
-  for (const type of personEvents) win.addEventListener(type, touch, true);
-  return () => {
-    for (const type of personEvents) win.removeEventListener(type, touch, true);
-    return !touched;
-  };
 }
 
 /**

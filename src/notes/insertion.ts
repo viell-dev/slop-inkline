@@ -161,3 +161,24 @@ export function writeAt(
     selection: { from: positionAfter(from, text) },
   });
 }
+
+/**
+ * Closes the table cell that Live Preview is editing in `editor`'s note, and
+ * changes nothing: it puts back the character before `offset`, or the first
+ * one, as it is, with the origin `set`, for which Obsidian closes a cell's
+ * editor and takes the change straight into the note's text. Obsidian's own
+ * refresh of a note's highlighting makes the same change. `set` is the origin
+ * of Obsidian's reload, so Obsidian neither saves a `set` change nor passes it
+ * to the note's other panes: that is why it changes nothing, and what follows
+ * goes as an ordinary edit. The note's text must not be empty, as a table's
+ * never is.
+ */
+export function closeCell(editor: Editor, offset: number): void {
+  const start = Math.max(0, offset - 1);
+  const from = editor.offsetToPos(start);
+  const to = editor.offsetToPos(start + 1);
+  editor.transaction(
+    { changes: [{ from, to, text: editor.getRange(from, to) }] },
+    "set",
+  );
+}

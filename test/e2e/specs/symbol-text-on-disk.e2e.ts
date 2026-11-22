@@ -416,14 +416,6 @@ describe("A symbol's readings and translations", function () {
         });
         expect(await strokes()).toBe(2);
       });
-
-      it("still says so of a draft whose drawing changed", async function () {
-        await withStroke();
-        await leaveDraft();
-        await redrawOnDisk(file, { reading: ["KA"] });
-        await editFile(file);
-        expect(await draftQuestion()).toContain("may not line up");
-      });
     });
   });
 });

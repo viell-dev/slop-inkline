@@ -1,4 +1,5 @@
 import { browser, expect } from "@wdio/globals";
+import { Key } from "webdriverio";
 import { loadModules } from "../support/browser.ts";
 import { save, waitClosed, zigzag } from "../support/editing.ts";
 import {
@@ -11,7 +12,10 @@ import {
 } from "../support/editor.ts";
 import {
   chooseExisting,
+  holdClosingTimers,
+  letClosingTimersGo,
   next,
+  openBeside,
   rewrite,
   searchExisting,
   setLinkUpdates,
@@ -19,7 +23,19 @@ import {
   waitForNoteFocus,
 } from "../support/insertion.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
-import { intoCell, waitForLastRow } from "../support/table-cell.ts";
+import {
+  backIntoCell,
+  holdInklineTimers,
+  intoCell,
+  letInklineTimersGo,
+  waitForLastRow,
+  waitForNoteEverywhere,
+  waitForRowEverywhere,
+} from "../support/table-cell.ts";
+
+/** The note `intoCell` makes, with `gate.ink.png` in the cell it goes into. */
+const withGate =
+  "| A | B |\n| --- | --- |\n| same | same |\n| same![[gate.ink.png]] | same |\n";
 
 describe("Symbols in a table cell in Live Preview", function () {
   before(async function () {
@@ -114,6 +130,68 @@ describe("Symbols in a table cell in Live Preview", function () {
     await waitForLastRow("| same![[gate.ink.png]]xy | same |");
   });
 
+  // A key straight after the choice, before what Obsidian does on a timer as
+  // a cell takes a change, as on a busy machine (#415).
+  it("keeps a symbol from Insert existing symbol and a key that comes first", async function () {
+    await createSymbol("gate.ink.png");
+    await intoCell("Table.md");
+    await searchExisting("gat");
+    await holdInklineTimers();
+    await browser.keys(["Enter"]);
+    await type("x");
+    // The timers the choice sets under Inkline's code, which `x` came before:
+    // the cell's own as it closes and opens again, or on `main` the handoff of
+    // the symbol to the cell. At least one shows the hold caught the choice.
+    expect(await letInklineTimersGo()).toBeGreaterThan(0);
+    await type("y");
+    await waitForLastRow("| same![[gate.ink.png]]xy | same |");
+  });
+
+  // With no key after it, the symbol is an edit like any other: saved, and
+  // passed to the note's other panes (#428's review).
+  it("saves a symbol from Insert existing symbol and passes it to another pane", async function () {
+    await createSymbol("gate.ink.png");
+    await intoCell("Table.md");
+    await openBeside("Table.md");
+    await backIntoCell();
+    await chooseExisting("gat");
+    await waitForRowEverywhere("| same![[gate.ink.png]] | same |");
+    // An edit in the other pane keeps it.
+    await browser.executeObsidian(({ app, obsidian }) => {
+      const views = app.workspace
+        .getLeavesOfType("markdown")
+        .map(({ view }) => view)
+        .filter(
+          (view): view is InstanceType<typeof obsidian.MarkdownView> =>
+            view instanceof obsidian.MarkdownView &&
+            view.file?.path === "Table.md",
+        );
+      const other = views.find(
+        (view) =>
+          view !== app.workspace.getActiveViewOfType(obsidian.MarkdownView),
+      );
+      if (other === undefined) throw new Error("no other pane");
+      other.editor.replaceRange("Edited.\n\n", { line: 0, ch: 0 });
+    });
+    await waitForNoteEverywhere(`Edited.\n\n${withGate}`);
+  });
+
+  // The choice saves the symbol at once, so a change on disk after it reaches
+  // the editor as Obsidian reloads the saved note, and both are kept.
+  it("keeps a symbol from Insert existing symbol through a change on disk after it", async function () {
+    await createSymbol("gate.ink.png");
+    await intoCell("Table.md");
+    await chooseExisting("gat");
+    await waitForNoteEverywhere(withGate);
+    // As sync writes the note.
+    await browser.executeObsidian(async ({ app }) => {
+      const note = app.vault.getFileByPath("Table.md");
+      if (note === null) throw new Error("no Table.md");
+      await app.vault.process(note, (text) => `Prefix\n\n${text}`);
+    });
+    await waitForNoteEverywhere(`Prefix\n\n${withGate}`);
+  });
+
   it("lands after a symbol from the ;; list", async function () {
     await createSymbol("gate.ink.png");
     await intoCell("Table.md");
@@ -155,6 +233,53 @@ describe("Symbols in a table cell in Live Preview", function () {
     await waitForNoteFocus();
     await type("xy");
     await waitForLastRow("| same![[001.ink.png]]xy | same |");
+  });
+
+  // A change on disk while drawing takes the cell's editor away, so nothing has
+  // the focus as the editor closes until the note's is given back (#429).
+  it("keeps a key typed straight after the save once a disk edit took the cell's editor away", async function () {
+    await intoCell("Table.md");
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await waitForEditor();
+    await draw(zigzag);
+    await rewrite("Table.md", (text) => `Prefix\n\n${text}`);
+    // As a busy machine delays whatever the editor leaves to a timer.
+    await holdClosingTimers();
+    await save();
+    await type("x");
+    await letClosingTimersGo();
+    await type("y");
+    await waitForLastRow("| same![[001.ink.png]]xy | same |");
+  });
+
+  it("keeps a shortcut's cursor straight after the save once a disk edit took the cell's editor away", async function () {
+    await intoCell("Table.md");
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await waitForEditor();
+    await draw(zigzag);
+    await rewrite("Table.md", (text) => `Prefix\n\n${text}`);
+    await holdClosingTimers();
+    // One key source keeps Control down from Mod+Enter through Mod+B.
+    const keys = (actions: { type: string; value: string }[]) =>
+      browser.performActions([{ type: "key", id: "keyboard", actions }]);
+    try {
+      await keys([
+        { type: "keyDown", value: Key.Control },
+        { type: "keyDown", value: Key.Enter },
+        { type: "keyUp", value: Key.Enter },
+      ]);
+      await waitClosed();
+      await keys([
+        { type: "keyDown", value: "b" },
+        { type: "keyUp", value: "b" },
+        { type: "keyUp", value: Key.Control },
+      ]);
+    } finally {
+      await browser.releaseActions();
+    }
+    await letClosingTimersGo();
+    await type("y");
+    await waitForLastRow("| same![[001.ink.png]]**y** | same |");
   });
 
   it("types on after that when a run ends without another symbol", async function () {

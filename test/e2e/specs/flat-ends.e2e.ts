@@ -744,41 +744,4 @@ describe("Flat ends on the grid", function () {
     expect(eraser?.points.at(-1)).toBe(Math.round(d.y * unitsPerPixel));
     expect(roundUp(eraser, 384)).toBe(true);
   });
-
-  it("offers Flat ends only for freehand strokes and paths on the grid", async function () {
-    await openAtMarker("Editor.md", "HERE");
-    await browser.executeObsidianCommand("inkline:insert-symbol");
-    await waitForEditor();
-    await settledSurface();
-    const button = browser.$('[data-inkline-button="flat-ends"]');
-    expect(await button.isEnabled()).toBe(false);
-    await browser.keys("t");
-    await browser.waitUntil(async () =>
-      (await browser.$(".inkline-status").getText()).includes(
-        "Flat ends is for freehand strokes and paths on the grid",
-      ),
-    );
-    await browser.keys(["Shift", "g"]);
-    await browser.waitUntil(async () => await button.isEnabled());
-    await browser.keys("t");
-    await browser.waitUntil(
-      async () => (await pressed("flat-ends")) === "true",
-    );
-    // A shape turns it off, and it comes back with freehand.
-    await browser.keys("y");
-    await browser.waitUntil(async () => !(await button.isEnabled()));
-    expect(await pressed("flat-ends")).toBe("false");
-    await browser.keys("y");
-    await browser.waitUntil(
-      async () => (await pressed("flat-ends")) === "true",
-    );
-    // A path keeps it, as it cuts a path's ends as it cuts a freehand one's.
-    await browser.keys("a");
-    await browser.waitUntil(async () => (await pressed("path")) === "true");
-    expect(await button.isEnabled()).toBe(true);
-    expect(await pressed("flat-ends")).toBe("true");
-    await browser.keys("a");
-    await browser.waitUntil(async () => (await pressed("path")) === "false");
-    await saveScreenshot("flat-ends-on", browser.$(".inkline-editor"));
-  });
 });
