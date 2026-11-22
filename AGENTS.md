@@ -377,6 +377,26 @@ administrators only, so it compares them only when run with such a token, as
 
 ## Review
 
+- Every review, whether the author's own pass or an independent one, judges how
+  the code is written as well as whether it works: readable, idiomatic for
+  TypeScript, Obsidian, and the libraries in use, consistent in structure and
+  naming, appropriately tested, and in line with current best practices where
+  reasonable. Check a dependency's current documentation rather than remembered
+  conventions. Working code that adds poor patterns still needs changes.
+- A deliberate departure from the better practice is acceptable when it is
+  infeasible under a host, dependency, or compatibility constraint, or when the
+  chosen form is significantly faster based on measurement (benchmarks or
+  profiling), not assumption. Explain the reason in a code comment at that site,
+  with the constraint or measured difference and the condition for revisiting it
+  where one exists. Treat an unexplained departure as a finding.
+- Look for the source of a weak pattern, not only its instance. When a pull
+  request copies a weak precedent from merged code, examples, templates, or
+  guidance, name that precedent and fix the source in separate pull requests
+  before settling the original (refactoring the precedent code and updating the
+  guidance, as applicable). Then either close and replace the original pull
+  request or refactor it in place, linking the pull requests. Weigh style
+  findings proportionately to scope and maturity; prefer established practices
+  with clear benefit over churn for novelty.
 - The author reviews the complete diff once the checks pass, trying inputs the
   tests do not cover. Whether another agent also reviews it is the author's
   decision, by the change's sensitivity, complexity, impact, and uncertainty

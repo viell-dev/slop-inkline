@@ -527,7 +527,9 @@ them also get an independent review by another agent, as
   package taken inside its week, so that nothing else skips it, and read what
   changed in each such published package. Another agent reviews that change for
   a package with few users, one with a new maintainer or way of publishing, or a
-  fix that carries much else.
+  fix that carries much else. Record the advisory, affected and fixed versions,
+  dependency path, bypassed release-age gate, and review decision with its
+  reason in the pull request; ordinary required checks still apply.
 - Take the fix as close to the vulnerable package as works: update it where the
   ranges that depend on it allow, or update the dependency that brings it to a
   release that takes the fix. Otherwise override the vulnerable copy in
