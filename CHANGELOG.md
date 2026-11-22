@@ -57,6 +57,13 @@ even one a public release; earlier pre-releases carry a suffix such as
   showed it outside the fill. It no longer does. The shape is the same, and so
   is the file format: a symbol saved before keeps the line in its image until it
   is saved again ([#368](https://github.com/viell-dev/slop-inkline/issues/368)).
+- Typing straight after saving a new symbol keeps its letters in order. As the
+  editor closes, Inkline puts the cursor back after the symbol a moment later,
+  in case the note changed while you drew, and on a busy computer that moment
+  could come after your first key, so the second went in front of it: `xy`
+  became `yx`. Once you type, use a shortcut, click, paste, cut, or drop
+  something in the note, the cursor is now left where you put it
+  ([#387](https://github.com/viell-dev/slop-inkline/issues/387)).
 - A symbol's file replaced while the editor saved it, deleted and another put at
   its path through Obsidian, as by another plugin or a sync tool working through
   it, could have the save find no file, go to make it again, and stop with

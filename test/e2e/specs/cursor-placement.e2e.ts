@@ -1,4 +1,5 @@
 import { browser, expect } from "@wdio/globals";
+import { Key } from "webdriverio";
 import { loadModules } from "../support/browser.ts";
 import { insert, save, waitClosed, zigzag } from "../support/editing.ts";
 import {
@@ -15,6 +16,8 @@ import {
 import {
   chooseExisting,
   createNote,
+  holdClosingTimers,
+  letClosingTimersGo,
   marked,
   next,
   openBeside,
@@ -25,10 +28,13 @@ import {
   type,
   undoGroup,
   waitForFile,
+  waitForMarked,
   waitForNote,
 } from "../support/insertion.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 import { waitForLink } from "../support/vault-files.ts";
+
+const live = ".workspace-leaf.mod-active .markdown-source-view";
 
 /** Shows `other` in the first tab that shows `path`, which moves on from it. */
 async function moveOn(path: string, other: string): Promise<void> {
@@ -47,6 +53,31 @@ async function moveOn(path: string, other: string): Promise<void> {
     },
     path,
     other,
+  );
+}
+
+/**
+ * Sends the active note's editor a `paste` of `text`, or a `cut`, as Obsidian's
+ * Edit menu does, with no key in the note.
+ */
+async function clipboard(kind: "paste" | "cut", text = ""): Promise<void> {
+  await browser.execute(
+    (selector, type, pasted) => {
+      const content = document.querySelector(selector);
+      if (content === null) throw new Error("no note editor");
+      const data = new DataTransfer();
+      if (type === "paste") data.setData("text/plain", pasted);
+      content.dispatchEvent(
+        new ClipboardEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          clipboardData: data,
+        }),
+      );
+    },
+    `${live} .cm-content`,
+    kind,
+    text,
   );
 }
 
@@ -107,6 +138,165 @@ describe("Where the cursor lands after a symbol", function () {
     );
   });
 
+  // The editor puts the cursor back after the symbol a moment after it closes,
+  // which a busy machine can delay past a person's first keys (#387).
+  it("leaves the cursor where typing took it before the editor finished closing", async function () {
+    await insert({ settle: 0 });
+    await draw(zigzag);
+    await holdClosingTimers();
+    await save();
+    await type("x");
+    expect(await letClosingTimersGo()).toBeGreaterThan(0);
+    await type("y");
+    await waitForNote(
+      "The door is marked with ![[001.ink.png]]xy which means return.\n",
+    );
+  });
+
+  it("leaves the cursor where a click took it before the editor finished closing", async function () {
+    await insert({ settle: 0 });
+    await draw(zigzag);
+    await holdClosingTimers();
+    await save();
+    // Past the end of the first line, which puts the cursor there.
+    const line = browser.$(`${live} .cm-line`, { strict: false });
+    const { width } = await line.getSize();
+    await line.click({ x: Math.floor(width / 2) - 2 });
+    expect(await letClosingTimersGo()).toBeGreaterThan(0);
+    await type("y");
+    await waitForNote(
+      "The door is marked with ![[001.ink.png]] which means return.y\n",
+    );
+  });
+
+  // Obsidian takes the key of a hotkey it handles before the note hears it, so
+  // with Control still down from Mod+Enter, Mod+B reaches the note with no
+  // keydown of its own.
+  it("leaves the cursor where a shortcut took it before the editor finished closing", async function () {
+    await insert({ settle: 0 });
+    await draw(zigzag);
+    await holdClosingTimers();
+    // One key source keeps Control down between the two calls.
+    const keys = (actions: { type: string; value: string }[]) =>
+      browser.performActions([{ type: "key", id: "keyboard", actions }]);
+    try {
+      await keys([
+        { type: "keyDown", value: Key.Control },
+        { type: "keyDown", value: Key.Enter },
+        { type: "keyUp", value: Key.Enter },
+      ]);
+      await waitClosed();
+      await keys([
+        { type: "keyDown", value: "b" },
+        { type: "keyUp", value: "b" },
+        { type: "keyUp", value: Key.Control },
+      ]);
+    } finally {
+      await browser.releaseActions();
+    }
+    expect(await letClosingTimersGo()).toBeGreaterThan(0);
+    await type("y");
+    await waitForNote(
+      "The door is marked with ![[001.ink.png]]**y** which means return.\n",
+    );
+  });
+
+  // The editor takes a paste or a cut itself, with no input event after it;
+  // a menu's Paste comes with no key in the note either.
+  it("leaves the cursor where a paste took it before the editor finished closing", async function () {
+    await insert({ settle: 0 });
+    await draw(zigzag);
+    await holdClosingTimers();
+    await save();
+    await clipboard("paste", "x");
+    expect(await letClosingTimersGo()).toBeGreaterThan(0);
+    await type("y");
+    await waitForNote(
+      "The door is marked with ![[001.ink.png]]xy which means return.\n",
+    );
+  });
+
+  it("leaves the cursor where a cut took it before the editor finished closing", async function () {
+    await insert({ settle: 0 });
+    await draw(zigzag);
+    await holdClosingTimers();
+    await save();
+    await selectText("door");
+    await clipboard("cut");
+    expect(await letClosingTimersGo()).toBeGreaterThan(0);
+    await type("y");
+    await waitForNote(
+      "The y is marked with ![[001.ink.png]] which means return.\n",
+    );
+  });
+
+  it("leaves the cursor where an input method's text took it before the editor finished closing", async function () {
+    await insert({ settle: 0 });
+    await draw(zigzag);
+    await holdClosingTimers();
+    await save();
+    // As an input method commits text: no key, only the input events.
+    await browser.sendCommand("Input.insertText", { text: "x" });
+    expect(await letClosingTimersGo()).toBeGreaterThan(0);
+    await type("y");
+    await waitForNote(
+      "The door is marked with ![[001.ink.png]]xy which means return.\n",
+    );
+  });
+
+  it("leaves the cursor where a drop took it before the editor finished closing", async function () {
+    await insert({ settle: 0 });
+    await draw(zigzag);
+    await holdClosingTimers();
+    await save();
+    // Past the end of the first line, as a drag from another app ends there.
+    // The editor selects what is dropped, so the `y` typed later replaces it.
+    await browser.execute((selector) => {
+      const line = document.querySelector(selector);
+      if (line === null) throw new Error("no line");
+      const { right, top, height } = line.getBoundingClientRect();
+      const data = new DataTransfer();
+      data.setData("text/plain", "x");
+      line.dispatchEvent(
+        new DragEvent("drop", {
+          bubbles: true,
+          cancelable: true,
+          clientX: right - 2,
+          clientY: top + height / 2,
+          dataTransfer: data,
+        }),
+      );
+    }, `${live} .cm-line`);
+    expect(await letClosingTimersGo()).toBeGreaterThan(0);
+    await type("y");
+    await waitForNote(
+      "The door is marked with ![[001.ink.png]] which means return.y\n",
+    );
+  });
+
+  // Only what reaches the note counts: keys typed elsewhere before the editor
+  // finished closing leave the cursor to go back after the symbol.
+  it("puts the cursor back when the keys before the editor finished closing went elsewhere", async function () {
+    await insert({ settle: 0 });
+    await draw(zigzag);
+    await holdClosingTimers();
+    await save();
+    // As a change elsewhere, such as on disk, takes the note's cursor away.
+    await browser.executeObsidian(({ app, obsidian }) => {
+      const view = app.workspace.getActiveViewOfType(obsidian.MarkdownView);
+      if (view === null) throw new Error("no Markdown view");
+      view.editor.setCursor({ line: 0, ch: 0 });
+    });
+    await browser.executeObsidianCommand("command-palette:open");
+    await browser.$(".prompt-input").waitForDisplayed();
+    await type("zz");
+    expect(await letClosingTimersGo()).toBeGreaterThan(0);
+    await browser.keys(["Escape"]);
+    await waitForMarked("Editor.md", [
+      "The door is marked with ![[001.ink.png]]| which means return.\n",
+    ]);
+  });
+
   it("follows a run from Next, in the order it was drawn", async function () {
     await insert({ settle: 0 });
     await draw(zigzag);
@@ -150,7 +340,7 @@ describe("Where the cursor lands after a symbol", function () {
     await rewrite("Editor.md", (text) => `Prefix\n${text}`);
     await browser.keys(["Escape"]);
     await waitClosed();
-    expect(await marked("Editor.md")).toEqual([
+    await waitForMarked("Editor.md", [
       "Prefix\nThe door is marked with ![[001.ink.png]]| which means return.\n",
     ]);
     await type("xy");
@@ -168,7 +358,7 @@ describe("Where the cursor lands after a symbol", function () {
     await browser.keys(["Escape"]);
     await clickTop("Discard");
     await waitClosed();
-    expect(await marked("Editor.md")).toEqual([
+    await waitForMarked("Editor.md", [
       "Prefix\nThe door is marked with ![[001.ink.png]]| which means return.\n",
     ]);
     expect(await symbolFiles()).toHaveLength(1);
