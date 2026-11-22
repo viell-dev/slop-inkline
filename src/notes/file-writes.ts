@@ -53,10 +53,10 @@ const lineWaits = 3;
 /**
  * How many times a save that makes a file waits for what was asked of the
  * disk since its look, and looks again, before it gives up, having written
- * nothing. A look is one question to the disk, so it can wait far more often
- * than a save over a file, which reads the whole file again each time: enough
- * to outlast a run of writes another plugin asks for one after another, as
- * one asked of the disk at every look would otherwise reach its write.
+ * nothing. A look is one question to the disk, where a save over a file reads
+ * the whole file again each time, so this waits far more often than
+ * {@link lineWaits}: enough to outlast a run of writes that another plugin asks
+ * for one after another, which has something asked at every look.
  */
 const makeWaits = 20;
 
