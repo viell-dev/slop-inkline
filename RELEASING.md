@@ -86,9 +86,11 @@ without asking the owner for each one: GitHub releases are the plugin's channel.
 [#5](https://github.com/viell-dev/slop-inkline/issues/5).** Passing human
 testing does not lift it. A stable release requires the owner's explicit change
 of direction as well as the agreed goal, human evidence, and blocker
-dispositions below. The release tracker in #5 links the applicable human test
-requests and remaining work. For `1.0.0`, the goal's conditions, the human
-evidence, and the open defects are recorded in
+dispositions below. Each public release has a tracker that links its human test
+requests and remaining work: #5 for `1.0.0`, and
+[#453](https://github.com/viell-dev/slop-inkline/issues/453) for `1.2.0`, which
+also holds the goal that leaving alpha needs. For `1.0.0`, the goal's
+conditions, the human evidence, and the open defects are recorded in
 [Why 1.0.0 meets the goal](#why-100-meets-the-goal), and the owner lifted the
 hold for it in #5 on 2026-11-16.
 
@@ -764,12 +766,12 @@ request with the verification.
 ## The community directory
 
 New plugins are submitted through Obsidian's developer dashboard at
-community.obsidian.md, which needs the owner's sign-in. The owner has decided
-that `1.0.0` goes there first, and submits it once it is published on GitHub:
-[#141](https://github.com/viell-dev/slop-inkline/issues/141) lists what it takes
-and what only the owner can do. [listing/](listing/README.md) holds what the
-listing form asks for, and the steps above keep a pre-release's version off
-`main`.
+community.obsidian.md, which needs the owner's sign-in. The owner submitted
+`1.0.0` there, the first release to go there, as
+[#141](https://github.com/viell-dev/slop-inkline/issues/141) decided, and
+[#309](https://github.com/viell-dev/slop-inkline/issues/309) records the values
+used. [listing/](listing/README.md) holds what the listing form asks for, and
+the steps above keep a pre-release's version off `main`.
 
 The dashboard's automated review runs after each release and can take a plugin
 out of search. `npm run lint` holds as errors every rule the review's newest
@@ -786,7 +788,8 @@ output, but only the dashboard's **Review branch** can show that the review does
 too; a clean build of `0.9.0` on Node.js 24 gave the published bytes. The
 review's findings appear only in the owner's dashboard.
 
-Two steps can only happen around the listing, and #141 tracks them: recheck on
-the day that the `inkline` id is free, and watch the first pre-release after
-listing, as whether a GitHub pre-release of a listed plugin starts a scan is not
-documented.
+Whether a GitHub pre-release of a listed plugin starts the dashboard's review is
+not documented. After the first, `1.1.0`, published on 2026-11-22, the directory
+still listed `1.0.2`, and Obsidian still offered it, as `main`'s `manifest.json`
+names it ([#312](https://github.com/viell-dev/slop-inkline/issues/312)). What
+the dashboard showed is in that issue once the owner has looked.

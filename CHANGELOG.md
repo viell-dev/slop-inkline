@@ -9,6 +9,38 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Fixed
+
+- **Make ink**, **Zoom**, and **Fit** pressed while **Move** drags the picture
+  now wait until you let go, as they do while you draw. They acted at once: Make
+  ink's row, opening above the drawing area, or a zoom, changing its height,
+  moved the drawing under the pointer, and the picture ended that far from where
+  you put it. Make ink's row also stays until you let go, during a drag or a
+  stroke, when Make ink closes for another reason, as when a picture pasted then
+  replaces the one it was open for
+  ([#444](https://github.com/viell-dev/slop-inkline/issues/444)).
+
+## 1.1.0 - 2026-11-22
+
+This is the first pre-release since 1.0.0, an alpha of 1.2.0, the next public
+release. Features can still arrive and change in this line until a goal for
+1.2.0 is agreed. Its main new feature is **Path**, for curves placed by their
+points; the owner is asked to try it, with two smaller changes, in
+[the test request](https://github.com/viell-dev/slop-inkline/issues/446), which
+1.2.0 waits for.
+
+Obsidian does not offer pre-releases: it goes on offering 1.0.2 from the
+community plugins. To try 1.1.0, best in a vault of its own, install
+`inkline-1.1.0.zip` from this release's assets by hand, or choose version
+`1.1.0` in BRAT, as
+[the install guide](https://viell-dev.github.io/slop-inkline/install) says.
+BRAT's **latest** choice moves to it by itself. To go back, install 1.0.2 the
+same way.
+
+The file format is unchanged: a symbol saved with 1.1.0, with paths or without,
+opens in 1.0.0 to 1.0.2, and drafts keep the layout that every release from
+0.9.2 on uses.
+
 ### Added
 
 - A draft kept for a symbol whose file is gone or does not open, as one cut
@@ -52,14 +84,6 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ### Fixed
 
-- **Make ink**, **Zoom**, and **Fit** pressed while **Move** drags the picture
-  now wait until you let go, as they do while you draw. They acted at once: Make
-  ink's row, opening above the drawing area, or a zoom, changing its height,
-  moved the drawing under the pointer, and the picture ended that far from where
-  you put it. Make ink's row also stays until you let go, during a drag or a
-  stroke, when Make ink closes for another reason, as when a picture pasted then
-  replaces the one it was open for
-  ([#444](https://github.com/viell-dev/slop-inkline/issues/444)).
 - Typing the insert trigger no longer opens the list where Reading view shows
   code, or nothing, in four kinds of note
   ([#271](https://github.com/viell-dev/slop-inkline/issues/271)). In a list
