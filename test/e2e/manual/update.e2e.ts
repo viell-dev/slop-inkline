@@ -149,6 +149,18 @@ async function disposableVault(): Promise<{ vault: string; config: string }> {
   return { vault, config: location.config };
 }
 
+/** Whether the vault's list of enabled plugins, on disk, names Inkline. */
+async function enabledOnDisk(): Promise<boolean> {
+  return browser.executeObsidian(async ({ app }) => {
+    const list: unknown = JSON.parse(
+      await app.vault.adapter.read(
+        `${app.vault.configDir}/community-plugins.json`,
+      ),
+    );
+    return Array.isArray(list) && list.includes("inkline");
+  });
+}
+
 /**
  * Updates the open vault's Inkline to the new release, as a person would by
  * hand: turned off, the new ZIP extracted over its folder, which keeps
@@ -159,6 +171,14 @@ async function update(vault: string, config: string): Promise<void> {
   // Only verified project release ZIPs belong here.
   execFileSync("unzip", ["-o", zip, "-d", path.join(vault, config, "plugins")]);
   await obsidianPage.enablePlugin("inkline");
+  // Obsidian writes the list of enabled plugins a second after the first
+  // change to it, and turning a plugin on or off does not wait for that. If
+  // turning Inkline off was written while it loaded again, the write that
+  // turns it on would still be waiting at a refresh straight after, and the
+  // new window would find it off (#389). A person restarts once it is saved.
+  await browser.waitUntil(enabledOnDisk, {
+    timeoutMsg: "community-plugins.json does not name Inkline",
+  });
   // Refresh the renderer, not WDIO's vault setup (which reinstalls the old
   // source). This also reloads Obsidian's cached plugin manifest.
   await browser.refresh();
