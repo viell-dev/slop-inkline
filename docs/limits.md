@@ -34,6 +34,26 @@ What Inkline does not do, or does not do everywhere, and what to do instead. The
   on to the pointer as the view moves, and shows it there; and a change to the
   window's or the editor's size, or to Obsidian's page zoom, that moves the
   drawing under the pointer ends the stroke where it showed.
+- **A table can come apart at the next key after a symbol goes into a cell that
+  ends in a space.** In Live Preview, when the text of the table cell you are
+  typing in ends in a space, as when you write a word, a space, and then a
+  symbol, and you insert a symbol there with **Inkline: Insert existing symbol**
+  or from the editor, the next key you type in the cell garbles the table: text
+  moves between cells and rows, rows run together, and Obsidian saves the note
+  that way. Any dialog that takes the keys from the cell does the same, as
+  Obsidian's command palette does, with Inkline turned off too. It is
+  Obsidian's, and comes with every version of Inkline
+  ([#441](https://github.com/viell-dev/slop-inkline/issues/441),
+  [the report on Obsidian's forum](https://forum.obsidian.md/t/live-preview-table-editor-deletes-text-from-other-rows-after-an-arrow-key-or-app-switch-trailing-space-in-the-longest-cell/119877)).
+  - **Undo at once** (Mod+Z): once puts the table back as it was before that
+    key, symbol and space included, and Obsidian saves it so.
+  - **Then leave the note and come back before you type in the table again:**
+    open another note in the tab and go back, or close the note and open it
+    again. Typing in the cell straight after Undo garbles the table again, and
+    clicking another of its cells garbles it at once.
+  - **To avoid it,** insert the symbol with the insert trigger, `;;` unless
+    changed, which keeps the keys in the cell, or leave no space at the end of
+    the cell's text when you open Insert existing symbol or the editor.
 - **Large libraries** show 100 symbols at a time, with **Show more** for the
   next 100. Filter them, or choose a folder, to narrow the list.
 - **Library insertion needs a sidebar.** If the library's tab is dragged into
