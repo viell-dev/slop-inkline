@@ -138,22 +138,24 @@ describe("Where the cursor lands after a symbol", function () {
     );
   });
 
-  // The editor puts the cursor back after the symbol a moment after it closes,
-  // which a busy machine can delay past a person's first keys (#387).
-  it("leaves the cursor where typing took it before the editor finished closing", async function () {
+  // The editor puts the cursor back after the symbol as it closes, before a
+  // person's first key. Each of these holds what the close leaves to a timer,
+  // as a busy machine can run one after those keys, and moving the cursor then
+  // put the next out of order (#387). The close leaves nothing to one now.
+  it("leaves the cursor where typing took it straight after the editor closed", async function () {
     await insert({ settle: 0 });
     await draw(zigzag);
     await holdClosingTimers();
     await save();
     await type("x");
-    expect(await letClosingTimersGo()).toBeGreaterThan(0);
+    await letClosingTimersGo();
     await type("y");
     await waitForNote(
       "The door is marked with ![[001.ink.png]]xy which means return.\n",
     );
   });
 
-  it("leaves the cursor where a click took it before the editor finished closing", async function () {
+  it("leaves the cursor where a click took it straight after the editor closed", async function () {
     await insert({ settle: 0 });
     await draw(zigzag);
     await holdClosingTimers();
@@ -162,7 +164,7 @@ describe("Where the cursor lands after a symbol", function () {
     const line = browser.$(`${live} .cm-line`, { strict: false });
     const { width } = await line.getSize();
     await line.click({ x: Math.floor(width / 2) - 2 });
-    expect(await letClosingTimersGo()).toBeGreaterThan(0);
+    await letClosingTimersGo();
     await type("y");
     await waitForNote(
       "The door is marked with ![[001.ink.png]] which means return.y\n",
@@ -172,7 +174,7 @@ describe("Where the cursor lands after a symbol", function () {
   // Obsidian takes the key of a hotkey it handles before the note hears it, so
   // with Control still down from Mod+Enter, Mod+B reaches the note with no
   // keydown of its own.
-  it("leaves the cursor where a shortcut took it before the editor finished closing", async function () {
+  it("leaves the cursor where a shortcut took it straight after the editor closed", async function () {
     await insert({ settle: 0 });
     await draw(zigzag);
     await holdClosingTimers();
@@ -194,7 +196,7 @@ describe("Where the cursor lands after a symbol", function () {
     } finally {
       await browser.releaseActions();
     }
-    expect(await letClosingTimersGo()).toBeGreaterThan(0);
+    await letClosingTimersGo();
     await type("y");
     await waitForNote(
       "The door is marked with ![[001.ink.png]]**y** which means return.\n",
@@ -203,48 +205,48 @@ describe("Where the cursor lands after a symbol", function () {
 
   // The editor takes a paste or a cut itself, with no input event after it;
   // a menu's Paste comes with no key in the note either.
-  it("leaves the cursor where a paste took it before the editor finished closing", async function () {
+  it("leaves the cursor where a paste took it straight after the editor closed", async function () {
     await insert({ settle: 0 });
     await draw(zigzag);
     await holdClosingTimers();
     await save();
     await clipboard("paste", "x");
-    expect(await letClosingTimersGo()).toBeGreaterThan(0);
+    await letClosingTimersGo();
     await type("y");
     await waitForNote(
       "The door is marked with ![[001.ink.png]]xy which means return.\n",
     );
   });
 
-  it("leaves the cursor where a cut took it before the editor finished closing", async function () {
+  it("leaves the cursor where a cut took it straight after the editor closed", async function () {
     await insert({ settle: 0 });
     await draw(zigzag);
     await holdClosingTimers();
     await save();
     await selectText("door");
     await clipboard("cut");
-    expect(await letClosingTimersGo()).toBeGreaterThan(0);
+    await letClosingTimersGo();
     await type("y");
     await waitForNote(
       "The y is marked with ![[001.ink.png]] which means return.\n",
     );
   });
 
-  it("leaves the cursor where an input method's text took it before the editor finished closing", async function () {
+  it("leaves the cursor where an input method's text took it straight after the editor closed", async function () {
     await insert({ settle: 0 });
     await draw(zigzag);
     await holdClosingTimers();
     await save();
     // As an input method commits text: no key, only the input events.
     await browser.sendCommand("Input.insertText", { text: "x" });
-    expect(await letClosingTimersGo()).toBeGreaterThan(0);
+    await letClosingTimersGo();
     await type("y");
     await waitForNote(
       "The door is marked with ![[001.ink.png]]xy which means return.\n",
     );
   });
 
-  it("leaves the cursor where a drop took it before the editor finished closing", async function () {
+  it("leaves the cursor where a drop took it straight after the editor closed", async function () {
     await insert({ settle: 0 });
     await draw(zigzag);
     await holdClosingTimers();
@@ -267,34 +269,11 @@ describe("Where the cursor lands after a symbol", function () {
         }),
       );
     }, `${live} .cm-line`);
-    expect(await letClosingTimersGo()).toBeGreaterThan(0);
+    await letClosingTimersGo();
     await type("y");
     await waitForNote(
       "The door is marked with ![[001.ink.png]] which means return.y\n",
     );
-  });
-
-  // Only what reaches the note counts: keys typed elsewhere before the editor
-  // finished closing leave the cursor to go back after the symbol.
-  it("puts the cursor back when the keys before the editor finished closing went elsewhere", async function () {
-    await insert({ settle: 0 });
-    await draw(zigzag);
-    await holdClosingTimers();
-    await save();
-    // As a change elsewhere, such as on disk, takes the note's cursor away.
-    await browser.executeObsidian(({ app, obsidian }) => {
-      const view = app.workspace.getActiveViewOfType(obsidian.MarkdownView);
-      if (view === null) throw new Error("no Markdown view");
-      view.editor.setCursor({ line: 0, ch: 0 });
-    });
-    await browser.executeObsidianCommand("command-palette:open");
-    await browser.$(".prompt-input").waitForDisplayed();
-    await type("zz");
-    expect(await letClosingTimersGo()).toBeGreaterThan(0);
-    await browser.keys(["Escape"]);
-    await waitForMarked("Editor.md", [
-      "The door is marked with ![[001.ink.png]]| which means return.\n",
-    ]);
   });
 
   it("follows a run from Next, in the order it was drawn", async function () {

@@ -234,9 +234,11 @@ export async function showAs(
 /**
  * Holds every timer with no delay that an Inkline modal sets in its `onClose`,
  * until {@link letClosingTimersGo}, as a busy machine can run such a timer
- * after a person's first keys: the editor's wait for the modal to finish
- * closing is one. Each held timer still fires, and runs its callback once let
- * go. A test that ends with them held has `undoStubs` let them go.
+ * after a person's first keys. The editor's close sets none now, as it once
+ * did to put the cursor back (#387, #429): holding them keeps what a person
+ * does straight after a close in its place should one come back. Each held
+ * timer still fires, and runs its callback once let go. A test that ends with
+ * them held has `undoStubs` let them go.
  */
 export async function holdClosingTimers(): Promise<void> {
   await browser.execute(() => {
