@@ -298,26 +298,41 @@ describe("Polygon", function () {
         }
       }
     }
-    const measured = await browser.execute((strokes: PolygonStroke[]) => {
-      const { measureSolidInk } = window.inklineTest.solidInk;
-      return strokes.flatMap((stroke) => {
-        // As far as a corner's wedge reaches, and a brush's width more; but
-        // not within half a device pixel of the shape's edge, where Chromium
-        // can leave a pixel a level or so short, nor within 5 of where the
-        // sides' inner edges cross, which #422 is about: up to 4 were seen.
-        const reach = ((2 + 1) * stroke.size) / 16;
-        const [margin, clearance] = [0.5, 5];
-        return [
-          { scale: 1, settings: { willReadFrequently: true } },
-          { scale: 2.5, settings: {} },
-        ].map(({ scale, settings }) => ({
-          points: stroke.points,
-          size: stroke.size,
-          scale,
-          ...measureSolidInk(stroke, scale, settings, reach, margin, clearance),
-        }));
-      });
-    }, corners);
+    /** Measures some of the corners, each drawn both ways, in the renderer. */
+    const measure = (batch: PolygonStroke[]) =>
+      browser.execute((strokes: PolygonStroke[]) => {
+        const { measureSolidInk } = window.inklineTest.solidInk;
+        return strokes.flatMap((stroke) => {
+          // As far as a corner's wedge reaches, and a brush's width more; but
+          // not within half a device pixel of the shape's edge, where Chromium
+          // can leave a pixel a level or so short, nor within 5 of where the
+          // sides' inner edges cross, which #422 is about: up to 4 were seen.
+          const reach = ((2 + 1) * stroke.size) / 16;
+          const [margin, clearance] = [0.5, 5];
+          return [
+            { scale: 1, settings: { willReadFrequently: true } },
+            { scale: 2.5, settings: {} },
+          ].map(({ scale, settings }) => ({
+            points: stroke.points,
+            size: stroke.size,
+            scale,
+            ...measureSolidInk(
+              stroke,
+              scale,
+              settings,
+              reach,
+              margin,
+              clearance,
+            ),
+          }));
+        });
+      }, batch);
+    // A few at a time: all of them in one call can take longer than WebDriver
+    // waits for a script, as on Chromium 120 on a busy machine.
+    const measured: Awaited<ReturnType<typeof measure>> = [];
+    for (let at = 0; at < corners.length; at += 12) {
+      measured.push(...(await measure(corners.slice(at, at + 12))));
+    }
     const short = measured.filter((result) => result.short > 0);
     console.log(
       "Solid corners",

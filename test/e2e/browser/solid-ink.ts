@@ -65,14 +65,32 @@ function cut(
   return [left, right];
 }
 
+/** Whether a convex piece, which winds as the pieces do, holds a point. */
+function holds(piece: Outline, [x, y]: Point): boolean {
+  return piece.every(([x0, y0], index) => {
+    const [x1, y1] = piece[(index + 1) % piece.length] ?? [x0, y0];
+    return (x1 - x0) * (y - y0) - (y1 - y0) * (x - x0) >= 0;
+  });
+}
+
 /**
  * Whether convex pieces, which wind one way, cover all of a convex polygon:
- * what each piece leaves of it is cut away by the next, down to nothing.
+ * what each piece leaves of it is cut away by the next, down to nothing. Two
+ * exact shortcuts go first, as most pixels take one: a polygon whose middle no
+ * piece holds is not all covered, and one that a single piece holds is.
  */
 function coveredBy(
   polygon: readonly Point[],
   pieces: readonly Outline[],
 ): boolean {
+  const middle: Point = [
+    polygon.reduce((sum, [x]) => sum + x, 0) / polygon.length,
+    polygon.reduce((sum, [, y]) => sum + y, 0) / polygon.length,
+  ];
+  if (!pieces.some((piece) => holds(piece, middle))) return false;
+  if (pieces.some((piece) => polygon.every((point) => holds(piece, point)))) {
+    return true;
+  }
   let left: (readonly Point[])[] = [polygon];
   for (const piece of pieces) {
     const outside: Point[][] = [];
