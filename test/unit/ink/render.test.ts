@@ -68,6 +68,16 @@ class RecordingContext implements DrawingContext {
   }
 }
 
+/** A recording context that records where the path goes, too. */
+class PointsContext extends RecordingContext {
+  override moveTo(x?: number, y?: number): void {
+    this.calls.push(`moveTo ${String(x)} ${String(y)}`);
+  }
+  override lineTo(x?: number, y?: number): void {
+    this.calls.push(`lineTo ${String(x)} ${String(y)}`);
+  }
+}
+
 const pen: SmoothStroke = {
   tool: "pen",
   size: 32,
@@ -182,8 +192,8 @@ describe("drawInk", () => {
     ]);
   });
 
-  it("fills a polygon's pieces with straight sides, together, in one fill", () => {
-    const context = new RecordingContext();
+  it("fills the outline around a polygon's pieces, in one fill", () => {
+    const context = new PointsContext();
     // Right 1 px and down 1 px with a 2 px brush: two sides and a corner.
     const polygon: Stroke = {
       tool: "pen",
@@ -192,17 +202,24 @@ describe("drawInk", () => {
       kind: "polygon",
     };
     drawInk(context, [polygon], undefined);
-    const side = ["moveTo", "lineTo", "lineTo", "lineTo", "closePath"];
+    // One outline: along the top from the square start, round the corner's
+    // wedge, down the right and back up the left, in to the corner point
+    // and out again, and back along the bottom, with no edge that the two
+    // sides and the wedge share.
     expect(context.calls).toEqual([
       "save",
       "translate 0 0",
       "beginPath",
-      ...side,
-      ...side,
-      "moveTo",
-      "lineTo",
-      "lineTo",
-      "lineTo",
+      "moveTo 0 0",
+      "lineTo 2 0",
+      "lineTo 3 0",
+      "lineTo 3 1",
+      "lineTo 3 3",
+      "lineTo 1 3",
+      "lineTo 1 1",
+      "lineTo 2 1",
+      "lineTo 2 2",
+      "lineTo 0 2",
       "closePath",
       `fill source-over ${inkColor}`,
       "restore",
@@ -210,15 +227,6 @@ describe("drawInk", () => {
   });
 
   it("fills a filled stroke's inside alone, through its points", () => {
-    /** Records where the path goes, too. */
-    class PointsContext extends RecordingContext {
-      override moveTo(x?: number, y?: number): void {
-        this.calls.push(`moveTo ${String(x)} ${String(y)}`);
-      }
-      override lineTo(x?: number, y?: number): void {
-        this.calls.push(`lineTo ${String(x)} ${String(y)}`);
-      }
-    }
     const context = new PointsContext();
     // A triangle, closed and filled, erasing.
     const triangle: Stroke = {

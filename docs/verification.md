@@ -260,7 +260,18 @@ must keep released files readable and looking the same, as
   points the same drag without Zoom saves. Pressed twice meanwhile, it does not
   zoom, and **Next** meanwhile takes the zoom to the next symbol
   ([zoom.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/zoom.e2e.ts),
-  [#382](https://github.com/viell-dev/slop-inkline/issues/382)).
+  [#382](https://github.com/viell-dev/slop-inkline/issues/382)). **Fit**, by its
+  key or its button, waits the same way, and then fits. With the view moved
+  along by the wheel or an arrow key while a pen stroke is held, the drawing
+  area shows ink under the pointer before it is let go, and the stroke starts
+  where the same drag alone does and ends where the same drag does in the moved
+  view. With the editor made narrower, or moved and the window told it was
+  resized, while a stroke is held, the stroke ends where it showed, as the same
+  drag alone saves it, and letting go adds nothing (the same file,
+  [#393](https://github.com/viell-dev/slop-inkline/issues/393)). A unit test
+  checks that the drawing moving under a still pointer takes what is drawn on as
+  a move there would, with Shift as last known
+  ([session.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/session.test.ts)).
 - **Make ink** of a synthetic H, enlarged from about 1.2 to 11.5 times, leaves
   at most two partly covered document pixels at each edge of the saved symbol,
   and the reopened symbol draws the same pixels. The editor's own redraw, which
@@ -298,6 +309,17 @@ must keep released files readable and looking the same, as
   unfilled as one step, and that a reopened drawing's grid goes by the shape as
   if unfilled
   ([session.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/session.test.ts)).
+- **Unreleased:** A polygon's corner, at nine turns from 25° to 165° and with
+  each brush from S to XL, drawn as saving draws it and as the editor shows it
+  enlarged, has every pixel that lies wholly inside its shape fully inked: no
+  seam shows where the parts its line is drawn in meet, beside where its sides'
+  inner edges cross excepted
+  ([#422](https://github.com/viell-dev/slop-inkline/issues/422))
+  ([polygon.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/polygon.e2e.ts)).
+  Unit tests pin that the outlines the renderer fills wind round every point as
+  often as the pieces the format defines cover it, share no edge, and add no
+  corner, on corners on one line too
+  ([outline.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/ink/outline.test.ts)).
 - **Unreleased:** A path placed with the mouse and the keys, of corners clicked
   and smooth points dragged out, on the grid with Shift and off it, is saved as
   one stroke without a kind through points along its curve no more than a pixel
@@ -512,23 +534,26 @@ must keep released files readable and looking the same, as
   rename, however Obsidian's question is answered. The same holds in a table
   cell in Live Preview, with real keys, including when a change on disk takes
   the cell's editor away, and when a key comes straight after **Insert existing
-  symbol**'s choice, before the cell would have taken the symbol, which then
-  reaches the file and a second pane on the note as any edit does. A selection's
-  text stays, one undo takes the symbol back, and a discarded last drawing
-  leaves the cursor after the run. A key, a shortcut Obsidian handles, a click,
-  a paste, a cut, an input method's text, or a drop in the note before the
-  editor has finished closing keeps its place. A note in Reading view or closed
-  takes the symbol through its file, whose line endings stay as they are while
-  the place is found from either kind, in both directions, and **Insert existing
-  symbol** places a symbol as the other routes do. A rename while the note holds
-  unsaved text writes the new name once and keeps the text, however Obsidian's
-  question is answered, in a plain note, two panes, a table cell, a closed note,
-  and Reading view, with the cursor and the place of a run from Next surviving a
-  reload, and with the text arriving during the question or an editor's own save
-  falling due in it. Every rename, by Save, the library, or an existing symbol's
-  editor, saves the open notes first, and is refused with nothing changed if one
-  cannot be saved. A reload held past the editor's own save loses no text, and
-  running out of time writes nothing
+  symbol**'s choice, before the cell would have taken the symbol, which is then
+  saved at once and reaches a second pane on the note from the file. A
+  selection's text stays, one undo takes the symbol back, and a discarded last
+  drawing leaves the cursor after the run. A key, a shortcut Obsidian handles, a
+  click, a paste, a cut, an input method's text, or a drop in the note straight
+  after the editor closes keeps its place, with whatever the close might leave
+  to a timer held as a busy machine delays it, and in a table cell after a
+  change on disk took its editor away, a key keeps its letter and a shortcut its
+  cursor. A note in Reading view or closed takes the symbol through its file,
+  whose line endings stay as they are while the place is found from either kind,
+  in both directions, and **Insert existing symbol** places a symbol as the
+  other routes do. A rename while the note holds unsaved text writes the new
+  name once and keeps the text, however Obsidian's question is answered, in a
+  plain note, two panes, a table cell, a closed note, and Reading view, with the
+  cursor and the place of a run from Next surviving a reload, and with the text
+  arriving during the question or an editor's own save falling due in it. Every
+  rename, by Save, the library, or an existing symbol's editor, saves the open
+  notes first, and is refused with nothing changed if one cannot be saved. A
+  reload held past the editor's own save loses no text, and running out of time
+  writes nothing
   ([cursor-placement.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/cursor-placement.e2e.ts),
   [table-cells.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/table-cells.e2e.ts),
   [line-endings.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/line-endings.e2e.ts),
@@ -724,14 +749,17 @@ must keep released files readable and looking the same, as
   symbol renamed elsewhere while the readings were written reads no open note
   first; why the fields are closed shows above a refused name's reason,
   whichever came first; and a read begun before a save that found the file
-  changed is set aside, so that the row says what the file says now. Quick edit
-  fits the narrowest sidebar with a long name, and the list and Quick edit keep
-  their names for screen readers with no tooltip over their empty space. The
-  row's own Quick edit says that its form is open, and closes it as Cancel does,
-  by click, Enter, or Esc, dropping what was typed and keeping the focus, and
-  only the first click of a double-click opens or closes it. A row closed by Esc
-  during a press on its Quick edit keeps its form until the press ends, and that
-  form saves nothing; the release, a click on the same Quick edit, opens no
+  changed is set aside, so that the row says what the file says now.
+  **Unreleased:** a change that reaches the file during a save that found it
+  changed, other text, the file cut short, or the file deleted, is taken in once
+  the save ends, with the focus on the name when that closes the fields. Quick
+  edit fits the narrowest sidebar with a long name, and the list and Quick edit
+  keep their names for screen readers with no tooltip over their empty space.
+  The row's own Quick edit says that its form is open, and closes it as Cancel
+  does, by click, Enter, or Esc, dropping what was typed and keeping the focus,
+  and only the first click of a double-click opens or closes it. A row closed by
+  Esc during a press on its Quick edit keeps its form until the press ends, and
+  that form saves nothing; the release, a click on the same Quick edit, opens no
   second form, and nor does another row's Quick edit from the keyboard
   meanwhile. It is unavailable while Cancel is, during a save. A save left with
   it renames nothing, shown with Esc while the write waits, or says that the

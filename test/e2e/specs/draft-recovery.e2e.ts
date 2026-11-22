@@ -428,7 +428,8 @@ describe("Draft recovery", function () {
     );
     expect(await nameField()).toEqual({
       value: "",
-      placeholder: "New symbol: name it, or leave it to keep the name 001",
+      placeholder:
+        "New symbol: name it, or leave it to keep the name 001 if its file is unchanged",
     });
     await browser.keys(["Control", "Enter"]);
     await waitClosed();
@@ -453,6 +454,11 @@ describe("Draft recovery", function () {
     await browser.executeObsidianCommand("inkline:recover-drafts");
     await listedRows();
     await openListed();
+    // The field cannot know yet that the save will leave the file, so it says
+    // what an empty name keeps only on that condition.
+    expect((await nameField()).placeholder).toBe(
+      "New symbol: name it, or leave it to keep the name 001 if its file is unchanged",
+    );
     await browser.keys(["Control", "Enter"]);
     await waitClosed();
     expect(await symbolFiles()).toEqual(["001.ink.png", "002.ink.png"]);
@@ -774,6 +780,11 @@ describe("Draft recovery", function () {
     await clickTop("Open as new symbol");
     await waitForEditor();
     await waitForHeldDecoding();
+    // Nothing is claimed until the draft is restored, so an empty name takes
+    // the next number, as the field says.
+    expect((await nameField()).placeholder).toBe(
+      "New symbol: name it, or leave it for the next number",
+    );
     await draw([
       [0.6, 0.3],
       [0.6, 0.7],
@@ -813,6 +824,13 @@ describe("Draft recovery", function () {
       if (file === null) throw new Error("no 001.ink.png");
       await app.vault.rename(file, "gate.ink.png");
     });
+    // An empty name keeps the file's name, now its new one.
+    await browser.waitUntil(
+      async () =>
+        (await nameField()).placeholder ===
+        "New symbol: name it, or leave it to keep the name gate if its file is unchanged",
+      { timeoutMsg: "the name field did not follow the rename" },
+    );
     await browser.keys(["Control", "Enter"]);
     await waitClosed();
     expect(await symbolFiles()).toEqual(["gate.ink.png"]);

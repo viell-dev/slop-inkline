@@ -52,13 +52,22 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ### Fixed
 
+- A polygon drawn with a large brush showed a faint, lighter line inside its ink
+  at a corner, where the parts the line is drawn in meet, and a filled polygon
+  showed it outside the fill. It no longer does. The shape is the same, and so
+  is the file format: a symbol saved before keeps the line in its image until it
+  is saved again ([#368](https://github.com/viell-dev/slop-inkline/issues/368)).
 - Typing straight after saving a new symbol keeps its letters in order. As the
-  editor closes, Inkline puts the cursor back after the symbol a moment later,
-  in case the note changed while you drew, and on a busy computer that moment
-  could come after your first key, so the second went in front of it: `xy`
-  became `yx`. Once you type, use a shortcut, click, paste, cut, or drop
-  something in the note, the cursor is now left where you put it
-  ([#387](https://github.com/viell-dev/slop-inkline/issues/387)).
+  editor closes, Inkline puts the cursor back after the symbol, in case the note
+  changed while you drew, and gives the note the focus if nothing has it, as
+  when a change on disk took a table cell's editor away. It did both a moment
+  later, and on a busy computer that moment could come after your first key: the
+  second key then went in front of the first, so `xy` became `yx`, and a click,
+  a shortcut, or a paste had its cursor moved after it. In a table cell whose
+  editor a change on disk took away, the first key went nowhere. Now both happen
+  as the editor closes, before any key
+  ([#387](https://github.com/viell-dev/slop-inkline/issues/387),
+  [#429](https://github.com/viell-dev/slop-inkline/issues/429)).
 - A symbol's file replaced while the editor saved it, deleted and another put at
   its path through Obsidian, as by another plugin or a sync tool working through
   it, could have the save find no file, go to make it again, and stop with
@@ -90,6 +99,17 @@ even one a public release; earlier pre-releases carry a suffix such as
   that came before the cell had taken the symbol made it leave the symbol out,
   keeping only the letter
   ([#415](https://github.com/viell-dev/slop-inkline/issues/415)).
+- **Fit** pressed while you draw now waits until you let go, as **Zoom** does.
+  Moving along a zoomed drawing with the wheel or the left and right arrow keys
+  while you draw now takes what you draw with it, on to where the pointer is in
+  the drawing, and shows it there at once, so a long stroke can go past the edge
+  of the view; it used to stay where it was until you moved or let go, and
+  letting go then drew a part that never showed. A change to the window's or the
+  editor's size, or to Obsidian's page zoom (Ctrl+= and Ctrl+−), while you draw
+  now ends the stroke where it showed, if it moves the drawing under the
+  pointer, as the pointer may have moved with the window
+  ([#393](https://github.com/viell-dev/slop-inkline/issues/393),
+  [#418](https://github.com/viell-dev/slop-inkline/issues/418)).
 - A rename of a symbol that was renamed elsewhere, deleted and replaced, or
   whose new name another symbol took, while Quick edit wrote its readings and
   translations or the editor its drawing, is refused at once. It used to read,
@@ -106,6 +126,14 @@ even one a public release; earlier pre-releases carry a suffix such as
   late. The fields said that saving would replace the earlier text, and the next
   **Save** was refused again
   ([#279](https://github.com/viell-dev/slop-inkline/issues/279)).
+- When a Quick edit save leaves the row open, as one refused because the file
+  changed does, the row takes in a change that reached the file while the save
+  ran. Such a change was left until the file changed again or **Save** was
+  pressed again: other text showed what the file had said a moment earlier, and
+  a file cut short or deleted in that moment left the fields open with no reason
+  given. When the change closes the fields, the focus goes to the name, which
+  can still change, rather than staying in a field that cannot be typed in
+  ([#423](https://github.com/viell-dev/slop-inkline/issues/423)).
 - In a PDF exported with Obsidian's **Export to PDF**, symbols in text colour no
   longer show a faint one-pixel line along an edge of their box in some PDF
   viewers, Obsidian's own PDF view among them, at some zoom levels. Each prints

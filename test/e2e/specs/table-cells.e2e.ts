@@ -1,4 +1,5 @@
 import { browser, expect } from "@wdio/globals";
+import { Key } from "webdriverio";
 import { loadModules } from "../support/browser.ts";
 import { save, waitClosed, zigzag } from "../support/editing.ts";
 import {
@@ -11,6 +12,8 @@ import {
 } from "../support/editor.ts";
 import {
   chooseExisting,
+  holdClosingTimers,
+  letClosingTimersGo,
   next,
   openBeside,
   rewrite,
@@ -228,6 +231,53 @@ describe("Symbols in a table cell in Live Preview", function () {
     await waitForNoteFocus();
     await type("xy");
     await waitForLastRow("| same![[001.ink.png]]xy | same |");
+  });
+
+  // A change on disk while drawing takes the cell's editor away, so nothing has
+  // the focus as the editor closes until the note's is given back (#429).
+  it("keeps a key typed straight after the save once a disk edit took the cell's editor away", async function () {
+    await intoCell("Table.md");
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await waitForEditor();
+    await draw(zigzag);
+    await rewrite("Table.md", (text) => `Prefix\n\n${text}`);
+    // As a busy machine delays whatever the editor leaves to a timer.
+    await holdClosingTimers();
+    await save();
+    await type("x");
+    await letClosingTimersGo();
+    await type("y");
+    await waitForLastRow("| same![[001.ink.png]]xy | same |");
+  });
+
+  it("keeps a shortcut's cursor straight after the save once a disk edit took the cell's editor away", async function () {
+    await intoCell("Table.md");
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await waitForEditor();
+    await draw(zigzag);
+    await rewrite("Table.md", (text) => `Prefix\n\n${text}`);
+    await holdClosingTimers();
+    // One key source keeps Control down from Mod+Enter through Mod+B.
+    const keys = (actions: { type: string; value: string }[]) =>
+      browser.performActions([{ type: "key", id: "keyboard", actions }]);
+    try {
+      await keys([
+        { type: "keyDown", value: Key.Control },
+        { type: "keyDown", value: Key.Enter },
+        { type: "keyUp", value: Key.Enter },
+      ]);
+      await waitClosed();
+      await keys([
+        { type: "keyDown", value: "b" },
+        { type: "keyUp", value: "b" },
+        { type: "keyUp", value: Key.Control },
+      ]);
+    } finally {
+      await browser.releaseActions();
+    }
+    await letClosingTimersGo();
+    await type("y");
+    await waitForLastRow("| same![[001.ink.png]]**y** | same |");
   });
 
   it("types on after that when a run ends without another symbol", async function () {
