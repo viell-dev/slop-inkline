@@ -124,13 +124,19 @@ describe("buttonStates", () => {
         ["ellipse", "polygon", "path"].filter((other) => pressed[other]),
       ).toEqual([shape]);
     }
-    const moving = states({ shape: "polygon", picture: true, moving: true });
-    expect(moving.pressed).toMatchObject({
-      pen: false,
-      eraser: false,
-      polygon: false,
-      move: true,
-    });
+    for (const tool of ["pen", "eraser"] as const) {
+      for (const shape of ["free", "ellipse", "polygon", "path"] as const) {
+        const moving = states({ tool, shape, picture: true, moving: true });
+        expect(moving.pressed).toMatchObject({
+          pen: false,
+          eraser: false,
+          ellipse: false,
+          polygon: false,
+          path: false,
+          move: true,
+        });
+      }
+    }
   });
 
   it("offers Toggle fill for a shape alone, and shows it on only then", () => {
@@ -166,6 +172,8 @@ describe("buttonStates", () => {
     });
     expect(tracing.hint).toBe(pictureHints.tracing);
     expect(tracing.convertBar).toBe(false);
+    // Make ink shows on only while its bar is open.
+    expect(tracing.pressed.ink).toBe(false);
   });
 
   it("shows the bar that makes ink, its threshold, Light ink, and Apply while it runs", () => {
