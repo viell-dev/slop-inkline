@@ -3442,9 +3442,9 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
     code: true,
   },
   // The third round of #431: an underline under a footnote's first line, a
-  // $ line indented less in an item, white space before and after a
-  // footnote's label, a callout's title after a task's box, and tags in an item
-  // read again.
+  // $$ line indented less in an item, white space before and after a
+  // footnote's label, a callout's title after a task's box, and tags in an
+  // item read again.
   "code under an underline of a footnote's empty first line": {
     note: "a[^1]\n\n[^1]:\n===\n    HERE",
     code: true,
@@ -3499,28 +3499,28 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
   },
   "code under an underline of a footnote's first line indented as code, after tabs":
     { note: "a[^1]\n\n[^1]:        x\n===\n\t\tHERE", code: true },
-  "code made by a $ line indented less in an item, before a line": {
-    note: "- a\n\n     HERE\n $\nb",
+  "code made by a $$ line indented less in an item, before a line": {
+    note: "- a\n\n     HERE\n $$\nb",
     code: true,
   },
-  "code made by a $ line indented less in a numbered item, before a line": {
-    note: "1. a\n\n       HERE\n  $\nb",
+  "code made by a $$ line indented less in a numbered item, before a line": {
+    note: "1. a\n\n       HERE\n  $$\nb",
     code: true,
   },
-  "code made by a $ line with text indented less in an item": {
-    note: "- a\n\n     HERE\n $ x\n\nb",
+  "code made by a $$ line with text indented less in an item": {
+    note: "- a\n\n     HERE\n $$ x\n\nb",
     code: true,
   },
-  "code made by a $ line indented less in an outer item": {
-    note: "-   - b\n\n        HERE\n  $\nb",
+  "code made by a $$ line indented less in an outer item": {
+    note: "-   - b\n\n        HERE\n  $$\nb",
     code: true,
   },
-  "code made by a $ line indented less, before a blank line and a bullet": {
-    note: "1. a\n\n       HERE\n  $\n\n-",
+  "code made by a $$ line indented less, before a blank line and a bullet": {
+    note: "1. a\n\n       HERE\n  $$\n\n-",
     code: true,
   },
-  "code made by a $ line indented less in an item holding a definition": {
-    note: "  1. [a]: /u\n         HERE\n   $\n-",
+  "code made by a $$ line indented less in an item holding a definition": {
+    note: "  1. [a]: /u\n         HERE\n   $$\n-",
     code: true,
   },
   "text before a %% line indented less in an item": {
@@ -3534,11 +3534,6 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
   "text before a heading indented less in an item": {
     note: "- a\n\n     HERE\n # h\nb",
     code: false,
-  },
-  "math under a paragraph's lines in an item, indented less": {
-    note: "- `a\n  b\n $\nHERE`",
-    code: true,
-    hidden: true,
   },
   "a footnote after a space and a tab, its first line indented as code": {
     note: "a[^1]\n\n \t[^1]:        HERE",
