@@ -4231,6 +4231,98 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
       note: "a[^1] b[^2]\n\n  [^2]: y\n0. ---\n-\n\n\t0. <code>\nx $$\n    HERE\n a[^1]\n\n\t- |a|b|",
       code: true,
     },
+  // The final review of #431: an underline indented less than an item's
+  // text, under a footnote's later line, and a definition's title line in a
+  // footnote with text after its closing mark.
+  "code after a heading of a footnote's later line in an item, over = indented less":
+    { note: "a[^1]\n\n- [^1]: x\nb\n =\n\n        HERE", code: true },
+  "code after a heading of a footnote's later line in item 0, over === indented less":
+    { note: "a[^1]\n\n0. [^1]: \nb\n ===\n\n        HERE", code: true },
+  "code after a heading of a tag in a footnote in item 0, over === indented less":
+    { note: "0. [^1]:   \n<b>\n ===\n\n        HERE", code: true },
+  "a <code> in a heading of a footnote's later line in item 0, over === indented less":
+    { note: "a[^1]\n\n0. [^1]: \n<code>\n  ===\n- HERE", code: true },
+  "a <code> in a heading of a footnote's later line in an item, over = indented less":
+    { note: "a[^1]\n\n- [^1]: x\n<code>\n =\n\n    HERE", code: true },
+  "a <code> in a footnote over a definition and a title with text after it": {
+    note: 'a[^1]\n\n[^1]: <code>\n[x]: /u\n"t" x\nHERE',
+    code: true,
+  },
+  "a <code> in a footnote over a definition and an indented title with text after it":
+    { note: 'a[^1]\n\n[^1]: <code>\n[x]: /u\n  "t" x\nHERE', code: true },
+  "a <code> in a footnote in a quote over a definition and a title with text after it":
+    { note: 'a[^1]\n\n> [^1]: <code>\n> [x]: /u\n> "t" x\n> HERE', code: true },
+  "a <code> after a footnote over a definition and a title with text after it":
+    { note: 'a[^1]\n\n[^1]: x\n[x]: /u\n"t" x\nHERE\n\n<code>', code: true },
+  "text in a footnote in an item over = with the item's indentation": {
+    note: "a[^1]\n\n- [^1]: x\nb\n   =\n\n        HERE",
+    code: false,
+  },
+  "text in a footnote's fence in an item over = indented less": {
+    note: "a[^1]\n\n1. [^1]: ```\n   b\n =\n   HERE",
+    code: false,
+  },
+  "text in a footnote over = indented a space": {
+    note: "a[^1]\n\n[^1]: x\nb\n =\n\n    HERE",
+    code: false,
+  },
+  "text in a footnote over === indented a space": {
+    note: "a[^1]\n\n[^1]: x\nb\n ===\n\n    HERE",
+    code: false,
+  },
+  "code after a heading of a footnote's later line in an item, over === indented two spaces":
+    { note: "a[^1]\n\n- [^1]: x\nb\n  ===\n\n        HERE", code: true },
+  "code after a footnote in an item over - indented less, which starts an item":
+    { note: "a[^1]\n\n- [^1]: x\nb\n -\n\n        HERE", code: true },
+  "code after a footnote ended by a thematic break indented a space": {
+    note: "a[^1]\n\n[^1]: x\nb\n ---\n\n    HERE",
+    code: true,
+  },
+  "code after a heading of a footnote's later line in an item, over -- indented two spaces":
+    { note: "a[^1]\n\n- [^1]: x\nb\n  --\n\n        HERE", code: true },
+  "text in a footnote in an item over -- with the item's indentation": {
+    note: "a[^1]\n\n- [^1]: x\nb\n   --\n\n        HERE",
+    code: false,
+  },
+  "a footnote that nothing refers to, in an item the next ends": {
+    note: "- [^1]: ```\nHERE\n-",
+    code: true,
+    hidden: true,
+  },
+  "a footnote's fence in an item, over a next item indented a space": {
+    note: "a[^1]\n\n- [^1]: ```\n  HERE\n -",
+    code: true,
+  },
+  "code after a heading of a footnote's later line in an item in a quote": {
+    note: "a[^1]\n\n> - [^1]: x\n> b\n>  =\n>\n>         HERE",
+    code: true,
+  },
+  "text in a footnote in a quote in an item over = indented less": {
+    note: "a[^1]\n\n- > [^1]: x\n  > b\n  >  =\n  >\n  >     HERE",
+    code: false,
+  },
+  "a <code> in a footnote over a label, an address, and a title with text after it":
+    { note: 'a[^1]\n\n[^1]: <code>\n[x]:\n/u\n"t" x\nHERE', code: true },
+  "text after a footnote over a definition and a title with spaces after it": {
+    note: 'a[^1]\n\n[^1]: <code>\n[x]: /u\n"t"  \nHERE',
+    code: false,
+  },
+  "a <code> in a footnote over a definition and a title in single quotes with text after it":
+    { note: "a[^1]\n\n[^1]: <code>\n[x]: /u\n't' x\nHERE", code: true },
+  "a <code> in a footnote over a definition and a title in parentheses with text after it":
+    { note: "a[^1]\n\n[^1]: <code>\n[x]: /u\n(t) x\nHERE", code: true },
+  "a <code> in a footnote over a definition and a title with text right after it":
+    { note: 'a[^1]\n\n[^1]: <code>\n[x]: /u\n"t"x\nHERE', code: true },
+  "a <code> in a footnote over a definition and two titles": {
+    note: 'a[^1]\n\n[^1]: <code>\n[x]: /u\n"t" "u"\nHERE',
+    code: true,
+  },
+  "a <code> in a footnote over a definition and a title with an escaped quote":
+    { note: 'a[^1]\n\n[^1]: <code>\n[x]: /u\n"a\\"b"\nHERE', code: true },
+  "text after a footnote over a definition and a title in parentheses": {
+    note: "a[^1]\n\n[^1]: <code>\n[x]: /u\n(t)\nHERE",
+    code: false,
+  },
 };
 
 /**

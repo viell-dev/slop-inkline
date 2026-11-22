@@ -623,19 +623,13 @@ function interruptsFootnote(
 const addressAlone = new RegExp(
   String.raw`^(?:${label}|[ \t]*)${address}[ \t]*$`,
 );
-/** The closing mark of a title that each opening mark opens. */
-const titleEnds: Readonly<Record<string, string>> = {
-  '"': '"',
-  "'": "'",
-  "(": ")",
-};
-
 /**
  * Whether a footnote's line `rest`, from a definition's label, starts a
  * definition that Obsidian reads in full there, which ends the footnote: an
- * address on its line or the next, and no title opened on the line after an
- * address alone that does not close on it. Where the definition does not
- * read so, the line goes on in the footnote, as renders of such lines showed.
+ * address on its line or the next, and on the line after an address alone,
+ * no title but one that closes there with only white space after it. Where
+ * the definition does not read so, the line goes on in the footnote, as
+ * renders of such lines showed.
  */
 function definesInFull(
   rest: string,
@@ -652,9 +646,7 @@ function definesInFull(
   }
   if (!addressAlone.test(line)) return true;
   const after = next(offset) ?? "";
-  const lead = skipBlank(after, 0);
-  const end = titleEnds[after[lead] ?? ""];
-  return end === undefined || after.includes(end, lead + 1);
+  return !oneOf(firstMark(after, 0), "\"'(") || definitionTitle.test(after);
 }
 
 /**
@@ -958,6 +950,34 @@ class Blocks {
     return text.slice(at);
   }
 
+  /**
+   * Whether the line after the one being read is an underline in all the
+   * containers open: in a list item it lacks the indentation of, as it goes
+   * on in it without its own, unless it starts an item or a thematic break.
+   */
+  #underlineAhead(): boolean {
+    const line = this.#line(this.#index + 1);
+    if (line === undefined) return false;
+    const text = withoutReturn(line);
+    let at = 0;
+    for (const container of this.#containers) {
+      if (container.kind === "quote") {
+        at = quoteMarker(text, at) ?? at;
+        continue;
+      }
+      const columns = columnsOf(text, at, skipBlank(text, at));
+      if (columns >= container.indent) {
+        at = strip(text, at, container.dedent);
+        continue;
+      }
+      if (itemStart(text, at) !== undefined || isThematicBreak(text, at)) {
+        return false;
+      }
+      at = strip(text, at, Math.min(container.dedent, columns));
+    }
+    return underline.test(text.slice(at));
+  }
+
   /** What line `index`, the next line of the note, is. */
   read(index: number): LineKind {
     this.commented = false;
@@ -1231,7 +1251,7 @@ class Blocks {
       this.#lookAhead(this.#index + offset, this.#containers.length);
     if (
       interruptsFootnote(text, at, more, next) ||
-      (leaf.paragraph && underline.test(next(1) ?? ""))
+      (leaf.paragraph && this.#underlineAhead())
     ) {
       this.#leaf = none;
       return this.#open(text, at, marked, more);
