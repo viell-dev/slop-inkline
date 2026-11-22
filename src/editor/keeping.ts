@@ -78,10 +78,13 @@ export interface KeepingOptions {
    * editor open with the drawing, so that the next save tries again.
    * `keepDraft` keeps the editor's draft at once, as before a step that a
    * draft must name, and returns whether it was kept. `holds` tells the
-   * editor what the file holds as soon as the host has adopted or written
-   * it, before any later step that can fail, such as inserting an embed, so
-   * that the editor goes on comparing the file with that. `name` is what the
-   * name field holds, as typed, for the file to take as its name.
+   * editor what the file holds where the write can still reject after the
+   * file changed: once a new symbol's file is made or written, before any
+   * later step that can fail, such as inserting its embed, and once a write
+   * is cut short, with what it left. The editor then goes on comparing the
+   * file with that. A write that resolves, the editor records itself, so an
+   * existing symbol's host calls `holds` only for a write cut short. `name`
+   * is what the name field holds, as typed, for the file to take as its name.
    * `check` looks at the file once more: the host calls it just before it
    * writes over a file, where no other save can come between them, and again
    * if another file took that one's place meanwhile. It writes nothing if
@@ -288,8 +291,8 @@ export interface KeepingParts {
   /** The drawing, its history, and what is drawn now. */
   readonly session: DrawingSession;
   readonly decoded: DecodedBases;
-  /** The status line, which each action the person takes goes through. */
-  readonly line: StatusLine;
+  /** What the status line says, to tell whether "Draft not kept" still does. */
+  readonly line: Pick<StatusLine, "text">;
   readonly codec: InkCodec;
   readonly picture: KeepingPicture;
 }
@@ -332,7 +335,7 @@ export class Keeping {
   readonly #host: KeepingHost;
   readonly #session: DrawingSession;
   readonly #decoded: DecodedBases;
-  readonly #line: StatusLine;
+  readonly #line: Pick<StatusLine, "text">;
   readonly #codec: InkCodec;
   readonly #picture: KeepingPicture;
   /** This editor's own draft, which no other editor writes. */
@@ -784,8 +787,7 @@ export class Keeping {
       // person's; anything drawn there is kept as its own draft, and the
       // draft found stays as it was, to be opened again.
       if (
-        this.#retired ||
-        this.#host.closing() ||
+        this.#ended() ||
         this.#saving !== undefined ||
         this.#host.questionsOpen() ||
         !sameTarget(drafts.target(), found.target)
@@ -879,7 +881,7 @@ export class Keeping {
    * waits for a running save, and one asked for meanwhile runs after it.
    */
   checkFile(): void {
-    if (this.#retired || this.#host.closing()) return;
+    if (this.#ended()) return;
     if (this.#checking || this.#saving !== undefined) {
       this.#recheck = true;
       return;
@@ -888,9 +890,7 @@ export class Keeping {
     const known = this.#watch.version;
     void this.#readFile()
       .then((found) => {
-        if (found === undefined || this.#retired || this.#host.closing()) {
-          return;
-        }
+        if (found === undefined || this.#ended()) return;
         // A save that ran meanwhile, or a reload, makes the read stale.
         if (this.#saving !== undefined || this.#watch.version !== known) {
           this.#recheck = true;
@@ -1066,7 +1066,7 @@ export class Keeping {
     const drawn = this.#session.document;
     const typed = JSON.stringify(this.#host.text()?.typed());
     const found = await this.#readFile();
-    if (found === undefined || this.#retired || this.#host.closing()) return;
+    if (found === undefined || this.#ended()) return;
     // A save or reload meanwhile makes the read stale: a fresh check decides.
     if (this.#saving !== undefined || this.#watch.version !== known) {
       this.checkFile();
@@ -1206,7 +1206,7 @@ export class Keeping {
       if (!(await this.#picture.applyBeforeSave())) return;
       if (!(await this.#save(() => void this.saveAndNext(advance)))) return;
       // Closed meanwhile, as by Save and close or by Inkline being disabled.
-      if (this.#host.closing() || this.#retired) return;
+      if (this.#ended()) return;
       if (this.unsaved) {
         this.#host.say(this.#partlySaved);
         return;

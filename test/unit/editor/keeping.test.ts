@@ -266,6 +266,8 @@ interface WriteHooks {
   beforeWrite?: () => Promise<void>;
   /** Runs once, just before the write looks at the file a last time. */
   beforeCheck?: () => Promise<void>;
+  /** What the next write leaves when it is cut short, as by a full disk. */
+  cutShort?: Uint8Array;
 }
 
 interface Setup {
@@ -284,8 +286,13 @@ async function editor(setup: Setup = {}) {
   const asked: Question[] = [];
   const open = new Set<Question>();
   const calls: string[] = [];
+  /** What each write that resolved wrote. */
   const writes: Uint8Array[] = [];
-  const state = { closing: false };
+  /**
+   * Whether the editor is closing, and how often it has looked: once a read
+   * of the file ends, it looks before anything else.
+   */
+  const state = { closing: false, looked: 0 };
   const hooks: WriteHooks = {};
   const existing = setup.existing;
   const disk = new SymbolOnDisk(
@@ -316,7 +323,10 @@ async function editor(setup: Setup = {}) {
       (() => Promise.reject(new Error("no canvas in unit tests"))),
   };
   const host: KeepingHost = {
-    closing: () => state.closing,
+    closing: () => {
+      state.looked++;
+      return state.closing;
+    },
     say: (text, holds) => {
       said.push(text);
       line.say(text, holds);
@@ -347,7 +357,7 @@ async function editor(setup: Setup = {}) {
     },
     finish: () => {
       calls.push("finish");
-      state.closing = true;
+      close();
     },
     typedName: () => nameField.value,
     showName: (name, typed) => {
@@ -366,6 +376,7 @@ async function editor(setup: Setup = {}) {
     showTextSummary: () => undefined,
     showWaiting: () => undefined,
     later: (then) => {
+      calls.push("later");
       setTimeout(then, 0);
     },
   };
@@ -386,9 +397,21 @@ async function editor(setup: Setup = {}) {
       delete hooks.beforeCheck;
       await before?.();
       await check();
+      // As in Inkline: the host says what the file holds only where its write
+      // can still reject after the file changed, as when the write is cut
+      // short, or once it has made a new symbol's file, whose embed is still
+      // to go in. What a write that resolves wrote, the editor records itself.
+      const part = hooks.cutShort;
+      if (part !== undefined) {
+        delete hooks.cutShort;
+        disk.bytes = part;
+        holds(await fingerprintOf(part));
+        throw new Error("the disk is full");
+      }
+      const made = disk.bytes === undefined;
       disk.bytes = bytes;
       writes.push(bytes);
-      holds(await fingerprintOf(bytes));
+      if (made) holds(await fingerprintOf(bytes));
       return true;
     },
     ...(uses === undefined ? {} : { uses: () => uses }),
@@ -416,6 +439,18 @@ async function editor(setup: Setup = {}) {
       applyBeforeSave: () => Promise.resolve(true),
     },
   });
+  /**
+   * Closes the editor, as `InkEditorModal` does once it has finished: its
+   * questions close unanswered, and it lets go of the drafts it holds.
+   */
+  const close = (): void => {
+    state.closing = true;
+    for (const asking of [...open]) {
+      open.delete(asking);
+      asking.dismissed?.();
+    }
+    keeping.release();
+  };
   /** The open question titled `title`. */
   const question = (title: string): Question => {
     const found = [...open].find((asking) => asking.title === title);
@@ -449,6 +484,36 @@ async function editor(setup: Setup = {}) {
       if (!state.closing && !keeping.retired) found.act();
       open.delete(asking);
     },
+    /** Closes `title` unanswered, as its Not now button or Esc does. */
+    dismiss(title: string): void {
+      const asking = question(title);
+      open.delete(asking);
+      asking.dismissed?.();
+    },
+    close,
+    /**
+     * Waits until the editor has read the file as it is now and responded,
+     * with no other read under way, by reporting a change to it, as the vault
+     * would. A report starts a read at once, unless one is under way: then the
+     * editor reads again once it has responded to that one, and this reports
+     * again until a read starts at once. Only while the editor is open and no
+     * save runs.
+     */
+    async settled(): Promise<void> {
+      for (;;) {
+        const reads = disk.reads;
+        keeping.touched(path);
+        if (disk.reads > reads) break;
+        await vi.waitFor(() => {
+          expect(disk.reads).toBeGreaterThan(reads);
+        });
+      }
+      // Once the read ends, the editor looks whether it has closed, first.
+      const looked = state.looked;
+      await vi.waitFor(() => {
+        expect(state.looked).toBeGreaterThan(looked);
+      });
+    },
   };
 }
 
@@ -458,6 +523,10 @@ const changedOnDisk = "The symbol changed on disk";
 describe("Keeping", () => {
   it("saves the drawing, follows the file it wrote, and asks nothing about it", async () => {
     const editing = await editor({ existing: { strokes: [stroke(10)] } });
+    // A report about another file reads nothing, as a read would start at
+    // once.
+    editing.keeping.touched("Symbols/other.ink.png");
+    expect(editing.disk.reads).toBe(0);
     editing.draw(30);
     expect(editing.keeping.unsaved).toBe(true);
     await editing.keeping.saveOnly();
@@ -465,19 +534,30 @@ describe("Keeping", () => {
     expect(editing.keeping.unsaved).toBe(false);
     expect(editing.said.at(-1)).toBe("Saved");
     expect((await heldBy(editing.disk.bytes)).strokes).toBe(2);
-    // A report about another file reads nothing.
-    const reads = editing.disk.reads;
-    editing.keeping.touched("Symbols/other.ink.png");
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(editing.disk.reads).toBe(reads);
-    // The vault reports the save's own write, which changes nothing.
-    editing.keeping.touched(path);
-    await vi.waitFor(() => {
-      expect(editing.disk.reads).toBeGreaterThan(reads);
-    });
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    // The look at the file after the save, and the vault's report of its
+    // write, find what the editor wrote, which changes nothing.
+    await editing.settled();
     expect(editing.asked).toHaveLength(0);
     expect(editing.said.at(-1)).toBe("Saved");
+  });
+
+  it("writes over what its own write cut short left, which it cannot read", async () => {
+    const editing = await editor({ existing: { strokes: [stroke(10)] } });
+    editing.draw(30);
+    // The start of a PNG's signature, and nothing more.
+    editing.hooks.cutShort = new Uint8Array([137, 80, 78, 71]);
+    await editing.keeping.saveOnly();
+    expect(editing.writes).toHaveLength(0);
+    expect(editing.said.at(-1)).toBe("Not saved: the disk is full");
+    // The look at the file after the save finds what the host said it left.
+    await editing.settled();
+    expect(editing.notices).toEqual([
+      "Could not save the symbol: the disk is full",
+    ]);
+    await editing.keeping.saveOnly();
+    expect(editing.writes).toHaveLength(1);
+    expect(editing.said.at(-1)).toBe("Saved");
+    expect((await heldBy(editing.disk.bytes)).strokes).toBe(2);
   });
 
   it("keeps a draft of unsaved strokes, and drops it once they are saved", async () => {
@@ -530,15 +610,16 @@ describe("Keeping", () => {
     });
     const reads = editing.disk.reads;
     editing.keeping.touched(path);
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    // Not now, as a read would start at once.
     expect(editing.disk.reads).toBe(reads);
     writing.open();
     await saving;
-    // One read as the write looks at the file, and the check after the save.
-    await vi.waitFor(() => {
-      expect(editing.disk.reads).toBeGreaterThanOrEqual(reads + 2);
-    });
+    // One read as the write looks at the file, and the check after the save,
+    // which starts as it ends.
+    expect(editing.disk.reads).toBeGreaterThanOrEqual(reads + 2);
+    await editing.settled();
     expect(editing.asked).toHaveLength(0);
+    expect(editing.said.at(-1)).toBe("Saved");
   });
 
   it("reads the file once more after a read that a change was reported during", async () => {
@@ -563,7 +644,7 @@ describe("Keeping", () => {
     await editing.keeping.saveOnly();
     expect(editing.writes).toHaveLength(1);
     letGo();
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await editing.settled();
     // Taken in, the old read would have reloaded the drawing from before the
     // save, as the drawing is saved now.
     expect(editing.said).not.toContain("Reloaded: the file changed on disk");
@@ -616,6 +697,36 @@ describe("Keeping", () => {
     expect(held.text.reading).toEqual(["elsewhere"]);
   });
 
+  it.each(["Next", "Save and close"] as const)(
+    "goes on with %s through a change to the file's text found as it saves",
+    async (how) => {
+      const editing = await editor({ existing: { strokes: [stroke(10)] } });
+      editing.draw(30);
+      editing.hooks.beforeCheck = async () => {
+        const bytes = editing.disk.bytes;
+        if (bytes === undefined) throw new Error("no file");
+        editing.disk.bytes = await writeText(bytes, "reading", ["elsewhere"]);
+      };
+      const advance = vi.fn();
+      await (how === "Next"
+        ? editing.keeping.saveAndNext(advance)
+        : editing.keeping.saveAndClose());
+      // The save starts again once what waited on it has heard that it
+      // stopped: Next, for one, does nothing while it is still under way.
+      await vi.waitFor(() => {
+        expect(
+          how === "Next"
+            ? advance.mock.calls.length
+            : editing.calls.filter((call) => call === "finish").length,
+        ).toBe(1);
+      });
+      expect(editing.writes).toHaveLength(1);
+      const held = await heldBy(editing.disk.bytes);
+      expect(held.strokes).toBe(2);
+      expect(held.text.reading).toEqual(["elsewhere"]);
+    },
+  );
+
   it("writes nothing when the file changed a field that was typed in", async () => {
     const fields = new Fields();
     const editing = await editor({
@@ -630,7 +741,9 @@ describe("Keeping", () => {
       editing.disk.bytes = await writeText(bytes, "reading", ["theirs"]);
     };
     await editing.keeping.saveOnly();
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // Nor does it start again, which it would ask for as it ended.
+    expect(editing.calls).not.toContain("later");
+    await editing.settled();
     expect(editing.writes).toHaveLength(0);
     expect(editing.said.at(-1)).toBe(
       "Not saved: the file changed text you typed, so look at what it now says and save again",
@@ -638,6 +751,10 @@ describe("Keeping", () => {
     expect(editing.notices).toHaveLength(0);
     expect(editing.calls).toContain("showText");
     expect(fields.typed()).toEqual({ reading: "mine" });
+    // Seen, what they typed is theirs to save, over what the file says.
+    await editing.keeping.saveOnly();
+    expect(editing.writes).toHaveLength(1);
+    expect((await heldBy(editing.disk.bytes)).text.reading).toEqual(["mine"]);
   });
 
   it("goes on with a save that stopped to ask about a change on disk, once the drawing is kept", async () => {
@@ -657,6 +774,32 @@ describe("Keeping", () => {
     expect((await heldBy(editing.disk.bytes)).strokes).toBe(2);
     expect(editing.asked).toHaveLength(1);
   });
+
+  it.each(["Keep mine", "dismissed"] as const)(
+    "takes in a change to the text alone once the question about another change is answered: %s",
+    async (how) => {
+      const first = { strokes: [stroke(10)] };
+      const editing = await editor({ existing: first });
+      editing.draw(30);
+      editing.disk.bytes = await fileOf({ strokes: [stroke(50)] });
+      await editing.settled();
+      expect(editing.open.size).toBe(1);
+      // The file goes back to its drawing, with a reading added, while the
+      // question has what the other change read to go on with.
+      editing.disk.bytes = await fileOf(first, { reading: ["elsewhere"] });
+      await editing.settled();
+      const updated =
+        "Readings and translations updated: the file changed on disk";
+      expect(editing.said).not.toContain(updated);
+      if (how === "Keep mine") editing.answer(changedOnDisk, "Keep mine");
+      else editing.dismiss(changedOnDisk);
+      await vi.waitFor(() => {
+        expect(editing.said).toContain(updated);
+      });
+      expect(editing.asked).toHaveLength(1);
+      expect(editing.session.document.strokes).toHaveLength(2);
+    },
+  );
 
   it("asks one Replace question for every save that waits on it", async () => {
     const editing = await editor({
@@ -739,6 +882,40 @@ describe("Keeping", () => {
     }
   });
 
+  it("does not bring back a draft that went while a save ran after it retired, nor forget one", async () => {
+    const store = new DraftStore(new MemoryStorage());
+    const editing = await editor({
+      existing: { strokes: [stroke(10)] },
+      drafts: { store },
+    });
+    editing.draw(30);
+    const writing = gate();
+    editing.hooks.beforeWrite = () => writing.wait;
+    const saving = editing.keeping.saveOnly();
+    await vi.waitFor(() => {
+      expect(editing.keeping.saving).toBe(true);
+    });
+    expect(editing.keeping.retire()).toBe(true);
+    // Another load of Inkline restored or discarded it meanwhile.
+    store.remove(editing.keeping.draftId);
+    writing.open();
+    await saving;
+    expect(store.list()).toEqual([]);
+    // Nor does it try to, which would fail, as it has no time it was kept.
+    expect(editing.notices).toEqual([
+      "Could not save the symbol: Inkline was disabled",
+    ]);
+    // One kept as it retired stays, whatever asks to forget it.
+    const other = await editor({
+      existing: { strokes: [stroke(10)] },
+      drafts: { store },
+    });
+    other.draw(30);
+    expect(other.keeping.retire()).toBe(true);
+    other.keeping.forgetDraft();
+    expect(store.list().map(({ id }) => id)).toEqual([other.keeping.draftId]);
+  });
+
   it("says once that a draft was not kept, and that it was once it is again", async () => {
     const storage = new MemoryStorage();
     const store = new DraftStore(storage);
@@ -779,8 +956,8 @@ describe("Keeping", () => {
     expect(editing.session.document.strokes).toHaveLength(3);
   });
 
-  it("lets an offer go when a save starts, or a question opens, while its base layer decodes", async () => {
-    for (const meanwhile of ["save", "question"] as const) {
+  it("lets an offer go when a save starts, a question opens, or the editor closes, while its base layer decodes", async () => {
+    for (const meanwhile of ["save", "question", "close"] as const) {
       const storage = new MemoryStorage();
       const store = new DraftStore(storage);
       const other: Draft = {
@@ -820,13 +997,15 @@ describe("Keeping", () => {
         await vi.waitFor(() => {
           expect(editing.keeping.saving).toBe(true);
         });
-      } else {
+      } else if (meanwhile === "question") {
         editing.open.add({
           title: "Help",
           content: "",
           answers: [],
           cancel: "",
         });
+      } else {
+        editing.close();
       }
       decoding.open();
       await offering;
@@ -838,5 +1017,91 @@ describe("Keeping", () => {
         meanwhile,
       ).toContain("other-editor");
     }
+  });
+
+  it.each(["check", "Reload"] as const)(
+    "asks nothing and reloads nothing once the editor has closed while it read the file: %s",
+    async (how) => {
+      const editing = await editor({ existing: { strokes: [stroke(10)] } });
+      editing.disk.bytes = await fileOf({ strokes: [stroke(50), stroke(60)] });
+      let letGo: () => void;
+      if (how === "Reload") {
+        // Reload answers the question about a change to an unsaved drawing.
+        editing.draw(30);
+        await editing.settled();
+        letGo = editing.disk.holdNextRead();
+        editing.answer(changedOnDisk, "Reload");
+      } else {
+        letGo = editing.disk.holdNextRead();
+        editing.keeping.touched(path);
+      }
+      editing.close();
+      const looked = editing.state.looked;
+      letGo();
+      // Once the read ends, the editor looks whether it has closed, first.
+      await vi.waitFor(() => {
+        expect(editing.state.looked).toBeGreaterThan(looked);
+      });
+      expect(editing.said).toEqual([]);
+      expect(editing.asked).toHaveLength(how === "Reload" ? 1 : 0);
+      expect(editing.session.document.strokes).toHaveLength(
+        how === "Reload" ? 2 : 1,
+      );
+    },
+  );
+
+  it("reads the file no more once the editor has closed, as over the question about a change", async () => {
+    const editing = await editor({ existing: { strokes: [stroke(10)] } });
+    editing.draw(30);
+    editing.disk.bytes = await fileOf({ strokes: [stroke(50)] });
+    await editing.settled();
+    expect(editing.asked.map(({ title }) => title)).toEqual([changedOnDisk]);
+    const reads = editing.disk.reads;
+    // Closing dismisses the question, which looks at the file again while the
+    // editor is open, and a report after it reads nothing either, as a read
+    // would start at once.
+    editing.close();
+    editing.keeping.touched(path);
+    expect(editing.disk.reads).toBe(reads);
+  });
+
+  it.each(["closes", "is retired"] as const)(
+    "says nothing and saves nothing when the editor %s while it asks whether to change a symbol everywhere",
+    async (how) => {
+      const editing = await editor({
+        existing: { strokes: [stroke(10)] },
+        uses: { links: 3, notes: 2 },
+      });
+      editing.draw(30);
+      const saving = editing.keeping.saveAndClose();
+      expect(editing.open.size).toBe(1);
+      // As Inkline unloading does: retiring closes the editor, and with it
+      // the question.
+      if (how === "is retired") editing.keeping.retire();
+      editing.close();
+      await saving;
+      expect(editing.writes).toHaveLength(0);
+      expect(editing.said).toEqual([]);
+      expect(editing.calls).not.toContain("refocus");
+      expect(editing.calls).not.toContain("finish");
+    },
+  );
+
+  it("does not go on to the next symbol once Save and close, waiting on the same save, has closed the editor", async () => {
+    const editing = await editor({ existing: { strokes: [stroke(10)] } });
+    editing.draw(30);
+    const writing = gate();
+    editing.hooks.beforeWrite = () => writing.wait;
+    const closing = editing.keeping.saveAndClose();
+    await vi.waitFor(() => {
+      expect(editing.keeping.saving).toBe(true);
+    });
+    const advance = vi.fn();
+    const next = editing.keeping.saveAndNext(advance);
+    writing.open();
+    await Promise.all([closing, next]);
+    expect(editing.writes).toHaveLength(1);
+    expect(editing.calls.filter((call) => call === "finish")).toHaveLength(1);
+    expect(advance).not.toHaveBeenCalled();
   });
 });

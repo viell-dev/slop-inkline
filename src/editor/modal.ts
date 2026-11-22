@@ -43,6 +43,7 @@ import {
   usedText,
   type KeepingHost,
   type KeepingOptions,
+  type Question,
 } from "./keeping.ts";
 import { StatusLine } from "./status.ts";
 import { DrawingSession, type Shape } from "./session.ts";
@@ -415,8 +416,8 @@ export class InkEditorModal extends Modal {
       notice: (text) => {
         markNotice(new Notice(text));
       },
-      ask: ({ title, content, answers, cancel, dismissed }) => {
-        this.#ask(title, content, answers, cancel, dismissed);
+      ask: (question) => {
+        this.#ask(question);
       },
       questionsOpen: () => this.#questions.size > 0,
       onTop: () => this.#onTop(),
@@ -615,12 +616,16 @@ export class InkEditorModal extends Modal {
     // One question for a symbol used more than once, rather than two.
     const uses = keeping.sharedUses();
     const name = keeping.displayName;
-    this.#ask(
-      uses === undefined ? "Save this symbol?" : `Save the changes to ${name}?`,
-      uses === undefined
-        ? "The drawing has changes that are not saved."
-        : `The drawing has changes that are not saved. ${usedText(name, uses)} Replace changes it in all of them. For a variant that leaves them as they are, start a new symbol with Copy from instead.`,
-      [
+    this.#ask({
+      title:
+        uses === undefined
+          ? "Save this symbol?"
+          : `Save the changes to ${name}?`,
+      content:
+        uses === undefined
+          ? "The drawing has changes that are not saved."
+          : `The drawing has changes that are not saved. ${usedText(name, uses)} Replace changes it in all of them. For a variant that leaves them as they are, start a new symbol with Copy from instead.`,
+      answers: [
         {
           text: uses === undefined ? "Save" : "Replace",
           primary: true,
@@ -640,8 +645,8 @@ export class InkEditorModal extends Modal {
           },
         },
       ],
-      "Keep drawing",
-    );
+      cancel: "Keep drawing",
+    });
   }
 
   /**
@@ -664,18 +669,7 @@ export class InkEditorModal extends Modal {
    * answers do nothing once the editor has closed. `dismissed` runs when it
    * closes without an answer.
    */
-  #ask(
-    title: string,
-    content: string,
-    answers: readonly {
-      text: string;
-      primary?: boolean;
-      destructive?: boolean;
-      act: () => void;
-    }[],
-    cancel: string,
-    dismissed?: () => void,
-  ): void {
+  #ask({ title, content, answers, cancel, dismissed }: Question): void {
     const question = new ConfirmationModal(this.app);
     question.setTitle(title);
     question.setContent(content);

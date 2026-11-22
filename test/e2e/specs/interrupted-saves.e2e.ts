@@ -81,6 +81,60 @@ describe("The editor", function () {
     );
   });
 
+  it("draws no more on its drawing area once disabling closed it, as a save that was running ends", async function () {
+    await insert();
+    await draw(zigzag);
+    await holdAfter("create");
+    await browser.keys(["Control", "s"]);
+    await waitForHeld();
+    await followSave();
+    // The drawing area, kept past the editor's closing, shows the strokes.
+    const shown = await browser.execute(() => {
+      const canvas = document.querySelector(".inkline-editor .inkline-surface");
+      if (!(canvas instanceof HTMLCanvasElement)) return -1;
+      Reflect.set(window, "inklineClosedSurface", canvas);
+      const pixels = canvas
+        .getContext("2d")
+        ?.getImageData(0, 0, canvas.width, canvas.height).data;
+      if (pixels === undefined) return -1;
+      let inked = 0;
+      for (let alpha = 3; alpha < pixels.length; alpha += 4) {
+        if (pixels[alpha] !== 0) inked++;
+      }
+      return inked;
+    });
+    expect(shown).toBeGreaterThan(0);
+    await obsidianPage.disablePlugin("inkline");
+    // Emptied once the editor has closed, so that a frame drawn after shows.
+    const closed = await browser.execute(() => {
+      const canvas: unknown = Reflect.get(window, "inklineClosedSurface");
+      if (!(canvas instanceof HTMLCanvasElement)) return false;
+      canvas.getContext("2d")?.clearRect(0, 0, canvas.width, canvas.height);
+      return !canvas.isConnected;
+    });
+    expect(closed).toBe(true);
+    await letGo();
+    // The save asks for the editor to be drawn again in the turn it ends in.
+    await waitForSaveEnd();
+    const drawn = await browser.execute(async () => {
+      const canvas: unknown = Reflect.get(window, "inklineClosedSurface");
+      Reflect.deleteProperty(window, "inklineClosedSurface");
+      if (!(canvas instanceof HTMLCanvasElement)) return -1;
+      // A frame asked for before this one runs before it.
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const pixels = canvas
+        .getContext("2d")
+        ?.getImageData(0, 0, canvas.width, canvas.height).data;
+      if (pixels === undefined) return -1;
+      let inked = 0;
+      for (let alpha = 3; alpha < pixels.length; alpha += 4) {
+        if (pixels[alpha] !== 0) inked++;
+      }
+      return inked;
+    });
+    expect(drawn).toBe(0);
+  });
+
   it("finishes a first save whose insertion failed before disabling, with the file it made", async function () {
     await interruptInsertion();
     await browser.executeObsidianCommand("inkline:insert-symbol");
