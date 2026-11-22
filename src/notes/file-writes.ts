@@ -111,6 +111,52 @@ export class RenameDisturbed extends Error {
   }
 }
 
+/**
+ * Thrown by {@link makeFile} when the disk has something at the path, as it
+ * looks or as the file is put there, with nothing written there: whatever is
+ * there, it is not the save's. Its message says what, where the one who makes
+ * the file can tell.
+ */
+export class PathTaken extends Error {
+  override name = "PathTaken";
+
+  constructor(message = "something is at the file's path") {
+    super(message);
+  }
+}
+
+/**
+ * `error` with the paths that Node.js names after its reason taken out, as
+ * "EACCES: permission denied, open '<path>'" gives, and `said` in their place,
+ * so that a person is told of the file they know rather than of one of
+ * Inkline's own. Its `code` stays, for whoever tells errors apart by it. Any
+ * other error is as it was.
+ */
+export function withoutPaths(error: unknown, said: string): unknown {
+  if (!(error instanceof Error)) return error;
+  const reason = error.message.replace(/, \w+ '.*$/su, "");
+  if (reason === error.message) return error;
+  const code: unknown = Reflect.get(error, "code");
+  return Object.assign(new Error(`${reason}, ${said}`), { code });
+}
+
+/**
+ * Thrown when the save's own write stopped part-way, as on a full disk, and
+ * left a part of the file where it was writing: by {@link saveFile} for a write
+ * over a file, and by {@link makeFile} for a file it could not take back.
+ * `held` is what was left, the start of what was being written, or none of it.
+ * The message is the write's own reason.
+ */
+export class CutShort extends Error {
+  override name = "CutShort";
+  readonly held: Uint8Array;
+
+  constructor(reason: unknown, held: Uint8Array) {
+    super(reason instanceof Error ? reason.message : String(reason));
+    this.held = held;
+  }
+}
+
 /** Says what is wrong with a file that fails the format's check. */
 export function unreadableText(error: unknown): unknown {
   return error instanceof PngError
@@ -333,6 +379,90 @@ export async function changeFile<File>(
   throw new Error(keepsChanging);
 }
 
+/**
+ * What a write of `bytes` that failed left where it was writing, read with
+ * `read`: what is there, if that is the start of `bytes`, or all of them, as a
+ * write that stops part-way leaves; undefined for anything else, and where
+ * nothing can be read. An empty file counts, as nothing tells it apart from a
+ * write that stopped before its first byte.
+ */
+export async function leftBy(
+  read: () => Promise<Uint8Array>,
+  bytes: Uint8Array,
+): Promise<Uint8Array | undefined> {
+  const held = await read().catch(() => undefined);
+  return held !== undefined && startsWith(bytes, held) ? held : undefined;
+}
+
+/** A file to make where nothing is, as {@link makeFile} goes about it. */
+export interface NewFile {
+  /** What the file is to hold. */
+  readonly bytes: Uint8Array;
+  /** Asks the disk whether anything is at the path. */
+  readonly exists: () => Promise<boolean>;
+  /** Writes `bytes` to a file of the save's own, where nothing else writes. */
+  readonly stage: () => Promise<void>;
+  /**
+   * Copies that file to the path, as one step that makes a file only where
+   * nothing is, and resolves once the file is there: rejects, with nothing put
+   * there, if anything is.
+   */
+  readonly place: () => Promise<void>;
+  /** Whether `place` rejected so because something was at the path. */
+  readonly taken: (error: unknown) => boolean;
+  /** Reads what the disk has at the path, listed or not. */
+  readonly read: () => Promise<Uint8Array>;
+  /** Removes what the disk has at the path. */
+  readonly clear: () => Promise<void>;
+  /** Removes the save's own file, which `stage` wrote. */
+  readonly unstage: () => Promise<void>;
+}
+
+/**
+ * Makes a file where the disk has nothing, or rejects with {@link PathTaken},
+ * with nothing written there, where it has something.
+ *
+ * Obsidian's own `createBinary` asks the disk whether anything is at the path,
+ * and only once it has the answer asks for the write. Whatever was asked of the
+ * disk in between, as a new file at that path by another plugin or a sync tool
+ * working through Obsidian, runs first, and the write lands on it (#413). So
+ * this writes the bytes to a file of its own first, and then has them copied
+ * to the path by `place`, whose one step looks and makes the file together, so
+ * that nothing can come between them. The look before it saves writing that
+ * file when the path is taken already. Nothing waits for the disk to be quiet,
+ * so nothing else the disk is asked, however much, can hold the save up.
+ *
+ * A write of its own file that stops part-way leaves nothing at the path. A copy
+ * that stops part-way can leave the start of the bytes there: this takes away a
+ * file there that holds only that, as {@link leftBy} says, which is the copy's
+ * own, as the copy made that file, or one nobody would miss, and the failure
+ * stands. Only if it cannot does it reject with {@link CutShort}, with that
+ * part, for the save to know it as its own. Its own file goes in every case.
+ */
+export async function makeFile(made: NewFile): Promise<void> {
+  if (await made.exists()) throw new PathTaken();
+  try {
+    await made.stage();
+    try {
+      await made.place();
+    } catch (error) {
+      if (made.taken(error)) throw new PathTaken();
+      const left = await leftBy(made.read, made.bytes);
+      if (left !== undefined) {
+        try {
+          await made.clear();
+        } catch {
+          throw new CutShort(error, left);
+        }
+      }
+      throw error;
+    }
+  } finally {
+    // One that cannot be removed now is for the next time Inkline starts.
+    await made.unstage().catch(() => undefined);
+  }
+}
+
 /** A save of a whole file, as {@link saveFile} goes about it. */
 export interface WholeFile<File> {
   /** The file to save over now, or null when there is none. */
@@ -343,16 +473,21 @@ export interface WholeFile<File> {
    * of the disk since.
    */
   readonly check: () => Promise<Look | undefined>;
+  /**
+   * Writes over `file`, the one the check passed. Rejects if it could not write
+   * the whole of it, which can leave a part of it there.
+   */
   readonly write: (file: File) => Promise<void>;
   /**
-   * Makes the file, as there is none to save over. Rejects, as the vault does,
-   * if a file is at its path by the time the vault looks, or if it could not
-   * write the whole of it, which can leave a part of it there.
+   * Makes the file, as there is none to save over, as {@link makeFile} does:
+   * rejects with {@link PathTaken}, with nothing written there, where something
+   * is at the path, with {@link CutShort} for a part of its own it left there,
+   * and otherwise with nothing of its own left there.
    */
   readonly create: () => Promise<File>;
-  /** What `write` and `create` put in the file. */
+  /** What `write` puts in the file. */
   readonly bytes: Uint8Array;
-  /** Reads a file found at the path once `create` has failed. */
+  /** Reads the file the check passed once `write` has failed. */
   readonly read: (file: File) => Promise<Uint8Array>;
   /** The disk's line, where it can be seen. */
   readonly line?: DiskLine | undefined;
@@ -367,15 +502,22 @@ export interface WholeFile<File> {
  * Anything asked of the disk's {@link DiskLine} after `check` looked would come
  * before the write, so the save waits for it, and looks again.
  *
- * A file can also come to the path after the save found none and before the
- * vault looks as it makes one, as the new file of a replacement does once the
- * old one's deletion has run: the vault then refuses to make it. A file found at
- * the path after that is looked at in its turn, as one found there before would
- * be. The vault's failure stands with no file there, and with one that holds the
- * start of `bytes`, or all of them: the save's own write, which the vault leaves
- * where it stopped, as on a full disk, and whose reason is the one to give. That
- * takes in an empty file, which nothing tells apart from a write that stopped
- * before its first byte.
+ * A file can also come to the path after the save found none and before
+ * `create` makes it, as the new file of a replacement does once the old one's
+ * deletion has run: `create` then refuses to make it. A file found at the path
+ * after that is looked at in its turn, as one found there before would be, and
+ * is never the save's own, whatever it holds: `create` has said what it left of
+ * its own. With no file there, the failure stands, as `create` says it.
+ *
+ * A `write` over the file the check passed that fails, with that file still at
+ * its path, leaves what it wrote before it stopped, as on a full disk: a file
+ * holding the start of `bytes`, or all of them, as {@link leftBy} says, is the
+ * save's own (#425), and the failure is {@link CutShort} with what it holds.
+ * One that failed before it opened the file leaves what the check passed, a
+ * whole PNG, which nothing follows: the start of no other bytes Inkline writes,
+ * and so its failure stands, unless the file holds all of `bytes`, as when
+ * nothing changed since the last save. That is {@link CutShort} with all of
+ * them, which the editor says the file holds whole.
  */
 export async function saveFile<File>(save: WholeFile<File>): Promise<File> {
   let waits = 0;
@@ -391,11 +533,7 @@ export async function saveFile<File>(save: WholeFile<File>): Promise<File> {
       try {
         return await save.create();
       } catch (error) {
-        const there = save.current();
-        if (there === null) throw error;
-        // One that cannot be read, as gone again, is for the next round's look.
-        const held = await save.read(there).catch(() => undefined);
-        if (held !== undefined && startsWith(save.bytes, held)) throw error;
+        if (error instanceof CutShort || save.current() === null) throw error;
         attempt++;
         continue;
       }
@@ -405,7 +543,16 @@ export async function saveFile<File>(save: WholeFile<File>): Promise<File> {
       await save.line?.settle();
       continue;
     }
-    await save.write(file);
+    try {
+      await save.write(file);
+    } catch (error) {
+      // A file no longer at its path, as one replaced as it was written, is not
+      // the one this wrote, whatever it holds.
+      if (save.current() !== file) throw error;
+      const left = await leftBy(() => save.read(file), save.bytes);
+      if (left !== undefined) throw new CutShort(error, left);
+      throw error;
+    }
     return file;
   }
   throw new Error(keepsChanging);

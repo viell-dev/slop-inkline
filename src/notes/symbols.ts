@@ -72,10 +72,14 @@ import { embedFor } from "./embeds.ts";
 import {
   changedText,
   changeFile,
+  CutShort,
+  makeFile,
+  PathTaken,
   RenameDisturbed,
   saveFile,
   stoppable,
   unreadableText,
+  withoutPaths,
   watchRename,
   watchSave,
   WriteQueue,
@@ -111,6 +115,12 @@ const settleLimit = 5000;
 
 /** How often, in milliseconds, to look. */
 const settleCheck = 20;
+
+/**
+ * How many numbers a new symbol's first save tries, as files keep coming to
+ * the path it found free, before it says so.
+ */
+const attemptsToMake = 3;
 
 /**
  * How long, in milliseconds, opening a symbol goes on before a notice says so.
@@ -207,6 +217,12 @@ export interface EditorHost {
   readonly texts: SymbolTexts;
   /** Aborts as the plugin unloads; nothing is written once it has. */
   readonly unloaded: AbortSignal;
+  /**
+   * Inkline's own folder, where a save that makes a symbol's file writes it
+   * first, under a name the vault does not list, as {@link makeSymbolFile}
+   * says.
+   */
+  readonly folder: string;
 }
 
 /** An `ArrayBuffer` holding exactly these bytes, as the vault takes. */
@@ -262,6 +278,146 @@ function claimName(app: App, folder: string, name: string, own?: TFile): void {
     const where = folder === "" ? "the vault's top folder" : folder;
     throw new Error(`${where} already has a symbol named ${name}`);
   }
+}
+
+/**
+ * Why a symbol's file cannot be made at `path`, where the disk has something,
+ * as {@link PathTaken} says: a file or folder the vault lists there, or one
+ * whose name differs only in letter case, which Windows and macOS read as the
+ * same name and Obsidian does not list at the path, or one Obsidian has not
+ * listed yet, as one made outside it. The disk says which of the last two it
+ * is, as one that tells letter case apart can have both.
+ */
+async function takenReason(app: App, path: string): Promise<string> {
+  const folder = parentPath(path);
+  const name = folder === "" ? path : path.slice(folder.length + 1);
+  const where = folder === "" ? "the vault's top folder" : folder;
+  const there = app.vault.getAbstractFileByPath(path);
+  if (there !== null) {
+    const kind = there instanceof TFolder ? "folder" : "file";
+    return `${where} already has a ${kind} named ${name}`;
+  }
+  const { adapter } = app.vault;
+  const unlisted = `a file came to ${path} that Obsidian has not listed yet, and was left as it is; save again in a moment`;
+  // Asked to tell letter case apart, as Windows and macOS do not unless asked.
+  if (await adapter.exists(path, true).catch(() => true)) return unlisted;
+  // Gone again, as a file that came and went as the save made its own.
+  if (!(await adapter.exists(path).catch(() => true))) {
+    return `a file came to ${path} as the symbol was saved, and has gone again; save again`;
+  }
+  const listed = namesIn(app, folder).find(
+    (other) => other.toLowerCase() === name.toLowerCase(),
+  );
+  return listed === undefined
+    ? unlisted
+    : `${where} has ${listed}, whose name differs from ${name} only in letter case, which this computer reads as the same name; rename or move ${listed} to save the symbol there`;
+}
+
+/**
+ * What a save says when its own write stopped part-way and left `held` in
+ * `name`, after the write's own `reason`. A write that failed before it opened
+ * the file, as one refused by a file another program has open, can leave all
+ * of `bytes` there, as when nothing changed since the last save.
+ */
+function cutShortReason(
+  reason: string,
+  name: string,
+  held: Uint8Array,
+  bytes: Uint8Array,
+): string {
+  return held.length === bytes.length
+    ? `${reason}; ${name} holds the whole symbol all the same`
+    : `${reason}; ${name} holds what was written before it stopped, which saving again writes whole`;
+}
+
+/**
+ * What begins the name of a file that {@link makeSymbolFile} writes in
+ * Inkline's own folder before it makes a symbol's file. The dot keeps the
+ * vault from listing it, so that it is never one of the vault's files, and no
+ * create or delete is heard of it.
+ */
+const stagedPrefix = ".making-";
+
+/**
+ * How long ago, in milliseconds, a file of {@link makeSymbolFile}'s own must
+ * have been written for {@link sweepStaged} to remove it. A save removes its own
+ * within moments, and Obsidian gives up on a step of its disk after a minute,
+ * so this leaves one of a save that may still be under way: of the load of
+ * Inkline just before, as after it was turned off and on again, or of another
+ * computer whose sync tool carries the folder.
+ */
+const sweepAfter = 5 * 60_000;
+
+/**
+ * Removes the files in Inkline's own `folder` that a save making a symbol's
+ * file wrote there and could not remove, as when Obsidian closed in between,
+ * once they are older than {@link sweepAfter}. Run as Inkline starts.
+ */
+export async function sweepStaged(app: App, folder: string): Promise<void> {
+  const { adapter } = app.vault;
+  const listed = await adapter.list(folder).catch(() => undefined);
+  for (const file of listed?.files ?? []) {
+    const name = file.slice(file.lastIndexOf("/") + 1);
+    if (!name.startsWith(stagedPrefix)) continue;
+    const written = await adapter.stat(file).catch(() => null);
+    if (written !== null && Date.now() - written.mtime >= sweepAfter) {
+      await adapter.remove(file).catch(() => undefined);
+    }
+  }
+}
+
+/** The `code` a Node.js error gives, as Obsidian's adapter passes it on. */
+function errorCode(error: unknown): unknown {
+  return typeof error === "object" && error !== null
+    ? Reflect.get(error, "code")
+    : undefined;
+}
+
+/**
+ * Makes a symbol's file at `path`, through Obsidian's adapter, as
+ * {@link makeFile} does, and returns it. It writes the bytes to a file of its
+ * own in Inkline's `folder` first, and then has the adapter copy that to the
+ * path: the adapter's `copy` makes the file only where nothing is, which the
+ * computer's own copy checks as it makes it, in one of the adapter's steps, and
+ * then has the vault list it, as `writeBinary` does, before it resolves. So
+ * nothing else asked of Obsidian, nor a program writing to the disk outside it,
+ * can come between a look at the path and the write, and nothing waits for the
+ * disk to be quiet. Rejects with {@link PathTaken}, with nothing written there,
+ * where the disk has something at the path.
+ */
+async function makeSymbolFile(
+  app: App,
+  folder: string,
+  path: string,
+  buffer: ArrayBuffer,
+): Promise<TFile> {
+  const { adapter } = app.vault;
+  const own = `${folder}/${stagedPrefix}${crypto.randomUUID()}`;
+  await makeFile({
+    bytes: new Uint8Array(buffer),
+    exists: () => adapter.exists(path),
+    // Node.js names both files in a failure, Inkline's own among them.
+    stage: () =>
+      adapter.writeBinary(own, buffer).catch((error: unknown) => {
+        throw withoutPaths(
+          error,
+          "as the symbol was written in Inkline's folder",
+        );
+      }),
+    place: () =>
+      adapter.copy(own, path).catch((error: unknown) => {
+        throw withoutPaths(error, `as the symbol was put at ${path}`);
+      }),
+    taken: (error) => errorCode(error) === "EEXIST",
+    read: async () => new Uint8Array(await adapter.readBinary(path)),
+    clear: () => adapter.remove(path),
+    unstage: () => adapter.remove(own),
+  });
+  const made = app.vault.getFileByPath(path);
+  if (made === null) {
+    throw new Error(`${path} was written, but Obsidian has not listed it`);
+  }
+  return made;
 }
 
 /**
@@ -1325,6 +1481,14 @@ async function rename(
  * once, ahead of whatever else is waiting to be read. `check` goes first, in the
  * write's turn, so that no other save of Inkline's can come between it and the
  * write, and rejects to write nothing. `waiting` hears if that takes too long.
+ *
+ * A write of its own over the file that stops part-way, as on a full disk,
+ * leaves the start of these bytes there, which no version of Inkline can read,
+ * and so can one that makes the file again, if what it left cannot be taken
+ * away. `took` hears its fingerprint, so that the editor knows that file as its
+ * own (#425): the next save then writes over it, which loses nothing, as it
+ * holds only the start of what that save writes, where the editor would
+ * otherwise refuse every save until the file was deleted.
  */
 async function writeSymbol(
   host: EditorHost,
@@ -1332,11 +1496,12 @@ async function writeSymbol(
   bytes: Uint8Array,
   check: () => Promise<void>,
   waiting: SaveWait,
+  took: (fingerprint: string) => void,
 ): Promise<TFile> {
   const { app } = host;
   const buffer = toBuffer(bytes);
-  const write = async (): Promise<TFile> => {
-    const written = await writes.run(() =>
+  const save = (): Promise<TFile> =>
+    writes.run(() =>
       saveFile({
         current: () =>
           present(app, file) ? file : app.vault.getFileByPath(file.path),
@@ -1372,14 +1537,119 @@ async function writeSymbol(
               if (app.vault.getFolderByPath(folder) === null) throw error;
             }
           }
-          return app.vault.createBinary(file.path, buffer);
+          try {
+            return await makeSymbolFile(app, host.folder, file.path, buffer);
+          } catch (error) {
+            // A file the vault lists at the path is looked at in the save's
+            // next round; anything else is said in Inkline's words.
+            if (error instanceof PathTaken) {
+              throw new PathTaken(await takenReason(app, file.path));
+            }
+            throw error;
+          }
         },
       }),
     );
+  const write = async (): Promise<TFile> => {
+    let written: TFile;
+    try {
+      written = await save();
+    } catch (error) {
+      if (!(error instanceof CutShort)) throw error;
+      took(await fingerprintOf(error.held));
+      throw new Error(
+        cutShortReason(error.message, file.name, error.held, bytes),
+      );
+    }
     await host.texts.refresh(written);
     return written;
   };
   return watchSave(write(), waiting);
+}
+
+/**
+ * Makes a new symbol's file, at the path `pathFor` finds for it under `name`,
+ * as {@link newSymbolPath} or {@link symbolPathIn} does, and returns it.
+ * `claimed` hears each path before anything is written there, for the first
+ * save's claim and draft. A file that comes to the path in the
+ * moment between finding it free and making the file, as by another plugin or
+ * a sync tool working through Obsidian, is left as it is (#388): a name typed
+ * for the symbol is refused, as it would have been had the file come first,
+ * and a numbered symbol takes the next free number, up to three times. Once
+ * Inkline is disabled, nothing more is made.
+ *
+ * Its own write that stops part-way, as on a full disk, leaves nothing at the
+ * path, unless what it left there could not be taken away, as
+ * {@link makeSymbolFile} says. `claimed` then hears that path again with a
+ * fingerprint of what was left, which the claim keeps as what the file may
+ * hold, so that the next save takes that file as its own and writes it whole
+ * (#425), rather than leave it for good and take another name, or refuse the
+ * name typed.
+ */
+async function makeNewSymbol(
+  host: EditorHost,
+  pathFor: () => Promise<string>,
+  name: NameChoice,
+  claimed: (path: string, left?: string) => void,
+  buffer: ArrayBuffer,
+  told: SaveWait,
+): Promise<TFile> {
+  const { app } = host;
+  for (let tries = 1; ; tries++) {
+    const path = await pathFor();
+    stillAlive(host.unloaded);
+    claimed(path);
+    try {
+      return await watchSave(
+        makeSymbolFile(app, host.folder, path, buffer),
+        told,
+      );
+    } catch (error) {
+      if (error instanceof CutShort) {
+        claimed(path, await fingerprintOf(error.held));
+        const at = path.slice(path.lastIndexOf("/") + 1);
+        throw new Error(
+          cutShortReason(error.message, at, error.held, new Uint8Array(buffer)),
+        );
+      }
+      if (!(error instanceof PathTaken)) throw error;
+      if (name.kind === "name") claimName(app, parentPath(path), name.name);
+      if (name.kind === "name" || tries >= attemptsToMake) {
+        throw new PathTaken(await takenReason(app, path));
+      }
+    }
+  }
+}
+
+/**
+ * Throws if the disk holds, at the claim's path, the part that a cut-short
+ * write of the save's own left there (#425), as its `previous` says, and the
+ * vault does not list it yet. After a copy that stopped part-way and whose part
+ * could not be taken away, Obsidian lists that part only once its watch of the
+ * disk sees it. A save meanwhile would find the path taken, go on to another,
+ * and claim that one, so that the part stayed for good, or, with a name typed,
+ * the name was refused until the part was deleted by hand. This keeps the
+ * claim, for the next save to take that file as its own once it is listed.
+ */
+async function waitForOwnPart(app: App, claim: Claim): Promise<void> {
+  const { path, previous } = claim;
+  if (
+    previous === undefined ||
+    app.vault.getAbstractFileByPath(path) !== null
+  ) {
+    return;
+  }
+  const held = await app.vault.adapter.readBinary(path).catch(() => undefined);
+  if (
+    held === undefined ||
+    (await fingerprintOf(new Uint8Array(held))) !== previous
+  ) {
+    return;
+  }
+  const name = path.slice(path.lastIndexOf("/") + 1);
+  throw new Error(
+    `${name} holds what was written before it stopped, which Obsidian has not listed yet; save again in a moment`,
+  );
 }
 
 /**
@@ -1683,21 +1953,27 @@ function newSymbol(
           adopted = true;
           holds(claimed.fingerprint);
           renaming = renamingOf(app, made.file, name);
+        } else {
+          await waitForOwnPart(app, claim);
         }
       }
       stillAlive(host.unloaded);
       if (made === undefined) {
-        const path = await newSymbolPath(
-          app,
-          note.path,
+        const file = await makeNewSymbol(
+          host,
+          () =>
+            newSymbolPath(app, note.path, name, host.settings().symbolFolder),
           name,
-          host.settings().symbolFolder,
-        );
-        stillAlive(host.unloaded);
-        claim = { path, fingerprint };
-        keepDraft();
-        const file = await watchSave(
-          app.vault.createBinary(path, toBuffer(bytes)),
+          (path, left) => {
+            // What a write that stopped part-way left, which the next save
+            // takes as the file it made, as what it held before a write.
+            claim =
+              left === undefined
+                ? { path, fingerprint }
+                : { path, fingerprint, previous: left };
+            keepDraft();
+          },
+          toBuffer(bytes),
           wait.told,
         );
         made = { file, fingerprint, previous: undefined };
@@ -1709,6 +1985,7 @@ function newSymbol(
         made.fingerprint = fingerprint;
         made.previous = before;
         if (!inserted) keepDraft();
+        let left: string | undefined;
         try {
           made.file = await writeSymbol(
             host,
@@ -1716,10 +1993,18 @@ function newSymbol(
             bytes,
             check,
             wait.told,
+            (held) => {
+              left = held;
+              holds(held);
+            },
           );
           holds(fingerprint);
         } catch (error) {
-          made.fingerprint = before;
+          // A write cut short leaves what it wrote, which a draft kept now
+          // names; any other failure, what the file held.
+          made.previous = undefined;
+          made.fingerprint = left ?? before;
+          if (left !== undefined && !inserted) keepDraft();
           throw error;
         } finally {
           made.previous = undefined;
@@ -2165,10 +2450,10 @@ async function openEditor(
     },
     lifecycle: host.lifecycle,
     file: () => symbolFile(app, symbol.path),
-    write: async (saved, _record, _keepDraft, _holds, typed, check, wait) => {
+    write: async (saved, _record, _keepDraft, holds, typed, check, wait) => {
       stillAlive(host.unloaded);
       const renaming = renamingOf(app, symbol, chosen(typed, symbol));
-      symbol = await writeSymbol(host, symbol, saved, check, wait.told);
+      symbol = await writeSymbol(host, symbol, saved, check, wait.told, holds);
       stillAlive(host.unloaded);
       return rename(host, renaming, wait);
     },
@@ -2349,7 +2634,9 @@ function recoverDraft(host: EditorHost, orphan: Orphan): void {
       stillAlive(host.unloaded);
       if (made === undefined && claim !== undefined) {
         const found = await claimedFile(app, claim);
-        if (found !== undefined) {
+        if (found === undefined) {
+          await waitForOwnPart(app, claim);
+        } else {
           made = found.file;
           holds(found.fingerprint);
         }
@@ -2357,7 +2644,7 @@ function recoverDraft(host: EditorHost, orphan: Orphan): void {
       stillAlive(host.unloaded);
       if (made !== undefined) {
         const renaming = renamingOf(app, made, chosen(typed, made));
-        made = await writeSymbol(host, made, bytes, check, wait.told);
+        made = await writeSymbol(host, made, bytes, check, wait.told, holds);
         stillAlive(host.unloaded);
         return rename(host, renaming, wait);
       }
@@ -2365,19 +2652,26 @@ function recoverDraft(host: EditorHost, orphan: Orphan): void {
       // the vault as it was.
       const choice = chosen(typed);
       const fingerprint = await fingerprintOf(bytes);
-      const at =
-        folder === undefined
-          ? await newSymbolPath(app, path, choice, host.settings().symbolFolder)
-          : symbolPathIn(
-              app,
-              folder === "" ? "" : await makeFolder(app, folder),
-              choice,
-            );
-      stillAlive(host.unloaded);
-      claim = { path: at, fingerprint };
-      keepDraft();
-      made = await watchSave(
-        app.vault.createBinary(at, toBuffer(bytes)),
+      made = await makeNewSymbol(
+        host,
+        async () =>
+          folder === undefined
+            ? newSymbolPath(app, path, choice, host.settings().symbolFolder)
+            : symbolPathIn(
+                app,
+                folder === "" ? "" : await makeFolder(app, folder),
+                choice,
+              ),
+        choice,
+        (at, left) => {
+          // As a new symbol's first save keeps what a write cut short left.
+          claim =
+            left === undefined
+              ? { path: at, fingerprint }
+              : { path: at, fingerprint, previous: left };
+          keepDraft();
+        },
+        toBuffer(bytes),
         wait.told,
       );
       holds(fingerprint);

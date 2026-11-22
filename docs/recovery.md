@@ -114,7 +114,10 @@ elsewhere, by sync, another app, or another editor, is not lost to a save:
   typed, and **Reload** takes the file's. A field you typed in that the file
   left alone stays as you typed it either way.
 - A symbol whose file was deleted while it was open is saved again where it was,
-  folder and all.
+  folder and all. **Unreleased:** a file that comes to that place as it is saved
+  is asked about, as any change is, and one whose name differs only in letter
+  case, which Windows and macOS read as the same name, is named in the status
+  line, for you to rename or move it.
 - A rename made elsewhere is followed, and its name kept.
 
 ## Files Inkline cannot read
@@ -131,6 +134,18 @@ elsewhere, by sync, another app, or another editor, is not lost to a save:
   file as it is.
 - **A file that changed on disk to something this version cannot read** is never
   saved over: the editor says so, and keeps your drawing open.
+- **Unreleased:** when a save's own write stops part-way, as on a full disk, a
+  save that makes the symbol's file, the first of a new symbol or one made again
+  after its file was deleted, leaves nothing at its path, as it writes the
+  symbol first to a hidden file in Inkline's own folder,
+  `.obsidian/plugins/inkline`, which it then removes; saving again once there is
+  room makes it whole. A save of a symbol whose file is there leaves only the
+  start of the symbol, which no version of Inkline can read. The editor says so,
+  with the reason, and takes that part as its own: once there is room, saving
+  again writes the whole symbol over it, which loses nothing, as it held only
+  the start of what that save writes. So it does however many times in a row the
+  write stops. In 1.0.2, every later save refused that file until you deleted
+  it.
 - **A file that is not a valid PNG**, as one cut short by a failed copy, does
   not open, and a notice says why.
 - A symbol whose image is damaged, but whose strokes are whole, opens as usual,
