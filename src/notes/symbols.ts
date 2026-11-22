@@ -374,6 +374,19 @@ function errorCode(error: unknown): unknown {
 }
 
 /**
+ * Thrown by {@link makeSymbolFile} when its copy made the file, whole, and the
+ * vault does not list it: the one failure after which the file at the path is
+ * the save's own, as nothing else can have made it there.
+ */
+class NotListed extends Error {
+  override name = "NotListed";
+
+  constructor(path: string) {
+    super(`${path} was written, but Obsidian has not listed it`);
+  }
+}
+
+/**
  * Makes a symbol's file at `path`, through Obsidian's adapter, as
  * {@link makeFile} does, and returns it. It writes the bytes to a file of its
  * own in Inkline's `folder` first, and then has the adapter copy that to the
@@ -414,9 +427,7 @@ async function makeSymbolFile(
     unstage: () => adapter.remove(own),
   });
   const made = app.vault.getFileByPath(path);
-  if (made === null) {
-    throw new Error(`${path} was written, but Obsidian has not listed it`);
-  }
+  if (made === null) throw new NotListed(path);
   return made;
 }
 
@@ -1653,20 +1664,6 @@ async function waitForOwnPart(app: App, claim: Claim): Promise<void> {
 }
 
 /**
- * Whether the disk holds at the claim's path, listed or not, what the claim's
- * fingerprint names: the whole of what the save that claimed it wrote.
- */
-async function holdsClaimed(app: App, claim: Claim): Promise<boolean> {
-  const held = await app.vault.adapter
-    .readBinary(claim.path)
-    .catch(() => undefined);
-  return (
-    held !== undefined &&
-    (await fingerprintOf(new Uint8Array(held))) === claim.fingerprint
-  );
-}
-
-/**
  * The claimed file and a fingerprint of what it holds, if that is what was
  * last written there, or what it held before a write that may not have
  * happened: one that an interrupted first save made, unchanged since. A file
@@ -2697,13 +2694,11 @@ function recoverDraft(host: EditorHost, orphan: Orphan): void {
         // refused because another symbol came there, gives the draft back its
         // place, or it stays kept for that symbol, which would offer it as its
         // own (#437). A part it left is in the claim, for the next save, and so
-        // is the whole file it wrote, which Obsidian has not listed.
-        const at = claim;
+        // is the whole file its copy made, which Obsidian has not listed.
         if (
-          at !== undefined &&
-          at !== before &&
-          at.previous === undefined &&
-          !(await holdsClaimed(app, at))
+          claim !== before &&
+          claim?.previous === undefined &&
+          !(error instanceof NotListed)
         ) {
           claim = before;
           keepDraft();

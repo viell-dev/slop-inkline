@@ -369,6 +369,44 @@ describe("Draft recovery", function () {
     expect(await draftCount()).toBe(0);
   });
 
+  it("puts a draft back when a file of the same bytes comes to the name typed as it is saved", async function () {
+    // The review of #452: a file another program put there is not the save's
+    // own, whatever it holds, and holding what the save writes kept the draft
+    // on it, for the next save to take over and rename.
+    await gateAsNew();
+    await nameSymbol("tower");
+    await browser.executeObsidian(({ app }) => {
+      const { adapter } = app.vault;
+      const copy = adapter.copy.bind(adapter);
+      adapter.copy = async (from, to) => {
+        if (to === "tower.ink.png") {
+          Reflect.deleteProperty(adapter, "copy");
+          await adapter.writeBinary(to, await adapter.readBinary(from));
+        }
+        await copy(from, to);
+      };
+    });
+    await browser.keys(["Control", "s"]);
+    await waitForStatus(
+      "Not saved: the vault's top folder already has a symbol named tower",
+    );
+    expect(await draftKeptFor()).toEqual({
+      kind: "file",
+      path: "gate.ink.png",
+    });
+    const tower = await bytesOfFile("tower.ink.png");
+    await nameSymbol("door");
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    expect(await symbolFiles()).toEqual([
+      "door.ink.png",
+      "gate.ink.png",
+      "tower.ink.png",
+    ]);
+    expect(await bytesOfFile("tower.ink.png")).toEqual(tower);
+    expect(await draftCount()).toBe(0);
+  });
+
   it("keeps a draft it opened as a new symbol on the file its first save wrote whole, when Obsidian did not list it", async function () {
     // The copy made the file, and the vault did not have it at once.
     await gateAsNew();
