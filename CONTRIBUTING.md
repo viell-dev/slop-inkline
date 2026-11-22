@@ -384,11 +384,9 @@ or passing, never stands for a later one. Both checks expect the versions
 `OBSIDIAN_VERSIONS` names, the default pair when it is unset.
 
 The table drifts as spec files are added, grow, or get faster, and the slowest
-shard sets how long `e2e` takes: within five days of active work it had drifted
-to shards 111 s apart
-([#466](https://github.com/viell-dev/slop-inkline/issues/466)). Refresh it when
-the shards' times on `main` are more than about a minute apart. To refresh the
-table, download a recent run of CI on `main` and commit the result:
+shard sets how long `e2e` takes. Refresh it when the shards' times on `main` are
+more than about a minute apart: download a recent run of CI on `main` and commit
+the result:
 
 ```sh
 gh run download <run-id> --pattern 'e2e-results-*' --dir <dir>
