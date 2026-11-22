@@ -15,6 +15,7 @@ import {
   holdClosingTimers,
   letClosingTimersGo,
   next,
+  openBeside,
   rewrite,
   searchExisting,
   setLinkUpdates,
@@ -22,7 +23,19 @@ import {
   waitForNoteFocus,
 } from "../support/insertion.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
-import { intoCell, waitForLastRow } from "../support/table-cell.ts";
+import {
+  backIntoCell,
+  holdInklineTimers,
+  intoCell,
+  letInklineTimersGo,
+  waitForLastRow,
+  waitForNoteEverywhere,
+  waitForRowEverywhere,
+} from "../support/table-cell.ts";
+
+/** The note `intoCell` makes, with `gate.ink.png` in the cell it goes into. */
+const withGate =
+  "| A | B |\n| --- | --- |\n| same | same |\n| same![[gate.ink.png]] | same |\n";
 
 describe("Symbols in a table cell in Live Preview", function () {
   before(async function () {
@@ -115,6 +128,68 @@ describe("Symbols in a table cell in Live Preview", function () {
     await waitForLastRow("| same![[gate.ink.png]] | same |");
     await type("xy");
     await waitForLastRow("| same![[gate.ink.png]]xy | same |");
+  });
+
+  // A key straight after the choice, before what Obsidian does on a timer as
+  // a cell takes a change, as on a busy machine (#415).
+  it("keeps a symbol from Insert existing symbol and a key that comes first", async function () {
+    await createSymbol("gate.ink.png");
+    await intoCell("Table.md");
+    await searchExisting("gat");
+    await holdInklineTimers();
+    await browser.keys(["Enter"]);
+    await type("x");
+    // The timers the choice sets under Inkline's code, which `x` came before:
+    // the cell's own as it closes and opens again, or on `main` the handoff of
+    // the symbol to the cell. At least one shows the hold caught the choice.
+    expect(await letInklineTimersGo()).toBeGreaterThan(0);
+    await type("y");
+    await waitForLastRow("| same![[gate.ink.png]]xy | same |");
+  });
+
+  // With no key after it, the symbol is an edit like any other: saved, and
+  // passed to the note's other panes (#428's review).
+  it("saves a symbol from Insert existing symbol and passes it to another pane", async function () {
+    await createSymbol("gate.ink.png");
+    await intoCell("Table.md");
+    await openBeside("Table.md");
+    await backIntoCell();
+    await chooseExisting("gat");
+    await waitForRowEverywhere("| same![[gate.ink.png]] | same |");
+    // An edit in the other pane keeps it.
+    await browser.executeObsidian(({ app, obsidian }) => {
+      const views = app.workspace
+        .getLeavesOfType("markdown")
+        .map(({ view }) => view)
+        .filter(
+          (view): view is InstanceType<typeof obsidian.MarkdownView> =>
+            view instanceof obsidian.MarkdownView &&
+            view.file?.path === "Table.md",
+        );
+      const other = views.find(
+        (view) =>
+          view !== app.workspace.getActiveViewOfType(obsidian.MarkdownView),
+      );
+      if (other === undefined) throw new Error("no other pane");
+      other.editor.replaceRange("Edited.\n\n", { line: 0, ch: 0 });
+    });
+    await waitForNoteEverywhere(`Edited.\n\n${withGate}`);
+  });
+
+  // The choice saves the symbol at once, so a change on disk after it reaches
+  // the editor as Obsidian reloads the saved note, and both are kept.
+  it("keeps a symbol from Insert existing symbol through a change on disk after it", async function () {
+    await createSymbol("gate.ink.png");
+    await intoCell("Table.md");
+    await chooseExisting("gat");
+    await waitForNoteEverywhere(withGate);
+    // As sync writes the note.
+    await browser.executeObsidian(async ({ app }) => {
+      const note = app.vault.getFileByPath("Table.md");
+      if (note === null) throw new Error("no Table.md");
+      await app.vault.process(note, (text) => `Prefix\n\n${text}`);
+    });
+    await waitForNoteEverywhere(`Prefix\n\n${withGate}`);
   });
 
   it("lands after a symbol from the ;; list", async function () {

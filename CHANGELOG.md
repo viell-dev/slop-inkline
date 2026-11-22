@@ -94,6 +94,11 @@ even one a public release; earlier pre-releases carry a suffix such as
   which moved where the pointer fell in the drawing, so letting go without
   moving ended the stroke somewhere other than it showed
   ([#382](https://github.com/viell-dev/slop-inkline/issues/382)).
+- **Inkline: Insert existing symbol** in a table cell in Live Preview keeps the
+  symbol when you type straight after choosing it. On a busy computer, a key
+  that came before the cell had taken the symbol made it leave the symbol out,
+  keeping only the letter
+  ([#415](https://github.com/viell-dev/slop-inkline/issues/415)).
 - **Fit** pressed while you draw now waits until you let go, as **Zoom** does.
   Moving along a zoomed drawing with the wheel or the left and right arrow keys
   while you draw now takes what you draw with it, on to where the pointer is in

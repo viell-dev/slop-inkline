@@ -536,24 +536,27 @@ must keep released files readable and looking the same, as
   away, in the pane the symbol started in or the one that took it, and through a
   rename, however Obsidian's question is answered. The same holds in a table
   cell in Live Preview, with real keys, including when a change on disk takes
-  the cell's editor away. A selection's text stays, one undo takes the symbol
-  back, and a discarded last drawing leaves the cursor after the run. A key, a
-  shortcut Obsidian handles, a click, a paste, a cut, an input method's text, or
-  a drop in the note straight after the editor closes keeps its place, with
-  whatever the close might leave to a timer held as a busy machine delays it,
-  and in a table cell after a change on disk took its editor away, a key keeps
-  its letter and a shortcut its cursor. A note in Reading view or closed takes
-  the symbol through its file, whose line endings stay as they are while the
-  place is found from either kind, in both directions, and **Insert existing
-  symbol** places a symbol as the other routes do. A rename while the note holds
-  unsaved text writes the new name once and keeps the text, however Obsidian's
-  question is answered, in a plain note, two panes, a table cell, a closed note,
-  and Reading view, with the cursor and the place of a run from Next surviving a
-  reload, and with the text arriving during the question or an editor's own save
-  falling due in it. Every rename, by Save, the library, or an existing symbol's
-  editor, saves the open notes first, and is refused with nothing changed if one
-  cannot be saved. A reload held past the editor's own save loses no text, and
-  running out of time writes nothing
+  the cell's editor away, and when a key comes straight after **Insert existing
+  symbol**'s choice, before the cell would have taken the symbol, which is then
+  saved at once and reaches a second pane on the note from the file. A
+  selection's text stays, one undo takes the symbol back, and a discarded last
+  drawing leaves the cursor after the run. A key, a shortcut Obsidian handles, a
+  click, a paste, a cut, an input method's text, or a drop in the note straight
+  after the editor closes keeps its place, with whatever the close might leave
+  to a timer held as a busy machine delays it, and in a table cell after a
+  change on disk took its editor away, a key keeps its letter and a shortcut its
+  cursor. A note in Reading view or closed takes the symbol through its file,
+  whose line endings stay as they are while the place is found from either kind,
+  in both directions, and **Insert existing symbol** places a symbol as the
+  other routes do. A rename while the note holds unsaved text writes the new
+  name once and keeps the text, however Obsidian's question is answered, in a
+  plain note, two panes, a table cell, a closed note, and Reading view, with the
+  cursor and the place of a run from Next surviving a reload, and with the text
+  arriving during the question or an editor's own save falling due in it. Every
+  rename, by Save, the library, or an existing symbol's editor, saves the open
+  notes first, and is refused with nothing changed if one cannot be saved. A
+  reload held past the editor's own save loses no text, and running out of time
+  writes nothing
   ([cursor-placement.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/cursor-placement.e2e.ts),
   [table-cells.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/table-cells.e2e.ts),
   [line-endings.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/line-endings.e2e.ts),
