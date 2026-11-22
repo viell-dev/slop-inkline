@@ -7,6 +7,7 @@ import {
   outsideLinks,
   textLinks,
 } from "../../../src/notes/links.ts";
+import { expectLinear } from "../../support/linear.ts";
 
 describe("paragraphLinks", () => {
   it("finds wiki links and embeds, with their targets", () => {
@@ -269,43 +270,62 @@ describe("links as Obsidian reads them", () => {
     expect(insertionAt(text, 30)).toEqual({ at: 42, before: " " });
   });
 
-  // A budget for each of these tests, far above what reading the text in one
-  // pass takes and far below what reading it again from each failed start
-  // would. On Windows 11, under Vitest, the scanner takes about 0.2 s on the
-  // first test and 0.1 s on the second, alone, and up to five times as long
-  // beside the other test files, which Vitest runs at once. Each scanner that
-  // read too much took over 20 s on one of them: the one before 40d83d6, which
-  // read a whole address before checking its host, 64 s on the first; the one
-  // before da2a509, with `%` in an email's name, 25 s on the first; the one
-  // before 7c4eb35, which read brackets again from each `[`, 28 s on the
-  // second; and the one before 99c10e1, which trimmed an address's `)` one at
-  // a time, 21 s on its last input alone.
-  const budget = 3000;
+  // How many times as long as `simplePasses` in `test/support/linear.ts` the
+  // scanner may take over each of these texts, timed in the same run, so that
+  // what slows the machine slows both; a budget of 3 s for each test by the
+  // clock alone fails on a machine slow enough, as png.test.ts's limit of
+  // 100 ms did (#420). On Windows 11, with the machine
+  // busy, the scanner took 0.5 to 2.2 times as long. The scanners that read too
+  // much took 59 to 1,994 times as long on at least one text of each test: the
+  // one before 40d83d6, which read a whole address before checking its host,
+  // 59 to 667 times on the first test's addresses; the one before da2a509, with
+  // `%` in an email's name, 112 and 293 times on its percent-encoded texts; the
+  // one before 7c4eb35, which read brackets again from each `[`, 287 to 418
+  // times on the second test's brackets; and the one before 99c10e1, which
+  // trimmed an address's `)` one at a time, 1,994 times on its last text.
+  const linksTimes = 15;
 
-  it("reads long runs of failed address starts in time", () => {
-    const started = performance.now();
-    expect(textLinks("https://".repeat(20000))).toEqual([]);
-    expect(textLinks("mailto:".repeat(20000))).toEqual([]);
-    // Percent-encoded text, where each % could start an email's name.
-    expect(textLinks("%E5%A1%94".repeat(6000))).toEqual([]);
-    expect(textLinks("a%".repeat(60000))).toEqual([]);
-    const word = `${"a".repeat(93)}http://`.repeat(2000);
-    expect(textLinks(word)).toEqual([]);
-    expect(performance.now() - started).toBeLessThan(budget);
-  });
+  /** That `text` holds no links, read in linear time. */
+  const noLinks = (text: string): void => {
+    expect(textLinks(text)).toEqual([]);
+    expectLinear(text, () => textLinks(text), linksTimes);
+  };
 
-  it("reads a long line of unclosed brackets in time", () => {
-    const started = performance.now();
-    expect(textLinks("[".repeat(40000))).toEqual([]);
-    expect(textLinks("[[".repeat(20000))).toEqual([]);
-    expect(textLinks(`${"[".repeat(40000)}]`)).toEqual([]);
-    // Links nested in links, around one embed, and an address before many
-    // closing parentheses.
-    const nested = `${"[".repeat(10000)}![](x.png)${"](b)".repeat(10000)}`;
-    expect(textLinks(nested).length).toBeGreaterThan(0);
-    expect(textLinks(`https://x.y/a${")".repeat(40000)}`)).toHaveLength(1);
-    expect(performance.now() - started).toBeLessThan(budget);
-  });
+  // Each test reads each text a few times, which took up to 1.7 s alone, more
+  // than Vitest's 5 s allows under load; it promises nothing about speed but
+  // what the check above says.
+  const timeLimit = 30_000;
+
+  it(
+    "reads long runs of failed address starts in time",
+    () => {
+      noLinks("https://".repeat(20000));
+      noLinks("mailto:".repeat(20000));
+      // Percent-encoded text, where each % could start an email's name.
+      noLinks("%E5%A1%94".repeat(6000));
+      noLinks("a%".repeat(60000));
+      noLinks(`${"a".repeat(93)}http://`.repeat(2000));
+    },
+    timeLimit,
+  );
+
+  it(
+    "reads a long line of unclosed brackets in time",
+    () => {
+      noLinks("[".repeat(40000));
+      noLinks("[[".repeat(20000));
+      noLinks(`${"[".repeat(40000)}]`);
+      // Links nested in links, around one embed, and an address before many
+      // closing parentheses.
+      const nested = `${"[".repeat(10000)}![](x.png)${"](b)".repeat(10000)}`;
+      expect(textLinks(nested).length).toBeGreaterThan(0);
+      expectLinear(nested, () => textLinks(nested), linksTimes);
+      const parentheses = `https://x.y/a${")".repeat(40000)}`;
+      expect(textLinks(parentheses)).toHaveLength(1);
+      expectLinear(parentheses, () => textLinks(parentheses), linksTimes);
+    },
+    timeLimit,
+  );
 });
 
 /** A seeded generator of numbers from 0 up to 1, so that failures repeat. */

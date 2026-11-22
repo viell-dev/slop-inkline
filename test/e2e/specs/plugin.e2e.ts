@@ -663,6 +663,7 @@ describe("What Inkline started, once it unloads", function () {
       "inkline:edit-symbol-at-cursor",
       "inkline:insert-existing-symbol",
       "inkline:insert-symbol",
+      "inkline:recover-drafts",
       "inkline:show-library",
     ]);
     await browser.$("img.inkline-symbol").waitForExist();

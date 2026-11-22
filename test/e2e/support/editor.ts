@@ -1629,6 +1629,44 @@ export async function renamePastHold(from: string, to: string): Promise<void> {
 }
 
 /**
+ * Counts the reads of the note at `path` through the vault from now on, as a
+ * rename reads each open note to see whether it has text to save, until
+ * {@link undoStubs}. {@link noteReads} says how many there were.
+ */
+export async function countNoteReads(path: string): Promise<void> {
+  await browser.executeObsidian(({ app }, wanted) => {
+    // What the vault had as its own, if anything, to put back.
+    const ownBefore = Object.hasOwn(app.vault, "read");
+    const previous: unknown = Reflect.get(app.vault, "read");
+    const read = app.vault.read.bind(app.vault);
+    const counted = { reads: 0 };
+    const wrapper: typeof app.vault.read = (file) => {
+      if (file.path === wanted) counted.reads++;
+      return read(file);
+    };
+    app.vault.read = wrapper;
+    Reflect.set(window, "inklineNoteReads", counted);
+    Reflect.set(window, "inklineAtEnd-note-reads", () => {
+      Reflect.deleteProperty(window, "inklineNoteReads");
+      if (Reflect.get(app.vault, "read") !== wrapper) return;
+      if (ownBefore) Reflect.set(app.vault, "read", previous);
+      else Reflect.deleteProperty(app.vault, "read");
+    });
+  }, path);
+}
+
+/** How many reads {@link countNoteReads} has counted. */
+export async function noteReads(): Promise<number> {
+  return browser.execute(() => {
+    const counted: unknown = Reflect.get(window, "inklineNoteReads");
+    if (typeof counted !== "object" || counted === null) {
+      throw new Error("no reads are being counted");
+    }
+    return Number(Reflect.get(counted, "reads"));
+  });
+}
+
+/**
  * Holds Obsidian's index, until {@link letGo}, on a note it creates through
  * the vault, which the index reads as it would one that sync brings in, so
  * that what waits for the index to catch up with the whole vault waits, as

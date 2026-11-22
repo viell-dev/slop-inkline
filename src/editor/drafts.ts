@@ -877,6 +877,14 @@ export class DraftStore {
     return { drafts: drafts.sort((a, b) => b.savedAt - a.savedAt), later };
   }
 
+  /**
+   * Every draft {@link list} gives that no open editor owns or restored,
+   * newest first, whatever its symbol: the drafts {@link forTarget} offers.
+   */
+  unheld(): Draft[] {
+    return this.list().filter((draft) => !this.#held.has(draft.id));
+  }
+
   /** The drafts for a symbol, newest first, other than open editors'. */
   forTarget(target: DraftTarget): Draft[] {
     return this.offers(target).drafts;

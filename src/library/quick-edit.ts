@@ -9,6 +9,7 @@ import {
   renameWaits,
   savingWaits,
   TextMoved,
+  type SaveWait,
 } from "../notes/file-writes.ts";
 
 /** The steps of a save, in the order they run. */
@@ -21,15 +22,15 @@ export interface Work {
   readonly stop: () => boolean;
 }
 
-/** Told `true` when a step has waited long, and `false` when it goes on. */
-export type Told = (waiting: boolean) => void;
-
 /** The steps a save was asked for, each started when its turn comes. */
 export interface Steps {
-  /** Writes the readings and translations, if they changed. */
-  readonly write?: (told: Told) => Work;
-  /** Renames the symbol, if its name changed. */
-  readonly rename?: (told: Told) => Work;
+  /**
+   * Writes the readings and translations, if they changed, and tells `told`
+   * when that has waited long, and when it goes on.
+   */
+  readonly write?: (told: SaveWait) => Work;
+  /** Renames the symbol, if its name changed, and tells `told` the same. */
+  readonly rename?: (told: SaveWait) => Work;
 }
 
 /** A step that the person left while it waited. */
@@ -45,14 +46,10 @@ export interface Left {
 
 /** How a save ended. */
 export interface Outcome {
-  /** Whether the readings and translations were asked to be written. */
-  readonly writing: boolean;
   /** Whether a rename was asked for. */
   readonly renaming: boolean;
   /** Whether the readings and translations were written. */
   readonly written: boolean;
-  /** Whether the rename ended as asked. */
-  readonly renamed: boolean;
   /** Whether a step waited long enough for the person to be told. */
   readonly waited: boolean;
   readonly left: Left | undefined;
@@ -119,7 +116,6 @@ export class QuickSave {
 
   /** Runs the steps asked for, and says how the save ended. */
   async run(): Promise<Outcome> {
-    let renamed = false;
     let failure: Outcome["failure"];
     try {
       if (this.#steps.write !== undefined) {
@@ -128,23 +124,20 @@ export class QuickSave {
       }
       if (this.#steps.rename !== undefined && this.#left === undefined) {
         await this.#run("rename", this.#steps.rename);
-        renamed = true;
       }
     } catch (error) {
       failure = { step: this.#step ?? "write", error };
     }
     return {
-      writing: this.#steps.write !== undefined,
       renaming: this.#steps.rename !== undefined,
       written: this.#written,
-      renamed,
       waited: this.#waited,
       left: this.#left,
       failure,
     };
   }
 
-  async #run(step: Step, start: (told: Told) => Work): Promise<void> {
+  async #run(step: Step, start: (told: SaveWait) => Work): Promise<void> {
     this.#step = step;
     this.#work = undefined;
     this.#waiting = false;
@@ -249,6 +242,22 @@ function renameNotice(
   return failure instanceof RenameDisturbed
     ? `${first}Renaming ${names.was} to ${names.typed}: ${reason}`
     : `${first}${names.was} could not be renamed to ${names.typed}: ${reason}`;
+}
+
+/**
+ * The lines the row shows, a line each: why the file could not be read, if the
+ * last read failed, which says why the fields are closed, and then what the
+ * last save, or a name refused before one, said. A reason that the save's lines
+ * give already, as when a save fails on a file the read after it cannot read
+ * either, is said once.
+ */
+export function rowLines(
+  readFailure: string | undefined,
+  saveLines: readonly string[],
+): readonly string[] {
+  return readFailure === undefined || saveLines.includes(readFailure)
+    ? saveLines
+    : [readFailure, ...saveLines];
 }
 
 /**
