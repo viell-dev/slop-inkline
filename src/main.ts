@@ -27,9 +27,10 @@ import {
   insertExistingSymbol,
   insertSymbol,
   recoverDrafts,
-  sweepStaged,
   type EditorHost,
 } from "./notes/symbols.ts";
+import { symbolFiles, type SymbolFiles } from "./notes/symbol-files.ts";
+import { sweepStaged } from "./notes/symbol-writes.ts";
 import { SymbolTextIndex } from "./notes/text-index.ts";
 import { SymbolRenderer } from "./render/symbols.ts";
 import { brushSizes } from "./editor/session.ts";
@@ -79,6 +80,12 @@ export default class InklinePlugin extends Plugin {
   );
   #drafts: DraftStore | undefined;
   /**
+   * What this load's writes of symbol files share, as its one line of writes:
+   * made once, as {@link SymbolFiles} says, and not by {@link #host}, which
+   * makes another object on each call.
+   */
+  #files: SymbolFiles | undefined;
+  /**
    * This load of the plugin, which ends as Obsidian unloads it: Obsidian makes
    * a new instance for each load. What Inkline starts that can act later, as
    * from a callback, after an await, or from a dialog, is over once it ends.
@@ -101,11 +108,22 @@ export default class InklinePlugin extends Plugin {
     );
   }
 
+  /** What this load's writes of symbol files share. */
+  get #symbolFiles(): SymbolFiles {
+    this.#files ??= symbolFiles(
+      this.app,
+      this.#folder,
+      this.#lifetime.signal,
+      (file) => this.#texts.refresh(file),
+    );
+    return this.#files;
+  }
+
   /** What the editors this plugin opens may use while it is loaded. */
   get #host(): EditorHost {
     this.#drafts ??= new DraftStore(this.app);
     return {
-      app: this.app,
+      ...this.#symbolFiles,
       settings: () => this.#settings,
       drafts: this.#drafts,
       texts: this.#texts,
@@ -113,8 +131,6 @@ export default class InklinePlugin extends Plugin {
         opened: (editor) => this.#editors.add(editor),
         closed: (editor) => this.#editors.delete(editor),
       },
-      unloaded: this.#lifetime.signal,
-      folder: this.#folder,
     };
   }
 
@@ -133,7 +149,7 @@ export default class InklinePlugin extends Plugin {
     if (!this.#loaded) return;
     // What a save that made a symbol's file left in Inkline's folder, as when
     // Obsidian closed during it. Saves that start meanwhile keep their own.
-    void sweepStaged(this.app, this.#folder);
+    void sweepStaged(this.app.vault, this.#folder);
     this.#renderer.configure(
       this.#settings.symbolScale / 100,
       this.#settings.textColor,
@@ -225,7 +241,7 @@ export default class InklinePlugin extends Plugin {
     });
     this.registerView(
       libraryViewType,
-      (leaf) => new SymbolLibraryView(leaf, this.#texts, this.#lifetime.signal),
+      (leaf) => new SymbolLibraryView(leaf, this.#texts, this.#symbolFiles),
     );
     this.addCommand({
       id: "show-library",
