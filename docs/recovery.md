@@ -182,10 +182,10 @@ back only if the draft kept its own, and the question says when it does not.
 Readings and translations saved in the old file, and not typed again, stay in
 it.
 
-Until you save the new symbol, its draft stays the old symbol's, as the one
-found was: if the editor ends without Save or Discard, as when Obsidian closes,
-the draft can be opened again the same way, or restored on the old symbol's
-file, with its base layer, should that file open again.
+Until a save starts writing the new symbol, its draft stays the old symbol's, as
+the one found was: if the editor ends before then, as when Obsidian closes or
+Inkline is turned off, the draft can be opened again the same way, or restored
+on the old symbol's file, with its base layer, should that file open again.
 
 The new symbol's first save makes a new file in the folder the old file was in,
 and inserts it into no note: a note that embeds the old file still does, and

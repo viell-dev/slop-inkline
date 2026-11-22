@@ -70,12 +70,14 @@ The embed goes where the cursor was when you ran the command:
   work, and **Next** says that it started no other symbol.
 
 The cursor then lands just after the symbol, as after a typed character, so you
-can type on at once, in a table cell in Live Preview too. Text you had selected
-stays as it was. With **Next**, each symbol goes after the one before, in the
-order you drew them, and the cursor ends after the last, also when you discard
-the drawing you were on. A note that has gone to Reading view meanwhile takes
-the symbol too, through its file, which keeps its line endings, Windows ones
-included.
+can type on at once, in a table cell in Live Preview too. **Unreleased:** what
+you type, paste, or click as the editor closes keeps its place. With Inkline
+1.0.2 and earlier, on a busy computer, the first letters typed straight after
+saving could come out in the wrong order. Text you had selected stays as it was.
+With **Next**, each symbol goes after the one before, in the order you drew
+them, and the cursor ends after the last, also when you discard the drawing you
+were on. A note that has gone to Reading view meanwhile takes the symbol too,
+through its file, which keeps its line endings, Windows ones included.
 
 ## Insert a symbol you have
 
@@ -394,7 +396,9 @@ readings and translations cannot be read when Quick edit opens, their fields
 stay closed, and the name can still change. **Unreleased:** the row says why
 they are closed for as long as they are, above what a save said, as when a name
 is refused, and so it does when the file stops being readable while the row is
-open.
+open. **Unreleased:** when a save leaves the row open, as one that found the
+file changed does, a change that came while it ran is taken in once it ends; if
+that closes the fields, the focus goes to the name.
 
 ## Export a note to PDF
 

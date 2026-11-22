@@ -858,6 +858,11 @@ export class SymbolLibraryView extends ItemView {
     let shown: readonly string[] = [];
     /** Counts reads, so that only the latest is taken. */
     let reads = 0;
+    /**
+     * Whether the vault reported a change to the file while a save ran, which
+     * the row does not read the file for until the save ends.
+     */
+    let missed = false;
     const fields = new TextFields(
       form,
       noText,
@@ -936,8 +941,15 @@ export class SymbolLibraryView extends ItemView {
       }
       finish();
     };
-    const reread = (): void => {
-      if (saving) return;
+    /**
+     * Reads the file again, for the fields to take what it says, or to say why
+     * they cannot. `failed` hears if this read, still the latest, could not.
+     */
+    const reread = (failed?: () => void): void => {
+      if (saving) {
+        missed = true;
+        return;
+      }
       const read = ++reads;
       void readSymbolText(this.app, file).then(
         (now) => {
@@ -959,6 +971,7 @@ export class SymbolLibraryView extends ItemView {
           save.disabled = this.app.vault.getFileByPath(file.path) !== file;
           readFailure = reasonOf(failure, "The symbol could not be read.");
           showLines();
+          failed?.();
         },
       );
     };
@@ -1042,6 +1055,7 @@ export class SymbolLibraryView extends ItemView {
       // file said before the change the save may find. Once the save ends,
       // the fields take what its write found, or read the file again.
       reads++;
+      missed = false;
       save.disabled = true;
       cancellable(false);
       input.readOnly = true;
@@ -1116,11 +1130,24 @@ export class SymbolLibraryView extends ItemView {
         say(report.lines);
         // What the vault reported during the save, a rename elsewhere or a
         // file gone, is taken in now. A write refused for a change on disk
-        // read the file itself, and the fields have taken what it found.
+        // read the file itself, and the fields have taken what it found, so
+        // the file is read again only if the vault reported a change while
+        // the save ran, which can have come after the write's read: the file
+        // cut short or deleted again, or other text.
         renamed();
-        if (report.moved === undefined) reread();
         if (report.focus === "fields" && readable) fields.focus();
         else input.focus();
+        if (report.moved === undefined || missed) {
+          // A read that closes the fields takes the focus out of them, to the
+          // name, which can still change; the fields are read-only now.
+          reread(() => {
+            const active = form.doc.activeElement;
+            const inFields =
+              active?.instanceOf(HTMLTextAreaElement) === true &&
+              form.contains(active);
+            if (inFields) input.focus();
+          });
+        }
       });
     });
     reread();
