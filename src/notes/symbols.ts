@@ -2250,14 +2250,16 @@ function recoverDraft(host: EditorHost, orphan: Orphan): void {
   );
   /** The new symbol's file once made, or taken over. */
   let made: TFile | undefined;
-  const keeps =
-    created === undefined
-      ? undefined
-      : symbolStem(created.path.slice(created.path.lastIndexOf("/") + 1));
   new InkEditorModal(app, {
     title: "New symbol",
-    // A field left empty keeps the name of the file it writes over.
-    ...(keeps === undefined ? {} : { unnamed: `to keep the name ${keeps}` }),
+    // A field left empty keeps the name of the file it writes over, which is
+    // claimed only once the draft is restored, and follows a rename.
+    unnamed: () => {
+      if (claim === undefined) return undefined;
+      const path = claim.file?.path ?? claim.path;
+      const kept = symbolStem(path.slice(path.lastIndexOf("/") + 1));
+      return kept === undefined ? undefined : `to keep the name ${kept}`;
+    },
     document: emptyDocument,
     center: visibleWidth / 2,
     tools: startingTools(host.settings()),
