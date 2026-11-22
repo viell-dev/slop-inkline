@@ -27,6 +27,11 @@ import {
   interruptInsertion,
   showWelcomeInstead,
 } from "../support/failed-insertion.ts";
+import {
+  setStalledAfter,
+  shortStall,
+  waitForStallSaid,
+} from "../support/stalls.ts";
 import { noteOnDisk, waitForLink } from "../support/vault-files.ts";
 
 describe("The editor", function () {
@@ -498,6 +503,34 @@ describe("The editor", function () {
     );
     expect(await noteOnDisk("Editor.md")).toBe(replacement);
     expect(await symbolFiles()).toEqual(["001.ink.png"]);
+  });
+
+  it("says so while the embed waits to be written, and inserts it once that ends", async function () {
+    await setStalledAfter(shortStall);
+    await insert();
+    await draw(zigzag);
+    await showWelcomeInstead();
+    await holdNote("process", "before");
+    try {
+      const asked = Date.now();
+      await browser.keys(["Control", "Enter"]);
+      await waitForHold();
+      const said = await waitForStallSaid(
+        () => browser.$(".inkline-editor .inkline-save-wait"),
+        asked,
+      );
+      expect(said).toContain("Waiting for Obsidian to finish writing a file.");
+      expect(said).toContain("restart Obsidian");
+      // The symbol's file is written: only its embed waits.
+      expect(await symbolFiles()).toEqual(["001.ink.png"]);
+      expect(await editorOpen()).toBe(true);
+    } finally {
+      await releaseHold("process");
+    }
+    await waitClosed();
+    expect(await noteOnDisk("Editor.md")).toBe(
+      "The door is marked with ![[001.ink.png]] which means return.\n",
+    );
   });
 
   it("tries the insertion again on the next save after it fails", async function () {
