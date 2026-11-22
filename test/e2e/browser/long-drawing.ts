@@ -426,6 +426,35 @@ export async function runSequence(
     if (session.placing) session.end();
   };
 
+  const path = async (): Promise<void> => {
+    brush("path");
+    /** A click, or a press dragged out to a handle's end, from `at`. */
+    const put = (at: { x: number; y: number }): void => {
+      session.begin(at, session.snap);
+      const to = chance(0.5)
+        ? { x: at.x + between(-50, 50), y: at.y + between(-40, 40) }
+        : at;
+      session.extend([to], session.snap);
+      session.end(to, session.snap);
+    };
+    const first = place();
+    put(first);
+    let at = first;
+    const points = whole(1, 4);
+    for (let point = 0; point < points && session.placing; point++) {
+      at = { x: at.x + between(-80, 80), y: at.y + between(-60, 60) };
+      put(at);
+      if (chance(0.3)) await frame();
+    }
+    // Closed on its first point, ended on its last, or just left there.
+    const end = chance(0.5) ? first : at;
+    if (session.placing) {
+      session.begin(end, session.snap);
+      session.end(end, session.snap);
+    }
+    if (session.placing) session.end();
+  };
+
   const run: readonly (readonly [string, number, () => unknown])[] = [
     ["freehand", 10, freehand],
     [
@@ -451,6 +480,7 @@ export async function runSequence(
     ],
     ["ellipse", 4, ellipse],
     ["polygon", 4, polygon],
+    ["path", 4, path],
     ["undo", 4, () => session.undo()],
     ["redo", 3, () => session.redo()],
     [

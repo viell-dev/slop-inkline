@@ -725,6 +725,17 @@ export class InkEditorModal extends Modal {
     );
     this.#addButton(
       tools,
+      "path",
+      "Path",
+      "A",
+      () => {
+        this.#togglePath();
+      },
+      "Path",
+      "place a curve by its points: click for a corner, or drag for a smooth point and its handles; drag a point or a handle's end to move it; click the first point to close the path, or the last to end it; hold Shift to snap to the grid",
+    );
+    this.#addButton(
+      tools,
       "fill",
       "Toggle fill",
       "B",
@@ -732,7 +743,7 @@ export class InkEditorModal extends Modal {
         this.#toggleFill();
       },
       "Toggle fill",
-      "while on, Ellipse, and Polygon closed on its first corner, draw solid shapes, with the pen or the eraser; it doesn't fill what is already drawn",
+      "while on, Ellipse, and Polygon or Path closed on its first point, draw solid shapes, with the pen or the eraser; it doesn't fill what is already drawn",
     );
     const history = this.contentEl.createDiv({ cls: "inkline-toolbar" });
     brushSizes.forEach((size, index) => {
@@ -802,7 +813,7 @@ export class InkEditorModal extends Modal {
         this.#toggleFlatEnds();
       },
       "Flat ends",
-      "with the grid on, freehand ends that Shift puts on a row, coming in at 45° or steeper, stop flush with it, rather than rounding past it",
+      "with the grid on, ends of freehand strokes and paths that Shift puts on a row, coming in at 45° or steeper, stop flush with it, rather than rounding past it",
     );
     if (this.#options.copyFrom !== undefined) {
       this.#addButton(
@@ -1095,10 +1106,12 @@ export class InkEditorModal extends Modal {
 
   /** What {@link close} does while the editor is open: Esc, for one. */
   #closeAsked(): void {
-    // A polygon being placed is dropped first, and the editor stays open.
+    // A polygon or path being placed is dropped first, and the editor stays
+    // open.
     if (this.#session.placing) {
+      const path = this.#session.placingPath;
       this.#session.cancel();
-      this.#announce("Polygon dropped");
+      this.#announce(path ? "Path dropped" : "Polygon dropped");
       this.#updateButtons();
       this.#render();
       return;
@@ -1470,18 +1483,21 @@ export class InkEditorModal extends Modal {
     key([], "y", () => {
       this.#togglePolygon();
     });
+    key([], "a", () => {
+      this.#togglePath();
+    });
     key([], "b", () => {
       this.#toggleFill();
     });
-    // Enter on the drawing area ends a polygon being placed where it is;
-    // elsewhere it is left to what has the focus, such as a button.
+    // Enter on the drawing area ends a polygon or path being placed where it
+    // is; elsewhere it is left to what has the focus, such as a button.
     this.scope.register([], "Enter", () => {
       const canvas = this.#view?.canvas;
       if (!this.#session.placing || activeDocument.activeElement !== canvas) {
         return true;
       }
       this.#line.act(() => {
-        this.#endPolygon();
+        this.#endPlacing();
       });
       return false;
     });
@@ -1645,8 +1661,8 @@ export class InkEditorModal extends Modal {
     canvas.addEventListener("pointermove", (event) => {
       hover(event);
       if (!this.#gate.owns(event)) {
-        // Between clicks, a polygon's next side follows the pointer, to the
-        // grid while Shift is held.
+        // Between clicks, a polygon's next side, or a path's next curve,
+        // follows the pointer, to the grid while Shift is held.
         if (this.#gate.active === undefined && this.#session.placing) {
           this.#session.extend([point(event)], event.shiftKey);
           this.#render();
@@ -2178,7 +2194,7 @@ export class InkEditorModal extends Modal {
       this.#announce("Paste, drop, or choose a picture first, to move it");
       return;
     }
-    this.#endPolygon();
+    this.#endPlacing();
     this.#moving = !this.#moving;
     this.#updateButtons();
   }
@@ -2309,10 +2325,11 @@ export class InkEditorModal extends Modal {
   /**
    * Magnifies the drawing, or shows it as usual again. While the pointer is
    * pressed to draw, that waits until it is let go: zooming moves what the
-   * pointer is over, so a stroke, a shape, or a polygon's corner being drawn
-   * would end somewhere other than it shows, as the release then lands
-   * elsewhere in the drawing (#382). So it keeps the view it started in, as
-   * it keeps its grid ({@link DrawingSession.grid}), its tool, and its size.
+   * pointer is over, so a stroke, a shape, a polygon's corner, or a path's
+   * point or handle being drawn would end somewhere other than it shows, as
+   * the release then lands elsewhere in the drawing (#382). So it keeps the
+   * view it started in, as it keeps its grid ({@link DrawingSession.grid}),
+   * its tool, and its size.
    */
   #toggleZoom(): void {
     if (!this.#pressed) {
@@ -2359,6 +2376,9 @@ export class InkEditorModal extends Modal {
         ? { ...this.#session.grid, originX: this.#session.gridOrigin }
         : undefined;
       view.reference = this.#picture;
+      view.path = this.#session.pathMarks;
+      // A press takes hold of a path's marks as near as they show.
+      this.#session.markReach = view.markReach;
       const { document, base } = this.#shown(view);
       const { activeStrokes, shape, tool } = this.#session;
       view.render(
@@ -2439,25 +2459,31 @@ export class InkEditorModal extends Modal {
     this.#render();
   }
 
-  /** Whether strokes drawn now can end flat: freehand, on the grid. */
+  /**
+   * Whether strokes drawn now can end flat: freehand strokes and paths, on
+   * the grid.
+   */
   get #canEndFlat(): boolean {
-    return this.#session.snap && this.#session.shape === "free";
+    const { shape } = this.#session;
+    return this.#session.snap && (shape === "free" || shape === "path");
   }
 
   /**
    * Cuts the ends of strokes drawn from now on flat on the grid, or does not.
-   * Only freehand strokes on the grid are cut, so the button is off otherwise,
-   * and the key says so.
+   * Only freehand strokes and paths on the grid are cut, so the button is off
+   * otherwise, and the key says so. A path being placed shows its ends as
+   * they are cut now.
    */
   #toggleFlatEnds(): void {
     if (!this.#canEndFlat) {
       this.#announce(
-        "Flat ends is for freehand strokes on the grid; turn on Grid first, without Ellipse or Polygon",
+        "Flat ends is for freehand strokes and paths on the grid; turn on Grid first, without Ellipse or Polygon",
       );
       return;
     }
     this.#session.flatEnds = !this.#session.flatEnds;
     this.#updateButtons();
+    this.#render();
   }
 
   /** Switches between drawing ellipses and drawing as the pointer goes. */
@@ -2470,27 +2496,33 @@ export class InkEditorModal extends Modal {
     this.#switchShape("polygon");
   }
 
+  /** Switches between placing paths and drawing as the pointer goes. */
+  #togglePath(): void {
+    this.#switchShape("path");
+  }
+
   /**
    * Draws `shape`, or as the pointer goes if it is already chosen. A polygon
-   * being placed ends where it is first; a stroke being dragged keeps the
-   * shape it has.
+   * or path being placed ends where it is first; a stroke being dragged
+   * keeps the shape it has.
    */
   #switchShape(shape: Shape): void {
     if (this.#session.drawing && !this.#session.placing) return;
-    this.#endPolygon();
+    this.#endPlacing();
     this.#session.shape = this.#session.shape === shape ? "free" : shape;
     this.#moving = false;
     this.#updateButtons();
   }
 
   /**
-   * Fills the shapes drawn from now on, or does not. Only Ellipse and Polygon
-   * fill, so the button is off while drawing freehand, and the key says so.
+   * Fills the shapes drawn from now on, or does not. Only Ellipse, Polygon,
+   * and Path fill, so the button is off while drawing freehand, and the key
+   * says so.
    */
   #toggleFill(): void {
     if (this.#session.shape === "free") {
       this.#announce(
-        "Toggle fill is for Ellipse and Polygon; choose one first",
+        "Toggle fill is for Ellipse, Polygon, and Path; choose one first",
       );
       return;
     }
@@ -2499,8 +2531,11 @@ export class InkEditorModal extends Modal {
     this.#render();
   }
 
-  /** Ends a polygon being placed with the corners it has, if there is one. */
-  #endPolygon(): void {
+  /**
+   * Ends a polygon or path being placed with the points it has, if there is
+   * one.
+   */
+  #endPlacing(): void {
     if (!this.#session.placing) return;
     this.#session.end();
     this.#changed();
@@ -2521,7 +2556,10 @@ export class InkEditorModal extends Modal {
     this.#render();
   }
 
-  /** Undoes the last change, or the last corner of a polygon being placed. */
+  /**
+   * Undoes the last change, or the last corner of a polygon being placed, or
+   * the last step of a path being placed.
+   */
   #undo(): void {
     if (this.#session.undoCorner()) {
       this.#updateButtons();
@@ -2558,6 +2596,7 @@ export class InkEditorModal extends Modal {
     pressed("eraser", drawing && this.#session.tool === "eraser");
     pressed("ellipse", drawing && this.#session.shape === "ellipse");
     pressed("polygon", drawing && this.#session.shape === "polygon");
+    pressed("path", drawing && this.#session.shape === "path");
     const shaped = this.#session.shape !== "free";
     pressed("fill", shaped && this.#session.fill);
     this.#buttons.get("fill")?.setDisabled(!shaped);
@@ -2688,9 +2727,10 @@ export class InkEditorModal extends Modal {
       "Pen (P) adds ink; Eraser (E) removes it. Sizes S–XL (1–4) are remembered separately until you close the editor, including through Next. The circle shows the brush's diameter.",
       "Ellipse (O) draws an ellipse with the pen or the eraser: drag across the box it fills, and hold Shift for a circle, or with the grid on to put the box's corners on the grid. Press it again to draw freehand. A shape drawn with the eraser is tinted until it is done.",
       "Polygon (Y) draws a shape with straight sides and sharp corners: click each corner, then click the first corner again to close it, or the last corner, or press Enter, to leave it open. With the grid on, hold Shift as you click to put that corner on the grid. Undo takes back a corner, and Esc drops the shape.",
-      "Toggle fill (B) is a switch, not a tool to click a shape with: while it is on, Ellipse and a closed Polygon draw solid shapes, with their line at the brush size as without fill and everything inside it filled. The pen makes a solid shape, and the eraser a hole of its shape.",
+      "Path (A) places a curve by its points, as the pen or the eraser would draw along it: click for a corner, or press and drag for a smooth point, whose handle follows the pointer and sets the curve's direction there. While you place it, drag any point or handle's end to move it; a handle dragged back onto its point leaves a corner. Click the first point to close the path, or the last point, or press Enter, to leave it open. With the grid on, hold Shift to put a point, or a handle's end, on the grid. Undo takes back the last point or move, and Esc drops the path. Once it ends, it is ink like any other stroke.",
+      "Toggle fill (B) is a switch, not a tool to click a shape with: while it is on, Ellipse and a closed Polygon or Path draw solid shapes, with their line at the brush size as without fill and everything inside it filled. The pen makes a solid shape, and the eraser a hole of its shape.",
       "Hold Shift while drawing for a straight segment. Grid (Shift+G) shows dots as a guide, and nothing goes to them unless you hold Shift: then each stroke end or corner you place goes to the nearest dot. Its rows pass through each guide line the settings choose, and divide the space between lines evenly; the settings also set how many cells span the x-height.",
-      "Flat ends (T), with the grid on, stops a freehand end that Shift put on a row flush with that row, rather than rounding past it, if it comes in at 45° or steeper; one running along the row stays round. It is off until you turn it on, and shapes are never cut.",
+      "Flat ends (T), with the grid on, stops an end of a freehand stroke or a path that Shift put on a row flush with that row, rather than rounding past it, if it comes in at 45° or steeper; one running along the row stays round. It is off until you turn it on, and ellipses and polygons are never cut.",
       "Undo (Mod+Z) and Redo (Mod+Shift+Z) step through changes. Clear removes the drawing and can be undone.",
       "Up and Down, or the up and down arrow keys, move the whole drawing a pixel at a time, or a grid cell's width with Shift, as to sit a shape on a line. One Undo takes back moves made in a row.",
       "Zoom (Z) shows the drawing up to twice as large in a taller view, for fine detail; the wheel or the left and right arrow keys move along it, and Fit (F) centres it. Pressed while you draw, it waits until you let go, so that what you draw ends where it shows. While zoomed, the grid has twice as many cells each way, and keeps every point of the usual grid. Saved symbols stay the same size in notes.",
