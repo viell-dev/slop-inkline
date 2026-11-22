@@ -12,6 +12,7 @@ import {
 import {
   chooseExisting,
   next,
+  openBeside,
   rewrite,
   searchExisting,
   setLinkUpdates,
@@ -20,10 +21,12 @@ import {
 } from "../support/insertion.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 import {
+  backIntoCell,
   holdInklineTimers,
   intoCell,
   letInklineTimersGo,
   waitForLastRow,
+  waitForRowEverywhere,
 } from "../support/table-cell.ts";
 
 describe("Symbols in a table cell in Live Preview", function () {
@@ -128,9 +131,53 @@ describe("Symbols in a table cell in Live Preview", function () {
     await holdInklineTimers();
     await browser.keys(["Enter"]);
     await type("x");
-    await letInklineTimersGo();
+    // The late return of the focus, at least, which shows the hold works.
+    expect(await letInklineTimersGo()).toBeGreaterThan(0);
     await type("y");
     await waitForLastRow("| same![[gate.ink.png]]xy | same |");
+  });
+
+  // With no key after it, the symbol is an edit like any other: saved, and
+  // passed to the note's other panes (#428's review).
+  it("saves a symbol from Insert existing symbol and passes it to another pane", async function () {
+    await createSymbol("gate.ink.png");
+    await intoCell("Table.md");
+    await openBeside("Table.md");
+    await backIntoCell();
+    await chooseExisting("gat");
+    await waitForRowEverywhere("| same![[gate.ink.png]] | same |");
+    // An edit in the other pane keeps it.
+    await browser.executeObsidian(({ app, obsidian }) => {
+      const views = app.workspace
+        .getLeavesOfType("markdown")
+        .map(({ view }) => view)
+        .filter(
+          (view): view is InstanceType<typeof obsidian.MarkdownView> =>
+            view instanceof obsidian.MarkdownView &&
+            view.file?.path === "Table.md",
+        );
+      const other = views.find(
+        (view) =>
+          view !== app.workspace.getActiveViewOfType(obsidian.MarkdownView),
+      );
+      if (other === undefined) throw new Error("no other pane");
+      other.editor.replaceRange("Edited.\n\n", { line: 0, ch: 0 });
+    });
+    await waitForRowEverywhere("| same![[gate.ink.png]] | same |");
+  });
+
+  it("keeps a symbol from Insert existing symbol through a change on disk straight after", async function () {
+    await createSymbol("gate.ink.png");
+    await intoCell("Table.md");
+    await chooseExisting("gat");
+    await waitForLastRow("| same![[gate.ink.png]] | same |");
+    // As sync writes the note.
+    await browser.executeObsidian(async ({ app }) => {
+      const note = app.vault.getFileByPath("Table.md");
+      if (note === null) throw new Error("no Table.md");
+      await app.vault.process(note, (text) => `Prefix\n\n${text}`);
+    });
+    await waitForRowEverywhere("| same![[gate.ink.png]] | same |");
   });
 
   it("lands after a symbol from the ;; list", async function () {

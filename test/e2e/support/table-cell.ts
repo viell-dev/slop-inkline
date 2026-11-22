@@ -30,6 +30,69 @@ export async function intoCell(path: string): Promise<void> {
 }
 
 /**
+ * Makes the first tab of `Table.md` the active one again, as after another
+ * pane on it opened, clicks the first cell of its last row, and takes the
+ * cursor to the end of that cell with a real key.
+ */
+export async function backIntoCell(): Promise<void> {
+  await browser.executeObsidian(({ app, obsidian }) => {
+    const leaf = app.workspace
+      .getLeavesOfType("markdown")
+      .find(
+        ({ view }) =>
+          view instanceof obsidian.MarkdownView &&
+          view.file?.path === "Table.md",
+      );
+    if (leaf === undefined) throw new Error("Table.md is not open");
+    app.workspace.setActiveLeaf(leaf, { focus: true });
+  });
+  const cell = browser.$(
+    ".workspace-leaf.mod-active .cm-table-widget tbody tr:last-child td:first-child",
+  );
+  await cell.waitForExist();
+  await cell.click();
+  await browser
+    .$(".workspace-leaf.mod-active .table-cell-wrapper .cm-content")
+    .waitForExist();
+  await browser.keys(["End"]);
+}
+
+/**
+ * Waits for the last row of the table in `Table.md` to read `row`, whatever
+ * its padding, in every editor of the note and in its file: an edit that one
+ * pane holds reaches the others and the file as Obsidian saves and passes it
+ * on, a moment later.
+ */
+export async function waitForRowEverywhere(row: string): Promise<void> {
+  let read: string[] = [];
+  try {
+    await browser.waitUntil(async () => {
+      read = await browser.executeObsidian(async ({ app, obsidian }) => {
+        const last = (text: string): string =>
+          (text.trimEnd().split("\n").at(-1) ?? "").replace(/ +/g, " ");
+        const rows = app.workspace
+          .getLeavesOfType("markdown")
+          .flatMap(({ view }) =>
+            view instanceof obsidian.MarkdownView &&
+            view.file?.path === "Table.md"
+              ? [last(view.editor.getValue())]
+              : [],
+          );
+        const file = app.vault.getFileByPath("Table.md");
+        if (file === null) throw new Error("no Table.md");
+        return [...rows, last(await app.vault.read(file))];
+      });
+      return read.length > 1 && read.every((shown) => shown === row);
+    });
+  } catch (error) {
+    throw new Error(
+      `waited for ${JSON.stringify(row)} in every editor and the file, which read ${JSON.stringify(read)}`,
+      { cause: error },
+    );
+  }
+}
+
+/**
  * Waits for the last row of the table in `Table.md` to read `row`, whatever
  * its padding, with `|` not marking anything here.
  */
