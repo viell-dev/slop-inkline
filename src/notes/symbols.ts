@@ -262,7 +262,8 @@ function pathIn(folder: string, name: string): string {
  * to make it again with "Folder already exists." (#436). A part the vault
  * lists in no letter case, and the rest after it, stay as they are, for the
  * save to make. The disk is asked only of a part the vault does not list as
- * it is, so a system that tells letter case apart keeps a folder of its own.
+ * it is, so a system that tells letter case apart keeps a folder of its own,
+ * even one it has not listed yet.
  */
 async function folderAsListed(app: App, folder: string): Promise<string> {
   const parts = folder.split("/");
@@ -280,7 +281,14 @@ async function folderAsListed(app: App, folder: string): Promise<string> {
           child instanceof TFolder &&
           child.name.toLowerCase() === part.toLowerCase(),
       );
-    if (other === undefined || !(await app.vault.adapter.exists(asked))) {
+    // The same folder only where the disk finds the name as asked, and not
+    // in that letter case: one that tells case apart can have both.
+    const { adapter } = app.vault;
+    if (
+      other === undefined ||
+      !(await adapter.exists(asked)) ||
+      (await adapter.exists(asked, true))
+    ) {
       return [asked, ...parts.slice(index + 1)].join("/");
     }
     listed = other.path;
