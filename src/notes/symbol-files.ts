@@ -12,7 +12,10 @@ import { SymbolWrites } from "./symbol-writes.ts";
 /** What Inkline's writes and renames of symbol files share. */
 export interface SymbolFiles {
   readonly app: App;
-  /** Aborts as the plugin unloads; nothing is written once it has. */
+  /**
+   * Aborts as the plugin unloads. What looks at it, and what then stops, is
+   * said where it is read: `SymbolWrites`, the renames, and the editors' saves.
+   */
   readonly unloaded: AbortSignal;
   /**
    * Every write of a symbol's file, in one line, with the look an editor's

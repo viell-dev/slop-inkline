@@ -286,6 +286,12 @@ class FakeVault implements SymbolVault<Fake> {
   readonly adapter: FakeDisk;
   readonly #files = new Map<string, Fake>();
   readonly #folders = new Set<string>([""]);
+  /**
+   * Has `createFolder` fail, as Obsidian's does where the disk has something
+   * at the path once it looks, after it runs this, which can make the folder,
+   * as something else can meanwhile.
+   */
+  createFolderFails: ((path: string) => void) | undefined;
 
   /**
    * With `line`, the disk keeps its line where Obsidian 1.13.4 and 1.15.1 do;
@@ -379,6 +385,11 @@ class FakeVault implements SymbolVault<Fake> {
   }
 
   createFolder(path: string): Promise<void> {
+    const fails = this.createFolderFails;
+    if (fails !== undefined) {
+      fails(path);
+      return Promise.reject(new Error("Folder already exists."));
+    }
     if (this.getAbstractFileByPath(path) !== null) {
       return Promise.reject(new Error("Folder already exists."));
     }
@@ -855,6 +866,33 @@ describe("an editor's save", () => {
     const saved = await saving;
     expect(saved).toBe(replacement());
     expect(saved.writes).toBe(1);
+  });
+
+  it("goes on when its folder is made meanwhile, as the vault then refuses to make it", async () => {
+    const vault = new FakeVault();
+    const writes = writesOf(vault);
+    const old = vault.put(`Signs/${at}`);
+    vault.delete(old);
+    vault.deleteFolder("Signs");
+    vault.createFolderFails = (path) => {
+      vault.createFolderFails = undefined;
+      void vault.createFolder(path);
+    };
+    const made = await editorSave(writes, old, pinned, pinned);
+    expect(made.path).toBe(`Signs/${at}`);
+  });
+
+  it("fails as the vault does when its folder cannot be made", async () => {
+    const vault = new FakeVault();
+    const writes = writesOf(vault);
+    const old = vault.put(`Signs/${at}`);
+    vault.delete(old);
+    vault.deleteFolder("Signs");
+    vault.createFolderFails = () => undefined;
+    await expect(editorSave(writes, old, pinned, pinned)).rejects.toThrow(
+      "Folder already exists.",
+    );
+    expect(vault.at(`Signs/${at}`)).toBeNull();
   });
 
   it("says why the path is taken when the vault lists nothing there", async () => {

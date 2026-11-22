@@ -3,11 +3,15 @@
 // Plain, so that unit tests drive these very functions over a vault of their
 // own; Obsidian's vault is one as it is, as SymbolVault says.
 //
-// Every write of a symbol's file waits in one line, the queue a SymbolWrites
-// makes, and the look an editor's save takes at its file is kept beside it, as
-// it holds only while saves take turns. One SymbolWrites is made for each load
-// of the plugin, in symbol-files.ts, and every editor and library view is
-// given that one. Nothing else makes a queue for symbols.
+// Every write over a symbol's file, an editor's save or a library's change,
+// waits in one line, the queue a SymbolWrites makes, and the look an editor's
+// save takes at its file is kept beside it, as it holds only while saves take
+// turns. A file made where none is, as a new symbol's first save makes it with
+// SymbolWrites.make, does not wait in it: nothing is at its path for another
+// write to fall between, and the copy that makes it refuses a path where
+// anything is. One SymbolWrites is made for each load of the plugin, in
+// symbol-files.ts, and every editor and library view is given that one.
+// Nothing else makes a queue for symbols.
 
 import { isInkPath } from "../format/ink-file.ts";
 import { readChunks } from "../format/png.ts";
@@ -120,6 +124,7 @@ export function toBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.slice().buffer;
 }
 
+/** The folder `path` is in, `""` for the vault's top. */
 export function parentPath(path: string): string {
   const slash = path.lastIndexOf("/");
   return slash === -1 ? "" : path.slice(0, slash);
@@ -376,16 +381,22 @@ export interface SymbolFileReading {
 }
 
 /**
- * Every write of the vault's symbols, from the library and the editor alike,
- * as one line, and the look an editor's save takes at its file. Make one for
- * each load of the plugin, and give that one to everything that writes a
- * symbol: two would let one's write fall between the other's read and write.
+ * Every write over the files of the vault's symbols, from the library and the
+ * editor alike, as one line, and the look an editor's save takes at its file.
+ * Make one for each load of the plugin, and give that one to everything that
+ * writes a symbol: two would let one's write fall between the other's read and
+ * write. A file made where none is, with {@link SymbolWrites.make} on its own,
+ * does not wait in the line, as that says.
  */
 export class SymbolWrites<File extends VaultFile> {
   readonly #vault: SymbolVault<File>;
   /** Inkline's own folder, where {@link SymbolWrites.make} stages a file. */
   readonly #folder: string;
-  /** Aborts as the plugin unloads; nothing is written once it has. */
+  /**
+   * Aborts as the plugin unloads. {@link SymbolWrites.writeText} looks at it
+   * before each read and write of its file, and writes nothing once it has;
+   * `save` and `make` do not, as they say.
+   */
   readonly #unloaded: AbortSignal;
   /** Has the text index read a file that a save wrote. */
   readonly #refreshed: (file: File) => Promise<void>;
@@ -449,7 +460,12 @@ export class SymbolWrites<File extends VaultFile> {
 
   /**
    * Makes a symbol's file at `path`, where the disk has nothing, as
-   * {@link makeSymbolFile} does, with its own file in Inkline's folder.
+   * {@link makeSymbolFile} does, with its own file in Inkline's folder. On its
+   * own, as a new symbol's first save calls it, it does not wait in the line of
+   * writes: nothing is at the path for another write to fall between, and the
+   * adapter's copy refuses a path where anything is. Called by `save`, for a
+   * file deleted, it runs in that save's turn. It does not look at the plugin's
+   * unload signal, which its callers look at before they call it.
    */
   make(path: string, buffer: ArrayBuffer): Promise<File> {
     return makeSymbolFile(this.#vault, this.#folder, path, buffer);
@@ -531,6 +547,12 @@ export class SymbolWrites<File extends VaultFile> {
    * own (#425): the next save then writes over it, which loses nothing, as it
    * holds only the start of what that save writes, where the editor would
    * otherwise refuse every save until the file was deleted.
+   *
+   * It does not look at the plugin's unload signal. What keeps it from writing
+   * once Inkline unloads is its callers in symbols.ts, which look at the signal
+   * before they call it, and the editor's `check`, which throws once unloading
+   * has closed the editor. A write that the check has let through goes to the
+   * vault, and can still finish.
    */
   save(
     file: File,

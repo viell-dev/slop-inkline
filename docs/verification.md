@@ -676,7 +676,8 @@ must keep released files readable and looking the same, as
   that writes after the last read is
   [a limit](./limits.md#a-file-written-at-the-moment-inkline-saves), which this
   does not cover
-  ([file-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/file-writes.test.ts)
+  ([symbol-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/symbol-writes.test.ts),
+  [file-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/file-writes.test.ts),
   and
   [symbol-text-concurrent-saves.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text-concurrent-saves.e2e.ts)).
 - A symbol deleted, and another file put at its path, through Obsidian while a
@@ -716,7 +717,8 @@ must keep released files readable and looking the same, as
   so, and keeps what was typed. A save over a file waits for what was asked of
   the disk during its last look, and writes as before once the disk stays busy,
   or where Obsidian's line of disk operations cannot be seen
-  ([write-identity.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/write-identity.e2e.ts)
+  ([write-identity.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/write-identity.e2e.ts),
+  [symbol-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/symbol-writes.test.ts),
   and
   [file-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/file-writes.test.ts)).
 - A write Obsidian does not finish, held back in the host: a save that takes
