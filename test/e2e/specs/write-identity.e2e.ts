@@ -759,8 +759,29 @@ describe("A symbol replaced at its path as it is saved", function () {
     // The review of #449: the save found the file there, and looked for it
     // in the folder's old letter case, so that every save was refused.
     await folderInAnotherCase("Signs/gate.ink.png");
-    await createSymbol("signs/gate.ink.png");
-    await giveReading("signs/gate.ink.png", "theirs");
+    // Another drawing, as a change to the text alone is taken in, not asked
+    // about.
+    await browser.executeObsidian(async ({ app }) => {
+      const { canvas, text } = window.inklineTest;
+      const { bytes } = await canvas.saveInk(
+        {
+          strokes: [
+            {
+              tool: "pen" as const,
+              size: 256,
+              points: [2000, 800, 6000, 2000],
+            },
+          ],
+        },
+        undefined,
+        [],
+      );
+      const theirs = await text.writeText(bytes, "reading", ["theirs"]);
+      await app.vault.adapter.writeBinary(
+        "signs/gate.ink.png",
+        theirs.slice().buffer,
+      );
+    });
     await lookWithoutCase();
     await browser.keys(["Control", "s"]);
     await waitForStatus("Not saved: the file changed on disk");
