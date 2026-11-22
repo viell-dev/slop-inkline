@@ -1690,27 +1690,29 @@ export function insertExistingSymbol(
  *
  * With `point`, the cursor goes back there first, as the note can have changed
  * on disk or in another pane meanwhile, which takes it away from the last
- * symbol. That waits for the modal too: Obsidian refocuses the note after a
- * modal's close. A cursor already there stays as it is, as a table cell's
- * editor may have it. So does the cursor once the person has typed, used a
- * shortcut, clicked, pasted, cut, or dropped something in the note since the
- * modal closed, which on a busy machine they can do before the wait ends: it
- * is theirs then, and moving it would put what they type next out of order
- * (#387).
+ * symbol. A cursor already there stays as it is, as a table cell's editor may
+ * have it.
+ *
+ * Both wait for the rest of the modal's close, if it is still closing, and no
+ * longer. On a desktop, where Inkline runs, Obsidian closes a modal in one
+ * step: its `onClose`, then the focus given back to what had it before the
+ * modal opened. A microtask queued in `onClose` runs after that step and
+ * before anything a person does, a key, a shortcut, a click, a paste, or a
+ * drop, which each wait for a task of their own. A timer, which is such a
+ * task, let a busy machine take their first keys first, and then moved the
+ * cursor from where they had put it, which put what they typed next out of
+ * order (#387). After a change on disk took a table cell's editor away,
+ * nothing had the focus until the timer, so a key went nowhere, and a
+ * shortcut, which Obsidian still ran on this note, had its cursor moved after
+ * it (#429).
  */
 function returnFocus(app: App, target: Target, point?: InsertionPoint): void {
   const view = liveView(app, target.file, target.view);
   if (view === undefined) return;
   const { containerEl, editor } = view;
-  const back =
-    point === undefined
-      ? undefined
-      : { point, untouched: watchPerson(containerEl) };
-  containerEl.win.setTimeout(() => {
+  containerEl.win.queueMicrotask(() => {
     const at =
-      back?.untouched() === true
-        ? findPoint(editor.getValue(), back.point)
-        : undefined;
+      point === undefined ? undefined : findPoint(editor.getValue(), point);
     if (at !== undefined && at !== editor.posToOffset(editor.getCursor())) {
       editor.setCursor(editor.offsetToPos(at));
     }
@@ -1718,45 +1720,6 @@ function returnFocus(app: App, target: Target, point?: InsertionPoint): void {
     editor.focus();
     editor.setCursor(editor.getCursor());
   });
-}
-
-/**
- * What a person does in a note to move its cursor or change its text: a key,
- * a pointer pressed, text put in, a paste or a cut, which the editor takes
- * itself with no input event after it, and a drop.
- */
-const personEvents = [
-  "keydown",
-  "pointerdown",
-  "beforeinput",
-  "paste",
-  "cut",
-  "drop",
-] as const;
-
-/**
- * Listens, from now on, for a person moving a cursor or changing text in
- * `el`. The function returned stops listening and says whether none came.
- * It listens on the window, before anything below it hears: Obsidian takes
- * the key of a hotkey it handles before it reaches the note. An event counts
- * when it passes through `el`, so one in another pane does not. Nor does a key
- * while nothing has the focus, as after a change on disk took a table cell's
- * editor away, though Obsidian still runs a hotkey's command on this note then,
- * whose cursor is then moved; a plain key then goes nowhere (#429). Any key
- * counts, even one that moves nothing: a cursor left alone stays where
- * Obsidian put it, while one moved after a key can put the next out of order.
- */
-function watchPerson(el: HTMLElement): () => boolean {
-  const { win } = el;
-  let touched = false;
-  const touch = (event: Event): void => {
-    if (event.composedPath().includes(el)) touched = true;
-  };
-  for (const type of personEvents) win.addEventListener(type, touch, true);
-  return () => {
-    for (const type of personEvents) win.removeEventListener(type, touch, true);
-    return !touched;
-  };
 }
 
 /**

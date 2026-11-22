@@ -96,6 +96,73 @@ async function selectText(text: string): Promise<void> {
   }, text);
 }
 
+/**
+ * Records the steps of the next close of an Inkline editor, each with where
+ * the focus is then, until {@link closeSteps}: Obsidian's `Modal.close` calling
+ * the editor's `onClose`, `close` returning, a microtask queued at the start of
+ * `onClose`, and a timer set as `close` returns, which runs in the next task.
+ */
+async function watchClose(): Promise<void> {
+  await browser.executeObsidian(({ obsidian }) => {
+    const prototype = obsidian.Modal.prototype;
+    const close: unknown = Reflect.get(prototype, "close");
+    if (typeof close !== "function") throw new Error("a modal has no close");
+    const own = Object.hasOwn(prototype, "close");
+    const steps: string[] = [];
+    const focus = (): string =>
+      document.activeElement?.closest(".markdown-source-view .cm-content")
+        ? "in the note"
+        : "elsewhere";
+    const putBack = (): void => {
+      if (own) Reflect.set(prototype, "close", close);
+      else Reflect.deleteProperty(prototype, "close");
+    };
+    Reflect.set(prototype, "close", function (this: object): void {
+      const modalEl: unknown = Reflect.get(this, "modalEl");
+      if (
+        !(modalEl instanceof HTMLElement) ||
+        !modalEl.classList.contains("inkline-editor")
+      ) {
+        Reflect.apply(close, this, []);
+        return;
+      }
+      putBack();
+      const onClose: unknown = Reflect.get(this, "onClose");
+      if (typeof onClose !== "function") throw new Error("no onClose");
+      Reflect.set(this, "onClose", (): void => {
+        steps.push(`onClose, focus ${focus()}`);
+        queueMicrotask(() => {
+          steps.push(`microtask, focus ${focus()}`);
+        });
+        Reflect.apply(onClose, this, []);
+      });
+      Reflect.apply(close, this, []);
+      steps.push(`close returned, focus ${focus()}`);
+      window.setTimeout(() => {
+        steps.push("task");
+      });
+    });
+    Reflect.set(window, "inklineCloseSteps", steps);
+    Reflect.set(window, "inklineAtEnd-close-steps", () => {
+      Reflect.deleteProperty(window, "inklineCloseSteps");
+      if (Reflect.get(prototype, "close") !== close) putBack();
+    });
+  });
+}
+
+/** The steps {@link watchClose} recorded, once its timer has run. */
+async function closeSteps(): Promise<string[]> {
+  let steps: string[] = [];
+  await browser.waitUntil(async () => {
+    steps = await browser.execute(() => {
+      const recorded: unknown = Reflect.get(window, "inklineCloseSteps");
+      return Array.isArray(recorded) ? recorded.map(String) : [];
+    });
+    return steps.includes("task");
+  });
+  return steps;
+}
+
 describe("Where the cursor lands after a symbol", function () {
   before(async function () {
     await loadModules();
@@ -138,22 +205,24 @@ describe("Where the cursor lands after a symbol", function () {
     );
   });
 
-  // The editor puts the cursor back after the symbol a moment after it closes,
-  // which a busy machine can delay past a person's first keys (#387).
-  it("leaves the cursor where typing took it before the editor finished closing", async function () {
+  // The editor puts the cursor back after the symbol as it closes, before a
+  // person's first key. Each of these holds what the close leaves to a timer,
+  // as a busy machine can run one after those keys, and moving the cursor then
+  // put the next out of order (#387). The close leaves nothing to one now.
+  it("leaves the cursor where typing took it straight after the editor closed", async function () {
     await insert({ settle: 0 });
     await draw(zigzag);
     await holdClosingTimers();
     await save();
     await type("x");
-    expect(await letClosingTimersGo()).toBeGreaterThan(0);
+    await letClosingTimersGo();
     await type("y");
     await waitForNote(
       "The door is marked with ![[001.ink.png]]xy which means return.\n",
     );
   });
 
-  it("leaves the cursor where a click took it before the editor finished closing", async function () {
+  it("leaves the cursor where a click took it straight after the editor closed", async function () {
     await insert({ settle: 0 });
     await draw(zigzag);
     await holdClosingTimers();
@@ -162,7 +231,7 @@ describe("Where the cursor lands after a symbol", function () {
     const line = browser.$(`${live} .cm-line`, { strict: false });
     const { width } = await line.getSize();
     await line.click({ x: Math.floor(width / 2) - 2 });
-    expect(await letClosingTimersGo()).toBeGreaterThan(0);
+    await letClosingTimersGo();
     await type("y");
     await waitForNote(
       "The door is marked with ![[001.ink.png]] which means return.y\n",
@@ -172,7 +241,7 @@ describe("Where the cursor lands after a symbol", function () {
   // Obsidian takes the key of a hotkey it handles before the note hears it, so
   // with Control still down from Mod+Enter, Mod+B reaches the note with no
   // keydown of its own.
-  it("leaves the cursor where a shortcut took it before the editor finished closing", async function () {
+  it("leaves the cursor where a shortcut took it straight after the editor closed", async function () {
     await insert({ settle: 0 });
     await draw(zigzag);
     await holdClosingTimers();
@@ -194,7 +263,7 @@ describe("Where the cursor lands after a symbol", function () {
     } finally {
       await browser.releaseActions();
     }
-    expect(await letClosingTimersGo()).toBeGreaterThan(0);
+    await letClosingTimersGo();
     await type("y");
     await waitForNote(
       "The door is marked with ![[001.ink.png]]**y** which means return.\n",
@@ -203,48 +272,48 @@ describe("Where the cursor lands after a symbol", function () {
 
   // The editor takes a paste or a cut itself, with no input event after it;
   // a menu's Paste comes with no key in the note either.
-  it("leaves the cursor where a paste took it before the editor finished closing", async function () {
+  it("leaves the cursor where a paste took it straight after the editor closed", async function () {
     await insert({ settle: 0 });
     await draw(zigzag);
     await holdClosingTimers();
     await save();
     await clipboard("paste", "x");
-    expect(await letClosingTimersGo()).toBeGreaterThan(0);
+    await letClosingTimersGo();
     await type("y");
     await waitForNote(
       "The door is marked with ![[001.ink.png]]xy which means return.\n",
     );
   });
 
-  it("leaves the cursor where a cut took it before the editor finished closing", async function () {
+  it("leaves the cursor where a cut took it straight after the editor closed", async function () {
     await insert({ settle: 0 });
     await draw(zigzag);
     await holdClosingTimers();
     await save();
     await selectText("door");
     await clipboard("cut");
-    expect(await letClosingTimersGo()).toBeGreaterThan(0);
+    await letClosingTimersGo();
     await type("y");
     await waitForNote(
       "The y is marked with ![[001.ink.png]] which means return.\n",
     );
   });
 
-  it("leaves the cursor where an input method's text took it before the editor finished closing", async function () {
+  it("leaves the cursor where an input method's text took it straight after the editor closed", async function () {
     await insert({ settle: 0 });
     await draw(zigzag);
     await holdClosingTimers();
     await save();
     // As an input method commits text: no key, only the input events.
     await browser.sendCommand("Input.insertText", { text: "x" });
-    expect(await letClosingTimersGo()).toBeGreaterThan(0);
+    await letClosingTimersGo();
     await type("y");
     await waitForNote(
       "The door is marked with ![[001.ink.png]]xy which means return.\n",
     );
   });
 
-  it("leaves the cursor where a drop took it before the editor finished closing", async function () {
+  it("leaves the cursor where a drop took it straight after the editor closed", async function () {
     await insert({ settle: 0 });
     await draw(zigzag);
     await holdClosingTimers();
@@ -267,33 +336,30 @@ describe("Where the cursor lands after a symbol", function () {
         }),
       );
     }, `${live} .cm-line`);
-    expect(await letClosingTimersGo()).toBeGreaterThan(0);
+    await letClosingTimersGo();
     await type("y");
     await waitForNote(
       "The door is marked with ![[001.ink.png]] which means return.y\n",
     );
   });
 
-  // Only what reaches the note counts: keys typed elsewhere before the editor
-  // finished closing leave the cursor to go back after the symbol.
-  it("puts the cursor back when the keys before the editor finished closing went elsewhere", async function () {
+  // The cursor goes back in a microtask queued in the editor's `onClose`
+  // (#429), which rests on Obsidian's order: it calls `onClose` inside
+  // `close`, then gives the focus back, in one step. So that microtask finds
+  // the focus back, and runs before the next task, which a key needs. On a
+  // phone, Obsidian calls `onClose` after an animation, once `close` has
+  // returned and the focus is back, which would leave a person time to type
+  // first; this fails if a desktop closes that way.
+  it("rests on Obsidian closing the editor in one step, with no task between", async function () {
     await insert({ settle: 0 });
     await draw(zigzag);
-    await holdClosingTimers();
+    await watchClose();
     await save();
-    // As a change elsewhere, such as on disk, takes the note's cursor away.
-    await browser.executeObsidian(({ app, obsidian }) => {
-      const view = app.workspace.getActiveViewOfType(obsidian.MarkdownView);
-      if (view === null) throw new Error("no Markdown view");
-      view.editor.setCursor({ line: 0, ch: 0 });
-    });
-    await browser.executeObsidianCommand("command-palette:open");
-    await browser.$(".prompt-input").waitForDisplayed();
-    await type("zz");
-    expect(await letClosingTimersGo()).toBeGreaterThan(0);
-    await browser.keys(["Escape"]);
-    await waitForMarked("Editor.md", [
-      "The door is marked with ![[001.ink.png]]| which means return.\n",
+    expect(await closeSteps()).toEqual([
+      "onClose, focus elsewhere",
+      "close returned, focus in the note",
+      "microtask, focus in the note",
+      "task",
     ]);
   });
 
