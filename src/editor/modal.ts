@@ -1,7 +1,7 @@
 // The editor: a modal around a drawing session and its surface, with its
 // controls, saving, drafts, and the question before unsaved work is closed.
 // controls.ts makes the buttons and keys, which run the commands this
-// implements.
+// implements, and picture.ts holds the picture to trace over and Make ink.
 
 import {
   ConfirmationModal,
@@ -21,32 +21,14 @@ import {
   type Tool,
 } from "../format/record.ts";
 import {
-  baseFromInk,
   drawableBase,
   nextTask,
   openInk,
-  previewInk,
-  readPixels,
   saveInk,
   type EditableInk,
 } from "../ink/canvas.ts";
 import { documentSpan, toUnits, type InkDocument } from "../ink/document.ts";
-import { lineBox, type Bounds } from "../ink/geometry.ts";
-import {
-  enlargeFactor,
-  enlargedRegion,
-  inkDefaults,
-  pictureLuminance,
-  previewShrink,
-  regionValues,
-  shrinkLuminance,
-  thresholdEdge,
-  thresholdRange,
-  traceRegion,
-  type Luminance,
-  type PicturePlace,
-  type Region,
-} from "../ink/pixels.ts";
+import { lineBox } from "../ink/geometry.ts";
 import type { DrawableBase } from "../ink/render.ts";
 import { readText, writeText, type SymbolText } from "../format/text.ts";
 import { savingWaits, type RenameWait } from "../notes/file-writes.ts";
@@ -74,7 +56,6 @@ import {
 } from "./drafts.ts";
 import {
   buttonStates,
-  pictureHints,
   type ButtonLabels,
   type EditorCommands,
 } from "./buttons.ts";
@@ -98,15 +79,13 @@ import {
   type GuideName,
 } from "./guides.ts";
 import {
-  decodePicture,
-  isPicturePath,
-  movePicture,
-  openLinkPath,
-  placePicture,
-  scalePicture,
-  wheelFactor,
-  type Placement,
-} from "./reference.ts";
+  dragsPicture,
+  pictureIn,
+  PictureTracing,
+  type TracedPicture,
+  type TracingHost,
+} from "./picture.ts";
+import { isPicturePath, openLinkPath, wheelFactor } from "./reference.ts";
 import { InkView, measureFont, surfaceWidth } from "./view.ts";
 import { markNotice } from "../notices.ts";
 
@@ -140,14 +119,6 @@ export interface SymbolCopy {
 /** A file opened again, and what it says about its symbol. */
 type OpenedFile = EditableInk & { readonly text: SymbolText };
 
-/** A picture to trace over, shown faintly under the drawing, never saved. */
-export interface TracedPicture {
-  readonly image: ImageBitmap;
-  readonly width: number;
-  readonly height: number;
-  readonly placement: Placement;
-}
-
 /** The tools chosen in an editor, which the next one starts with. */
 export interface EditorTools {
   readonly tool: Tool;
@@ -174,131 +145,15 @@ export interface EditorTools {
   readonly picture?: TracedPicture;
 }
 
-/** The first picture file that `data` holds, as pasted or dropped. */
-function pictureIn(data: DataTransfer | null): File | undefined {
-  if (data === null) return undefined;
-  const found = [...data.files].find((file) => file.type.startsWith("image/"));
-  if (found !== undefined) return found;
-  for (const item of data.items) {
-    if (item.kind !== "file" || !item.type.startsWith("image/")) continue;
-    const file = item.getAsFile();
-    if (file !== null) return file;
-  }
-  return undefined;
-}
-
-/**
- * Whether a drag could carry a picture: files, or links, as Obsidian's file
- * explorer drags a vault file.
- */
-function dragsPicture(event: DragEvent): boolean {
-  const types = event.dataTransfer?.types ?? [];
-  return types.includes("Files") || types.includes("text/uri-list");
-}
-
 /**
  * How far the arrow keys move a picture, in document pixels; with Shift
  * held, they move it one grid spacing.
  */
 const nudge = 1;
-/** How much + and − scale a picture: as much as a notch of the wheel. */
-const keyScale = wheelFactor(-100);
 
 /** What the status line says of a file opened from its pixels, and why. */
 const noStrokes =
   "Opened as a picture to draw over, as this file holds no strokes: symbols saved before Inkline 0.9.2 open this way";
-
-/**
- * The part of the picture that would become ink, as the preview last traced
- * it: kept while the picture and the surface stay put, as the threshold
- * changes.
- */
-interface PartShown {
-  readonly placement: Placement;
-  readonly region: Bounds;
-  /**
-   * Where the pixels traced sit: the picture's place, at the scale of the
-   * copy or of the finer samples traced.
-   */
-  readonly place: PicturePlace;
-  /** Undefined when no part of the picture is there. */
-  readonly part: Region | undefined;
-  /** The threshold's ramp for those pixels. */
-  readonly edge: number;
-}
-
-/**
- * The ink that a threshold gives that part, as last shown, with the
- * documents shown with it as their base layer, one per drawing.
- */
-interface InkShown {
-  readonly part: Region | undefined;
-  readonly threshold: number;
-  readonly light: boolean;
-  /** Undefined when the threshold leaves no ink. */
-  readonly base: DrawableBase | undefined;
-  readonly documents: WeakMap<InkDocument, InkDocument>;
-}
-
-/**
- * The copy of a picture `factor` times smaller, from `copies`, which holds
- * the picture itself at 1; made and kept there when first needed.
- */
-function copyOf(copies: Map<number, Luminance>, factor: number): Luminance {
-  let copy = copies.get(factor);
-  if (copy === undefined) {
-    const picture = copies.get(1);
-    if (picture === undefined) throw new Error("no picture to copy");
-    copy = shrinkLuminance(picture, factor);
-    copies.set(factor, copy);
-  }
-  return copy;
-}
-
-/** `placement` for a copy of its picture `factor` times smaller. */
-function shrunkPlace(placement: Placement, factor: number): PicturePlace {
-  return { ...placement, scale: placement.scale * factor };
-}
-
-/**
- * The part of the picture whose copies `copies` holds, at `placement`, that
- * becomes ink within `region`, with where its pixels are and the threshold's
- * ramp for them. An enlarged picture is sampled more finely, as
- * `enlargeFactor` says, so that its ink's edges are as sharp as the document
- * shows; any other is the copy `shrink` times smaller.
- */
-function inkPart(
-  copies: Map<number, Luminance>,
-  placement: Placement,
-  region: Bounds,
-  shrink: number,
-): { part: Region | undefined; place: PicturePlace; edge: number } {
-  const picture = copyOf(copies, 1);
-  const factor = enlargeFactor(
-    picture.width,
-    picture.height,
-    placement,
-    region,
-  );
-  const enlarged =
-    factor > 1 ? enlargedRegion(picture, placement, region, factor) : undefined;
-  if (enlarged !== undefined) return enlarged;
-  const place = shrunkPlace(placement, shrink);
-  return {
-    part: regionValues(copyOf(copies, shrink), place, region),
-    place,
-    edge: thresholdEdge,
-  };
-}
-
-function sameBounds(a: Bounds, b: Bounds): boolean {
-  return (
-    a.left === b.left &&
-    a.top === b.top &&
-    a.right === b.right &&
-    a.bottom === b.bottom
-  );
-}
 
 export interface EditorOptions {
   /** What the editor calls the symbol until it has a name: "New symbol". */
@@ -512,16 +367,10 @@ export class InkEditorModal extends Modal {
   /**
    * Changes to the view asked for while the pointer was pressed on the
    * surface, to draw or to drag the picture, for when it is let go: Zoom as a
-   * switch, so that asking twice leaves the view as it is, Fit, and whether
-   * Make ink is to be open, or undefined to leave it as it is, as its row
-   * above the drawing area would move the drawing under the pointer as it
-   * opened or closed.
+   * switch, so that asking twice leaves the view as it is, and Fit. Make ink
+   * waits in the same way ({@link PictureTracing.takeInkWait}).
    */
-  #viewWaits: { zoom: boolean; fit: boolean; ink: boolean | undefined } = {
-    zoom: false,
-    fit: false,
-    ink: undefined,
-  };
+  #viewWaits: { zoom: boolean; fit: boolean } = { zoom: false, fit: false };
   /**
    * Whether Make ink's row showed at the press, which it keeps doing until
    * the release, or undefined while the pointer is not pressed. A picture
@@ -597,46 +446,8 @@ export class InkEditorModal extends Modal {
    * file it makes, or takes over the file a first save made.
    */
   #unshownBase: DraftBase | undefined;
-  /** The picture to trace over, which this editor closes when done with it. */
-  #picture: TracedPicture | undefined;
-  /** Counts pictures asked for, so that only the latest is taken. */
-  #pictureRequests = 0;
-  /** Whether dragging and the wheel move the picture, rather than drawing. */
-  #moving = false;
-  /**
-   * Where in the drawing the pointer dragging the picture last was. Each move
-   * takes the picture by where the pointer is now in the drawing from there,
-   * so that the picture rejoins the pointer at its next report when the
-   * drawing has moved under it meanwhile, as a page zoom or a change to the
-   * window's size moves it (#445). A save that moves the drawing moves this
-   * with it, as it does the picture.
-   */
-  #dragged: InputPoint | undefined;
-  /**
-   * Making ink of the picture, while its controls are open: the picture's
-   * luminance, found once, the threshold, and whether the ink is lighter
-   * than its ground.
-   */
-  #converting:
-    | {
-        readonly image: ImageBitmap;
-        readonly luma: Luminance;
-        /**
-         * What the preview traces, by how many times smaller than the
-         * picture: the picture itself, at 1, or a smaller copy, made when
-         * first needed, so that each step stays quick however much of a
-         * large picture is in view.
-         */
-        readonly copies: Map<number, Luminance>;
-        threshold: number;
-        light: boolean;
-      }
-    | undefined;
-  /** The part and ink last shown while making ink, kept while unchanged. */
-  #partShown: PartShown | undefined;
-  #inkShown: InkShown | undefined;
-  /** Making ink of the picture, while its encoding runs. */
-  #applying: Promise<void> | undefined;
+  /** The picture to trace over, and Make ink. */
+  readonly #tracing: PictureTracing;
   /** The document whose pastes the editor takes, while it is open. */
   #pasteDocument: Document | undefined;
   readonly #questions = new Set<Modal>();
@@ -663,6 +474,7 @@ export class InkEditorModal extends Modal {
       this.#session.flatEnds = options.tools.flatEnds === true;
       this.#guidesShown = guides;
     }
+    this.#tracing = new PictureTracing(this.#tracingHost());
     this.#watch = new FileWatch(options.fingerprint, options.drawing);
     this.#carried = options.carried ?? [];
     this.#opened = options.document;
@@ -782,12 +594,7 @@ export class InkEditorModal extends Modal {
     view.magnified = this.#options.tools?.magnified === true;
     // The editor before this one's picture, where it was on the surface.
     const carried = this.#options.tools?.picture;
-    if (carried !== undefined) {
-      this.#picture = {
-        ...carried,
-        placement: movePicture(carried.placement, view.center, 0),
-      };
-    }
+    if (carried !== undefined) this.#tracing.takeOver(carried, view.center);
     this.#listen(canvas);
     controls.registerKeys(this.scope);
 
@@ -868,28 +675,25 @@ export class InkEditorModal extends Modal {
       choosePicture: () => {
         this.#controls?.choosePicture();
       },
-      trace: (file) => void this.#trace(file),
+      trace: (file) => void this.#tracing.trace(file),
       toggleMove: () => {
-        this.#toggleMove();
+        this.#tracing.toggleMove();
       },
       toggleConvert: () => {
-        this.#toggleConvert();
+        this.#tracing.toggleConvert();
       },
       removePicture: () => {
-        this.#setPicture(undefined);
-        this.#announce("Picture removed");
-        this.#refocus();
+        this.#tracing.remove();
       },
       setThreshold: (value) => {
-        this.#setThreshold(value);
+        this.#tracing.setThreshold(value);
       },
       toggleLight: () => {
-        this.#toggleLight();
+        this.#tracing.toggleLight();
       },
-      applyInk: () => void this.#applyInk(),
+      applyInk: () => void this.#tracing.applyInk(),
       cancelInk: () => {
-        this.#stopConverting();
-        this.#announce("No ink made");
+        this.#tracing.cancelInk();
       },
       endShape: () => {
         const canvas = this.#view?.canvas;
@@ -900,31 +704,66 @@ export class InkEditorModal extends Modal {
         return true;
       },
       arrowKey: (name, shift) => this.#arrowKey(name, shift),
-      movingPicture: () => this.#moving && this.#picture !== undefined,
+      movingPicture: () =>
+        this.#tracing.moving && this.#tracing.picture !== undefined,
       nudgePicture: (dx, dy, byCell) => {
-        const picture = this.#picture;
-        if (picture === undefined) return;
+        if (this.#tracing.picture === undefined) return;
         // One grid spacing, as the grid is laid out now.
         const step = byCell ? this.#session.grid.spacing : nudge;
-        this.#placePicture(
-          movePicture(picture.placement, dx * step, dy * step),
-        );
+        this.#tracing.move(dx * step, dy * step);
       },
       scalePictureStep: (larger) => {
-        const picture = this.#picture;
-        if (picture === undefined) return;
-        const { x, y, scale } = picture.placement;
-        this.#placePicture(
-          scalePicture(
-            picture.placement,
-            larger ? keyScale : 1 / keyScale,
-            x + (picture.width * scale) / 2,
-            y + (picture.height * scale) / 2,
-          ),
-        );
+        this.#tracing.scaleStep(larger);
       },
       refocus: () => {
         this.#refocus();
+      },
+    };
+  }
+
+  /** What the picture and Make ink are given of the editor. */
+  #tracingHost(): TracingHost {
+    return {
+      view: () => this.#view,
+      capHeight: () =>
+        this.#fontGuides.find((guide) => guide.name === "cap height")?.y,
+      held: () => this.#held,
+      ended: () => this.#ended(),
+      say: (text, holds) => {
+        this.#announce(text, holds);
+      },
+      requestRender: () => {
+        this.#render();
+      },
+      updateControls: () => {
+        this.#updateButtons();
+      },
+      endPlacing: () => {
+        this.#endPlacing();
+      },
+      refocus: () => {
+        this.#refocus();
+      },
+      focusThreshold: () => {
+        this.#controls?.focusThreshold();
+      },
+      focusApply: () => {
+        this.#controls?.focusButton("apply");
+      },
+      document: () => this.modalEl.doc,
+      useInk: (made) => {
+        // A stroke being drawn is committed first, so that Undo keeps it apart.
+        this.#session.end();
+        this.#decoded.set(made.layer.png, made.drawable);
+        const { strokes, base } = this.#session.document;
+        this.#session.replace(
+          { strokes, base: made.layer },
+          this.#session.gridOrigin,
+        );
+        return base !== undefined;
+      },
+      changed: () => {
+        this.#changed();
       },
     };
   }
@@ -949,10 +788,7 @@ export class InkEditorModal extends Modal {
     for (const question of [...this.#questions]) question.close();
     this.#pasteDocument?.removeEventListener("paste", this.#paste);
     // Pictures still being decoded are closed as they arrive.
-    this.#pictureRequests++;
-    this.#picture?.image.close();
-    this.#picture = undefined;
-    this.#forgetConverting();
+    this.#tracing.dispose();
     this.contentEl.empty();
     const store = this.#options.drafts?.store;
     store?.release(this.#draftId);
@@ -993,7 +829,7 @@ export class InkEditorModal extends Modal {
       return;
     }
     // Ink being previewed is unsaved too: Save makes it, as saving does.
-    if (!this.#unsaved && !this.#previewing()) {
+    if (!this.#unsaved && !this.#tracing.previewing()) {
       this.#forgetDraft();
       this.#finish();
       return;
@@ -1309,12 +1145,12 @@ export class InkEditorModal extends Modal {
     };
     const finish = (event: PointerEvent): void => {
       if (!this.#gate.release(event)) return;
-      if (this.#dragged !== undefined) {
+      if (this.#tracing.dragging) {
         // The picture stays where the drag left it, or where a release says.
         if (event.type === "pointerup" || event.type === "pointermove") {
           this.#drag(event);
         }
-        this.#dragged = undefined;
+        this.#tracing.endDrag();
         canvas.removeClass("is-dragging");
         this.#letGoAround();
         this.#viewAfterPress();
@@ -1346,8 +1182,8 @@ export class InkEditorModal extends Modal {
       canvas.focus({ preventScroll: true });
       canvas.setPointerCapture(event.pointerId);
       this.#line.act(() => {
-        if (this.#moving) {
-          this.#dragged = point(event);
+        if (this.#tracing.moving) {
+          this.#tracing.startDrag(point(event));
           canvas.addClass("is-dragging");
           return;
         }
@@ -1373,7 +1209,7 @@ export class InkEditorModal extends Modal {
         finish(event);
         return;
       }
-      if (this.#dragged !== undefined) {
+      if (this.#tracing.dragging) {
         this.#drag(event);
         return;
       }
@@ -1400,12 +1236,12 @@ export class InkEditorModal extends Modal {
     canvas.addEventListener(
       "wheel",
       (event) => {
-        const picture = this.#picture;
         const view = this.#view;
         if (view === undefined) return;
+        const moving = this.#tracing.moving;
         // Magnified, and not moving the picture, the wheel moves along the
         // drawing.
-        if (!this.#moving && view.magnified) {
+        if (!moving && view.magnified) {
           event.preventDefault();
           const delta = event.deltaX === 0 ? event.deltaY : event.deltaX;
           const lines = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : 1;
@@ -1419,17 +1255,14 @@ export class InkEditorModal extends Modal {
           });
           return;
         }
-        if (!this.#moving || picture === undefined) return;
+        if (!moving || this.#tracing.picture === undefined) return;
         event.preventDefault();
         const { x, y } = view.toDocument(event.clientX, event.clientY);
         this.#line.act(() => {
-          this.#placePicture(
-            scalePicture(
-              picture.placement,
-              wheelFactor(event.deltaY, event.deltaMode),
-              x,
-              y,
-            ),
+          this.#tracing.scaleAbout(
+            wheelFactor(event.deltaY, event.deltaMode),
+            x,
+            y,
           );
         });
       },
@@ -1461,7 +1294,7 @@ export class InkEditorModal extends Modal {
   #dropped(data: DataTransfer | null): void {
     const picture = pictureIn(data);
     if (picture !== undefined) {
-      void this.#trace(picture);
+      void this.#tracing.trace(picture);
       return;
     }
     // A picture in the vault, dragged from Obsidian's file explorer.
@@ -1475,7 +1308,9 @@ export class InkEditorModal extends Modal {
       this.#announce("Not traced: only a picture can be traced over");
       return;
     }
-    void this.#trace(vault.readBinary(file).then((bytes) => new Blob([bytes])));
+    void this.#tracing.trace(
+      vault.readBinary(file).then((bytes) => new Blob([bytes])),
+    );
   }
 
   /**
@@ -1504,7 +1339,7 @@ export class InkEditorModal extends Modal {
         this.#announce("The clipboard holds no picture to trace over");
         return;
       }
-      void this.#trace(picture);
+      void this.#tracing.trace(picture);
     });
   };
 
@@ -1517,161 +1352,11 @@ export class InkEditorModal extends Modal {
     return modals.item(modals.length - 1) === this.containerEl;
   }
 
-  /**
-   * Moves the picture with the pointer dragging it, by as far as the pointer
-   * moved in the drawing since it last reported ({@link #dragged}).
-   */
+  /** Moves the picture being dragged to where the pointer is in the drawing. */
   #drag(event: PointerEvent): void {
-    const from = this.#dragged;
-    const picture = this.#picture;
     const view = this.#view;
-    if (from === undefined || view === undefined) return;
-    const to = view.toDocument(event.clientX, event.clientY);
-    this.#dragged = to;
-    if (picture === undefined) return;
-    this.#placePicture(
-      movePicture(picture.placement, to.x - from.x, to.y - from.y),
-    );
-  }
-
-  /** Puts the picture where `placement` says, and shows it there. */
-  #placePicture(placement: Placement): void {
-    const picture = this.#picture;
-    if (picture === undefined) return;
-    this.#picture = { ...picture, placement };
-    this.#render();
-  }
-
-  /**
-   * Reads and decodes a pasted or dropped picture and traces over it, in
-   * place of any other, as tall as a capital letter between the guides and
-   * in the middle of the surface. Only the picture asked for last is taken.
-   */
-  async #trace(file: Blob | Promise<Blob>): Promise<void> {
-    const request = ++this.#pictureRequests;
-    let image: ImageBitmap;
-    try {
-      image = await decodePicture(await file);
-    } catch {
-      if (request === this.#pictureRequests) {
-        this.#announce("Not traced: Inkline cannot read this picture");
-      }
-      return;
-    }
-    const view = this.#view;
-    if (
-      request !== this.#pictureRequests ||
-      this.#closing ||
-      this.#retired ||
-      view === undefined
-    ) {
-      image.close();
-      return;
-    }
-    const top =
-      this.#fontGuides.find((guide) => guide.name === "cap height")?.y ??
-      lineBox.baseline - 0.7 * lineBox.pxPerEm;
-    const { width, height } = image;
-    this.#setPicture({
-      image,
-      width,
-      height,
-      placement: placePicture(
-        width,
-        height,
-        top,
-        lineBox.baseline,
-        view.center,
-      ),
-    });
-    this.#announce(
-      "Tracing over the picture. Move (M), then drag it or use the arrow keys; the wheel or + and − scale it",
-    );
-  }
-
-  /** Traces over `picture`, or over none, closing the one it replaces. */
-  #setPicture(picture: TracedPicture | undefined): void {
-    if (this.#picture?.image !== picture?.image) this.#picture?.image.close();
-    this.#picture = picture;
-    if (picture === undefined) this.#moving = false;
-    if (this.#converting?.image !== picture?.image) this.#forgetConverting();
-    this.#updateButtons();
-    this.#render();
-  }
-
-  /** Opens or closes what turns the picture into ink. */
-  #toggleConvert(): void {
-    // Its row opens or closes once the pointer is let go, as Zoom waits.
-    if (
-      this.#held &&
-      (this.#converting !== undefined || this.#picture !== undefined)
-    ) {
-      const open = !this.#inkOpen;
-      // Asked for twice, it stays as it is.
-      this.#viewWaits.ink =
-        open === (this.#converting !== undefined) ? undefined : open;
-      this.#updateButtons();
-      if (this.#viewWaits.ink !== undefined) {
-        this.#announce(
-          open
-            ? "Making ink once you let go"
-            : "Closing Make ink once you let go",
-        );
-      }
-      return;
-    }
-    if (this.#converting !== undefined) {
-      this.#stopConverting();
-      this.#announce("No ink made");
-      return;
-    }
-    const picture = this.#picture;
-    const view = this.#view;
-    if (picture === undefined || view === undefined) {
-      this.#announce(
-        "Paste, drop, or choose a picture first, to make ink of it",
-      );
-      return;
-    }
-    const luma = pictureLuminance(readPixels(picture.image));
-    const copies = new Map([[1, luma]]);
-    // The defaults come from the part that would become ink, as finely as
-    // the preview traces it.
-    const region = this.#inkRegion(view);
-    const shrink = previewShrink(
-      luma.width,
-      luma.height,
-      picture.placement,
-      region,
-    );
-    // From the picture's own pixels, even where the ink comes from finer
-    // samples: those add values between its own, not more of its tones.
-    const source = copyOf(copies, shrink);
-    const part = regionValues(
-      source,
-      shrunkPlace(picture.placement, shrink),
-      region,
-    );
-    const { threshold, light } = inkDefaults(part ?? source);
-    this.#converting = {
-      image: picture.image,
-      luma,
-      copies,
-      threshold,
-      light,
-    };
-    this.#updateButtons();
-    this.#render();
-    this.#announce(pictureHints.making);
-    this.#controls?.focusThreshold();
-  }
-
-  /** Closes what turns the picture into ink, making none. */
-  #stopConverting(): void {
-    this.#forgetConverting();
-    this.#updateButtons();
-    this.#render();
-    this.#refocus();
+    if (!this.#tracing.dragging || view === undefined) return;
+    this.#tracing.dragTo(view.toDocument(event.clientX, event.clientY));
   }
 
   /**
@@ -1680,34 +1365,6 @@ export class InkEditorModal extends Modal {
    */
   #refocus(): void {
     this.#view?.canvas.focus({ preventScroll: true });
-  }
-
-  #setThreshold(value: number): void {
-    const converting = this.#converting;
-    if (converting === undefined || !Number.isFinite(value)) return;
-    converting.threshold = Math.min(
-      thresholdRange.max,
-      Math.max(thresholdRange.min, Math.round(value)),
-    );
-    this.#render();
-  }
-
-  #toggleLight(): void {
-    const converting = this.#converting;
-    if (converting === undefined) return;
-    converting.light = !converting.light;
-    this.#updateButtons();
-    this.#render();
-  }
-
-  /**
-   * Where the picture becomes ink: the part the surface shows across, within
-   * the line box's height, so that the rest of a screenshot of several
-   * symbols stays out.
-   */
-  #inkRegion(view: InkView): Bounds {
-    const { left, right } = view.visible;
-    return { left, top: 0, right, bottom: lineBox.height };
   }
 
   /**
@@ -1719,227 +1376,14 @@ export class InkEditorModal extends Modal {
     base: DrawableBase | undefined;
   } {
     const document = this.#session.document;
-    const converting = this.#converting;
-    const picture = this.#picture;
-    if (converting === undefined || picture === undefined) {
-      return { document, base: this.#base };
-    }
-    const region = this.#inkRegion(view);
-    let area = this.#partShown;
-    if (
-      area?.placement !== picture.placement ||
-      !sameBounds(area.region, region)
-    ) {
-      const { luma, copies } = converting;
-      // As finely as the picture itself, unless too much of it is in view.
-      const shrink = previewShrink(
-        luma.width,
-        luma.height,
-        picture.placement,
-        region,
-      );
-      const { part, place, edge } = inkPart(
-        copies,
-        picture.placement,
-        region,
-        shrink,
-      );
-      area = { placement: picture.placement, region, place, part, edge };
-      this.#partShown = area;
-    }
-    const { place, edge } = area;
-    let shown = this.#inkShown;
-    if (
-      shown === undefined ||
-      shown.part !== area.part ||
-      shown.threshold !== converting.threshold ||
-      shown.light !== converting.light
-    ) {
-      const ink =
-        area.part &&
-        traceRegion(
-          area.part,
-          place,
-          converting.threshold,
-          converting.light,
-          edge,
-        );
-      shown = {
-        part: area.part,
-        threshold: converting.threshold,
-        light: converting.light,
-        base: ink && previewInk(ink, place.scale),
-        documents: new WeakMap(),
-      };
-      this.#inkShown = shown;
-    }
-    const { base } = shown;
-    // One document per drawing, so that the surface redraws only on a change.
-    let previewed = shown.documents.get(document);
-    if (previewed === undefined) {
-      previewed =
-        base === undefined
-          ? { strokes: document.strokes }
-          : {
-              strokes: document.strokes,
-              // Only where it goes; the view draws the preview's own pixels.
-              base: {
-                x: base.x,
-                y: base.y,
-                width: base.width,
-                height: base.height,
-                png: new Uint8Array(),
-              },
-            };
-      shown.documents.set(document, previewed);
-    }
-    return { document: previewed, base };
-  }
-
-  /**
-   * Makes the picture's ink at the threshold the drawing's base layer, in
-   * place of any it had, as one step that Undo takes back. The picture stays,
-   * to trace over or to make ink of again.
-   */
-  #applyInk(): Promise<void> {
-    if (this.#applying === undefined) {
-      this.#applying = this.#makeInk().finally(() => {
-        this.#applying = undefined;
-        this.#updateButtons();
-        // Disabling Apply while it ran let go of the focus; with no ink
-        // made, the row stays open, and the focus goes back to Apply.
-        const focused = this.modalEl.doc.activeElement;
-        if (focused === null || focused === this.modalEl.doc.body) {
-          if (this.#converting === undefined) this.#refocus();
-          else this.#controls?.focusButton("apply");
-        }
-      });
-      this.#updateButtons();
-    }
-    return this.#applying;
-  }
-
-  /**
-   * Makes the ink {@link #applyInk} describes, from the picture at its own
-   * resolution, or finer where it is enlarged. If the threshold, Light ink,
-   * the picture, or the surface changed while the ink was encoded, it makes
-   * the ink again, so that what it makes is what the surface shows.
-   */
-  async #makeInk(): Promise<void> {
-    for (;;) {
-      const converting = this.#converting;
-      const picture = this.#picture;
-      const view = this.#view;
-      if (converting === undefined || picture === undefined || !view) return;
-      const { threshold, light } = converting;
-      const { placement } = picture;
-      const region = this.#inkRegion(view);
-      const { part, place, edge } = inkPart(
-        converting.copies,
-        placement,
-        region,
-        1,
-      );
-      if (part === undefined) {
-        this.#announce("No ink made: no part of the picture is on the surface");
-        return;
-      }
-      const ink = traceRegion(part, place, threshold, light, edge);
-      if (ink === undefined) {
-        this.#announce("No ink at this threshold: try another");
-        return;
-      }
-      let made: Awaited<ReturnType<typeof baseFromInk>>;
-      this.#announce("Making ink…", () => this.#applying !== undefined);
-      try {
-        made = await baseFromInk(ink, place.scale);
-      } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error);
-        this.#announce(`No ink made: ${reason}`);
-        return;
-      }
-      // Closed, or made ink of meanwhile, or put off.
-      if (this.#ended() || this.#converting !== converting) return;
-      if (
-        converting.threshold !== threshold ||
-        converting.light !== light ||
-        this.#picture?.placement !== placement ||
-        !sameBounds(this.#inkRegion(view), region)
-      ) {
-        continue;
-      }
-      this.#keepInk(made);
-      return;
-    }
-  }
-
-  /** Makes `made` the drawing's base layer, closing what made it. */
-  #keepInk(made: Awaited<ReturnType<typeof baseFromInk>>): void {
-    // A stroke being drawn is committed first, so that Undo keeps it apart.
-    this.#session.end();
-    this.#decoded.set(made.layer.png, made.drawable);
-    const { strokes, base } = this.#session.document;
-    this.#session.replace(
-      { strokes, base: made.layer },
-      this.#session.gridOrigin,
+    return (
+      this.#tracing.preview(view, document) ?? { document, base: this.#base }
     );
-    this.#forgetConverting();
-    this.#changed();
-    this.#refocus();
-    this.#announce(
-      base === undefined
-        ? "Made ink of the picture; Undo takes it back"
-        : "Made ink of the picture, in place of the base layer before; Undo takes it back",
-    );
-  }
-
-  /** Lets go of what made ink of the picture, and what it showed. */
-  #forgetConverting(): void {
-    this.#converting = undefined;
-    this.#partShown = undefined;
-    this.#inkShown = undefined;
-  }
-
-  /**
-   * Whether the surface shows ink being made of the picture, which a save
-   * would make: not once Make ink waits to close ({@link #makingInk}).
-   */
-  #previewing(): boolean {
-    return this.#makingInk() && this.#inkShown?.base !== undefined;
   }
 
   /** Whether the editor has closed, or Inkline was disabled. */
   #ended(): boolean {
     return this.#closing || this.#retired;
-  }
-
-  /** Switches between moving the picture and drawing. */
-  #toggleMove(): void {
-    if (this.#picture === undefined) {
-      this.#announce("Paste, drop, or choose a picture first, to move it");
-      return;
-    }
-    this.#endPlacing();
-    this.#moving = !this.#moving;
-    this.#updateButtons();
-  }
-
-  /**
-   * Lets go of the picture, for the editor after this one to take over, with
-   * its x measured from the middle of the surface.
-   */
-  #handOverPicture(): TracedPicture | undefined {
-    const picture = this.#picture;
-    const view = this.#view;
-    this.#picture = undefined;
-    if (picture === undefined || view === undefined) {
-      picture?.image.close();
-      return undefined;
-    }
-    return {
-      ...picture,
-      placement: movePicture(picture.placement, -view.center, 0),
-    };
   }
 
   /** Fits the surface to the whole drawing, as one restored from a draft. */
@@ -1992,7 +1436,8 @@ export class InkEditorModal extends Modal {
    * shown (#393). A polygon's corner, or a path's point or handle, being
    * pressed is left as it is: its release places it where the release says,
    * as ever. A picture being dragged needs nothing here: it rejoins the
-   * pointer at its next report ({@link #dragged}), as moving it makes no ink.
+   * pointer at its next report ({@link PictureTracing.dragTo}), as moving it
+   * makes no ink.
    */
   #resized(change: () => void): void {
     change();
@@ -2060,7 +1505,7 @@ export class InkEditorModal extends Modal {
     if (direction === undefined) return !shift && this.#panKey(name);
     const focused = activeDocument.activeElement;
     if (
-      this.#converting !== undefined ||
+      this.#tracing.converting !== undefined ||
       typing(focused) ||
       focused?.instanceOf(HTMLInputElement) === true
     ) {
@@ -2077,7 +1522,9 @@ export class InkEditorModal extends Modal {
    * leave no way back to what was saved.
    */
   #moveDrawing(direction: -1 | 1, byCell: boolean): void {
-    if (this.#converting !== undefined || this.#saving !== undefined) return;
+    if (this.#tracing.converting !== undefined || this.#saving !== undefined) {
+      return;
+    }
     const step = byCell ? this.#session.grid.spacing : nudge;
     if (this.#session.moveDrawing(direction * toUnits(step))) this.#changed();
   }
@@ -2132,7 +1579,7 @@ export class InkEditorModal extends Modal {
 
   /** Whether the pointer is pressed on the surface to draw, not to drag. */
   get #pressed(): boolean {
-    return this.#gate.active !== undefined && this.#dragged === undefined;
+    return this.#gate.active !== undefined && !this.#tracing.dragging;
   }
 
   /**
@@ -2146,14 +1593,6 @@ export class InkEditorModal extends Modal {
   /** Whether the view is magnified, or will be once the pointer is let go. */
   get #zoomed(): boolean {
     return (this.#view?.magnified === true) !== this.#viewWaits.zoom;
-  }
-
-  /**
-   * Whether what makes ink of the picture is open, or will be once the
-   * pointer is let go, as its button shows.
-   */
-  get #inkOpen(): boolean {
-    return this.#viewWaits.ink ?? this.#converting !== undefined;
   }
 
   /**
@@ -2208,10 +1647,11 @@ export class InkEditorModal extends Modal {
    * ink at a threshold never seen.
    */
   #viewAfterPress(): void {
-    const { zoom, fit, ink } = this.#viewWaits;
-    this.#viewWaits = { zoom: false, fit: false, ink: undefined };
+    const { zoom, fit } = this.#viewWaits;
+    this.#viewWaits = { zoom: false, fit: false };
+    const ink = this.#tracing.takeInkWait();
     const inkChanges =
-      ink !== undefined && ink !== (this.#converting !== undefined);
+      ink !== undefined && ink !== (this.#tracing.converting !== undefined);
     if (this.#ended()) return;
     // Make ink's button showed what was asked, and now shows what is.
     if (ink !== undefined) this.#updateButtons();
@@ -2227,7 +1667,7 @@ export class InkEditorModal extends Modal {
         this.#announce("Not making ink while a question is open");
         return;
       }
-      this.#toggleConvert();
+      this.#tracing.toggleConvert();
     });
   }
 
@@ -2259,7 +1699,7 @@ export class InkEditorModal extends Modal {
       view.grid = this.#session.snap
         ? { ...this.#session.grid, originX: this.#session.gridOrigin }
         : undefined;
-      view.reference = this.#picture;
+      view.reference = this.#tracing.picture;
       view.path = this.#session.pathMarks;
       // A press takes hold of a path's marks as near as they show.
       this.#session.markReach = view.markReach;
@@ -2394,7 +1834,7 @@ export class InkEditorModal extends Modal {
     if (this.#session.drawing && !this.#session.placing) return;
     this.#endPlacing();
     this.#session.shape = this.#session.shape === shape ? "free" : shape;
-    this.#moving = false;
+    this.#tracing.stopMoving();
     this.#updateButtons();
   }
 
@@ -2428,7 +1868,7 @@ export class InkEditorModal extends Modal {
   #setTool(tool: "pen" | "eraser"): void {
     this.#session.tool = tool;
     this.#session.rebrush();
-    this.#moving = false;
+    this.#tracing.stopMoving();
     this.#updateButtons();
     this.#render();
   }
@@ -2471,17 +1911,17 @@ export class InkEditorModal extends Modal {
 
   /** Shows on the buttons what they do now, as {@link buttonStates} says. */
   #updateButtons(): void {
-    const converting = this.#converting;
+    const tracing = this.#tracing;
     const { strokes, base } = this.#session.document;
     const states = buttonStates({
       tool: this.#session.tool,
       shape: this.#session.shape,
       fill: this.#session.fill,
-      moving: this.#moving,
-      picture: this.#picture !== undefined,
-      converting,
-      inkOpen: this.#inkOpen,
-      applying: this.#applying !== undefined,
+      moving: tracing.moving,
+      picture: tracing.picture !== undefined,
+      converting: tracing.converting,
+      inkOpen: tracing.inkOpen,
+      applying: tracing.applying,
       guides: this.#guidesShown,
       grid: this.#session.snap,
       canEndFlat: this.#canEndFlat,
@@ -2498,7 +1938,7 @@ export class InkEditorModal extends Modal {
       ...states,
       convertBar: this.#barHeld ?? states.convertBar,
     });
-    this.#view?.canvas.toggleClass("is-moving", this.#moving);
+    this.#view?.canvas.toggleClass("is-moving", tracing.moving);
     this.#updateCursor();
   }
 
@@ -2509,7 +1949,7 @@ export class InkEditorModal extends Modal {
     const hover = this.#hover;
     if (view === undefined || cursor === undefined) return;
     const canvas = view.canvas;
-    if (hover === undefined || this.#moving) {
+    if (hover === undefined || this.#tracing.moving) {
       cursor.hide();
       canvas.removeClass("has-brush-cursor");
       return;
@@ -3253,7 +2693,7 @@ export class InkEditorModal extends Modal {
   #sharedUses(): SymbolUses | undefined {
     const uses = this.#options.uses;
     if (uses === undefined || this.#choseReplace) return undefined;
-    if (!this.#session.dirty && !this.#previewing()) return undefined;
+    if (!this.#session.dirty && !this.#tracing.previewing()) return undefined;
     const found = uses();
     return found.links > 1 ? found : undefined;
   }
@@ -3301,30 +2741,9 @@ export class InkEditorModal extends Modal {
   /** Saves, keeping the editor open. */
   async #saveOnly(): Promise<void> {
     if (!(await this.#mayReplace())) return;
-    if (!(await this.#applyPending())) return;
+    if (!(await this.#tracing.applyBeforeSave())) return;
     // Ink made just now is a change too, if the preview had not shown it yet.
     if (await this.#mayReplace()) await this.#save();
-  }
-
-  /**
-   * Makes the ink being previewed, before a save, so that the save keeps
-   * what the surface shows. Returns whether the save may go on, which it may
-   * not when the threshold leaves no ink or the editor closed meanwhile.
-   */
-  async #applyPending(): Promise<boolean> {
-    if (!this.#makingInk()) return true;
-    await this.#applyInk();
-    return !this.#makingInk() && !this.#ended();
-  }
-
-  /**
-   * Whether what makes ink of the picture is open, and stays open once the
-   * pointer is let go, so that a save makes the ink the surface shows: not
-   * while Make ink waits to close, and not while it waits to open, before
-   * its ink has been seen.
-   */
-  #makingInk(): boolean {
-    return this.#converting !== undefined && this.#inkOpen;
   }
 
   /**
@@ -3337,7 +2756,7 @@ export class InkEditorModal extends Modal {
     if (next === undefined || this.#advancing) return;
     this.#advancing = true;
     try {
-      if (!(await this.#applyPending())) return;
+      if (!(await this.#tracing.applyBeforeSave())) return;
       if (!(await this.#save(() => void this.#saveAndNext()))) return;
       // Closed meanwhile, as by Save and close or by Inkline being disabled.
       if (this.#closing || this.#retired) return;
@@ -3346,7 +2765,7 @@ export class InkEditorModal extends Modal {
         return;
       }
       const { tool, sizeIndex, snap } = this.#session;
-      const picture = this.#handOverPicture();
+      const picture = this.#tracing.handOver();
       const textShown = this.#textStrip?.isShown() === true;
       this.#finish();
       next({
@@ -3373,7 +2792,7 @@ export class InkEditorModal extends Modal {
    */
   async #saveAndClose(): Promise<void> {
     if (!(await this.#mayReplace())) return;
-    if (!(await this.#applyPending())) return;
+    if (!(await this.#tracing.applyBeforeSave())) return;
     if (!(await this.#mayReplace())) return;
     if (!(await this.#save(() => void this.#saveAndClose()))) return;
     if (this.#unsaved) {
@@ -3522,12 +2941,7 @@ export class InkEditorModal extends Modal {
         this.#view?.shift(-left);
         // The picture moves with the drawing, so it stays where it was, and
         // so does where a drag of it holds it.
-        if (this.#picture !== undefined) {
-          this.#placePicture(movePicture(this.#picture.placement, -left, 0));
-        }
-        if (this.#dragged !== undefined) {
-          this.#dragged = { x: this.#dragged.x - left, y: this.#dragged.y };
-        }
+        this.#tracing.moveWithDrawing(-left);
         this.#announce(this.#notRenamed ? "Saved, but not renamed" : "Saved");
         return true;
       } catch (error) {
