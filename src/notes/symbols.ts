@@ -256,6 +256,24 @@ function pathIn(folder: string, name: string): string {
 }
 
 /**
+ * Where a save that made a deleted symbol's file again found its folder listed
+ * in another letter case, which the disk read as the same name (#436): the
+ * path it made the file at, or found a file at, by the symbol's own path, as
+ * its editor still names it. {@link fileAt} finds the file there, so that the
+ * editor's look and the save's next round look at that file as at one at the
+ * symbol's own path.
+ */
+const listedPaths = new Map<string, string>();
+
+/** The vault's file at `path`, or where {@link listedPaths} puts it. */
+function fileAt(app: App, path: string): TFile | null {
+  const file = app.vault.getFileByPath(path);
+  if (file !== null) return file;
+  const listed = listedPaths.get(path);
+  return listed === undefined ? null : app.vault.getFileByPath(listed);
+}
+
+/**
  * `folder` as the vault lists it, where the disk reads a part of it as the
  * name of a folder the vault lists in another letter case, as Windows and
  * macOS read names: that is the same folder on the disk, and Obsidian refuses
@@ -1308,7 +1326,7 @@ function symbolFile(app: App, path: string): SymbolFile {
   return {
     path,
     read: async () => {
-      const file = app.vault.getFileByPath(path);
+      const file = fileAt(app, path);
       if (file === null) return undefined;
       const reading = app.vault.readBinary(file);
       if (looking !== undefined && looking.asked === undefined) {
@@ -1544,8 +1562,7 @@ async function writeSymbol(
   const save = (): Promise<TFile> =>
     writes.run(() =>
       saveFile({
-        current: () =>
-          present(app, file) ? file : app.vault.getFileByPath(file.path),
+        current: () => (present(app, file) ? file : fileAt(app, file.path)),
         check: async () => {
           const look: { asked: unknown } = { asked: undefined };
           looking = look;
@@ -1571,6 +1588,7 @@ async function writeSymbol(
           // in it, which on such a disk is where it was.
           const path =
             folder === wanted ? file.path : pathIn(folder, file.name);
+          if (path !== file.path) listedPaths.set(file.path, path);
           if (
             folder !== "" &&
             app.vault.getAbstractFileByPath(folder) === null
@@ -1586,8 +1604,9 @@ async function writeSymbol(
           try {
             return await makeSymbolFile(app, host.folder, path, buffer);
           } catch (error) {
-            // A file the vault lists at the path is looked at in the save's
-            // next round; anything else is said in Inkline's words.
+            // A file the vault lists at the path, the symbol's own or the
+            // one in its folder as listed, is looked at in the save's next
+            // round; anything else is said in Inkline's words.
             if (error instanceof PathTaken) {
               throw new PathTaken(await takenReason(app, path));
             }

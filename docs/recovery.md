@@ -119,7 +119,9 @@ elsewhere, by sync, another app, or another editor, is not lost to a save:
   case, which Windows and macOS read as the same name, is named in the status
   line, for you to rename or move it. A folder there again in another letter
   case, as `signs` for `Signs`, is the same folder to them, and the symbol is
-  saved in it.
+  saved in it; a file of its name already in that folder is the file at its
+  place, and is asked about as any change is, unless it holds what you last
+  saved, as after the folder's letter case was changed outside Obsidian.
 - A rename made elsewhere is followed, and its name kept.
 
 ## Files Inkline cannot read

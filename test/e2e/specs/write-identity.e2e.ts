@@ -742,6 +742,62 @@ describe("A symbol replaced at its path as it is saved", function () {
     expect(await folderListed("Signs")).toBe(false);
   });
 
+  it("makes the rest of a deleted symbol's folders in ones there again in another letter case, as deep as they go", async function () {
+    await folderInAnotherCase("Signs/Old/gate.ink.png");
+    await browser.executeObsidian(async ({ app }) => {
+      await app.vault.createFolder("signs/OLD");
+    });
+    await lookWithoutCase();
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    expect(await symbolFiles()).toEqual(["signs/OLD/gate.ink.png"]);
+    expect(await folderListed("Signs")).toBe(false);
+    expect(await folderListed("signs/Old")).toBe(false);
+  });
+
+  it("asks about a file of a deleted symbol's name in its folder there again in another letter case", async function () {
+    // The review of #449: the save found the file there, and looked for it
+    // in the folder's old letter case, so that every save was refused.
+    await folderInAnotherCase("Signs/gate.ink.png");
+    await createSymbol("signs/gate.ink.png");
+    await giveReading("signs/gate.ink.png", "theirs");
+    await lookWithoutCase();
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Not saved: the file changed on disk");
+    expect(await readingOf("signs/gate.ink.png")).toEqual(["theirs"]);
+    expect(await strokeCount("signs/gate.ink.png")).toBe(1);
+    // Keeping the drawing writes it over that file, as for any change.
+    await clickTop("Keep mine");
+    await waitForStatus("Saved");
+    expect(await symbolFiles()).toEqual(["signs/gate.ink.png"]);
+    expect(await strokeCount("signs/gate.ink.png")).toBe(2);
+  });
+
+  it("writes over the symbol as last saved in its folder there again in another letter case, as after a rename outside Obsidian", async function () {
+    // As when Signs is renamed signs in a file manager or by a sync tool:
+    // Obsidian lists the file there as a new one, holding the symbol as it
+    // was, and the editor's file as deleted.
+    await createSymbol("Signs/gate.ink.png");
+    await editFile("Signs/gate.ink.png");
+    await draw([
+      [0.5, 0.3],
+      [0.7, 0.6],
+    ]);
+    await browser.executeObsidian(async ({ app }) => {
+      const { adapter } = app.vault;
+      const bytes = await adapter.readBinary("Signs/gate.ink.png");
+      await adapter.rmdir("Signs", true);
+      await adapter.mkdir("signs");
+      await adapter.writeBinary("signs/gate.ink.png", bytes);
+    });
+    await waitForStatus("The file was deleted; saving makes it again");
+    await lookWithoutCase();
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    expect(await symbolFiles()).toEqual(["signs/gate.ink.png"]);
+    expect(await strokeCount("signs/gate.ink.png")).toBe(2);
+  });
+
   it("keeps a deleted symbol's folder of its own where the disk tells letter case apart", async function () {
     // As on Linux: Signs/ and signs/ are two folders, and the disk says so.
     await folderInAnotherCase("Signs/gate.ink.png");
