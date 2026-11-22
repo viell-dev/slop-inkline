@@ -734,9 +734,11 @@ must keep released files readable and looking the same, as
   does, while Cancel or Esc leaves it and it writes nothing; a form whose own
   write is held closes and says it may still finish; the editor says its strokes
   are in a draft, unless none could be kept, goes on drawing, and gives them
-  back after a restart. However long a write takes, no save behind it reads or
-  writes
-  ([symbol-text-unfinished-writes.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text-unfinished-writes.e2e.ts)
+  back after a restart, and says so too while a new symbol's embed waits to be
+  written into its note, which it inserts once that ends. However long a write
+  takes, no save behind it reads or writes
+  ([symbol-text-unfinished-writes.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text-unfinished-writes.e2e.ts),
+  [note-insertion.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/note-insertion.e2e.ts),
   and
   [file-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/file-writes.test.ts)).
 - A rename Obsidian does not finish, with its own move, a note's save, or a
