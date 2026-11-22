@@ -1,13 +1,12 @@
-// The editor: a modal around a drawing session and its surface, with the
-// tools, keyboard shortcuts, saving, drafts, and the question before unsaved
-// work is closed.
+// The editor: a modal around a drawing session and its surface, with its
+// controls, saving, drafts, and the question before unsaved work is closed.
+// controls.ts makes the buttons and keys, which run the commands this
+// implements.
 
 import {
-  ButtonComponent,
   ConfirmationModal,
   Modal,
   Notice,
-  setIcon,
   type App,
   type EventRef,
   type TAbstractFile,
@@ -74,11 +73,12 @@ import {
   type DraftTarget,
 } from "./drafts.ts";
 import {
-  buttonFace,
   buttonStates,
   pictureHints,
   type ButtonLabels,
+  type EditorCommands,
 } from "./buttons.ts";
+import { EditorControls, openHelp, typing } from "./controls.ts";
 import { FileWatch, type FileReading, type Reading } from "./disk.ts";
 import {
   contrastBrushCursor,
@@ -87,12 +87,7 @@ import {
 } from "./cursor.ts";
 import { PointerGate } from "./pointer.ts";
 import { StatusLine } from "./status.ts";
-import {
-  brushSizes,
-  DrawingSession,
-  type InputPoint,
-  type Shape,
-} from "./session.ts";
+import { DrawingSession, type InputPoint, type Shape } from "./session.ts";
 import {
   defaultGridCells,
   finerGrid,
@@ -431,20 +426,6 @@ export interface EditorOptions {
   };
 }
 
-/** Whether `element` takes typing: a text field or editable content. */
-function typing(element: Element | null): boolean {
-  if (element?.instanceOf(HTMLElement) !== true) return false;
-  return (
-    element.isContentEditable ||
-    element.instanceOf(HTMLTextAreaElement) ||
-    element.instanceOf(HTMLSelectElement) ||
-    (element.instanceOf(HTMLInputElement) &&
-      !["button", "checkbox", "radio", "range", "submit"].includes(
-        element.type,
-      ))
-  );
-}
-
 /** A save that stopped to ask a question, which says why without a notice. */
 class Unsaved extends Error {}
 
@@ -529,17 +510,25 @@ export class InkEditorModal extends Modal {
     if (this.#session.holdShift(event.shiftKey)) this.#render();
   };
   /**
-   * Changes to the view asked for while the pointer was pressed to draw, for
-   * when it is let go: Zoom as a switch, so that asking twice leaves the view
-   * as it is, Fit, and whether Make ink is to be open, or undefined to leave
-   * it as it is, as its row above the drawing area would move the drawing
-   * under the pointer as it opened or closed.
+   * Changes to the view asked for while the pointer was pressed on the
+   * surface, to draw or to drag the picture, for when it is let go: Zoom as a
+   * switch, so that asking twice leaves the view as it is, Fit, and whether
+   * Make ink is to be open, or undefined to leave it as it is, as its row
+   * above the drawing area would move the drawing under the pointer as it
+   * opened or closed.
    */
   #viewWaits: { zoom: boolean; fit: boolean; ink: boolean | undefined } = {
     zoom: false,
     fit: false,
     ink: undefined,
   };
+  /**
+   * Whether Make ink's row showed at the press, which it keeps doing until
+   * the release, or undefined while the pointer is not pressed. A picture
+   * pasted in place of the one it was open for, ink made by Apply, or Cancel
+   * closes it meanwhile, which would move the drawing under the pointer.
+   */
+  #barHeld: boolean | undefined;
   /**
    * Where the pointer pressed to draw last was in the window, while it is,
    * and where that was in the drawing as what is drawn took it.
@@ -619,7 +608,6 @@ export class InkEditorModal extends Modal {
    * can move under it, as a save or Fit does, so each move maps both ends.
    */
   #dragged: { clientX: number; clientY: number } | undefined;
-  #pictureHint: HTMLElement | undefined;
   /**
    * Making ink of the picture, while its controls are open: the picture's
    * luminance, found once, the threshold, and whether the ink is lighter
@@ -645,12 +633,11 @@ export class InkEditorModal extends Modal {
   #inkShown: InkShown | undefined;
   /** Making ink of the picture, while its encoding runs. */
   #applying: Promise<void> | undefined;
-  #convertBar: HTMLElement | undefined;
-  #thresholdInput: HTMLInputElement | undefined;
   /** The document whose pastes the editor takes, while it is open. */
   #pasteDocument: Document | undefined;
   readonly #questions = new Set<Modal>();
-  readonly #buttons = new Map<string, ButtonComponent>();
+  /** The buttons, the picture's and Make ink's bars, and the keys. */
+  #controls: EditorControls | undefined;
 
   constructor(app: App, options: EditorOptions) {
     super(app);
@@ -719,282 +706,16 @@ export class InkEditorModal extends Modal {
     this.modalEl.addClass("inkline-editor");
     this.#addNameField();
     this.#addTextFields();
-    // Three rows: what draws; its size and the history; then the view and
-    // what ends the editor. Each row wraps by itself in a narrow window.
-    const tools = this.contentEl.createDiv({ cls: "inkline-toolbar" });
-    this.#addButton(tools, "pen", "Pen", "P", () => {
-      this.#setTool("pen");
-    });
-    this.#addButton(tools, "eraser", "Eraser", "E", () => {
-      this.#setTool("eraser");
-    });
-    this.#addButton(
-      tools,
-      "ellipse",
-      "Ellipse",
-      "O",
-      () => {
-        this.#toggleEllipse();
+    const controls = new EditorControls(this.contentEl, {
+      commands: this.#commands(),
+      line: this.#line,
+      labels: this.#options.buttonLabels ?? "both",
+      offers: {
+        copyFrom: this.#options.copyFrom !== undefined,
+        next: this.#options.next !== undefined,
       },
-      "Ellipse",
-      "drag across a box to draw an ellipse with the pen or the eraser; hold Shift for a circle, or with the grid on to snap to it",
-    );
-    this.#addButton(
-      tools,
-      "polygon",
-      "Polygon",
-      "Y",
-      () => {
-        this.#togglePolygon();
-      },
-      "Polygon",
-      "click each corner of a shape with straight sides; click the first corner again to close it, or the last to end it; hold Shift to snap a corner to the grid",
-    );
-    this.#addButton(
-      tools,
-      "path",
-      "Path",
-      "A",
-      () => {
-        this.#togglePath();
-      },
-      "Path",
-      "place a curve by its points: click for a corner, or drag for a smooth point and its handles; drag a point or a handle's end to move it; click the first point to close the path, or the last to end it; hold Shift to snap to the grid",
-    );
-    this.#addButton(
-      tools,
-      "fill",
-      "Toggle fill",
-      "B",
-      () => {
-        this.#toggleFill();
-      },
-      "Toggle fill",
-      "while on, Ellipse, and Polygon or Path closed on its first point, draw solid shapes, with the pen or the eraser; it doesn't fill what is already drawn",
-    );
-    const history = this.contentEl.createDiv({ cls: "inkline-toolbar" });
-    brushSizes.forEach((size, index) => {
-      this.#addButton(
-        history,
-        `size-${String(index)}`,
-        size.label,
-        String(index + 1),
-        () => {
-          this.#setSize(index);
-        },
-        `Brush size ${size.label}`,
-      );
     });
-    this.#addButton(history, "undo", "Undo", "Mod+Z", () => {
-      this.#undo();
-    });
-    this.#addButton(history, "redo", "Redo", "Mod+Shift+Z", () => {
-      this.#redo();
-    });
-    this.#addButton(history, "clear", "Clear", "Delete", () => {
-      this.#clear();
-    });
-    this.#addButton(
-      history,
-      "move-up",
-      "Up",
-      "ArrowUp",
-      (event) => {
-        this.#moveDrawing(-1, event.shiftKey);
-      },
-      "Up",
-      "move the whole drawing up a pixel, or with Shift a grid cell's width",
-    );
-    this.#addButton(
-      history,
-      "move-down",
-      "Down",
-      "ArrowDown",
-      (event) => {
-        this.#moveDrawing(1, event.shiftKey);
-      },
-      "Down",
-      "move the whole drawing down a pixel, or with Shift a grid cell's width",
-    );
-    const toolbar = this.contentEl.createDiv({ cls: "inkline-toolbar" });
-    this.#addButton(toolbar, "guides", "Guides", "G", () => {
-      this.#toggleGuides();
-    });
-    this.#addButton(
-      toolbar,
-      "grid",
-      "Grid",
-      "Shift+G",
-      () => {
-        this.#toggleGrid();
-      },
-      "Grid",
-      "show a grid of dots as a guide; hold Shift while drawing to snap to it",
-    );
-    this.#addButton(
-      toolbar,
-      "flat-ends",
-      "Flat ends",
-      "T",
-      () => {
-        this.#toggleFlatEnds();
-      },
-      "Flat ends",
-      "with the grid on, ends of freehand strokes and paths that Shift puts on a row, coming in at 45° or steeper, stop flush with it, rather than rounding past it",
-    );
-    if (this.#options.copyFrom !== undefined) {
-      this.#addButton(
-        toolbar,
-        "copy",
-        "Copy from",
-        "V",
-        () => {
-          void this.#copy();
-        },
-        "Copy from",
-        "start from a copy of another symbol",
-      );
-    }
-    this.#addButton(
-      toolbar,
-      "fit",
-      "Fit",
-      "F",
-      () => {
-        this.#fit();
-      },
-      "Fit",
-      "centre the drawing in the view, and out of Zoom show all of it if it is wider; the drawing itself stays as it is",
-    );
-    this.#addButton(
-      toolbar,
-      "zoom",
-      "Zoom",
-      "Z",
-      () => {
-        this.#toggleZoom();
-      },
-      "Zoom",
-      "a taller view of the drawing, twice as large, with twice as many grid cells each way; the wheel or the left and right arrow keys move along it",
-    );
-    this.#addButton(toolbar, "save", "Save", "Mod+Enter", () => {
-      void this.#saveAndClose();
-    });
-    this.#buttons.get("save")?.setCta();
-    if (this.#options.next !== undefined) {
-      this.#addButton(
-        toolbar,
-        "next",
-        "Next",
-        "Mod+Shift+Enter",
-        () => {
-          void this.#saveAndNext();
-        },
-        "Next",
-        "save and draw the next one",
-      );
-      this.#buttons.get("next")?.setCta();
-    }
-    this.#addButton(toolbar, "help", "Help", undefined, () => {
-      this.#help();
-    });
-    // A picture to trace over, what chooses it, and what moves or removes it.
-    const pictureBar = this.contentEl.createDiv({ cls: "inkline-picture" });
-    // The system's file dialog, which reaches files in the vault and out of
-    // it; the picture chosen is traced as a pasted one is.
-    const chooser = pictureBar.createEl("input", {
-      type: "file",
-      attr: { accept: "image/*", tabindex: "-1", "aria-hidden": "true" },
-    });
-    chooser.hide();
-    chooser.addEventListener("change", () => {
-      const [file] = chooser.files ?? [];
-      // So that choosing the same file again is a change too.
-      chooser.value = "";
-      if (file !== undefined) void this.#trace(file);
-      this.#refocus();
-    });
-    chooser.addEventListener("cancel", () => {
-      this.#refocus();
-    });
-    this.#addButton(
-      pictureBar,
-      "choose",
-      "Choose picture…",
-      undefined,
-      () => {
-        chooser.click();
-      },
-      "Choose picture…",
-      "open a picture file to trace over",
-    );
-    this.#addButton(
-      pictureBar,
-      "move",
-      "Move",
-      "M",
-      () => {
-        this.#toggleMove();
-      },
-      "Move",
-      "drag the picture or use the arrow keys; the wheel or + and − scale it",
-    );
-    this.#addButton(
-      pictureBar,
-      "ink",
-      "Make ink",
-      "I",
-      () => {
-        this.#toggleConvert();
-      },
-      "Make ink",
-      "turn the picture into the symbol's ink, by a threshold",
-    );
-    this.#addButton(pictureBar, "remove", "Remove picture", undefined, () => {
-      this.#setPicture(undefined);
-      this.#announce("Picture removed");
-      this.#refocus();
-    });
-    this.#pictureHint = pictureBar.createSpan({ cls: "inkline-picture-hint" });
-    // What turns the picture into ink, while Make ink is on.
-    const convertBar = this.contentEl.createDiv({ cls: "inkline-convert" });
-    convertBar.hide();
-    const threshold = convertBar
-      .createEl("label", { text: "Threshold" })
-      .createEl("input", {
-        type: "range",
-        attr: {
-          min: String(thresholdRange.min),
-          max: String(thresholdRange.max),
-          step: "1",
-        },
-      });
-    threshold.addEventListener("input", () => {
-      this.#line.act(() => {
-        this.#setThreshold(Number(threshold.value));
-      });
-    });
-    this.#thresholdInput = threshold;
-    this.#addButton(
-      convertBar,
-      "light",
-      "Light ink",
-      undefined,
-      () => {
-        this.#toggleLight();
-      },
-      "Light ink",
-      "the ink is lighter than the ground around it",
-    );
-    this.#addButton(convertBar, "apply", "Apply", undefined, () => {
-      void this.#applyInk();
-    });
-    this.#buttons.get("apply")?.setCta();
-    this.#addButton(convertBar, "cancel", "Cancel", undefined, () => {
-      this.#stopConverting();
-      this.#announce("No ink made");
-    });
-    this.#convertBar = convertBar;
+    this.#controls = controls;
     this.#pasteDocument = this.modalEl.doc;
     this.#pasteDocument.addEventListener("paste", this.#paste);
 
@@ -1064,7 +785,7 @@ export class InkEditorModal extends Modal {
       };
     }
     this.#listen(canvas);
-    this.#registerKeys();
+    controls.registerKeys(this.scope);
 
     this.#resize = new ResizeObserver(() => {
       this.#resized(() => {
@@ -1083,6 +804,125 @@ export class InkEditorModal extends Modal {
     void this.#offerDraft();
     // The file may have changed since it was read for opening.
     this.#checkFile();
+  }
+
+  /** What the editor's buttons and keys do, for its controls to call. */
+  #commands(): EditorCommands {
+    return {
+      setTool: (tool) => {
+        this.#setTool(tool);
+      },
+      toggleEllipse: () => {
+        this.#toggleEllipse();
+      },
+      togglePolygon: () => {
+        this.#togglePolygon();
+      },
+      togglePath: () => {
+        this.#togglePath();
+      },
+      toggleFill: () => {
+        this.#toggleFill();
+      },
+      setSize: (index) => {
+        this.#setSize(index);
+      },
+      undo: () => {
+        this.#undo();
+      },
+      redo: () => {
+        this.#redo();
+      },
+      clear: () => {
+        this.#clear();
+      },
+      moveDrawing: (direction, byCell) => {
+        this.#moveDrawing(direction, byCell);
+      },
+      toggleGuides: () => {
+        this.#toggleGuides();
+      },
+      toggleGrid: () => {
+        this.#toggleGrid();
+      },
+      toggleFlatEnds: () => {
+        this.#toggleFlatEnds();
+      },
+      copy: () => void this.#copy(),
+      fit: () => {
+        this.#fit();
+      },
+      toggleZoom: () => {
+        this.#toggleZoom();
+      },
+      saveAndClose: () => void this.#saveAndClose(),
+      saveOnly: () => void this.#saveOnly(),
+      saveAndNext: () => void this.#saveAndNext(),
+      help: () => {
+        this.#help();
+      },
+      choosePicture: () => {
+        this.#controls?.choosePicture();
+      },
+      trace: (file) => void this.#trace(file),
+      toggleMove: () => {
+        this.#toggleMove();
+      },
+      toggleConvert: () => {
+        this.#toggleConvert();
+      },
+      removePicture: () => {
+        this.#setPicture(undefined);
+        this.#announce("Picture removed");
+        this.#refocus();
+      },
+      setThreshold: (value) => {
+        this.#setThreshold(value);
+      },
+      toggleLight: () => {
+        this.#toggleLight();
+      },
+      applyInk: () => void this.#applyInk(),
+      cancelInk: () => {
+        this.#stopConverting();
+        this.#announce("No ink made");
+      },
+      endShape: () => {
+        const canvas = this.#view?.canvas;
+        if (!this.#session.placing || activeDocument.activeElement !== canvas) {
+          return false;
+        }
+        this.#endPlacing();
+        return true;
+      },
+      arrowKey: (name, shift) => this.#arrowKey(name, shift),
+      movingPicture: () => this.#moving && this.#picture !== undefined,
+      nudgePicture: (dx, dy, byCell) => {
+        const picture = this.#picture;
+        if (picture === undefined) return;
+        // One grid spacing, as the grid is laid out now.
+        const step = byCell ? this.#session.grid.spacing : nudge;
+        this.#placePicture(
+          movePicture(picture.placement, dx * step, dy * step),
+        );
+      },
+      scalePictureStep: (larger) => {
+        const picture = this.#picture;
+        if (picture === undefined) return;
+        const { x, y, scale } = picture.placement;
+        this.#placePicture(
+          scalePicture(
+            picture.placement,
+            larger ? keyScale : 1 / keyScale,
+            x + (picture.width * scale) / 2,
+            y + (picture.height * scale) / 2,
+          ),
+        );
+      },
+      refocus: () => {
+        this.#refocus();
+      },
+    };
   }
 
   override onClose(): void {
@@ -1434,202 +1274,6 @@ export class InkEditorModal extends Modal {
       : "Saved, but not renamed";
   }
 
-  /**
-   * Adds a toolbar button, showing its icon, its `text`, or both, as the
-   * settings choose. Obsidian shows a button's `aria-label` as its tooltip,
-   * so that one attribute is its name and its tooltip under every choice:
-   * `label`, which holds the `text`, then any `description`, then the
-   * shortcut.
-   */
-  #addButton(
-    parent: HTMLElement,
-    id: string,
-    text: string,
-    shortcut: string | undefined,
-    action: (event: MouseEvent) => void,
-    label = text,
-    description?: string,
-  ): void {
-    const name = description === undefined ? label : `${label}: ${description}`;
-    const button = new ButtonComponent(parent)
-      .setTooltip(shortcut === undefined ? name : `${name} (${shortcut})`)
-      .onClick((event) => {
-        this.#line.act(() => {
-          action(event);
-        });
-      });
-    const face = buttonFace(id, this.#options.buttonLabels ?? "both");
-    if (face.icon === undefined) {
-      button.setButtonText(text);
-    } else {
-      button.buttonEl.addClass(
-        face.text ? "inkline-with-icon" : "inkline-icon-only",
-      );
-      const icon = button.buttonEl.createSpan({
-        cls: "inkline-button-icon",
-        attr: { "aria-hidden": "true" },
-      });
-      setIcon(icon, face.icon);
-      if (face.text) button.buttonEl.createSpan({ text });
-    }
-    button.buttonEl.dataset.inklineButton = id;
-    this.#buttons.set(id, button);
-  }
-
-  /**
-   * The editor's shortcuts. Those that would also edit text, the single keys
-   * and undo and redo, yield to a text field that has the focus; saving
-   * does not.
-   */
-  #registerKeys(): void {
-    const key = (
-      modifiers: ("Mod" | "Shift")[],
-      name: string,
-      action: () => void,
-      yields = true,
-    ): void => {
-      this.scope.register(modifiers, name, () => {
-        if (yields && typing(activeDocument.activeElement)) return true;
-        this.#line.act(action);
-        return false;
-      });
-    };
-    key(["Mod"], "Enter", () => void this.#saveAndClose(), false);
-    if (this.#options.next !== undefined) {
-      key(["Mod", "Shift"], "Enter", () => void this.#saveAndNext(), false);
-    }
-    key(["Mod"], "s", () => void this.#saveOnly(), false);
-    key(["Mod"], "z", () => {
-      this.#undo();
-    });
-    key(["Mod", "Shift"], "z", () => {
-      this.#redo();
-    });
-    key(["Mod"], "y", () => {
-      this.#redo();
-    });
-    key([], "p", () => {
-      this.#setTool("pen");
-    });
-    key([], "e", () => {
-      this.#setTool("eraser");
-    });
-    key([], "o", () => {
-      this.#toggleEllipse();
-    });
-    key([], "y", () => {
-      this.#togglePolygon();
-    });
-    key([], "a", () => {
-      this.#togglePath();
-    });
-    key([], "b", () => {
-      this.#toggleFill();
-    });
-    // Enter on the drawing area ends a polygon or path being placed where it
-    // is; elsewhere it is left to what has the focus, such as a button.
-    this.scope.register([], "Enter", () => {
-      const canvas = this.#view?.canvas;
-      if (!this.#session.placing || activeDocument.activeElement !== canvas) {
-        return true;
-      }
-      this.#line.act(() => {
-        this.#endPlacing();
-      });
-      return false;
-    });
-    key([], "g", () => {
-      this.#toggleGuides();
-    });
-    key(["Shift"], "g", () => {
-      this.#toggleGrid();
-    });
-    key([], "t", () => {
-      this.#toggleFlatEnds();
-    });
-    if (this.#options.copyFrom !== undefined) {
-      key([], "v", () => {
-        void this.#copy();
-      });
-    }
-    key([], "f", () => {
-      this.#fit();
-    });
-    key([], "m", () => {
-      this.#toggleMove();
-    });
-    key([], "z", () => {
-      this.#toggleZoom();
-    });
-    key([], "i", () => {
-      this.#toggleConvert();
-    });
-    // While moving the picture, the arrow keys move it and + and − scale
-    // it; otherwise they keep what they do.
-    const moving = (
-      modifiers: "Shift"[],
-      name: string,
-      action: (picture: TracedPicture) => Placement,
-    ): void => {
-      this.scope.register(modifiers, name, () => {
-        const picture = this.#picture;
-        // Otherwise a magnified view moves along the drawing, as Obsidian's
-        // scope runs only the first handler for a key.
-        if (!this.#moving || picture === undefined) {
-          return !this.#line.actIf(() =>
-            this.#arrowKey(name, modifiers.length > 0),
-          );
-        }
-        const focused = activeDocument.activeElement;
-        // A text field, or the threshold's slider, keeps its own keys.
-        if (typing(focused) || focused?.instanceOf(HTMLInputElement) === true) {
-          return true;
-        }
-        this.#line.act(() => {
-          this.#placePicture(action(picture));
-        });
-        return false;
-      });
-    };
-    for (const [modifiers, step] of [
-      [[], () => nudge],
-      // One grid spacing, as the grid is laid out now.
-      [["Shift"], () => this.#session.grid.spacing],
-    ] as const) {
-      const by = (dx: number, dy: number) => (picture: TracedPicture) =>
-        movePicture(picture.placement, dx * step(), dy * step());
-      moving([...modifiers], "ArrowLeft", by(-1, 0));
-      moving([...modifiers], "ArrowRight", by(1, 0));
-      moving([...modifiers], "ArrowUp", by(0, -1));
-      moving([...modifiers], "ArrowDown", by(0, 1));
-    }
-    const scaled = (factor: number) => (picture: TracedPicture) => {
-      const { x, y, scale } = picture.placement;
-      return scalePicture(
-        picture.placement,
-        factor,
-        x + (picture.width * scale) / 2,
-        y + (picture.height * scale) / 2,
-      );
-    };
-    // + takes Shift on many keyboards, and = is the same key without it.
-    moving([], "+", scaled(keyScale));
-    moving(["Shift"], "+", scaled(keyScale));
-    moving([], "=", scaled(keyScale));
-    moving([], "-", scaled(1 / keyScale));
-    // A Mac's key labelled Delete sends Backspace.
-    for (const name of ["Delete", "Backspace"]) {
-      key([], name, () => {
-        this.#clear();
-      });
-    }
-    brushSizes.forEach((_, index) => {
-      key([], String(index + 1), () => {
-        this.#setSize(index);
-      });
-    });
-  }
-
   #listen(canvas: HTMLCanvasElement): void {
     const hover = (event: PointerEvent): void => {
       if (this.#gate.active !== undefined && !this.#gate.owns(event)) return;
@@ -1663,6 +1307,7 @@ export class InkEditorModal extends Modal {
         this.#dragged = undefined;
         canvas.removeClass("is-dragging");
         this.#letGoAround();
+        this.#viewAfterPress();
         return;
       }
       this.#pressedAt = undefined;
@@ -1946,7 +1591,7 @@ export class InkEditorModal extends Modal {
   #toggleConvert(): void {
     // Its row opens or closes once the pointer is let go, as Zoom waits.
     if (
-      this.#pressed &&
+      this.#held &&
       (this.#converting !== undefined || this.#picture !== undefined)
     ) {
       const open = !this.#inkOpen;
@@ -2006,7 +1651,7 @@ export class InkEditorModal extends Modal {
     this.#updateButtons();
     this.#render();
     this.#announce(pictureHints.making);
-    this.#thresholdInput?.focus();
+    this.#controls?.focusThreshold();
   }
 
   /** Closes what turns the picture into ink, making none. */
@@ -2154,7 +1799,7 @@ export class InkEditorModal extends Modal {
         const focused = this.modalEl.doc.activeElement;
         if (focused === null || focused === this.modalEl.doc.body) {
           if (this.#converting === undefined) this.#refocus();
-          else this.#buttons.get("apply")?.buttonEl.focus();
+          else this.#controls?.focusButton("apply");
         }
       });
       this.#updateButtons();
@@ -2430,7 +2075,7 @@ export class InkEditorModal extends Modal {
    */
   get #heldAround(): HTMLElement[] {
     return [
-      this.#pictureHint?.parentElement ?? undefined,
+      this.#controls?.pictureBar,
       this.#previewLine,
       this.#status,
       this.#saveWait,
@@ -2445,7 +2090,8 @@ export class InkEditorModal extends Modal {
    * a message said meanwhile wraps, moved the drawing under the pointer in
    * the middle of a stroke (#427). What does not fit shows once the pointer
    * is let go, and a screen reader hears it at once, as before. Make ink's
-   * row, which opens or closes whole, waits for the release instead.
+   * row, which opens or closes whole, shows or not as it did at the press
+   * ({@link #barHeld}).
    */
   #holdAround(): void {
     for (const element of this.#heldAround) {
@@ -2456,6 +2102,7 @@ export class InkEditorModal extends Modal {
       element.style.setProperty("--inkline-held-height", `${String(height)}px`);
       element.addClass("inkline-held");
     }
+    this.#barHeld = this.#controls?.convertBarShown();
   }
 
   /** Lets what {@link #holdAround} held take its own height again. */
@@ -2464,11 +2111,22 @@ export class InkEditorModal extends Modal {
       element.removeClass("inkline-held");
       element.style.removeProperty("--inkline-held-height");
     }
+    if (this.#barHeld === undefined) return;
+    this.#barHeld = undefined;
+    this.#updateButtons();
   }
 
   /** Whether the pointer is pressed on the surface to draw, not to drag. */
   get #pressed(): boolean {
     return this.#gate.active !== undefined && this.#dragged === undefined;
+  }
+
+  /**
+   * Whether the pointer is pressed on the surface, to draw or to drag the
+   * picture: what moves the drawing under it waits for the release then.
+   */
+  get #held(): boolean {
+    return this.#gate.active !== undefined;
   }
 
   /** Whether the view is magnified, or will be once the pointer is let go. */
@@ -2486,15 +2144,16 @@ export class InkEditorModal extends Modal {
 
   /**
    * Magnifies the drawing, or shows it as usual again. While the pointer is
-   * pressed to draw, that waits until it is let go: zooming moves what the
-   * pointer is over, so a stroke, a shape, a polygon's corner, or a path's
+   * pressed on the surface, that waits until it is let go: zooming moves what
+   * the pointer is over, so a stroke, a shape, a polygon's corner, or a path's
    * point or handle being drawn would end somewhere other than it shows, as
-   * the release then lands elsewhere in the drawing (#382). So it keeps the
-   * view it started in, as it keeps its grid ({@link DrawingSession.grid}),
-   * its tool, and its size.
+   * the release then lands elsewhere in the drawing (#382), and a picture
+   * being dragged would leave the pointer (#444). So it keeps the view it
+   * started in, as it keeps its grid ({@link DrawingSession.grid}), its tool,
+   * and its size.
    */
   #toggleZoom(): void {
-    if (!this.#pressed) {
+    if (!this.#held) {
       this.#zoom();
       return;
     }
@@ -2511,10 +2170,10 @@ export class InkEditorModal extends Modal {
 
   /**
    * Fits the view to the drawing, or once the pointer is let go if it is
-   * pressed to draw, for the same reason as Zoom waits (#393).
+   * pressed on the surface, for the same reason as Zoom waits (#393, #444).
    */
   #fit(): void {
-    if (!this.#pressed) {
+    if (!this.#held) {
       this.#fitView();
       this.#render();
       return;
@@ -2524,14 +2183,15 @@ export class InkEditorModal extends Modal {
   }
 
   /**
-   * Makes the changes to the view asked for while the pointer was pressed to
-   * draw, now that what was drawn has ended where the view put it, unless the
-   * editor has closed meanwhile: Next takes a zoom asked for to the next
-   * symbol. They go as one action, so that the status line says what they
-   * did, or nothing, rather than what waited. Make ink opens or closes as
-   * asked, unless it already is so, as when the picture it was open for was
-   * replaced, but does not open behind a question that came meanwhile, as
-   * Save there would make ink at a threshold never seen.
+   * Makes the changes to the view asked for while the pointer was pressed on
+   * the surface, now that what was drawn has ended where the view put it, or
+   * the picture dragged where the pointer left it, unless the editor has
+   * closed meanwhile: Next takes a zoom asked for to the next symbol. They go
+   * as one action, so that the status line says what they did, or nothing,
+   * rather than what waited. Make ink opens or closes as asked, unless it
+   * already is so, as when the picture it was open for was replaced, but does
+   * not open behind a question that came meanwhile, as Save there would make
+   * ink at a threshold never seen.
    */
   #viewAfterPress(): void {
     const { zoom, fit, ink } = this.#viewWaits;
@@ -2820,19 +2480,10 @@ export class InkEditorModal extends Modal {
       empty: strokes.length === 0 && base === undefined,
       saving: this.#saving !== undefined,
     });
-    for (const [id, button] of this.#buttons) {
-      const pressed = states.pressed[id];
-      if (pressed !== undefined) {
-        button.buttonEl.setAttribute("aria-pressed", String(pressed));
-      }
-      const disabled = states.disabled[id];
-      if (disabled !== undefined) button.setDisabled(disabled);
-    }
-    this.#convertBar?.toggle(states.convertBar);
-    if (states.threshold !== undefined && this.#thresholdInput !== undefined) {
-      this.#thresholdInput.value = String(states.threshold);
-    }
-    this.#pictureHint?.setText(states.hint);
+    this.#controls?.show({
+      ...states,
+      convertBar: this.#barHeld ?? states.convertBar,
+    });
     this.#view?.canvas.toggleClass("is-moving", this.#moving);
     this.#updateCursor();
   }
@@ -2915,57 +2566,17 @@ export class InkEditorModal extends Modal {
   #help(): void {
     this.#hover = undefined;
     this.#updateCursor();
-    const help = new Modal(this.app);
-    help.setTitle("Drawing quick start");
-    help.modalEl.addClass("inkline-help");
-    const content = help.contentEl;
-    content.createEl("p", {
-      text: "Draw a symbol once, then reuse it in your notes. The preview below the drawing shows its size beside text.",
+    openHelp(this.app, {
+      opened: (help) => {
+        this.#questions.add(help);
+      },
+      closed: (help) => {
+        this.#questions.delete(help);
+      },
+      resume: () => {
+        if (!this.#closing && !this.#retired) this.#view?.canvas.focus();
+      },
     });
-    const steps = content.createEl("ul");
-    for (const text of [
-      "Pen (P) adds ink; Eraser (E) removes it. Sizes S–XL (1–4) are remembered separately until you close the editor, including through Next. The circle shows the brush's diameter.",
-      "Ellipse (O) draws an ellipse with the pen or the eraser: drag across the box it fills, and hold Shift for a circle, or with the grid on to put the box's corners on the grid. Press it again to draw freehand. A shape drawn with the eraser is tinted until it is done.",
-      "Polygon (Y) draws a shape with straight sides and sharp corners: click each corner, then click the first corner again to close it, or the last corner, or press Enter, to leave it open. With the grid on, hold Shift as you click to put that corner on the grid. Undo takes back a corner, and Esc drops the shape.",
-      "Path (A) places a curve by its points, as the pen or the eraser would draw along it: click for a corner, or press and drag for a smooth point, whose handle follows the pointer and sets the curve's direction there. While you place it, drag any point or handle's end to move it; a handle dragged back onto its point leaves a corner. Click the first point to close the path, or the last point, or press Enter, to leave it open. With the grid on, hold Shift to put a point, or a handle's end, on the grid. Undo takes back the last point or move, and Esc drops the path. Once it ends, it is ink like any other stroke.",
-      "Toggle fill (B) is a switch, not a tool to click a shape with: while it is on, Ellipse and a closed Polygon or Path draw solid shapes, with their line at the brush size as without fill and everything inside it filled. The pen makes a solid shape, and the eraser a hole of its shape.",
-      "Hold Shift while drawing for a straight segment. Grid (Shift+G) shows dots as a guide, and nothing goes to them unless you hold Shift: then each stroke end or corner you place goes to the nearest dot. Its rows pass through each guide line the settings choose, and divide the space between lines evenly; the settings also set how many cells span the x-height.",
-      "Flat ends (T), with the grid on, stops an end of a freehand stroke or a path that Shift put on a row flush with that row, rather than rounding past it, if it comes in at 45° or steeper; one running along the row stays round. It is off until you turn it on, and ellipses and polygons are never cut.",
-      "Undo (Mod+Z) and Redo (Mod+Shift+Z) step through changes. Clear removes the drawing and can be undone.",
-      "Up and Down, or the up and down arrow keys, move the whole drawing a pixel at a time, or a grid cell's width with Shift, as to sit a shape on a line. One Undo takes back moves made in a row.",
-      "Zoom (Z) shows the drawing up to twice as large in a taller view, for fine detail; the wheel or the left and right arrow keys move along it, and Fit (F) centres it. Pressed while you draw, Zoom and Fit wait until you let go, so that what you draw ends where it shows, and moving along carries what you draw with the view. While zoomed, the grid has twice as many cells each way, and keeps every point of the usual grid. Saved symbols stay the same size in notes.",
-      "Paste, drop, or choose (Choose picture…) a picture to trace. Move positions it; the wheel scales it. Make ink converts the visible picture into editable ink. The tracing picture itself is not saved.",
-      "Name the symbol, then Save (Mod+Enter). For a new symbol, Next (Mod+Shift+Enter) saves it and starts another. Mod is Ctrl on Windows/Linux, Cmd on macOS.",
-      "Readings and translations, beside the name, say how the symbol is read and what it means, apart from its name: one per line, the main one first. Saving keeps them with the symbol, and the lists find a symbol by them. The library changes them without opening the editor.",
-      "Saving a changed symbol that your notes use more than once first asks whether to Replace it everywhere. For a variant, start a new symbol with Copy from instead.",
-    ])
-      steps.createEl("li", { text });
-    content.createEl("h2", { text: "What the guides mean" });
-    content.createEl("p", {
-      text: "The horizontal guides follow your note font, from top to bottom, each in its own colour; a font may put some at the same height or outside the drawing area. Toggle them together with the guide button or its shortcut; the plugin's settings choose which lines show.",
-    });
-    const guides = content.createEl("ul");
-    for (const text of [
-      "Ascender (purple): the font's upper extent.",
-      "Cap height (blue): the top of a capital such as H.",
-      "x-height (green): the top of a lowercase letter such as x.",
-      "Baseline (orange, solid): where letters sit.",
-      "Descender (pink): the font's lower extent, for parts below the baseline.",
-      "Vertical dashed lines: the saved image's left and right edges, including spacing. They follow the ink as you draw.",
-    ])
-      guides.createEl("li", { text });
-    help.onClose = () => {
-      this.#questions.delete(help);
-    };
-    // Obsidian restores the opener's focus after onClose; resume drawing
-    // after that, so the next shortcut cannot activate the Help button.
-    const close = help.close.bind(help);
-    help.close = () => {
-      close();
-      if (!this.#closing && !this.#retired) this.#view?.canvas.focus();
-    };
-    this.#questions.add(help);
-    help.open();
   }
 
   /**

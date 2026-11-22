@@ -4,10 +4,16 @@ import {
   buttonIcons,
   buttonLabelNames,
   buttonStates,
+  controls,
   isButtonLabels,
+  keyText,
   pictureHints,
+  quickStart,
   type ButtonInputs,
   type ButtonStates,
+  type Control,
+  type ControlRow,
+  type EditorCommands,
 } from "../../../src/editor/buttons.ts";
 import { brushSizes } from "../../../src/editor/session.ts";
 
@@ -42,6 +48,217 @@ describe("isButtonLabels", () => {
     for (const value of ["Icons only", "icon", "", undefined, 1]) {
       expect(isButtonLabels(value)).toBe(false);
     }
+  });
+});
+
+describe("keyText", () => {
+  it("writes a key as the tooltips and the guide do", () => {
+    expect(keyText({ modifiers: [], key: "p" })).toBe("P");
+    expect(keyText({ modifiers: ["Shift"], key: "g" })).toBe("Shift+G");
+    expect(keyText({ modifiers: ["Mod", "Shift"], key: "z" })).toBe(
+      "Mod+Shift+Z",
+    );
+    expect(keyText({ modifiers: ["Mod"], key: "Enter" })).toBe("Mod+Enter");
+    expect(keyText({ modifiers: [], key: "ArrowUp" })).toBe("ArrowUp");
+    expect(keyText({ modifiers: [], key: "1" })).toBe("1");
+  });
+});
+
+/** The first key of `control`, as its tooltip shows it. */
+function shownKey(control: Control): string {
+  const [key] = control.keys;
+  if (key === undefined) throw new Error(`${control.id} has no key`);
+  return keyText(key);
+}
+
+describe("controls", () => {
+  const ids = controls.map(({ id }) => id);
+
+  it("gives each button its own id, and each key to one button", () => {
+    expect(new Set(ids).size).toBe(ids.length);
+    const keys = controls.flatMap(({ keys }) => keys.map(keyText));
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it("puts each button in its row, in the order they show", () => {
+    const row = (name: ControlRow): string[] =>
+      controls.filter((control) => control.row === name).map(({ id }) => id);
+    expect(row("tools")).toEqual([
+      "pen",
+      "eraser",
+      "ellipse",
+      "polygon",
+      "path",
+      "fill",
+    ]);
+    expect(row("history")).toEqual([
+      ...brushSizes.map((_, index) => `size-${String(index)}`),
+      "undo",
+      "redo",
+      "clear",
+      "move-up",
+      "move-down",
+    ]);
+    expect(row("view")).toEqual([
+      "guides",
+      "grid",
+      "flat-ends",
+      "copy",
+      "fit",
+      "zoom",
+      "save",
+      "next",
+      "help",
+    ]);
+    expect(row("picture")).toEqual(["choose", "move", "ink", "remove"]);
+    expect(row("convert")).toEqual(["light", "apply", "cancel"]);
+  });
+
+  it("names each brush size, and gives it its key", () => {
+    const sizes = controls.filter(({ id }) => id.startsWith("size-"));
+    expect(sizes.map(({ text, label }) => [text, label])).toEqual(
+      brushSizes.map((size) => [size.label, `Brush size ${size.label}`]),
+    );
+    expect(sizes.map(shownKey)).toEqual(["1", "2", "3", "4"]);
+  });
+
+  it("leaves the keys that do more than a button's to the controls", () => {
+    // Mod+S saves with no button, Enter ends a shape on the drawing area
+    // alone, and while Move is on the arrow keys move the picture and + and
+    // − scale it: the controls give each of those keys one handler, before
+    // the buttons' keys, as Obsidian's scope runs only the first that
+    // matches.
+    const theirs = ["Mod+S", "Enter", "+", "Shift++", "=", "-"];
+    for (const control of controls) {
+      const arrows = control.keys.filter(({ key }) => key.startsWith("Arrow"));
+      expect(control.arrowKeys === true, control.id).toBe(arrows.length > 0);
+      expect(arrows.length, control.id).toBe(
+        control.arrowKeys === true ? control.keys.length : 0,
+      );
+      for (const key of control.keys.map(keyText)) {
+        expect(theirs, control.id).not.toContain(key);
+      }
+    }
+    expect(
+      controls.filter((control) => control.arrowKeys).map(({ id }) => id),
+    ).toEqual(["move-up", "move-down"]);
+  });
+
+  it("lets the saving keys work while typing, and offers Copy from and Next only for a new symbol", () => {
+    expect(
+      controls.filter((control) => control.anywhere).map(({ id }) => id),
+    ).toEqual(["save", "next"]);
+    expect(
+      controls.flatMap(({ id, needs }) =>
+        needs === undefined ? [] : [[id, needs]],
+      ),
+    ).toEqual([
+      ["copy", "copyFrom"],
+      ["next", "next"],
+    ]);
+    expect(
+      controls.filter((control) => control.cta).map(({ id }) => id),
+    ).toEqual(["save", "next", "apply"]);
+  });
+
+  it("gives each button its own icon, if it has one", () => {
+    for (const id of Object.keys(buttonIcons)) expect(ids).toContain(id);
+  });
+
+  it("runs the same command from a button and from its keys, with Shift for a cell", () => {
+    const calls: string[] = [];
+    const record =
+      (name: string) =>
+      (...args: unknown[]): void => {
+        calls.push([name, ...args.map((arg) => String(arg))].join(" "));
+      };
+    const editor: EditorCommands = {
+      setTool: record("setTool"),
+      toggleEllipse: record("toggleEllipse"),
+      togglePolygon: record("togglePolygon"),
+      togglePath: record("togglePath"),
+      toggleFill: record("toggleFill"),
+      setSize: record("setSize"),
+      undo: record("undo"),
+      redo: record("redo"),
+      clear: record("clear"),
+      moveDrawing: record("moveDrawing"),
+      toggleGuides: record("toggleGuides"),
+      toggleGrid: record("toggleGrid"),
+      toggleFlatEnds: record("toggleFlatEnds"),
+      copy: record("copy"),
+      fit: record("fit"),
+      toggleZoom: record("toggleZoom"),
+      saveAndClose: record("saveAndClose"),
+      saveOnly: record("saveOnly"),
+      saveAndNext: record("saveAndNext"),
+      help: record("help"),
+      choosePicture: record("choosePicture"),
+      trace: record("trace"),
+      toggleMove: record("toggleMove"),
+      toggleConvert: record("toggleConvert"),
+      removePicture: record("removePicture"),
+      setThreshold: record("setThreshold"),
+      toggleLight: record("toggleLight"),
+      applyInk: record("applyInk"),
+      cancelInk: record("cancelInk"),
+      endShape: () => false,
+      arrowKey: () => false,
+      movingPicture: () => false,
+      nudgePicture: record("nudgePicture"),
+      scalePictureStep: record("scalePictureStep"),
+      refocus: record("refocus"),
+    };
+    const ran = (shift: boolean): Record<string, string[]> =>
+      Object.fromEntries(
+        controls.map((control) => {
+          calls.length = 0;
+          control.run(editor, shift);
+          return [control.id, [...calls]];
+        }),
+      );
+    const plain = ran(false);
+    expect(plain).toEqual({
+      pen: ["setTool pen"],
+      eraser: ["setTool eraser"],
+      ellipse: ["toggleEllipse"],
+      polygon: ["togglePolygon"],
+      path: ["togglePath"],
+      fill: ["toggleFill"],
+      ...Object.fromEntries(
+        brushSizes.map((_, index) => [
+          `size-${String(index)}`,
+          [`setSize ${String(index)}`],
+        ]),
+      ),
+      undo: ["undo"],
+      redo: ["redo"],
+      clear: ["clear"],
+      "move-up": ["moveDrawing -1 false"],
+      "move-down": ["moveDrawing 1 false"],
+      guides: ["toggleGuides"],
+      grid: ["toggleGrid"],
+      "flat-ends": ["toggleFlatEnds"],
+      copy: ["copy"],
+      fit: ["fit"],
+      zoom: ["toggleZoom"],
+      save: ["saveAndClose"],
+      next: ["saveAndNext"],
+      help: ["help"],
+      choose: ["choosePicture"],
+      move: ["toggleMove"],
+      ink: ["toggleConvert"],
+      remove: ["removePicture"],
+      light: ["toggleLight"],
+      apply: ["applyInk"],
+      cancel: ["cancelInk"],
+    });
+    // Shift moves the drawing by a cell, and changes nothing else.
+    expect(ran(true)).toEqual({
+      ...plain,
+      "move-up": ["moveDrawing -1 true"],
+      "move-down": ["moveDrawing 1 true"],
+    });
   });
 });
 
@@ -289,5 +506,41 @@ describe("buttonStates", () => {
     for (const id of ["pen", "help", "clear", "fit", "copy", "light"]) {
       expect(busy.disabled[id]).toBeUndefined();
     }
+    // And every entry is for a button the editor has.
+    const buttons = controls.map(({ id }) => id);
+    for (const id of [...ids(busy.pressed), ...ids(busy.disabled)]) {
+      expect(buttons).toContain(id);
+    }
+  });
+});
+
+describe("quickStart", () => {
+  const text = [quickStart.intro, ...quickStart.steps].join("\n");
+
+  it("gives a button its key wherever it names the two together", () => {
+    let named = 0;
+    for (const control of controls) {
+      if (control.keys.length === 0 || control.id.startsWith("size-")) {
+        continue;
+      }
+      const name = control.text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      for (const match of text.matchAll(
+        new RegExp(`\\b${name} \\(([^)]+)\\)`, "g"),
+      )) {
+        expect(match[1], control.text).toBe(shownKey(control));
+        named++;
+      }
+    }
+    expect(named).toBeGreaterThan(10);
+  });
+
+  it("names the brush sizes from first to last, with their keys", () => {
+    const sizes = controls.filter(({ id }) => id.startsWith("size-"));
+    const [first] = sizes;
+    const last = sizes.at(-1);
+    if (first === undefined || last === undefined) throw new Error("no sizes");
+    expect(text).toContain(
+      `Sizes ${first.text}–${last.text} (${shownKey(first)}–${shownKey(last)})`,
+    );
   });
 });

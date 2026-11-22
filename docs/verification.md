@@ -230,6 +230,12 @@ must keep released files readable and looking the same, as
   during the drag keeps Make ink from opening behind it, or closes it there as
   asked while the question keeps the focus, and Save there makes no ink (the
   same file, [#427](https://github.com/viell-dev/slop-inkline/issues/427)).
+  **Unreleased:** with **Move** on, **Make ink** or **Zoom** pressed while the
+  picture is dragged, and a picture pasted during the drag that closes Make ink,
+  leave the drawing area where it was until the release; then Make ink opens
+  where the drag left the picture, Zoom zooms, and Make ink's row goes
+  ([tracing.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/tracing.e2e.ts),
+  [#444](https://github.com/viell-dev/slop-inkline/issues/444)).
 - Help explains the drawing tools and guides, closes with Escape, and restores
   focus to drawing without changing its strokes
   ([editor-feedback.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor-feedback.e2e.ts)).
