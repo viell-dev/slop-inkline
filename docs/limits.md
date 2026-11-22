@@ -146,13 +146,17 @@ that moment comes between. So does a save that makes a deleted symbol again.
 one that makes a deleted symbol again, looks at the disk for anything at its
 path itself, and writes only if nothing was asked of Obsidian since, so that the
 write comes straight after the look. Otherwise it waits for what was asked, and
-looks again, up to three times, and then writes as Obsidian would. A file it
-finds there is left as it is: the editor asks about one at a deleted symbol's
-path, as about any change; a new symbol takes the next free number, or the name
-typed for it is refused as taken; and a file whose name differs only in letter
-case, which Windows and macOS read as the same name, is named, for you to rename
-or move it. Only a program writing to the disk outside Obsidian can still come
-between the look and the write.
+looks again. A file it finds there is left as it is: the editor asks about one
+at a deleted symbol's path, as about any change; a new symbol takes the next
+free number, or the name typed for it is refused as taken; and a file whose name
+differs only in letter case, which Windows and macOS read as the same name, is
+named, for you to rename or move it. When Obsidian is still being asked for
+something else after twenty such waits, as by a plugin that writes many files
+one after another, the save writes nothing and says that Obsidian kept writing
+other files: save again in a moment. A program writing to the disk outside
+Obsidian can still come between the look and the write, and so can anything
+asked of a version of Obsidian that keeps its line where Inkline cannot see it,
+as with Obsidian's own check.
 
 ## A file changed as Obsidian renames it
 

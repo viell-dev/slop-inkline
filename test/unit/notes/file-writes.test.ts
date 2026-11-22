@@ -12,6 +12,7 @@ import {
   changedText,
   changeFile,
   CutShort,
+  DiskBusy,
   makeFile,
   PathTaken,
   saveFile,
@@ -679,32 +680,126 @@ describe("saveFile", () => {
     });
   }
 
-  it("looks at a file found at its path before anything was written, whatever it holds", async () => {
-    // As makeFile finds one: never the save's own, even an empty one, which a
-    // write that stopped before its first byte would also leave.
-    const vault = new FakeVault();
-    const drawn = await writeText(pinned, "translation", ["DRAWN"]);
-    let looks = 0;
+  // As makeFile finds one, or finds the disk too busy to write: never the
+  // save's own, even an empty one, which a write that stopped before its first
+  // byte would also leave.
+  for (const [found, wroteNothing] of [
+    ["before anything was written", () => new PathTaken()],
+    ["as the disk stayed busy", () => new DiskBusy()],
+  ] as const) {
+    it(`looks at a file found at its path ${found}, whatever it holds`, async () => {
+      const vault = new FakeVault();
+      const drawn = await writeText(pinned, "translation", ["DRAWN"]);
+      let looks = 0;
+      await expect(
+        saveFile({
+          current: () => vault.at(path),
+          check: () => {
+            looks++;
+            return vault.at(path) === null
+              ? Promise.resolve(undefined)
+              : Promise.reject(new Error("the editor asks first"));
+          },
+          write: () => Promise.reject(new Error("not to write")),
+          create: () => {
+            vault.put(path, new Uint8Array());
+            return Promise.reject(wroteNothing());
+          },
+          bytes: drawn,
+          read: access.read,
+        }),
+      ).rejects.toThrow("asks first");
+      expect(looks).toBe(2);
+      expect(vault.at(path)?.writes).toBe(0);
+    });
+  }
+
+  it("says the disk was too busy, with nothing there, as create does", async () => {
     await expect(
       saveFile({
-        current: () => vault.at(path),
-        check: () => {
-          looks++;
-          return vault.at(path) === null
-            ? Promise.resolve(undefined)
-            : Promise.reject(new Error("the editor asks first"));
-        },
+        current: () => null,
+        check: () => Promise.resolve(undefined),
         write: () => Promise.reject(new Error("not to write")),
-        create: () => {
-          vault.put(path, new Uint8Array());
-          return Promise.reject(new PathTaken());
+        create: () => Promise.reject(new DiskBusy()),
+        ...nothingMet,
+      }),
+    ).rejects.toThrow(DiskBusy);
+  });
+
+  // #425, at a save over a file: the vault keeps what its write left, as when
+  // it makes one, as after a first failure on a disk that is still full.
+  for (const [left, part] of [
+    ["the start of", (drawn: Uint8Array) => drawn.slice(0, 32)],
+    ["all of", (drawn: Uint8Array) => drawn.slice()],
+    ["none of", () => new Uint8Array()],
+  ] as const) {
+    it(`fails as the vault does when its write over the file left ${left} it`, async () => {
+      const vault = new FakeVault();
+      const known = await writeText(pinned, "reading", ["KNOWN"]);
+      const file = vault.put(path, known);
+      const drawn = await writeText(pinned, "translation", ["DRAWN"]);
+      const saving = saveFile({
+        current: () => vault.current(file),
+        check: () => Promise.resolve(undefined),
+        write: (now) => {
+          now.bytes = part(drawn);
+          return Promise.reject(
+            new Error("ENOSPC: no space left on device, write"),
+          );
         },
+        create: () => Promise.reject(new Error("not to make")),
         bytes: drawn,
         read: access.read,
-      }),
-    ).rejects.toThrow("asks first");
-    expect(looks).toBe(2);
-    expect(vault.at(path)?.writes).toBe(0);
+      });
+      await expect(saving).rejects.toThrow("ENOSPC");
+      const error: unknown = await saving.catch((thrown: unknown) => thrown);
+      expect(error instanceof CutShort && error.held).toEqual(part(drawn));
+    });
+  }
+
+  it("fails as its write did when that left the file as it was", async () => {
+    // As a locked file refuses the write before it opens: what is there is
+    // what the check passed, which the editor knows already.
+    const vault = new FakeVault();
+    const file = vault.put(path);
+    const drawn = await writeText(pinned, "translation", ["DRAWN"]);
+    const saving = saveFile({
+      current: () => vault.current(file),
+      check: () => Promise.resolve(undefined),
+      write: () => Promise.reject(new Error("EBUSY: resource busy or locked")),
+      create: () => Promise.reject(new Error("not to make")),
+      bytes: drawn,
+      read: access.read,
+    });
+    await expect(saving).rejects.toThrow("EBUSY");
+    expect(await saving.catch((thrown: unknown) => thrown)).not.toBeInstanceOf(
+      CutShort,
+    );
+    expect(file.bytes).toBe(pinned);
+  });
+
+  it("fails as its write did when the file was replaced as it wrote", async () => {
+    // Whatever the replacement holds, it is not what this wrote.
+    const vault = new FakeVault();
+    const file = vault.put(path);
+    const drawn = await writeText(pinned, "translation", ["DRAWN"]);
+    const saving = saveFile({
+      current: () => vault.current(file),
+      check: () => Promise.resolve(undefined),
+      write: (now) => {
+        vault.delete(now);
+        vault.put(path, drawn.slice(0, 32));
+        return Promise.reject(new Error("ENOENT: no such file or directory"));
+      },
+      create: () => Promise.reject(new Error("not to make")),
+      bytes: drawn,
+      // As the vault reads a file, by its path.
+      read: (found) => access.read(vault.at(found.path ?? "") ?? found),
+    });
+    await expect(saving).rejects.toThrow("ENOENT");
+    expect(await saving.catch((thrown: unknown) => thrown)).not.toBeInstanceOf(
+      CutShort,
+    );
   });
 
   it("says why the path is taken, as create does, when the vault has nothing there", async () => {
@@ -1521,17 +1616,62 @@ describe("makeFile", () => {
     expect(adapter.settles).toBe(1);
   });
 
-  it("makes the file all the same once the disk stays busy, as the vault would", async () => {
+  it("makes the file once a run of writes asked one after another has ended", async () => {
     const adapter = new FakeAdapter();
     await makeFile(
       making(adapter, path, ours, {
-        then: (looks) =>
-          void adapter.writeBinary(`${String(looks)}.md`, theirs),
+        then: (looks) => {
+          if (looks <= 14)
+            void adapter.writeBinary(`${String(looks)}.md`, theirs);
+        },
       }),
     );
     expect(adapter.files.get(path)).toBe(ours);
-    expect(adapter.looks).toHaveLength(4);
-    expect(adapter.settles).toBe(3);
+    expect(adapter.looks).toHaveLength(15);
+    expect(adapter.settles).toBe(14);
+  });
+
+  // A plugin writing its files one after another, one asked at each look, and
+  // one of them at the path: three waits, then a write, as before, wrote over
+  // the 4th, and Obsidian 1.13.4 and 1.15.1 over the 8th.
+  for (const nth of [4, 8, 14]) {
+    it(`leaves a file that a run of writes makes at its path, as its ${String(nth)}th`, async () => {
+      const adapter = new FakeAdapter();
+      await expect(
+        makeFile(
+          making(adapter, path, ours, {
+            then: (looks) => {
+              if (looks > 14) return;
+              const other = looks === nth ? path : `${String(looks)}.md`;
+              void adapter.writeBinary(other, theirs);
+            },
+          }),
+        ),
+      ).rejects.toThrow(PathTaken);
+      expect(adapter.files.get(path)).toBe(theirs);
+      expect(adapter.looks).toHaveLength(nth + 1);
+    });
+  }
+
+  it("writes nothing once the disk stays busy at every look, and says so", async () => {
+    const adapter = new FakeAdapter();
+    // Asked at each look up to a point past the bound, so that a loop with no
+    // bound writes there and the test fails, rather than going on for good.
+    const guard = 40;
+    await expect(
+      makeFile(
+        making(adapter, path, ours, {
+          then: (looks) => {
+            if (looks <= guard) {
+              void adapter.writeBinary(`${String(looks)}.md`, theirs);
+            }
+          },
+        }),
+      ),
+    ).rejects.toThrow(DiskBusy);
+    expect(adapter.files.has(path)).toBe(false);
+    expect(adapter.looks).toHaveLength(21);
+    expect(adapter.settles).toBe(20);
   });
 
   it("looks once, and makes the file after it, where the line cannot be seen", async () => {

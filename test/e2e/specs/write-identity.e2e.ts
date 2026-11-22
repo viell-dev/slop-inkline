@@ -222,57 +222,85 @@ async function lookWithoutCase(): Promise<void> {
 }
 
 /**
- * Has the next write of `path` by Obsidian's file system stop after its first
- * 64 bytes and fail as on a full disk, leaving those bytes in the file. Taken
- * off by its first such write, or by `undoStubs()`.
+ * Has Obsidian's adapter find something at `path` that Obsidian has not
+ * listed, at every look, as a disk that tells letter case apart would for a
+ * file just written there from outside Obsidian. Nothing is written, so that
+ * Obsidian does not list it meanwhile.
  */
-async function fillDiskAt(path: string): Promise<void> {
+async function unlistedAt(path: string): Promise<void> {
   await browser.executeObsidian(({ app }, wanted) => {
-    const promises: unknown = Reflect.get(app.vault.adapter, "fsPromises");
-    if (typeof promises !== "object" || promises === null) {
-      throw new Error("no file system to fill");
-    }
-    const write: unknown = Reflect.get(promises, "writeFile");
-    if (typeof write !== "function") throw new Error("no writeFile");
-    const restore = (): void => {
-      Reflect.set(promises, "writeFile", write);
-      Reflect.deleteProperty(window, "inklineAtEnd-full-disk");
-    };
-    Reflect.set(window, "inklineAtEnd-full-disk", restore);
-    Reflect.set(
-      promises,
-      "writeFile",
-      async (
-        full: unknown,
-        data: unknown,
-        ...rest: unknown[]
-      ): Promise<unknown> => {
-        if (
-          typeof full !== "string" ||
-          !full.endsWith(wanted) ||
-          !ArrayBuffer.isView(data)
-        ) {
-          const written: unknown = Reflect.apply(write, promises, [
-            full,
-            data,
-            ...rest,
-          ]);
-          return written;
-        }
-        restore();
-        const part = new Uint8Array(
-          data.buffer,
-          data.byteOffset,
-          Math.min(64, data.byteLength),
-        );
-        await Reflect.apply(write, promises, [full, part, ...rest]);
-        throw Object.assign(
-          new Error("ENOSPC: no space left on device, write"),
-          { code: "ENOSPC" },
-        );
-      },
-    );
+    const { adapter } = app.vault;
+    const exists = adapter.exists.bind(adapter);
+    adapter.exists = (asked, sensitive) =>
+      asked === wanted ? Promise.resolve(true) : exists(asked, sensitive);
   }, path);
+}
+
+/** How many bytes the file at `path` holds on the disk, or null. */
+async function sizeOnDisk(path: string): Promise<number | null> {
+  return browser.executeObsidian(
+    async ({ app }, wanted) =>
+      (await app.vault.adapter.stat(wanted))?.size ?? null,
+    path,
+  );
+}
+
+/**
+ * Has the next write of `path` by Obsidian's file system stop after its first
+ * `cut` bytes and fail as on a full disk, leaving those bytes in the file.
+ * Taken off by its first such write, or by `undoStubs()`.
+ */
+async function fillDiskAt(path: string, cut = 64): Promise<void> {
+  await browser.executeObsidian(
+    ({ app }, wanted, at) => {
+      const promises: unknown = Reflect.get(app.vault.adapter, "fsPromises");
+      if (typeof promises !== "object" || promises === null) {
+        throw new Error("no file system to fill");
+      }
+      const write: unknown = Reflect.get(promises, "writeFile");
+      if (typeof write !== "function") throw new Error("no writeFile");
+      const restore = (): void => {
+        Reflect.set(promises, "writeFile", write);
+        Reflect.deleteProperty(window, "inklineAtEnd-full-disk");
+      };
+      Reflect.set(window, "inklineAtEnd-full-disk", restore);
+      Reflect.set(
+        promises,
+        "writeFile",
+        async (
+          full: unknown,
+          data: unknown,
+          ...rest: unknown[]
+        ): Promise<unknown> => {
+          if (
+            typeof full !== "string" ||
+            !full.endsWith(wanted) ||
+            !ArrayBuffer.isView(data)
+          ) {
+            const written: unknown = Reflect.apply(write, promises, [
+              full,
+              data,
+              ...rest,
+            ]);
+            return written;
+          }
+          restore();
+          const part = new Uint8Array(
+            data.buffer,
+            data.byteOffset,
+            Math.min(at, data.byteLength),
+          );
+          await Reflect.apply(write, promises, [full, part, ...rest]);
+          throw Object.assign(
+            new Error("ENOSPC: no space left on device, write"),
+            { code: "ENOSPC" },
+          );
+        },
+      );
+    },
+    path,
+    cut,
+  );
 }
 
 /** Waits for {@link replaceDuringRead}'s new file, and says how it went. */
@@ -447,6 +475,49 @@ describe("A symbol replaced at its path as it is saved", function () {
     expect(await browser.$(".inkline-editor").isExisting()).toBe(true);
   });
 
+  it("says that a folder stands at a deleted symbol's path, and calls it one", async function () {
+    await createSymbol("gate.ink.png");
+    await editFile("gate.ink.png");
+    await draw([
+      [0.5, 0.3],
+      [0.7, 0.6],
+    ]);
+    await browser.executeObsidian(async ({ app }) => {
+      await app.vault.adapter.remove("gate.ink.png");
+    });
+    await waitForStatus("The file was deleted; saving makes it again");
+    await browser.executeObsidian(async ({ app }) => {
+      await app.vault.createFolder("gate.ink.png");
+    });
+    await browser.keys(["Control", "s"]);
+    await waitForStatus(
+      "Not saved: the vault's top folder already has a folder named gate.ink.png",
+    );
+    expect(await symbolFiles()).toEqual([]);
+  });
+
+  it("names no file in another letter case for one Obsidian has not listed yet", async function () {
+    // On a disk that tells letter case apart, Gate.ink.png and gate.ink.png
+    // are two files: what stands in the way is the one not listed yet.
+    await createSymbol("gate.ink.png");
+    await editFile("gate.ink.png");
+    await draw([
+      [0.5, 0.3],
+      [0.7, 0.6],
+    ]);
+    await browser.executeObsidian(async ({ app }) => {
+      await app.vault.adapter.remove("gate.ink.png");
+    });
+    await waitForStatus("The file was deleted; saving makes it again");
+    await createSymbol("Gate.ink.png");
+    await unlistedAt("gate.ink.png");
+    await browser.keys(["Control", "s"]);
+    await waitForStatus(
+      "Not saved: a file came to gate.ink.png that Obsidian has not listed yet, and was left as it is",
+    );
+    expect(await symbolFiles()).toEqual(["Gate.ink.png"]);
+  });
+
   it("makes a deleted symbol again in a folder that lands as it makes that", async function () {
     await createSymbol("Signs/gate.ink.png");
     await editFile("Signs/gate.ink.png");
@@ -495,6 +566,61 @@ describe("A symbol replaced at its path as it is saved", function () {
     expect(await strokeCount("gate.ink.png")).toBe(2);
   });
 
+  it("writes a deleted symbol whole once its writes have stopped part-way twice", async function () {
+    // The second write goes over the part the first left, as a save of any
+    // file does, and leaves less of other bytes, with a stroke drawn between.
+    await createSymbol("gate.ink.png");
+    await editFile("gate.ink.png");
+    await draw([
+      [0.5, 0.3],
+      [0.7, 0.6],
+    ]);
+    await browser.executeObsidian(async ({ app }) => {
+      await app.vault.adapter.remove("gate.ink.png");
+    });
+    await waitForStatus("The file was deleted; saving makes it again");
+    await fillDiskAt("gate.ink.png");
+    await browser.keys(["Control", "s"]);
+    await waitForNotice(
+      "gate.ink.png holds what was written before it stopped, which saving again writes whole",
+    );
+    await draw([
+      [0.3, 0.6],
+      [0.6, 0.4],
+    ]);
+    await fillDiskAt("gate.ink.png", 32);
+    await browser.keys(["Control", "s"]);
+    await browser.waitUntil(
+      async () => (await sizeOnDisk("gate.ink.png")) === 32,
+    );
+    await waitForStatus(
+      "ENOSPC: no space left on device, write; gate.ink.png holds what was written before it stopped",
+    );
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    expect(await symbolFiles()).toEqual(["gate.ink.png"]);
+    expect(await strokeCount("gate.ink.png")).toBe(3);
+  });
+
+  it("writes a symbol whole on the next save, when its write over the file stops part-way", async function () {
+    // #425's title: an ordinary save of a symbol whose file is there.
+    await createSymbol("gate.ink.png");
+    await editFile("gate.ink.png");
+    await draw([
+      [0.5, 0.3],
+      [0.7, 0.6],
+    ]);
+    await fillDiskAt("gate.ink.png");
+    await browser.keys(["Control", "s"]);
+    await waitForNotice(
+      "Could not save the symbol: ENOSPC: no space left on device, write; gate.ink.png holds what was written before it stopped, which saving again writes whole",
+    );
+    expect(await sizeOnDisk("gate.ink.png")).toBe(64);
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    expect(await strokeCount("gate.ink.png")).toBe(2);
+  });
+
   it("writes a new symbol whole on the next save, when its first write stops part-way", async function () {
     // #425, at a new symbol's first save: the part left is the save's own.
     await insert();
@@ -510,6 +636,34 @@ describe("A symbol replaced at its path as it is saved", function () {
     await browser.keys(["Control", "s"]);
     await waitForStatus("Saved");
     // That file, not another number, and inserted in the note.
+    expect(await symbolFiles()).toEqual(["001.ink.png"]);
+    expect(await strokeCount("001.ink.png")).toBe(1);
+    expect(await noteText()).toContain("![[001.ink.png]]");
+  });
+
+  it("writes a new symbol whole once its first two writes have stopped part-way", async function () {
+    // The second save takes the part the first left as the file it made, and
+    // writes over it, which stops part-way too.
+    await insert();
+    await draw([
+      [0.5, 0.3],
+      [0.7, 0.6],
+    ]);
+    await fillDiskAt("001.ink.png");
+    await browser.keys(["Control", "s"]);
+    await waitForNotice(
+      "001.ink.png holds what was written before it stopped, which saving again writes whole",
+    );
+    await fillDiskAt("001.ink.png", 32);
+    await browser.keys(["Control", "s"]);
+    await browser.waitUntil(
+      async () => (await sizeOnDisk("001.ink.png")) === 32,
+    );
+    await waitForStatus(
+      "ENOSPC: no space left on device, write; 001.ink.png holds what was written before it stopped",
+    );
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
     expect(await symbolFiles()).toEqual(["001.ink.png"]);
     expect(await strokeCount("001.ink.png")).toBe(1);
     expect(await noteText()).toContain("![[001.ink.png]]");

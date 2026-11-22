@@ -632,16 +632,21 @@ must keep released files readable and looking the same, as
   symbol whose file lands at its path just before or just after the look takes
   the next number, a name typed for it is refused, and a file whose name differs
   only in letter case, as on Windows and macOS, which the test stands in for by
-  having the disk's look not tell case apart, is named in the editor's message.
-  A unit test shows the window in a model of Obsidian's line, and that a save
-  writes only when nothing was asked since its look, or once the disk stays
-  busy, as before. A save whose own write stops part-way, as Obsidian's own file
-  system stands in for a full disk, says so, and the next save writes the symbol
-  whole over the part left, for a deleted symbol made again and for a new
-  symbol's first save. A write that lands once the file was replaced says so,
-  and keeps what was typed. A save waits for what was asked of the disk during
-  its last look, and writes as before once the disk stays busy, or where
-  Obsidian's line of disk operations cannot be seen
+  having the disk's look not tell case apart, is named in the editor's message;
+  a folder at the path is called one, and a file the vault has not listed yet is
+  not taken for one listed in another letter case. A unit test shows the window
+  in a model of Obsidian's line, that a save writes only when nothing was asked
+  since its look, that one beside a run of writes leaves a file the run makes at
+  its path at any point and saves once the run ends, and that one with something
+  asked after every look writes nothing after twenty waits and says so. A save
+  whose own write stops part-way, as Obsidian's own file system stands in for a
+  full disk, says so, and the next save writes the symbol whole over the part
+  left, for a symbol whose file is there, a deleted symbol made again, and a new
+  symbol's first save, and so it does after a second write that stops part-way.
+  A write that lands once the file was replaced says so, and keeps what was
+  typed. A save waits for what was asked of the disk during its last look, and
+  writes as before once the disk stays busy, or where Obsidian's line of disk
+  operations cannot be seen
   ([write-identity.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/write-identity.e2e.ts)
   and
   [file-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/file-writes.test.ts)).

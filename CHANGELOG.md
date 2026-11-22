@@ -66,9 +66,13 @@ even one a public release; earlier pre-releases carry a suffix such as
   over a file that another plugin or a sync tool asked Obsidian for in the
   moment after Obsidian's check of the path and before its write, without a
   question. Now the save looks at the disk itself and writes straight after its
-  look, so that a file that comes meanwhile is left as it is: for a deleted
-  symbol, the editor asks about it, as about any change
-  ([#413](https://github.com/viell-dev/slop-inkline/issues/413)).
+  look, so that a file that comes through Obsidian meanwhile is left as it is:
+  for a deleted symbol, the editor asks about it, as about any change. When
+  Obsidian keeps being asked for other files, the save waits, and after twenty
+  waits writes nothing and says so. A program writing to the disk outside
+  Obsidian, or anything asked of a version of Obsidian whose line of disk
+  operations Inkline cannot see, can still come between, as with Obsidian's own
+  check ([#413](https://github.com/viell-dev/slop-inkline/issues/413)).
 - A new symbol's first save stopped with Obsidian's "File already exists." when
   a file came to its path as it was made. Now a numbered symbol takes the next
   free number, and a name typed for it is refused as one already taken
@@ -80,12 +84,13 @@ even one a public release; earlier pre-releases carry a suffix such as
   line keeps saying why, where it went back to "The file was deleted; saving
   makes it again"
   ([#414](https://github.com/viell-dev/slop-inkline/issues/414)).
-- When a save's own write stopped part-way as it made a symbol's file, as on a
-  full disk, the part left could not be read, and the editor then refused every
-  save until the file was deleted by hand, with nothing saying that it was what
-  was left of its own save. Now it says so, and the next save writes the whole
-  symbol over that part, for a deleted symbol made again and for a new symbol's
-  first save alike: that part holds only the start of what the save writes
+- When a save's own write stopped part-way, as on a full disk, the part left
+  could not be read, and the editor then refused every save until the file was
+  deleted by hand, with nothing saying that it was what was left of its own
+  save. Now it says so, and the next save writes the whole symbol over that
+  part, however many times in a row a write stops, for a save of a symbol whose
+  file is there, a deleted symbol made again, and a new symbol's first save
+  alike: that part holds only the start of what the save writes
   ([#425](https://github.com/viell-dev/slop-inkline/issues/425)).
 - Ink shows under the pointer that draws it when a theme or a CSS snippet gives
   the drawing area padding, which Inkline's own styles do not. The ink landed
