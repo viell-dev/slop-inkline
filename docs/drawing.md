@@ -358,7 +358,9 @@ ground, and the drawing area previews the result; **Light ink** takes a light
 symbol on a dark or transparent ground. **Apply** makes the ink, and **Cancel**
 makes none. **Unreleased:** pressed while you draw, Make ink opens or closes
 once you let go, as Zoom does, as its row above the drawing area would move the
-drawing under the pointer.
+drawing under the pointer. Its button shows what it will be meanwhile, and a
+save meanwhile makes ink only if it stays open. If a question opens before you
+let go, such as Esc's about unsaved changes, Make ink does not open behind it.
 
 Only what the drawing area shows becomes ink, across and within the line's
 height, so that the other symbols of a screenshot stay out: move and scale the

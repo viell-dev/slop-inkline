@@ -225,8 +225,11 @@ must keep released files readable and looking the same, as
   and the first stroke lands in the drawing as the same drag does once the line
   has its one line again, moved alike at both ends; and **Make ink** pressed
   during a drag over a pasted picture leaves the drawing area where it was until
-  the release, and then opens (the same file,
-  [#427](https://github.com/viell-dev/slop-inkline/issues/427)).
+  the release, and then opens; pressed again to close it, then Mod+Enter in the
+  same drag, it saves the symbol without ink; and a question that Esc opens
+  during the drag keeps Make ink from opening behind it, or closes it there as
+  asked while the question keeps the focus, and Save there makes no ink (the
+  same file, [#427](https://github.com/viell-dev/slop-inkline/issues/427)).
 - Help explains the drawing tools and guides, closes with Escape, and restores
   focus to drawing without changing its strokes
   ([editor-feedback.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor-feedback.e2e.ts)).

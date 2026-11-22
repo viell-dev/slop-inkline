@@ -88,6 +88,11 @@ export interface ButtonInputs {
   /** Make ink, while its bar is open, and while Apply makes the ink. */
   readonly converting:
     { readonly threshold: number; readonly light: boolean } | undefined;
+  /**
+   * Whether Make ink is open, or will be once the pointer is let go, as its
+   * button shows; its bar shows while it is open, as `converting` says.
+   */
+  readonly inkOpen: boolean;
   readonly applying: boolean;
   readonly guides: boolean;
   /** Whether the grid shows. */
@@ -141,7 +146,7 @@ export function buttonStates(state: ButtonInputs): ButtonStates {
     path: drawing && state.shape === "path",
     fill: shaped && state.fill,
     move: state.moving,
-    ink: making,
+    ink: state.inkOpen,
     light: converting?.light === true,
     guides: state.guides,
     grid: state.grid,

@@ -54,6 +54,7 @@ describe("buttonStates", () => {
     moving: false,
     picture: false,
     converting: undefined,
+    inkOpen: false,
     applying: false,
     guides: true,
     grid: false,
@@ -172,7 +173,7 @@ describe("buttonStates", () => {
     });
     expect(tracing.hint).toBe(pictureHints.tracing);
     expect(tracing.convertBar).toBe(false);
-    // Make ink shows on only while its bar is open.
+    // Make ink shows on only while it is open.
     expect(tracing.pressed.ink).toBe(false);
   });
 
@@ -180,6 +181,7 @@ describe("buttonStates", () => {
     const making = states({
       picture: true,
       converting: { threshold: 140, light: false },
+      inkOpen: true,
     });
     expect(making).toMatchObject({
       pressed: { ink: true, light: false },
@@ -198,6 +200,29 @@ describe("buttonStates", () => {
       pressed: { light: true },
       disabled: { apply: true },
       threshold: 90,
+    });
+  });
+
+  it("shows Make ink as it will be once the pointer is let go, and its bar as it is", () => {
+    // Asked to open while the pointer is pressed to draw.
+    expect(states({ picture: true, inkOpen: true })).toMatchObject({
+      pressed: { ink: true },
+      convertBar: false,
+      threshold: undefined,
+      hint: pictureHints.tracing,
+    });
+    // Asked to close.
+    expect(
+      states({
+        picture: true,
+        converting: { threshold: 140, light: false },
+        inkOpen: false,
+      }),
+    ).toMatchObject({
+      pressed: { ink: false },
+      convertBar: true,
+      threshold: 140,
+      hint: pictureHints.making,
     });
   });
 

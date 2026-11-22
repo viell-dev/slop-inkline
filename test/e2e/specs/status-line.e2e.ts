@@ -7,18 +7,21 @@
 import { browser, expect } from "@wdio/globals";
 import { Key } from "webdriverio";
 import { loadModules } from "../support/browser.ts";
-import { insert } from "../support/editing.ts";
+import { insert, strokeCount, waitClosed } from "../support/editing.ts";
 import {
+  clickTop,
   draw,
   fillStorage,
   freeStorage,
   hold,
   letGo,
+  recordOf,
   settledSurface,
   startOver,
   storedDrafts,
   waitForHeld,
   waitForStatus,
+  waitForTop,
 } from "../support/editor.ts";
 import { boxOf, type Point } from "../support/pointer.ts";
 import { pastePicture, pictureHint } from "../support/tracing.ts";
@@ -73,15 +76,16 @@ async function inWindow(x: number, y: number): Promise<Point> {
 
 /**
  * Presses the mouse at `from`, moves it to `to` in one report, holds it
- * there, pressing each of `keys` in turn, and lets go there: one WebDriver
- * command, as a press held into the next command ends as a lost capture
- * (#391). The places are the window's, where a hand stays, rather than the
- * drawing area's, which the mouse would follow if the area moved.
+ * there, pressing each of `keys` in turn, a list being keys held together,
+ * and lets go there: one WebDriver command, as a press held into the next
+ * command ends as a lost capture (#391). The places are the window's, where
+ * a hand stays, rather than the drawing area's, which the mouse would follow
+ * if the area moved.
  */
 async function dragInWindow(
   from: Point,
   to: Point,
-  keys: readonly string[] = [],
+  keys: readonly (string | readonly string[])[] = [],
 ): Promise<void> {
   const keyboard = browser.action("key");
   const pointer = browser.action("pointer", {
@@ -94,12 +98,41 @@ async function dragInWindow(
     .pause(300);
   keyboard.pause(0).pause(0).pause(0).pause(300);
   for (const key of keys) {
-    keyboard.down(key).up(key);
-    pointer.pause(10).pause(10);
+    const together = typeof key === "string" ? [key] : key;
+    for (const each of together) keyboard.down(each);
+    for (const each of [...together].reverse()) keyboard.up(each);
+    // The pointer holds still for each of them.
+    for (let tick = 0; tick < 2 * together.length; tick += 1) {
+      pointer.pause(10);
+    }
   }
   keyboard.pause(300);
   pointer.pause(300).up();
   await browser.actions([keyboard, pointer]);
+}
+
+/** Pastes a picture a threshold makes ink of: a black square on white. */
+async function pasteSquare(): Promise<void> {
+  await browser.execute(async () => {
+    await window.inklineTest.pictures.copyPicture(40, 40, "white", [
+      { x: 10, y: 10, width: 20, height: 20, colour: "black" },
+    ]);
+  });
+  await browser.keys(["Control", "v"]);
+  await waitForStatus("Tracing over the picture");
+}
+
+/** Whether the new symbol saved has a base layer, as Make ink makes. */
+async function savedInk(): Promise<boolean> {
+  const record = JSON.parse(await recordOf("001.ink.png")) as {
+    base?: unknown;
+  };
+  return record.base !== undefined;
+}
+
+/** Whether the controls that make ink are showing. */
+async function inkShown(): Promise<boolean> {
+  return browser.$(".inkline-editor .inkline-convert").isDisplayed();
 }
 
 /** The strokes the editor keeps, from its draft. */
@@ -381,8 +414,67 @@ describe("The editor's status line", function () {
     expect(new Set(seen.map(({ top }) => top)).size).toBe(1);
     // Then it opens, as it would have at once.
     await waitForStatus(making);
+    expect(await inkShown()).toBe(true);
+  });
+
+  // What waits for the release is what a save, and the question before
+  // closing, go by meanwhile: Make ink as it will be, and its ink once seen.
+  it("makes no ink on a save during a press after Make ink is asked to close", async function () {
+    await insert();
+    await pasteSquare();
+    await browser.keys("i");
+    await waitForStatus(making);
+    await dragInWindow(await inWindow(0.3, 0.65), await inWindow(0.6, 0.35), [
+      "i",
+      [Key.Ctrl, Key.Enter],
+    ]);
+    await waitClosed();
+    expect(await savedInk()).toBe(false);
+    expect(await strokeCount("001.ink.png")).toBe(1);
+  });
+
+  it("does not open Make ink behind a question that comes during a press", async function () {
+    await insert();
+    await pasteSquare();
+    await stroke(0.3);
+    // Esc asks about the stroke before closing.
+    await dragInWindow(await inWindow(0.3, 0.65), await inWindow(0.6, 0.35), [
+      "i",
+      Key.Escape,
+    ]);
+    await waitForTop("Save");
+    await waitForStatus("Not making ink while a question is open");
+    expect(await inkShown()).toBe(false);
+    await clickTop("Save");
+    await waitClosed();
+    expect(await savedInk()).toBe(false);
+    expect(await strokeCount("001.ink.png")).toBe(2);
+  });
+
+  it("closes Make ink behind a question that comes during a press, leaving it the focus", async function () {
+    await insert();
+    await pasteSquare();
+    await stroke(0.3);
+    await browser.keys("i");
+    await waitForStatus(making);
+    await dragInWindow(await inWindow(0.3, 0.65), await inWindow(0.6, 0.35), [
+      "i",
+      Key.Escape,
+    ]);
+    await waitForTop("Save");
+    await waitForStatus("No ink made");
+    expect(await inkShown()).toBe(false);
+    // The question still has the keys: Enter answers it.
     expect(
-      await browser.$(".inkline-editor .inkline-convert").isDisplayed(),
+      await browser.execute(() => {
+        const questions = activeDocument.querySelectorAll(".modal-container");
+        const top = questions.item(questions.length - 1);
+        return top.contains(activeDocument.activeElement);
+      }),
     ).toBe(true);
+    await browser.keys("Enter");
+    await waitClosed();
+    expect(await savedInk()).toBe(false);
+    expect(await strokeCount("001.ink.png")).toBe(2);
   });
 });

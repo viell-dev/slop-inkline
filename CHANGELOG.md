@@ -120,8 +120,10 @@ even one a public release; earlier pre-releases carry a suffix such as
   drawing area, the lines below it and the picture's row above it now keep their
   height; a message that needs more room shows whole once you let go. **Make
   ink** pressed while you draw now opens or closes its row once you let go, as
-  **Zoom** does: opened at once, the row moved the drawing 40 pixels under the
-  pointer in the middle of the stroke
+  **Zoom** does: opened at once, the row moved the drawing by its height under
+  the pointer in the middle of the stroke. Meanwhile, its button shows what it
+  will be, a save makes ink only if it stays open, and it does not open behind a
+  question that comes before you let go
   ([#427](https://github.com/viell-dev/slop-inkline/issues/427)).
 - A rename of a symbol that was renamed elsewhere, deleted and replaced, or
   whose new name another symbol took, while Quick edit wrote its readings and
