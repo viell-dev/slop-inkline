@@ -11,15 +11,20 @@ import {
 import {
   changedText,
   changeFile,
+  CutShort,
+  makeFile,
+  PathTaken,
   saveFile,
   stalledAfter,
   stoppable,
   TextMoved,
   watchRename,
   watchSave,
+  withoutPaths,
   WriteQueue,
   type DiskLine,
   type FileAccess,
+  type NewFile,
 } from "../../../src/notes/file-writes.ts";
 import type { TextChanges } from "../../../src/notes/text-fields.ts";
 
@@ -639,14 +644,43 @@ describe("saveFile", () => {
     expect(makes).toBe(1);
   });
 
-  // The vault keeps what a write that stops part-way left at the path, as on a
-  // full disk, and has the file before the create rejects.
-  for (const [left, part] of [
-    ["the start of", (drawn: Uint8Array) => drawn.slice(0, 64)],
-    ["all of", (drawn: Uint8Array) => drawn.slice()],
-    ["none of", () => new Uint8Array()],
+  it("passes on the part of its own that its create says it left", async () => {
+    // As makeFile says of a copy that stopped part-way and could not be taken
+    // away, for the editor to know that file as its own.
+    const vault = new FakeVault();
+    const drawn = await writeText(pinned, "translation", ["DRAWN"]);
+    const part = drawn.slice(0, 64);
+    let looks = 0;
+    const saving = saveFile({
+      current: () => vault.at(path),
+      check: () => {
+        looks++;
+        return Promise.resolve(undefined);
+      },
+      write: () => Promise.reject(new Error("not to write")),
+      create: () => {
+        vault.put(path, part);
+        return Promise.reject(
+          new CutShort(new Error("ENOSPC: no space left on device"), part),
+        );
+      },
+      bytes: drawn,
+      read: access.read,
+    });
+    await expect(saving).rejects.toThrow("ENOSPC");
+    const error: unknown = await saving.catch((thrown: unknown) => thrown);
+    expect(error instanceof CutShort && error.held).toEqual(part);
+    expect(looks).toBe(1);
+  });
+
+  // makeFile has said what it left of its own: a file found after any other
+  // failure is never the save's, even an empty one, which a write that stopped
+  // before its first byte would also leave.
+  for (const [failure, failed] of [
+    ["with the path taken", () => new PathTaken()],
+    ["as the disk filled", () => new Error("ENOSPC: no space left on device")],
   ] as const) {
-    it(`fails as the vault does when its write left ${left} the file`, async () => {
+    it(`looks at a file found at its path after its create failed ${failure}, whatever it holds`, async () => {
       const vault = new FakeVault();
       const drawn = await writeText(pinned, "translation", ["DRAWN"]);
       let looks = 0;
@@ -655,24 +689,114 @@ describe("saveFile", () => {
           current: () => vault.at(path),
           check: () => {
             looks++;
-            return Promise.resolve(undefined);
+            return vault.at(path) === null
+              ? Promise.resolve(undefined)
+              : Promise.reject(new Error("the editor asks first"));
           },
           write: () => Promise.reject(new Error("not to write")),
           create: () => {
-            vault.put(path, part(drawn));
-            return Promise.reject(
-              new Error("ENOSPC: no space left on device, write"),
-            );
+            vault.put(path, new Uint8Array());
+            return Promise.reject(failed());
           },
           bytes: drawn,
           read: access.read,
         }),
-      ).rejects.toThrow("ENOSPC");
-      expect(looks).toBe(1);
+      ).rejects.toThrow("asks first");
+      expect(looks).toBe(2);
+      expect(vault.at(path)?.writes).toBe(0);
     });
   }
 
-  it("leaves a file it cannot read, found as it made one, to the next round's look", async () => {
+  // #425, at a save over a file: the vault keeps what its write left, as when
+  // it makes one, as after a first failure on a disk that is still full.
+  for (const [left, part] of [
+    ["the start of", (drawn: Uint8Array) => drawn.slice(0, 32)],
+    ["all of", (drawn: Uint8Array) => drawn.slice()],
+    ["none of", () => new Uint8Array()],
+  ] as const) {
+    it(`fails as the vault does when its write over the file left ${left} it`, async () => {
+      const vault = new FakeVault();
+      const known = await writeText(pinned, "reading", ["KNOWN"]);
+      const file = vault.put(path, known);
+      const drawn = await writeText(pinned, "translation", ["DRAWN"]);
+      const saving = saveFile({
+        current: () => vault.current(file),
+        check: () => Promise.resolve(undefined),
+        write: (now) => {
+          now.bytes = part(drawn);
+          return Promise.reject(
+            new Error("ENOSPC: no space left on device, write"),
+          );
+        },
+        create: () => Promise.reject(new Error("not to make")),
+        bytes: drawn,
+        read: access.read,
+      });
+      await expect(saving).rejects.toThrow("ENOSPC");
+      const error: unknown = await saving.catch((thrown: unknown) => thrown);
+      expect(error instanceof CutShort && error.held).toEqual(part(drawn));
+    });
+  }
+
+  it("fails as its write did when that left the file as it was", async () => {
+    // As a locked file refuses the write before it opens: what is there is
+    // what the check passed, which the editor knows already.
+    const vault = new FakeVault();
+    const file = vault.put(path);
+    const drawn = await writeText(pinned, "translation", ["DRAWN"]);
+    const saving = saveFile({
+      current: () => vault.current(file),
+      check: () => Promise.resolve(undefined),
+      write: () => Promise.reject(new Error("EBUSY: resource busy or locked")),
+      create: () => Promise.reject(new Error("not to make")),
+      bytes: drawn,
+      read: access.read,
+    });
+    await expect(saving).rejects.toThrow("EBUSY");
+    expect(await saving.catch((thrown: unknown) => thrown)).not.toBeInstanceOf(
+      CutShort,
+    );
+    expect(file.bytes).toBe(pinned);
+  });
+
+  it("fails as its write did when the file was replaced as it wrote", async () => {
+    // Whatever the replacement holds, it is not what this wrote.
+    const vault = new FakeVault();
+    const file = vault.put(path);
+    const drawn = await writeText(pinned, "translation", ["DRAWN"]);
+    const saving = saveFile({
+      current: () => vault.current(file),
+      check: () => Promise.resolve(undefined),
+      write: (now) => {
+        vault.delete(now);
+        vault.put(path, drawn.slice(0, 32));
+        return Promise.reject(new Error("ENOENT: no such file or directory"));
+      },
+      create: () => Promise.reject(new Error("not to make")),
+      bytes: drawn,
+      // As the vault reads a file, by its path.
+      read: (found) => access.read(vault.at(found.path ?? "") ?? found),
+    });
+    await expect(saving).rejects.toThrow("ENOENT");
+    expect(await saving.catch((thrown: unknown) => thrown)).not.toBeInstanceOf(
+      CutShort,
+    );
+  });
+
+  it("says why the path is taken, as create does, when the vault has nothing there", async () => {
+    await expect(
+      saveFile({
+        current: () => null,
+        check: () => Promise.resolve(undefined),
+        write: () => Promise.reject(new Error("not to write")),
+        create: () =>
+          Promise.reject(new PathTaken("a.ink.png differs in letter case")),
+        ...nothingMet,
+      }),
+    ).rejects.toThrow("differs in letter case");
+  });
+
+  it("leaves a file found as it made one to the next round's look, without reading it", async () => {
     const vault = new FakeVault();
     const drawn = await writeText(pinned, "translation", ["DRAWN"]);
     let looks = 0;
@@ -701,7 +825,7 @@ describe("saveFile", () => {
         },
       }),
     ).rejects.toThrow("the editor cannot read it");
-    expect({ looks, makes, reads }).toEqual({ looks: 2, makes: 1, reads: 1 });
+    expect({ looks, makes, reads }).toEqual({ looks: 2, makes: 1, reads: 0 });
     expect(vault.at(path)?.writes).toBe(0);
   });
 
@@ -712,24 +836,25 @@ describe("saveFile", () => {
     await expect(
       saveFile({
         current: () => there,
-        check: () => Promise.resolve(undefined),
+        // Gone again as soon as it is looked at.
+        check: () => {
+          there = null;
+          return Promise.resolve(undefined);
+        },
         write: () => Promise.reject(new Error("not to write")),
         create: () => {
           // Without a bound, it would go on for good, inside the line every
           // other save waits in.
           if (++makes > 10) throw new Error("it went round for good");
           there = fake(theirs);
-          return Promise.reject(new Error("File already exists."));
+          return Promise.reject(new PathTaken());
         },
         bytes: pinned,
-        // Gone again as soon as it is read.
-        read: (found) => {
-          there = null;
-          return access.read(found);
-        },
+        read: access.read,
       }),
     ).rejects.toThrow("keeps changing");
-    expect(makes).toBe(3);
+    // Each look found the file gone, and the make after it found it there.
+    expect(makes).toBe(2);
   });
 
   it("leaves a file that goes on being replaced, and says so", async () => {
@@ -1335,5 +1460,342 @@ describe("a save and the disk's line", () => {
     expect(written).toBe(file);
     expect(line.settles).toBe(3);
     expect(file.bytes).toEqual(drawn);
+  });
+});
+
+/**
+ * Obsidian's desktop file system adapter, as far as making a file goes: one
+ * line, which every request joins as it is asked, as `queue` does in the
+ * `app.js` of Obsidian 1.13.4 and 1.15.1, and whose requests act on the files
+ * as they run. Its `copy` is one request that makes the copy only where
+ * nothing is, as the adapter's does with `COPYFILE_EXCL`, failing with the
+ * code `EEXIST` otherwise.
+ */
+class FakeAdapter {
+  promise: Promise<unknown> = Promise.resolve();
+  readonly files = new Map<string, Uint8Array>();
+  /** Every request, as its kind and path, in the order run. */
+  readonly ran: string[] = [];
+  /** Has the next copy stop after this many bytes, as on a full disk. */
+  copyStopsAfter: number | undefined;
+  /** Has the next removal of this path fail, as of a file held open. */
+  removeRefuses: string | undefined;
+
+  #queue<T>(task: () => T): Promise<T> {
+    const done = this.promise.then(task, task);
+    this.promise = done;
+    return done;
+  }
+
+  exists(path: string): Promise<boolean> {
+    return this.#queue(() => {
+      this.ran.push(`exists ${path}`);
+      return this.files.has(path);
+    });
+  }
+
+  read(path: string): Promise<Uint8Array> {
+    return this.#queue(() => {
+      this.ran.push(`read ${path}`);
+      const bytes = this.files.get(path);
+      if (bytes === undefined) throw new Error(`ENOENT: ${path}`);
+      return bytes;
+    });
+  }
+
+  writeBinary(path: string, bytes: Uint8Array): Promise<void> {
+    return this.#queue(() => {
+      this.ran.push(`write ${path}`);
+      this.files.set(path, bytes);
+    });
+  }
+
+  copy(from: string, to: string): Promise<void> {
+    return this.#queue(() => {
+      this.ran.push(`copy ${to}`);
+      const bytes = this.files.get(from);
+      if (bytes === undefined) throw new Error(`ENOENT: ${from}`);
+      if (this.files.has(to)) {
+        throw Object.assign(new Error(`EEXIST: ${to}`), { code: "EEXIST" });
+      }
+      const stops = this.copyStopsAfter;
+      this.copyStopsAfter = undefined;
+      if (stops === undefined) {
+        this.files.set(to, bytes);
+        return;
+      }
+      this.files.set(to, bytes.slice(0, stops));
+      throw Object.assign(new Error("ENOSPC: no space left on device"), {
+        code: "ENOSPC",
+      });
+    });
+  }
+
+  remove(path: string): Promise<void> {
+    return this.#queue(() => {
+      this.ran.push(`remove ${path}`);
+      if (this.removeRefuses === path) {
+        this.removeRefuses = undefined;
+        throw new Error(`EBUSY: ${path}`);
+      }
+      if (!this.files.delete(path)) throw new Error(`ENOENT: ${path}`);
+    });
+  }
+}
+
+/** Where {@link making} writes its own file before it makes one. */
+const own = ".making-1";
+
+/**
+ * The file at `path` made with `adapter`, as `makeSymbolFile` makes one, with
+ * its own file at {@link own}. `staging` runs as its own file is asked for.
+ */
+function making(
+  adapter: FakeAdapter,
+  path: string,
+  bytes: Uint8Array,
+  { staging }: { staging?: () => void } = {},
+): NewFile {
+  return {
+    bytes,
+    exists: () => adapter.exists(path),
+    stage: () => {
+      staging?.();
+      return adapter.writeBinary(own, bytes);
+    },
+    place: () => adapter.copy(own, path),
+    taken: (error) =>
+      typeof error === "object" &&
+      error !== null &&
+      Reflect.get(error, "code") === "EEXIST",
+    read: () => adapter.read(path),
+    clear: () => adapter.remove(path),
+    unstage: () => adapter.remove(own),
+  };
+}
+
+describe("makeFile", () => {
+  const path = "a.ink.png";
+  const ours = new Uint8Array([1, 2, 3, 4, 5, 6]);
+  const theirs = new Uint8Array([7, 8, 9]);
+
+  it("makes a file where the disk has nothing, and takes its own away", async () => {
+    const adapter = new FakeAdapter();
+    await makeFile(making(adapter, path, ours));
+    expect(adapter.files.get(path)).toBe(ours);
+    expect(adapter.files.has(own)).toBe(false);
+    expect(adapter.ran).toEqual([
+      `exists ${path}`,
+      `write ${own}`,
+      `copy ${path}`,
+      `remove ${own}`,
+    ]);
+  });
+
+  it("leaves a file asked for just after its look, as the vault's own would write over it", async () => {
+    // #413. The vault's createBinary looks, and asks for its write once it
+    // has the answer: a file asked for in between runs first.
+    const vault = new FakeAdapter();
+    const look = vault.exists(path);
+    void vault.writeBinary(path, theirs);
+    if (!(await look)) await vault.writeBinary(path, ours);
+    expect(vault.files.get(path)).toBe(ours);
+    // The copy makes the file only where nothing is.
+    const adapter = new FakeAdapter();
+    const made = making(adapter, path, ours);
+    await expect(
+      makeFile({
+        ...made,
+        exists: () => {
+          const looking = made.exists();
+          void adapter.writeBinary(path, theirs);
+          return looking;
+        },
+      }),
+    ).rejects.toThrow(PathTaken);
+    expect(adapter.files.get(path)).toBe(theirs);
+    expect(adapter.files.has(own)).toBe(false);
+  });
+
+  it("leaves a file that comes as it writes its own, and writes nothing there", async () => {
+    const adapter = new FakeAdapter();
+    await expect(
+      makeFile(
+        making(adapter, path, ours, {
+          staging: () => void adapter.writeBinary(path, theirs),
+        }),
+      ),
+    ).rejects.toThrow(PathTaken);
+    expect(adapter.files.get(path)).toBe(theirs);
+    expect(adapter.files.has(own)).toBe(false);
+  });
+
+  it("leaves a file asked for before its look, and writes nothing of its own", async () => {
+    const adapter = new FakeAdapter();
+    void adapter.writeBinary(path, theirs);
+    await expect(makeFile(making(adapter, path, ours))).rejects.toThrow(
+      PathTaken,
+    );
+    expect(adapter.files.get(path)).toBe(theirs);
+    expect(adapter.ran).not.toContain(`write ${own}`);
+  });
+
+  /**
+   * Has `adapter` do `ask(n)` for n from 1 to `count`, each once the one
+   * before has run, as another plugin or Inkline's own index reading file
+   * after file does, and says how many have run.
+   */
+  function chain(
+    adapter: FakeAdapter,
+    count: number,
+    ask: (n: number) => Promise<unknown>,
+  ): () => number {
+    let done = 0;
+    void (async () => {
+      for (let n = 1; n <= count; n++) {
+        await ask(n).catch(() => undefined);
+        done = n;
+      }
+    })();
+    return () => done;
+  }
+
+  it("makes the file beside a chain of reads, without waiting for them", async () => {
+    // The review of #434: a save that waited for the disk to be quiet was
+    // refused beside 300 reads asked one after another, as Inkline's own
+    // index asks them.
+    const adapter = new FakeAdapter();
+    adapter.files.set("note.md", theirs);
+    const reads = chain(adapter, 300, () => adapter.read("note.md"));
+    await makeFile(making(adapter, path, ours));
+    expect(adapter.files.get(path)).toBe(ours);
+    expect(reads()).toBeLessThan(10);
+  });
+
+  // A plugin writing its files one after another, and one of them at the path,
+  // at each place in the run: a file it makes there before the copy is left,
+  // and one after it is its own write over the symbol, as any write is.
+  for (const nth of [1, 2, 3, 4, 5, 14]) {
+    it(`leaves a file that a run of writes makes at its path first, as write ${String(nth)} of 14`, async () => {
+      const adapter = new FakeAdapter();
+      const writes = chain(adapter, 14, (n) =>
+        adapter.writeBinary(n === nth ? path : `${String(n)}.md`, theirs),
+      );
+      const outcome = await makeFile(making(adapter, path, ours)).then(
+        () => "made",
+        (error: unknown) => (error instanceof PathTaken ? "left" : error),
+      );
+      await until(() => writes() === 14);
+      const theirsAt = adapter.ran.indexOf(`write ${path}`);
+      const copyAt = adapter.ran.indexOf(`copy ${path}`);
+      // No copy at all when the look found it.
+      expect(outcome).toBe(
+        copyAt === -1 || theirsAt < copyAt ? "left" : "made",
+      );
+      expect(adapter.files.get(path)).toBe(theirs);
+      expect(adapter.files.has(own)).toBe(false);
+    });
+  }
+
+  it("leaves nothing at the path when its own file cannot be written whole", async () => {
+    const adapter = new FakeAdapter();
+    const made = making(adapter, path, ours);
+    await expect(
+      makeFile({
+        ...made,
+        stage: async () => {
+          await adapter.writeBinary(own, ours.slice(0, 2));
+          throw new Error("ENOSPC: no space left on device");
+        },
+      }),
+    ).rejects.toThrow("ENOSPC");
+    expect(adapter.files.has(path)).toBe(false);
+    expect(adapter.files.has(own)).toBe(false);
+    expect(adapter.ran).not.toContain(`copy ${path}`);
+  });
+
+  for (const [left, stops] of [
+    ["the start of", 2],
+    ["none of", 0],
+  ] as const) {
+    it(`takes away ${left} the file that a copy cut short left, and fails as it did`, async () => {
+      const adapter = new FakeAdapter();
+      adapter.copyStopsAfter = stops;
+      const failure = await makeFile(making(adapter, path, ours)).catch(
+        (error: unknown) => error,
+      );
+      expect(failure).toBeInstanceOf(Error);
+      expect(failure).not.toBeInstanceOf(CutShort);
+      expect(String(failure)).toContain("ENOSPC");
+      expect(adapter.files.has(path)).toBe(false);
+      expect(adapter.files.has(own)).toBe(false);
+    });
+  }
+
+  it("says what a copy cut short left, when it cannot take that away", async () => {
+    const adapter = new FakeAdapter();
+    adapter.copyStopsAfter = 2;
+    adapter.removeRefuses = path;
+    const failure = await makeFile(making(adapter, path, ours)).catch(
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(CutShort);
+    expect(failure instanceof CutShort && failure.held).toEqual(
+      ours.slice(0, 2),
+    );
+    expect(String(failure)).toContain("ENOSPC");
+    expect(adapter.files.get(path)).toEqual(ours.slice(0, 2));
+    expect(adapter.files.has(own)).toBe(false);
+  });
+
+  it("leaves what is at the path after a failed copy if it is not the start of its bytes", async () => {
+    // As a file another program wrote there once the copy had failed.
+    const adapter = new FakeAdapter();
+    const made = making(adapter, path, ours);
+    await expect(
+      makeFile({
+        ...made,
+        place: async () => {
+          await adapter.writeBinary(path, theirs);
+          throw new Error("EIO: i/o error");
+        },
+      }),
+    ).rejects.toThrow("EIO");
+    expect(adapter.files.get(path)).toBe(theirs);
+    expect(adapter.ran).not.toContain(`remove ${path}`);
+  });
+
+  it("makes the file all the same when its own cannot be taken away", async () => {
+    // Left for the sweep as Inkline next starts.
+    const adapter = new FakeAdapter();
+    adapter.removeRefuses = own;
+    await makeFile(making(adapter, path, ours));
+    expect(adapter.files.get(path)).toBe(ours);
+    expect(adapter.files.has(own)).toBe(true);
+  });
+});
+
+describe("withoutPaths", () => {
+  const said = "as the symbol was put at Signs/gate.ink.png";
+
+  it("says the file a person knows in place of the paths Node.js names", () => {
+    const failed = Object.assign(
+      new Error(
+        "ENOENT: no such file or directory, copyfile '/vault/.obsidian/plugins/inkline/.making-1' -> '/vault/Signs/gate.ink.png'",
+      ),
+      { code: "ENOENT" },
+    );
+    const plain = withoutPaths(failed, said);
+    expect(plain).toBeInstanceOf(Error);
+    expect(String(plain)).toBe(
+      "Error: ENOENT: no such file or directory, as the symbol was put at Signs/gate.ink.png",
+    );
+    expect(plain instanceof Error && Reflect.get(plain, "code")).toBe("ENOENT");
+  });
+
+  it("leaves an error that names no path as it is", () => {
+    const failed = new Error("ENOSPC: no space left on device, write");
+    expect(withoutPaths(failed, said)).toBe(failed);
+    expect(withoutPaths("not an error", said)).toBe("not an error");
   });
 });

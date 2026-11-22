@@ -165,7 +165,27 @@ version of Obsidian that keeps its line where Inkline cannot see it. A save that
 finds its file gone once it has written says so, and keeps what you drew or
 typed. The first save of a new symbol is not looked at this way: Obsidian checks
 that nothing is at its path just before it writes, and only something asked in
-that moment comes between.
+that moment comes between. So does a save that makes a deleted symbol again.
+
+**Unreleased:** a save that makes a symbol's file, the first of a new symbol or
+one that makes a deleted symbol again, writes the symbol first to a file of
+Inkline's own in its folder under `.obsidian/plugins`, which the vault does not
+list, and then has Obsidian copy that into place. The copy makes the file only
+where nothing is, and checks that as it makes it, in one step, so nothing asked
+of Obsidian, and no program writing to the disk outside it, can come between,
+and the save never waits for the disk to be quiet. A file it finds there is left
+as it is: the editor asks about one at a deleted symbol's path, as about any
+change; a new symbol takes the next free number, or the name typed for it is
+refused as taken; and a file whose name differs only in letter case, which
+Windows and macOS read as the same name, is named, for you to rename or move it.
+For that moment the disk holds the symbol twice, so a disk with room for one
+more copy of it but not two refuses the save, which then leaves nothing at the
+symbol's path. Inkline removes its own file as the save ends, or, if Obsidian
+closed in that moment, when it next starts. The copy also sets the new file's
+permissions, and with a recent Obsidian installer, such as 1.15.1's, its times:
+on a file system that refuses either, where a plain write would not, every save
+that makes a symbol's file fails, with nothing lost and nothing left at the
+symbol's path. No common desktop file system is known to refuse them.
 
 ## A file changed as Obsidian renames it
 
