@@ -659,10 +659,13 @@ describe("The editor", function () {
             surfaceAfter.left !== surfaceBefore.left ||
               surfaceAfter.top !== surfaceBefore.top,
           ).toBe(true);
-          // The picture is under it by its middle, where it was grabbed.
+          // The picture is under it by its middle, where it was grabbed. Its
+          // bottom can be past the drawing area's now, which shows only the
+          // rest of it: the picture is square, so its height is its width.
           const after = await pictureInWindow();
-          const across = (to.x - after.left) / (after.right - after.left);
-          const down = (to.y - after.top) / (after.bottom - after.top);
+          const side = after.right - after.left;
+          const across = (to.x - after.left) / side;
+          const down = (to.y - after.top) / side;
           expect(Math.abs(across - 0.5)).toBeLessThan(0.05);
           expect(Math.abs(down - 0.5)).toBeLessThan(0.05);
         } finally {
