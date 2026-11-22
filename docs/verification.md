@@ -522,16 +522,23 @@ must keep released files readable and looking the same, as
   ([file-changes.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/file-changes.e2e.ts)
   and
   [disk.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/disk.test.ts)).
+  The orders such a change meets a save in: one reported while a save runs read
+  again once it ends, a read that a save overtook set aside, and what a write
+  cut short left written over by the next save
+  ([keeping.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/keeping.test.ts)).
 - A change to a symbol's text alone told from a change to its drawing, byte for
   byte: taken in without a question, by the library's save or a change on disk,
   with unsaved strokes, Undo, and a draft's lining up left alone, and on top of
-  a change **Keep mine** replaces; found as a save starts, which goes on,
-  through **Next** too; and text typed in a field the file changed kept, with
-  what saving replaces shown, and a save that finds that first writing nothing
+  a change **Keep mine** replaces, or once the question about another change is
+  answered or dismissed; found as a save starts, which goes on, through **Next**
+  too, keeping the field it did not change; and text typed in a field the file
+  changed kept, with what saving replaces shown, and a save that finds that
+  first writing nothing
   ([symbol-text-on-disk.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text-on-disk.e2e.ts),
   [text.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/format/text.test.ts),
+  [disk.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/disk.test.ts),
   and
-  [disk.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/disk.test.ts)).
+  [keeping.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/keeping.test.ts)).
 
 ### Text it was not asked to change stays as it was
 
