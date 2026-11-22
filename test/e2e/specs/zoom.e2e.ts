@@ -235,7 +235,10 @@ async function watchPress(during?: During): Promise<void> {
       const frame: unknown = Reflect.get(Object(electron), "webFrame");
       const set: unknown = Reflect.get(Object(frame), "setZoomFactor");
       if (typeof set !== "function") throw new Error("no host zoom");
-      return () => Reflect.apply(set, frame, [1.25]);
+      // Its result, which says nothing, is not passed on.
+      return (): void => {
+        Reflect.apply(set, frame, [1.25]);
+      };
     })();
     const act = (): void => {
       if (action === "zoom" || action === "fit") {
