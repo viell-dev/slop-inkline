@@ -112,17 +112,53 @@ export async function rewrite(
  * Has Obsidian update links without asking, or ask. It asks only once its
  * cache knows the embed, which depends on how soon a test gets there, so a
  * test that a question would stop answers none.
+ *
+ * Obsidian saves its settings to `app.json` a second after a change. Half a
+ * second after it hears of a write to that file, its own included, it reads
+ * the file back, unless the file is older than the time it noted as its last
+ * save finished. A save that finishes more than that half second after the
+ * write, as on a loaded machine, is read back, and so is one whose file time,
+ * which Obsidian rounds to the millisecond, comes out later than the time it
+ * noted. Either takes back a change made since the save began. This waits
+ * until the setting holds both in Obsidian and in the file, setting it again
+ * if it was taken back, so that a test starts with the setting it asked for
+ * (#386).
  */
 export async function setLinkUpdates(always: boolean): Promise<void> {
-  await browser.executeObsidian(({ app }, value) => {
-    const vault: object = app.vault;
-    const settable = (
-      candidate: object,
-    ): candidate is { setConfig(key: string, value: unknown): void } =>
-      "setConfig" in candidate && typeof candidate.setConfig === "function";
-    if (!settable(vault)) throw new Error("no vault settings");
-    vault.setConfig("alwaysUpdateLinks", value);
-  }, always);
+  await browser.waitUntil(
+    async () =>
+      browser.executeObsidian(async ({ app }, value) => {
+        const vault: object = app.vault;
+        const configurable = (
+          candidate: object,
+        ): candidate is {
+          getConfig(key: string): unknown;
+          setConfig(key: string, value: unknown): void;
+        } =>
+          "getConfig" in candidate &&
+          typeof candidate.getConfig === "function" &&
+          "setConfig" in candidate &&
+          typeof candidate.setConfig === "function";
+        if (!configurable(vault)) throw new Error("no vault settings");
+        if (vault.getConfig("alwaysUpdateLinks") !== value) {
+          vault.setConfig("alwaysUpdateLinks", value);
+          return false;
+        }
+        const file = `${app.vault.configDir}/app.json`;
+        const saved: unknown = (await app.vault.adapter.exists(file))
+          ? JSON.parse(await app.vault.adapter.read(file))
+          : {};
+        // Obsidian asks unless the setting is on.
+        const stored =
+          typeof saved === "object" && saved !== null
+            ? Reflect.get(saved, "alwaysUpdateLinks") === true
+            : false;
+        return stored === value;
+      }, always),
+    {
+      timeoutMsg: `Obsidian kept alwaysUpdateLinks from being ${String(always)}`,
+    },
+  );
 }
 
 /** Opens a second pane on the note at `path`, leaving the focus where it is. */

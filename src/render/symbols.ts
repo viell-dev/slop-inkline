@@ -3,8 +3,11 @@
 // box, puts its baseline on the text's, and paints its ink in the text colour
 // through a mask of its own pixels. One observer per window finds them as
 // Obsidian adds them, and the frames Obsidian shows a canvas card's editor in,
-// whose documents it then watches too.
+// whose documents it then watches too. In Obsidian's PDF export window, each
+// symbol in the text colour prints from a copy of its pixels instead, as
+// print.ts says.
 
+import { nextTask } from "../ink/canvas.ts";
 import {
   aspectRatio,
   cssUrl,
@@ -16,6 +19,7 @@ import {
   RefreshedAddresses,
   symbolName,
 } from "./layout.ts";
+import { ownSource, PrintCopies, uncopy, type SymbolReader } from "./print.ts";
 
 /** The class a symbol's image gets, which styles.css styles. */
 export const symbolClass = "inkline-symbol";
@@ -141,14 +145,16 @@ export function tagImage(
   vault: string,
   addresses?: RefreshedAddresses,
 ): void {
-  // The attribute's address, which currentSrc follows only once it loads.
-  let src = image.src || image.currentSrc;
+  // The attribute's address, which currentSrc follows only once it loads,
+  // and the file's own rather than its print copy's.
+  let src = ownSource(image);
   if (!isSymbolUrl(src, vault) || image.closest(textSelector) === null) {
     untagImage(image);
     return;
   }
   const latest = addresses?.shown(image, src);
   if (latest !== undefined) {
+    uncopy(image);
     image.src = latest;
     src = latest;
   }
@@ -224,6 +230,7 @@ function isNode(target: EventTarget | null): target is Node {
 /** Removes what {@link tagImage} added. */
 export function untagImage(image: HTMLImageElement): void {
   if (!image.hasClass(symbolClass)) return;
+  uncopy(image);
   image.removeClass(symbolClass);
   image.style.removeProperty(maskProperty);
   for (const property of sizeProperties) image.style.removeProperty(property);
@@ -285,6 +292,8 @@ export class SymbolRenderer {
   readonly #vault: string;
   /** What else a frame's document needs once it is watched. */
   readonly #framed: (doc: Document) => void;
+  /** Reads a symbol's file, for its print copies. */
+  readonly #read: SymbolReader;
   #scale = 1;
   #textColor = true;
   /** Which refresh each symbol's images, and each symbol, last had. */
@@ -292,15 +301,23 @@ export class SymbolRenderer {
 
   /**
    * `framed` is called with the document of each frame that this finds in a
-   * watched document and watches, as a canvas card's editor's.
+   * watched document and watches, as a canvas card's editor's. `read` reads
+   * the symbol file an image shows, for the copies that a PDF prints.
    */
-  constructor(vault: string, framed: (doc: Document) => void) {
+  constructor(
+    vault: string,
+    framed: (doc: Document) => void,
+    read: SymbolReader,
+  ) {
     this.#vault = vault;
     this.#framed = framed;
+    this.#read = read;
   }
 
   /** How each watched document stops its observer and close listener. */
   readonly #watching = new Map<Document, () => void>();
+  /** The print copies of each PDF export window's symbols. */
+  readonly #printing = new Map<Document, PrintCopies>();
 
   /**
    * Reloads instances of one changed file in every watched document, and
@@ -312,7 +329,11 @@ export class SymbolRenderer {
     const next = this.#addresses.refreshed(src);
     for (const doc of this.#watching.keys()) {
       for (const image of Array.from(doc.getElementsByTagName("img"))) {
-        if (image.hasClass(symbolClass) && fileAddress(image.src) === address) {
+        if (
+          image.hasClass(symbolClass) &&
+          fileAddress(ownSource(image)) === address
+        ) {
+          uncopy(image);
           image.src = next;
           tagImage(image, this.#vault, this.#addresses);
         }
@@ -332,7 +353,48 @@ export class SymbolRenderer {
   configure(scale: number, textColor: boolean): void {
     this.#scale = scale;
     this.#textColor = textColor;
+    // A symbol in its stored colour prints its own pixels.
+    if (!textColor) this.#endPrinting();
     for (const doc of this.#watching.keys()) this.#configureDocument(doc);
+  }
+
+  /**
+   * In Obsidian's PDF export window, gives each symbol in `el` in the text
+   * colour a copy of its pixels in the colour its text prints in, and
+   * resolves once each shows its copy or keeps its mask, as
+   * {@link PrintCopies.copy} does: Obsidian prints once the promises that
+   * its post-processors return have resolved. `el` is what Obsidian gives a
+   * post-processor there: the note's text, or a section of a note it embeds.
+   * Undefined anywhere else, and in the stored colour.
+   */
+  prepareForPrint(el: HTMLElement): Promise<void> | undefined {
+    const doc = el.doc;
+    if (!this.#textColor || !this.#watching.has(doc)) return undefined;
+    // Obsidian puts what it prints in this, in its export window's body.
+    if (el.closest(".print")?.parentElement !== doc.body) return undefined;
+    let copies = this.#printing.get(doc);
+    if (copies === undefined) {
+      copies = new PrintCopies(doc, this.#read);
+      this.#printing.set(doc, copies);
+    }
+    const printing = copies;
+    return (async () => {
+      // Obsidian loads the embeds in what it gives its post-processors after
+      // every post-processor has run, so their images are there a task on.
+      await nextTask();
+      if (this.#printing.get(doc) !== printing) return;
+      tagWithin(el, this.#vault, this.#addresses);
+      const images = Array.from(el.getElementsByTagName("img")).filter(
+        (image) => image.hasClass(symbolClass),
+      );
+      await printing.copy(images);
+    })().catch(() => undefined);
+  }
+
+  /** Shows every export window's symbols from their own files again. */
+  #endPrinting(): void {
+    for (const copies of this.#printing.values()) copies.end();
+    this.#printing.clear();
   }
 
   #configureDocument(doc: Document): void {
@@ -446,6 +508,8 @@ export class SymbolRenderer {
     if (stop === undefined) return;
     stop();
     this.#watching.delete(doc);
+    this.#printing.get(doc)?.end();
+    this.#printing.delete(doc);
     doc.documentElement.style.removeProperty("--inkline-scale");
     doc.documentElement.removeClass("inkline-stored-color");
     for (const image of Array.from(doc.getElementsByTagName("img"))) {
