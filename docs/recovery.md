@@ -117,7 +117,11 @@ elsewhere, by sync, another app, or another editor, is not lost to a save:
   folder and all. **Unreleased:** a file that comes to that place as it is saved
   is asked about, as any change is, and one whose name differs only in letter
   case, which Windows and macOS read as the same name, is named in the status
-  line, for you to rename or move it.
+  line, for you to rename or move it. A folder there again in another letter
+  case, as `signs` for `Signs`, is the same folder to them, and the symbol is
+  saved in it; a file of its name already in that folder is the file at its
+  place, and is asked about as any change is, unless it holds what you last
+  saved, as after the folder's letter case was changed outside Obsidian.
 - A rename made elsewhere is followed, and its name kept.
 
 ## Files Inkline cannot read
@@ -189,7 +193,9 @@ it.
 Until a save starts writing the new symbol, its draft stays the old symbol's, as
 the one found was: if the editor ends before then, as when Obsidian closes or
 Inkline is turned off, the draft can be opened again the same way, or restored
-on the old symbol's file, with its base layer, should that file open again.
+on the old symbol's file, with its base layer, should that file open again. A
+save that writes nothing, as one refused because another symbol came to the name
+you typed as it was saved, leaves it the old symbol's too.
 
 The new symbol's first save makes a new file in the folder the old file was in,
 and inserts it into no note: a note that embeds the old file still does, and

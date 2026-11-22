@@ -11,6 +11,20 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ### Fixed
 
+- A draft opened as a new symbol, from **Inkline: Recover drafts** or a symbol
+  whose file does not open, whose first save was refused, as for a name typed
+  that another symbol came to as it was saved, stayed kept for that other
+  symbol, which then offered it as its own when it opened. Now the draft stays
+  the old symbol's, as before the save, for the next save to make the file
+  ([#437](https://github.com/viell-dev/slop-inkline/issues/437)).
+- On Windows and macOS, a deleted symbol whose folder was there again in another
+  letter case, as `signs` for `Signs`, stopped every save that made it again
+  with Obsidian's "Folder already exists." Now it is saved in that folder, which
+  those systems read as the same one. A file of its name already there, as after
+  the folder's letter case was changed outside Obsidian, is the file at its
+  path: written over if it holds what the editor last saved, and asked about
+  otherwise, as any change is
+  ([#436](https://github.com/viell-dev/slop-inkline/issues/436)).
 - **Make ink**, **Zoom**, and **Fit** pressed while **Move** drags the picture
   now wait until you let go, as they do while you draw. They acted at once: Make
   ink's row, opening above the drawing area, or a zoom, changing its height,

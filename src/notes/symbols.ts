@@ -256,6 +256,68 @@ function pathIn(folder: string, name: string): string {
 }
 
 /**
+ * Where a save that made a deleted symbol's file again found its folder listed
+ * in another letter case, which the disk read as the same name (#436): the
+ * path it made the file at, or found a file at, by the symbol's own path, as
+ * its editor still names it. {@link fileAt} finds the file there, so that the
+ * editor's look and the save's next round look at that file as at one at the
+ * symbol's own path. An entry lasts only as long as the save that made it: the
+ * next one finds the folder again, asking the disk, so that an entry made in a
+ * moment the disk was read wrongly, or left by an editor closed since, never
+ * leads a later save to a file it did not find itself.
+ */
+const listedPaths = new Map<string, string>();
+
+/** The vault's file at `path`, or where {@link listedPaths} puts it. */
+function fileAt(app: App, path: string): TFile | null {
+  const file = app.vault.getFileByPath(path);
+  if (file !== null) return file;
+  const listed = listedPaths.get(path);
+  return listed === undefined ? null : app.vault.getFileByPath(listed);
+}
+
+/**
+ * `folder` as the vault lists it, where the disk reads a part of it as the
+ * name of a folder the vault lists in another letter case, as Windows and
+ * macOS read names: that is the same folder on the disk, and Obsidian refuses
+ * to make it again with "Folder already exists." (#436). A part the vault
+ * lists in no letter case, and the rest after it, stay as they are, for the
+ * save to make. The disk is asked only of a part the vault does not list as
+ * it is, so a system that tells letter case apart keeps a folder of its own,
+ * even one it has not listed yet.
+ */
+async function folderAsListed(app: App, folder: string): Promise<string> {
+  const parts = folder.split("/");
+  let listed = "";
+  for (const [index, part] of parts.entries()) {
+    const asked = listed === "" ? part : `${listed}/${part}`;
+    if (app.vault.getFolderByPath(asked) !== null) {
+      listed = asked;
+      continue;
+    }
+    const other = app.vault
+      .getFolderByPath(listed === "" ? "/" : listed)
+      ?.children.find(
+        (child): child is TFolder =>
+          child instanceof TFolder &&
+          child.name.toLowerCase() === part.toLowerCase(),
+      );
+    // The same folder only where the disk finds the name as asked, and not
+    // in that letter case: one that tells case apart can have both.
+    const { adapter } = app.vault;
+    if (
+      other === undefined ||
+      !(await adapter.exists(asked)) ||
+      (await adapter.exists(asked, true))
+    ) {
+      return [asked, ...parts.slice(index + 1)].join("/");
+    }
+    listed = other.path;
+  }
+  return listed;
+}
+
+/**
  * Whether `folder` already holds something named `name`.ink.png, in any
  * letter case, as Windows and macOS read names, other than `own`.
  */
@@ -374,6 +436,19 @@ function errorCode(error: unknown): unknown {
 }
 
 /**
+ * Thrown by {@link makeSymbolFile} when its copy made the file, whole, and the
+ * vault does not list it: the one failure after which the file at the path is
+ * the save's own, as nothing else can have made it there.
+ */
+class NotListed extends Error {
+  override name = "NotListed";
+
+  constructor(path: string) {
+    super(`${path} was written, but Obsidian has not listed it`);
+  }
+}
+
+/**
  * Makes a symbol's file at `path`, through Obsidian's adapter, as
  * {@link makeFile} does, and returns it. It writes the bytes to a file of its
  * own in Inkline's `folder` first, and then has the adapter copy that to the
@@ -414,9 +489,7 @@ async function makeSymbolFile(
     unstage: () => adapter.remove(own),
   });
   const made = app.vault.getFileByPath(path);
-  if (made === null) {
-    throw new Error(`${path} was written, but Obsidian has not listed it`);
-  }
+  if (made === null) throw new NotListed(path);
   return made;
 }
 
@@ -1267,7 +1340,7 @@ function symbolFile(app: App, path: string): SymbolFile {
   return {
     path,
     read: async () => {
-      const file = app.vault.getFileByPath(path);
+      const file = fileAt(app, path);
       if (file === null) return undefined;
       const reading = app.vault.readBinary(file);
       if (looking !== undefined && looking.asked === undefined) {
@@ -1503,8 +1576,7 @@ async function writeSymbol(
   const save = (): Promise<TFile> =>
     writes.run(() =>
       saveFile({
-        current: () =>
-          present(app, file) ? file : app.vault.getFileByPath(file.path),
+        current: () => (present(app, file) ? file : fileAt(app, file.path)),
         check: async () => {
           const look: { asked: unknown } = { asked: undefined };
           looking = look;
@@ -1524,7 +1596,13 @@ async function writeSymbol(
           new Uint8Array(await app.vault.readBinary(found)),
         line: diskLine(app),
         create: async () => {
-          const folder = parentPath(file.path);
+          const wanted = parentPath(file.path);
+          const folder = wanted === "" ? "" : await folderAsListed(app, wanted);
+          // Where the folder is there in another letter case, the file goes
+          // in it, which on such a disk is where it was.
+          const path =
+            folder === wanted ? file.path : pathIn(folder, file.name);
+          if (path !== file.path) listedPaths.set(file.path, path);
           if (
             folder !== "" &&
             app.vault.getAbstractFileByPath(folder) === null
@@ -1538,16 +1616,19 @@ async function writeSymbol(
             }
           }
           try {
-            return await makeSymbolFile(app, host.folder, file.path, buffer);
+            return await makeSymbolFile(app, host.folder, path, buffer);
           } catch (error) {
-            // A file the vault lists at the path is looked at in the save's
-            // next round; anything else is said in Inkline's words.
+            // A file the vault lists at the path, the symbol's own or the
+            // one in its folder as listed, is looked at in the save's next
+            // round; anything else is said in Inkline's words.
             if (error instanceof PathTaken) {
-              throw new PathTaken(await takenReason(app, file.path));
+              throw new PathTaken(await takenReason(app, path));
             }
             throw error;
           }
         },
+      }).finally(() => {
+        listedPaths.delete(file.path);
       }),
     );
   const write = async (): Promise<TFile> => {
@@ -2556,7 +2637,9 @@ function claimed(claim: Claim): CreatedFile {
  * before it writes, as a new symbol's does, so that a save cut short leaves a
  * draft for that file, which offers it when it opens, or lists it when it does
  * not; a retry writes over that file if it holds what this wrote, rather than
- * make another.
+ * make another. A save that fails having left nothing of its own there, as
+ * one refused because another symbol came to the path, puts the draft back
+ * where it was.
  *
  * The first save's file of a new symbol's draft is claimed only once the
  * draft is restored, as a new symbol's `restored` does, so that an editor
@@ -2652,28 +2735,46 @@ function recoverDraft(host: EditorHost, orphan: Orphan): void {
       // the vault as it was.
       const choice = chosen(typed);
       const fingerprint = await fingerprintOf(bytes);
-      made = await makeNewSymbol(
-        host,
-        async () =>
-          folder === undefined
-            ? newSymbolPath(app, path, choice, host.settings().symbolFolder)
-            : symbolPathIn(
-                app,
-                folder === "" ? "" : await makeFolder(app, folder),
-                choice,
-              ),
-        choice,
-        (at, left) => {
-          // As a new symbol's first save keeps what a write cut short left.
-          claim =
-            left === undefined
-              ? { path: at, fingerprint }
-              : { path: at, fingerprint, previous: left };
+      const before = claim;
+      try {
+        made = await makeNewSymbol(
+          host,
+          async () =>
+            folder === undefined
+              ? newSymbolPath(app, path, choice, host.settings().symbolFolder)
+              : symbolPathIn(
+                  app,
+                  folder === "" ? "" : await makeFolder(app, folder),
+                  choice,
+                ),
+          choice,
+          (at, left) => {
+            // As a new symbol's first save keeps what a write cut short left.
+            claim =
+              left === undefined
+                ? { path: at, fingerprint }
+                : { path: at, fingerprint, previous: left };
+            keepDraft();
+          },
+          toBuffer(bytes),
+          wait.told,
+        );
+      } catch (error) {
+        // A save that left nothing of its own at the path it claimed, as one
+        // refused because another symbol came there, gives the draft back its
+        // place, or it stays kept for that symbol, which would offer it as its
+        // own (#437). A part it left is in the claim, for the next save, and so
+        // is the whole file its copy made, which Obsidian has not listed.
+        if (
+          claim !== before &&
+          claim?.previous === undefined &&
+          !(error instanceof NotListed)
+        ) {
+          claim = before;
           keepDraft();
-        },
-        toBuffer(bytes),
-        wait.told,
-      );
+        }
+        throw error;
+      }
       holds(fingerprint);
       await host.texts.refresh(made);
       return true;
