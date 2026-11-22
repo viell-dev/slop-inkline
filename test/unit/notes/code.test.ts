@@ -2,6 +2,7 @@ import { fromMarkdown } from "mdast-util-from-markdown";
 import { describe, expect, it } from "vitest";
 import { insideCode, insideCodeBlock } from "../../../src/notes/code.ts";
 import { codeCases, triggerCases } from "../../support/code-cases.ts";
+import { expectLinear } from "../../support/linear.ts";
 
 /** A note's lines, as `insideCode` reads them. */
 function note(text: string): (index: number) => string | undefined {
@@ -229,6 +230,96 @@ describe("insideCode", () => {
     reads.clear();
     expect(insideCode(lineAt, 3050, 3)).toBe(true);
     expect(Math.max(...reads.keys())).toBe(3051);
+  });
+
+  // Each item, or footnote, that is read again as a note of its own can hold
+  // another read again in turn. Reading the note's lines once for each such
+  // text, through the text around it, as #431's first round did, read them
+  // twice as often for each level: forty levels would take days.
+  describe("reads a note's lines a bounded number of times, however deep", () => {
+    /** Whether `HERE` in `lines` lies in code, and how often a line was read. */
+    function readsOf(lines: readonly string[]): {
+      readonly code: boolean;
+      readonly reads: number;
+    } {
+      let reads = 0;
+      const line = lines.findIndex((text) => text.includes("HERE"));
+      const code = insideCode(
+        (index) => {
+          // Stops a reading that has run away at once, rather than after days.
+          if (++reads > 50 * lines.length) throw new Error("read too often");
+          return lines[index];
+        },
+        line,
+        lines[line]?.indexOf("HERE") ?? 0,
+      );
+      return { code, reads };
+    }
+
+    /**
+     * That reading `lines` at `HERE` takes less than `times` as long as
+     * simple passes over the note repeated once for each of `depth` levels:
+     * reading each level's text again costs that much at most. On Windows 11
+     * with the CPU busy with other work, the readings below took 0.09 to 0.21
+     * times as long; with whether raw HTML leaves a tag open read again at
+     * each level, as #431's second round did, 0.87 to 1.28 times.
+     */
+    function expectBounded(
+      lines: readonly string[],
+      depth: number,
+      times: number,
+    ): void {
+      const line = lines.findIndex((text) => text.includes("HERE"));
+      const ch = lines[line]?.indexOf("HERE") ?? 0;
+      expectLinear(
+        lines.join("\n").repeat(depth),
+        () => insideCode((index) => lines[index], line, ch),
+        times,
+      );
+    }
+
+    it("in items, each made to lose fewer columns by a line after it", () => {
+      const lines: string[] = [];
+      for (let depth = 0; depth < 40; depth++) {
+        lines.push(`${" ".repeat(2 * depth)}- a`);
+      }
+      lines.push(`${" ".repeat(80)}HERE`);
+      for (let depth = 39; depth >= 0; depth--) {
+        lines.push(`${" ".repeat(2 * depth + 1)}b`);
+      }
+      const { code, reads } = readsOf(lines);
+      expect(code).toBe(false);
+      expect(reads).toBeLessThan(5 * lines.length);
+    });
+
+    it("in footnotes, each in the one before", () => {
+      const lines = ["a[^1]", ""];
+      for (let depth = 0; depth < 100; depth++) {
+        const label = `[^${String(depth + 1)}]:`;
+        lines.push(`${" ".repeat(4 * depth)}${label} x <code>a</code>`, "");
+      }
+      lines.push(`${" ".repeat(400)}HERE`);
+      const { code, reads } = readsOf(lines);
+      expect(code).toBe(false);
+      expect(reads).toBeLessThan(5 * lines.length);
+      expectBounded(lines, 100, 0.4);
+    });
+
+    it("in items in footnotes in items", () => {
+      const lines = ["a[^1]", ""];
+      for (let depth = 0; depth < 60; depth++) {
+        lines.push(`${" ".repeat(4 * depth)}[^${String(depth + 1)}]: x`, "");
+        lines.push(`${" ".repeat(4 * depth + 4)}- a`, "");
+      }
+      lines.push(`${" ".repeat(246)}HERE`);
+      for (let depth = 59; depth >= 0; depth--) {
+        lines.push(`${" ".repeat(4 * depth + 5)}b`);
+      }
+      const { code, reads } = readsOf(lines);
+      expect(code).toBe(true);
+      expect(reads).toBeLessThan(5 * lines.length);
+      expectBounded(lines, 60, 0.4);
+    });
   });
 });
 

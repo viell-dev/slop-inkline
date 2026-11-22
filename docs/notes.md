@@ -128,6 +128,25 @@ lists nothing in the rest of the note. A few rare notes are still read
 otherwise, as [#271](https://github.com/viell-dev/slop-inkline/issues/271)
 lists.
 
+**Unreleased:** the trigger lists nothing in a `$$` math block either, where an
+embed shows nothing. A footnote's text is read as Reading view shows it at the
+note's end, as a note of its own, so a fence in it makes code. A footnote counts
+as code where a `<code>` that the rest of the note leaves open reaches it.
+
+In a list item, a line's indentation counts as Reading view counts it. Under
+`1. a` and a blank line, a line of seven spaces is text, not code, as an item
+numbered 0 to 9 loses a column more there. When one line of an item is indented
+less than the item's text, Reading view takes only that many columns from every
+line of the item, before it and after it. Lines that look like text can then be
+code, and the trigger lists nothing in them.
+
+A few rare notes are still read otherwise, as
+[#435](https://github.com/viell-dev/slop-inkline/issues/435) lists. In some, the
+trigger lists nothing where Reading view shows text. In others, it lists where
+Reading view shows nothing, as in a link reference definition or a footnote that
+the note does not refer to. In rare, unusual layouts, it may still list where
+Reading view shows code, though in far fewer notes than before.
+
 **Inkline: Insert existing symbol** opens the same list as a search, and inserts
 the chosen symbol at the cursor. It places the symbol as **Inkline: Insert
 symbol** does: just after a link or embed the cursor is inside, so that no link

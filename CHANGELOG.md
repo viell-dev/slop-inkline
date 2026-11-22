@@ -52,6 +52,30 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ### Fixed
 
+- Typing the insert trigger no longer opens the list where Reading view shows
+  code, or nothing, in four kinds of note
+  ([#271](https://github.com/viell-dev/slop-inkline/issues/271)). In a list
+  item, a line indented less than the item's text, before or after the place,
+  makes Reading view take fewer columns from all of the item's lines, which can
+  make code of lines that looked like text, or end a fence or a heading
+  elsewhere; the list now follows it in every item that holds the place, where
+  it followed only a later line in the innermost one. A footnote's text is read
+  as Reading view shows it at the note's end, as a note of its own, so a fence
+  in it makes code, as does indenting its first line by eight columns after the
+  label, and a `<code>` that the rest of the note or another footnote leaves
+  open makes all of it code; it ends where Reading view ends it, at a definition
+  only where one reads in full, and before a line over an underline. A `$$` math
+  block lists nothing, where an embed shows nothing, and where math has an error
+  that shows its text. And a line of seven spaces under `1. a` and a blank line,
+  which Reading view shows as text, lists again: an item numbered 0 to 9 with a
+  `.` whose text starts an odd number of columns in loses a column more from its
+  later lines. A callout's title after a task's box, as in
+  `- [ ] > [!note] title`, is read as the title, where the box was taken for its
+  start. The few notes still read otherwise, such as link reference definitions
+  over more lines, are in
+  [#435](https://github.com/viell-dev/slop-inkline/issues/435). Rare, unusual
+  layouts may still open the list where Reading view shows code, in far fewer
+  notes than before.
 - A polygon drawn with a large brush showed a faint, lighter line inside its ink
   at a corner, where the parts the line is drawn in meet, and a filled polygon
   showed it outside the fill. It no longer does. The shape is the same, and so

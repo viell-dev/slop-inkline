@@ -26,9 +26,12 @@ Preview.
 front matter, nor when a space follows the trigger straight away. Code is where
 Reading view shows it, which can differ from how the editor colors it: a pair of
 backticks makes code across the lines of a paragraph, but not from a callout's
-title line into the callout. With no symbols in the vault yet, the trigger shows
-nothing, and **Inkline: Insert existing symbol** says so. Typed with a space, a
-name matches only symbols whose names hold what you typed.
+title line into the callout. **Unreleased:** nor does it open in a `$$` math
+block, and in a list item, how far a line is indented counts as Reading view
+counts it, as [Insert a symbol you have](./notes.md#insert-a-symbol-you-have)
+says. With no symbols in the vault yet, the trigger shows nothing, and
+**Inkline: Insert existing symbol** says so. Typed with a space, a name matches
+only symbols whose names hold what you typed.
 
 **A table comes apart at the key after a symbol.** In Live Preview, if the text
 of a table cell ended in a space when you inserted a symbol there with
