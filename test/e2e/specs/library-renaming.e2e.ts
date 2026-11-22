@@ -96,14 +96,21 @@ async function usedSymbol(count = 1): Promise<void> {
   }
 }
 
-/** Has the page note down anything the form says of a wait, however brief. */
+/**
+ * Has the page note down anything the form says of a wait, however brief,
+ * and when, by the page's clock, it first said it.
+ */
 async function watchForWait(): Promise<void> {
   await browser.execute(() => {
     Reflect.deleteProperty(window, "inklineSawWait");
     const watcher = new MutationObserver(() => {
       const shown = document.querySelector(".inkline-save-wait");
-      if (shown !== null && shown.textContent !== "") {
-        Reflect.set(window, "inklineSawWait", true);
+      if (
+        shown !== null &&
+        shown.textContent !== "" &&
+        !Reflect.has(window, "inklineSawWait")
+      ) {
+        Reflect.set(window, "inklineSawWait", performance.now());
       }
     });
     watcher.observe(document.body, {
@@ -117,11 +124,22 @@ async function watchForWait(): Promise<void> {
 
 /** Whether the form has said anything of a wait, and stops listening. */
 async function sawWait(): Promise<boolean> {
-  return browser.execute(() => {
+  return (await waitSaidAt()) !== undefined;
+}
+
+/**
+ * When, by the page's clock, the form first said anything of a wait, or
+ * undefined if it has not, and stops listening.
+ */
+async function waitSaidAt(): Promise<number | undefined> {
+  // WebDriver hands back undefined as null.
+  const at = await browser.execute((): number | null => {
     const watcher: unknown = Reflect.get(window, "inklineWaitWatcher");
     if (watcher instanceof MutationObserver) watcher.disconnect();
-    return Reflect.get(window, "inklineSawWait") === true;
+    const seen: unknown = Reflect.get(window, "inklineSawWait");
+    return typeof seen === "number" ? seen : null;
   });
+  return at ?? undefined;
 }
 
 describe("Renaming in the symbol library", function () {
@@ -546,16 +564,22 @@ describe("Renaming in the symbol library", function () {
 
     it("says nothing of a slow rename that keeps moving, however long it takes", async function () {
       // Longer than the wait, a note at a time, as a much used symbol takes.
-      const notes = 5;
+      // Here the wait is twice the short one, so that each note comes 3.2 s
+      // before it would be up: room for a busy machine to hold a note back,
+      // which is all that could make this rename look stopped.
+      const wait = shortStall * 2;
+      const apart = 800;
+      const notes = 6;
+      await setStalledAfter(wait);
       await usedSymbol(notes);
       await showLibrary();
       await beginRename("gate", "lintel");
       await watchForWait();
-      await delayVault("process", (shortStall * 2) / notes, "before");
+      await delayVault("process", apart, "before");
       await browser.keys(["Enter"]);
       await quickEditNameField().waitForExist({
         reverse: true,
-        timeout: shortStall * 3 + 15_000,
+        timeout: notes * apart + 15_000,
       });
       expect(await sawWait()).toBe(false);
       for (let at = 0; at < notes; at++) {
@@ -791,20 +815,41 @@ describe("Renaming in the symbol library", function () {
       await showLibrary();
       await beginRename("gate", "lintel");
       await hold("link");
+      await watchForWait();
       await browser.keys(["Enter"]);
       await waitForTop("Just once");
       await browser.pause(shortStall + 1000);
+      // The answer, timed by the page's clock as it is clicked.
+      await browser.execute(() => {
+        document.addEventListener(
+          "click",
+          () => {
+            Reflect.set(window, "inklineAnsweredAt", performance.now());
+          },
+          { capture: true, once: true },
+        );
+      });
       const answered = Date.now();
       await clickTop("Just once");
       await waitForHeld();
-      // A question held open that long must not count towards the wait, which
-      // would then be said at the first look after the answer, within a
-      // quarter of a second: this looks after twice that, and well before the
-      // wait is up.
-      await browser.pause(shortStall / 4);
-      expect(await waitLine().getText()).toBe("");
       const said = await waitForWait(answered);
       expect(said).toContain("Waiting for Obsidian to finish renaming a file.");
+      // A question held open that long must not count towards the wait, which
+      // would then be said at the first look after the answer, within a
+      // quarter of a second, or during the question. Counted from the answer,
+      // it comes eight looks of a quarter of a second after it. Both are
+      // timed in the page, where a busy machine can only make the looks
+      // later, and so the message too.
+      const saidAt = await waitSaidAt();
+      const answeredAt = await browser.execute((): unknown => {
+        const at: unknown = Reflect.get(window, "inklineAnsweredAt");
+        Reflect.deleteProperty(window, "inklineAnsweredAt");
+        return at;
+      });
+      if (saidAt === undefined || typeof answeredAt !== "number") {
+        throw new Error("the page did not time the answer and the message");
+      }
+      expect(saidAt - answeredAt).toBeGreaterThan(shortStall / 2);
       await letGo();
       await waitForName("lintel");
       await waitForNotice("Renamed gate to lintel");
