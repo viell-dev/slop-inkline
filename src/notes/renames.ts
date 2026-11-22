@@ -414,11 +414,11 @@ function watchMove(app: App, renaming: Renaming): Move {
  * stop it: a note's save, or Obsidian's index, can take as long as anything
  * else. Throws, having renamed nothing, if Obsidian is still renaming the file.
  *
- * Once `files.unloaded` aborts, as Inkline unloads, the rename throws at its next
- * step, having renamed nothing and saved no more notes, unless Obsidian has it
- * already. Its wait for Obsidian ends then too, as nothing of it is Obsidian's
- * yet, and what Obsidian waits for, such as another rename's question, can
- * last any time.
+ * Once `files.unloaded` aborts, as Inkline unloads, the rename throws at its
+ * next step, having renamed nothing and saved no more notes, unless Obsidian
+ * has it already. Its wait for Obsidian ends then too, as nothing of it is
+ * Obsidian's yet, and what Obsidian waits for, such as another rename's
+ * question, can last any time.
  */
 async function renameSaved(
   files: SymbolFiles,
