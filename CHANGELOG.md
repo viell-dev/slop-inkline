@@ -101,6 +101,35 @@ even one a public release; earlier pre-releases carry a suffix such as
   either way. A save that makes a deleted symbol's folder again no longer stops
   with "Folder already exists." when the folder comes back meanwhile: it saves
   into it ([#379](https://github.com/viell-dev/slop-inkline/issues/379)).
+- A save that made a symbol's file, the first save of a new symbol, or of a
+  draft opened as one, or a save that made a deleted symbol again, could write
+  over a file that another plugin or a sync tool asked Obsidian for in the
+  moment after Obsidian's check of the path and before its write, without a
+  question. Now the save writes the symbol first to a file of Inkline's own,
+  which the vault does not list, and has Obsidian copy it into place, which
+  makes the file only where nothing is and checks that as it makes it. A file
+  that comes meanwhile, through Obsidian or from a program outside it, is left
+  as it is: for a deleted symbol, the editor asks about it, as about any change
+  ([#413](https://github.com/viell-dev/slop-inkline/issues/413)).
+- A new symbol's first save stopped with Obsidian's "File already exists." when
+  a file came to its path as it was made. Now a numbered symbol takes the next
+  free number, and a name typed for it is refused as one already taken
+  ([#388](https://github.com/viell-dev/slop-inkline/issues/388)).
+- On Windows and macOS, a file whose name differs from a deleted symbol's only
+  in letter case stopped every save that made the symbol again with Obsidian's
+  "File already exists." Now the editor names that file, and says to rename or
+  move it. After a save that could not make a deleted symbol again, the status
+  line keeps saying why, where it went back to "The file was deleted; saving
+  makes it again"
+  ([#414](https://github.com/viell-dev/slop-inkline/issues/414)).
+- When a save's own write stopped part-way, as on a full disk, the part left
+  could not be read, and the editor then refused every save until the file was
+  deleted by hand, with nothing saying that it was what was left of its own
+  save. Now a save that makes a symbol's file leaves nothing at its path when
+  its write stops, and a save of a symbol whose file is there says what the part
+  left is, and the next save writes the whole symbol over it, however many times
+  in a row a write stops: that part holds only the start of what the save writes
+  ([#425](https://github.com/viell-dev/slop-inkline/issues/425)).
 - Ink shows under the pointer that draws it when a theme or a CSS snippet gives
   the drawing area padding, which Inkline's own styles do not. The ink landed
   away from the pointer by the padding, and the brush's circle was the wrong

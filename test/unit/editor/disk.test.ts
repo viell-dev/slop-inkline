@@ -79,6 +79,15 @@ describe("FileWatch", () => {
     expect(watch.saving(gone)).toBe("write");
   });
 
+  it("tells of a deleted file once, until it is there again", () => {
+    // So a save that cannot make it again keeps saying why (#414).
+    const watch = new FileWatch("a");
+    expect(watch.noticed(gone, true)).toBe("gone");
+    expect(watch.noticed(gone, true)).toBe("nothing");
+    expect(watch.noticed(file("a"), true)).toBe("nothing");
+    expect(watch.noticed(gone, true)).toBe("gone");
+  });
+
   it("takes in a change to the text alone, whatever is unsaved", () => {
     const watch = new FileWatch("a", "d");
     expect(watch.noticed(drawn("b", "d"), false)).toBe("text");
