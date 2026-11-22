@@ -429,7 +429,10 @@ must keep released files readable and looking the same, as
   ([rename-while-disabled.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/rename-while-disabled.e2e.ts)).
   A draft that would restore nothing its file lacks dropped, and one that
   differs in any stroke, its picture or its place, its name, or text typed,
-  offered
+  offered, as is a new symbol's always; and what the question offering it says:
+  when it was kept, that the symbol was saved again since, that only its
+  readings or translations changed while text was typed, and that its base layer
+  cannot be read, each only when so
   ([drafts.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/drafts.test.ts)).
 - A symbol whose file was cut short after its draft was kept does not open, and
   its notice says the draft is kept; a new symbol given its name, once the file
