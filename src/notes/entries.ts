@@ -43,14 +43,11 @@ function withoutQuery(url: string): string {
 }
 
 /**
- * The symbol file an image shows, by its address, which Obsidian gives as
- * the file's resource path; undefined for any other image.
+ * The symbol file at `src`, an image's address, which Obsidian gives as the
+ * file's resource path; undefined for any other address.
  */
-export function symbolOfImage(
-  app: App,
-  image: HTMLImageElement,
-): TFile | undefined {
-  const address = withoutQuery(image.src || image.currentSrc);
+export function symbolAtAddress(app: App, src: string): TFile | undefined {
+  const address = withoutQuery(src);
   if (address === "") return undefined;
   return app.vault
     .getFiles()
@@ -59,6 +56,14 @@ export function symbolOfImage(
         isInkPath(file.path) &&
         withoutQuery(app.vault.getResourcePath(file)) === address,
     );
+}
+
+/** The symbol file an image shows, by its address; undefined for any other. */
+export function symbolOfImage(
+  app: App,
+  image: HTMLImageElement,
+): TFile | undefined {
+  return symbolAtAddress(app, image.src || image.currentSrc);
 }
 
 /** `node` if it is a symbol's image, which Inkline has tagged. */

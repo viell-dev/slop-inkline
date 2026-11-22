@@ -47,6 +47,16 @@ even one a public release; earlier pre-releases carry a suffix such as
   which moved where the pointer fell in the drawing, so letting go without
   moving ended the stroke somewhere other than it showed
   ([#382](https://github.com/viell-dev/slop-inkline/issues/382)).
+- In a PDF exported with Obsidian's **Export to PDF**, symbols in text colour no
+  longer show a faint one-pixel line along an edge of their box in some PDF
+  viewers, Obsidian's own PDF view among them, at some zoom levels. Each prints
+  from a copy of its own pixels in the colour its text prints in, the way a
+  symbol in stored colour prints, rather than through a mask, which the browser
+  Obsidian is built on writes into a PDF in a way those viewers draw with the
+  line. Symbols keep their size, baseline, and colour. Exporting waits for the
+  copies while they are being made; a symbol whose copy has got no further for
+  ten seconds, or cannot be made, prints as before
+  ([#255](https://github.com/viell-dev/slop-inkline/issues/255)).
 
 ## 1.0.2 - 2026-11-19
 
