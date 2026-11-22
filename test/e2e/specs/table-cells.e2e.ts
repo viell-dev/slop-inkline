@@ -139,7 +139,9 @@ describe("Symbols in a table cell in Live Preview", function () {
     await holdInklineTimers();
     await browser.keys(["Enter"]);
     await type("x");
-    // The late return of the focus, at least, which shows the hold works.
+    // The timers the choice sets under Inkline's code, which `x` came before:
+    // the cell's own as it closes and opens again, or on `main` the handoff of
+    // the symbol to the cell. At least one shows the hold caught the choice.
     expect(await letInklineTimersGo()).toBeGreaterThan(0);
     await type("y");
     await waitForLastRow("| same![[gate.ink.png]]xy | same |");
