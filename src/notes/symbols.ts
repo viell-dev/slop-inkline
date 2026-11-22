@@ -60,6 +60,7 @@ import {
 import { visibleWidth } from "../editor/view.ts";
 import {
   capturePoint,
+  closeCell,
   findPoint,
   lineAtEnd,
   replacedBefore,
@@ -404,6 +405,29 @@ function liveView(
   return views.find((view) => view === preferred) ?? views[0];
 }
 
+/**
+ * Whether Live Preview is editing a table cell in `view`. Obsidian's API does
+ * not say, so this looks for the cell's own editor, an editor in one of the
+ * wrappers Obsidian gives a table's cells, which goes once the cell closes.
+ */
+function editingCell(view: MarkdownView): boolean {
+  return (
+    view.contentEl.querySelector(".table-cell-wrapper .cm-content") !== null
+  );
+}
+
+/**
+ * Gives `view`'s editor the focus at its cursor if nothing has it, as when the
+ * table cell it was in has closed. Setting the cursor where it is opens that
+ * cell again, around it.
+ */
+function takeFocus(view: MarkdownView): void {
+  const { containerEl, editor } = view;
+  if (containerEl.doc.activeElement !== containerEl.doc.body) return;
+  editor.focus();
+  editor.setCursor(editor.getCursor());
+}
+
 function appendedNotice(file: TFile): void {
   markNotice(
     new Notice(
@@ -476,11 +500,24 @@ async function processNote(
  * after a typed character, the cursor of the editor that took the embed lands
  * just after it; the text of a selection stays, as the embed goes beside it.
  * Returns the point just after the embed, where the next symbol's embed goes.
+ *
+ * `uncovered` says that no modal is over the note as this writes, so that
+ * the person can type in it at once. A table cell being edited then must not
+ * take the embed as Obsidian passes it on, a moment later and computed
+ * against the cell's text as it was: a key in that moment changes the cell,
+ * and the embed is lost (#415). So the cell closes first, with
+ * {@link closeCell}, the embed goes into the note's own text as an ordinary
+ * edit, saved and passed to the note's other panes as any is, and the note
+ * gets the focus at the new cursor in the same step, which opens the cell
+ * again around it. The next key then goes after the embed. The cell closed is
+ * the one the cursor was in when the command began, which the place found
+ * comes from.
  */
 async function insertEmbed(
   app: App,
   target: Target,
   embed: string,
+  uncovered = false,
 ): Promise<InsertionPoint> {
   const { file, point } = target;
   if (!present(app, file)) throw new NoteGone(file);
@@ -493,11 +530,15 @@ async function insertEmbed(
     const place = found === undefined ? undefined : insertionAt(text, found);
     if (place !== undefined) {
       const inserted = place.before + embed;
+      if (uncovered && editingCell(view)) closeCell(editor, place.at);
       writeAt(editor, place.at, inserted);
+      if (uncovered) takeFocus(view);
       return pointAfterChange(view, text, place.at + inserted.length);
     }
+    // The end of the note is in no cell, so the change goes straight in.
     const { before, after } = lineAtEnd(text);
     writeAt(editor, text.length, before + embed, after);
+    if (uncovered) takeFocus(view);
     appendedNotice(file);
     return pointAfterChange(
       view,
@@ -1447,7 +1488,8 @@ export function insertExistingSymbol(
   const target = targetOf(view);
   if (target === undefined) return;
   new SymbolSearch(app, texts, target.file.path, unloaded, (embed) => {
-    insertEmbed(app, target, embed)
+    // The list has closed by now, and has given the note the focus back.
+    insertEmbed(app, target, embed, true)
       .then(() => {
         if (!unloaded.aborted) returnFocus(app, target);
       })
@@ -1493,9 +1535,7 @@ function returnFocus(app: App, target: Target, point?: InsertionPoint): void {
     if (at !== undefined && at !== editor.posToOffset(editor.getCursor())) {
       editor.setCursor(editor.offsetToPos(at));
     }
-    if (containerEl.doc.activeElement !== containerEl.doc.body) return;
-    editor.focus();
-    editor.setCursor(editor.getCursor());
+    takeFocus(view);
   });
 }
 
