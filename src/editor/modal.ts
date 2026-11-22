@@ -525,11 +525,17 @@ export class InkEditorModal extends Modal {
     if (this.#session.holdShift(event.shiftKey)) this.#render();
   };
   /**
-   * Whether Zoom was asked for while the pointer was pressed to draw, for
-   * when it is let go: as a switch, so that asking twice leaves the view as
-   * it is.
+   * Changes to the view asked for while the pointer was pressed to draw, for
+   * when it is let go: Zoom as a switch, so that asking twice leaves the view
+   * as it is, and Fit.
    */
-  #zoomWaits = false;
+  #viewWaits = { zoom: false, fit: false };
+  /**
+   * Where the pointer pressed to draw last was in the window, while it is,
+   * and where that was in the drawing as what is drawn took it.
+   */
+  #pressedAt:
+    { clientX: number; clientY: number; x: number; y: number } | undefined;
   #hover: { pointerId: number; clientX: number; clientY: number } | undefined;
   #saving: Promise<boolean> | undefined;
   #closing = false;
@@ -845,8 +851,7 @@ export class InkEditorModal extends Modal {
       "Fit",
       "F",
       () => {
-        this.#fitView();
-        this.#render();
+        this.#fit();
       },
       "Fit",
       "centre the drawing in the view, and out of Zoom show all of it if it is wider; the drawing itself stays as it is",
@@ -1052,7 +1057,9 @@ export class InkEditorModal extends Modal {
     this.#registerKeys();
 
     this.#resize = new ResizeObserver(() => {
-      this.#resizeView();
+      this.#resized(() => {
+        this.#resizeView();
+      });
       this.#render();
     });
     this.#resize.observe(canvas);
@@ -1536,8 +1543,7 @@ export class InkEditorModal extends Modal {
       });
     }
     key([], "f", () => {
-      this.#fitView();
-      this.#render();
+      this.#fit();
     });
     key([], "m", () => {
       this.#toggleMove();
@@ -1648,17 +1654,18 @@ export class InkEditorModal extends Modal {
         canvas.removeClass("is-dragging");
         return;
       }
+      this.#pressedAt = undefined;
       if (event.type === "pointercancel") this.#session.cancel();
       // A release, unlike a lost capture, says where the pointer ended.
       else if (event.type === "lostpointercapture") this.#session.end();
       else this.#session.end(point(event), event.shiftKey);
       this.#changed();
-      // Once what was drawn has ended where the view put it; Next takes a
-      // zoom asked for meanwhile to the following symbol.
-      if (this.#zoomWaits) {
-        this.#zoomWaits = false;
-        if (!this.#ended()) this.#zoom();
-      }
+      this.#viewAfterPress();
+    };
+    /** Keeps where the pointer pressed to draw is, as it reports it. */
+    const pressedAt = (event: PointerEvent): void => {
+      const { clientX, clientY } = event;
+      this.#pressedAt = { clientX, clientY, ...point(event) };
     };
     canvas.addEventListener("pointerdown", (event) => {
       if (!this.#gate.down(event)) return;
@@ -1674,6 +1681,7 @@ export class InkEditorModal extends Modal {
           return;
         }
         this.#session.begin(point(event), event.shiftKey);
+        pressedAt(event);
         hover(event);
         this.#render();
       });
@@ -1708,6 +1716,7 @@ export class InkEditorModal extends Modal {
         (events.length > 0 ? events : [event]).map(point),
         event.shiftKey,
       );
+      pressedAt(event);
       this.#render();
     });
     canvas.addEventListener("pointerup", finish);
@@ -1734,6 +1743,7 @@ export class InkEditorModal extends Modal {
             view.pan(
               ((delta * lines) / view.contentBox().width) * (right - left),
             );
+            this.#followPointer();
             this.#render();
           });
           return;
@@ -2270,12 +2280,35 @@ export class InkEditorModal extends Modal {
   }
 
   readonly #windowResized = (): void => {
-    if (this.#closing || this.#retired || this.#view?.magnified !== true) {
-      return;
-    }
-    this.#resizeView();
+    if (this.#closing || this.#retired) return;
+    this.#resized(() => {
+      if (this.#view?.magnified === true) this.#resizeView();
+    });
     this.#render();
   };
+
+  /**
+   * Runs `change`, which follows a change to the window's or the drawing
+   * area's size, and then ends what is being drawn where it was shown, as a
+   * lost capture does, if the drawing has moved under the pointer pressed to
+   * draw since it last reported. The window may have moved with it, so where
+   * the pointer is in the drawing is not known until it reports again, and
+   * its release would end the stroke in a segment never shown (#393). A
+   * polygon's corner, or a path's point or handle, being pressed is left as it
+   * is: its release places it where the release says, as ever.
+   */
+  #resized(change: () => void): void {
+    change();
+    const view = this.#view;
+    const at = this.#pressedAt;
+    if (!this.#pressed || view === undefined || at === undefined) return;
+    const now = view.toDocument(at.clientX, at.clientY);
+    if (now.x === at.x && now.y === at.y) return;
+    if (!this.#session.drawing || this.#session.placing) return;
+    this.#session.end();
+    this.#changed();
+    this.#announce("Ended the stroke where it showed: the drawing area moved");
+  }
 
   /**
    * Moves a magnified view along the drawing by a quarter of what the surface
@@ -2293,8 +2326,28 @@ export class InkEditorModal extends Modal {
     }
     const { left, right } = view.visible;
     view.pan((direction * (right - left)) / 4);
+    this.#followPointer();
     this.#render();
     return true;
+  }
+
+  /**
+   * After the view moves along the drawing, as the wheel and the left and
+   * right arrow keys move a magnified one, carries what is being drawn on to
+   * where the pointer pressed to draw now is in the drawing, as a move there
+   * would: the drawing moved under it, like paper under a pen, and what is
+   * drawn stays under the pointer and shows what letting go saves (#393).
+   * Moving along while drawing can be meant, to take a long stroke past the
+   * edge of the view. A polygon's corner, or a path's point or handle, being
+   * pressed goes on to the pointer in the same way. The caller draws again.
+   */
+  #followPointer(): void {
+    const view = this.#view;
+    const at = this.#pressedAt;
+    if (!this.#pressed || view === undefined || at === undefined) return;
+    const now = view.toDocument(at.clientX, at.clientY);
+    this.#pressedAt = { ...at, ...now };
+    this.#session.follow(now);
   }
 
   /**
@@ -2339,7 +2392,7 @@ export class InkEditorModal extends Modal {
 
   /** Whether the view is magnified, or will be once the pointer is let go. */
   get #zoomed(): boolean {
-    return (this.#view?.magnified === true) !== this.#zoomWaits;
+    return (this.#view?.magnified === true) !== this.#viewWaits.zoom;
   }
 
   /**
@@ -2356,15 +2409,49 @@ export class InkEditorModal extends Modal {
       this.#zoom();
       return;
     }
-    this.#zoomWaits = !this.#zoomWaits;
+    this.#viewWaits.zoom = !this.#viewWaits.zoom;
     this.#updateButtons();
-    if (this.#zoomWaits) {
+    if (this.#viewWaits.zoom) {
       this.#announce(
         this.#zoomed
           ? "Zooming in once you let go"
           : "Zooming out once you let go",
       );
     }
+  }
+
+  /**
+   * Fits the view to the drawing, or once the pointer is let go if it is
+   * pressed to draw, for the same reason as Zoom waits (#393).
+   */
+  #fit(): void {
+    if (!this.#pressed) {
+      this.#fitView();
+      this.#render();
+      return;
+    }
+    this.#viewWaits.fit = true;
+    this.#announce("Fitting once you let go");
+  }
+
+  /**
+   * Makes the changes to the view asked for while the pointer was pressed to
+   * draw, now that what was drawn has ended where the view put it, unless the
+   * editor has closed meanwhile: Next takes a zoom asked for to the next
+   * symbol. They go as one action, so that the status line says what they
+   * did, or nothing, rather than what waited.
+   */
+  #viewAfterPress(): void {
+    const { zoom, fit } = this.#viewWaits;
+    this.#viewWaits = { zoom: false, fit: false };
+    if ((!zoom && !fit) || this.#ended()) return;
+    this.#line.act(() => {
+      if (zoom) this.#zoom();
+      if (fit) {
+        this.#fitView();
+        this.#render();
+      }
+    });
   }
 
   /** Magnifies the drawing, or shows it as usual again, now. */
@@ -2759,7 +2846,7 @@ export class InkEditorModal extends Modal {
       "Flat ends (T), with the grid on, stops an end of a freehand stroke or a path that Shift put on a row flush with that row, rather than rounding past it, if it comes in at 45° or steeper; one running along the row stays round. It is off until you turn it on, and ellipses and polygons are never cut.",
       "Undo (Mod+Z) and Redo (Mod+Shift+Z) step through changes. Clear removes the drawing and can be undone.",
       "Up and Down, or the up and down arrow keys, move the whole drawing a pixel at a time, or a grid cell's width with Shift, as to sit a shape on a line. One Undo takes back moves made in a row.",
-      "Zoom (Z) shows the drawing up to twice as large in a taller view, for fine detail; the wheel or the left and right arrow keys move along it, and Fit (F) centres it. Pressed while you draw, it waits until you let go, so that what you draw ends where it shows. While zoomed, the grid has twice as many cells each way, and keeps every point of the usual grid. Saved symbols stay the same size in notes.",
+      "Zoom (Z) shows the drawing up to twice as large in a taller view, for fine detail; the wheel or the left and right arrow keys move along it, and Fit (F) centres it. Pressed while you draw, Zoom and Fit wait until you let go, so that what you draw ends where it shows, and moving along carries what you draw with the view. While zoomed, the grid has twice as many cells each way, and keeps every point of the usual grid. Saved symbols stay the same size in notes.",
       "Paste, drop, or choose (Choose picture…) a picture to trace. Move positions it; the wheel scales it. Make ink converts the visible picture into editable ink. The tracing picture itself is not saved.",
       "Name the symbol, then Save (Mod+Enter). For a new symbol, Next (Mod+Shift+Enter) saves it and starts another. Mod is Ctrl on Windows/Linux, Cmd on macOS.",
       "Readings and translations, beside the name, say how the symbol is read and what it means, apart from its name: one per line, the main one first. Saving keeps them with the symbol, and the lists find a symbol by them. The library changes them without opening the editor.",
