@@ -250,6 +250,7 @@ describe("Where the cursor lands after a symbol", function () {
     await holdClosingTimers();
     await save();
     // Past the end of the first line, as a drag from another app ends there.
+    // The editor selects what is dropped, so the `y` typed later replaces it.
     await browser.execute((selector) => {
       const line = document.querySelector(selector);
       if (line === null) throw new Error("no line");
@@ -271,6 +272,29 @@ describe("Where the cursor lands after a symbol", function () {
     await waitForNote(
       "The door is marked with ![[001.ink.png]] which means return.y\n",
     );
+  });
+
+  // Only what reaches the note counts: keys typed elsewhere before the editor
+  // finished closing leave the cursor to go back after the symbol.
+  it("puts the cursor back when the keys before the editor finished closing went elsewhere", async function () {
+    await insert({ settle: 0 });
+    await draw(zigzag);
+    await holdClosingTimers();
+    await save();
+    // As a change elsewhere, such as on disk, takes the note's cursor away.
+    await browser.executeObsidian(({ app, obsidian }) => {
+      const view = app.workspace.getActiveViewOfType(obsidian.MarkdownView);
+      if (view === null) throw new Error("no Markdown view");
+      view.editor.setCursor({ line: 0, ch: 0 });
+    });
+    await browser.executeObsidianCommand("command-palette:open");
+    await browser.$(".prompt-input").waitForDisplayed();
+    await type("zz");
+    expect(await letClosingTimersGo()).toBeGreaterThan(0);
+    await browser.keys(["Escape"]);
+    await waitForMarked("Editor.md", [
+      "The door is marked with ![[001.ink.png]]| which means return.\n",
+    ]);
   });
 
   it("follows a run from Next, in the order it was drawn", async function () {

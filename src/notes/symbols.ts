@@ -1474,7 +1474,10 @@ const personEvents = [
  * `el`. The function returned stops listening and says whether none came.
  * It listens on the window, before anything below it hears: Obsidian takes
  * the key of a hotkey it handles before it reaches the note. An event counts
- * when it passes through `el`, so one in another pane does not. Any key
+ * when it passes through `el`, so one in another pane does not. Nor does a key
+ * while nothing has the focus, as after a change on disk took a table cell's
+ * editor away, though Obsidian still runs a hotkey's command on this note then,
+ * whose cursor is then moved; a plain key then goes nowhere (#429). Any key
  * counts, even one that moves nothing: a cursor left alone stays where
  * Obsidian put it, while one moved after a key can put the next out of order.
  */
