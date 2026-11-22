@@ -134,6 +134,21 @@ even one a public release; earlier pre-releases carry a suffix such as
   pointer, as the pointer may have moved with the window
   ([#393](https://github.com/viell-dev/slop-inkline/issues/393),
   [#418](https://github.com/viell-dev/slop-inkline/issues/418)).
+- A stroke started while the editor's status line showed a message of two lines,
+  as **Zoom**'s does in a narrow window, now starts where you pressed. The press
+  empties the message, which made the editor shorter, and Obsidian, which keeps
+  the editor in the middle of the window, moved the drawing under the pointer,
+  so the stroke's first point was a few pixels off from the rest. A message of
+  two lines said while you drew, such as **Flat ends**' reason for doing
+  nothing, moved it in the same way. While you hold the pointer down on the
+  drawing area, the lines below it and the picture's row above it now keep their
+  height; a message that needs more room shows whole once you let go. **Make
+  ink** pressed while you draw now opens or closes its row once you let go, as
+  **Zoom** does: opened at once, the row moved the drawing by its height under
+  the pointer in the middle of the stroke. Meanwhile, its button shows what it
+  will be, a save makes ink only if it stays open, and it does not open behind a
+  question that comes before you let go
+  ([#427](https://github.com/viell-dev/slop-inkline/issues/427)).
 - A rename of a symbol that was renamed elsewhere, deleted and replaced, or
   whose new name another symbol took, while Quick edit wrote its readings and
   translations or the editor its drawing, is refused at once. It used to read,

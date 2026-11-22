@@ -19,7 +19,11 @@ symbol**, or for one you have, from **Edit symbol** or a
   to say, such as a tool's button, rather than keep an earlier message. Through
   actions with nothing of their own to say, "Saving…" stays until the save ends,
   and "Draft not kept" until a draft is kept again; one that says something
-  replaces them.
+  replaces them. **Unreleased:** while you hold the pointer down on the drawing
+  area, the line of text, the status line, a save's waiting message below it,
+  and the picture's row above it keep their height, so that a message that
+  empties or grows there does not move the drawing under the pointer; one that
+  needs more room shows whole once you let go.
 
 In the shortcuts below, Mod is Ctrl, or Cmd on macOS. Single-key shortcuts and
 undo give way to a text field that has the focus, such as the name field, so
@@ -352,7 +356,11 @@ inscription from one screenshot.
 can see needs no drawing at all. A slider sets the threshold between ink and
 ground, and the drawing area previews the result; **Light ink** takes a light
 symbol on a dark or transparent ground. **Apply** makes the ink, and **Cancel**
-makes none.
+makes none. **Unreleased:** pressed while you draw, Make ink opens or closes
+once you let go, as Zoom does, as its row above the drawing area would move the
+drawing under the pointer. Its button shows what it will be meanwhile, and a
+save meanwhile makes ink only if it stays open. If a question opens before you
+let go, such as Esc's about unsaved changes, Make ink does not open behind it.
 
 Only what the drawing area shows becomes ink, across and within the line's
 height, so that the other symbols of a screenshot stay out: move and scale the

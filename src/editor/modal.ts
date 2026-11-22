@@ -531,9 +531,15 @@ export class InkEditorModal extends Modal {
   /**
    * Changes to the view asked for while the pointer was pressed to draw, for
    * when it is let go: Zoom as a switch, so that asking twice leaves the view
-   * as it is, and Fit.
+   * as it is, Fit, and whether Make ink is to be open, or undefined to leave
+   * it as it is, as its row above the drawing area would move the drawing
+   * under the pointer as it opened or closed.
    */
-  #viewWaits = { zoom: false, fit: false };
+  #viewWaits: { zoom: boolean; fit: boolean; ink: boolean | undefined } = {
+    zoom: false,
+    fit: false,
+    ink: undefined,
+  };
   /**
    * Where the pointer pressed to draw last was in the window, while it is,
    * and where that was in the drawing as what is drawn took it.
@@ -1656,6 +1662,7 @@ export class InkEditorModal extends Modal {
         }
         this.#dragged = undefined;
         canvas.removeClass("is-dragging");
+        this.#letGoAround();
         return;
       }
       this.#pressedAt = undefined;
@@ -1663,6 +1670,8 @@ export class InkEditorModal extends Modal {
       // A release, unlike a lost capture, says where the pointer ended.
       else if (event.type === "lostpointercapture") this.#session.end();
       else this.#session.end(point(event), event.shiftKey);
+      // Once the release has been taken where the drawing was.
+      this.#letGoAround();
       this.#changed();
       this.#viewAfterPress();
     };
@@ -1673,6 +1682,9 @@ export class InkEditorModal extends Modal {
     };
     canvas.addEventListener("pointerdown", (event) => {
       if (!this.#gate.down(event)) return;
+      // Before the press empties the status line, which would move the
+      // drawing under it.
+      this.#holdAround();
       event.preventDefault();
       // Drawing takes the focus, which the default action would have, so
       // that the shortcuts are the editor's again after typing elsewhere.
@@ -1932,6 +1944,25 @@ export class InkEditorModal extends Modal {
 
   /** Opens or closes what turns the picture into ink. */
   #toggleConvert(): void {
+    // Its row opens or closes once the pointer is let go, as Zoom waits.
+    if (
+      this.#pressed &&
+      (this.#converting !== undefined || this.#picture !== undefined)
+    ) {
+      const open = !this.#inkOpen;
+      // Asked for twice, it stays as it is.
+      this.#viewWaits.ink =
+        open === (this.#converting !== undefined) ? undefined : open;
+      this.#updateButtons();
+      if (this.#viewWaits.ink !== undefined) {
+        this.#announce(
+          open
+            ? "Making ink once you let go"
+            : "Closing Make ink once you let go",
+        );
+      }
+      return;
+    }
     if (this.#converting !== undefined) {
       this.#stopConverting();
       this.#announce("No ink made");
@@ -2212,9 +2243,12 @@ export class InkEditorModal extends Modal {
     this.#inkShown = undefined;
   }
 
-  /** Whether the surface shows ink being made of the picture. */
+  /**
+   * Whether the surface shows ink being made of the picture, which a save
+   * would make: not once Make ink waits to close ({@link #makingInk}).
+   */
   #previewing(): boolean {
-    return this.#converting !== undefined && this.#inkShown?.base !== undefined;
+    return this.#makingInk() && this.#inkShown?.base !== undefined;
   }
 
   /** Whether the editor has closed, or Inkline was disabled. */
@@ -2389,6 +2423,49 @@ export class InkEditorModal extends Modal {
     if (this.#session.moveDrawing(direction * toUnits(step))) this.#changed();
   }
 
+  /**
+   * What changes height with what it says, around the drawing area: the
+   * picture's row above it, whose hint can wrap otherwise, and the line of
+   * text, the status line, and the save's waiting message below it.
+   */
+  get #heldAround(): HTMLElement[] {
+    return [
+      this.#pictureHint?.parentElement ?? undefined,
+      this.#previewLine,
+      this.#status,
+      this.#saveWait,
+    ].filter((element) => element !== undefined);
+  }
+
+  /**
+   * Keeps what is around the drawing area at the height it has while the
+   * pointer is pressed on it, until {@link #letGoAround}. Obsidian keeps the
+   * editor in the middle of the window, so a line that grew or shrank, as
+   * the status line does when the press empties a message of two lines, or
+   * a message said meanwhile wraps, moved the drawing under the pointer in
+   * the middle of a stroke (#427). What does not fit shows once the pointer
+   * is let go, and a screen reader hears it at once, as before. Make ink's
+   * row, which opens or closes whole, waits for the release instead.
+   */
+  #holdAround(): void {
+    for (const element of this.#heldAround) {
+      // As laid out, to the fraction of a pixel, as the pointer is mapped by
+      // the same measure; the computed style's height can differ from it by
+      // that fraction, enough to move the drawing by as much.
+      const { height } = element.getBoundingClientRect();
+      element.style.setProperty("--inkline-held-height", `${String(height)}px`);
+      element.addClass("inkline-held");
+    }
+  }
+
+  /** Lets what {@link #holdAround} held take its own height again. */
+  #letGoAround(): void {
+    for (const element of this.#heldAround) {
+      element.removeClass("inkline-held");
+      element.style.removeProperty("--inkline-held-height");
+    }
+  }
+
   /** Whether the pointer is pressed on the surface to draw, not to drag. */
   get #pressed(): boolean {
     return this.#gate.active !== undefined && this.#dragged === undefined;
@@ -2397,6 +2474,14 @@ export class InkEditorModal extends Modal {
   /** Whether the view is magnified, or will be once the pointer is let go. */
   get #zoomed(): boolean {
     return (this.#view?.magnified === true) !== this.#viewWaits.zoom;
+  }
+
+  /**
+   * Whether what makes ink of the picture is open, or will be once the
+   * pointer is let go, as its button shows.
+   */
+  get #inkOpen(): boolean {
+    return this.#viewWaits.ink ?? this.#converting !== undefined;
   }
 
   /**
@@ -2443,18 +2528,32 @@ export class InkEditorModal extends Modal {
    * draw, now that what was drawn has ended where the view put it, unless the
    * editor has closed meanwhile: Next takes a zoom asked for to the next
    * symbol. They go as one action, so that the status line says what they
-   * did, or nothing, rather than what waited.
+   * did, or nothing, rather than what waited. Make ink opens or closes as
+   * asked, unless it already is so, as when the picture it was open for was
+   * replaced, but does not open behind a question that came meanwhile, as
+   * Save there would make ink at a threshold never seen.
    */
   #viewAfterPress(): void {
-    const { zoom, fit } = this.#viewWaits;
-    this.#viewWaits = { zoom: false, fit: false };
-    if ((!zoom && !fit) || this.#ended()) return;
+    const { zoom, fit, ink } = this.#viewWaits;
+    this.#viewWaits = { zoom: false, fit: false, ink: undefined };
+    const inkChanges =
+      ink !== undefined && ink !== (this.#converting !== undefined);
+    if (this.#ended()) return;
+    // Make ink's button showed what was asked, and now shows what is.
+    if (ink !== undefined) this.#updateButtons();
+    if (!zoom && !fit && !inkChanges) return;
     this.#line.act(() => {
       if (zoom) this.#zoom();
       if (fit) {
         this.#fitView();
         this.#render();
       }
+      if (!inkChanges) return;
+      if (ink && this.#questions.size > 0) {
+        this.#announce("Not making ink while a question is open");
+        return;
+      }
+      this.#toggleConvert();
     });
   }
 
@@ -2707,6 +2806,7 @@ export class InkEditorModal extends Modal {
       moving: this.#moving,
       picture: this.#picture !== undefined,
       converting,
+      inkOpen: this.#inkOpen,
       applying: this.#applying !== undefined,
       guides: this.#guidesShown,
       grid: this.#session.snap,
@@ -3592,9 +3692,14 @@ export class InkEditorModal extends Modal {
     return !this.#makingInk() && !this.#ended();
   }
 
-  /** Whether what makes ink of the picture is open. */
+  /**
+   * Whether what makes ink of the picture is open, and stays open once the
+   * pointer is let go, so that a save makes the ink the surface shows: not
+   * while Make ink waits to close, and not while it waits to open, before
+   * its ink has been seen.
+   */
   #makingInk(): boolean {
-    return this.#converting !== undefined;
+    return this.#converting !== undefined && this.#inkOpen;
   }
 
   /**
