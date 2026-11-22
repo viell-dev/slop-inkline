@@ -16,10 +16,10 @@ symbol**, or for one you have, from **Edit symbol** or a
 - a **line of text** that shows the symbol at its real size as you draw;
 - a **status line**, which says what the editor did last, such as "Saved".
   Whatever you do next replaces it, so it is empty after something with nothing
-  to say, such as **Fit** or a tool's button, rather than keep an earlier
-  message. Through actions with nothing of their own to say, "Saving…" stays
-  until the save ends, and "Draft not kept" until a draft is kept again; one
-  that says something replaces them.
+  to say, such as a tool's button, rather than keep an earlier message. Through
+  actions with nothing of their own to say, "Saving…" stays until the save ends,
+  and "Draft not kept" until a draft is kept again; one that says something
+  replaces them.
 
 In the shortcuts below, Mod is Ctrl, or Cmd on macOS. Single-key shortcuts and
 undo give way to a text field that has the focus, such as the name field, so
@@ -287,7 +287,15 @@ changes only the view: the symbol is the same size in notes, and the brushes
 stay the same size against it. **Unreleased:** pressed while you draw a stroke,
 a shape, a polygon's corner, or a path's point or handle, Zoom waits until you
 let go, so that what you draw ends where it shows; pressed twice meanwhile, it
-leaves the view as it is.
+leaves the view as it is. Fit pressed while you draw waits the same way. Moving
+along with the wheel or the left and right arrow keys while you draw takes what
+you draw with it, on to where the pointer is in the drawing as the view moves,
+so a long stroke can go on past the edge of the view. If the window or the
+editor changes size while you draw a stroke or a shape, or Obsidian's page zoom
+changes (Ctrl+= and Ctrl+−), and that moves the drawing under the pointer, the
+stroke or shape ends where it showed, and the rest of the drag draws nothing; a
+polygon's corner or a path's point or handle being pressed then goes where you
+let go, as ever.
 
 The grid, though, has twice as many cells each way while zoomed, so the default
 5 cells across the x-height become 10, for placing fine detail. Every point of
