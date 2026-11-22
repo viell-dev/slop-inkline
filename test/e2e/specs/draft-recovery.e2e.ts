@@ -8,6 +8,7 @@ import {
   inklineOn,
   insert,
   nameField,
+  nameSymbol,
   strokeCount,
   waitClosed,
   zigzag,
@@ -210,6 +211,75 @@ describe("Draft recovery", function () {
     expect(await draftCount()).toBe(0);
     // Inserted nowhere.
     expect(await noteOnDisk("Editor.md")).not.toContain("001.ink.png");
+  });
+
+  it("keeps a draft it opened as a new symbol for its own file, when the name typed for it is taken as it is saved", async function () {
+    // #437: the first save names the path it makes in the draft before it
+    // writes, and a refusal left the draft kept for the symbol that came
+    // there, which would offer it as its own.
+    await createSymbol("gate.ink.png");
+    await draftThenStop("gate.ink.png");
+    await browser.executeObsidian(async ({ app }) => {
+      const file = app.vault.getFileByPath("gate.ink.png");
+      if (file === null) throw new Error("no gate.ink.png");
+      const bytes = await app.vault.readBinary(file);
+      await app.vault.modifyBinary(file, bytes.slice(0, bytes.byteLength / 2));
+    });
+    await restart();
+    await tryToEdit("gate.ink.png");
+    await clickTop("Open as new symbol");
+    await waitForEditor();
+    await nameSymbol("tower");
+    // Another symbol comes to tower.ink.png just before the save's look, as
+    // through a plugin or a sync tool.
+    await browser.executeObsidian(async ({ app }) => {
+      const { canvas } = window.inklineTest;
+      const { bytes } = await canvas.saveInk(
+        {
+          strokes: [
+            {
+              tool: "pen" as const,
+              size: 256,
+              points: [2000, 800, 6000, 2000],
+            },
+          ],
+        },
+        undefined,
+        [],
+      );
+      const { adapter } = app.vault;
+      const exists = adapter.exists.bind(adapter);
+      adapter.exists = async (asked, sensitive) => {
+        if (asked === "tower.ink.png") {
+          Reflect.deleteProperty(adapter, "exists");
+          await adapter.writeBinary(asked, bytes.slice().buffer);
+        }
+        return exists(asked, sensitive);
+      };
+    });
+    await browser.keys(["Control", "s"]);
+    await waitForStatus(
+      "Not saved: the vault's top folder already has a symbol named tower",
+    );
+    expect(await symbolFiles()).toEqual(["gate.ink.png", "tower.ink.png"]);
+    // Kept for gate.ink.png, as before the save, not for tower.ink.png.
+    await browser.waitUntil(async () => (await draftCount()) === 1);
+    expect((await storedDrafts())[0]?.target).toEqual({
+      kind: "file",
+      path: "gate.ink.png",
+    });
+    // Another name saves it, and leaves tower.ink.png as it is.
+    const tower = await bytesOfFile("tower.ink.png");
+    await nameSymbol("door");
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    expect(await symbolFiles()).toEqual([
+      "door.ink.png",
+      "gate.ink.png",
+      "tower.ink.png",
+    ]);
+    expect(await bytesOfFile("tower.ink.png")).toEqual(tower);
+    expect(await draftCount()).toBe(0);
   });
 
   it("lists a draft whose file was deleted, and saves it at the file's path", async function () {

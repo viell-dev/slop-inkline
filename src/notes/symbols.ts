@@ -2556,7 +2556,9 @@ function claimed(claim: Claim): CreatedFile {
  * before it writes, as a new symbol's does, so that a save cut short leaves a
  * draft for that file, which offers it when it opens, or lists it when it does
  * not; a retry writes over that file if it holds what this wrote, rather than
- * make another.
+ * make another. A save that fails having left nothing of its own there, as
+ * one refused because another symbol came to the path, puts the draft back
+ * where it was.
  *
  * The first save's file of a new symbol's draft is claimed only once the
  * draft is restored, as a new symbol's `restored` does, so that an editor
@@ -2652,28 +2654,41 @@ function recoverDraft(host: EditorHost, orphan: Orphan): void {
       // the vault as it was.
       const choice = chosen(typed);
       const fingerprint = await fingerprintOf(bytes);
-      made = await makeNewSymbol(
-        host,
-        async () =>
-          folder === undefined
-            ? newSymbolPath(app, path, choice, host.settings().symbolFolder)
-            : symbolPathIn(
-                app,
-                folder === "" ? "" : await makeFolder(app, folder),
-                choice,
-              ),
-        choice,
-        (at, left) => {
-          // As a new symbol's first save keeps what a write cut short left.
-          claim =
-            left === undefined
-              ? { path: at, fingerprint }
-              : { path: at, fingerprint, previous: left };
+      const before = claim;
+      try {
+        made = await makeNewSymbol(
+          host,
+          async () =>
+            folder === undefined
+              ? newSymbolPath(app, path, choice, host.settings().symbolFolder)
+              : symbolPathIn(
+                  app,
+                  folder === "" ? "" : await makeFolder(app, folder),
+                  choice,
+                ),
+          choice,
+          (at, left) => {
+            // As a new symbol's first save keeps what a write cut short left.
+            claim =
+              left === undefined
+                ? { path: at, fingerprint }
+                : { path: at, fingerprint, previous: left };
+            keepDraft();
+          },
+          toBuffer(bytes),
+          wait.told,
+        );
+      } catch (error) {
+        // A save that left nothing of its own at the path it claimed, as one
+        // refused because another symbol came there, gives the draft back its
+        // place, or it stays kept for that symbol, which would offer it as its
+        // own (#437). A part it left is in the claim, for the next save.
+        if (claim !== before && claim?.previous === undefined) {
+          claim = before;
           keepDraft();
-        },
-        toBuffer(bytes),
-        wait.told,
-      );
+        }
+        throw error;
+      }
       holds(fingerprint);
       await host.texts.refresh(made);
       return true;

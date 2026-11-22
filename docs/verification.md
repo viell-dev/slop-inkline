@@ -466,15 +466,17 @@ must keep released files readable and looking the same, as
   once it changed, and followed when it is renamed while the draft is open; the
   draft opened staying the old symbol's, its file's base layer and fingerprints
   included, until the first save, through Inkline's unloading before it and
-  during it, so that restoring it on that file brings the base layer back; a
-  base layer the draft kept itself coming back, and one that cannot be decoded
-  said so, with the strokes, and kept until a save; an editor that overtook the
-  draft as its base layer was read saying so, and its save making a file of its
-  own, leaving the first save's file as it was; the list and the question
-  closing as Inkline unloads, and doing nothing after; a notice in place of the
-  question when another window opened as the symbol was read; pictures no larger
-  than their rows need; and which drafts are listed, the name a new symbol
-  starts with, and what the list, the question, and the name field say
+  during it, so that restoring it on that file brings the base layer back, and
+  through a first save refused because another symbol came to the name typed as
+  it was saved; a base layer the draft kept itself coming back, and one that
+  cannot be decoded said so, with the strokes, and kept until a save; an editor
+  that overtook the draft as its base layer was read saying so, and its save
+  making a file of its own, leaving the first save's file as it was; the list
+  and the question closing as Inkline unloads, and doing nothing after; a notice
+  in place of the question when another window opened as the symbol was read;
+  pictures no larger than their rows need; and which drafts are listed, the name
+  a new symbol starts with, and what the list, the question, and the name field
+  say
   ([draft-recovery.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/draft-recovery.e2e.ts),
   [recovery.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/recovery.test.ts),
   and
