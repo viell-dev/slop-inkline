@@ -337,6 +337,9 @@ name. A change that reaches the file at the very moment Obsidian moves it, such
 as one by another app, is not refused but reported: the row says what happened
 and where the symbol is, as
 [the limits](./limits.md#a-file-changed-as-obsidian-renames-it) describe.
+**Unreleased:** a symbol that has changed in one of those ways by the time the
+rename starts, as while Quick edit wrote its readings and translations, is
+refused at once, before any note is saved.
 
 A rename can take a while in a much used symbol, as Obsidian updates each note
 that links to it, and for as long as you take over any rename's question about
@@ -404,7 +407,10 @@ typed in follows it. One you have typed in keeps your text, and a line says what
 saving will replace. A name you have not changed follows a rename elsewhere, so
 that saving the readings and translations keeps that name. On a file whose
 readings and translations cannot be read when Quick edit opens, their fields
-stay closed, and the name can still change.
+stay closed, and the name can still change. **Unreleased:** the row says why
+they are closed for as long as they are, above what a save said, as when a name
+is refused, and so it does when the file stops being readable while the row is
+open.
 
 ## Export a note to PDF
 

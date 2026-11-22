@@ -647,10 +647,10 @@ describe("syncMetadata", () => {
 describe("the specification step", () => {
   // As the Release workflow runs it, from the repository's root. Each test
   // starts Node.js, which loads the script and the Markdown parser it imports:
-  // in a full parallel run on Windows one start took 7.8 seconds, so Vitest's
-  // five were too few. The tests promise nothing about speed, only what the
-  // step writes.
-  const startup = 30_000;
+  // in a full parallel run on Windows one start took 7.8 seconds, and with the
+  // machine's CPU at 100%, 16.6 seconds (#402). The tests promise nothing about
+  // speed, only what the step writes.
+  const startup = 60_000;
   const run = (...args: string[]) =>
     spawnSync(process.execPath, ["scripts/release.ts", ...args], {
       encoding: "utf8",

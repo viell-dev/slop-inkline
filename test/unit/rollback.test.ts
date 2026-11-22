@@ -179,6 +179,9 @@ describe.each([
     git("update-ref", "refs/remotes/origin/main", "main");
   });
 
+  // It runs Git dozens of times, which takes 5 to 8 seconds alone on Windows,
+  // and up to 26.9 seconds in a whole run with the machine's CPU at 100%
+  // (#402). It promises nothing about speed.
   it("passes CI's checks at each step, and touches no published version", () => {
     const blocks = guideCommands();
     expect(blocks).toHaveLength(2);
@@ -230,5 +233,5 @@ describe.each([
     expect(git("rev-parse", `${built}^{commit}`)).toBe(
       git("rev-parse", `${merge}^1`),
     );
-  }, 30_000);
+  }, 60_000);
 });

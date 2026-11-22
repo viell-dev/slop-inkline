@@ -26,6 +26,7 @@ import {
   editSymbol,
   insertExistingSymbol,
   insertSymbol,
+  recoverDrafts,
   type EditorHost,
 } from "./notes/symbols.ts";
 import { SymbolTextIndex } from "./notes/text-index.ts";
@@ -268,6 +269,15 @@ export default class InklinePlugin extends Plugin {
           );
         }
         return true;
+      },
+    });
+    // Drafts that no editor can offer, as their symbol's file is gone or does
+    // not open, or a new symbol's note is gone.
+    this.addCommand({
+      id: "recover-drafts",
+      name: "Recover drafts",
+      callback: () => {
+        void recoverDrafts(this.#host);
       },
     });
     // Drafts follow their symbol, or the note a new one is in, when renamed.
