@@ -2,8 +2,8 @@
 // steps to the vault, and a save writes the whole file, so two saves that both
 // read before either writes would lose the first one's change without a word.
 // So Inkline's writes wait for one another, and each finds and looks at its file
-// inside its turn. Plain, so that unit tests can interleave them; symbols.ts gives
-// them the vault.
+// inside its turn. Plain, so that unit tests can interleave them;
+// symbol-writes.ts gives them the vault.
 
 import { PngError, readChunks } from "../format/png.ts";
 import { readText, writeText, type SymbolText } from "../format/text.ts";

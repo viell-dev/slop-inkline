@@ -12,7 +12,6 @@ import {
   changedText,
   changeFile,
   CutShort,
-  makeFile,
   PathTaken,
   saveFile,
   stalledAfter,
@@ -24,7 +23,6 @@ import {
   WriteQueue,
   type DiskLine,
   type FileAccess,
-  type NewFile,
 } from "../../../src/notes/file-writes.ts";
 import type { TextChanges } from "../../../src/notes/text-fields.ts";
 
@@ -79,8 +77,12 @@ const nothingMet = { bytes: pinned, read: access.read };
 const said = (file: Fake): Promise<SymbolText> =>
   readText(readChunks(file.bytes));
 
-/** A library's save of `changes`, typed over `seen`, as `writeSymbolText` runs. */
-function libraryChange(
+/**
+ * A change of `changes`, typed over `seen`, as {@link changeFile} makes it with
+ * {@link changedText}. Inkline's own, through its line of writes, is tested in
+ * symbol-writes.test.ts.
+ */
+function textChange(
   file: Fake,
   changes: TextChanges,
   seen: SymbolText,
@@ -105,28 +107,11 @@ async function editorWrite(
  */
 class FakeVault {
   readonly #files = new Map<string, Fake>();
-  /**
-   * What lands as {@link FakeVault.make} starts, before it looks: in Obsidian,
-   * whatever was asked of the disk before the vault's look at it.
-   */
-  beforeMake?: () => void;
 
   put(path: string, bytes: Uint8Array = pinned): Fake {
     const file = { ...fake(bytes), path };
     this.#files.set(path, file);
     return file;
-  }
-
-  /**
-   * Makes a file at `path`, as the vault's `createBinary` does, which refuses
-   * if one is there by the time it looks.
-   */
-  make(path: string, bytes: Uint8Array): Promise<Fake> {
-    this.beforeMake?.();
-    if (this.at(path) !== null) {
-      return Promise.reject(new Error("File already exists."));
-    }
-    return Promise.resolve(this.put(path, bytes));
   }
 
   at(path: string): Fake | null {
@@ -144,38 +129,10 @@ class FakeVault {
     file.gone = true;
   }
 
-  /** The file to save over, for a save of `file`, as `writeSymbol` finds it. */
+  /** The file to save over for a save of `file`: it, or what is at its path. */
   current(file: Fake): Fake | null {
     return file.gone === true ? this.at(file.path ?? "") : file;
   }
-}
-
-/**
- * An editor's save of `file`, as `writeSymbol` makes it: what it looks at first
- * must be `known`, or nothing, and `looked` is how long it goes on looking after
- * the read, as the editor does while it works out a fingerprint.
- */
-function editorSave(
-  vault: FakeVault,
-  file: Fake,
-  known: Uint8Array,
-  written: Uint8Array,
-  looked: () => Promise<void> = () => Promise.resolve(),
-): Promise<Fake> {
-  return saveFile({
-    current: () => vault.current(file),
-    check: async () => {
-      const now = vault.current(file);
-      if (now === null) return;
-      const bytes = await access.read(now);
-      await looked();
-      if (bytes !== known) throw new Error("the editor asks first");
-    },
-    write: (now) => access.write(now, written.slice().buffer),
-    create: () => vault.make(file.path ?? "", written),
-    bytes: written,
-    read: access.read,
-  });
 }
 
 /** A promise, and what lets it go. */
@@ -244,268 +201,12 @@ describe("two saves of one file", () => {
       await gate;
     };
     await Promise.all([
-      libraryChange(file, { reading: ["FIRST"] }, seen),
-      libraryChange(file, { translation: ["SECOND"] }, seen),
+      textChange(file, { reading: ["FIRST"] }, seen),
+      textChange(file, { translation: ["SECOND"] }, seen),
     ]);
     const final = await said(file);
     expect(final.translation).toEqual(["SECOND"]);
     expect(final.reading).toEqual(seen.reading);
-  });
-
-  it("keeps both fields, and the second reads what the first wrote", async () => {
-    const queue = new WriteQueue();
-    const file = fake();
-    const seen = await said(file);
-    const { gate, open } = gated();
-    file.held = () => gate;
-    const first = queue.run(() =>
-      libraryChange(file, { reading: ["FIRST"] }, seen),
-    );
-    const second = queue.run(() =>
-      libraryChange(file, { translation: ["SECOND"] }, seen),
-    );
-    await until(() => file.writes === 1);
-    const reads = file.reads;
-    await wait(2);
-    expect(file.reads).toBe(reads);
-    open();
-    await Promise.all([first, second]);
-    expect(await said(file)).toEqual({
-      reading: ["FIRST"],
-      translation: ["SECOND"],
-    });
-  });
-
-  it("refuses the second of two saves of one field, and says what is there", async () => {
-    const queue = new WriteQueue();
-    const file = fake();
-    const seen = await said(file);
-    const results = await Promise.allSettled([
-      queue.run(() => libraryChange(file, { reading: ["FIRST"] }, seen)),
-      queue.run(() => libraryChange(file, { reading: ["SECOND"] }, seen)),
-    ]);
-    expect(results[0].status).toBe("fulfilled");
-    const refusal = results[1];
-    if (refusal.status !== "rejected") throw new Error("not refused");
-    expect(refusal.reason).toBeInstanceOf(TextMoved);
-    expect((refusal.reason as TextMoved).text.reading).toEqual(["FIRST"]);
-    expect((await said(file)).reading).toEqual(["FIRST"]);
-  });
-
-  it("stops an editor's save that a library's save went ahead of", async () => {
-    const queue = new WriteQueue();
-    const file = fake();
-    const known = file.bytes;
-    const seen = await said(file);
-    const drawn = await writeText(pinned, "translation", ["DRAWN"]);
-    const results = await Promise.allSettled([
-      queue.run(() => libraryChange(file, { reading: ["TYPED"] }, seen)),
-      queue.run(() => editorWrite(file, known, drawn)),
-    ]);
-    expect(results.map(({ status }) => status)).toEqual([
-      "fulfilled",
-      "rejected",
-    ]);
-    expect((await said(file)).reading).toEqual(["TYPED"]);
-  });
-
-  it("has a library's save build on an editor's that went first", async () => {
-    const queue = new WriteQueue();
-    const file = fake();
-    const known = file.bytes;
-    const seen = await said(file);
-    const drawn = await writeText(pinned, "translation", ["DRAWN"]);
-    const { gate, open } = gated();
-    file.held = () => gate;
-    const editor = queue.run(() => editorWrite(file, known, drawn));
-    const library = queue.run(() =>
-      libraryChange(file, { reading: ["TYPED"] }, seen),
-    );
-    await until(() => file.writes === 1);
-    open();
-    await Promise.all([editor, library]);
-    expect(await said(file)).toEqual({
-      reading: ["TYPED"],
-      translation: ["DRAWN"],
-    });
-  });
-});
-
-describe("a file replaced while its save waits", () => {
-  const path = "a.ink.png";
-
-  /**
-   * The reviewer's sequence, up to the editor looking at the replacement: a save
-   * holds the line, an editor's joins it, and a sync tool deletes the file and
-   * puts the same bytes back, as a new file. `release` lets the editor go on.
-   */
-  async function replacedWhileWaiting(queue: WriteQueue): Promise<{
-    replacement: Fake;
-    seen: SymbolText;
-    editor: Promise<Fake>;
-    release: () => void;
-  }> {
-    const vault = new FakeVault();
-    const old = vault.put(path);
-    const seen = await said(old);
-    const drawn = await writeText(pinned, "translation", ["DRAWN"]);
-    const holding = gated();
-    const held = queue.run(() => holding.gate);
-    const looked = gated();
-    const editor = queue.run(() =>
-      editorSave(vault, old, pinned, drawn, () => looked.gate),
-    );
-    vault.delete(old);
-    const replacement = vault.put(path);
-    holding.open();
-    await held;
-    await until(() => replacement.reads === 1);
-    return { replacement, seen, editor, release: looked.open };
-  }
-
-  it("loses a write if the library's save does not wait, which is the risk", async () => {
-    const { replacement, seen, editor, release } = await replacedWhileWaiting(
-      new WriteQueue(),
-    );
-    await libraryChange(replacement, { reading: ["TYPED"] }, seen);
-    release();
-    await editor;
-    const final = await said(replacement);
-    expect(final.translation).toEqual(["DRAWN"]);
-    expect(final.reading).toEqual(seen.reading);
-  });
-
-  it("keeps a library's save of the replacement out of the editor's turn", async () => {
-    const queue = new WriteQueue();
-    const { replacement, seen, editor, release } =
-      await replacedWhileWaiting(queue);
-    const library = queue.run(() =>
-      libraryChange(replacement, { reading: ["TYPED"] }, seen),
-    );
-    await wait(2);
-    expect(replacement.reads).toBe(1);
-    release();
-    await expect(editor).resolves.toBe(replacement);
-    await library;
-    expect(await said(replacement)).toEqual({
-      reading: ["TYPED"],
-      translation: ["DRAWN"],
-    });
-  });
-
-  it("writes to the replacement, and not to the file it replaced", async () => {
-    const vault = new FakeVault();
-    const old = vault.put(path);
-    const drawn = await writeText(pinned, "translation", ["DRAWN"]);
-    const queue = new WriteQueue();
-    const { gate, open } = gated();
-    const held = queue.run(() => gate);
-    const editor = queue.run(() => editorSave(vault, old, pinned, drawn));
-    vault.delete(old);
-    const replacement = vault.put(path);
-    open();
-    await held;
-    await expect(editor).resolves.toBe(replacement);
-    expect(old.writes).toBe(0);
-    expect((await said(replacement)).translation).toEqual(["DRAWN"]);
-  });
-
-  it("asks about a replacement that holds something else", async () => {
-    const vault = new FakeVault();
-    const old = vault.put(path);
-    const theirs = await writeText(pinned, "reading", ["THEIRS"]);
-    const queue = new WriteQueue();
-    const { gate, open } = gated();
-    const held = queue.run(() => gate);
-    const editor = queue.run(() => editorSave(vault, old, pinned, pinned));
-    vault.delete(old);
-    const replacement = vault.put(path, theirs);
-    open();
-    await held;
-    await expect(editor).rejects.toThrow("asks first");
-    expect(replacement.writes).toBe(0);
-    expect(replacement.bytes).toBe(theirs);
-  });
-
-  it("makes a deleted file once for two editors, and the other asks", async () => {
-    const vault = new FakeVault();
-    const old = vault.put(path);
-    const first = await writeText(pinned, "reading", ["FIRST"]);
-    const second = await writeText(pinned, "reading", ["SECOND"]);
-    vault.delete(old);
-    const queue = new WriteQueue();
-    const results = await Promise.allSettled([
-      queue.run(() => editorSave(vault, old, pinned, first)),
-      queue.run(() => editorSave(vault, old, pinned, second)),
-    ]);
-    expect(results.map(({ status }) => status)).toEqual([
-      "fulfilled",
-      "rejected",
-    ]);
-    expect(vault.at(path)?.bytes).toBe(first);
-  });
-});
-
-describe("a file renamed while its save waits", () => {
-  const from = "before.ink.png";
-  const to = "after.ink.png";
-
-  it("writes where the file went, and makes nothing where it was", async () => {
-    const vault = new FakeVault();
-    const file = vault.put(from);
-    const drawn = await writeText(pinned, "translation", ["DRAWN"]);
-    const queue = new WriteQueue();
-    const { gate, open } = gated();
-    const held = queue.run(() => gate);
-    const editor = queue.run(() => editorSave(vault, file, pinned, drawn));
-    vault.rename(file, to);
-    open();
-    await held;
-    await expect(editor).resolves.toBe(file);
-    expect(vault.at(from)).toBeNull();
-    expect((await said(file)).translation).toEqual(["DRAWN"]);
-  });
-
-  it("keeps a save asked for under the new name behind one under the old", async () => {
-    const vault = new FakeVault();
-    const file = vault.put(from);
-    const seen = await said(file);
-    const drawn = await writeText(pinned, "translation", ["DRAWN"]);
-    const queue = new WriteQueue();
-    const looked = gated();
-    const editor = queue.run(() =>
-      editorSave(vault, file, pinned, drawn, () => looked.gate),
-    );
-    await until(() => file.reads === 1);
-    // Mid-turn, so a line for each path would let the library's through now.
-    vault.rename(file, to);
-    const library = queue.run(() =>
-      libraryChange(file, { reading: ["TYPED"] }, seen),
-    );
-    await wait(2);
-    expect(file.reads).toBe(1);
-    looked.open();
-    await Promise.all([editor, library]);
-    expect(await said(file)).toEqual({
-      reading: ["TYPED"],
-      translation: ["DRAWN"],
-    });
-  });
-
-  it("keeps a library's save to the file through a rename", async () => {
-    const vault = new FakeVault();
-    const file = vault.put(from);
-    const seen = await said(file);
-    const queue = new WriteQueue();
-    const { gate, open } = gated();
-    const held = queue.run(() => gate);
-    const library = queue.run(() =>
-      libraryChange(file, { reading: ["TYPED"] }, seen),
-    );
-    vault.rename(file, to);
-    open();
-    await Promise.all([held, library]);
-    expect((await said(file)).reading).toEqual(["TYPED"]);
   });
 });
 
@@ -552,79 +253,6 @@ describe("saveFile", () => {
     ).rejects.toThrow("asks first");
     expect(looks).toBe(2);
     expect(vault.at(path)?.bytes).toBe(theirs);
-  });
-
-  it("looks again at a file that replaced the one it looked at", async () => {
-    const vault = new FakeVault();
-    const old = vault.put(path);
-    const theirs = await writeText(pinned, "reading", ["THEIRS"]);
-    const drawn = await writeText(pinned, "translation", ["DRAWN"]);
-    let replacement: Fake | undefined;
-    await expect(
-      editorSave(vault, old, pinned, drawn, () => {
-        // Its bytes passed, and they are not what is there now.
-        vault.delete(old);
-        replacement = vault.put(path, theirs);
-        return Promise.resolve();
-      }),
-    ).rejects.toThrow("asks first");
-    expect(replacement?.writes).toBe(0);
-    expect(replacement?.bytes).toBe(theirs);
-  });
-
-  it("makes the file again when it goes during its look", async () => {
-    const vault = new FakeVault();
-    const old = vault.put(path);
-    const drawn = await writeText(pinned, "translation", ["DRAWN"]);
-    const made = await editorSave(vault, old, pinned, drawn, () => {
-      vault.delete(old);
-      return Promise.resolve();
-    });
-    expect(made).not.toBe(old);
-    expect(vault.at(path)).toBe(made);
-    expect(old.writes).toBe(0);
-    expect(made.bytes).toBe(drawn);
-  });
-
-  /**
-   * A replacement of the file at `path` that an editor's save falls between,
-   * as in #379: the deletion runs during the save's look, and the new file,
-   * holding `theirs`, lands before the vault looks as the save makes the file
-   * again. Returns the editor's save, and the new file once it has landed.
-   */
-  function replacedAsMade(theirs: Uint8Array): {
-    saving: Promise<Fake>;
-    replacement: () => Fake | undefined;
-  } {
-    const vault = new FakeVault();
-    const old = vault.put(path);
-    const drawn = new Uint8Array([1, 2, 3]);
-    let replacement: Fake | undefined;
-    vault.beforeMake = () => {
-      replacement ??= vault.put(path, theirs);
-    };
-    let looks = 0;
-    const saving = editorSave(vault, old, pinned, drawn, () => {
-      if (++looks === 1) vault.delete(old);
-      return Promise.resolve();
-    });
-    return { saving, replacement: () => replacement };
-  }
-
-  it("looks at a file made at its path as it made one, and asks about it", async () => {
-    const theirs = await writeText(pinned, "reading", ["THEIRS"]);
-    const { saving, replacement } = replacedAsMade(theirs);
-    // Not the vault's "File already exists.": the editor's own question.
-    await expect(saving).rejects.toThrow("asks first");
-    expect(replacement()?.writes).toBe(0);
-    expect(replacement()?.bytes).toBe(theirs);
-  });
-
-  it("writes to a file made at its path as it made one, if it holds what was known", async () => {
-    const { saving, replacement } = replacedAsMade(pinned);
-    const saved = await saving;
-    expect(saved).toBe(replacement());
-    expect(saved.writes).toBe(1);
   });
 
   it("fails as the vault does when nothing came to its path", async () => {
@@ -881,7 +509,7 @@ describe("changeFile", () => {
   it("writes nothing when nothing changes", async () => {
     const file = fake();
     const seen = await said(file);
-    await libraryChange(file, { reading: seen.reading }, seen);
+    await textChange(file, { reading: seen.reading }, seen);
     expect(file.writes).toBe(0);
     expect(file.bytes).toBe(pinned);
   });
@@ -894,7 +522,7 @@ describe("changeFile", () => {
     file.afterRead = (reads) => {
       if (reads === 1) file.bytes = theirs;
     };
-    await libraryChange(file, typed, seen);
+    await textChange(file, typed, seen);
     expect(await said(file)).toEqual({
       reading: ["TYPED"],
       translation: ["THEIRS"],
@@ -908,7 +536,7 @@ describe("changeFile", () => {
     file.afterRead = (reads) => {
       if (reads === 1) file.bytes = theirs;
     };
-    await expect(libraryChange(file, typed, seen)).rejects.toBeInstanceOf(
+    await expect(textChange(file, typed, seen)).rejects.toBeInstanceOf(
       TextMoved,
     );
     expect(file.writes).toBe(0);
@@ -924,7 +552,7 @@ describe("changeFile", () => {
     file.afterRead = (reads) => {
       if (reads === 1) file.bytes = same;
     };
-    await libraryChange(file, typed, seen);
+    await textChange(file, typed, seen);
     expect(file.reads).toBeGreaterThan(2);
     expect((await said(file)).reading).toEqual(["TYPED"]);
   });
@@ -940,7 +568,7 @@ describe("changeFile", () => {
     file.afterRead = (reads) => {
       file.bytes = versions[reads] ?? file.bytes;
     };
-    await expect(libraryChange(file, typed, seen)).rejects.toThrow(
+    await expect(textChange(file, typed, seen)).rejects.toThrow(
       "keeps changing",
     );
     expect(file.writes).toBe(0);
@@ -952,7 +580,7 @@ describe("changeFile", () => {
     file.afterRead = () => {
       file.gone = true;
     };
-    await expect(libraryChange(file, typed, seen)).rejects.toThrow(
+    await expect(textChange(file, typed, seen)).rejects.toThrow(
       "no longer there",
     );
     expect(file.writes).toBe(0);
@@ -964,7 +592,7 @@ describe("changeFile", () => {
     file.afterRead = (reads) => {
       if (reads === 2) file.gone = true;
     };
-    await expect(libraryChange(file, typed, seen)).rejects.toThrow(
+    await expect(textChange(file, typed, seen)).rejects.toThrow(
       "no longer there",
     );
     expect(file.writes).toBe(0);
@@ -973,7 +601,7 @@ describe("changeFile", () => {
   it("says what is wrong with a file that is not a whole PNG", async () => {
     const file = fake(pinned.subarray(0, 40));
     await expect(
-      libraryChange(file, typed, { reading: [], translation: [] }),
+      textChange(file, typed, { reading: [], translation: [] }),
     ).rejects.toThrow("not a whole PNG");
     expect(file.writes).toBe(0);
   });
@@ -1187,7 +815,7 @@ describe("A save that waits for Obsidian", () => {
     const seen = await said(other);
     const { told, waiting } = listener();
     const behind = watchSave(
-      queue.run(() => libraryChange(other, typed, seen)),
+      queue.run(() => textChange(other, typed, seen)),
       waiting,
     );
     await vi.advanceTimersByTimeAsync(stalledAfter * 100);
@@ -1215,7 +843,7 @@ describe("A save that waits for Obsidian", () => {
     );
     const ended = expect(stopped).rejects.toThrow("stopped");
     const next = fake();
-    const after = queue.run(() => libraryChange(next, typed, seen));
+    const after = queue.run(() => textChange(next, typed, seen));
     await vi.advanceTimersByTimeAsync(stalledAfter);
     expect(stop()).toBe(true);
     open();
@@ -1306,7 +934,7 @@ class FakeLine implements DiskLine {
 describe("a save and the disk's line", () => {
   const typed = { reading: ["TYPED"] };
 
-  /** A library's save with `line`, as `writeSymbolText` runs it. */
+  /** A change made with {@link changeFile} that sees `line`. */
   function lineChange(
     file: Fake,
     line: DiskLine,
@@ -1369,7 +997,7 @@ describe("a save and the disk's line", () => {
   it("waits for nothing where the line cannot be seen", async () => {
     const file = fake();
     const seen = await said(file);
-    await libraryChange(file, typed, seen);
+    await textChange(file, typed, seen);
     expect(file.reads).toBe(2);
     expect(file.writes).toBe(1);
   });
@@ -1420,8 +1048,8 @@ describe("a save and the disk's line", () => {
     let looks = 0;
     const written = await saveFile({
       current: () => vault.current(file),
-      // As the editor's look does: an async function, reading the file, that
-      // resolves with the line as it was once the read was asked.
+      // An async function, reading the file, that resolves with the line as
+      // it was once the read was asked.
       check: async () => {
         looks++;
         const reading = access.read(file);
@@ -1460,318 +1088,6 @@ describe("a save and the disk's line", () => {
     expect(written).toBe(file);
     expect(line.settles).toBe(3);
     expect(file.bytes).toEqual(drawn);
-  });
-});
-
-/**
- * Obsidian's desktop file system adapter, as far as making a file goes: one
- * line, which every request joins as it is asked, as `queue` does in the
- * `app.js` of Obsidian 1.13.4 and 1.15.1, and whose requests act on the files
- * as they run. Its `copy` is one request that makes the copy only where
- * nothing is, as the adapter's does with `COPYFILE_EXCL`, failing with the
- * code `EEXIST` otherwise.
- */
-class FakeAdapter {
-  promise: Promise<unknown> = Promise.resolve();
-  readonly files = new Map<string, Uint8Array>();
-  /** Every request, as its kind and path, in the order run. */
-  readonly ran: string[] = [];
-  /** Has the next copy stop after this many bytes, as on a full disk. */
-  copyStopsAfter: number | undefined;
-  /** Has the next removal of this path fail, as of a file held open. */
-  removeRefuses: string | undefined;
-
-  #queue<T>(task: () => T): Promise<T> {
-    const done = this.promise.then(task, task);
-    this.promise = done;
-    return done;
-  }
-
-  exists(path: string): Promise<boolean> {
-    return this.#queue(() => {
-      this.ran.push(`exists ${path}`);
-      return this.files.has(path);
-    });
-  }
-
-  read(path: string): Promise<Uint8Array> {
-    return this.#queue(() => {
-      this.ran.push(`read ${path}`);
-      const bytes = this.files.get(path);
-      if (bytes === undefined) throw new Error(`ENOENT: ${path}`);
-      return bytes;
-    });
-  }
-
-  writeBinary(path: string, bytes: Uint8Array): Promise<void> {
-    return this.#queue(() => {
-      this.ran.push(`write ${path}`);
-      this.files.set(path, bytes);
-    });
-  }
-
-  copy(from: string, to: string): Promise<void> {
-    return this.#queue(() => {
-      this.ran.push(`copy ${to}`);
-      const bytes = this.files.get(from);
-      if (bytes === undefined) throw new Error(`ENOENT: ${from}`);
-      if (this.files.has(to)) {
-        throw Object.assign(new Error(`EEXIST: ${to}`), { code: "EEXIST" });
-      }
-      const stops = this.copyStopsAfter;
-      this.copyStopsAfter = undefined;
-      if (stops === undefined) {
-        this.files.set(to, bytes);
-        return;
-      }
-      this.files.set(to, bytes.slice(0, stops));
-      throw Object.assign(new Error("ENOSPC: no space left on device"), {
-        code: "ENOSPC",
-      });
-    });
-  }
-
-  remove(path: string): Promise<void> {
-    return this.#queue(() => {
-      this.ran.push(`remove ${path}`);
-      if (this.removeRefuses === path) {
-        this.removeRefuses = undefined;
-        throw new Error(`EBUSY: ${path}`);
-      }
-      if (!this.files.delete(path)) throw new Error(`ENOENT: ${path}`);
-    });
-  }
-}
-
-/** Where {@link making} writes its own file before it makes one. */
-const own = ".making-1";
-
-/**
- * The file at `path` made with `adapter`, as `makeSymbolFile` makes one, with
- * its own file at {@link own}. `staging` runs as its own file is asked for.
- */
-function making(
-  adapter: FakeAdapter,
-  path: string,
-  bytes: Uint8Array,
-  { staging }: { staging?: () => void } = {},
-): NewFile {
-  return {
-    bytes,
-    exists: () => adapter.exists(path),
-    stage: () => {
-      staging?.();
-      return adapter.writeBinary(own, bytes);
-    },
-    place: () => adapter.copy(own, path),
-    taken: (error) =>
-      typeof error === "object" &&
-      error !== null &&
-      Reflect.get(error, "code") === "EEXIST",
-    read: () => adapter.read(path),
-    clear: () => adapter.remove(path),
-    unstage: () => adapter.remove(own),
-  };
-}
-
-describe("makeFile", () => {
-  const path = "a.ink.png";
-  const ours = new Uint8Array([1, 2, 3, 4, 5, 6]);
-  const theirs = new Uint8Array([7, 8, 9]);
-
-  it("makes a file where the disk has nothing, and takes its own away", async () => {
-    const adapter = new FakeAdapter();
-    await makeFile(making(adapter, path, ours));
-    expect(adapter.files.get(path)).toBe(ours);
-    expect(adapter.files.has(own)).toBe(false);
-    expect(adapter.ran).toEqual([
-      `exists ${path}`,
-      `write ${own}`,
-      `copy ${path}`,
-      `remove ${own}`,
-    ]);
-  });
-
-  it("leaves a file asked for just after its look, as the vault's own would write over it", async () => {
-    // #413. The vault's createBinary looks, and asks for its write once it
-    // has the answer: a file asked for in between runs first.
-    const vault = new FakeAdapter();
-    const look = vault.exists(path);
-    void vault.writeBinary(path, theirs);
-    if (!(await look)) await vault.writeBinary(path, ours);
-    expect(vault.files.get(path)).toBe(ours);
-    // The copy makes the file only where nothing is.
-    const adapter = new FakeAdapter();
-    const made = making(adapter, path, ours);
-    await expect(
-      makeFile({
-        ...made,
-        exists: () => {
-          const looking = made.exists();
-          void adapter.writeBinary(path, theirs);
-          return looking;
-        },
-      }),
-    ).rejects.toThrow(PathTaken);
-    expect(adapter.files.get(path)).toBe(theirs);
-    expect(adapter.files.has(own)).toBe(false);
-  });
-
-  it("leaves a file that comes as it writes its own, and writes nothing there", async () => {
-    const adapter = new FakeAdapter();
-    await expect(
-      makeFile(
-        making(adapter, path, ours, {
-          staging: () => void adapter.writeBinary(path, theirs),
-        }),
-      ),
-    ).rejects.toThrow(PathTaken);
-    expect(adapter.files.get(path)).toBe(theirs);
-    expect(adapter.files.has(own)).toBe(false);
-  });
-
-  it("leaves a file asked for before its look, and writes nothing of its own", async () => {
-    const adapter = new FakeAdapter();
-    void adapter.writeBinary(path, theirs);
-    await expect(makeFile(making(adapter, path, ours))).rejects.toThrow(
-      PathTaken,
-    );
-    expect(adapter.files.get(path)).toBe(theirs);
-    expect(adapter.ran).not.toContain(`write ${own}`);
-  });
-
-  /**
-   * Has `adapter` do `ask(n)` for n from 1 to `count`, each once the one
-   * before has run, as another plugin or Inkline's own index reading file
-   * after file does, and says how many have run.
-   */
-  function chain(
-    adapter: FakeAdapter,
-    count: number,
-    ask: (n: number) => Promise<unknown>,
-  ): () => number {
-    let done = 0;
-    void (async () => {
-      for (let n = 1; n <= count; n++) {
-        await ask(n).catch(() => undefined);
-        done = n;
-      }
-    })();
-    return () => done;
-  }
-
-  it("makes the file beside a chain of reads, without waiting for them", async () => {
-    // The review of #434: a save that waited for the disk to be quiet was
-    // refused beside 300 reads asked one after another, as Inkline's own
-    // index asks them.
-    const adapter = new FakeAdapter();
-    adapter.files.set("note.md", theirs);
-    const reads = chain(adapter, 300, () => adapter.read("note.md"));
-    await makeFile(making(adapter, path, ours));
-    expect(adapter.files.get(path)).toBe(ours);
-    expect(reads()).toBeLessThan(10);
-  });
-
-  // A plugin writing its files one after another, and one of them at the path,
-  // at each place in the run: a file it makes there before the copy is left,
-  // and one after it is its own write over the symbol, as any write is.
-  for (const nth of [1, 2, 3, 4, 5, 14]) {
-    it(`leaves a file that a run of writes makes at its path first, as write ${String(nth)} of 14`, async () => {
-      const adapter = new FakeAdapter();
-      const writes = chain(adapter, 14, (n) =>
-        adapter.writeBinary(n === nth ? path : `${String(n)}.md`, theirs),
-      );
-      const outcome = await makeFile(making(adapter, path, ours)).then(
-        () => "made",
-        (error: unknown) => (error instanceof PathTaken ? "left" : error),
-      );
-      await until(() => writes() === 14);
-      const theirsAt = adapter.ran.indexOf(`write ${path}`);
-      const copyAt = adapter.ran.indexOf(`copy ${path}`);
-      // No copy at all when the look found it.
-      expect(outcome).toBe(
-        copyAt === -1 || theirsAt < copyAt ? "left" : "made",
-      );
-      expect(adapter.files.get(path)).toBe(theirs);
-      expect(adapter.files.has(own)).toBe(false);
-    });
-  }
-
-  it("leaves nothing at the path when its own file cannot be written whole", async () => {
-    const adapter = new FakeAdapter();
-    const made = making(adapter, path, ours);
-    await expect(
-      makeFile({
-        ...made,
-        stage: async () => {
-          await adapter.writeBinary(own, ours.slice(0, 2));
-          throw new Error("ENOSPC: no space left on device");
-        },
-      }),
-    ).rejects.toThrow("ENOSPC");
-    expect(adapter.files.has(path)).toBe(false);
-    expect(adapter.files.has(own)).toBe(false);
-    expect(adapter.ran).not.toContain(`copy ${path}`);
-  });
-
-  for (const [left, stops] of [
-    ["the start of", 2],
-    ["none of", 0],
-  ] as const) {
-    it(`takes away ${left} the file that a copy cut short left, and fails as it did`, async () => {
-      const adapter = new FakeAdapter();
-      adapter.copyStopsAfter = stops;
-      const failure = await makeFile(making(adapter, path, ours)).catch(
-        (error: unknown) => error,
-      );
-      expect(failure).toBeInstanceOf(Error);
-      expect(failure).not.toBeInstanceOf(CutShort);
-      expect(String(failure)).toContain("ENOSPC");
-      expect(adapter.files.has(path)).toBe(false);
-      expect(adapter.files.has(own)).toBe(false);
-    });
-  }
-
-  it("says what a copy cut short left, when it cannot take that away", async () => {
-    const adapter = new FakeAdapter();
-    adapter.copyStopsAfter = 2;
-    adapter.removeRefuses = path;
-    const failure = await makeFile(making(adapter, path, ours)).catch(
-      (error: unknown) => error,
-    );
-    expect(failure).toBeInstanceOf(CutShort);
-    expect(failure instanceof CutShort && failure.held).toEqual(
-      ours.slice(0, 2),
-    );
-    expect(String(failure)).toContain("ENOSPC");
-    expect(adapter.files.get(path)).toEqual(ours.slice(0, 2));
-    expect(adapter.files.has(own)).toBe(false);
-  });
-
-  it("leaves what is at the path after a failed copy if it is not the start of its bytes", async () => {
-    // As a file another program wrote there once the copy had failed.
-    const adapter = new FakeAdapter();
-    const made = making(adapter, path, ours);
-    await expect(
-      makeFile({
-        ...made,
-        place: async () => {
-          await adapter.writeBinary(path, theirs);
-          throw new Error("EIO: i/o error");
-        },
-      }),
-    ).rejects.toThrow("EIO");
-    expect(adapter.files.get(path)).toBe(theirs);
-    expect(adapter.ran).not.toContain(`remove ${path}`);
-  });
-
-  it("makes the file all the same when its own cannot be taken away", async () => {
-    // Left for the sweep as Inkline next starts.
-    const adapter = new FakeAdapter();
-    adapter.removeRefuses = own;
-    await makeFile(making(adapter, path, ours));
-    expect(adapter.files.get(path)).toBe(ours);
-    expect(adapter.files.has(own)).toBe(true);
   });
 });
 

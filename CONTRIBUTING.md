@@ -328,13 +328,14 @@ fetches them; a shallow clone stays shallow with
 `git fetch --no-tags --depth=1 origin '+refs/tags/*:refs/tags/*'`. It is not
 part of `check`, which a shallow clone must pass; CI runs it on Linux.
 
-`open-responsiveness.e2e.ts` and `save-responsiveness.e2e.ts` hold the longest
-task and frame of opening and saving the largest symbols to budgets, which the
-guide's
-[Promises and evidence](https://viell-dev.github.io/slop-inkline/verification)
-lists. CI's runners, which run nothing else, keep well inside them. A machine
-busy with other work can go past them on `main` too
-([#401](https://github.com/viell-dev/slop-inkline/issues/401)), so a local
+Some end-to-end specs hold work to a time budget, such as the longest task and
+frame of opening and saving the largest symbols, and tagging a thousand symbols
+in a note; the guide's
+[Promises and evidence](https://viell-dev.github.io/slop-inkline/verification#it-stays-quick)
+lists most of them under "It stays quick". CI's runners, which run nothing else,
+keep well inside them. A machine busy with other work can go past them on `main`
+too ([#401](https://github.com/viell-dev/slop-inkline/issues/401),
+[#462](https://github.com/viell-dev/slop-inkline/issues/462)), so a local
 failure of a budget counts against a change only where a run of `main` in the
 same conditions passes; otherwise CI's run of the pull request is the evidence.
 The budgets are not raised for a busy machine.

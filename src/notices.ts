@@ -19,3 +19,8 @@ export function markNotice(notice: Notice): Notice {
   notice.messageEl.addClass(noticeClass);
   return notice;
 }
+
+/** What a notice says of `error`. */
+export function message(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
