@@ -500,24 +500,34 @@ them also get an independent review by another agent, as
 - Dependabot proposes updates weekly, a week after their publication, with
   development dependencies grouped. Security updates are not delayed.
 - An advisory against any version in the tree, development tools included, is
-  fixed without waiting for that week, but only in the versions the fix needs:
-  the smallest release that resolves it, from the package's usual publisher and
-  source, which the advisory or the release's notes name as the fix. Check the
-  package's own repository for advisories as well, since GitHub's database,
-  which `npm audit` and Dependabot read, can lag behind it. Install with
-  `--min-release-age=7` and `--min-release-age-exclude` for each fixed package,
-  so that nothing else skips the week, and read what changed in the published
-  package. Another agent reviews that change for a package with few users, one
-  with a new maintainer or way of publishing, or a fix that carries much else.
+  fixed without waiting for that week, but only in the releases the fix needs.
+  Each is the smallest release that does the job, from its package's usual
+  publisher and source, and is one of two kinds:
+  - the vulnerable package's own release that fixes it, which the advisory or
+    the release's notes name as the fix;
+  - a release of a dependency that brings the vulnerable package and takes that
+    fix: its published `package.json` asks for a fixed range, and its changelog
+    or the pull request that set that range names the fix.
+- Check the vulnerable package's own repository for advisories as well, since
+  GitHub's database, which `npm audit` and Dependabot read, can lag behind it.
+  Install with `--min-release-age=7` and `--min-release-age-exclude` for each
+  package taken inside its week, so that nothing else skips it, and read what
+  changed in each such published package. Another agent reviews that change for
+  a package with few users, one with a new maintainer or way of publishing, or a
+  fix that carries much else.
 - Take the fix as close to the vulnerable package as works: update it where the
   ranges that depend on it allow, or update the dependency that brings it to a
   release that takes the fix. Otherwise override the vulnerable copy in
   `package.json`, under the dependency that brings it and keyed to the range
   that dependency asks for, as `"mocha": { "minimatch@^10.2.2": "11.0.8" }`,
   once `npm run check` and the end-to-end suite show that dependency still
-  works. An override without the range also reaches the dependency's peers, as
-  ESLint under an ESLint plugin. An advisory with no working fixed version waits
-  in [#10](https://github.com/viell-dev/slop-inkline/issues/10).
+  works. Without the range, an override can also reach the dependency's peers,
+  as ESLint under an ESLint plugin: npm applied one there when it resolved from
+  an existing lockfile, though not from `package.json` alone. `package.json`
+  takes no comments, so each override's reason and removal condition go in
+  [#10](https://github.com/viell-dev/slop-inkline/issues/10), and the override
+  comes out once the dependency takes a fixed version. An advisory with no
+  working fixed version waits in #10.
 - [dependabot.yml](.github/dependabot.yml) owns the update holds and their
   reasons; `package.json` owns dependency overrides. The pinned overview
   [#10](https://github.com/viell-dev/slop-inkline/issues/10) indexes dependency
