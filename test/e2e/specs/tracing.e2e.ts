@@ -441,6 +441,42 @@ describe("The editor", function () {
       expect(near(await pictureShown(), shrunk, 1)).toBe(true);
     });
 
+    // Obsidian matches a key by what it types, or by its key code. On a
+    // layout whose number row types symbols, as a Czech one, the key in 1's
+    // place types + with 1's key code: while Move is on, it scales the
+    // picture, as + does elsewhere, rather than choosing a brush size.
+    it("scales the picture from a + key with 1's key code, as on a Czech keyboard", async function () {
+      await insert();
+      await pastePicture("red");
+      const placed = await waitForPicture((box) => box !== undefined);
+      if (placed === undefined) throw new Error("no picture");
+      await browser.keys(["m"]);
+      expect(await pressed("move")).toBe("true");
+      // WebDriver types as the container's US layout does, so the key is sent
+      // as that layout sends it.
+      await browser.execute(() => {
+        const target = activeDocument.activeElement ?? activeDocument.body;
+        target.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "+",
+            code: "Digit1",
+            keyCode: 49,
+            which: 49,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      });
+      const notch = Math.exp(100 / 500);
+      const middleX = (placed.left + placed.right) / 2;
+      const middleY = (placed.top + placed.bottom) / 2;
+      await waitForPicture((box) =>
+        near(box, scaled(placed, notch, middleX, middleY), 3),
+      );
+      expect(await pressed("size-1")).toBe("true");
+      expect(await pressed("size-0")).toBe("false");
+    });
+
     // Obsidian keeps the editor in the middle of the window, so a row that
     // opened or closed above the drawing area, or a zoom, while the picture
     // was dragged moved the drawing, and the picture with it, under the
