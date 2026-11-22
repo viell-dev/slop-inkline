@@ -1,7 +1,8 @@
 // The editor: a modal around a drawing session and its surface, with its
 // controls, saving, drafts, and the question before unsaved work is closed.
 // controls.ts makes the buttons and keys, which run the commands this
-// implements, and picture.ts holds the picture to trace over and Make ink.
+// implements, surface.ts holds the drawing area, which the pointer draws on,
+// and picture.ts holds the picture to trace over and Make ink.
 
 import {
   ConfirmationModal,
@@ -15,7 +16,6 @@ import { carriedChunks, type CarriedChunk } from "../format/ink-file.ts";
 import {
   parseRecord,
   serializeRecord,
-  unitsPerPixel,
   type BaseLayer,
   type InkRecord,
   type Tool,
@@ -27,8 +27,7 @@ import {
   saveInk,
   type EditableInk,
 } from "../ink/canvas.ts";
-import { documentSpan, toUnits, type InkDocument } from "../ink/document.ts";
-import { lineBox } from "../ink/geometry.ts";
+import { toUnits, type InkDocument } from "../ink/document.ts";
 import type { DrawableBase } from "../ink/render.ts";
 import { readText, writeText, type SymbolText } from "../format/text.ts";
 import { savingWaits, type RenameWait } from "../notes/file-writes.ts";
@@ -59,34 +58,21 @@ import {
   type ButtonLabels,
   type EditorCommands,
 } from "./buttons.ts";
-import { EditorControls, openHelp, typing } from "./controls.ts";
+import { EditorControls, openHelp } from "./controls.ts";
+import { keepsArrows, typing } from "./focus.ts";
 import { FileWatch, type FileReading, type Reading } from "./disk.ts";
-import {
-  contrastBrushCursor,
-  paintBrushCursor,
-  type BrushCursor,
-} from "./cursor.ts";
-import { PointerGate } from "./pointer.ts";
 import { StatusLine } from "./status.ts";
-import { DrawingSession, type InputPoint, type Shape } from "./session.ts";
+import { DrawingSession, type Shape } from "./session.ts";
+import type { GuideName } from "./guides.ts";
 import {
-  defaultGridCells,
-  finerGrid,
-  fontGrid,
-  fontGuides,
-  type FontMetrics,
-  type Guide,
-  type GuideName,
-} from "./guides.ts";
-import {
-  dragsPicture,
   pictureIn,
   PictureTracing,
   type TracedPicture,
   type TracingHost,
 } from "./picture.ts";
-import { isPicturePath, openLinkPath, wheelFactor } from "./reference.ts";
-import { InkView, measureFont, surfaceWidth } from "./view.ts";
+import { isPicturePath, openLinkPath } from "./reference.ts";
+import { EditorSurface, type SurfaceHost, type ViewWaits } from "./surface.ts";
+import { surfaceWidth, type InkView } from "./view.ts";
 import { markNotice } from "../notices.ts";
 
 /** How the vault's notes use a symbol: how many links, in how many notes. */
@@ -307,7 +293,6 @@ const textReplaced =
 export class InkEditorModal extends Modal {
   readonly #options: EditorOptions;
   readonly #session: DrawingSession;
-  readonly #gate = new PointerGate();
   /** This editor's own draft, which no other editor writes. */
   readonly #draftId = crypto.randomUUID();
   /** The symbol's file as last opened, reloaded, or saved, and changes to it. */
@@ -348,43 +333,8 @@ export class InkEditorModal extends Modal {
   #advancing = false;
   /** The choice of a symbol to copy while it is open, to close with this. */
   #choosing: AbortController | undefined;
-  #view: InkView | undefined;
-  #cursor: HTMLCanvasElement | undefined;
-  #cursorSize:
-    | { diameter: number; ratio: number; brush: BrushCursor | undefined }
-    | undefined;
-  readonly #resizeCursor = (): void => {
-    this.#updateCursor();
-  };
-  /**
-   * Shift pressed or let go, as any key's event says, with the pointer
-   * still: a stroke being drawn can end otherwise for it, as the eraser's
-   * preview shows.
-   */
-  readonly #shiftKey = (event: KeyboardEvent): void => {
-    if (this.#session.holdShift(event.shiftKey)) this.#render();
-  };
-  /**
-   * Changes to the view asked for while the pointer was pressed on the
-   * surface, to draw or to drag the picture, for when it is let go: Zoom as a
-   * switch, so that asking twice leaves the view as it is, and Fit. Make ink
-   * waits in the same way ({@link PictureTracing.takeInkWait}).
-   */
-  #viewWaits: { zoom: boolean; fit: boolean } = { zoom: false, fit: false };
-  /**
-   * Whether Make ink's row showed at the press, which it keeps doing until
-   * the release, or undefined while the pointer is not pressed. A picture
-   * pasted in place of the one it was open for, ink made by Apply, or Cancel
-   * closes it meanwhile, which would move the drawing under the pointer.
-   */
-  #barHeld: boolean | undefined;
-  /**
-   * Where the pointer pressed to draw last was in the window, while it is,
-   * and where that was in the drawing as what is drawn took it.
-   */
-  #pressedAt:
-    { clientX: number; clientY: number; x: number; y: number } | undefined;
-  #hover: { pointerId: number; clientX: number; clientY: number } | undefined;
+  /** The drawing area, once the editor has opened. */
+  #surface: EditorSurface | undefined;
   #saving: Promise<boolean> | undefined;
   #closing = false;
   /**
@@ -394,8 +344,6 @@ export class InkEditorModal extends Modal {
   #retired = false;
   /** Whether a save was running when the editor was disposed, until it ends. */
   #settling = false;
-  #frame: number | undefined;
-  #resize: ResizeObserver | undefined;
   #status: HTMLElement | undefined;
   /**
    * What the status line says, which whatever the person does replaces, and
@@ -418,13 +366,6 @@ export class InkEditorModal extends Modal {
   /** Whether the last draft written was kept; storage can refuse one. */
   #draftKept = true;
   #guidesShown = true;
-  /** The note font's metrics and lines, measured when the editor opens. */
-  #fontMetrics: FontMetrics | undefined;
-  #fontGuides: readonly Guide[] = [];
-  #previewLine: HTMLElement | undefined;
-  #preview: HTMLCanvasElement | undefined;
-  #fonts: FontFaceSet | undefined;
-  #cssChange: EventRef | undefined;
   /**
    * The draft this editor restored, until its own draft or a save takes its
    * place: storage may refuse the editor's own at first.
@@ -515,7 +456,7 @@ export class InkEditorModal extends Modal {
     super.open();
     // Obsidian chooses its initial focus after onOpen. Take the drawing's
     // focus immediately, before a shortcut can type in the name field.
-    this.#view?.canvas.focus();
+    this.#surface?.focus();
   }
 
   override onOpen(): void {
@@ -535,49 +476,19 @@ export class InkEditorModal extends Modal {
     this.#pasteDocument = this.modalEl.doc;
     this.#pasteDocument.addEventListener("paste", this.#paste);
 
-    const drawing = this.contentEl.createDiv({ cls: "inkline-drawing" });
-    const labelId = `inkline-drawing-${this.#draftId}`;
-    drawing.createSpan({
-      text: "Drawing area",
-      attr: { id: labelId, hidden: "" },
+    const surface = new EditorSurface(this.contentEl, {
+      host: this.#surfaceHost(),
+      session: this.#session,
+      line: this.#line,
+      picture: this.#tracing,
+      labelId: `inkline-drawing-${this.#draftId}`,
+      width: surfaceWidth(this.#options.width ?? 0),
+      center: this.#options.center,
+      magnified: this.#options.tools?.magnified === true,
+      guideLines: this.#options.guideLines,
+      gridCells: this.#options.gridCells,
     });
-    const canvas = drawing.createEl("canvas", {
-      cls: "inkline-surface",
-      attr: {
-        tabindex: "0",
-        role: "img",
-        // Obsidian turns aria-label into a tooltip. A separate label keeps
-        // the accessible name without covering the drawing on hover.
-        "aria-labelledby": labelId,
-      },
-    });
-    this.#cursor = drawing.createEl("canvas", {
-      cls: "inkline-brush-cursor",
-      attr: { "aria-hidden": "true" },
-    });
-    this.#cursorSize = undefined;
-    this.#cursor.hide();
-    canvas.win.addEventListener("resize", this.#resizeCursor);
-    // Before the editor's shortcuts, which can stop a key's event.
-    canvas.win.addEventListener("keydown", this.#shiftKey, true);
-    canvas.win.addEventListener("keyup", this.#shiftKey, true);
-    // A line in the vault's text font and size, with the symbol at its size
-    // there. Its font gives the guides.
-    const line = this.contentEl.createDiv({
-      cls: "inkline-preview",
-      attr: { "aria-hidden": "true" },
-    });
-    line.createSpan({ text: "A line of text with " });
-    this.#preview = line.createEl("canvas", { cls: "inkline-preview-ink" });
-    line.createSpan({ text: " in it." });
-    this.#previewLine = line;
-    this.#measure();
-    // The font can arrive later, as a theme's web font, or change with the
-    // theme or a CSS snippet; then the guides are measured again.
-    line.doc.fonts.addEventListener("loadingdone", this.#remeasure);
-    this.#fonts = line.doc.fonts;
-    void line.doc.fonts.ready.then(this.#remeasure);
-    this.#cssChange = this.app.workspace.on("css-change", this.#remeasure);
+    this.#surface = surface;
     this.#watchFile();
     this.#status = this.contentEl.createDiv({
       cls: "inkline-status",
@@ -588,26 +499,13 @@ export class InkEditorModal extends Modal {
       cls: "inkline-save-wait",
       attr: { role: "alert" },
     });
-    const view = new InkView(canvas, surfaceWidth(this.#options.width ?? 0));
-    this.#view = view;
-    view.centerOn(this.#options.center);
-    view.magnified = this.#options.tools?.magnified === true;
     // The editor before this one's picture, where it was on the surface.
     const carried = this.#options.tools?.picture;
-    if (carried !== undefined) this.#tracing.takeOver(carried, view.center);
-    this.#listen(canvas);
+    if (carried !== undefined) {
+      this.#tracing.takeOver(carried, surface.view.center);
+    }
     controls.registerKeys(this.scope);
-
-    this.#resize = new ResizeObserver(() => {
-      this.#resized(() => {
-        this.#resizeView();
-      });
-      this.#render();
-    });
-    this.#resize.observe(canvas);
-    // A magnified surface's height follows the window's.
-    canvas.win.addEventListener("resize", this.#windowResized);
-    this.#resizeView();
+    surface.watchSize();
     this.#updateButtons();
     this.#render();
     this.#options.drafts?.store.hold(this.#draftId);
@@ -661,10 +559,10 @@ export class InkEditorModal extends Modal {
       },
       copy: () => void this.#copy(),
       fit: () => {
-        this.#fit();
+        this.#surface?.fit();
       },
       toggleZoom: () => {
-        this.#toggleZoom();
+        this.#surface?.toggleZoom();
       },
       saveAndClose: () => void this.#saveAndClose(),
       saveOnly: () => void this.#saveOnly(),
@@ -696,7 +594,7 @@ export class InkEditorModal extends Modal {
         this.#tracing.cancelInk();
       },
       endShape: () => {
-        const canvas = this.#view?.canvas;
+        const canvas = this.#surface?.view.canvas;
         if (!this.#session.placing || activeDocument.activeElement !== canvas) {
           return false;
         }
@@ -721,13 +619,52 @@ export class InkEditorModal extends Modal {
     };
   }
 
+  /** What the drawing area is given of the editor. */
+  #surfaceHost(): SurfaceHost {
+    return {
+      say: (text, holds) => {
+        this.#announce(text, holds);
+      },
+      updateControls: () => {
+        this.#updateButtons();
+      },
+      changed: () => {
+        this.#changed();
+      },
+      shown: (view) => this.#shown(view),
+      guidesShown: () => this.#guidesShown,
+      released: (waits) => {
+        this.#viewAfterPress(waits);
+      },
+      drop: (data) => {
+        this.#dropped(data);
+      },
+      ended: () => this.#ended(),
+      overflow: () => this.modalEl.scrollHeight - this.modalEl.clientHeight,
+      around: () => ({
+        above: [this.#controls?.pictureBar].filter(
+          (element) => element !== undefined,
+        ),
+        below: [this.#status, this.#saveWait].filter(
+          (element) => element !== undefined,
+        ),
+      }),
+      convertBarShown: () => this.#controls?.convertBarShown(),
+      watchCss: (change) => {
+        const ref = this.app.workspace.on("css-change", change);
+        return () => {
+          this.app.workspace.offref(ref);
+        };
+      },
+    };
+  }
+
   /** What the picture and Make ink are given of the editor. */
   #tracingHost(): TracingHost {
     return {
-      view: () => this.#view,
-      capHeight: () =>
-        this.#fontGuides.find((guide) => guide.name === "cap height")?.y,
-      held: () => this.#held,
+      view: () => this.#surface?.view,
+      capHeight: () => this.#surface?.capHeight(),
+      held: () => this.#surface?.held === true,
       ended: () => this.#ended(),
       say: (text, holds) => {
         this.#announce(text, holds);
@@ -773,18 +710,7 @@ export class InkEditorModal extends Modal {
     this.#choosing?.abort();
     for (const ref of this.#vaultEvents) this.app.vault.offref(ref);
     this.#vaultEvents = [];
-    this.#resize?.disconnect();
-    this.#view?.canvas.win.removeEventListener("resize", this.#windowResized);
-    this.#view?.canvas.win.removeEventListener("resize", this.#resizeCursor);
-    this.#view?.canvas.win.removeEventListener("keydown", this.#shiftKey, true);
-    this.#view?.canvas.win.removeEventListener("keyup", this.#shiftKey, true);
-    this.#fonts?.removeEventListener("loadingdone", this.#remeasure);
-    if (this.#cssChange !== undefined) {
-      this.app.workspace.offref(this.#cssChange);
-    }
-    if (this.#frame !== undefined) {
-      this.#view?.canvas.win.cancelAnimationFrame(this.#frame);
-    }
+    this.#surface?.dispose();
     for (const question of [...this.#questions]) question.close();
     this.#pasteDocument?.removeEventListener("paste", this.#paste);
     // Pictures still being decoded are closed as they arrive.
@@ -993,7 +919,7 @@ export class InkEditorModal extends Modal {
     field.addEventListener("keydown", (event) => {
       if (event.key !== "Enter" || event.isComposing) return;
       event.preventDefault();
-      this.#view?.canvas.focus({ preventScroll: true });
+      this.#surface?.focus({ preventScroll: true });
     });
     this.#nameField = field;
   }
@@ -1031,7 +957,7 @@ export class InkEditorModal extends Modal {
         const open = !strip.isShown();
         this.#showText(open);
         if (open) this.#textFields?.focus();
-        else this.#view?.canvas.focus({ preventScroll: true });
+        else this.#surface?.focus({ preventScroll: true });
       });
     });
     this.#showTextSummary();
@@ -1048,9 +974,19 @@ export class InkEditorModal extends Modal {
       this.#textStrip?.toggle(open);
       this.#textToggle?.setAttribute("aria-expanded", String(open));
       this.#showTextSummary();
-      this.#resizeView();
+      this.#surface?.resizeView();
     });
     this.#render();
+  }
+
+  /**
+   * Runs `change`, which changes the editor's size, as the drawing area
+   * follows such a change ({@link EditorSurface.resized}), or alone while
+   * the editor has not opened yet.
+   */
+  #resized(change: () => void): void {
+    if (this.#surface === undefined) change();
+    else this.#surface.resized(change);
   }
 
   /** Whether text typed would replace a change that `opened` holds. */
@@ -1120,176 +1056,6 @@ export class InkEditorModal extends Modal {
       : "Saved, but not renamed";
   }
 
-  #listen(canvas: HTMLCanvasElement): void {
-    const hover = (event: PointerEvent): void => {
-      if (this.#gate.active !== undefined && !this.#gate.owns(event)) return;
-      this.#hover = {
-        pointerId: event.pointerId,
-        clientX: event.clientX,
-        clientY: event.clientY,
-      };
-      this.#updateCursor();
-    };
-    const hideCursor = (event: PointerEvent): void => {
-      if (event.pointerId !== this.#hover?.pointerId) return;
-      this.#hover = undefined;
-      this.#updateCursor();
-    };
-    canvas.addEventListener("pointerenter", hover);
-    canvas.addEventListener("pointerleave", hideCursor);
-    canvas.addEventListener("pointercancel", hideCursor);
-    const point = (event: PointerEvent): InputPoint => {
-      return (
-        this.#view?.toDocument(event.clientX, event.clientY) ?? { x: 0, y: 0 }
-      );
-    };
-    const finish = (event: PointerEvent): void => {
-      if (!this.#gate.release(event)) return;
-      if (this.#tracing.dragging) {
-        // The picture stays where the drag left it, or where a release says.
-        if (event.type === "pointerup" || event.type === "pointermove") {
-          this.#drag(event);
-        }
-        this.#tracing.endDrag();
-        canvas.removeClass("is-dragging");
-        this.#letGoAround();
-        this.#viewAfterPress();
-        return;
-      }
-      this.#pressedAt = undefined;
-      if (event.type === "pointercancel") this.#session.cancel();
-      // A release, unlike a lost capture, says where the pointer ended.
-      else if (event.type === "lostpointercapture") this.#session.end();
-      else this.#session.end(point(event), event.shiftKey);
-      // Once the release has been taken where the drawing was.
-      this.#letGoAround();
-      this.#changed();
-      this.#viewAfterPress();
-    };
-    /** Keeps where the pointer pressed to draw is, as it reports it. */
-    const pressedAt = (event: PointerEvent): void => {
-      const { clientX, clientY } = event;
-      this.#pressedAt = { clientX, clientY, ...point(event) };
-    };
-    canvas.addEventListener("pointerdown", (event) => {
-      if (!this.#gate.down(event)) return;
-      // Before the press empties the status line, which would move the
-      // drawing under it.
-      this.#holdAround();
-      event.preventDefault();
-      // Drawing takes the focus, which the default action would have, so
-      // that the shortcuts are the editor's again after typing elsewhere.
-      canvas.focus({ preventScroll: true });
-      canvas.setPointerCapture(event.pointerId);
-      this.#line.act(() => {
-        if (this.#tracing.moving) {
-          this.#tracing.startDrag(point(event));
-          canvas.addClass("is-dragging");
-          return;
-        }
-        this.#session.begin(point(event), event.shiftKey);
-        pressedAt(event);
-        hover(event);
-        this.#render();
-      });
-    });
-    canvas.addEventListener("pointermove", (event) => {
-      hover(event);
-      if (!this.#gate.owns(event)) {
-        // Between clicks, a polygon's next side, or a path's next curve,
-        // follows the pointer, to the grid while Shift is held.
-        if (this.#gate.active === undefined && this.#session.placing) {
-          this.#session.extend([point(event)], event.shiftKey);
-          this.#render();
-        }
-        return;
-      }
-      // Releasing the drawing button while another is held is a move.
-      if (!this.#gate.holds(event)) {
-        finish(event);
-        return;
-      }
-      if (this.#tracing.dragging) {
-        this.#drag(event);
-        return;
-      }
-      const events =
-        typeof event.getCoalescedEvents === "function"
-          ? event.getCoalescedEvents()
-          : [];
-      // Shift draws a straight segment, or a circle, while it is held, and
-      // what it places goes on the grid while that is on.
-      this.#session.extend(
-        (events.length > 0 ? events : [event]).map(point),
-        event.shiftKey,
-      );
-      pressedAt(event);
-      this.#render();
-    });
-    canvas.addEventListener("pointerup", finish);
-    canvas.addEventListener("pointercancel", finish);
-    canvas.addEventListener("lostpointercapture", finish);
-    canvas.addEventListener("contextmenu", (event) => {
-      event.preventDefault();
-    });
-    // While moving the picture, the wheel scales it about the pointer.
-    canvas.addEventListener(
-      "wheel",
-      (event) => {
-        const view = this.#view;
-        if (view === undefined) return;
-        const moving = this.#tracing.moving;
-        // Magnified, and not moving the picture, the wheel moves along the
-        // drawing.
-        if (!moving && view.magnified) {
-          event.preventDefault();
-          const delta = event.deltaX === 0 ? event.deltaY : event.deltaX;
-          const lines = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : 1;
-          const { left, right } = view.visible;
-          this.#line.act(() => {
-            view.pan(
-              ((delta * lines) / view.contentBox().width) * (right - left),
-            );
-            this.#followPointer();
-            this.#render();
-          });
-          return;
-        }
-        if (!moving || this.#tracing.picture === undefined) return;
-        event.preventDefault();
-        const { x, y } = view.toDocument(event.clientX, event.clientY);
-        this.#line.act(() => {
-          this.#tracing.scaleAbout(
-            wheelFactor(event.deltaY, event.deltaMode),
-            x,
-            y,
-          );
-        });
-      },
-      { passive: false },
-    );
-    // A picture dropped on the surface.
-    canvas.addEventListener("dragover", (event) => {
-      if (!dragsPicture(event)) return;
-      event.preventDefault();
-      if (event.dataTransfer !== null) event.dataTransfer.dropEffect = "copy";
-      canvas.addClass("is-drop-target");
-    });
-    canvas.addEventListener("dragleave", () => {
-      canvas.removeClass("is-drop-target");
-    });
-    canvas.addEventListener("drop", (event) => {
-      canvas.removeClass("is-drop-target");
-      if (!dragsPicture(event)) return;
-      // Neither the browser nor Obsidian does anything else with it.
-      event.preventDefault();
-      event.stopPropagation();
-      this.#line.act(() => {
-        this.#dropped(event.dataTransfer);
-      });
-    });
-  }
-
   /** Traces over a picture dropped on the surface, or says why not. */
   #dropped(data: DataTransfer | null): void {
     const picture = pictureIn(data);
@@ -1352,19 +1118,12 @@ export class InkEditorModal extends Modal {
     return modals.item(modals.length - 1) === this.containerEl;
   }
 
-  /** Moves the picture being dragged to where the pointer is in the drawing. */
-  #drag(event: PointerEvent): void {
-    const view = this.#view;
-    if (!this.#tracing.dragging || view === undefined) return;
-    this.#tracing.dragTo(view.toDocument(event.clientX, event.clientY));
-  }
-
   /**
    * Puts the focus on the surface, as after a control that had it hides or
    * is disabled, which would leave it nowhere.
    */
   #refocus(): void {
-    this.#view?.canvas.focus({ preventScroll: true });
+    this.#surface?.focus({ preventScroll: true });
   }
 
   /**
@@ -1386,112 +1145,6 @@ export class InkEditorModal extends Modal {
     return this.#closing || this.#retired;
   }
 
-  /** Fits the surface to the whole drawing, as one restored from a draft. */
-  #fitView(): void {
-    const view = this.#view;
-    if (view === undefined) return;
-    // What the surface shows: the drawing, or the ink being made.
-    const { document } = this.#shown(view);
-    const span = documentSpan(document);
-    if (span === undefined) return;
-    view.fit(span.left, span.right);
-    this.#resizeView();
-  }
-
-  /**
-   * Fits the surface to its width, with a magnified surface no taller than
-   * a little over half the window, and less if the editor would then have to
-   * scroll, so that the controls stay in view and the width stays what it was.
-   */
-  #resizeView(): void {
-    const view = this.#view;
-    if (view === undefined) return;
-    const { canvas } = view;
-    const { width } = view.contentBox();
-    const ratio = canvas.win.devicePixelRatio;
-    view.heightLimit = canvas.win.innerHeight * 0.55;
-    view.resize(width, ratio);
-    if (!view.magnified) return;
-    const over = this.modalEl.scrollHeight - this.modalEl.clientHeight;
-    if (over <= 0) return;
-    view.heightLimit = canvas.clientHeight - over;
-    view.resize(width, ratio);
-  }
-
-  readonly #windowResized = (): void => {
-    if (this.#closing || this.#retired) return;
-    this.#resized(() => {
-      if (this.#view?.magnified === true) this.#resizeView();
-    });
-    this.#render();
-  };
-
-  /**
-   * Runs `change`, which follows or makes a change to the window's, the
-   * editor's, or the drawing area's size, and then ends what is being drawn
-   * where it was shown, as a lost capture does, if the drawing has moved under
-   * the pointer pressed to draw since it last reported. The window may have
-   * moved with it, so where the pointer is in the drawing is not known until
-   * it reports again, and its release would end the stroke in a segment never
-   * shown (#393). A polygon's corner, or a path's point or handle, being
-   * pressed is left as it is: its release places it where the release says,
-   * as ever. A picture being dragged needs nothing here: it rejoins the
-   * pointer at its next report ({@link PictureTracing.dragTo}), as moving it
-   * makes no ink.
-   */
-  #resized(change: () => void): void {
-    change();
-    const view = this.#view;
-    const at = this.#pressedAt;
-    if (!this.#pressed || view === undefined || at === undefined) return;
-    const now = view.toDocument(at.clientX, at.clientY);
-    if (now.x === at.x && now.y === at.y) return;
-    if (!this.#session.drawing || this.#session.placing) return;
-    this.#session.end();
-    this.#changed();
-    this.#announce("Ended the stroke where it showed: the drawing area moved");
-  }
-
-  /**
-   * Moves a magnified view along the drawing by a quarter of what the surface
-   * shows, for the left or right arrow key, unless a field has the focus.
-   * Returns whether it did.
-   */
-  #panKey(name: string): boolean {
-    const view = this.#view;
-    const direction =
-      name === "ArrowLeft" ? -1 : name === "ArrowRight" ? 1 : undefined;
-    if (direction === undefined || view?.magnified !== true) return false;
-    const focused = activeDocument.activeElement;
-    if (typing(focused) || focused?.instanceOf(HTMLInputElement) === true) {
-      return false;
-    }
-    const { left, right } = view.visible;
-    view.pan((direction * (right - left)) / 4);
-    this.#followPointer();
-    this.#render();
-    return true;
-  }
-
-  /**
-   * After the view moves along the drawing, as the wheel and the left and
-   * right arrow keys move a magnified one, carries what is being drawn on to
-   * where the pointer pressed to draw now is in the drawing, as a move there
-   * would: the drawing moved under it, like paper under a pen, and what is
-   * drawn stays under the pointer and shows what letting go saves (#393).
-   * Moving along while drawing can be meant, to take a long stroke past the
-   * edge of the view. A polygon's corner, or a path's point or handle, being
-   * pressed goes on to the pointer in the same way. The caller draws again.
-   */
-  #followPointer(): void {
-    const view = this.#view;
-    const at = this.#pressedAt;
-    if (!this.#pressed || view === undefined || at === undefined) return;
-    const now = view.toDocument(at.clientX, at.clientY);
-    this.#pressedAt = { ...at, ...now };
-    this.#session.follow(now);
-  }
-
   /**
    * What an arrow key does when no picture is being moved, unless a field
    * has the focus: the up and down keys move the drawing, by a grid cell's
@@ -1502,12 +1155,12 @@ export class InkEditorModal extends Modal {
   #arrowKey(name: string, shift: boolean): boolean {
     const direction =
       name === "ArrowUp" ? -1 : name === "ArrowDown" ? 1 : undefined;
-    if (direction === undefined) return !shift && this.#panKey(name);
-    const focused = activeDocument.activeElement;
+    if (direction === undefined) {
+      return !shift && this.#surface?.panKey(name) === true;
+    }
     if (
       this.#tracing.converting !== undefined ||
-      typing(focused) ||
-      focused?.instanceOf(HTMLInputElement) === true
+      keepsArrows(activeDocument.activeElement)
     ) {
       return false;
     }
@@ -1530,112 +1183,6 @@ export class InkEditorModal extends Modal {
   }
 
   /**
-   * What changes height with what it says, around the drawing area: the
-   * picture's row above it, whose hint can wrap otherwise, and the line of
-   * text, the status line, and the save's waiting message below it.
-   */
-  get #heldAround(): HTMLElement[] {
-    return [
-      this.#controls?.pictureBar,
-      this.#previewLine,
-      this.#status,
-      this.#saveWait,
-    ].filter((element) => element !== undefined);
-  }
-
-  /**
-   * Keeps what is around the drawing area at the height it has while the
-   * pointer is pressed on it, until {@link #letGoAround}. Obsidian keeps the
-   * editor in the middle of the window, so a line that grew or shrank, as
-   * the status line does when the press empties a message of two lines, or
-   * a message said meanwhile wraps, moved the drawing under the pointer in
-   * the middle of a stroke (#427). What does not fit shows once the pointer
-   * is let go, and a screen reader hears it at once, as before. Make ink's
-   * row, which opens or closes whole, shows or not as it did at the press
-   * ({@link #barHeld}).
-   */
-  #holdAround(): void {
-    for (const element of this.#heldAround) {
-      // As laid out, to the fraction of a pixel, as the pointer is mapped by
-      // the same measure; the computed style's height can differ from it by
-      // that fraction, enough to move the drawing by as much.
-      const { height } = element.getBoundingClientRect();
-      element.style.setProperty("--inkline-held-height", `${String(height)}px`);
-      element.addClass("inkline-held");
-    }
-    this.#barHeld = this.#controls?.convertBarShown();
-  }
-
-  /** Lets what {@link #holdAround} held take its own height again. */
-  #letGoAround(): void {
-    for (const element of this.#heldAround) {
-      element.removeClass("inkline-held");
-      element.style.removeProperty("--inkline-held-height");
-    }
-    if (this.#barHeld === undefined) return;
-    this.#barHeld = undefined;
-    this.#updateButtons();
-  }
-
-  /** Whether the pointer is pressed on the surface to draw, not to drag. */
-  get #pressed(): boolean {
-    return this.#gate.active !== undefined && !this.#tracing.dragging;
-  }
-
-  /**
-   * Whether the pointer is pressed on the surface, to draw or to drag the
-   * picture: what moves the drawing under it waits for the release then.
-   */
-  get #held(): boolean {
-    return this.#gate.active !== undefined;
-  }
-
-  /** Whether the view is magnified, or will be once the pointer is let go. */
-  get #zoomed(): boolean {
-    return (this.#view?.magnified === true) !== this.#viewWaits.zoom;
-  }
-
-  /**
-   * Magnifies the drawing, or shows it as usual again. While the pointer is
-   * pressed on the surface, that waits until it is let go: zooming moves what
-   * the pointer is over, so a stroke, a shape, a polygon's corner, or a path's
-   * point or handle being drawn would end somewhere other than it shows, as
-   * the release then lands elsewhere in the drawing (#382), and a picture
-   * being dragged would leave the pointer (#444). So it keeps the view it
-   * started in, as it keeps its grid ({@link DrawingSession.grid}), its tool,
-   * and its size.
-   */
-  #toggleZoom(): void {
-    if (!this.#held) {
-      this.#zoom();
-      return;
-    }
-    this.#viewWaits.zoom = !this.#viewWaits.zoom;
-    this.#updateButtons();
-    if (this.#viewWaits.zoom) {
-      this.#announce(
-        this.#zoomed
-          ? "Zooming in once you let go"
-          : "Zooming out once you let go",
-      );
-    }
-  }
-
-  /**
-   * Fits the view to the drawing, or once the pointer is let go if it is
-   * pressed on the surface, for the same reason as Zoom waits (#393, #444).
-   */
-  #fit(): void {
-    if (!this.#held) {
-      this.#fitView();
-      this.#render();
-      return;
-    }
-    this.#viewWaits.fit = true;
-    this.#announce("Fitting once you let go");
-  }
-
-  /**
    * Makes the changes to the view asked for while the pointer was pressed on
    * the surface, now that what was drawn has ended where the view put it, or
    * the picture dragged where the pointer left it, unless the editor has
@@ -1646,9 +1193,7 @@ export class InkEditorModal extends Modal {
    * not open behind a question that came meanwhile, as Save there would make
    * ink at a threshold never seen.
    */
-  #viewAfterPress(): void {
-    const { zoom, fit } = this.#viewWaits;
-    this.#viewWaits = { zoom: false, fit: false };
+  #viewAfterPress({ zoom, fit }: ViewWaits): void {
     const ink = this.#tracing.takeInkWait();
     const inkChanges =
       ink !== undefined && ink !== (this.#tracing.converting !== undefined);
@@ -1657,9 +1202,9 @@ export class InkEditorModal extends Modal {
     if (ink !== undefined) this.#updateButtons();
     if (!zoom && !fit && !inkChanges) return;
     this.#line.act(() => {
-      if (zoom) this.#zoom();
+      if (zoom) this.#surface?.zoom();
       if (fit) {
-        this.#fitView();
+        this.#surface?.fitView();
         this.#render();
       }
       if (!inkChanges) return;
@@ -1671,104 +1216,10 @@ export class InkEditorModal extends Modal {
     });
   }
 
-  /** Magnifies the drawing, or shows it as usual again, now. */
-  #zoom(): void {
-    const view = this.#view;
-    if (view === undefined) return;
-    view.magnified = !view.magnified;
-    this.#layOutGrid(this.#chosenLines());
-    this.#resizeView();
-    this.#updateButtons();
-    this.#render();
-    this.#announce(
-      view.magnified
-        ? "Zoomed in: the wheel or the left and right arrow keys move along the drawing"
-        : "Zoomed out",
-    );
-  }
-
+  /** Draws the drawing area again, in the next frame. */
   #render(): void {
-    const view = this.#view;
-    if (this.#frame !== undefined || view === undefined) return;
-    // The surface's own window, which differs from the main one in a popout.
-    this.#frame = view.canvas.win.requestAnimationFrame(() => {
-      this.#frame = undefined;
-      const chosen = this.#chosenLines();
-      view.lines = this.#guidesShown ? chosen : undefined;
-      this.#layOutGrid(chosen);
-      view.grid = this.#session.snap
-        ? { ...this.#session.grid, originX: this.#session.gridOrigin }
-        : undefined;
-      view.reference = this.#tracing.picture;
-      view.path = this.#session.pathMarks;
-      // A press takes hold of a path's marks as near as they show.
-      this.#session.markReach = view.markReach;
-      const { document, base } = this.#shown(view);
-      const { activeStrokes, shape, tool } = this.#session;
-      view.render(
-        document,
-        base,
-        activeStrokes,
-        tool === "eraser" && shape !== "free",
-      );
-      this.#updateCursor();
-      const line = this.#previewLine;
-      if (this.#preview !== undefined && line !== undefined) {
-        view.drawPreview(
-          this.#preview,
-          Number.parseFloat(getComputedStyle(line).fontSize),
-        );
-      }
-    });
+    this.#surface?.render();
   }
-
-  /** Measures the preview line's font for the guides. */
-  #measure(): void {
-    const line = this.#previewLine;
-    if (line === undefined) return;
-    const font = getComputedStyle(line);
-    const metrics = measureFont(
-      {
-        style: font.fontStyle,
-        weight: font.fontWeight,
-        family: font.fontFamily,
-      },
-      line.doc,
-    );
-    this.#fontMetrics = metrics;
-    this.#fontGuides = fontGuides(metrics);
-    this.#layOutGrid(this.#chosenLines());
-  }
-
-  /** The font's lines that the settings choose to show, whether shown now or not. */
-  #chosenLines(): readonly Guide[] {
-    const chosen = this.#options.guideLines?.();
-    return this.#fontGuides.filter((guide) => chosen?.has(guide.name) ?? true);
-  }
-
-  /**
-   * Lays the grid out on the font's `lines` that the settings choose, shown
-   * or not, so that the guides' key never moves it, with the cells across the
-   * x-height that they choose, and twice as many each way in a magnified view.
-   */
-  #layOutGrid(lines: readonly Guide[]): void {
-    const { pxPerEm } = lineBox;
-    const xHeight = this.#fontMetrics?.xHeight;
-    const grid = fontGrid(
-      lines,
-      xHeight === undefined ? Number.NaN : xHeight * pxPerEm,
-      this.#options.gridCells?.() ?? defaultGridCells,
-    );
-    this.#session.grid =
-      this.#view?.magnified === true ? finerGrid(grid) : grid;
-  }
-
-  /** Measures the font again and redraws, as after a font loads. */
-  readonly #remeasure = (): void => {
-    if (this.#closing || this.#retired) return;
-    this.#measure();
-    this.#render();
-  };
 
   #toggleGuides(): void {
     this.#guidesShown = !this.#guidesShown;
@@ -1926,7 +1377,7 @@ export class InkEditorModal extends Modal {
       grid: this.#session.snap,
       canEndFlat: this.#canEndFlat,
       flatEnds: this.#session.flatEnds,
-      zoomed: this.#zoomed,
+      zoomed: this.#surface?.zoomed === true,
       sizeIndex: this.#session.sizeIndex,
       canUndo: this.#session.canUndo,
       canRedo: this.#session.canRedo,
@@ -1936,90 +1387,14 @@ export class InkEditorModal extends Modal {
     });
     this.#controls?.show({
       ...states,
-      convertBar: this.#barHeld ?? states.convertBar,
+      convertBar: this.#surface?.barHeld ?? states.convertBar,
     });
-    this.#view?.canvas.toggleClass("is-moving", tracing.moving);
-    this.#updateCursor();
-  }
-
-  /** A fixed pointer bitmap only: never part of the preview or saved ink. */
-  #updateCursor(): void {
-    const cursor = this.#cursor;
-    const view = this.#view;
-    const hover = this.#hover;
-    if (view === undefined || cursor === undefined) return;
-    const canvas = view.canvas;
-    if (hover === undefined || this.#tracing.moving) {
-      cursor.hide();
-      canvas.removeClass("has-brush-cursor");
-      return;
-    }
-    // Shown over the drawing alone, not over a border or padding round it.
-    const box = view.contentBox();
-    const x = hover.clientX - box.left;
-    const y = hover.clientY - box.top;
-    const inside = x >= 0 && y >= 0 && x < box.width && y < box.height;
-    if (!inside) {
-      cursor.hide();
-      canvas.removeClass("has-brush-cursor");
-      return;
-    }
-    const size = this.#session.activeSize ?? this.#session.size;
-    const diameter =
-      ((size / unitsPerPixel) * box.width) /
-      (view.visible.right - view.visible.left);
-    const ratio = canvas.win.devicePixelRatio;
-    if (
-      this.#cursorSize?.diameter !== diameter ||
-      this.#cursorSize.ratio !== ratio
-    ) {
-      this.#cursorSize = {
-        diameter,
-        ratio,
-        brush: paintBrushCursor(cursor, diameter, ratio),
-      };
-    }
-    const brush = this.#cursorSize.brush;
-    if (brush === undefined) {
-      cursor.hide();
-      canvas.removeClass("has-brush-cursor");
-      return;
-    }
-    const { hotspot } = brush;
-    // Align in viewport device pixels, not the fractional parent layout.
-    // Scale the integer intrinsic dimensions to avoid CSS size rounding.
-    // Each bitmap pixel maps to one display pixel even at fractional zoom;
-    // the centre stays within half a device pixel of the pointer.
-    const cursorX = (Math.round(hover.clientX * ratio) - hotspot) / ratio;
-    const cursorY = (Math.round(hover.clientY * ratio) - hotspot) / ratio;
-    const visible = contrastBrushCursor(
-      brush,
-      canvas,
-      box,
-      cursorX - box.left,
-      cursorY - box.top,
-      ratio,
-    );
-    cursor.toggle(visible);
-    canvas.toggleClass("has-brush-cursor", visible);
-    if (!visible) return;
-    // From the corner of the box it is placed in, inside the border of the
-    // element it is positioned by, rather than from the surface, which a
-    // margin round it moves away from that corner (#394). The border is as
-    // wide as the computed style says, as for the surface's.
-    const holder = cursor.offsetParent ?? canvas.parentElement ?? canvas;
-    const rect = holder.getBoundingClientRect();
-    const { borderLeftWidth, borderTopWidth } = getComputedStyle(holder);
-    const left =
-      cursorX - rect.left - (Number.parseFloat(borderLeftWidth) || 0);
-    const top = cursorY - rect.top - (Number.parseFloat(borderTopWidth) || 0);
-    cursor.style.transform = `translate(${String(left)}px, ${String(top)}px) scale(${String(1 / ratio)})`;
+    this.#surface?.showPointer();
   }
 
   /** A short guide available without leaving a drawing. */
   #help(): void {
-    this.#hover = undefined;
-    this.#updateCursor();
+    this.#surface?.forgetPointer();
     openHelp(this.app, {
       opened: (help) => {
         this.#questions.add(help);
@@ -2028,7 +1403,7 @@ export class InkEditorModal extends Modal {
         this.#questions.delete(help);
       },
       resume: () => {
-        if (!this.#closing && !this.#retired) this.#view?.canvas.focus();
+        if (!this.#closing && !this.#retired) this.#surface?.focus();
       },
     });
   }
@@ -2353,7 +1728,7 @@ export class InkEditorModal extends Modal {
     // Still held: offered to no other editor until this one's own replaces it.
     this.#offered = undefined;
     this.#replacing = draft.id;
-    this.#fitView();
+    this.#surface?.fitView();
     this.#updateButtons();
     this.#render();
     this.#keepDraft();
@@ -2392,7 +1767,7 @@ export class InkEditorModal extends Modal {
       this.#decoded.set(document.base.png, base);
     }
     this.#session.replace(document);
-    this.#fitView();
+    this.#surface?.fitView();
     this.#changed();
     const started = copy.hasText
       ? `Started from a copy of ${copy.name}, without its readings and translations`
@@ -2678,7 +2053,7 @@ export class InkEditorModal extends Modal {
     this.#session.replace(document);
     this.#session.markSaved(document);
     this.#watch.took(reading.fingerprint, reading.drawing);
-    this.#fitView();
+    this.#surface?.fitView();
     this.#changed();
     this.#announce("Reloaded: the file changed on disk");
   }
@@ -2775,7 +2150,7 @@ export class InkEditorModal extends Modal {
         grid: snap,
         flatEnds: this.#session.flatEnds,
         guides: this.#guidesShown,
-        magnified: this.#zoomed,
+        magnified: this.#surface?.zoomed === true,
         shape: this.#session.shape,
         fill: this.#session.fill,
         textShown,
@@ -2938,7 +2313,7 @@ export class InkEditorModal extends Modal {
         this.#watch.took(written, drawn);
         this.#session.markSaved(document);
         this.#session.rebase(-left);
-        this.#view?.shift(-left);
+        this.#surface?.view.shift(-left);
         // The picture moves with the drawing, so it stays where it was, and
         // so does where a drag of it holds it.
         this.#tracing.moveWithDrawing(-left);

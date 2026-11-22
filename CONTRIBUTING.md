@@ -100,14 +100,17 @@ opens, implements the commands that its buttons and keys run, and keeps the
 drawing safe with drafts and saving. `controls.ts` makes the buttons, the bars
 for the picture and Make ink, the keys, and Help from the table of controls in
 `buttons.ts`, so that a button and its keys run the same command; `buttons.ts`
-also says which buttons are pressed and which can be used. `picture.ts` holds
-`PictureTracing`, the picture to trace over and Make ink, which turns it into
-the drawing's base layer; the modal routes the pointer, the wheel, pastes, and
-drops to it, and makes the ink part of the drawing. Each of the other modules
-holds one part of the editor, such as the drawing session, the drafts, or the
-guides, and says what in its opening comment. Code that needs neither Obsidian
-nor a canvas has unit tests in `test/unit/editor/`, and the rest is tested end
-to end.
+also says which buttons are pressed and which can be used. `surface.ts` holds
+`EditorSurface`, the drawing area: the view of the drawing, drawn in one frame,
+the line of text below it and the font's guides, Zoom and Fit, which wait while
+the pointer is pressed, and the pointer, the wheel, and drops, which it routes
+to drawing or to the picture. `picture.ts` holds `PictureTracing`, the picture
+to trace over and Make ink, which turns it into the drawing's base layer; the
+modal takes pastes for it, and makes the ink part of the drawing. Each of the
+other modules holds one part of the editor, such as the drawing session, the
+drafts, or the guides, and says what in its opening comment. Code that needs
+neither Obsidian nor a canvas has unit tests in `test/unit/editor/`, and the
+rest is tested end to end.
 
 ## Checks
 
