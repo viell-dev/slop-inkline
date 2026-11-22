@@ -3441,6 +3441,213 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
     note: "r[^1][^2]\n\n    > %% a\n[^2]: z\nxHERE\n\n\t[^1]: <code>",
     code: true,
   },
+  // The third round of #431: an underline under a footnote's first line, a
+  // $ line indented less in an item, white space before and after a
+  // footnote's label, a callout's title after a task's box, and tags in an item
+  // read again.
+  "code under an underline of a footnote's empty first line": {
+    note: "a[^1]\n\n[^1]:\n===\n    HERE",
+    code: true,
+  },
+  "code under an underline of -- of a footnote's empty first line": {
+    note: "a[^1]\n\n[^1]:\n--\n    HERE",
+    code: true,
+  },
+  "code under an underline of - of a footnote's empty first line": {
+    note: "a[^1]\n\n[^1]:\n-\n\n    HERE",
+    code: true,
+  },
+  "text under === indented two spaces after a footnote's empty first line": {
+    note: "a[^1]\n\n[^1]:\n  ===\n    HERE",
+    code: false,
+  },
+  "text in an item after a footnote's empty first line": {
+    note: "a[^1]\n\n[^1]:\n- a\n    HERE",
+    code: false,
+  },
+  "text after a footnote's empty first line and an unindented line": {
+    note: "a[^1]\n\n[^1]:\nb\n    HERE",
+    code: false,
+  },
+  "code under an underline of a footnote's first line indented as code": {
+    note: "a[^1]\n\n[^1]:        x\n===\n    HERE",
+    code: true,
+  },
+  "code after an underline of - of a footnote's first line indented as code": {
+    note: "a[^1]\n\n[^1]:        x\n-\n>\n    HERE",
+    code: true,
+  },
+  "code after a footnote's first line indented as code and an item at 2": {
+    note: "a[^1]\n\n[^1]:        x\n2) b\n>\n    HERE",
+    code: true,
+  },
+  "text in a footnote after its first line indented as code and a lazy line": {
+    note: "a[^1]\n\n[^1]:        x\nb\n\n    HERE",
+    code: false,
+  },
+  "text in a footnote after its first line indented as code and === indented": {
+    note: "a[^1]\n\n[^1]:        x\n  ===\n\n    HERE",
+    code: false,
+  },
+  "code under an underline of a footnote's empty first line in an item": {
+    note: "- a[^1]\n\n  [^1]:\n  ===\n  \t\tHERE",
+    code: true,
+  },
+  "code under an underline of a footnote's empty first line in a quote": {
+    note: "> a[^1]\n>\n> [^1]:\n> ===\n> \t\tHERE",
+    code: true,
+  },
+  "code under an underline of a footnote's first line indented as code, after tabs":
+    { note: "a[^1]\n\n[^1]:        x\n===\n\t\tHERE", code: true },
+  "code made by a $ line indented less in an item, before a line": {
+    note: "- a\n\n     HERE\n $\nb",
+    code: true,
+  },
+  "code made by a $ line indented less in a numbered item, before a line": {
+    note: "1. a\n\n       HERE\n  $\nb",
+    code: true,
+  },
+  "code made by a $ line with text indented less in an item": {
+    note: "- a\n\n     HERE\n $ x\n\nb",
+    code: true,
+  },
+  "code made by a $ line indented less in an outer item": {
+    note: "-   - b\n\n        HERE\n  $\nb",
+    code: true,
+  },
+  "code made by a $ line indented less, before a blank line and a bullet": {
+    note: "1. a\n\n       HERE\n  $\n\n-",
+    code: true,
+  },
+  "code made by a $ line indented less in an item holding a definition": {
+    note: "  1. [a]: /u\n         HERE\n   $\n-",
+    code: true,
+  },
+  "text before a %% line indented less in an item": {
+    note: "- a\n\n     HERE\n %%\nb",
+    code: false,
+  },
+  "text before a fence indented less in an item": {
+    note: "- a\n\n     HERE\n ```\nb",
+    code: false,
+  },
+  "text before a heading indented less in an item": {
+    note: "- a\n\n     HERE\n # h\nb",
+    code: false,
+  },
+  "math under a paragraph's lines in an item, indented less": {
+    note: "- `a\n  b\n $\nHERE`",
+    code: true,
+    hidden: true,
+  },
+  "a footnote after a space and a tab, its first line indented as code": {
+    note: "a[^1]\n\n \t[^1]:        HERE",
+    code: true,
+  },
+  "a fence in a footnote after a space and a tab": {
+    note: "a[^1]\n\n \t[^1]: ```\nHERE",
+    code: true,
+  },
+  "a footnote after three spaces and a tab, its first line indented as code": {
+    note: "a[^1]\n\n   \t[^1]:        HERE",
+    code: true,
+  },
+  "a footnote after a tab in an item read again": {
+    note: "- a[^1]\n\n  \t[^1]:        HERE\n x",
+    code: true,
+  },
+  "a fence in a footnote after a tab in an item read again": {
+    note: "- a[^1]\n\n  \t[^1]: ```\n  HERE\n x",
+    code: true,
+  },
+  "text after a footnote's line indented by a tab, as code": {
+    note: "a[^1]\n\n\t[^1]: ```\nHERE",
+    code: false,
+  },
+  "text in an item after five spaces after a footnote's label": {
+    note: "a[^1]\n\n[^1]:     - a\n\n          HERE",
+    code: false,
+  },
+  "text in an item after six spaces after a footnote's label": {
+    note: "a[^1]\n\n[^1]:      - a\n\n           HERE",
+    code: false,
+  },
+  "code after an item after seven spaces after a footnote's label": {
+    note: "a[^1]\n\n[^1]:       - a\n\n        HERE",
+    code: true,
+  },
+  "code in an item after three spaces after a footnote's label": {
+    note: "a[^1]\n\n[^1]:   - a\n\n          HERE",
+    code: true,
+  },
+  "a footnote's first line after six spaces and a tab": {
+    note: "a[^1]\n\n[^1]:      \tHERE",
+    code: false,
+  },
+  "a footnote's first line after five spaces and a tab": {
+    note: "a[^1]\n\n[^1]:     \tHERE",
+    code: false,
+  },
+  "a footnote's first line after a tab, a space, and a tab": {
+    note: "a[^1]\n\n[^1]:\t \tHERE",
+    code: false,
+  },
+  "a footnote's first line after eight spaces and a tab": {
+    note: "a[^1]\n\n[^1]:        \tHERE",
+    code: true,
+  },
+  "a footnote's first line after three tabs": {
+    note: "a[^1]\n\n[^1]:\t\t\tHERE",
+    code: true,
+  },
+  "a footnote after a <code> that an item read again leaves open": {
+    note: "- a[^1]\n\n  [^1]: HERE\n\n  - c\n\n       ```\n    <code>x\n       ```\n    d\n   e",
+    code: true,
+  },
+  "a span in a callout's title after a task's box": {
+    note: "- [ ] > [!note] `HERE`",
+    code: true,
+  },
+  "text in a callout's title after a task's box": {
+    note: "- [ ] > [!note] a HERE",
+    code: false,
+  },
+  "a span from a callout's title after a task's box": {
+    note: "+ - [ ] > [!note] `a\n  > HERE`",
+    code: false,
+  },
+  "a footnote in a callout's title after a task's box, indented as code": {
+    note: "r[^1]\n\n+ - [ ] > [!note] [^1]:        z HERE",
+    code: true,
+  },
+  "a span in nested callouts' titles after a task's box": {
+    note: "- [ ] > [!a] > [!b] `HERE`",
+    code: true,
+  },
+  "seven spaces in a numbered item whose first line is a quote": {
+    note: "1. > a\n\n       HERE",
+    code: false,
+  },
+  "seven spaces in a numbered item whose first line is a box and a quote": {
+    note: "1. [x] > a\n\n       HERE",
+    code: false,
+  },
+  "seven spaces in a numbered item whose first line is an item": {
+    note: "1. - a\n\n       HERE",
+    code: false,
+  },
+  "a line of seven spaces and a tabbed item in a numbered item": {
+    note: "1. [x] > +  ===\n       -\t- [ ]   x HERE",
+    code: false,
+  },
+  "seven spaces in a numbered item before a nested item's line of three": {
+    note: "r[^1][^2]\n\n 1) 1. 1) [^1]:        z\n1. [x] > +  ===\n       -\t- [ ]   <code>x</code> HERE\n   + - [ ] t\n10. b`",
+    code: true,
+  },
+  "a footnote in a callout's title after items and a task's box": {
+    note: "r[^1][^2]\n\n\t1. 1. a]\n     ***\n   [^2]:\n        9. -\t2) - - -\n\n      + - [ ] > [!note] [^1]:        z HERE\n        _a`_",
+    code: true,
+  },
   // In a comment or math, Obsidian shows nothing, and an embed shows nothing.
   "text in a comment block": { note: "%%\nHERE\n%%", code: true, hidden: true },
   "text in a math block": {

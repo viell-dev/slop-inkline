@@ -141,9 +141,11 @@ line of the item, before it and after it. Lines that look like text can then be
 code, and the trigger lists nothing in them.
 
 A few rare notes are still read otherwise, as
-[#435](https://github.com/viell-dev/slop-inkline/issues/435) lists. In each of
-them, the trigger either lists nothing where Reading view shows text, or lists
-where Reading view shows nothing until the note changes.
+[#435](https://github.com/viell-dev/slop-inkline/issues/435) lists. In some, the
+trigger lists nothing where Reading view shows text. In others, it lists where
+Reading view shows nothing, as in a link reference definition or a footnote that
+the note does not refer to. None of the notes tried opens the list where Reading
+view shows code.
 
 **Inkline: Insert existing symbol** opens the same list as a search, and inserts
 the chosen symbol at the cursor. It places the symbol as **Inkline: Insert

@@ -67,9 +67,11 @@ even one a public release; earlier pre-releases carry a suffix such as
   shows nothing, and where math has an error that shows its text. And a line of
   seven spaces under `1. a` and a blank line, which Reading view shows as text,
   lists again: an item numbered 0 to 9 with a `.` whose text starts an odd
-  number of columns in loses a column more from its later lines. The few notes
-  still read otherwise, such as link reference definitions over more lines, are
-  in [#435](https://github.com/viell-dev/slop-inkline/issues/435).
+  number of columns in loses a column more from its later lines. A callout's
+  title after a task's box, as in `- [ ] > [!note] title`, is read as the title,
+  where the box was taken for its start. The few notes still read otherwise,
+  such as link reference definitions over more lines, are in
+  [#435](https://github.com/viell-dev/slop-inkline/issues/435).
 - A polygon drawn with a large brush showed a faint, lighter line inside its ink
   at a corner, where the parts the line is drawn in meet, and a filled polygon
   showed it outside the fill. It no longer does. The shape is the same, and so

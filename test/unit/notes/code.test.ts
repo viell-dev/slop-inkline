@@ -2,6 +2,7 @@ import { fromMarkdown } from "mdast-util-from-markdown";
 import { describe, expect, it } from "vitest";
 import { insideCode, insideCodeBlock } from "../../../src/notes/code.ts";
 import { codeCases, triggerCases } from "../../support/code-cases.ts";
+import { expectLinear } from "../../support/linear.ts";
 
 /** A note's lines, as `insideCode` reads them. */
 function note(text: string): (index: number) => string | undefined {
@@ -255,6 +256,28 @@ describe("insideCode", () => {
       return { code, reads };
     }
 
+    /**
+     * That reading `lines` at `HERE` takes less than `times` as long as
+     * simple passes over the note repeated once for each of `depth` levels:
+     * reading each level's text again costs that much at most. On Windows 11
+     * with the CPU busy with other work, the readings below took 0.09 to 0.21
+     * times as long; with whether raw HTML leaves a tag open read again at
+     * each level, as #431's second round did, 0.87 to 1.28 times.
+     */
+    function expectBounded(
+      lines: readonly string[],
+      depth: number,
+      times: number,
+    ): void {
+      const line = lines.findIndex((text) => text.includes("HERE"));
+      const ch = lines[line]?.indexOf("HERE") ?? 0;
+      expectLinear(
+        lines.join("\n").repeat(depth),
+        () => insideCode((index) => lines[index], line, ch),
+        times,
+      );
+    }
+
     it("in items, each made to lose fewer columns by a line after it", () => {
       const lines: string[] = [];
       for (let depth = 0; depth < 40; depth++) {
@@ -279,21 +302,23 @@ describe("insideCode", () => {
       const { code, reads } = readsOf(lines);
       expect(code).toBe(false);
       expect(reads).toBeLessThan(5 * lines.length);
+      expectBounded(lines, 100, 0.4);
     });
 
     it("in items in footnotes in items", () => {
       const lines = ["a[^1]", ""];
-      for (let depth = 0; depth < 40; depth++) {
+      for (let depth = 0; depth < 60; depth++) {
         lines.push(`${" ".repeat(4 * depth)}[^${String(depth + 1)}]: x`, "");
         lines.push(`${" ".repeat(4 * depth + 4)}- a`, "");
       }
-      lines.push(`${" ".repeat(166)}HERE`);
-      for (let depth = 39; depth >= 0; depth--) {
+      lines.push(`${" ".repeat(246)}HERE`);
+      for (let depth = 59; depth >= 0; depth--) {
         lines.push(`${" ".repeat(4 * depth + 5)}b`);
       }
       const { code, reads } = readsOf(lines);
       expect(code).toBe(true);
       expect(reads).toBeLessThan(5 * lines.length);
+      expectBounded(lines, 60, 0.4);
     });
   });
 });
