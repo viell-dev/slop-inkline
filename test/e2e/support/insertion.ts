@@ -302,9 +302,9 @@ export async function letClosingTimersGo(): Promise<number> {
 
 /**
  * Waits for the editors of the note at `path` to read as `shown` does, with
- * the cursor marked as {@link marked} marks it. When an editor closes, it puts
- * the cursor back after the last symbol a moment later, which a test's next
- * read can come before.
+ * the cursor marked as {@link marked} marks it. An editor puts the cursor back
+ * after the last symbol as it closes, before a test's next command, but what
+ * reaches a note in its own time, such as a change on disk, can come after.
  */
 export async function waitForMarked(
   path: string,
@@ -325,9 +325,10 @@ export async function waitForMarked(
 }
 
 /**
- * Waits for the focus to be in a note's editor, as an editor gives it back a
- * moment after it closes when nothing else took it, as after a change on disk
- * took a table cell's editor away. A key before that goes nowhere.
+ * Waits for the focus to be in a note's editor. An editor gives it back as it
+ * closes, before a test's next command, when nothing else took it, as after a
+ * change on disk took a table cell's editor away: a key with the focus nowhere
+ * goes nowhere.
  */
 export async function waitForNoteFocus(): Promise<void> {
   await browser.waitUntil(

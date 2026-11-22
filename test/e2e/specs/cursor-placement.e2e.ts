@@ -96,6 +96,73 @@ async function selectText(text: string): Promise<void> {
   }, text);
 }
 
+/**
+ * Records the steps of the next close of an Inkline editor, each with where
+ * the focus is then, until {@link closeSteps}: Obsidian's `Modal.close` calling
+ * the editor's `onClose`, `close` returning, a microtask queued at the start of
+ * `onClose`, and a timer set as `close` returns, which runs in the next task.
+ */
+async function watchClose(): Promise<void> {
+  await browser.executeObsidian(({ obsidian }) => {
+    const prototype = obsidian.Modal.prototype;
+    const close: unknown = Reflect.get(prototype, "close");
+    if (typeof close !== "function") throw new Error("a modal has no close");
+    const own = Object.hasOwn(prototype, "close");
+    const steps: string[] = [];
+    const focus = (): string =>
+      document.activeElement?.closest(".markdown-source-view .cm-content")
+        ? "in the note"
+        : "elsewhere";
+    const putBack = (): void => {
+      if (own) Reflect.set(prototype, "close", close);
+      else Reflect.deleteProperty(prototype, "close");
+    };
+    Reflect.set(prototype, "close", function (this: object): void {
+      const modalEl: unknown = Reflect.get(this, "modalEl");
+      if (
+        !(modalEl instanceof HTMLElement) ||
+        !modalEl.classList.contains("inkline-editor")
+      ) {
+        Reflect.apply(close, this, []);
+        return;
+      }
+      putBack();
+      const onClose: unknown = Reflect.get(this, "onClose");
+      if (typeof onClose !== "function") throw new Error("no onClose");
+      Reflect.set(this, "onClose", (): void => {
+        steps.push(`onClose, focus ${focus()}`);
+        queueMicrotask(() => {
+          steps.push(`microtask, focus ${focus()}`);
+        });
+        Reflect.apply(onClose, this, []);
+      });
+      Reflect.apply(close, this, []);
+      steps.push(`close returned, focus ${focus()}`);
+      window.setTimeout(() => {
+        steps.push("task");
+      });
+    });
+    Reflect.set(window, "inklineCloseSteps", steps);
+    Reflect.set(window, "inklineAtEnd-close-steps", () => {
+      Reflect.deleteProperty(window, "inklineCloseSteps");
+      if (Reflect.get(prototype, "close") !== close) putBack();
+    });
+  });
+}
+
+/** The steps {@link watchClose} recorded, once its timer has run. */
+async function closeSteps(): Promise<string[]> {
+  let steps: string[] = [];
+  await browser.waitUntil(async () => {
+    steps = await browser.execute(() => {
+      const recorded: unknown = Reflect.get(window, "inklineCloseSteps");
+      return Array.isArray(recorded) ? recorded.map(String) : [];
+    });
+    return steps.includes("task");
+  });
+  return steps;
+}
+
 describe("Where the cursor lands after a symbol", function () {
   before(async function () {
     await loadModules();
@@ -274,6 +341,26 @@ describe("Where the cursor lands after a symbol", function () {
     await waitForNote(
       "The door is marked with ![[001.ink.png]] which means return.y\n",
     );
+  });
+
+  // The cursor goes back in a microtask queued in the editor's `onClose`
+  // (#429), which rests on Obsidian's order: it calls `onClose` inside
+  // `close`, then gives the focus back, in one step. So that microtask finds
+  // the focus back, and runs before the next task, which a key needs. On a
+  // phone, Obsidian calls `onClose` after an animation, once `close` has
+  // returned and the focus is back, which would leave a person time to type
+  // first; this fails if a desktop closes that way.
+  it("rests on Obsidian closing the editor in one step, with no task between", async function () {
+    await insert({ settle: 0 });
+    await draw(zigzag);
+    await watchClose();
+    await save();
+    expect(await closeSteps()).toEqual([
+      "onClose, focus elsewhere",
+      "close returned, focus in the note",
+      "microtask, focus in the note",
+      "task",
+    ]);
   });
 
   it("follows a run from Next, in the order it was drawn", async function () {
