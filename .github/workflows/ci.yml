@@ -111,10 +111,12 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           # A re-run of a shard uploads beside its earlier attempts' artifacts,
-          # which stay in the run, and the download below would put artifacts
-          # of one name in one directory, where either attempt's record could
-          # win. With the attempt in the name, each lands in a directory of its
-          # own, and the check reads each shard's latest.
+          # which stay in the run. Of artifacts with one name, the download
+          # below keeps only the one with the highest id, and ids do not follow
+          # the attempts: in run 44956202229 it kept attempt 1's failed record
+          # over attempt 2's. With the attempt in the name, every artifact is
+          # downloaded, each into a directory of its own, and the check reads
+          # each shard's latest attempt.
           name: e2e-results-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
           path: test-results/e2e
           # A shard that failed before its output existed fails here too; the
