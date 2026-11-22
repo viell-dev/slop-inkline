@@ -301,6 +301,11 @@ export class EditorControls {
     this.#hint.setText(states.hint);
   }
 
+  /** Whether the bar that makes ink shows now. */
+  convertBarShown(): boolean {
+    return this.#convertBar.isShown();
+  }
+
   /** Opens the system's file dialog, for a picture to trace over. */
   choosePicture(): void {
     this.#chooser.click();

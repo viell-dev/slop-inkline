@@ -9,6 +9,17 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Fixed
+
+- **Make ink**, **Zoom**, and **Fit** pressed while **Move** drags the picture
+  now wait until you let go, as they do while you draw. They acted at once: Make
+  ink's row, opening above the drawing area, or a zoom, changing its height,
+  moved the drawing under the pointer, and the picture ended that far from where
+  you put it. Make ink's row also stays until you let go, during a drag or a
+  stroke, when Make ink closes for another reason, as when a picture pasted then
+  replaces the one it was open for
+  ([#444](https://github.com/viell-dev/slop-inkline/issues/444)).
+
 ## 1.1.0 - 2026-11-22
 
 This is the first pre-release since 1.0.0, an alpha of 1.2.0, the next public
