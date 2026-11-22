@@ -137,6 +137,8 @@ export class EditorSurface {
   readonly #fonts: FontFaceSet;
   readonly #unwatchCss: () => void;
   #frame: number | undefined;
+  /** Whether {@link dispose} ran, after which nothing more is drawn. */
+  #disposed = false;
   #resize: ResizeObserver | undefined;
   /** The note font's metrics and lines, measured when the editor opens. */
   #fontMetrics: FontMetrics | undefined;
@@ -254,6 +256,7 @@ export class EditorSurface {
    */
   dispose(): void {
     const { win } = this.#view.canvas;
+    this.#disposed = true;
     this.#resize?.disconnect();
     win.removeEventListener("resize", this.#windowResized);
     win.removeEventListener("resize", this.#resizeCursor);
@@ -261,7 +264,6 @@ export class EditorSurface {
     win.removeEventListener("keyup", this.#shiftKey, true);
     this.#fonts.removeEventListener("loadingdone", this.#remeasure);
     this.#unwatchCss();
-    // The frame stays asked for, so that no later one is.
     if (this.#frame !== undefined) win.cancelAnimationFrame(this.#frame);
   }
 
@@ -684,7 +686,7 @@ export class EditorSurface {
   render(): void {
     const view = this.#view;
     const { session, picture, host } = this.#options;
-    if (this.#frame !== undefined) return;
+    if (this.#disposed || this.#frame !== undefined) return;
     // The surface's own window, which differs from the main one in a popout.
     this.#frame = view.canvas.win.requestAnimationFrame(() => {
       this.#frame = undefined;

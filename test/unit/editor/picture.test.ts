@@ -66,9 +66,8 @@ function editor(
     endPlacing: call("endPlacing"),
     refocus: call("refocus"),
     focusThreshold: call("focusThreshold"),
-    focusApply: call("focusApply"),
-    document: () => {
-      throw new Error("no document in unit tests");
+    focusAfterApply: (open) => {
+      calls.push(`focusAfterApply ${String(open)}`);
     },
     useInk: () => {
       throw new Error("no ink in unit tests");
@@ -274,6 +273,23 @@ describe("PictureTracing", () => {
     expect(tracing.preview(view200, document)).toBeUndefined();
     expect(await tracing.applyBeforeSave()).toBe(true);
     expect(tracing.applying).toBe(false);
+  });
+
+  it("gives the controls and the focus back once Apply ends, unless the editor has ended", async () => {
+    const open = editor();
+    await open.tracing.applyInk();
+    // Shown as running, then as done, with the focus given back.
+    expect(open.calls).toEqual([
+      "controls",
+      "controls",
+      "focusAfterApply false",
+    ]);
+    const closed = editor();
+    const applying = closed.tracing.applyInk();
+    closed.state.ended = true;
+    await applying;
+    expect(closed.calls).toEqual(["controls"]);
+    expect(closed.tracing.applying).toBe(false);
   });
 });
 

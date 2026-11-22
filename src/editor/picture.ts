@@ -188,9 +188,12 @@ export interface TracingHost {
   /** Puts the focus on the drawing area. */
   refocus(): void;
   focusThreshold(): void;
-  focusApply(): void;
-  /** The document the editor shows in, whose focus Apply looks at. */
-  document(): Document;
+  /**
+   * Puts the focus back where Apply left it, if disabling Apply while it ran
+   * let go of it: on Apply, while Make ink stays `open` as no ink was made,
+   * or on the drawing area.
+   */
+  focusAfterApply(open: boolean): void;
   /**
    * Makes `made` the drawing's base layer, in place of any it had, as one
    * step that Undo takes back, with a stroke being drawn committed first.
@@ -709,15 +712,10 @@ export class PictureTracing {
     if (this.#applying === undefined) {
       this.#applying = this.#makeInk().finally(() => {
         this.#applying = undefined;
+        // Closed meanwhile, the editor has no controls or focus to give back.
+        if (this.#host.ended()) return;
         this.#host.updateControls();
-        // Disabling Apply while it ran let go of the focus; with no ink
-        // made, the row stays open, and the focus goes back to Apply.
-        const doc = this.#host.document();
-        const focused = doc.activeElement;
-        if (focused === null || focused === doc.body) {
-          if (this.#converting === undefined) this.#host.refocus();
-          else this.#host.focusApply();
-        }
+        this.#host.focusAfterApply(this.#converting !== undefined);
       });
       this.#host.updateControls();
     }
