@@ -3,6 +3,7 @@ import { brushSizes } from "../../../src/editor/session.ts";
 import { loadModules } from "../support/browser.ts";
 import { cursorImage, hasBrushCursor, setPageZoom } from "../support/cursor.ts";
 import {
+  drawAndHold,
   openAtMarker,
   startOver,
   surface,
@@ -262,16 +263,33 @@ describe("Fixed brush bitmap", function () {
     await move.click();
     await surface().moveTo();
     expect((await surface().getCSSProperty("cursor")).value).toBe("grab");
-    await browser
-      .action("pointer")
-      .move({ origin: await surface().getElement(), x: 0, y: 0 })
-      .down()
-      .perform(true);
-    try {
-      expect((await surface().getCSSProperty("cursor")).value).toBe("grabbing");
-    } finally {
-      await browser.action("pointer").up().perform();
-    }
+    // Read in the page as the release arrives, before the editor takes it, as
+    // a read in a command of its own would come after the press had already
+    // ended as a lost capture (#391).
+    await browser.execute(() => {
+      window.addEventListener(
+        "pointerup",
+        () => {
+          const canvas = document.querySelector(
+            ".inkline-editor .inkline-surface",
+          );
+          if (canvas instanceof HTMLElement) {
+            Reflect.set(
+              window,
+              "inklineHeldCursor",
+              getComputedStyle(canvas).cursor,
+            );
+          }
+        },
+        { capture: true, once: true },
+      );
+    });
+    await drawAndHold([[0.5, 0.5]]);
+    expect(
+      await browser.execute(
+        () => Reflect.get(window, "inklineHeldCursor") as unknown,
+      ),
+    ).toBe("grabbing");
     await browser.keys("p");
     await surface().moveTo();
     await browser.waitUntil(hasBrushCursor);
