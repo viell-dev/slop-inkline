@@ -15,9 +15,9 @@ import { editFile } from "../support/editing.ts";
 import {
   createSymbol,
   draw,
+  largeOpenLimit,
   startOver,
   timedEditorSave,
-  waitForStatus,
   writeNoise,
 } from "../support/editor.ts";
 import { outputDirectory } from "../support/harness.ts";
@@ -38,6 +38,15 @@ const runs = 5;
 
 /** Other symbols in the library, for its filter to go through. */
 const others = 100;
+
+/**
+ * The most, in ms, that one save may take here, and so one script that times
+ * it, which WebDriver otherwise stops after 30 s. In Docker on Windows 11,
+ * beside other jobs, Obsidian 1.13.4 took up to 24 s for a library save of the
+ * largest symbol while the other library filtered, and once over 30 s, when
+ * that limit ended the run (#350).
+ */
+const longestSave = 300_000;
 
 /** A stroke away from the middle, moved a little each time. */
 function stroke(run: number): [number, number][] {
@@ -232,6 +241,7 @@ async function timedDrawingThroughSave(run: number) {
       characterData: true,
       subtree: true,
     });
+    Reflect.set(window, "inklineSaveSeen", () => savedMs !== undefined);
     Reflect.set(window, "inklineStopWatching", () => {
       seen.disconnect();
       return { savedMs, thread: thread() };
@@ -243,7 +253,20 @@ async function timedDrawingThroughSave(run: number) {
       for (let count = 0; count < 12; count++) await draw(stroke(run + count));
     })(),
   ]);
-  await waitForStatus("Saved");
+  // The status says "Saved" only until the next stroke, and a save that ends
+  // before the strokes do is said and gone by now, so this waits for the watch
+  // above to have seen it, rather than for the status to say it still.
+  await browser.waitUntil(
+    async () =>
+      browser.execute(() => {
+        const seen: unknown = Reflect.get(window, "inklineSaveSeen");
+        return (
+          typeof seen === "function" &&
+          Reflect.apply(seen, undefined, []) === true
+        );
+      }),
+    { timeout: longestSave, timeoutMsg: "the status never said Saved" },
+  );
   return browser.execute(() => {
     const stop: unknown = Reflect.get(window, "inklineStopWatching");
     if (typeof stop !== "function") throw new Error("not watching");
@@ -256,6 +279,7 @@ describe("What saving a large symbol costs", function () {
 
   before(async function () {
     await loadModules();
+    await browser.setTimeout({ script: longestSave });
     await startOver();
   });
 
@@ -277,12 +301,12 @@ describe("What saving a large symbol costs", function () {
     for (const { file, side } of symbols) {
       if (side === 0) await createSymbol(file);
       else await writeNoise(file, side);
-      await editFile(file);
+      await editFile(file, { timeout: largeOpenLimit });
       await draw(stroke(0));
       const first = await timedEditorSave();
       const saves = [];
       for (let run = 0; run < runs; run++) {
-        await editFile(file);
+        await editFile(file, { timeout: largeOpenLimit });
         await draw(stroke(run + 1));
         saves.push(await timedEditorSave());
       }
@@ -338,7 +362,7 @@ describe("What saving a large symbol costs", function () {
     }
     results.behind = behind;
     await save();
-    await editFile(large);
+    await editFile(large, { timeout: largeOpenLimit });
     const drawing = [];
     for (let run = 0; run < runs; run++) {
       drawing.push(await timedDrawingThroughSave(run));

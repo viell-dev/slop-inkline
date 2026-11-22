@@ -219,7 +219,21 @@ must keep released files readable and looking the same, as
   zoom, and the drawing area's content box, which its pixels fill, is as tall as
   the line box it shows
   ([pointer-alignment.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/pointer-alignment.e2e.ts),
-  [#359](https://github.com/viell-dev/slop-inkline/issues/359)).
+  [#359](https://github.com/viell-dev/slop-inkline/issues/359)). **Unreleased:**
+  so it does with padding of a different width on each side of the drawing area,
+  as a CSS snippet can give it, at 100% and, zoomed and fitted, at 125%; there
+  the brush's circle shows over the drawing, centred on the pointer to half a
+  device pixel and within 0.3 CSS pixels of the brush's width, and not over the
+  padding (the same file,
+  [#378](https://github.com/viell-dev/slop-inkline/issues/378)).
+- **Unreleased:** **Zoom** pressed while a pen or eraser stroke, an ellipse of
+  either, or a polygon's corner is drawn, by its key or its button, leaves the
+  drawing area as it is until the pointer is let go, and then zooms. Let go
+  where it was pressed in the window, the drag saves exactly the points the same
+  drag without Zoom saves. Pressed twice meanwhile, it does not zoom, and
+  **Next** meanwhile takes the zoom to the next symbol
+  ([zoom.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/zoom.e2e.ts),
+  [#382](https://github.com/viell-dev/slop-inkline/issues/382)).
 - **Make ink** of a synthetic H, enlarged from about 1.2 to 11.5 times, leaves
   at most two partly covered document pixels at each edge of the saved symbol,
   and the reopened symbol draws the same pixels. The editor's own redraw, which

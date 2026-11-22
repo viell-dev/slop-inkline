@@ -26,6 +26,7 @@ import {
   clickTop,
   topButton,
   waitForStatus,
+  waitForTop,
 } from "../support/editor.ts";
 import {
   changeElsewhere,
@@ -361,9 +362,7 @@ describe("The editor", function () {
       await waitForStatus("Saved");
       await nameSymbol("gate");
       await browser.keys(["Control", "Enter"]);
-      await browser.waitUntil(
-        async () => (await topButton("Do not update")) !== undefined,
-      );
+      await waitForTop("Do not update");
       await followSave();
       await obsidianPage.disablePlugin("inkline");
       try {
@@ -671,9 +670,7 @@ describe("The editor", function () {
       await letGo();
       // Obsidian has moved the file, and asks about the links. The old save
       // waits on that, with its draft for the file where it was.
-      await browser.waitUntil(
-        async () => (await topButton("Just once")) !== undefined,
-      );
+      await waitForTop("Just once");
       await hold("link");
       await clickTop("Just once");
       await waitForHeld();
