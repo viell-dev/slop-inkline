@@ -1705,8 +1705,8 @@ export class InkEditorModal extends Modal {
             view.pan(
               ((delta * lines) / view.contentBox().width) * (right - left),
             );
-            this.#render();
             this.#followPointer();
+            this.#render();
           });
           return;
         }
@@ -2256,7 +2256,8 @@ export class InkEditorModal extends Modal {
    * draw since it last reported. The window may have moved with it, so where
    * the pointer is in the drawing is not known until it reports again, and
    * its release would end the stroke in a segment never shown (#393). A
-   * polygon's corner is placed where the release says, as ever.
+   * polygon's corner, or a path's point or handle, being pressed is left as it
+   * is: its release places it where the release says, as ever.
    */
   #resized(change: () => void): void {
     change();
@@ -2287,8 +2288,8 @@ export class InkEditorModal extends Modal {
     }
     const { left, right } = view.visible;
     view.pan((direction * (right - left)) / 4);
-    this.#render();
     this.#followPointer();
+    this.#render();
     return true;
   }
 
@@ -2299,7 +2300,8 @@ export class InkEditorModal extends Modal {
    * would: the drawing moved under it, like paper under a pen, and what is
    * drawn stays under the pointer and shows what letting go saves (#393).
    * Moving along while drawing can be meant, to take a long stroke past the
-   * edge of the view.
+   * edge of the view. A polygon's corner, or a path's point or handle, being
+   * pressed goes on to the pointer in the same way. The caller draws again.
    */
   #followPointer(): void {
     const view = this.#view;
@@ -2308,7 +2310,6 @@ export class InkEditorModal extends Modal {
     const now = view.toDocument(at.clientX, at.clientY);
     this.#pressedAt = { ...at, ...now };
     this.#session.follow(now);
-    this.#render();
   }
 
   /**

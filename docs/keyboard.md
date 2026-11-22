@@ -128,7 +128,7 @@ and returns focus to the drawing area.
   Help, the library, the settings, its tooltips, and its notices.
 - The editor's status line, such as "Saving…", "Saved", or "Not saved" and why,
   is announced as it changes. It speaks only for the last thing you did: a key
-  or button with nothing to say, such as **Fit**, empties it without a word,
+  or button with nothing to say, such as a tool's, empties it without a word,
   rather than leave an earlier message to read as its result, and the buttons
   that turn something on or off say so themselves.
 - The editor puts the focus on the drawing area when it opens, and drawing puts

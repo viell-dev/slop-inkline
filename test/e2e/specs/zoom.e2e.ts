@@ -16,6 +16,7 @@ import {
   waitForNext,
   waitForStatus,
 } from "../support/editor.ts";
+import { setPageZoom } from "../support/cursor.ts";
 import { boxOf, type Point } from "../support/pointer.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 import { framesDrawn } from "../support/waits.ts";
@@ -185,9 +186,10 @@ interface Watched {
  * clicks Zoom or Fit, as a key on the button could; makes the editor 120
  * pixels narrower, which changes the drawing area's size; or moves the
  * editor 60 pixels right and tells the window it was resized, as when a
- * window's size changes and the editor stays in its middle.
+ * window's size changes and the editor stays in its middle; or sets
+ * Obsidian's page zoom to 125%, as Ctrl+= does.
  */
-type During = "zoom" | "fit" | "narrower" | "moved";
+type During = "zoom" | "fit" | "narrower" | "moved" | "page zoom";
 
 /**
  * Watches the next press on the drawing area, in the page, for
@@ -231,6 +233,14 @@ async function watchPress(during?: During): Promise<void> {
         editor.style.position = "relative";
         editor.style.left = "60px";
         window.dispatchEvent(new Event("resize"));
+      } else if (action === "page zoom") {
+        // As setPageZoom() does, from the page itself.
+        const load: unknown = Reflect.get(window, "require");
+        if (typeof load !== "function") throw new Error("no host require");
+        const electron: unknown = Reflect.apply(load, window, ["electron"]);
+        const frame: unknown = Reflect.get(Object(electron), "webFrame");
+        const set: unknown = Reflect.get(Object(frame), "setZoomFactor");
+        if (typeof set === "function") Reflect.apply(set, frame, [1.25]);
       }
     };
     /**
@@ -365,6 +375,9 @@ describe("Zoom", function () {
   });
   beforeEach(async function () {
     await startOver();
+  });
+  afterEach(async function () {
+    await setPageZoom(1);
   });
   it("shows the drawing taller with Z or the button, as far as the window allows", async function () {
     await openEditor();
@@ -554,6 +567,7 @@ describe("Zoom", function () {
       status: "Zooming in once you let go",
       pressed: "true",
       connected: true,
+      inked: true,
     });
     await waitForStatus("Zoomed in");
     await browser.keys("Enter");
@@ -694,6 +708,34 @@ describe("Zoom", function () {
     });
   }
 
+  // A path's point or handle being dragged goes on to the pointer in the
+  // same way, so that its end is still under it when it is let go (#393).
+  for (const { by, options } of [
+    { by: "the wheel", options: { wheel: 150 } },
+    { by: "an arrow key", options: { keys: [[Key.ArrowRight]] } },
+  ] as const) {
+    it(`carries a path's handle along as ${by} moves the view under it`, async function () {
+      await openEditor();
+      // No guides, so that only the path and its controls show.
+      await browser.keys("g");
+      await browser.keys("z");
+      await waitForStatus("Zoomed in");
+      await browser.keys("a");
+      await clickAt(await inWindow(0.3, 0.65));
+      // Pressed where a smooth point goes, its handle dragged out, and the
+      // view moved along while it is held.
+      const released = await dragWatched(
+        await inWindow(0.5, 0.4),
+        await inWindow(0.6, 0.4),
+        options,
+      );
+      // The handle's end, a filled dot, is under the pointer.
+      expect(released.inked).toBe(true);
+      await browser.keys("Enter");
+      expect((await strokeAt(1))?.points.length).toBeGreaterThan(2);
+    });
+  }
+
   // A change to the window's or the drawing area's size moves the drawing
   // under the pointer, which may have moved with the window, so what is
   // drawn ends where it was shown, as when the editor loses the pointer
@@ -701,6 +743,8 @@ describe("Zoom", function () {
   for (const { what, during } of [
     { what: "the drawing area changes size", during: "narrower" },
     { what: "the window's size changes", during: "moved" },
+    // Obsidian's page zoom resizes the window's CSS viewport (#418).
+    { what: "the page zoom changes", during: "page zoom" },
   ] as const) {
     it(`ends a stroke where it was shown when ${what}`, async function () {
       await openEditor();
