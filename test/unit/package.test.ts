@@ -67,48 +67,32 @@ describe("manual install ZIP", () => {
     }).toThrow("changed main.js");
   });
 
-  // It starts PowerShell twice on Windows, where Expand-Archive alone takes 1.5
-  // to 1.9 seconds on a busy machine (#93): the time is the process and module
-  // starting, so Vitest's five seconds were too few. It promises nothing about
-  // speed; only the archive's bytes and what survives an update are checked.
+  // It starts PowerShell on Windows, where the time is the process and its
+  // module starting, Expand-Archive alone taking 1.5 to 1.9 seconds on a busy
+  // machine (#93). Starting it for each extraction, it took up to 41 seconds
+  // in a whole run with the machine's CPU at 100% (#402); it now starts it once
+  // for both, and has more than twice that. It promises nothing about speed;
+  // only the archive's bytes and what survives an update are checked.
   it("extracts with the platform's archive tool directly into plugins", async () => {
     const folder = await mkdtemp(join(tmpdir(), "inkline-install-"));
     try {
       const archive = join(folder, installArchiveName("0.1.1-rc.1"));
-      const plugins = join(folder, "vault", "test-config", "plugins");
-      await mkdir(plugins, { recursive: true });
       await writeFile(archive, createInstallZip(files));
-      if (process.platform === "win32") {
-        execFileSync(
-          "pwsh",
-          [
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            "Expand-Archive -LiteralPath $env:INKLINE_TEST_ZIP -DestinationPath $env:INKLINE_TEST_PLUGINS",
-          ],
-          {
-            windowsHide: true,
-            env: {
-              ...process.env,
-              INKLINE_TEST_ZIP: archive,
-              INKLINE_TEST_PLUGINS: plugins,
-            },
-          },
-        );
-      } else {
-        execFileSync("unzip", ["-q", archive, "-d", plugins]);
+      // A first installation, into a vault that has none.
+      const fresh = join(folder, "new", "test-config", "plugins");
+      await mkdir(fresh, { recursive: true });
+      // An update, over an earlier installation with its preferences, in a
+      // vault with a drawing.
+      const plugins = join(folder, "vault", "test-config", "plugins");
+      const installed = join(plugins, "inkline");
+      await mkdir(installed, { recursive: true });
+      for (const name of Object.keys(files)) {
+        await writeFile(join(installed, name), "old installation");
       }
-      for (const [name, expected] of Object.entries(files)) {
-        expect(
-          new Uint8Array(await readFile(join(plugins, "inkline", name))),
-        ).toEqual(expected);
-      }
-      const preferences = join(plugins, "inkline", "data.json");
+      const preferences = join(installed, "data.json");
       const drawing = join(folder, "vault", "001.ink.png");
       await writeFile(preferences, '{"symbolScale":150}');
       await writeFile(drawing, new Uint8Array([137, 80, 78, 71]));
-      await writeFile(join(plugins, "inkline", "main.js"), "old installation");
       if (process.platform === "win32") {
         execFileSync(
           "pwsh",
@@ -116,31 +100,37 @@ describe("manual install ZIP", () => {
             "-NoProfile",
             "-NonInteractive",
             "-Command",
-            "Expand-Archive -Force -LiteralPath $env:INKLINE_TEST_ZIP -DestinationPath $env:INKLINE_TEST_PLUGINS",
+            "Expand-Archive -LiteralPath $env:INKLINE_TEST_ZIP -DestinationPath $env:INKLINE_TEST_NEW; Expand-Archive -Force -LiteralPath $env:INKLINE_TEST_ZIP -DestinationPath $env:INKLINE_TEST_PLUGINS",
           ],
           {
             windowsHide: true,
             env: {
               ...process.env,
               INKLINE_TEST_ZIP: archive,
+              INKLINE_TEST_NEW: fresh,
               INKLINE_TEST_PLUGINS: plugins,
             },
           },
         );
       } else {
+        execFileSync("unzip", ["-q", archive, "-d", fresh]);
         execFileSync("unzip", ["-qo", archive, "-d", plugins]);
+      }
+      for (const directory of [fresh, plugins]) {
+        for (const [name, expected] of Object.entries(files)) {
+          expect(
+            new Uint8Array(await readFile(join(directory, "inkline", name))),
+          ).toEqual(expected);
+        }
       }
       expect(await readFile(preferences, "utf8")).toBe('{"symbolScale":150}');
       expect(new Uint8Array(await readFile(drawing))).toEqual(
         new Uint8Array([137, 80, 78, 71]),
       );
-      expect(
-        new Uint8Array(await readFile(join(plugins, "inkline", "main.js"))),
-      ).toEqual(files["main.js"]);
     } finally {
       await rm(folder, { recursive: true, force: true });
     }
-  }, 30_000);
+  }, 120_000);
 });
 
 describe("release candidates", () => {

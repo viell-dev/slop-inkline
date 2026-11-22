@@ -2,6 +2,71 @@ import { isOpen, noTags, readHtml } from "../../../src/notes/html.ts";
 import { describe, expect, it } from "vitest";
 import { insideInlineCode, tagsAfter } from "../../../src/notes/inline.ts";
 
+/** How long `work` takes, in ms. */
+function timed(work: () => unknown): number {
+  const start = performance.now();
+  work();
+  return performance.now() - start;
+}
+
+/**
+ * Goes through `text` 64 times, one character at a time, as many steps as
+ * reading may take for each of its characters, and gives back a hash of what
+ * it read: a linear amount of work, timed beside a reading, so that what slows
+ * the machine then slows both.
+ */
+function simplePasses(text: string): number {
+  let hash = 0;
+  for (let pass = 0; pass < 64; pass++) {
+    for (let index = 0; index < text.length; index++) {
+      hash = (Math.imul(hash, 31) + text.charCodeAt(index)) | 0;
+    }
+  }
+  return hash;
+}
+
+/**
+ * How many times as long as {@link simplePasses} a reading of a long text may
+ * take. On Windows 11 with the CPU busy with other work, readings of the texts
+ * below took 0.5 to 4.0 times as long, and with their bound on steps taken out,
+ * so that each construct looks for its end to the text's end, 312 to 753 times;
+ * a run of backticks counted again for each backtick took 1,207 times. Limits
+ * by the clock alone, one second and half a second, failed under load, for
+ * readings that take tens of milliseconds (#403).
+ */
+const linearTimes = 40;
+
+/**
+ * That reading `text` at `at` takes the time of a linear reading: less than
+ * {@link linearTimes} the fastest of three runs of {@link simplePasses}. A
+ * reading that a pause of the machine's slowed is tried again, up to three
+ * times in all.
+ */
+function expectLinear(text: string, at: number): void {
+  const hashes = new Set<number>();
+  const linear = Math.min(
+    ...[0, 1, 2].map(() =>
+      timed(() => {
+        hashes.add(simplePasses(text));
+      }),
+    ),
+  );
+  // The passes agree, and what they give back is used, so that none of their
+  // work can be left out.
+  expect(hashes.size).toBe(1);
+  let reading = Infinity;
+  for (let run = 0; run < 3 && reading >= linearTimes * linear; run++) {
+    reading = Math.min(
+      reading,
+      timed(() => insideInlineCode(text, at)),
+    );
+  }
+  expect(
+    reading,
+    `a reading of ${reading.toFixed(0)} ms, against ${linear.toFixed(0)} ms for the simple passes`,
+  ).toBeLessThan(linearTimes * linear);
+}
+
 describe("insideInlineCode", () => {
   it("knows an index between backticks", () => {
     const line = "a `;;x` b";
@@ -28,11 +93,10 @@ describe("insideInlineCode", () => {
     // Counted again for each, it would take n²/2 reads, seconds for these
     // where it takes milliseconds.
     const run = "`".repeat(40_000);
-    const start = performance.now();
     expect(insideInlineCode(`x ${run} ;;`, 40_004)).toBe(false);
     // Its last backtick still opens a span that a single one closes.
     expect(insideInlineCode(`x ${run} ;; \``, 40_004)).toBe(true);
-    expect(performance.now() - start).toBeLessThan(500);
+    expectLinear(`x ${run} ;;`, 40_004);
   });
 
   it("says when text after the index could close a span open before it", () => {
@@ -71,9 +135,8 @@ describe("insideInlineCode", () => {
     // place counts as code, whatever the text holds.
     for (const repeated of ["[a ", "*a ", "~~a ", "==a ", "<a b=", "$a "]) {
       const text = `${repeated.repeat(20_000)}\`;;\``;
-      const start = performance.now();
       expect(insideInlineCode(text, text.length - 3)).toBe(true);
-      expect(performance.now() - start).toBeLessThan(1000);
+      expectLinear(text, text.length - 3);
     }
   });
 
