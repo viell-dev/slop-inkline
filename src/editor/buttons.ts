@@ -71,10 +71,10 @@ export interface EditorCommands {
    */
   endShape(): boolean;
   /**
-   * What an arrow key, `name`, does while no picture is moving, with Shift
-   * held or not. Returns whether it did anything.
+   * What `name`, an arrow key or + or −, does while no picture is moving, with
+   * Shift held or not. Returns whether it did anything.
    */
-  arrowKey(name: string, shift: boolean): boolean;
+  arrowKey(name: PictureKey, shift: boolean): boolean;
   /** Whether Move is on, with a picture to move. */
   movingPicture(): boolean;
   /** Moves the picture a pixel, or with `byCell` a cell, each way asked. */
@@ -84,6 +84,10 @@ export interface EditorCommands {
   /** Puts the focus back on the drawing area. */
   refocus(): void;
 }
+
+/** The keys that move and scale the picture while Move is on. */
+export type PictureKey =
+  "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown" | "+" | "=" | "-";
 
 /** A key, and the modifiers held with it, as Obsidian's `Scope` takes them. */
 export interface Chord {

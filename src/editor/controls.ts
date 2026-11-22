@@ -23,6 +23,7 @@ import {
   type Control,
   type ControlRow,
   type EditorCommands,
+  type PictureKey,
 } from "./buttons.ts";
 import type { StatusLine } from "./status.ts";
 
@@ -185,11 +186,15 @@ export class EditorControls {
   }
 
   /**
-   * Registers the editor's keys in `scope`: each button's, then those with no
-   * button of their own. Those that would also edit text, the single keys and
+   * Registers the editor's keys in `scope`: those with no button of their own,
+   * then each button's. Those that would also edit text, the single keys and
    * undo and redo, yield to a text field that has the focus; saving does not.
-   * Obsidian's scope runs only the first handler for a key, and no key has
-   * two.
+   *
+   * Obsidian's scope runs only the first handler that matches a key, and it
+   * matches a handler by the character the key types or by the key's code.
+   * So one key can match two handlers, as on a Czech layout, where the key in
+   * 1's place types + with 1's code: + and − come before the brush sizes, so
+   * that such a key scales the picture while Move is on, as + does elsewhere.
    */
   registerKeys(scope: Scope): void {
     const { commands: editor, line } = this.#options;
@@ -205,19 +210,6 @@ export class EditorControls {
         return false;
       });
     };
-    for (const control of controls) {
-      if (control.arrowKeys === true || !this.#offers(control)) continue;
-      for (const { modifiers, key: name } of control.keys) {
-        key(
-          [...modifiers],
-          name,
-          () => {
-            control.run(editor, modifiers.includes("Shift"));
-          },
-          control.anywhere !== true,
-        );
-      }
-    }
     key(
       ["Mod"],
       "s",
@@ -233,7 +225,7 @@ export class EditorControls {
     // it; otherwise they keep what they do.
     const moving = (
       modifiers: "Shift"[],
-      name: string,
+      name: PictureKey,
       action: () => void,
     ): void => {
       scope.register(modifiers, name, () => {
@@ -272,6 +264,20 @@ export class EditorControls {
     moving(["Shift"], "+", scaled(true));
     moving([], "=", scaled(true));
     moving([], "-", scaled(false));
+    // Then each button's keys.
+    for (const control of controls) {
+      if (control.arrowKeys === true || !this.#offers(control)) continue;
+      for (const { modifiers, key: name } of control.keys) {
+        key(
+          [...modifiers],
+          name,
+          () => {
+            control.run(editor, modifiers.includes("Shift"));
+          },
+          control.anywhere !== true,
+        );
+      }
+    }
   }
 
   /**

@@ -125,8 +125,9 @@ describe("controls", () => {
   it("leaves the keys that do more than a button's to the controls", () => {
     // Mod+S saves with no button, Enter ends a shape on the drawing area
     // alone, and while Move is on the arrow keys move the picture and + and
-    // − scale it: the controls give each of those keys one handler, which
-    // Obsidian's scope needs, as it runs only the first.
+    // − scale it: the controls give each of those keys one handler, before
+    // the buttons' keys, as Obsidian's scope runs only the first that
+    // matches.
     const theirs = ["Mod+S", "Enter", "+", "Shift++", "=", "-"];
     for (const control of controls) {
       const arrows = control.keys.filter(({ key }) => key.startsWith("Arrow"));
