@@ -80,7 +80,7 @@ export class EditorControls {
   /** Adds the rows to `parent`, in the order they show. */
   constructor(parent: HTMLElement, options: ControlOptions) {
     this.#options = options;
-    const { commands: editor, line, offers } = options;
+    const { commands: editor, line } = options;
     // Three rows: what draws; its size and the history; then the view and
     // what ends the editor. Each row wraps by itself in a narrow window.
     const tools = parent.createDiv({ cls: "inkline-toolbar" });
@@ -131,14 +131,18 @@ export class EditorControls {
       convert: convertBar,
     };
     for (const control of controls) {
-      if (control.needs !== undefined && !offers[control.needs]) continue;
-      this.#addButton(rows[control.row], control);
+      if (this.#offers(control)) this.#addButton(rows[control.row], control);
     }
     this.#hint = pictureBar.createSpan({ cls: "inkline-picture-hint" });
     this.pictureBar = pictureBar;
     this.#chooser = chooser;
     this.#convertBar = convertBar;
     this.#threshold = threshold;
+  }
+
+  /** Whether the editor offers `control`, as a new symbol's offers Next. */
+  #offers(control: Control): boolean {
+    return control.needs === undefined || this.#options.offers[control.needs];
   }
 
   /**
@@ -188,7 +192,7 @@ export class EditorControls {
    * two.
    */
   registerKeys(scope: Scope): void {
-    const { commands: editor, line, offers } = this.#options;
+    const { commands: editor, line } = this.#options;
     const key = (
       modifiers: ("Mod" | "Shift")[],
       name: string,
@@ -202,8 +206,7 @@ export class EditorControls {
       });
     };
     for (const control of controls) {
-      if (control.arrowKeys === true) continue;
-      if (control.needs !== undefined && !offers[control.needs]) continue;
+      if (control.arrowKeys === true || !this.#offers(control)) continue;
       for (const { modifiers, key: name } of control.keys) {
         key(
           [...modifiers],
