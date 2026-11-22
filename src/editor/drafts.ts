@@ -620,7 +620,7 @@ export function unshownBase(
 
 /**
  * The question that offers `draft` back: that the symbol has unsaved changes
- * from `kept`, the time it was kept as the person reads times, and then, as
+ * from `keptAt`, the time it was kept as the person reads times, and then, as
  * each applies, that the symbol was saved again since, so that its strokes
  * may not line up; that only the symbol's readings or translations changed,
  * when the draft would put text back that was typed; and that its base layer
@@ -635,7 +635,7 @@ export function offerQuestion(
     readonly fingerprint: string | undefined;
     readonly drawing: string | undefined;
   },
-  kept: string,
+  keptAt: string,
 ): { readonly title: string; readonly content: string } {
   const changed =
     draft.fingerprint !== undefined &&
@@ -658,7 +658,7 @@ export function offerQuestion(
     : " Its base layer cannot be read, so only its strokes would come back.";
   return {
     title: "Restore the unsaved drawing?",
-    content: `This symbol has unsaved changes from ${kept}.${moved}${retyped}${unreadable}`,
+    content: `This symbol has unsaved changes from ${keptAt}.${moved}${retyped}${unreadable}`,
   };
 }
 

@@ -1660,7 +1660,7 @@ describe("offerQuestion", () => {
     " Its readings or translations changed since then, so look over what you typed before saving.";
   const unreadable =
     " Its base layer cannot be read, so only its strokes would come back.";
-  /** The question's text for a draft kept over `from`, read with `now`. */
+  /** The question's text for a draft made with `overrides`, read with `now`. */
   const content = (
     overrides: Partial<Draft>,
     now: { fingerprint?: string; drawing?: string },
@@ -1685,6 +1685,17 @@ describe("offerQuestion", () => {
         { fingerprint: "f", drawing: "d" },
         { fingerprint: "f", drawing: "d" },
       ),
+    ).toBe(asked);
+    // Typed text over an unchanged file, and a draft kept before drafts
+    // recorded a drawing, are the ordinary offer after a crash.
+    expect(
+      content(
+        { fingerprint: "f", drawing: "d", text: { reading: "ka" } },
+        { fingerprint: "f", drawing: "d" },
+      ),
+    ).toBe(asked);
+    expect(
+      content({ fingerprint: "f" }, { fingerprint: "f", drawing: "d" }),
     ).toBe(asked);
   });
 
