@@ -30,6 +30,12 @@ title line into the callout. With no symbols in the vault yet, the trigger shows
 nothing, and **Inkline: Insert existing symbol** says so. Typed with a space, a
 name matches only symbols whose names hold what you typed.
 
+**A table comes apart at the key after a symbol.** In Live Preview, if the text
+of a table cell ended in a space when you inserted a symbol there with
+**Inkline: Insert existing symbol** or from the editor, the next key garbles the
+table. It is Obsidian's. Undo at once, then leave the note and come back before
+you type in the table again, as [Known limits](./limits.md#in-general) says.
+
 **"… was saved by a newer version of Inkline."** The symbol is in a newer
 version of the file format than this Inkline reads. Update Inkline, as
 [Install](./install.md#update) describes; this version will not edit the symbol,
