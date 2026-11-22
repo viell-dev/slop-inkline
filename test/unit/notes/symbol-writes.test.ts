@@ -16,6 +16,7 @@ import {
   TextMoved,
 } from "../../../src/notes/file-writes.ts";
 import {
+  NotListed,
   parentPath,
   sweepStaged,
   SymbolWrites,
@@ -111,10 +112,18 @@ class FakeDisk implements SymbolDisk {
   writeStops?: (path: string) => boolean;
   /** Has a removal of a path it matches fail, as of a file held open. */
   removeRefuses: ((path: string) => boolean) | undefined;
+  /**
+   * Whether the vault lists what a copy makes, as Obsidian's adapter does
+   * before its `copy` resolves.
+   */
+  listsCopies = true;
+  /** Whether the disk tells letter case apart even when not asked to. */
+  readonly #caseSensitive: boolean;
 
-  constructor(vault: FakeVault, seen: boolean) {
+  constructor(vault: FakeVault, seen: boolean, caseSensitive: boolean) {
     this.#vault = vault;
     this.#seen = seen;
+    this.#caseSensitive = caseSensitive;
   }
 
   /** Obsidian's line, which `diskLine` reads, where it is as Obsidian's. */
@@ -169,17 +178,24 @@ class FakeDisk implements SymbolDisk {
   }
 
   /**
-   * Whether anything is at `path`, by its exact name if `sensitive`, and
-   * otherwise in any letter case, as Windows and macOS read names.
+   * Whether a file or folder is at `path`, by its exact name if `sensitive`
+   * or the disk tells letter case apart, and otherwise in any letter case, as
+   * Windows and macOS read names.
    */
   exists(path: string, sensitive = false): Promise<boolean> {
     return this.#queue(`exists ${path}`, () => {
       this.ran.push(`exists ${path}`);
-      if (sensitive) return this.bytesAt(path) !== undefined;
+      const unlisted = [...this.#unlisted.keys()];
+      const there = [
+        ...unlisted,
+        // The folders the disk has for them, listed or not.
+        ...unlisted.map((file) => parentPath(file)).filter((f) => f !== ""),
+        ...this.#vault.paths(),
+        ...this.#vault.folderPaths(),
+      ];
+      if (sensitive || this.#caseSensitive) return there.includes(path);
       const name = path.toLowerCase();
-      return [...this.#unlisted.keys(), ...this.#vault.paths()].some(
-        (other) => other.toLowerCase() === name,
-      );
+      return there.some((other) => other.toLowerCase() === name);
     });
   }
 
@@ -220,7 +236,8 @@ class FakeDisk implements SymbolDisk {
       const stops = this.copyStopsAfter;
       this.copyStopsAfter = undefined;
       if (stops === undefined) {
-        this.#put(to, bytes);
+        if (this.listsCopies) this.#put(to, bytes);
+        else this.putUnlisted(to, bytes);
         return;
       }
       this.#put(to, bytes.slice(0, stops));
@@ -272,10 +289,14 @@ class FakeVault implements SymbolVault<Fake> {
 
   /**
    * With `line`, the disk keeps its line where Obsidian 1.13.4 and 1.15.1 do;
-   * without it, something of another shape is there.
+   * without it, something of another shape is there. With `caseSensitive`,
+   * the disk tells letter case apart, as Linux does.
    */
-  constructor({ line = true }: { line?: boolean } = {}) {
-    this.adapter = new FakeDisk(this, line);
+  constructor({
+    line = true,
+    caseSensitive = false,
+  }: { line?: boolean; caseSensitive?: boolean } = {}) {
+    this.adapter = new FakeDisk(this, line, caseSensitive);
   }
 
   put(path: string, bytes: Uint8Array = pinned): Fake {
@@ -294,6 +315,10 @@ class FakeVault implements SymbolVault<Fake> {
 
   paths(): string[] {
     return [...this.#files.keys()];
+  }
+
+  folderPaths(): string[] {
+    return [...this.#folders].filter((folder) => folder !== "");
   }
 
   rename(file: Fake, path: string): void {
@@ -316,13 +341,18 @@ class FakeVault implements SymbolVault<Fake> {
     return this.at(path);
   }
 
-  getFolderByPath(path: string): { children: { name: string }[] } | null {
+  getFolderByPath(
+    path: string,
+  ): { children: { name: string; path: string }[] } | null {
     const folder = path === "/" ? "" : path;
     if (!this.#folders.has(folder)) return null;
-    const names = [...this.#files.keys(), ...this.#folders]
+    const children = [...this.#files.keys(), ...this.#folders]
       .filter((child) => child !== "" && parentPath(child) === folder)
-      .map((child) => child.slice(child.lastIndexOf("/") + 1));
-    return { children: names.map((name) => ({ name })) };
+      .map((child) => ({
+        name: child.slice(child.lastIndexOf("/") + 1),
+        path: child,
+      }));
+    return { children };
   }
 
   getAbstractFileByPath(path: string): unknown {
@@ -367,10 +397,16 @@ function writesOf(
   vault: FakeVault,
   unloaded = new AbortController().signal,
 ): SymbolWrites<Fake> {
-  return new SymbolWrites(vault, pluginFolder, unloaded, (file) => {
-    refreshed.push(file);
-    return Promise.resolve();
-  });
+  return new SymbolWrites(
+    vault,
+    pluginFolder,
+    unloaded,
+    (file) => {
+      refreshed.push(file);
+      return Promise.resolve();
+    },
+    (folder, name) => (folder === "" ? name : `${folder}/${name}`),
+  );
 }
 
 const said = (file: Fake): Promise<SymbolText> =>
@@ -872,6 +908,96 @@ describe("an editor's save", () => {
   });
 });
 
+describe("a deleted symbol's folder listed in another letter case", () => {
+  // #436: the editor names Signs/a.ink.png, deleted with its folder, and the
+  // vault lists SIGNS, which Windows and macOS read as the same folder.
+
+  it("makes the file again in the folder as the vault lists it", async () => {
+    const vault = new FakeVault();
+    const writes = writesOf(vault);
+    const old = vault.put("Signs/a.ink.png");
+    vault.delete(old);
+    vault.deleteFolder("Signs");
+    await vault.createFolder("SIGNS");
+    const drawn = await writeText(pinned, "translation", ["DRAWN"]);
+    const made = await editorSave(writes, old, pinned, drawn);
+    expect(made.path).toBe("SIGNS/a.ink.png");
+    expect(made.bytes).toEqual(drawn);
+    expect(vault.getFolderByPath("Signs")).toBeNull();
+  });
+
+  it("looks at a file in that folder, and writes over it if it holds what was known", async () => {
+    const vault = new FakeVault();
+    const writes = writesOf(vault);
+    const old = vault.put("Signs/a.ink.png");
+    vault.delete(old);
+    vault.deleteFolder("Signs");
+    const there = vault.put("SIGNS/a.ink.png");
+    const drawn = await writeText(pinned, "translation", ["DRAWN"]);
+    await expect(editorSave(writes, old, pinned, drawn)).resolves.toBe(there);
+    expect(there.bytes).toEqual(drawn);
+    // The save's own entry ends with it: nothing reads there for that path now.
+    expect(await writes.symbolFile("Signs/a.ink.png").read()).toBeUndefined();
+  });
+
+  it("asks about a file in that folder that holds something else", async () => {
+    const vault = new FakeVault();
+    const writes = writesOf(vault);
+    const old = vault.put("Signs/a.ink.png");
+    vault.delete(old);
+    vault.deleteFolder("Signs");
+    const theirs = await writeText(pinned, "reading", ["THEIRS"]);
+    const there = vault.put("SIGNS/a.ink.png", theirs);
+    await expect(editorSave(writes, old, pinned, pinned)).rejects.toThrow(
+      "asks first",
+    );
+    expect(there.writes).toBe(0);
+  });
+
+  it("makes a folder of its own where the disk tells letter case apart", async () => {
+    const vault = new FakeVault({ caseSensitive: true });
+    const writes = writesOf(vault);
+    const old = vault.put("Signs/a.ink.png");
+    vault.delete(old);
+    vault.deleteFolder("Signs");
+    await vault.createFolder("SIGNS");
+    const made = await editorSave(writes, old, pinned, pinned);
+    expect(made.path).toBe("Signs/a.ink.png");
+    expect(vault.getFolderByPath("Signs")).not.toBeNull();
+  });
+
+  it("keeps a folder of its own the vault has not listed yet, where the disk tells letter case apart", async () => {
+    const vault = new FakeVault({ caseSensitive: true });
+    const writes = writesOf(vault);
+    const old = vault.put("Signs/a.ink.png");
+    vault.delete(old);
+    vault.deleteFolder("Signs");
+    await vault.createFolder("SIGNS");
+    // Made outside Obsidian, which has not listed it yet.
+    vault.adapter.putUnlisted("Signs/b.ink.png", pinned);
+    const made = await editorSave(writes, old, pinned, pinned);
+    expect(made.path).toBe("Signs/a.ink.png");
+  });
+
+  it("does not take a file in another letter case for the folder", async () => {
+    // The disk reads SIGNS as Signs, but SIGNS is a file: the folder is made,
+    // as the fake vault allows beside it, and nothing goes into the file.
+    const vault = new FakeVault();
+    const writes = writesOf(vault);
+    const old = vault.put("Signs/a.ink.png");
+    vault.delete(old);
+    vault.deleteFolder("Signs");
+    vault.put("SIGNS", theirsBytes());
+    const made = await editorSave(writes, old, pinned, pinned);
+    expect(made.path).toBe("Signs/a.ink.png");
+  });
+
+  /** Some bytes, for a file whose bytes do not matter. */
+  function theirsBytes(): Uint8Array {
+    return new Uint8Array([7, 8, 9]);
+  }
+});
+
 describe("a library's save", () => {
   const at = "a.ink.png";
   const typed = { reading: ["TYPED"] };
@@ -1311,6 +1437,21 @@ describe("making a symbol's file", () => {
     await expect(make(writesOf(vault))).rejects.toThrow(
       `EACCES: permission denied, as the symbol was put at ${at}`,
     );
+  });
+
+  it("says when its copy made the file whole and Obsidian has not listed it", async () => {
+    // #437: the one failure after which the file at the path is the save's own.
+    const vault = new FakeVault();
+    const disk = vault.adapter;
+    disk.listsCopies = false;
+    const failure = await make(writesOf(vault)).catch(
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(NotListed);
+    expect(String(failure)).toContain(
+      `${at} was written, but Obsidian has not listed it`,
+    );
+    expect(disk.bytesAt(at)).toEqual(ours);
   });
 
   it("makes the file all the same when its own cannot be taken away", async () => {

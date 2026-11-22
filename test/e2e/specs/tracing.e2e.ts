@@ -1,6 +1,8 @@
 import { browser, expect } from "@wdio/globals";
+import { Key } from "webdriverio";
 import { obsidianPage } from "wdio-obsidian-service";
 import { loadModules } from "../support/browser.ts";
+import { setPageZoom } from "../support/cursor.ts";
 import {
   inklineOn,
   insert,
@@ -23,9 +25,18 @@ import {
   symbolFiles,
   waitForStatus,
 } from "../support/editor.ts";
-import { type Box } from "../support/pointer.ts";
+import {
+  type Box,
+  boxOf,
+  dragInWindow,
+  inWindow,
+  tops,
+  watchTops,
+} from "../support/pointer.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 import {
+  inkShown,
+  making,
   near,
   pastePicture,
   pictureHint,
@@ -137,6 +148,93 @@ async function dragBy(dx: number, dy: number): Promise<void> {
 /** How many files the vault holds. */
 async function fileCount(): Promise<number> {
   return browser.executeObsidian(({ app }) => app.vault.getFiles().length);
+}
+
+/** Where the drawing area shows the red picture, in the window's pixels. */
+async function pictureInWindow(): Promise<Box> {
+  const shown = await pictureShown();
+  if (shown === undefined) throw new Error("no picture shown");
+  const { ratio, border } = await surfaceLayout();
+  const surfaceBox = await boxOf(".inkline-editor .inkline-surface");
+  const left = surfaceBox.left + border;
+  const top = surfaceBox.top + border;
+  return {
+    left: left + shown.left / ratio,
+    top: top + shown.top / ratio,
+    right: left + shown.right / ratio,
+    bottom: top + shown.bottom / ratio,
+  };
+}
+
+/**
+ * Has the page make `change` 150 milliseconds after the next press, which
+ * the test itself cannot send a command during: Obsidian's page zoom to
+ * 125%, through the webFrame that Ctrl+= uses; the editor moved 60 pixels
+ * right with the window told it was resized, as when the window's size
+ * changes and the editor stays in its middle; or a click on Readings and
+ * translations, as its key on the button would.
+ */
+async function changeDuringPress(
+  change: "page zoom" | "moved" | "readings",
+): Promise<void> {
+  await browser.execute((action) => {
+    const editor = activeDocument.querySelector(".inkline-editor");
+    if (editor?.instanceOf(HTMLElement) !== true) throw new Error("no editor");
+    // Found now, so that a host without it fails here rather than in a
+    // timer, where the test would see only that nothing happened.
+    const zoom = ((): (() => void) => {
+      if (action !== "page zoom") return () => undefined;
+      const load: unknown = Reflect.get(window, "require");
+      if (typeof load !== "function") throw new Error("no host require");
+      const electron: unknown = Reflect.apply(load, window, ["electron"]);
+      const frame: unknown = Reflect.get(Object(electron), "webFrame");
+      const set: unknown = Reflect.get(Object(frame), "setZoomFactor");
+      if (typeof set !== "function") throw new Error("no host zoom");
+      return (): void => {
+        Reflect.apply(set, frame, [1.25]);
+      };
+    })();
+    const toggle = editor.querySelector(".inkline-text-toggle");
+    if (action === "readings" && toggle?.instanceOf(HTMLElement) !== true) {
+      throw new Error("no Readings and translations");
+    }
+    const act = (): void => {
+      if (action === "page zoom") {
+        zoom();
+      } else if (action === "moved") {
+        editor.style.position = "relative";
+        editor.style.left = "60px";
+        window.dispatchEvent(new Event("resize"));
+      } else if (toggle?.instanceOf(HTMLElement) === true) {
+        toggle.click();
+      }
+    };
+    window.addEventListener(
+      "pointerdown",
+      () => {
+        window.setTimeout(act, 150);
+      },
+      { capture: true, once: true },
+    );
+  }, change);
+}
+
+/**
+ * Drags the picture with Move on, 30 pixels right and 15 down from the
+ * drawing area's middle, pressing `keys` while it is held, and says whether
+ * the drawing area, and so the picture on it, stayed where it was in the
+ * window from the press to the release.
+ */
+async function dragStill(
+  keys: readonly (string | readonly string[])[],
+): Promise<boolean> {
+  await settledSurface();
+  const from = await inWindow(0.5, 0.5);
+  await watchTops();
+  await dragInWindow(from, { x: from.x + 30, y: from.y + 15 }, keys);
+  const seen = await tops();
+  expect(seen.at(-1)?.type).toBe("pointerup");
+  return new Set(seen.map(({ top }) => top)).size === 1;
 }
 
 describe("The editor", function () {
@@ -408,6 +506,173 @@ describe("The editor", function () {
       );
       expect(near(await pictureShown(), shrunk, 1)).toBe(true);
     });
+
+    // Obsidian matches a key by what it types, or by its key code. On a
+    // layout whose number row types symbols, as a Czech one, the key in 1's
+    // place types + with 1's key code: while Move is on, it scales the
+    // picture, as + does elsewhere, rather than choosing a brush size.
+    it("scales the picture from a + key with 1's key code, as on a Czech keyboard", async function () {
+      await insert();
+      await pastePicture("red");
+      const placed = await waitForPicture((box) => box !== undefined);
+      if (placed === undefined) throw new Error("no picture");
+      await browser.keys(["m"]);
+      expect(await pressed("move")).toBe("true");
+      // WebDriver types as the container's US layout does, so the key is sent
+      // as that layout sends it.
+      await browser.execute(() => {
+        const target = activeDocument.activeElement ?? activeDocument.body;
+        target.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "+",
+            code: "Digit1",
+            keyCode: 49,
+            which: 49,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      });
+      const notch = Math.exp(100 / 500);
+      const middleX = (placed.left + placed.right) / 2;
+      const middleY = (placed.top + placed.bottom) / 2;
+      await waitForPicture((box) =>
+        near(box, scaled(placed, notch, middleX, middleY), 3),
+      );
+      expect(await pressed("size-1")).toBe("true");
+      expect(await pressed("size-0")).toBe("false");
+    });
+
+    // Obsidian keeps the editor in the middle of the window, so a row that
+    // opened or closed above the drawing area, or a zoom, while the picture
+    // was dragged moved the drawing, and the picture with it, under the
+    // pointer (#444). They wait for the release, as while drawing.
+    it("keeps the picture under the pointer when Make ink is pressed while dragging it, and opens it once let go", async function () {
+      await insert();
+      await pastePicture("red");
+      const placed = await waitForPicture((box) => box !== undefined);
+      if (placed === undefined) throw new Error("no picture");
+      const { ratio } = await surfaceLayout();
+      await browser.keys(["m"]);
+      expect(await dragStill(["i"])).toBe(true);
+      await waitForStatus(making);
+      expect(await inkShown()).toBe(true);
+      // Where the pointer took it, as the row opened only then.
+      await waitForPicture((box) =>
+        near(box, moved(placed, 30 * ratio, 15 * ratio)),
+      );
+    });
+
+    it("keeps the picture under the pointer when Zoom is pressed while dragging it, and zooms once let go", async function () {
+      await insert();
+      await pastePicture("red");
+      await waitForPicture((box) => box !== undefined);
+      await browser.keys(["m"]);
+      expect(await dragStill(["z"])).toBe(true);
+      await waitForStatus("Zoomed in");
+      expect(await pressed("zoom")).toBe("true");
+    });
+
+    it("keeps Make ink's row showing until the release when a picture pasted while dragging closes it", async function () {
+      await insert();
+      await pastePicture("red");
+      await waitForPicture((box) => box !== undefined);
+      await browser.keys(["i"]);
+      await waitForStatus(making);
+      // The slider has the focus, so the button rather than M.
+      await browser.$('[data-inkline-button="move"]').click();
+      expect(await pressed("move")).toBe("true");
+      await browser.execute(async () => {
+        await window.inklineTest.pictures.copyPicture(40, 40, "blue");
+        // What shows as the pointer is let go, before the editor takes it.
+        window.addEventListener(
+          "pointerup",
+          () => {
+            const surface = activeDocument.querySelector(
+              ".inkline-editor .inkline-surface",
+            );
+            const bar = activeDocument.querySelector(".inkline-convert");
+            Reflect.set(window, "inklineTestReleased", {
+              blue:
+                surface?.instanceOf(HTMLCanvasElement) === true &&
+                window.inklineTest.pictures.shown(surface, "blue") !==
+                  undefined,
+              bar: bar?.instanceOf(HTMLElement) === true && bar.isShown(),
+            });
+          },
+          { capture: true, once: true },
+        );
+      });
+      expect(await dragStill([[Key.Ctrl, "v"]])).toBe(true);
+      // The paste was taken during the press, and the row still showed.
+      expect(
+        await browser.execute(() =>
+          JSON.stringify(Reflect.get(window, "inklineTestReleased") ?? null),
+        ),
+      ).toBe(JSON.stringify({ blue: true, bar: true }));
+      // Then it closes, as Make ink was open for the picture replaced.
+      await waitForPicture((box) => box !== undefined, "blue");
+      await browser.waitUntil(async () => !(await inkShown()), {
+        timeoutMsg: "Make ink's row stayed after the release",
+      });
+      expect(await pressed("ink")).toBe("false");
+    });
+
+    // The drawing can still move under a held pointer: the window's size or
+    // Obsidian's page zoom can change, and Readings and translations can open
+    // from the keyboard. A drag of the picture goes on from where the pointer
+    // then is in the drawing, so the picture is back under it as it next
+    // reports, or as it is let go (#445).
+    for (const { what, change } of [
+      { what: "the page zoom changes", change: "page zoom" },
+      { what: "the window's size changes", change: "moved" },
+      { what: "Readings and translations opens", change: "readings" },
+    ] as const) {
+      it(`keeps the picture under the pointer when ${what} while dragging it`, async function () {
+        await insert();
+        await pastePicture("red");
+        await waitForPicture((box) => box !== undefined);
+        await browser.keys(["m"]);
+        await settledSurface();
+        const surfaceBefore = await boxOf(".inkline-editor .inkline-surface");
+        // Grabbed by its middle, and dragged 20 pixels right and 10 down.
+        const before = await pictureInWindow();
+        const from = {
+          x: Math.round((before.left + before.right) / 2),
+          y: Math.round((before.top + before.bottom) / 2),
+        };
+        const to = { x: from.x + 20, y: from.y + 10 };
+        try {
+          await changeDuringPress(change);
+          await browser
+            .action("pointer", { parameters: { pointerType: "mouse" } })
+            .move({ origin: "viewport", ...from, duration: 0 })
+            .down()
+            .move({ origin: "viewport", ...to, duration: 0 })
+            .pause(600)
+            .up()
+            .perform();
+          await settledSurface();
+          // The drawing area moved under the pointer.
+          const surfaceAfter = await boxOf(".inkline-editor .inkline-surface");
+          expect(
+            surfaceAfter.left !== surfaceBefore.left ||
+              surfaceAfter.top !== surfaceBefore.top,
+          ).toBe(true);
+          // The picture is under it by its middle, where it was grabbed. Its
+          // bottom can be past the drawing area's now, which shows only the
+          // rest of it: the picture is square, so its height is its width.
+          const after = await pictureInWindow();
+          const side = after.right - after.left;
+          const across = (to.x - after.left) / side;
+          const down = (to.y - after.top) / side;
+          expect(Math.abs(across - 0.5)).toBeLessThan(0.05);
+          expect(Math.abs(down - 0.5)).toBeLessThan(0.05);
+        } finally {
+          if (change === "page zoom") await setPageZoom(1);
+        }
+      });
+    }
 
     it("never saves the picture", async function () {
       await insert();

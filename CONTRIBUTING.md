@@ -92,6 +92,20 @@ Inkline in Settings, Community plugins. `npm run dev` rebuilds on every change.
 The built manifest names the version in `package.json`, which can be newer than
 the root `manifest.json`, as [RELEASING.md](RELEASING.md) explains.
 
+## The editor's code
+
+The symbol editor lives in `src/editor/`. `modal.ts` holds `InkEditorModal`, the
+Obsidian modal that puts the editor together: it builds the editor's parts as it
+opens, implements the commands that its buttons and keys run, and keeps the
+drawing safe with drafts and saving. `controls.ts` makes the buttons, the bars
+for the picture and Make ink, the keys, and Help from the table of controls in
+`buttons.ts`, so that a button and its keys run the same command; `buttons.ts`
+also says which buttons are pressed and which can be used. Each of the other
+modules holds one part of the editor, such as the drawing session, the drafts,
+or the guides, and says what in its opening comment. Those that need neither
+Obsidian nor a canvas have unit tests in `test/unit/editor/`, and the rest are
+tested end to end.
+
 ## Checks
 
 ```sh
@@ -218,7 +232,7 @@ and run it in the Docker image:
 docker build --file test/e2e/Dockerfile --tag inkline-e2e .
 docker run --rm --init --shm-size=1g \
   --env E2E_PLUGIN_DIR=/brat \
-  --env E2E_BRAT_LATEST=1.0.0 --env E2E_BRAT_START=0.9.5 \
+  --env E2E_BRAT_LATEST=1.1.0 --env E2E_BRAT_START=1.0.2 \
   --volume inkline-obsidian-cache:/cache \
   --volume "$PWD/test-results/e2e:/out" --volume "$PWD/brat:/brat:ro" \
   inkline-e2e --spec test/e2e/manual/brat.e2e.ts
@@ -231,8 +245,9 @@ earlier version, it keeps the pixels, the note, and the preferences: the symbol
 opens as a picture to draw over, and the draft is dropped, as
 [the install guide](https://viell-dev.github.io/slop-inkline/install#update)
 says. So checking that strokes and a draft survive needs two published releases
-from `0.9.2` on, as the pair above is: `0.9.5` and `1.0.0` passed it on
-2026-11-16.
+from `0.9.2` on, as the pair above is: `1.0.2` and the pre-release `1.1.0`
+passed it on 2026-11-22, with BRAT's **latest** moving past the public release
+to the pre-release, and `0.9.5` and `1.0.0` on 2026-11-16.
 
 Before any request, the check refuses a missing version, a latest one before
 `0.9.2`, and a start that is not earlier than the latest. Before BRAT's

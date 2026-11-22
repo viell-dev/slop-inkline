@@ -9,6 +9,60 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Fixed
+
+- A draft opened as a new symbol, from **Inkline: Recover drafts** or a symbol
+  whose file does not open, whose first save was refused, as for a name typed
+  that another symbol came to as it was saved, stayed kept for that other
+  symbol, which then offered it as its own when it opened. Now the draft stays
+  the old symbol's, as before the save, for the next save to make the file
+  ([#437](https://github.com/viell-dev/slop-inkline/issues/437)).
+- On Windows and macOS, a deleted symbol whose folder was there again in another
+  letter case, as `signs` for `Signs`, stopped every save that made it again
+  with Obsidian's "Folder already exists." Now it is saved in that folder, which
+  those systems read as the same one. A file of its name already there, as after
+  the folder's letter case was changed outside Obsidian, is the file at its
+  path: written over if it holds what the editor last saved, and asked about
+  otherwise, as any change is
+  ([#436](https://github.com/viell-dev/slop-inkline/issues/436)).
+- **Make ink**, **Zoom**, and **Fit** pressed while **Move** drags the picture
+  now wait until you let go, as they do while you draw. They acted at once: Make
+  ink's row, opening above the drawing area, or a zoom, changing its height,
+  moved the drawing under the pointer, and the picture ended that far from where
+  you put it. Make ink's row also stays until you let go, during a drag or a
+  stroke, when Make ink closes for another reason, as when a picture pasted then
+  replaces the one it was open for
+  ([#444](https://github.com/viell-dev/slop-inkline/issues/444)).
+- A picture dragged with **Move** now comes back under the pointer as you go on
+  or let go when the drawing moves under the pointer during the drag, as when
+  Obsidian's page zoom or the window's size changes. It used to move with the
+  drawing and stay that far from the pointer, and a page zoom could also make it
+  jump. **Readings and translations** opened or closed while you draw a stroke
+  now ends the stroke where it showed, as a change to the window's size does,
+  rather than moving the drawing under the rest of it
+  ([#445](https://github.com/viell-dev/slop-inkline/issues/445)).
+
+## 1.1.0 - 2026-11-22
+
+This is the first pre-release since 1.0.0, an alpha of 1.2.0, the next public
+release. Features can still arrive and change in this line until a goal for
+1.2.0 is agreed. Its main new feature is **Path**, for curves placed by their
+points; the owner is asked to try it, with two smaller changes, in
+[the test request](https://github.com/viell-dev/slop-inkline/issues/446), which
+1.2.0 waits for.
+
+Obsidian does not offer pre-releases: it goes on offering 1.0.2 from the
+community plugins. To try 1.1.0, best in a vault of its own, install
+`inkline-1.1.0.zip` from this release's assets by hand, or choose version
+`1.1.0` in BRAT, as
+[the install guide](https://viell-dev.github.io/slop-inkline/install) says.
+BRAT's **latest** choice moves to it by itself. To go back, install 1.0.2 the
+same way.
+
+The file format is unchanged: a symbol saved with 1.1.0, with paths or without,
+opens in 1.0.0 to 1.0.2, and drafts keep the layout that every release from
+0.9.2 on uses.
+
 ### Added
 
 - A draft kept for a symbol whose file is gone or does not open, as one cut

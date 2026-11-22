@@ -6,6 +6,7 @@
 // waits on, or is refused by, another's.
 
 import type { App, TFile } from "obsidian";
+import { pathIn } from "./symbol-paths.ts";
 import { SymbolWrites } from "./symbol-writes.ts";
 
 /** What Inkline's writes and renames of symbol files share. */
@@ -50,7 +51,7 @@ export function symbolFiles(
   return {
     app,
     unloaded,
-    writes: new SymbolWrites(app.vault, folder, unloaded, refreshed),
+    writes: new SymbolWrites(app.vault, folder, unloaded, refreshed, pathIn),
     beingRenamed: new WeakSet(),
   };
 }

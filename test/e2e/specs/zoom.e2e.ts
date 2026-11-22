@@ -186,11 +186,12 @@ interface Watched {
  * clicks Zoom or Fit, as a key on the button could; makes the editor 120
  * pixels narrower, which changes the drawing area's size; or moves the
  * editor 60 pixels right and tells the window it was resized, as when a
- * window's size changes and the editor stays in its middle; or sets
- * Obsidian's page zoom to 125% at once, as Ctrl+= does by a smaller step,
- * about 109.5%, through the same webFrame.
+ * window's size changes and the editor stays in its middle; sets Obsidian's
+ * page zoom to 125% at once, as Ctrl+= does by a smaller step, about 109.5%,
+ * through the same webFrame; or clicks Readings and translations, as a key
+ * on the button could, which opens its fields' row.
  */
-type During = "zoom" | "fit" | "narrower" | "moved" | "page zoom";
+type During = "zoom" | "fit" | "narrower" | "moved" | "page zoom" | "readings";
 
 /**
  * Watches the next press on the drawing area, in the page, for
@@ -254,6 +255,9 @@ async function watchPress(during?: During): Promise<void> {
         window.dispatchEvent(new Event("resize"));
       } else if (action === "page zoom") {
         zoom();
+      } else if (action === "readings") {
+        const toggle = editor.querySelector(".inkline-text-toggle");
+        if (toggle?.instanceOf(HTMLElement) === true) toggle.click();
       }
     };
     /**
@@ -758,6 +762,8 @@ describe("Zoom", function () {
     { what: "the window's size changes", during: "moved" },
     // Obsidian's page zoom resizes the window's CSS viewport (#418).
     { what: "the page zoom changes", during: "page zoom" },
+    // Its fields' row changes the editor's size (#445).
+    { what: "Readings and translations opens", during: "readings" },
   ] as const) {
     it(`ends a stroke where it was shown when ${what}`, async function () {
       await openEditor();

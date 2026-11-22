@@ -64,7 +64,10 @@ export interface SymbolVault<File extends VaultFile> {
   getFileByPath(path: string): File | null;
   /** The vault's folder at `path` now, `"/"` for its top, or null. */
   getFolderByPath(path: string): {
-    readonly children: readonly { readonly name: string }[];
+    readonly children: readonly {
+      readonly name: string;
+      readonly path: string;
+    }[];
   } | null;
   /** What the vault lists at `path`, a file or a folder, or null. */
   getAbstractFileByPath(path: string): unknown;
@@ -146,6 +149,50 @@ export function present<File extends VaultFile>(
   file: File,
 ): boolean {
   return vault.getFileByPath(file.path) === file;
+}
+
+/**
+ * `folder` as the vault lists it, where the disk reads a part of it as the
+ * name of a folder the vault lists in another letter case, as Windows and
+ * macOS read names: that is the same folder on the disk, and Obsidian refuses
+ * to make it again with "Folder already exists." (#436). A part the vault
+ * lists in no letter case, and the rest after it, stay as they are, for the
+ * save to make. The disk is asked only of a part the vault does not list as
+ * it is, so a system that tells letter case apart keeps a folder of its own,
+ * even one it has not listed yet.
+ */
+async function folderAsListed(
+  vault: Pick<SymbolVault<VaultFile>, "adapter" | "getFolderByPath">,
+  folder: string,
+): Promise<string> {
+  const parts = folder.split("/");
+  let listed = "";
+  for (const [index, part] of parts.entries()) {
+    const asked = listed === "" ? part : `${listed}/${part}`;
+    if (vault.getFolderByPath(asked) !== null) {
+      listed = asked;
+      continue;
+    }
+    const other = vault
+      .getFolderByPath(listed === "" ? "/" : listed)
+      ?.children.find(
+        (child) =>
+          vault.getFolderByPath(child.path) !== null &&
+          child.name.toLowerCase() === part.toLowerCase(),
+      );
+    // The same folder only where the disk finds the name as asked, and not
+    // in that letter case: one that tells case apart can have both.
+    const { adapter } = vault;
+    if (
+      other === undefined ||
+      !(await adapter.exists(asked)) ||
+      (await adapter.exists(asked, true))
+    ) {
+      return [asked, ...parts.slice(index + 1)].join("/");
+    }
+    listed = other.path;
+  }
+  return listed;
 }
 
 /**
@@ -248,6 +295,19 @@ function errorCode(error: unknown): unknown {
 }
 
 /**
+ * Thrown by {@link makeSymbolFile} when its copy made the file, whole, and the
+ * vault does not list it: the one failure after which the file at the path is
+ * the save's own, as nothing else can have made it there.
+ */
+export class NotListed extends Error {
+  override name = "NotListed";
+
+  constructor(path: string) {
+    super(`${path} was written, but Obsidian has not listed it`);
+  }
+}
+
+/**
  * Makes a symbol's file at `path`, through Obsidian's adapter, as
  * {@link makeFile} does, and returns it. It writes the bytes to a file of its
  * own in Inkline's `folder` first, and then has the adapter copy that to the
@@ -288,9 +348,7 @@ async function makeSymbolFile<File extends VaultFile>(
     unstage: () => adapter.remove(own),
   });
   const made = vault.getFileByPath(path);
-  if (made === null) {
-    throw new Error(`${path} was written, but Obsidian has not listed it`);
-  }
+  if (made === null) throw new NotListed(path);
   return made;
 }
 
@@ -331,6 +389,11 @@ export class SymbolWrites<File extends VaultFile> {
   readonly #unloaded: AbortSignal;
   /** Has the text index read a file that a save wrote. */
   readonly #refreshed: (file: File) => Promise<void>;
+  /**
+   * The path of the file named `name` in `folder`, as the vault makes paths:
+   * symbol-paths.ts's `pathIn`, with Obsidian's `normalizePath`.
+   */
+  readonly #pathIn: (folder: string, name: string) => string;
 
   /**
    * Every write over a symbol's file, from the library and the editor alike, so
@@ -349,16 +412,39 @@ export class SymbolWrites<File extends VaultFile> {
    */
   #looking: { asked: unknown } | undefined;
 
+  /**
+   * Where a save that made a deleted symbol's file again found its folder
+   * listed in another letter case, which the disk read as the same name
+   * (#436): the path it made the file at, or found a file at, by the symbol's
+   * own path, as its editor still names it. `#fileAt` finds the file there, so
+   * that the editor's look and the save's next round look at that file as at
+   * one at the symbol's own path. An entry lasts only as long as the save that
+   * made it: the next one finds the folder again, asking the disk, so that an
+   * entry made in a moment the disk was read wrongly, or left by an editor
+   * closed since, never leads a later save to a file it did not find itself.
+   */
+  readonly #listedPaths = new Map<string, string>();
+
   constructor(
     vault: SymbolVault<File>,
     folder: string,
     unloaded: AbortSignal,
     refreshed: (file: File) => Promise<void>,
+    pathIn: (folder: string, name: string) => string,
   ) {
     this.#vault = vault;
     this.#folder = folder;
     this.#unloaded = unloaded;
     this.#refreshed = refreshed;
+    this.#pathIn = pathIn;
+  }
+
+  /** The vault's file at `path`, or where `#listedPaths` puts it. */
+  #fileAt(path: string): File | null {
+    const file = this.#vault.getFileByPath(path);
+    if (file !== null) return file;
+    const listed = this.#listedPaths.get(path);
+    return listed === undefined ? null : this.#vault.getFileByPath(listed);
   }
 
   /**
@@ -375,7 +461,7 @@ export class SymbolWrites<File extends VaultFile> {
     return {
       path,
       read: async () => {
-        const file = vault.getFileByPath(path);
+        const file = this.#fileAt(path);
         if (file === null) return undefined;
         const reading = vault.readBinary(file);
         if (this.#looking !== undefined && this.#looking.asked === undefined) {
@@ -459,7 +545,7 @@ export class SymbolWrites<File extends VaultFile> {
       this.#queue.run(() =>
         saveFile({
           current: () =>
-            present(vault, file) ? file : vault.getFileByPath(file.path),
+            present(vault, file) ? file : this.#fileAt(file.path),
           check: async () => {
             const look: { asked: unknown } = { asked: undefined };
             this.#looking = look;
@@ -478,7 +564,14 @@ export class SymbolWrites<File extends VaultFile> {
           read: async (found) => new Uint8Array(await vault.readBinary(found)),
           line: diskLine(vault),
           create: async () => {
-            const folder = parentPath(file.path);
+            const wanted = parentPath(file.path);
+            const folder =
+              wanted === "" ? "" : await folderAsListed(vault, wanted);
+            // Where the folder is there in another letter case, the file goes
+            // in it, which on such a disk is where it was.
+            const path =
+              folder === wanted ? file.path : this.#pathIn(folder, file.name);
+            if (path !== file.path) this.#listedPaths.set(file.path, path);
             if (folder !== "" && vault.getAbstractFileByPath(folder) === null) {
               try {
                 await vault.createFolder(folder);
@@ -489,16 +582,19 @@ export class SymbolWrites<File extends VaultFile> {
               }
             }
             try {
-              return await this.make(file.path, buffer);
+              return await this.make(path, buffer);
             } catch (error) {
-              // A file the vault lists at the path is looked at in the save's
-              // next round; anything else is said in Inkline's words.
+              // A file the vault lists at the path, the symbol's own or the
+              // one in its folder as listed, is looked at in the save's next
+              // round; anything else is said in Inkline's words.
               if (error instanceof PathTaken) {
-                throw new PathTaken(await takenReason(vault, file.path));
+                throw new PathTaken(await takenReason(vault, path));
               }
               throw error;
             }
           },
+        }).finally(() => {
+          this.#listedPaths.delete(file.path);
         }),
       );
     const write = async (): Promise<File> => {

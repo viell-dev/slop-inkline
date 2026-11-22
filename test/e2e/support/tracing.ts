@@ -109,3 +109,12 @@ export async function pastePicture(colour: "red" | "blue"): Promise<void> {
 export async function pictureHint(): Promise<string> {
   return browser.$(".inkline-picture-hint").getText();
 }
+
+/** What the editor says, and the picture's hint, while Make ink is open. */
+export const making =
+  "Making ink of the picture: set the threshold, then Apply.";
+
+/** Whether Make ink's bar, with its threshold, shows. */
+export async function inkShown(): Promise<boolean> {
+  return browser.$(".inkline-editor .inkline-convert").isDisplayed();
+}

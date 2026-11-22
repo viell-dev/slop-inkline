@@ -33,7 +33,8 @@ What Inkline does not do, or does not do everywhere, and what to do instead. The
   let go, so what you draw ends where it shows; moving along takes what you draw
   on to the pointer as the view moves, and shows it there; and a change to the
   window's or the editor's size, or to Obsidian's page zoom, that moves the
-  drawing under the pointer ends the stroke where it showed.
+  drawing under the pointer ends the stroke where it showed. A picture dragged
+  with **Move** comes back under the pointer instead.
 - **A table can come apart at the next key after a symbol goes into a cell that
   ends in a space.** In Live Preview, when the text of the table cell you are
   typing in ends in a space, as when you write a word, a space, and then a

@@ -299,7 +299,8 @@ editor changes size while you draw a stroke or a shape, or Obsidian's page zoom
 changes (Ctrl+= and Ctrl+−), and that moves the drawing under the pointer, the
 stroke or shape ends where it showed, and the rest of the drag draws nothing; a
 polygon's corner or a path's point or handle being pressed then goes where you
-let go, as ever.
+let go, as ever. **Unreleased:** opening or closing **Readings and
+translations** while you draw counts as a change to the editor's size.
 
 The grid, though, has twice as many cells each way while zoomed, so the default
 5 cells across the x-height become 10, for placing fine detail. Every point of
@@ -346,9 +347,13 @@ in drafts.
 
 **Move** (M) lets you drag the picture and scale it with the wheel; the arrow
 keys move it, and + and − scale it, from the keyboard. Press M again to draw.
-**Remove picture** takes it away, and another paste replaces it. **Next** takes
-the picture on to the next symbol where it was, so that you can trace a whole
-inscription from one screenshot.
+**Unreleased:** while you drag the picture, **Zoom**, **Fit**, and **Make ink**
+wait until you let go, as they do while you draw, so that the picture stays
+under the pointer. If the drawing moves under the pointer anyway while you drag,
+as when Obsidian's page zoom or the window's size changes, the picture comes
+back under the pointer as you go on or let go. **Remove picture** takes it away,
+and another paste replaces it. **Next** takes the picture on to the next symbol
+where it was, so that you can trace a whole inscription from one screenshot.
 
 ## Make ink of a picture
 
@@ -361,6 +366,9 @@ once you let go, as Zoom does, as its row above the drawing area would move the
 drawing under the pointer. Its button shows what it will be meanwhile, and a
 save meanwhile makes ink only if it stays open. If a question opens before you
 let go, such as Esc's about unsaved changes, Make ink does not open behind it.
+While you hold the pointer down on the drawing area, its row also stays when
+Make ink closes for another reason, as when a picture pasted then replaces the
+one it was open for, and goes once you let go.
 
 Only what the drawing area shows becomes ink, across and within the line's
 height, so that the other symbols of a screenshot stay out: move and scale the
