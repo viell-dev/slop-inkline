@@ -4,12 +4,15 @@ import {
   decodeDraft,
   draftBase,
   draftLifetime,
+  draftOffer,
   draftVersion,
   drawingOf,
   fingerprintOf,
+  offerQuestion,
   restoreDraft,
   restoresNothing,
   sameTarget,
+  unshownBase,
   type Draft,
   type DraftTarget,
   type VaultStorage,
@@ -1572,6 +1575,189 @@ describe("restoresNothing", () => {
     expect(changed({ name: "gate" })).toBe(false);
     expect(changed({ text: {} })).toBe(false);
     expect(changed({ text: { reading: "" } })).toBe(false);
+  });
+});
+
+describe("draftOffer", () => {
+  const opened: InkDocument = { strokes: [stroke], base: layer };
+  const file: DraftTarget = { kind: "file", path: "001.ink.png" };
+  const nothing = (id: string): Draft => draft({ id });
+  const something = (id: string): Draft =>
+    draft({ id, strokes: [stroke, stroke] });
+
+  it("offers the newest draft that brings something back, dropping the newer ones that bring nothing", () => {
+    expect(
+      draftOffer(
+        file,
+        [nothing("a"), nothing("b"), something("c"), nothing("d")],
+        opened,
+        "001",
+      ),
+    ).toEqual({ offer: something("c"), drop: ["a", "b"] });
+  });
+
+  it("drops every draft of a file that brings nothing back, and offers none", () => {
+    expect(
+      draftOffer(file, [nothing("a"), nothing("b")], opened, "001"),
+    ).toEqual({ offer: undefined, drop: ["a", "b"] });
+  });
+
+  it("judges by the name the symbol has, and the file as opened", () => {
+    // A draft that keeps a name, offered once the symbol has another.
+    const named = draft({ id: "a", name: "gate" });
+    expect(draftOffer(file, [named], opened, "gate").offer).toBeUndefined();
+    expect(draftOffer(file, [named], opened, "001").offer).toBe(named);
+    // The same draft over a file whose strokes are not its own.
+    expect(
+      draftOffer(file, [nothing("a")], { strokes: [], base: layer }, "001")
+        .offer,
+    ).toEqual(nothing("a"));
+  });
+
+  it("offers a new symbol's newest draft, whatever it holds", () => {
+    const target: DraftTarget = { kind: "new", note: "Note.md" };
+    expect(
+      draftOffer(target, [nothing("a"), something("b")], opened, ""),
+    ).toEqual({ offer: nothing("a"), drop: [] });
+  });
+
+  it("offers nothing when there is no draft", () => {
+    expect(draftOffer(file, [], opened, "001")).toEqual({
+      offer: undefined,
+      drop: [],
+    });
+  });
+});
+
+describe("unshownBase", () => {
+  it("is a base layer taken from the file, or one kept that cannot be decoded", () => {
+    const fromFile = draft({ base: { kind: "file" } });
+    expect(unshownBase(fromFile, true)).toEqual({ kind: "file" });
+    expect(unshownBase(fromFile, false)).toEqual({ kind: "file" });
+    const kept = draft({ base: { kind: "kept", layer } });
+    expect(unshownBase(kept, false)).toEqual({ kind: "kept", layer });
+  });
+
+  it("is none for a kept base layer shown, one lost, or none at all", () => {
+    expect(
+      unshownBase(draft({ base: { kind: "kept", layer } }), true),
+    ).toBeUndefined();
+    expect(
+      unshownBase(draft({ base: { kind: "lost" } }), false),
+    ).toBeUndefined();
+    expect(
+      unshownBase(draft({ base: { kind: "none" } }), true),
+    ).toBeUndefined();
+  });
+});
+
+describe("offerQuestion", () => {
+  const kept = "21/11/2026, 10:00:00";
+  const asked = "This symbol has unsaved changes from 21/11/2026, 10:00:00.";
+  const moved =
+    " The symbol was saved again since then, so its strokes may not line up.";
+  const retyped =
+    " Its readings or translations changed since then, so look over what you typed before saving.";
+  const unreadable =
+    " Its base layer cannot be read, so only its strokes would come back.";
+  /** The question's text for a draft made with `overrides`, read with `now`. */
+  const content = (
+    overrides: Partial<Draft>,
+    now: { fingerprint?: string; drawing?: string },
+    readable = true,
+  ): string =>
+    offerQuestion(
+      draft(overrides),
+      readable,
+      { fingerprint: now.fingerprint, drawing: now.drawing },
+      kept,
+    ).content;
+
+  it("asks whether to restore, and says when the draft was kept", () => {
+    expect(
+      offerQuestion(draft(), true, { fingerprint: "f", drawing: "d" }, kept),
+    ).toEqual({ title: "Restore the unsaved drawing?", content: asked });
+  });
+
+  it("says nothing more when the file is as the draft was kept over", () => {
+    expect(
+      content(
+        { fingerprint: "f", drawing: "d" },
+        { fingerprint: "f", drawing: "d" },
+      ),
+    ).toBe(asked);
+    // Typed text over an unchanged file, and a draft kept before drafts
+    // recorded a drawing, are the ordinary offer after a crash.
+    expect(
+      content(
+        { fingerprint: "f", drawing: "d", text: { reading: "ka" } },
+        { fingerprint: "f", drawing: "d" },
+      ),
+    ).toBe(asked);
+    expect(
+      content({ fingerprint: "f" }, { fingerprint: "f", drawing: "d" }),
+    ).toBe(asked);
+  });
+
+  it("compares nothing for a new symbol, or a draft of one, which have no file", () => {
+    expect(content({ fingerprint: "f" }, {})).toBe(asked);
+    expect(content({}, { fingerprint: "g", drawing: "d" })).toBe(asked);
+  });
+
+  it("says the strokes may not line up when the drawing was saved again", () => {
+    expect(
+      content(
+        { fingerprint: "f", drawing: "d" },
+        { fingerprint: "g", drawing: "e" },
+      ),
+    ).toBe(asked + moved);
+    // A draft from before drawings were fingerprinted counts any change, even
+    // where the file has no such fingerprint either.
+    expect(
+      content({ fingerprint: "f" }, { fingerprint: "g", drawing: "d" }),
+    ).toBe(asked + moved);
+    expect(content({ fingerprint: "f" }, { fingerprint: "g" })).toBe(
+      asked + moved,
+    );
+    // Its typed text changes nothing about that.
+    expect(
+      content(
+        { fingerprint: "f", drawing: "d", text: { reading: "ka" } },
+        { fingerprint: "g", drawing: "e" },
+      ),
+    ).toBe(asked + moved);
+  });
+
+  it("says to look over typed text when only the readings or translations changed", () => {
+    const textOnly = { fingerprint: "g", drawing: "d" };
+    expect(
+      content(
+        { fingerprint: "f", drawing: "d", text: { reading: "ka" } },
+        textOnly,
+      ),
+    ).toBe(asked + retyped);
+    // Unless it puts no typed text back, when nothing it holds is affected.
+    expect(content({ fingerprint: "f", drawing: "d" }, textOnly)).toBe(asked);
+    expect(
+      content({ fingerprint: "f", drawing: "d", text: {} }, textOnly),
+    ).toBe(asked);
+  });
+
+  it("says when its base layer cannot be read, after anything else", () => {
+    const now = { fingerprint: "f", drawing: "d" };
+    expect(content({ fingerprint: "f", drawing: "d" }, now, false)).toBe(
+      asked + unreadable,
+    );
+    expect(content({ fingerprint: "e", drawing: "c" }, now, false)).toBe(
+      asked + moved + unreadable,
+    );
+    expect(
+      content(
+        { fingerprint: "e", drawing: "d", text: { reading: "ka" } },
+        now,
+        false,
+      ),
+    ).toBe(asked + retyped + unreadable);
   });
 });
 

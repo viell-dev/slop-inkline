@@ -61,11 +61,13 @@ import {
 } from "../notes/text-fields.ts";
 import {
   draftBase,
+  draftOffer,
   drawingOf,
   fingerprintOf,
+  offerQuestion,
   restoreDraft,
-  restoresNothing,
   sameTarget,
+  unshownBase,
   type Draft,
   type DraftBase,
   type DraftStore,
@@ -3045,7 +3047,7 @@ export class InkEditorModal extends Modal {
    * draft opened as a new symbol, on the base layer that draft named, as
    * {@link #draft} says. Whether the file
    * holds everything it does is for the next editor of the file to tell, as it
-   * offers drafts ({@link #draftToOffer}): the file can change at any time
+   * offers drafts ({@link draftOffer}): the file can change at any time
    * after the save, and this editor follows it no more.
    *
    * This touches only this editor's own draft, once, and only while a list
@@ -3084,33 +3086,6 @@ export class InkEditorModal extends Modal {
   }
 
   /**
-   * The newest draft another editor left for this symbol that restoring would
-   * bring something back from. A draft for a file that would bring back
-   * nothing, as the file holds its strokes, base layer and name, and it holds
-   * no text typed, is dropped instead of offered, as after a save that ended
-   * once Inkline was off. The editor follows the file from its opening, so a
-   * change to it after that is taken in or asked about as any other is. A new
-   * symbol's draft is always offered, as restoring it can finish its first
-   * save. `offered` are the drafts the store offers for it.
-   */
-  #draftToOffer(
-    drafts: NonNullable<EditorOptions["drafts"]>,
-    offered: readonly Draft[],
-  ): Draft | undefined {
-    const target = drafts.target();
-    for (const draft of offered) {
-      if (
-        target.kind !== "file" ||
-        !restoresNothing(draft, this.#opened, this.#savedName)
-      ) {
-        return draft;
-      }
-      drafts.store.remove(draft.id);
-    }
-    return undefined;
-  }
-
-  /**
    * Offers back the newest draft another editor left for this symbol, once
    * any base layer it keeps is decoded, holding it meanwhile so that no other
    * editor offers it too. Dismissing the question keeps the draft for next
@@ -3125,7 +3100,17 @@ export class InkEditorModal extends Modal {
       recover === undefined
         ? drafts.store.offers(drafts.target())
         : { drafts: [], newer: false };
-    const found = recover ?? this.#draftToOffer(drafts, offers.drafts);
+    // A draft for the file that would bring back nothing is dropped. The
+    // editor follows the file from its opening, so a change to it after that
+    // is taken in or asked about as any other is.
+    const { offer, drop } = draftOffer(
+      drafts.target(),
+      offers.drafts,
+      this.#opened,
+      this.#savedName,
+    );
+    for (const id of drop) drafts.store.remove(id);
+    const found = recover ?? offer;
     // A later version's draft cannot be read here, so it stays for that
     // version to offer, and this says so, as the changes would seem lost.
     if (offers.newer) {
@@ -3180,10 +3165,7 @@ export class InkEditorModal extends Modal {
       : { ...found, base: { kind: "none" } };
     if (recover !== undefined) {
       this.#recovered = found;
-      this.#unshownBase =
-        found.base.kind === "file" || (found.base.kind === "kept" && !readable)
-          ? found.base
-          : undefined;
+      this.#unshownBase = unshownBase(found, readable);
       this.#restore(drafts, draft);
       if (readable) {
         this.#announce("Opened the unsaved drawing as a new symbol");
@@ -3196,31 +3178,15 @@ export class InkEditorModal extends Modal {
       }
       return;
     }
-    const unreadable = readable
-      ? ""
-      : " Its base layer cannot be read, so only its strokes would come back.";
-    const changed =
-      // A new symbol's editor has no file yet to compare the draft's with.
-      draft.fingerprint !== undefined &&
-      this.#watch.fingerprint !== undefined &&
-      draft.fingerprint !== this.#watch.fingerprint;
-    // The strokes line up with the drawing, so a change to the text alone leaves
-    // them where they were, and matters only to text the draft would put back.
-    const textOnly =
-      changed &&
-      draft.drawing !== undefined &&
-      draft.drawing === this.#watch.drawing;
-    const moved =
-      changed && !textOnly
-        ? " The symbol was saved again since then, so its strokes may not line up."
-        : "";
-    const retyped =
-      textOnly && Object.keys(draft.text ?? {}).length > 0
-        ? " Its readings or translations changed since then, so look over what you typed before saving."
-        : "";
+    const { title, content } = offerQuestion(
+      draft,
+      readable,
+      this.#watch,
+      new Date(draft.savedAt).toLocaleString(),
+    );
     this.#ask(
-      "Restore the unsaved drawing?",
-      `This symbol has unsaved changes from ${new Date(draft.savedAt).toLocaleString()}.${moved}${retyped}${unreadable}`,
+      title,
+      content,
       [
         {
           text: "Restore",

@@ -435,7 +435,10 @@ must keep released files readable and looking the same, as
   ([rename-while-disabled.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/rename-while-disabled.e2e.ts)).
   A draft that would restore nothing its file lacks dropped, and one that
   differs in any stroke, its picture or its place, its name, or text typed,
-  offered
+  offered, as is a new symbol's always; and what the question offering it says:
+  when it was kept, that the symbol was saved again since, that only its
+  readings or translations changed while text was typed, and that its base layer
+  cannot be read, each only when so
   ([drafts.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/drafts.test.ts)).
 - A symbol whose file was cut short after its draft was kept does not open, and
   its notice says the draft is kept; a new symbol given its name, once the file
@@ -542,18 +545,21 @@ must keep released files readable and looking the same, as
   the cell's editor away. A selection's text stays, one undo takes the symbol
   back, and a discarded last drawing leaves the cursor after the run. A key, a
   shortcut Obsidian handles, a click, a paste, a cut, an input method's text, or
-  a drop in the note before the editor has finished closing keeps its place. A
-  note in Reading view or closed takes the symbol through its file, whose line
-  endings stay as they are while the place is found from either kind, in both
-  directions, and **Insert existing symbol** places a symbol as the other routes
-  do. A rename while the note holds unsaved text writes the new name once and
-  keeps the text, however Obsidian's question is answered, in a plain note, two
-  panes, a table cell, a closed note, and Reading view, with the cursor and the
-  place of a run from Next surviving a reload, and with the text arriving during
-  the question or an editor's own save falling due in it. Every rename, by Save,
-  the library, or an existing symbol's editor, saves the open notes first, and
-  is refused with nothing changed if one cannot be saved. A reload held past the
-  editor's own save loses no text, and running out of time writes nothing
+  a drop in the note straight after the editor closes keeps its place, with
+  whatever the close might leave to a timer held as a busy machine delays it,
+  and in a table cell after a change on disk took its editor away, a key keeps
+  its letter and a shortcut its cursor. A note in Reading view or closed takes
+  the symbol through its file, whose line endings stay as they are while the
+  place is found from either kind, in both directions, and **Insert existing
+  symbol** places a symbol as the other routes do. A rename while the note holds
+  unsaved text writes the new name once and keeps the text, however Obsidian's
+  question is answered, in a plain note, two panes, a table cell, a closed note,
+  and Reading view, with the cursor and the place of a run from Next surviving a
+  reload, and with the text arriving during the question or an editor's own save
+  falling due in it. Every rename, by Save, the library, or an existing symbol's
+  editor, saves the open notes first, and is refused with nothing changed if one
+  cannot be saved. A reload held past the editor's own save loses no text, and
+  running out of time writes nothing
   ([cursor-placement.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/cursor-placement.e2e.ts),
   [table-cells.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/table-cells.e2e.ts),
   [line-endings.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/line-endings.e2e.ts),

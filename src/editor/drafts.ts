@@ -576,6 +576,92 @@ export function restoresNothing(
   );
 }
 
+/**
+ * Which of `offered`, the drafts kept for an editor's symbol, newest first,
+ * the editor offers back, and which it drops as bringing back nothing. For a
+ * symbol's file, a `target` of kind `file`, a draft that would restore
+ * nothing over `opened` under `name`, as {@link restoresNothing} says, is
+ * dropped, as after a save that ended once Inkline was off, until one that
+ * would bring something back, which is offered. A new symbol's draft is
+ * always offered, as restoring it can finish its first save.
+ */
+export function draftOffer(
+  target: DraftTarget,
+  offered: readonly Draft[],
+  opened: InkDocument,
+  name: string,
+): { readonly offer: Draft | undefined; readonly drop: readonly string[] } {
+  const drop: string[] = [];
+  for (const draft of offered) {
+    if (target.kind !== "file" || !restoresNothing(draft, opened, name)) {
+      return { offer: draft, drop };
+    }
+    drop.push(draft.id);
+  }
+  return { offer: undefined, drop };
+}
+
+/**
+ * The base layer of `draft` that an editor opening it as a new symbol cannot
+ * show, which that editor's own draft goes on naming until a save: one taken
+ * from its symbol's file, or one kept with it that cannot be decoded, as
+ * `readable` says. Undefined when the editor shows the draft's base layer, or
+ * it has none.
+ */
+export function unshownBase(
+  draft: Draft,
+  readable: boolean,
+): DraftBase | undefined {
+  const { base } = draft;
+  return base.kind === "file" || (base.kind === "kept" && !readable)
+    ? base
+    : undefined;
+}
+
+/**
+ * The question that offers `draft` back: that the symbol has unsaved changes
+ * from `keptAt`, the time it was kept as the person reads times, and then, as
+ * each applies, that the symbol was saved again since, so that its strokes
+ * may not line up; that only the symbol's readings or translations changed,
+ * when the draft would put text back that was typed; and that its base layer
+ * cannot be read, when `readable` is false. `file` is the symbol's file as the
+ * editor follows it, its fingerprints undefined for a new symbol, which has
+ * no file to compare the draft's with.
+ */
+export function offerQuestion(
+  draft: Draft,
+  readable: boolean,
+  file: {
+    readonly fingerprint: string | undefined;
+    readonly drawing: string | undefined;
+  },
+  keptAt: string,
+): { readonly title: string; readonly content: string } {
+  const changed =
+    draft.fingerprint !== undefined &&
+    file.fingerprint !== undefined &&
+    draft.fingerprint !== file.fingerprint;
+  // The strokes line up with the drawing, so a change to the text alone leaves
+  // them where they were, and matters only to text the draft would put back.
+  const textOnly =
+    changed && draft.drawing !== undefined && draft.drawing === file.drawing;
+  const moved =
+    changed && !textOnly
+      ? " The symbol was saved again since then, so its strokes may not line up."
+      : "";
+  const retyped =
+    textOnly && Object.keys(draft.text ?? {}).length > 0
+      ? " Its readings or translations changed since then, so look over what you typed before saving."
+      : "";
+  const unreadable = readable
+    ? ""
+    : " Its base layer cannot be read, so only its strokes would come back.";
+  return {
+    title: "Restore the unsaved drawing?",
+    content: `This symbol has unsaved changes from ${keptAt}.${moved}${retyped}${unreadable}`,
+  };
+}
+
 /** Whether two base layers, or none, are the same picture in the same place. */
 function sameLayer(
   a: BaseLayer | undefined,
