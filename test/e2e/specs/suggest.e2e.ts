@@ -450,6 +450,10 @@ describe("Inserting a symbol you have", function () {
       "Indented",
       "Item's text",
       "Code tag",
+      "Outer item",
+      "Numbered item",
+      "Footnote",
+      "Math",
     ]) {
       const found = triggerCases[name];
       if (found === undefined) throw new Error(`no case ${name}`);
