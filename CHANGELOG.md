@@ -11,6 +11,12 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ### Fixed
 
+- A draft opened as a new symbol, from **Inkline: Recover drafts** or a symbol
+  whose file does not open, whose first save was refused, as for a name typed
+  that another symbol came to as it was saved, stayed kept for that other
+  symbol, which then offered it as its own when it opened. Now the draft stays
+  the old symbol's, as before the save, for the next save to make the file
+  ([#437](https://github.com/viell-dev/slop-inkline/issues/437)).
 - On Windows and macOS, a deleted symbol whose folder was there again in another
   letter case, as `signs` for `Signs`, stopped every save that made it again
   with Obsidian's "Folder already exists." Now it is saved in that folder, which

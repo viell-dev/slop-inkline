@@ -436,6 +436,19 @@ function errorCode(error: unknown): unknown {
 }
 
 /**
+ * Thrown by {@link makeSymbolFile} when its copy made the file, whole, and the
+ * vault does not list it: the one failure after which the file at the path is
+ * the save's own, as nothing else can have made it there.
+ */
+class NotListed extends Error {
+  override name = "NotListed";
+
+  constructor(path: string) {
+    super(`${path} was written, but Obsidian has not listed it`);
+  }
+}
+
+/**
  * Makes a symbol's file at `path`, through Obsidian's adapter, as
  * {@link makeFile} does, and returns it. It writes the bytes to a file of its
  * own in Inkline's `folder` first, and then has the adapter copy that to the
@@ -476,9 +489,7 @@ async function makeSymbolFile(
     unstage: () => adapter.remove(own),
   });
   const made = app.vault.getFileByPath(path);
-  if (made === null) {
-    throw new Error(`${path} was written, but Obsidian has not listed it`);
-  }
+  if (made === null) throw new NotListed(path);
   return made;
 }
 
@@ -2626,7 +2637,9 @@ function claimed(claim: Claim): CreatedFile {
  * before it writes, as a new symbol's does, so that a save cut short leaves a
  * draft for that file, which offers it when it opens, or lists it when it does
  * not; a retry writes over that file if it holds what this wrote, rather than
- * make another.
+ * make another. A save that fails having left nothing of its own there, as
+ * one refused because another symbol came to the path, puts the draft back
+ * where it was.
  *
  * The first save's file of a new symbol's draft is claimed only once the
  * draft is restored, as a new symbol's `restored` does, so that an editor
@@ -2722,28 +2735,46 @@ function recoverDraft(host: EditorHost, orphan: Orphan): void {
       // the vault as it was.
       const choice = chosen(typed);
       const fingerprint = await fingerprintOf(bytes);
-      made = await makeNewSymbol(
-        host,
-        async () =>
-          folder === undefined
-            ? newSymbolPath(app, path, choice, host.settings().symbolFolder)
-            : symbolPathIn(
-                app,
-                folder === "" ? "" : await makeFolder(app, folder),
-                choice,
-              ),
-        choice,
-        (at, left) => {
-          // As a new symbol's first save keeps what a write cut short left.
-          claim =
-            left === undefined
-              ? { path: at, fingerprint }
-              : { path: at, fingerprint, previous: left };
+      const before = claim;
+      try {
+        made = await makeNewSymbol(
+          host,
+          async () =>
+            folder === undefined
+              ? newSymbolPath(app, path, choice, host.settings().symbolFolder)
+              : symbolPathIn(
+                  app,
+                  folder === "" ? "" : await makeFolder(app, folder),
+                  choice,
+                ),
+          choice,
+          (at, left) => {
+            // As a new symbol's first save keeps what a write cut short left.
+            claim =
+              left === undefined
+                ? { path: at, fingerprint }
+                : { path: at, fingerprint, previous: left };
+            keepDraft();
+          },
+          toBuffer(bytes),
+          wait.told,
+        );
+      } catch (error) {
+        // A save that left nothing of its own at the path it claimed, as one
+        // refused because another symbol came there, gives the draft back its
+        // place, or it stays kept for that symbol, which would offer it as its
+        // own (#437). A part it left is in the claim, for the next save, and so
+        // is the whole file its copy made, which Obsidian has not listed.
+        if (
+          claim !== before &&
+          claim?.previous === undefined &&
+          !(error instanceof NotListed)
+        ) {
+          claim = before;
           keepDraft();
-        },
-        toBuffer(bytes),
-        wait.told,
-      );
+        }
+        throw error;
+      }
       holds(fingerprint);
       await host.texts.refresh(made);
       return true;

@@ -193,7 +193,9 @@ it.
 Until a save starts writing the new symbol, its draft stays the old symbol's, as
 the one found was: if the editor ends before then, as when Obsidian closes or
 Inkline is turned off, the draft can be opened again the same way, or restored
-on the old symbol's file, with its base layer, should that file open again.
+on the old symbol's file, with its base layer, should that file open again. A
+save that writes nothing, as one refused because another symbol came to the name
+you typed as it was saved, leaves it the old symbol's too.
 
 The new symbol's first save makes a new file in the folder the old file was in,
 and inserts it into no note: a note that embeds the old file still does, and
