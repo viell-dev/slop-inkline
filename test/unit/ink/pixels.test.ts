@@ -255,6 +255,8 @@ describe("reduceBaseAlpha", () => {
     expect([...reduced.alpha]).toEqual([102, 51, 0]);
   });
 
+  // This checks every size, not how fast: it took 0.3 seconds alone and past
+  // 5.2 under load, Vitest's default being five (#362).
   it("gives every pixel the mean of what it covers, whatever the sizes", async () => {
     let worst = 0;
     let checked = 0;
@@ -281,7 +283,7 @@ describe("reduceBaseAlpha", () => {
     }
     expect(checked).toBeGreaterThan(10_000);
     expect(worst).toBeLessThan(0.5001);
-  });
+  }, 30_000);
 
   it("counts a pixel the rectangle only partly covers for that part", async () => {
     // Four full pixels drawn a pixel and a half wide, from a quarter of the way

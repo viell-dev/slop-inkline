@@ -61,6 +61,7 @@ import { insertionAt } from "./links.ts";
 import { shownGuides, type Settings } from "../settings.ts";
 import {
   chooseRename,
+  linkedNames,
   nextNumberName,
   symbolStem,
   type NameChoice,
@@ -292,7 +293,9 @@ async function makeFolder(app: App, folder: string): Promise<string> {
  * Where a new symbol for the note at `sourcePath` goes: `symbolFolder`, made if
  * need be, or Obsidian's attachment location for it when that is empty, under
  * the name `name` chose, or else the lowest number name that no file or folder
- * there already has. Throws if the folder has a symbol of that name already.
+ * there already has, and that no link Obsidian cannot resolve names there, so
+ * that a note still embedding a deleted symbol does not show the new one in its
+ * place. Throws if the folder has a symbol of that name already.
  */
 export async function newSymbolPath(
   app: App,
@@ -314,9 +317,12 @@ export async function newSymbolPath(
     claimName(app, folder, name.name);
     return pathIn(folder, `${name.name}${inkExtension}`);
   }
-  const taken = namesIn(app, folder)
-    .map((child) => symbolStem(child))
-    .filter((stem): stem is string => stem !== undefined);
+  const taken = [
+    ...namesIn(app, folder)
+      .map((child) => symbolStem(child))
+      .filter((stem): stem is string => stem !== undefined),
+    ...linkedNames(app.metadataCache.unresolvedLinks, folder),
+  ];
   for (;;) {
     const stem = nextNumberName(taken);
     const name = `${stem}${inkExtension}`;
@@ -1257,6 +1263,9 @@ async function writeSymbol(
           await app.vault.modifyBinary(now, buffer);
           if (!present(app, now)) throw new Error(replacedAsWritten);
         },
+        bytes,
+        read: async (found) =>
+          new Uint8Array(await app.vault.readBinary(found)),
         line: diskLine(app),
         create: async () => {
           const folder = parentPath(file.path);
@@ -1264,7 +1273,13 @@ async function writeSymbol(
             folder !== "" &&
             app.vault.getAbstractFileByPath(folder) === null
           ) {
-            await app.vault.createFolder(folder);
+            try {
+              await app.vault.createFolder(folder);
+            } catch (error) {
+              // Obsidian makes a folder only where the disk has nothing once
+              // it looks, and something else can have made this one meanwhile.
+              if (app.vault.getFolderByPath(folder) === null) throw error;
+            }
           }
           return app.vault.createBinary(file.path, buffer);
         },

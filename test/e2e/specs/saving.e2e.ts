@@ -1,4 +1,5 @@
 import { browser, expect } from "@wdio/globals";
+import { Key } from "webdriverio";
 import { obsidianPage } from "wdio-obsidian-service";
 import { brushSizes } from "../../../src/editor/session.ts";
 import { unitsPerPixel } from "../../../src/format/record.ts";
@@ -17,6 +18,7 @@ import {
 } from "../support/editing.ts";
 import {
   draw,
+  drawAndHold,
   editorOpen,
   hold,
   letGo,
@@ -25,7 +27,6 @@ import {
   undoStubs,
   waitForHeld,
   startOver,
-  surface,
   symbolFiles,
   clickTop,
   topButton,
@@ -204,22 +205,16 @@ describe("The editor", function () {
   it("saves a stroke still being drawn when saving and closing", async function () {
     await insert();
     await draw(zigzag);
-    const canvas = surface();
-    const { width, height } = await canvas.getSize();
-    await browser
-      .action("pointer", { parameters: { pointerType: "mouse" } })
-      .move({ origin: canvas, x: Math.round(-0.2 * width), y: 0 })
-      .down()
-      .move({
-        origin: canvas,
-        x: Math.round(0.2 * width),
-        y: Math.round(0.1 * height),
-        duration: 50,
-      })
-      .perform(true);
-    await browser.keys(["Control", "Enter"]);
+    // Saved with the button still down, in the same command, as a press held
+    // into the next one would end first, as a lost capture (#391).
+    await drawAndHold(
+      [
+        [0.3, 0.5],
+        [0.7, 0.6],
+      ],
+      { chord: [Key.Ctrl, Key.Enter] },
+    );
     await waitClosed();
-    await browser.releaseActions();
     const record = JSON.parse(await recordOf("001.ink.png")) as {
       strokes: unknown[];
     };

@@ -142,6 +142,29 @@ must keep released files readable and looking the same, as
   settings are cleared on close. The test redirects the save dialog and
   suppresses the post-export viewer launch; the native PDF writer still runs
   ([pdf.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/pdf.e2e.ts)).
+- **Unreleased:** symbols in the text colour print with no line along their
+  boxes ([#255](https://github.com/viell-dev/slop-inkline/issues/255)). Sixteen
+  symbols of a note, unsized and at eight sizes, in two headings, plain text,
+  links, a callout's title, and a note it embeds, are measured in Poppler's
+  raster of the PDF at 110 dots per inch, where the mask leaves lines: along
+  every edge of every box, no line of pixels lies 3 or more of 255 from the
+  page's colour, and an export that keeps the masks finds such lines. That
+  export's PDF holds two soft masks for each symbol, the copies' none. Each
+  symbol's ink prints where the mask printed it, within half a pixel, as large,
+  and within 3 of 255 of its colour: black for the note's text, as Obsidian
+  prints it, where the screen shows the theme's text colour, and the colours of
+  links and of the callout's title. So it does with a transition on every
+  element's `color`, which would otherwise give a copy the screen's colour. As
+  Obsidian asks for the PDF, every symbol shows its copy, loaded, at its file's
+  own size; once the window closes, each shows its own file again. In a note of
+  128 symbols of eight files, every copy is ready as Obsidian asks for the PDF,
+  even one whose file takes 1.5 seconds to read, as Obsidian waits for it. Four
+  symbols print from their masks: one whose read takes a minute, as Inkline
+  stops waiting once no copy has got further for ten seconds, one whose file
+  cannot be read, one that is not a PNG, and one whose file says which way up it
+  shows, which Chromium 150 applies and a copy would not. The first two print
+  their whole ink in the text's colour, measured in the page, as the copy's does
+  (the same file).
 - A symbol 4,000 pixels wide at the largest Symbol size, wider than its space,
   keeps the proportions it was drawn in, within 5%, its baseline on the text's,
   and its colour, in Reading view, Live Preview, table cells in both, an
@@ -206,8 +229,12 @@ must keep released files readable and looking the same, as
 - The fixed bitmap has a centre dot at every brush size, and retains its
   coverage across fractional positions at two editor widths and five zoom levels
   ([brush-cursor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/brush-cursor.e2e.ts)).
-  Contrast checks cover light, dark, grey, coloured and translucent backgrounds,
-  ink edges, stationary theme redraws and readback failure recovery
+  **Unreleased:** with a margin of a different width on each side of the drawing
+  area, as a CSS snippet can give it, its centre stays within half a device
+  pixel of the pointer at 100% and 125% page zoom (the same file,
+  [#394](https://github.com/viell-dev/slop-inkline/issues/394)). Contrast checks
+  cover light, dark, grey, coloured and translucent backgrounds, ink edges,
+  stationary theme redraws and readback failure recovery
   ([cursor-contrast.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/cursor-contrast.e2e.ts)).
   Three fixed rounds of 300 pointer updates at 200% zoom must have a median
   below 5 ms per update while preserving the bitmap's coverage. This bounds the
@@ -219,7 +246,21 @@ must keep released files readable and looking the same, as
   zoom, and the drawing area's content box, which its pixels fill, is as tall as
   the line box it shows
   ([pointer-alignment.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/pointer-alignment.e2e.ts),
-  [#359](https://github.com/viell-dev/slop-inkline/issues/359)).
+  [#359](https://github.com/viell-dev/slop-inkline/issues/359)). **Unreleased:**
+  so it does with padding of a different width on each side of the drawing area,
+  as a CSS snippet can give it, at 100% and, zoomed and fitted, at 125%; there
+  the brush's circle shows over the drawing, centred on the pointer to half a
+  device pixel and within 0.3 CSS pixels of the brush's width, and not over the
+  padding (the same file,
+  [#378](https://github.com/viell-dev/slop-inkline/issues/378)).
+- **Unreleased:** **Zoom** pressed while a pen or eraser stroke, an ellipse of
+  either, a polygon's corner, or a path's handle is drawn, by its key or its
+  button, leaves the drawing area as it is until the pointer is let go, and then
+  zooms. Let go where it was pressed in the window, the drag saves exactly the
+  points the same drag without Zoom saves. Pressed twice meanwhile, it does not
+  zoom, and **Next** meanwhile takes the zoom to the next symbol
+  ([zoom.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/zoom.e2e.ts),
+  [#382](https://github.com/viell-dev/slop-inkline/issues/382)).
 - **Make ink** of a synthetic H, enlarged from about 1.2 to 11.5 times, leaves
   at most two partly covered document pixels at each edge of the saved symbol,
   and the reopened symbol draws the same pixels. The editor's own redraw, which
@@ -257,16 +298,42 @@ must keep released files readable and looking the same, as
   unfilled as one step, and that a reopened drawing's grid goes by the shape as
   if unfilled
   ([session.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/session.test.ts)).
+- **Unreleased:** A path placed with the mouse and the keys, of corners clicked
+  and smooth points dragged out, on the grid with Shift and off it, is saved as
+  one stroke without a kind through points along its curve no more than a pixel
+  apart, from its first point to its last exactly, and its saved pixels show ink
+  along the curve and none on the straight line between its ends, matching a
+  redraw of its record. While it is placed, the next curve follows the pointer
+  after a drag as after a click, and pointing at the first point shows the
+  filled shape a click there makes; Undo takes back a point and a drag, Esc and
+  the close button drop it, a point and a handle's end dragged move the curve,
+  Enter, a click on the last point, and **Next** end it, **Next** keeping Path
+  on, and a click on its first point closes it, filled with **Toggle fill**;
+  afterwards one Undo takes back all of it. The eraser's path takes away the ink
+  along its curve, Flat ends cuts an end Shift put on a row, and the symbol
+  reopened holds the same strokes, with nothing left to place
+  ([path.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/path.e2e.ts)).
+  **Zoom** pressed while a path's handle is dragged waits for its release, and
+  the path saves the points it would without Zoom
+  ([zoom.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/zoom.e2e.ts)).
+  Unit tests pin the curve's points, their spacing, how near the corners of the
+  saved stroke's outline keep to a quarter circle at every brush size, and each
+  step of placing, from a press and a drag to a click on a point, what the
+  pointer shows after a drag, which point a press takes where points lie on one
+  another, how near a press must be, Shift on the grid, Undo, and a save moving
+  the drawing
+  ([path.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/path.test.ts),
+  [session.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/session.test.ts)).
 - A view that adds each stroke to what it has drawn and measured shows what a
   new view does, pixel for pixel on the surface and in the preview, at full size
   and at 16 px, and the image's ends are exactly those of a full measurement,
   and within a pixel of what a save crops to
   ([#159](https://github.com/viell-dev/slop-inkline/issues/159)). A seeded run
   checks this after every frame, through strokes of each shape and tool, flat
-  ends, undo, redo, clearing, moving the drawing, saving, restoring, base
-  layers, panning and zooming, on drawings wider than a tile and with strokes
-  across a tile's edge. The preview in text also stays as it is as a stroke
-  starts
+  ends, paths (**Unreleased**), undo, redo, clearing, moving the drawing,
+  saving, restoring, base layers, panning and zooming, on drawings wider than a
+  tile and with strokes across a tile's edge. The preview in text also stays as
+  it is as a stroke starts
   ([long-drawing.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/long-drawing.e2e.ts)).
 
 - The eraser, drawn freehand along, across, and through a filled ellipse's edge,
@@ -457,8 +524,9 @@ must keep released files readable and looking the same, as
   and
   [renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/renaming.e2e.ts)).
 - Names and renames: what a file name cannot hold, names a folder already has,
-  renames that fail, names given elsewhere during saving or hashing, and the
-  reported outcome when an external rename follows a successful native rename
+  numbers a note still links to, read as Obsidian resolves links, renames that
+  fail, names given elsewhere during saving or hashing, and the reported outcome
+  when an external rename follows a successful native rename
   ([names.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/names.test.ts),
   [naming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/naming.e2e.ts),
   [renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/renaming.e2e.ts),
@@ -527,10 +595,14 @@ must keep released files readable and looking the same, as
 - A symbol deleted, and another file put at its path, through Obsidian while a
   save reads it for the last time, by its file system, as another plugin or a
   sync tool can, or by its vault: Quick edit refuses the save and the new file
-  keeps what it holds, and the editor asks about it. A write that lands once the
-  file was replaced says so, and keeps what was typed. A save waits for what was
-  asked of the disk during its last look, and writes as before once the disk
-  stays busy, or where Obsidian's line of disk operations cannot be seen
+  keeps what it holds, and the editor asks about it. **Unreleased:** so it does
+  when the new file lands as the editor makes the deleted one again, a save
+  whose own write stops part-way as it makes the file again says why, and a
+  folder that lands as it makes the symbol's folder again is saved into. A write
+  that lands once the file was replaced says so, and keeps what was typed. A
+  save waits for what was asked of the disk during its last look, and writes as
+  before once the disk stays busy, or where Obsidian's line of disk operations
+  cannot be seen
   ([write-identity.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/write-identity.e2e.ts)
   and
   [file-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/file-writes.test.ts)).
@@ -811,7 +883,11 @@ the individual pull requests hold the inputs, results, and review discussion.
 - Physical printer output is not checked. Native PDF export is covered on Linux
   with default and explicitly sized embeds of one symbol, and one wider than the
   page; long notes containing many different symbols are not covered by that
-  fixture.
+  fixture. **Unreleased:** a note of 128 symbols of eight files is covered for
+  when Obsidian prints and what each symbol prints from, and three of them in
+  the printed page. Lines along symbols' boxes are measured in Poppler's raster
+  at 110 dots per inch only, in Obsidian's default theme; other viewers, and
+  themes with print styles of their own, are not checked.
 - CI's runners have the DejaVu fonts, and the Docker image DejaVu and Noto; a
   theme's own font is checked through the guides' measurement, not by eye.
 - The release workflow checks the install ZIP's exact layout and bytes, extracts

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Stroke } from "../../../src/format/record.ts";
 import { limits } from "../../../src/format/record.ts";
 import {
-  addedStroke,
+  addedStrokes,
   documentSpan,
   fitsFormat,
   moveDocument,
@@ -23,6 +23,17 @@ const dot: Stroke = {
   tool: "eraser",
   size: 32,
   points: [-16, 48],
+};
+const fill: Stroke = {
+  tool: "eraser",
+  points: [0, 0, 160, 0, 80, 160, 0, 0],
+  kind: "fill",
+};
+const sides: Stroke = {
+  tool: "eraser",
+  size: 192,
+  points: [0, 0, 160, 0, 80, 160, 0, 0],
+  kind: "polygon",
 };
 
 describe("toUnits", () => {
@@ -138,56 +149,64 @@ describe("fitsFormat", () => {
   });
 });
 
-describe("addedStroke", () => {
+describe("addedStrokes", () => {
   const before: InkDocument = { strokes: [pen] };
   const layer = { x: 0, y: 0, width: 16, height: 16, png };
 
-  it("gives the stroke after the same strokes, of either tool", () => {
-    expect(addedStroke(before, { strokes: [pen, dot] })).toBe(dot);
-    expect(addedStroke({ strokes: [dot] }, { strokes: [dot, pen] })).toBe(pen);
-    expect(addedStroke({ strokes: [] }, { strokes: [pen] })).toBe(pen);
+  it("gives the strokes after the same strokes, one or a filled shape's two", () => {
+    expect(addedStrokes(before, { strokes: [pen, sides] })).toEqual([sides]);
+    expect(addedStrokes(before, { strokes: [pen, dot] })).toEqual([dot]);
+    expect(addedStrokes(before, { strokes: [pen, fill, sides] })).toEqual([
+      fill,
+      sides,
+    ]);
+    expect(addedStrokes({ strokes: [dot] }, { strokes: [dot, pen] })).toEqual([
+      pen,
+    ]);
+    expect(addedStrokes({ strokes: [] }, { strokes: [pen] })).toEqual([pen]);
   });
 
   it("keeps to a base layer that stays", () => {
     expect(
-      addedStroke(
+      addedStrokes(
         { strokes: [pen], base: layer },
-        { strokes: [pen, dot], base: layer },
+        { strokes: [pen, fill, sides], base: layer },
       ),
-    ).toBe(dot);
+    ).toEqual([fill, sides]);
   });
 
   it("is undefined when nothing changed or a stroke went", () => {
-    expect(addedStroke(before, before)).toBeUndefined();
-    expect(addedStroke(before, { strokes: [pen] })).toBeUndefined();
-    expect(addedStroke({ strokes: [pen, dot] }, before)).toBeUndefined();
-  });
-
-  it("is undefined when more than one stroke came", () => {
-    expect(addedStroke(before, { strokes: [pen, dot, dot] })).toBeUndefined();
+    expect(addedStrokes(before, before)).toBeUndefined();
+    expect(addedStrokes(before, { strokes: [pen] })).toBeUndefined();
+    expect(addedStrokes({ strokes: [pen, sides] }, before)).toBeUndefined();
   });
 
   it("is undefined when an earlier stroke changed, as undoing and drawing does", () => {
-    expect(addedStroke(before, { strokes: [dot, pen] })).toBeUndefined();
-    const other = { strokes: [dot, dot] };
-    expect(addedStroke(before, other)).toBeUndefined();
+    expect(addedStrokes(before, { strokes: [dot, pen] })).toBeUndefined();
+    expect(addedStrokes(before, { strokes: [dot, dot] })).toBeUndefined();
+    expect(
+      addedStrokes(
+        { strokes: [pen, sides] },
+        { strokes: [pen, { ...sides }, fill] },
+      ),
+    ).toBeUndefined();
   });
 
   it("is undefined after a move, whose strokes are new ones, even if equal", () => {
     const moved = moveDocument(before, 0, 0);
     expect(moved.strokes[0]).toEqual(pen);
-    expect(addedStroke(before, { strokes: [...moved.strokes, dot] })).toBe(
-      undefined,
-    );
+    expect(
+      addedStrokes(before, { strokes: [...moved.strokes, dot] }),
+    ).toBeUndefined();
   });
 
   it("is undefined when the base layer came, went, or moved", () => {
     const placed = { strokes: [pen], base: layer };
     const strokes = [pen, dot];
-    expect(addedStroke(before, { strokes, base: layer })).toBeUndefined();
-    expect(addedStroke(placed, { strokes })).toBeUndefined();
+    expect(addedStrokes(before, { strokes, base: layer })).toBeUndefined();
+    expect(addedStrokes(placed, { strokes })).toBeUndefined();
     expect(
-      addedStroke(placed, { strokes, base: { ...layer, x: 16 } }),
+      addedStrokes(placed, { strokes, base: { ...layer, x: 16 } }),
     ).toBeUndefined();
   });
 });

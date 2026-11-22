@@ -134,7 +134,9 @@ describe("thresholdRamp", () => {
   });
 });
 
-describe("every position of the slider", () => {
+// These check every threshold, not how fast: each took up to 0.8 seconds
+// alone and up to 13.6 under load, past Vitest's default of five (#362).
+describe("every position of the slider", { timeout: 30_000 }, () => {
   it("would give some pixels ink back, by the contrast alone", () => {
     const grown = pictures.filter(
       ([, values]) =>

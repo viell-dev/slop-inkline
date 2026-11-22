@@ -29,6 +29,7 @@ export const buttonIcons: Readonly<Record<string, string>> = {
   eraser: "eraser",
   ellipse: "circle",
   polygon: "pentagon",
+  path: "pen-tool",
   fill: "circle-dot",
   undo: "undo-2",
   redo: "redo-2",
