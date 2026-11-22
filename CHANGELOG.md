@@ -19,6 +19,14 @@ even one a public release; earlier pre-releases carry a suffix such as
   path: written over if it holds what the editor last saved, and asked about
   otherwise, as any change is
   ([#436](https://github.com/viell-dev/slop-inkline/issues/436)).
+- **Make ink**, **Zoom**, and **Fit** pressed while **Move** drags the picture
+  now wait until you let go, as they do while you draw. They acted at once: Make
+  ink's row, opening above the drawing area, or a zoom, changing its height,
+  moved the drawing under the pointer, and the picture ended that far from where
+  you put it. Make ink's row also stays until you let go, during a drag or a
+  stroke, when Make ink closes for another reason, as when a picture pasted then
+  replaces the one it was open for
+  ([#444](https://github.com/viell-dev/slop-inkline/issues/444)).
 
 ## 1.1.0 - 2026-11-22
 

@@ -92,6 +92,20 @@ Inkline in Settings, Community plugins. `npm run dev` rebuilds on every change.
 The built manifest names the version in `package.json`, which can be newer than
 the root `manifest.json`, as [RELEASING.md](RELEASING.md) explains.
 
+## The editor's code
+
+The symbol editor lives in `src/editor/`. `modal.ts` holds `InkEditorModal`, the
+Obsidian modal that puts the editor together: it builds the editor's parts as it
+opens, implements the commands that its buttons and keys run, and keeps the
+drawing safe with drafts and saving. `controls.ts` makes the buttons, the bars
+for the picture and Make ink, the keys, and Help from the table of controls in
+`buttons.ts`, so that a button and its keys run the same command; `buttons.ts`
+also says which buttons are pressed and which can be used. Each of the other
+modules holds one part of the editor, such as the drawing session, the drafts,
+or the guides, and says what in its opening comment. Those that need neither
+Obsidian nor a canvas have unit tests in `test/unit/editor/`, and the rest are
+tested end to end.
+
 ## Checks
 
 ```sh

@@ -1,8 +1,54 @@
 import { fromMarkdown } from "mdast-util-from-markdown";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { insideCode, insideCodeBlock } from "../../../src/notes/code.ts";
+import type * as Html from "../../../src/notes/html.ts";
+import type * as Inline from "../../../src/notes/inline.ts";
 import { codeCases, triggerCases } from "../../support/code-cases.ts";
 import { expectLinear } from "../../support/linear.ts";
+
+/**
+ * How many characters of text `insideCode` has handed to the readers of raw
+ * HTML and inline text in `src/notes/html.ts` and `src/notes/inline.ts`,
+ * which read a paragraph's text for code and for tags: the bounds below count
+ * them, as a clock cannot tell a reading that reads each level's text again
+ * from one that does not on a busy machine (#451). The wrappers only count;
+ * each calls the module's own reader.
+ */
+const handed = vi.hoisted(() => ({ characters: 0 }));
+
+vi.mock("../../../src/notes/html.ts", async (importOriginal) => {
+  const html = await importOriginal<typeof Html>();
+  return {
+    ...html,
+    mayChange: (...args: Parameters<typeof html.mayChange>) => {
+      handed.characters += args[0].length;
+      return html.mayChange(...args);
+    },
+    readHtml: (...args: Parameters<typeof html.readHtml>) => {
+      handed.characters += args[0].length;
+      return html.readHtml(...args);
+    },
+    readHtmlLine: (...args: Parameters<typeof html.readHtmlLine>) => {
+      handed.characters += args[0].length;
+      return html.readHtmlLine(...args);
+    },
+  };
+});
+
+vi.mock("../../../src/notes/inline.ts", async (importOriginal) => {
+  const inline = await importOriginal<typeof Inline>();
+  return {
+    ...inline,
+    insideInlineCode: (...args: Parameters<typeof inline.insideInlineCode>) => {
+      handed.characters += args[0].length;
+      return inline.insideInlineCode(...args);
+    },
+    tagsAfter: (...args: Parameters<typeof inline.tagsAfter>) => {
+      handed.characters += args[0].length;
+      return inline.tagsAfter(...args);
+    },
+  };
+});
 
 /** A note's lines, as `insideCode` reads them. */
 function note(text: string): (index: number) => string | undefined {
@@ -257,12 +303,22 @@ describe("insideCode", () => {
     }
 
     /**
-     * That reading `lines` at `HERE` takes less than `times` as long as
-     * simple passes over the note repeated once for each of `depth` levels:
-     * reading each level's text again costs that much at most. On Windows 11
-     * with the CPU busy with other work, the readings below took 0.09 to 0.21
-     * times as long; with whether raw HTML leaves a tag open read again at
-     * each level, as #431's second round did, 0.87 to 1.28 times.
+     * That reading `lines` at `HERE` hands the readers of HTML and inline
+     * text less than `times` the note's length in characters, and takes less
+     * than three times as long as simple passes over the note repeated once
+     * for each of `depth` levels.
+     *
+     * The count is what tells a reading that reads each level's text again
+     * from one that does not; it is the same however busy the machine is.
+     * For the footnotes below, the reading hands the readers 1.00 times the
+     * note, and with whether raw HTML leaves a tag open read again at each
+     * level, as #431's second round did at d3baf83, 21.92 times; for the
+     * items in footnotes, 83.35 times and 335.78. The clock alone told them
+     * apart by less than a busy machine moves it: the readings took 0.09 to
+     * 0.21 times as long as the simple passes, and d3baf83's 0.87 to 1.28,
+     * but one took 0.79 with other work on the machine (#451). So the clock
+     * stays only as a backstop, at three times, for work that hands nothing
+     * to the readers.
      */
     function expectBounded(
       lines: readonly string[],
@@ -271,12 +327,23 @@ describe("insideCode", () => {
     ): void {
       const line = lines.findIndex((text) => text.includes("HERE"));
       const ch = lines[line]?.indexOf("HERE") ?? 0;
-      expectLinear(
-        lines.join("\n").repeat(depth),
-        () => insideCode((index) => lines[index], line, ch),
-        times,
-      );
+      const note = lines.join("\n");
+      const read = () => insideCode((index) => lines[index], line, ch);
+      handed.characters = 0;
+      read();
+      const report = `${String(handed.characters)} characters handed to the readers, for a note of ${String(note.length)}`;
+      // Something was counted, so that a reading that stopped going through
+      // the readers would not pass this unseen.
+      expect(handed.characters, report).toBeGreaterThan(0);
+      expect(handed.characters / note.length, report).toBeLessThan(times);
+      expectLinear(note.repeat(depth), read, 3);
     }
+
+    // The simple passes take most of the time of the two tests with
+    // footnotes below: they took 3 to 5 s alone, and up to 15.7 s with ten
+    // busy processes on the machine (#451). They promise nothing about speed
+    // but what their checks say.
+    const slowLimit = 60_000;
 
     it("in items, each made to lose fewer columns by a line after it", () => {
       const lines: string[] = [];
@@ -292,34 +359,42 @@ describe("insideCode", () => {
       expect(reads).toBeLessThan(5 * lines.length);
     });
 
-    it("in footnotes, each in the one before", () => {
-      const lines = ["a[^1]", ""];
-      for (let depth = 0; depth < 100; depth++) {
-        const label = `[^${String(depth + 1)}]:`;
-        lines.push(`${" ".repeat(4 * depth)}${label} x <code>a</code>`, "");
-      }
-      lines.push(`${" ".repeat(400)}HERE`);
-      const { code, reads } = readsOf(lines);
-      expect(code).toBe(false);
-      expect(reads).toBeLessThan(5 * lines.length);
-      expectBounded(lines, 100, 0.4);
-    });
+    it(
+      "in footnotes, each in the one before",
+      () => {
+        const lines = ["a[^1]", ""];
+        for (let depth = 0; depth < 100; depth++) {
+          const label = `[^${String(depth + 1)}]:`;
+          lines.push(`${" ".repeat(4 * depth)}${label} x <code>a</code>`, "");
+        }
+        lines.push(`${" ".repeat(400)}HERE`);
+        const { code, reads } = readsOf(lines);
+        expect(code).toBe(false);
+        expect(reads).toBeLessThan(5 * lines.length);
+        expectBounded(lines, 100, 4);
+      },
+      slowLimit,
+    );
 
-    it("in items in footnotes in items", () => {
-      const lines = ["a[^1]", ""];
-      for (let depth = 0; depth < 60; depth++) {
-        lines.push(`${" ".repeat(4 * depth)}[^${String(depth + 1)}]: x`, "");
-        lines.push(`${" ".repeat(4 * depth + 4)}- a`, "");
-      }
-      lines.push(`${" ".repeat(246)}HERE`);
-      for (let depth = 59; depth >= 0; depth--) {
-        lines.push(`${" ".repeat(4 * depth + 5)}b`);
-      }
-      const { code, reads } = readsOf(lines);
-      expect(code).toBe(true);
-      expect(reads).toBeLessThan(5 * lines.length);
-      expectBounded(lines, 60, 0.4);
-    });
+    it(
+      "in items in footnotes in items",
+      () => {
+        const lines = ["a[^1]", ""];
+        for (let depth = 0; depth < 60; depth++) {
+          lines.push(`${" ".repeat(4 * depth)}[^${String(depth + 1)}]: x`, "");
+          lines.push(`${" ".repeat(4 * depth + 4)}- a`, "");
+        }
+        lines.push(`${" ".repeat(246)}HERE`);
+        for (let depth = 59; depth >= 0; depth--) {
+          lines.push(`${" ".repeat(4 * depth + 5)}b`);
+        }
+        const { code, reads } = readsOf(lines);
+        expect(code).toBe(true);
+        expect(reads).toBeLessThan(5 * lines.length);
+        expectBounded(lines, 60, 160);
+      },
+      slowLimit,
+    );
   });
 });
 
