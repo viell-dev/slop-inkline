@@ -18,6 +18,15 @@ import {
 import { lineBox } from "../ink/geometry.ts";
 import { History } from "../ink/history.ts";
 import { finerGrid, type Grid } from "./guides.ts";
+import {
+  PathPlacer,
+  pathPoints,
+  type PathMarks,
+  type PathNode,
+  type PathPointer,
+  type PathReach,
+  type PathRelease,
+} from "./path.ts";
 import { sweptStroke } from "./sweep.ts";
 
 export interface BrushSize {
@@ -308,6 +317,11 @@ interface ActiveStroke {
   /** Whether it is a polygon, whose points are the corners placed so far. */
   readonly polygon: boolean;
   /**
+   * For a path, its points and handles as they are placed; its points here
+   * stay empty, as its stroke is made from the curve through them.
+   */
+  readonly path: PathPlacer | undefined;
+  /**
    * Whether it is an eraser's stroke drawn as the pointer goes, started
    * without Flat ends and the grid both on, which takes away exactly what its
    * brush sweeps, and is saved as that area, never cut. One started with both
@@ -372,9 +386,17 @@ const uncut = { start: false, end: false } as const;
 
 /**
  * What the pointer draws on the drawing area: a stroke as it goes, an
- * ellipse across the box dragged, or a polygon with a corner at each click.
+ * ellipse across the box dragged, a polygon with a corner at each click, or a
+ * path, a curve placed by its points.
  */
-export type Shape = "free" | "ellipse" | "polygon";
+export type Shape = "free" | "ellipse" | "polygon" | "path";
+
+/**
+ * How far apart the points along a path's curve are saved, at most, in
+ * document pixels: as an ellipse's are, close enough that the smoothing of
+ * {@link Stroke}s without a kind keeps to the curve.
+ */
+export const curveSpacing = maxGap / 2;
 
 /**
  * How near a release must be to a polygon's first or last corner, in
@@ -465,6 +487,14 @@ export class DrawingSession {
   set sizeIndex(index: number) {
     this.sizes[this.tool] = index;
   }
+  /**
+   * How near a press must be to the mark of a path's point, other than its
+   * first or last, or of a handle's end, to take hold of it, in document
+   * pixels: about as near as the mark is drawn, which the editor sets as the
+   * drawing area's scale changes, since the marks keep their size on the
+   * screen.
+   */
+  markReach = cornerReachMin;
   /**
    * Whether the grid is on: a guide, which points go to only with Shift down.
    * With it, Shift puts a point on the grid rather than making a circle.
@@ -609,9 +639,22 @@ export class DrawingSession {
     return this.#active !== undefined;
   }
 
-  /** Whether a polygon is being placed, a corner at a time. */
+  /** Whether a polygon or a path is being placed, a point at a time. */
   get placing(): boolean {
-    return this.#active?.polygon === true;
+    return this.#active?.polygon === true || this.placingPath;
+  }
+
+  /** Whether a path is being placed. */
+  get placingPath(): boolean {
+    return this.#active?.path !== undefined;
+  }
+
+  /**
+   * The points and handles of a path being placed, and what a press would
+   * take hold of, for the drawing area to show; undefined for anything else.
+   */
+  get pathMarks(): PathMarks | undefined {
+    return this.#active?.path?.marks;
   }
 
   /** The captured brush diameter, without copying the active stroke's points. */
@@ -631,6 +674,10 @@ export class DrawingSession {
   get activeStrokes(): readonly Stroke[] {
     const active = this.#active;
     if (active === undefined) return [];
+    if (active.path !== undefined) {
+      const { nodes, closed } = active.path.shown;
+      return this.#pathStrokes(active, nodes, closed);
+    }
     const next = this.#next;
     if (!active.polygon || next === undefined) {
       if (active.sweep) {
@@ -778,6 +825,60 @@ export class DrawingSession {
   }
 
   /**
+   * What a path through `nodes` leaves, `closed` or not, as {@link #strokes}
+   * makes it: a stroke without a kind, as an ellipse is, through points along
+   * the curve, so that it draws as the pen would along it, with round ends.
+   * Closed, it is filled with Fill on; open, its ends that Shift put on the
+   * grid are cut with Flat ends and the grid on, as a freehand stroke's are.
+   */
+  #pathStrokes(
+    active: ActiveStroke,
+    nodes: readonly PathNode[],
+    closed: boolean,
+  ): Stroke[] {
+    if (nodes.length === 0) return [];
+    const curve: ActiveStroke = { ...active, points: [], path: undefined };
+    for (const point of pathPoints(nodes, closed, curveSpacing)) {
+      this.#record(curve, point);
+    }
+    const flat = this.flatEnds && this.snap && !closed;
+    const ends = {
+      start: flat && nodes[0]?.onGrid === true,
+      end: flat && nodes.at(-1)?.onGrid === true,
+    };
+    return this.#strokes(curve, ends, closed && this.fill);
+  }
+
+  /** Where the pointer is, for a path: on the grid with Shift held. */
+  #pathPointer(point: InputPoint): PathPointer {
+    return {
+      at: point,
+      placed: this.#placed(point),
+      onGrid: this.#shift && this.snap,
+    };
+  }
+
+  /**
+   * How near a release must be to a polygon's first or last corner to close
+   * or end it there, in document pixels: within the brush's circle, or
+   * {@link cornerReachMin} for a smaller brush. A press on a path's first or
+   * last point is as near.
+   */
+  #cornerReach(active: ActiveStroke): number {
+    return Math.max(active.size / unitsPerPixel / 2, cornerReachMin);
+  }
+
+  /**
+   * How near a press must be to a point or handle of the path being placed
+   * to take hold of it, as {@link PathReach} says: to the first and last
+   * points, as to a polygon's; to the others, and to the handles' ends, as
+   * {@link markReach} says.
+   */
+  #reach(active: ActiveStroke): PathReach {
+    return { ends: this.#cornerReach(active), marks: this.markReach };
+  }
+
+  /**
    * `active` as a stroke, cut flat at the ends named, which are on the grid.
    * The way a cut end runs is measured over at least a cell of the grid and
    * twice the brush's width, so that the small turns near an end that a hand
@@ -810,16 +911,29 @@ export class DrawingSession {
 
   /**
    * Starts a stroke with the current brush, an ellipse with one corner of its
-   * box here, or a polygon with its first corner here, on the grid if `shift`
-   * says Shift is down. An ellipse is a closed loop, with no ends to cut. While
-   * a polygon is being placed, a press only moves where its next corner would
-   * go, which its release places.
+   * box here, a polygon with its first corner here, or a path with its first
+   * point here, on the grid if `shift` says Shift is down. An ellipse is a
+   * closed loop, with no ends to cut. While a polygon is being placed, a press
+   * only moves where its next corner would go, which its release places;
+   * while a path is, a press takes hold of a point or a handle's end, or
+   * places a point, as {@link PathPlacer} says.
    */
   begin(point: InputPoint, shift = false): void {
     this.#shiftNow = shift;
-    if (this.#active?.polygon === true) {
+    const placing = this.#active;
+    if (placing?.polygon === true) {
       this.#next = point;
       this.#shift = shift;
+      return;
+    }
+    if (placing?.path !== undefined) {
+      this.#next = point;
+      this.#shift = shift;
+      placing.path.press(this.#pathPointer(point), this.#reach(placing));
+      return;
+    }
+    if (this.shape === "path") {
+      this.#beginPath(point, shift);
       return;
     }
     const ellipse = this.shape === "ellipse";
@@ -835,6 +949,7 @@ export class DrawingSession {
       flat,
       onGrid: onGrid && flat,
       polygon,
+      path: undefined,
       sweep:
         this.tool === "eraser" &&
         this.shape === "free" &&
@@ -864,6 +979,34 @@ export class DrawingSession {
   }
 
   /**
+   * Starts a path with its first point at a press here, with the current
+   * brush, which it takes again as the brush changes while it is placed.
+   */
+  #beginPath(point: InputPoint, shift: boolean): void {
+    this.#shift = shift;
+    this.#next = point;
+    this.#last = undefined;
+    this.#anchor = undefined;
+    this.#corner = undefined;
+    this.#pointer = [];
+    this.#at = point;
+    const active: ActiveStroke = {
+      tool: this.tool,
+      size: this.size,
+      points: [],
+      flat: false,
+      onGrid: false,
+      polygon: false,
+      path: undefined,
+      sweep: false,
+    };
+    this.#active = {
+      ...active,
+      path: new PathPlacer(this.#pathPointer(point), this.#reach(active)),
+    };
+  }
+
+  /**
    * Adds points to the stroke being drawn, filling gaps longer than
    * {@link maxGap} and skipping exact repeats. While `shift` says Shift is
    * down, the stroke runs straight from where it was when that began to the
@@ -878,6 +1021,13 @@ export class DrawingSession {
     if (active.polygon) {
       const latest = points.at(-1);
       if (latest !== undefined) this.#next = latest;
+      return;
+    }
+    if (active.path !== undefined) {
+      const latest = points.at(-1);
+      if (latest === undefined) return;
+      this.#next = latest;
+      active.path.move(this.#pathPointer(latest), this.#reach(active));
       return;
     }
     const corner = this.#corner;
@@ -976,7 +1126,8 @@ export class DrawingSession {
    * step, ending it at `release`, where the pointer was let go, when that is
    * known. A polygon being placed takes a release as a corner, and commits
    * only when that closes or ends it; without a release, it commits with the
-   * corners it has, as when saving.
+   * corners it has, as when saving. A path being placed does the same with
+   * its points.
    *
    * Shift counts as held for the release if `shift` says it is down, or if it
    * was at the last press or move: with no move since, what is drawn is what
@@ -997,8 +1148,31 @@ export class DrawingSession {
       const now = shift ?? false;
       this.#shift ||= now;
       const remembered = this.#shift && !now && this.snap;
-      if (release === undefined) this.#commit(placed);
-      else this.#place(placed, remembered ? (this.#next ?? release) : release);
+      if (release === undefined) {
+        this.#commit(this.#strokes(placed, uncut, false));
+      } else {
+        this.#place(placed, remembered ? (this.#next ?? release) : release);
+      }
+      return;
+    }
+    const path = placed?.path;
+    if (placed !== undefined && path !== undefined) {
+      const now = shift ?? false;
+      this.#shift ||= now;
+      // Shift let go an instant before the button leaves the point or the
+      // handle's end on the grid where it was last shown.
+      const remembered = this.#shift && !now && this.snap;
+      let outcome: PathRelease = "ended";
+      if (release !== undefined) {
+        const at = remembered ? (this.#next ?? release) : release;
+        this.#next = at;
+        outcome = path.release(this.#pathPointer(at), this.#reach(placed));
+      }
+      if (outcome !== "placing") {
+        this.#commit(
+          this.#pathStrokes(placed, path.nodes, outcome === "closed"),
+        );
+      }
       return;
     }
     if (placed?.sweep === true && release !== undefined) {
@@ -1040,12 +1214,12 @@ export class DrawingSession {
     this.#next = release;
     if (this.#closes(active, release)) {
       active.points.push(active.points[0] ?? 0, active.points[1] ?? 0);
-      this.#commit(active, this.fill);
+      this.#commit(this.#strokes(active, uncut, this.fill));
       return;
     }
     const count = active.points.length;
     if (this.#near(active, release, count - 2)) {
-      if (!starting) this.#commit(active);
+      if (!starting) this.#commit(this.#strokes(active, uncut, false));
       return;
     }
     this.#record(active, this.#placed(release));
@@ -1076,18 +1250,16 @@ export class DrawingSession {
       const at = this.#snapped(pointer);
       return toUnits(at.x) === x && toUnits(at.y) === y;
     }
-    const reach = Math.max(active.size / unitsPerPixel / 2, cornerReachMin);
     return (
       Math.hypot(
         pointer.x - x / unitsPerPixel,
         pointer.y - y / unitsPerPixel,
-      ) <= reach
+      ) <= this.#cornerReach(active)
     );
   }
 
-  /** Commits a polygon as one undoable step, with `fill`, filled inside. */
-  #commit(active: ActiveStroke, fill = false): void {
-    const strokes = this.#strokes(active, uncut, fill);
+  /** Commits a polygon or a path being placed as one undoable step. */
+  #commit(strokes: readonly Stroke[]): void {
     this.#active = undefined;
     this.#next = undefined;
     this.#starting = false;
@@ -1100,21 +1272,28 @@ export class DrawingSession {
   }
 
   /**
-   * Gives a polygon being placed the tool and brush size chosen now, as when
-   * they change while it is placed; a stroke being dragged keeps its own.
+   * Gives a polygon or a path being placed the tool and brush size chosen
+   * now, as when they change while it is placed; a stroke being dragged keeps
+   * its own.
    */
   rebrush(): void {
     const active = this.#active;
-    if (active?.polygon !== true) return;
+    if (active === undefined || !this.placing) return;
     this.#active = { ...active, tool: this.tool, size: this.size };
   }
 
   /**
    * Takes back the last corner of the polygon being placed, and the polygon
-   * with its first. Returns whether there was one.
+   * with its first; or the last step of the path being placed, a point
+   * placed or a drag, or the press being held on it, and the path with its
+   * first point. Returns whether there was one.
    */
   undoCorner(): boolean {
     const active = this.#active;
+    if (active?.path !== undefined) {
+      if (!active.path.undo()) this.cancel();
+      return true;
+    }
     if (active?.polygon !== true) return false;
     active.points.length -= 2;
     this.#snaps.pop();
@@ -1239,6 +1418,7 @@ export class DrawingSession {
       for (let index = 0; index < active.points.length; index += 2) {
         active.points[index] = (active.points[index] ?? 0) + dx;
       }
+      active.path?.moveAcross(dxPixels);
     }
     for (let index = 0; index < this.#pointer.length; index += 2) {
       this.#pointer[index] = (this.#pointer[index] ?? 0) + toUnits(dxPixels);
