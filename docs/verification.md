@@ -526,7 +526,9 @@ must keep released files readable and looking the same, as
 - Names and renames: what a file name cannot hold, names a folder already has,
   numbers a note still links to, read as Obsidian resolves links, renames that
   fail, names given elsewhere during saving or hashing, and the reported outcome
-  when an external rename follows a successful native rename
+  when an external rename follows a successful native rename. **Unreleased:** a
+  rename refused for a symbol renamed elsewhere while its drawing was written
+  reads no open note first
   ([names.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/names.test.ts),
   [naming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/naming.e2e.ts),
   [renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/renaming.e2e.ts),
@@ -687,23 +689,27 @@ must keep released files readable and looking the same, as
   the write or the rename, a notice says what was and was not done. A name
   nobody changed follows renames made elsewhere, one after another, and never
   renames the file back; a name typed stays through them, and a refused name's
-  reason through a change to the file. Quick edit fits the narrowest sidebar
-  with a long name, and the list and Quick edit keep their names for screen
-  readers with no tooltip over their empty space. The row's own Quick edit says
-  that its form is open, and closes it as Cancel does, by click, Enter, or Esc,
-  dropping what was typed and keeping the focus, and only the first click of a
-  double-click opens or closes it. A row closed by Esc during a press on its
-  Quick edit keeps its form until the press ends, and that form saves nothing;
-  the release, a click on the same Quick edit, opens no second form, and nor
-  does another row's Quick edit from the keyboard meanwhile. It is unavailable
-  while Cancel is, during a save. A save left with it renames nothing, shown
-  with Esc while the write waits, or says that the readings are saved, shown
-  with a click while the rename waits; every way of leaving ends in the one
-  handler, so each way and each step is shown once. Shift+Tab from the name
-  reaches it and then the symbol, past Uses, and the row's buttons follow a
-  rename made elsewhere, into another folder. Its symbol shows the file's menu,
-  and its fields do not. What each outcome writes, renames, and says is also
-  unit-tested
+  reason through a change to the file. **Unreleased:** a rename refused for a
+  symbol renamed elsewhere while the readings were written reads no open note
+  first; why the fields are closed shows above a refused name's reason,
+  whichever came first; and a read begun before a save that found the file
+  changed is set aside, so that the row says what the file says now. Quick edit
+  fits the narrowest sidebar with a long name, and the list and Quick edit keep
+  their names for screen readers with no tooltip over their empty space. The
+  row's own Quick edit says that its form is open, and closes it as Cancel does,
+  by click, Enter, or Esc, dropping what was typed and keeping the focus, and
+  only the first click of a double-click opens or closes it. A row closed by Esc
+  during a press on its Quick edit keeps its form until the press ends, and that
+  form saves nothing; the release, a click on the same Quick edit, opens no
+  second form, and nor does another row's Quick edit from the keyboard
+  meanwhile. It is unavailable while Cancel is, during a save. A save left with
+  it renames nothing, shown with Esc while the write waits, or says that the
+  readings are saved, shown with a click while the rename waits; every way of
+  leaving ends in the one handler, so each way and each step is shown once.
+  Shift+Tab from the name reaches it and then the symbol, past Uses, and the
+  row's buttons follow a rename made elsewhere, into another folder. Its symbol
+  shows the file's menu, and its fields do not. What each outcome writes,
+  renames, and says is also unit-tested
   ([library-quick-edit.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-quick-edit.e2e.ts),
   [library-renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-renaming.e2e.ts)
   for a name alone,
