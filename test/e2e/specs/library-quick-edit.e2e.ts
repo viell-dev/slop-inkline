@@ -336,6 +336,60 @@ async function cutShort(file: string): Promise<void> {
   }, file);
 }
 
+/**
+ * Presses Quick edit's Save on `gate.ink.png` as its reading changes on disk
+ * to THEIRS, so that the save finds the change and is refused, and changes the
+ * file again once the save's own read has read it, before that read gives its
+ * answer, as sync could: to read LATER (`text`), cut short (`cut`), or deleted
+ * (`gone`). The vault reports that change while the save runs.
+ */
+async function saveAsChangedAgain(
+  after: "text" | "cut" | "gone",
+): Promise<void> {
+  await browser.executeObsidian(async ({ app }, how) => {
+    const file = app.vault.getFileByPath("gate.ink.png");
+    if (file === null) throw new Error("no gate");
+    const { text } = window.inklineTest;
+    const bytes = new Uint8Array(await app.vault.readBinary(file));
+    const theirs = await text.writeText(bytes, "reading", ["THEIRS"]);
+    const later = await text.writeText(bytes, "reading", ["LATER"]);
+    const read = app.vault.readBinary.bind(app.vault);
+    let armed = true;
+    app.vault.readBinary = (asked) => {
+      const reading = read(asked);
+      if (!armed || asked !== file) return reading;
+      armed = false;
+      return (async () => {
+        const answered = await reading;
+        if (how === "text") {
+          await app.vault.modifyBinary(file, later.slice().buffer);
+        } else if (how === "cut") {
+          await app.vault.modifyBinary(file, answered.slice(0, -20));
+        } else {
+          await app.fileManager.trashFile(file);
+        }
+        return answered;
+      })();
+    };
+    Reflect.set(window, "inklineAtEnd-change-again", () => {
+      Reflect.deleteProperty(app.vault, "readBinary");
+    });
+    // The change the save finds reaches the disk as Save is pressed, and
+    // the save's read is the next read of the file.
+    void app.vault.modifyBinary(file, theirs.slice().buffer);
+    activeDocument
+      .querySelector<HTMLFormElement>(".inkline-library-edit-form")
+      ?.requestSubmit();
+  }, after);
+  // The save has ended once the fields take what it found.
+  const note = form().$(".inkline-text-note");
+  await browser.waitUntil(async () =>
+    /THEIRS|LATER/.test(await note.getText()),
+  );
+  // Long enough for a read after it to be taken, if there is to be one.
+  await browser.pause(1500);
+}
+
 /** Opens `note` in a tab, which a rename saves and so reads first. */
 async function openNote(note: string): Promise<void> {
   await browser.executeObsidian(async ({ app }, path) => {
@@ -1282,6 +1336,15 @@ describe("Quick edit in the library", function () {
     await browser.waitUntil(async () =>
       (await formError().getText()).includes("already has a symbol named"),
     );
+    // The line as drawn, which the read below is not to draw again: the row's
+    // lines are an alert, which a screen reader reads each time they are.
+    await browser.execute(() => {
+      Reflect.set(
+        window,
+        "inklineLine",
+        document.querySelector(".inkline-library-edit-error > div"),
+      );
+    });
     // As sync would bring in a translation.
     await browser.executeObsidian(async ({ app }) => {
       const file = app.vault.getFileByPath("gate.ink.png");
@@ -1298,6 +1361,16 @@ describe("Quick edit in the library", function () {
       async () => (await area("translation").getValue()) === "door",
     );
     expect(await formError().getText()).toContain("already has a symbol named");
+    expect(
+      await browser.execute(() => {
+        const line: unknown = Reflect.get(window, "inklineLine");
+        Reflect.deleteProperty(window, "inklineLine");
+        return (
+          line instanceof HTMLElement &&
+          document.querySelector(".inkline-library-edit-error > div") === line
+        );
+      }),
+    ).toBe(true);
   });
 
   // #279: the two shared one line, so that one hid the other.
@@ -1442,6 +1515,8 @@ describe("Quick edit in the library", function () {
     expect(await errorLines()).toEqual([]);
     expect(await area("reading").getProperty("readOnly")).toBe(false);
     expect(await area("reading").getValue()).toBe("KA");
+    // Where what was refused can be looked at, as for a row that was open.
+    expect((await focused()).field).toBe("reading");
     // And the next Save replaces what the file says, as the note says.
     await formButton("Save").click();
     await waitForClosed();
@@ -1520,6 +1595,50 @@ describe("Quick edit in the library", function () {
       reading: ["KA"],
       translation: ["door"],
     });
+  });
+
+  // #423: the row did not read the file for a change the vault reported while a
+  // save ran, and after a save refused for a change on disk it read nothing.
+  it("takes in text that reaches the file during a save refused for a change", async function () {
+    await symbolWith("gate.ink.png", { reading: ["TA"] });
+    await showLibrary();
+    await quickEdit("gate.ink.png");
+    await area("reading").setValue("KA");
+    await saveAsChangedAgain("text");
+    const note = await form().$(".inkline-text-note").getText();
+    expect(note).toContain("LATER");
+    expect(note).not.toContain("THEIRS");
+    expect(await area("reading").getValue()).toBe("KA");
+    // So the next Save replaces what the file says now.
+    await formButton("Save").click();
+    await waitForClosed();
+    expect((await fieldsOf("gate.ink.png")).reading).toEqual(["KA"]);
+  });
+
+  it("says a file cut short during a save refused for a change is not a whole PNG", async function () {
+    await symbolWith("gate.ink.png", { reading: ["TA"] });
+    await showLibrary();
+    await quickEdit("gate.ink.png");
+    await area("reading").setValue("KA");
+    await saveAsChangedAgain("cut");
+    expect(await errorLines()).toEqual([notWhole]);
+    expect(await area("reading").getProperty("readOnly")).toBe(true);
+    expect(await area("reading").getValue()).toBe("KA");
+  });
+
+  it("says a file deleted during a save refused for a change is gone", async function () {
+    await symbolWith("gate.ink.png", { reading: ["TA"] });
+    await showLibrary();
+    await quickEdit("gate.ink.png");
+    await area("reading").setValue("KA");
+    await saveAsChangedAgain("gone");
+    expect(await errorLines()).toEqual([
+      "The symbol is no longer in the vault.",
+    ]);
+    expect(await area("reading").getProperty("readOnly")).toBe(true);
+    expect(await formButton("Save").isEnabled()).toBe(false);
+    expect(await area("reading").getValue()).toBe("KA");
+    expect(await symbolFiles()).toEqual([]);
   });
 
   it("keeps a name typed through a rename made elsewhere, and renames from there", async function () {

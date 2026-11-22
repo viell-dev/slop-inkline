@@ -530,19 +530,19 @@ describe("rowLines", () => {
     expect(rowLines(notWhole, [refused])).toEqual([notWhole, refused]);
   });
 
-  it("says a reason once when the save gave it too", () => {
-    expect(rowLines(notWhole, [notWhole, "Nothing was renamed."])).toEqual([
+  it("says once what a failed write and the read after it say of a file cut short", () => {
+    // The write and the row's read both fail through unreadableText; the
+    // row's lines are what reportSave makes of the write's failure.
+    const cutShort = unreadableText(new PngError("cut short"));
+    const readFailure = reasonOf(cutShort, "");
+    expect(readFailure).toBe(notWhole);
+    const { lines } = reportSave(
+      outcome({ written: false, failure: { step: "write", error: cutShort } }),
+      names,
+      true,
+    );
+    expect(rowLines(readFailure, lines)).toEqual([
       notWhole,
-      "Nothing was renamed.",
-    ]);
-  });
-
-  it("says once what a save and a read say of a file cut short, from one source", () => {
-    // Both the write and the row's read give this, so it is the same line.
-    const reason = reasonOf(unreadableText(new PngError("cut short")), "");
-    expect(reason).toBe(notWhole);
-    expect(rowLines(reason, [reason, "Nothing was renamed."])).toEqual([
-      reason,
       "Nothing was renamed.",
     ]);
   });
