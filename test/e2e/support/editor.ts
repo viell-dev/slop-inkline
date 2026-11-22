@@ -1342,7 +1342,8 @@ export async function restoreVault(): Promise<void> {
 /**
  * What a save or a rename can stop in, as on a drive that stopped answering.
  * `obsidians` marks what Obsidian itself does, which {@link undoStubs} lets
- * go rather than fails, as {@link undoStubs} says.
+ * go rather than fails, as {@link undoStubs} says. `makes` holds only a write
+ * that makes a file the vault does not have yet.
  */
 const holdable = {
   /** Obsidian's own move of a file, in the real `renameFile`. */
@@ -1351,27 +1352,45 @@ const holdable = {
     method: "rename",
     ending: ".ink.png",
     obsidians: true,
+    makes: false,
   },
   /** A note's save, which comes before the move. */
-  save: { owner: "adapter", method: "write", ending: ".md", obsidians: true },
+  save: {
+    owner: "adapter",
+    method: "write",
+    ending: ".md",
+    obsidians: true,
+    makes: false,
+  },
   /**
    * A note's read, as a rename reads each open note before the move, to see
    * whether it has text to save.
    */
-  read: { owner: "vault", method: "read", ending: ".md", obsidians: false },
+  read: {
+    owner: "vault",
+    method: "read",
+    ending: ".md",
+    obsidians: false,
+    makes: false,
+  },
   /** A symbol's save, which comes before an editor's rename. */
   write: {
     owner: "vault",
     method: "modifyBinary",
     ending: ".ink.png",
     obsidians: false,
+    makes: false,
   },
-  /** A new symbol's first save, which makes its file. */
+  /**
+   * A new symbol's first save, which makes its file: Inkline writes it with
+   * Obsidian's adapter, straight after its own look at the path (#413).
+   */
   create: {
-    owner: "vault",
-    method: "createBinary",
+    owner: "adapter",
+    method: "writeBinary",
     ending: ".ink.png",
     obsidians: false,
+    makes: true,
   },
   /**
    * A symbol's read, as opening it reads it, or a look at it before a save or
@@ -1382,13 +1401,20 @@ const holdable = {
     method: "readBinary",
     ending: ".ink.png",
     obsidians: false,
+    makes: false,
   },
   /**
    * A link's update in a note, which comes after the move. Inkline inserts
    * its embeds through the same method, which this holds as well, and
    * {@link undoStubs} lets go too.
    */
-  link: { owner: "vault", method: "process", ending: ".md", obsidians: true },
+  link: {
+    owner: "vault",
+    method: "process",
+    ending: ".md",
+    obsidians: true,
+    makes: false,
+  },
   /**
    * Obsidian's index reading a note it has not indexed yet, which it reads as
    * bytes. Obsidian's `renameFile` waits for the index before the move.
@@ -1398,6 +1424,7 @@ const holdable = {
     method: "readBinary",
     ending: ".md",
     obsidians: true,
+    makes: false,
   },
 } as const;
 
@@ -1423,7 +1450,7 @@ export async function hold(
   when: "before" | "after" = "before",
 ): Promise<void> {
   await browser.executeObsidian(
-    ({ app }, { owner, method, obsidians }, name, end, when) => {
+    ({ app }, { owner, method, obsidians, makes }, name, end, when) => {
       const target = owner === "adapter" ? app.vault.adapter : app.vault;
       const original: unknown = Reflect.get(target, method);
       if (typeof original !== "function") throw new Error(`no ${method}`);
@@ -1456,7 +1483,10 @@ export async function hold(
           typeof file === "object" && file !== null
             ? (Reflect.get(file, "path") as unknown)
             : file;
-        const held = typeof path === "string" && path.endsWith(end);
+        const held =
+          typeof path === "string" &&
+          path.endsWith(end) &&
+          (!makes || app.vault.getAbstractFileByPath(path) === null);
         const call = (async () => {
           if (held && when === "before") {
             gate.reached = true;

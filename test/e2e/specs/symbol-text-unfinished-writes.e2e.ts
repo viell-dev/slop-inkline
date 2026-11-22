@@ -14,6 +14,8 @@ import {
   draw,
   fillStorage,
   freeStorage,
+  hold,
+  letGo,
   recordOf,
   restoreVault,
   startOver,
@@ -308,11 +310,14 @@ describe("A symbol's readings and translations", function () {
         [0.5, 0.3],
         [0.7, 0.6],
       ]);
-      await delayVault("createBinary", stalledAfter + 1500, "before");
+      // Its file's write, which Inkline asks of Obsidian's adapter once it has
+      // looked at the path (#413), held until the message shows.
+      await hold("create");
       await browser.keys(["Control", "s"]);
       expect(await waitForEditorWait()).toContain(
         "restart Obsidian and start a new symbol in this note",
       );
+      await letGo();
       await waitForStatus("Saved");
       expect(await editorWait().getText()).toBe("");
     });
