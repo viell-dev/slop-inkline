@@ -82,7 +82,9 @@ function coveredBy(
         const b = piece[(index + 1) % piece.length] ?? a;
         if (rest.length < 3) return;
         const [inside, beyond] = cut(rest, a, b);
-        if (beyond.length >= 3 && Math.abs(area(beyond)) > 1e-12) {
+        // Above what rounding leaves where two pieces meet, about 2e-12
+        // for corners some hundred pixels from the origin.
+        if (beyond.length >= 3 && Math.abs(area(beyond)) > 1e-9) {
           outside.push(beyond);
         }
         rest = inside;
@@ -180,8 +182,8 @@ export function measureSolidInk(
   let at: Point | undefined;
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
+      // An empty pixel inside the shape is as short as can be.
       const alpha = data[(y * width + x) * 4 + 3] ?? 0;
-      if (alpha === 0) continue;
       const middle = documentPoint(x + 0.5, y + 0.5);
       const near = corners.some(
         ([cx, cy]) => Math.hypot(middle[0] - cx, middle[1] - cy) <= reach,

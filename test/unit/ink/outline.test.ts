@@ -536,11 +536,14 @@ function polygonCases(): Stroke[] {
       }
     }
   }
-  // Straight on, along an axis and obliquely, where the sides' directions
-  // round differently; nearly straight on; doubling back; and a single side
-  // and a single corner.
+  // Straight on, along an axis and at 45°, where the sides' directions are
+  // the same; on one line at other angles, where they round apart in the last
+  // bit and the pieces have a wedge of no width there; nearly straight on;
+  // doubling back; and a single side and a single corner.
   add([0, 0, 480, 0, 960, 0], 384);
   add([0, 0, 48, 48, 128, 128], 384);
+  add([0, 0, 104, 156, 286, 429], 96);
+  add([0, 0, 616, 252, 748, 306], 288);
   add([0, 0, 48, 80, 112, 192, 400, 672], 288);
   add([0, 0, 480, 160, 961, 320], 192);
   add([0, 0, 960, 320, 0, 0, 960, 320], 384);
@@ -624,6 +627,50 @@ describe("drawnShape", () => {
         expect(sharedEdges(piecesOf(drawnShape(stroke)))).toEqual([]);
       }
     }
+  });
+
+  it("goes straight across a corner on one line, however the directions round", () => {
+    // Corners on one line at multiples of a 10 pixel step, every way round.
+    // Where the two sides' directions round apart in the last bit, the pieces
+    // have a wedge of no width there, and going in to the corner point and
+    // straight back out would be an edge traversed both ways.
+    const step = 160;
+    let wedges = 0;
+    const found: unknown[] = [];
+    for (const size of [96, 288]) {
+      for (let a = -6; a <= 6; a++) {
+        for (let b = 1; b <= 6; b++) {
+          for (const [i, j] of [
+            [1, 2],
+            [1, 3],
+            [2, 3],
+            [2, 5],
+            [3, 7],
+          ] as const) {
+            const points = [0, 0, a * i, b * i, a * j, b * j].map(
+              (value) => value * step,
+            );
+            const stroke: Stroke = {
+              tool: "pen",
+              size,
+              points,
+              kind: "polygon",
+            };
+            if (piecesOf(strokeShape(stroke)).length > 2) wedges++;
+            const outlines = piecesOf(drawnShape(stroke));
+            const [x, y] = [(a * i * step) / 16, (b * i * step) / 16];
+            const inTo = outlines
+              .flat()
+              .some((point) => point[0] === x && point[1] === y);
+            const shared = sharedEdges(outlines);
+            if (inTo || shared.length > 0) found.push([points, size, shared]);
+          }
+        }
+      }
+    }
+    expect(found).toEqual([]);
+    // 16 of them, at sizes 96 and 288.
+    expect(wedges).toBeGreaterThan(10);
   });
 
   it("puts no corner on an outline that is not one of a piece", () => {

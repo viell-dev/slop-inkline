@@ -35,11 +35,10 @@ even one a public release; earlier pre-releases carry a suffix such as
 ### Fixed
 
 - A polygon drawn with a large brush showed a faint, lighter line inside its ink
-  at a corner that was not a right angle, where the parts the line is drawn in
-  meet, and a filled polygon showed it outside the fill. It no longer does. The
-  shape is the same, and so is the file format: a symbol saved before keeps the
-  line in its image until it is saved again
-  ([#368](https://github.com/viell-dev/slop-inkline/issues/368)).
+  at a corner, where the parts the line is drawn in meet, and a filled polygon
+  showed it outside the fill. It no longer does. The shape is the same, and so
+  is the file format: a symbol saved before keeps the line in its image until it
+  is saved again ([#368](https://github.com/viell-dev/slop-inkline/issues/368)).
 - A symbol's file replaced while the editor saved it, deleted and another put at
   its path through Obsidian, as by another plugin or a sync tool working through
   it, could have the save find no file, go to make it again, and stop with

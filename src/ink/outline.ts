@@ -365,10 +365,11 @@ export function polygonPieces(
 /**
  * The outlines around a polygon's pieces, for a renderer to fill in their
  * place. Every point lies inside as many of them, counting each time one
- * winds round it, as of {@link polygonPieces}, so the nonzero rule fills the
- * same shape. Pieces that meet share an edge, and antialiasing can leave a
- * faint seam along it, as what a renderer covers of a pixel from either side
- * need not add up to all of it. The outlines have no such edge.
+ * winds round it, as of {@link polygonPieces}, but for slivers that rounding
+ * leaves, as below, so the nonzero rule fills the same shape. Pieces that
+ * meet share an edge, and antialiasing can leave a faint seam along it, as
+ * what a renderer covers of a pixel from either side need not add up to all
+ * of it. The outlines have no such edge.
  *
  * One outline runs along every side's first long edge and back along the
  * second; a closed polygon has one each way. At a corner where the sides
@@ -379,6 +380,12 @@ export function polygonPieces(
  * they lie along, each traversed once each way, so the count stays the same
  * everywhere. Where the sides go straight on, the edge goes straight across,
  * leaving out both rectangles' ends, which are the same but for rounding.
+ *
+ * So it does on the inner side where the sides go on in a line at an angle,
+ * and their directions round apart in the last bit, which makes a wedge of no
+ * width: the ends' inner halves would there be one segment, traversed both
+ * ways, and the sliver left out between them, about 1e-15 px², is wound round
+ * once rather than twice.
  */
 export function polygonOutlines(
   corners: readonly Point[],
@@ -389,20 +396,38 @@ export function polygonOutlines(
   if (parts === undefined) return [];
   if (parts.kind === "dot") return [oriented([...parts.square])];
   const { sides, wedges } = parts;
+  const count = wedges.length;
+  /**
+   * Where the inner edge goes at a corner, between `end`, the side before's
+   * corner on it, and `start`, the side after's: in to the corner point and
+   * out again, or straight across where those are one point.
+   */
+  const inner = (wedge: Wedge, end?: Point, start?: Point): Point[] =>
+    end === undefined || start === undefined || onePoint(end, start, width)
+      ? []
+      : wedge.corners.slice(0, 1);
   const out: Point[] = [];
   const back: Point[] = [];
   sides.forEach(([start, end], side) => {
     extend(out, [start, end]);
-    const wedge = wedges[(side + 1) % wedges.length];
+    const after = (side + 1) % count;
+    const wedge = wedges[after];
     if (wedge === undefined) return;
-    extend(out, wedge.first ? beyond(wedge) : [wedge.corners[0]]);
+    extend(
+      out,
+      wedge.first ? beyond(wedge) : inner(wedge, end, sides[after]?.[0]),
+    );
   });
   for (let side = sides.length - 1; side >= 0; side--) {
     const [, , end, start] = sides[side] ?? [];
     extend(back, [end, start]);
     const wedge = wedges[side];
     if (wedge === undefined) continue;
-    extend(back, wedge.first ? [wedge.corners[0]] : beyond(wedge).reverse());
+    const before = sides[(side + count - 1) % count];
+    extend(
+      back,
+      wedge.first ? inner(wedge, before?.[2], start) : beyond(wedge).reverse(),
+    );
   }
   // Along the first long edges and back winds a rectangle the other way from
   // its piece, which `oriented` turns round.
@@ -414,6 +439,18 @@ export function polygonOutlines(
 /** A wedge's corners out beyond the sides, between theirs on its edge. */
 function beyond(wedge: Wedge): Point[] {
   return wedge.corners.slice(2, -1);
+}
+
+/**
+ * Whether two rectangles' corners, each a corner point and half of `width`
+ * along a unit normal, are one point but for rounding: closer than 2^-40 of
+ * their size, where rounding moves each by about 2^-52 of it. Sides that turn
+ * put them further apart, but for a turn too small to show, where what lies
+ * between them is inside both rectangles.
+ */
+function onePoint([ax, ay]: Point, [bx, by]: Point, width: number): boolean {
+  const size = Math.abs(ax) + Math.abs(ay) + width;
+  return Math.abs(ax - bx) + Math.abs(ay - by) <= size * 2 ** -40;
 }
 
 /** Adds points to an outline, but none that is the one before again. */
