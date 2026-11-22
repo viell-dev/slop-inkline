@@ -529,17 +529,25 @@ export class InkEditorModal extends Modal {
     if (this.#session.holdShift(event.shiftKey)) this.#render();
   };
   /**
-   * Changes to the view asked for while the pointer was pressed to draw, for
-   * when it is let go: Zoom as a switch, so that asking twice leaves the view
-   * as it is, Fit, and whether Make ink is to be open, or undefined to leave
-   * it as it is, as its row above the drawing area would move the drawing
-   * under the pointer as it opened or closed.
+   * Changes to the view asked for while the pointer was pressed on the
+   * surface, to draw or to drag the picture, for when it is let go: Zoom as a
+   * switch, so that asking twice leaves the view as it is, Fit, and whether
+   * Make ink is to be open, or undefined to leave it as it is, as its row
+   * above the drawing area would move the drawing under the pointer as it
+   * opened or closed.
    */
   #viewWaits: { zoom: boolean; fit: boolean; ink: boolean | undefined } = {
     zoom: false,
     fit: false,
     ink: undefined,
   };
+  /**
+   * Whether Make ink's row showed at the press, which it keeps doing until
+   * the release, or undefined while the pointer is not pressed. A picture
+   * pasted in place of the one it was open for, ink made by Apply, or Cancel
+   * closes it meanwhile, which would move the drawing under the pointer.
+   */
+  #barHeld: boolean | undefined;
   /**
    * Where the pointer pressed to draw last was in the window, while it is,
    * and where that was in the drawing as what is drawn took it.
@@ -1663,6 +1671,7 @@ export class InkEditorModal extends Modal {
         this.#dragged = undefined;
         canvas.removeClass("is-dragging");
         this.#letGoAround();
+        this.#viewAfterPress();
         return;
       }
       this.#pressedAt = undefined;
@@ -1946,7 +1955,7 @@ export class InkEditorModal extends Modal {
   #toggleConvert(): void {
     // Its row opens or closes once the pointer is let go, as Zoom waits.
     if (
-      this.#pressed &&
+      this.#held &&
       (this.#converting !== undefined || this.#picture !== undefined)
     ) {
       const open = !this.#inkOpen;
@@ -2445,7 +2454,8 @@ export class InkEditorModal extends Modal {
    * a message said meanwhile wraps, moved the drawing under the pointer in
    * the middle of a stroke (#427). What does not fit shows once the pointer
    * is let go, and a screen reader hears it at once, as before. Make ink's
-   * row, which opens or closes whole, waits for the release instead.
+   * row, which opens or closes whole, shows or not as it did at the press
+   * ({@link #barHeld}).
    */
   #holdAround(): void {
     for (const element of this.#heldAround) {
@@ -2456,6 +2466,7 @@ export class InkEditorModal extends Modal {
       element.style.setProperty("--inkline-held-height", `${String(height)}px`);
       element.addClass("inkline-held");
     }
+    this.#barHeld = this.#convertBar?.isShown();
   }
 
   /** Lets what {@link #holdAround} held take its own height again. */
@@ -2464,11 +2475,22 @@ export class InkEditorModal extends Modal {
       element.removeClass("inkline-held");
       element.style.removeProperty("--inkline-held-height");
     }
+    if (this.#barHeld === undefined) return;
+    this.#barHeld = undefined;
+    this.#updateButtons();
   }
 
   /** Whether the pointer is pressed on the surface to draw, not to drag. */
   get #pressed(): boolean {
     return this.#gate.active !== undefined && this.#dragged === undefined;
+  }
+
+  /**
+   * Whether the pointer is pressed on the surface, to draw or to drag the
+   * picture: what moves the drawing under it waits for the release then.
+   */
+  get #held(): boolean {
+    return this.#gate.active !== undefined;
   }
 
   /** Whether the view is magnified, or will be once the pointer is let go. */
@@ -2486,15 +2508,16 @@ export class InkEditorModal extends Modal {
 
   /**
    * Magnifies the drawing, or shows it as usual again. While the pointer is
-   * pressed to draw, that waits until it is let go: zooming moves what the
-   * pointer is over, so a stroke, a shape, a polygon's corner, or a path's
+   * pressed on the surface, that waits until it is let go: zooming moves what
+   * the pointer is over, so a stroke, a shape, a polygon's corner, or a path's
    * point or handle being drawn would end somewhere other than it shows, as
-   * the release then lands elsewhere in the drawing (#382). So it keeps the
-   * view it started in, as it keeps its grid ({@link DrawingSession.grid}),
-   * its tool, and its size.
+   * the release then lands elsewhere in the drawing (#382), and a picture
+   * being dragged would leave the pointer (#444). So it keeps the view it
+   * started in, as it keeps its grid ({@link DrawingSession.grid}), its tool,
+   * and its size.
    */
   #toggleZoom(): void {
-    if (!this.#pressed) {
+    if (!this.#held) {
       this.#zoom();
       return;
     }
@@ -2511,10 +2534,10 @@ export class InkEditorModal extends Modal {
 
   /**
    * Fits the view to the drawing, or once the pointer is let go if it is
-   * pressed to draw, for the same reason as Zoom waits (#393).
+   * pressed on the surface, for the same reason as Zoom waits (#393, #444).
    */
   #fit(): void {
-    if (!this.#pressed) {
+    if (!this.#held) {
       this.#fitView();
       this.#render();
       return;
@@ -2524,9 +2547,10 @@ export class InkEditorModal extends Modal {
   }
 
   /**
-   * Makes the changes to the view asked for while the pointer was pressed to
-   * draw, now that what was drawn has ended where the view put it, unless the
-   * editor has closed meanwhile: Next takes a zoom asked for to the next
+   * Makes the changes to the view asked for while the pointer was pressed on
+   * the surface, now that what was drawn has ended where the view put it, or
+   * the picture dragged where the pointer left it, unless the editor has
+   * closed meanwhile: Next takes a zoom asked for to the next
    * symbol. They go as one action, so that the status line says what they
    * did, or nothing, rather than what waited. Make ink opens or closes as
    * asked, unless it already is so, as when the picture it was open for was
@@ -2828,7 +2852,7 @@ export class InkEditorModal extends Modal {
       const disabled = states.disabled[id];
       if (disabled !== undefined) button.setDisabled(disabled);
     }
-    this.#convertBar?.toggle(states.convertBar);
+    this.#convertBar?.toggle(this.#barHeld ?? states.convertBar);
     if (states.threshold !== undefined && this.#thresholdInput !== undefined) {
       this.#thresholdInput.value = String(states.threshold);
     }

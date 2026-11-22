@@ -1,4 +1,5 @@
 import { browser, expect } from "@wdio/globals";
+import { Key } from "webdriverio";
 import { obsidianPage } from "wdio-obsidian-service";
 import { loadModules } from "../support/browser.ts";
 import {
@@ -23,7 +24,13 @@ import {
   symbolFiles,
   waitForStatus,
 } from "../support/editor.ts";
-import { type Box } from "../support/pointer.ts";
+import {
+  type Box,
+  dragInWindow,
+  inWindow,
+  tops,
+  watchTops,
+} from "../support/pointer.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 import {
   near,
@@ -137,6 +144,31 @@ async function dragBy(dx: number, dy: number): Promise<void> {
 /** How many files the vault holds. */
 async function fileCount(): Promise<number> {
   return browser.executeObsidian(({ app }) => app.vault.getFiles().length);
+}
+
+const making = "Making ink of the picture: set the threshold, then Apply.";
+
+/** Whether the controls that make ink are showing. */
+async function inkShown(): Promise<boolean> {
+  return browser.$(".inkline-editor .inkline-convert").isDisplayed();
+}
+
+/**
+ * Drags the picture with Move on, 30 pixels right and 15 down from the
+ * drawing area's middle, pressing `keys` while it is held, and says whether
+ * the drawing area, and so the picture on it, stayed where it was in the
+ * window from the press to the release.
+ */
+async function dragStill(
+  keys: readonly (string | readonly string[])[],
+): Promise<boolean> {
+  await settledSurface();
+  const from = await inWindow(0.5, 0.5);
+  await watchTops();
+  await dragInWindow(from, { x: from.x + 30, y: from.y + 15 }, keys);
+  const seen = await tops();
+  expect(seen.at(-1)?.type).toBe("pointerup");
+  return new Set(seen.map(({ top }) => top)).size === 1;
 }
 
 describe("The editor", function () {
@@ -407,6 +439,57 @@ describe("The editor", function () {
         async () => (await storedDrafts())[0]?.strokes.length === 1,
       );
       expect(near(await pictureShown(), shrunk, 1)).toBe(true);
+    });
+
+    // Obsidian keeps the editor in the middle of the window, so a row that
+    // opened or closed above the drawing area, or a zoom, while the picture
+    // was dragged moved the drawing, and the picture with it, under the
+    // pointer (#444). They wait for the release, as while drawing.
+    it("keeps the picture under the pointer when Make ink is pressed while dragging it, and opens it once let go", async function () {
+      await insert();
+      await pastePicture("red");
+      const placed = await waitForPicture((box) => box !== undefined);
+      if (placed === undefined) throw new Error("no picture");
+      const { ratio } = await surfaceLayout();
+      await browser.keys(["m"]);
+      expect(await dragStill(["i"])).toBe(true);
+      await waitForStatus(making);
+      expect(await inkShown()).toBe(true);
+      // Where the pointer took it, as the row opened only then.
+      await waitForPicture((box) =>
+        near(box, moved(placed, 30 * ratio, 15 * ratio)),
+      );
+    });
+
+    it("keeps the picture under the pointer when Zoom is pressed while dragging it, and zooms once let go", async function () {
+      await insert();
+      await pastePicture("red");
+      await waitForPicture((box) => box !== undefined);
+      await browser.keys(["m"]);
+      expect(await dragStill(["z"])).toBe(true);
+      await waitForStatus("Zoomed in");
+      expect(await pressed("zoom")).toBe("true");
+    });
+
+    it("keeps Make ink's row showing until the release when a picture pasted while dragging closes it", async function () {
+      await insert();
+      await pastePicture("red");
+      await waitForPicture((box) => box !== undefined);
+      await browser.keys(["i"]);
+      await waitForStatus(making);
+      // The slider has the focus, so the button rather than M.
+      await browser.$('[data-inkline-button="move"]').click();
+      expect(await pressed("move")).toBe("true");
+      await browser.execute(async () => {
+        await window.inklineTest.pictures.copyPicture(40, 40, "blue");
+      });
+      expect(await dragStill([[Key.Ctrl, "v"]])).toBe(true);
+      // Then it closes, as Make ink was open for the picture replaced.
+      await waitForPicture((box) => box !== undefined, "blue");
+      await browser.waitUntil(async () => !(await inkShown()), {
+        timeoutMsg: "Make ink's row stayed after the release",
+      });
+      expect(await pressed("ink")).toBe("false");
     });
 
     it("never saves the picture", async function () {

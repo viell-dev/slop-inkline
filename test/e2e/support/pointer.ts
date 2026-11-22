@@ -86,6 +86,84 @@ export async function click(point: Point): Promise<void> {
     .perform();
 }
 
+/** A place in the window, at fractions of the drawing area's box now. */
+export async function inWindow(x: number, y: number): Promise<Point> {
+  const { left, right, top, bottom } = await boxOf(
+    ".inkline-editor .inkline-surface",
+  );
+  return {
+    x: Math.round(left + x * (right - left)),
+    y: Math.round(top + y * (bottom - top)),
+  };
+}
+
+/**
+ * Presses the mouse at `from`, moves it to `to` in one report, holds it
+ * there, pressing each of `keys` in turn, a list being keys held together,
+ * and lets go there: one WebDriver command, as a press held into the next
+ * command ends as a lost capture (#391). The places are the window's, where
+ * a hand stays, rather than the drawing area's, which the mouse would follow
+ * if the area moved.
+ */
+export async function dragInWindow(
+  from: Point,
+  to: Point,
+  keys: readonly (string | readonly string[])[] = [],
+): Promise<void> {
+  const keyboard = browser.action("key");
+  const pointer = browser.action("pointer", {
+    parameters: { pointerType: "mouse" },
+  });
+  pointer
+    .move({ origin: "viewport", ...from, duration: 0 })
+    .down()
+    .move({ origin: "viewport", ...to, duration: 0 })
+    .pause(300);
+  keyboard.pause(0).pause(0).pause(0).pause(300);
+  for (const key of keys) {
+    const together = typeof key === "string" ? [key] : key;
+    for (const each of together) keyboard.down(each);
+    for (const each of [...together].reverse()) keyboard.up(each);
+    // The pointer holds still for each of them.
+    for (let tick = 0; tick < 2 * together.length; tick += 1) {
+      pointer.pause(10);
+    }
+  }
+  keyboard.pause(300);
+  pointer.pause(300).up();
+  await browser.actions([keyboard, pointer]);
+}
+
+/**
+ * Records, in the page, where the drawing area's top is at each press, move,
+ * and release on it, before the editor takes each, for {@link tops}.
+ */
+export async function watchTops(): Promise<void> {
+  await browser.execute(() => {
+    const surface = document.querySelector(".inkline-editor .inkline-surface");
+    if (!(surface instanceof HTMLElement)) throw new Error("no surface");
+    const tops: { type: string; top: number }[] = [];
+    Reflect.set(window, "inklineTestTops", tops);
+    for (const type of ["pointerdown", "pointermove", "pointerup"]) {
+      window.addEventListener(
+        type,
+        () => {
+          tops.push({ type, top: surface.getBoundingClientRect().top });
+        },
+        { capture: true },
+      );
+    }
+  });
+}
+
+/** What {@link watchTops} recorded. */
+export async function tops(): Promise<{ type: string; top: number }[]> {
+  return browser.execute(() => {
+    const tops: unknown = Reflect.get(window, "inklineTestTops");
+    return Array.isArray(tops) ? (tops as { type: string; top: number }[]) : [];
+  });
+}
+
 /**
  * Presses the left button twice at `point`, quickly enough to be a
  * double-click: the second click's `detail` is 2, and a `dblclick` follows it.
