@@ -811,10 +811,14 @@ must keep released files readable and looking the same, as
 ### The keyboard reaches everything but drawing
 
 - Each control is labelled, its tooltip shows its key, toggles say whether they
-  are on, and keys give way to a text field
+  are on, a switch that does not apply is off and its key says why, and keys
+  give way to a text field
   ([buttons.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/buttons.e2e.ts)
   and
   [drawing.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/drawing.e2e.ts)).
+  Which buttons are pressed and which are off, for every state of the editor
+  they show, is pinned in
+  [buttons.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/buttons.test.ts).
 - This site lists every command and every button's key as the code has them
   ([docs.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/docs.test.ts)).
 

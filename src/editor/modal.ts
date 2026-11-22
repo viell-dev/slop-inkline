@@ -71,7 +71,12 @@ import {
   type DraftStore,
   type DraftTarget,
 } from "./drafts.ts";
-import { buttonFace, type ButtonLabels } from "./buttons.ts";
+import {
+  buttonFace,
+  buttonStates,
+  pictureHints,
+  type ButtonLabels,
+} from "./buttons.ts";
 import { FileWatch, type FileReading, type Reading } from "./disk.ts";
 import {
   contrastBrushCursor,
@@ -202,9 +207,6 @@ const nudge = 1;
 /** How much + and − scale a picture: as much as a notch of the wheel. */
 const keyScale = wheelFactor(-100);
 
-const noPicture = "Paste, drop, or choose a picture to trace over it.";
-const tracing = "Tracing over a picture, which is not saved.";
-const making = "Making ink of the picture: set the threshold, then Apply.";
 /** What the status line says of a file opened from its pixels, and why. */
 const noStrokes =
   "Opened as a picture to draw over, as this file holds no strokes: symbols saved before Inkline 0.9.2 open this way";
@@ -1970,7 +1972,7 @@ export class InkEditorModal extends Modal {
     };
     this.#updateButtons();
     this.#render();
-    this.#announce(making);
+    this.#announce(pictureHints.making);
     this.#thresholdInput?.focus();
   }
 
@@ -2692,61 +2694,44 @@ export class InkEditorModal extends Modal {
     this.#keepDraft();
   }
 
+  /** Shows on the buttons what they do now, as {@link buttonStates} says. */
   #updateButtons(): void {
-    const pressed = (id: string, value: boolean): void => {
-      this.#buttons
-        .get(id)
-        ?.buttonEl.setAttribute("aria-pressed", String(value));
-    };
-    const drawing = !this.#moving;
-    pressed("pen", drawing && this.#session.tool === "pen");
-    pressed("eraser", drawing && this.#session.tool === "eraser");
-    pressed("ellipse", drawing && this.#session.shape === "ellipse");
-    pressed("polygon", drawing && this.#session.shape === "polygon");
-    pressed("path", drawing && this.#session.shape === "path");
-    const shaped = this.#session.shape !== "free";
-    pressed("fill", shaped && this.#session.fill);
-    this.#buttons.get("fill")?.setDisabled(!shaped);
-    pressed("move", this.#moving);
-    const picture = this.#picture !== undefined;
-    this.#buttons.get("move")?.setDisabled(!picture);
-    this.#buttons.get("remove")?.setDisabled(!picture);
-    this.#buttons.get("ink")?.setDisabled(!picture);
     const converting = this.#converting;
-    pressed("ink", converting !== undefined);
-    this.#buttons.get("apply")?.setDisabled(this.#applying !== undefined);
-    pressed("light", converting?.light === true);
-    this.#convertBar?.toggle(converting !== undefined);
-    if (converting !== undefined && this.#thresholdInput !== undefined) {
-      this.#thresholdInput.value = String(converting.threshold);
-    }
-    this.#pictureHint?.setText(
-      converting !== undefined ? making : picture ? tracing : noPicture,
-    );
-    this.#view?.canvas.toggleClass("is-moving", this.#moving);
-    pressed("guides", this.#guidesShown);
-    pressed("grid", this.#session.snap);
-    pressed("flat-ends", this.#canEndFlat && this.#session.flatEnds);
-    this.#buttons.get("flat-ends")?.setDisabled(!this.#canEndFlat);
-    pressed("zoom", this.#zoomed);
-    brushSizes.forEach((_, index) => {
-      pressed(`size-${String(index)}`, this.#session.sizeIndex === index);
-    });
-    this.#buttons
-      .get("undo")
-      ?.setDisabled(!this.#session.canUndo && !this.#session.placing);
-    this.#buttons.get("redo")?.setDisabled(!this.#session.canRedo);
     const { strokes, base } = this.#session.document;
-    for (const id of ["move-up", "move-down"]) {
-      this.#buttons
-        .get(id)
-        ?.setDisabled(
-          converting !== undefined ||
-            (strokes.length === 0 && base === undefined),
-        );
+    const states = buttonStates({
+      tool: this.#session.tool,
+      shape: this.#session.shape,
+      fill: this.#session.fill,
+      moving: this.#moving,
+      picture: this.#picture !== undefined,
+      converting,
+      applying: this.#applying !== undefined,
+      guides: this.#guidesShown,
+      grid: this.#session.snap,
+      canEndFlat: this.#canEndFlat,
+      flatEnds: this.#session.flatEnds,
+      zoomed: this.#zoomed,
+      sizeIndex: this.#session.sizeIndex,
+      canUndo: this.#session.canUndo,
+      canRedo: this.#session.canRedo,
+      placing: this.#session.placing,
+      empty: strokes.length === 0 && base === undefined,
+      saving: this.#saving !== undefined,
+    });
+    for (const [id, button] of this.#buttons) {
+      const pressed = states.pressed[id];
+      if (pressed !== undefined) {
+        button.buttonEl.setAttribute("aria-pressed", String(pressed));
+      }
+      const disabled = states.disabled[id];
+      if (disabled !== undefined) button.setDisabled(disabled);
     }
-    this.#buttons.get("save")?.setDisabled(this.#saving !== undefined);
-    this.#buttons.get("next")?.setDisabled(this.#saving !== undefined);
+    this.#convertBar?.toggle(states.convertBar);
+    if (states.threshold !== undefined && this.#thresholdInput !== undefined) {
+      this.#thresholdInput.value = String(states.threshold);
+    }
+    this.#pictureHint?.setText(states.hint);
+    this.#view?.canvas.toggleClass("is-moving", this.#moving);
     this.#updateCursor();
   }
 
