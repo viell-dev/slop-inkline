@@ -256,6 +256,49 @@ export async function drawShifted(
   await browser.actions([keys, pointer]);
 }
 
+/**
+ * Draws through points as {@link draw} does, holds the pointer still at the
+ * last for `hold` ms, presses the keys of `chord` together there if any, such
+ * as Control and Enter, and lets go after another `hold`: all in one WebDriver
+ * command. The drawing area captures the pointer, and a press held from one
+ * command to the next loses that capture with the button still down when the
+ * next command starts, before its release arrives, so the editor ends the
+ * stroke there as a lost capture, and what a release does goes untested
+ * (#391). What the page shows while the button is down is read in the page,
+ * by a listener for the release, which comes after the hold, when the editor
+ * has drawn its frames.
+ */
+export async function drawAndHold(
+  points: readonly (readonly [number, number])[],
+  { hold = 300, chord = [] }: { hold?: number; chord?: readonly string[] } = {},
+): Promise<void> {
+  const [first, ...rest] = points;
+  if (first === undefined) return;
+  const at = await surfaceOffsets();
+  const keys = browser.action("key");
+  const pointer = browser.action("pointer", {
+    parameters: { pointerType: "mouse" },
+  });
+  pointer.move(at(first)).down();
+  keys.pause(10).pause(10);
+  for (const point of rest) {
+    pointer.move({ ...at(point), duration: 20 });
+    keys.pause(10);
+  }
+  pointer.pause(hold);
+  keys.pause(10);
+  for (const key of chord) {
+    keys.down(key);
+    pointer.pause(10);
+  }
+  for (const key of [...chord].reverse()) {
+    keys.up(key);
+    pointer.pause(10);
+  }
+  pointer.pause(hold).up();
+  await browser.actions([keys, pointer]);
+}
+
 /** Clicks at each point, as fractions of the surface, with Shift held. */
 export async function shiftClick(
   ...points: readonly (readonly [number, number])[]
@@ -1613,6 +1656,44 @@ export async function renamePastHold(from: string, to: string): Promise<void> {
     from,
     to,
   );
+}
+
+/**
+ * Counts the reads of the note at `path` through the vault from now on, as a
+ * rename reads each open note to see whether it has text to save, until
+ * {@link undoStubs}. {@link noteReads} says how many there were.
+ */
+export async function countNoteReads(path: string): Promise<void> {
+  await browser.executeObsidian(({ app }, wanted) => {
+    // What the vault had as its own, if anything, to put back.
+    const ownBefore = Object.hasOwn(app.vault, "read");
+    const previous: unknown = Reflect.get(app.vault, "read");
+    const read = app.vault.read.bind(app.vault);
+    const counted = { reads: 0 };
+    const wrapper: typeof app.vault.read = (file) => {
+      if (file.path === wanted) counted.reads++;
+      return read(file);
+    };
+    app.vault.read = wrapper;
+    Reflect.set(window, "inklineNoteReads", counted);
+    Reflect.set(window, "inklineAtEnd-note-reads", () => {
+      Reflect.deleteProperty(window, "inklineNoteReads");
+      if (Reflect.get(app.vault, "read") !== wrapper) return;
+      if (ownBefore) Reflect.set(app.vault, "read", previous);
+      else Reflect.deleteProperty(app.vault, "read");
+    });
+  }, path);
+}
+
+/** How many reads {@link countNoteReads} has counted. */
+export async function noteReads(): Promise<number> {
+  return browser.execute(() => {
+    const counted: unknown = Reflect.get(window, "inklineNoteReads");
+    if (typeof counted !== "object" || counted === null) {
+      throw new Error("no reads are being counted");
+    }
+    return Number(Reflect.get(counted, "reads"));
+  });
 }
 
 /**
