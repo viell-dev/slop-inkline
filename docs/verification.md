@@ -696,21 +696,22 @@ must keep released files readable and looking the same, as
   changed is set aside, so that the row says what the file says now.
   **Unreleased:** a change that reaches the file during a save that found it
   changed, other text, the file cut short, or the file deleted, is taken in once
-  the save ends. Quick edit fits the narrowest sidebar with a long name, and the
-  list and Quick edit keep their names for screen readers with no tooltip over
-  their empty space. The row's own Quick edit says that its form is open, and
-  closes it as Cancel does, by click, Enter, or Esc, dropping what was typed and
-  keeping the focus, and only the first click of a double-click opens or closes
-  it. A row closed by Esc during a press on its Quick edit keeps its form until
-  the press ends, and that form saves nothing; the release, a click on the same
-  Quick edit, opens no second form, and nor does another row's Quick edit from
-  the keyboard meanwhile. It is unavailable while Cancel is, during a save. A
-  save left with it renames nothing, shown with Esc while the write waits, or
-  says that the readings are saved, shown with a click while the rename waits;
-  every way of leaving ends in the one handler, so each way and each step is
-  shown once. Shift+Tab from the name reaches it and then the symbol, past Uses,
-  and the row's buttons follow a rename made elsewhere, into another folder. Its
-  symbol shows the file's menu, and its fields do not. What each outcome writes,
+  the save ends, with the focus on the name when that closes the fields. Quick
+  edit fits the narrowest sidebar with a long name, and the list and Quick edit
+  keep their names for screen readers with no tooltip over their empty space.
+  The row's own Quick edit says that its form is open, and closes it as Cancel
+  does, by click, Enter, or Esc, dropping what was typed and keeping the focus,
+  and only the first click of a double-click opens or closes it. A row closed by
+  Esc during a press on its Quick edit keeps its form until the press ends, and
+  that form saves nothing; the release, a click on the same Quick edit, opens no
+  second form, and nor does another row's Quick edit from the keyboard
+  meanwhile. It is unavailable while Cancel is, during a save. A save left with
+  it renames nothing, shown with Esc while the write waits, or says that the
+  readings are saved, shown with a click while the rename waits; every way of
+  leaving ends in the one handler, so each way and each step is shown once.
+  Shift+Tab from the name reaches it and then the symbol, past Uses, and the
+  row's buttons follow a rename made elsewhere, into another folder. Its symbol
+  shows the file's menu, and its fields do not. What each outcome writes,
   renames, and says is also unit-tested
   ([library-quick-edit.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-quick-edit.e2e.ts),
   [library-renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-renaming.e2e.ts)
