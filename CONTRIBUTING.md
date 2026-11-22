@@ -126,9 +126,10 @@ The unit tests check what the code does, not how fast, so each test and hook has
 30 seconds, as `vitest.config.mjs` sets: a machine busy with other work slows
 them far more than their time alone suggests. A test seen to need more has a
 limit of its own, with its measurements beside it. A test about speed asserts on
-it itself, against a measure that the same run takes, as the bounds in
-`test/unit/notes/inline.test.ts` do with a simple pass over the same text, so
-that the machine's load slows both.
+it itself, and is best measured against something the same run takes, so that
+the machine's load slows both, as the bounds in `test/unit/notes/inline.test.ts`
+do with `expectLinear()` from `test/support/linear.ts`, against 64 simple passes
+over the same text.
 
 End-to-end tests live in `test/e2e/` and run the built plugin in real Obsidian
 through WebdriverIO and

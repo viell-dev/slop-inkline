@@ -171,6 +171,22 @@ async function update(vault: string, config: string): Promise<void> {
   // Only verified project release ZIPs belong here.
   execFileSync("unzip", ["-o", zip, "-d", path.join(vault, config, "plugins")]);
   await obsidianPage.enablePlugin("inkline");
+  // Obsidian adds a plugin to its list only once it has loaded, so a release
+  // whose code fails to load is not in it, and says so here rather than by
+  // the wait for the file below.
+  const enabled = await browser.executeObsidian(({ app }) => {
+    const plugins: unknown = Reflect.get(app, "plugins");
+    const list: unknown =
+      typeof plugins === "object" && plugins !== null
+        ? Reflect.get(plugins, "enabledPlugins")
+        : undefined;
+    return list instanceof Set && list.has("inkline");
+  });
+  if (!enabled) {
+    throw new Error(
+      "Inkline did not turn on after the update: the new release did not load",
+    );
+  }
   // Obsidian writes the list of enabled plugins a second after the first
   // change to it, and turning a plugin on or off does not wait for that. If
   // turning Inkline off was written while it loaded again, the write that
