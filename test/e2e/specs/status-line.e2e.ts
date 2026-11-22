@@ -361,4 +361,28 @@ describe("The editor's status line", function () {
     await settledSurface();
     expect(await statusLines()).toBe(2);
   });
+
+  it("keeps the drawing still when Make ink is pressed during a press, and opens it once let go", async function () {
+    await insert();
+    await narrow();
+    await pastePicture("blue");
+    await browser.waitUntil(async () =>
+      (await pictureHint()).startsWith("Tracing over a picture"),
+    );
+    await settledSurface();
+    await watchTops();
+    // Make ink's row would open above the drawing area.
+    await dragInWindow(await inWindow(0.3, 0.65), await inWindow(0.6, 0.35), [
+      "i",
+    ]);
+    await strokeAt(1);
+    const seen = await tops();
+    expect(seen.at(-1)?.type).toBe("pointerup");
+    expect(new Set(seen.map(({ top }) => top)).size).toBe(1);
+    // Then it opens, as it would have at once.
+    await waitForStatus(making);
+    expect(
+      await browser.$(".inkline-editor .inkline-convert").isDisplayed(),
+    ).toBe(true);
+  });
 });

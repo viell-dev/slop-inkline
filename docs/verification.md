@@ -223,7 +223,9 @@ must keep released files readable and looking the same, as
   message takes two lines, and one during which **Flat ends**' message of two
   lines comes, keep the drawing area where it was from the press to the release,
   and the first stroke lands in the drawing as the same drag does once the line
-  has its one line again, moved alike at both ends (the same file,
+  has its one line again, moved alike at both ends; and **Make ink** pressed
+  during a drag over a pasted picture leaves the drawing area where it was until
+  the release, and then opens (the same file,
   [#427](https://github.com/viell-dev/slop-inkline/issues/427)).
 - Help explains the drawing tools and guides, closes with Escape, and restores
   focus to drawing without changing its strokes
