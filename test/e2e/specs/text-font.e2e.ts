@@ -4,11 +4,11 @@ import { loadModules } from "../support/browser.ts";
 import { inklineOn, insert, zigzag } from "../support/editing.ts";
 import {
   draw,
+  drawAndHold,
   guideRows,
   settledSurface,
   undoStubs,
   startOver,
-  surface,
 } from "../support/editor.ts";
 
 describe("The editor", function () {
@@ -228,22 +228,39 @@ describe("The editor", function () {
     ]);
     expect((await preview()).width).toBeCloseTo(empty.width, 1);
     await browser.keys(["p"]);
-    // While the stroke is still being drawn, the preview shows it.
-    const { width, height } = await settledSurface();
-    const canvas = await surface().getElement();
-    await browser
-      .action("pointer", { parameters: { pointerType: "mouse" } })
-      .move({ origin: canvas, x: Math.round(-0.05 * width), y: 0 })
-      .down()
-      .move({
-        origin: canvas,
-        x: Math.round(0.05 * width),
-        y: Math.round(0.05 * height),
-        duration: 50,
-      })
-      .perform(true);
-    await browser.waitUntil(async () => (await preview()).ink > 0);
-    await browser.releaseActions();
+    // While the stroke is still being drawn, the preview shows it. That is
+    // read in the page as the release arrives, before the editor takes it, as
+    // a read in a command of its own would come after the press had already
+    // ended as a lost capture (#391).
+    await browser.execute(() => {
+      window.addEventListener(
+        "pointerup",
+        () => {
+          const canvas = document.querySelector(
+            ".inkline-editor .inkline-preview-ink",
+          );
+          if (!(canvas instanceof HTMLCanvasElement)) return;
+          const pixels = canvas
+            .getContext("2d")
+            ?.getImageData(0, 0, canvas.width, canvas.height).data;
+          let ink = 0;
+          for (let index = 3; index < (pixels?.length ?? 0); index += 4) {
+            if ((pixels?.[index] ?? 0) > 0) ink++;
+          }
+          Reflect.set(window, "inklineHeldInk", ink);
+        },
+        { capture: true, once: true },
+      );
+    });
+    await drawAndHold([
+      [0.45, 0.5],
+      [0.55, 0.55],
+    ]);
+    expect(
+      await browser.execute(
+        () => Reflect.get(window, "inklineHeldInk") as unknown,
+      ),
+    ).toBeGreaterThan(0);
     const short = await preview();
     await draw([
       [0.5, 0.3],

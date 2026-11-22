@@ -165,6 +165,47 @@ With text colour on, Inkline's styles paint the ink with
 around them, set `color` on `img.inkline-symbol`. With text colour off, the mask
 and background are removed and the image's own pixels show in the same layout.
 
+## Symbols in a PDF
+
+**Unreleased.** With text colour on, a symbol in Obsidian's PDF export window
+prints from a copy of its own pixels in the colour its text prints in, rather
+than through its mask. Chromium writes a CSS mask into a PDF as a fill drawn
+twice, the first time through a soft mask that adds nothing, and PDF viewers
+that anti-alias the two draws apart can leave a faint line, a pixel wide, along
+the symbol's box at some zoom levels
+([#255](https://github.com/viell-dev/slop-inkline/issues/255)). A symbol in its
+stored colour is an image with its own alpha, drawn once, and shows none; the
+copy prints the same way.
+
+- In the export window, Inkline's Markdown post-processor returns a promise for
+  the symbols in what Obsidian gives it: the note's text, and each section of a
+  note it embeds. Obsidian 1.13.4 and 1.15.1 print once every post-processor's
+  promise has resolved, and 200 ms more. The promise resolves once each symbol
+  shows its copy or keeps its mask, or once no copy has got any further for 10
+  seconds: an export that keeps the main window busy can take longer than that,
+  and a read that never ends holds the export no longer.
+- The copy is made from the symbol's file, read from the vault, at the file's
+  own size, in the image's computed `color` as it prints: Inkline reads it with
+  the page's media queries for print in force and those for the screen out of
+  it, for a moment, as the page is not printing yet. So a note's text, which
+  Obsidian's print styles give `color: initial`, prints black where the screen
+  shows the theme's text colour, and links and callout titles keep their own.
+  Media features, such as a width, are read as the export window has them.
+  Meanwhile each symbol, and each element it takes its colour from, has an
+  inline `transition-property: none !important`, taken away again after, so that
+  a transition on `color` does not answer with the screen's colour, which the
+  print would not show. Before that, Inkline waits for the window's stylesheet
+  links to load, as Obsidian copies them into it while it renders the note.
+- The image's `src` becomes the copy's `blob:` address. Its mask goes on
+  painting it until the copy has loaded, and only then does it get the class
+  `inkline-print-copy`, which shows its pixels as text colour off does. A symbol
+  whose copy cannot be made, as from a file that cannot be read or decoded, or
+  is not ready in time, keeps its mask and prints as before. So does one whose
+  file says which way up it shows, in an `eXIf` chunk, which Inkline never
+  writes: Chromium 150 turns its image and mask to match, and a copy would not.
+- When the window closes, each image gets its own address back and loses the
+  class, and the copies are let go.
+
 ## Symbols in a view of your own
 
 `MarkdownRenderer.render` does not add `markdown-rendered` to the element it

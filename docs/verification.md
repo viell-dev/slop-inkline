@@ -142,6 +142,29 @@ must keep released files readable and looking the same, as
   settings are cleared on close. The test redirects the save dialog and
   suppresses the post-export viewer launch; the native PDF writer still runs
   ([pdf.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/pdf.e2e.ts)).
+- **Unreleased:** symbols in the text colour print with no line along their
+  boxes ([#255](https://github.com/viell-dev/slop-inkline/issues/255)). Sixteen
+  symbols of a note, unsized and at eight sizes, in two headings, plain text,
+  links, a callout's title, and a note it embeds, are measured in Poppler's
+  raster of the PDF at 110 dots per inch, where the mask leaves lines: along
+  every edge of every box, no line of pixels lies 3 or more of 255 from the
+  page's colour, and an export that keeps the masks finds such lines. That
+  export's PDF holds two soft masks for each symbol, the copies' none. Each
+  symbol's ink prints where the mask printed it, within half a pixel, as large,
+  and within 3 of 255 of its colour: black for the note's text, as Obsidian
+  prints it, where the screen shows the theme's text colour, and the colours of
+  links and of the callout's title. So it does with a transition on every
+  element's `color`, which would otherwise give a copy the screen's colour. As
+  Obsidian asks for the PDF, every symbol shows its copy, loaded, at its file's
+  own size; once the window closes, each shows its own file again. In a note of
+  128 symbols of eight files, every copy is ready as Obsidian asks for the PDF,
+  even one whose file takes 1.5 seconds to read, as Obsidian waits for it. Four
+  symbols print from their masks: one whose read takes a minute, as Inkline
+  stops waiting once no copy has got further for ten seconds, one whose file
+  cannot be read, one that is not a PNG, and one whose file says which way up it
+  shows, which Chromium 150 applies and a copy would not. The first two print
+  their whole ink in the text's colour, measured in the page, as the copy's does
+  (the same file).
 - A symbol 4,000 pixels wide at the largest Symbol size, wider than its space,
   keeps the proportions it was drawn in, within 5%, its baseline on the text's,
   and its colour, in Reading view, Live Preview, table cells in both, an
@@ -206,8 +229,12 @@ must keep released files readable and looking the same, as
 - The fixed bitmap has a centre dot at every brush size, and retains its
   coverage across fractional positions at two editor widths and five zoom levels
   ([brush-cursor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/brush-cursor.e2e.ts)).
-  Contrast checks cover light, dark, grey, coloured and translucent backgrounds,
-  ink edges, stationary theme redraws and readback failure recovery
+  **Unreleased:** with a margin of a different width on each side of the drawing
+  area, as a CSS snippet can give it, its centre stays within half a device
+  pixel of the pointer at 100% and 125% page zoom (the same file,
+  [#394](https://github.com/viell-dev/slop-inkline/issues/394)). Contrast checks
+  cover light, dark, grey, coloured and translucent backgrounds, ink edges,
+  stationary theme redraws and readback failure recovery
   ([cursor-contrast.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/cursor-contrast.e2e.ts)).
   Three fixed rounds of 300 pointer updates at 200% zoom must have a median
   below 5 ms per update while preserving the bitmap's coverage. This bounds the
@@ -501,7 +528,9 @@ must keep released files readable and looking the same, as
 - Names and renames: what a file name cannot hold, names a folder already has,
   numbers a note still links to, read as Obsidian resolves links, renames that
   fail, names given elsewhere during saving or hashing, and the reported outcome
-  when an external rename follows a successful native rename
+  when an external rename follows a successful native rename. **Unreleased:** a
+  rename refused for a symbol renamed elsewhere while its drawing was written
+  reads no open note first
   ([names.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/names.test.ts),
   [naming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/naming.e2e.ts),
   [renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/renaming.e2e.ts),
@@ -570,10 +599,14 @@ must keep released files readable and looking the same, as
 - A symbol deleted, and another file put at its path, through Obsidian while a
   save reads it for the last time, by its file system, as another plugin or a
   sync tool can, or by its vault: Quick edit refuses the save and the new file
-  keeps what it holds, and the editor asks about it. A write that lands once the
-  file was replaced says so, and keeps what was typed. A save waits for what was
-  asked of the disk during its last look, and writes as before once the disk
-  stays busy, or where Obsidian's line of disk operations cannot be seen
+  keeps what it holds, and the editor asks about it. **Unreleased:** so it does
+  when the new file lands as the editor makes the deleted one again, a save
+  whose own write stops part-way as it makes the file again says why, and a
+  folder that lands as it makes the symbol's folder again is saved into. A write
+  that lands once the file was replaced says so, and keeps what was typed. A
+  save waits for what was asked of the disk during its last look, and writes as
+  before once the disk stays busy, or where Obsidian's line of disk operations
+  cannot be seen
   ([write-identity.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/write-identity.e2e.ts)
   and
   [file-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/file-writes.test.ts)).
@@ -658,23 +691,27 @@ must keep released files readable and looking the same, as
   the write or the rename, a notice says what was and was not done. A name
   nobody changed follows renames made elsewhere, one after another, and never
   renames the file back; a name typed stays through them, and a refused name's
-  reason through a change to the file. Quick edit fits the narrowest sidebar
-  with a long name, and the list and Quick edit keep their names for screen
-  readers with no tooltip over their empty space. The row's own Quick edit says
-  that its form is open, and closes it as Cancel does, by click, Enter, or Esc,
-  dropping what was typed and keeping the focus, and only the first click of a
-  double-click opens or closes it. A row closed by Esc during a press on its
-  Quick edit keeps its form until the press ends, and that form saves nothing;
-  the release, a click on the same Quick edit, opens no second form, and nor
-  does another row's Quick edit from the keyboard meanwhile. It is unavailable
-  while Cancel is, during a save. A save left with it renames nothing, shown
-  with Esc while the write waits, or says that the readings are saved, shown
-  with a click while the rename waits; every way of leaving ends in the one
-  handler, so each way and each step is shown once. Shift+Tab from the name
-  reaches it and then the symbol, past Uses, and the row's buttons follow a
-  rename made elsewhere, into another folder. Its symbol shows the file's menu,
-  and its fields do not. What each outcome writes, renames, and says is also
-  unit-tested
+  reason through a change to the file. **Unreleased:** a rename refused for a
+  symbol renamed elsewhere while the readings were written reads no open note
+  first; why the fields are closed shows above a refused name's reason,
+  whichever came first; and a read begun before a save that found the file
+  changed is set aside, so that the row says what the file says now. Quick edit
+  fits the narrowest sidebar with a long name, and the list and Quick edit keep
+  their names for screen readers with no tooltip over their empty space. The
+  row's own Quick edit says that its form is open, and closes it as Cancel does,
+  by click, Enter, or Esc, dropping what was typed and keeping the focus, and
+  only the first click of a double-click opens or closes it. A row closed by Esc
+  during a press on its Quick edit keeps its form until the press ends, and that
+  form saves nothing; the release, a click on the same Quick edit, opens no
+  second form, and nor does another row's Quick edit from the keyboard
+  meanwhile. It is unavailable while Cancel is, during a save. A save left with
+  it renames nothing, shown with Esc while the write waits, or says that the
+  readings are saved, shown with a click while the rename waits; every way of
+  leaving ends in the one handler, so each way and each step is shown once.
+  Shift+Tab from the name reaches it and then the symbol, past Uses, and the
+  row's buttons follow a rename made elsewhere, into another folder. Its symbol
+  shows the file's menu, and its fields do not. What each outcome writes,
+  renames, and says is also unit-tested
   ([library-quick-edit.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-quick-edit.e2e.ts),
   [library-renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/library-renaming.e2e.ts)
   for a name alone,
@@ -854,7 +891,11 @@ the individual pull requests hold the inputs, results, and review discussion.
 - Physical printer output is not checked. Native PDF export is covered on Linux
   with default and explicitly sized embeds of one symbol, and one wider than the
   page; long notes containing many different symbols are not covered by that
-  fixture.
+  fixture. **Unreleased:** a note of 128 symbols of eight files is covered for
+  when Obsidian prints and what each symbol prints from, and three of them in
+  the printed page. Lines along symbols' boxes are measured in Poppler's raster
+  at 110 dots per inch only, in Obsidian's default theme; other viewers, and
+  themes with print styles of their own, are not checked.
 - CI's runners have the DejaVu fonts, and the Docker image DejaVu and Noto; a
   theme's own font is checked through the guides' measurement, not by eye.
 - The release workflow checks the install ZIP's exact layout and bytes, extracts

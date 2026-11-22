@@ -34,6 +34,15 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ### Fixed
 
+- A symbol's file replaced while the editor saved it, deleted and another put at
+  its path through Obsidian, as by another plugin or a sync tool working through
+  it, could have the save find no file, go to make it again, and stop with
+  Obsidian's "File already exists." Now the save looks at the new file, says
+  "Not saved: the file changed on disk", and asks about it, as it does when it
+  finds the new file first. Nothing was written over the new file unasked,
+  either way. A save that makes a deleted symbol's folder again no longer stops
+  with "Folder already exists." when the folder comes back meanwhile: it saves
+  into it ([#379](https://github.com/viell-dev/slop-inkline/issues/379)).
 - Ink shows under the pointer that draws it when a theme or a CSS snippet gives
   the drawing area padding, which Inkline's own styles do not. The ink landed
   away from the pointer by the padding, and the brush's circle was the wrong
@@ -41,6 +50,10 @@ even one a public release; earlier pre-releases carry a suffix such as
   the padding, the pointer is mapped from there, and the brush's circle shows
   only there, at the size the brush draws
   ([#378](https://github.com/viell-dev/slop-inkline/issues/378)).
+- The brush's circle stays on the pointer when a theme or a CSS snippet gives
+  the drawing area a margin, which Inkline's own styles do not. It showed away
+  from the pointer by the margin, though the ink went where the pointer was
+  ([#394](https://github.com/viell-dev/slop-inkline/issues/394)).
 - **Zoom** pressed while you draw a stroke or a shape, with the pen or the
   eraser, or while you press a polygon's corner or a path's point or handle, now
   waits until you let go, by its key and by its button. It used to zoom at once,
@@ -52,6 +65,32 @@ even one a public release; earlier pre-releases carry a suffix such as
   that came before the cell had taken the symbol made it leave the symbol out,
   keeping only the letter
   ([#415](https://github.com/viell-dev/slop-inkline/issues/415)).
+- A rename of a symbol that was renamed elsewhere, deleted and replaced, or
+  whose new name another symbol took, while Quick edit wrote its readings and
+  translations or the editor its drawing, is refused at once. It used to read,
+  and save, every open note first, and so waited on a slow disk for a refusal
+  that was coming anyway
+  ([#279](https://github.com/viell-dev/slop-inkline/issues/279)).
+- Quick edit says why the readings and translations cannot be typed in, as for a
+  file that is not a whole PNG, together with a refused name's reason. One used
+  to hide the other: the fields closed with no reason given, or the file's
+  reason went for good
+  ([#279](https://github.com/viell-dev/slop-inkline/issues/279)).
+- Quick edit no longer goes back to what the file said earlier after a save that
+  found the file changed, when a read of the file from before the save came back
+  late. The fields said that saving would replace the earlier text, and the next
+  **Save** was refused again
+  ([#279](https://github.com/viell-dev/slop-inkline/issues/279)).
+- In a PDF exported with Obsidian's **Export to PDF**, symbols in text colour no
+  longer show a faint one-pixel line along an edge of their box in some PDF
+  viewers, Obsidian's own PDF view among them, at some zoom levels. Each prints
+  from a copy of its own pixels in the colour its text prints in, the way a
+  symbol in stored colour prints, rather than through a mask, which the browser
+  Obsidian is built on writes into a PDF in a way those viewers draw with the
+  line. Symbols keep their size, baseline, and colour. Exporting waits for the
+  copies while they are being made; a symbol whose copy has got no further for
+  ten seconds, or cannot be made, prints as before
+  ([#255](https://github.com/viell-dev/slop-inkline/issues/255)).
 
 ## 1.0.2 - 2026-11-19
 

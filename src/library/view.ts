@@ -23,7 +23,7 @@ import {
 import { isInkPath } from "../format/ink-file.ts";
 import { embedFor } from "../notes/embeds.ts";
 import { showLinkMenu } from "../notes/entries.ts";
-import { watchSave } from "../notes/file-writes.ts";
+import { watchSave, type SaveWait } from "../notes/file-writes.ts";
 import { writeAt } from "../notes/insertion.ts";
 import { insertionAt } from "../notes/links.ts";
 import { symbolStem } from "../notes/names.ts";
@@ -55,10 +55,10 @@ import {
   QuickSave,
   reasonOf,
   reportSave,
+  rowLines,
   waitLine,
   type Names,
   type Steps,
-  type Told,
   type Work,
 } from "./quick-edit.ts";
 import { markNotice } from "../notices.ts";
@@ -850,8 +850,12 @@ export class SymbolLibraryView extends ItemView {
     let readable = false;
     /** The save under way, which can be left once a step of it waits. */
     let running: { save: QuickSave; names: () => Names } | undefined;
-    /** What the row's lines say: what reading the file found, or a save. */
-    let said: "read" | "save" | undefined;
+    /** Why the last read of the file failed, until one does not. */
+    let readFailure: string | undefined;
+    /** What the last save, or a name refused before it, said. */
+    let saveLines: readonly string[] = [];
+    /** The lines the row shows now. */
+    let shown: readonly string[] = [];
     /** Counts reads, so that only the latest is taken. */
     let reads = 0;
     const fields = new TextFields(
@@ -867,11 +871,29 @@ export class SymbolLibraryView extends ItemView {
       cls: "inkline-library-edit-error",
       attr: { role: "alert" },
     });
-    /** Says `lines` in the row, a line each, as what `kind` found. */
-    const say = (lines: readonly string[], kind?: "read" | "save"): void => {
+    /**
+     * Shows the row's lines, as {@link rowLines} has them. The lines are an
+     * alert, which a screen reader reads each time they are drawn, so a read of
+     * the file draws them only if they change; what the person asked for, a
+     * save or a name refused, draws them `always`.
+     */
+    const showLines = (always = false): void => {
+      const lines = rowLines(readFailure, saveLines);
+      const same =
+        lines.length === shown.length &&
+        lines.every((line, at) => line === shown[at]);
+      if (same && !always) return;
+      shown = lines;
       error.empty();
       for (const line of lines) error.createDiv({ text: line });
-      said = lines.length === 0 ? undefined : kind;
+    };
+    /**
+     * Says `lines` of a save, or of a name refused before one, again if they
+     * are what the row said already, as the person asked; no lines clears them.
+     */
+    const say = (lines: readonly string[]): void => {
+      saveLines = lines;
+      showLines(lines.length > 0);
     };
     const wait = form.createDiv({
       cls: "inkline-save-wait",
@@ -925,7 +947,8 @@ export class SymbolLibraryView extends ItemView {
           fields.enabled = true;
           save.disabled = false;
           // That settles what reading the file found, and nothing a save said.
-          if (said === "read") say([]);
+          readFailure = undefined;
+          showLines();
         },
         (failure: unknown) => {
           if (!open() || read !== reads || saving) return;
@@ -934,9 +957,8 @@ export class SymbolLibraryView extends ItemView {
           readable = false;
           fields.enabled = false;
           save.disabled = this.app.vault.getFileByPath(file.path) !== file;
-          if (said !== "save") {
-            say([reasonOf(failure, "The symbol could not be read.")], "read");
-          }
+          readFailure = reasonOf(failure, "The symbol could not be read.");
+          showLines();
         },
       );
     };
@@ -998,7 +1020,7 @@ export class SymbolLibraryView extends ItemView {
         checked =
           typed === was ? undefined : checkRename(this.app, file, typed);
       } catch (failure) {
-        say([reasonOf(failure, "The symbol could not be renamed.")], "save");
+        say([reasonOf(failure, "The symbol could not be renamed.")]);
         input.focus();
         return;
       }
@@ -1016,6 +1038,10 @@ export class SymbolLibraryView extends ItemView {
         else input.focus();
       }
       saving = true;
+      // A read begun before could come back after the save, with what the
+      // file said before the change the save may find. Once the save ends,
+      // the fields take what its write found, or read the file again.
+      reads++;
       save.disabled = true;
       cancellable(false);
       input.readOnly = true;
@@ -1024,7 +1050,7 @@ export class SymbolLibraryView extends ItemView {
       const steps: Steps = {
         ...(writing
           ? {
-              write: (told: Told): Work => {
+              write: (told: SaveWait): Work => {
                 const work = writeSymbolText(
                   this.app,
                   file,
@@ -1045,7 +1071,7 @@ export class SymbolLibraryView extends ItemView {
         ...(renaming === undefined
           ? {}
           : {
-              rename: (told: Told): Work =>
+              rename: (told: SaveWait): Work =>
                 renameChecked(
                   this.app,
                   renaming,
@@ -1078,10 +1104,16 @@ export class SymbolLibraryView extends ItemView {
         save.disabled = false;
         cancellable(true);
         input.readOnly = false;
+        // A write refused for a change on disk read the file whole, and newer
+        // than any read the save set aside, which settles that it can be read.
+        if (report.moved !== undefined) {
+          readable = true;
+          readFailure = undefined;
+        }
         fields.enabled = readable;
         if (outcome.written) fields.saved(changes, sent);
         if (report.moved !== undefined) fields.take(report.moved);
-        say(report.lines, "save");
+        say(report.lines);
         // What the vault reported during the save, a rename elsewhere or a
         // file gone, is taken in now. A write refused for a change on disk
         // read the file itself, and the fields have taken what it found.

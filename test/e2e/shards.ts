@@ -4,7 +4,9 @@
 //     Fails unless the runs under <directory> together ran and passed every
 //     spec file in test/e2e/specs exactly once, on each Obsidian version that
 //     OBSIDIAN_VERSIONS requests, the default pair when it is unset. CI's e2e
-//     job runs it on the shards' downloaded artifacts.
+//     job runs it on the shards' downloaded artifacts, reading of each shard
+//     only its latest attempt's, by the `-attempt-<n>` that ends the name of
+//     its artifact's directory.
 //
 //   node test/e2e/shards.ts shard <i/n> <output directory>
 //     Fails unless <output directory>/durations.json shows shard i of n
@@ -12,7 +14,8 @@
 //     CI shard runs it on its own output, before the upload.
 //
 //   node test/e2e/shards.ts weights <directory>...
-//     Rewrites test/e2e/weights.json from the runs under the directories.
+//     Rewrites test/e2e/weights.json from the runs under the directories, of
+//     each shard its latest attempt's, as check reads them.
 //
 // It imports only Node.js's own modules, through support/shards.ts, so that
 // CI runs it without installing the dependencies. Everything but reading the

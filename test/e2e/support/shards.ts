@@ -287,6 +287,30 @@ export function parseDurations(value: unknown, source: string): Durations {
 export interface ShardRun {
   readonly source: string;
   readonly durations: Durations;
+  /**
+   * The attempt of the CI run that wrote it, from the name of its artifact's
+   * directory, as {@link attemptOf} reads it; undefined when the path names
+   * none.
+   */
+  readonly attempt?: number;
+}
+
+/**
+ * The attempt of a CI run that `file`, a path below the directory the
+ * artifacts were downloaded into, comes from: CI names each shard's artifact
+ * `e2e-results-<shard>-attempt-<attempt>`, and the download puts it in a
+ * directory of that name. The innermost directory named so counts; undefined
+ * when none is.
+ */
+export function attemptOf(file: string): number | undefined {
+  // Either separator on any system, as path.dirname splits on `\` only on
+  // Windows; the last part is the file's own name.
+  const directories = file.split(/[\\/]/).slice(0, -1).reverse();
+  for (const name of directories) {
+    const match = /-attempt-([1-9]\d*)$/.exec(name);
+    if (match !== null) return Number(match[1]);
+  }
+  return undefined;
 }
 
 /** Reads and checks the {@link durationsFile} at `file`. */
@@ -300,15 +324,54 @@ export async function readDurationsFile(file: string): Promise<ShardRun> {
 /**
  * Reads every {@link durationsFile} under `directory`, at any depth, as
  * `gh run download` and the download-artifact action leave each artifact in a
- * directory of its own.
+ * directory of its own, with the attempt its directory names.
  */
 export async function readDurations(directory: string): Promise<ShardRun[]> {
   const entries = await readdir(directory, { recursive: true });
   const files = entries
     .filter((entry) => path.basename(entry) === durationsFile)
-    .map((entry) => path.join(directory, entry))
     .sort();
-  return Promise.all(files.map(readDurationsFile));
+  return Promise.all(
+    files.map(async (entry) => {
+      const run = await readDurationsFile(path.join(directory, entry));
+      const attempt = attemptOf(entry);
+      return attempt === undefined ? run : { ...run, attempt };
+    }),
+  );
+}
+
+/**
+ * The runs to read of CI's, where a shard re-run after a failure leaves a
+ * record of each attempt: `latest`, of each shard's records that name their
+ * attempt, those of its latest attempt, and every record that names no shard
+ * or no attempt, so that two of those still count as two; and `superseded`,
+ * the rest. So a failed record of the latest attempt still fails the check,
+ * and an earlier attempt's record, failed or passing, never stands for a
+ * later one.
+ */
+export function latestAttempts(runs: readonly ShardRun[]): {
+  latest: ShardRun[];
+  superseded: ShardRun[];
+} {
+  const newest = new Map<string, number>();
+  for (const { durations, attempt } of runs) {
+    if (durations.shard === null || attempt === undefined) continue;
+    newest.set(
+      durations.shard,
+      Math.max(newest.get(durations.shard) ?? attempt, attempt),
+    );
+  }
+  const latest: ShardRun[] = [];
+  const superseded: ShardRun[] = [];
+  for (const run of runs) {
+    const { shard } = run.durations;
+    const kept =
+      shard === null ||
+      run.attempt === undefined ||
+      run.attempt === newest.get(shard);
+    (kept ? latest : superseded).push(run);
+  }
+  return { latest, superseded };
 }
 
 /**
@@ -480,7 +543,14 @@ export async function shardsCommand(
     const specs = await specFiles(context.specsDir);
     const versions = requestedVersions(context.obsidianVersions);
     if (command === "check") {
-      const runs = await readDurations(rest[0] ?? "");
+      const { latest: runs, superseded } = latestAttempts(
+        await readDurations(rest[0] ?? ""),
+      );
+      for (const { source, durations, attempt } of superseded) {
+        context.log(
+          `${source}: shard ${String(durations.shard)} of attempt ${String(attempt)}, left for its latest attempt's`,
+        );
+      }
       for (const { source, durations } of runs) {
         context.log(
           `${source}: shard ${durations.shard ?? "of every file"}, ${String(Object.keys(durations.specs).length)} spec files, exit code ${String(durations.exitCode)}`,
@@ -519,7 +589,14 @@ export async function shardsCommand(
       }
       return report(problems, context);
     }
-    const runs = (await Promise.all(rest.map(readDurations))).flat();
+    // The latest attempt of each shard in each directory, as check reads them.
+    const runs = (
+      await Promise.all(
+        rest.map(async (directory) =>
+          latestAttempts(await readDurations(directory)),
+        ),
+      )
+    ).flatMap(({ latest }) => latest);
     if (runs.length === 0) {
       return report([`no ${durationsFile} under ${rest.join(", ")}`], context);
     }
