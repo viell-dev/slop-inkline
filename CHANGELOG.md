@@ -61,13 +61,15 @@ even one a public release; earlier pre-releases carry a suffix such as
   elsewhere; the list now follows it in every item that holds the place, where
   it followed only a later line in the innermost one. A footnote's text is read
   as Reading view shows it at the note's end, as a note of its own, so a fence
-  in it makes code, and a `<code>` that the rest of the note or another footnote
-  leaves open makes all of it code. A `$$` math block lists nothing, where an
-  embed shows nothing, and where math has an error that shows its text. And a
-  line of seven spaces under `1. a` and a blank line, which Reading view shows
-  as text, lists again: an item numbered 0 to 9 with a `.` whose text starts an
-  odd number of columns in loses a column more from its later lines. Link
-  reference definitions over more lines are still read otherwise, as before.
+  in it makes code, as does indenting its first line by eight columns after the
+  label, and a `<code>` that the rest of the note or another footnote leaves
+  open makes all of it code. A `$$` math block lists nothing, where an embed
+  shows nothing, and where math has an error that shows its text. And a line of
+  seven spaces under `1. a` and a blank line, which Reading view shows as text,
+  lists again: an item numbered 0 to 9 with a `.` whose text starts an odd
+  number of columns in loses a column more from its later lines. The few notes
+  still read otherwise, such as link reference definitions over more lines, are
+  in [#435](https://github.com/viell-dev/slop-inkline/issues/435).
 - Typing straight after saving a new symbol keeps its letters in order. As the
   editor closes, Inkline puts the cursor back after the symbol a moment later,
   in case the note changed while you drew, and on a busy computer that moment

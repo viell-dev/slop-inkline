@@ -129,20 +129,21 @@ otherwise, as [#271](https://github.com/viell-dev/slop-inkline/issues/271)
 lists.
 
 **Unreleased:** the trigger lists nothing in a `$$` math block either, where an
-embed shows nothing, nor on a `$$` line that its list item or quote ends after,
-where Reading view starts no math. A footnote's text is read as Reading view
-shows it at the note's end, as a note of its own: a fence in it makes code, and
-the whole footnote counts as code where a `<code>` that the rest of the note or
-another footnote leaves open reaches it. A list item's lines lose as many
-columns as Reading view takes: one more after a number from 0 to 9 and a `.`
-whose text starts an odd number of columns in, so that a line of seven spaces
-under `1. a` and a blank line is text, and fewer, in all of the item's lines,
-where one of them, before or after, is indented less than its text, which can
-make code of lines that look like text. Of the notes #271 lists, only link
-reference definitions are still read otherwise: in one whose label or title runs
-on to another line, the trigger can list nothing where Reading view shows text,
-and in an address after a blank line, which Reading view hides, it lists, though
-an embed typed there makes the line no definition, and shows.
+embed shows nothing. A footnote's text is read as Reading view shows it at the
+note's end, as a note of its own, so a fence in it makes code. A footnote counts
+as code where a `<code>` that the rest of the note leaves open reaches it.
+
+In a list item, a line's indentation counts as Reading view counts it. Under
+`1. a` and a blank line, a line of seven spaces is text, not code, as an item
+numbered 0 to 9 loses a column more there. When one line of an item is indented
+less than the item's text, Reading view takes only that many columns from every
+line of the item, before it and after it. Lines that look like text can then be
+code, and the trigger lists nothing in them.
+
+A few rare notes are still read otherwise, as
+[#435](https://github.com/viell-dev/slop-inkline/issues/435) lists. In each of
+them, the trigger either lists nothing where Reading view shows text, or lists
+where Reading view shows nothing until the note changes.
 
 **Inkline: Insert existing symbol** opens the same list as a search, and inserts
 the chosen symbol at the cursor. It places the symbol as **Inkline: Insert

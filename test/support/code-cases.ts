@@ -3304,6 +3304,121 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
     note: "r[^1]\n\n[^1]: ```\n[x] y\nHERE",
     code: true,
   },
+  // A footnote whose first line holds nothing after its label has no
+  // paragraph that a line indented less than four columns goes on in; white
+  // space after the label gives it one.
+  "code after a footnote's empty first line and a line of two spaces": {
+    note: "a[^1]\n\n[^1]:\n  b\n\n      HERE",
+    code: true,
+  },
+  "code after a footnote's empty first line and an unindented line": {
+    note: "a[^1]\n\n[^1]:\nb\n\n      HERE",
+    code: true,
+  },
+  "code after a footnote's empty first line and a line of three spaces": {
+    note: "a[^1]\n\n[^1]:\n   b\n\n       HERE",
+    code: true,
+  },
+  "code in a footnote after its empty first line and a line of four spaces": {
+    note: "a[^1]\n\n[^1]:\n    b\n\n        HERE",
+    code: true,
+  },
+  "text in a footnote after its empty first line, an indented line, and a lazy one":
+    {
+      note: "a[^1]\n\n[^1]:\n    b\n  c\n\n      HERE",
+      code: false,
+    },
+  "a span after a footnote's empty first line and a blank line": {
+    note: "a[^1]\n\n[^1]:\n\n  `HERE`",
+    code: true,
+  },
+  "code after a footnote's empty first line in an item": {
+    note: "- a[^1]\n\n  [^1]:\n   b\n\n        HERE",
+    code: true,
+  },
+  "code after a footnote's empty first line in a quote": {
+    note: "> a[^1]\n>\n> [^1]:\n>   b\n>\n>       HERE",
+    code: true,
+  },
+  "text in a footnote after spaces on its first line and a line of two spaces":
+    {
+      note: "a[^1]\n\n[^1]:   \n  b\n\n      HERE",
+      code: false,
+    },
+  "text in a footnote after a space on its first line and an unindented line": {
+    note: "a[^1]\n\n[^1]: \nb\n\n      HERE",
+    code: false,
+  },
+  "text in a footnote after a tab on its first line and a line of two spaces": {
+    note: "a[^1]\n\n[^1]:\t\n  b\n\n      HERE",
+    code: false,
+  },
+  "text in a footnote after spaces on its first line, in an item": {
+    note: "- a[^1]\n\n  [^1]:  \n   b\n\n        HERE",
+    code: false,
+  },
+  // Eight columns or more after a footnote's label make its first line
+  // indented code.
+  "a footnote's first line after eight spaces": {
+    note: "a[^1]\n\n[^1]:        HERE",
+    code: true,
+  },
+  "a footnote's first line after nine spaces": {
+    note: "a[^1]\n\n[^1]:         HERE",
+    code: true,
+  },
+  "a footnote's first line after seven spaces": {
+    note: "a[^1]\n\n[^1]:       HERE",
+    code: false,
+  },
+  "a footnote's first line after two tabs": {
+    note: "a[^1]\n\n[^1]:\t\tHERE",
+    code: true,
+  },
+  "a footnote's first line after a tab": {
+    note: "a[^1]\n\n[^1]:\tHERE",
+    code: false,
+  },
+  "a footnote's first line after four spaces and a tab": {
+    note: "a[^1]\n\n[^1]:    \tHERE",
+    code: true,
+  },
+  "a footnote's first line after three spaces and a tab": {
+    note: "a[^1]\n\n[^1]:   \tHERE",
+    code: false,
+  },
+  "a footnote's first line after a tab and four spaces": {
+    note: "a[^1]\n\n[^1]:\t    HERE",
+    code: true,
+  },
+  "a footnote's first line after eight spaces, then four": {
+    note: "a[^1]\n\n[^1]:        HERE\n    b",
+    code: true,
+  },
+  "a footnote's first line after eight spaces and a longer label": {
+    note: "a[^abc]\n\n[^abc]:        HERE",
+    code: true,
+  },
+  "a footnote's first line after seven spaces and a longer label": {
+    note: "a[^abc]\n\n[^abc]:       HERE",
+    code: false,
+  },
+  "a footnote's first line after eight spaces, in an item": {
+    note: "- a[^1]\n\n  [^1]:        HERE",
+    code: true,
+  },
+  "a footnote's first line after eight spaces, in a quote": {
+    note: "> a[^1]\n>\n> [^1]:        HERE",
+    code: true,
+  },
+  "a footnote's first line after eight spaces and an indented label": {
+    note: "a[^1]\n\n  [^1]:        HERE",
+    code: true,
+  },
+  "text after a fence's line indented as code in a footnote": {
+    note: "a[^1]\n\n[^1]:        ```\nHERE",
+    code: false,
+  },
   "text under a paragraph's line that starts as a footnote": {
     note: "a[^1]\n[^1]: ```\nHERE",
     code: false,

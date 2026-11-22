@@ -60,10 +60,13 @@
 // - A footnote, `[^label]:` at a block's start, holds the text after its label
 //   and goes on as a paragraph would, but over a `%%` line, and not over a
 //   definition or another footnote; after a blank line, or a line of white
-//   space alone, it goes on in a line indented four columns or more. Obsidian
-//   reads its text as a note of its own, without the label and the spaces
-//   after it, and up to four columns of indentation from its later lines, and
-//   shows it at the note's end, after the rest of the note's text.
+//   space alone, and after a first line with nothing after the label, or
+//   with indented code there, it goes on in a line indented four columns or
+//   more. Obsidian reads its text as a note of its own: on its first line, the
+//   text after the label, indented as code where eight columns or more follow
+//   the label; on the others, the text after up to four columns of
+//   indentation. It shows the text at the note's end, after the rest of the
+//   note's text.
 // - A line that starts a quote is a callout's title line when its text after
 //   the `>` and a space starts with `[!`, a type of anything but `]`, `]`,
 //   then `+`, `-`, or neither, then white space or the line's end. Obsidian
@@ -91,9 +94,10 @@
 //   uncertain. Tags in code, front matter, `%%` or `$$` blocks, and
 //   footnotes count for nothing, and so do those that inline.ts reads as
 //   text; a table's cell keeps to itself what it opens and closes.
-// - A footnote's text, where raw HTML before the footnote, in the rest of
-//   the note's text, or in any other footnote leaves anything open: the
-//   footnotes show after all of them, in the order the note refers to them.
+// - A footnote's text, where raw HTML before the footnote, or anywhere in the
+//   note's text or its footnotes, even after the place in its own, leaves
+//   anything open: the footnotes show after all of the note's text, in the
+//   order the note refers to them. That is read once for a check.
 // - A paragraph's text that would take too long to read, as inline.ts says.
 // - A paragraph whose first lines Obsidian may read as a definition, whose
 //   label or title runs on to another line: the place is code where either
@@ -160,9 +164,10 @@ type Leaf =
   | { readonly kind: "title" }
   /**
    * A footnote's text, from its `[^label]:` line, as far as `lines` lines
-   * with text; `blank` says that the last line was blank.
+   * with text; `indented` says that only a line indented four columns or
+   * more goes on in it, as after a blank line.
    */
-  | { readonly kind: "footnote"; lines: number; blank: boolean }
+  | { readonly kind: "footnote"; lines: number; indented: boolean }
   /**
    * A link reference definition, which a title may follow on the next line,
    * or its address, where `address` says it has none yet.
@@ -744,29 +749,27 @@ class Blocks {
     if (!lowered && !this.#mayLower()) return undefined;
     const fork = this.#fork();
     const read = fork.#containers.slice();
+    // The line that ends each container, once one has.
     const ends: number[] = [];
     let index = this.#index + 1;
-    for (
-      ;
-      fork.#containers[outer] === read[outer] && fork.has(index);
-      index++
-    ) {
+    while (fork.#containers[outer] === read[outer] && fork.has(index)) {
       fork.read(index);
       for (let depth = outer; depth < read.length; depth++) {
         if (
           ends[depth] === undefined &&
           fork.#containers[depth] !== read[depth]
-        )
+        ) {
           ends[depth] = index;
+        }
       }
+      index++;
     }
     for (let depth = outer; depth < containers.length; depth++) {
       const item = containers[depth];
       const after = read[depth];
-      if (item?.kind === "item" && after?.kind === "item") {
-        if (after.dedent < item.lost) {
-          return { depth, dedent: after.dedent, end: ends[depth] ?? index };
-        }
+      if (item?.kind !== "item" || after?.kind !== "item") continue;
+      if (after.dedent < item.lost) {
+        return { depth, dedent: after.dedent, end: ends[depth] ?? index };
       }
     }
     return undefined;
@@ -806,6 +809,8 @@ class Blocks {
    * The text of list item `depth`, open now, as a note of its own whose lines
    * lose `dedent` columns, up to line `end`: what Obsidian reads in it. With
    * the line it starts on, and where its text starts in each of its lines.
+   * Each line of the note is read once, as reading the item again may read
+   * an item in it again, and so on as deep as items go.
    */
   itemText(
     depth: number,
@@ -814,29 +819,32 @@ class Blocks {
   ): {
     readonly lineAt: LineAt;
     readonly first: number;
-    readonly startOf: (index: number) => number;
+    readonly starts: readonly number[];
   } {
     const item = this.#containers[depth];
     if (item?.kind !== "item") throw new Error("no list item there");
     const outside = this.#containers.slice(0, depth);
-    const startOf = (index: number): number => {
-      if (index === item.line) return item.from;
-      const text = withoutReturn(this.#lineAt(index) ?? "");
-      let at = 0;
-      for (const container of outside) {
-        at =
-          container.kind === "quote"
-            ? (quoteMarker(text, at) ?? at)
-            : strip(text, at, container.dedent);
+    const lines: string[] = [];
+    const starts: number[] = [];
+    for (let index = item.line; index < end; index++) {
+      const line = this.#lineAt(index);
+      if (line === undefined) break;
+      let at = item.from;
+      if (index !== item.line) {
+        const text = withoutReturn(line);
+        at = 0;
+        for (const container of outside) {
+          at =
+            container.kind === "quote"
+              ? (quoteMarker(text, at) ?? at)
+              : strip(text, at, container.dedent);
+        }
+        at = strip(text, at, dedent);
       }
-      return strip(text, at, dedent);
-    };
-    const lineAt = (index: number): string | undefined => {
-      const at = item.line + index;
-      if (at >= end) return undefined;
-      return this.#lineAt(at)?.slice(startOf(at));
-    };
-    return { lineAt, first: item.line, startOf };
+      starts.push(at);
+      lines.push(line.slice(at));
+    }
+    return { lineAt: (index) => lines[index], first: item.line, starts };
   }
 
   /** Line `index` of the note, read once however often it is asked for. */
@@ -1100,9 +1108,9 @@ class Blocks {
   /**
    * What a line that would go on in footnote `leaf` is, from `at`. Its text
    * goes on as a paragraph's does, but for what {@link interruptsFootnote}
-   * says, and after a blank line, a line of white space alone among them, in
-   * a line indented four columns or more. A delimiter row under its first
-   * line makes a table in its text, not of it.
+   * says; where only a line indented four columns or more goes on in it, such
+   * a line does, and the text goes on as a paragraph's after it. A delimiter
+   * row under its first line makes a table in its text, not of it.
    */
   #goOnInFootnote(
     leaf: Extract<Leaf, { kind: "footnote" }>,
@@ -1111,16 +1119,17 @@ class Blocks {
     marked: number,
     more: () => boolean,
   ): LineKind {
+    // A blank line, or one of white space alone, as Obsidian counts it.
     if (isWhite(text, at)) {
-      leaf.blank = true;
+      leaf.indented = true;
       return "aside";
     }
-    if (leaf.blank) {
+    if (leaf.indented) {
       if (columnsOf(text, at, skipBlank(text, at)) < 4) {
         this.#leaf = none;
         return this.#open(text, at, marked, more);
       }
-      leaf.blank = false;
+      leaf.indented = false;
       leaf.lines++;
       return "aside";
     }
@@ -1225,8 +1234,17 @@ class Blocks {
       this.#leaf = ended ? none : { kind: "html", end: html.end };
       return "html";
     }
-    if (mark === "[" && footnoteStart.test(text.slice(at))) {
-      this.#leaf = { kind: "footnote", lines: 1, blank: false };
+    const footnote = mark === "[" ? footnoteStart.exec(text.slice(at)) : null;
+    if (footnote !== null) {
+      // A first line with nothing after its label, or with indented code
+      // after it, takes only a line indented four columns or more after it:
+      // there is no paragraph for one indented less to go on in.
+      const after = at + footnote[0].length;
+      const lead = skipBlank(text, after);
+      const indented =
+        after === text.length ||
+        (lead < text.length && columnsOf(text, after, lead) >= 8);
+      this.#leaf = { kind: "footnote", lines: 1, indented };
       return "footnote";
     }
     const label = mark === "[" ? definition.exec(text.slice(at)) : null;
@@ -1322,26 +1340,40 @@ export function insideCodeBlock(lineAt: LineAt, line: number): boolean {
  * changes how many columns its lines lose; so is a footnote's text.
  */
 export function insideCode(lineAt: LineAt, line: number, ch: number): boolean {
-  return codeIn(lineAt, line, ch, true, 0);
+  const from = afterFrontMatter(lineAt, line);
+  if (from === undefined) return true;
+  let open: boolean | undefined;
+  const anyOpen = () => (open ??= leavesOpen(lineAt, from));
+  return codeIn(lineAt, line, ch, from, { outer: 0, anyOpen });
 }
 
 /**
- * {@link insideCode}, in a note, or in text that is read as one, without front
- * matter where `frontMatter` is false, within containers that may add `outer`
- * elements, for html.ts, around what it holds.
+ * Where text that is read as a note of its own lies in the note: within
+ * containers that may add `outer` elements, for html.ts, around what it holds;
+ * and whether raw HTML anywhere in the note, in its text or in any footnote,
+ * leaves anything open, as a footnote shows after all of it. That is read once
+ * for a check, however deep the text that a place is in.
+ */
+interface Within {
+  readonly outer: number;
+  readonly anyOpen: () => boolean;
+}
+
+/**
+ * {@link insideCode}, in a note, or in text that is read as one, read from
+ * line `from`, after any front matter.
  */
 function codeIn(
   lineAt: LineAt,
   line: number,
   ch: number,
-  frontMatter: boolean,
-  outer: number,
+  from: number,
+  within: Within,
 ): boolean {
-  const from = frontMatter ? afterFrontMatter(lineAt, line) : 0;
-  if (from === undefined) return true;
+  const { outer } = within;
   const reader = new TagReader(lineAt, outer);
   for (let index = from; index <= line; index++) reader.read(index);
-  const { blocks, kind, paragraph } = reader;
+  const { blocks, kind, lines: paragraph } = reader;
   // What raw HTML leaves open before the paragraph or line that holds `ch`.
   const tags = reader.current;
   // An item whose lines all read otherwise once all are read is read again,
@@ -1354,10 +1386,10 @@ function codeIn(
       regrouped.end,
     );
     const open = reader.items.get(item.first);
-    const at = ch - item.startOf(line);
+    const at = ch - (item.starts[line - item.first] ?? ch + 1);
     if (open === undefined || isOpen(open) || at < 0) return true;
-    const around = outer + 2 * (regrouped.depth + 1);
-    return codeIn(item.lineAt, line - item.first, at, false, around);
+    const around = { ...within, outer: outer + 2 * (regrouped.depth + 1) };
+    return codeIn(item.lineAt, line - item.first, at, 0, around);
   }
   // An HTML block's code cannot be told from its lines, and an embed shows
   // as text in it: the list lists nothing there, nor in a comment or math,
@@ -1373,7 +1405,7 @@ function codeIn(
   // Markers, or a comment the line's text follows.
   if (ch < blocks.start) return isOpen(tags);
   if (kind === "footnote" || kind === "aside") {
-    return inFootnote(reader, line, ch, outer);
+    return inFootnote(reader, line, ch, within);
   }
   const text = blocks.content;
   const at = ch - blocks.start;
@@ -1422,21 +1454,30 @@ function codeIn(
 }
 
 /**
- * Where the text of footnote line `text` starts, as Obsidian reads the
- * footnote's text as a note of its own: after the label and the spaces and
- * tabs after it on its first line, and after up to four columns of
- * indentation on the others.
+ * Footnote line `text` as Obsidian reads it in the footnote's text, a note of
+ * its own: from `start`, after `indent` columns of indentation. On the first
+ * line, that is the text after the label and the spaces and tabs after it,
+ * indented as code by as many columns beyond four as there are, where there
+ * are eight or more; on the others, the text after up to four columns of
+ * indentation.
  */
-function footnoteCut(text: string, first: boolean): number {
-  if (!first) return strip(text, 0, 4);
-  return skipBlank(text, footnoteStart.exec(text)?.[0].length ?? 0);
+function footnoteLine(
+  text: string,
+  first: boolean,
+): { readonly start: number; readonly indent: number } {
+  if (!first) return { start: strip(text, 0, 4), indent: 0 };
+  const after = footnoteStart.exec(text)?.[0].length ?? 0;
+  const start = skipBlank(text, after);
+  const columns = columnsOf(text, after, start);
+  return { start, indent: columns >= 8 ? columns - 4 : 0 };
 }
 
 /** A footnote's lines, `lines`, as a note of their own. */
 function footnoteNote(lines: readonly string[]): LineAt {
-  const note = lines.map((line, index) =>
-    line.slice(footnoteCut(line, index === 0)),
-  );
+  const note = lines.map((line, index) => {
+    const { start, indent } = footnoteLine(line, index === 0);
+    return " ".repeat(indent) + line.slice(start);
+  });
   return (index) => note[index];
 }
 
@@ -1445,63 +1486,52 @@ function footnoteNote(lines: readonly string[]): LineAt {
  * a footnote, lies in code. Obsidian reads the footnote's text as a note of
  * its own, unless the next line makes its first line a heading, and shows it
  * at the note's end, after the rest of the note's text and the footnotes
- * before it: the place counts as code where raw HTML there, or before the
- * footnote, or in any other footnote, leaves anything open.
+ * before it: the place counts as code where raw HTML before the footnote, or
+ * anywhere in the note, leaves anything open.
  */
 function inFootnote(
   reader: TagReader,
   line: number,
   ch: number,
-  outer: number,
+  within: Within,
 ): boolean {
-  const { blocks, paragraph: lines } = reader;
+  const { blocks, lines } = reader;
   const tags = reader.current;
   if (isOpen(tags)) return true;
   const here = lines.length - 1;
   const text = blocks.content;
   const at = ch - blocks.start;
-  const cut = footnoteCut(text, here === 0);
-  const around = outer + 2 * blocks.depth;
+  const { start, indent } = footnoteLine(text, here === 0);
+  const around = { ...within, outer: within.outer + 2 * blocks.depth };
   let index = line + 1;
-  if (blocks.has(index) && reader.read(index) === "underline") {
+  let after: LineKind = blocks.has(index) ? reader.read(index) : "none";
+  if (after === "underline") {
     return insideInlineCode(text, at, true, tags) === true;
   }
-  // The rest of the note, its lines after the place among it, which can end
-  // what starts before it.
-  while (blocks.has(++index)) reader.read(index);
-  if (isOpen(reader.finish())) return true;
-  const note = footnoteNote(lines);
-  if (
-    reader.footnotes.some(
-      (footnote) => footnote !== lines && leavesOpen(footnoteNote(footnote)),
-    ) ||
-    footnotesLeaveOpen(note)
-  ) {
-    return true;
-  }
+  if (within.anyOpen()) return true;
   // In the label, which Obsidian shows a number for.
-  if (at < cut) return false;
-  return codeIn(note, here, at - cut, false, around);
+  if (at < start) return false;
+  // Its lines after the place, which can end what starts before it.
+  while (after === "aside") {
+    index++;
+    after = blocks.has(index) ? reader.read(index) : "none";
+  }
+  const note = footnoteNote(lines);
+  return codeIn(note, here, at - start + indent, 0, around);
 }
 
 /**
- * Whether raw HTML in a note, read to its end, or in a footnote in it,
- * leaves anything open.
+ * Whether raw HTML in a note, read from line `from` to its end, leaves
+ * anything open in its text, or in any of its footnotes.
  */
-function leavesOpen(lineAt: LineAt): boolean {
-  return footnotesLeaveOpen(lineAt, true);
-}
-
-/**
- * Whether raw HTML in a footnote in a note, or in one in that, leaves
- * anything open; or in the note's own text too, where `text` is true.
- */
-function footnotesLeaveOpen(lineAt: LineAt, text = false): boolean {
+function leavesOpen(lineAt: LineAt, from: number): boolean {
   const reader = new TagReader(lineAt, 0);
-  for (let index = 0; lineAt(index) !== undefined; index++) reader.read(index);
-  if (isOpen(reader.finish()) && text) return true;
-  return reader.footnotes.some((footnote) =>
-    leavesOpen(footnoteNote(footnote)),
+  for (let index = from; lineAt(index) !== undefined; index++) {
+    reader.read(index);
+  }
+  return (
+    isOpen(reader.finish()) ||
+    reader.footnotes.some((footnote) => leavesOpen(footnoteNote(footnote), 0))
   );
 }
 
@@ -1523,7 +1553,7 @@ class TagReader {
    * The lines of the paragraph or footnote read last, up to the last line
    * read, and whether any of them could change what is open.
    */
-  paragraph: string[] = [];
+  lines: string[] = [];
   #tagged = false;
   /** The lines of the footnotes that have ended. */
   readonly footnotes: (readonly string[])[] = [];
@@ -1558,7 +1588,7 @@ class TagReader {
     this.kind = kind;
     const text = blocks.content;
     if (kind === "continued" || kind === "aside") {
-      this.paragraph.push(text);
+      this.lines.push(text);
       this.#tagged ||= mayChange(text, this.#tags);
       return kind;
     }
@@ -1573,7 +1603,7 @@ class TagReader {
     }
     if (blocks.opened) this.items.set(index, this.#tags);
     if (kind === "paragraph" || kind === "footnote") {
-      this.paragraph = [text];
+      this.lines = [text];
       this.#tagged = mayChange(text, this.#tags);
     } else if (mayRead(kind, blocks, this.#tags)) {
       this.#after = tagsOfLine(kind, blocks, this.current);
@@ -1591,7 +1621,7 @@ class TagReader {
 
   /** Ends the paragraph or footnote read last, before a line of `next`. */
   #end(next: LineKind): void {
-    const lines = this.paragraph;
+    const { lines } = this;
     // Only a footnote's lines start with its label.
     const footnote = footnoteStart.test(lines[0] ?? "");
     if (footnote && next !== "underline") this.footnotes.push(lines);
@@ -1602,7 +1632,7 @@ class TagReader {
         ? tagsAfter(lines[0] ?? "", this.current)
         : tagsOfParagraph(lines, this.current, next === "row");
     }
-    this.paragraph = [];
+    this.lines = [];
     this.#tagged = false;
   }
 }
