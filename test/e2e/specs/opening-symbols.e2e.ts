@@ -18,7 +18,6 @@ import {
   recordOf,
   storedDrafts,
   undoStubs,
-  waitForNotice,
   startOver,
   symbolFiles,
   clickTop,
@@ -164,7 +163,7 @@ describe("The editor", function () {
     );
   }
 
-  it("says that a symbol which does not open has a draft, which a new symbol at its path offers back", async function () {
+  it("asks about a symbol which does not open and has a draft, which a new symbol at its path offers back", async function () {
     // A picture to draw over, in a folder of its own, so that the draft
     // relies on the file for its base layer.
     await browser.executeObsidian(async ({ app }) => {
@@ -194,26 +193,22 @@ describe("The editor", function () {
     await obsidianPage.enablePlugin("inkline");
     await loadModules();
     await tryToEdit("Signs/square.ink.png");
-    const kept =
-      " Unsaved changes to it are kept as a draft. To get them back, see Saving and recovery in Inkline's guide.";
-    await waitForNotice(kept);
     // The reason comes first, as from any file that is not a whole PNG.
-    const notice = await browser.execute(
-      (text) =>
-        [...document.querySelectorAll(".notice")]
-          .map((each) => each.textContent)
-          .find((each) => each.includes(text)) ?? "",
-      kept.trim(),
+    await browser.waitUntil(
+      async () => (await topButton("Not now")) !== undefined,
+      { timeoutMsg: "no question about the draft" },
     );
-    expect(notice).toMatch(
-      /^Could not open square\.ink\.png: \S.*\S\. Unsaved/,
+    expect(await questionText()).toMatch(
+      /square\.ink\.png does not open: \S.*\S\. Inkline kept unsaved changes to it from /,
     );
-    expect(notice.endsWith(kept)).toBe(true);
+    // Not now keeps the draft, which draft-recovery.e2e.ts opens as a new
+    // symbol.
+    await clickTop("Not now");
     expect(await editorOpen()).toBe(false);
     expect(await draftCount()).toBe(1);
-    // The way back that Saving and recovery gives: the file deleted, a new
-    // symbol of two dots given its name and saved, and moved into its folder,
-    // which the draft does not follow, as it is for another path.
+    // The way back of earlier versions, which still works: the file deleted,
+    // a new symbol of two dots given its name and saved, and moved into its
+    // folder, which the draft does not follow, as it is for another path.
     await browser.executeObsidian(async ({ app }) => {
       const file = app.vault.getFileByPath("Signs/square.ink.png");
       if (file === null) throw new Error("no Signs/square.ink.png");
