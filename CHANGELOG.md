@@ -68,6 +68,13 @@ even one a public release; earlier pre-releases carry a suffix such as
   as text, lists again: an item numbered 0 to 9 with a `.` whose text starts an
   odd number of columns in loses a column more from its later lines. Link
   reference definitions over more lines are still read otherwise, as before.
+- Typing straight after saving a new symbol keeps its letters in order. As the
+  editor closes, Inkline puts the cursor back after the symbol a moment later,
+  in case the note changed while you drew, and on a busy computer that moment
+  could come after your first key, so the second went in front of it: `xy`
+  became `yx`. Once you type, use a shortcut, click, paste, cut, or drop
+  something in the note, the cursor is now left where you put it
+  ([#387](https://github.com/viell-dev/slop-inkline/issues/387)).
 - A symbol's file replaced while the editor saved it, deleted and another put at
   its path through Obsidian, as by another plugin or a sync tool working through
   it, could have the save find no file, go to make it again, and stop with
