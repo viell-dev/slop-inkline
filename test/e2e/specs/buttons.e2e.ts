@@ -8,6 +8,7 @@ import {
   startOver,
   surface,
   waitForEditor,
+  waitForStatus,
 } from "../support/editor.ts";
 import { warmUpPointer } from "../support/hover.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
@@ -337,6 +338,92 @@ describe("The editor", function () {
     await browser.keys(["e"]);
     const eraser = browser.$('[data-inkline-button="eraser"]');
     expect(await eraser.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  // What each button shows is buttonStates's to say, which buttons.test.ts
+  // checks in full; this checks that the editor shows it, as the keys and a
+  // click change what it holds, and what the keys of switches that are off
+  // say instead.
+  it("shows each switch's state on its button as it changes, and says why one is off", async function () {
+    await insert();
+    /** Each button's `aria-pressed`, or "-", and whether it is on or off. */
+    const shown = (ids: readonly string[]): Promise<Record<string, string>> =>
+      browser.execute(
+        (ids: readonly string[]) =>
+          Object.fromEntries(
+            ids.map((id) => {
+              const button = document.querySelector(
+                `[data-inkline-button="${id}"]`,
+              );
+              const pressed = button?.getAttribute("aria-pressed") ?? "-";
+              const off = button?.hasAttribute("disabled") === true;
+              return [id, `${pressed} ${off ? "off" : "on"}`];
+            }),
+          ),
+        ids,
+      );
+    /** Waits for the buttons named to show what `states` says of each. */
+    const showing = async (states: Record<string, string>): Promise<void> => {
+      let last: Record<string, string> = {};
+      await browser.waitUntil(
+        async () => {
+          last = await shown(Object.keys(states));
+          return Object.entries(states).every(
+            ([id, state]) => last[id] === state,
+          );
+        },
+        { timeoutMsg: `buttons show ${JSON.stringify(last)}` },
+      );
+    };
+    // A new editor's: the pen, freehand, with no grid and no picture.
+    await showing({
+      pen: "true on",
+      ellipse: "false on",
+      polygon: "false on",
+      path: "false on",
+      fill: "false off",
+      grid: "false on",
+      "flat-ends": "false off",
+      move: "false off",
+      remove: "- off",
+      ink: "false off",
+      undo: "- off",
+      redo: "- off",
+      save: "- on",
+    });
+    // The key of a switch that is off says why, and changes nothing.
+    await browser.keys("b");
+    await waitForStatus("Toggle fill is for Ellipse, Polygon, and Path");
+    await browser.keys("t");
+    await waitForStatus(
+      "Flat ends is for freehand strokes and paths on the grid",
+    );
+    await showing({ fill: "false off", "flat-ends": "false off" });
+    // A shape turns Toggle fill on, which its button then switches.
+    await browser.keys("o");
+    await showing({ ellipse: "true on", fill: "false on" });
+    await browser.$('[data-inkline-button="fill"]').click();
+    await showing({ fill: "true on" });
+    // The grid turns Flat ends on, for freehand strokes and paths alone.
+    await browser.keys(["Shift", "g"]);
+    await showing({ grid: "true on", "flat-ends": "false off" });
+    await browser.keys("o");
+    await showing({
+      ellipse: "false on",
+      fill: "false off",
+      "flat-ends": "false on",
+    });
+    await browser.keys("t");
+    await showing({ "flat-ends": "true on" });
+    await browser.keys("y");
+    await showing({ polygon: "true on", "flat-ends": "false off" });
+    // A path keeps it, as it cuts a path's ends as it cuts a freehand one's.
+    await browser.keys("a");
+    await showing({
+      polygon: "false on",
+      path: "true on",
+      "flat-ends": "true on",
+    });
   });
 });
 

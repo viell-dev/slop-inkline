@@ -14,7 +14,6 @@ import {
   storedDrafts,
   surface,
   waitForEditor,
-  waitForStatus,
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 import { framesDrawn } from "../support/waits.ts";
@@ -456,18 +455,5 @@ describe("Fill", function () {
     expect(shown[0]).toBeGreaterThan(250);
     expect(shown[1]).toBeGreaterThan(250);
     expect(shown[2]).toBe(0);
-  });
-
-  it("is off while drawing freehand, and on for Ellipse", async function () {
-    await openEditor();
-    const fill = browser.$('[data-inkline-button="fill"]');
-    expect(await fill.isEnabled()).toBe(false);
-    await browser.keys("b");
-    await waitForStatus("Toggle fill is for Ellipse, Polygon, and Path");
-    expect(await pressed("fill")).toBe("false");
-    await browser.keys("o");
-    expect(await fill.isEnabled()).toBe(true);
-    await fill.click();
-    expect(await pressed("fill")).toBe("true");
   });
 });
