@@ -34,6 +34,22 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ### Fixed
 
+- Typing the insert trigger no longer opens the list where Reading view shows
+  code, or nothing, in four kinds of note
+  ([#271](https://github.com/viell-dev/slop-inkline/issues/271)). In a list
+  item, a line indented less than the item's text, before or after the place,
+  makes Reading view take fewer columns from all of the item's lines, which can
+  make code of lines that looked like text, or end a fence or a heading
+  elsewhere; the list now follows it in every item that holds the place, where
+  it followed only a later line in the innermost one. A footnote's text is read
+  as Reading view shows it at the note's end, as a note of its own, so a fence
+  in it makes code, and a `<code>` that the rest of the note or another footnote
+  leaves open makes all of it code. A `$$` math block lists nothing, where an
+  embed shows nothing, and where math has an error that shows its text. And a
+  line of seven spaces under `1. a` and a blank line, which Reading view shows
+  as text, lists again: an item numbered 0 to 9 with a `.` whose text starts an
+  odd number of columns in loses a column more from its later lines. Link
+  reference definitions over more lines are still read otherwise, as before.
 - A symbol's file replaced while the editor saved it, deleted and another put at
   its path through Obsidian, as by another plugin or a sync tool working through
   it, could have the save find no file, go to make it again, and stop with

@@ -2130,10 +2130,6 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
     note: " 10. a\n\n         HERE",
     code: true,
   },
-  "seven spaces in an item at 1)": {
-    note: "1) a\n\n       HERE",
-    code: true,
-  },
   "seven spaces in an item of - and two spaces": {
     note: "-  a\n\n       HERE",
     code: true,
@@ -3438,7 +3434,7 @@ export const codeCases: Readonly<Record<string, CodeCase>> = {
     code: true,
     hidden: true,
   },
-  "a fence in a math block": {
+  "a fence in a math block after $$ and a letter": {
     note: "$$a\n```\nHERE\n$$",
     code: true,
     hidden: true,

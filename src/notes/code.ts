@@ -191,7 +191,7 @@ type Leaf =
  * - `hidden`, a line of a `%%` comment block or a `$$` math block, where an
  *   embed shows nothing;
  * - `footnote`, the first line of a footnote, whose text is read as a note of
- *   its own, as {@link footnoteText} gives it;
+ *   its own, as {@link footnoteNote} gives it;
  * - `aside`, a line that goes on in the footnote before it;
  * - `none`, a line with no text to read: a blank line, a thematic break, or
  *   a line of a definition's title.
