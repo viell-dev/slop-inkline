@@ -261,3 +261,45 @@ export async function letClosingTimersGo(): Promise<number> {
     return held;
   });
 }
+
+/**
+ * Waits for the editors of the note at `path` to read as `shown` does, with
+ * the cursor marked as {@link marked} marks it. When an editor closes, it puts
+ * the cursor back after the last symbol a moment later, which a test's next
+ * read can come before.
+ */
+export async function waitForMarked(
+  path: string,
+  shown: readonly string[],
+): Promise<void> {
+  let read: string[] = [];
+  try {
+    await browser.waitUntil(async () => {
+      read = await marked(path);
+      return JSON.stringify(read) === JSON.stringify(shown);
+    });
+  } catch (error) {
+    throw new Error(
+      `waited for ${JSON.stringify(shown)}, but ${path} read ${JSON.stringify(read)}`,
+      { cause: error },
+    );
+  }
+}
+
+/**
+ * Waits for the focus to be in a note's editor, as an editor gives it back a
+ * moment after it closes when nothing else took it, as after a change on disk
+ * took a table cell's editor away. A key before that goes nowhere.
+ */
+export async function waitForNoteFocus(): Promise<void> {
+  await browser.waitUntil(
+    async () =>
+      browser.execute(
+        () =>
+          (document.activeElement?.closest(
+            ".markdown-source-view .cm-content",
+          ) ?? null) !== null,
+      ),
+    { timeoutMsg: "the focus did not come back to the note" },
+  );
+}

@@ -23,8 +23,8 @@ even one a public release; earlier pre-releases carry a suffix such as
   editor closes, Inkline puts the cursor back after the symbol a moment later,
   in case the note changed while you drew, and on a busy computer that moment
   could come after your first key, so the second went in front of it: `xy`
-  became `yx`. Once you type, click, or drop something in the note, the cursor
-  is now left where you put it
+  became `yx`. Once you type, use a shortcut, click, paste, cut, or drop
+  something in the note, the cursor is now left where you put it
   ([#387](https://github.com/viell-dev/slop-inkline/issues/387)).
 
 ## 1.0.2 - 2026-11-19
