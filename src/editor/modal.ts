@@ -604,10 +604,14 @@ export class InkEditorModal extends Modal {
   /** Whether dragging and the wheel move the picture, rather than drawing. */
   #moving = false;
   /**
-   * Where the pointer dragging the picture last was, on the screen: the view
-   * can move under it, as a save or Fit does, so each move maps both ends.
+   * Where in the drawing the pointer dragging the picture last was. Each move
+   * takes the picture by where the pointer is now in the drawing from there,
+   * so that the picture rejoins the pointer at its next report when the
+   * drawing has moved under it meanwhile, as a page zoom or a change to the
+   * window's size moves it (#445). A save that moves the drawing moves this
+   * with it, as it does the picture.
    */
-  #dragged: { clientX: number; clientY: number } | undefined;
+  #dragged: InputPoint | undefined;
   /**
    * Making ink of the picture, while its controls are open: the picture's
    * luminance, found once, the threshold, and whether the ink is lighter
@@ -1198,12 +1202,18 @@ export class InkEditorModal extends Modal {
     if (this.#options.tools?.textShown === true) this.#showText(true);
   }
 
-  /** Shows the fields, or leaves only the button, keeping what they hold. */
+  /**
+   * Shows the fields, or leaves only the button, keeping what they hold. The
+   * fields' row changes the editor's size, as the window's does, so a stroke
+   * being drawn then ends where it showed if the drawing moved (#445).
+   */
   #showText(open: boolean): void {
-    this.#textStrip?.toggle(open);
-    this.#textToggle?.setAttribute("aria-expanded", String(open));
-    this.#showTextSummary();
-    this.#resizeView();
+    this.#resized(() => {
+      this.#textStrip?.toggle(open);
+      this.#textToggle?.setAttribute("aria-expanded", String(open));
+      this.#showTextSummary();
+      this.#resizeView();
+    });
     this.#render();
   }
 
@@ -1337,7 +1347,7 @@ export class InkEditorModal extends Modal {
       canvas.setPointerCapture(event.pointerId);
       this.#line.act(() => {
         if (this.#moving) {
-          this.#dragged = { clientX: event.clientX, clientY: event.clientY };
+          this.#dragged = point(event);
           canvas.addClass("is-dragging");
           return;
         }
@@ -1507,16 +1517,18 @@ export class InkEditorModal extends Modal {
     return modals.item(modals.length - 1) === this.containerEl;
   }
 
-  /** Moves the picture with the pointer dragging it. */
+  /**
+   * Moves the picture with the pointer dragging it, by as far as the pointer
+   * moved in the drawing since it last reported ({@link #dragged}).
+   */
   #drag(event: PointerEvent): void {
-    const last = this.#dragged;
+    const from = this.#dragged;
     const picture = this.#picture;
     const view = this.#view;
-    if (last === undefined || view === undefined) return;
-    this.#dragged = { clientX: event.clientX, clientY: event.clientY };
-    if (picture === undefined) return;
-    const from = view.toDocument(last.clientX, last.clientY);
+    if (from === undefined || view === undefined) return;
     const to = view.toDocument(event.clientX, event.clientY);
+    this.#dragged = to;
+    if (picture === undefined) return;
     this.#placePicture(
       movePicture(picture.placement, to.x - from.x, to.y - from.y),
     );
@@ -1971,14 +1983,16 @@ export class InkEditorModal extends Modal {
   };
 
   /**
-   * Runs `change`, which follows a change to the window's or the drawing
-   * area's size, and then ends what is being drawn where it was shown, as a
-   * lost capture does, if the drawing has moved under the pointer pressed to
-   * draw since it last reported. The window may have moved with it, so where
-   * the pointer is in the drawing is not known until it reports again, and
-   * its release would end the stroke in a segment never shown (#393). A
-   * polygon's corner, or a path's point or handle, being pressed is left as it
-   * is: its release places it where the release says, as ever.
+   * Runs `change`, which follows or makes a change to the window's, the
+   * editor's, or the drawing area's size, and then ends what is being drawn
+   * where it was shown, as a lost capture does, if the drawing has moved under
+   * the pointer pressed to draw since it last reported. The window may have
+   * moved with it, so where the pointer is in the drawing is not known until
+   * it reports again, and its release would end the stroke in a segment never
+   * shown (#393). A polygon's corner, or a path's point or handle, being
+   * pressed is left as it is: its release places it where the release says,
+   * as ever. A picture being dragged needs nothing here: it rejoins the
+   * pointer at its next report ({@link #dragged}), as moving it makes no ink.
    */
   #resized(change: () => void): void {
     change();
@@ -3506,9 +3520,13 @@ export class InkEditorModal extends Modal {
         this.#session.markSaved(document);
         this.#session.rebase(-left);
         this.#view?.shift(-left);
-        // The picture moves with the drawing, so it stays where it was.
+        // The picture moves with the drawing, so it stays where it was, and
+        // so does where a drag of it holds it.
         if (this.#picture !== undefined) {
           this.#placePicture(movePicture(this.#picture.placement, -left, 0));
+        }
+        if (this.#dragged !== undefined) {
+          this.#dragged = { x: this.#dragged.x - left, y: this.#dragged.y };
         }
         this.#announce(this.#notRenamed ? "Saved, but not renamed" : "Saved");
         return true;
