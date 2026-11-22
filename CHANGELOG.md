@@ -9,6 +9,36 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Fixed
+
+- A draft opened as a new symbol, from **Inkline: Recover drafts** or a symbol
+  whose file does not open, whose first save was refused, as for a name typed
+  that another symbol came to as it was saved, stayed kept for that other
+  symbol, which then offered it as its own when it opened. Now the draft stays
+  the old symbol's, as before the save, for the next save to make the file
+  ([#437](https://github.com/viell-dev/slop-inkline/issues/437)).
+
+## 1.1.0 - 2026-11-22
+
+This is the first pre-release since 1.0.0, an alpha of 1.2.0, the next public
+release. Features can still arrive and change in this line until a goal for
+1.2.0 is agreed. Its main new feature is **Path**, for curves placed by their
+points; the owner is asked to try it, with two smaller changes, in
+[the test request](https://github.com/viell-dev/slop-inkline/issues/446), which
+1.2.0 waits for.
+
+Obsidian does not offer pre-releases: it goes on offering 1.0.2 from the
+community plugins. To try 1.1.0, best in a vault of its own, install
+`inkline-1.1.0.zip` from this release's assets by hand, or choose version
+`1.1.0` in BRAT, as
+[the install guide](https://viell-dev.github.io/slop-inkline/install) says.
+BRAT's **latest** choice moves to it by itself. To go back, install 1.0.2 the
+same way.
+
+The file format is unchanged: a symbol saved with 1.1.0, with paths or without,
+opens in 1.0.0 to 1.0.2, and drafts keep the layout that every release from
+0.9.2 on uses.
+
 ### Added
 
 - A draft kept for a symbol whose file is gone or does not open, as one cut
