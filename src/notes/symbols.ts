@@ -331,7 +331,8 @@ function cutShortReason(
 /**
  * What begins the name of a file that {@link makeSymbolFile} writes in
  * Inkline's own folder before it makes a symbol's file. The dot keeps the
- * vault from listing it, so that nothing hears of it but the disk.
+ * vault from listing it, so that it is never one of the vault's files, and no
+ * create or delete is heard of it.
  */
 const stagedPrefix = ".making-";
 

@@ -418,11 +418,11 @@ export interface NewFile {
  * so nothing else the disk is asked, however much, can hold the save up.
  *
  * A write of its own file that stops part-way leaves nothing at the path. A copy
- * that stops part-way can leave the start of the bytes there, which no one else
- * can have written, as the copy made that file: this takes it away again, and
- * the failure stands. Only if it cannot does it reject with {@link CutShort},
- * with that part, for the save to know it as its own. Its own file goes in
- * every case.
+ * that stops part-way can leave the start of the bytes there: this takes away a
+ * file there that holds only that, as {@link leftBy} says, which is the copy's
+ * own, as the copy made that file, or one nobody would miss, and the failure
+ * stands. Only if it cannot does it reject with {@link CutShort}, with that
+ * part, for the save to know it as its own. Its own file goes in every case.
  */
 export async function makeFile(made: NewFile): Promise<void> {
   if (await made.exists()) throw new PathTaken();
