@@ -303,7 +303,9 @@ export interface ShardRun {
  * when none is.
  */
 export function attemptOf(file: string): number | undefined {
-  const directories = path.dirname(file).split(/[\\/]/).reverse();
+  // Either separator on any system, as path.dirname splits on `\` only on
+  // Windows; the last part is the file's own name.
+  const directories = file.split(/[\\/]/).slice(0, -1).reverse();
   for (const name of directories) {
     const match = /-attempt-([1-9]\d*)$/.exec(name);
     if (match !== null) return Number(match[1]);
