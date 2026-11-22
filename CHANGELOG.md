@@ -41,6 +41,10 @@ even one a public release; earlier pre-releases carry a suffix such as
   the padding, the pointer is mapped from there, and the brush's circle shows
   only there, at the size the brush draws
   ([#378](https://github.com/viell-dev/slop-inkline/issues/378)).
+- The brush's circle stays on the pointer when a theme or a CSS snippet gives
+  the drawing area a margin, which Inkline's own styles do not. It showed away
+  from the pointer by the margin, though the ink went where the pointer was
+  ([#394](https://github.com/viell-dev/slop-inkline/issues/394)).
 - **Zoom** pressed while you draw a stroke or a shape, with the pen or the
   eraser, or while you press a polygon's corner or a path's point or handle, now
   waits until you let go, by its key and by its button. It used to zoom at once,
@@ -63,6 +67,16 @@ even one a public release; earlier pre-releases carry a suffix such as
   late. The fields said that saving would replace the earlier text, and the next
   **Save** was refused again
   ([#279](https://github.com/viell-dev/slop-inkline/issues/279)).
+- In a PDF exported with Obsidian's **Export to PDF**, symbols in text colour no
+  longer show a faint one-pixel line along an edge of their box in some PDF
+  viewers, Obsidian's own PDF view among them, at some zoom levels. Each prints
+  from a copy of its own pixels in the colour its text prints in, the way a
+  symbol in stored colour prints, rather than through a mask, which the browser
+  Obsidian is built on writes into a PDF in a way those viewers draw with the
+  line. Symbols keep their size, baseline, and colour. Exporting waits for the
+  copies while they are being made; a symbol whose copy has got no further for
+  ten seconds, or cannot be made, prints as before
+  ([#255](https://github.com/viell-dev/slop-inkline/issues/255)).
 
 ## 1.0.2 - 2026-11-19
 

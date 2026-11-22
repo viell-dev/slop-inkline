@@ -142,6 +142,29 @@ must keep released files readable and looking the same, as
   settings are cleared on close. The test redirects the save dialog and
   suppresses the post-export viewer launch; the native PDF writer still runs
   ([pdf.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/pdf.e2e.ts)).
+- **Unreleased:** symbols in the text colour print with no line along their
+  boxes ([#255](https://github.com/viell-dev/slop-inkline/issues/255)). Sixteen
+  symbols of a note, unsized and at eight sizes, in two headings, plain text,
+  links, a callout's title, and a note it embeds, are measured in Poppler's
+  raster of the PDF at 110 dots per inch, where the mask leaves lines: along
+  every edge of every box, no line of pixels lies 3 or more of 255 from the
+  page's colour, and an export that keeps the masks finds such lines. That
+  export's PDF holds two soft masks for each symbol, the copies' none. Each
+  symbol's ink prints where the mask printed it, within half a pixel, as large,
+  and within 3 of 255 of its colour: black for the note's text, as Obsidian
+  prints it, where the screen shows the theme's text colour, and the colours of
+  links and of the callout's title. So it does with a transition on every
+  element's `color`, which would otherwise give a copy the screen's colour. As
+  Obsidian asks for the PDF, every symbol shows its copy, loaded, at its file's
+  own size; once the window closes, each shows its own file again. In a note of
+  128 symbols of eight files, every copy is ready as Obsidian asks for the PDF,
+  even one whose file takes 1.5 seconds to read, as Obsidian waits for it. Four
+  symbols print from their masks: one whose read takes a minute, as Inkline
+  stops waiting once no copy has got further for ten seconds, one whose file
+  cannot be read, one that is not a PNG, and one whose file says which way up it
+  shows, which Chromium 150 applies and a copy would not. The first two print
+  their whole ink in the text's colour, measured in the page, as the copy's does
+  (the same file).
 - A symbol 4,000 pixels wide at the largest Symbol size, wider than its space,
   keeps the proportions it was drawn in, within 5%, its baseline on the text's,
   and its colour, in Reading view, Live Preview, table cells in both, an
@@ -206,8 +229,12 @@ must keep released files readable and looking the same, as
 - The fixed bitmap has a centre dot at every brush size, and retains its
   coverage across fractional positions at two editor widths and five zoom levels
   ([brush-cursor.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/brush-cursor.e2e.ts)).
-  Contrast checks cover light, dark, grey, coloured and translucent backgrounds,
-  ink edges, stationary theme redraws and readback failure recovery
+  **Unreleased:** with a margin of a different width on each side of the drawing
+  area, as a CSS snippet can give it, its centre stays within half a device
+  pixel of the pointer at 100% and 125% page zoom (the same file,
+  [#394](https://github.com/viell-dev/slop-inkline/issues/394)). Contrast checks
+  cover light, dark, grey, coloured and translucent backgrounds, ink edges,
+  stationary theme redraws and readback failure recovery
   ([cursor-contrast.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/cursor-contrast.e2e.ts)).
   Three fixed rounds of 300 pointer updates at 200% zoom must have a median
   below 5 ms per update while preserving the bitmap's coverage. This bounds the
@@ -858,7 +885,11 @@ the individual pull requests hold the inputs, results, and review discussion.
 - Physical printer output is not checked. Native PDF export is covered on Linux
   with default and explicitly sized embeds of one symbol, and one wider than the
   page; long notes containing many different symbols are not covered by that
-  fixture.
+  fixture. **Unreleased:** a note of 128 symbols of eight files is covered for
+  when Obsidian prints and what each symbol prints from, and three of them in
+  the printed page. Lines along symbols' boxes are measured in Poppler's raster
+  at 110 dots per inch only, in Obsidian's default theme; other viewers, and
+  themes with print styles of their own, are not checked.
 - CI's runners have the DejaVu fonts, and the Docker image DejaVu and Noto; a
   theme's own font is checked through the guides' measurement, not by eye.
 - The release workflow checks the install ZIP's exact layout and bytes, extracts
