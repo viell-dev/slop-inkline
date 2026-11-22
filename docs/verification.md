@@ -298,6 +298,17 @@ must keep released files readable and looking the same, as
   unfilled as one step, and that a reopened drawing's grid goes by the shape as
   if unfilled
   ([session.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/session.test.ts)).
+- **Unreleased:** A polygon's corner, at nine turns from 25° to 165° and with
+  each brush from S to XL, drawn as saving draws it and as the editor shows it
+  enlarged, has every pixel that lies wholly inside its shape fully inked: no
+  seam shows where the parts its line is drawn in meet, beside where its sides'
+  inner edges cross excepted
+  ([#422](https://github.com/viell-dev/slop-inkline/issues/422))
+  ([polygon.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/polygon.e2e.ts)).
+  Unit tests pin that the outlines the renderer fills wind round every point as
+  often as the pieces the format defines cover it, share no edge, and add no
+  corner, on corners on one line too
+  ([outline.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/ink/outline.test.ts)).
 - **Unreleased:** A path placed with the mouse and the keys, of corners clicked
   and smooth points dragged out, on the grid with Shift and off it, is saved as
   one stroke without a kind through points along its curve no more than a pixel

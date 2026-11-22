@@ -52,6 +52,11 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ### Fixed
 
+- A polygon drawn with a large brush showed a faint, lighter line inside its ink
+  at a corner, where the parts the line is drawn in meet, and a filled polygon
+  showed it outside the fill. It no longer does. The shape is the same, and so
+  is the file format: a symbol saved before keeps the line in its image until it
+  is saved again ([#368](https://github.com/viell-dev/slop-inkline/issues/368)).
 - Typing straight after saving a new symbol keeps its letters in order. As the
   editor closes, Inkline puts the cursor back after the symbol a moment later,
   in case the note changed while you drew, and on a busy computer that moment
