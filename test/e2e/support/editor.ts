@@ -1,6 +1,7 @@
 // Steps for driving the editor in end-to-end tests.
 
 import { browser } from "@wdio/globals";
+import type { TFile } from "obsidian";
 import { Key, type ChainablePromiseElement } from "webdriverio";
 import { obsidianPage } from "wdio-obsidian-service";
 import { loadModules } from "./browser.ts";
@@ -123,13 +124,18 @@ async function showNote(path: string): Promise<void> {
  * Waits for the editor to be open and to have drawn its first frame. In that
  * frame it sizes its preview line, so that a preview measured before it
  * would read the size of an empty canvas. Keyboard focus is ready at once.
+ * With `timeout`, it waits that many ms for the editor to open, in place of
+ * the suite's usual limit, as one of the largest symbols needs
+ * ({@link largeOpenLimit}).
  */
-export async function waitForEditor(): Promise<void> {
+export async function waitForEditor(
+  wait: { timeout?: number } = {},
+): Promise<void> {
   // Any editor's: a second can open over the first, as the command palette
   // can open it, and the frames below are drawn for both.
   await browser
     .$(".inkline-editor .inkline-surface", { strict: false })
-    .waitForDisplayed();
+    .waitForDisplayed(wait);
   await framesDrawn();
 }
 
@@ -543,10 +549,166 @@ export async function topButton(
 
 /** Clicks a button in the topmost modal, waiting for it to appear. */
 export async function clickTop(text: string): Promise<void> {
-  await browser.waitUntil(async () => (await topButton(text)) !== undefined, {
-    timeoutMsg: `no "${text}" button`,
-  });
+  await waitForTop(text);
   await (await topButton(text))?.click();
+}
+
+/** The answers to Obsidian's question about updating links after a rename. */
+const linkAnswers: readonly string[] = [
+  "Always update",
+  "Just once",
+  "Do not update",
+];
+
+/**
+ * Waits for a button to appear in the topmost modal. If it is one of the
+ * answers to Obsidian's question about links and does not come, the error
+ * also says what Obsidian knew at each rename since the test began, as
+ * {@link recordRenames} kept it, so that a rename that ends without the
+ * question says why (#386).
+ */
+export async function waitForTop(text: string): Promise<void> {
+  try {
+    await browser.waitUntil(async () => (await topButton(text)) !== undefined, {
+      timeoutMsg: `no "${text}" button`,
+    });
+  } catch (error) {
+    if (!linkAnswers.includes(text)) throw error;
+    const renames = await browser.execute(() =>
+      JSON.stringify(Reflect.get(window, "inklineRenameRecord") ?? null),
+    );
+    throw new Error(`no "${text}" button; the renames: ${renames}`, {
+      cause: error,
+    });
+  }
+}
+
+/**
+ * Keeps a record in the renderer, until the next {@link undoStubs}, of what
+ * Obsidian knew at each rename, for {@link waitForTop} to report. Obsidian
+ * asks about links only if its index, once clean, knows of some to the file,
+ * and only while its setting says to ask. So as each rename starts, the record
+ * holds whether the index is clean, how many files it is still reading, the
+ * notes that its resolved links say link to the file, and, for each open note,
+ * whether its cache knows the link; and, once Obsidian has collected the links
+ * to update, how many lead to the file, from which notes, whether the setting
+ * says to ask, and how long the update took, question and all. The index and
+ * the link update are Obsidian's own, so what is not of the type expected is
+ * left out. Each call goes straight on to Obsidian's, with nothing awaited.
+ */
+async function recordRenames(): Promise<void> {
+  await browser.executeObsidian(({ app, obsidian }) => {
+    const { fileManager: manager, metadataCache: cache, vault } = app;
+    const record: Record<string, unknown>[] = [];
+    const started = performance.now();
+    const now = (): number => Math.round(performance.now() - started);
+    /** The file the latest rename moves, which its link update is about. */
+    let renaming: unknown;
+    const index = (): Record<string, unknown> => {
+      const clean: unknown = Reflect.get(cache, "isCacheClean");
+      const reading: unknown = Reflect.get(cache, "inProgressTaskCount");
+      return {
+        clean:
+          typeof clean === "function"
+            ? (Reflect.apply(clean, cache, []) as unknown)
+            : undefined,
+        reading: typeof reading === "number" ? reading : undefined,
+      };
+    };
+    const asks = (): unknown => {
+      const config: unknown = Reflect.get(vault, "getConfig");
+      return typeof config === "function"
+        ? Reflect.apply(config, vault, ["alwaysUpdateLinks"]) !== true
+        : undefined;
+    };
+    const linkedFrom = (file: TFile): Record<string, string> => {
+      const notes: Record<string, string> = {};
+      for (const { view } of app.workspace.getLeavesOfType("markdown")) {
+        if (!(view instanceof obsidian.MarkdownView) || view.file === null) {
+          continue;
+        }
+        const from = view.file.path;
+        const known = cache.getFileCache(view.file);
+        const links = [...(known?.links ?? []), ...(known?.embeds ?? [])];
+        notes[from] =
+          known === null
+            ? "no cache"
+            : links.some(
+                  ({ link }) =>
+                    cache.getFirstLinkpathDest(
+                      obsidian.getLinkpath(link),
+                      from,
+                    ) === file,
+                )
+              ? "links"
+              : "no link";
+      }
+      return notes;
+    };
+    const wrap = (
+      name: "renameFile" | "updateAllLinks",
+      note: (args: unknown[]) => Record<string, unknown>,
+    ): (() => void) => {
+      const original: unknown = Reflect.get(manager, name);
+      if (typeof original !== "function") return () => undefined;
+      const ownBefore = Object.hasOwn(manager, name);
+      const recording = function (this: unknown, ...args: unknown[]): unknown {
+        const entry = { at: now(), step: name, ...note(args) };
+        record.push(entry);
+        const result: unknown = Reflect.apply(original, this, args);
+        if (result instanceof Promise) {
+          const ended = (): void => {
+            Reflect.set(entry, "took", now() - entry.at);
+          };
+          void result.then(ended, ended);
+        }
+        return result;
+      };
+      Reflect.set(manager, name, recording);
+      return () => {
+        if (Reflect.get(manager, name) !== recording) return;
+        if (ownBefore) Reflect.set(manager, name, original);
+        else Reflect.deleteProperty(manager, name);
+      };
+    };
+    const undo = [
+      wrap("renameFile", ([file, to]) => {
+        renaming = file;
+        if (!(file instanceof obsidian.TFile)) return { to };
+        return {
+          from: file.path,
+          to,
+          ...index(),
+          resolved: Object.entries(cache.resolvedLinks)
+            .filter(([, targets]) => (targets[file.path] ?? 0) > 0)
+            .map(([from]) => from),
+          open: linkedFrom(file),
+        };
+      }),
+      wrap("updateAllLinks", ([links]) => {
+        const found = Array.isArray(links) ? (links as unknown[]) : [];
+        const sources = found.flatMap((link) => {
+          if (typeof link !== "object" || link === null) return [];
+          const source: unknown = Reflect.get(link, "sourceFile");
+          return Reflect.get(link, "resolvedFile") === renaming &&
+            source instanceof obsidian.TFile
+            ? [source.path]
+            : [];
+        });
+        return {
+          links: found.length,
+          toFile: sources,
+          asks: asks(),
+          ...index(),
+        };
+      }),
+    ];
+    Reflect.set(window, "inklineRenameRecord", record);
+    Reflect.set(window, "inklineAtEnd-rename-record", () => {
+      for (const step of undo) step();
+      Reflect.deleteProperty(window, "inklineRenameRecord");
+    });
+  });
 }
 
 /**
@@ -696,6 +858,16 @@ export async function writeNoise(
     spacing,
   );
 }
+
+/**
+ * The most, in ms, that the editor may take to open on one of the largest
+ * symbols, as {@link writeNoise} makes them, in place of the suite's usual
+ * 20 s. In Docker on Windows 11, Obsidian 1.13.4 opened a new 2470-pixel
+ * picture of noise in 10 to 17 s, and at times in over 20 s, beside other
+ * jobs (#353); with both default versions in one run, 1.13.4 and 1.15.1 each
+ * took over 20 s for a 2300-pixel one (#350).
+ */
+export const largeOpenLimit = 120_000;
 
 /**
  * Opens the editor on a symbol file, and reports what that took: until it was
@@ -865,15 +1037,31 @@ const letGoBound = 15_000;
  *
  * A gate that lets a call go, here or in its own test, can keep the call in
  * the renderer's `inklineLetGo`, a set of `{ gate, call }` with the gate's
- * name and the call's promise, until the call ends, as `holdNextRead` and
- * `holdNextWrite` do. This waits for every call in it to end, whether it
- * resolves or rejects, before anything else, so that what was let go is done
- * before {@link startOver} resets the vault: a write let go could otherwise
- * land after the reset. It waits at most `letGoBound` ms, {@link letGoBound}
- * unless a test says otherwise, and then fails, naming each gate whose call
- * had not ended, once the rest of this is done, so that one test that cannot
- * finish does not leave its stubs to the tests after it. A call that had not
- * ended stays in the set, so that the next clean-up waits for it too.
+ * name and the call's promise, until the call ends, as {@link hold},
+ * {@link holdDecoding}, `holdNextRead`, and `holdNextWrite` do. This waits
+ * for every call in it to end, whether it resolves or rejects, before
+ * anything else, so that what was let go is done before {@link startOver}
+ * resets the vault: a write let go could otherwise land after the reset. It
+ * waits at most `letGoBound` ms, {@link letGoBound} unless a test says
+ * otherwise, and then fails, naming each gate whose call had not ended, once
+ * the rest of this is done, so that one test that cannot finish does not
+ * leave its stubs to the tests after it. A call that had not ended stays in
+ * the set, so that the next clean-up waits for it too.
+ *
+ * It does not wait for what Inkline does once such a call ends, which is
+ * Inkline's own work, out of a test's reach: the write that follows a held
+ * read, the rename that can follow a held write, or a save queued behind a
+ * held one, as in symbol-text-unfinished-writes.e2e.ts and
+ * symbol-text-concurrent-saves.e2e.ts. So a test that fails with such a call
+ * held can leave that work to touch the vault after the reset. An editor's
+ * save is waited for all the same, as an editor does not close while it
+ * saves and {@link startOver} closes every modal; a save from the library's
+ * Quick edit is not. Waiting for the rest would need a view of Inkline's
+ * queue of writes from a test, which changes the plugin, a wait for the vault
+ * to stay quiet, which is a guess, or a wait made for each test that knows
+ * its next step, and removed when the test ends well; none is worth it for
+ * what has never been seen to fail a test, and only can after another test
+ * has failed (#358).
  *
  * It then takes {@link hold}'s gate away, so that a later {@link waitForHeld}
  * or {@link letGo} cannot take it for its own; undoes {@link delayVault} and
@@ -970,7 +1158,8 @@ export async function undoStubs({
  * restores the vault and clears drafts, so that each test starts from the
  * same state. It first takes away what a test held or replaced, with
  * {@link undoStubs}, which it gives `options`, and resets nothing if that
- * fails.
+ * fails. Last, it starts the test's record of renames, which
+ * {@link waitForTop} reports from.
  */
 export async function startOver(
   options: Parameters<typeof undoStubs>[0] = {},
@@ -1046,6 +1235,7 @@ export async function startOver(
       notice.remove();
     }
   });
+  await recordRenames();
 }
 
 const delayable = [
@@ -1217,7 +1407,9 @@ const holdable = {
  * once it has done it and before its caller hears. Failed by {@link letGo},
  * it rejects, having done its work if it was held after it. A test that ends
  * with one held leaves it to {@link undoStubs}, which lets it go if Obsidian
- * owns it and fails it otherwise.
+ * owns it and fails it otherwise. Let go or failed either way, each call that
+ * reached the gate is kept in the renderer's `inklineLetGo` until it ends, so
+ * that {@link undoStubs} waits for it before the vault is reset.
  *
  * Each call makes a gate of its own, the renderer's `inklineHoldGate` until
  * the next call replaces it whole: what reaches the gate,
@@ -1231,13 +1423,27 @@ export async function hold(
   when: "before" | "after" = "before",
 ): Promise<void> {
   await browser.executeObsidian(
-    ({ app }, { owner, method, obsidians }, end, when) => {
+    ({ app }, { owner, method, obsidians }, name, end, when) => {
       const target = owner === "adapter" ? app.vault.adapter : app.vault;
       const original: unknown = Reflect.get(target, method);
       if (typeof original !== "function") throw new Error(`no ${method}`);
+      /** The calls that have reached the gate and not ended. */
+      const reached = new Set<Promise<unknown>>();
       let settle: (failure?: string) => void = () => undefined;
       const released = new Promise<void>((resolve, reject) => {
         settle = (failure) => {
+          // Kept until they end, for undoStubs() to wait for.
+          const known: unknown = Reflect.get(window, "inklineLetGo");
+          const letGo = known instanceof Set ? known : new Set<unknown>();
+          Reflect.set(window, "inklineLetGo", letGo);
+          for (const call of reached) {
+            const entry = { gate: `hold-${name}`, call };
+            letGo.add(entry);
+            const forget = (): void => {
+              letGo.delete(entry);
+            };
+            call.then(forget, forget);
+          }
           if (failure === undefined) resolve();
           else reject(new Error(failure));
         };
@@ -1251,16 +1457,26 @@ export async function hold(
             ? (Reflect.get(file, "path") as unknown)
             : file;
         const held = typeof path === "string" && path.endsWith(end);
-        if (held && when === "before") {
-          gate.reached = true;
-          await released;
+        const call = (async () => {
+          if (held && when === "before") {
+            gate.reached = true;
+            await released;
+          }
+          const result: unknown = await Reflect.apply(original, target, args);
+          if (held && when === "after") {
+            gate.reached = true;
+            await released;
+          }
+          return result;
+        })();
+        if (held) {
+          reached.add(call);
+          const ended = (): void => {
+            reached.delete(call);
+          };
+          call.then(ended, ended);
         }
-        const result: unknown = await Reflect.apply(original, target, args);
-        if (held && when === "after") {
-          gate.reached = true;
-          await released;
-        }
-        return result;
+        return call;
       };
       const gate = {
         owner,
@@ -1282,6 +1498,7 @@ export async function hold(
       Reflect.set(target, method, wrapper);
     },
     holdable[what],
+    what,
     ending,
     when,
   );
@@ -1407,7 +1624,9 @@ export async function waitForIndexWait(): Promise<void> {
  * Has the next call of `createImageBitmap`, as when a draft's base layer is
  * decoded to offer the draft, wait until {@link letDecodingGo}, until
  * {@link restoreDecoding}; the calls after it go on. It notes when the
- * picture that call decodes is closed, for {@link waitForDecoded}.
+ * picture that call decodes is closed, for {@link waitForDecoded}. Let go,
+ * here or by {@link undoStubs}, the call is kept in the renderer's
+ * `inklineLetGo` until it ends, so that {@link undoStubs} waits for it.
  */
 export async function holdDecoding(): Promise<void> {
   await browser.execute(() => {
@@ -1417,10 +1636,29 @@ export async function holdDecoding(): Promise<void> {
     const gate = new Promise<void>((resolve) => {
       go = resolve;
     });
+    /** The held call, once it has come. */
+    let call: Promise<unknown> | undefined;
+    let released = false;
+    const release = (): void => {
+      if (released) return;
+      released = true;
+      go();
+      if (call === undefined) return;
+      // Kept until it ends, for undoStubs() to wait for.
+      const known: unknown = Reflect.get(window, "inklineLetGo");
+      const letGo = known instanceof Set ? known : new Set<unknown>();
+      Reflect.set(window, "inklineLetGo", letGo);
+      const entry = { gate: "decoding", call };
+      letGo.add(entry);
+      const forget = (): void => {
+        letGo.delete(entry);
+      };
+      call.then(forget, forget);
+    };
     const state = { held: false, closed: false };
     Reflect.set(window, "inklineHeldDecoding", state);
-    Reflect.set(window, "inklineLetDecodingGo", go);
-    Reflect.set(window, "inklineAtEnd-decoding", go);
+    Reflect.set(window, "inklineLetDecodingGo", release);
+    Reflect.set(window, "inklineAtEnd-decoding", release);
     Reflect.set(window, "inklineCreateImageBitmap", original);
     let first = true;
     Reflect.set(
@@ -1430,19 +1668,22 @@ export async function holdDecoding(): Promise<void> {
         if (!first) return Reflect.apply(original, window, args) as unknown;
         first = false;
         state.held = true;
-        await gate;
-        const result: unknown = await Reflect.apply(original, window, args);
-        const close: unknown =
-          typeof result === "object" && result !== null
-            ? Reflect.get(result, "close")
-            : undefined;
-        if (typeof close === "function") {
-          Reflect.set(result as object, "close", () => {
-            state.closed = true;
-            Reflect.apply(close, result, []);
-          });
-        }
-        return result;
+        call = (async () => {
+          await gate;
+          const result: unknown = await Reflect.apply(original, window, args);
+          const close: unknown =
+            typeof result === "object" && result !== null
+              ? Reflect.get(result, "close")
+              : undefined;
+          if (typeof close === "function") {
+            Reflect.set(result as object, "close", () => {
+              state.closed = true;
+              Reflect.apply(close, result, []);
+            });
+          }
+          return result;
+        })();
+        return call;
       },
     );
   });

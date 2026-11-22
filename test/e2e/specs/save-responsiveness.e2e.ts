@@ -7,6 +7,7 @@ import { loadModules } from "../support/browser.ts";
 import { editFile } from "../support/editing.ts";
 import {
   draw,
+  largeOpenLimit,
   startOver,
   timedEditorSave,
   writeNoise,
@@ -130,7 +131,7 @@ describe("Saving a large symbol", function () {
       const base = await openedBase(file);
       const runs: Awaited<ReturnType<typeof timedEditorSave>>[] = [];
       for (let run = 0; run < saves; run++) {
-        await editFile(file);
+        await editFile(file, { timeout: largeOpenLimit });
         await draw(stroke(run));
         const saved = await timedEditorSave();
         const holds = await written(file);
