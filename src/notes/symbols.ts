@@ -2253,12 +2253,17 @@ function recoverDraft(host: EditorHost, orphan: Orphan): void {
   new InkEditorModal(app, {
     title: "New symbol",
     // A field left empty keeps the name of the file it writes over, which is
-    // claimed only once the draft is restored, and follows a rename.
+    // claimed only once the draft is restored, and follows a rename. The save
+    // takes that file only if `claimedFile` finds it unchanged, and makes the
+    // next number otherwise, so the field says so. Once a save has made or
+    // taken the file, the field shows the file's own name instead.
     unnamed: () => {
       if (claim === undefined) return undefined;
       const path = claim.file?.path ?? claim.path;
       const kept = symbolStem(path.slice(path.lastIndexOf("/") + 1));
-      return kept === undefined ? undefined : `to keep the name ${kept}`;
+      return kept === undefined
+        ? undefined
+        : `to keep the name ${kept} if its file is unchanged`;
     },
     document: emptyDocument,
     center: visibleWidth / 2,
