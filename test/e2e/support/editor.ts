@@ -1045,7 +1045,16 @@ const replaceable = {
     "readBinary",
     "rename",
   ],
-  adapter: ["read", "readBinary", "rename", "write", "writeBinary"],
+  adapter: [
+    "copy",
+    "exists",
+    "read",
+    "readBinary",
+    "remove",
+    "rename",
+    "write",
+    "writeBinary",
+  ],
   fileManager: ["renameFile", "trashFile"],
   subtle: ["digest"],
 } as const;
@@ -1386,7 +1395,8 @@ export async function restoreVault(): Promise<void> {
  * What a save or a rename can stop in, as on a drive that stopped answering.
  * `obsidians` marks what Obsidian itself does, which {@link undoStubs} lets
  * go rather than fails, as {@link undoStubs} says. `makes` holds only a write
- * that makes a file the vault does not have yet.
+ * that makes a file the vault does not have yet. `argument` is which of the
+ * call's arguments names the file it is held by.
  */
 const holdable = {
   /** Obsidian's own move of a file, in the real `renameFile`. */
@@ -1396,6 +1406,7 @@ const holdable = {
     ending: ".ink.png",
     obsidians: true,
     makes: false,
+    argument: 0,
   },
   /** A note's save, which comes before the move. */
   save: {
@@ -1404,6 +1415,7 @@ const holdable = {
     ending: ".md",
     obsidians: true,
     makes: false,
+    argument: 0,
   },
   /**
    * A note's read, as a rename reads each open note before the move, to see
@@ -1415,6 +1427,7 @@ const holdable = {
     ending: ".md",
     obsidians: false,
     makes: false,
+    argument: 0,
   },
   /** A symbol's save, which comes before an editor's rename. */
   write: {
@@ -1423,17 +1436,21 @@ const holdable = {
     ending: ".ink.png",
     obsidians: false,
     makes: false,
+    argument: 0,
   },
   /**
-   * A new symbol's first save, which makes its file: Inkline writes it with
-   * Obsidian's adapter, straight after its own look at the path (#413).
+   * A new symbol's first save, which makes its file: Inkline writes the bytes
+   * to a file of its own and has Obsidian's adapter copy that to the path,
+   * which makes the file only where nothing is (#413). Held by the path it
+   * copies to, its second argument.
    */
   create: {
     owner: "adapter",
-    method: "writeBinary",
+    method: "copy",
     ending: ".ink.png",
     obsidians: false,
     makes: true,
+    argument: 1,
   },
   /**
    * A symbol's read, as opening it reads it, or a look at it before a save or
@@ -1445,6 +1462,7 @@ const holdable = {
     ending: ".ink.png",
     obsidians: false,
     makes: false,
+    argument: 0,
   },
   /**
    * A link's update in a note, which comes after the move. Inkline inserts
@@ -1457,6 +1475,7 @@ const holdable = {
     ending: ".md",
     obsidians: true,
     makes: false,
+    argument: 0,
   },
   /**
    * Obsidian's index reading a note it has not indexed yet, which it reads as
@@ -1468,6 +1487,7 @@ const holdable = {
     ending: ".md",
     obsidians: true,
     makes: false,
+    argument: 0,
   },
 } as const;
 
@@ -1493,7 +1513,13 @@ export async function hold(
   when: "before" | "after" = "before",
 ): Promise<void> {
   await browser.executeObsidian(
-    ({ app }, { owner, method, obsidians, makes }, name, end, when) => {
+    (
+      { app },
+      { owner, method, obsidians, makes, argument },
+      name,
+      end,
+      when,
+    ) => {
       const target = owner === "adapter" ? app.vault.adapter : app.vault;
       const original: unknown = Reflect.get(target, method);
       if (typeof original !== "function") throw new Error(`no ${method}`);
@@ -1521,7 +1547,7 @@ export async function hold(
       // Failed with nothing held, it fails no one.
       released.catch(() => undefined);
       const wrapper = async (...args: unknown[]): Promise<unknown> => {
-        const [file] = args;
+        const file = args[argument];
         const path =
           typeof file === "object" && file !== null
             ? (Reflect.get(file, "path") as unknown)

@@ -51,16 +51,6 @@ export interface Look {
 const lineWaits = 3;
 
 /**
- * How many times a save that makes a file waits for what was asked of the
- * disk since its look, and looks again, before it gives up, having written
- * nothing. A look is one question to the disk, where a save over a file reads
- * the whole file again each time, so this waits far more often than
- * {@link lineWaits}: enough to outlast a run of writes that another plugin asks
- * for one after another, which has something asked at every look.
- */
-const makeWaits = 20;
-
-/**
  * Whether anything was asked of `line` since `asked`, what it had last been
  * asked as a save's last look at its file was, so that the save waits for it.
  */
@@ -122,9 +112,10 @@ export class RenameDisturbed extends Error {
 }
 
 /**
- * Thrown by {@link makeFile} when the disk has something at the path as it
- * looks, before anything is written: whatever is there, it is not the save's.
- * Its message says what, where the one who makes the file can tell.
+ * Thrown by {@link makeFile} when the disk has something at the path, as it
+ * looks or as the file is put there, with nothing written there: whatever is
+ * there, it is not the save's. Its message says what, where the one who makes
+ * the file can tell.
  */
 export class PathTaken extends Error {
   override name = "PathTaken";
@@ -135,31 +126,11 @@ export class PathTaken extends Error {
 }
 
 /**
- * Thrown by {@link makeFile} when Obsidian was asked for something else at
- * every one of its looks, up to {@link makeWaits} of them, so that something
- * could come between its last look and its write: it writes nothing rather
- * than take that chance, which would lose a file made at the path meanwhile.
- */
-export class DiskBusy extends Error {
-  override name = "DiskBusy";
-
-  constructor() {
-    super(
-      "Obsidian kept writing other files as the symbol was saved, so nothing was written; save again in a moment",
-    );
-  }
-}
-
-/** Whether `error` is one that {@link makeFile} throws having written nothing. */
-function wroteNothing(error: unknown): boolean {
-  return error instanceof PathTaken || error instanceof DiskBusy;
-}
-
-/**
- * Thrown by {@link saveFile} when the save's own write stopped part-way, as on
- * a full disk, as it made the file or wrote over it: `held` is what that write
- * left there, the start of what it was writing, or none of it. The message is
- * the write's own reason.
+ * Thrown when the save's own write stopped part-way, as on a full disk, and
+ * left a part of the file where it was writing: by {@link saveFile} for a write
+ * over a file, and by {@link makeFile} for a file it could not take back.
+ * `held` is what was left, the start of what was being written, or none of it.
+ * The message is the write's own reason.
  */
 export class CutShort extends Error {
   override name = "CutShort";
@@ -394,63 +365,86 @@ export async function changeFile<File>(
 }
 
 /**
- * What a write of `bytes` that failed left in `file`, read with `read`: what
- * the file holds, if that is the start of `bytes`, or all of them, as a write
- * that stops part-way leaves; undefined for anything else, and for a file that
- * cannot be read. An empty file counts, as nothing tells it apart from a write
- * that stopped before its first byte.
+ * What a write of `bytes` that failed left where it was writing, read with
+ * `read`: what is there, if that is the start of `bytes`, or all of them, as a
+ * write that stops part-way leaves; undefined for anything else, and where
+ * nothing can be read. An empty file counts, as nothing tells it apart from a
+ * write that stopped before its first byte.
  */
-export async function leftBy<File>(
-  read: (file: File) => Promise<Uint8Array>,
-  file: File,
+export async function leftBy(
+  read: () => Promise<Uint8Array>,
   bytes: Uint8Array,
 ): Promise<Uint8Array | undefined> {
-  const held = await read(file).catch(() => undefined);
+  const held = await read().catch(() => undefined);
   return held !== undefined && startsWith(bytes, held) ? held : undefined;
 }
 
 /** A file to make where nothing is, as {@link makeFile} goes about it. */
-export interface NewFile<File> {
-  /**
-   * Asks the disk whether anything is at the path, joining the disk's
-   * {@link DiskLine} as it is called, as Obsidian's adapter does.
-   */
+export interface NewFile {
+  /** What the file is to hold. */
+  readonly bytes: Uint8Array;
+  /** Asks the disk whether anything is at the path. */
   readonly exists: () => Promise<boolean>;
+  /** Writes `bytes` to a file of the save's own, where nothing else writes. */
+  readonly stage: () => Promise<void>;
   /**
-   * Writes the file, joining the disk's line as it is called, and resolves
-   * with the file made.
+   * Copies that file to the path, as one step that makes a file only where
+   * nothing is, and resolves once the file is there: rejects, with nothing put
+   * there, if anything is.
    */
-  readonly write: () => Promise<File>;
-  /** The disk's line, where it can be seen. */
-  readonly line?: DiskLine | undefined;
+  readonly place: () => Promise<void>;
+  /** Whether `place` rejected so because something was at the path. */
+  readonly taken: (error: unknown) => boolean;
+  /** Reads what the disk has at the path, listed or not. */
+  readonly read: () => Promise<Uint8Array>;
+  /** Removes what the disk has at the path. */
+  readonly clear: () => Promise<void>;
+  /** Removes the save's own file, which `stage` wrote. */
+  readonly unstage: () => Promise<void>;
 }
 
 /**
- * Makes a file where the disk has nothing, and returns it, or rejects with
- * {@link PathTaken}, having written nothing, where the disk has something.
+ * Makes a file where the disk has nothing, or rejects with {@link PathTaken},
+ * with nothing written there, where it has something.
  *
  * Obsidian's own `createBinary` asks the disk whether anything is at the path,
- * and only once it has the answer asks for the write. Whatever was asked of
- * the disk's {@link DiskLine} in between, as a new file at that path by
- * another plugin or a sync tool working through Obsidian, runs first, and the
- * write lands on it (#413). So this looks, and writes only if nothing was asked
- * of the disk since the look was: the write then joins the line straight after
- * the look, and nothing can come between them. Otherwise it waits for what was
- * asked, and looks again, and after {@link makeWaits} waits it gives up with
- * {@link DiskBusy}, having written nothing, rather than write where something
- * could come between: a save refused can be made again, and a file written over
- * is lost. Where the line cannot be seen, it writes after the look, as the vault
- * does, with the vault's own window. A file made outside Obsidian can still
- * land between the look and the write, as it can for the vault's own.
+ * and only once it has the answer asks for the write. Whatever was asked of the
+ * disk in between, as a new file at that path by another plugin or a sync tool
+ * working through Obsidian, runs first, and the write lands on it (#413). So
+ * this writes the bytes to a file of its own first, and then has them copied
+ * to the path by `place`, whose one step looks and makes the file together, so
+ * that nothing can come between them. The look before it saves writing that
+ * file when the path is taken already. Nothing waits for the disk to be quiet,
+ * so nothing else the disk is asked, however much, can hold the save up.
+ *
+ * A write of its own file that stops part-way leaves nothing at the path. A copy
+ * that stops part-way can leave the start of the bytes there, which no one else
+ * can have written, as the copy made that file: this takes it away again, and
+ * the failure stands. Only if it cannot does it reject with {@link CutShort},
+ * with that part, for the save to know it as its own. Its own file goes in
+ * every case.
  */
-export async function makeFile<File>(made: NewFile<File>): Promise<File> {
-  for (let waits = 0; ; waits++) {
-    const looking = made.exists();
-    const asked = made.line?.last();
-    if (await looking) throw new PathTaken();
-    if (!askedSince(made.line, asked)) return made.write();
-    if (waits >= makeWaits) throw new DiskBusy();
-    await made.line?.settle();
+export async function makeFile(made: NewFile): Promise<void> {
+  if (await made.exists()) throw new PathTaken();
+  try {
+    await made.stage();
+    try {
+      await made.place();
+    } catch (error) {
+      if (made.taken(error)) throw new PathTaken();
+      const left = await leftBy(made.read, made.bytes);
+      if (left !== undefined) {
+        try {
+          await made.clear();
+        } catch {
+          throw new CutShort(error, left);
+        }
+      }
+      throw error;
+    }
+  } finally {
+    // One that cannot be removed now is for the next time Inkline starts.
+    await made.unstage().catch(() => undefined);
   }
 }
 
@@ -470,15 +464,15 @@ export interface WholeFile<File> {
    */
   readonly write: (file: File) => Promise<void>;
   /**
-   * Makes the file, as there is none to save over. Rejects with
-   * {@link PathTaken} or {@link DiskBusy}, having written nothing, as
-   * {@link makeFile} does; and otherwise if it could not write the whole of it,
-   * which can leave a part of it there.
+   * Makes the file, as there is none to save over, as {@link makeFile} does:
+   * rejects with {@link PathTaken}, with nothing written there, where something
+   * is at the path, with {@link CutShort} for a part of its own it left there,
+   * and otherwise with nothing of its own left there.
    */
   readonly create: () => Promise<File>;
-  /** What `write` and `create` put in the file. */
+  /** What `write` puts in the file. */
   readonly bytes: Uint8Array;
-  /** Reads a file found at the path once `create` or `write` has failed. */
+  /** Reads the file the check passed once `write` has failed. */
   readonly read: (file: File) => Promise<Uint8Array>;
   /** The disk's line, where it can be seen. */
   readonly line?: DiskLine | undefined;
@@ -494,19 +488,21 @@ export interface WholeFile<File> {
  * before the write, so the save waits for it, and looks again.
  *
  * A file can also come to the path after the save found none and before
- * `create` looks, as the new file of a replacement does once the old one's
+ * `create` makes it, as the new file of a replacement does once the old one's
  * deletion has run: `create` then refuses to make it. A file found at the path
- * after that is looked at in its turn, as one found there before would be.
- * With no file there, the failure stands, as `create` says it. So it does with
- * a file that holds the start of `bytes`, or all of them, as {@link leftBy}
- * says, after a failure in which `create` wrote: the save's own write, which the
- * vault leaves where it stopped, as on a full disk, and whose reason is the one
- * to give, as {@link CutShort} with what it left. A file found after `create`
- * wrote nothing, as {@link PathTaken} or {@link DiskBusy} says, is never the
- * save's own, whatever it holds. A `write` over the file the check passed that
- * fails, with that file still at its path, is the save's own as well, if it left
- * what {@link leftBy} says (#425): one that failed before it opened the file
- * leaves what the check passed, and its failure stands.
+ * after that is looked at in its turn, as one found there before would be, and
+ * is never the save's own, whatever it holds: `create` has said what it left of
+ * its own. With no file there, the failure stands, as `create` says it.
+ *
+ * A `write` over the file the check passed that fails, with that file still at
+ * its path, leaves what it wrote before it stopped, as on a full disk: a file
+ * holding the start of `bytes`, or all of them, as {@link leftBy} says, is the
+ * save's own (#425), and the failure is {@link CutShort} with what it holds.
+ * One that failed before it opened the file leaves what the check passed, a
+ * whole PNG, which nothing follows: the start of no other bytes Inkline writes,
+ * and so its failure stands, unless the file holds all of `bytes`, as when
+ * nothing changed since the last save. That is {@link CutShort} with all of
+ * them, which the editor says the file holds whole.
  */
 export async function saveFile<File>(save: WholeFile<File>): Promise<File> {
   let waits = 0;
@@ -522,14 +518,7 @@ export async function saveFile<File>(save: WholeFile<File>): Promise<File> {
       try {
         return await save.create();
       } catch (error) {
-        const there = save.current();
-        if (there === null) throw error;
-        if (!wroteNothing(error)) {
-          // One that cannot be read, as gone again, is for the next round's
-          // look.
-          const left = await leftBy(save.read, there, save.bytes);
-          if (left !== undefined) throw new CutShort(error, left);
-        }
+        if (error instanceof CutShort || save.current() === null) throw error;
         attempt++;
         continue;
       }
@@ -545,7 +534,7 @@ export async function saveFile<File>(save: WholeFile<File>): Promise<File> {
       // A file no longer at its path, as one replaced as it was written, is not
       // the one this wrote, whatever it holds.
       if (save.current() !== file) throw error;
-      const left = await leftBy(save.read, file, save.bytes);
+      const left = await leftBy(() => save.read(file), save.bytes);
       if (left !== undefined) throw new CutShort(error, left);
       throw error;
     }

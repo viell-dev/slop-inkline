@@ -10,6 +10,7 @@
 // the line keeps its own order. Every symbol is synthetic.
 
 import { browser, expect } from "@wdio/globals";
+import { obsidianPage } from "wdio-obsidian-service";
 import { loadModules } from "../support/browser.ts";
 import {
   editFile,
@@ -245,10 +246,141 @@ async function sizeOnDisk(path: string): Promise<number | null> {
   );
 }
 
+/** Inkline's own folder in the test vault, where Obsidian loads it from. */
+const inklineFolder = ".obsidian/plugins/inkline";
+
 /**
- * Has the next write of `path` by Obsidian's file system stop after its first
- * `cut` bytes and fail as on a full disk, leaving those bytes in the file.
- * Taken off by its first such write, or by `undoStubs()`.
+ * What begins the name of the file a save that makes a symbol's file writes
+ * in {@link inklineFolder} first, which the vault does not list.
+ */
+const staging = ".making-";
+
+/** The files in Inkline's own folder that a save writes before it makes one. */
+async function stagedFiles(): Promise<string[]> {
+  return browser.executeObsidian(
+    async ({ app }, folder, prefix) =>
+      (await app.vault.adapter.list(folder)).files.filter((file) =>
+        file.slice(file.lastIndexOf("/") + 1).startsWith(prefix),
+      ),
+    inklineFolder,
+    staging,
+  );
+}
+
+/**
+ * Has the next copy to `path` by Obsidian's file system stop after its first
+ * `cut` bytes and fail as on a full disk, leaving those bytes at `path`, as a
+ * system whose copy does not take away what it left would. With `stays`, the
+ * next removal of `path` fails too, as of a file another program has open.
+ * Taken off by their first such calls, or by `undoStubs()`.
+ */
+async function cutCopyAt(
+  path: string,
+  cut: number,
+  { stays = false }: { stays?: boolean } = {},
+): Promise<void> {
+  await browser.executeObsidian(
+    ({ app }, wanted, at, held) => {
+      const promises: unknown = Reflect.get(app.vault.adapter, "fsPromises");
+      if (typeof promises !== "object" || promises === null) {
+        throw new Error("no file system to fill");
+      }
+      const copy: unknown = Reflect.get(promises, "copyFile");
+      const write: unknown = Reflect.get(promises, "writeFile");
+      const readFile: unknown = Reflect.get(promises, "readFile");
+      const unlink: unknown = Reflect.get(promises, "unlink");
+      if (
+        typeof copy !== "function" ||
+        typeof write !== "function" ||
+        typeof readFile !== "function" ||
+        typeof unlink !== "function"
+      ) {
+        throw new Error("no file system to stub");
+      }
+      const restoreCopy = (): void => {
+        Reflect.set(promises, "copyFile", copy);
+      };
+      const restoreUnlink = (): void => {
+        Reflect.set(promises, "unlink", unlink);
+      };
+      Reflect.set(window, "inklineAtEnd-cut-copy", () => {
+        restoreCopy();
+        restoreUnlink();
+        Reflect.deleteProperty(window, "inklineAtEnd-cut-copy");
+      });
+      Reflect.set(
+        promises,
+        "copyFile",
+        async (from: unknown, to: unknown, ...rest: unknown[]) => {
+          if (typeof to !== "string" || !to.endsWith(wanted)) {
+            const copied: unknown = await Reflect.apply(copy, promises, [
+              from,
+              to,
+              ...rest,
+            ]);
+            return copied;
+          }
+          restoreCopy();
+          const bytes: unknown = await Reflect.apply(readFile, promises, [
+            from,
+          ]);
+          if (!ArrayBuffer.isView(bytes)) throw new Error("no bytes to copy");
+          const part = new Uint8Array(
+            bytes.buffer,
+            bytes.byteOffset,
+            Math.min(at, bytes.byteLength),
+          );
+          // Made only where nothing is, as the copy itself makes it.
+          await Reflect.apply(write, promises, [to, part, { flag: "wx" }]);
+          throw Object.assign(
+            new Error("ENOSPC: no space left on device, copyfile"),
+            { code: "ENOSPC" },
+          );
+        },
+      );
+      if (!held) return;
+      Reflect.set(
+        promises,
+        "unlink",
+        async (file: unknown, ...rest: unknown[]) => {
+          if (typeof file !== "string" || !file.endsWith(wanted)) {
+            const removed: unknown = await Reflect.apply(unlink, promises, [
+              file,
+              ...rest,
+            ]);
+            return removed;
+          }
+          restoreUnlink();
+          throw Object.assign(
+            new Error("EBUSY: resource busy or locked, unlink"),
+            { code: "EBUSY" },
+          );
+        },
+      );
+    },
+    path,
+    cut,
+    stays,
+  );
+}
+
+/** Waits for Obsidian to list a file at `path`, as its watch of the disk does. */
+async function waitForListed(path: string): Promise<void> {
+  await browser.waitUntil(
+    async () =>
+      browser.executeObsidian(
+        ({ app }, wanted) => app.vault.getFileByPath(wanted) !== null,
+        path,
+      ),
+    { timeoutMsg: `Obsidian did not list ${path}` },
+  );
+}
+
+/**
+ * Has the next write by Obsidian's file system of a file whose path holds
+ * `path` stop after its first `cut` bytes and fail as on a full disk, leaving
+ * those bytes in the file. Taken off by its first such write, or by
+ * `undoStubs()`.
  */
 async function fillDiskAt(path: string, cut = 64): Promise<void> {
   await browser.executeObsidian(
@@ -274,7 +406,7 @@ async function fillDiskAt(path: string, cut = 64): Promise<void> {
         ): Promise<unknown> => {
           if (
             typeof full !== "string" ||
-            !full.endsWith(wanted) ||
+            !full.includes(wanted) ||
             !ArrayBuffer.isView(data)
           ) {
             const written: unknown = Reflect.apply(write, promises, [
@@ -538,52 +670,92 @@ describe("A symbol replaced at its path as it is saved", function () {
     expect(await strokeCount("Signs/gate.ink.png")).toBe(2);
   });
 
-  it("says why it could not make a deleted symbol again, when its write stops part-way, and writes it whole the next time", async function () {
-    // The vault has the part that was written before the create fails: the
-    // save's own, which it is not to ask about as a file that came meanwhile.
-    await createSymbol("gate.ink.png");
-    await editFile("gate.ink.png");
+  /** Draws a stroke in the editor, for a save to have something to write. */
+  async function drawStroke(): Promise<void> {
     await draw([
       [0.5, 0.3],
       [0.7, 0.6],
     ]);
+  }
+
+  /** Opens gate.ink.png's editor, draws a stroke, and deletes its file. */
+  async function deletedAsEdited(): Promise<void> {
+    await createSymbol("gate.ink.png");
+    await editFile("gate.ink.png");
+    await drawStroke();
     await browser.executeObsidian(async ({ app }) => {
       await app.vault.adapter.remove("gate.ink.png");
     });
     await waitForStatus("The file was deleted; saving makes it again");
-    await fillDiskAt("gate.ink.png");
+  }
+
+  it("makes a new symbol's file with one create in the vault, and leaves nothing of its own", async function () {
+    // Its own file, in Inkline's folder, is one the vault does not list.
+    await insert();
+    await drawStroke();
+    await browser.executeObsidian(({ app }) => {
+      const made: string[] = [];
+      Reflect.set(window, "inklineCreated", made);
+      const ref = app.vault.on("create", (file) => {
+        made.push(file.path);
+      });
+      Reflect.set(window, "inklineAtEnd-created", () => {
+        app.vault.offref(ref);
+        Reflect.deleteProperty(window, "inklineAtEnd-created");
+      });
+    });
     await browser.keys(["Control", "s"]);
-    // The save's own reason, and what the part left is (#425).
+    await waitForStatus("Saved");
+    expect(
+      await browser.execute((): unknown =>
+        Reflect.get(window, "inklineCreated"),
+      ),
+    ).toEqual(["001.ink.png"]);
+    expect(await stagedFiles()).toEqual([]);
+  });
+
+  it("makes a deleted symbol whole on the next save, when writing it stops part-way, and leaves nothing at its path", async function () {
+    // #425: the bytes go to Inkline's own file first, so a write that stops
+    // there leaves nothing for the editor to refuse.
+    await deletedAsEdited();
+    await fillDiskAt(staging);
+    await browser.keys(["Control", "s"]);
     await waitForNotice(
-      "Could not save the symbol: ENOSPC: no space left on device, write; gate.ink.png holds what was written before it stopped, which saving again writes whole",
+      "Could not save the symbol: ENOSPC: no space left on device, write",
     );
-    expect(await symbolFiles()).toEqual(["gate.ink.png"]);
-    expect(await browser.$(".inkline-editor").isExisting()).toBe(true);
-    // The editor knows the part left as its own: the next save, with room on
-    // the disk again, writes over it, where it used to refuse every save.
+    await waitForStatus("Not saved: ENOSPC: no space left on device, write");
+    expect(await browser.$(".inkline-status").getText()).not.toContain("holds");
+    expect(await sizeOnDisk("gate.ink.png")).toBeNull();
+    expect(await stagedFiles()).toEqual([]);
     await browser.keys(["Control", "s"]);
     await waitForStatus("Saved");
     expect(await strokeCount("gate.ink.png")).toBe(2);
   });
 
-  it("writes a deleted symbol whole once its writes have stopped part-way twice", async function () {
-    // The second write goes over the part the first left, as a save of any
-    // file does, and leaves less of other bytes, with a stroke drawn between.
-    await createSymbol("gate.ink.png");
-    await editFile("gate.ink.png");
-    await draw([
-      [0.5, 0.3],
-      [0.7, 0.6],
-    ]);
-    await browser.executeObsidian(async ({ app }) => {
-      await app.vault.adapter.remove("gate.ink.png");
-    });
-    await waitForStatus("The file was deleted; saving makes it again");
-    await fillDiskAt("gate.ink.png");
+  it("takes away what a copy that stops part-way left at a deleted symbol's path, and makes it whole the next time", async function () {
+    await deletedAsEdited();
+    await cutCopyAt("gate.ink.png", 64);
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Not saved: ENOSPC: no space left on device, copyfile");
+    expect(await sizeOnDisk("gate.ink.png")).toBeNull();
+    expect(await stagedFiles()).toEqual([]);
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    expect(await strokeCount("gate.ink.png")).toBe(2);
+  });
+
+  it("writes a deleted symbol whole once a part it could not take away, and a write over that, have stopped part-way", async function () {
+    // The part the copy left is the save's own, as nothing else can have
+    // made that file; the next write goes over it, as a save of any file
+    // does, and leaves less of other bytes, with a stroke drawn between.
+    await deletedAsEdited();
+    await cutCopyAt("gate.ink.png", 64, { stays: true });
     await browser.keys(["Control", "s"]);
     await waitForNotice(
-      "gate.ink.png holds what was written before it stopped, which saving again writes whole",
+      "Could not save the symbol: ENOSPC: no space left on device, copyfile; gate.ink.png holds what was written before it stopped, which saving again writes whole",
     );
+    expect(await sizeOnDisk("gate.ink.png")).toBe(64);
+    await waitForListed("gate.ink.png");
     await draw([
       [0.3, 0.6],
       [0.6, 0.4],
@@ -606,10 +778,7 @@ describe("A symbol replaced at its path as it is saved", function () {
     // #425's title: an ordinary save of a symbol whose file is there.
     await createSymbol("gate.ink.png");
     await editFile("gate.ink.png");
-    await draw([
-      [0.5, 0.3],
-      [0.7, 0.6],
-    ]);
+    await drawStroke();
     await fillDiskAt("gate.ink.png");
     await browser.keys(["Control", "s"]);
     await waitForNotice(
@@ -621,39 +790,36 @@ describe("A symbol replaced at its path as it is saved", function () {
     expect(await strokeCount("gate.ink.png")).toBe(2);
   });
 
-  it("writes a new symbol whole on the next save, when its first write stops part-way", async function () {
-    // #425, at a new symbol's first save: the part left is the save's own.
+  it("writes a new symbol whole as 001 on the next save, when writing it first stops part-way", async function () {
     await insert();
-    await draw([
-      [0.5, 0.3],
-      [0.7, 0.6],
-    ]);
-    await fillDiskAt("001.ink.png");
+    await drawStroke();
+    await fillDiskAt(staging);
     await browser.keys(["Control", "s"]);
-    await waitForNotice(
-      "Could not save the symbol: ENOSPC: no space left on device, write; 001.ink.png holds what was written before it stopped, which saving again writes whole",
-    );
+    await waitForStatus("Not saved: ENOSPC: no space left on device, write");
+    expect(await sizeOnDisk("001.ink.png")).toBeNull();
     await browser.keys(["Control", "s"]);
     await waitForStatus("Saved");
-    // That file, not another number, and inserted in the note.
+    // That number, not the next, and inserted in the note.
     expect(await symbolFiles()).toEqual(["001.ink.png"]);
     expect(await strokeCount("001.ink.png")).toBe(1);
     expect(await noteText()).toContain("![[001.ink.png]]");
   });
 
-  it("writes a new symbol whole once its first two writes have stopped part-way", async function () {
-    // The second save takes the part the first left as the file it made, and
-    // writes over it, which stops part-way too.
+  /**
+   * A new symbol's first save, whose copy stops part-way and leaves a part it
+   * cannot take away, then a second save, after `between`, that takes that
+   * part as the file it made and writes over it, which stops part-way too.
+   */
+  async function newCutTwice(between: () => Promise<void>): Promise<void> {
     await insert();
-    await draw([
-      [0.5, 0.3],
-      [0.7, 0.6],
-    ]);
-    await fillDiskAt("001.ink.png");
+    await drawStroke();
+    await cutCopyAt("001.ink.png", 64, { stays: true });
     await browser.keys(["Control", "s"]);
     await waitForNotice(
       "001.ink.png holds what was written before it stopped, which saving again writes whole",
     );
+    await waitForListed("001.ink.png");
+    await between();
     await fillDiskAt("001.ink.png", 32);
     await browser.keys(["Control", "s"]);
     await browser.waitUntil(
@@ -662,11 +828,184 @@ describe("A symbol replaced at its path as it is saved", function () {
     await waitForStatus(
       "ENOSPC: no space left on device, write; 001.ink.png holds what was written before it stopped",
     );
+  }
+
+  it("writes a new symbol whole once a part it could not take away, and a write over that, have stopped part-way", async function () {
+    await newCutTwice(() => Promise.resolve());
     await browser.keys(["Control", "s"]);
     await waitForStatus("Saved");
     expect(await symbolFiles()).toEqual(["001.ink.png"]);
     expect(await strokeCount("001.ink.png")).toBe(1);
     expect(await noteText()).toContain("![[001.ink.png]]");
+  });
+
+  it("restores a new symbol's draft once its writes stopped part-way twice, and saves it whole in the same file", async function () {
+    // The review of #434: the draft kept after the second write must name
+    // what that write left, or the restored draft leaves 001.ink.png as a
+    // part for good and makes 002.ink.png.
+    await newCutTwice(async () => {
+      await draw([
+        [0.3, 0.6],
+        [0.6, 0.4],
+      ]);
+    });
+    // Closed by disabling Inkline, which keeps the draft.
+    await obsidianPage.disablePlugin("inkline");
+    await obsidianPage.enablePlugin("inkline");
+    await loadModules();
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await clickTop("Restore");
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    expect(await symbolFiles()).toEqual(["001.ink.png"]);
+    expect(await strokeCount("001.ink.png")).toBe(2);
+    expect((await noteText()).split("![[001.ink.png]]")).toHaveLength(2);
+  });
+
+  /**
+   * Has the save's look at `path` set off `start`, a run of requests to
+   * Obsidian's disk in the page, and has the page note how many of them,
+   * counted in the window's `inklineRun`, had run as the vault heard of the
+   * file made at `path`, in `inklineRunAtSave`.
+   */
+  async function runAtLook(
+    path: string,
+    start: "index" | "reads",
+  ): Promise<void> {
+    await browser.executeObsidian(
+      ({ app }, wanted, run) => {
+        const { adapter } = app.vault;
+        Reflect.set(window, "inklineRun", 0);
+        Reflect.deleteProperty(window, "inklineRunAtSave");
+        const count = (): void => {
+          const done: unknown = Reflect.get(window, "inklineRun");
+          Reflect.set(window, "inklineRun", Number(done) + 1);
+        };
+        const ref = app.vault.on("create", (file) => {
+          if (file.path !== wanted) return;
+          Reflect.set(
+            window,
+            "inklineRunAtSave",
+            Reflect.get(window, "inklineRun"),
+          );
+          app.vault.offref(ref);
+        });
+        // Inkline's index reads each symbol with the vault's readBinary.
+        const read = app.vault.readBinary.bind(app.vault);
+        app.vault.readBinary = (file) => {
+          if (file.path.startsWith("Many/")) count();
+          return read(file);
+        };
+        const exists = adapter.exists.bind(adapter);
+        adapter.exists = (asked, sensitive) => {
+          if (asked !== wanted) return exists(asked, sensitive);
+          Reflect.deleteProperty(adapter, "exists");
+          if (run === "index") {
+            // As a sync tool reports a change to each of them.
+            for (const file of app.vault.getFiles()) {
+              if (file.path.startsWith("Many/")) {
+                app.vault.trigger("modify", file);
+              }
+            }
+          } else {
+            // One after another, as another plugin can ask them.
+            void (async () => {
+              for (let n = 0; n < 300; n++) {
+                await adapter.read("Editor.md");
+                count();
+              }
+            })();
+          }
+          return exists(asked, sensitive);
+        };
+      },
+      path,
+      start,
+    );
+  }
+
+  /** How many of {@link runAtLook}'s requests had run, and as the save ended. */
+  async function runCounts(): Promise<{ done: number; atSave: number }> {
+    return browser.execute(() => ({
+      done: Number(Reflect.get(window, "inklineRun")),
+      atSave: Number(Reflect.get(window, "inklineRunAtSave")),
+    }));
+  }
+
+  it("saves a new symbol at once while Inkline's own index reads 300 symbols", async function () {
+    // The review of #434: a save that waited for the disk to be quiet was
+    // refused while the index read symbol after symbol, as it does after
+    // Obsidian starts or a sync brings symbols in.
+    await browser.executeObsidian(async ({ app }) => {
+      const { canvas } = window.inklineTest;
+      const { bytes } = await canvas.saveInk(
+        {
+          strokes: [
+            {
+              tool: "pen" as const,
+              size: 256,
+              points: [2000, 800, 6000, 2000],
+            },
+          ],
+        },
+        undefined,
+        [],
+      );
+      await app.vault.createFolder("Many");
+      for (let n = 1; n <= 300; n++) {
+        await app.vault.adapter.writeBinary(
+          `Many/s${String(n)}.ink.png`,
+          bytes.slice().buffer,
+        );
+      }
+    });
+    await insert();
+    await drawStroke();
+    await runAtLook("001.ink.png", "index");
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    expect(await strokeCount("001.ink.png")).toBe(1);
+    // It did not wait for the index, which went on to read all 300.
+    await browser.waitUntil(async () => (await runCounts()).done >= 300, {
+      timeoutMsg: "the index did not read the 300 symbols",
+    });
+    expect((await runCounts()).atSave).toBeLessThan(300);
+  });
+
+  it("saves a new symbol at once beside 300 reads asked one after another", async function () {
+    await insert();
+    await drawStroke();
+    await runAtLook("001.ink.png", "reads");
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    expect(await strokeCount("001.ink.png")).toBe(1);
+    await browser.waitUntil(async () => (await runCounts()).done >= 300);
+    expect((await runCounts()).atSave).toBeLessThan(300);
+  });
+
+  it("removes what a save that made a symbol's file left in Inkline's folder, as Inkline starts", async function () {
+    // As when Obsidian closed between the save's two writes.
+    await browser.executeObsidian(
+      async ({ app }, folder, prefix) => {
+        const bytes = new Uint8Array([1, 2, 3]).buffer;
+        await app.vault.adapter.writeBinary(`${folder}/${prefix}left`, bytes);
+        await app.vault.adapter.writeBinary(`${folder}/.kept-by-test`, bytes);
+      },
+      inklineFolder,
+      staging,
+    );
+    await obsidianPage.disablePlugin("inkline");
+    await obsidianPage.enablePlugin("inkline");
+    await loadModules();
+    await browser.waitUntil(async () => (await stagedFiles()).length === 0, {
+      timeoutMsg: "Inkline left its own file",
+    });
+    const kept = await browser.executeObsidian(async ({ app }, folder) => {
+      const there = await app.vault.adapter.exists(`${folder}/.kept-by-test`);
+      await app.vault.adapter.remove(`${folder}/.kept-by-test`);
+      return there;
+    }, inklineFolder);
+    expect(kept).toBe(true);
   });
 
   // #388: a new symbol's first save, at a path it found free.

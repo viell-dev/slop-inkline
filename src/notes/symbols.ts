@@ -72,8 +72,6 @@ import {
   changedText,
   changeFile,
   CutShort,
-  DiskBusy,
-  leftBy,
   makeFile,
   PathTaken,
   RenameDisturbed,
@@ -217,6 +215,12 @@ export interface EditorHost {
   readonly texts: SymbolTexts;
   /** Aborts as the plugin unloads; nothing is written once it has. */
   readonly unloaded: AbortSignal;
+  /**
+   * Inkline's own folder, where a save that makes a symbol's file writes it
+   * first, under a name the vault does not list, as {@link makeSymbolFile}
+   * says.
+   */
+  readonly folder: string;
 }
 
 /** An `ArrayBuffer` holding exactly these bytes, as the vault takes. */
@@ -291,55 +295,112 @@ async function takenReason(app: App, path: string): Promise<string> {
     const kind = there instanceof TFolder ? "folder" : "file";
     return `${where} already has a ${kind} named ${name}`;
   }
+  const { adapter } = app.vault;
+  const unlisted = `a file came to ${path} that Obsidian has not listed yet, and was left as it is; save again in a moment`;
   // Asked to tell letter case apart, as Windows and macOS do not unless asked.
-  const named = await app.vault.adapter.exists(path, true).catch(() => true);
-  const listed = named
-    ? undefined
-    : namesIn(app, folder).find(
-        (other) => other.toLowerCase() === name.toLowerCase(),
-      );
-  if (listed !== undefined) {
-    return `${where} has ${listed}, whose name differs from ${name} only in letter case, which this computer reads as the same name; rename or move ${listed} to save the symbol there`;
+  if (await adapter.exists(path, true).catch(() => true)) return unlisted;
+  // Gone again, as a file that came and went as the save made its own.
+  if (!(await adapter.exists(path).catch(() => true))) {
+    return `a file came to ${path} as the symbol was saved, and has gone again; save again`;
   }
-  return `a file came to ${path} that Obsidian has not listed yet, and was left as it is; save again in a moment`;
+  const listed = namesIn(app, folder).find(
+    (other) => other.toLowerCase() === name.toLowerCase(),
+  );
+  return listed === undefined
+    ? unlisted
+    : `${where} has ${listed}, whose name differs from ${name} only in letter case, which this computer reads as the same name; rename or move ${listed} to save the symbol there`;
 }
 
 /**
- * What a save says when its own write stopped part-way as it made `name`,
- * after the write's own `reason`.
+ * What a save says when its own write stopped part-way and left `held` in
+ * `name`, after the write's own `reason`. A write that failed before it opened
+ * the file, as one refused by a file another program has open, can leave all
+ * of `bytes` there, as when nothing changed since the last save.
  */
-function cutShortReason(reason: string, name: string): string {
-  return `${reason}; ${name} holds what was written before it stopped, which saving again writes whole`;
+function cutShortReason(
+  reason: string,
+  name: string,
+  held: Uint8Array,
+  bytes: Uint8Array,
+): string {
+  return held.length === bytes.length
+    ? `${reason}; ${name} holds the whole symbol all the same`
+    : `${reason}; ${name} holds what was written before it stopped, which saving again writes whole`;
+}
+
+/**
+ * What begins the name of a file that {@link makeSymbolFile} writes in
+ * Inkline's own folder before it makes a symbol's file. The dot keeps the
+ * vault from listing it, so that nothing hears of it but the disk.
+ */
+const stagedPrefix = ".making-";
+
+/** Those files of saves still under way, which {@link sweepStaged} leaves. */
+const staged = new Set<string>();
+
+/**
+ * Removes the files in Inkline's own `folder` that a save making a symbol's
+ * file wrote there and could not remove, as when Obsidian closed in between,
+ * other than those of saves still under way. Run as Inkline starts.
+ */
+export async function sweepStaged(app: App, folder: string): Promise<void> {
+  const { adapter } = app.vault;
+  const listed = await adapter.list(folder).catch(() => undefined);
+  for (const file of listed?.files ?? []) {
+    const name = file.slice(file.lastIndexOf("/") + 1);
+    if (name.startsWith(stagedPrefix) && !staged.has(file)) {
+      await adapter.remove(file).catch(() => undefined);
+    }
+  }
+}
+
+/** The `code` a Node.js error gives, as Obsidian's adapter passes it on. */
+function errorCode(error: unknown): unknown {
+  return typeof error === "object" && error !== null
+    ? Reflect.get(error, "code")
+    : undefined;
 }
 
 /**
  * Makes a symbol's file at `path`, through Obsidian's adapter, as
- * {@link makeFile} does: where Obsidian's line of disk operations can be seen,
- * nothing asked of the disk can come between its look at the path and its
- * write. Rejects with {@link PathTaken}, having written nothing, where the disk
- * has something at the path, and with {@link DiskBusy} where Obsidian was kept
- * busy at every look.
+ * {@link makeFile} does, and returns it. It writes the bytes to a file of its
+ * own in Inkline's `folder` first, and then has the adapter copy that to the
+ * path: the adapter's `copy` makes the file only where nothing is, which the
+ * computer's own copy checks as it makes it, in one of the adapter's steps, and
+ * then has the vault list it, as `writeBinary` does, before it resolves. So
+ * nothing else asked of Obsidian, nor a program writing to the disk outside it,
+ * can come between a look at the path and the write, and nothing waits for the
+ * disk to be quiet. Rejects with {@link PathTaken}, with nothing written there,
+ * where the disk has something at the path.
  */
-function makeSymbolFile(
+async function makeSymbolFile(
   app: App,
+  folder: string,
   path: string,
   buffer: ArrayBuffer,
 ): Promise<TFile> {
   const { adapter } = app.vault;
-  return makeFile({
-    exists: () => adapter.exists(path),
-    write: async () => {
-      // The adapter adds the file to the vault before its write resolves, as
-      // the vault's own createBinary finds it.
-      await adapter.writeBinary(path, buffer);
-      const made = app.vault.getFileByPath(path);
-      if (made === null) {
-        throw new Error(`${path} was written, but Obsidian has not listed it`);
-      }
-      return made;
-    },
-    line: diskLine(app),
-  });
+  const own = `${folder}/${stagedPrefix}${crypto.randomUUID()}`;
+  staged.add(own);
+  try {
+    await makeFile({
+      bytes: new Uint8Array(buffer),
+      exists: () => adapter.exists(path),
+      stage: () => adapter.writeBinary(own, buffer),
+      place: () => adapter.copy(own, path),
+      taken: (error) => errorCode(error) === "EEXIST",
+      read: async () => new Uint8Array(await adapter.readBinary(path)),
+      clear: () => adapter.remove(path),
+      unstage: () => adapter.remove(own),
+    });
+  } finally {
+    staged.delete(own);
+  }
+  const made = app.vault.getFileByPath(path);
+  if (made === null) {
+    throw new Error(`${path} was written, but Obsidian has not listed it`);
+  }
+  return made;
 }
 
 /**
@@ -1364,12 +1425,13 @@ async function rename(
  * write's turn, so that no other save of Inkline's can come between it and the
  * write, and rejects to write nothing. `waiting` hears if that takes too long.
  *
- * A write of its own that stops part-way, as on a full disk, as it makes the
- * file again or writes over it, leaves the start of these bytes there, which no
- * version of Inkline can read. `took` hears its fingerprint, so that the editor
- * knows that file as its own (#425): the next save then writes over it, which
- * loses nothing, as it holds only the start of what that save writes, where the
- * editor would otherwise refuse every save until the file was deleted.
+ * A write of its own over the file that stops part-way, as on a full disk,
+ * leaves the start of these bytes there, which no version of Inkline can read,
+ * and so can one that makes the file again, if what it left cannot be taken
+ * away. `took` hears its fingerprint, so that the editor knows that file as its
+ * own (#425): the next save then writes over it, which loses nothing, as it
+ * holds only the start of what that save writes, where the editor would
+ * otherwise refuse every save until the file was deleted.
  */
 async function writeSymbol(
   host: EditorHost,
@@ -1419,7 +1481,7 @@ async function writeSymbol(
             }
           }
           try {
-            return await makeSymbolFile(app, file.path, buffer);
+            return await makeSymbolFile(app, host.folder, file.path, buffer);
           } catch (error) {
             // A file the vault lists at the path is looked at in the save's
             // next round; anything else is said in Inkline's words.
@@ -1438,7 +1500,9 @@ async function writeSymbol(
     } catch (error) {
       if (!(error instanceof CutShort)) throw error;
       took(await fingerprintOf(error.held));
-      throw new Error(cutShortReason(error.message, file.name));
+      throw new Error(
+        cutShortReason(error.message, file.name, error.held, bytes),
+      );
     }
     await host.texts.refresh(written);
     return written;
@@ -1454,15 +1518,16 @@ async function writeSymbol(
  * moment between finding it free and making the file, as by another plugin or
  * a sync tool working through Obsidian, is left as it is (#388): a name typed
  * for the symbol is refused, as it would have been had the file come first,
- * and a numbered symbol takes the next free number, up to three times. A disk
- * kept busy at every look gets {@link DiskBusy}, with nothing written. Once
+ * and a numbered symbol takes the next free number, up to three times. Once
  * Inkline is disabled, nothing more is made.
  *
- * Its own write that stops part-way, as on a full disk, leaves the start of
- * `buffer` at the path. `claimed` hears that path again with a fingerprint of
- * what was left, which the claim keeps as what the file may hold, so that the
- * next save takes that file as its own and writes it whole (#425), rather than
- * leave it for good and take another name, or refuse the name typed.
+ * Its own write that stops part-way, as on a full disk, leaves nothing at the
+ * path, unless what it left there could not be taken away, as
+ * {@link makeSymbolFile} says. `claimed` then hears that path again with a
+ * fingerprint of what was left, which the claim keeps as what the file may
+ * hold, so that the next save takes that file as its own and writes it whole
+ * (#425), rather than leave it for good and take another name, or refuse the
+ * name typed.
  */
 async function makeNewSymbol(
   host: EditorHost,
@@ -1478,25 +1543,19 @@ async function makeNewSymbol(
     stillAlive(host.unloaded);
     claimed(path);
     try {
-      return await watchSave(makeSymbolFile(app, path, buffer), told);
+      return await watchSave(
+        makeSymbolFile(app, host.folder, path, buffer),
+        told,
+      );
     } catch (error) {
-      // Nothing written, and anything at the path is someone else's.
-      if (error instanceof DiskBusy) throw error;
-      if (!(error instanceof PathTaken)) {
-        const there = app.vault.getFileByPath(path);
-        const left =
-          there === null
-            ? undefined
-            : await leftBy(
-                async (found) =>
-                  new Uint8Array(await app.vault.readBinary(found)),
-                there,
-                new Uint8Array(buffer),
-              );
-        if (there === null || left === undefined) throw error;
-        claimed(path, await fingerprintOf(left));
-        throw new Error(cutShortReason(message(error), there.name));
+      if (error instanceof CutShort) {
+        claimed(path, await fingerprintOf(error.held));
+        const at = path.slice(path.lastIndexOf("/") + 1);
+        throw new Error(
+          cutShortReason(error.message, at, error.held, new Uint8Array(buffer)),
+        );
       }
+      if (!(error instanceof PathTaken)) throw error;
       if (name.kind === "name") claimName(app, parentPath(path), name.name);
       if (name.kind === "name" || tries >= attemptsToMake) {
         throw new PathTaken(await takenReason(app, path));

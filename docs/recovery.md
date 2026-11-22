@@ -134,14 +134,16 @@ elsewhere, by sync, another app, or another editor, is not lost to a save:
   file as it is.
 - **A file that changed on disk to something this version cannot read** is never
   saved over: the editor says so, and keeps your drawing open.
-- **Unreleased:** when a save's own write stops part-way, as on a full disk, the
-  file holds only the start of the symbol, which no version of Inkline can read.
-  The editor says so, with the reason, and takes that part as its own: once
-  there is room, saving again writes the whole symbol over it, which loses
-  nothing, as it held only the start of what that save writes. So it does
-  however many times in a row the write stops, for a symbol whose file is there,
-  one made again after its file was deleted, and a new symbol's first save. In
-  1.0.2, every later save refused that file until you deleted it.
+- **Unreleased:** when a save's own write stops part-way, as on a full disk, a
+  save that makes the symbol's file, the first of a new symbol or one made again
+  after its file was deleted, leaves nothing at its path, and saving again once
+  there is room makes it whole. A save of a symbol whose file is there leaves
+  only the start of the symbol, which no version of Inkline can read. The editor
+  says so, with the reason, and takes that part as its own: once there is room,
+  saving again writes the whole symbol over it, which loses nothing, as it held
+  only the start of what that save writes. So it does however many times in a
+  row the write stops. In 1.0.2, every later save refused that file until you
+  deleted it.
 - **A file that is not a valid PNG**, as one cut short by a failed copy, does
   not open, and a notice says why.
 - A symbol whose image is damaged, but whose strokes are whole, opens as usual,

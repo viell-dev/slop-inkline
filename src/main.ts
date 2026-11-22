@@ -27,6 +27,7 @@ import {
   insertExistingSymbol,
   insertSymbol,
   recoverDrafts,
+  sweepStaged,
   type EditorHost,
 } from "./notes/symbols.ts";
 import { SymbolTextIndex } from "./notes/text-index.ts";
@@ -92,6 +93,14 @@ export default class InklinePlugin extends Plugin {
     return !this.#lifetime.signal.aborted;
   }
 
+  /** Inkline's own folder, the one Obsidian loaded it from. */
+  get #folder(): string {
+    return (
+      this.manifest.dir ??
+      `${this.app.vault.configDir}/plugins/${this.manifest.id}`
+    );
+  }
+
   /** What the editors this plugin opens may use while it is loaded. */
   get #host(): EditorHost {
     this.#drafts ??= new DraftStore(this.app);
@@ -105,6 +114,7 @@ export default class InklinePlugin extends Plugin {
         closed: (editor) => this.#editors.delete(editor),
       },
       unloaded: this.#lifetime.signal,
+      folder: this.#folder,
     };
   }
 
@@ -121,6 +131,9 @@ export default class InklinePlugin extends Plugin {
     // Obsidian can unload the plugin while its settings are read, and would
     // never undo what this went on to register.
     if (!this.#loaded) return;
+    // What a save that made a symbol's file left in Inkline's folder, as when
+    // Obsidian closed during it. Saves that start meanwhile keep their own.
+    void sweepStaged(this.app, this.#folder);
     this.#renderer.configure(
       this.#settings.symbolScale / 100,
       this.#settings.textColor,

@@ -537,16 +537,16 @@ describe("The editor", function () {
   });
 
   it("inserts through the live editor, whose text is newer than the file", async function () {
-    // As the symbol's file is made, with Obsidian's adapter once Inkline has
-    // looked at its path (#413).
+    // As the symbol's file is made, by Obsidian's adapter's copy of a file of
+    // Inkline's own (#413).
     await browser.executeObsidian(({ app, obsidian }) => {
       const { adapter } = app.vault;
-      const write = adapter.writeBinary.bind(adapter);
-      adapter.writeBinary = async (path, data, options) => {
+      const copy = adapter.copy.bind(adapter);
+      adapter.copy = async (from, to) => {
         const making =
-          path.endsWith(".ink.png") &&
-          app.vault.getAbstractFileByPath(path) === null;
-        await write(path, data, options);
+          to.endsWith(".ink.png") &&
+          app.vault.getAbstractFileByPath(to) === null;
+        await copy(from, to);
         if (!making) return;
         const view = app.workspace.getActiveViewOfType(obsidian.MarkdownView);
         view?.editor.setValue("BRAND NEW UNSAVED CONTENT\n");
@@ -559,7 +559,7 @@ describe("The editor", function () {
       await waitClosed();
     } finally {
       await browser.executeObsidian(({ app }) => {
-        Reflect.deleteProperty(app.vault.adapter, "writeBinary");
+        Reflect.deleteProperty(app.vault.adapter, "copy");
       });
     }
     expect(await noteText()).toBe(

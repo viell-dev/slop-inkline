@@ -174,16 +174,15 @@ describe("The editor", function () {
   });
 
   it("keeps the editor open with the drawing when saving fails", async function () {
-    // A new symbol's file is written with Obsidian's adapter, once Inkline has
-    // looked at its path (#413): that write fails.
+    // A new symbol's file is made by Obsidian's adapter's copy of a file of
+    // Inkline's own (#413): that copy fails.
     await browser.executeObsidian(({ app }) => {
       const { adapter } = app.vault;
-      const write = adapter.writeBinary.bind(adapter);
-      adapter.writeBinary = (path, data, options) =>
-        path.endsWith(".ink.png") &&
-        app.vault.getAbstractFileByPath(path) === null
+      const copy = adapter.copy.bind(adapter);
+      adapter.copy = (from, to) =>
+        to.endsWith(".ink.png") && app.vault.getAbstractFileByPath(to) === null
           ? Promise.reject(new Error("the disk is full"))
-          : write(path, data, options);
+          : copy(from, to);
     });
     try {
       await insert();
@@ -193,7 +192,7 @@ describe("The editor", function () {
       expect(await editorOpen()).toBe(true);
     } finally {
       await browser.executeObsidian(({ app }) => {
-        Reflect.deleteProperty(app.vault.adapter, "writeBinary");
+        Reflect.deleteProperty(app.vault.adapter, "copy");
       });
     }
     await browser.keys(["Control", "Enter"]);
