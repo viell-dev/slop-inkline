@@ -41,12 +41,33 @@ as after you went back to this version from that one. The draft stays as it was:
 update Inkline to get it back, as
 [Drafts from a newer version](./recovery.md#drafts-from-a-newer-version) says.
 
-**"… Unsaved changes to it are kept as a draft. To get them back, see Saving and
-recovery in Inkline's guide."** The symbol did not open, as its file is not a
-valid PNG or its strokes cannot be read, and the editor had kept a draft of it,
-as when a crash cut short a save.
+**"… Unsaved changes to it are kept as a draft. To get them back, …"** The
+symbol did not open, as its file is not a valid PNG or its strokes cannot be
+read, and the editor had kept a draft of it, as when a crash cut short a save.
 [Drafts whose symbol is gone or does not open](./recovery.md#drafts-whose-symbol-is-gone-or-does-not-open)
-says how to get the draft back.
+says how to get the draft back. **Unreleased:** opening such a symbol asks
+**Open the unsaved drawing as a new symbol?** instead. The notice comes only if
+another window opened while the symbol was read, so that the question does not
+take the keys from it, and then says to run **Inkline: Recover drafts**, which
+lists the draft.
+
+**"No draft is waiting for a symbol that is gone or does not open …"**
+**Unreleased:** **Inkline: Recover drafts** found nothing to list. A symbol that
+opens offers its own drafts when you open it, one renamed while Inkline was off
+offers its draft once you rename it back, and a new symbol started in a note
+that is still there offers its draft when you start a new symbol in that note.
+
+**"The unsaved drawing was not opened, as the editor was in use while it was
+read. …"** **Unreleased:** a draft opened as a new symbol keeps a picture to
+draw over, which takes a moment to read, and the editor was saved, closed, or
+asked something meanwhile. The draft is still kept, as it was: run **Inkline:
+Recover drafts** to open it again.
+
+**"The unsaved drawing's base layer cannot be read, so only its strokes came
+back."** **Unreleased:** a draft opened as a new symbol kept a picture to draw
+over, which the vault's local storage no longer holds whole. The strokes are in
+the editor, without that picture. The draft keeps the picture until you save,
+should it be read another time.
 
 **"Opened as a picture to draw over, as this file holds no strokes …"** The file
 holds a picture but no strokes to edit, as every symbol saved before 0.9.2 does.
