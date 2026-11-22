@@ -2550,12 +2550,12 @@ export class InkEditorModal extends Modal {
    * Makes the changes to the view asked for while the pointer was pressed on
    * the surface, now that what was drawn has ended where the view put it, or
    * the picture dragged where the pointer left it, unless the editor has
-   * closed meanwhile: Next takes a zoom asked for to the next
-   * symbol. They go as one action, so that the status line says what they
-   * did, or nothing, rather than what waited. Make ink opens or closes as
-   * asked, unless it already is so, as when the picture it was open for was
-   * replaced, but does not open behind a question that came meanwhile, as
-   * Save there would make ink at a threshold never seen.
+   * closed meanwhile: Next takes a zoom asked for to the next symbol. They go
+   * as one action, so that the status line says what they did, or nothing,
+   * rather than what waited. Make ink opens or closes as asked, unless it
+   * already is so, as when the picture it was open for was replaced, but does
+   * not open behind a question that came meanwhile, as Save there would make
+   * ink at a threshold never seen.
    */
   #viewAfterPress(): void {
     const { zoom, fit, ink } = this.#viewWaits;
