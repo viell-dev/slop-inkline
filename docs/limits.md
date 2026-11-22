@@ -21,12 +21,14 @@ What Inkline does not do, or does not do everywhere, and what to do instead. The
   passes over, and its ends stay round, whatever you turn on during the stroke.
   With both on, a smaller brush shifts the edge less, and Shift draws a straight
   stroke, which barely shifts.
-- **Zoom during a stroke can move its end.** Pressing **Zoom** (Z) while drawing
-  a stroke, with the pen or the eraser, changes where the pointer falls in the
-  drawing, so letting go without moving the pointer again ends the stroke
-  somewhere other than its preview showed
+- **In 1.0.2, Zoom during a stroke can move its end.** Pressing **Zoom** (Z)
+  while drawing a stroke, with the pen or the eraser, changes where the pointer
+  falls in the drawing, so letting go without moving the pointer again ends the
+  stroke somewhere other than its preview showed
   ([#382](https://github.com/viell-dev/slop-inkline/issues/382)). Change Zoom
-  between strokes; Undo takes back a stroke that went wrong.
+  between strokes; Undo takes back a stroke that went wrong. **Unreleased:**
+  fixed: Zoom pressed while you draw a stroke or a shape waits until you let go,
+  so what you draw ends where it shows.
 - **Large libraries** show 100 symbols at a time, with **Show more** for the
   next 100. Filter them, or choose a folder, to narrow the list.
 - **Library insertion needs a sidebar.** If the library's tab is dragged into
@@ -50,7 +52,9 @@ What Inkline does not do, or does not do everywhere, and what to do instead. The
   viewers draw one at some zoom levels, as
   [Export a note to PDF](./notes.md#export-a-note-to-pdf) says
   ([#255](https://github.com/viell-dev/slop-inkline/issues/255)). Symbols in
-  stored colour show none.
+  stored colour show none. **Unreleased:** fixed: symbols in text colour print
+  without it too, but for one whose copy for printing gets no further for ten
+  seconds, or cannot be made.
 - **A size you write into an embed, wider than its space,** as
   `![[wide.ink.png|1000]]` in a hover preview, keeps the symbol's shape and its
   baseline, but its line keeps the room below the baseline that the size asked

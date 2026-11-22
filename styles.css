@@ -256,6 +256,8 @@
   --inkline-guide-descender: var(--color-pink);
   /* A shape being drawn with the eraser, which shows while it is drawn only. */
   --inkline-erasing: var(--color-red);
+  /* The points and handles of a path being placed, apart from the ink. */
+  --inkline-path: var(--interactive-accent);
   display: block;
   width: 100%;
   /* The line box's height, as the content box's, and the border and padding
@@ -406,14 +408,22 @@ img.inkline-symbol[width]:not([height]):not(.image-wrapper > img),
   );
 }
 
-/* Stored colour shows the PNG's own pixels, retaining the same layout. */
-.inkline-stored-color img.inkline-symbol {
+/*
+ * Stored colour shows the PNG's own pixels, retaining the same layout. So
+ * does a symbol in the text colour in a PDF, from a copy of its pixels in the
+ * colour its text prints in, which the renderer gives it once the copy has
+ * loaded: Chromium writes a mask into a PDF in a way that viewers can draw
+ * with a faint line along the box (#255).
+ */
+.inkline-stored-color img.inkline-symbol,
+img.inkline-symbol.inkline-print-copy {
   background-color: transparent;
   mask-image: none;
   object-position: 50% 50%;
 }
 
-.inkline-stored-color img.inkline-symbol:not([width], [height]) {
+.inkline-stored-color img.inkline-symbol:not([width], [height]),
+img.inkline-symbol.inkline-print-copy:not([width], [height]) {
   object-position: 0 75%;
 }
 

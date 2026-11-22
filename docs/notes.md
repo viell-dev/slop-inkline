@@ -405,4 +405,8 @@ symbol's box at some zoom levels, Obsidian's own PDF view among them. It comes
 from how the browser Obsidian is built on writes a symbol's colour into the PDF,
 not from a mark in the symbol, and it was not seen when the PDF was drawn at 300
 dots per inch or more. Symbols in stored colour show no such line
-([#255](https://github.com/viell-dev/slop-inkline/issues/255)).
+([#255](https://github.com/viell-dev/slop-inkline/issues/255)). **Unreleased:**
+fixed: in text colour, each symbol prints from a copy of its own pixels in the
+colour its text prints in, the way a symbol in stored colour prints, so no line
+shows. Exporting waits for the copies while they are being made; a symbol whose
+copy has got no further for ten seconds, or cannot be made, prints as before.

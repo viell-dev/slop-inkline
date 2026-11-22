@@ -128,7 +128,7 @@ describe("The editor's status line", function () {
       async () => browser.$('[data-inkline-button="pen"]').click(),
     ]) {
       await browser.keys("b");
-      await waitForStatus("Toggle fill is for Ellipse and Polygon");
+      await waitForStatus("Toggle fill is for Ellipse, Polygon, and Path");
       await act();
       expect(await settledStatus()).toBe("");
     }
@@ -137,10 +137,12 @@ describe("The editor's status line", function () {
     // refuses with the grid off.
     await browser.keys([Key.Shift, "g"]);
     await browser.keys("t");
-    await waitForStatus("Flat ends is for freehand strokes on the grid");
+    await waitForStatus(
+      "Flat ends is for freehand strokes and paths on the grid",
+    );
     await browser.keys("ArrowLeft");
     expect(await settledStatus()).toBe(
-      "Flat ends is for freehand strokes on the grid; turn on Grid first, without Ellipse or Polygon",
+      "Flat ends is for freehand strokes and paths on the grid; turn on Grid first, without Ellipse or Polygon",
     );
     // Typing a name is something done too.
     await browser.keys("z");

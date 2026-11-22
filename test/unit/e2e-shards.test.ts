@@ -9,9 +9,11 @@ import {
 } from "../e2e/support/harness.ts";
 import {
   assignShards,
+  attemptOf,
   coverageProblems,
   defaultWeight,
   durationsFormat,
+  latestAttempts,
   mergeWeights,
   parseDurations,
   parseShard,
@@ -453,6 +455,126 @@ describe("coverageProblems", () => {
   });
 });
 
+describe("attemptOf", () => {
+  it("reads the attempt from the artifact's directory, as CI names it", () => {
+    expect(attemptOf("e2e-results-2-attempt-1/durations.json")).toBe(1);
+    expect(attemptOf("e2e-results-2-attempt-12/durations.json")).toBe(12);
+    // Windows's separator, as readdir gives entries there.
+    expect(attemptOf("runs\\e2e-results-3-attempt-2\\durations.json")).toBe(2);
+    // The innermost directory named so, should one hold another.
+    expect(
+      attemptOf(
+        "e2e-results-1-attempt-1/e2e-results-1-attempt-3/durations.json",
+      ),
+    ).toBe(3);
+  });
+
+  it("finds none in a directory named otherwise", () => {
+    expect(attemptOf("e2e-results-2/durations.json")).toBeUndefined();
+    expect(attemptOf("durations.json")).toBeUndefined();
+    expect(attemptOf("e2e-results-2-attempt-0/durations.json")).toBeUndefined();
+    expect(
+      attemptOf("e2e-results-2-attempt-1x/durations.json"),
+    ).toBeUndefined();
+    // Only directories count, not the file's own name.
+    expect(attemptOf("out/e2e-results-2-attempt-1")).toBeUndefined();
+  });
+});
+
+describe("latestAttempts", () => {
+  const specs = ["a.e2e.ts", "b.e2e.ts"];
+  const first = {
+    ...run(
+      "e2e-results-1-attempt-1",
+      { "a.e2e.ts": passedOn() },
+      { shard: "1/2" },
+    ),
+    attempt: 1,
+  };
+  const failed = (attempt: number): ShardRun => ({
+    ...run(
+      `e2e-results-2-attempt-${String(attempt)}`,
+      { "b.e2e.ts": { ...passedOn(), "latest/latest": worker(1) } },
+      { shard: "2/2", exitCode: 1 },
+    ),
+    attempt,
+  });
+  const passed = (attempt: number): ShardRun => ({
+    ...run(
+      `e2e-results-2-attempt-${String(attempt)}`,
+      { "b.e2e.ts": passedOn() },
+      { shard: "2/2" },
+    ),
+    attempt,
+  });
+
+  // As in run 44956202229: shard 2 failed in attempt 1, and its re-run in
+  // attempt 2 passed, while shard 1 kept its record of attempt 1.
+  it("reads a re-run shard's passing record, not its earlier failed one", () => {
+    const { latest, superseded } = latestAttempts([
+      first,
+      failed(1),
+      passed(2),
+    ]);
+    expect(latest).toEqual([first, passed(2)]);
+    expect(superseded).toEqual([failed(1)]);
+    expect(coverageProblems(specs, latest, pairs)).toEqual([]);
+    // Read together, as the gate once could, the failed record fails it.
+    expect(
+      coverageProblems(specs, [first, failed(1), passed(2)], pairs),
+    ).toContain("e2e-results-2-attempt-1: the run ended with exit code 1");
+  });
+
+  it("still fails a re-run shard whose latest record failed", () => {
+    const { latest, superseded } = latestAttempts([
+      first,
+      passed(1),
+      failed(2),
+    ]);
+    expect(latest).toEqual([first, failed(2)]);
+    expect(superseded).toEqual([passed(1)]);
+    expect(coverageProblems(specs, latest, pairs)).toEqual([
+      "e2e-results-2-attempt-2: the run ended with exit code 1",
+      "b.e2e.ts failed on Obsidian latest/latest (1.15.1/1.15.1), with exit code 1",
+    ]);
+  });
+
+  it("takes the latest attempt by number, in any order, for each shard alone", () => {
+    const { latest } = latestAttempts([passed(3), first, failed(2), failed(1)]);
+    expect(latest).toEqual([passed(3), first]);
+  });
+
+  it("keeps every record that names no attempt or no shard, so two still count as two", () => {
+    const plain = run(
+      "e2e-results-2",
+      { "b.e2e.ts": passedOn() },
+      { shard: "2/2" },
+    );
+    const whole = { ...run("all", { "a.e2e.ts": passedOn() }), attempt: 1 };
+    const runs = [
+      plain,
+      { ...plain, source: "again" },
+      whole,
+      { ...whole, attempt: 2 },
+    ];
+    expect(latestAttempts(runs)).toEqual({ latest: runs, superseded: [] });
+    expect(
+      coverageProblems(specs, latestAttempts(runs).latest, pairs),
+    ).toContain(
+      "b.e2e.ts is in more than one durations.json: e2e-results-2, again",
+    );
+  });
+
+  it("keeps two records of one shard and one attempt, which the check refuses", () => {
+    const twice = [passed(2), { ...passed(2), source: "copy" }, failed(1)];
+    const { latest } = latestAttempts(twice);
+    expect(latest).toHaveLength(2);
+    expect(coverageProblems(["b.e2e.ts"], latest, pairs)).toEqual([
+      "b.e2e.ts is in more than one durations.json: e2e-results-2-attempt-2, copy",
+    ]);
+  });
+});
+
 describe("shardProblems", () => {
   const shard = { index: 2, total: 3 };
   const assigned = ["b.e2e.ts", "d.e2e.ts"];
@@ -541,6 +663,22 @@ describe("durations", () => {
     expect(runs[0]?.source).toBe(
       path.join(directory, "e2e-results-1", durationsFile),
     );
+    expect(runs.map((found) => found.attempt)).toEqual([undefined, undefined]);
+  });
+
+  it("reads each record's attempt from its artifact's directory", async () => {
+    for (const name of ["e2e-results-2-attempt-1", "e2e-results-2-attempt-2"]) {
+      await mkdir(path.join(directory, name));
+      await writeFile(
+        path.join(directory, name, durationsFile),
+        JSON.stringify(record({ "b.e2e.ts": passedOn() }, { shard: "2/2" })),
+      );
+    }
+    const runs = await readDurations(directory);
+    expect(runs.map(({ source, attempt }) => [source, attempt])).toEqual([
+      [path.join(directory, "e2e-results-2-attempt-1", durationsFile), 1],
+      [path.join(directory, "e2e-results-2-attempt-2", durationsFile), 2],
+    ]);
   });
 
   it("refuses the first format, which recorded no exit codes", () => {
@@ -746,6 +884,71 @@ describe("shardsCommand", () => {
     expect(errors[0]).toContain("the run requested Obsidian");
   });
 
+  // The layout download-artifact leaves after a re-run of shard 2: an
+  // artifact of each attempt, each in a directory named after it.
+  it("checks each shard's latest attempt: a re-run that passed passes", async () => {
+    const runs = path.join(directory, "runs");
+    await write(
+      "runs/e2e-results-1-attempt-1",
+      record({ "a.e2e.ts": passedOn() }, { shard: "1/2" }),
+    );
+    await write(
+      "runs/e2e-results-2-attempt-1",
+      record(
+        {
+          "b.e2e.ts": passedOn(),
+          "c.e2e.ts": { ...passedOn(), "latest/latest": worker(1) },
+        },
+        { shard: "2/2", exitCode: 1 },
+      ),
+    );
+    await write(
+      "runs/e2e-results-2-attempt-2",
+      record(
+        { "b.e2e.ts": passedOn(), "c.e2e.ts": passedOn() },
+        { shard: "2/2" },
+      ),
+    );
+    expect(await command(["check", runs])).toBe(0);
+    expect(errors).toEqual([]);
+    expect(output[0]).toBe(
+      `${path.join(runs, "e2e-results-2-attempt-1", durationsFile)}: shard 2/2 of attempt 1, left for its latest attempt's`,
+    );
+    expect(output.at(-1)).toBe(
+      "The 2 runs ran and passed each of the 3 spec files once, on Obsidian earliest/earliest latest/latest.",
+    );
+  });
+
+  it("checks each shard's latest attempt: a re-run that failed fails", async () => {
+    const runs = path.join(directory, "runs");
+    await write(
+      "runs/e2e-results-1-attempt-1",
+      record({ "a.e2e.ts": passedOn() }, { shard: "1/2" }),
+    );
+    await write(
+      "runs/e2e-results-2-attempt-1",
+      record(
+        { "b.e2e.ts": passedOn(), "c.e2e.ts": passedOn() },
+        { shard: "2/2" },
+      ),
+    );
+    await write(
+      "runs/e2e-results-2-attempt-2",
+      record(
+        {
+          "b.e2e.ts": passedOn(),
+          "c.e2e.ts": { ...passedOn(), "latest/latest": worker(1) },
+        },
+        { shard: "2/2", exitCode: 1 },
+      ),
+    );
+    expect(await command(["check", runs])).toBe(1);
+    expect(errors).toEqual([
+      `error: ${path.join(runs, "e2e-results-2-attempt-2", durationsFile)}: the run ended with exit code 1`,
+      "error: c.e2e.ts failed on Obsidian latest/latest (1.15.1/1.15.1), with exit code 1",
+    ]);
+  });
+
   it("checks a shard's own output", async () => {
     await write("out", record({ "a.e2e.ts": passedOn() }, { shard: "1/2" }));
     expect(await command(["shard", "1/2", path.join(directory, "out")])).toBe(
@@ -811,6 +1014,19 @@ describe("shardsCommand", () => {
     expect(await command(["weights", path.join(directory, "runs")])).toBe(0);
     expect(await readFile(weights, "utf8")).toBe(
       '{\n  "a.e2e.ts": 9,\n  "b.e2e.ts": 2,\n  "c.e2e.ts": 4\n}\n',
+    );
+
+    // Of a re-run shard, only its latest attempt's times count.
+    const timedC = (seconds: number) =>
+      record(
+        { "c.e2e.ts": { "earliest/earliest": timed(seconds) } },
+        { shard: "2/2" },
+      );
+    await write("rerun/e2e-results-2-attempt-1", timedC(100));
+    await write("rerun/e2e-results-2-attempt-2", timedC(7));
+    expect(await command(["weights", path.join(directory, "rerun")])).toBe(0);
+    expect(await readFile(weights, "utf8")).toBe(
+      '{\n  "a.e2e.ts": 9,\n  "b.e2e.ts": 2,\n  "c.e2e.ts": 7\n}\n',
     );
 
     expect(await command(["weights", path.join(directory, "specs")])).toBe(1);

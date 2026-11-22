@@ -1263,6 +1263,9 @@ async function writeSymbol(
           await app.vault.modifyBinary(now, buffer);
           if (!present(app, now)) throw new Error(replacedAsWritten);
         },
+        bytes,
+        read: async (found) =>
+          new Uint8Array(await app.vault.readBinary(found)),
         line: diskLine(app),
         create: async () => {
           const folder = parentPath(file.path);
@@ -1270,7 +1273,13 @@ async function writeSymbol(
             folder !== "" &&
             app.vault.getAbstractFileByPath(folder) === null
           ) {
-            await app.vault.createFolder(folder);
+            try {
+              await app.vault.createFolder(folder);
+            } catch (error) {
+              // Obsidian makes a folder only where the disk has nothing once
+              // it looks, and something else can have made this one meanwhile.
+              if (app.vault.getFolderByPath(folder) === null) throw error;
+            }
           }
           return app.vault.createBinary(file.path, buffer);
         },

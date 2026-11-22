@@ -4,6 +4,7 @@
 
 import type { Stroke } from "../format/record.ts";
 import {
+  addedStrokes,
   documentSpan,
   emptyDocument,
   type InkDocument,
@@ -20,6 +21,7 @@ import {
   type Guide,
   type Span,
 } from "./guides.ts";
+import { handleEnd, type PathMarks } from "./path.ts";
 import type { Placement } from "./reference.ts";
 
 /** A font as CSS describes it, for {@link measureFont}. */
@@ -97,6 +99,30 @@ function offscreen2d(
   return context;
 }
 
+/**
+ * How far an element's content box lies inside its border box on each side,
+ * in CSS pixels: its border and padding there, as `style`, its computed
+ * style, gives them.
+ */
+function insets(style: CSSStyleDeclaration): {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+} {
+  const pixels = (...values: string[]): number =>
+    values.reduce((sum, value) => {
+      const parsed = Number.parseFloat(value);
+      return Number.isFinite(parsed) ? sum + parsed : sum;
+    }, 0);
+  return {
+    left: pixels(style.borderLeftWidth, style.paddingLeft),
+    top: pixels(style.borderTopWidth, style.paddingTop),
+    right: pixels(style.borderRightWidth, style.paddingRight),
+    bottom: pixels(style.borderBottomWidth, style.paddingBottom),
+  };
+}
+
 function element2d(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
   const context = canvas.getContext("2d");
   if (context === null) throw new Error("no 2D canvas context");
@@ -109,32 +135,26 @@ const referenceAlpha = 0.35;
 /** How opaque the shape an eraser is drawing is shown, over everything. */
 const erasingAlpha = 0.5;
 
+/**
+ * The marks of a path being placed, in CSS pixels, so that they keep their
+ * size on the screen whatever the zoom: the side of a point's square, and the
+ * radius of a handle's end, larger for the one a press would take hold of.
+ */
+const pointMark = 8;
+const handleMark = 3;
+const heldHandleMark = 4.5;
+
+/**
+ * How near a press must be to a mark to take hold of it, in CSS pixels: a
+ * little beyond a point's square, whose corners are 5.7 pixels from its
+ * middle.
+ */
+export const markReach = 6;
+
 /** A document and its decoded base layer, as last drawn or measured. */
 interface Drawn {
   readonly document: InkDocument;
   readonly base: DrawableBase | undefined;
-}
-
-/**
- * The strokes `next` adds to `previous`, when that is all that changed: the
- * same base layer and the very same strokes in order, with one or more after
- * them, as a stroke or a filled shape adds. Anything else gives undefined,
- * however it came about, as an undo, a move, which makes new strokes, or a
- * replaced document all do. Strokes draw in order, so these drawn over what
- * `previous` left are what `next` leaves.
- */
-export function addedStrokes(
-  previous: InkDocument,
-  next: InkDocument,
-): readonly Stroke[] | undefined {
-  const before = previous.strokes;
-  const { strokes } = next;
-  if (next.base !== previous.base || strokes.length <= before.length) {
-    return undefined;
-  }
-  return before.every((stroke, index) => stroke === strokes[index])
-    ? strokes.slice(before.length)
-    : undefined;
 }
 
 /**
@@ -237,6 +257,12 @@ export class InkView {
         readonly height: number;
       }
     | undefined;
+  /**
+   * The points and handles of a path being placed, drawn over everything as
+   * controls to take hold of, or undefined for none. They are never part of
+   * the drawing, the preview, or the saved symbol.
+   */
+  path: PathMarks | undefined;
   /** How far the committed ink reaches, from its pixels, in document pixels. */
   #inked: InkMeasure | undefined;
   /** Where the saved image would start and end, as of the last render. */
@@ -294,6 +320,14 @@ export class InkView {
     return this.#center;
   }
 
+  /**
+   * {@link markReach} in document pixels, at the scale the surface shows the
+   * drawing now.
+   */
+  get markReach(): number {
+    return markReach / this.#scale;
+  }
+
   /** The document's x from the surface's left edge to its right, in pixels. */
   get visible(): Span {
     return { left: this.#originX, right: this.#originX + this.#across };
@@ -311,7 +345,10 @@ export class InkView {
     this.#place();
   }
 
-  /** Fits the surface to `cssWidth` CSS pixels across. */
+  /**
+   * Fits the surface to `cssWidth` CSS pixels across, the width of its
+   * content box ({@link contentBox}).
+   */
   resize(cssWidth: number, devicePixelRatio: number): void {
     const width = Math.max(1, cssWidth);
     // The line box fills the content box, which the bitmap is drawn into and
@@ -363,30 +400,39 @@ export class InkView {
   #frame(): number {
     const style = getComputedStyle(this.canvas);
     if (style.boxSizing !== "border-box") return 0;
-    let frame = 0;
-    for (const value of [
-      style.borderTopWidth,
-      style.borderBottomWidth,
-      style.paddingTop,
-      style.paddingBottom,
-    ]) {
-      const pixels = Number.parseFloat(value);
-      if (Number.isFinite(pixels)) frame += pixels;
-    }
-    return frame;
+    const { top, bottom } = insets(style);
+    return top + bottom;
+  }
+
+  /**
+   * The surface's content box, the box the browser draws the bitmap into,
+   * inside its border and any padding a theme or a CSS snippet gives it: its
+   * top left corner in the window, and its size, in CSS pixels. The drawing
+   * is sized to it and the pointer mapped from it, as the border and padding
+   * would otherwise move the ink away from the pointer (#378). Its sides are
+   * as wide as the computed style says, as for {@link #frame}.
+   */
+  contentBox(): { left: number; top: number; width: number; height: number } {
+    const { canvas } = this;
+    const { left, top, right, bottom } = insets(getComputedStyle(canvas));
+    const rect = canvas.getBoundingClientRect();
+    return {
+      left: rect.left + left,
+      top: rect.top + top,
+      width: canvas.offsetWidth - left - right,
+      height: canvas.offsetHeight - top - bottom,
+    };
   }
 
   /**
    * The document position under a point on the screen, in pixels. The
-   * drawing starts inside the surface's border, as its size does.
+   * drawing starts at the surface's content box, as its size does.
    */
   toDocument(clientX: number, clientY: number): { x: number; y: number } {
-    const { canvas } = this;
-    const rect = canvas.getBoundingClientRect();
+    const { left, top } = this.contentBox();
     return {
-      x:
-        (clientX - rect.left - canvas.clientLeft) / this.#scale + this.#originX,
-      y: (clientY - rect.top - canvas.clientTop) / this.#scale,
+      x: (clientX - left) / this.#scale + this.#originX,
+      y: (clientY - top) / this.#scale,
     };
   }
 
@@ -509,6 +555,66 @@ export class InkView {
       visible.globalAlpha = erasingAlpha;
       visible.drawImage(this.#work, 0, 0);
       visible.globalAlpha = 1;
+    }
+    if (this.path !== undefined) this.#drawPath(visible, style, this.path);
+  }
+
+  /**
+   * Draws a path's controls: a line through each smooth point between its
+   * handles' ends, a dot at each end, and a square at each point, filled for
+   * the one a press would take hold of, and the dot made larger for a
+   * handle's end. Their sizes are in CSS pixels, so that they stay as easy to
+   * see and to reach whatever the zoom.
+   */
+  #drawPath(
+    context: CanvasRenderingContext2D,
+    style: CSSStyleDeclaration,
+    { nodes, target }: PathMarks,
+  ): void {
+    const factor = this.#scale * this.#ratio;
+    const ratio = this.#ratio;
+    const across = (x: number): number => (x - this.#originX) * factor;
+    const colour = style.getPropertyValue("--inkline-path").trim() || "gray";
+    context.strokeStyle = colour;
+    context.fillStyle = colour;
+    context.lineWidth = Math.max(1, Math.round(ratio));
+    for (const [index, node] of nodes.entries()) {
+      const out = handleEnd(node, 1);
+      const back = handleEnd(node, -1);
+      if (out === undefined || back === undefined) continue;
+      context.beginPath();
+      context.moveTo(across(back.x), back.y * factor);
+      context.lineTo(across(out.x), out.y * factor);
+      context.stroke();
+      for (const side of [1, -1] as const) {
+        const end = side === 1 ? out : back;
+        const held =
+          target?.kind === "handle" &&
+          target.index === index &&
+          target.side === side;
+        context.beginPath();
+        context.arc(
+          across(end.x),
+          end.y * factor,
+          (held ? heldHandleMark : handleMark) * ratio,
+          0,
+          2 * Math.PI,
+        );
+        context.fill();
+      }
+    }
+    // Each square on whole device pixels, its outline on their middles, so
+    // that its edges are sharp.
+    const side = 2 * Math.round((pointMark / 2) * ratio);
+    const middle = context.lineWidth % 2 === 1 ? 0.5 : 0;
+    for (const [index, node] of nodes.entries()) {
+      const x = Math.round(across(node.x)) - side / 2;
+      const y = Math.round(node.y * factor) - side / 2;
+      if (target?.kind === "point" && target.index === index) {
+        context.fillRect(x, y, side, side);
+      } else {
+        context.strokeRect(x + middle, y + middle, side, side);
+      }
     }
   }
 
