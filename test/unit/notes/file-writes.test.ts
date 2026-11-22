@@ -672,6 +672,39 @@ describe("saveFile", () => {
     });
   }
 
+  it("leaves a file it cannot read, found as it made one, to the next round's look", async () => {
+    const vault = new FakeVault();
+    const drawn = await writeText(pinned, "translation", ["DRAWN"]);
+    let looks = 0;
+    let makes = 0;
+    let reads = 0;
+    await expect(
+      saveFile({
+        current: () => vault.at(path),
+        check: () => {
+          looks++;
+          // The editor's own look, which refuses what it cannot read.
+          return vault.at(path) === null
+            ? Promise.resolve(undefined)
+            : Promise.reject(new Error("the editor cannot read it"));
+        },
+        write: () => Promise.reject(new Error("not to write")),
+        create: () => {
+          makes++;
+          vault.put(path, new Uint8Array([9, 9, 9]));
+          return Promise.reject(new Error("File already exists."));
+        },
+        bytes: drawn,
+        read: () => {
+          reads++;
+          return Promise.reject(new Error("EIO: i/o error, read"));
+        },
+      }),
+    ).rejects.toThrow("the editor cannot read it");
+    expect({ looks, makes, reads }).toEqual({ looks: 2, makes: 1, reads: 1 });
+    expect(vault.at(path)?.writes).toBe(0);
+  });
+
   it("goes round at most three times for a file that comes as it makes one and goes", async () => {
     const theirs = await writeText(pinned, "reading", ["THEIRS"]);
     let there: Fake | null = null;

@@ -271,8 +271,8 @@ export function stoppable<File>(
 
 /**
  * Whether `whole` starts with the bytes of `part`, all of them. A plain loop, as
- * this runs between a save's last read and its write: `every` took 400 ms over
- * 8 MiB.
+ * {@link sameBytes} runs it between {@link changeFile}'s last read and its
+ * write: `every` took 400 ms over 8 MiB.
  */
 function startsWith(whole: Uint8Array, part: Uint8Array): boolean {
   if (part.length > whole.length) return false;
