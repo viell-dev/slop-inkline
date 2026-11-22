@@ -28,13 +28,8 @@ import { writeAt } from "../notes/insertion.ts";
 import { insertionAt } from "../notes/links.ts";
 import { symbolStem } from "../notes/names.ts";
 import type { SymbolTexts } from "../notes/suggest.ts";
-import {
-  checkRename,
-  readSymbolText,
-  renameChecked,
-  writeSymbolText,
-  type Renaming,
-} from "../notes/symbols.ts";
+import type { SymbolFiles } from "../notes/symbol-files.ts";
+import { checkRename, renameChecked, type Renaming } from "../notes/symbols.ts";
 import {
   isBlank,
   noText,
@@ -156,10 +151,11 @@ interface EditPanel {
 export class SymbolLibraryView extends ItemView {
   readonly #texts: SymbolTexts;
   /**
-   * Aborts as Inkline unloads. Obsidian closes the library then, and a save or
-   * rename still waiting writes nothing.
+   * What Inkline's writes of symbol files share, its one line of writes among
+   * them. Its signal aborts as Inkline unloads: Obsidian closes the library
+   * then, and a save or rename still waiting writes nothing.
    */
-  readonly #unloaded: AbortSignal;
+  readonly #symbolFiles: SymbolFiles;
   /** What the filter holds. */
   #query = "";
   /** The folder shown, or undefined for every folder. */
@@ -206,10 +202,10 @@ export class SymbolLibraryView extends ItemView {
     true,
   );
 
-  constructor(leaf: WorkspaceLeaf, texts: SymbolTexts, unloaded: AbortSignal) {
+  constructor(leaf: WorkspaceLeaf, texts: SymbolTexts, files: SymbolFiles) {
     super(leaf);
     this.#texts = texts;
-    this.#unloaded = unloaded;
+    this.#symbolFiles = files;
   }
 
   /** Shows what changed, such as text the index has read since. */
@@ -951,7 +947,7 @@ export class SymbolLibraryView extends ItemView {
         return;
       }
       const read = ++reads;
-      void readSymbolText(this.app, file).then(
+      void this.#symbolFiles.writes.readText(file).then(
         (now) => {
           if (!open() || read !== reads || saving) return;
           fields.take(now);
@@ -1065,12 +1061,10 @@ export class SymbolLibraryView extends ItemView {
         ...(writing
           ? {
               write: (told: SaveWait): Work => {
-                const work = writeSymbolText(
-                  this.app,
+                const work = this.#symbolFiles.writes.writeText(
                   file,
                   changes,
                   fields.given,
-                  this.#unloaded,
                 );
                 return {
                   done: watchSave(
@@ -1090,7 +1084,7 @@ export class SymbolLibraryView extends ItemView {
                   this.app,
                   renaming,
                   { told, asked: () => modalOpen(form) },
-                  this.#unloaded,
+                  this.#symbolFiles.unloaded,
                 ),
             }),
       };

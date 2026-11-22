@@ -17,9 +17,8 @@ import {
   type TAbstractFile,
 } from "obsidian";
 import { inkExtension, isInkPath } from "../format/ink-file.ts";
-import { readChunks } from "../format/png.ts";
 import { toBase64 } from "../format/record.ts";
-import { readFileText, readText, type SymbolText } from "../format/text.ts";
+import { readFileText, type SymbolText } from "../format/text.ts";
 import {
   decodePng,
   drawableBase,
@@ -54,7 +53,6 @@ import {
   type EditorOptions,
   type EditorTools,
   type SymbolCopy,
-  type SymbolFile,
   type SymbolUses,
 } from "../editor/modal.ts";
 import { visibleWidth } from "../editor/view.ts";
@@ -70,23 +68,26 @@ import {
 } from "./insertion.ts";
 import { embedFor } from "./embeds.ts";
 import {
-  changedText,
-  changeFile,
   CutShort,
-  makeFile,
   PathTaken,
   RenameDisturbed,
-  saveFile,
-  stoppable,
-  unreadableText,
-  withoutPaths,
   watchRename,
   watchSave,
-  WriteQueue,
-  type DiskLine,
   type RenameWait,
   type SaveWait,
 } from "./file-writes.ts";
+import type { SymbolFiles } from "./symbol-files.ts";
+import {
+  cutShortReason,
+  namesIn,
+  parentPath,
+  present,
+  stillAlive,
+  stillSymbol,
+  takenReason,
+  toBuffer,
+  type SymbolWork,
+} from "./symbol-writes.ts";
 import { insertionAt } from "./links.ts";
 import { shownGuides, type Settings } from "../settings.ts";
 import {
@@ -103,7 +104,7 @@ import {
   type SymbolMatch,
   type SymbolTexts,
 } from "./suggest.ts";
-import { isBlank, type TextChanges } from "./text-fields.ts";
+import { isBlank } from "./text-fields.ts";
 import { markNotice } from "../notices.ts";
 
 /**
@@ -130,58 +131,6 @@ const attemptsToMake = 3;
 const openingNoticeAfter = 300;
 
 /**
- * Every write over a symbol's file, from the library and the editor alike, so
- * that one's read, check, and write cannot fall between another's, whatever
- * happens to the file meanwhile. A file a first save makes has nothing to go
- * between: it was not there to read.
- */
-const writes = new WriteQueue();
-
-/**
- * Why a save is refused once it has written, when its file was deleted, or
- * another put at its path, by something asked of the disk ahead of the write.
- */
-const replacedAsWritten =
-  "the file was deleted or replaced as it was written, so what is at its path may hold this save";
-
-/**
- * Obsidian's line of disk operations, where this version of Obsidian keeps it,
- * or undefined, which leaves a save as it was without this. None of it is in
- * Obsidian's API, so this is the one place that reads it, and anything of
- * another shape counts as missing (#10). It can go once Obsidian's API has a
- * write that writes a file only if it is still the one at its path.
- *
- * In Obsidian 1.13.4 and 1.15.1, the desktop's file system adapter runs every
- * read, write, existence check, and deletion of a vault's files in one promise
- * chain, `promise`, which each joins at its end as it is asked: `readBinary` and
- * `modifyBinary` ask the adapter at once, with the file's path. Whatever joins
- * the chain while a save reads its file therefore runs before the save's write,
- * and only once it runs does the vault drop a file deleted or add one created.
- */
-function diskLine(app: App): DiskLine | undefined {
-  const { adapter } = app.vault;
-  const last = (): unknown => Reflect.get(adapter, "promise");
-  if (!(last() instanceof Promise)) return undefined;
-  const ignore = (): void => undefined;
-  return {
-    last,
-    settle: async () => {
-      const queued = last();
-      if (queued instanceof Promise) await queued.then(ignore, ignore);
-    },
-  };
-}
-
-/**
- * The look an editor's save takes at its file, in the save's turn: the first
- * read of a symbol asked meanwhile notes what the disk's line had last been
- * asked once it was. Inkline's saves take turns, so one look is under way at a
- * time. Another editor's read can come first, which only notes an earlier
- * point, so that the save looks again.
- */
-let looking: { asked: unknown } | undefined;
-
-/**
  * The symbols Obsidian is renaming for Inkline, from the call to its
  * `renameFile` until that ends, which lasts as long as its question about
  * links. A second rename of one of them is refused at once, as a failed rename
@@ -205,8 +154,7 @@ function notBeingRenamed(file: TFile): void {
 }
 
 /** What the plugin lends the editors it opens. */
-export interface EditorHost {
-  readonly app: App;
+export interface EditorHost extends SymbolFiles {
   /** Inkline's settings as they are now. */
   readonly settings: () => Settings;
   /** Tracks open editors, so that unloading can close them. */
@@ -215,39 +163,6 @@ export interface EditorHost {
   readonly drafts: DraftStore;
   /** What the vault's symbols say about themselves, as far as it is read. */
   readonly texts: SymbolTexts;
-  /** Aborts as the plugin unloads; nothing is written once it has. */
-  readonly unloaded: AbortSignal;
-  /**
-   * Inkline's own folder, where a save that makes a symbol's file writes it
-   * first, under a name the vault does not list, as {@link makeSymbolFile}
-   * says.
-   */
-  readonly folder: string;
-}
-
-/** An `ArrayBuffer` holding exactly these bytes, as the vault takes. */
-function toBuffer(bytes: Uint8Array): ArrayBuffer {
-  return bytes.slice().buffer;
-}
-
-function parentPath(path: string): string {
-  const slash = path.lastIndexOf("/");
-  return slash === -1 ? "" : path.slice(0, slash);
-}
-
-/**
- * Throws once `unloaded` has aborted, as Inkline unloads, so that nothing more
- * is written.
- */
-function stillAlive(unloaded: AbortSignal): void {
-  if (unloaded.aborted) throw new Error("Inkline was disabled");
-}
-
-/** The names of what a folder of the vault holds, `""` for its root. */
-function namesIn(app: App, folder: string): string[] {
-  return (
-    app.vault.getFolderByPath(folder === "" ? "/" : folder)?.children ?? []
-  ).map((child) => child.name);
 }
 
 /** The path of the file named `name` in `folder`. */
@@ -266,7 +181,7 @@ function nameTaken(
   own?: TFile,
 ): boolean {
   const file = `${name}${inkExtension}`.toLowerCase();
-  return namesIn(app, folder).some(
+  return namesIn(app.vault, folder).some(
     (other) =>
       other.toLowerCase() === file && pathIn(folder, other) !== own?.path,
   );
@@ -278,146 +193,6 @@ function claimName(app: App, folder: string, name: string, own?: TFile): void {
     const where = folder === "" ? "the vault's top folder" : folder;
     throw new Error(`${where} already has a symbol named ${name}`);
   }
-}
-
-/**
- * Why a symbol's file cannot be made at `path`, where the disk has something,
- * as {@link PathTaken} says: a file or folder the vault lists there, or one
- * whose name differs only in letter case, which Windows and macOS read as the
- * same name and Obsidian does not list at the path, or one Obsidian has not
- * listed yet, as one made outside it. The disk says which of the last two it
- * is, as one that tells letter case apart can have both.
- */
-async function takenReason(app: App, path: string): Promise<string> {
-  const folder = parentPath(path);
-  const name = folder === "" ? path : path.slice(folder.length + 1);
-  const where = folder === "" ? "the vault's top folder" : folder;
-  const there = app.vault.getAbstractFileByPath(path);
-  if (there !== null) {
-    const kind = there instanceof TFolder ? "folder" : "file";
-    return `${where} already has a ${kind} named ${name}`;
-  }
-  const { adapter } = app.vault;
-  const unlisted = `a file came to ${path} that Obsidian has not listed yet, and was left as it is; save again in a moment`;
-  // Asked to tell letter case apart, as Windows and macOS do not unless asked.
-  if (await adapter.exists(path, true).catch(() => true)) return unlisted;
-  // Gone again, as a file that came and went as the save made its own.
-  if (!(await adapter.exists(path).catch(() => true))) {
-    return `a file came to ${path} as the symbol was saved, and has gone again; save again`;
-  }
-  const listed = namesIn(app, folder).find(
-    (other) => other.toLowerCase() === name.toLowerCase(),
-  );
-  return listed === undefined
-    ? unlisted
-    : `${where} has ${listed}, whose name differs from ${name} only in letter case, which this computer reads as the same name; rename or move ${listed} to save the symbol there`;
-}
-
-/**
- * What a save says when its own write stopped part-way and left `held` in
- * `name`, after the write's own `reason`. A write that failed before it opened
- * the file, as one refused by a file another program has open, can leave all
- * of `bytes` there, as when nothing changed since the last save.
- */
-function cutShortReason(
-  reason: string,
-  name: string,
-  held: Uint8Array,
-  bytes: Uint8Array,
-): string {
-  return held.length === bytes.length
-    ? `${reason}; ${name} holds the whole symbol all the same`
-    : `${reason}; ${name} holds what was written before it stopped, which saving again writes whole`;
-}
-
-/**
- * What begins the name of a file that {@link makeSymbolFile} writes in
- * Inkline's own folder before it makes a symbol's file. The dot keeps the
- * vault from listing it, so that it is never one of the vault's files, and no
- * create or delete is heard of it.
- */
-const stagedPrefix = ".making-";
-
-/**
- * How long ago, in milliseconds, a file of {@link makeSymbolFile}'s own must
- * have been written for {@link sweepStaged} to remove it. A save removes its own
- * within moments, and Obsidian gives up on a step of its disk after a minute,
- * so this leaves one of a save that may still be under way: of the load of
- * Inkline just before, as after it was turned off and on again, or of another
- * computer whose sync tool carries the folder.
- */
-const sweepAfter = 5 * 60_000;
-
-/**
- * Removes the files in Inkline's own `folder` that a save making a symbol's
- * file wrote there and could not remove, as when Obsidian closed in between,
- * once they are older than {@link sweepAfter}. Run as Inkline starts.
- */
-export async function sweepStaged(app: App, folder: string): Promise<void> {
-  const { adapter } = app.vault;
-  const listed = await adapter.list(folder).catch(() => undefined);
-  for (const file of listed?.files ?? []) {
-    const name = file.slice(file.lastIndexOf("/") + 1);
-    if (!name.startsWith(stagedPrefix)) continue;
-    const written = await adapter.stat(file).catch(() => null);
-    if (written !== null && Date.now() - written.mtime >= sweepAfter) {
-      await adapter.remove(file).catch(() => undefined);
-    }
-  }
-}
-
-/** The `code` a Node.js error gives, as Obsidian's adapter passes it on. */
-function errorCode(error: unknown): unknown {
-  return typeof error === "object" && error !== null
-    ? Reflect.get(error, "code")
-    : undefined;
-}
-
-/**
- * Makes a symbol's file at `path`, through Obsidian's adapter, as
- * {@link makeFile} does, and returns it. It writes the bytes to a file of its
- * own in Inkline's `folder` first, and then has the adapter copy that to the
- * path: the adapter's `copy` makes the file only where nothing is, which the
- * computer's own copy checks as it makes it, in one of the adapter's steps, and
- * then has the vault list it, as `writeBinary` does, before it resolves. So
- * nothing else asked of Obsidian, nor a program writing to the disk outside it,
- * can come between a look at the path and the write, and nothing waits for the
- * disk to be quiet. Rejects with {@link PathTaken}, with nothing written there,
- * where the disk has something at the path.
- */
-async function makeSymbolFile(
-  app: App,
-  folder: string,
-  path: string,
-  buffer: ArrayBuffer,
-): Promise<TFile> {
-  const { adapter } = app.vault;
-  const own = `${folder}/${stagedPrefix}${crypto.randomUUID()}`;
-  await makeFile({
-    bytes: new Uint8Array(buffer),
-    exists: () => adapter.exists(path),
-    // Node.js names both files in a failure, Inkline's own among them.
-    stage: () =>
-      adapter.writeBinary(own, buffer).catch((error: unknown) => {
-        throw withoutPaths(
-          error,
-          "as the symbol was written in Inkline's folder",
-        );
-      }),
-    place: () =>
-      adapter.copy(own, path).catch((error: unknown) => {
-        throw withoutPaths(error, `as the symbol was put at ${path}`);
-      }),
-    taken: (error) => errorCode(error) === "EEXIST",
-    read: async () => new Uint8Array(await adapter.readBinary(path)),
-    clear: () => adapter.remove(path),
-    unstage: () => adapter.remove(own),
-  });
-  const made = app.vault.getFileByPath(path);
-  if (made === null) {
-    throw new Error(`${path} was written, but Obsidian has not listed it`);
-  }
-  return made;
 }
 
 /**
@@ -517,7 +292,7 @@ function symbolPathIn(app: App, folder: string, name: NameChoice): string {
     return pathIn(folder, `${name.name}${inkExtension}`);
   }
   const taken = [
-    ...namesIn(app, folder)
+    ...namesIn(app.vault, folder)
       .map((child) => symbolStem(child))
       .filter((stem): stem is string => stem !== undefined),
     ...linkedNames(app.metadataCache.unresolvedLinks, folder),
@@ -638,9 +413,9 @@ async function processNote(
   note: TFile,
   change: (text: string) => string,
 ): Promise<void> {
-  if (!present(app, note)) throw new NoteGone(note);
+  if (!present(app.vault, note)) throw new NoteGone(note);
   await app.vault.process(note, (text) => {
-    if (!present(app, note)) throw new NoteGone(note);
+    if (!present(app.vault, note)) throw new NoteGone(note);
     return change(text);
   });
 }
@@ -676,7 +451,7 @@ async function insertEmbed(
   uncovered = false,
 ): Promise<InsertionPoint> {
   const { file, point } = target;
-  if (!present(app, file)) throw new NoteGone(file);
+  if (!present(app.vault, file)) throw new NoteGone(file);
   const view = liveView(app, file, target.view);
   if (view !== undefined) {
     const editor = view.editor;
@@ -838,7 +613,7 @@ function confirmRenaming(app: App, renaming: Renaming): void {
   const { file, from, name } = renaming;
   if (app.vault.getFileByPath(from) !== file) {
     throw new Error(
-      present(app, file)
+      present(app.vault, file)
         ? `the file was renamed to ${file.path} meanwhile`
         : "the file was deleted or replaced meanwhile",
     );
@@ -1000,7 +775,7 @@ function watchMove(app: App, renaming: Renaming): Move {
   ];
   return {
     disturbed: (done) => {
-      const named = present(app, file) && file.path === to;
+      const named = present(app.vault, file) && file.path === to;
       const name = to.slice(to.lastIndexOf("/") + 1);
       if (!done && named) {
         // Obsidian failed with the file at the new name: a rename elsewhere
@@ -1027,7 +802,7 @@ function watchMove(app: App, renaming: Renaming): Move {
       // that says so already is not followed by the same words.
       const where = named
         ? `Obsidian renamed the file to ${name} all the same`
-        : !present(app, file)
+        : !present(app.vault, file)
           ? "the file was deleted"
           : file.path === from
             ? `the file is still ${from}`
@@ -1257,27 +1032,6 @@ interface Claim extends CreatedFile {
   readonly file?: TFile;
 }
 
-/** Whether `file` is still the vault's file at its path. */
-function present(app: App, file: TFile): boolean {
-  return app.vault.getFileByPath(file.path) === file;
-}
-
-/** The symbol file at `path`, as the editor reads it again. */
-function symbolFile(app: App, path: string): SymbolFile {
-  return {
-    path,
-    read: async () => {
-      const file = app.vault.getFileByPath(path);
-      if (file === null) return undefined;
-      const reading = app.vault.readBinary(file);
-      if (looking !== undefined && looking.asked === undefined) {
-        looking.asked = diskLine(app)?.last();
-      }
-      return new Uint8Array(await reading);
-    },
-  };
-}
-
 /**
  * How `file` takes the name `name` chose, in its own folder, or undefined to
  * keep its name, as an empty name does for a symbol that has one. Throws if
@@ -1333,7 +1087,7 @@ export function checkRename(
   file: TFile,
   typed: string,
 ): Renaming | undefined {
-  stillSymbol(app, file);
+  stillSymbol(app.vault, file);
   const renaming = renamingOf(app, file, chosen(typed, file));
   if (renaming !== undefined) notBeingRenamed(file);
   return renaming;
@@ -1373,71 +1127,6 @@ export function renameChecked(
   };
 }
 
-/** Throws unless `file` is still the vault's symbol at its path. */
-function stillSymbol(app: App, file: TFile): void {
-  if (!present(app, file) || !isInkPath(file.path)) {
-    throw new Error("The symbol is no longer in the vault.");
-  }
-}
-
-/**
- * What `file` says about its symbol now, read from the file, whatever its
- * record. Throws with a reason to show if it cannot say anything.
- */
-export async function readSymbolText(
-  app: App,
-  file: TFile,
-): Promise<SymbolText> {
-  stillSymbol(app, file);
-  const bytes = new Uint8Array(await app.vault.readBinary(file));
-  try {
-    return await readText(readChunks(bytes));
-  } catch (error) {
-    throw unreadableText(error);
-  }
-}
-
-/** A save or rename of a symbol under way. */
-export interface SymbolWork {
-  readonly done: Promise<void>;
-  /** Stops it; returns false if it has gone to the vault, and can still end. */
-  readonly stop: () => boolean;
-}
-
-/**
- * Changes a symbol's readings and translations and nothing else: its file's
- * text chunks, as {@link changedText} says, with every other byte as it was. No
- * note changes, as its name stays. A field changed since `seen`, by another
- * save or anything else, rejects with `TextMoved`, with nothing written; one
- * that this save leaves alone keeps what the other save gave it. Once
- * `unloaded` aborts, as Inkline unloads, it writes nothing more, as an
- * editor's save.
- */
-export function writeSymbolText(
-  app: App,
-  file: TFile,
-  changes: TextChanges,
-  seen: SymbolText,
-  unloaded: AbortSignal,
-): SymbolWork {
-  const { access, stop } = stoppable<TFile>({
-    check: (symbol) => {
-      stillAlive(unloaded);
-      stillSymbol(app, symbol);
-    },
-    read: async (symbol) => new Uint8Array(await app.vault.readBinary(symbol)),
-    write: async (symbol, bytes) => {
-      await app.vault.modifyBinary(symbol, bytes);
-      if (!present(app, symbol)) throw new Error(replacedAsWritten);
-    },
-    line: diskLine(app),
-  });
-  const done = writes.run(() =>
-    changeFile(access, file, (bytes) => changedText(bytes, changes, seen)),
-  );
-  return { done, stop };
-}
-
 /**
  * Gives a symbol's file the path {@link renamingOf} found, through Obsidian, so
  * that the links to it follow as its settings say; returns whether the file has
@@ -1475,99 +1164,6 @@ async function rename(
 }
 
 /**
- * Writes a symbol's bytes to its file, wherever a rename took it, or, once that
- * was deleted, to what is at its path, or a new file there, with the folders it
- * needs; returns the file written, which a search finds by what it now says at
- * once, ahead of whatever else is waiting to be read. `check` goes first, in the
- * write's turn, so that no other save of Inkline's can come between it and the
- * write, and rejects to write nothing. `waiting` hears if that takes too long.
- *
- * A write of its own over the file that stops part-way, as on a full disk,
- * leaves the start of these bytes there, which no version of Inkline can read,
- * and so can one that makes the file again, if what it left cannot be taken
- * away. `took` hears its fingerprint, so that the editor knows that file as its
- * own (#425): the next save then writes over it, which loses nothing, as it
- * holds only the start of what that save writes, where the editor would
- * otherwise refuse every save until the file was deleted.
- */
-async function writeSymbol(
-  host: EditorHost,
-  file: TFile,
-  bytes: Uint8Array,
-  check: () => Promise<void>,
-  waiting: SaveWait,
-  took: (fingerprint: string) => void,
-): Promise<TFile> {
-  const { app } = host;
-  const buffer = toBuffer(bytes);
-  const save = (): Promise<TFile> =>
-    writes.run(() =>
-      saveFile({
-        current: () =>
-          present(app, file) ? file : app.vault.getFileByPath(file.path),
-        check: async () => {
-          const look: { asked: unknown } = { asked: undefined };
-          looking = look;
-          try {
-            await check();
-          } finally {
-            if (looking === look) looking = undefined;
-          }
-          return look;
-        },
-        write: async (now) => {
-          await app.vault.modifyBinary(now, buffer);
-          if (!present(app, now)) throw new Error(replacedAsWritten);
-        },
-        bytes,
-        read: async (found) =>
-          new Uint8Array(await app.vault.readBinary(found)),
-        line: diskLine(app),
-        create: async () => {
-          const folder = parentPath(file.path);
-          if (
-            folder !== "" &&
-            app.vault.getAbstractFileByPath(folder) === null
-          ) {
-            try {
-              await app.vault.createFolder(folder);
-            } catch (error) {
-              // Obsidian makes a folder only where the disk has nothing once
-              // it looks, and something else can have made this one meanwhile.
-              if (app.vault.getFolderByPath(folder) === null) throw error;
-            }
-          }
-          try {
-            return await makeSymbolFile(app, host.folder, file.path, buffer);
-          } catch (error) {
-            // A file the vault lists at the path is looked at in the save's
-            // next round; anything else is said in Inkline's words.
-            if (error instanceof PathTaken) {
-              throw new PathTaken(await takenReason(app, file.path));
-            }
-            throw error;
-          }
-        },
-      }),
-    );
-  const write = async (): Promise<TFile> => {
-    let written: TFile;
-    try {
-      written = await save();
-    } catch (error) {
-      if (!(error instanceof CutShort)) throw error;
-      took(await fingerprintOf(error.held));
-      throw new Error(
-        cutShortReason(error.message, file.name, error.held, bytes),
-      );
-    }
-    await host.texts.refresh(written);
-    return written;
-  };
-  return watchSave(write(), waiting);
-}
-
-/**
  * Makes a new symbol's file, at the path `pathFor` finds for it under `name`,
  * as {@link newSymbolPath} or {@link symbolPathIn} does, and returns it.
  * `claimed` hears each path before anything is written there, for the first
@@ -1580,7 +1176,7 @@ async function writeSymbol(
  *
  * Its own write that stops part-way, as on a full disk, leaves nothing at the
  * path, unless what it left there could not be taken away, as
- * {@link makeSymbolFile} says. `claimed` then hears that path again with a
+ * `SymbolWrites.make` says. `claimed` then hears that path again with a
  * fingerprint of what was left, which the claim keeps as what the file may
  * hold, so that the next save takes that file as its own and writes it whole
  * (#425), rather than leave it for good and take another name, or refuse the
@@ -1600,10 +1196,7 @@ async function makeNewSymbol(
     stillAlive(host.unloaded);
     claimed(path);
     try {
-      return await watchSave(
-        makeSymbolFile(app, host.folder, path, buffer),
-        told,
-      );
+      return await watchSave(host.writes.make(path, buffer), told);
     } catch (error) {
       if (error instanceof CutShort) {
         claimed(path, await fingerprintOf(error.held));
@@ -1615,7 +1208,7 @@ async function makeNewSymbol(
       if (!(error instanceof PathTaken)) throw error;
       if (name.kind === "name") claimName(app, parentPath(path), name.name);
       if (name.kind === "name" || tries >= attemptsToMake) {
-        throw new PathTaken(await takenReason(app, path));
+        throw new PathTaken(await takenReason(app.vault, path));
       }
     }
   }
@@ -1663,14 +1256,14 @@ async function claimedFile(
   claim: Claim,
 ): Promise<{ file: TFile; fingerprint: string } | undefined> {
   const file = claim.file ?? app.vault.getFileByPath(claim.path);
-  if (file === null || !present(app, file)) return undefined;
+  if (file === null || !present(app.vault, file)) return undefined;
   const { mtime, size } = file.stat;
   const bytes = new Uint8Array(await app.vault.readBinary(file));
   const fingerprint = await fingerprintOf(bytes);
   if (fingerprint !== claim.fingerprint && fingerprint !== claim.previous) {
     return undefined;
   }
-  return present(app, file) &&
+  return present(app.vault, file) &&
     file.stat.mtime === mtime &&
     file.stat.size === size
     ? { file, fingerprint }
@@ -1865,7 +1458,9 @@ function newSymbol(
     next: (chosen) => {
       // A note deleted after this symbol went in has nowhere for the next.
       const gone =
-        after !== undefined && !host.unloaded.aborted && !present(app, note);
+        after !== undefined &&
+        !host.unloaded.aborted &&
+        !present(app.vault, note);
       if (after === undefined || host.unloaded.aborted || gone) {
         // No editor takes the picture over.
         chosen.picture?.image.close();
@@ -1928,7 +1523,7 @@ function newSymbol(
       },
     },
     copyFrom: (closed) => copySymbol(host, closed),
-    file: () => made && symbolFile(app, made.file.path),
+    file: () => made && host.writes.symbolFile(made.file.path),
     // Until the embed is inserted, the draft is kept before each write, so
     // that it names the file and the bytes even after a crash. If storage
     // refuses it, the write goes ahead: the file then holds the drawing.
@@ -1987,8 +1582,7 @@ function newSymbol(
         if (!inserted) keepDraft();
         let left: string | undefined;
         try {
-          made.file = await writeSymbol(
-            host,
+          made.file = await host.writes.save(
             made.file,
             bytes,
             check,
@@ -2026,14 +1620,19 @@ function newSymbol(
           // the note's editor does not show the new name within five seconds,
           // gives up with a notice. A note deleted since has no embed to
           // follow, and the symbol is saved and renamed all the same.
-          if (inserted && after !== undefined && named && present(app, note)) {
+          if (
+            inserted &&
+            after !== undefined &&
+            named &&
+            present(app.vault, note)
+          ) {
             const now = embedFor(app, made.file, note.path);
             try {
               after =
                 (await followRename(app, target, after, was, now)) ?? after;
             } catch (error) {
               // Deleted as the embed was followed.
-              if (present(app, note)) throw error;
+              if (present(app.vault, note)) throw error;
             }
           }
         }
@@ -2050,7 +1649,7 @@ function newSymbol(
        * every save failing the same way.
        */
       const noteGone = (): boolean => {
-        if (present(app, note)) return false;
+        if (present(app.vault, note)) return false;
         markNotice(
           new Notice(
             `${saved.name} is saved, but was not inserted, as the note it was for, ${note.basename}, was deleted.`,
@@ -2449,11 +2048,11 @@ async function openEditor(
       target: () => ({ kind: "file", path: symbol.path }),
     },
     lifecycle: host.lifecycle,
-    file: () => symbolFile(app, symbol.path),
+    file: () => host.writes.symbolFile(symbol.path),
     write: async (saved, _record, _keepDraft, holds, typed, check, wait) => {
       stillAlive(host.unloaded);
       const renaming = renamingOf(app, symbol, chosen(typed, symbol));
-      symbol = await writeSymbol(host, symbol, saved, check, wait.told, holds);
+      symbol = await host.writes.save(symbol, saved, check, wait.told, holds);
       stillAlive(host.unloaded);
       return rename(host, renaming, wait);
     },
@@ -2629,7 +2228,7 @@ function recoverDraft(host: EditorHost, orphan: Orphan): void {
       },
     },
     lifecycle: host.lifecycle,
-    file: () => made && symbolFile(app, made.path),
+    file: () => made && host.writes.symbolFile(made.path),
     write: async (bytes, _record, keepDraft, holds, typed, check, wait) => {
       stillAlive(host.unloaded);
       if (made === undefined && claim !== undefined) {
@@ -2644,7 +2243,7 @@ function recoverDraft(host: EditorHost, orphan: Orphan): void {
       stillAlive(host.unloaded);
       if (made !== undefined) {
         const renaming = renamingOf(app, made, chosen(typed, made));
-        made = await writeSymbol(host, made, bytes, check, wait.told, holds);
+        made = await host.writes.save(made, bytes, check, wait.told, holds);
         stillAlive(host.unloaded);
         return rename(host, renaming, wait);
       }
