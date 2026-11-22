@@ -383,8 +383,10 @@ ends the name of the record's directory, so an earlier attempt's record, failed
 or passing, never stands for a later one. Both checks expect the versions
 `OBSIDIAN_VERSIONS` names, the default pair when it is unset.
 
-To refresh the table, download a recent run of CI on `main` and commit the
-result:
+The table drifts as spec files are added, grow, or get faster, and the slowest
+shard sets how long `e2e` takes. Refresh it when the shards' times on `main` are
+more than about a minute apart: download a recent run of CI on `main` and commit
+the result:
 
 ```sh
 gh run download <run-id> --pattern 'e2e-results-*' --dir <dir>
