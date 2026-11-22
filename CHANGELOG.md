@@ -11,6 +11,14 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ### Fixed
 
+- On Windows and macOS, a deleted symbol whose folder was there again in another
+  letter case, as `signs` for `Signs`, stopped every save that made it again
+  with Obsidian's "Folder already exists." Now it is saved in that folder, which
+  those systems read as the same one. A file of its name already there, as after
+  the folder's letter case was changed outside Obsidian, is the file at its
+  path: written over if it holds what the editor last saved, and asked about
+  otherwise, as any change is
+  ([#436](https://github.com/viell-dev/slop-inkline/issues/436)).
 - **Make ink**, **Zoom**, and **Fit** pressed while **Move** drags the picture
   now wait until you let go, as they do while you draw. They acted at once: Make
   ink's row, opening above the drawing area, or a zoom, changing its height,
