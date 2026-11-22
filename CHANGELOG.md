@@ -34,6 +34,15 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ### Fixed
 
+- A symbol's file replaced while the editor saved it, deleted and another put at
+  its path through Obsidian, as by another plugin or a sync tool working through
+  it, could have the save find no file, go to make it again, and stop with
+  Obsidian's "File already exists." Now the save looks at the new file, says
+  "Not saved: the file changed on disk", and asks about it, as it does when it
+  finds the new file first. Nothing was written over the new file unasked,
+  either way. A save that makes a deleted symbol's folder again no longer stops
+  with "Folder already exists." when the folder comes back meanwhile: it saves
+  into it ([#379](https://github.com/viell-dev/slop-inkline/issues/379)).
 - Ink shows under the pointer that draws it when a theme or a CSS snippet gives
   the drawing area padding, which Inkline's own styles do not. The ink landed
   away from the pointer by the padding, and the brush's circle was the wrong
