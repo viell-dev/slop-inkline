@@ -703,6 +703,32 @@ describe("A symbol replaced at its path as it is saved", function () {
     });
   }
 
+  /**
+   * Puts at `path`, through Obsidian's adapter, a symbol of another drawing,
+   * whose reading is "theirs": one the editor asks about, as a change to the
+   * text alone is taken in rather than asked about.
+   */
+  async function theirsAt(path: string): Promise<void> {
+    await browser.executeObsidian(async ({ app }, wanted) => {
+      const { canvas, text } = window.inklineTest;
+      const { bytes } = await canvas.saveInk(
+        {
+          strokes: [
+            {
+              tool: "pen" as const,
+              size: 256,
+              points: [2000, 800, 6000, 2000],
+            },
+          ],
+        },
+        undefined,
+        [],
+      );
+      const theirs = await text.writeText(bytes, "reading", ["theirs"]);
+      await app.vault.adapter.writeBinary(wanted, theirs.slice().buffer);
+    }, path);
+  }
+
   /** Whether the vault lists a folder at `path`, in exactly that case. */
   async function folderListed(path: string): Promise<boolean> {
     return browser.executeObsidian(
@@ -759,29 +785,7 @@ describe("A symbol replaced at its path as it is saved", function () {
     // The review of #449: the save found the file there, and looked for it
     // in the folder's old letter case, so that every save was refused.
     await folderInAnotherCase("Signs/gate.ink.png");
-    // Another drawing, as a change to the text alone is taken in, not asked
-    // about.
-    await browser.executeObsidian(async ({ app }) => {
-      const { canvas, text } = window.inklineTest;
-      const { bytes } = await canvas.saveInk(
-        {
-          strokes: [
-            {
-              tool: "pen" as const,
-              size: 256,
-              points: [2000, 800, 6000, 2000],
-            },
-          ],
-        },
-        undefined,
-        [],
-      );
-      const theirs = await text.writeText(bytes, "reading", ["theirs"]);
-      await app.vault.adapter.writeBinary(
-        "signs/gate.ink.png",
-        theirs.slice().buffer,
-      );
-    });
+    await theirsAt("signs/gate.ink.png");
     await lookWithoutCase();
     await browser.keys(["Control", "s"]);
     await waitForStatus("Not saved: the file changed on disk");
@@ -826,6 +830,22 @@ describe("A symbol replaced at its path as it is saved", function () {
     await waitForStatus("Saved");
     expect(await symbolFiles()).toEqual(["Signs/gate.ink.png"]);
     expect(await folderListed("signs")).toBe(true);
+  });
+
+  it("leaves another symbol in a folder of another letter case alone where the disk tells case apart, after saves that used one", async function () {
+    // The review of #449: the saves above made the vault's signs/ stand for
+    // Signs/, and that stayed after them, so that this save, without the
+    // stand-in, looked at signs/gate.ink.png as at the symbol's own file.
+    await folderInAnotherCase("Signs/gate.ink.png");
+    await theirsAt("signs/gate.ink.png");
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    expect(await symbolFiles()).toEqual([
+      "Signs/gate.ink.png",
+      "signs/gate.ink.png",
+    ]);
+    expect(await strokeCount("Signs/gate.ink.png")).toBe(2);
+    expect(await readingOf("signs/gate.ink.png")).toEqual(["theirs"]);
   });
 
   it("makes a deleted symbol again in a folder that lands as it makes that", async function () {

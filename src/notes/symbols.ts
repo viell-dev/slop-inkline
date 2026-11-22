@@ -261,7 +261,10 @@ function pathIn(folder: string, name: string): string {
  * path it made the file at, or found a file at, by the symbol's own path, as
  * its editor still names it. {@link fileAt} finds the file there, so that the
  * editor's look and the save's next round look at that file as at one at the
- * symbol's own path.
+ * symbol's own path. An entry lasts only as long as the save that made it: the
+ * next one finds the folder again, asking the disk, so that an entry made in a
+ * moment the disk was read wrongly, or left by an editor closed since, never
+ * leads a later save to a file it did not find itself.
  */
 const listedPaths = new Map<string, string>();
 
@@ -1613,6 +1616,8 @@ async function writeSymbol(
             throw error;
           }
         },
+      }).finally(() => {
+        listedPaths.delete(file.path);
       }),
     );
   const write = async (): Promise<TFile> => {
