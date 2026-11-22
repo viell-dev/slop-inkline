@@ -20,6 +20,7 @@ import {
   TextMoved,
   watchRename,
   watchSave,
+  withoutPaths,
   WriteQueue,
   type DiskLine,
   type FileAccess,
@@ -1771,5 +1772,30 @@ describe("makeFile", () => {
     await makeFile(making(adapter, path, ours));
     expect(adapter.files.get(path)).toBe(ours);
     expect(adapter.files.has(own)).toBe(true);
+  });
+});
+
+describe("withoutPaths", () => {
+  const said = "as the symbol was put at Signs/gate.ink.png";
+
+  it("says the file a person knows in place of the paths Node.js names", () => {
+    const failed = Object.assign(
+      new Error(
+        "ENOENT: no such file or directory, copyfile '/vault/.obsidian/plugins/inkline/.making-1' -> '/vault/Signs/gate.ink.png'",
+      ),
+      { code: "ENOENT" },
+    );
+    const plain = withoutPaths(failed, said);
+    expect(plain).toBeInstanceOf(Error);
+    expect(String(plain)).toBe(
+      "Error: ENOENT: no such file or directory, as the symbol was put at Signs/gate.ink.png",
+    );
+    expect(plain instanceof Error && Reflect.get(plain, "code")).toBe("ENOENT");
+  });
+
+  it("leaves an error that names no path as it is", () => {
+    const failed = new Error("ENOSPC: no space left on device, write");
+    expect(withoutPaths(failed, said)).toBe(failed);
+    expect(withoutPaths("not an error", said)).toBe("not an error");
   });
 });

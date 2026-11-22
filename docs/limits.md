@@ -161,7 +161,11 @@ Windows and macOS read as the same name, is named, for you to rename or move it.
 For that moment the disk holds the symbol twice, so a disk with room for one
 more copy of it but not two refuses the save, which then leaves nothing at the
 symbol's path. Inkline removes its own file as the save ends, or, if Obsidian
-closed in that moment, when it next starts.
+closed in that moment, when it next starts. The copy also sets the new file's
+permissions, and with a recent Obsidian installer, such as 1.15.1's, its times:
+on a file system that refuses either, where a plain write would not, every save
+that makes a symbol's file fails, with nothing lost and nothing left at the
+symbol's path. No common desktop file system is known to refuse them.
 
 ## A file changed as Obsidian renames it
 

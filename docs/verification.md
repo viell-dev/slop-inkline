@@ -673,11 +673,14 @@ must keep released files readable and looking the same, as
   its own; a save of a symbol whose file is there takes the part as its own; and
   the next save writes the symbol whole, after a second write that stops
   part-way too, and after a draft kept then is restored once Inkline starts
-  again. Inkline removes, as it starts, a file of its own that such a save left.
-  A write that lands once the file was replaced says so, and keeps what was
-  typed. A save over a file waits for what was asked of the disk during its last
-  look, and writes as before once the disk stays busy, or where Obsidian's line
-  of disk operations cannot be seen
+  again. A new symbol saved again before Obsidian lists a part its copy left
+  says so and keeps that part, which the save after writes whole. A failed copy
+  names the symbol's path, not Inkline's own file. Inkline removes, as it
+  starts, a file of its own that such a save left, once it is old enough to be
+  no save's still under way. A write that lands once the file was replaced says
+  so, and keeps what was typed. A save over a file waits for what was asked of
+  the disk during its last look, and writes as before once the disk stays busy,
+  or where Obsidian's line of disk operations cannot be seen
   ([write-identity.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/write-identity.e2e.ts)
   and
   [file-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/file-writes.test.ts)).

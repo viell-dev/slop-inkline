@@ -364,6 +364,38 @@ async function cutCopyAt(
   );
 }
 
+/**
+ * Has Obsidian's watch of the disk keep what it sees of `path` until
+ * {@link releaseWatch}, as a watch that has not reported yet, so that a file
+ * put there other than through Obsidian's adapter stays unlisted.
+ */
+async function holdWatch(path: string): Promise<void> {
+  await browser.executeObsidian(({ app }, wanted) => {
+    const { adapter } = app.vault;
+    const seen: unknown = Reflect.get(adapter, "onFileChange");
+    if (typeof seen !== "function") throw new Error("no watch to hold");
+    const held: unknown[] = [];
+    const release = (): void => {
+      Reflect.deleteProperty(adapter, "onFileChange");
+      Reflect.deleteProperty(window, "inklineAtEnd-watch");
+      for (const changed of held) Reflect.apply(seen, adapter, [changed]);
+    };
+    Reflect.set(window, "inklineAtEnd-watch", release);
+    Reflect.set(adapter, "onFileChange", (changed: unknown) => {
+      if (changed === wanted) held.push(changed);
+      else Reflect.apply(seen, adapter, [changed]);
+    });
+  }, path);
+}
+
+/** Lets Obsidian's watch report what {@link holdWatch} kept. */
+async function releaseWatch(): Promise<void> {
+  await browser.execute(() => {
+    const release: unknown = Reflect.get(window, "inklineAtEnd-watch");
+    if (typeof release === "function") Reflect.apply(release, window, []);
+  });
+}
+
 /** Waits for Obsidian to list a file at `path`, as its watch of the disk does. */
 async function waitForListed(path: string): Promise<void> {
   await browser.waitUntil(
@@ -830,6 +862,61 @@ describe("A symbol replaced at its path as it is saved", function () {
     );
   }
 
+  it("keeps a new symbol's part that a copy left, when it is saved again before Obsidian lists that part", async function () {
+    // The review of #434: the save in between found the path taken, claimed
+    // the next number in its place, and left the part for good.
+    await insert();
+    await drawStroke();
+    await holdWatch("001.ink.png");
+    await cutCopyAt("001.ink.png", 64, { stays: true });
+    await browser.keys(["Control", "s"]);
+    await waitForNotice(
+      "001.ink.png holds what was written before it stopped, which saving again writes whole",
+    );
+    await browser.keys(["Control", "s"]);
+    await waitForStatus(
+      "Not saved: 001.ink.png holds what was written before it stopped, which Obsidian has not listed yet; save again in a moment",
+    );
+    expect(await sizeOnDisk("002.ink.png")).toBeNull();
+    await releaseWatch();
+    await waitForListed("001.ink.png");
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    expect(await symbolFiles()).toEqual(["001.ink.png"]);
+    expect(await strokeCount("001.ink.png")).toBe(1);
+    expect((await noteText()).split("![[001.ink.png]]")).toHaveLength(2);
+  });
+
+  it("says where it was putting a symbol whose copy failed, rather than naming Inkline's own file", async function () {
+    // As when the symbol's folder goes in the moment before the copy.
+    await createSymbol("Signs/gate.ink.png");
+    await editFile("Signs/gate.ink.png");
+    await drawStroke();
+    await browser.executeObsidian(async ({ app }) => {
+      await app.vault.adapter.rmdir("Signs", true);
+    });
+    await waitForStatus("The file was deleted; saving makes it again");
+    await browser.executeObsidian(({ app }, prefix) => {
+      const { adapter } = app.vault;
+      const write = adapter.writeBinary.bind(adapter);
+      adapter.writeBinary = async (written, data, options) => {
+        await write(written, data, options);
+        if (!written.includes(prefix)) return;
+        Reflect.deleteProperty(adapter, "writeBinary");
+        await adapter.rmdir("Signs", true);
+      };
+    }, staging);
+    await browser.keys(["Control", "s"]);
+    await waitForStatus(
+      "Not saved: ENOENT: no such file or directory, as the symbol was put at Signs/gate.ink.png",
+    );
+    expect(await browser.$(".inkline-status").getText()).not.toContain(staging);
+    expect(await stagedFiles()).toEqual([]);
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    expect(await strokeCount("Signs/gate.ink.png")).toBe(2);
+  });
+
   it("writes a new symbol whole once a part it could not take away, and a write over that, have stopped part-way", async function () {
     await newCutTwice(() => Promise.resolve());
     await browser.keys(["Control", "s"]);
@@ -984,12 +1071,16 @@ describe("A symbol replaced at its path as it is saved", function () {
   });
 
   it("removes what a save that made a symbol's file left in Inkline's folder, as Inkline starts", async function () {
-    // As when Obsidian closed between the save's two writes.
+    // As when Obsidian closed between the save's two writes, ten minutes
+    // ago; one written just now may be a save's still under way.
     await browser.executeObsidian(
       async ({ app }, folder, prefix) => {
         const bytes = new Uint8Array([1, 2, 3]).buffer;
-        await app.vault.adapter.writeBinary(`${folder}/${prefix}left`, bytes);
-        await app.vault.adapter.writeBinary(`${folder}/.kept-by-test`, bytes);
+        const { adapter } = app.vault;
+        const old = { mtime: Date.now() - 10 * 60_000 };
+        await adapter.writeBinary(`${folder}/${prefix}left`, bytes, old);
+        await adapter.writeBinary(`${folder}/${prefix}fresh`, bytes);
+        await adapter.writeBinary(`${folder}/.kept-by-test`, bytes, old);
       },
       inklineFolder,
       staging,
@@ -997,14 +1088,22 @@ describe("A symbol replaced at its path as it is saved", function () {
     await obsidianPage.disablePlugin("inkline");
     await obsidianPage.enablePlugin("inkline");
     await loadModules();
-    await browser.waitUntil(async () => (await stagedFiles()).length === 0, {
-      timeoutMsg: "Inkline left its own file",
-    });
-    const kept = await browser.executeObsidian(async ({ app }, folder) => {
-      const there = await app.vault.adapter.exists(`${folder}/.kept-by-test`);
-      await app.vault.adapter.remove(`${folder}/.kept-by-test`);
-      return there;
-    }, inklineFolder);
+    await browser.waitUntil(
+      async () =>
+        (await stagedFiles()).join() === `${inklineFolder}/${staging}fresh`,
+      { timeoutMsg: "Inkline did not remove its own old file" },
+    );
+    const kept = await browser.executeObsidian(
+      async ({ app }, folder, prefix) => {
+        const { adapter } = app.vault;
+        const there = await adapter.exists(`${folder}/.kept-by-test`);
+        await adapter.remove(`${folder}/.kept-by-test`);
+        await adapter.remove(`${folder}/${prefix}fresh`);
+        return there;
+      },
+      inklineFolder,
+      staging,
+    );
     expect(kept).toBe(true);
   });
 

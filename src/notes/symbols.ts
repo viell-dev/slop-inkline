@@ -78,6 +78,7 @@ import {
   saveFile,
   stoppable,
   unreadableText,
+  withoutPaths,
   watchRename,
   watchSave,
   WriteQueue,
@@ -336,20 +337,29 @@ function cutShortReason(
  */
 const stagedPrefix = ".making-";
 
-/** Those files of saves still under way, which {@link sweepStaged} leaves. */
-const staged = new Set<string>();
+/**
+ * How long ago, in milliseconds, a file of {@link makeSymbolFile}'s own must
+ * have been written for {@link sweepStaged} to remove it. A save removes its own
+ * within moments, and Obsidian gives up on a step of its disk after a minute,
+ * so this leaves one of a save that may still be under way: of the load of
+ * Inkline just before, as after it was turned off and on again, or of another
+ * computer whose sync tool carries the folder.
+ */
+const sweepAfter = 5 * 60_000;
 
 /**
  * Removes the files in Inkline's own `folder` that a save making a symbol's
  * file wrote there and could not remove, as when Obsidian closed in between,
- * other than those of saves still under way. Run as Inkline starts.
+ * once they are older than {@link sweepAfter}. Run as Inkline starts.
  */
 export async function sweepStaged(app: App, folder: string): Promise<void> {
   const { adapter } = app.vault;
   const listed = await adapter.list(folder).catch(() => undefined);
   for (const file of listed?.files ?? []) {
     const name = file.slice(file.lastIndexOf("/") + 1);
-    if (name.startsWith(stagedPrefix) && !staged.has(file)) {
+    if (!name.startsWith(stagedPrefix)) continue;
+    const written = await adapter.stat(file).catch(() => null);
+    if (written !== null && Date.now() - written.mtime >= sweepAfter) {
       await adapter.remove(file).catch(() => undefined);
     }
   }
@@ -382,21 +392,26 @@ async function makeSymbolFile(
 ): Promise<TFile> {
   const { adapter } = app.vault;
   const own = `${folder}/${stagedPrefix}${crypto.randomUUID()}`;
-  staged.add(own);
-  try {
-    await makeFile({
-      bytes: new Uint8Array(buffer),
-      exists: () => adapter.exists(path),
-      stage: () => adapter.writeBinary(own, buffer),
-      place: () => adapter.copy(own, path),
-      taken: (error) => errorCode(error) === "EEXIST",
-      read: async () => new Uint8Array(await adapter.readBinary(path)),
-      clear: () => adapter.remove(path),
-      unstage: () => adapter.remove(own),
-    });
-  } finally {
-    staged.delete(own);
-  }
+  await makeFile({
+    bytes: new Uint8Array(buffer),
+    exists: () => adapter.exists(path),
+    // Node.js names both files in a failure, Inkline's own among them.
+    stage: () =>
+      adapter.writeBinary(own, buffer).catch((error: unknown) => {
+        throw withoutPaths(
+          error,
+          "as the symbol was written in Inkline's folder",
+        );
+      }),
+    place: () =>
+      adapter.copy(own, path).catch((error: unknown) => {
+        throw withoutPaths(error, `as the symbol was put at ${path}`);
+      }),
+    taken: (error) => errorCode(error) === "EEXIST",
+    read: async () => new Uint8Array(await adapter.readBinary(path)),
+    clear: () => adapter.remove(path),
+    unstage: () => adapter.remove(own),
+  });
   const made = app.vault.getFileByPath(path);
   if (made === null) {
     throw new Error(`${path} was written, but Obsidian has not listed it`);
@@ -1566,6 +1581,37 @@ async function makeNewSymbol(
 }
 
 /**
+ * Throws if the disk holds, at the claim's path, the part that a cut-short
+ * write of the save's own left there (#425), as its `previous` says, and the
+ * vault does not list it yet. After a copy that stopped part-way and whose part
+ * could not be taken away, Obsidian lists that part only once its watch of the
+ * disk sees it. A save meanwhile would find the path taken, go on to another,
+ * and claim that one, so that the part stayed for good, or, with a name typed,
+ * the name was refused until the part was deleted by hand. This keeps the
+ * claim, for the next save to take that file as its own once it is listed.
+ */
+async function waitForOwnPart(app: App, claim: Claim): Promise<void> {
+  const { path, previous } = claim;
+  if (
+    previous === undefined ||
+    app.vault.getAbstractFileByPath(path) !== null
+  ) {
+    return;
+  }
+  const held = await app.vault.adapter.readBinary(path).catch(() => undefined);
+  if (
+    held === undefined ||
+    (await fingerprintOf(new Uint8Array(held))) !== previous
+  ) {
+    return;
+  }
+  const name = path.slice(path.lastIndexOf("/") + 1);
+  throw new Error(
+    `${name} holds what was written before it stopped, which Obsidian has not listed yet; save again in a moment`,
+  );
+}
+
+/**
  * The claimed file and a fingerprint of what it holds, if that is what was
  * last written there, or what it held before a write that may not have
  * happened: one that an interrupted first save made, unchanged since. A file
@@ -1867,6 +1913,8 @@ function newSymbol(
           adopted = true;
           holds(claimed.fingerprint);
           renaming = renamingOf(app, made.file, name);
+        } else {
+          await waitForOwnPart(app, claim);
         }
       }
       stillAlive(host.unloaded);
@@ -2546,7 +2594,9 @@ function recoverDraft(host: EditorHost, orphan: Orphan): void {
       stillAlive(host.unloaded);
       if (made === undefined && claim !== undefined) {
         const found = await claimedFile(app, claim);
-        if (found !== undefined) {
+        if (found === undefined) {
+          await waitForOwnPart(app, claim);
+        } else {
           made = found.file;
           holds(found.fingerprint);
         }

@@ -126,6 +126,21 @@ export class PathTaken extends Error {
 }
 
 /**
+ * `error` with the paths that Node.js names after its reason taken out, as
+ * "EACCES: permission denied, open '<path>'" gives, and `said` in their place,
+ * so that a person is told of the file they know rather than of one of
+ * Inkline's own. Its `code` stays, for whoever tells errors apart by it. Any
+ * other error is as it was.
+ */
+export function withoutPaths(error: unknown, said: string): unknown {
+  if (!(error instanceof Error)) return error;
+  const reason = error.message.replace(/, \w+ '.*$/su, "");
+  if (reason === error.message) return error;
+  const code: unknown = Reflect.get(error, "code");
+  return Object.assign(new Error(`${reason}, ${said}`), { code });
+}
+
+/**
  * Thrown when the save's own write stopped part-way, as on a full disk, and
  * left a part of the file where it was writing: by {@link saveFile} for a write
  * over a file, and by {@link makeFile} for a file it could not take back.
