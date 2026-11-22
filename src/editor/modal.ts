@@ -2,7 +2,8 @@
 // controls, saving, drafts, and the question before unsaved work is closed.
 // controls.ts makes the buttons and keys, which run the commands this
 // implements, surface.ts holds the drawing area, which the pointer draws on,
-// and picture.ts holds the picture to trace over and Make ink.
+// picture.ts holds the picture to trace over and Make ink, and keeping.ts
+// keeps the drawing safe: drafts, the symbol's file, and saving.
 
 import {
   ConfirmationModal,
@@ -12,26 +13,16 @@ import {
   type EventRef,
   type TAbstractFile,
 } from "obsidian";
-import { carriedChunks, type CarriedChunk } from "../format/ink-file.ts";
-import {
-  parseRecord,
-  serializeRecord,
-  type BaseLayer,
-  type InkRecord,
-  type Tool,
-} from "../format/record.ts";
+import type { Tool } from "../format/record.ts";
+import type { SymbolText } from "../format/text.ts";
 import {
   drawableBase,
-  nextTask,
   openInk,
   saveInk,
   type EditableInk,
 } from "../ink/canvas.ts";
 import { toUnits, type InkDocument } from "../ink/document.ts";
 import type { DrawableBase } from "../ink/render.ts";
-import { readText, writeText, type SymbolText } from "../format/text.ts";
-import { savingWaits, type RenameWait } from "../notes/file-writes.ts";
-import { chooseRename, symbolStem } from "../notes/names.ts";
 import {
   isBlank,
   noText,
@@ -40,27 +31,20 @@ import {
   textFields,
 } from "../notes/text-fields.ts";
 import {
-  draftBase,
-  draftOffer,
-  drawingOf,
-  fingerprintOf,
-  offerQuestion,
-  restoreDraft,
-  sameTarget,
-  unshownBase,
-  type Draft,
-  type DraftBase,
-  type DraftStore,
-  type DraftTarget,
-} from "./drafts.ts";
-import {
   buttonStates,
   type ButtonLabels,
   type EditorCommands,
 } from "./buttons.ts";
 import { EditorControls, openHelp } from "./controls.ts";
 import { keepsArrows, typing } from "./focus.ts";
-import { FileWatch, type FileReading, type Reading } from "./disk.ts";
+import {
+  DecodedBases,
+  Keeping,
+  usedText,
+  type KeepingHost,
+  type KeepingOptions,
+  type Question,
+} from "./keeping.ts";
 import { StatusLine } from "./status.ts";
 import { DrawingSession, type Shape } from "./session.ts";
 import type { GuideName } from "./guides.ts";
@@ -75,24 +59,7 @@ import { EditorSurface, type SurfaceHost, type ViewWaits } from "./surface.ts";
 import { surfaceWidth, type InkView } from "./view.ts";
 import { markNotice } from "../notices.ts";
 
-/** How the vault's notes use a symbol: how many links, in how many notes. */
-export interface SymbolUses {
-  readonly links: number;
-  readonly notes: number;
-}
-
-/** How a question about saving says that the symbol `name` is used. */
-function usedText(name: string, { links, notes }: SymbolUses): string {
-  return `${name} is used ${String(links)} times, in ${String(notes)} ${notes === 1 ? "note" : "notes"}.`;
-}
-
-/** The symbol's file, as the editor reads it again to see if it changed. */
-export interface SymbolFile {
-  /** Where it is, following renames, or where it was once deleted. */
-  readonly path: string;
-  /** What it holds now, or undefined when no file is there. */
-  read(): Promise<Uint8Array | undefined>;
-}
+export type { SymbolFile, SymbolUses } from "./keeping.ts";
 
 /** A symbol opened to start another from, and the name it goes by. */
 export interface SymbolCopy {
@@ -101,9 +68,6 @@ export interface SymbolCopy {
   /** Whether the symbol has text, which stays with it. */
   readonly hasText: boolean;
 }
-
-/** A file opened again, and what it says about its symbol. */
-type OpenedFile = EditableInk & { readonly text: SymbolText };
 
 /** The tools chosen in an editor, which the next one starts with. */
 export interface EditorTools {
@@ -141,17 +105,8 @@ const nudge = 1;
 const noStrokes =
   "Opened as a picture to draw over, as this file holds no strokes: symbols saved before Inkline 0.9.2 open this way";
 
-export interface EditorOptions {
-  /** What the editor calls the symbol until it has a name: "New symbol". */
-  readonly title: string;
-  /**
-   * The symbol's name, which its name field starts with, or undefined for a
-   * new one, whose field starts empty.
-   */
-  readonly name?: string;
-  readonly document: InkDocument;
+export interface EditorOptions extends KeepingOptions {
   readonly base?: DrawableBase;
-  readonly carried?: readonly CarriedChunk[];
   /** Whether its file held no strokes, so that its pixels opened instead. */
   readonly picture?: boolean;
   /**
@@ -167,71 +122,6 @@ export interface EditorOptions {
   readonly center: number;
   /** How wide the drawing is, in pixels, so that the surface shows it all. */
   readonly width?: number;
-  /**
-   * Writes a saved symbol: the first save of a new symbol creates its file
-   * and inserts it. Rejects when anything could not be done, which keeps the
-   * editor open with the drawing, so that the next save tries again.
-   * `keepDraft` keeps the editor's draft at once, as before a step that a
-   * draft must name, and returns whether it was kept. `holds` tells the
-   * editor what the file holds as soon as the host has adopted or written
-   * it, before any later step that can fail, such as inserting an embed, so
-   * that the editor goes on comparing the file with that. `name` is what the
-   * name field holds, as typed, for the file to take as its name.
-   * `check` looks at the file once more: the host calls it just before it
-   * writes over a file, where no other save can come between them, and again
-   * if another file took that one's place meanwhile. It writes nothing if
-   * `check` rejects, which it does to ask about a change or refuse one.
-   * `wait` hears when a step that writes takes too long, or a rename stops,
-   * and says whether a person is being asked something above this editor.
-   * Resolves to whether that name was kept or applied. False means only the
-   * rename failed: the drawing is saved, and the name stays for a retry.
-   */
-  readonly write: (
-    bytes: Uint8Array,
-    record: InkRecord,
-    keepDraft: () => boolean,
-    holds: (fingerprint: string) => void,
-    name: string,
-    check: () => Promise<void>,
-    wait: RenameWait,
-  ) => Promise<boolean>;
-  /**
-   * For an existing symbol, which other notes may show: how the vault's
-   * notes use it, asked before the first save of a changed drawing, so that
-   * the editor can ask first, when it is used more than once, whether to
-   * change it everywhere. Undefined for a new symbol.
-   */
-  readonly uses?: () => SymbolUses;
-  /**
-   * The symbol's file: an existing symbol's, or a new one's once its first
-   * save made it, and undefined before then. The editor reads it again when
-   * the vault says it changed and before each save, so that a change made
-   * elsewhere is never written over unasked.
-   */
-  readonly file?: () => SymbolFile | undefined;
-  /** A fingerprint of the file as opened, for an existing symbol. */
-  readonly fingerprint?: string;
-  /** The same of all but its text, as `drawingOf` gives it. */
-  readonly drawing?: string;
-  /** Where unsaved strokes are kept, and which symbol they belong to. */
-  readonly drafts?: {
-    readonly store: DraftStore;
-    /** The symbol now: a new one is its file once the first save made it. */
-    readonly target: () => DraftTarget;
-    /**
-     * Told when another editor's draft is restored, before this editor keeps
-     * its own, so that a new symbol can finish with the file that draft's
-     * first save made.
-     */
-    readonly restored?: (draft: Draft) => void;
-    /**
-     * A draft to open with, restored as Restore would restore it, without
-     * asking, as the person chose it already: one whose symbol's file is gone
-     * or does not open, which this editor makes a new symbol of. No other
-     * draft is offered then.
-     */
-    readonly recover?: Draft;
-  };
   /**
    * Opens the editor for the next symbol, whose embed follows this one's,
    * once this one is saved and inserted, with this editor's tools; undefined
@@ -267,83 +157,25 @@ export interface EditorOptions {
   };
 }
 
-/** A save that stopped to ask a question, which says why without a notice. */
-class Unsaved extends Error {}
-
-/**
- * A save that found the file's text changed, took it in, and is to start again,
- * as what it was about to write held the text as it was. It need say nothing.
- */
-class SaveAgain extends Error {
-  /** Starts the save again, once this one has ended. */
-  readonly again: () => void;
-
-  constructor(again: () => void) {
-    super("the file's text changed");
-    this.again = again;
-  }
-}
-
-const unreadable =
-  "the file changed on disk, and this version of Inkline cannot read it";
-
-const textReplaced =
-  "the file changed text you typed, so look at what it now says and save again";
-
 export class InkEditorModal extends Modal {
   readonly #options: EditorOptions;
   readonly #session: DrawingSession;
-  /** This editor's own draft, which no other editor writes. */
-  readonly #draftId = crypto.randomUUID();
-  /** The symbol's file as last opened, reloaded, or saved, and changes to it. */
-  readonly #watch: FileWatch;
+  /** Keeping the drawing safe: drafts, the file, and saving. */
+  readonly #keeping: Keeping;
   /** The vault's reports of changes to files, while the editor is open. */
   #vaultEvents: EventRef[] = [];
-  /** Whether the file is being read again, and whether to read it once more. */
-  #checking = false;
-  #recheck = false;
-  /** The file's chunks to keep when it is saved, from the file last read. */
-  #carried: readonly CarriedChunk[];
-  /** The document the file held as opened or last reloaded. */
-  #opened: InkDocument;
   /** The field for the symbol's name, in the title's place. */
   #nameField: HTMLInputElement | undefined;
   /** The symbol's readings and translations, and what shows or hides them. */
   #textFields: TextFields | undefined;
   #textToggle: HTMLButtonElement | undefined;
   #textStrip: HTMLElement | undefined;
-  /** The symbol's name as last opened or saved, or empty before it has one. */
-  #savedName: string;
-  /** Whether the last save kept the drawing but could not rename the file. */
-  #notRenamed = false;
-  /**
-   * Whether the question about a change on disk is open, and the save it
-   * goes on with if the drawing is kept.
-   */
-  #askingChanged = false;
-  #resume: (() => void) | undefined;
-  /**
-   * Whether this editor need not ask again before saving over a symbol used
-   * more than once, as Replace was chosen.
-   */
-  #choseReplace = false;
-  /** The question whether to replace a shared symbol, while it is open. */
-  #askingReplace: Promise<boolean> | undefined;
-  /** Whether Next is under way, so that it opens one editor however asked. */
-  #advancing = false;
   /** The choice of a symbol to copy while it is open, to close with this. */
   #choosing: AbortController | undefined;
   /** The drawing area, once the editor has opened. */
   #surface: EditorSurface | undefined;
-  #saving: Promise<boolean> | undefined;
+  /** Whether the editor is closing, as it does once asked to or done. */
   #closing = false;
-  /**
-   * Set when disposed: nothing more is saved or written as a draft, but for
-   * {@link #settleDraft} once a save that was running then ends.
-   */
-  #retired = false;
-  /** Whether a save was running when the editor was disposed, until it ends. */
-  #settling = false;
   #status: HTMLElement | undefined;
   /**
    * What the status line says, which whatever the person does replaces, and
@@ -354,39 +186,9 @@ export class InkEditorModal extends Modal {
   });
   /** Says that a save is waiting for Obsidian, which outlasts the status. */
   #saveWait: HTMLElement | undefined;
-  /**
-   * Base layer images decoded for drawing, by their PNG, each kept while
-   * something holds that PNG: a state that Undo or Redo can reach, the
-   * drawing as opened or saved, or a draft. One that only abandoned states
-   * held, after a new change past an Undo or past the history's limit, goes.
-   */
-  readonly #decoded = new WeakMap<Uint8Array, DrawableBase>();
-  /** The base layer placed where the document puts it, for drawing. */
-  #placed: { layer: BaseLayer; drawable: DrawableBase } | undefined;
-  /** Whether the last draft written was kept; storage can refuse one. */
-  #draftKept = true;
+  /** Base layer images decoded for drawing, by their PNG. */
+  readonly #decoded = new DecodedBases();
   #guidesShown = true;
-  /**
-   * The draft this editor restored, until its own draft or a save takes its
-   * place: storage may refuse the editor's own at first.
-   */
-  #replacing: string | undefined;
-  /** The draft this editor is offering back, held while it asks. */
-  #offered: string | undefined;
-  /**
-   * The draft this editor opened as a new symbol, as `drafts.recover` gives
-   * it, once restored: its own draft stands in for it until a first save
-   * makes a file of its own, as {@link #draft} says.
-   */
-  #recovered: Draft | undefined;
-  /**
-   * The base layer of {@link #recovered} that this editor could not show: one
-   * it took from its file, or one it kept itself that cannot be decoded. Its
-   * own draft goes on naming it while it stands in for that draft, so that
-   * nothing of it is dropped before the first save starts writing: names the
-   * file it makes, or takes over the file a first save made.
-   */
-  #unshownBase: DraftBase | undefined;
   /** The picture to trace over, and Make ink. */
   readonly #tracing: PictureTracing;
   /** The document whose pastes the editor takes, while it is open. */
@@ -416,10 +218,14 @@ export class InkEditorModal extends Modal {
       this.#guidesShown = guides;
     }
     this.#tracing = new PictureTracing(this.#tracingHost());
-    this.#watch = new FileWatch(options.fingerprint, options.drawing);
-    this.#carried = options.carried ?? [];
-    this.#opened = options.document;
-    this.#savedName = options.name ?? "";
+    this.#keeping = new Keeping(options, {
+      host: this.#keepingHost(),
+      session: this.#session,
+      decoded: this.#decoded,
+      line: this.#line,
+      codec: { save: saveInk, open: openInk, drawableBase },
+      picture: this.#tracing,
+    });
     const { base } = options.document;
     if (base !== undefined && options.base !== undefined) {
       this.#decoded.set(base.png, options.base);
@@ -428,28 +234,7 @@ export class InkEditorModal extends Modal {
 
   /** The decoded base layer, where the document now puts it. */
   get #base(): DrawableBase | undefined {
-    const layer = this.#session.document.base;
-    const drawable =
-      layer === undefined ? undefined : this.#decoded.get(layer.png);
-    if (layer === undefined || drawable === undefined) {
-      // The last one placed would otherwise keep its image after the
-      // drawing let it go.
-      this.#placed = undefined;
-      return undefined;
-    }
-    if (this.#placed?.layer !== layer) {
-      this.#placed = {
-        layer,
-        drawable: {
-          ...drawable,
-          x: layer.x,
-          y: layer.y,
-          width: layer.width,
-          height: layer.height,
-        },
-      };
-    }
-    return this.#placed.drawable;
+    return this.#decoded.placed(this.#session.document.base);
   }
 
   override open(): void {
@@ -481,7 +266,7 @@ export class InkEditorModal extends Modal {
       session: this.#session,
       line: this.#line,
       picture: this.#tracing,
-      labelId: `inkline-drawing-${this.#draftId}`,
+      labelId: `inkline-drawing-${this.#keeping.draftId}`,
       width: surfaceWidth(this.#options.width ?? 0),
       center: this.#options.center,
       magnified: this.#options.tools?.magnified === true,
@@ -508,11 +293,11 @@ export class InkEditorModal extends Modal {
     surface.watchSize();
     this.#updateButtons();
     this.#render();
-    this.#options.drafts?.store.hold(this.#draftId);
+    this.#keeping.holdDraft();
     this.#options.lifecycle?.opened(this);
-    void this.#offerDraft();
+    void this.#keeping.offerDraft();
     // The file may have changed since it was read for opening.
-    this.#checkFile();
+    this.#keeping.checkFile();
   }
 
   /** What the editor's buttons and keys do, for its controls to call. */
@@ -564,9 +349,11 @@ export class InkEditorModal extends Modal {
       toggleZoom: () => {
         this.#surface?.toggleZoom();
       },
-      saveAndClose: () => void this.#saveAndClose(),
-      saveOnly: () => void this.#saveOnly(),
-      saveAndNext: () => void this.#saveAndNext(),
+      saveAndClose: () => void this.#keeping.saveAndClose(),
+      saveOnly: () => void this.#keeping.saveOnly(),
+      saveAndNext: () => {
+        this.#saveAndNext();
+      },
       help: () => {
         this.#help();
       },
@@ -615,6 +402,69 @@ export class InkEditorModal extends Modal {
       },
       refocus: () => {
         this.#refocus();
+      },
+    };
+  }
+
+  /** What keeping the drawing safe is given of the editor. */
+  #keepingHost(): KeepingHost {
+    return {
+      closing: () => this.#closing,
+      say: (text, holds) => {
+        this.#announce(text, holds);
+      },
+      notice: (text) => {
+        markNotice(new Notice(text));
+      },
+      ask: (question) => {
+        this.#ask(question);
+      },
+      questionsOpen: () => this.#questions.size > 0,
+      onTop: () => this.#onTop(),
+      updateControls: () => {
+        this.#updateButtons();
+      },
+      requestRender: () => {
+        this.#render();
+      },
+      fitView: () => {
+        this.#surface?.fitView();
+      },
+      shift: (dx) => {
+        this.#surface?.view.shift(dx);
+        this.#tracing.moveWithDrawing(dx);
+      },
+      refocus: () => {
+        this.#refocus();
+      },
+      finish: () => {
+        this.#finish();
+      },
+      typedName: () => this.#nameField?.value,
+      showName: (name, typed) => {
+        const field = this.#nameField;
+        if (field === undefined) return;
+        field.placeholder = name;
+        if (typed !== undefined && field.value === typed) field.value = name;
+      },
+      restoreName: (name) => {
+        if (this.#nameField !== undefined) this.#nameField.value = name;
+      },
+      showUnnamed: () => {
+        this.#showUnnamed();
+      },
+      text: () => this.#textFields,
+      showText: () => {
+        this.#showText(true);
+      },
+      showTextSummary: () => {
+        this.#showTextSummary();
+      },
+      showWaiting: (text) => {
+        this.#saveWait?.setText(text);
+      },
+      later: (then) => {
+        this.modalEl.win.setTimeout(then);
       },
     };
   }
@@ -684,10 +534,15 @@ export class InkEditorModal extends Modal {
       focusThreshold: () => {
         this.#controls?.focusThreshold();
       },
-      focusApply: () => {
-        this.#controls?.focusButton("apply");
+      focusAfterApply: (open) => {
+        // Disabling Apply while it ran let go of the focus; with no ink
+        // made, the row stays open, and the focus goes back to Apply.
+        const doc = this.modalEl.doc;
+        const focused = doc.activeElement;
+        if (focused !== null && focused !== doc.body) return;
+        if (open) this.#controls?.focusButton("apply");
+        else this.#refocus();
       },
-      document: () => this.modalEl.doc,
       useInk: (made) => {
         // A stroke being drawn is committed first, so that Undo keeps it apart.
         this.#session.end();
@@ -716,10 +571,7 @@ export class InkEditorModal extends Modal {
     // Pictures still being decoded are closed as they arrive.
     this.#tracing.dispose();
     this.contentEl.empty();
-    const store = this.#options.drafts?.store;
-    store?.release(this.#draftId);
-    if (this.#replacing !== undefined) store?.release(this.#replacing);
-    if (this.#offered !== undefined) store?.release(this.#offered);
+    this.#keeping.release();
     this.#options.lifecycle?.closed(this);
   }
 
@@ -750,70 +602,61 @@ export class InkEditorModal extends Modal {
       this.#render();
       return;
     }
-    if (this.#saving !== undefined) {
-      this.#announceSaving();
+    const keeping = this.#keeping;
+    if (keeping.saving) {
+      keeping.announceSaving();
       return;
     }
     // Ink being previewed is unsaved too: Save makes it, as saving does.
-    if (!this.#unsaved && !this.#tracing.previewing()) {
-      this.#forgetDraft();
+    if (!keeping.unsaved && !this.#tracing.previewing()) {
+      keeping.forgetDraft();
       this.#finish();
       return;
     }
     // One question for a symbol used more than once, rather than two.
-    const uses = this.#sharedUses();
-    const name = this.#displayName;
-    this.#ask(
-      uses === undefined ? "Save this symbol?" : `Save the changes to ${name}?`,
-      uses === undefined
-        ? "The drawing has changes that are not saved."
-        : `The drawing has changes that are not saved. ${usedText(name, uses)} Replace changes it in all of them. For a variant that leaves them as they are, start a new symbol with Copy from instead.`,
-      [
+    const uses = keeping.sharedUses();
+    const name = keeping.displayName;
+    this.#ask({
+      title:
+        uses === undefined
+          ? "Save this symbol?"
+          : `Save the changes to ${name}?`,
+      content:
+        uses === undefined
+          ? "The drawing has changes that are not saved."
+          : `The drawing has changes that are not saved. ${usedText(name, uses)} Replace changes it in all of them. For a variant that leaves them as they are, start a new symbol with Copy from instead.`,
+      answers: [
         {
           text: uses === undefined ? "Save" : "Replace",
           primary: true,
           // The question closes at once; a failed save then leaves the editor
           // open and says why.
           act: () => {
-            if (uses !== undefined) this.#choseReplace = true;
-            void this.#saveAndClose();
+            if (uses !== undefined) keeping.chooseReplace();
+            void keeping.saveAndClose();
           },
         },
         {
           text: "Discard",
           destructive: true,
           act: () => {
-            this.#forgetDraft();
+            keeping.forgetDraft();
             this.#finish();
           },
         },
       ],
-      "Keep drawing",
-    );
+      cancel: "Keep drawing",
+    });
   }
 
   /**
    * Closes the editor without asking, as when the plugin unloads: unsaved
    * strokes are kept as a draft, its questions close, and nothing more is
    * saved or written as a draft, even by a save still running, which only
-   * settles that draft as it ends ({@link #settleDraft}).
+   * settles that draft as it ends ({@link Keeping.retire}).
    */
   dispose(): void {
-    if (this.#retired) return;
-    this.#session.end();
-    if (!this.#keepDraft()) this.#sayNotKept();
-    this.#settling = this.#saving !== undefined;
-    this.#retired = true;
-    this.#finish();
-  }
-
-  /** Says that the latest changes are in no draft, once the editor is gone. */
-  #sayNotKept(): void {
-    markNotice(
-      new Notice(
-        `Inkline could not keep a draft of the latest changes to ${this.#displayName}.`,
-      ),
-    );
+    if (this.#keeping.retire()) this.#finish();
   }
 
   #finish(): void {
@@ -826,18 +669,7 @@ export class InkEditorModal extends Modal {
    * answers do nothing once the editor has closed. `dismissed` runs when it
    * closes without an answer.
    */
-  #ask(
-    title: string,
-    content: string,
-    answers: readonly {
-      text: string;
-      primary?: boolean;
-      destructive?: boolean;
-      act: () => void;
-    }[],
-    cancel: string,
-    dismissed?: () => void,
-  ): void {
+  #ask({ title, content, answers, cancel, dismissed }: Question): void {
     const question = new ConfirmationModal(this.app);
     question.setTitle(title);
     question.setContent(content);
@@ -846,7 +678,7 @@ export class InkEditorModal extends Modal {
       question.addButton((button) => {
         button.setButtonText(answer.text).onClick(() => {
           answered = true;
-          if (!this.#retired && !this.#closing) this.#line.act(answer.act);
+          if (!this.#ended()) this.#line.act(answer.act);
         });
         if (answer.primary === true) button.setCta().setInitialFocus();
         if (answer.destructive === true) button.setDestructive();
@@ -862,37 +694,6 @@ export class InkEditorModal extends Modal {
     question.open();
   }
 
-  /** What the name field holds, as typed. */
-  get #typedName(): string {
-    return this.#nameField?.value ?? this.#savedName;
-  }
-
-  /**
-   * Whether saving would give the symbol another name than it has: the name
-   * field, as saving reads it, holds another, or one that saving would
-   * refuse. Left empty, or holding the name the symbol has, the field keeps
-   * it, or takes a number for a new one.
-   */
-  get #nameChanged(): boolean {
-    const choice = chooseRename(this.#typedName, this.#savedName);
-    if (choice.kind === "number") return false;
-    return choice.kind === "refused" || choice.name !== this.#savedName;
-  }
-
-  /** Whether anything is unsaved: strokes, a new name, or text typed. */
-  get #unsaved(): boolean {
-    return (
-      this.#session.dirty ||
-      this.#nameChanged ||
-      this.#textFields?.touched === true
-    );
-  }
-
-  /** What notices call the symbol: its name, or "New symbol" until it has one. */
-  get #displayName(): string {
-    return this.#savedName === "" ? this.#options.title : this.#savedName;
-  }
-
   /**
    * Puts a field for the symbol's name in the title's place. Enter goes back
    * to drawing; changing the name is a change to save, which drafts keep.
@@ -902,18 +703,20 @@ export class InkEditorModal extends Modal {
     const field = this.titleEl.createEl("input", {
       cls: "inkline-name",
       type: "text",
-      value: this.#savedName,
+      value: this.#keeping.savedName,
       attr: {
         "aria-label": "Symbol name",
         placeholder:
-          this.#savedName === "" ? this.#unnamedPlaceholder : this.#savedName,
+          this.#keeping.savedName === ""
+            ? this.#unnamedPlaceholder
+            : this.#keeping.savedName,
         spellcheck: "false",
         autocomplete: "off",
       },
     });
     field.addEventListener("input", () => {
       this.#line.act(() => {
-        this.#keepDraft();
+        this.#keeping.keepDraft();
       });
     });
     field.addEventListener("keydown", (event) => {
@@ -930,7 +733,7 @@ export class InkEditorModal extends Modal {
    * a symbol nobody has said anything about. The button shows what they hold.
    */
   #addTextFields(): void {
-    const id = `inkline-text-${this.#draftId}`;
+    const id = `inkline-text-${this.#keeping.draftId}`;
     const toggle = this.titleEl.createEl("button", {
       cls: "inkline-text-toggle",
       attr: { type: "button", "aria-expanded": "false", "aria-controls": id },
@@ -948,7 +751,7 @@ export class InkEditorModal extends Modal {
       () => {
         this.#line.act(() => {
           this.#showTextSummary();
-          this.#keepDraft();
+          this.#keeping.keepDraft();
         });
       },
     );
@@ -989,15 +792,6 @@ export class InkEditorModal extends Modal {
     else this.#surface.resized(change);
   }
 
-  /** Whether text typed would replace a change that `opened` holds. */
-  #textClashes(opened: OpenedFile | undefined): boolean {
-    return (
-      opened !== undefined &&
-      this.#textFields !== undefined &&
-      this.#textFields.conflicts(opened.text).length > 0
-    );
-  }
-
   /** Has the button say what the hidden fields hold, or what they are for. */
   #showTextSummary(): void {
     const toggle = this.#textToggle;
@@ -1014,13 +808,6 @@ export class InkEditorModal extends Modal {
     }
   }
 
-  /** The name of the file the editor saves to, or undefined before it has one. */
-  #fileName(): string | undefined {
-    const path = this.#options.file?.()?.path;
-    const file = path?.slice(path.lastIndexOf("/") + 1);
-    return file === undefined ? undefined : symbolStem(file);
-  }
-
   /** What the name field says while the symbol has no name yet. */
   get #unnamedPlaceholder(): string {
     return `${this.#options.title}: name it, or leave it ${this.#options.unnamed?.() ?? "for the next number"}`;
@@ -1028,32 +815,10 @@ export class InkEditorModal extends Modal {
 
   /** Shows what leaving the name empty does now, while it has none. */
   #showUnnamed(): void {
-    if (this.#savedName !== "" || this.#nameField === undefined) return;
+    if (this.#keeping.savedName !== "" || this.#nameField === undefined) {
+      return;
+    }
     this.#nameField.placeholder = this.#unnamedPlaceholder;
-  }
-
-  /**
-   * After a save that sent `typed` as the name, or a rename made elsewhere,
-   * takes the name the file now has, and shows it in the field if the field
-   * still holds `typed`. Undefined leaves the field as it is, as after a
-   * rename that failed.
-   */
-  #named(typed: string | undefined): void {
-    const name = this.#fileName();
-    if (name === undefined) return;
-    this.#savedName = name;
-    const field = this.#nameField;
-    if (field === undefined) return;
-    field.placeholder = name;
-    if (typed !== undefined && field.value === typed) field.value = name;
-  }
-
-  /** What a save says when something is still unsaved after it. */
-  get #partlySaved(): string {
-    if (!this.#notRenamed) return "Saved, except for what changed while saving";
-    return this.#session.dirty
-      ? "Saved, except for the name and what changed while saving"
-      : "Saved, but not renamed";
   }
 
   /** Traces over a picture dropped on the surface, or says why not. */
@@ -1089,7 +854,7 @@ export class InkEditorModal extends Modal {
    */
   readonly #paste = (event: ClipboardEvent): void => {
     const doc = this.modalEl.doc;
-    if (this.#closing || this.#retired || this.#questions.size > 0) return;
+    if (this.#ended() || this.#questions.size > 0) return;
     if (!this.#onTop()) return;
     if (
       !event.composedPath().includes(this.modalEl) &&
@@ -1142,7 +907,7 @@ export class InkEditorModal extends Modal {
 
   /** Whether the editor has closed, or Inkline was disabled. */
   #ended(): boolean {
-    return this.#closing || this.#retired;
+    return this.#closing || this.#keeping.retired;
   }
 
   /**
@@ -1175,7 +940,7 @@ export class InkEditorModal extends Modal {
    * leave no way back to what was saved.
    */
   #moveDrawing(direction: -1 | 1, byCell: boolean): void {
-    if (this.#tracing.converting !== undefined || this.#saving !== undefined) {
+    if (this.#tracing.converting !== undefined || this.#keeping.saving) {
       return;
     }
     const step = byCell ? this.#session.grid.spacing : nudge;
@@ -1357,7 +1122,7 @@ export class InkEditorModal extends Modal {
   #changed(): void {
     this.#updateButtons();
     this.#render();
-    this.#keepDraft();
+    this.#keeping.keepDraft();
   }
 
   /** Shows on the buttons what they do now, as {@link buttonStates} says. */
@@ -1383,7 +1148,7 @@ export class InkEditorModal extends Modal {
       canRedo: this.#session.canRedo,
       placing: this.#session.placing,
       empty: strokes.length === 0 && base === undefined,
-      saving: this.#saving !== undefined,
+      saving: this.#keeping.saving,
     });
     this.#controls?.show({
       ...states,
@@ -1403,7 +1168,7 @@ export class InkEditorModal extends Modal {
         this.#questions.delete(help);
       },
       resume: () => {
-        if (!this.#closing && !this.#retired) this.#surface?.focus();
+        if (!this.#ended()) this.#surface?.focus();
       },
     });
   }
@@ -1414,324 +1179,6 @@ export class InkEditorModal extends Modal {
    */
   #announce(text: string, holds?: () => boolean): void {
     this.#line.say(text, holds);
-  }
-
-  /** Says that a save is running, which stays said until it ends. */
-  #announceSaving(): void {
-    this.#announce("Saving…", () => this.#saving !== undefined);
-  }
-
-  /**
-   * Says that a save is waiting for Obsidian, until it no longer is, and how to
-   * get the strokes back if it never ends. This has a line of its own, as the
-   * status line goes on saying other things meanwhile.
-   */
-  #sayWaiting(waiting: boolean): void {
-    if (!waiting) {
-      this.#saveWait?.setText("");
-      return;
-    }
-    const again =
-      this.#options.drafts?.target().kind === "file"
-        ? "open this symbol again"
-        : "start a new symbol in this note";
-    this.#saveWait?.setText(
-      `${savingWaits} ${
-        this.#keepDraft()
-          ? `Your strokes are safe in a draft, so if nothing changes, restart Obsidian and ${again}.`
-          : "If nothing changes, restart Obsidian, but your latest strokes could not be kept in a draft."
-      }`,
-    );
-  }
-
-  /**
-   * Keeps this editor's unsaved drawing as its draft, or drops it once saved,
-   * and returns whether the drawing is safe: saved, or kept. When storage
-   * refuses a draft, the last one kept stays, and a notice says so once.
-   */
-  #keepDraft(): boolean {
-    const drafts = this.#options.drafts;
-    if (drafts === undefined || this.#retired) return true;
-    // While a save runs, the file holds the drawing as it was or as the save
-    // writes it, so the draft is kept, and keeps its own base layer, but for
-    // one that stands in for a draft opened as a new symbol, as #draft says.
-    const pending = this.#saving !== undefined;
-    if (!pending && !this.#unsaved) {
-      this.#forgetDraft();
-      return true;
-    }
-    const { document } = this.#session;
-    const kept = drafts.store.put(this.#draft(drafts.target(), pending));
-    if (!kept && this.#draftKept) {
-      // The latest changes stay unkept until a draft is kept again.
-      this.#announce("Draft not kept", () => !this.#draftKept);
-      markNotice(
-        new Notice(
-          parseRecord(serializeRecord(document)).ok
-            ? "Inkline could not keep a draft of the latest changes, because the vault's local storage refused it. Save the symbol to keep them."
-            : "Inkline could not keep a draft of the latest changes, because they take the drawing past what a symbol can hold. Undo them to save it.",
-        ),
-      );
-    } else if (
-      kept &&
-      !this.#draftKept &&
-      this.#line.text === "Draft not kept"
-    ) {
-      this.#announce("Draft kept");
-    }
-    this.#draftKept = kept;
-    if (kept) this.#replaced();
-    return kept;
-  }
-
-  /**
-   * This editor's drawing as its draft for `target`. While the file may hold
-   * the drawing as it was or as a save writes it, the draft is `pending`, and
-   * keeps its own base layer, so that it does not depend on which version the
-   * file holds. A draft that stands in for one opened as a new symbol, as
-   * below, names instead the base layer that one named and this editor could
-   * not show, until the first save starts writing.
-   */
-  #draft(target: DraftTarget, pending: boolean): Draft {
-    const { document, saved } = this.#session;
-    // A draft opened as a new symbol is still for its old symbol until the
-    // first save gives it a file of its own, as the editor then holds that
-    // file, or names another path: this one takes its place there, during a
-    // save too, as one cut short by Inkline's unloading keeps its draft. It
-    // goes on naming a base layer it could not show, one taken from that
-    // symbol's file or one that cannot be decoded, with that file's
-    // fingerprints, so that restoring it on the file, should it open again,
-    // brings the base layer back, as the draft found would have. Where the
-    // save makes a file at that same path, as for a symbol deleted, a draft
-    // kept meanwhile restored on it gives the same drawing, as that file
-    // holds no base layer.
-    const standIn =
-      this.#recovered !== undefined &&
-      this.#watch.fingerprint === undefined &&
-      sameTarget(target, this.#recovered.target)
-        ? this.#recovered
-        : undefined;
-    const fingerprint = this.#watch.fingerprint ?? standIn?.fingerprint;
-    const drawing = this.#watch.drawing ?? standIn?.drawing;
-    const unshown = standIn === undefined ? undefined : this.#unshownBase;
-    return {
-      id: this.#draftId,
-      target,
-      strokes: document.strokes,
-      base:
-        unshown !== undefined && document.base === undefined
-          ? unshown
-          : draftBase(document, pending ? undefined : saved),
-      ...(fingerprint === undefined ? {} : { fingerprint }),
-      ...(drawing === undefined ? {} : { drawing }),
-      savedAt: Date.now(),
-      gridOrigin: this.#session.gridOrigin,
-      ...(this.#nameChanged ? { name: this.#typedName } : {}),
-      ...(this.#textFields?.touched === true
-        ? { text: this.#textFields.typed() }
-        : {}),
-    };
-  }
-
-  /**
-   * Settles the draft that {@link dispose} kept while a save ran, once that
-   * save ends, which can be after Inkline is off: Obsidian finishes a rename
-   * it has begun, which nothing takes back, and the draft names the file's
-   * path from before it. The draft is kept again for the file where it is now,
-   * on its own base layer and with the time it was kept, so that it depends on
-   * nothing the file holds and expires as it would have; or, standing in for a
-   * draft opened as a new symbol, on the base layer that draft named, as
-   * {@link #draft} says. Whether the file
-   * holds everything it does is for the next editor of the file to tell, as it
-   * offers drafts ({@link draftOffer}): the file can change at any time
-   * after the save, and this editor follows it no more.
-   *
-   * This touches only this editor's own draft, once, and only while a list
-   * would keep it: another load may have restored, discarded, or dropped it
-   * meanwhile, as one that expired, and nothing brings it back. It reads no
-   * file, removes no draft, and writes no file and no note.
-   */
-  #settleDraft(): void {
-    if (!this.#settling) return;
-    this.#settling = false;
-    const drafts = this.#options.drafts;
-    const keptAt = drafts?.store.keptAt(this.#draftId);
-    if (drafts === undefined || keptAt === undefined) return;
-    const draft = { ...this.#draft(drafts.target(), true), savedAt: keptAt };
-    if (!drafts.store.put(draft)) this.#sayNotKept();
-  }
-
-  /**
-   * Drops this editor's own draft, and the one it restored, which its
-   * drawing has taken the place of; never another's.
-   */
-  #forgetDraft(): void {
-    if (this.#retired) return;
-    this.#options.drafts?.store.remove(this.#draftId);
-    this.#draftKept = true;
-    this.#replaced();
-  }
-
-  /** Drops the draft this editor restored, once nothing needs it. */
-  #replaced(): void {
-    const replacing = this.#replacing;
-    if (replacing === undefined) return;
-    this.#replacing = undefined;
-    this.#options.drafts?.store.remove(replacing);
-    this.#options.drafts?.store.release(replacing);
-  }
-
-  /**
-   * Offers back the newest draft another editor left for this symbol, once
-   * any base layer it keeps is decoded, holding it meanwhile so that no other
-   * editor offers it too. Dismissing the question keeps the draft for next
-   * time; only Restore or Discard use it up, and Restore only once this
-   * editor's own draft has taken its place.
-   */
-  async #offerDraft(): Promise<void> {
-    const drafts = this.#options.drafts;
-    if (drafts === undefined) return;
-    const { recover } = drafts;
-    const offers =
-      recover === undefined
-        ? drafts.store.offers(drafts.target())
-        : { drafts: [], newer: false };
-    // A draft for the file that would bring back nothing is dropped. The
-    // editor follows the file from its opening, so a change to it after that
-    // is taken in or asked about as any other is.
-    const { offer, drop } = draftOffer(
-      drafts.target(),
-      offers.drafts,
-      this.#opened,
-      this.#savedName,
-    );
-    for (const id of drop) drafts.store.remove(id);
-    const found = recover ?? offer;
-    // A later version's draft cannot be read here, so it stays for that
-    // version to offer, and this says so, as the changes would seem lost.
-    if (offers.newer) {
-      markNotice(
-        new Notice(
-          "This symbol has unsaved changes from a newer version of Inkline, which this version cannot restore. Update Inkline to get them back.",
-        ),
-      );
-    }
-    if (found === undefined) return;
-    drafts.store.hold(found.id);
-    this.#offered = found.id;
-    const letGo = (): void => {
-      drafts.store.release(found.id);
-      this.#offered = undefined;
-    };
-    let readable = found.base.kind !== "lost";
-    if (found.base.kind === "kept") {
-      const { layer } = found.base;
-      try {
-        this.#decoded.set(layer.png, await drawableBase(layer));
-      } catch {
-        readable = false;
-      }
-      // Meanwhile the editor may have closed, saved a new symbol into its
-      // own file, started a save, or asked before closing: then the draft
-      // waits for another time, which a draft opened as a new symbol says,
-      // as nothing else would show that it was not. Such an editor stays
-      // open, as what was drawn, saved, or asked in it meanwhile is the
-      // person's; anything drawn there is kept as its own draft, and the
-      // draft found stays as it was, to be opened again.
-      if (
-        this.#retired ||
-        this.#closing ||
-        this.#saving !== undefined ||
-        this.#questions.size > 0 ||
-        !sameTarget(drafts.target(), found.target)
-      ) {
-        letGo();
-        if (recover !== undefined && !this.#retired) {
-          markNotice(
-            new Notice(
-              "The unsaved drawing was not opened, as the editor was in use while it was read. It is still kept: run Inkline: Recover drafts to open it.",
-            ),
-          );
-        }
-        return;
-      }
-    }
-    const draft: Draft = readable
-      ? found
-      : { ...found, base: { kind: "none" } };
-    if (recover !== undefined) {
-      this.#recovered = found;
-      this.#unshownBase = unshownBase(found, readable);
-      this.#restore(drafts, draft);
-      if (readable) {
-        this.#announce("Opened the unsaved drawing as a new symbol");
-      } else {
-        markNotice(
-          new Notice(
-            "The unsaved drawing's base layer cannot be read, so only its strokes came back.",
-          ),
-        );
-      }
-      return;
-    }
-    const { title, content } = offerQuestion(
-      draft,
-      readable,
-      this.#watch,
-      new Date(draft.savedAt).toLocaleString(),
-    );
-    this.#ask(
-      title,
-      content,
-      [
-        {
-          text: "Restore",
-          primary: true,
-          act: () => {
-            this.#restore(drafts, draft);
-          },
-        },
-        {
-          text: "Discard",
-          destructive: true,
-          act: () => {
-            drafts.store.remove(draft.id);
-            letGo();
-          },
-        },
-      ],
-      "Not now",
-      letGo,
-    );
-  }
-
-  /**
-   * Restores `draft`, which this editor holds, in place of the drawing, with
-   * any name and text it kept, and keeps this editor's own draft in its place.
-   */
-  #restore(drafts: NonNullable<EditorOptions["drafts"]>, draft: Draft): void {
-    // A stroke begun while the draft was read is committed first, so that
-    // undoing the restore brings it back.
-    this.#session.end();
-    this.#session.replace(restoreDraft(this.#opened, draft), draft.gridOrigin);
-    if (draft.name !== undefined && this.#nameField !== undefined) {
-      this.#nameField.value = draft.name;
-    }
-    if (draft.text !== undefined) {
-      this.#textFields?.restore(draft.text);
-      this.#showTextSummary();
-      this.#showText(true);
-    }
-    drafts.restored?.(draft);
-    // Restoring can change what an empty name keeps.
-    this.#showUnnamed();
-    // Still held: offered to no other editor until this one's own replaces it.
-    this.#offered = undefined;
-    this.#replacing = draft.id;
-    this.#surface?.fitView();
-    this.#updateButtons();
-    this.#render();
-    this.#keepDraft();
   }
 
   /**
@@ -1752,11 +1199,11 @@ export class InkEditorModal extends Modal {
     } finally {
       this.#choosing = undefined;
     }
-    if (copy === undefined || this.#retired || this.#closing) return;
+    if (copy === undefined || this.#ended()) return;
     // A large symbol takes a moment to read. A save or a question that came up
     // meanwhile is about the drawing as it stands: a copy taking its place now
     // would be saved, or asked about, in the drawing's stead.
-    if (this.#saving !== undefined || this.#questions.size > 0) {
+    if (this.#keeping.saving || this.#questions.size > 0) {
       this.#announce(`Not copied: ${copy.name} was still being read`);
       return;
     }
@@ -1781,10 +1228,7 @@ export class InkEditorModal extends Modal {
   #watchFile(): void {
     const vault = this.app.vault;
     const touched = (file: TAbstractFile, oldPath?: string): void => {
-      const path = this.#options.file?.()?.path;
-      if (path !== undefined && (file.path === path || oldPath === path)) {
-        this.#checkFile();
-      }
+      this.#keeping.touched(file.path, oldPath);
     };
     this.#vaultEvents = [
       vault.on("modify", (file) => {
@@ -1799,9 +1243,7 @@ export class InkEditorModal extends Modal {
       vault.on("rename", (file, oldPath) => {
         // Renamed elsewhere, as in the file explorer or by sync, the symbol
         // keeps its new name: a later save does not rename it back.
-        if (file.path === this.#options.file?.()?.path) {
-          this.#named(this.#savedName);
-        }
+        this.#keeping.followRename(file.path);
         // So does a file a first save made, which an empty name keeps.
         this.#showUnnamed();
         touched(file, oldPath);
@@ -1810,335 +1252,14 @@ export class InkEditorModal extends Modal {
   }
 
   /**
-   * Reads the symbol's file again, as after the vault reports a change to
-   * it, and responds to what changed. A save reads it itself, so a check
-   * waits for a running save, and one asked for meanwhile runs after it.
-   */
-  #checkFile(): void {
-    if (this.#retired || this.#closing) return;
-    if (this.#checking || this.#saving !== undefined) {
-      this.#recheck = true;
-      return;
-    }
-    this.#checking = true;
-    const known = this.#watch.version;
-    void this.#readFile()
-      .then((found) => {
-        if (found === undefined || this.#retired || this.#closing) return;
-        // A save that ran meanwhile, or a reload, makes the read stale.
-        if (this.#saving !== undefined || this.#watch.version !== known) {
-          this.#recheck = true;
-          return;
-        }
-        this.#respond(found.reading, found.opened);
-      })
-      // A file that cannot be read now is read again at the next report, and
-      // a save reads it itself.
-      .catch(() => undefined)
-      .finally(() => {
-        this.#checking = false;
-        if (this.#recheck) {
-          this.#recheck = false;
-          this.#checkFile();
-        }
-      });
-  }
-
-  /**
-   * The symbol's file read again: a reading to compare, and the file opened
-   * for editing when it changed and can be, with its text. Undefined while
-   * there is no file, as before a new symbol's first save.
-   */
-  async #readFile(): Promise<
-    { reading: Reading; opened?: OpenedFile } | undefined
-  > {
-    const file = this.#options.file?.();
-    if (file === undefined) return undefined;
-    const bytes = await file.read();
-    if (bytes === undefined) return { reading: { kind: "gone" } };
-    const fingerprint = await fingerprintOf(bytes);
-    if (!this.#watch.differs(fingerprint)) {
-      return { reading: { kind: "file", fingerprint, readable: true } };
-    }
-    let opened: OpenedFile | undefined;
-    try {
-      const ink = await openInk(bytes);
-      if (ink.kind === "editable") {
-        const text = await readText(ink.carried.map(({ chunk }) => chunk));
-        opened = { ...ink, text };
-      }
-    } catch {
-      // Not a PNG that decodes, so not readable.
-    }
-    return {
-      reading: {
-        kind: "file",
-        fingerprint,
-        drawing: await drawingOf(bytes),
-        readable: opened !== undefined,
-      },
-      ...(opened === undefined ? {} : { opened }),
-    };
-  }
-
-  /**
-   * Responds to the file as read while editing. Text typed that a change to
-   * the file would be lost to, or replace, is as much to ask about as strokes.
-   */
-  #respond(reading: Reading, opened: OpenedFile | undefined): void {
-    const action = this.#watch.noticed(
-      reading,
-      this.#session.dirty || this.#textClashes(opened),
-    );
-    if (action === "gone") {
-      this.#announce("The file was deleted; saving makes it again");
-      return;
-    }
-    if (reading.kind !== "file") return;
-    if (action === "unreadable") {
-      this.#announce(`Not reloaded: ${unreadable}`);
-      markNotice(
-        new Notice(
-          `${this.#displayName} changed on disk, and this version of Inkline cannot read it, so the editor will not save over it.`,
-        ),
-      );
-    } else if (action === "reload" && opened !== undefined) {
-      this.#reload(reading, opened);
-    } else if (action === "text" && opened !== undefined) {
-      // A question open is about another change, and has what that change read
-      // to go on with. The file is looked at again once it is answered.
-      if (!this.#askingChanged) this.#takeText(reading, opened);
-    } else if (action === "ask") {
-      this.#askChanged(reading, opened);
-    }
-  }
-
-  /**
-   * Takes in a change to the file's text alone. Nothing about the drawing
-   * changed, so the strokes, unsaved or not, and Undo stay as they are, and there
-   * is nothing to ask. A field someone typed in keeps what they typed, as nothing
-   * else could bring that back, while the file's value stays in the file; the
-   * fields say what saving would replace, as the library's do, and open to say
-   * it. Returns whether that is so of any field.
-   */
-  #takeText(reading: FileReading, opened: OpenedFile): boolean {
-    this.#carried = opened.carried;
-    this.#watch.tookText(reading);
-    const clashing = (this.#textFields?.take(opened.text) ?? []).length > 0;
-    this.#showTextSummary();
-    if (clashing) this.#showText(true);
-    this.#announce(
-      clashing
-        ? "The file changed text you typed: saving replaces what it now says"
-        : "Readings and translations updated: the file changed on disk",
-    );
-    this.#keepDraft();
-    return clashing;
-  }
-
-  /**
-   * Asks what to do about a change made to the file elsewhere: reload it, or
-   * keep the drawing, so that saving replaces the change. Keeping the drawing
-   * replaces only the drawing, and the fields a person typed in: the chunks a
-   * save carries become those of `opened`, the changed file, as the question
-   * says nothing of any text the change added, and the other field follows
-   * it. `resume` goes on with a save that stopped to ask. One such question is
-   * open at a time; a save that stops while it is open goes on once it is
-   * answered.
-   */
-  #askChanged(
-    reading: FileReading,
-    opened: OpenedFile | undefined,
-    resume?: () => void,
-  ): void {
-    if (resume !== undefined) this.#resume = resume;
-    if (this.#askingChanged) return;
-    this.#askingChanged = true;
-    const answered = (): (() => void) | undefined => {
-      const then = this.#resume;
-      this.#askingChanged = false;
-      this.#resume = undefined;
-      return then;
-    };
-    const clash = this.#textClashes(opened);
-    this.#ask(
-      "The symbol changed on disk",
-      `${this.#displayName} was changed outside this editor. Reload it to take that change in; Undo then brings your drawing back while the editor is open${clash ? ", but not the readings or translations you typed, which the file changed too" : ""}. Or keep your drawing, and saving it replaces the change.`,
-      [
-        {
-          text: "Reload",
-          primary: true,
-          act: () => {
-            answered();
-            void this.#reloadFile();
-          },
-        },
-        {
-          text: "Keep mine",
-          act: () => {
-            const then = answered();
-            this.#watch.keep(reading.fingerprint, reading.drawing);
-            if (opened !== undefined) {
-              this.#carried = opened.carried;
-              this.#textFields?.take(opened.text);
-              this.#showTextSummary();
-            }
-            then?.();
-            this.#checkFile();
-          },
-        },
-      ],
-      "Not now",
-      () => {
-        answered();
-        this.#checkFile();
-      },
-    );
-  }
-
-  /** Reads the file again and takes in what it now holds, as Reload asks. */
-  async #reloadFile(): Promise<void> {
-    const known = this.#watch.version;
-    const drawn = this.#session.document;
-    const typed = JSON.stringify(this.#textFields?.typed());
-    const found = await this.#readFile();
-    if (found === undefined || this.#retired || this.#closing) return;
-    // A save or reload meanwhile makes the read stale: a fresh check decides.
-    if (this.#saving !== undefined || this.#watch.version !== known) {
-      this.#checkFile();
-      return;
-    }
-    const { reading, opened } = found;
-    if (reading.kind === "gone") {
-      this.#announce("The file was deleted; saving makes it again");
-    } else if (!this.#watch.differs(reading.fingerprint)) {
-      // Changed back meanwhile: the drawing already follows it.
-    } else if (opened === undefined) {
-      this.#announce(`Not reloaded: ${unreadable}`);
-    } else if (
-      // A large file takes a moment. Reload was the answer about the drawing as
-      // it stood then, and says nothing of what was added to it since.
-      this.#session.drawing ||
-      this.#session.document !== drawn ||
-      JSON.stringify(this.#textFields?.typed()) !== typed
-    ) {
-      this.#askChanged(reading, opened);
-    } else {
-      this.#reload(reading, opened);
-    }
-  }
-
-  /**
-   * Takes in what the file now holds, as one step that Undo takes back, so
-   * that the drawing it replaces is not lost while the editor is open.
-   */
-  #reload(reading: FileReading, opened: OpenedFile): void {
-    // A stroke being drawn is committed first, so that Undo brings it back.
-    this.#session.end();
-    const { document, base, carried, text } = opened;
-    if (document.base !== undefined && base !== undefined) {
-      this.#decoded.set(document.base.png, base);
-    }
-    this.#carried = carried;
-    // A field the file changed too takes the file's values, as Reload said;
-    // any other keeps what was typed, which the change had nothing to do with.
-    const fields = this.#textFields;
-    if (fields !== undefined) {
-      const clashing = fields.conflicts(text);
-      fields.take(text);
-      fields.drop(clashing);
-    }
-    this.#showTextSummary();
-    this.#opened = document;
-    this.#session.replace(document);
-    this.#session.markSaved(document);
-    this.#watch.took(reading.fingerprint, reading.drawing);
-    this.#surface?.fitView();
-    this.#changed();
-    this.#announce("Reloaded: the file changed on disk");
-  }
-
-  /**
-   * How the vault's notes use this symbol, when saving over it must ask
-   * first: for an existing symbol used more than once, whose drawing changed,
-   * before Replace was chosen in this editor. Undefined when a save goes over
-   * it without asking, as for one used once, where the editor most likely
-   * opened it, or a save that only renames it, as links follow a rename.
-   */
-  #sharedUses(): SymbolUses | undefined {
-    const uses = this.#options.uses;
-    if (uses === undefined || this.#choseReplace) return undefined;
-    if (!this.#session.dirty && !this.#tracing.previewing()) return undefined;
-    const found = uses();
-    return found.links > 1 ? found : undefined;
-  }
-
-  /**
-   * Whether to go on with a save: at once, unless {@link #sharedUses} says
-   * to ask first whether to change the symbol everywhere, when the answer
-   * says. A question already open answers for every save that waits on it.
-   */
-  #mayReplace(): Promise<boolean> {
-    const uses = this.#sharedUses();
-    if (uses === undefined) return Promise.resolve(true);
-    if (this.#askingReplace !== undefined) return this.#askingReplace;
-    const name = this.#displayName;
-    const asking = new Promise<boolean>((resolve) => {
-      this.#ask(
-        `Change ${name} everywhere?`,
-        `${usedText(name, uses)} Replace changes it in all of them. For a variant that leaves them as they are, start a new symbol with Copy from instead.`,
-        [
-          {
-            text: "Replace",
-            primary: true,
-            act: () => {
-              this.#choseReplace = true;
-              resolve(true);
-            },
-          },
-        ],
-        "Keep editing",
-        () => {
-          if (!this.#ended()) {
-            this.#announce("Not saved: kept editing");
-            this.#refocus();
-          }
-          resolve(false);
-        },
-      );
-    }).finally(() => {
-      this.#askingReplace = undefined;
-    });
-    this.#askingReplace = asking;
-    return asking;
-  }
-
-  /** Saves, keeping the editor open. */
-  async #saveOnly(): Promise<void> {
-    if (!(await this.#mayReplace())) return;
-    if (!(await this.#tracing.applyBeforeSave())) return;
-    // Ink made just now is a change too, if the preview had not shown it yet.
-    if (await this.#mayReplace()) await this.#save();
-  }
-
-  /**
    * Saves, then opens the editor for the next symbol, whose embed follows
    * this one's, with the same tools. As with Save and close, strokes drawn
    * while the save ran keep this editor open instead.
    */
-  async #saveAndNext(): Promise<void> {
+  #saveAndNext(): void {
     const next = this.#options.next;
-    if (next === undefined || this.#advancing) return;
-    this.#advancing = true;
-    try {
-      if (!(await this.#tracing.applyBeforeSave())) return;
-      if (!(await this.#save(() => void this.#saveAndNext()))) return;
-      // Closed meanwhile, as by Save and close or by Inkline being disabled.
-      if (this.#closing || this.#retired) return;
-      if (this.#unsaved) {
-        this.#announce(this.#partlySaved);
-        return;
-      }
+    if (next === undefined) return;
+    void this.#keeping.saveAndNext(() => {
       const { tool, sizeIndex, snap } = this.#session;
       const picture = this.#tracing.handOver();
       const textShown = this.#textStrip?.isShown() === true;
@@ -2156,195 +1277,6 @@ export class InkEditorModal extends Modal {
         textShown,
         ...(picture === undefined ? {} : { picture }),
       });
-    } finally {
-      this.#advancing = false;
-    }
-  }
-
-  /**
-   * Saves, then closes if nothing changed during the save. Strokes drawn
-   * while it ran keep the editor open, since they are not saved yet.
-   */
-  async #saveAndClose(): Promise<void> {
-    if (!(await this.#mayReplace())) return;
-    if (!(await this.#tracing.applyBeforeSave())) return;
-    if (!(await this.#mayReplace())) return;
-    if (!(await this.#save(() => void this.#saveAndClose()))) return;
-    if (this.#unsaved) {
-      this.#announce(this.#partlySaved);
-      return;
-    }
-    this.#finish();
-  }
-
-  /**
-   * Reads the file again just before a save writes over it, and throws if the
-   * save must not go on: it asks first about a change made elsewhere, and
-   * `resume` saves again if the answer is to; a file it cannot read is never
-   * written over. It only starts the question, as the host calls this in the
-   * save's turn, which every other save waits for.
-   *
-   * A change to the text alone asks nothing, but what the save was about to
-   * write holds the text as it was, so that it stops and `resume` starts it
-   * again with the change. Unless the change is to a field someone typed in:
-   * then nothing is written until they have seen what the file now says, as the
-   * library's fields do, and the next save is theirs to make.
-   */
-  async #checkBeforeWriting(resume: () => void): Promise<void> {
-    const found = await this.#readFile();
-    if (this.#retired) throw new Error("Inkline was disabled");
-    if (found === undefined) return;
-    const { reading, opened } = found;
-    const action = this.#watch.saving(reading);
-    if (action === "unreadable") throw new Error(unreadable);
-    if (action === "write" || reading.kind !== "file") return;
-    if (action === "text" && opened !== undefined && !this.#askingChanged) {
-      if (this.#takeText(reading, opened)) throw new Unsaved(textReplaced);
-      throw new SaveAgain(resume);
-    }
-    this.#askChanged(reading, opened, resume);
-    throw new Unsaved("the file changed on disk");
-  }
-
-  /**
-   * Whether this is a new symbol, with no file yet, that holds nothing to
-   * show: no stroke of the pen and no base layer. Saving it would make an
-   * empty file and put its embed in the note, as a second click on Next did
-   * in the editor that the first opened. A symbol that has a file still saves
-   * when it is erased to nothing.
-   */
-  #nothingToMake(): boolean {
-    if (this.#options.file?.() !== undefined) return false;
-    const { strokes, base } = this.#session.document;
-    return base === undefined && !strokes.some(({ tool }) => tool === "pen");
-  }
-
-  /**
-   * Saves the drawing as it is now, with a stroke still being drawn ended
-   * first. Only one save runs at a time; strokes drawn meanwhile stay
-   * unsaved. After a save, the session moves into the saved file's
-   * coordinates. A failed save says why and keeps the editor open. Returns
-   * whether the drawing was saved. `resume` saves again, if a change to the
-   * file stops this one and the answer is to go on.
-   */
-  #save(resume: () => void = () => void this.#save()): Promise<boolean> {
-    if (this.#saving !== undefined) return this.#saving;
-    if (this.#retired) return Promise.resolve(false);
-    if (this.#session.drawing) {
-      this.#session.end();
-      this.#changed();
-    }
-    if (this.#nothingToMake()) {
-      this.#announce("Not saved: nothing drawn yet");
-      return Promise.resolve(false);
-    }
-    // Before anything is written, as text that cannot be saved is a reason not
-    // to save what goes with it: the strokes wait, in the draft.
-    const problem = this.#textFields?.problem();
-    if (problem !== undefined) {
-      this.#showText(true);
-      this.#textFields?.focus();
-      this.#announce(`Not saved: ${problem}`);
-      return Promise.resolve(false);
-    }
-    const document = this.#session.document;
-    const base = this.#base;
-    const changes = this.#textFields?.changes() ?? {};
-    const typedText = this.#textFields?.typed() ?? {};
-    this.#announceSaving();
-    /** Starts this save again once it has ended, if it is to. */
-    let again: (() => void) | undefined;
-    this.#saving = (async () => {
-      try {
-        // Ready for the draft that goes with the write below, which can't pause.
-        if (document.base !== undefined) {
-          await this.#options.drafts?.store.keepBase(document.base.png, {
-            pause: nextTask,
-          });
-        }
-        const {
-          bytes: inked,
-          record,
-          left,
-        } = await saveInk(document, base, this.#carried);
-        // Only a field that changed: the rest stay as the chunks that `saveInk`
-        // carried, byte for byte, whatever they hold.
-        let bytes = inked;
-        for (const field of textFields) {
-          const values = changes[field];
-          if (values !== undefined) {
-            bytes = await writeText(bytes, field, values);
-          }
-        }
-        // Kept before the file can change, with its own base layer, so that
-        // the draft does not depend on which version the file holds.
-        const written = await fingerprintOf(bytes);
-        const drawn = await drawingOf(bytes);
-        this.#keepDraft();
-        const typed = this.#typedName;
-        const named = await this.#options.write(
-          bytes,
-          record,
-          () => this.#keepDraft(),
-          (fingerprint) => {
-            this.#watch.took(
-              fingerprint,
-              fingerprint === written ? drawn : undefined,
-            );
-          },
-          typed,
-          () => this.#checkBeforeWriting(resume),
-          {
-            told: (waiting) => {
-              this.#sayWaiting(waiting);
-            },
-            asked: () => !this.#onTop(),
-          },
-        );
-        // A rename that failed leaves the name typed in the field, unsaved,
-        // for the next save to try again.
-        this.#notRenamed = !named;
-        this.#named(this.#notRenamed ? undefined : typed);
-        // The next save starts from what this one wrote, which may be more
-        // than the chunks it carried.
-        this.#carried = carriedChunks(bytes);
-        this.#textFields?.saved(changes, typedText);
-        this.#showTextSummary();
-        this.#watch.took(written, drawn);
-        this.#session.markSaved(document);
-        this.#session.rebase(-left);
-        this.#surface?.view.shift(-left);
-        // The picture moves with the drawing, so it stays where it was, and
-        // so does where a drag of it holds it.
-        this.#tracing.moveWithDrawing(-left);
-        this.#announce(this.#notRenamed ? "Saved, but not renamed" : "Saved");
-        return true;
-      } catch (error) {
-        if (error instanceof SaveAgain) {
-          again = error.again;
-          return false;
-        }
-        const reason = error instanceof Error ? error.message : String(error);
-        this.#announce(`Not saved: ${reason}`);
-        if (!(error instanceof Unsaved)) {
-          markNotice(new Notice(`Could not save the symbol: ${reason}`));
-        }
-        return false;
-      } finally {
-        this.#saving = undefined;
-        this.#updateButtons();
-        this.#render();
-        this.#keepDraft();
-        // Or, if the editor was disposed while this ran, the draft it kept.
-        this.#settleDraft();
-        // Changes reported while it ran, its own write among them.
-        this.#checkFile();
-        // Not yet, as what waits on this save must hear that it stopped first:
-        // Next, for one, goes by whether it is still under way.
-        if (again !== undefined) this.modalEl.win.setTimeout(again);
-      }
-    })();
-    this.#updateButtons();
-    return this.#saving;
+    });
   }
 }
