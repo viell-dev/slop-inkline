@@ -1653,6 +1653,20 @@ async function waitForOwnPart(app: App, claim: Claim): Promise<void> {
 }
 
 /**
+ * Whether the disk holds at the claim's path, listed or not, what the claim's
+ * fingerprint names: the whole of what the save that claimed it wrote.
+ */
+async function holdsClaimed(app: App, claim: Claim): Promise<boolean> {
+  const held = await app.vault.adapter
+    .readBinary(claim.path)
+    .catch(() => undefined);
+  return (
+    held !== undefined &&
+    (await fingerprintOf(new Uint8Array(held))) === claim.fingerprint
+  );
+}
+
+/**
  * The claimed file and a fingerprint of what it holds, if that is what was
  * last written there, or what it held before a write that may not have
  * happened: one that an interrupted first save made, unchanged since. A file
@@ -2682,8 +2696,15 @@ function recoverDraft(host: EditorHost, orphan: Orphan): void {
         // A save that left nothing of its own at the path it claimed, as one
         // refused because another symbol came there, gives the draft back its
         // place, or it stays kept for that symbol, which would offer it as its
-        // own (#437). A part it left is in the claim, for the next save.
-        if (claim !== before && claim?.previous === undefined) {
+        // own (#437). A part it left is in the claim, for the next save, and so
+        // is the whole file it wrote, which Obsidian has not listed.
+        const at = claim;
+        if (
+          at !== undefined &&
+          at !== before &&
+          at.previous === undefined &&
+          !(await holdsClaimed(app, at))
+        ) {
           claim = before;
           keepDraft();
         }

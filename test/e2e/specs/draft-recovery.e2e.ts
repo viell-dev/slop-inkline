@@ -38,6 +38,7 @@ import {
   showWelcomeInstead,
   unlockNotes,
 } from "../support/failed-insertion.ts";
+import { cutCopyAt, waitForListed } from "../support/disk-faults.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 import {
   bytesOfFile,
@@ -213,10 +214,11 @@ describe("Draft recovery", function () {
     expect(await noteOnDisk("Editor.md")).not.toContain("001.ink.png");
   });
 
-  it("keeps a draft it opened as a new symbol for its own file, when the name typed for it is taken as it is saved", async function () {
-    // #437: the first save names the path it makes in the draft before it
-    // writes, and a refusal left the draft kept for the symbol that came
-    // there, which would offer it as its own.
+  /**
+   * Opens a draft of gate.ink.png, whose file no longer opens, as a new
+   * symbol: its name field starts empty, as gate.ink.png is still there.
+   */
+  async function gateAsNew(): Promise<void> {
     await createSymbol("gate.ink.png");
     await draftThenStop("gate.ink.png");
     await browser.executeObsidian(async ({ app }) => {
@@ -229,6 +231,19 @@ describe("Draft recovery", function () {
     await tryToEdit("gate.ink.png");
     await clickTop("Open as new symbol");
     await waitForEditor();
+  }
+
+  /** The path the stored draft is kept for, of the one draft there is. */
+  async function draftKeptFor(): Promise<unknown> {
+    await browser.waitUntil(async () => (await draftCount()) === 1);
+    return (await storedDrafts())[0]?.target;
+  }
+
+  it("keeps a draft it opened as a new symbol for its own file, when the name typed for it is taken as it is saved", async function () {
+    // #437: the first save names the path it makes in the draft before it
+    // writes, and a refusal left the draft kept for the symbol that came
+    // there, which would offer it as its own.
+    await gateAsNew();
     await nameSymbol("tower");
     // Another symbol comes to tower.ink.png just before the save's look, as
     // through a plugin or a sync tool.
@@ -263,8 +278,7 @@ describe("Draft recovery", function () {
     );
     expect(await symbolFiles()).toEqual(["gate.ink.png", "tower.ink.png"]);
     // Kept for gate.ink.png, as before the save, not for tower.ink.png.
-    await browser.waitUntil(async () => (await draftCount()) === 1);
-    expect((await storedDrafts())[0]?.target).toEqual({
+    expect(await draftKeptFor()).toEqual({
       kind: "file",
       path: "gate.ink.png",
     });
@@ -279,6 +293,121 @@ describe("Draft recovery", function () {
       "tower.ink.png",
     ]);
     expect(await bytesOfFile("tower.ink.png")).toEqual(tower);
+    expect(await draftCount()).toBe(0);
+  });
+
+  it("keeps a draft it opened as a new symbol for its own file, when every number tried is taken as it is saved", async function () {
+    // With no name typed, a symbol comes to each of the three numbers the
+    // save tries, just before its look.
+    await gateAsNew();
+    await browser.executeObsidian(async ({ app }) => {
+      const { canvas } = window.inklineTest;
+      const { bytes } = await canvas.saveInk(
+        {
+          strokes: [
+            {
+              tool: "pen" as const,
+              size: 256,
+              points: [2000, 800, 6000, 2000],
+            },
+          ],
+        },
+        undefined,
+        [],
+      );
+      const { adapter } = app.vault;
+      const exists = adapter.exists.bind(adapter);
+      const landing = new Set(["001.ink.png", "002.ink.png", "003.ink.png"]);
+      adapter.exists = async (asked, sensitive) => {
+        if (landing.delete(asked)) {
+          await adapter.writeBinary(asked, bytes.slice().buffer);
+        }
+        if (landing.size === 0) Reflect.deleteProperty(adapter, "exists");
+        return exists(asked, sensitive);
+      };
+    });
+    await browser.keys(["Control", "s"]);
+    await waitForStatus(
+      "Not saved: the vault's top folder already has a file named 003.ink.png",
+    );
+    expect(await draftKeptFor()).toEqual({
+      kind: "file",
+      path: "gate.ink.png",
+    });
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    expect(await symbolFiles()).toEqual([
+      "001.ink.png",
+      "002.ink.png",
+      "003.ink.png",
+      "004.ink.png",
+      "gate.ink.png",
+    ]);
+    expect(await draftCount()).toBe(0);
+  });
+
+  it("keeps a draft it opened as a new symbol on the part its first save's copy left, for the next save to write whole", async function () {
+    // #425's part, which the save cannot take away: the draft stays for that
+    // file, whose next save writes it whole, where the name would otherwise
+    // be refused by the save's own part.
+    await gateAsNew();
+    await nameSymbol("tower");
+    await cutCopyAt("tower.ink.png", 64, { stays: true });
+    await browser.keys(["Control", "s"]);
+    await waitForNotice(
+      "tower.ink.png holds what was written before it stopped, which saving again writes whole",
+    );
+    expect(await draftKeptFor()).toEqual({
+      kind: "file",
+      path: "tower.ink.png",
+    });
+    await waitForListed("tower.ink.png");
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    expect(await symbolFiles()).toEqual(["gate.ink.png", "tower.ink.png"]);
+    expect(await strokeCount("tower.ink.png")).toBe(2);
+    expect(await draftCount()).toBe(0);
+  });
+
+  it("keeps a draft it opened as a new symbol on the file its first save wrote whole, when Obsidian did not list it", async function () {
+    // The copy made the file, and the vault did not have it at once.
+    await gateAsNew();
+    await nameSymbol("tower");
+    await browser.executeObsidian(({ app }) => {
+      const { vault } = app;
+      const copy = vault.adapter.copy.bind(vault.adapter);
+      const find = vault.getFileByPath.bind(vault);
+      let unlisted = false;
+      const restore = (): void => {
+        Reflect.deleteProperty(vault.adapter, "copy");
+        Reflect.deleteProperty(vault, "getFileByPath");
+        Reflect.deleteProperty(window, "inklineAtEnd-unlisted");
+      };
+      Reflect.set(window, "inklineAtEnd-unlisted", restore);
+      vault.adapter.copy = async (from, to) => {
+        await copy(from, to);
+        if (to === "tower.ink.png") unlisted = true;
+      };
+      vault.getFileByPath = (asked) => {
+        if (unlisted && asked === "tower.ink.png") {
+          restore();
+          return null;
+        }
+        return find(asked);
+      };
+    });
+    await browser.keys(["Control", "s"]);
+    await waitForStatus(
+      "Not saved: tower.ink.png was written, but Obsidian has not listed it",
+    );
+    expect(await draftKeptFor()).toEqual({
+      kind: "file",
+      path: "tower.ink.png",
+    });
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    expect(await symbolFiles()).toEqual(["gate.ink.png", "tower.ink.png"]);
+    expect(await strokeCount("tower.ink.png")).toBe(2);
     expect(await draftCount()).toBe(0);
   });
 
