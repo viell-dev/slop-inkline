@@ -122,6 +122,15 @@ once for each spec file, and loads the bundle only into a window that does not
 have it yet, so a spec calls it again in each window it opens and after Obsidian
 reloads.
 
+The unit tests check what the code does, not how fast, so each test and hook has
+30 seconds, as `vitest.config.mjs` sets: a machine busy with other work slows
+them far more than their time alone suggests. A test seen to need more has a
+limit of its own, with its measurements beside it. A test about speed asserts on
+it itself, and is best measured against something the same run takes, so that
+the machine's load slows both, as the bounds in `test/unit/notes/inline.test.ts`
+do with `expectLinear()` from `test/support/linear.ts`, against 64 simple passes
+over the same text.
+
 End-to-end tests live in `test/e2e/` and run the built plugin in real Obsidian
 through WebdriverIO and
 [wdio-obsidian-service](https://github.com/jesse-r-s-hines/wdio-obsidian-service).
@@ -292,6 +301,17 @@ the release tags, so a clone without them fails until `git fetch --tags origin`
 fetches them; a shallow clone stays shallow with
 `git fetch --no-tags --depth=1 origin '+refs/tags/*:refs/tags/*'`. It is not
 part of `check`, which a shallow clone must pass; CI runs it on Linux.
+
+`open-responsiveness.e2e.ts` and `save-responsiveness.e2e.ts` hold the longest
+task and frame of opening and saving the largest symbols to budgets, which the
+guide's
+[Promises and evidence](https://viell-dev.github.io/slop-inkline/verification)
+lists. CI's runners, which run nothing else, keep well inside them. A machine
+busy with other work can go past them on `main` too
+([#401](https://github.com/viell-dev/slop-inkline/issues/401)), so a local
+failure of a budget counts against a change only where a run of `main` in the
+same conditions passes; otherwise CI's run of the pull request is the evidence.
+The budgets are not raised for a busy machine.
 
 CI runs the end-to-end tests on Linux for every pull request, and the Docker
 image weekly and on request. Outside Docker, CI splits the suite over four jobs

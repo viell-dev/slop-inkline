@@ -1,6 +1,24 @@
 import { isOpen, noTags, readHtml } from "../../../src/notes/html.ts";
 import { describe, expect, it } from "vitest";
 import { insideInlineCode, tagsAfter } from "../../../src/notes/inline.ts";
+import { expectLinear as expectLinearReading } from "../../support/linear.ts";
+
+/**
+ * How many times as long as `simplePasses` in `test/support/linear.ts` a
+ * reading of a long text below may take. On Windows 11 with the CPU busy with
+ * other work, in two sessions' measurements, the readings took 0.5 to 7.8 times
+ * as long; with their bound on steps taken out, so that each construct looks
+ * for its end to the text's end, 225 to 790 times; and with a run of backticks
+ * counted again for each backtick, 527 to 1,207 times. Limits by the clock
+ * alone, one second and half a second, failed under load, for readings that
+ * take tens of milliseconds (#403).
+ */
+const linearTimes = 40;
+
+/** That reading `text` at `at` takes the time of a linear reading. */
+function expectLinear(text: string, at: number): void {
+  expectLinearReading(text, () => insideInlineCode(text, at), linearTimes);
+}
 
 describe("insideInlineCode", () => {
   it("knows an index between backticks", () => {
@@ -28,11 +46,11 @@ describe("insideInlineCode", () => {
     // Counted again for each, it would take n²/2 reads, seconds for these
     // where it takes milliseconds.
     const run = "`".repeat(40_000);
-    const start = performance.now();
     expect(insideInlineCode(`x ${run} ;;`, 40_004)).toBe(false);
     // Its last backtick still opens a span that a single one closes.
     expect(insideInlineCode(`x ${run} ;; \``, 40_004)).toBe(true);
-    expect(performance.now() - start).toBeLessThan(500);
+    expectLinear(`x ${run} ;;`, 40_004);
+    expectLinear(`x ${run} ;; \``, 40_004);
   });
 
   it("says when text after the index could close a span open before it", () => {
@@ -71,9 +89,8 @@ describe("insideInlineCode", () => {
     // place counts as code, whatever the text holds.
     for (const repeated of ["[a ", "*a ", "~~a ", "==a ", "<a b=", "$a "]) {
       const text = `${repeated.repeat(20_000)}\`;;\``;
-      const start = performance.now();
       expect(insideInlineCode(text, text.length - 3)).toBe(true);
-      expect(performance.now() - start).toBeLessThan(1000);
+      expectLinear(text, text.length - 3);
     }
   });
 
