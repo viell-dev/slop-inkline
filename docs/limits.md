@@ -23,16 +23,17 @@ What Inkline does not do, or does not do everywhere, and what to do instead. The
   stroke, which barely shifts.
 - **In 1.0.2, changing the view during a stroke can move its end.** Pressing
   **Zoom** (Z) or **Fit** (F) while drawing a stroke, with the pen or the
-  eraser, or moving along a zoomed drawing with the wheel or the arrow keys,
-  changes where the pointer falls in the drawing, so letting go without moving
-  the pointer again ends the stroke somewhere other than its preview showed
-  ([#382](https://github.com/viell-dev/slop-inkline/issues/382),
+  eraser, or moving along a zoomed drawing with the wheel or the left and right
+  arrow keys, changes where the pointer falls in the drawing, so letting go
+  without moving the pointer again ends the stroke somewhere other than its
+  preview showed ([#382](https://github.com/viell-dev/slop-inkline/issues/382),
   [#393](https://github.com/viell-dev/slop-inkline/issues/393)). Change the view
   between strokes; Undo takes back a stroke that went wrong. **Unreleased:**
   fixed: Zoom and Fit pressed while you draw a stroke or a shape wait until you
   let go, so what you draw ends where it shows; moving along takes what you draw
   on to the pointer as the view moves, and shows it there; and a change to the
-  window's or the editor's size ends the stroke where it showed.
+  window's or the editor's size, or to Obsidian's page zoom, that moves the
+  drawing under the pointer ends the stroke where it showed.
 - **Large libraries** show 100 symbols at a time, with **Show more** for the
   next 100. Filter them, or choose a folder, to narrow the list.
 - **Library insertion needs a sidebar.** If the library's tab is dragged into

@@ -61,14 +61,16 @@ even one a public release; earlier pre-releases carry a suffix such as
   moving ended the stroke somewhere other than it showed
   ([#382](https://github.com/viell-dev/slop-inkline/issues/382)).
 - **Fit** pressed while you draw now waits until you let go, as **Zoom** does.
-  Moving along a zoomed drawing with the wheel or the arrow keys while you draw
-  now takes what you draw with it, on to where the pointer is in the drawing,
-  and shows it there at once, so a long stroke can go past the edge of the view;
-  it used to stay where it was until you moved or let go, and letting go then
-  drew a part that never showed. A change to the window's or the editor's size
-  while you draw ends the stroke where it showed, as the pointer may have moved
-  with the window
-  ([#393](https://github.com/viell-dev/slop-inkline/issues/393)).
+  Moving along a zoomed drawing with the wheel or the left and right arrow keys
+  while you draw now takes what you draw with it, on to where the pointer is in
+  the drawing, and shows it there at once, so a long stroke can go past the edge
+  of the view; it used to stay where it was until you moved or let go, and
+  letting go then drew a part that never showed. A change to the window's or the
+  editor's size, or to Obsidian's page zoom (Ctrl+= and Ctrl+−), while you draw
+  now ends the stroke where it showed, if it moves the drawing under the
+  pointer, as the pointer may have moved with the window
+  ([#393](https://github.com/viell-dev/slop-inkline/issues/393),
+  [#418](https://github.com/viell-dev/slop-inkline/issues/418)).
 - A rename of a symbol that was renamed elsewhere, deleted and replaced, or
   whose new name another symbol took, while Quick edit wrote its readings and
   translations or the editor its drawing, is refused at once. It used to read,

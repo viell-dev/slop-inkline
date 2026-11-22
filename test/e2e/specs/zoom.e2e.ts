@@ -187,7 +187,8 @@ interface Watched {
  * pixels narrower, which changes the drawing area's size; or moves the
  * editor 60 pixels right and tells the window it was resized, as when a
  * window's size changes and the editor stays in its middle; or sets
- * Obsidian's page zoom to 125%, as Ctrl+= does.
+ * Obsidian's page zoom to 125% at once, as Ctrl+= does by a smaller step,
+ * about 109.5%, through the same webFrame.
  */
 type During = "zoom" | "fit" | "narrower" | "moved" | "page zoom";
 
@@ -221,6 +222,21 @@ async function watchPress(during?: During): Promise<void> {
     } = { events: [] };
     Reflect.set(window, "inklineTestWatch", watch);
     Reflect.set(window, "inklineTestWatched", seen);
+    /**
+     * Sets the page zoom, as setPageZoom() does, from the page itself: found
+     * now, so that a host without it fails here rather than in a timer, where
+     * the test would see only that nothing happened.
+     */
+    const zoom = ((): (() => void) => {
+      if (action !== "page zoom") return () => undefined;
+      const load: unknown = Reflect.get(window, "require");
+      if (typeof load !== "function") throw new Error("no host require");
+      const electron: unknown = Reflect.apply(load, window, ["electron"]);
+      const frame: unknown = Reflect.get(Object(electron), "webFrame");
+      const set: unknown = Reflect.get(Object(frame), "setZoomFactor");
+      if (typeof set !== "function") throw new Error("no host zoom");
+      return () => Reflect.apply(set, frame, [1.25]);
+    })();
     const act = (): void => {
       if (action === "zoom" || action === "fit") {
         const button = editor.querySelector(
@@ -234,13 +250,7 @@ async function watchPress(during?: During): Promise<void> {
         editor.style.left = "60px";
         window.dispatchEvent(new Event("resize"));
       } else if (action === "page zoom") {
-        // As setPageZoom() does, from the page itself.
-        const load: unknown = Reflect.get(window, "require");
-        if (typeof load !== "function") throw new Error("no host require");
-        const electron: unknown = Reflect.apply(load, window, ["electron"]);
-        const frame: unknown = Reflect.get(Object(electron), "webFrame");
-        const set: unknown = Reflect.get(Object(frame), "setZoomFactor");
-        if (typeof set === "function") Reflect.apply(set, frame, [1.25]);
+        zoom();
       }
     };
     /**

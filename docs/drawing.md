@@ -288,12 +288,14 @@ stay the same size against it. **Unreleased:** pressed while you draw a stroke,
 a shape, a polygon's corner, or a path's point or handle, Zoom waits until you
 let go, so that what you draw ends where it shows; pressed twice meanwhile, it
 leaves the view as it is. Fit pressed while you draw waits the same way. Moving
-along with the wheel or the arrow keys while you draw takes what you draw with
-it, on to where the pointer is in the drawing as the view moves, so a long
-stroke can go on past the edge of the view. If the window or the editor changes
-size while you draw a stroke or a shape, it ends where it showed, and the rest
-of the drag draws nothing; a polygon's corner or a path's point or handle being
-pressed then goes where you let go, as ever.
+along with the wheel or the left and right arrow keys while you draw takes what
+you draw with it, on to where the pointer is in the drawing as the view moves,
+so a long stroke can go on past the edge of the view. If the window or the
+editor changes size while you draw a stroke or a shape, or Obsidian's page zoom
+changes (Ctrl+= and Ctrl+−), and that moves the drawing under the pointer, the
+stroke or shape ends where it showed, and the rest of the drag draws nothing; a
+polygon's corner or a path's point or handle being pressed then goes where you
+let go, as ever.
 
 The grid, though, has twice as many cells each way while zoomed, so the default
 5 cells across the x-height become 10, for placing fine detail. Every point of
