@@ -26,8 +26,13 @@ import {
   intoCell,
   letInklineTimersGo,
   waitForLastRow,
+  waitForNoteEverywhere,
   waitForRowEverywhere,
 } from "../support/table-cell.ts";
+
+/** The note `intoCell` makes, with `gate.ink.png` in the cell it goes into. */
+const withGate =
+  "| A | B |\n| --- | --- |\n| same | same |\n| same![[gate.ink.png]] | same |\n";
 
 describe("Symbols in a table cell in Live Preview", function () {
   before(async function () {
@@ -163,21 +168,23 @@ describe("Symbols in a table cell in Live Preview", function () {
       if (other === undefined) throw new Error("no other pane");
       other.editor.replaceRange("Edited.\n\n", { line: 0, ch: 0 });
     });
-    await waitForRowEverywhere("| same![[gate.ink.png]] | same |");
+    await waitForNoteEverywhere(`Edited.\n\n${withGate}`);
   });
 
-  it("keeps a symbol from Insert existing symbol through a change on disk straight after", async function () {
+  // The choice saves the symbol at once, so a change on disk after it reaches
+  // the editor as Obsidian reloads the saved note, and both are kept.
+  it("keeps a symbol from Insert existing symbol through a change on disk after it", async function () {
     await createSymbol("gate.ink.png");
     await intoCell("Table.md");
     await chooseExisting("gat");
-    await waitForLastRow("| same![[gate.ink.png]] | same |");
+    await waitForNoteEverywhere(withGate);
     // As sync writes the note.
     await browser.executeObsidian(async ({ app }) => {
       const note = app.vault.getFileByPath("Table.md");
       if (note === null) throw new Error("no Table.md");
       await app.vault.process(note, (text) => `Prefix\n\n${text}`);
     });
-    await waitForRowEverywhere("| same![[gate.ink.png]] | same |");
+    await waitForNoteEverywhere(`Prefix\n\n${withGate}`);
   });
 
   it("lands after a symbol from the ;; list", async function () {

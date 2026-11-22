@@ -18,21 +18,13 @@ export async function intoCell(path: string): Promise<void> {
     if (note === null) throw new Error(`no ${file}`);
     await app.workspace.getLeaf(false).openFile(note);
   }, path);
-  const cell = browser.$(
-    ".workspace-leaf.mod-active .cm-table-widget tbody tr:last-child td:first-child",
-  );
-  await cell.waitForExist();
-  await cell.click();
-  await browser
-    .$(".workspace-leaf.mod-active .table-cell-wrapper .cm-content")
-    .waitForExist();
-  await browser.keys(["End"]);
+  await toLastCell();
 }
 
 /**
  * Makes the first tab of `Table.md` the active one again, as after another
- * pane on it opened, clicks the first cell of its last row, and takes the
- * cursor to the end of that cell with a real key.
+ * pane on it opened, and goes into the first cell of its last row as
+ * {@link intoCell} does.
  */
 export async function backIntoCell(): Promise<void> {
   await browser.executeObsidian(({ app, obsidian }) => {
@@ -46,6 +38,14 @@ export async function backIntoCell(): Promise<void> {
     if (leaf === undefined) throw new Error("Table.md is not open");
     app.workspace.setActiveLeaf(leaf, { focus: true });
   });
+  await toLastCell();
+}
+
+/**
+ * Clicks the first cell of the last row of the table in the active note, and
+ * takes the cursor to the end of that cell with a real key.
+ */
+async function toLastCell(): Promise<void> {
   const cell = browser.$(
     ".workspace-leaf.mod-active .cm-table-widget tbody tr:last-child td:first-child",
   );
@@ -93,6 +93,43 @@ export async function waitForRowEverywhere(row: string): Promise<void> {
 }
 
 /**
+ * Waits for every editor of `Table.md` and its file to read `text`, whatever
+ * the padding of the table's cells and of the line under its header, as a
+ * cell pads them again once it takes a change.
+ */
+export async function waitForNoteEverywhere(text: string): Promise<void> {
+  const unpadded = (shown: string): string =>
+    shown.replace(/ +/g, " ").replace(/-+/g, "-");
+  const wanted = unpadded(text);
+  let read: string[] = [];
+  try {
+    await browser.waitUntil(async () => {
+      read = await browser.executeObsidian(async ({ app, obsidian }) => {
+        const texts = app.workspace
+          .getLeavesOfType("markdown")
+          .flatMap(({ view }) =>
+            view instanceof obsidian.MarkdownView &&
+            view.file?.path === "Table.md"
+              ? [view.editor.getValue()]
+              : [],
+          );
+        const file = app.vault.getFileByPath("Table.md");
+        if (file === null) throw new Error("no Table.md");
+        return [...texts, await app.vault.read(file)];
+      });
+      return (
+        read.length > 1 && read.every((shown) => unpadded(shown) === wanted)
+      );
+    });
+  } catch (error) {
+    throw new Error(
+      `waited for ${JSON.stringify(wanted)} in every editor and the file, which read ${JSON.stringify(read.map(unpadded))}`,
+      { cause: error },
+    );
+  }
+}
+
+/**
  * Waits for the last row of the table in `Table.md` to read `row`, whatever
  * its padding, with `|` not marking anything here.
  */
@@ -126,7 +163,9 @@ export async function waitForLastRow(row: string): Promise<void> {
  * Holds every timer with no delay that is set while Inkline's code runs, until
  * {@link letInklineTimersGo}, as a busy machine can run such a timer after a
  * person's next key: Obsidian hands a change inside the cell being edited to
- * the cell's own editor in one (#415). Each held timer still fires, and runs
+ * the cell's own editor in one (#415). Inkline's code can be far down the
+ * stack of such a timer, under Obsidian's and CodeMirror's, so the whole stack
+ * is read, not V8's usual ten frames. Each held timer still fires, and runs
  * its callback once let go. A test that ends with them held has `undoStubs`
  * let them go.
  */
@@ -146,7 +185,15 @@ export async function holdInklineTimers(): Promise<void> {
       delay?: number,
       ...args: unknown[]
     ): number => {
-      const inkline = (new Error().stack ?? "").includes("plugin:inkline");
+      const limit = Error.stackTraceLimit;
+      Error.stackTraceLimit = Infinity;
+      let stack: string;
+      try {
+        stack = new Error().stack ?? "";
+      } finally {
+        Error.stackTraceLimit = limit;
+      }
+      const inkline = stack.includes("plugin:inkline");
       if (typeof handler !== "function" || (delay ?? 0) > 0 || !inkline) {
         return later(handler, delay, ...args);
       }
