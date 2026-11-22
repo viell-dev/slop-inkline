@@ -273,6 +273,8 @@ interface WriteHooks {
 interface Setup {
   /** The drawing its file holds; a new symbol has no file until saved. */
   readonly existing?: InkDocument;
+  /** The readings and translations its file holds with that drawing. */
+  readonly text?: Partial<SymbolText>;
   readonly uses?: SymbolUses;
   readonly drafts?: { readonly store: DraftStore };
   readonly fields?: Fields;
@@ -296,7 +298,7 @@ async function editor(setup: Setup = {}) {
   const hooks: WriteHooks = {};
   const existing = setup.existing;
   const disk = new SymbolOnDisk(
-    existing === undefined ? undefined : await fileOf(existing),
+    existing === undefined ? undefined : await fileOf(existing, setup.text),
   );
   const opened =
     disk.bytes === undefined ? undefined : await openInk(disk.bytes);
@@ -700,7 +702,10 @@ describe("Keeping", () => {
   it.each(["Next", "Save and close"] as const)(
     "goes on with %s through a change to the file's text found as it saves",
     async (how) => {
-      const editing = await editor({ existing: { strokes: [stroke(10)] } });
+      const editing = await editor({
+        existing: { strokes: [stroke(10)] },
+        text: { reading: ["TA"], translation: ["field"] },
+      });
       editing.draw(30);
       editing.hooks.beforeCheck = async () => {
         const bytes = editing.disk.bytes;
@@ -721,9 +726,14 @@ describe("Keeping", () => {
         ).toBe(1);
       });
       expect(editing.writes).toHaveLength(1);
+      expect(editing.asked).toHaveLength(0);
+      // The change taken in, and the field it did not change as it was.
       const held = await heldBy(editing.disk.bytes);
       expect(held.strokes).toBe(2);
-      expect(held.text.reading).toEqual(["elsewhere"]);
+      expect(held.text).toEqual({
+        reading: ["elsewhere"],
+        translation: ["field"],
+      });
     },
   );
 
@@ -749,8 +759,10 @@ describe("Keeping", () => {
       "Not saved: the file changed text you typed, so look at what it now says and save again",
     );
     expect(editing.notices).toHaveLength(0);
+    expect(editing.asked).toHaveLength(0);
     expect(editing.calls).toContain("showText");
     expect(fields.typed()).toEqual({ reading: "mine" });
+    expect((await heldBy(editing.disk.bytes)).text.reading).toEqual(["theirs"]);
     // Seen, what they typed is theirs to save, over what the file says.
     await editing.keeping.saveOnly();
     expect(editing.writes).toHaveLength(1);
@@ -798,6 +810,12 @@ describe("Keeping", () => {
       });
       expect(editing.asked).toHaveLength(1);
       expect(editing.session.document.strokes).toHaveLength(2);
+      // Saved, the drawing and the text taken in, without a question.
+      await editing.keeping.saveOnly();
+      expect(editing.asked).toHaveLength(1);
+      const held = await heldBy(editing.disk.bytes);
+      expect(held.strokes).toBe(2);
+      expect(held.text.reading).toEqual(["elsewhere"]);
     },
   );
 
