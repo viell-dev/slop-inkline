@@ -510,6 +510,8 @@ describe("writeText", () => {
     );
   });
 
+  // This checks what is written, not how fast: files of 65,536 chunks took 1.7
+  // seconds alone and up to 14.1 under load, past Vitest's five (#362).
   it("does not make a file Inkline would refuse to read", async () => {
     const filler: Chunk = { type: "tIME", data: new Uint8Array(7) };
     const room = maxChunks - readChunks(plain).length;
@@ -523,7 +525,7 @@ describe("writeText", () => {
     ]);
     const changed = await writeText(holding, "reading", ["KA"]);
     expect(readChunks(changed)).toHaveLength(maxChunks);
-  });
+  }, 30_000);
 
   it("goes with a drawing's save: the record changes, the text stays", async () => {
     const file = await golden("v1-text");

@@ -131,6 +131,7 @@ describe("A long drawing", function () {
       "freehand",
       "move",
       "pan",
+      "path",
       "polygon",
       "redo",
       "restore",

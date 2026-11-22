@@ -74,23 +74,25 @@ export function paintBrushCursor(
 
 /**
  * Colour the fixed coverage from the surface under it, including transparent
- * tracing pixels over the CSS background. left/top are CSS content offsets.
+ * tracing pixels over the CSS background. `content` is the size of the
+ * surface's content box, which its pixels fill, and left/top are the bitmap's
+ * offsets from that box's corner, all in CSS pixels.
  * A small reusable readback canvas avoids reading the entire drawing.
  */
 export function contrastBrushCursor(
   brush: BrushCursor,
   surface: HTMLCanvasElement,
+  content: { readonly width: number; readonly height: number },
   left: number,
   top: number,
   ratio: number,
 ): boolean {
   const win = surface.ownerDocument.defaultView;
-  if (win === null || surface.clientWidth === 0 || surface.clientHeight === 0)
-    return false;
+  if (win === null || content.width <= 0 || content.height <= 0) return false;
   const { pixels, context, backdrop, covered } = brush;
   const { width, height } = pixels;
-  const scaleX = surface.width / surface.clientWidth;
-  const scaleY = surface.height / surface.clientHeight;
+  const scaleX = surface.width / content.width;
+  const scaleY = surface.height / content.height;
   try {
     backdrop.clearRect(0, 0, width, height);
     backdrop.fillStyle = win.getComputedStyle(surface).backgroundColor;

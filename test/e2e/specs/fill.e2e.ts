@@ -480,7 +480,7 @@ describe("Fill", function () {
     const fill = browser.$('[data-inkline-button="fill"]');
     expect(await fill.isEnabled()).toBe(false);
     await browser.keys("b");
-    await waitForStatus("Toggle fill is for Ellipse and Polygon");
+    await waitForStatus("Toggle fill is for Ellipse, Polygon, and Path");
     expect(await pressed("fill")).toBe("false");
     await browser.keys("o");
     expect(await fill.isEnabled()).toBe(true);

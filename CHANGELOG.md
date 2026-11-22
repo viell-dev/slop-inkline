@@ -9,8 +9,44 @@ even one a public release; earlier pre-releases carry a suffix such as
 
 ## Unreleased
 
+### Added
+
+- **Path** (A) in the editor places a curve by its points, for curves that are
+  hard to draw steadily with a mouse, such as a quarter circle or an S
+  ([#340](https://github.com/viell-dev/slop-inkline/issues/340)). Click for a
+  corner, or press and drag for a smooth point, whose handle sets the curve's
+  direction there. While the path is placed, a point or a handle's end can be
+  dragged to move it, and Undo takes back the last point or drag. A click on the
+  first point closes the path, a click on the last or Enter ends it, and Esc
+  drops it. Shift puts points and handles' ends on the grid, **Toggle fill**
+  fills a closed path, and **Flat ends** cuts its ends on the grid as it cuts a
+  freehand stroke's. Once it ends, a path is ordinary ink: it is saved as a
+  stroke along the curve of a kind the file format already has, so a symbol with
+  paths opens and looks the same in earlier versions of Inkline.
+
+### Changed
+
+- A symbol saved without a name passes over a number that a note still links to,
+  so a note that embeds a deleted symbol no longer shows the next new symbol in
+  its folder in its place. A link counts as Obsidian would resolve it, once
+  Obsidian has read the note's links after opening the vault
+  ([#299](https://github.com/viell-dev/slop-inkline/issues/299)).
+
 ### Fixed
 
+- Ink shows under the pointer that draws it when a theme or a CSS snippet gives
+  the drawing area padding, which Inkline's own styles do not. The ink landed
+  away from the pointer by the padding, and the brush's circle was the wrong
+  size and showed over the padding too. Now the drawing fills the area inside
+  the padding, the pointer is mapped from there, and the brush's circle shows
+  only there, at the size the brush draws
+  ([#378](https://github.com/viell-dev/slop-inkline/issues/378)).
+- **Zoom** pressed while you draw a stroke or a shape, with the pen or the
+  eraser, or while you press a polygon's corner or a path's point or handle, now
+  waits until you let go, by its key and by its button. It used to zoom at once,
+  which moved where the pointer fell in the drawing, so letting go without
+  moving ended the stroke somewhere other than it showed
+  ([#382](https://github.com/viell-dev/slop-inkline/issues/382)).
 - A rename of a symbol that was renamed elsewhere, deleted and replaced, or
   whose new name another symbol took, while Quick edit wrote its readings and
   translations or the editor its drawing, is refused at once. It used to read,
