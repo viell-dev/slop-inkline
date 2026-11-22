@@ -18,7 +18,12 @@ import {
   type,
 } from "../support/insertion.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
-import { intoCell, waitForLastRow } from "../support/table-cell.ts";
+import {
+  holdInklineTimers,
+  intoCell,
+  letInklineTimersGo,
+  waitForLastRow,
+} from "../support/table-cell.ts";
 
 describe("Symbols in a table cell in Live Preview", function () {
   before(async function () {
@@ -110,6 +115,20 @@ describe("Symbols in a table cell in Live Preview", function () {
     await chooseExisting("gat");
     await waitForLastRow("| same![[gate.ink.png]] | same |");
     await type("xy");
+    await waitForLastRow("| same![[gate.ink.png]]xy | same |");
+  });
+
+  // A key straight after the choice, before what Obsidian does on a timer as
+  // a cell takes a change, as on a busy machine (#415).
+  it("keeps a symbol from Insert existing symbol and a key that comes first", async function () {
+    await createSymbol("gate.ink.png");
+    await intoCell("Table.md");
+    await searchExisting("gat");
+    await holdInklineTimers();
+    await browser.keys(["Enter"]);
+    await type("x");
+    await letInklineTimersGo();
+    await type("y");
     await waitForLastRow("| same![[gate.ink.png]]xy | same |");
   });
 

@@ -147,17 +147,22 @@ export function positionAfter(
  * stays. They go in one change because in a table cell that Live Preview is
  * editing, Obsidian passes the change to the cell's own editor a moment later,
  * with the selection it came with, and a cursor set on the note's editor after
- * it never reaches the cell.
+ * it never reaches the cell. With `origin`, the change carries it, as
+ * Obsidian's `transaction` allows.
  */
 export function writeAt(
   editor: Editor,
   offset: number,
   text: string,
   rest = "",
+  origin?: string,
 ): void {
   const from = editor.offsetToPos(offset);
-  editor.transaction({
-    changes: [{ from, text: text + rest }],
-    selection: { from: positionAfter(from, text) },
-  });
+  editor.transaction(
+    {
+      changes: [{ from, text: text + rest }],
+      selection: { from: positionAfter(from, text) },
+    },
+    origin,
+  );
 }

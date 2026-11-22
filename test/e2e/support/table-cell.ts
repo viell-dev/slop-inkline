@@ -58,3 +58,66 @@ export async function waitForLastRow(row: string): Promise<void> {
     );
   }
 }
+
+/**
+ * Holds every timer with no delay that is set while Inkline's code runs, until
+ * {@link letInklineTimersGo}, as a busy machine can run such a timer after a
+ * person's next key: Obsidian hands a change inside the cell being edited to
+ * the cell's own editor in one (#415). Each held timer still fires, and runs
+ * its callback once let go. A test that ends with them held has `undoStubs`
+ * let them go.
+ */
+export async function holdInklineTimers(): Promise<void> {
+  await browser.execute(() => {
+    const original: unknown = Reflect.get(window, "setTimeout");
+    if (typeof original !== "function") throw new Error("no setTimeout");
+    const later = (...args: unknown[]): number =>
+      Reflect.apply(original, window, args) as number;
+    let release = (): void => undefined;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let held = 0;
+    const holding = (
+      handler: unknown,
+      delay?: number,
+      ...args: unknown[]
+    ): number => {
+      const inkline = (new Error().stack ?? "").includes("plugin:inkline");
+      if (typeof handler !== "function" || (delay ?? 0) > 0 || !inkline) {
+        return later(handler, delay, ...args);
+      }
+      held++;
+      return later(() => {
+        void released.then(() => {
+          Reflect.apply(handler, window, args);
+        });
+      });
+    };
+    const letGo = (): number => {
+      Reflect.set(window, "setTimeout", original);
+      Reflect.deleteProperty(window, "inklineLetInklineTimersGo");
+      Reflect.deleteProperty(window, "inklineAtEnd-inkline-timers");
+      release();
+      return held;
+    };
+    Reflect.set(window, "inklineLetInklineTimersGo", letGo);
+    Reflect.set(window, "inklineAtEnd-inkline-timers", letGo);
+    Reflect.set(window, "setTimeout", holding);
+  });
+}
+
+/**
+ * Lets the timers that {@link holdInklineTimers} holds run, once each has
+ * fired, and says how many it held.
+ */
+export async function letInklineTimersGo(): Promise<number> {
+  return browser.execute(async () => {
+    const letGo: unknown = Reflect.get(window, "inklineLetInklineTimersGo");
+    if (typeof letGo !== "function") throw new Error("no timers held");
+    const held = Reflect.apply(letGo, window, []) as number;
+    // Each runs its callback as its timer fires, which a task gives time to.
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    return held;
+  });
+}
