@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   PictureTracing,
   type PictureView,
@@ -7,9 +7,11 @@ import {
 } from "../../../src/editor/picture.ts";
 import {
   movePicture,
+  placePicture,
   scalePicture,
   wheelFactor,
 } from "../../../src/editor/reference.ts";
+import { lineBox } from "../../../src/ink/geometry.ts";
 
 /** A picture's stand-in: decoding and its pixels need a browser. */
 function bitmap(): ImageBitmap & { closed: number } {
@@ -38,7 +40,12 @@ function carried(image: ImageBitmap = bitmap()): TracedPicture {
  * calls by name, in order.
  */
 function editor(
-  { view }: { readonly view: PictureView | undefined } = { view: view200 },
+  {
+    view,
+    capHeight,
+  }: { readonly view: PictureView | undefined; readonly capHeight?: number } = {
+    view: view200,
+  },
 ) {
   const said: string[] = [];
   const calls: string[] = [];
@@ -48,7 +55,7 @@ function editor(
   };
   const host: TracingHost = {
     view: () => view,
-    capHeight: () => undefined,
+    capHeight: () => capHeight,
     held: () => state.held,
     ended: () => state.ended,
     say: (text) => {
@@ -267,5 +274,123 @@ describe("PictureTracing", () => {
     expect(tracing.preview(view200, document)).toBeUndefined();
     expect(await tracing.applyBeforeSave()).toBe(true);
     expect(tracing.applying).toBe(false);
+  });
+});
+
+/** What a pasted picture says it is doing, and how to go on. */
+const tracingText =
+  "Tracing over the picture. Move (M), then drag it or use the arrow keys; the wheel or + and − scale it";
+
+/** A picture's file, which arrives when `arrive` is called. */
+function arriving(): { file: Promise<Blob>; arrive: () => void } {
+  let arrive = (): void => {
+    throw new Error("not asked yet");
+  };
+  const file = new Promise<Blob>((resolve) => {
+    arrive = () => {
+      resolve(new Blob(["picture"]));
+    };
+  });
+  // The executor has run, so `arrive` resolves the file now.
+  return { file, arrive };
+}
+
+// Node.js has no createImageBitmap: here it decodes every file to a picture
+// of 40 × 20 pixels, kept in the order decoded.
+describe("PictureTracing, once a picture decodes", () => {
+  let decoded: (ImageBitmap & { closed: number })[] = [];
+
+  beforeEach(() => {
+    decoded = [];
+    vi.stubGlobal("createImageBitmap", (): Promise<ImageBitmap> => {
+      const image = bitmap();
+      decoded.push(image);
+      return Promise.resolve(image);
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("traces over it as tall as a capital letter, in the middle of the surface", async () => {
+    const { tracing, said, calls } = editor({ view: view200, capHeight: 50 });
+    await tracing.trace(new Blob(["picture"]));
+    expect(tracing.picture?.image).toBe(decoded[0]);
+    expect(tracing.picture?.placement).toEqual(
+      placePicture(40, 20, 50, lineBox.baseline, view200.center),
+    );
+    expect(said).toEqual([tracingText]);
+    expect(calls).toEqual(["controls", "render"]);
+  });
+
+  it("puts it a capital's usual height above the baseline before the font is measured", async () => {
+    const { tracing } = editor();
+    await tracing.trace(new Blob(["picture"]));
+    expect(tracing.picture?.placement).toEqual(
+      placePicture(
+        40,
+        20,
+        lineBox.baseline - 0.7 * lineBox.pxPerEm,
+        lineBox.baseline,
+        view200.center,
+      ),
+    );
+  });
+
+  it("closes the picture it replaces, and keeps the new one", async () => {
+    const { tracing } = editor();
+    await tracing.trace(new Blob(["first"]));
+    await tracing.trace(new Blob(["second"]));
+    const [first, second] = decoded;
+    expect(first?.closed).toBe(1);
+    expect(second?.closed).toBe(0);
+    expect(tracing.picture?.image).toBe(second);
+  });
+
+  it("closes a picture asked for before a newer one, as it arrives, and keeps the newer", async () => {
+    const { tracing, said } = editor();
+    const older = arriving();
+    const first = tracing.trace(older.file);
+    await tracing.trace(new Blob(["newer"]));
+    older.arrive();
+    await first;
+    const [newer, late] = decoded;
+    expect(late?.closed).toBe(1);
+    expect(newer?.closed).toBe(0);
+    expect(tracing.picture?.image).toBe(newer);
+    expect(said).toEqual([tracingText]);
+  });
+
+  it("closes a picture that arrives after the editor let go of its own, and says nothing", async () => {
+    const { tracing, said, calls } = editor();
+    const asked = arriving();
+    const traced = tracing.trace(asked.file);
+    tracing.dispose();
+    asked.arrive();
+    await traced;
+    expect(decoded[0]?.closed).toBe(1);
+    expect(tracing.picture).toBeUndefined();
+    expect(said).toEqual([]);
+    expect(calls).toEqual([]);
+  });
+
+  it("closes a picture that arrives once the editor has ended", async () => {
+    const { tracing, said, state } = editor();
+    const asked = arriving();
+    const traced = tracing.trace(asked.file);
+    state.ended = true;
+    asked.arrive();
+    await traced;
+    expect(decoded[0]?.closed).toBe(1);
+    expect(tracing.picture).toBeUndefined();
+    expect(said).toEqual([]);
+  });
+
+  it("closes a picture that arrives with no drawing area", async () => {
+    const { tracing } = editor({ view: undefined });
+    await tracing.trace(new Blob(["picture"]));
+    expect(decoded[0]?.closed).toBe(1);
+    expect(tracing.picture).toBeUndefined();
   });
 });
