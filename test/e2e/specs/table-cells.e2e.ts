@@ -16,6 +16,7 @@ import {
   searchExisting,
   setLinkUpdates,
   type,
+  waitForNoteFocus,
 } from "../support/insertion.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 import { intoCell, waitForLastRow } from "../support/table-cell.ts";
@@ -151,6 +152,7 @@ describe("Symbols in a table cell in Live Preview", function () {
     await rewrite("Table.md", (text) => `Prefix\n\n${text}`);
     await save();
     await waitForLastRow("| same![[001.ink.png]] | same |");
+    await waitForNoteFocus();
     await type("xy");
     await waitForLastRow("| same![[001.ink.png]]xy | same |");
   });
@@ -164,6 +166,7 @@ describe("Symbols in a table cell in Live Preview", function () {
     await rewrite("Table.md", (text) => `Prefix\n\n${text}`);
     await browser.keys(["Escape"]);
     await waitClosed();
+    await waitForNoteFocus();
     await type("xy");
     await waitForLastRow("| same![[001.ink.png]]xy | same |");
   });
@@ -175,6 +178,7 @@ describe("Symbols in a table cell in Live Preview", function () {
     await rewrite("Table.md", (text) => `Prefix\n\n${text}`);
     await browser.keys(["Enter"]);
     await waitForLastRow("| same![[gate.ink.png]] | same |");
+    await waitForNoteFocus();
     await type("xy");
     await waitForLastRow("| same![[gate.ink.png]]xy | same |");
   });

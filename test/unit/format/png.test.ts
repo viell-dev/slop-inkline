@@ -1,4 +1,3 @@
-import { loadavg } from "node:os";
 import { describe, expect, it, vi } from "vitest";
 import {
   PngError,
@@ -820,7 +819,23 @@ describe("encodeRgba", () => {
     expect(filters).toEqual([1, 2, 2]);
   });
 
-  it("pauses every few milliseconds of a long encoding, to its end", async () => {
+  // How long the encoder works between its pauses, as a share of the whole
+  // encoding: a slice is 12 ms and a batch more, so each stretch is a small
+  // part of it, and an encoder that pauses in only some of its steps, or not
+  // to its end, spends most of it in one. A share, not milliseconds, as other
+  // work on the machine lengthens every stretch and the whole alike: a limit of
+  // 100 ms failed under load where nothing was wrong (#420). On Windows 11 the
+  // longest stretch was 0.07 to 0.15 of an encoding, with the machine busy and
+  // with ten busy processes beside it as well, against 0.71 to 0.91 with the
+  // pause after each batch of rows taken out, and the whole with no pauses.
+  // The fastest of three, as a stall of the machine's can lengthen one stretch
+  // of a run. That can pass a stall in the first run alone, so the first run
+  // has a limit of its own, and the next test counts the pauses with no clock
+  // at all. Each run's stretches are in the message, should all three fail.
+  // Each encoding took up to 5.6 s under that load, and the test ran past
+  // Vitest's 5 s once in a whole run, so it has 30 s, which it promises
+  // nothing about.
+  it("pauses all through a long encoding, to its end", async () => {
     const width = 512;
     const height = 512;
     let seed = 5;
@@ -828,13 +843,15 @@ describe("encodeRgba", () => {
       seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
       return seed >>> 24;
     });
-    /** The stretches between one encoding's pauses, and what it made. */
+    /** One encoding's stretches between pauses, its whole time, its bytes. */
     const encoded = async (): Promise<{
       stretches: number[];
+      whole: number;
       bytes: Uint8Array;
     }> => {
       const stretches: number[] = [];
-      let last = performance.now();
+      const start = performance.now();
+      let last = start;
       const bytes = await encodeRgba(width, height, data, {
         // A task of its own, as a frame or input would need.
         pause: async () => {
@@ -845,34 +862,34 @@ describe("encodeRgba", () => {
       });
       // From the last pause to the end, too.
       stretches.push(performance.now() - last);
-      return { stretches, bytes };
+      return { stretches, whole: performance.now() - start, bytes };
     };
-    // A slice is 12 ms and a batch more; a frozen encoder would take all of it.
-    // The fastest of three, as other work on the machine lengthens every
-    // stretch of a run, by up to ten times (#124). That can pass a stall in the
-    // first run alone, so the first run has a limit of its own, which load has
-    // come nowhere near, and the next test counts the pauses with no clock at
-    // all. Each run's stretches are in the message, should all three fail.
-    const runs: number[][] = [];
-    let bytes: Uint8Array = new Uint8Array();
+    type Run = Awaited<ReturnType<typeof encoded>>;
+    /** The longest stretch of a run, as a share of its whole. */
+    const longest = ({ stretches, whole }: Run): number =>
+      Math.max(...stretches) / whole;
+    const runs: Run[] = [];
     for (let run = 0; run < 3; run++) {
       const result = await encoded();
-      runs.push(result.stretches);
-      ({ bytes } = result);
-      if (Math.max(...result.stretches) < 100) break;
+      runs.push(result);
+      if (longest(result) < 0.4) break;
     }
-    const longest = runs.map((run) => Math.max(...run));
-    const report = `stretches ${runs.map((run) => run.map((ms) => ms.toFixed(1)).join(", ")).join(" | ")} ms, load ${loadavg().join(", ")}`;
-    expect(Math.min(...longest), report).toBeLessThan(100);
-    expect(longest[0], report).toBeLessThan(500);
-    expect(runs.every((run) => run.length > 1)).toBe(true);
+    const report = runs
+      .map(
+        ({ stretches, whole }) =>
+          `${stretches.map((ms) => ms.toFixed(1)).join(", ")} of ${whole.toFixed(1)} ms`,
+      )
+      .join(" | ");
+    const shares = runs.map(longest);
+    expect(Math.min(...shares), report).toBeLessThan(0.4);
+    expect(shares[0], report).toBeLessThan(0.6);
     // The image data spans chunks of at most 64 KiB, each checksummed.
-    const chunks = readChunks(bytes);
+    const chunks = readChunks(runs.at(-1)?.bytes ?? new Uint8Array());
     const parts = chunks.filter((chunk) => chunk.type === "IDAT");
     expect(parts.length).toBeGreaterThan(1);
     expect(parts.every((chunk) => chunk.data.length <= 64 * 1024)).toBe(true);
     expect(imageData(chunks).length).toBe((width * 4 + 1) * height);
-  });
+  }, 30_000);
 
   // This checks where it pauses, by a clock of its own, not how fast: it took
   // 0.5 seconds alone and up to 2.8 under load (#362).

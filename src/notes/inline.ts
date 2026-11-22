@@ -140,7 +140,11 @@ const stops = new Uint8Array(128);
 for (const char of "\\<[*_`$") stops[char.charCodeAt(0)] = 1;
 for (const char of "wh!^~=#%") stops[char.charCodeAt(0)] = 2;
 
-/** Steps of reading a paragraph's text allowed for each of its characters. */
+/**
+ * Steps of reading a paragraph's text allowed for each of its characters. The
+ * tests time readings against as many simple passes over the text, in
+ * `simplePasses` in `test/support/linear.ts`, so a change here changes that.
+ */
 const stepsPerChar = 64;
 /** Steps allowed for any paragraph, however short. */
 const minimumSteps = 100_000;
