@@ -529,9 +529,10 @@ export class InkEditorModal extends Modal {
   /**
    * Changes to the view asked for while the pointer was pressed to draw, for
    * when it is let go: Zoom as a switch, so that asking twice leaves the view
-   * as it is, and Fit.
+   * as it is, Fit, and Make ink as a switch, whose row above the drawing area
+   * would move the drawing under the pointer as it opened or closed.
    */
-  #viewWaits = { zoom: false, fit: false };
+  #viewWaits = { zoom: false, fit: false, ink: false };
   /**
    * Where the pointer pressed to draw last was in the window, while it is,
    * and where that was in the drawing as what is drawn took it.
@@ -1654,7 +1655,7 @@ export class InkEditorModal extends Modal {
         }
         this.#dragged = undefined;
         canvas.removeClass("is-dragging");
-        this.#holdBelow(false);
+        this.#letGoAround();
         return;
       }
       this.#pressedAt = undefined;
@@ -1663,7 +1664,7 @@ export class InkEditorModal extends Modal {
       else if (event.type === "lostpointercapture") this.#session.end();
       else this.#session.end(point(event), event.shiftKey);
       // Once the release has been taken where the drawing was.
-      this.#holdBelow(false);
+      this.#letGoAround();
       this.#changed();
       this.#viewAfterPress();
     };
@@ -1676,7 +1677,7 @@ export class InkEditorModal extends Modal {
       if (!this.#gate.down(event)) return;
       // Before the press empties the status line, which would move the
       // drawing under it.
-      this.#holdBelow(true);
+      this.#holdAround();
       event.preventDefault();
       // Drawing takes the focus, which the default action would have, so
       // that the shortcuts are the editor's again after typing elsewhere.
@@ -1936,6 +1937,21 @@ export class InkEditorModal extends Modal {
 
   /** Opens or closes what turns the picture into ink. */
   #toggleConvert(): void {
+    // Its row opens or closes once the pointer is let go, as Zoom waits.
+    if (
+      this.#pressed &&
+      (this.#converting !== undefined || this.#picture !== undefined)
+    ) {
+      this.#viewWaits.ink = !this.#viewWaits.ink;
+      if (this.#viewWaits.ink) {
+        this.#announce(
+          this.#converting === undefined
+            ? "Making ink once you let go"
+            : "Closing Make ink once you let go",
+        );
+      }
+      return;
+    }
     if (this.#converting !== undefined) {
       this.#stopConverting();
       this.#announce("No ink made");
@@ -2394,25 +2410,45 @@ export class InkEditorModal extends Modal {
   }
 
   /**
-   * Keeps what is below the drawing area at the height it has while the
-   * pointer is pressed on it, or lets it change again. Obsidian keeps the
-   * editor in the middle of the window, so a line below that grew or shrank,
-   * as the status line does when the press empties a message of two lines,
-   * or a message said meanwhile wraps, moved the drawing under the pointer
-   * in the middle of a stroke (#427). What does not fit shows once the
-   * pointer is let go, and a screen reader hears it at once, as before.
+   * What changes height with what it says, around the drawing area: the
+   * picture's row above it, whose hint can wrap otherwise, and the line of
+   * text, the status line, and the save's waiting message below it.
    */
-  #holdBelow(hold: boolean): void {
-    for (const below of [this.#previewLine, this.#status, this.#saveWait]) {
-      if (below === undefined) continue;
-      if (hold) {
-        // As laid out, to the fraction of a pixel, as the pointer is mapped
-        // by the same measure; the computed style's height can differ from
-        // it by that fraction, enough to move the drawing by as much.
-        const { height } = below.getBoundingClientRect();
-        below.style.setProperty("--inkline-held-height", `${String(height)}px`);
-      }
-      below.toggleClass("inkline-held", hold);
+  get #heldAround(): HTMLElement[] {
+    return [
+      this.#pictureHint?.parentElement ?? undefined,
+      this.#previewLine,
+      this.#status,
+      this.#saveWait,
+    ].filter((element) => element !== undefined);
+  }
+
+  /**
+   * Keeps what is around the drawing area at the height it has while the
+   * pointer is pressed on it, until {@link #letGoAround}. Obsidian keeps the
+   * editor in the middle of the window, so a line that grew or shrank, as
+   * the status line does when the press empties a message of two lines, or
+   * a message said meanwhile wraps, moved the drawing under the pointer in
+   * the middle of a stroke (#427). What does not fit shows once the pointer
+   * is let go, and a screen reader hears it at once, as before. Make ink's
+   * row, which opens or closes whole, waits for the release instead.
+   */
+  #holdAround(): void {
+    for (const element of this.#heldAround) {
+      // As laid out, to the fraction of a pixel, as the pointer is mapped by
+      // the same measure; the computed style's height can differ from it by
+      // that fraction, enough to move the drawing by as much.
+      const { height } = element.getBoundingClientRect();
+      element.style.setProperty("--inkline-held-height", `${String(height)}px`);
+      element.addClass("inkline-held");
+    }
+  }
+
+  /** Lets what {@link #holdAround} held take its own height again. */
+  #letGoAround(): void {
+    for (const element of this.#heldAround) {
+      element.removeClass("inkline-held");
+      element.style.removeProperty("--inkline-held-height");
     }
   }
 
@@ -2473,15 +2509,16 @@ export class InkEditorModal extends Modal {
    * did, or nothing, rather than what waited.
    */
   #viewAfterPress(): void {
-    const { zoom, fit } = this.#viewWaits;
-    this.#viewWaits = { zoom: false, fit: false };
-    if ((!zoom && !fit) || this.#ended()) return;
+    const { zoom, fit, ink } = this.#viewWaits;
+    this.#viewWaits = { zoom: false, fit: false, ink: false };
+    if ((!zoom && !fit && !ink) || this.#ended()) return;
     this.#line.act(() => {
       if (zoom) this.#zoom();
       if (fit) {
         this.#fitView();
         this.#render();
       }
+      if (ink) this.#toggleConvert();
     });
   }
 
