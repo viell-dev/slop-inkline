@@ -14,6 +14,7 @@ import { finerGrid, type Grid } from "../../../src/editor/guides.ts";
 import { sweptStroke } from "../../../src/editor/sweep.ts";
 import type { Stroke } from "../../../src/format/record.ts";
 import { emptyDocument } from "../../../src/ink/document.ts";
+import { smoothShape } from "../../../src/ink/outline.ts";
 
 /**
  * The stroke a session is drawing, which is the only one: only a filled
@@ -2946,5 +2947,376 @@ describe("DrawingSession's polygons", () => {
     click(session, 35, 20);
     click(session, 35, 20);
     expect(session.document.strokes[0]?.points).toEqual([80, 320, 560, 320]);
+  });
+});
+
+describe("DrawingSession's paths", () => {
+  /** Clicks at a point: a press and a release there, with Shift or not. */
+  const click = (
+    session: DrawingSession,
+    x: number,
+    y: number,
+    shift = false,
+  ): void => {
+    session.begin({ x, y }, shift);
+    session.end({ x, y }, shift);
+  };
+
+  /** A press at `from`, dragged to `to`, and let go there. */
+  const drag = (
+    session: DrawingSession,
+    from: InputPoint,
+    to: InputPoint,
+    shift = false,
+  ): void => {
+    session.begin(from, shift);
+    session.extend(
+      [{ x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 }, to],
+      shift,
+    );
+    session.end(to, shift);
+  };
+
+  /** A stroke's points, in pixels. */
+  const pixels = (stroke: Stroke | undefined): InputPoint[] => {
+    const points = stroke?.points ?? [];
+    const out: InputPoint[] = [];
+    for (let index = 0; index + 1 < points.length; index += 2) {
+      out.push({
+        x: (points[index] ?? 0) / 16,
+        y: (points[index + 1] ?? 0) / 16,
+      });
+    }
+    return out;
+  };
+
+  /**
+   * A quarter circle of radius 50 about (100, 100), from (50, 100) up and
+   * round to (100, 50): its start dragged upwards, its end to the right,
+   * each by 0.5523 times the radius, and ended on its last point.
+   */
+  const quarter = (session: DrawingSession): void => {
+    const k = 0.5523 * 50;
+    drag(session, { x: 50, y: 100 }, { x: 50, y: 100 - k });
+    drag(session, { x: 100, y: 50 }, { x: 100 + k, y: 50 });
+    click(session, 100, 50);
+  };
+
+  it("saves a curve as one smooth stroke through points along it, as one undoable step", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "path";
+    const k = 0.5523 * 50;
+    drag(session, { x: 50, y: 100 }, { x: 50, y: 100 - k });
+    expect(session.placing).toBe(true);
+    expect(session.placingPath).toBe(true);
+    expect(session.drawing).toBe(true);
+    expect(session.canUndo).toBe(false);
+    drag(session, { x: 100, y: 50 }, { x: 100 + k, y: 50 });
+    expect(session.document.strokes).toEqual([]);
+    click(session, 100, 50);
+    expect(session.placing).toBe(false);
+    const [stroke] = session.document.strokes;
+    expect(stroke).toMatchObject({ tool: "pen", size: 192 });
+    expect(stroke).not.toHaveProperty("kind");
+    expect(stroke).not.toHaveProperty("cut");
+    const points = pixels(stroke);
+    expect(points[0]).toEqual({ x: 50, y: 100 });
+    expect(points.at(-1)).toEqual({ x: 100, y: 50 });
+    // About a quarter of 2π × 50 long, with a point at least every pixel,
+    // each on the circle to within the rounding to units.
+    expect(points.length).toBeGreaterThanOrEqual(79);
+    expect(points.length).toBeLessThanOrEqual(81);
+    for (const [index, { x, y }] of points.entries()) {
+      expect(Math.abs(Math.hypot(x - 100, y - 100) - 50)).toBeLessThan(0.06);
+      const next = points[index + 1];
+      if (next !== undefined) {
+        expect(Math.hypot(next.x - x, next.y - y)).toBeLessThanOrEqual(1.1);
+      }
+    }
+    session.undo();
+    expect(session.document.strokes).toEqual([]);
+  });
+
+  it("draws the curve at the brush's width at every size, its sides along it", () => {
+    for (const [index, brush] of brushSizes.entries()) {
+      const session = new DrawingSession(emptyDocument);
+      session.shape = "path";
+      session.sizeIndex = index;
+      quarter(session);
+      const [stroke] = session.document.strokes;
+      if (stroke === undefined || stroke.kind !== undefined) {
+        throw new Error("no smooth stroke");
+      }
+      const shape = smoothShape(stroke);
+      if (shape.kind !== "smooth") throw new Error("a dot");
+      const half = (brush.em * 128) / 2;
+      // Every corner of the outline away from the round ends lies the brush's
+      // half width inside or outside the circle, to within a quarter of a
+      // pixel, at 0.21 pixels for the largest brush. These are the outline's
+      // corners: the edge drawn through the midpoints of its sides lies
+      // further in on a bend, as any smooth stroke's does, an ellipse's too.
+      let sides = 0;
+      for (const [x, y] of shape.outline) {
+        const fromEnds = Math.min(
+          Math.hypot(x - 50, y - 100),
+          Math.hypot(x - 100, y - 50),
+        );
+        if (fromEnds <= half + 1) continue;
+        const off = Math.abs(Math.hypot(x - 100, y - 100) - 50);
+        expect(Math.abs(off - half), brush.label).toBeLessThan(0.25);
+        sides++;
+      }
+      expect(sides, brush.label).toBeGreaterThan(4);
+    }
+  });
+
+  it("shows the next curve to the pointer, closed on the first point, and ended on the last", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "path";
+    click(session, 10, 20);
+    session.extend([{ x: 40, y: 20 }]);
+    const shown = pixels(drawn(session));
+    expect(shown[0]).toEqual({ x: 10, y: 20 });
+    expect(shown.at(-1)).toEqual({ x: 40, y: 20 });
+    expect(session.pathMarks?.nodes).toEqual([{ x: 10, y: 20, onGrid: false }]);
+    click(session, 40, 20);
+    session.extend([{ x: 11, y: 21 }]);
+    expect(pixels(drawn(session)).at(-1)).toEqual({ x: 10, y: 20 });
+    expect(session.pathMarks?.target).toEqual({ kind: "point", index: 0 });
+    session.extend([{ x: 41, y: 20 }]);
+    expect(pixels(drawn(session)).at(-1)).toEqual({ x: 40, y: 20 });
+    // A click there ends it: no curve to the pointer is left.
+    click(session, 41, 20);
+    expect(session.placing).toBe(false);
+    expect(session.pathMarks).toBeUndefined();
+    expect(pixels(session.document.strokes[0])).toHaveLength(31);
+  });
+
+  it("closes on its first point, filled with Fill on, as the polygon's fill and line", () => {
+    for (const fill of [false, true]) {
+      const session = new DrawingSession(emptyDocument);
+      session.shape = "path";
+      session.fill = fill;
+      click(session, 10, 50);
+      drag(session, { x: 60, y: 50 }, { x: 60, y: 80 });
+      click(session, 10, 50);
+      const { strokes } = session.document;
+      const line = strokes.at(-1);
+      expect(line).not.toHaveProperty("kind");
+      const points = pixels(line);
+      expect(points[0]).toEqual({ x: 10, y: 50 });
+      expect(points.at(-1)).toEqual({ x: 10, y: 50 });
+      if (!fill) {
+        expect(strokes).toHaveLength(1);
+        continue;
+      }
+      expect(strokes).toHaveLength(2);
+      expect(strokes[0]).toEqual({
+        tool: "pen",
+        points: line?.points,
+        kind: "fill",
+      });
+      // The pointed oval it closes holds its middle.
+      expect(covers(strokes[0]?.points ?? [], 50 * 16, 50 * 16)).toBe(true);
+      session.undo();
+      expect(session.document.strokes).toEqual([]);
+    }
+  });
+
+  it("shows the close a click on the first point makes after a smooth point, filled", () => {
+    for (const fill of [false, true]) {
+      const session = new DrawingSession(emptyDocument);
+      session.shape = "path";
+      session.fill = fill;
+      click(session, 10, 50);
+      drag(session, { x: 60, y: 50 }, { x: 60, y: 80 });
+      // The next curve follows the pointer after the drag.
+      session.extend([{ x: 40, y: 20 }]);
+      expect(pixels(session.activeStrokes.at(-1)).at(-1)).toEqual({
+        x: 40,
+        y: 20,
+      });
+      session.extend([{ x: 11, y: 51 }]);
+      const shown = session.activeStrokes;
+      expect(shown).toHaveLength(fill ? 2 : 1);
+      click(session, 11, 51);
+      expect(session.placing).toBe(false);
+      expect(session.document.strokes).toEqual(shown);
+    }
+  });
+
+  it("fills nothing open, and leaves a dot for a point clicked twice", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "path";
+    session.fill = true;
+    click(session, 10, 50);
+    drag(session, { x: 60, y: 50 }, { x: 60, y: 80 });
+    session.end();
+    expect(session.document.strokes).toHaveLength(1);
+    expect(session.document.strokes[0]?.kind).toBeUndefined();
+    click(session, 30, 30);
+    click(session, 30, 30);
+    expect(session.document.strokes[1]).toEqual({
+      tool: "pen",
+      size: 192,
+      points: [480, 480],
+    });
+  });
+
+  it("puts points and handles on the grid with Shift, and cuts its ends there with Flat ends", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.shape = "path";
+    // From a row, out to the right and down to the baseline, coming in
+    // straight down: an end cut down there, with Flat ends on.
+    const ends = (flat: boolean) => {
+      session.flatEnds = flat;
+      drag(session, { x: 33, y: 63 }, { x: 62, y: 66 }, true);
+      drag(session, { x: 95, y: 143 }, { x: 97, y: 170 }, true);
+      click(session, 95, 143, true);
+      return session.document.strokes.at(-1);
+    };
+    const round = ends(false);
+    expect(round).not.toHaveProperty("cut");
+    const points = pixels(round);
+    expect(points[0]).toEqual({ x: 32, y: 64 });
+    expect(points.at(-1)).toEqual({ x: 96, y: 144 });
+    const cut = ends(true);
+    expect(cut?.points).toEqual(round?.points);
+    expect(cut).toMatchObject({ cut: { end: "down" } });
+    expect(cut?.cut).not.toHaveProperty("start");
+    // With the grid off, Flat ends cuts nothing.
+    session.snap = false;
+    drag(session, { x: 32, y: 64 }, { x: 64, y: 64 });
+    drag(session, { x: 96, y: 144 }, { x: 96, y: 176 });
+    click(session, 96, 144);
+    expect(session.document.strokes.at(-1)).not.toHaveProperty("cut");
+  });
+
+  it("shows its ends cut as Flat ends is while it is placed", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.shape = "path";
+    click(session, 96, 64, true);
+    click(session, 96, 144, true);
+    session.extend([{ x: 96, y: 144 }], true);
+    expect(drawn(session)).not.toHaveProperty("cut");
+    session.flatEnds = true;
+    expect(drawn(session)?.cut).toEqual({ start: "up", end: "down" });
+    session.end();
+    expect(session.document.strokes[0]?.cut).toEqual({
+      start: "up",
+      end: "down",
+    });
+  });
+
+  it("keeps a handle's end where Shift last put it when Shift is let go just before the button", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.shape = "path";
+    click(session, 32, 64, true);
+    session.begin({ x: 96, y: 64 }, true);
+    session.extend([{ x: 113, y: 70 }], true);
+    session.end({ x: 113, y: 70 }, false);
+    expect(session.pathMarks?.nodes.at(-1)).toEqual({
+      x: 96,
+      y: 64,
+      handle: { x: 16, y: 0 },
+      onGrid: true,
+    });
+  });
+
+  it("takes back a point or a move with undoCorner, and the path with its first point", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "path";
+    click(session, 10, 20);
+    drag(session, { x: 40, y: 20 }, { x: 50, y: 20 });
+    // The smooth point moved down, and that move taken back.
+    drag(session, { x: 40, y: 20 }, { x: 40, y: 40 });
+    expect(session.pathMarks?.nodes.at(-1)).toMatchObject({ x: 40, y: 40 });
+    expect(session.undoCorner()).toBe(true);
+    expect(session.pathMarks?.nodes.at(-1)).toMatchObject({ x: 40, y: 20 });
+    expect(session.undoCorner()).toBe(true);
+    expect(session.undoCorner()).toBe(true);
+    expect(session.placing).toBe(false);
+    expect(session.undoCorner()).toBe(false);
+    expect(session.document.strokes).toEqual([]);
+    // Undo after it ends takes back the whole path.
+    click(session, 10, 20);
+    click(session, 40, 20);
+    click(session, 40, 20);
+    expect(session.document.strokes).toHaveLength(1);
+    expect(session.undoCorner()).toBe(false);
+    expect(session.undo()).toBe(true);
+    expect(session.document.strokes).toEqual([]);
+  });
+
+  it("drops a path on cancel and on clear, and takes a brush chosen while it is placed", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "path";
+    click(session, 10, 20);
+    session.cancel();
+    expect(session.placing).toBe(false);
+    click(session, 10, 20);
+    click(session, 30, 20);
+    session.clear();
+    expect(session.placing).toBe(false);
+    expect(session.document.strokes).toEqual([]);
+    click(session, 10, 20);
+    session.tool = "eraser";
+    session.sizeIndex = 3;
+    expect(drawn(session)).toMatchObject({ tool: "pen", size: 192 });
+    session.rebrush();
+    expect(drawn(session)).toMatchObject({ tool: "eraser", size: 384 });
+    click(session, 40, 20);
+    click(session, 40, 20);
+    expect(session.document.strokes[0]).toMatchObject({
+      tool: "eraser",
+      size: 384,
+    });
+    expect(session.document.strokes[0]).not.toHaveProperty("kind");
+  });
+
+  it("commits with the points it has when it ends without a release, as on saving", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "path";
+    click(session, 10, 20);
+    // A handle being dragged out from the second point, when Save comes.
+    session.begin({ x: 40, y: 20 });
+    session.extend([{ x: 40, y: 40 }]);
+    session.end();
+    expect(session.placing).toBe(false);
+    const points = pixels(session.document.strokes[0]);
+    expect(points.at(-1)).toEqual({ x: 40, y: 20 });
+    // Its handle bowed the curve up from the straight line.
+    expect(Math.min(...points.map(({ y }) => y))).toBeLessThan(19);
+  });
+
+  it("keeps its points where they were when a save moves the drawing", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.shape = "path";
+    click(session, 10, 20);
+    session.extend([{ x: 40, y: 20 }]);
+    session.rebase(-5);
+    expect(session.pathMarks?.nodes).toEqual([{ x: 5, y: 20, onGrid: false }]);
+    expect(pixels(drawn(session)).at(-1)).toEqual({ x: 35, y: 20 });
+    click(session, 35, 20);
+    click(session, 35, 20);
+    const points = pixels(session.document.strokes[0]);
+    expect(points[0]).toEqual({ x: 5, y: 20 });
+    expect(points.at(-1)).toEqual({ x: 35, y: 20 });
+  });
+
+  it("keeps the grid it started on until it ends", () => {
+    const session = new DrawingSession(emptyDocument);
+    session.snap = true;
+    session.shape = "path";
+    click(session, 33, 63, true);
+    session.grid = finerGrid(plainGrid);
+    click(session, 41, 63, true);
+    expect(session.pathMarks?.nodes.at(-1)).toMatchObject({ x: 48, y: 64 });
+    session.end();
+    click(session, 41, 63, true);
+    expect(session.pathMarks?.nodes.at(-1)).toMatchObject({ x: 40, y: 64 });
   });
 });

@@ -534,6 +534,32 @@ describe("Zoom", function () {
     expect(await strokeAt(2)).toEqual(alone);
   });
 
+  it("waits until a path's handle is let go", async function () {
+    await openEditor();
+    await browser.keys("a");
+    const usual = await surfaceSize();
+    const first = await inWindow(0.3, 0.65);
+    const second = await inWindow(0.6, 0.35);
+    const handle = await inWindow(0.7, 0.35);
+    await clickAt(first);
+    await drag(second, handle);
+    await browser.keys("Enter");
+    const alone = await strokeAt(1);
+    await clickAt(first);
+    // Pressed where the smooth point goes, dragged out to its handle's end,
+    // held there, and let go.
+    const released = await dragZooming(second, handle, "key");
+    expect(released).toEqual({
+      height: usual.height,
+      status: "Zooming in once you let go",
+      pressed: "true",
+      connected: true,
+    });
+    await waitForStatus("Zoomed in");
+    await browser.keys("Enter");
+    expect(await strokeAt(2)).toEqual(alone);
+  });
+
   it("stays as it was when pressed twice while drawing, and waits to zoom out", async function () {
     await openEditor();
     const usual = await surfaceSize();

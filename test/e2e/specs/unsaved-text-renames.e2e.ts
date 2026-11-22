@@ -18,6 +18,7 @@ import {
   waitForNotice,
   waitForPanes,
   waitForStatus,
+  waitForTop,
 } from "../support/editor.ts";
 import {
   closeTabs,
@@ -399,9 +400,7 @@ describe("A rename while the note holds unsaved text", function () {
       async function askAndAdd(keys: string[]): Promise<void> {
         await nameIt();
         await browser.keys(keys);
-        await browser.waitUntil(
-          async () => (await topButton(answer)) !== undefined,
-        );
+        await waitForTop(answer);
         await addBoth("Editor.md");
         await clickTop(answer);
       }
@@ -456,9 +455,7 @@ describe("A rename while the note holds unsaved text", function () {
       await slowReload("Editor.md", 300);
       await nameIt();
       await browser.keys(keys);
-      await browser.waitUntil(
-        async () => (await topButton("Just once")) !== undefined,
-      );
+      await waitForTop("Just once");
       await addBoth("Editor.md");
       await meanwhile?.();
       await clickTop("Just once");
@@ -607,9 +604,7 @@ describe("A rename while the note holds unsaved text", function () {
             await markEditor();
             await nameIt();
             await browser.keys([...keys]);
-            await browser.waitUntil(
-              async () => (await topButton("Just once")) !== undefined,
-            );
+            await waitForTop("Just once");
             await addBoth("Editor.md");
             // The note's reads so far, as it opened, are not the rename's.
             const { started } = await heldReads();
@@ -641,9 +636,7 @@ describe("A rename while the note holds unsaved text", function () {
       await slowReload("Editor.md", 9000);
       await nameIt();
       await browser.keys(["Control", "Enter"]);
-      await browser.waitUntil(
-        async () => (await topButton("Just once")) !== undefined,
-      );
+      await waitForTop("Just once");
       await addBoth("Editor.md");
       await clickTop("Just once");
       await waitForNotice("Check the symbol's embed in Editor");
@@ -693,9 +686,7 @@ describe("A rename while the note holds unsaved text", function () {
     await addUnsaved("Editor.md", opening, "start");
     await nameIt();
     await browser.keys(["Control", "Enter"]);
-    await browser.waitUntil(
-      async () => (await topButton("Just once")) !== undefined,
-    );
+    await waitForTop("Just once");
     // An editor saves itself two seconds after an edit.
     await browser.pause(2500);
     await clickTop("Just once");

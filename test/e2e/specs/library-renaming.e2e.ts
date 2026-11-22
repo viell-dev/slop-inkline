@@ -13,12 +13,12 @@ import {
   restoreVault,
   startOver,
   symbolFiles,
-  topButton,
   waitForFailedSaves,
   waitForHeld,
   waitForIndexWait,
   waitForNotice,
   waitForPanes,
+  waitForTop,
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 import { showLibrary } from "../support/symbol-text-library.ts";
@@ -527,9 +527,7 @@ describe("Renaming in the symbol library", function () {
       await beginRename("gate", "lintel");
       await watchForWait();
       await browser.keys(["Enter"]);
-      await browser.waitUntil(
-        async () => (await topButton("Just once")) !== undefined,
-      );
+      await waitForTop("Just once");
       // Obsidian has moved the file by now, and asks only about the links.
       expect(await symbolFiles()).toEqual(["lintel.ink.png"]);
       await browser.pause(stalledAfter + 1500);
@@ -782,9 +780,7 @@ describe("Renaming in the symbol library", function () {
       await beginRename("gate", "lintel");
       await hold("link");
       await browser.keys(["Enter"]);
-      await browser.waitUntil(
-        async () => (await topButton("Just once")) !== undefined,
-      );
+      await waitForTop("Just once");
       await browser.pause(stalledAfter + 1000);
       await clickTop("Just once");
       await waitForHeld();
@@ -810,9 +806,7 @@ describe("Renaming in the symbol library", function () {
       await waitForWait();
       await letGo();
       // The move ends, and only then does Obsidian ask about the links.
-      await browser.waitUntil(
-        async () => (await topButton("Just once")) !== undefined,
-      );
+      await waitForTop("Just once");
       await browser.waitUntil(async () => (await waitLine().getText()) === "");
       expect(await formButton("Cancel").isEnabled()).toBe(false);
       await clickTop("Just once");
@@ -869,9 +863,7 @@ describe("Renaming in the symbol library", function () {
     it("keeps the text when the note's own save falls due during Obsidian's question", async function () {
       await renameWithText();
       await browser.keys(["Enter"]);
-      await browser.waitUntil(
-        async () => (await topButton("Just once")) !== undefined,
-      );
+      await waitForTop("Just once");
       // An editor saves itself two seconds after an edit.
       await browser.pause(2500);
       await clickTop("Just once");
@@ -917,9 +909,7 @@ describe("Renaming in the symbol library", function () {
       } finally {
         await letGo();
       }
-      await browser.waitUntil(
-        async () => (await topButton("Just once")) !== undefined,
-      );
+      await waitForTop("Just once");
       // An editor saves itself two seconds after an edit.
       await browser.pause(2500);
       await clickTop("Just once");

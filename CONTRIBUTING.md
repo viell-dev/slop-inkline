@@ -172,6 +172,16 @@ test measures is the one it saves, with `saveScreenshotData()` from
 `test/e2e/support/screenshots.ts`. Test vaults in `test/e2e/vaults/` and every
 drawing a test uses are synthetic.
 
+A press on the drawing area is let go in the WebDriver command that makes it, as
+`draw()`, `drawShifted()`, and `drawAndHold()` in `test/e2e/support/editor.ts`
+do. The area captures the pointer, and a press held into the next command loses
+that capture with the button still down before its release arrives: the editor
+ends the stroke as for a lost capture, and what the release does goes untested
+([#391](https://github.com/viell-dev/slop-inkline/issues/391)). Keys pressed
+while the button is down go in the same command, and what the page shows
+meanwhile is read in the page, by a listener for the release, as `fill.e2e.ts`
+does.
+
 Each spec file runs in a WebdriverIO session of its own, which
 wdio-obsidian-service starts with a new copy of the test vault and a new
 Electron user data directory, which holds local storage. So a spec file starts
@@ -302,14 +312,18 @@ resolved to, the seconds its worker took, and the worker's exit code, with the
 run's own exit code. Each shard then checks its own record, with
 `node test/e2e/shards.ts shard <i/n> test-results/e2e`: it fails unless this run
 wrote it, for exactly that shard's spec files, each passed on every version.
-Each shard uploads its output as the artifact `e2e-results-1` to
-`e2e-results-4`. The job named `e2e`, which `main` requires, passes only when
-all four shards passed and their records, read with
+Each shard uploads its output as the artifact `e2e-results-<i>-attempt-<n>`,
+such as `e2e-results-2-attempt-1`, named by the attempt of the run, so that a
+re-run of a shard leaves its record beside the earlier attempts' rather than
+under the same name. The job named `e2e`, which `main` requires, passes only
+when all four shards passed and their records, read with
 `node test/e2e/shards.ts check <dir>`, show every spec file exactly once, passed
 on both default versions, so that a file that runs nowhere, fails, or runs on
-too few versions fails it, even after a re-run of some of the shards. Both
-checks expect the versions `OBSIDIAN_VERSIONS` names, the default pair when it
-is unset.
+too few versions fails it, even after a re-run of some of the shards. It reads
+of each shard only the record of its latest attempt, by the `-attempt-<n>` that
+ends the name of the record's directory, so an earlier attempt's record, failed
+or passing, never stands for a later one. Both checks expect the versions
+`OBSIDIAN_VERSIONS` names, the default pair when it is unset.
 
 To refresh the table, download a recent run of CI on `main` and commit the
 result:
@@ -320,13 +334,15 @@ node test/e2e/shards.ts weights <dir>
 ```
 
 It takes each measured spec file's slower version, keeps the weight of one that
-did not run, and drops a file that no longer exists. When a shard was re-run,
-its run has an artifact of that name from each attempt, and `gh run download`
-leaves one `durations.json` in its directory: for run 43941401108 it was the
-later attempt's. A unit test fails when the greedy assignment of the current
-table puts four shards more than 10% apart. The assignment is not optimal, so a
-better split may exist; start with the assignment the failure prints. Then split
-a spec file that dominates its shard, or change the number of shards in
+did not run, and drops a file that no longer exists. Of a shard that was re-run,
+it reads only the latest attempt's record, as the check does. Runs from before
+the attempt was in the artifacts' names have one artifact of each name per
+attempt, and `gh run download` leaves only one of their records in its
+directory, of either attempt: in run 44956202229, it was the earlier, failed
+attempt's. A unit test fails when the greedy assignment of the current table
+puts four shards more than 10% apart. The assignment is not optimal, so a better
+split may exist; start with the assignment the failure prints. Then split a spec
+file that dominates its shard, or change the number of shards in
 `.github/workflows/ci.yml` and in that test.
 
 The Directory checks workflow runs Obsidian's own action on every pull request,

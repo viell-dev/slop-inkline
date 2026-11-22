@@ -56,7 +56,9 @@ What Inkline does not do, or does not do everywhere, and what to do instead. The
   viewers draw one at some zoom levels, as
   [Export a note to PDF](./notes.md#export-a-note-to-pdf) says
   ([#255](https://github.com/viell-dev/slop-inkline/issues/255)). Symbols in
-  stored colour show none.
+  stored colour show none. **Unreleased:** fixed: symbols in text colour print
+  without it too, but for one whose copy for printing gets no further for ten
+  seconds, or cannot be made.
 - **A size you write into an embed, wider than its space,** as
   `![[wide.ink.png|1000]]` in a hover preview, keeps the symbol's shape and its
   baseline, but its line keeps the room below the baseline that the size asked
