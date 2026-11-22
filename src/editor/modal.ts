@@ -1652,6 +1652,7 @@ export class InkEditorModal extends Modal {
         }
         this.#dragged = undefined;
         canvas.removeClass("is-dragging");
+        this.#holdBelow(false);
         return;
       }
       this.#pressedAt = undefined;
@@ -1659,6 +1660,8 @@ export class InkEditorModal extends Modal {
       // A release, unlike a lost capture, says where the pointer ended.
       else if (event.type === "lostpointercapture") this.#session.end();
       else this.#session.end(point(event), event.shiftKey);
+      // Once the release has been taken where the drawing was.
+      this.#holdBelow(false);
       this.#changed();
       this.#viewAfterPress();
     };
@@ -1669,6 +1672,9 @@ export class InkEditorModal extends Modal {
     };
     canvas.addEventListener("pointerdown", (event) => {
       if (!this.#gate.down(event)) return;
+      // Before the press empties the status line, which would move the
+      // drawing under it.
+      this.#holdBelow(true);
       event.preventDefault();
       // Drawing takes the focus, which the default action would have, so
       // that the shortcuts are the editor's again after typing elsewhere.
@@ -2383,6 +2389,29 @@ export class InkEditorModal extends Modal {
     if (this.#converting !== undefined || this.#saving !== undefined) return;
     const step = byCell ? this.#session.grid.spacing : nudge;
     if (this.#session.moveDrawing(direction * toUnits(step))) this.#changed();
+  }
+
+  /**
+   * Keeps what is below the drawing area at the height it has while the
+   * pointer is pressed on it, or lets it change again. Obsidian keeps the
+   * editor in the middle of the window, so a line below that grew or shrank,
+   * as the status line does when the press empties a message of two lines,
+   * or a message said meanwhile wraps, moved the drawing under the pointer
+   * in the middle of a stroke (#427). What does not fit shows once the
+   * pointer is let go, and a screen reader hears it at once, as before.
+   */
+  #holdBelow(hold: boolean): void {
+    for (const below of [this.#previewLine, this.#status, this.#saveWait]) {
+      if (below === undefined) continue;
+      if (hold) {
+        // As laid out, to the fraction of a pixel, as the pointer is mapped
+        // by the same measure; the computed style's height can differ from
+        // it by that fraction, enough to move the drawing by as much.
+        const { height } = below.getBoundingClientRect();
+        below.style.setProperty("--inkline-held-height", `${String(height)}px`);
+      }
+      below.toggleClass("inkline-held", hold);
+    }
   }
 
   /** Whether the pointer is pressed on the surface to draw, not to drag. */

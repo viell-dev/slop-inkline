@@ -1,6 +1,8 @@
 // The editor's status line says what the editor did last (#302): whatever the
 // person does replaces it, with what that did or with nothing, and a message
-// about something still under way or still wrong stays while it holds.
+// about something still under way or still wrong stays while it holds. A
+// message that grows or empties while the pointer is pressed on the drawing
+// area moves nothing under it (#427).
 
 import { browser, expect } from "@wdio/globals";
 import { Key } from "webdriverio";
@@ -12,11 +14,13 @@ import {
   freeStorage,
   hold,
   letGo,
+  settledSurface,
   startOver,
   storedDrafts,
   waitForHeld,
   waitForStatus,
 } from "../support/editor.ts";
+import { boxOf, type Point } from "../support/pointer.ts";
 import { pastePicture, pictureHint } from "../support/tracing.ts";
 import { framesDrawn } from "../support/waits.ts";
 
@@ -54,6 +58,114 @@ async function dropPolygon(): Promise<void> {
   await draw([[0.6, 0.6]]);
   await browser.keys("Escape");
   await waitForStatus("Polygon dropped");
+}
+
+/** A place in the window, at fractions of the drawing area's box now. */
+async function inWindow(x: number, y: number): Promise<Point> {
+  const { left, right, top, bottom } = await boxOf(
+    ".inkline-editor .inkline-surface",
+  );
+  return {
+    x: Math.round(left + x * (right - left)),
+    y: Math.round(top + y * (bottom - top)),
+  };
+}
+
+/**
+ * Presses the mouse at `from`, moves it to `to` in one report, holds it
+ * there, pressing each of `keys` in turn, and lets go there: one WebDriver
+ * command, as a press held into the next command ends as a lost capture
+ * (#391). The places are the window's, where a hand stays, rather than the
+ * drawing area's, which the mouse would follow if the area moved.
+ */
+async function dragInWindow(
+  from: Point,
+  to: Point,
+  keys: readonly string[] = [],
+): Promise<void> {
+  const keyboard = browser.action("key");
+  const pointer = browser.action("pointer", {
+    parameters: { pointerType: "mouse" },
+  });
+  pointer
+    .move({ origin: "viewport", ...from, duration: 0 })
+    .down()
+    .move({ origin: "viewport", ...to, duration: 0 })
+    .pause(300);
+  keyboard.pause(0).pause(0).pause(0).pause(300);
+  for (const key of keys) {
+    keyboard.down(key).up(key);
+    pointer.pause(10).pause(10);
+  }
+  keyboard.pause(300);
+  pointer.pause(300).up();
+  await browser.actions([keyboard, pointer]);
+}
+
+/** The strokes the editor keeps, from its draft. */
+async function keptStrokes(): Promise<number[][]> {
+  return ((await storedDrafts())[0]?.strokes ?? []).map((stroke) => [
+    ...stroke.points,
+  ]);
+}
+
+/** Waits for the draft to hold `count` strokes, and gives the last. */
+async function strokeAt(count: number): Promise<number[]> {
+  await browser.waitUntil(async () => (await keptStrokes()).length === count, {
+    timeoutMsg: `the draft never held ${String(count)} strokes`,
+  });
+  return (await keptStrokes()).at(-1) ?? [];
+}
+
+/**
+ * Records, in the page, where the drawing area's top is at each press, move,
+ * and release on it, before the editor takes each.
+ */
+async function watchTops(): Promise<void> {
+  await browser.execute(() => {
+    const surface = document.querySelector(".inkline-editor .inkline-surface");
+    if (!(surface instanceof HTMLElement)) throw new Error("no surface");
+    const tops: { type: string; top: number }[] = [];
+    Reflect.set(window, "inklineTestTops", tops);
+    for (const type of ["pointerdown", "pointermove", "pointerup"]) {
+      window.addEventListener(
+        type,
+        () => {
+          tops.push({ type, top: surface.getBoundingClientRect().top });
+        },
+        { capture: true },
+      );
+    }
+  });
+}
+
+/** What {@link watchTops} recorded. */
+async function tops(): Promise<{ type: string; top: number }[]> {
+  return browser.execute(() => {
+    const tops: unknown = Reflect.get(window, "inklineTestTops");
+    return Array.isArray(tops) ? (tops as { type: string; top: number }[]) : [];
+  });
+}
+
+/** How many lines the status line takes now. */
+async function statusLines(): Promise<number> {
+  return browser.execute(() => {
+    const line = document.querySelector(".inkline-editor .inkline-status");
+    if (!(line instanceof HTMLElement)) throw new Error("no status line");
+    const style = getComputedStyle(line);
+    return Math.round(
+      line.getBoundingClientRect().height / Number.parseFloat(style.lineHeight),
+    );
+  });
+}
+
+/** Makes the editor narrow, as a narrow window does, so that long messages wrap. */
+async function narrow(): Promise<void> {
+  await browser.execute(() => {
+    const editor = document.querySelector(".inkline-editor");
+    if (editor instanceof HTMLElement) editor.style.width = "420px";
+  });
+  await settledSurface();
 }
 
 describe("The editor's status line", function () {
@@ -193,5 +305,60 @@ describe("The editor's status line", function () {
     }
     await stroke(0.8);
     expect(await status()).toBe("Draft kept");
+  });
+
+  // Obsidian keeps the editor in the middle of the window, so a status line
+  // that grew or shrank during a press moved the drawing under the pointer
+  // (#427). Each drag stays at one place in the window, as a hand does.
+  it("keeps the drawing still under a press that empties a message of two lines", async function () {
+    await insert();
+    await narrow();
+    await browser.keys("z");
+    await waitForStatus("Zoomed in");
+    await settledSurface();
+    expect(await statusLines()).toBe(2);
+    const from = await inWindow(0.3, 0.65);
+    const to = await inWindow(0.6, 0.35);
+    await watchTops();
+    await dragInWindow(from, to);
+    const first = await strokeAt(1);
+    const seen = await tops();
+    expect(seen.map(({ type }) => type)).toContain("pointerdown");
+    expect(seen.at(-1)?.type).toBe("pointerup");
+    // Where it was at the press, until the release.
+    expect(new Set(seen.map(({ top }) => top)).size).toBe(1);
+    // Once it is let go, the emptied line takes its one line again, and the
+    // same drag lands in the drawing as moved by that, at both ends alike:
+    // the first stroke was taken in one place throughout.
+    await settledSurface();
+    expect(await statusLines()).toBe(1);
+    await dragInWindow(from, to);
+    const second = await strokeAt(2);
+    const shift = (index: number): number =>
+      (first.at(index) ?? 0) - (second.at(index) ?? 0);
+    for (const axis of [0, 1]) {
+      expect(
+        Math.abs(shift(axis) - shift(first.length - 2 + axis)),
+      ).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("keeps the drawing still when a message of two lines comes during a press", async function () {
+    await insert();
+    await narrow();
+    expect(await statusLines()).toBe(1);
+    await watchTops();
+    // T, for Flat ends, without the grid says why it does nothing, at length.
+    await dragInWindow(await inWindow(0.3, 0.65), await inWindow(0.6, 0.35), [
+      "t",
+    ]);
+    await strokeAt(1);
+    const seen = await tops();
+    expect(seen.at(-1)?.type).toBe("pointerup");
+    expect(new Set(seen.map(({ top }) => top)).size).toBe(1);
+    // It shows whole once the pointer is let go.
+    await waitForStatus("Flat ends is for freehand strokes");
+    await settledSurface();
+    expect(await statusLines()).toBe(2);
   });
 });

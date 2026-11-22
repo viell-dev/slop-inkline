@@ -19,7 +19,10 @@ symbol**, or for one you have, from **Edit symbol** or a
   to say, such as a tool's button, rather than keep an earlier message. Through
   actions with nothing of their own to say, "Saving…" stays until the save ends,
   and "Draft not kept" until a draft is kept again; one that says something
-  replaces them.
+  replaces them. **Unreleased:** while you hold the pointer down on the drawing
+  area, the line of text and the status line keep their height, so that a
+  message that empties or grows there does not move the drawing under the
+  pointer; one that needs more room shows whole once you let go.
 
 In the shortcuts below, Mod is Ctrl, or Cmd on macOS. Single-key shortcuts and
 undo give way to a text field that has the focus, such as the name field, so

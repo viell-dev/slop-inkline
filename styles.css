@@ -842,6 +842,20 @@ img.inkline-symbol.inkline-print-copy:not([width], [height]) {
   display: none;
 }
 
+/*
+ * What is below the drawing area keeps its height while the pointer is
+ * pressed on it, as modal.ts sets it, so that a message that grows or empties
+ * there does not move the drawing under the pointer in the editor, which
+ * Obsidian keeps in the middle of the window (#427). After the rules above,
+ * which it overrides, as for an empty save message that has none.
+ */
+.inkline-editor .inkline-held {
+  display: block;
+  height: var(--inkline-held-height);
+  min-height: 0;
+  overflow: hidden;
+}
+
 .inkline-library-edit-buttons {
   display: flex;
   gap: var(--size-4-1);

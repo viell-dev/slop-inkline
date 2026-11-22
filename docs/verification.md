@@ -219,6 +219,12 @@ must keep released files readable and looking the same, as
   ([status-line.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/status-line.e2e.ts),
   with its rules in
   [status.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/status.test.ts)).
+  **Unreleased:** in an editor 420 pixels wide, a drag pressed while **Zoom**'s
+  message takes two lines, and one during which **Flat ends**' message of two
+  lines comes, keep the drawing area where it was from the press to the release,
+  and the first stroke lands in the drawing as the same drag does once the line
+  has its one line again, moved alike at both ends (the same file,
+  [#427](https://github.com/viell-dev/slop-inkline/issues/427)).
 - Help explains the drawing tools and guides, closes with Escape, and restores
   focus to drawing without changing its strokes
   ([editor-feedback.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/editor-feedback.e2e.ts)).
