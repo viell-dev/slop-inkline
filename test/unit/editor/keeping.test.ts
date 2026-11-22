@@ -645,13 +645,49 @@ describe("Keeping", () => {
     editing.keeping.touched(path);
     await editing.keeping.saveOnly();
     expect(editing.writes).toHaveLength(1);
+    const reads = editing.disk.reads;
     letGo();
+    // Set aside, the old read has the editor look at the file once more.
+    await vi.waitFor(() => {
+      expect(editing.disk.reads).toBeGreaterThan(reads);
+    });
     await editing.settled();
     // Taken in, the old read would have reloaded the drawing from before the
     // save, as the drawing is saved now.
     expect(editing.said).not.toContain("Reloaded: the file changed on disk");
     expect(editing.session.document.strokes).toHaveLength(2);
     expect(editing.asked).toHaveLength(0);
+  });
+
+  it("reads the file again after a read that Reload overtook", async () => {
+    const editing = await editor({ existing: { strokes: [stroke(10)] } });
+    editing.draw(30);
+    editing.disk.bytes = await fileOf({ strokes: [stroke(50)] });
+    await editing.settled();
+    expect(editing.open.size).toBe(1);
+    // Reload reads the file as the question saw it, and a report of a later
+    // change starts a read of that one, which ends only after Reload's.
+    const letReloadGo = editing.disk.holdNextRead();
+    editing.answer(changedOnDisk, "Reload");
+    editing.disk.bytes = await fileOf({ strokes: [stroke(60), stroke(70)] });
+    const letCheckGo = editing.disk.holdNextRead();
+    editing.keeping.touched(path);
+    letReloadGo();
+    await vi.waitFor(() => {
+      expect(editing.said).toEqual(["Reloaded: the file changed on disk"]);
+    });
+    expect(editing.session.document.strokes).toHaveLength(1);
+    // The later read is set aside, as Reload changed what the editor knows,
+    // and the file is read again, which takes the later change in.
+    letCheckGo();
+    await vi.waitFor(() => {
+      expect(editing.session.document.strokes).toHaveLength(2);
+    });
+    expect(editing.said).toEqual([
+      "Reloaded: the file changed on disk",
+      "Reloaded: the file changed on disk",
+    ]);
+    expect(editing.asked).toHaveLength(1);
   });
 
   it("stays open for strokes drawn while saving, and says what is left", async () => {
@@ -737,37 +773,45 @@ describe("Keeping", () => {
     },
   );
 
-  it("writes nothing when the file changed a field that was typed in", async () => {
-    const fields = new Fields();
-    const editing = await editor({
-      existing: { strokes: [stroke(10)] },
-      fields,
-    });
-    editing.draw(30);
-    fields.type("reading", "mine");
-    editing.hooks.beforeCheck = async () => {
-      const bytes = editing.disk.bytes;
-      if (bytes === undefined) throw new Error("no file");
-      editing.disk.bytes = await writeText(bytes, "reading", ["theirs"]);
-    };
-    await editing.keeping.saveOnly();
-    // Nor does it start again, which it would ask for as it ended.
-    expect(editing.calls).not.toContain("later");
-    await editing.settled();
-    expect(editing.writes).toHaveLength(0);
-    expect(editing.said.at(-1)).toBe(
-      "Not saved: the file changed text you typed, so look at what it now says and save again",
-    );
-    expect(editing.notices).toHaveLength(0);
-    expect(editing.asked).toHaveLength(0);
-    expect(editing.calls).toContain("showText");
-    expect(fields.typed()).toEqual({ reading: "mine" });
-    expect((await heldBy(editing.disk.bytes)).text.reading).toEqual(["theirs"]);
-    // Seen, what they typed is theirs to save, over what the file says.
-    await editing.keeping.saveOnly();
-    expect(editing.writes).toHaveLength(1);
-    expect((await heldBy(editing.disk.bytes)).text.reading).toEqual(["mine"]);
-  });
+  it.each(["Mod+S", "Save and close"] as const)(
+    "writes nothing when the file changed a field that was typed in: %s",
+    async (how) => {
+      const fields = new Fields();
+      const editing = await editor({
+        existing: { strokes: [stroke(10)] },
+        fields,
+      });
+      editing.draw(30);
+      fields.type("reading", "mine");
+      editing.hooks.beforeCheck = async () => {
+        const bytes = editing.disk.bytes;
+        if (bytes === undefined) throw new Error("no file");
+        editing.disk.bytes = await writeText(bytes, "reading", ["theirs"]);
+      };
+      await (how === "Mod+S"
+        ? editing.keeping.saveOnly()
+        : editing.keeping.saveAndClose());
+      // Nor does it start again, which it would ask for as it ended, or close.
+      expect(editing.calls).not.toContain("later");
+      expect(editing.calls).not.toContain("finish");
+      await editing.settled();
+      expect(editing.writes).toHaveLength(0);
+      expect(editing.said.at(-1)).toBe(
+        "Not saved: the file changed text you typed, so look at what it now says and save again",
+      );
+      expect(editing.notices).toHaveLength(0);
+      expect(editing.asked).toHaveLength(0);
+      expect(editing.calls).toContain("showText");
+      expect(fields.typed()).toEqual({ reading: "mine" });
+      expect((await heldBy(editing.disk.bytes)).text.reading).toEqual([
+        "theirs",
+      ]);
+      // Seen, what they typed is theirs to save, over what the file says.
+      await editing.keeping.saveOnly();
+      expect(editing.writes).toHaveLength(1);
+      expect((await heldBy(editing.disk.bytes)).text.reading).toEqual(["mine"]);
+    },
+  );
 
   it("goes on with a save that stopped to ask about a change on disk, once the drawing is kept", async () => {
     const editing = await editor({ existing: { strokes: [stroke(10)] } });
