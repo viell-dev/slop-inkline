@@ -1441,7 +1441,11 @@ function making(
     exists: () => {
       const looking = adapter.exists(path);
       const looks = adapter.looks.length;
-      if (then !== undefined) queueMicrotask(() => then(looks));
+      if (then !== undefined) {
+        queueMicrotask(() => {
+          then(looks);
+        });
+      }
       return looking;
     },
     write: async () => {
