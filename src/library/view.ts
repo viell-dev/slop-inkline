@@ -29,7 +29,7 @@ import { insertionAt } from "../notes/links.ts";
 import { symbolStem } from "../notes/names.ts";
 import type { SymbolTexts } from "../notes/suggest.ts";
 import type { SymbolFiles } from "../notes/symbol-files.ts";
-import { checkRename, renameChecked, type Renaming } from "../notes/symbols.ts";
+import { checkRename, renameChecked, type Renaming } from "../notes/renames.ts";
 import {
   isBlank,
   noText,
@@ -1027,7 +1027,9 @@ export class SymbolLibraryView extends ItemView {
         // Before anything is written, so that a refused name leaves the file
         // as it was. Only a name typed renames.
         checked =
-          typed === was ? undefined : checkRename(this.app, file, typed);
+          typed === was
+            ? undefined
+            : checkRename(this.#symbolFiles, file, typed);
       } catch (failure) {
         say([reasonOf(failure, "The symbol could not be renamed.")]);
         input.focus();
@@ -1080,12 +1082,10 @@ export class SymbolLibraryView extends ItemView {
           ? {}
           : {
               rename: (told: SaveWait): Work =>
-                renameChecked(
-                  this.app,
-                  renaming,
-                  { told, asked: () => modalOpen(form) },
-                  this.#symbolFiles.unloaded,
-                ),
+                renameChecked(this.#symbolFiles, renaming, {
+                  told,
+                  asked: () => modalOpen(form),
+                }),
             }),
       };
       const quick = new QuickSave(steps, (step) => {

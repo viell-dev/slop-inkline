@@ -8,7 +8,7 @@
 import type { App, TFile } from "obsidian";
 import { SymbolWrites } from "./symbol-writes.ts";
 
-/** What Inkline's writes of symbol files share. */
+/** What Inkline's writes and renames of symbol files share. */
 export interface SymbolFiles {
   readonly app: App;
   /** Aborts as the plugin unloads; nothing is written once it has. */
@@ -18,6 +18,21 @@ export interface SymbolFiles {
    * save takes, as {@link SymbolWrites} says.
    */
   readonly writes: SymbolWrites<TFile>;
+  /**
+   * The symbols Obsidian is renaming for Inkline, from the call to its
+   * `renameFile` until that ends, which lasts as long as its question about
+   * links. A second rename of one of them is refused at once, as a failed rename
+   * is, rather than waiting behind the first for as long as that takes.
+   *
+   * This covers Inkline's own renames of one symbol, not every rename Obsidian
+   * puts off. Asked for a rename of any file while it is moving the files of
+   * another, Obsidian takes it into that one: it says it has renamed the file at
+   * once, and moves it once the other's moves end, so nothing could tell whether
+   * the name was given. `renameSaved` asks only once Obsidian is moving
+   * nothing, where `moveWaits` can see that. Where it cannot,
+   * `watchMove` finds the file not yet moved when Obsidian says it is done.
+   */
+  readonly beingRenamed: WeakSet<TFile>;
 }
 
 /**
@@ -35,5 +50,6 @@ export function symbolFiles(
     app,
     unloaded,
     writes: new SymbolWrites(app.vault, folder, unloaded, refreshed),
+    beingRenamed: new WeakSet(),
   };
 }
