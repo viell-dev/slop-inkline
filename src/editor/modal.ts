@@ -67,6 +67,7 @@ import {
   restoresNothing,
   sameTarget,
   type Draft,
+  type DraftBase,
   type DraftStore,
   type DraftTarget,
 } from "./drafts.ts";
@@ -581,6 +582,13 @@ export class InkEditorModal extends Modal {
    * makes a file of its own, as {@link #draft} says.
    */
   #recovered: Draft | undefined;
+  /**
+   * The base layer of {@link #recovered} that this editor could not show: one
+   * it took from its file, or one it kept itself that cannot be decoded. Its
+   * own draft goes on naming it while it stands in for that draft, so that
+   * nothing of it is dropped before a save.
+   */
+  #unshownBase: DraftBase | undefined;
   /** The picture to trace over, which this editor closes when done with it. */
   #picture: TracedPicture | undefined;
   /** Counts pictures asked for, so that only the latest is taken. */
@@ -2852,26 +2860,32 @@ export class InkEditorModal extends Modal {
   #draft(target: DraftTarget, pending: boolean): Draft {
     const { document, saved } = this.#session;
     // A draft opened as a new symbol is still for its old symbol until the
-    // first save makes a file of its own: this one takes its place there, and
-    // keeps naming a base layer it took from that symbol's file, with that
-    // file's fingerprints, so that restoring it on the file, should it open
-    // again, brings the base layer back, as the draft found would have.
+    // first save gives it a file of its own, as the editor then holds that
+    // file, or names another path: this one takes its place there, during a
+    // save too, as one cut short by Inkline's unloading keeps its draft. It
+    // goes on naming a base layer it could not show, one taken from that
+    // symbol's file or one that cannot be decoded, with that file's
+    // fingerprints, so that restoring it on the file, should it open again,
+    // brings the base layer back, as the draft found would have. Where the
+    // save makes a file at that same path, as for a symbol deleted, a draft
+    // kept meanwhile restored on it gives the same drawing, as that file
+    // holds no base layer.
     const standIn =
       this.#recovered !== undefined &&
-      !pending &&
       this.#watch.fingerprint === undefined &&
       sameTarget(target, this.#recovered.target)
         ? this.#recovered
         : undefined;
     const fingerprint = this.#watch.fingerprint ?? standIn?.fingerprint;
     const drawing = this.#watch.drawing ?? standIn?.drawing;
+    const unshown = standIn === undefined ? undefined : this.#unshownBase;
     return {
       id: this.#draftId,
       target,
       strokes: document.strokes,
       base:
-        standIn?.base.kind === "file" && document.base === undefined
-          ? standIn.base
+        unshown !== undefined && document.base === undefined
+          ? unshown
           : draftBase(document, pending ? undefined : saved),
       ...(fingerprint === undefined ? {} : { fingerprint }),
       ...(drawing === undefined ? {} : { drawing }),
@@ -3000,7 +3014,10 @@ export class InkEditorModal extends Modal {
       // Meanwhile the editor may have closed, saved a new symbol into its
       // own file, started a save, or asked before closing: then the draft
       // waits for another time, which a draft opened as a new symbol says,
-      // as nothing else would show that it was not.
+      // as nothing else would show that it was not. Such an editor stays
+      // open, as what was drawn, saved, or asked in it meanwhile is the
+      // person's; anything drawn there is kept as its own draft, and the
+      // draft found stays as it was, to be opened again.
       if (
         this.#retired ||
         this.#closing ||
@@ -3024,6 +3041,10 @@ export class InkEditorModal extends Modal {
       : { ...found, base: { kind: "none" } };
     if (recover !== undefined) {
       this.#recovered = found;
+      this.#unshownBase =
+        found.base.kind === "file" || (found.base.kind === "kept" && !readable)
+          ? found.base
+          : undefined;
       this.#restore(drafts, draft);
       if (readable) {
         this.#announce("Opened the unsaved drawing as a new symbol");

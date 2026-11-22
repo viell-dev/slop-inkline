@@ -18,6 +18,8 @@ import {
   delayVault,
   draw,
   editorOpen,
+  holdDecoding,
+  letDecodingGo,
   openAtMarker,
   recordOf,
   startOver,
@@ -26,10 +28,15 @@ import {
   topButton,
   undoStubs,
   waitForEditor,
+  waitForHeldDecoding,
   waitForNotice,
   waitForStatus,
 } from "../support/editor.ts";
-import { failInsertion, unlockNotes } from "../support/failed-insertion.ts";
+import {
+  failInsertion,
+  showWelcomeInstead,
+  unlockNotes,
+} from "../support/failed-insertion.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 import {
   bytesOfFile,
@@ -97,23 +104,40 @@ describe("Draft recovery", function () {
     await loadModules();
   }
 
-  /** The rows the list of drafts shows: their text and their picture. */
-  async function listedRows(): Promise<{ text: string; picture: number }[]> {
+  /**
+   * The rows the list of drafts shows: their text, and their picture's width
+   * and height in pixels, 0 for none.
+   */
+  async function listedRows(): Promise<
+    { text: string; picture: number; height: number }[]
+  > {
     await browser.$(".prompt .inkline-suggestion").waitForExist();
     return browser.execute(() =>
       [...document.querySelectorAll(".prompt .inkline-suggestion")].map(
         (row) => {
           const picture = row.querySelector("img");
+          const drawn = picture?.src.startsWith("data:image/png") === true;
           return {
             text: row.textContent,
-            picture:
-              picture?.src.startsWith("data:image/png") === true
-                ? picture.naturalWidth
-                : 0,
+            picture: drawn ? picture.naturalWidth : 0,
+            height: drawn ? picture.naturalHeight : 0,
           };
         },
       ),
     );
+  }
+
+  /** What each stored draft says of the file its strokes line up with. */
+  async function storedPrints(): Promise<
+    { fingerprint: string | null; drawing: string | null }[]
+  > {
+    return browser.executeObsidian(({ app }) => {
+      const { drafts } = window.inklineTest;
+      return new drafts.DraftStore(app).list().map((draft) => ({
+        fingerprint: draft.fingerprint ?? null,
+        drawing: draft.drawing ?? null,
+      }));
+    });
   }
 
   it("offers a draft whose file does not open as a new symbol, which leaves the file as it is", async function () {
@@ -205,8 +229,12 @@ describe("Draft recovery", function () {
     await saveScreenshot("draft-recovery-list");
     expect(rows).toHaveLength(1);
     expect(rows[0]?.text).toMatch(/^towerRunesKept .+\. Deleted or moved$/);
-    // A picture of the two strokes, as the first save would draw them.
+    // A picture of the two strokes, as the first save would draw them, and
+    // no larger than its row needs.
     expect(rows[0]?.picture).toBeGreaterThan(0);
+    expect(rows[0]?.picture).toBeLessThanOrEqual(256);
+    expect(rows[0]?.height).toBeGreaterThan(0);
+    expect(rows[0]?.height).toBeLessThanOrEqual(64);
     await browser.keys(["Enter"]);
     await browser.waitUntil(
       async () => (await topButton("Open as new symbol")) !== undefined,
@@ -398,6 +426,10 @@ describe("Draft recovery", function () {
     expect(question).toContain(
       "They can open in a new symbol, saved in the vault's top folder and inserted in no note. Its first save made 001.ink.png: saving writes over that file if nothing changed it since, and otherwise makes another beside it.",
     );
+    expect(await nameField()).toEqual({
+      value: "",
+      placeholder: "New symbol: name it, or leave it to keep the name 001",
+    });
     await browser.keys(["Control", "Enter"]);
     await waitClosed();
     expect(await symbolFiles()).toEqual(["001.ink.png"]);
@@ -445,9 +477,16 @@ describe("Draft recovery", function () {
     );
   }
 
-  it("keeps a draft it opens as a new symbol for its file, base layer and all, until the first save", async function () {
-    // A picture drawn over, whose draft relies on the file for its base
-    // layer, and the file cut short as by a crash.
+  /**
+   * A picture drawn over, whose draft relies on the file for its base layer,
+   * the file cut short as by a crash, and the draft opened as a new symbol,
+   * whose editor's own draft has taken its place. Returns the file as it was
+   * whole, and what the draft found said of it.
+   */
+  async function pictureDraftOpenedAsNew(): Promise<{
+    whole: number[];
+    prints: { fingerprint: string | null; drawing: string | null };
+  }> {
     await browser.executeObsidian(async ({ app }) => {
       const { canvas } = window.inklineTest;
       const data = new Uint8ClampedArray(24 * 24 * 4);
@@ -461,6 +500,10 @@ describe("Draft recovery", function () {
     });
     const whole = await bytesOfFile("Signs/square.ink.png");
     await draftThenStop("Signs/square.ink.png");
+    const [prints] = await storedPrints();
+    if (prints?.fingerprint == null || prints.drawing == null) {
+      throw new Error("the draft says nothing of its file");
+    }
     await putBack(
       "Signs/square.ink.png",
       whole.slice(0, Math.floor(whole.length / 2)),
@@ -469,19 +512,19 @@ describe("Draft recovery", function () {
     await tryToEdit("Signs/square.ink.png");
     await clickTop("Open as new symbol");
     await waitForEditor();
-    // The editor's own draft takes the old one's place, as that draft was.
     await browser.waitUntil(async () => {
       const drafts = await storedDrafts();
       return drafts.length === 1 && drafts[0]?.base === "file";
     });
-    expect((await storedDrafts())[0]?.target).toEqual({
-      kind: "file",
-      path: "Signs/square.ink.png",
-    });
-    // Ended without Save or Discard, as when Inkline is turned off, and the
-    // file whole again, as from a backup: the draft restores on it as the
-    // one found would have, base layer and all.
-    await obsidianPage.disablePlugin("inkline");
+    return { whole, prints };
+  }
+
+  /**
+   * With Inkline off, puts the file back whole, as from a backup, opens it,
+   * restores the draft, and saves: the base layer is there, with the draft's
+   * stroke, and nothing said of a save since.
+   */
+  async function restoredOnWholeFile(whole: readonly number[]): Promise<void> {
     await putBack("Signs/square.ink.png", whole);
     await restart();
     await editFile("Signs/square.ink.png");
@@ -500,6 +543,93 @@ describe("Draft recovery", function () {
     expect(record.strokes).toHaveLength(1);
     expect(record.base).toBeDefined();
     expect(await draftCount()).toBe(0);
+  }
+
+  it("keeps a draft it opens as a new symbol for its file, base layer and all, until the first save", async function () {
+    const { whole, prints } = await pictureDraftOpenedAsNew();
+    // The editor's own draft takes the old one's place, as that draft was,
+    // with what it said of the file.
+    expect((await storedDrafts())[0]?.target).toEqual({
+      kind: "file",
+      path: "Signs/square.ink.png",
+    });
+    expect(await storedPrints()).toEqual([prints]);
+    // Ended without Save or Discard, as when Inkline is turned off.
+    await obsidianPage.disablePlugin("inkline");
+    await restoredOnWholeFile(whole);
+  });
+
+  it("keeps it so through a first save that Inkline's unloading cuts short", async function () {
+    const { whole, prints } = await pictureDraftOpenedAsNew();
+    // The save's first hash waits, as a large drawing's takes long, while
+    // Inkline unloads, before the save has named its new file.
+    await browser.execute(() => {
+      const { subtle } = crypto;
+      const digest = subtle.digest.bind(subtle);
+      let go = (): void => undefined;
+      const gate = new Promise<void>((resolve) => {
+        go = resolve;
+      });
+      const state = { reached: 0, ended: 0 };
+      Reflect.set(window, "inklineHeldDigest", state);
+      Reflect.set(window, "inklineLetDigestGo", go);
+      Reflect.set(window, "inklineAtEnd-digest", go);
+      subtle.digest = async (algorithm, data) => {
+        state.reached++;
+        await gate;
+        try {
+          return await digest(algorithm, data);
+        } finally {
+          state.ended++;
+        }
+      };
+    });
+    const digests = (): Promise<{ reached: number; ended: number }> =>
+      browser.execute(() => {
+        const state: unknown = Reflect.get(window, "inklineHeldDigest");
+        return typeof state === "object" && state !== null
+          ? {
+              reached: Number(Reflect.get(state, "reached")),
+              ended: Number(Reflect.get(state, "ended")),
+            }
+          : { reached: 0, ended: 0 };
+      });
+    await browser.keys(["Control", "Enter"]);
+    await browser.waitUntil(async () => (await digests()).reached > 0, {
+      timeoutMsg: "the save never hashed",
+    });
+    // Kept as Inkline unloads, during the save.
+    await obsidianPage.disablePlugin("inkline");
+    const kept = (): Promise<unknown> =>
+      browser.executeObsidian(({ app }) => {
+        const { drafts } = window.inklineTest;
+        return new drafts.DraftStore(app).list().map((draft) => ({
+          target: draft.target,
+          base: draft.base.kind,
+          fingerprint: draft.fingerprint ?? null,
+          drawing: draft.drawing ?? null,
+        }));
+      });
+    const expected = [
+      {
+        target: { kind: "file", path: "Signs/square.ink.png" },
+        base: "file",
+        ...prints,
+      },
+    ];
+    expect(await kept()).toEqual(expected);
+    // And again as the save ends, stopped by the unloading.
+    await browser.execute(() => {
+      const go: unknown = Reflect.get(window, "inklineLetDigestGo");
+      if (typeof go === "function") Reflect.apply(go, undefined, []);
+    });
+    await browser.waitUntil(async () => (await digests()).ended >= 2, {
+      timeoutMsg: "the save never went on",
+    });
+    await browser.pause(500);
+    expect(await kept()).toEqual(expected);
+    expect(await symbolFiles()).toEqual(["Signs/square.ink.png"]);
+    await restoredOnWholeFile(whole);
   });
 
   /**
@@ -577,14 +707,117 @@ describe("Draft recovery", function () {
     await waitForNotice(
       "The unsaved drawing's base layer cannot be read, so only its strokes came back.",
     );
+    // Still kept, in case it can be read another time, until a save.
+    const bases = (): Promise<unknown> =>
+      browser.executeObsidian(({ app }) => {
+        const keys: unknown = app.loadLocalStorage("inkline-draft-bases");
+        return Array.isArray(keys) ? keys.length : 0;
+      });
+    expect((await storedDrafts())[0]?.base).toBe("kept");
+    expect(await bases()).toBe(1);
     await browser.keys(["Control", "Enter"]);
     await waitClosed();
+    expect(await bases()).toBe(0);
     const record = JSON.parse(await recordOf("001.ink.png")) as {
       strokes: unknown[];
       base?: unknown;
     };
     expect(record.strokes).toHaveLength(1);
     expect(record.base).toBeUndefined();
+  });
+
+  /**
+   * Leaves a new symbol's draft that keeps its own base layer, a copy of
+   * square.ink.png's picture, and whose first save made 001.ink.png, with
+   * that picture and a stroke, but could not insert it; its note, Editor.md,
+   * deleted, and Inkline off. Returns that file's bytes.
+   */
+  async function keptBaseWithItsFile(): Promise<number[]> {
+    await createSquare();
+    await browser.executeObsidian(({ app }) => {
+      const vault = app.vault as typeof app.vault & {
+        inklineProcess?: typeof app.vault.process;
+      };
+      vault.inklineProcess = vault.process.bind(vault);
+      vault.process = () => Promise.reject(new Error("the note is locked"));
+    });
+    try {
+      await insert();
+      await browser.keys(["v"]);
+      await chooseSymbol("square");
+      await waitForStatus("Started from a copy of square");
+      await draw(zigzag);
+      await showWelcomeInstead();
+      await browser.keys(["Control", "s"]);
+      await waitForStatus("the note is locked");
+      await browser.waitUntil(
+        async () => (await storedDrafts())[0]?.base === "kept",
+        { timeoutMsg: "the draft never kept its base layer" },
+      );
+      await obsidianPage.disablePlugin("inkline");
+    } finally {
+      await unlockNotes();
+    }
+    await trash("Editor.md");
+    return bytesOfFile("001.ink.png");
+  }
+
+  it("says when the editor overtook a draft as its base layer was read, and leaves the draft and its first save's file", async function () {
+    const first = await keptBaseWithItsFile();
+    await restart();
+    await browser.executeObsidianCommand("inkline:recover-drafts");
+    await listedRows();
+    // Its base layer is read once the editor is open, which waits here,
+    // while the person draws and saves in the editor.
+    await holdDecoding();
+    await browser.keys(["Enter"]);
+    await clickTop("Open as new symbol");
+    await waitForEditor();
+    await waitForHeldDecoding();
+    await draw([
+      [0.6, 0.3],
+      [0.6, 0.7],
+    ]);
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    await letDecodingGo();
+    await waitForNotice(
+      "The unsaved drawing was not opened, as the editor was in use while it was read. It is still kept: run Inkline: Recover drafts to open it.",
+    );
+    // The save took no claim on the first save's file, as the draft was not
+    // restored: that file is as it was, and the save made another.
+    expect(await bytesOfFile("001.ink.png")).toEqual(first);
+    expect(await symbolFiles()).toEqual([
+      "001.ink.png",
+      "002.ink.png",
+      "square.ink.png",
+    ]);
+    expect(await strokeCount("002.ink.png")).toBe(1);
+    expect(await editorOpen()).toBe(true);
+    await browser.keys(["Escape"]);
+    await waitClosed();
+    // The draft found is still kept, to be opened again.
+    await browser.executeObsidianCommand("inkline:recover-drafts");
+    expect(await listedRows()).toHaveLength(1);
+    await browser.keys(["Escape"]);
+  });
+
+  it("follows a rename of the file a new symbol's first save made, while its draft is open", async function () {
+    await newDraftWithItsFile();
+    await restart();
+    await browser.executeObsidianCommand("inkline:recover-drafts");
+    await listedRows();
+    await openListed();
+    await browser.executeObsidian(async ({ app }) => {
+      const file = app.vault.getFileByPath("001.ink.png");
+      if (file === null) throw new Error("no 001.ink.png");
+      await app.vault.rename(file, "gate.ink.png");
+    });
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    expect(await symbolFiles()).toEqual(["gate.ink.png"]);
+    expect(await strokeCount("gate.ink.png")).toBe(2);
+    expect(await draftCount()).toBe(0);
   });
 
   it("closes the list and the question as it unloads, and does nothing from them after", async function () {
