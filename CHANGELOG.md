@@ -122,6 +122,11 @@ even one a public release; earlier pre-releases carry a suffix such as
   line keeps saying why, where it went back to "The file was deleted; saving
   makes it again"
   ([#414](https://github.com/viell-dev/slop-inkline/issues/414)).
+- On Windows and macOS, a deleted symbol whose folder was there again in another
+  letter case, as `signs` for `Signs`, stopped every save that made it again
+  with Obsidian's "Folder already exists." Now it is saved in that folder, which
+  those systems read as the same one
+  ([#436](https://github.com/viell-dev/slop-inkline/issues/436)).
 - When a save's own write stopped part-way, as on a full disk, the part left
   could not be read, and the editor then refused every save until the file was
   deleted by hand, with nothing saying that it was what was left of its own

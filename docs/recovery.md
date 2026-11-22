@@ -117,7 +117,9 @@ elsewhere, by sync, another app, or another editor, is not lost to a save:
   folder and all. **Unreleased:** a file that comes to that place as it is saved
   is asked about, as any change is, and one whose name differs only in letter
   case, which Windows and macOS read as the same name, is named in the status
-  line, for you to rename or move it.
+  line, for you to rename or move it. A folder there again in another letter
+  case, as `signs` for `Signs`, is the same folder to them, and the symbol is
+  saved in it.
 - A rename made elsewhere is followed, and its name kept.
 
 ## Files Inkline cannot read

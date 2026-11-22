@@ -678,7 +678,10 @@ must keep released files readable and looking the same, as
   only in letter case, as on Windows and macOS, which the test stands in for by
   having the disk's look not tell case apart, is named in the editor's message;
   a folder at the path is called one, and a file the vault has not listed yet is
-  not taken for one listed in another letter case. A save that makes a symbol's
+  not taken for one listed in another letter case. A deleted symbol whose folder
+  is there again in another letter case is saved in it, and the rest of its
+  folders made there, as the same test stands in for; where the disk tells
+  letter case apart, it keeps a folder of its own. A save that makes a symbol's
   file makes it with one create in the vault, leaves no file of its own behind,
   and saves at once while Inkline's own index reads 300 symbols, or beside 300
   reads asked one after another; a unit test shows, in a model of Obsidian's

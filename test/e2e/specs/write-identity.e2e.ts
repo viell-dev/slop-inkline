@@ -682,6 +682,75 @@ describe("A symbol replaced at its path as it is saved", function () {
     expect(await symbolFiles()).toEqual(["Gate.ink.png"]);
   });
 
+  /**
+   * Opens `path`'s editor, draws a stroke, deletes the folder `Signs` with
+   * the file in it, and makes `signs` in its place, for a save that makes the
+   * symbol again.
+   */
+  async function folderInAnotherCase(path: string): Promise<void> {
+    await createSymbol(path);
+    await editFile(path);
+    await draw([
+      [0.5, 0.3],
+      [0.7, 0.6],
+    ]);
+    await browser.executeObsidian(async ({ app }) => {
+      await app.vault.adapter.rmdir("Signs", true);
+    });
+    await waitForStatus("The file was deleted; saving makes it again");
+    await browser.executeObsidian(async ({ app }) => {
+      await app.vault.createFolder("signs");
+    });
+  }
+
+  /** Whether the vault lists a folder at `path`, in exactly that case. */
+  async function folderListed(path: string): Promise<boolean> {
+    return browser.executeObsidian(
+      ({ app }, wanted) => app.vault.getFolderByPath(wanted) !== null,
+      path,
+    );
+  }
+
+  it("makes a deleted symbol again in its folder, there again in another letter case", async function () {
+    // #436, as on Windows and macOS, which read signs/ as Signs/: Obsidian
+    // refused to make Signs/ with "Folder already exists.", at every save.
+    await folderInAnotherCase("Signs/gate.ink.png");
+    await lookWithoutCase();
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    expect(await symbolFiles()).toEqual(["signs/gate.ink.png"]);
+    expect(await strokeCount("signs/gate.ink.png")).toBe(2);
+    expect(await folderListed("Signs")).toBe(false);
+    // The editor goes on with that file, as the next save shows.
+    await draw([
+      [0.3, 0.6],
+      [0.6, 0.4],
+    ]);
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    expect(await symbolFiles()).toEqual(["signs/gate.ink.png"]);
+    expect(await strokeCount("signs/gate.ink.png")).toBe(3);
+  });
+
+  it("makes the rest of a deleted symbol's folders in the one there again in another letter case", async function () {
+    await folderInAnotherCase("Signs/Old/gate.ink.png");
+    await lookWithoutCase();
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    expect(await symbolFiles()).toEqual(["signs/Old/gate.ink.png"]);
+    expect(await strokeCount("signs/Old/gate.ink.png")).toBe(2);
+    expect(await folderListed("Signs")).toBe(false);
+  });
+
+  it("keeps a deleted symbol's folder of its own where the disk tells letter case apart", async function () {
+    // As on Linux: Signs/ and signs/ are two folders, and the disk says so.
+    await folderInAnotherCase("Signs/gate.ink.png");
+    await browser.keys(["Control", "s"]);
+    await waitForStatus("Saved");
+    expect(await symbolFiles()).toEqual(["Signs/gate.ink.png"]);
+    expect(await folderListed("signs")).toBe(true);
+  });
+
   it("makes a deleted symbol again in a folder that lands as it makes that", async function () {
     await createSymbol("Signs/gate.ink.png");
     await editFile("Signs/gate.ink.png");
