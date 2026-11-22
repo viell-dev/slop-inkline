@@ -17,6 +17,14 @@ even one a public release; earlier pre-releases carry a suffix such as
   symbol, which then offered it as its own when it opened. Now the draft stays
   the old symbol's, as before the save, for the next save to make the file
   ([#437](https://github.com/viell-dev/slop-inkline/issues/437)).
+- On Windows and macOS, a deleted symbol whose folder was there again in another
+  letter case, as `signs` for `Signs`, stopped every save that made it again
+  with Obsidian's "Folder already exists." Now it is saved in that folder, which
+  those systems read as the same one. A file of its name already there, as after
+  the folder's letter case was changed outside Obsidian, is the file at its
+  path: written over if it holds what the editor last saved, and asked about
+  otherwise, as any change is
+  ([#436](https://github.com/viell-dev/slop-inkline/issues/436)).
 - **Make ink**, **Zoom**, and **Fit** pressed while **Move** drags the picture
   now wait until you let go, as they do while you draw. They acted at once: Make
   ink's row, opening above the drawing area, or a zoom, changing its height,
@@ -25,6 +33,14 @@ even one a public release; earlier pre-releases carry a suffix such as
   stroke, when Make ink closes for another reason, as when a picture pasted then
   replaces the one it was open for
   ([#444](https://github.com/viell-dev/slop-inkline/issues/444)).
+- A picture dragged with **Move** now comes back under the pointer as you go on
+  or let go when the drawing moves under the pointer during the drag, as when
+  Obsidian's page zoom or the window's size changes. It used to move with the
+  drawing and stay that far from the pointer, and a page zoom could also make it
+  jump. **Readings and translations** opened or closed while you draw a stroke
+  now ends the stroke where it showed, as a change to the window's size does,
+  rather than moving the drawing under the rest of it
+  ([#445](https://github.com/viell-dev/slop-inkline/issues/445)).
 
 ## 1.1.0 - 2026-11-22
 
