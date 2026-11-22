@@ -185,7 +185,11 @@ async function makeNewSymbol(
     stillAlive(host.unloaded);
     claimed(path);
     try {
-      return await watchSave(host.writes.make(path, buffer), told);
+      return await watchSave(
+        host.writes.make(path, buffer),
+        told,
+        host.stalledAfter(),
+      );
     } catch (error) {
       if (error instanceof CutShort) {
         claimed(path, await fingerprintOf(error.held));
@@ -579,7 +583,11 @@ function newSymbol(
       if (existing === undefined) {
         stillAlive(host.unloaded);
         try {
-          after = await watchSave(insertEmbed(app, target, embed), wait.told);
+          after = await watchSave(
+            insertEmbed(app, target, embed),
+            wait.told,
+            host.stalledAfter(),
+          );
         } catch (error) {
           // Deleted as the embed was being written.
           if (noteGone()) return named;

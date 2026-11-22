@@ -1,6 +1,5 @@
 import { browser, expect } from "@wdio/globals";
 import { obsidianPage } from "wdio-obsidian-service";
-import { stalledAfter } from "../../../src/notes/file-writes.ts";
 import { loadModules } from "../support/browser.ts";
 import {
   editFile,
@@ -34,6 +33,11 @@ import {
   topButton,
   waitForStatus,
 } from "../support/editor.ts";
+import {
+  setStalledAfter,
+  shortStall,
+  waitForStallSaid,
+} from "../support/stalls.ts";
 import { noteOnDisk, waitForLink } from "../support/vault-files.ts";
 
 describe("The editor", function () {
@@ -182,6 +186,10 @@ describe("The editor", function () {
       });
     }
 
+    beforeEach(async function () {
+      await setStalledAfter(shortStall);
+    });
+
     afterEach(async function () {
       await letMoveGo();
     });
@@ -192,12 +200,11 @@ describe("The editor", function () {
       await editFile("001.ink.png");
       await nameSymbol("tower");
       await holdMove();
+      const asked = Date.now();
       await browser.keys(["Control", "s"]);
-      await browser.waitUntil(async () => (await wait().getText()) !== "", {
-        timeout: stalledAfter + 15_000,
-        timeoutMsg: "the editor never said its rename waits",
-      });
-      expect(await wait().getText()).toContain("Your strokes are safe");
+      expect(await waitForStallSaid(wait, asked)).toContain(
+        "Your strokes are safe",
+      );
       // The drawing is written, and the rename is all that is left of the save.
       expect(await symbolFiles()).toEqual(["001.ink.png"]);
       await letMoveGo();
@@ -221,7 +228,7 @@ describe("The editor", function () {
       await browser.waitUntil(
         async () => (await topButton("Just once")) !== undefined,
       );
-      await browser.pause(stalledAfter + 1500);
+      await browser.pause(shortStall + 1500);
       expect(await wait().getText()).toBe("");
       await clickTop("Just once");
       await waitForStatus("Saved");

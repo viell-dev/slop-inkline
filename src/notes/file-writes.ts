@@ -68,6 +68,11 @@ function askedSince(line: DiskLine | undefined, asked: unknown): boolean {
  * comes before this and can take seconds of its own, so only the write is timed.
  * A rename gets as long, but only of nothing happening, as {@link watchRename}
  * says.
+ *
+ * Each load of the plugin starts from this, as main.ts's `stalledAfter`, which
+ * is what {@link watchSave} and {@link watchRename} are given. Nothing in
+ * Inkline changes that: the end-to-end tests shorten it on the running plugin,
+ * so as not to wait this long in each test of what is said then.
  */
 export const stalledAfter = 5000;
 
@@ -193,18 +198,22 @@ export class WriteQueue {
 }
 
 /**
- * Told `true` when a save has gone on for {@link stalledAfter}, and `false` when
- * it ends. A save that ends in time tells it nothing.
+ * Told `true` when a save has gone on for the wait, {@link stalledAfter} unless
+ * a test shortened it, and `false` when it ends. A save that ends in time tells
+ * it nothing.
  */
 export type SaveWait = (waiting: boolean) => void;
 
 /**
  * `work`, as it would have ended, with `told` kept up to date for the person
- * waiting. Only they are told: the work goes on, and keeps its place in the line.
+ * waiting once it has gone on for `after` milliseconds, the plugin's wait, as
+ * {@link stalledAfter} says. Only they are told: the work goes on, and keeps
+ * its place in the line.
  */
 export async function watchSave<T>(
   work: Promise<T>,
   told: SaveWait,
+  after: number,
 ): Promise<T> {
   let ended = (): void => undefined;
   const timer = window.setTimeout(() => {
@@ -212,7 +221,7 @@ export async function watchSave<T>(
     ended = () => {
       told(false);
     };
-  }, stalledAfter);
+  }, after);
   try {
     return await work;
   } finally {
@@ -236,10 +245,10 @@ export interface RenameWait {
  * test/e2e/manual/rename-time.e2e.ts, up to 20 s at 3,000 notes on a busy machine,
  * where telling someone to restart would leave the rest with the old link. What
  * sets a stall apart is that nothing happens, as the vault reports each note at
- * most 0.11 s after the last, however many there are. So {@link stalledAfter}
- * counts only from the last look at which `moving` was true, however long the
- * rename has run, and a person is told only as long as that holds: `told` hears
- * `false` when it moves again.
+ * most 0.11 s after the last, however many there are. So the wait, `after`
+ * milliseconds, as for a save, counts only from the last look at which `moving`
+ * was true, however long the rename has run, and a person is told only as long
+ * as that holds: `told` hears `false` when it moves again.
  *
  * It counts looks, not the clock, so that a page that freezes for a while, as a
  * large save's does, or a computer that sleeps, does not look like a stall.
@@ -248,6 +257,7 @@ export async function watchRename<T>(
   work: Promise<T>,
   moving: () => boolean,
   told: SaveWait,
+  after: number,
 ): Promise<T> {
   let telling = false;
   const tell = (waiting: boolean): void => {
@@ -258,7 +268,7 @@ export async function watchRename<T>(
   let still = 0;
   const timer = window.setInterval(() => {
     still = moving() ? 0 : still + renameLook;
-    tell(still >= stalledAfter);
+    tell(still >= after);
   }, renameLook);
   try {
     return await work;

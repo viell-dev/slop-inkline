@@ -18,6 +18,11 @@ import {
 } from "../support/editor.ts";
 import { choose, menuItems } from "../support/menus.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
+import {
+  setStalledAfter,
+  shortStall,
+  waitForStallSaid,
+} from "../support/stalls.ts";
 
 async function isLoaded(): Promise<boolean> {
   return browser.executeObsidian(({ plugins }) => "inkline" in plugins);
@@ -195,6 +200,18 @@ describe("The plugin", function () {
     expect(await isLoaded()).toBe(false);
     await obsidianPage.enablePlugin("inkline");
     expect(await isLoaded()).toBe(true);
+  });
+
+  it("starts each load with five seconds before a save or a rename is said to wait", async function () {
+    const wait = () =>
+      browser.executeObsidian(({ plugins }) => plugins.inkline.stalledAfter);
+    expect(await wait()).toBe(stalledAfter);
+    // What a test sets lasts only as long as that load.
+    await setStalledAfter(shortStall);
+    expect(await wait()).toBe(shortStall);
+    await obsidianPage.disablePlugin("inkline");
+    await obsidianPage.enablePlugin("inkline");
+    expect(await wait()).toBe(stalledAfter);
   });
 });
 
@@ -458,14 +475,15 @@ describe("What Inkline started, once it unloads", function () {
           void app.fileManager.renameFile(file, "Moved.md");
         });
         await waitForHeld();
+        await setStalledAfter(shortStall);
         await beginRename("renamed");
+        const asked = Date.now();
         await renameForm().$("button=Save").click();
         // Said once the rename has waited for long enough, here behind the
         // other one.
-        await browser.waitUntil(
-          async () =>
-            (await renameForm().$(".inkline-save-wait").getText()) !== "",
-          { timeout: stalledAfter + 10_000 },
+        await waitForStallSaid(
+          () => renameForm().$(".inkline-save-wait"),
+          asked,
         );
         await obsidianPage.disablePlugin("inkline");
         // Said while the other rename still waits.

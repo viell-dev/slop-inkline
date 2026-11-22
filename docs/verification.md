@@ -752,6 +752,15 @@ must keep released files readable and looking the same, as
   [renaming.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/renaming.e2e.ts),
   and
   [file-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/file-writes.test.ts)).
+- The wait before a save or a rename is said to wait is five seconds, which each
+  load of the plugin starts from. The tests above that wait it out in the host
+  shorten it to two seconds on the running plugin, and fail unless the message
+  comes sooner than five seconds would let it; a save that takes half of the
+  five seconds shows nothing
+  ([file-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/file-writes.test.ts),
+  [plugin.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/plugin.e2e.ts),
+  and
+  [symbol-text-unfinished-writes.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/symbol-text-unfinished-writes.e2e.ts)).
 - The insert trigger's list, Insert existing symbol, Copy from, and the
   library's filter find a symbol by a reading or translation whatever its name,
   and show why; the index follows files as they are made, changed, renamed,
