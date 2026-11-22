@@ -25,21 +25,8 @@ import {
   type EditorCommands,
   type PictureKey,
 } from "./buttons.ts";
+import { keepsArrows, typing } from "./focus.ts";
 import type { StatusLine } from "./status.ts";
-
-/** Whether `element` takes typing: a text field or editable content. */
-export function typing(element: Element | null): boolean {
-  if (element?.instanceOf(HTMLElement) !== true) return false;
-  return (
-    element.isContentEditable ||
-    element.instanceOf(HTMLTextAreaElement) ||
-    element.instanceOf(HTMLSelectElement) ||
-    (element.instanceOf(HTMLInputElement) &&
-      !["button", "checkbox", "radio", "range", "submit"].includes(
-        element.type,
-      ))
-  );
-}
 
 /** What the editor's controls are given. */
 export interface ControlOptions {
@@ -234,11 +221,8 @@ export class EditorControls {
         if (!editor.movingPicture()) {
           return !line.actIf(() => editor.arrowKey(name, modifiers.length > 0));
         }
-        const focused = activeDocument.activeElement;
         // A text field, or the threshold's slider, keeps its own keys.
-        if (typing(focused) || focused?.instanceOf(HTMLInputElement) === true) {
-          return true;
-        }
+        if (keepsArrows(activeDocument.activeElement)) return true;
         line.act(action);
         return false;
       });
