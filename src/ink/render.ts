@@ -5,8 +5,8 @@ import { unitsPerPixel, type Stroke } from "../format/record.ts";
 import type { Bounds } from "./geometry.ts";
 import {
   cutBoxes,
+  drawnShape,
   restShape,
-  strokeShape,
   traceShape,
   type PathSink,
 } from "./outline.ts";
@@ -60,8 +60,9 @@ export interface DrawingContext extends PathSink {
 /**
  * Draws a symbol on a cleared canvas, shifted right by `offsetX` pixels. A
  * base layer is drawn first, scaled with smoothing; each stroke then fills
- * its outline, or a polygon's pieces with the nonzero rule, or a filled
- * stroke its inside, a pen over what is there and an eraser cutting it away.
+ * its outline, or the outlines around a polygon's pieces with the nonzero
+ * rule, or a filled stroke its inside, a pen over what is there and an eraser
+ * cutting it away.
  */
 export function drawInk(
   context: DrawingContext,
@@ -92,12 +93,12 @@ export function drawInk(
   context.restore();
 }
 
-/** Fills a stroke's outline, or its pieces, cut where it is cut. */
+/** Fills a stroke's outline, or its outlines, cut where it is cut. */
 function drawStroke(context: DrawingContext, stroke: Stroke): void {
   const boxes = cutBoxes(stroke);
   if (boxes.length === 0) {
     context.beginPath();
-    traceShape(strokeShape(stroke), context);
+    traceShape(drawnShape(stroke), context);
     context.fill();
     return;
   }
@@ -110,7 +111,7 @@ function drawStroke(context: DrawingContext, stroke: Stroke): void {
     context.clip("evenodd");
   }
   context.beginPath();
-  traceShape(strokeShape(stroke), context);
+  traceShape(drawnShape(stroke), context);
   context.fill();
   context.restore();
   // ...and in them, the rest of it, without the ends cut there.

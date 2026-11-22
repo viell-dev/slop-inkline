@@ -6,6 +6,7 @@ import type { FreehandShape } from "../../../src/ink/freehand.ts";
 import {
   cornerReach,
   cutBoxes,
+  drawnShape,
   outlineBounds,
   restShape,
   polygonPieces,
@@ -446,6 +447,209 @@ describe("polygon strokes", () => {
 
   it("give nothing for no corners", () => {
     expect(polygonPieces([], 2, false)).toEqual([]);
+  });
+});
+
+/**
+ * How many times outlines wind round a point, counted as {@link area} counts
+ * them: once for each piece of a polygon that covers it.
+ */
+function winding(outlines: readonly Outline[], x: number, y: number): number {
+  let count = 0;
+  for (const outline of outlines) {
+    let [x0, y0] = outline.at(-1) ?? [0, 0];
+    for (const [x1, y1] of outline) {
+      const side = (x1 - x0) * (y - y0) - (y1 - y0) * (x - x0);
+      if (y0 <= y && y1 > y && side > 0) count++;
+      else if (y1 <= y && y0 > y && side < 0) count--;
+      [x0, y0] = [x1, y1];
+    }
+  }
+  return count;
+}
+
+/**
+ * Where outlines have an edge with the same winding on both sides, which
+ * fills nothing that would not be filled without it: where two pieces meet,
+ * an edge of each, traversed both ways, along which a renderer can leave a
+ * seam. Each edge is looked at a little way to either side of a few points
+ * along it, away from where other edges meet it.
+ */
+function sharedEdges(outlines: readonly Outline[]): (readonly number[])[] {
+  const found: (readonly number[])[] = [];
+  for (const outline of outlines) {
+    outline.forEach(([x0, y0], index) => {
+      const [x1, y1] = outline[(index + 1) % outline.length] ?? [x0, y0];
+      const length = Math.hypot(x1 - x0, y1 - y0);
+      if (length < 1e-6) return;
+      const [nx, ny] = [(y0 - y1) / length, (x1 - x0) / length];
+      const away = 1e-6;
+      for (const t of [0.3141, 0.5772, 0.7071]) {
+        const [x, y] = [x0 + (x1 - x0) * t, y0 + (y1 - y0) * t];
+        const left = winding(outlines, x + nx * away, y + ny * away);
+        const right = winding(outlines, x - nx * away, y - ny * away);
+        if (left === right) found.push([x0, y0, x1, y1, t]);
+      }
+    });
+  }
+  return found;
+}
+
+/**
+ * A corner where the line turns `angle` degrees, its first side `turned`
+ * degrees from x.
+ */
+function corner(angle: number, turned: number, size: number): Stroke {
+  const a = (turned * Math.PI) / 180;
+  const b = a + Math.PI - (angle * Math.PI) / 180;
+  const length = 960;
+  return {
+    tool: "pen",
+    size,
+    points: [
+      2000 + Math.round(Math.cos(a) * length),
+      2000 + Math.round(Math.sin(a) * length),
+      2000,
+      2000,
+      2000 + Math.round(Math.cos(b) * length),
+      2000 + Math.round(Math.sin(b) * length),
+    ],
+    kind: "polygon",
+  };
+}
+
+/**
+ * Polygon strokes through the ways a polygon can turn: corners at many
+ * angles, gentle and sharp, at right angles, doubling back, going straight on
+ * or nearly, open and closed, crossing themselves; and many at random.
+ */
+function polygonCases(): Stroke[] {
+  const cases: Stroke[] = [];
+  const add = (points: readonly number[], size: number): void => {
+    cases.push({ tool: "pen", size, points, kind: "polygon" });
+  };
+  // A corner at each angle, turned several ways, with every brush.
+  for (const size of [96, 192, 288, 384]) {
+    for (let angle = 10; angle < 180; angle += 15) {
+      for (const turned of [13, 90, 222]) {
+        cases.push(corner(angle, turned, size));
+      }
+    }
+  }
+  // Straight on, along an axis and obliquely, where the sides' directions
+  // round differently; nearly straight on; doubling back; and a single side
+  // and a single corner.
+  add([0, 0, 480, 0, 960, 0], 384);
+  add([0, 0, 48, 48, 128, 128], 384);
+  add([0, 0, 48, 80, 112, 192, 400, 672], 288);
+  add([0, 0, 480, 160, 961, 320], 192);
+  add([0, 0, 960, 320, 0, 0, 960, 320], 384);
+  add([0, 0, 960, 320, 0, 0], 384);
+  add([0, 0, 960, 320], 96);
+  add([500, 500], 384);
+  // Closed: a triangle, a square, a star drawn in one line, and a side
+  // traversed four times.
+  add([0, 0, 1600, 0, 800, 1400, 0, 0], 384);
+  add([0, 0, 1600, 0, 1600, 1600, 0, 1600, 0, 0], 192);
+  const star = [0, 2, 4, 1, 3, 0].flatMap((k) => [
+    2000 + Math.round(1500 * Math.cos((k * 2 * Math.PI) / 5)),
+    2000 + Math.round(1500 * Math.sin((k * 2 * Math.PI) / 5)),
+  ]);
+  add(star, 384);
+  add([0, 0, 960, 320, 0, 0, 960, 320, 0, 0], 288);
+  // At random, from a fixed seed.
+  let seed = 0x5eed;
+  const next = (range: number): number => {
+    seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff;
+    return (seed >>> 8) % range;
+  };
+  for (let index = 0; index < 120; index++) {
+    const points: number[] = [];
+    for (let left = 2 + next(8); left > 0; left--) {
+      points.push(next(4000), next(4000));
+    }
+    if (next(3) === 0) points.push(points[0] ?? 0, points[1] ?? 0);
+    add(points, [16, 96, 192, 288, 384, 1000, 4096][next(7)] ?? 96);
+  }
+  return cases;
+}
+
+describe("drawnShape", () => {
+  const cases = polygonCases();
+
+  it("fills what a polygon's pieces fill, once for each piece over a point", () => {
+    let seed = 0xc0ffee;
+    const next = (): number => {
+      seed = (Math.imul(seed, 1103515245) + 12345) & 0x7fffffff;
+      return (seed >>> 8) / 2 ** 23;
+    };
+    // Compared once, as an expect for each point is slow (#269): each point
+    // where the counts differ, with its stroke.
+    const differing: unknown[] = [];
+    let covered = 0;
+    for (const stroke of cases) {
+      const pieces = piecesOf(strokeShape(stroke));
+      const outlines = piecesOf(drawnShape(stroke));
+      const bounds = strokeBounds(stroke);
+      if (bounds === undefined) throw new Error("no bounds");
+      const { left, top, right, bottom } = bounds;
+      for (let sample = 0; sample < 200; sample++) {
+        const x = left - 1 + (right - left + 2) * next();
+        const y = top - 1 + (bottom - top + 2) * next();
+        const over = pieces.filter((piece) => winding([piece], x, y) === 1);
+        if (over.length > 0) covered++;
+        const count = winding(outlines, x, y);
+        if (count !== over.length) differing.push([stroke, x, y, count]);
+      }
+    }
+    expect(differing).toEqual([]);
+    // Many points are in the ink, so this is not a check of empty space.
+    expect(covered).toBeGreaterThan(cases.length * 20);
+  });
+
+  it("draws no edge that two of a polygon's pieces share, where a seam could show", () => {
+    const found = cases.flatMap((stroke) =>
+      sharedEdges(piecesOf(drawnShape(stroke))).map((edge) => [stroke, edge]),
+    );
+    expect(found).toEqual([]);
+  });
+
+  it("leaves out what the pieces share at every corner that turns", () => {
+    // The check above finds the edges the pieces themselves share, as they
+    // were filled before, which is the seam it guards against.
+    for (const size of [96, 384]) {
+      for (const angle of [30, 90, 135]) {
+        const stroke = corner(angle, 31, size);
+        expect(sharedEdges(piecesOf(strokeShape(stroke)))).not.toEqual([]);
+        expect(sharedEdges(piecesOf(drawnShape(stroke)))).toEqual([]);
+      }
+    }
+  });
+
+  it("puts no corner on an outline that is not one of a piece", () => {
+    const strays = cases.flatMap((stroke) => {
+      const corners = new Set(
+        piecesOf(strokeShape(stroke))
+          .flat()
+          .map(([x, y]) => `${String(x)} ${String(y)}`),
+      );
+      return piecesOf(drawnShape(stroke))
+        .flat()
+        .filter(([x, y]) => !corners.has(`${String(x)} ${String(y)}`))
+        .map((point) => [stroke, point]);
+    });
+    expect(strays).toEqual([]);
+  });
+
+  it("is a stroke's shape for anything but a polygon", () => {
+    const strokes: Stroke[] = [
+      { tool: "pen", size: 96, points: [0, 0, 480, 160, 960, 0] },
+      { tool: "pen", size: 96, points: [480, 480] },
+      { tool: "eraser", points: [0, 0, 960, 0, 480, 640], kind: "fill" },
+    ];
+    for (const stroke of strokes) {
+      expect(drawnShape(stroke)).toEqual(strokeShape(stroke));
+    }
   });
 });
 

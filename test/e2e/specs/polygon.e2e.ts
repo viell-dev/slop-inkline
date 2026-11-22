@@ -1,5 +1,5 @@
 import { browser, expect } from "@wdio/globals";
-import type { Stroke } from "../../../src/format/record.ts";
+import type { PolygonStroke, Stroke } from "../../../src/format/record.ts";
 import { loadModules } from "../support/browser.ts";
 import { pressed, save } from "../support/editing.ts";
 import {
@@ -274,5 +274,62 @@ describe("Polygon", function () {
     const [erased] = await draftStrokes(1);
     expect(erased?.tool).toBe("eraser");
     expect(erased?.points).toHaveLength(4);
+  });
+
+  it("inks a corner solid where its pieces meet, at every brush size and turn", async function () {
+    // A corner at each turn, facing two ways, with each brush from S to XL:
+    // drawn as saving draws it, and as the editor shows it, enlarged.
+    const corners: PolygonStroke[] = [];
+    for (const size of [96, 192, 288, 384]) {
+      for (const turn of [25, 45, 60, 75, 100, 120, 135, 150, 165]) {
+        for (const facing of [13, 137]) {
+          const a = (facing * Math.PI) / 180;
+          const b = a + Math.PI - (turn * Math.PI) / 180;
+          const end = (towards: number): number[] => [
+            2000 + Math.round(Math.cos(towards) * 960),
+            2000 + Math.round(Math.sin(towards) * 960),
+          ];
+          corners.push({
+            tool: "pen",
+            size,
+            points: [...end(a), 2000, 2000, ...end(b)],
+            kind: "polygon",
+          });
+        }
+      }
+    }
+    const measured = await browser.execute((strokes: PolygonStroke[]) => {
+      const { measureSolidInk } = window.inklineTest.solidInk;
+      return strokes.flatMap((stroke) => {
+        // As far as a corner's wedge reaches, and a brush's width more; but
+        // not within half a device pixel of the shape's edge, where Chromium
+        // can leave a pixel a level or so short, nor within 5 of where the
+        // sides' inner edges cross, which #422 is about: up to 4 were seen.
+        const reach = ((2 + 1) * stroke.size) / 16;
+        const [margin, clearance] = [0.5, 5];
+        return [
+          { scale: 1, settings: { willReadFrequently: true } },
+          { scale: 2.5, settings: {} },
+        ].map(({ scale, settings }) => ({
+          points: stroke.points,
+          size: stroke.size,
+          scale,
+          ...measureSolidInk(stroke, scale, settings, reach, margin, clearance),
+        }));
+      });
+    }, corners);
+    const short = measured.filter((result) => result.short > 0);
+    console.log(
+      "Solid corners",
+      JSON.stringify({
+        measured: measured.length,
+        inside: measured.reduce((sum, { inside }) => sum + inside, 0),
+        short: short.length,
+        worst: short.slice(0, 5),
+      }),
+    );
+    // Every corner has pixels wholly inside it to look at.
+    for (const { inside } of measured) expect(inside).toBeGreaterThan(20);
+    expect(short).toEqual([]);
   });
 });

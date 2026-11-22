@@ -17,6 +17,15 @@ even one a public release; earlier pre-releases carry a suffix such as
   Obsidian has read the note's links after opening the vault
   ([#299](https://github.com/viell-dev/slop-inkline/issues/299)).
 
+### Fixed
+
+- A polygon drawn with a large brush showed a faint, lighter line inside its ink
+  at a corner that was not a right angle, where the parts the line is drawn in
+  meet, and a filled polygon showed it outside the fill. It no longer does. The
+  shape is the same, and so is the file format: a symbol saved before keeps the
+  line in its image until it is saved again
+  ([#368](https://github.com/viell-dev/slop-inkline/issues/368)).
+
 ## 1.0.2 - 2026-11-19
 
 A fix release for 1.0.1. The file format is unchanged: symbols open and look as

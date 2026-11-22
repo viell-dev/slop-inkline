@@ -6,6 +6,7 @@
 
 import {
   unitsPerPixel,
+  type PolygonStroke,
   type SmoothStroke,
   type Stroke,
 } from "../format/record.ts";
@@ -58,16 +59,31 @@ export function strokeShape(stroke: Stroke): StrokeShape {
     return { kind: "pieces", pieces: [corners(stroke)] };
   }
   if (stroke.kind !== "polygon") return smoothShape(stroke);
+  return { kind: "pieces", pieces: polygonPieces(...polygonOf(stroke)) };
+}
+
+/**
+ * What a stroke fills, as a renderer fills it in one path with the nonzero
+ * rule: what {@link strokeShape} gives, but for a polygon, the outlines
+ * around its pieces that {@link polygonOutlines} joins them into, so that no
+ * seam shows where two pieces meet.
+ */
+export function drawnShape(stroke: Stroke): StrokeShape {
+  if (stroke.kind !== "polygon") return strokeShape(stroke);
+  return { kind: "pieces", pieces: polygonOutlines(...polygonOf(stroke)) };
+}
+
+/** A polygon stroke's corners, its width, and whether it is closed. */
+function polygonOf(
+  stroke: PolygonStroke,
+): [corners: Point[], width: number, closed: boolean] {
   const points = corners(stroke);
   const closed = isClosed(points);
-  return {
-    kind: "pieces",
-    pieces: polygonPieces(
-      closed ? points.slice(0, -1) : points,
-      stroke.size / unitsPerPixel,
-      closed,
-    ),
-  };
+  return [
+    closed ? points.slice(0, -1) : points,
+    stroke.size / unitsPerPixel,
+    closed,
+  ];
 }
 
 /** Where a shape's ink can go, or undefined for nowhere. */
@@ -168,21 +184,47 @@ function oriented(outline: Point[]): Point[] {
 }
 
 /**
- * The pieces a polygon `width` pixels wide fills, through `corners` in
- * pixels: a rectangle along each side, and at each corner where it turns, a
- * wedge on the outer side out to where the sides' outer edges meet, cut off
- * square across the corner's bisector {@link cornerReach} widths from the
- * corner point. `closed` joins the last corner to the first; otherwise those
- * ends are square, reaching half the width past their corner. A single corner
- * is a square dot as wide as the stroke. The pieces all wind one way, so that
- * filling them together with the nonzero rule fills everything any of them
- * covers.
+ * A polygon's side as a rectangle: its corners along one long edge from the
+ * side's start to its end, then along the other from its end back to its
+ * start.
  */
-export function polygonPieces(
+type Rectangle = readonly [Point, Point, Point, Point];
+
+/**
+ * The wedge on the outer side of a polygon's turn at a corner. Its corners
+ * are the corner point, the side before's corner on the outer edge, those out
+ * beyond the sides, and the side after's corner on the outer edge, in that
+ * order. `first` says whether that edge is the one each rectangle starts
+ * along.
+ */
+interface Wedge {
+  readonly corners: readonly Point[];
+  readonly first: boolean;
+}
+
+/**
+ * What {@link polygonPieces} makes a polygon's pieces of: a square for a
+ * single corner, or else a rectangle for each side, in order, and the wedge
+ * at each corner, by its index, where two sides meet and turn.
+ */
+type PolygonParts =
+  | { readonly kind: "dot"; readonly square: Outline }
+  | {
+      readonly kind: "sides";
+      readonly sides: readonly Rectangle[];
+      readonly wedges: readonly (Wedge | undefined)[];
+      readonly closed: boolean;
+    };
+
+/**
+ * The parts of a polygon `width` pixels wide through `corners` in pixels, or
+ * undefined when there are no corners, as {@link polygonPieces} describes.
+ */
+function polygonParts(
   corners: readonly Point[],
   width: number,
   closed: boolean,
-): Outline[] {
+): PolygonParts | undefined {
   const points = corners.filter(
     ([x, y], index) =>
       index === 0 ||
@@ -191,20 +233,21 @@ export function polygonPieces(
   );
   const half = width / 2;
   const first = points[0];
-  if (first === undefined) return [];
+  if (first === undefined) return undefined;
   if (points.length === 1) {
     const [x, y] = first;
-    return [
-      oriented([
+    return {
+      kind: "dot",
+      square: [
         [x - half, y - half],
         [x + half, y - half],
         [x + half, y + half],
         [x - half, y + half],
-      ]),
-    ];
+      ],
+    };
   }
   const count = points.length;
-  const sides = closed ? count : count - 1;
+  const sideCount = closed ? count : count - 1;
   const at = (index: number): Point => points[(index + count) % count] ?? first;
   /** The unit direction of the side from corner `index` to the next. */
   const direction = (index: number): Point => {
@@ -213,17 +256,17 @@ export function polygonPieces(
     const length = Math.hypot(x1 - x0, y1 - y0);
     return [(x1 - x0) / length, (y1 - y0) / length];
   };
-  const pieces: Point[][] = [];
-  for (let side = 0; side < sides; side++) {
+  const sides: Rectangle[] = [];
+  for (let side = 0; side < sideCount; side++) {
     const [dx, dy] = direction(side);
     const [x0, y0] = at(side);
     const [x1, y1] = at(side + 1);
     const before = !closed && side === 0 ? half : 0;
-    const after = !closed && side === sides - 1 ? half : 0;
+    const after = !closed && side === sideCount - 1 ? half : 0;
     const [ax, ay] = [x0 - dx * before, y0 - dy * before];
     const [bx, by] = [x1 + dx * after, y1 + dy * after];
     const [nx, ny] = [-dy * half, dx * half];
-    pieces.push([
+    sides.push([
       [ax + nx, ay + ny],
       [bx + nx, by + ny],
       [bx - nx, by - ny],
@@ -231,16 +274,20 @@ export function polygonPieces(
     ]);
   }
   const reach = cornerReach * width;
-  for (
-    let corner = closed ? 0 : 1;
-    corner < (closed ? count : count - 1);
-    corner++
-  ) {
+  const wedges: (Wedge | undefined)[] = [];
+  for (let corner = 0; corner < count; corner++) {
+    if (!closed && (corner === 0 || corner === count - 1)) {
+      wedges.push(undefined);
+      continue;
+    }
     const [ix, iy] = direction(corner - 1);
     const [ox, oy] = direction(corner);
     const cross = ix * oy - iy * ox;
     const dot = ix * ox + iy * oy;
-    if (cross === 0 && dot > 0) continue;
+    if (cross === 0 && dot > 0) {
+      wedges.push(undefined);
+      continue;
+    }
     // The sides' normals on the outer side of the turn; a side doubling back
     // has two, and either does.
     const turn = cross < 0 ? -1 : 1;
@@ -257,8 +304,18 @@ export function polygonPieces(
     const [ux, uy] = [bx / spread, by / spread];
     const cos = n1x * ux + n1y * uy;
     const tip = cos > 0 ? half / cos : Infinity;
+    // Turning this way, the outer edge is the one along the rectangles'
+    // first corners, and p1 and p2 are exactly those corners; turning the
+    // other way, they are exactly the others.
+    const onFirst = turn < 0;
     if (tip <= reach) {
-      pieces.push([[cx, cy], p1, [cx + ux * tip, cy + uy * tip], p2]);
+      const corners: Point[] = [
+        [cx, cy],
+        p1,
+        [cx + ux * tip, cy + uy * tip],
+        p2,
+      ];
+      wedges.push({ corners, first: onFirst });
       continue;
     }
     // Each outer edge runs on until it is `reach` along the bisector. A
@@ -267,15 +324,122 @@ export function polygonPieces(
     const rest = reach - half * cos;
     const along1 = rest / (ix * ux + iy * uy);
     const along2 = rest / -(ox * ux + oy * uy);
-    pieces.push([
+    const corners: Point[] = [
       [cx, cy],
       p1,
       [p1[0] + ix * along1, p1[1] + iy * along1],
       [p2[0] - ox * along2, p2[1] - oy * along2],
       p2,
-    ]);
+    ];
+    wedges.push({ corners, first: onFirst });
+  }
+  return { kind: "sides", sides, wedges, closed };
+}
+
+/**
+ * The pieces a polygon `width` pixels wide fills, through `corners` in
+ * pixels: a rectangle along each side, and at each corner where it turns, a
+ * wedge on the outer side out to where the sides' outer edges meet, cut off
+ * square across the corner's bisector {@link cornerReach} widths from the
+ * corner point. `closed` joins the last corner to the first; otherwise those
+ * ends are square, reaching half the width past their corner. A single corner
+ * is a square dot as wide as the stroke. The pieces all wind one way, so that
+ * filling them together with the nonzero rule fills everything any of them
+ * covers.
+ */
+export function polygonPieces(
+  corners: readonly Point[],
+  width: number,
+  closed: boolean,
+): Outline[] {
+  const parts = polygonParts(corners, width, closed);
+  if (parts === undefined) return [];
+  if (parts.kind === "dot") return [oriented([...parts.square])];
+  const pieces: Point[][] = parts.sides.map((side) => [...side]);
+  for (const wedge of parts.wedges) {
+    if (wedge !== undefined) pieces.push([...wedge.corners]);
   }
   return pieces.map(oriented);
+}
+
+/**
+ * The outlines around a polygon's pieces, for a renderer to fill in their
+ * place. Every point lies inside as many of them, counting each time one
+ * winds round it, as of {@link polygonPieces}, so the nonzero rule fills the
+ * same shape. Pieces that meet share an edge, and antialiasing can leave a
+ * faint seam along it, as what a renderer covers of a pixel from either side
+ * need not add up to all of it. The outlines have no such edge.
+ *
+ * One outline runs along every side's first long edge and back along the
+ * second; a closed polygon has one each way. At a corner where the sides
+ * turn, the edge on the outer side goes round the wedge, and the one on the
+ * inner side goes in to the corner point and out again, along the parts of
+ * the rectangles' ends that lie inside the other rectangle. Left out are the
+ * wedge's two edges from the corner point and the outer halves of the ends
+ * they lie along, each traversed once each way, so the count stays the same
+ * everywhere. Where the sides go straight on, the edge goes straight across,
+ * leaving out both rectangles' ends, which are the same but for rounding.
+ */
+export function polygonOutlines(
+  corners: readonly Point[],
+  width: number,
+  closed: boolean,
+): Outline[] {
+  const parts = polygonParts(corners, width, closed);
+  if (parts === undefined) return [];
+  if (parts.kind === "dot") return [oriented([...parts.square])];
+  const { sides, wedges } = parts;
+  const out: Point[] = [];
+  const back: Point[] = [];
+  sides.forEach(([start, end], side) => {
+    extend(out, [start, end]);
+    const wedge = wedges[(side + 1) % wedges.length];
+    if (wedge === undefined) return;
+    extend(out, wedge.first ? beyond(wedge) : [wedge.corners[0]]);
+  });
+  for (let side = sides.length - 1; side >= 0; side--) {
+    const [, , end, start] = sides[side] ?? [];
+    extend(back, [end, start]);
+    const wedge = wedges[side];
+    if (wedge === undefined) continue;
+    extend(back, wedge.first ? [wedge.corners[0]] : beyond(wedge).reverse());
+  }
+  // Along the first long edges and back winds a rectangle the other way from
+  // its piece, which `oriented` turns round.
+  return (parts.closed ? [out, back] : [[...out, ...back]]).map((outline) =>
+    unclosed(outline).reverse(),
+  );
+}
+
+/** A wedge's corners out beyond the sides, between theirs on its edge. */
+function beyond(wedge: Wedge): Point[] {
+  return wedge.corners.slice(2, -1);
+}
+
+/** Adds points to an outline, but none that is the one before again. */
+function extend(
+  outline: Point[],
+  points: readonly (Point | undefined)[],
+): void {
+  for (const point of points) {
+    if (point === undefined) continue;
+    const last = outline.at(-1);
+    if (last?.[0] !== point[0] || last[1] !== point[1]) outline.push(point);
+  }
+}
+
+/** An outline without a last corner that is its first again. */
+function unclosed(outline: Point[]): Point[] {
+  const [first] = outline;
+  const last = outline.at(-1);
+  if (
+    outline.length > 1 &&
+    first?.[0] === last?.[0] &&
+    first?.[1] === last?.[1]
+  ) {
+    outline.pop();
+  }
+  return outline;
 }
 
 /**
