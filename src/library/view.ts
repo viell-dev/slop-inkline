@@ -941,7 +941,11 @@ export class SymbolLibraryView extends ItemView {
       }
       finish();
     };
-    const reread = (): void => {
+    /**
+     * Reads the file again, for the fields to take what it says, or to say why
+     * they cannot. `failed` hears if this read, still the latest, could not.
+     */
+    const reread = (failed?: () => void): void => {
       if (saving) {
         missed = true;
         return;
@@ -967,6 +971,7 @@ export class SymbolLibraryView extends ItemView {
           save.disabled = this.app.vault.getFileByPath(file.path) !== file;
           readFailure = reasonOf(failure, "The symbol could not be read.");
           showLines();
+          failed?.();
         },
       );
     };
@@ -1130,9 +1135,19 @@ export class SymbolLibraryView extends ItemView {
         // the save ran, which can have come after the write's read: the file
         // cut short or deleted again, or other text.
         renamed();
-        if (report.moved === undefined || missed) reread();
         if (report.focus === "fields" && readable) fields.focus();
         else input.focus();
+        if (report.moved === undefined || missed) {
+          // A read that closes the fields takes the focus out of them, to the
+          // name, which can still change; the fields are read-only now.
+          reread(() => {
+            const active = form.doc.activeElement;
+            const inFields =
+              active?.instanceOf(HTMLTextAreaElement) === true &&
+              form.contains(active);
+            if (inFields) input.focus();
+          });
+        }
       });
     });
     reread();

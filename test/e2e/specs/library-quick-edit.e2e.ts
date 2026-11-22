@@ -1609,6 +1609,8 @@ describe("Quick edit in the library", function () {
     expect(note).toContain("LATER");
     expect(note).not.toContain("THEIRS");
     expect(await area("reading").getValue()).toBe("KA");
+    // A read that takes the change in leaves the focus where it was.
+    expect((await focused()).field).toBe("reading");
     // So the next Save replaces what the file says now.
     await formButton("Save").click();
     await waitForClosed();
@@ -1624,6 +1626,8 @@ describe("Quick edit in the library", function () {
     expect(await errorLines()).toEqual([notWhole]);
     expect(await area("reading").getProperty("readOnly")).toBe(true);
     expect(await area("reading").getValue()).toBe("KA");
+    // Out of the fields, which cannot be typed in now, to the name.
+    expect((await focused()).tag).toBe("INPUT");
   });
 
   it("says a file deleted during a save refused for a change is gone", async function () {
@@ -1638,6 +1642,7 @@ describe("Quick edit in the library", function () {
     expect(await area("reading").getProperty("readOnly")).toBe(true);
     expect(await formButton("Save").isEnabled()).toBe(false);
     expect(await area("reading").getValue()).toBe("KA");
+    expect((await focused()).tag).toBe("INPUT");
     expect(await symbolFiles()).toEqual([]);
   });
 
