@@ -52,6 +52,12 @@ export class FileWatch {
   #keptDrawing: string | undefined;
   /** A change already asked or told about while editing. */
   #asked: string | undefined;
+  /**
+   * Whether the file was told of as gone since it was last there, so that a
+   * look that finds it still gone, as after each save that could not make it
+   * again, leaves the editor saying why that save failed (#414).
+   */
+  #goneTold = false;
 
   constructor(fingerprint?: string, drawing?: string) {
     this.#fingerprint = fingerprint;
@@ -99,10 +105,16 @@ export class FileWatch {
    * What to do about `reading`, made while editing, as after the vault says
    * the file changed. A change to the text alone is taken in, as it says nothing
    * of the drawing. Another change with no unsaved drawing to lose is taken in
-   * too; otherwise the editor asks, once for each change.
+   * too; otherwise the editor asks, once for each change. A file gone is told
+   * of once, until it is there again.
    */
   noticed(reading: Reading, dirty: boolean): Noticed {
-    if (reading.kind === "gone") return "gone";
+    if (reading.kind === "gone") {
+      if (this.#goneTold) return "nothing";
+      this.#goneTold = true;
+      return "gone";
+    }
+    this.#goneTold = false;
     if (
       !this.differs(reading.fingerprint) ||
       reading.fingerprint === this.#asked
@@ -151,6 +163,7 @@ export class FileWatch {
     this.#kept = undefined;
     this.#keptDrawing = undefined;
     this.#asked = undefined;
+    this.#goneTold = false;
     this.#version++;
   }
 

@@ -598,11 +598,22 @@ must keep released files readable and looking the same, as
   keeps what it holds, and the editor asks about it. **Unreleased:** so it does
   when the new file lands as the editor makes the deleted one again, a save
   whose own write stops part-way as it makes the file again says why, and a
-  folder that lands as it makes the symbol's folder again is saved into. A write
-  that lands once the file was replaced says so, and keeps what was typed. A
-  save waits for what was asked of the disk during its last look, and writes as
-  before once the disk stays busy, or where Obsidian's line of disk operations
-  cannot be seen
+  folder that lands as it makes the symbol's folder again is saved into. So it
+  does when the new file lands just after the save looks at the disk, as the
+  next thing asked of it, which Obsidian's own create would write over; a new
+  symbol whose file lands at its path just before or just after the look takes
+  the next number, a name typed for it is refused, and a file whose name differs
+  only in letter case, as on Windows and macOS, which the test stands in for by
+  having the disk's look not tell case apart, is named in the editor's message.
+  A unit test shows the window in a model of Obsidian's line, and that a save
+  writes only when nothing was asked since its look, or once the disk stays
+  busy, as before. A save whose own write stops part-way, as Obsidian's own file
+  system stands in for a full disk, says so, and the next save writes the symbol
+  whole over the part left, for a deleted symbol made again and for a new
+  symbol's first save. A write that lands once the file was replaced says so,
+  and keeps what was typed. A save waits for what was asked of the disk during
+  its last look, and writes as before once the disk stays busy, or where
+  Obsidian's line of disk operations cannot be seen
   ([write-identity.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/write-identity.e2e.ts)
   and
   [file-writes.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/notes/file-writes.test.ts)).
