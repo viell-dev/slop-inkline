@@ -79,12 +79,13 @@ export interface KeepingOptions {
    * `keepDraft` keeps the editor's draft at once, as before a step that a
    * draft must name, and returns whether it was kept. `holds` tells the
    * editor what the file holds where the write can still reject after the
-   * file changed: once a new symbol's file is made or written, before any
-   * later step that can fail, such as inserting its embed, and once a write
-   * is cut short, with what it left. The editor then goes on comparing the
-   * file with that. A write that resolves, the editor records itself, so an
-   * existing symbol's host calls `holds` only for a write cut short. `name`
-   * is what the name field holds, as typed, for the file to take as its name.
+   * file changed: once a new symbol's file is made, adopted, or written,
+   * before any later step that can fail, such as inserting its embed, and once
+   * a write is cut short, with what it left. The editor then goes on
+   * comparing the file with that. A write that resolves, the editor records
+   * itself, so an existing symbol's host calls `holds` only for a write cut
+   * short. `name` is what the name field holds, as typed, for the file to
+   * take as its name.
    * `check` looks at the file once more: the host calls it just before it
    * writes over a file, where no other save can come between them, and again
    * if another file took that one's place meanwhile. It writes nothing if
