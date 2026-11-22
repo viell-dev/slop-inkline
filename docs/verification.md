@@ -512,9 +512,11 @@ must keep released files readable and looking the same, as
   rename, however Obsidian's question is answered. The same holds in a table
   cell in Live Preview, with real keys, including when a change on disk takes
   the cell's editor away. A selection's text stays, one undo takes the symbol
-  back, and a discarded last drawing leaves the cursor after the run. A note in
-  Reading view or closed takes the symbol through its file, whose line endings
-  stay as they are while the place is found from either kind, in both
+  back, and a discarded last drawing leaves the cursor after the run. A key, a
+  shortcut Obsidian handles, a click, a paste, a cut, an input method's text, or
+  a drop in the note before the editor has finished closing keeps its place. A
+  note in Reading view or closed takes the symbol through its file, whose line
+  endings stay as they are while the place is found from either kind, in both
   directions, and **Insert existing symbol** places a symbol as the other routes
   do. A rename while the note holds unsaved text writes the new name once and
   keeps the text, however Obsidian's question is answered, in a plain note, two
