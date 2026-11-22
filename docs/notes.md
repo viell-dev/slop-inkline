@@ -144,8 +144,8 @@ A few rare notes are still read otherwise, as
 [#435](https://github.com/viell-dev/slop-inkline/issues/435) lists. In some, the
 trigger lists nothing where Reading view shows text. In others, it lists where
 Reading view shows nothing, as in a link reference definition or a footnote that
-the note does not refer to. None of the notes tried opens the list where Reading
-view shows code.
+the note does not refer to. In rare, unusual layouts, it may still list where
+Reading view shows code, though in far fewer notes than before.
 
 **Inkline: Insert existing symbol** opens the same list as a search, and inserts
 the chosen symbol at the cursor. It places the symbol as **Inkline: Insert

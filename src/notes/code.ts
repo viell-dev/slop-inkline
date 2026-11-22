@@ -32,7 +32,8 @@
 //   was blank or it starts a heading, a fence, a thematic break, or a `%%`
 //   block; a `$$` line goes on in it.
 // - The lines of an item numbered 0 to 9 with a `.`, whose text starts an odd
-//   number of columns in, lose a column more than that.
+//   number of columns in, lose a column more than that, but where a tab comes
+//   before the marker.
 // - Where a line of an item, before or after, has text indented by fewer
 //   columns than its lines lose, all of its lines lose no more than those, and
 //   what they hold reads accordingly: an earlier fence's end, heading, or
@@ -59,11 +60,14 @@
 //   own, with its address or its title on the next line.
 // - A footnote, `[^label]:` at a block's start after any spaces and tabs,
 //   holds the text after its label and goes on as a paragraph would, but over
-//   a `%%` line, and not over a definition or another footnote. After a blank
-//   line, or a line of white space alone, and after a first line with nothing
-//   at all after the label, but for an underline right under it, it goes on
-//   in a line indented four columns or more. Obsidian reads its text as a
-//   note of its own: on its first line, the text after the label, keeping the
+//   a `%%` line, and not over another footnote or a definition that reads in
+//   full. After a blank line, or a line of white space alone of four columns
+//   or fewer, and after a first line with nothing at all after the label, it
+//   goes on in a line indented four columns or more. An underline right under
+//   its first line makes it a heading's text; one under a later line of its
+//   first paragraph, not so indented, ends it before that line, which starts
+//   blocks of its own, as a heading's text. Obsidian reads its text as a note
+//   of its own: on its first line, the text after the label, keeping the
 //   columns of its indentation beyond four, so that eight make indented code;
 //   on the others, the text after up to four columns of indentation. It shows
 //   the text at the note's end, after the rest of the note's text.
@@ -169,9 +173,15 @@ type Leaf =
   /**
    * A footnote's text, from its `[^label]:` line; `indented` says that only a
    * line indented four columns or more goes on in it, as after a blank line,
-   * and `second` that the next line is the one after the label's.
+   * `paragraph` that its lines so far are those of its first paragraph, which
+   * an underline may end, and `first` that the last line read is its first.
    */
-  | { readonly kind: "footnote"; indented: boolean; second: boolean }
+  | {
+      readonly kind: "footnote";
+      indented: boolean;
+      paragraph: boolean;
+      first: boolean;
+    }
   /**
    * A link reference definition, which a title may follow on the next line,
    * or its address, where `address` says it has none yet.
@@ -452,7 +462,16 @@ function itemStart(text: string, from: number): ItemStart | undefined {
     indent += spaces;
     index += spaces;
   }
-  const extra = marker === "." && digits === 1 && indent % 2 === 1 ? 1 : 0;
+  // Obsidian takes the column after spaces before the marker, and not after
+  // `  \t`, by a rule that renders have not settled: after a tab, it is not
+  // taken, which at worst finds code where Obsidian shows text.
+  const extra =
+    marker === "." &&
+    digits === 1 &&
+    indent % 2 === 1 &&
+    !text.slice(from, lead).includes("\t")
+      ? 1
+      : 0;
   return { marker, interrupts, indent, dedent: indent + extra, text: index };
 }
 
@@ -582,20 +601,60 @@ function interruptsParagraph(
  * Whether `text` from `from`, a line that would go on in a footnote's text
  * without a blank line before it, ends the footnote: as it would end a
  * paragraph, but for a `%%` comment, which goes on in it, and a definition
- * or another footnote, which end it.
+ * or another footnote, which end it. `next` gives the line `offset` lines
+ * after it, where a definition may go on.
  */
 function interruptsFootnote(
   text: string,
   from: number,
   more: () => boolean,
+  next: (offset: number) => string | undefined,
 ): boolean {
   const first = firstMark(text, from);
   if (first === "%") return false;
   if (first === "[") {
     const rest = text.slice(from);
-    return definition.test(rest) || footnoteStart.test(rest);
+    return footnoteStart.test(rest) || definesInFull(rest, next);
   }
   return interruptsParagraph(text, from, more);
+}
+
+/** An address alone after a definition's label, or on the next line. */
+const addressAlone = new RegExp(
+  String.raw`^(?:${label}|[ \t]*)${address}[ \t]*$`,
+);
+/** The closing mark of a title that each opening mark opens. */
+const titleEnds: Readonly<Record<string, string>> = {
+  '"': '"',
+  "'": "'",
+  "(": ")",
+};
+
+/**
+ * Whether a footnote's line `rest`, from a definition's label, starts a
+ * definition that Obsidian reads in full there, which ends the footnote: an
+ * address on its line or the next, and no title opened on the line after an
+ * address alone that does not close on it. Where the definition does not
+ * read so, the line goes on in the footnote, as renders of such lines showed.
+ */
+function definesInFull(
+  rest: string,
+  next: (offset: number) => string | undefined,
+): boolean {
+  const found = definition.exec(rest);
+  if (found === null) return false;
+  let line = rest;
+  let offset = 1;
+  if (found.groups?.address === undefined) {
+    line = next(1) ?? "";
+    if (!definitionAddress.test(line)) return false;
+    offset = 2;
+  }
+  if (!addressAlone.test(line)) return true;
+  const after = next(offset) ?? "";
+  const lead = skipBlank(after, 0);
+  const end = titleEnds[after[lead] ?? ""];
+  return end === undefined || after.includes(end, lead + 1);
 }
 
 /**
@@ -711,8 +770,10 @@ class Blocks {
   /** Whether the last line read starts a list item. */
   opened = false;
   /**
-   * How often a list item's lines have come to lose fewer columns than some
-   * lines of it lost as they were read, which then read otherwise.
+   * How often a line has been read in a list item whose lines have come to
+   * lose fewer columns than lines of it read before lost, as after a line
+   * indented less: lines that reading the item again, as
+   * {@link Blocks.regrouped} does, may read otherwise.
    */
   lowered = 0;
 
@@ -741,17 +802,19 @@ class Blocks {
   /**
    * The outermost list item that holds the last line read, and whose lines
    * lose fewer columns, once a line of it indented less is read, before or
-   * after, than lines of it before have lost: Obsidian reads all of an
-   * item's lines before what they hold, so such a line changes how they all
-   * read. With its depth, the columns its lines lose, and the line that ends
-   * it, after its last. Reads on to the end of the items that hold the line.
+   * after, than lines of it before have lost, or than the lines after would
+   * lose as they are read: Obsidian reads all of an item's lines before what
+   * they hold, so such a line changes how they all read, those after the last
+   * line read too, which can end what it holds. With its depth, the columns
+   * its lines lose, and the line that ends it, after its last. Reads on to
+   * the end of the items that hold the line.
    */
   regrouped():
     | { readonly depth: number; readonly dedent: number; readonly end: number }
     | undefined {
     const containers = this.#containers;
     const outer = containers.findIndex(
-      (container) => container.kind === "item" && container.lost > 0,
+      (container) => container.kind === "item",
     );
     if (outer === -1) return undefined;
     const lowered = containers.some(
@@ -780,7 +843,7 @@ class Blocks {
       const item = containers[depth];
       const after = read[depth];
       if (item?.kind !== "item" || after?.kind !== "item") continue;
-      if (after.dedent < item.lost) {
+      if (after.dedent < Math.max(item.lost, item.dedent)) {
         return { depth, dedent: after.dedent, end: ends[depth] ?? index };
       }
     }
@@ -1128,8 +1191,11 @@ class Blocks {
    * goes on as a paragraph's does, but for what {@link interruptsFootnote}
    * says; where only a line indented four columns or more goes on in it, such
    * a line does, and the text goes on as a paragraph's after it. An underline
-   * right under the label's line makes that line a heading's text, and a
-   * delimiter row there makes a table in the footnote's text, not of it.
+   * right under its first line makes the footnote a heading's text. One under
+   * a later line of its first paragraph, not indented four columns or more,
+   * ends it before that line, which starts blocks of its own, as renders
+   * showed: a heading's text, or a list item's start. A delimiter row in its
+   * first paragraph makes a table in the footnote's text, not of it.
    */
   #goOnInFootnote(
     leaf: Extract<Leaf, { kind: "footnote" }>,
@@ -1138,14 +1204,17 @@ class Blocks {
     marked: number,
     more: () => boolean,
   ): LineKind {
-    const second = leaf.second;
-    leaf.second = false;
-    // A blank line, or one of white space alone, as Obsidian counts it.
+    const first = leaf.first;
+    leaf.first = false;
+    // A blank line, or one of white space alone, as Obsidian counts it, but
+    // for one of more than four columns, which goes on in it.
     if (isWhite(text, at)) {
+      if (columnsOf(text, at, text.length) > 4) return "aside";
       leaf.indented = true;
+      leaf.paragraph = false;
       return "aside";
     }
-    if (second && underline.test(text.slice(at))) {
+    if (first && leaf.paragraph && underline.test(text.slice(at))) {
       this.#leaf = none;
       return "underline";
     }
@@ -1158,7 +1227,12 @@ class Blocks {
       return "aside";
     }
     if (indentedLine(text, at)) return "aside";
-    if (interruptsFootnote(text, at, more)) {
+    const next = (offset: number) =>
+      this.#lookAhead(this.#index + offset, this.#containers.length);
+    if (
+      interruptsFootnote(text, at, more, next) ||
+      (leaf.paragraph && underline.test(next(1) ?? ""))
+    ) {
       this.#leaf = none;
       return this.#open(text, at, marked, more);
     }
@@ -1257,7 +1331,12 @@ class Blocks {
       // is no paragraph for one indented less to go on in. White space after
       // the label, or text, even indented as code, makes it take others too.
       const indented = at + footnote[0].length === text.length;
-      this.#leaf = { kind: "footnote", indented, second: true };
+      this.#leaf = {
+        kind: "footnote",
+        indented,
+        paragraph: true,
+        first: true,
+      };
       return "footnote";
     }
     const label = mark === "[" ? definition.exec(text.slice(at)) : null;
@@ -1336,8 +1415,9 @@ export function insideCodeBlock(lineAt: LineAt, line: number): boolean {
   const blocks = new Blocks(lineAt);
   let kind: LineKind = "none";
   for (let index = from; index <= line; index++) kind = blocks.read(index);
-  if (kind === "title")
+  if (kind === "title") {
     return calloutTitle(blocks.text, blocks.start).kind === "code";
+  }
   return kind === "code";
 }
 
@@ -1419,7 +1499,11 @@ function codeIn(
   if (kind === "title") {
     if (isOpen(tags)) return true;
     const title = calloutTitle(blocks.text, blocks.start);
-    return ch >= title.start && insideCode(title.lineAt, 0, ch - title.start);
+    // A footnote in the title shows after the whole note's text, as any.
+    const around = { ...within, outer: outer + 2 * blocks.depth };
+    return (
+      ch >= title.start && codeIn(title.lineAt, 0, ch - title.start, 0, around)
+    );
   }
   // Markers, or a comment the line's text follows.
   if (ch < blocks.start) return isOpen(tags);
@@ -1491,13 +1575,14 @@ function footnoteLine(
   if (!first) return { start: strip(text, 0, 4), indent: 0 };
   let start = footnoteStart.exec(text)?.[0].length ?? 0;
   let columns = 0;
-  for (; start < text.length; start++) {
+  while (start < text.length) {
     const char = text[start];
     if (char === " ") columns++;
     else if (char !== "\t") break;
     else if (columns < 4) columns = 4;
     else if (columns % 4 === 0) columns += 4;
     else break;
+    start++;
   }
   return { start, indent: Math.max(0, columns - 4) };
 }
