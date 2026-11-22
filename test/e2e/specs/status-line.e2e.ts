@@ -451,6 +451,7 @@ describe("The editor's status line", function () {
     expect(await strokeCount("001.ink.png")).toBe(2);
   });
 
+  // Closing makes no ink, as asked, so it does not wait for the question.
   it("closes Make ink behind a question that comes during a press, leaving it the focus", async function () {
     await insert();
     await pasteSquare();

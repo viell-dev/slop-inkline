@@ -2019,11 +2019,9 @@ export class InkEditorModal extends Modal {
 
   /**
    * Puts the focus on the surface, as after a control that had it hides or
-   * is disabled, which would leave it nowhere; not while a question is open,
-   * which keeps it, as Make ink closing behind one once the pointer is let go.
+   * is disabled, which would leave it nowhere.
    */
   #refocus(): void {
-    if (this.#questions.size > 0) return;
     this.#view?.canvas.focus({ preventScroll: true });
   }
 
