@@ -315,10 +315,12 @@ export interface EditorOptions {
   /** Whether its file held no strokes, so that its pixels opened instead. */
   readonly picture?: boolean;
   /**
-   * What leaving a new symbol's name empty does, as its field's placeholder
-   * says after "leave it": "for the next number" unless given.
+   * What leaving a new symbol's name empty does now, as its field's
+   * placeholder says after "leave it", or undefined for "for the next number".
+   * Asked as the field is made, once a draft is restored, and as a file is
+   * renamed, which can each change it.
    */
-  readonly unnamed?: string;
+  readonly unnamed?: () => string | undefined;
   /** What its file says about the symbol; a new one says nothing. */
   readonly text?: SymbolText;
   /** The document x to centre the surface on, in pixels. */
@@ -586,7 +588,8 @@ export class InkEditorModal extends Modal {
    * The base layer of {@link #recovered} that this editor could not show: one
    * it took from its file, or one it kept itself that cannot be decoded. Its
    * own draft goes on naming it while it stands in for that draft, so that
-   * nothing of it is dropped before a save.
+   * nothing of it is dropped before the first save starts writing: names the
+   * file it makes, or takes over the file a first save made.
    */
   #unshownBase: DraftBase | undefined;
   /** The picture to trace over, which this editor closes when done with it. */
@@ -1280,9 +1283,7 @@ export class InkEditorModal extends Modal {
       attr: {
         "aria-label": "Symbol name",
         placeholder:
-          this.#savedName === ""
-            ? `${this.#options.title}: name it, or leave it ${this.#options.unnamed ?? "for the next number"}`
-            : this.#savedName,
+          this.#savedName === "" ? this.#unnamedPlaceholder : this.#savedName,
         spellcheck: "false",
         autocomplete: "off",
       },
@@ -1379,6 +1380,17 @@ export class InkEditorModal extends Modal {
     const path = this.#options.file?.()?.path;
     const file = path?.slice(path.lastIndexOf("/") + 1);
     return file === undefined ? undefined : symbolStem(file);
+  }
+
+  /** What the name field says while the symbol has no name yet. */
+  get #unnamedPlaceholder(): string {
+    return `${this.#options.title}: name it, or leave it ${this.#options.unnamed?.() ?? "for the next number"}`;
+  }
+
+  /** Shows what leaving the name empty does now, while it has none. */
+  #showUnnamed(): void {
+    if (this.#savedName !== "" || this.#nameField === undefined) return;
+    this.#nameField.placeholder = this.#unnamedPlaceholder;
   }
 
   /**
@@ -2827,7 +2839,8 @@ export class InkEditorModal extends Modal {
     const drafts = this.#options.drafts;
     if (drafts === undefined || this.#retired) return true;
     // While a save runs, the file holds the drawing as it was or as the save
-    // writes it, so the draft is kept, and keeps its own base layer.
+    // writes it, so the draft is kept, and keeps its own base layer, but for
+    // one that stands in for a draft opened as a new symbol, as #draft says.
     const pending = this.#saving !== undefined;
     if (!pending && !this.#unsaved) {
       this.#forgetDraft();
@@ -2861,7 +2874,9 @@ export class InkEditorModal extends Modal {
    * This editor's drawing as its draft for `target`. While the file may hold
    * the drawing as it was or as a save writes it, the draft is `pending`, and
    * keeps its own base layer, so that it does not depend on which version the
-   * file holds.
+   * file holds. A draft that stands in for one opened as a new symbol, as
+   * below, names instead the base layer that one named and this editor could
+   * not show, until the first save starts writing.
    */
   #draft(target: DraftTarget, pending: boolean): Draft {
     const { document, saved } = this.#session;
@@ -2910,7 +2925,9 @@ export class InkEditorModal extends Modal {
    * it has begun, which nothing takes back, and the draft names the file's
    * path from before it. The draft is kept again for the file where it is now,
    * on its own base layer and with the time it was kept, so that it depends on
-   * nothing the file holds and expires as it would have. Whether the file
+   * nothing the file holds and expires as it would have; or, standing in for a
+   * draft opened as a new symbol, on the base layer that draft named, as
+   * {@link #draft} says. Whether the file
    * holds everything it does is for the next editor of the file to tell, as it
    * offers drafts ({@link #draftToOffer}): the file can change at any time
    * after the save, and this editor follows it no more.
@@ -3128,6 +3145,8 @@ export class InkEditorModal extends Modal {
       this.#showText(true);
     }
     drafts.restored?.(draft);
+    // Restoring can change what an empty name keeps.
+    this.#showUnnamed();
     // Still held: offered to no other editor until this one's own replaces it.
     this.#offered = undefined;
     this.#replacing = draft.id;
@@ -3205,6 +3224,8 @@ export class InkEditorModal extends Modal {
         if (file.path === this.#options.file?.()?.path) {
           this.#named(this.#savedName);
         }
+        // So does a file a first save made, which an empty name keeps.
+        this.#showUnnamed();
         touched(file, oldPath);
       }),
     ];

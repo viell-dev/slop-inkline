@@ -754,6 +754,14 @@ closed on its first point with Toggle fill on is two strokes, as a filled
 ellipse is: a stroke of kind `"fill"` through the same points, and then the
 line.
 
+**Unreleased:** Inkline fills a polygon's shape in one path, though not as its
+pieces: it fills the outlines around them, which go round the wedge on the outer
+side of each turn and through the corner point on the inner side. They cover
+what the pieces cover, without the edges where two pieces meet, so no seam shows
+there. Inkline 1.0.2 and earlier filled the pieces themselves, and a symbol they
+saved can hold such a seam in its image, at a corner of a polygon drawn with a
+large brush, until it is saved again.
+
 A file says nothing of Inkline's grid, which belongs to the note's font and the
 Grid size setting rather than to the symbol. A stroke's points are stored
 exactly, so a stroke Shift placed stays where it was. On opening a symbol again,

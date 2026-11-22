@@ -69,8 +69,8 @@ Recover drafts** to open it again.
 **"The unsaved drawing's base layer cannot be read, so only its strokes came
 back."** **Unreleased:** a draft opened as a new symbol kept a picture to draw
 over, which the vault's local storage no longer holds whole. The strokes are in
-the editor, without that picture. The draft keeps the picture until you save,
-should it be read another time.
+the editor, without that picture. The draft keeps the picture, should it be read
+another time, until a save starts writing the new symbol.
 
 **"Opened as a picture to draw over, as this file holds no strokes …"** The file
 holds a picture but no strokes to edit, as every symbol saved before 0.9.2 does.

@@ -298,6 +298,17 @@ must keep released files readable and looking the same, as
   unfilled as one step, and that a reopened drawing's grid goes by the shape as
   if unfilled
   ([session.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/editor/session.test.ts)).
+- **Unreleased:** A polygon's corner, at nine turns from 25° to 165° and with
+  each brush from S to XL, drawn as saving draws it and as the editor shows it
+  enlarged, has every pixel that lies wholly inside its shape fully inked: no
+  seam shows where the parts its line is drawn in meet, beside where its sides'
+  inner edges cross excepted
+  ([#422](https://github.com/viell-dev/slop-inkline/issues/422))
+  ([polygon.e2e.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/e2e/specs/polygon.e2e.ts)).
+  Unit tests pin that the outlines the renderer fills wind round every point as
+  often as the pieces the format defines cover it, share no edge, and add no
+  corner, on corners on one line too
+  ([outline.test.ts](https://github.com/viell-dev/slop-inkline/blob/main/test/unit/ink/outline.test.ts)).
 - **Unreleased:** A path placed with the mouse and the keys, of corners clicked
   and smooth points dragged out, on the grid with Shift and off it, is saved as
   one stroke without a kind through points along its curve no more than a pixel
@@ -721,14 +732,17 @@ must keep released files readable and looking the same, as
   symbol renamed elsewhere while the readings were written reads no open note
   first; why the fields are closed shows above a refused name's reason,
   whichever came first; and a read begun before a save that found the file
-  changed is set aside, so that the row says what the file says now. Quick edit
-  fits the narrowest sidebar with a long name, and the list and Quick edit keep
-  their names for screen readers with no tooltip over their empty space. The
-  row's own Quick edit says that its form is open, and closes it as Cancel does,
-  by click, Enter, or Esc, dropping what was typed and keeping the focus, and
-  only the first click of a double-click opens or closes it. A row closed by Esc
-  during a press on its Quick edit keeps its form until the press ends, and that
-  form saves nothing; the release, a click on the same Quick edit, opens no
+  changed is set aside, so that the row says what the file says now.
+  **Unreleased:** a change that reaches the file during a save that found it
+  changed, other text, the file cut short, or the file deleted, is taken in once
+  the save ends, with the focus on the name when that closes the fields. Quick
+  edit fits the narrowest sidebar with a long name, and the list and Quick edit
+  keep their names for screen readers with no tooltip over their empty space.
+  The row's own Quick edit says that its form is open, and closes it as Cancel
+  does, by click, Enter, or Esc, dropping what was typed and keeping the focus,
+  and only the first click of a double-click opens or closes it. A row closed by
+  Esc during a press on its Quick edit keeps its form until the press ends, and
+  that form saves nothing; the release, a click on the same Quick edit, opens no
   second form, and nor does another row's Quick edit from the keyboard
   meanwhile. It is unavailable while Cancel is, during a save. A save left with
   it renames nothing, shown with Esc while the write waits, or says that the
