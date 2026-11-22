@@ -11,6 +11,7 @@ const notePath = "Notes/Day.md";
 /** A file, as far as embedFor reads one. */
 const fileAt = (path: string): TFile =>
   // embedFor reads only a file's path, and compares files by identity.
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-class-instance-assignment -- a fake: unit tests import Obsidian's classes as types only
   ({ path }) as TFile;
 
 /**
@@ -37,6 +38,7 @@ function appWith(
     },
   };
   // embedFor calls only these two of App's methods.
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-class-instance-assignment -- a fake: unit tests import Obsidian's classes as types only
   return { app: fake as App, resolved };
 }
 
