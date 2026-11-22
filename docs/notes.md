@@ -323,6 +323,9 @@ name. A change that reaches the file at the very moment Obsidian moves it, such
 as one by another app, is not refused but reported: the row says what happened
 and where the symbol is, as
 [the limits](./limits.md#a-file-changed-as-obsidian-renames-it) describe.
+**Unreleased:** a symbol that has changed in one of those ways by the time the
+rename starts, as while Quick edit wrote its readings and translations, is
+refused at once, before any note is saved.
 
 A rename can take a while in a much used symbol, as Obsidian updates each note
 that links to it, and for as long as you take over any rename's question about
@@ -390,7 +393,10 @@ typed in follows it. One you have typed in keeps your text, and a line says what
 saving will replace. A name you have not changed follows a rename elsewhere, so
 that saving the readings and translations keeps that name. On a file whose
 readings and translations cannot be read when Quick edit opens, their fields
-stay closed, and the name can still change.
+stay closed, and the name can still change. **Unreleased:** the row says why
+they are closed for as long as they are, above what a save said, as when a name
+is refused, and so it does when the file stops being readable while the row is
+open.
 
 ## Export a note to PDF
 
@@ -407,4 +413,8 @@ symbol's box at some zoom levels, Obsidian's own PDF view among them. It comes
 from how the browser Obsidian is built on writes a symbol's colour into the PDF,
 not from a mark in the symbol, and it was not seen when the PDF was drawn at 300
 dots per inch or more. Symbols in stored colour show no such line
-([#255](https://github.com/viell-dev/slop-inkline/issues/255)).
+([#255](https://github.com/viell-dev/slop-inkline/issues/255)). **Unreleased:**
+fixed: in text colour, each symbol prints from a copy of its own pixels in the
+colour its text prints in, the way a symbol in stored colour prints, so no line
+shows. Exporting waits for the copies while they are being made; a symbol whose
+copy has got no further for ten seconds, or cannot be made, prints as before.

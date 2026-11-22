@@ -3,15 +3,22 @@ import {
   followName,
   leftNotice,
   QuickSave,
+  reasonOf,
   reportSave,
+  rowLines,
   waitLine,
   type Names,
   type Outcome,
   type Step,
-  type Told,
   type Work,
 } from "../../../src/library/quick-edit.ts";
-import { RenameDisturbed, TextMoved } from "../../../src/notes/file-writes.ts";
+import { PngError } from "../../../src/format/png.ts";
+import {
+  RenameDisturbed,
+  TextMoved,
+  unreadableText,
+  type SaveWait,
+} from "../../../src/notes/file-writes.ts";
 
 /**
  * A step that a test settles by hand: it records when it starts, can say that
@@ -22,7 +29,7 @@ class Hand {
   stopped = false;
   /** Whether it has gone to the vault, so that stopping it is too late. */
   reached = false;
-  told: Told | undefined;
+  told: SaveWait | undefined;
   #resolve: () => void = () => undefined;
   #reject: (error: unknown) => void = () => undefined;
   readonly done = new Promise<void>((resolve, reject) => {
@@ -30,7 +37,7 @@ class Hand {
     this.#reject = reject;
   });
 
-  readonly start = (told: Told): Work => {
+  readonly start = (told: SaveWait): Work => {
     this.started = true;
     this.told = told;
     return {
@@ -62,10 +69,8 @@ const names: Names = { was: "gate", typed: "arch", now: "arch" };
 /** An outcome, as a save of both parts that did what was asked. */
 function outcome(parts: Partial<Outcome> = {}): Outcome {
   return {
-    writing: true,
     renaming: true,
     written: true,
-    renamed: true,
     waited: false,
     left: undefined,
     failure: undefined,
@@ -99,7 +104,7 @@ describe("QuickSave", () => {
     const running = save.run();
     await settle();
     rename.finish();
-    expect(await running).toEqual(outcome({ writing: false, written: false }));
+    expect(await running).toEqual(outcome({ written: false }));
   });
 
   it("renames nothing after a write that failed", async () => {
@@ -115,7 +120,6 @@ describe("QuickSave", () => {
     expect(await running).toEqual(
       outcome({
         written: false,
-        renamed: false,
         failure: { step: "write", error: failure },
       }),
     );
@@ -135,7 +139,7 @@ describe("QuickSave", () => {
     await settle();
     rename.fail(failure);
     expect(await running).toEqual(
-      outcome({ renamed: false, failure: { step: "rename", error: failure } }),
+      outcome({ failure: { step: "rename", error: failure } }),
     );
   });
 
@@ -201,7 +205,7 @@ describe("QuickSave", () => {
     expect(save.leave()?.stopped).toBe(false);
     write.finish();
     const ended = await running;
-    expect(ended).toMatchObject({ written: true, renamed: false });
+    expect(ended.written).toBe(true);
     expect(ended.failure).toBe(undefined);
     expect(rename.started).toBe(false);
   });
@@ -228,7 +232,6 @@ describe("QuickSave", () => {
     expect(save.leave()).toBe(undefined);
     expect(await running).toMatchObject({
       written: true,
-      renamed: false,
       failure: { step: "rename" },
     });
   });
@@ -296,11 +299,7 @@ describe("reportSave", () => {
   );
 
   it("closes, and says nothing, for a save that did what was asked", () => {
-    for (const parts of [
-      {},
-      { writing: false, written: false },
-      { renaming: false, renamed: false },
-    ]) {
+    for (const parts of [{}, { written: false }, { renaming: false }]) {
       expect(reportSave(outcome(parts), names, true)).toMatchObject({
         closes: true,
         notice: undefined,
@@ -312,10 +311,8 @@ describe("reportSave", () => {
     const said = (parts: Partial<Outcome>) =>
       reportSave(outcome({ waited: true, ...parts }), names, true).notice;
     expect(said({})).toBe("Saved gate and renamed it to arch.");
-    expect(said({ writing: false, written: false })).toBe(
-      "Renamed gate to arch.",
-    );
-    expect(said({ renaming: false, renamed: false })).toBe("Saved gate.");
+    expect(said({ written: false })).toBe("Renamed gate to arch.");
+    expect(said({ renaming: false })).toBe("Saved gate.");
   });
 
   it("keeps the row for a failed write, and says that nothing was renamed", () => {
@@ -324,11 +321,7 @@ describe("reportSave", () => {
       error: new Error("the disk is full"),
     };
     expect(
-      reportSave(
-        outcome({ written: false, renamed: false, failure }),
-        names,
-        true,
-      ),
+      reportSave(outcome({ written: false, failure }), names, true),
     ).toEqual({
       closes: false,
       lines: ["the disk is full", "Nothing was renamed."],
@@ -338,7 +331,7 @@ describe("reportSave", () => {
     });
     expect(
       reportSave(
-        outcome({ renaming: false, written: false, renamed: false, failure }),
+        outcome({ renaming: false, written: false, failure }),
         names,
         true,
       ).lines,
@@ -349,11 +342,7 @@ describe("reportSave", () => {
     const text = { reading: ["theirs"], translation: [] };
     const failure = { step: "write" as const, error: new TextMoved(text) };
     expect(
-      reportSave(
-        outcome({ written: false, renamed: false, failure }),
-        names,
-        true,
-      ),
+      reportSave(outcome({ written: false, failure }), names, true),
     ).toMatchObject({
       closes: false,
       lines: ["The file changed meanwhile, so nothing was saved or renamed."],
@@ -362,7 +351,7 @@ describe("reportSave", () => {
     });
     expect(
       reportSave(
-        outcome({ renaming: false, written: false, renamed: false, failure }),
+        outcome({ renaming: false, written: false, failure }),
         names,
         true,
       ),
@@ -374,9 +363,7 @@ describe("reportSave", () => {
       step: "rename" as const,
       error: new Error("the file was renamed to synced.ink.png meanwhile"),
     };
-    expect(
-      reportSave(outcome({ renamed: false, failure }), names, true),
-    ).toEqual({
+    expect(reportSave(outcome({ failure }), names, true)).toEqual({
       closes: false,
       lines: [
         "The readings and translations are saved, but the symbol was not renamed:",
@@ -387,11 +374,7 @@ describe("reportSave", () => {
       focus: "name",
     });
     expect(
-      reportSave(
-        outcome({ writing: false, written: false, renamed: false, failure }),
-        names,
-        true,
-      ).lines,
+      reportSave(outcome({ written: false, failure }), names, true).lines,
     ).toEqual(["the file was renamed to synced.ink.png meanwhile"]);
   });
 
@@ -399,7 +382,6 @@ describe("reportSave", () => {
     expect(
       reportSave(
         outcome({
-          renamed: false,
           failure: { step: "rename", error: disturbed },
         }),
         names,
@@ -415,7 +397,6 @@ describe("reportSave", () => {
     expect(
       notice({
         written: false,
-        renamed: false,
         failure: { step: "write", error: why },
       }),
     ).toBe(
@@ -425,28 +406,22 @@ describe("reportSave", () => {
       notice({
         renaming: false,
         written: false,
-        renamed: false,
         failure: { step: "write", error: why },
       }),
     ).toBe(
       "The readings and translations of gate were not saved: Inkline was disabled",
     );
-    expect(
-      notice({ renamed: false, failure: { step: "rename", error: why } }),
-    ).toBe(
+    expect(notice({ failure: { step: "rename", error: why } })).toBe(
       "Saved gate. gate could not be renamed to arch: Inkline was disabled",
     );
     expect(
       notice({
-        writing: false,
         written: false,
-        renamed: false,
         failure: { step: "rename", error: why },
       }),
     ).toBe("gate could not be renamed to arch: Inkline was disabled");
     expect(
       notice({
-        renamed: false,
         failure: { step: "rename", error: disturbed },
       }),
     ).toBe(`Saved gate. Renaming gate to arch: ${disturbed.message}`);
@@ -457,7 +432,6 @@ describe("reportSave", () => {
       reportSave(
         outcome({
           written: false,
-          renamed: false,
           left: {
             step: "write",
             stopped: true,
@@ -473,7 +447,6 @@ describe("reportSave", () => {
     expect(
       reportSave(
         outcome({
-          renamed: false,
           left: {
             step: "rename",
             stopped: true,
@@ -495,7 +468,6 @@ describe("reportSave", () => {
     expect(
       reportSave(
         outcome({
-          renamed: false,
           waited: true,
           left: {
             step: "write",
@@ -526,7 +498,6 @@ describe("reportSave", () => {
     expect(
       reportSave(
         outcome({
-          renamed: false,
           waited: true,
           left: {
             step: "rename",
@@ -542,6 +513,38 @@ describe("reportSave", () => {
     ).toBe(
       "Saved gate. gate could not be renamed to arch: the drive went away",
     );
+  });
+});
+
+describe("rowLines", () => {
+  const notWhole = "This file is not a whole PNG, so it cannot hold text.";
+  const refused = "the vault's top folder already has a symbol named TOWER";
+
+  it("says what a save said when the file was read", () => {
+    expect(rowLines(undefined, [])).toEqual([]);
+    expect(rowLines(undefined, [refused])).toEqual([refused]);
+  });
+
+  it("says why the file could not be read first, above what a save said", () => {
+    expect(rowLines(notWhole, [])).toEqual([notWhole]);
+    expect(rowLines(notWhole, [refused])).toEqual([notWhole, refused]);
+  });
+
+  it("says a reason once when the save gave it too", () => {
+    expect(rowLines(notWhole, [notWhole, "Nothing was renamed."])).toEqual([
+      notWhole,
+      "Nothing was renamed.",
+    ]);
+  });
+
+  it("says once what a save and a read say of a file cut short, from one source", () => {
+    // Both the write and the row's read give this, so it is the same line.
+    const reason = reasonOf(unreadableText(new PngError("cut short")), "");
+    expect(reason).toBe(notWhole);
+    expect(rowLines(reason, [reason, "Nothing was renamed."])).toEqual([
+      reason,
+      "Nothing was renamed.",
+    ]);
   });
 });
 

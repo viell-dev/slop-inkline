@@ -13,11 +13,13 @@ import {
   zigzag,
 } from "../support/editing.ts";
 import {
+  countNoteReads,
   draw,
   editorOpen,
   hold,
   holdIndex,
   letGo,
+  noteReads,
   noteText,
   renamePastHold,
   undoStubs,
@@ -145,6 +147,23 @@ describe("The editor", function () {
       });
     }
 
+    it("refuses the rename of a symbol renamed elsewhere while its drawing is written before it reads the open notes", async function () {
+      // #279: the refusal waited for the notes to be read and saved first.
+      await saveHeld("write");
+      await browser.executeObsidian(async ({ app }) => {
+        const file = app.vault.getFileByPath("001.ink.png");
+        if (file === null) throw new Error("no 001");
+        await app.vault.rename(file, "elsewhere.ink.png");
+      });
+      await countNoteReads("Editor.md");
+      await letGo();
+      await waitForNotice(
+        "001.ink.png is saved, but could not be renamed: the file was renamed to elsewhere.ink.png meanwhile",
+      );
+      expect(await noteReads()).toBe(0);
+      expect(await strokeCount("elsewhere.ink.png")).toBe(2);
+    });
+
     it("renames nothing once Inkline is disabled while open notes are saved", async function () {
       await saveHeld("read");
       await obsidianPage.disablePlugin("inkline");
@@ -213,6 +232,12 @@ describe("The editor", function () {
         expect(await strokeCount("elsewhere.ink.png")).toBe(2);
         // Said once the save, and anything it does to the note, is over.
         await waitForStatus("Saved, but not renamed");
+        // A rename refused before it saves the notes leaves the embed to reach
+        // the file by Obsidian's own save, two seconds after it went in.
+        await browser.waitUntil(
+          async () => (await noteOnDisk("Editor.md")) === (await noteText()),
+          { timeoutMsg: "the note's file never held what its editor did" },
+        );
         // As every other link to the file is, by whichever way it went.
         expect(await noteOnDisk("Editor.md")).toContain("![[001.ink.png]]");
         expect(await noteText()).toContain("![[001.ink.png]]");
