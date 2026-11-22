@@ -405,6 +405,12 @@ export class SymbolWrites<File extends VaultFile> {
    * symbol-paths.ts's `pathIn`, with Obsidian's `normalizePath`.
    */
   readonly #pathIn: (folder: string, name: string) => string;
+  /**
+   * How long {@link SymbolWrites.save} goes on before `waiting` hears that it
+   * waits for Obsidian: the plugin's wait, as file-writes.ts's `stalledAfter`
+   * says.
+   */
+  readonly #stalledAfter: () => number;
 
   /**
    * Every write over a symbol's file, from the library and the editor alike, so
@@ -442,12 +448,14 @@ export class SymbolWrites<File extends VaultFile> {
     unloaded: AbortSignal,
     refreshed: (file: File) => Promise<void>,
     pathIn: (folder: string, name: string) => string,
+    stalledAfter: () => number,
   ) {
     this.#vault = vault;
     this.#folder = folder;
     this.#unloaded = unloaded;
     this.#refreshed = refreshed;
     this.#pathIn = pathIn;
+    this.#stalledAfter = stalledAfter;
   }
 
   /** The vault's file at `path`, or where `#listedPaths` puts it. */
@@ -633,6 +641,6 @@ export class SymbolWrites<File extends VaultFile> {
       await this.#refreshed(written);
       return written;
     };
-    return watchSave(write(), waiting);
+    return watchSave(write(), waiting, this.#stalledAfter());
   }
 }

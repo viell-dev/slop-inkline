@@ -232,6 +232,17 @@ and shows a notice, where earlier versions moved the file to `.trash` instead
 ([#257](https://github.com/viell-dev/slop-inkline/issues/257)). A test about the
 system's trash itself would set the option back to `system`, and say why.
 
+Inkline says that a save or a rename is waiting for Obsidian once it has waited
+five seconds, `stalledAfter` in `src/notes/file-writes.ts`, which each load of
+the plugin starts from in its own `stalledAfter` field. A test of what is said
+then shortens that field on the running plugin to two seconds, with
+`setStalledAfter(shortStall)` from `test/e2e/support/stalls.ts`, rather than
+wait five seconds each time, and `startOver()` puts it back. It waits for the
+message with `waitForStallSaid()`, which fails unless the message comes within
+five seconds of the test asking for the save or the rename, so that a watch the
+shorter wait does not reach fails the test rather than only slowing it. The
+field is not a setting: nothing in Inkline changes it.
+
 `test/e2e/manual/brat.e2e.ts` checks installing and updating through BRAT
 against the published releases, on both default Obsidian versions. It stays
 outside the suite and gates no release, as it needs BRAT's own release and

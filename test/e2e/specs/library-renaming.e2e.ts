@@ -1,5 +1,4 @@
 import { browser, expect } from "@wdio/globals";
-import { stalledAfter } from "../../../src/notes/file-writes.ts";
 import { loadModules } from "../support/browser.ts";
 import {
   addUnsaved,
@@ -21,6 +20,11 @@ import {
   waitForTop,
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
+import {
+  setStalledAfter,
+  shortStall,
+  waitForStallSaid,
+} from "../support/stalls.ts";
 import { showLibrary } from "../support/symbol-text-library.ts";
 import {
   bytesOf,
@@ -92,14 +96,21 @@ async function usedSymbol(count = 1): Promise<void> {
   }
 }
 
-/** Has the page note down anything the form says of a wait, however brief. */
+/**
+ * Has the page note down anything the form says of a wait, however brief,
+ * and when, by the page's clock, it first said it.
+ */
 async function watchForWait(): Promise<void> {
   await browser.execute(() => {
     Reflect.deleteProperty(window, "inklineSawWait");
     const watcher = new MutationObserver(() => {
       const shown = document.querySelector(".inkline-save-wait");
-      if (shown !== null && shown.textContent !== "") {
-        Reflect.set(window, "inklineSawWait", true);
+      if (
+        shown !== null &&
+        shown.textContent !== "" &&
+        !Reflect.has(window, "inklineSawWait")
+      ) {
+        Reflect.set(window, "inklineSawWait", performance.now());
       }
     });
     watcher.observe(document.body, {
@@ -113,11 +124,22 @@ async function watchForWait(): Promise<void> {
 
 /** Whether the form has said anything of a wait, and stops listening. */
 async function sawWait(): Promise<boolean> {
-  return browser.execute(() => {
+  return (await waitSaidAt()) !== undefined;
+}
+
+/**
+ * When, by the page's clock, the form first said anything of a wait, or
+ * undefined if it has not, and stops listening.
+ */
+async function waitSaidAt(): Promise<number | undefined> {
+  // WebDriver hands back undefined as null.
+  const at = await browser.execute((): number | null => {
     const watcher: unknown = Reflect.get(window, "inklineWaitWatcher");
     if (watcher instanceof MutationObserver) watcher.disconnect();
-    return Reflect.get(window, "inklineSawWait") === true;
+    const seen: unknown = Reflect.get(window, "inklineSawWait");
+    return typeof seen === "number" ? seen : null;
   });
+  return at ?? undefined;
 }
 
 describe("Renaming in the symbol library", function () {
@@ -498,21 +520,21 @@ describe("Renaming in the symbol library", function () {
   });
 
   describe("when Obsidian does not finish a rename", function () {
-    /** Long enough for a rename to have waited, with a margin for a busy machine. */
-    const waited = stalledAfter + 15_000;
-
     const form = () => browser.$(".inkline-library-edit-form");
     const formButton = (text: "Save" | "Cancel") => form().$(`button=${text}`);
     const waitLine = () => form().$(".inkline-save-wait");
 
-    /** Waits for the form to say its rename waits, and returns what it says. */
-    async function waitForWait(): Promise<string> {
-      await browser.waitUntil(async () => (await waitLine().getText()) !== "", {
-        timeout: waited,
-        timeoutMsg: "the form never said its rename waits",
-      });
-      return waitLine().getText();
+    /**
+     * Waits for the form to say its rename waits, asked for at `since`, and
+     * returns what it says.
+     */
+    async function waitForWait(since: number): Promise<string> {
+      return waitForStallSaid(waitLine, since);
     }
+
+    beforeEach(async function () {
+      await setStalledAfter(shortStall);
+    });
 
     afterEach(async function () {
       // A rename left waiting would hold up the vault's reset.
@@ -530,7 +552,7 @@ describe("Renaming in the symbol library", function () {
       await waitForTop("Just once");
       // Obsidian has moved the file by now, and asks only about the links.
       expect(await symbolFiles()).toEqual(["lintel.ink.png"]);
-      await browser.pause(stalledAfter + 1500);
+      await browser.pause(shortStall + 1500);
       expect(await waitLine().getText()).toBe("");
       expect(await formButton("Cancel").isEnabled()).toBe(false);
       await clickTop("Just once");
@@ -542,16 +564,22 @@ describe("Renaming in the symbol library", function () {
 
     it("says nothing of a slow rename that keeps moving, however long it takes", async function () {
       // Longer than the wait, a note at a time, as a much used symbol takes.
-      const notes = 5;
+      // Here the wait is twice the short one, so that each note comes 3.2 s
+      // before it would be up: room for a busy machine to hold a note back,
+      // which is all that could make this rename look stopped.
+      const wait = shortStall * 2;
+      const apart = 800;
+      const notes = 6;
+      await setStalledAfter(wait);
       await usedSymbol(notes);
       await showLibrary();
       await beginRename("gate", "lintel");
       await watchForWait();
-      await delayVault("process", (stalledAfter * 2) / notes, "before");
+      await delayVault("process", apart, "before");
       await browser.keys(["Enter"]);
       await quickEditNameField().waitForExist({
         reverse: true,
-        timeout: stalledAfter * 3 + 15_000,
+        timeout: notes * apart + 15_000,
       });
       expect(await sawWait()).toBe(false);
       for (let at = 0; at < notes; at++) {
@@ -564,9 +592,10 @@ describe("Renaming in the symbol library", function () {
       await showLibrary();
       await beginRename("gate", "lintel");
       await hold("move");
+      const asked = Date.now();
       await browser.keys(["Enter"]);
       await waitForHeld();
-      const said = await waitForWait();
+      const said = await waitForWait(asked);
       expect(said).toContain("Waiting for Obsidian to finish renaming a file.");
       expect(said).toContain("goes on by itself when it does");
       expect(said).toContain("copy the name you typed and restart Obsidian");
@@ -604,10 +633,11 @@ describe("Renaming in the symbol library", function () {
       await showLibrary();
       await beginRename("gate", "lintel");
       await hold("move");
+      const asked = Date.now();
       // By the mouse, as Save takes the focus with it when it goes off.
       await formButton("Save").click();
       await waitForHeld();
-      await waitForWait();
+      await waitForWait(asked);
       await browser.keys(["Escape"]);
       await waitForName("gate");
       await waitForNotice("may still finish");
@@ -622,9 +652,10 @@ describe("Renaming in the symbol library", function () {
       await showLibrary();
       await beginRename("gate", "lintel");
       await hold("move");
+      const asked = Date.now();
       await browser.keys(["Enter"]);
       await waitForHeld();
-      await waitForWait();
+      await waitForWait(asked);
       await formButton("Cancel").click();
       await waitForName("gate");
       await letGo("the drive went away");
@@ -639,9 +670,10 @@ describe("Renaming in the symbol library", function () {
       await showLibrary();
       await beginRename("gate", "lintel");
       await hold("move");
+      const asked = Date.now();
       await browser.keys(["Enter"]);
       await waitForHeld();
-      await waitForWait();
+      await waitForWait(asked);
       await formButton("Cancel").click();
       await waitForName("gate");
       await browser.executeObsidian(async ({ app }) => {
@@ -662,9 +694,10 @@ describe("Renaming in the symbol library", function () {
       await showLibrary();
       await beginRename("gate", "lintel");
       await hold("move");
+      const asked = Date.now();
       await browser.keys(["Enter"]);
       await waitForHeld();
-      await waitForWait();
+      await waitForWait(asked);
       await formButton("Cancel").click();
       await waitForName("gate");
       await waitForNotice("may still finish");
@@ -686,9 +719,10 @@ describe("Renaming in the symbol library", function () {
       await showLibrary();
       await beginRename("gate", "lintel");
       await hold("move");
+      const asked = Date.now();
       await browser.keys(["Enter"]);
       await waitForHeld();
-      await waitForWait();
+      await waitForWait(asked);
       await letGo("the drive went away");
       await waitForError("the drive went away");
       expect(await waitLine().getText()).toBe("");
@@ -707,6 +741,7 @@ describe("Renaming in the symbol library", function () {
       await showLibrary();
       await beginRename("gate", "lintel");
       await hold("save");
+      const asked = Date.now();
       // The note saves itself two seconds after an edit, which on a busy
       // machine can come before the rename's save: the rename then finds
       // nothing to save, or finds that save held, and on Obsidian 1.13 a save
@@ -730,7 +765,7 @@ describe("Renaming in the symbol library", function () {
         form.requestSubmit();
       }, "Opening.\n");
       await waitForHeld();
-      await waitForWait();
+      await waitForWait(asked);
       await formButton("Cancel").click();
       await waitForName("gate");
       expect(await browser.$(".notice*=may still finish").isExisting()).toBe(
@@ -751,9 +786,10 @@ describe("Renaming in the symbol library", function () {
       await showLibrary();
       await beginRename("gate", "lintel");
       await holdIndex();
+      const asked = Date.now();
       await browser.keys(["Enter"]);
       await waitForIndexWait();
-      const said = await waitForWait();
+      const said = await waitForWait(asked);
       expect(said).toContain("Waiting for Obsidian to finish renaming a file.");
       expect(await formButton("Cancel").isEnabled()).toBe(true);
       await formButton("Cancel").click();
@@ -779,16 +815,41 @@ describe("Renaming in the symbol library", function () {
       await showLibrary();
       await beginRename("gate", "lintel");
       await hold("link");
+      await watchForWait();
       await browser.keys(["Enter"]);
       await waitForTop("Just once");
-      await browser.pause(stalledAfter + 1000);
+      await browser.pause(shortStall + 1000);
+      // The answer, timed by the page's clock as it is clicked.
+      await browser.execute(() => {
+        document.addEventListener(
+          "click",
+          () => {
+            Reflect.set(window, "inklineAnsweredAt", performance.now());
+          },
+          { capture: true, once: true },
+        );
+      });
+      const answered = Date.now();
       await clickTop("Just once");
       await waitForHeld();
-      // A question held open that long must not count towards the wait.
-      await browser.pause(stalledAfter / 2);
-      expect(await waitLine().getText()).toBe("");
-      const said = await waitForWait();
+      const said = await waitForWait(answered);
       expect(said).toContain("Waiting for Obsidian to finish renaming a file.");
+      // A question held open that long must not count towards the wait, which
+      // would then be said at the first look after the answer, within a
+      // quarter of a second, or during the question. Counted from the answer,
+      // it comes eight looks of a quarter of a second after it. Both are
+      // timed in the page, where a busy machine can only make the looks
+      // later, and so the message too.
+      const saidAt = await waitSaidAt();
+      const answeredAt = await browser.execute((): unknown => {
+        const at: unknown = Reflect.get(window, "inklineAnsweredAt");
+        Reflect.deleteProperty(window, "inklineAnsweredAt");
+        return at;
+      });
+      if (saidAt === undefined || typeof answeredAt !== "number") {
+        throw new Error("the page did not time the answer and the message");
+      }
+      expect(saidAt - answeredAt).toBeGreaterThan(shortStall / 2);
       await letGo();
       await waitForName("lintel");
       await waitForNotice("Renamed gate to lintel");
@@ -801,9 +862,10 @@ describe("Renaming in the symbol library", function () {
       await showLibrary();
       await beginRename("gate", "lintel");
       await hold("move");
+      const asked = Date.now();
       await browser.keys(["Enter"]);
       await waitForHeld();
-      await waitForWait();
+      await waitForWait(asked);
       await letGo();
       // The move ends, and only then does Obsidian ask about the links.
       await waitForTop("Just once");

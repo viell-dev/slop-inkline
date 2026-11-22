@@ -6,7 +6,6 @@
 // symbol and note is synthetic.
 
 import { browser, expect } from "@wdio/globals";
-import { stalledAfter } from "../../../src/notes/file-writes.ts";
 import { loadModules } from "../support/browser.ts";
 import {
   countNoteReads,
@@ -24,6 +23,11 @@ import { pointAt, warmUpPointer } from "../support/hover.ts";
 import { menuItems } from "../support/menus.ts";
 import { boxOf } from "../support/pointer.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
+import {
+  setStalledAfter,
+  shortStall,
+  waitForStallSaid,
+} from "../support/stalls.ts";
 import {
   formError,
   showLibrary,
@@ -421,15 +425,8 @@ async function errorLines(): Promise<string[]> {
   );
 }
 
-/** Waits for the row's wait line, and returns what it says. */
-async function waitForWait(): Promise<string> {
-  const line = form().$(".inkline-save-wait");
-  await browser.waitUntil(async () => (await line.getText()) !== "", {
-    timeout: stalledAfter + 15_000,
-    timeoutMsg: "the row never said its save waits",
-  });
-  return line.getText();
-}
+/** The row's wait line. */
+const waitLine = () => form().$(".inkline-save-wait");
 
 /** Sets the right sidebar's width, as dragging its edge does. */
 async function setSidebar(width: number): Promise<void> {
@@ -1083,23 +1080,34 @@ describe("Quick edit in the library", function () {
 
   for (const [how, leave] of [leavers.cancel, leavers.escape]) {
     it(`does not rename once left with ${how} while its readings wait to be written`, async function () {
+      await setStalledAfter(shortStall);
       await symbolWith("gate.ink.png", { reading: ["TA"] });
       await showLibrary();
       await quickEdit("gate.ink.png");
       await formNameField().setValue("arch");
       await area("reading").setValue("KA");
       await hold("write");
+      const asked = Date.now();
       await formButton("Save").click();
       await waitForHeld();
-      // Until the save says it waits, neither can leave it.
-      const wait = form().$(".inkline-save-wait");
-      expect(await wait.getText()).toBe("");
-      expect(await formButton("Cancel").isEnabled()).toBe(false);
-      expect(await rowButton("gate.ink.png", "edit").isEnabled()).toBe(false);
-      await browser.waitUntil(async () => (await wait.getText()) !== "", {
-        timeout: stalledAfter + 15_000,
-      });
-      expect(await wait.getText()).toContain(
+      // Until the save says it waits, neither can leave it. All three are
+      // read in one step, well inside the wait.
+      expect(
+        await browser.execute((row) => {
+          const shown = document.querySelector(".inkline-library-edit-form");
+          const cancel = Array.from(
+            shown?.querySelectorAll("button") ?? [],
+          ).find((button) => button.textContent === "Cancel");
+          return {
+            said: shown?.querySelector(".inkline-save-wait")?.textContent,
+            cancelOff: cancel?.disabled,
+            editOff: document.querySelector<HTMLButtonElement>(
+              `${row} button[data-inkline-role="edit"]`,
+            )?.disabled,
+          };
+        }, rowOf("gate.ink.png")),
+      ).toEqual({ said: "", cancelOff: true, editOff: true });
+      expect(await waitForStallSaid(waitLine, asked)).toContain(
         "Waiting for Obsidian to finish writing a file.",
       );
       expect(await formButton("Cancel").isEnabled()).toBe(true);
@@ -1167,6 +1175,7 @@ describe("Quick edit in the library", function () {
   });
 
   it("says the readings are saved when the rename after them is left with the row's Quick edit", async function () {
+    await setStalledAfter(shortStall);
     await symbolWith("gate.ink.png", { reading: ["TA"] });
     await noteUsing("Uses.md", "gate.ink.png");
     await openNote("Uses.md");
@@ -1176,9 +1185,10 @@ describe("Quick edit in the library", function () {
     await area("reading").setValue("KA");
     // The rename reads the open note to see whether it has text to save.
     await hold("read");
+    const asked = Date.now();
     await formButton("Save").click();
     await waitForHeld();
-    const said = await waitForWait();
+    const said = await waitForStallSaid(waitLine, asked);
     expect(said).toContain("Waiting for Obsidian to finish renaming a file.");
     expect(said).toContain("The readings and translations are saved.");
     expect(await rowButton("gate.ink.png", "edit").isEnabled()).toBe(true);

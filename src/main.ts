@@ -29,6 +29,7 @@ import {
   recoverDrafts,
   type EditorHost,
 } from "./notes/symbols.ts";
+import { stalledAfter } from "./notes/file-writes.ts";
 import { symbolFiles, type SymbolFiles } from "./notes/symbol-files.ts";
 import { sweepStaged } from "./notes/symbol-writes.ts";
 import { SymbolTextIndex } from "./notes/text-index.ts";
@@ -86,6 +87,16 @@ export default class InklinePlugin extends Plugin {
    */
   #files: SymbolFiles | undefined;
   /**
+   * How long, in milliseconds, a save or a rename goes on before Inkline says
+   * that it waits for Obsidian, read as each one starts: file-writes.ts's
+   * `stalledAfter`, five seconds, which each load starts from. It is not a
+   * setting, and nothing in Inkline changes it. It is public so that the
+   * end-to-end tests can shorten it on the running plugin, rather than wait
+   * five seconds in each test of what is said then: the modules a test loads
+   * for itself are a copy, whose `stalledAfter` the plugin never reads.
+   */
+  stalledAfter = stalledAfter;
+  /**
    * This load of the plugin, which ends as Obsidian unloads it: Obsidian makes
    * a new instance for each load. What Inkline starts that can act later, as
    * from a callback, after an await, or from a dialog, is over once it ends.
@@ -115,6 +126,7 @@ export default class InklinePlugin extends Plugin {
       this.#folder,
       this.#lifetime.signal,
       (file) => this.#texts.refresh(file),
+      () => this.stalledAfter,
     );
     return this.#files;
   }

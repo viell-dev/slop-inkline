@@ -4,6 +4,7 @@ import { browser } from "@wdio/globals";
 import type { TFile } from "obsidian";
 import { Key, type ChainablePromiseElement } from "webdriverio";
 import { obsidianPage } from "wdio-obsidian-service";
+import { stalledAfter } from "../../../src/notes/file-writes.ts";
 import { loadModules } from "./browser.ts";
 import { framesDrawn } from "./waits.ts";
 
@@ -1207,10 +1208,12 @@ export async function undoStubs({
 
 /**
  * Closes every modal, discarding unsaved drawings, and every note, then
- * restores the vault and clears drafts, so that each test starts from the
- * same state. It first takes away what a test held or replaced, with
- * {@link undoStubs}, which it gives `options`, and resets nothing if that
- * fails. Last, it starts the test's record of renames, which
+ * restores the vault and clears drafts, and gives the plugin back the users'
+ * wait before a save or a rename is said to wait, which a test can shorten
+ * with `setStalledAfter()` in support/stalls.ts, so that each test starts
+ * from the same state. It first takes away what a test held or replaced,
+ * with {@link undoStubs}, which it gives `options`, and resets nothing if
+ * that fails. Last, it starts the test's record of renames, which
  * {@link waitForTop} reports from.
  */
 export async function startOver(
@@ -1231,7 +1234,9 @@ export async function startOver(
     },
     { interval: 1, timeoutMsg: "modals stayed open" },
   );
-  await browser.executeObsidian(async ({ app, obsidian }) => {
+  await browser.executeObsidian(async ({ app, obsidian, plugins }, usual) => {
+    // Only a loaded plugin has a wait; the next load starts from the users'.
+    if ("inkline" in plugins) plugins.inkline.stalledAfter = usual;
     // A note's tab saves what it holds when it closes, without waiting, so
     // that save could land after the vault is reset below. So every note is
     // saved first, and the reset waits for each save under way and the one
@@ -1274,7 +1279,7 @@ export async function startOver(
         window.localStorage.removeItem(key);
       }
     }
-  });
+  }, stalledAfter);
   await freeStorage();
   await obsidianPage.resetVault();
   // A notice outlives the test that raised it, as Obsidian's "Updated 1 link

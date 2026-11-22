@@ -13,6 +13,7 @@ import {
   changeFile,
   CutShort,
   PathTaken,
+  stalledAfter,
   TextMoved,
 } from "../../../src/notes/file-writes.ts";
 import {
@@ -403,10 +404,14 @@ class FakeVault implements SymbolVault<Fake> {
 /** The files each save wrote, as the text index was told of them. */
 let refreshed: Fake[];
 
-/** A vault's one line of writes, as a load of the plugin has. */
+/**
+ * A vault's one line of writes, as a load of the plugin has, with the
+ * plugin's wait before a save is said to wait as `stalled` gives it.
+ */
 function writesOf(
   vault: FakeVault,
   unloaded = new AbortController().signal,
+  stalled: () => number = () => stalledAfter,
 ): SymbolWrites<Fake> {
   return new SymbolWrites(
     vault,
@@ -417,6 +422,7 @@ function writesOf(
       return Promise.resolve();
     },
     (folder, name) => (folder === "" ? name : `${folder}/${name}`),
+    stalled,
   );
 }
 
@@ -943,6 +949,39 @@ describe("an editor's save", () => {
     await expect(editorSave(writes, file, pinned, pinned)).rejects.toThrow(
       "deleted or replaced as it was written",
     );
+  });
+
+  it("says it waits once the plugin's wait is up, as that is when it starts", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    try {
+      const vault = new FakeVault();
+      let wait = stalledAfter;
+      const writes = writesOf(vault, undefined, () => wait);
+      const file = vault.put(at);
+      const { gate, open } = gated();
+      file.held = () => gate;
+      // Shortened once the writes are made, as the end-to-end tests do.
+      wait = 2000;
+      const told: boolean[] = [];
+      const saving = writes.save(
+        file,
+        pinned,
+        editorCheck(writes, file, pinned),
+        (waiting) => told.push(waiting),
+        untold,
+      );
+      await vi.advanceTimersByTimeAsync(wait - 1);
+      expect(file.writes).toBe(1);
+      expect(told).toEqual([]);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(told).toEqual([true]);
+      open();
+      await saving;
+      expect(told).toEqual([true, false]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

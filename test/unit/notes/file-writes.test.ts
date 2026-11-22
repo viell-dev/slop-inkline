@@ -642,7 +642,7 @@ describe("A rename that waits for Obsidian", () => {
   });
 
   it("says nothing of a rename that ends in time", async () => {
-    const renamed = watchRename(gate, look, waiting);
+    const renamed = watchRename(gate, look, waiting, stalledAfter);
     await vi.advanceTimersByTimeAsync(stalledAfter - 1);
     end();
     await renamed;
@@ -651,7 +651,7 @@ describe("A rename that waits for Obsidian", () => {
   });
 
   it("says so once nothing has happened for the wait, and when it ends", async () => {
-    const renamed = watchRename(gate, look, waiting);
+    const renamed = watchRename(gate, look, waiting, stalledAfter);
     await vi.advanceTimersByTimeAsync(stalledAfter - 1);
     expect(told).toEqual([]);
     await vi.advanceTimersByTimeAsync(1);
@@ -665,7 +665,7 @@ describe("A rename that waits for Obsidian", () => {
   });
 
   it("goes on for as long as it keeps moving, then counts from the last move", async () => {
-    const renamed = watchRename(gate, look, waiting);
+    const renamed = watchRename(gate, look, waiting, stalledAfter);
     moving = true;
     await vi.advanceTimersByTimeAsync(stalledAfter * 20);
     expect(told).toEqual([]);
@@ -679,7 +679,7 @@ describe("A rename that waits for Obsidian", () => {
   });
 
   it("takes it back when the rename moves again, and counts from there", async () => {
-    const renamed = watchRename(gate, look, waiting);
+    const renamed = watchRename(gate, look, waiting, stalledAfter);
     await vi.advanceTimersByTimeAsync(stalledAfter);
     expect(told).toEqual([true]);
     moving = true;
@@ -695,7 +695,7 @@ describe("A rename that waits for Obsidian", () => {
   });
 
   it("ends the wait as the rename fails, and fails as it did", async () => {
-    const renamed = watchRename(gate, look, waiting);
+    const renamed = watchRename(gate, look, waiting, stalledAfter);
     await vi.advanceTimersByTimeAsync(stalledAfter);
     fail(new Error("the disk says no"));
     await expect(renamed).rejects.toThrow("the disk says no");
@@ -703,7 +703,7 @@ describe("A rename that waits for Obsidian", () => {
   });
 
   it("stops looking once the rename ends", async () => {
-    const renamed = watchRename(gate, look, waiting);
+    const renamed = watchRename(gate, look, waiting, stalledAfter);
     await vi.advanceTimersByTimeAsync(1000);
     end();
     await renamed;
@@ -712,8 +712,19 @@ describe("A rename that waits for Obsidian", () => {
     expect(looks).toBe(seen);
   });
 
+  it("waits as long as it is given, as the tests' shorter wait", async () => {
+    const renamed = watchRename(gate, look, waiting, 2000);
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(told).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(told).toEqual([true]);
+    end();
+    await renamed;
+    expect(told).toEqual([true, false]);
+  });
+
   it("goes by looks, so that a clock that jumps does not look like a stall", async () => {
-    const renamed = watchRename(gate, look, waiting);
+    const renamed = watchRename(gate, look, waiting, stalledAfter);
     await vi.advanceTimersByTimeAsync(1000);
     // A computer that slept, or a page that froze for a minute, then one look.
     vi.setSystemTime(Date.now() + 60_000);
@@ -766,7 +777,7 @@ describe("A save that waits for Obsidian", () => {
   it("says nothing of a save that ends in time", async () => {
     const { told, waiting } = listener();
     const { gate, open } = gated();
-    const saved = watchSave(gate, waiting);
+    const saved = watchSave(gate, waiting, stalledAfter);
     await vi.advanceTimersByTimeAsync(stalledAfter - 1);
     open();
     await saved;
@@ -780,6 +791,7 @@ describe("A save that waits for Obsidian", () => {
     const saved = watchSave(
       gate.then(() => "done"),
       waiting,
+      stalledAfter,
     );
     await vi.advanceTimersByTimeAsync(stalledAfter - 1);
     expect(told).toEqual([]);
@@ -792,6 +804,19 @@ describe("A save that waits for Obsidian", () => {
     expect(told).toEqual([true, false]);
   });
 
+  it("waits as long as it is given, as the tests' shorter wait", async () => {
+    const { told, waiting } = listener();
+    const { gate, open } = gated();
+    const saved = watchSave(gate, waiting, 2000);
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(told).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(told).toEqual([true]);
+    open();
+    await saved;
+    expect(told).toEqual([true, false]);
+  });
+
   it("stops waiting when a save fails, and still fails", async () => {
     const { told, waiting } = listener();
     let fail = (_reason: Error): void => undefined;
@@ -800,6 +825,7 @@ describe("A save that waits for Obsidian", () => {
         fail = reject;
       }),
       waiting,
+      stalledAfter,
     );
     const failed = expect(saved).rejects.toThrow("no disk");
     await vi.advanceTimersByTimeAsync(stalledAfter);
@@ -817,6 +843,7 @@ describe("A save that waits for Obsidian", () => {
     const behind = watchSave(
       queue.run(() => textChange(other, typed, seen)),
       waiting,
+      stalledAfter,
     );
     await vi.advanceTimersByTimeAsync(stalledAfter * 100);
     // The save behind is told, and has neither read nor written: the write

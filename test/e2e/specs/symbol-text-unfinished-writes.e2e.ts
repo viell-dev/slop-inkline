@@ -25,6 +25,11 @@ import {
 } from "../support/editor.ts";
 import { saveScreenshot } from "../support/screenshots.ts";
 import {
+  setStalledAfter,
+  shortStall,
+  waitForStallSaid,
+} from "../support/stalls.ts";
+import {
   fieldsInSecondLibrary,
   formSave,
   openFields,
@@ -60,8 +65,9 @@ describe("A symbol's readings and translations", function () {
   });
 
   describe("when Obsidian does not finish a write", function () {
-    /** Long enough for a save to have waited, with a margin for a busy machine. */
-    const waited = stalledAfter + 15_000;
+    beforeEach(async function () {
+      await setStalledAfter(shortStall);
+    });
 
     const editorWait = () => browser.$(".inkline-editor .inkline-save-wait");
 
@@ -86,14 +92,15 @@ describe("A symbol's readings and translations", function () {
       }, typed);
     }
 
-    /** Waits for that form to say its save waits, and returns what it says. */
-    async function waitForFormWait(typed: string): Promise<string> {
-      const wait = form(typed).$(".inkline-save-wait");
-      await browser.waitUntil(async () => (await wait.getText()) !== "", {
-        timeout: waited,
-        timeoutMsg: `the form with ${typed} never said its save waits`,
-      });
-      return wait.getText();
+    /**
+     * Waits for that form to say its save waits, asked for at `since`, and
+     * returns what it says.
+     */
+    async function waitForFormWait(
+      typed: string,
+      since: number,
+    ): Promise<string> {
+      return waitForStallSaid(() => form(typed).$(".inkline-save-wait"), since);
     }
 
     /**
@@ -114,28 +121,29 @@ describe("A symbol's readings and translations", function () {
       await markForm(typed);
     }
 
-    /** Has the editor save `file`'s new stroke, and hold that at its write. */
-    async function editorHeldAtWrite(file: string): Promise<void> {
+    /**
+     * Has the editor save `file`'s new stroke, and hold that at its write;
+     * returns when the save was asked for, as a `Date.now()`.
+     */
+    async function editorHeldAtWrite(file: string): Promise<number> {
       await editFile(file);
       await draw([
         [0.5, 0.3],
         [0.7, 0.6],
       ]);
       await holdNextWrite();
+      const asked = Date.now();
       await browser.keys(["Control", "s"]);
       await waitForHeldWrite();
+      return asked;
     }
 
-    /** Waits for the editor to say its save waits, and returns what it says. */
-    async function waitForEditorWait(): Promise<string> {
-      await browser.waitUntil(
-        async () => (await editorWait().getText()) !== "",
-        {
-          timeout: waited,
-          timeoutMsg: "the editor never said its save waits",
-        },
-      );
-      return editorWait().getText();
+    /**
+     * Waits for the editor to say its save waits, asked for at `since`, and
+     * returns what it says.
+     */
+    async function waitForEditorWait(since: number): Promise<string> {
+      return waitForStallSaid(editorWait, since);
     }
 
     /** How many strokes the record in `file` holds. */
@@ -174,6 +182,9 @@ describe("A symbol's readings and translations", function () {
     }
 
     it("shows nothing for a save that takes less than the wait", async function () {
+      // With the users' wait: the one test of it in Obsidian, by a save that
+      // takes half of it.
+      await setStalledAfter(stalledAfter);
       const file = "Slow.ink.png";
       await symbolWith(file, { reading: ["TA"] });
       await showLibrary();
@@ -205,8 +216,9 @@ describe("A symbol's readings and translations", function () {
 
     it("tells a form behind a held write, keeps what was typed, and saves when the write ends", async function () {
       await behindHeldWrite("typed");
+      const asked = Date.now();
       await formButton("typed", "Save").click();
-      const said = await waitForFormWait("typed");
+      const said = await waitForFormWait("typed", asked);
       expect(said).toContain("Waiting for Obsidian to finish writing a file.");
       expect(said).toContain("goes on by itself when it does");
       expect(said).toContain("copy what you typed and restart Obsidian");
@@ -242,8 +254,9 @@ describe("A symbol's readings and translations", function () {
       it(`leaves a save behind a held write with ${how}, which then writes nothing`, async function () {
         await behindHeldWrite("dropped");
         const before = await bytesOf("Other.ink.png");
+        const asked = Date.now();
         await formButton("dropped", "Save").click();
-        await waitForFormWait("dropped");
+        await waitForFormWait("dropped", asked);
         await leave("dropped");
         await browser.waitUntil(async () => (await openForms()) === 1);
         await letWriteGo();
@@ -261,9 +274,10 @@ describe("A symbol's readings and translations", function () {
       await fill("reading", "typed");
       await markForm("typed");
       await holdNextWrite();
+      const asked = Date.now();
       await formButton("typed", "Save").click();
       await waitForHeldWrite();
-      await waitForFormWait("typed");
+      await waitForFormWait("typed", asked);
       await formButton("typed", "Cancel").click();
       await waitForClosedForm();
       await waitForNotice("may still finish");
@@ -277,9 +291,9 @@ describe("A symbol's readings and translations", function () {
     it("says so in the editor, goes on drawing, and ends with the write", async function () {
       const file = "Drawn.ink.png";
       await createSymbol(file);
-      await editorHeldAtWrite(file);
+      const asked = await editorHeldAtWrite(file);
       await waitForStatus("Saving");
-      const said = await waitForEditorWait();
+      const said = await waitForEditorWait(asked);
       expect(said).toContain("Waiting for Obsidian to finish writing a file.");
       expect(said).toContain("goes on by itself when it does");
       expect(said).toContain("Your strokes are safe in a draft");
@@ -313,8 +327,9 @@ describe("A symbol's readings and translations", function () {
       // Its file's write, which Inkline asks of Obsidian's adapter once it has
       // looked at the path (#413), held until the message shows.
       await hold("create");
+      const asked = Date.now();
       await browser.keys(["Control", "s"]);
-      expect(await waitForEditorWait()).toContain(
+      expect(await waitForEditorWait(asked)).toContain(
         "restart Obsidian and start a new symbol in this note",
       );
       await letGo();
@@ -326,8 +341,7 @@ describe("A symbol's readings and translations", function () {
       const file = "Restarted.ink.png";
       await createSymbol(file);
       const before = await recordOf(file);
-      await editorHeldAtWrite(file);
-      await waitForEditorWait();
+      await waitForEditorWait(await editorHeldAtWrite(file));
       await draw([
         [0.2, 0.3],
         [0.3, 0.6],
@@ -352,9 +366,10 @@ describe("A symbol's readings and translations", function () {
         [0.7, 0.6],
       ]);
       await holdNextWrite();
+      const asked = Date.now();
       await browser.keys(["Control", "s"]);
       await waitForHeldWrite();
-      const said = await waitForEditorWait();
+      const said = await waitForEditorWait(asked);
       await freeStorage();
       expect(said).toContain("could not be kept in a draft");
       expect(said).not.toContain("safe");

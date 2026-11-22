@@ -1,5 +1,6 @@
 import { browser, expect } from "@wdio/globals";
 import { obsidianPage } from "wdio-obsidian-service";
+import { stalledAfter } from "../../../src/notes/file-writes.ts";
 import { loadModules } from "../support/browser.ts";
 import { inklineOn } from "../support/editing.ts";
 import {
@@ -15,6 +16,7 @@ import {
   waitForHeld,
   waitForHeldDecoding,
 } from "../support/editor.ts";
+import { setStalledAfter, shortStall } from "../support/stalls.ts";
 import {
   holdNextRead,
   holdNextWrite,
@@ -60,6 +62,16 @@ describe("The editor", function () {
     // Had the reset not waited for it, the save would land after it.
     await waitForDelayed("modify");
     expect(await noteOnDisk("Editor.md")).toBe(original);
+  });
+
+  it("starts each test with the users' wait before a save or a rename is said to wait, after one that shortened it", async function () {
+    await setStalledAfter(shortStall);
+    await startOver();
+    expect(
+      await browser.executeObsidian(
+        ({ plugins }) => plugins.inkline.stalledAfter,
+      ),
+    ).toBe(stalledAfter);
   });
 
   it("starts each test with nothing held, after one that failed with an operation held", async function () {

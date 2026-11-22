@@ -37,24 +37,40 @@ export interface SymbolFiles {
    * the file not yet moved when Obsidian says it is done.
    */
   readonly beingRenamed: WeakSet<TFile>;
+  /**
+   * How long, in milliseconds, a save or a rename goes on before a person is
+   * told that it waits for Obsidian, as file-writes.ts's `stalledAfter` says,
+   * read as each one starts.
+   */
+  readonly stalledAfter: () => number;
 }
 
 /**
  * The {@link SymbolFiles} of one load of the plugin: its `folder`, where a
  * save that makes a symbol's file writes it first, `unloaded`, which aborts as
- * the load ends, and `refreshed`, which has the text index read a file a save
- * wrote.
+ * the load ends, `refreshed`, which has the text index read a file a save
+ * wrote, and `stalledAfter`, the plugin's wait before a save or a rename is
+ * said to wait.
  */
 export function symbolFiles(
   app: App,
   folder: string,
   unloaded: AbortSignal,
   refreshed: (file: TFile) => Promise<void>,
+  stalledAfter: () => number,
 ): SymbolFiles {
   return {
     app,
     unloaded,
-    writes: new SymbolWrites(app.vault, folder, unloaded, refreshed, pathIn),
+    writes: new SymbolWrites(
+      app.vault,
+      folder,
+      unloaded,
+      refreshed,
+      pathIn,
+      stalledAfter,
+    ),
     beingRenamed: new WeakSet(),
+    stalledAfter,
   };
 }

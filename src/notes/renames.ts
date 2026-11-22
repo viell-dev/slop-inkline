@@ -484,7 +484,7 @@ async function renameSaved(
     return seen || wait.asked();
   };
   try {
-    await watchRename(work(), moving, wait.told);
+    await watchRename(work(), moving, wait.told, files.stalledAfter());
   } finally {
     for (const report of reports) app.vault.offref(report);
   }

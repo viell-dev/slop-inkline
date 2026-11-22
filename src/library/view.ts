@@ -1072,6 +1072,7 @@ export class SymbolLibraryView extends ItemView {
                   done: watchSave(
                     work.done.then(() => this.#texts.refresh(file)),
                     told,
+                    this.#symbolFiles.stalledAfter(),
                   ),
                   stop: work.stop,
                 };
