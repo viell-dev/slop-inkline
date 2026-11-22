@@ -394,7 +394,8 @@ readings and translations cannot be read when Quick edit opens, their fields
 stay closed, and the name can still change. **Unreleased:** the row says why
 they are closed for as long as they are, above what a save said, as when a name
 is refused, and so it does when the file stops being readable while the row is
-open.
+open. **Unreleased:** a change that comes while a save runs is taken in once the
+save ends.
 
 ## Export a note to PDF
 

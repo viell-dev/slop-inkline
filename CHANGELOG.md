@@ -76,6 +76,12 @@ even one a public release; earlier pre-releases carry a suffix such as
   late. The fields said that saving would replace the earlier text, and the next
   **Save** was refused again
   ([#279](https://github.com/viell-dev/slop-inkline/issues/279)).
+- Quick edit takes in a change that reaches a symbol's file while a save of it
+  runs, once the save ends. Such a change was left until the file changed again
+  or **Save** was pressed again: other text showed what the file had said a
+  moment earlier, and a file cut short or deleted in that moment left the fields
+  open with no reason given
+  ([#423](https://github.com/viell-dev/slop-inkline/issues/423)).
 - In a PDF exported with Obsidian's **Export to PDF**, symbols in text colour no
   longer show a faint one-pixel line along an edge of their box in some PDF
   viewers, Obsidian's own PDF view among them, at some zoom levels. Each prints
