@@ -490,11 +490,12 @@ approval from a second account.
   changes to `Unreleased` in [CHANGELOG.md](CHANGELOG.md).
 - Keep each pull request to one change.
 
-A maintaining agent reviews every pull request. Releases, changes that could
-lose or damage a drawing, and changes to the checks and release steps that guard
-them also get an independent review by another agent, as
-[AGENTS.md](AGENTS.md#review) describes. Labels are used as
-[AGENTS.md](AGENTS.md#labels) says.
+A maintaining agent reviews every pull request, for how the code is written as
+well as whether it works; explain a deliberate departure from better practice in
+a code comment where it is made. Releases, changes that could lose or damage a
+drawing, and changes to the checks and release steps that guard them also get an
+independent review by another agent, as [AGENTS.md](AGENTS.md#review) describes.
+Labels are used as [AGENTS.md](AGENTS.md#labels) says.
 
 ## Dependencies
 
@@ -527,7 +528,10 @@ them also get an independent review by another agent, as
   package taken inside its week, so that nothing else skips it, and read what
   changed in each such published package. Another agent reviews that change for
   a package with few users, one with a new maintainer or way of publishing, or a
-  fix that carries much else.
+  fix that carries much else. The pull request records the advisory, the
+  affected and fixed versions, the dependency path, each package taken inside
+  its week, and whether another agent reviewed its change and why. The required
+  checks apply as usual.
 - Take the fix as close to the vulnerable package as works: update it where the
   ranges that depend on it allow, or update the dependency that brings it to a
   release that takes the fix. Otherwise override the vulnerable copy in
