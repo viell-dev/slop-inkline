@@ -378,25 +378,36 @@ administrators only, so it compares them only when run with such a token, as
 ## Review
 
 - Every review, whether the author's own pass or an independent one, judges how
-  the code is written as well as whether it works: readable, idiomatic for
-  TypeScript, Obsidian, and the libraries in use, consistent in structure and
-  naming, appropriately tested, and in line with current best practices where
-  reasonable. Check a dependency's current documentation rather than remembered
-  conventions. Working code that adds poor patterns still needs changes.
-- A deliberate departure from the better practice is acceptable when it is
-  infeasible under a host, dependency, or compatibility constraint, or when the
-  chosen form is significantly faster based on measurement (benchmarks or
-  profiling), not assumption. Explain the reason in a code comment at that site,
-  with the constraint or measured difference and the condition for revisiting it
-  where one exists. Treat an unexplained departure as a finding.
+  the code is written as well as whether it works. No person reviews the code,
+  so review is the only check that keeps it current instead of letting it drift
+  toward whatever was written first. Once the behavior is confirmed, the code
+  should be readable, idiomatic, consistent in structure and naming,
+  appropriately tested, and in line with current best practices where
+  reasonable. Working code that adds poor patterns still needs changes.
+- The conventions of Obsidian and of the libraries in use shape idioms, error
+  handling, composition, file layout, naming, and tests, ahead of generic
+  defaults. Check a dependency's current documentation rather than remembered
+  conventions.
+- A deliberate departure from the better practice is acceptable when that
+  practice is infeasible here, such as under a host, dependency, or
+  compatibility constraint, or when the chosen form is significantly faster. A
+  marginal gain does not justify the inconsistency; measure it, with a benchmark
+  or a profile, rather than assume it. Explain the reason in a code comment at
+  that site, with the constraint or the measured difference and the condition
+  for revisiting it where one exists. An unexplained departure is a finding.
+  Profile hot paths from time to time as well, to check whether idiomatic code
+  there costs more than expected.
 - Look for the source of a weak pattern, not only its instance. When a pull
-  request copies a weak precedent from merged code, examples, templates, or
-  guidance, name that precedent and fix the source in separate pull requests
-  before settling the original (refactoring the precedent code and updating the
-  guidance, as applicable). Then either close and replace the original pull
-  request or refactor it in place, linking the pull requests. Weigh style
-  findings proportionately to scope and maturity; prefer established practices
-  with clear benefit over churn for novelty.
+  request faithfully copies one from merged code, examples, templates, or
+  guidance, the precedent is the defect rather than the submitter's work, and
+  the finding names it. Before settling that pull request, correct the source in
+  separate ones: one for the code and one for the guidance, as applicable. Then
+  either replace the original with a new pull request built on the corrected
+  base, or refactor it in place to the corrected pattern. Link them all to each
+  other, so that the history shows why the original changed.
+- Weigh style findings by the project's scope and maturity, like other work, in
+  proportion to the code they touch. Prefer established practices with a clear
+  benefit over churn for novelty.
 - The author reviews the complete diff once the checks pass, trying inputs the
   tests do not cover. Whether another agent also reviews it is the author's
   decision, by the change's sensitivity, complexity, impact, and uncertainty
