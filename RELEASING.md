@@ -773,7 +773,7 @@ community.obsidian.md, which needs the owner's sign-in. The owner submitted
 used. [listing/](listing/README.md) holds what the listing form asks for, and
 the steps above keep a pre-release's version off `main`.
 
-The dashboard's automated review runs after each release and can take a plugin
+The dashboard's automated review runs on public releases and can take a plugin
 out of search. `npm run lint` holds as errors every rule the review's newest
 layer does, in required CI. The Directory checks workflow runs Obsidian's own
 action on every pull request, adding checks of the manifest, the README, the
@@ -782,14 +782,22 @@ Obsidian's stops no unrelated work, but a failure there needs fixing before a
 public release.
 
 The review also rebuilds the plugin and compares the result with the release,
-which no public check reproduces. Obsidian's action looks for a build at
-`dist/main.js` among others, and its plugin's guide treats `dist/` as build
-output, but only the dashboard's **Review branch** can show that the review does
-too; a clean build of `0.9.0` on Node.js 24 gave the published bytes. The
-review's findings appear only in the owner's dashboard.
+which no public check reproduces. It reproduced `main.js` byte for byte for
+`1.0.0` ([#308](https://github.com/viell-dev/slop-inkline/issues/308)) and
+`1.0.2`, so building to `dist/` suits it. The **Scorecard** tab of
+[Inkline's page](https://community.obsidian.md/plugins/inkline) shows everyone
+what the review found in the release the directory lists. The owner's dashboard
+also keeps earlier reviews and previews; on 2026-11-22 it listed reviews of
+`1.0.0` and `1.0.2`, and none of `1.0.1`, which `1.0.2` replaced within a day.
 
-Whether a GitHub pre-release of a listed plugin starts the dashboard's review is
-not documented. After the first, `1.1.0`, published on 2026-11-22, the directory
-still listed `1.0.2`, and Obsidian still offered it, as `main`'s `manifest.json`
-names it ([#312](https://github.com/viell-dev/slop-inkline/issues/312)). What
-the dashboard showed is in that issue once the owner has looked.
+The first pre-release after the listing, `1.1.0`, published on 2026-11-22,
+started no review and changed nothing seen in the directory
+([#312](https://github.com/viell-dev/slop-inkline/issues/312)): on 2026-11-25
+its page still listed `1.0.2`, with that release's Scorecard, and Obsidian still
+offered it, as `main`'s `manifest.json` names it. The owner ran the dashboard's
+**Review branch** on the tag by hand on 2026-11-22. That preview showed CSS lint
+and dependencies only, not the build check: the four `:has()` warnings that
+`styles.css` explains, which the Directory checks workflow had already given on
+the release's pull request, and no vulnerable dependency. As it ran no build
+check and gave only warnings already known, the release steps ask for no
+preview.
