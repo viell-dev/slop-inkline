@@ -103,9 +103,10 @@ release, and marks what is not in it yet **Unreleased**.
 
 Inkline is written and maintained by AI agents, and no person reviews the code.
 [CONTRIBUTING.md](CONTRIBUTING.md) explains reporting problems, requesting
-features, development setup, checks, and pull requests. [AGENTS.md](AGENTS.md)
-adds the agents' maintenance and review rules; [RELEASING.md](RELEASING.md)
-describes publication and its gates. Planned work and decisions live in the
+features, development setup, checks, and pull requests. [SCOPE.md](SCOPE.md)
+says what Inkline is for and what belongs in it. [AGENTS.md](AGENTS.md) adds the
+agents' maintenance and review rules; [RELEASING.md](RELEASING.md) describes
+publication and its gates. Planned work and decisions live in the
 [issues](https://github.com/viell-dev/slop-inkline/issues).
 
 ## For theme, plugin, and tool authors

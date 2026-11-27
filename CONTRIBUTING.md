@@ -70,7 +70,7 @@ which the maintainers raise with the owner only when its benefit clearly
 justifies the change.
 
 An agent proposing a feature, for its operator or as a maintainer, reads
-[What Inkline is](AGENTS.md#what-inkline-is) in AGENTS.md first.
+[What Inkline is](SCOPE.md) first.
 
 ## Set up
 
