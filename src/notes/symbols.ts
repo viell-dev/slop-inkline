@@ -1,9 +1,10 @@
 // Opening the editor on symbols: a new one at a note's cursor, one already in
-// the vault, one started from another, and a draft whose symbol is gone or does
-// not open, with what each one's save does to the vault and the note. Writing a
-// symbol's file is in symbol-writes.ts, renaming it in renames.ts, where a new
-// one goes in symbol-paths.ts, and putting its embed in a note in
-// note-insertion.ts; this module puts them together, as the editor's saves.
+// the vault, one started from another, and a kept draft, from the list of
+// drafts or a symbol that does not open, with what each one's save does to the
+// vault and the note. Writing a symbol's file is in symbol-writes.ts, renaming
+// it in renames.ts, where a new one goes in symbol-paths.ts, and putting its
+// embed in a note in note-insertion.ts; this module puts them together, as the
+// editor's saves.
 
 import {
   ConfirmationModal,
@@ -38,15 +39,16 @@ import {
 } from "../editor/drafts.ts";
 import {
   createdFile,
-  findOrphans,
   folderOf,
-  orphanName,
-  orphanPlace,
+  listDrafts,
+  listedDetail,
+  listedName,
+  listedPlace,
   recoveredName,
   recoveryQuestion,
-  whyListed,
-  type Orphan,
-  type Unopened,
+  type AsNewSymbol,
+  type FileState,
+  type Listed,
 } from "../editor/recovery.ts";
 import {
   InkEditorModal,
@@ -766,15 +768,21 @@ let opening: { readonly file: TFile } | undefined;
 /**
  * Opens the editor for an existing symbol file, reporting any failure. A large
  * one takes a moment to read, and asking for it again meanwhile, as with a
- * second click, goes on with the same read rather than opening it twice.
+ * second click, goes on with the same read rather than opening it twice. The
+ * draft whose id is `first`, as one chosen from the list of drafts, is the
+ * one offered, while it is kept for the file; otherwise the newest is.
  */
-export async function editSymbol(host: EditorHost, file: TFile): Promise<void> {
+export async function editSymbol(
+  host: EditorHost,
+  file: TFile,
+  first?: string,
+): Promise<void> {
   // A symbol's menu can stay open after Inkline unloads, with Edit symbol in it.
   if (host.unloaded.aborted || opening?.file === file) return;
   const mine = { file };
   opening = mine;
   try {
-    await openEditor(host, file, () => opening === mine);
+    await openEditor(host, file, () => opening === mine, first);
   } finally {
     if (opening === mine) opening = undefined;
   }
@@ -846,18 +854,22 @@ async function readForEditing(app: App, file: TFile): Promise<SymbolReading> {
  * as a new symbol instead, if `ask`: not once a modal opened over the one the
  * person was in, which a question would take the keys from. Otherwise the
  * notice says the draft is kept, and how to get it back. A new symbol's draft
- * is not counted, as a new symbol in its note offers it. Nothing is read once
- * Inkline is unloading, as reading the drafts drops expired ones.
+ * is not counted, as a new symbol in its note offers it. The draft whose id is
+ * `first` is asked about, rather than the newest, while it is kept for the
+ * file. Nothing is read once Inkline is unloading, as reading the drafts drops
+ * expired ones.
  */
 function didNotOpen(
   host: EditorHost,
   file: TFile,
   refusal: Refusal,
   ask: boolean,
+  first: string | undefined,
 ): void {
-  const [draft] = host.unloaded.aborted
+  const drafts = host.unloaded.aborted
     ? []
     : host.drafts.forTarget({ kind: "file", path: file.path });
+  const draft = drafts.find(({ id }) => id === first) ?? drafts[0];
   if (draft === undefined) {
     markNotice(new Notice(refusal.notice));
     return;
@@ -885,11 +897,13 @@ function didNotOpen(
  * `wanted` says. A modal opened since has the keyboard, and an editor coming up
  * over it would take the keys and the pointer from someone typing or drawing
  * there, so that nothing there is lost, and the notice says to open this again.
+ * The draft whose id is `first` is offered first, as {@link editSymbol} says.
  */
 async function openEditor(
   host: EditorHost,
   file: TFile,
   wanted: () => boolean,
+  first: string | undefined,
 ): Promise<void> {
   const { app } = host;
   const modals = modalCount();
@@ -904,7 +918,7 @@ async function openEditor(
   const free = (): boolean =>
     !host.unloaded.aborted && wanted() && modalCount() === modals;
   if (reading.kind === "failed") {
-    didNotOpen(host, file, reading, free());
+    didNotOpen(host, file, reading, free(), first);
     return;
   }
   // Inkline may have been disabled while the file was read.
@@ -918,7 +932,7 @@ async function openEditor(
     return;
   }
   if (reading.kind === "damaged") {
-    didNotOpen(host, file, reading, free());
+    didNotOpen(host, file, reading, free(), first);
     return;
   }
   if (modalCount() > modals) {
@@ -952,6 +966,7 @@ async function openEditor(
       store: host.drafts,
       // The file's path follows renames.
       target: () => ({ kind: "file", path: symbol.path }),
+      ...(first === undefined ? {} : { first }),
     },
     lifecycle: host.lifecycle,
     file: () => host.writes.symbolFile(symbol.path),
@@ -967,19 +982,19 @@ async function openEditor(
 }
 
 /**
- * Asks whether to open `orphan`'s draft as a new symbol, as
+ * Asks whether to open `found`'s draft as a new symbol, as
  * {@link recoverDraft} does, or to discard it, holding the draft meanwhile so
  * that no editor or other question takes it. Not now keeps it for another
  * time. The question closes as Inkline unloads, and does nothing after that.
  */
-function askRecovery(host: EditorHost, orphan: Orphan): void {
+function askRecovery(host: EditorHost, found: AsNewSymbol): void {
   const { app, drafts, unloaded } = host;
-  const { id, savedAt } = orphan.draft;
+  const { id, savedAt } = found.draft;
   drafts.hold(id);
   let answered = false;
   const question = new ConfirmationModal(app);
   const { title, content } = recoveryQuestion(
-    orphan,
+    found,
     new Date(savedAt).toLocaleString(),
   );
   question.setTitle(title);
@@ -999,7 +1014,7 @@ function askRecovery(host: EditorHost, orphan: Orphan): void {
           return;
         }
         // The editor holds the draft from now on.
-        recoverDraft(host, orphan);
+        recoverDraft(host, found);
       }),
   );
   question.addButton((button) =>
@@ -1037,7 +1052,7 @@ function claimed(claim: Claim): CreatedFile {
 }
 
 /**
- * Opens the editor on `orphan`'s draft, which the caller holds, as a new
+ * Opens the editor on `found`'s draft, which the caller holds, as a new
  * symbol: the draft's strokes, the name and text it kept, and a base layer it
  * kept itself. One it took from its file is lost with the file, as the
  * question that offers it says. Its first save inserts it nowhere, and goes:
@@ -1053,7 +1068,8 @@ function claimed(claim: Claim): CreatedFile {
  *   drawing, which the draft goes on from, and keeps its name unless another
  *   is typed. Otherwise to a new file beside it, which stays as it is.
  * - for a new symbol's draft never saved, where a new symbol of its note
- *   would go, as {@link newSymbolPath} finds it for the note's old path.
+ *   would go, as {@link newSymbolPath} finds it for the note's path, there
+ *   or gone.
  *
  * Until then the editor's draft is for the symbol the old draft was kept for,
  * so that a crash leaves it where it was found, and the editor keeps it in
@@ -1070,11 +1086,11 @@ function claimed(claim: Claim): CreatedFile {
  * left without it, as when it was saved while the draft's base layer was
  * read, writes over nothing.
  */
-function recoverDraft(host: EditorHost, orphan: Orphan): void {
+function recoverDraft(host: EditorHost, found: AsNewSymbol): void {
   const { app } = host;
-  const { draft, path } = orphan;
+  const { draft, path } = found;
   const { target } = draft;
-  const created = createdFile(orphan);
+  const created = createdFile(draft);
   /** The file the first save of a new symbol's draft made, once restored. */
   let claim: Claim | undefined;
   /**
@@ -1089,7 +1105,7 @@ function recoverDraft(host: EditorHost, orphan: Orphan): void {
         ? undefined
         : folderOf(created.path);
   const name = recoveredName(
-    orphan,
+    found,
     (stem) => folder !== undefined && nameTaken(app, folder, stem),
   );
   /** The new symbol's file once made, or taken over. */
@@ -1207,19 +1223,27 @@ function recoverDraft(host: EditorHost, orphan: Orphan): void {
 }
 
 /**
- * Why the file at `path` would not open in its editor, for a draft kept for
- * it, or undefined if it opens, or would once Inkline is updated.
+ * What the file at `path` is, for a draft kept for it: as its editor opens it,
+ * saved by a newer version of Inkline, or why it would not open in its editor.
  */
-async function unopenedAt(
-  app: App,
-  path: string,
-): Promise<Unopened | undefined> {
+async function fileStateAt(app: App, path: string): Promise<FileState> {
   const file = app.vault.getFileByPath(path);
   if (file === null) return { kind: "gone" };
   const reading = await readForEditing(app, file);
-  return reading.kind === "failed" || reading.kind === "damaged"
-    ? { kind: "unreadable", reason: reading.reason }
-    : undefined;
+  switch (reading.kind) {
+    case "read":
+      return {
+        kind: "opens",
+        document: reading.opened.document,
+        // As the editor's name field starts, which a draft's name is judged by.
+        name: symbolStem(file.name) ?? file.basename,
+      };
+    case "newer":
+      return { kind: "newer" };
+    case "failed":
+    case "damaged":
+      return { kind: "unreadable", reason: reading.reason };
+  }
 }
 
 /**
@@ -1272,21 +1296,22 @@ async function previewOf(draft: Draft): Promise<string | undefined> {
 
 /** A draft in the list of drafts, with its picture. */
 interface DraftRow {
-  readonly orphan: Orphan;
+  readonly listed: Listed;
   readonly preview: string | undefined;
 }
 
 /**
- * The drafts that no editor offers, as {@link findOrphans} finds them, to
+ * The drafts that no open editor holds, as {@link listDrafts} finds them, to
  * choose one by the path it was kept for, or for a new symbol's draft, its
- * note's or its first save's. It closes as `unloaded` aborts, when Inkline
- * unloads, as {@link SymbolSearch} does, and a choice that still reaches it
- * then does nothing.
+ * note's or its first save's. With none, it says so, and stays until it is
+ * closed. It closes as `unloaded` aborts, when Inkline unloads, as
+ * {@link SymbolSearch} does, and a choice that still reaches it then does
+ * nothing.
  */
 class DraftList extends SuggestModal<DraftRow> {
   readonly #rows: readonly DraftRow[];
   readonly #unloaded: AbortSignal;
-  readonly #chosen: (orphan: Orphan) => void;
+  readonly #chosen: (listed: Listed) => void;
   readonly #unload = (): void => {
     this.close();
   };
@@ -1295,14 +1320,17 @@ class DraftList extends SuggestModal<DraftRow> {
     app: App,
     rows: readonly DraftRow[],
     unloaded: AbortSignal,
-    chosen: (orphan: Orphan) => void,
+    chosen: (listed: Listed) => void,
   ) {
     super(app);
     this.#rows = rows;
     this.#unloaded = unloaded;
     this.#chosen = chosen;
     this.setPlaceholder("Recover which draft?");
-    this.emptyStateText = "No draft was kept for a symbol at that path.";
+    this.emptyStateText =
+      rows.length === 0
+        ? "There are no unsaved drawings to recover."
+        : "No unsaved drawing was kept for that path.";
   }
 
   override onOpen(): Promise<void> | void {
@@ -1317,15 +1345,15 @@ class DraftList extends SuggestModal<DraftRow> {
 
   override getSuggestions(query: string): DraftRow[] {
     const search = prepareSimpleSearch(query);
-    return this.#rows.filter(({ orphan }) =>
-      [orphan.path, createdFile(orphan)?.path].some(
+    return this.#rows.filter(({ listed }) =>
+      [listed.path, createdFile(listed.draft)?.path].some(
         (path) => path !== undefined && search(path) !== null,
       ),
     );
   }
 
   override renderSuggestion(
-    { orphan, preview }: DraftRow,
+    { listed, preview }: DraftRow,
     el: HTMLElement,
   ): void {
     el.addClass("inkline-suggestion");
@@ -1339,31 +1367,36 @@ class DraftList extends SuggestModal<DraftRow> {
     const text = el.createDiv({ cls: "inkline-suggestion-text" });
     text.createDiv({
       cls: "inkline-suggestion-name",
-      text: orphanName(orphan),
+      text: listedName(listed),
     });
-    const place = orphanPlace(orphan);
+    const place = listedPlace(listed);
     if (place !== "") {
       text.createDiv({ cls: "inkline-suggestion-folder", text: place });
     }
     text.createDiv({
       cls: "inkline-suggestion-folder",
-      text: `Kept ${new Date(orphan.draft.savedAt).toLocaleString()}. ${whyListed(orphan)}`,
+      text: listedDetail(
+        listed,
+        new Date(listed.draft.savedAt).toLocaleString(),
+      ),
     });
   }
 
-  override onChooseSuggestion({ orphan }: DraftRow): void {
-    if (!this.#unloaded.aborted) this.#chosen(orphan);
+  override onChooseSuggestion({ listed }: DraftRow): void {
+    if (!this.#unloaded.aborted) this.#chosen(listed);
   }
 }
 
 /**
- * Lists the drafts that no editor can offer, newest first: a symbol's draft
- * whose file is gone or does not open, and a new symbol's draft whose note is
- * gone. Asks about the one chosen, as {@link askRecovery} does; a notice says
- * when there is none. Reading the drafts drops expired ones, as any list of
- * them does, and leaves the drafts of later layouts as they are. Each file a
- * draft is for is read in full, as opening it would, to tell whether it
- * opens, and each picture drawn, before the list shows.
+ * Lists every draft that no open editor holds, newest first, as
+ * {@link listDrafts} finds them, or says in the list that there is none.
+ * Choosing a symbol's draft whose file opens opens that symbol, whose editor
+ * offers that draft, as {@link editSymbol} does; choosing any other asks
+ * whether to open it as a new symbol, as {@link askRecovery} does. Reading the
+ * drafts drops expired ones, as any list of them does, and leaves the drafts
+ * of later layouts as they are. Each file a draft is for is read in full, as
+ * opening it would, to tell whether it opens, and each picture drawn, before
+ * the list shows.
  */
 export async function recoverDrafts(host: EditorHost): Promise<void> {
   const { app, drafts, unloaded } = host;
@@ -1373,34 +1406,37 @@ export async function recoverDrafts(host: EditorHost): Promise<void> {
   const rows: DraftRow[] = [];
   const stopSaying = sayWhileSlow("Looking for drafts…");
   try {
-    const orphans = await findOrphans(
+    const found = await listDrafts(
       drafts.unheld(),
-      (path) => unopenedAt(app, path),
+      (path) => fileStateAt(app, path),
       (path) => app.vault.getFileByPath(path) === null,
     );
-    for (const orphan of orphans) {
-      rows.push({ orphan, preview: await previewOf(orphan.draft) });
+    for (const listed of found) {
+      rows.push({ listed, preview: await previewOf(listed.draft) });
     }
   } finally {
     stopSaying();
   }
   if (ended()) return;
-  if (rows.length === 0) {
-    markNotice(
-      new Notice(
-        "No draft is waiting for a symbol that is gone or does not open, or for a new symbol whose note is gone. A symbol that opens offers its own drafts.",
-      ),
-    );
-    return;
-  }
-  new DraftList(app, rows, unloaded, (orphan) => {
+  new DraftList(app, rows, unloaded, (listed) => {
+    const { draft, path } = listed;
     // An editor or a question may have taken it meanwhile, or a rename moved
     // it to the file's new path.
-    const now = drafts.unheld().find(({ id }) => id === orphan.draft.id);
-    if (now === undefined || !sameTarget(now.target, orphan.draft.target)) {
+    const now = drafts.unheld().find(({ id }) => id === draft.id);
+    if (now === undefined || !sameTarget(now.target, draft.target)) {
       markNotice(new Notice("That draft is no longer waiting."));
       return;
     }
-    askRecovery(host, orphan);
+    if (listed.opens === "new") {
+      askRecovery(host, listed);
+      return;
+    }
+    const file = app.vault.getFileByPath(path);
+    if (file === null) {
+      // Deleted since it was listed, so that only a new symbol can take it.
+      askRecovery(host, { draft, path, unopened: { kind: "gone" } });
+      return;
+    }
+    void editSymbol(host, file, draft.id);
   }).open();
 }

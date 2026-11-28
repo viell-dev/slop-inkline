@@ -583,16 +583,21 @@ export function restoresNothing(
  * nothing over `opened` under `name`, as {@link restoresNothing} says, is
  * dropped, as after a save that ended once Inkline was off, until one that
  * would bring something back, which is offered. A new symbol's draft is
- * always offered, as restoring it can finish its first save.
+ * always offered, as restoring it can finish its first save. The draft whose
+ * id is `first`, as one chosen from the list of drafts, goes before the
+ * others, if it is among them.
  */
 export function draftOffer(
   target: DraftTarget,
   offered: readonly Draft[],
   opened: InkDocument,
   name: string,
+  first?: string,
 ): { readonly offer: Draft | undefined; readonly drop: readonly string[] } {
   const drop: string[] = [];
-  for (const draft of offered) {
+  const chosen = offered.filter(({ id }) => id === first);
+  const others = offered.filter(({ id }) => id !== first);
+  for (const draft of [...chosen, ...others]) {
     if (target.kind !== "file" || !restoresNothing(draft, opened, name)) {
       return { offer: draft, drop };
     }

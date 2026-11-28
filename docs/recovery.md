@@ -69,6 +69,9 @@ the unsaved drawing?**, with the time the draft was kept:
 - **Discard** drops the draft;
 - **Not now** keeps it, to be offered next time.
 
+**Unreleased:** **Inkline: Recover drafts** lists every draft kept, as
+[the next section](#recover-drafts) describes.
+
 A symbol's draft that would bring back nothing its file lacks, the same strokes,
 picture and name, with nothing typed in its readings and translations, is
 dropped as the symbol opens, without the question.
@@ -85,6 +88,39 @@ A new symbol's first save that was cut short, or whose embed could not be
 inserted, is finished when you restore its draft: with the file it had made, if
 nothing changed that file since, and with the embed, unless the note has it
 already.
+
+## Recover drafts
+
+**Unreleased:** **Inkline: Recover drafts**, in the command palette, lists every
+unsaved drawing that Inkline keeps as a draft, newest first, other than one an
+open editor has. Each row shows a picture of the drawing, the symbol's name and
+folder, or for a new symbol the note it was started in, when the draft was kept,
+and what choosing it does. Type part of a path to filter the list. With nothing
+to list, the list says "There are no unsaved drawings to recover." and stays
+open until you close it.
+
+- **A symbol whose file opens:** choosing it opens the symbol, which asks
+  **Restore the unsaved drawing?** about that draft, as opening it yourself
+  does. For a symbol with more than one draft, it asks about the one you chose.
+- **A new symbol whose note is still there:** choosing it asks **Open the
+  unsaved drawing as a new symbol?**. The drawing opens as a new symbol, saved
+  where new symbols go and inserted in no note, as the draft does not record
+  where in the note the symbol was to go. Once it is saved, put the cursor where
+  you want it and run **Inkline: Insert existing symbol**, or type the insert
+  trigger and its name. To have it inserted as you save instead, put the cursor
+  there and start a new symbol in that note, which offers its newest draft.
+- **A symbol whose file is gone or does not open, or a new symbol whose note is
+  gone:** choosing it asks the same question, as
+  [the section below](#drafts-whose-symbol-is-gone-or-does-not-open) describes.
+- **A symbol saved by a newer version of Inkline:** the row says to update
+  Inkline, and choosing it says the same. The draft stays, for when you have
+  updated.
+
+A symbol's draft that would bring back nothing its file lacks, as after a save
+that finished once Inkline was off, is not listed: opening the symbol drops it.
+Nor are drafts that a newer version of Inkline kept in a way this one cannot
+read, which stay as they are, as
+[Drafts from a newer version](#drafts-from-a-newer-version) says.
 
 ## When the file changes while the editor is open
 
@@ -174,14 +210,10 @@ a draft of it is kept.
   the editor on the draft, **Discard** drops it, and **Not now** keeps it. If
   another window opened while the symbol was read, the notice comes instead, and
   says to run **Inkline: Recover drafts**.
-- **Inkline: Recover drafts** lists every draft whose symbol's file is gone or
-  does not open, newest first: a picture of its drawing, the symbol's name and
-  folder, when the draft was kept, and why it is listed. It lists a new symbol's
-  draft too when the note it was started in is gone, as deleted, or moved while
-  Inkline was off, since only a new symbol started in that note offers it
-  otherwise. Type part of its path to filter the list, and choose one to be
-  asked the same question. A draft a symbol's editor has open is not listed, nor
-  one a newer version of Inkline kept, which stays as it is.
+- **Inkline: Recover drafts** lists such drafts with every other, as
+  [Recover drafts](#recover-drafts) says, among them a new symbol's draft whose
+  note is gone, as deleted, or moved while Inkline was off. Choose one to be
+  asked the same question.
 
 The new symbol starts with the draft's strokes, and any name, readings, and
 translations you had typed. Its name field holds the old file's name, unless a
@@ -206,8 +238,9 @@ or delete. For a symbol renamed while Inkline was off, rename it back and choose
 **Restore** instead, which puts the draft on that symbol rather than in a new
 one.
 
-A new symbol's draft whose note is gone opens the same way, with the name you
-had typed, and its first save inserts it into no note either:
+A new symbol's draft chosen from the list opens the same way, whether its note
+is gone or still there, with the name you had typed, and its first save inserts
+it into no note either:
 
 - If its first save had made a file, but could not insert it, saving writes over
   that file while it still holds what that save wrote, as restoring the draft in
@@ -216,7 +249,7 @@ had typed, and its first save inserts it into no note either:
   beside it.
 - Otherwise it is saved where new symbols go: in the symbol folder that
   Inkline's [settings](./settings.md) name, or else where Obsidian puts a new
-  attachment for a note at the old note's path. Obsidian takes the place of an
+  attachment for a note at the note's path. Obsidian takes the place of an
   attachment from the note itself, and for a note that is gone it answers as if
   no note were open. With **Same folder as current file** in **Settings → Files
   and links**, that is the vault's top folder instead of the note's folder, and

@@ -113,7 +113,10 @@ describe("Draft recovery", function () {
   async function listedRows(): Promise<
     { text: string; picture: number; height: number }[]
   > {
-    await browser.$(".prompt .inkline-suggestion").waitForExist();
+    await browser.waitUntil(
+      async () => (await browser.$$(".prompt .inkline-suggestion").length) > 0,
+      { timeoutMsg: "the list of drafts never showed a draft" },
+    );
     return browser.execute(() =>
       [...document.querySelectorAll(".prompt .inkline-suggestion")].map(
         (row) => {
@@ -127,6 +130,21 @@ describe("Draft recovery", function () {
         },
       ),
     );
+  }
+
+  /**
+   * Waits for the list of drafts to say, in its own empty state, that there is
+   * none, and closes it.
+   */
+  async function nothingListed(): Promise<void> {
+    const empty = browser.$(".prompt .suggestion-empty");
+    await empty.waitForExist({ timeoutMsg: "the list never said it is empty" });
+    expect(await empty.getText()).toBe(
+      "There are no unsaved drawings to recover.",
+    );
+    expect(await browser.$$(".prompt .inkline-suggestion").length).toBe(0);
+    await browser.keys(["Escape"]);
+    await browser.$(".prompt").waitForExist({ reverse: true });
   }
 
   /** What each stored draft says of the file its strokes line up with. */
@@ -465,7 +483,9 @@ describe("Draft recovery", function () {
     const rows = await listedRows();
     await saveScreenshot("draft-recovery-list");
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.text).toMatch(/^towerRunesKept .+\. Deleted or moved$/);
+    expect(rows[0]?.text).toMatch(
+      /^towerRunesKept .+\. Its file was deleted or moved: opens its unsaved changes as a new symbol\.$/,
+    );
     // A picture of the two strokes, as the first save would draw them, and
     // no larger than its row needs.
     expect(rows[0]?.picture).toBeGreaterThan(0);
@@ -491,7 +511,7 @@ describe("Draft recovery", function () {
     await saveScreenshot("draft-recovery-editor");
     // While its editor is open, the draft is that editor's, and not listed.
     await browser.executeObsidianCommand("inkline:recover-drafts");
-    await waitForNotice("No draft is waiting for a symbol");
+    await nothingListed();
     await browser.keys(["Control", "Enter"]);
     await waitClosed();
     expect(await symbolFiles()).toEqual(["Runes/tower.ink.png"]);
@@ -511,6 +531,118 @@ describe("Draft recovery", function () {
     expect(await noteOnDisk("Uses.md")).toBe("The tower: ![[tower.ink.png]]\n");
   });
 
+  it("lists a symbol's drafts whose file opens, and opens the symbol on the one chosen", async function () {
+    await createSymbol("Runes/tower.ink.png");
+    // Two drafts of it, as from two editors that Obsidian closed: the older
+    // with a stroke more than the file, the newer with two.
+    await draftThenStop("Runes/tower.ink.png");
+    await restart();
+    await editFile("Runes/tower.ink.png");
+    await clickTop("Not now");
+    await draw(zigzag);
+    await draw([
+      [0.6, 0.3],
+      [0.6, 0.7],
+    ]);
+    await browser.waitUntil(
+      async () =>
+        (await storedDrafts()).some((draft) => draft.strokes.length === 3),
+      { timeoutMsg: "the second drawing was never kept as a draft" },
+    );
+    await obsidianPage.disablePlugin("inkline");
+    await restart();
+    expect(await draftCount()).toBe(2);
+    await browser.executeObsidianCommand("inkline:recover-drafts");
+    const rows = await listedRows();
+    await saveScreenshot("draft-recovery-list-opens");
+    const opens =
+      /^towerRunesKept .+\. Opens the symbol, to restore its unsaved changes\.$/;
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.text).toMatch(opens);
+    expect(rows[1]?.text).toMatch(opens);
+    expect(rows[1]?.picture).toBeGreaterThan(0);
+    // The older one, which opening the symbol would not offer first.
+    await browser.keys(["ArrowDown"]);
+    await browser.keys(["Enter"]);
+    await waitForEditor();
+    await clickTop("Restore");
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    expect(await strokeCount("Runes/tower.ink.png")).toBe(2);
+    // The newer one is still kept, and listed.
+    expect(await draftCount()).toBe(1);
+    expect((await storedDrafts())[0]?.strokes).toHaveLength(3);
+    await browser.executeObsidianCommand("inkline:recover-drafts");
+    expect(await listedRows()).toHaveLength(1);
+    await browser.keys(["Escape"]);
+  });
+
+  it("asks about a listed symbol's draft as a new symbol when its file goes while the list is open", async function () {
+    await createSymbol("gate.ink.png");
+    await draftThenStop("gate.ink.png");
+    await restart();
+    await browser.executeObsidianCommand("inkline:recover-drafts");
+    expect((await listedRows())[0]?.text).toMatch(/Opens the symbol/);
+    await browser.executeObsidian(async ({ app }) => {
+      const file = app.vault.getFileByPath("gate.ink.png");
+      if (file === null) throw new Error("no gate.ink.png");
+      await app.vault.delete(file);
+    });
+    await browser.keys(["Enter"]);
+    await browser.waitUntil(
+      async () => (await topButton("Open as new symbol")) !== undefined,
+      { timeoutMsg: "no question about the draft" },
+    );
+    expect(await questionText()).toContain(
+      "gate.ink.png is no longer in the vault",
+    );
+    await clickTop("Not now");
+    expect(await editorOpen()).toBe(false);
+    expect(await draftCount()).toBe(1);
+  });
+
+  it("lists a draft whose file a newer Inkline saved, and keeps it", async function () {
+    await createSymbol("gate.ink.png");
+    await draftThenStop("gate.ink.png");
+    // Saved meanwhile by a later Inkline, in a format this one does not read.
+    await browser.executeObsidian(async ({ app }) => {
+      const { canvas, inkFile, png } = window.inklineTest;
+      const pixels = new Uint8ClampedArray(48 * 192 * 4);
+      for (let at = 3; at < pixels.length; at += 4) pixels[at] = 200;
+      const image = await canvas.encodePixels({
+        width: 48,
+        height: 192,
+        data: pixels,
+      });
+      const [header, ...rest] = png.readChunks(image);
+      if (header === undefined) throw new Error("no header");
+      const bytes = png.writeChunks([
+        header,
+        {
+          type: inkFile.recordChunkType,
+          data: Uint8Array.from([0, 0, 0, 2]),
+        },
+        ...rest,
+      ]);
+      const file = app.vault.getFileByPath("gate.ink.png");
+      if (file === null) throw new Error("no gate.ink.png");
+      await app.vault.modifyBinary(file, bytes.slice().buffer);
+    });
+    await restart();
+    await browser.executeObsidianCommand("inkline:recover-drafts");
+    const rows = await listedRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.text).toMatch(
+      /^gateKept .+\. Its file is from a newer version of Inkline: update Inkline, then open it to restore its unsaved changes\.$/,
+    );
+    await browser.keys(["Enter"]);
+    await waitForNotice(
+      "gate.ink.png was saved by a newer version of Inkline. Update Inkline to edit it.",
+    );
+    expect(await editorOpen()).toBe(false);
+    expect(await draftCount()).toBe(1);
+  });
+
   it("keeps a draft offered for later, and discards it from the list", async function () {
     await createSymbol("gate.ink.png");
     await draftThenStop("gate.ink.png");
@@ -528,7 +660,7 @@ describe("Draft recovery", function () {
     const rows = await listedRows();
     expect(rows).toHaveLength(1);
     expect(rows[0]?.text).toMatch(
-      /^gateKept .+\. Does not open: not a PNG file$/,
+      /^gateKept .+\. Its file does not open: not a PNG file\. Opens its unsaved changes as a new symbol\.$/,
     );
     await browser.keys(["Enter"]);
     await clickTop("Discard");
@@ -538,7 +670,7 @@ describe("Draft recovery", function () {
     expect(await editorOpen()).toBe(false);
     expect(await bytesOfFile("gate.ink.png")).toEqual(new Array(8).fill(0));
     await browser.executeObsidianCommand("inkline:recover-drafts");
-    await waitForNotice("No draft is waiting for a symbol");
+    await nothingListed();
   });
 
   it("lists no draft of a later layout, and leaves it as it is", async function () {
@@ -554,7 +686,11 @@ describe("Draft recovery", function () {
       app.saveLocalStorage("inkline-drafts", ["later"]);
     }, later);
     await browser.executeObsidianCommand("inkline:recover-drafts");
-    await waitForNotice("No draft is waiting for a symbol");
+    await browser.$(".prompt .suggestion-empty").waitForExist();
+    await saveScreenshot("draft-recovery-list-empty");
+    // Still there after longer than a notice shows, which said this before.
+    await browser.pause(6000);
+    await nothingListed();
     expect(
       await browser.executeObsidian(({ app }): unknown[] => [
         app.loadLocalStorage("inkline-draft:later"),
@@ -604,7 +740,7 @@ describe("Draft recovery", function () {
     await saveScreenshot("draft-recovery-list-new");
     expect(rows).toHaveLength(1);
     expect(rows[0]?.text).toMatch(
-      /^New symbolStarted in Doomed\.mdKept .+\. Its note was deleted or moved$/,
+      /^New symbolStarted in Doomed\.mdKept .+\. Its note was deleted or moved: opens the unsaved drawing as a new symbol, inserted in no note\.$/,
     );
     expect(rows[0]?.picture).toBeGreaterThan(0);
     const question = await openListed();
@@ -612,7 +748,7 @@ describe("Draft recovery", function () {
       "Doomed, the note a new symbol was started in, is no longer in the vault, but Inkline kept the symbol's unsaved drawing from",
     );
     expect(question).toContain(
-      "They can open in a new symbol, saved where new symbols go, and inserted in no note.",
+      "It can open in a new symbol, saved where new symbols go, and inserted in no note. Once it is saved, run Inkline: Insert existing symbol with the cursor where you want it.",
     );
     expect((await nameField()).value).toBe("");
     await browser.keys(["Control", "Enter"]);
@@ -623,6 +759,54 @@ describe("Draft recovery", function () {
     expect(await draftCount()).toBe(0);
     expect(await noteOnDisk("Editor.md")).not.toContain("001.ink.png");
     expect(await noteOnDisk("Welcome.md")).not.toContain("001.ink.png");
+  });
+
+  it("lists a new symbol's draft whose note is there, and opens it as a new symbol inserted nowhere", async function () {
+    await browser.executeObsidian(async ({ app }) => {
+      await app.vault.create("Kept.md", "The gate HERE opens.\n");
+    });
+    await openAtMarker("Kept.md", "HERE");
+    await browser.executeObsidianCommand("inkline:insert-symbol");
+    await waitForEditor();
+    await draw(zigzag);
+    await browser.waitUntil(async () => (await storedDrafts()).length === 1, {
+      timeoutMsg: "the drawing was never kept as a draft",
+    });
+    // As when Obsidian closes with the editor open.
+    await obsidianPage.disablePlugin("inkline");
+    await restart();
+    await browser.executeObsidianCommand("inkline:recover-drafts");
+    const rows = await listedRows();
+    await saveScreenshot("draft-recovery-list-new-in-note");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.text).toMatch(
+      /^New symbolStarted in Kept\.mdKept .+\. Opens the unsaved drawing as a new symbol, inserted in no note\.$/,
+    );
+    expect(rows[0]?.picture).toBeGreaterThan(0);
+    await browser.keys(["Enter"]);
+    await browser.waitUntil(
+      async () => (await topButton("Open as new symbol")) !== undefined,
+      { timeoutMsg: "no question about the draft" },
+    );
+    await saveScreenshot("draft-recovery-question-new-in-note");
+    const question = await questionText();
+    expect(question).toContain(
+      "Inkline kept the unsaved drawing of a new symbol started in Kept, from",
+    );
+    expect(question).toContain(
+      "It can open in a new symbol, saved where new symbols go, and inserted in no note. Once it is saved, run Inkline: Insert existing symbol with the cursor where you want it.",
+    );
+    await clickTop("Open as new symbol");
+    await waitForEditor();
+    await waitForStatus("Opened the unsaved drawing as a new symbol");
+    await browser.keys(["Control", "Enter"]);
+    await waitClosed();
+    // The test vault puts new attachments at its top.
+    expect(await symbolFiles()).toEqual(["001.ink.png"]);
+    expect(await strokeCount("001.ink.png")).toBe(1);
+    expect(await draftCount()).toBe(0);
+    // As the marker left it, with the cursor between the spaces.
+    expect(await noteOnDisk("Kept.md")).toBe("The gate  opens.\n");
   });
 
   /**
@@ -657,11 +841,11 @@ describe("Draft recovery", function () {
     const rows = await listedRows();
     expect(rows).toHaveLength(1);
     expect(rows[0]?.text).toMatch(
-      /^001Started in Editor\.mdKept .+\. Its note was deleted or moved$/,
+      /^001Started in Editor\.mdKept .+\. Its note was deleted or moved: opens the unsaved drawing as a new symbol, inserted in no note\.$/,
     );
     const question = await openListed();
     expect(question).toContain(
-      "They can open in a new symbol, saved in the vault's top folder and inserted in no note. Its first save made 001.ink.png: saving writes over that file if nothing changed it since, and otherwise makes another beside it.",
+      "It can open in a new symbol, saved in the vault's top folder and inserted in no note. Its first save made 001.ink.png: saving writes over that file if nothing changed it since, and otherwise makes another beside it.",
     );
     expect(await nameField()).toEqual({
       value: "",
